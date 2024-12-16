@@ -15,7 +15,7 @@ class ModelParams:
 class M_Base:
     def __init__(self, config: Dict):
         self.config = config
-        self.all_centers = None  # Dictionary to store category centers for different conditions
+        self.all_centers = None
         
     def set_centers(self, centers: Dict):
         self.all_centers = centers
