@@ -10,7 +10,7 @@ from typing import Dict, Tuple, List
 @dataclass
 class ModelParams:
     k: int  # index of partition method 
-    beta: float  # 
+    beta: float  # softness of partition
 
 class M_Base:
     def __init__(self, config: Dict):
@@ -28,7 +28,7 @@ class M_Base:
         else:
             raise ValueError(f"Invalid k for condition {condition}")
         
-    def _get_max_k(self, condition: int) -> int:
+    def get_max_k(self, condition: int) -> int:
         """Return max k based on the condition."""
         centers = self.all_centers['2_cats'] if condition == 1 else self.all_centers['4_cats']
         return len(centers)
@@ -70,7 +70,7 @@ class M_Base:
 
     def prior(self, params: ModelParams, condition: int) -> float:
         """Compute the prior probability of the model parameters."""
-        max_k = self._get_max_k(condition)
+        max_k = self.get_max_k(condition)
         k_prior = 1/max_k if 1 <= params.k <= max_k else 0
         beta_prior = np.exp(-params.beta) if params.beta > 0 else 0
         return k_prior * beta_prior
@@ -93,7 +93,7 @@ class M_Base:
             Tuple[ModelParams, float, float, Dict]: Best parameters, log-likelihood, posterior, and posterior distribution over k.
         """
         condition = data['condition'].iloc[0]
-        max_k = self._get_max_k(condition)
+        max_k = self.get_max_k(condition)
         
         best_params, best_log_likelihood, best_posterior = None, -np.inf, -np.inf
         k_posteriors = {}
@@ -162,8 +162,9 @@ class M_Base:
         Returns:
             int: Predicted cluster index (1-based).
         """
-        centers = self.get_centers(params.k, condition)
+        k, beta = params.k, params.beta
+        centers = self.get_centers(k, condition)
         distances = np.linalg.norm(x[:, np.newaxis, :] - np.array(centers), axis=2)
-        probs = np.exp(-params.beta * distances)
+        probs = np.exp(-beta * distances)
         probs /= np.sum(probs, axis=1, keepdims=True) 
         return np.argmax(probs) + 1
