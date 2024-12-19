@@ -288,7 +288,7 @@ class Partition:
                                 centers[cat_idx].append(0.5)
 
                 # 2.2a 二维相等 + 两个单维轴对齐: (x_i = x_j, x_k = 0.5, x_l = 0.5)
-                # 2.3a 二维和式 + 两个单维轴对齐: (x_i + x_j = 1, x_k = 0.5, x_l = 0.5)
+                # 2.2b 二维和式 + 两个单维轴对齐: (x_i + x_j = 1, x_k = 0.5, x_l = 0.5)
                 elif split_type in ['4d_equality_axis_pair', '4d_sum_axis_pair']:
                     first_dims = [dim_idx for dim_idx, coef in enumerate(hyperplanes[0][0]) if coef != 0]
                     axis_dims = []
@@ -480,7 +480,7 @@ class Partition:
                         splits.append(('3d_axis_equality_sum', [plane_m, plane_sum, plane_eq]))
 
             # 2.2 涉及四个维度
-            # 2.2a 二维相等 + 两个单维轴对齐
+            # 2.2a 二维相等 + 两个单维轴对齐: (x_i = x_j, x_k = 0.5, x_l = 0.5)
             if n_dims >= 4:
                 for i, j in itertools.combinations(range(n_dims), 2):
                     remaining = [k for k in range(n_dims) if k not in (i, j)]
@@ -497,7 +497,7 @@ class Partition:
                         splits.append(('4d_equality_axis_pair', [plane_eq, plane_axis1, plane_axis2]))
                         splits.append(('4d_equality_axis_pair', [plane_eq, plane_axis2, plane_axis1]))
             
-            # 2.3a 二维和式 + 两个单维轴对齐
+            # 2.2b 二维和式 + 两个单维轴对齐: (x_i + x_j = 1, x_k = 0.5, x_l = 0.5)
             if n_dims >= 4:
                 for i, j in itertools.combinations(range(n_dims), 2):
                     remaining = [k for k in range(n_dims) if k not in (i, j)]
