@@ -59,14 +59,8 @@ class M_Base:
         probs = np.exp(-beta * distances)  # Shape: [nTrials, nCategoris]
         probs /= np.sum(probs, axis=1, keepdims=True)  # Normalize probabilities
         p_c = probs[np.arange(len(c)), c - 1]  # Probability of chosen category (shape: [nTrials])
-        
-        if condition == 3:
-            family_probs = np.sum(probs.reshape(-1, 2, probs.shape[1]), axis=1)
-            p_family = family_probs[(c - 1) // 2, np.arange(len(c))]
-            p_combined = p_family * (1 - p_c)
-            return np.where(r == 1, p_c, np.where(r == 0.5, p_combined, 1 - p_c))
-        else:
-            return np.where(r == 1, p_c, 1 - p_c)
+
+        return np.where(r == 1, p_c, 1 - p_c)
 
     def prior(self, params: ModelParams, condition: int) -> float:
         """Compute the prior probability of the model parameters."""
