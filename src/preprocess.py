@@ -265,6 +265,8 @@ class Preprocessor_B:
 
             combined_data[remaining_columns] = joint_data[remaining_columns]
 
+            combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
+
         return combined_data
 
     def convert(self, suffix, structure1, structure2):
