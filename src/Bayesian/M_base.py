@@ -158,6 +158,11 @@ class M_Base:
         """
         k, beta = params.k, params.beta
         centers = self.get_centers(k, condition)
+
+        # Ensure x is 2D (shape: [1, 4]) for consistency
+        if x.ndim == 1:
+            x = x[np.newaxis, :]  # Reshape to [1, 4]
+            
         distances = np.linalg.norm(x[:, np.newaxis, :] - np.array(centers), axis=2)
         probs = np.exp(-beta * distances)
         probs /= np.sum(probs, axis=1, keepdims=True) 
