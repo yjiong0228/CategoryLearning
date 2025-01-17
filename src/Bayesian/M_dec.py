@@ -25,7 +25,7 @@ class M_Dec(M_Base):
         max_k = self.get_max_k(condition)
         k_prior = 1/max_k if 1 <= params.k <= max_k else 0
         beta_prior = np.exp(-params.beta) if params.beta > 0 else 0
-        phi_prior = np.exp(-params.phi) if params.phi > 0 else 0
+        phi_prior = 1 if 0 < params.phi < 1 else 0
         return k_prior * beta_prior * phi_prior
 
     def fit(self, data) -> Tuple[ModelParams, float, float, Dict]:
@@ -79,16 +79,17 @@ class M_Dec(M_Base):
                 n_categories = 2
             else:
                 n_categories = 4
+            dec_prior = np.full(n_categories, 1/n_categories)
             # Define a function to compute the negative log-likelihood for phi
             def nll_phi(phi):
-                # Compute choice probabilities based on current posterior
+                # Compute choice probabilities based on current k and beta posterior and decision prior
                 choice_probs = np.zeros(n_categories)
                 for k, posterior in k_post.items():
                     centers = self.get_centers(k, condition)
                     distances = np.linalg.norm(x_next - np.array(centers), axis=1)
-                    logits = -fitted_params.beta * distances  # 计算logits
-                    logits /= phi  # 调整温度
-                    exp_logits = np.exp(logits - np.max(logits))  # 稳定计算
+                    logits = -fitted_params.beta * distances  
+                    logits = (1 - phi) * logits + phi * dec_prior
+                    exp_logits = np.exp(logits)
                     probs = exp_logits / np.sum(exp_logits)
                     choice_probs += posterior * probs
                 
@@ -126,7 +127,15 @@ class M_Dec(M_Base):
             x = x[np.newaxis, :]  # Reshape to [1, 4]
             
         distances = np.linalg.norm(x[:, np.newaxis, :] - np.array(centers), axis=2)
-        logits = -beta * distances / phi
-        exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
-        probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+        if condition == 1:
+            n_categories = 2
+        else:
+            n_categories = 4
+        dec_prior = np.full(n_categories, 1/n_categories)
+
+        logits = -beta * distances
+        logits = (1 - phi) * logits + phi * dec_prior
+        exp_logits = np.exp(logits)
+        probs = exp_logits / np.sum(exp_logits)
         return np.argmax(probs) + 1

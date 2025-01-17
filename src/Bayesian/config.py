@@ -21,10 +21,10 @@ config_fgt = {
 config_dec = {
     'param_bounds': {
         'beta': (0.001, 30),
-        'phi': (0.001, 10)
+        'phi': (0.001, 1)
     },
     'param_inits': {
         'beta': 1,
-        'phi': 5
+        'phi': 0.5
     }
 }
