@@ -10,6 +10,48 @@ import numpy as np
 from typing import Dict
 
 class ModelEval:
+    # plot parameters over trials
+    def plot_params_over_trials(self, results: Dict, params: str, save_path: str = None):
+        """
+        Plots specified parameter over trials for a given subject.
+
+        Args:
+            step_results (list of dict): List of dictionaries containing parameter values for each trial.
+            params (str): The parameter to plot (e.g., 'k', 'beta').
+        """
+
+        n_subjects = len(results)
+        n_rows = 3
+        n_cols = (n_subjects + n_rows - 1) // n_rows
+
+        fig = plt.figure(figsize=(8*n_cols, 5*n_rows))
+        fig.suptitle(f'{params}_over_trials by Subject', fontsize=16, y=0.99)
+
+        sorted_subjects = sorted(results.keys())
+
+        for idx, iSub in enumerate(sorted_subjects):
+            subject_info = results[iSub]
+            step_results = subject_info['step_results']
+            condition = subject_info['condition']
+            
+            row = idx % n_rows
+            col = idx // n_rows
+            ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
+            
+            num_steps = len(step_results)
+            param_values = [result[params] for result in step_results]
+
+            ax.plot(range(1, num_steps + 1), param_values, marker='o')
+
+            ax.set_title(f'Subject {iSub} (Condition {condition})')
+            ax.set_xlabel('Trial')
+            ax.set_ylabel(f'{params} value')
+        
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        plt.close()
+
     def plot_posterior_probabilities(self, results: Dict, save_path: str = None):
         n_subjects = len(results)
         n_rows = 3
@@ -75,7 +117,7 @@ class ModelEval:
         
         return predictions
 
-    def calculate_sliding_accuracy(self, predictions, window_size=16):
+    def calculate_sliding_accuracy(self, predictions, window_size=32):
         """Calculate sliding window accuracy from predictions"""
         sliding_accuracy = []
         num_predictions = len(predictions)
