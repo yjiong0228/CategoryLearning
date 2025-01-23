@@ -165,17 +165,52 @@ class Preprocessor_A:
                     for i in range(9):  # x0 到 x8
                         x_col = f'x{i}'
                         new_coor[x_col] = canvas_width - current_coor[x_col]
+
                 elif node in node_mapping:
                     x_col, y_col = node_mapping[node]
 
-                    if node == 'head_neck':
-                        delta_x = row['x'] - current_coor['x1']
-                        delta_y = row['y'] - current_coor['y1']
-                        new_coor['x0'] = current_coor['x0'] + delta_x
-                        new_coor['y0'] = current_coor['y0'] + delta_y
+                    # 计算 delta_x 和 delta_y
+                    delta_x = row['x'] - current_coor[x_col]
+                    delta_y = row['y'] - current_coor[y_col]
 
+                    # 更新当前节点的坐标
                     new_coor[x_col] = row['x']
                     new_coor[y_col] = row['y']
+                    
+                    # 处理腿的逻辑
+                    if node == 'leg_end_0':
+                        new_coor['x6'] += delta_x
+                        new_coor['y6'] += delta_y
+                        new_coor['x5'] -= delta_x
+                        new_coor['y5'] += delta_y
+                        new_coor['x7'] -= delta_x
+                        new_coor['y7'] += delta_y
+                    elif node == 'leg_end_1':
+                        new_coor['x7'] += delta_x
+                        new_coor['y7'] += delta_y
+                        new_coor['x4'] -= delta_x
+                        new_coor['y4'] += delta_y
+                        new_coor['x6'] -= delta_x
+                        new_coor['y6'] += delta_y
+                    elif node == 'leg_end_2':
+                        new_coor['x4'] += delta_x
+                        new_coor['y4'] += delta_y
+                        new_coor['x5'] -= delta_x
+                        new_coor['y5'] += delta_y
+                        new_coor['x7'] -= delta_x
+                        new_coor['y7'] += delta_y
+                    elif node == 'leg_end_3':
+                        new_coor['x5'] += delta_x
+                        new_coor['y5'] += delta_y
+                        new_coor['x4'] -= delta_x
+                        new_coor['y4'] += delta_y
+                        new_coor['x6'] -= delta_x
+                        new_coor['y6'] += delta_y
+
+                    # 处理 head_neck 的逻辑
+                    if node == 'head_neck':
+                        new_coor['x0'] = current_coor['x0'] + delta_x
+                        new_coor['y0'] = current_coor['y0'] + delta_y
 
                 new_coor['timestamp'] = int(row['timestamp'])
                 
@@ -256,7 +291,7 @@ class Preprocessor_B:
                             'neck_length', 'head_length', 'leg_length', 'tail_length',
                             'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
             remaining_columns = ['category', 'choice', 'feedback', 'choRT']
-
+   
             combined_data = joint_data[base_columns].copy()
 
             for i, feature in enumerate(feature_names):
