@@ -1,0 +1,8 @@
+base:
+  k:
+    type: int
+    default: 0
+  beta:
+    type: float
+    default: 1.0
+    bounds: [0.001, 30]

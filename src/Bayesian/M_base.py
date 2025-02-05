@@ -110,7 +110,7 @@ class M_Base:
                 best_params = ModelParams(k=k, beta=beta_opt)
                 best_log_likelihood, best_posterior = log_likelihood, posterior_opt
         
-        # Normalize posteriors
+        # Normalize posteriors TODO:
         max_log_posterior = max(k_posteriors.values())
         k_posteriors = {k: np.exp(log_p - max_log_posterior) for k, log_p in k_posteriors.items()}
         total = sum(k_posteriors.values())
