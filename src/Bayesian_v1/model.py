@@ -61,12 +61,17 @@ class BayesianModel:
         """Return max k based on the condition."""
         return len(self.all_centers)
     
+    @property
+    def c_nums(self) -> int:
+        """Return the number of categories."""
+        return len(self.all_centers[0][1])
+    
     def fit(self):
         res_dict = {k: [] for k in self.params.keys()}
-        for i in range(len(self.all_data)):
+        for i in range(len(self.all_data)-1):
             for name, module in self.modules.items():
                 if name == 'base':
-                    params, prior_fn, likelihood_fn = module.fit(
+                    res = module.fit(
                         self.params,
                         self.init_values,
                         self.all_data[:i+1], 
@@ -74,18 +79,19 @@ class BayesianModel:
                         self.max_k,
                         self.config[name]['beta']['bounds']
                     )
-                    for k, v in params.items():
+                    for k, v in res['best_params'].items():
                         res_dict[k].append(v)
                         self.init_values[k] = v
                 elif name == 'decision':
-                    params, prior_fn, likelihood_fn = module.fit(
+                    res = module.fit(
                         self.params,
                         self.init_values,
-                        self.all_data[:i+1], 
-                        (prior_fn, likelihood_fn),
+                        self.all_data[i+1], 
+                        res['posterior_fn'],
+                        self.c_nums,
                         self.config[name]['phi']['bounds']
                     )
-                    for k, v in params.items():
+                    for k, v in res['best_params'].items():
                         res_dict[k].append(v)
                 else:
                     raise ValueError("No module found")

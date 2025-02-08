@@ -137,9 +137,9 @@ class Base(Module):
             return self.likelihood(params, data, centers)
         return wrapper
     
-    def posterior(self, params: dataclass, trial_data: TrialNumpyData, centers: np.ndarray) -> np.ndarray:
+    def predict(self, params: dataclass, trial_data: TrialNumpyData, centers: np.ndarray) -> np.ndarray:
         """
-        Compute the posterior probabilities for the model parameters given the trial data.
+        Compute the posterior probabilities for the model parameters given the trial data and beta.
         
         Args:
             params (ModelParams): Model parameters (k and beta).
@@ -155,12 +155,12 @@ class Base(Module):
         probs = np.exp(logits) / np.sum(np.exp(logits)) # Shape: (nCategories,)
         return probs
     
-    def posterior_wrapper(self, centers: np.ndarray):
+    def predict_wrapper(self, centers: np.ndarray):
         def wrapper(params: dataclass, trial_data: TrialNumpyData):
             return self.posterior(params, trial_data, centers)
         return wrapper
 
-    def posteriors(self, params: dataclass, data: SubjectDataset, centers: np.ndarray, *, prod: bool = False) -> np.ndarray:       
+    def predicts(self, params: dataclass, data: SubjectDataset | List[TrialNumpyData], centers: np.ndarray, *, prod: bool = False) -> np.ndarray:       
         """
         Compute posterior probabilities across multiple trial data.
 
@@ -179,6 +179,40 @@ class Base(Module):
             return logits / np.sum(logits) # Shape: (nCategories,)
         else:
             return probs # Shape: (nTrials, nCategories)
+
+    def posterior(self, params: dataclass, data: TrialNumpyData, all_centers: List[Tuple[int, Dict[int, np.ndarray]]], weights: np.ndarray, max_k: int) -> np.ndarray:
+        """
+        Compute the posterior probabilities for the model parameters given the trial data and beta.
+
+        Args:
+            params (ModelParams): Model parameters (k and beta).
+            data (TrialNumpyData): Data containing features, choices, and feedback.
+            all_centers (List[Tuple[int, Dict[int, np.ndarray]]]): Centers of categories organized by condition.
+            weights (np.ndarray): Weights for each k.
+
+        Returns:
+            np.ndarray: Posterior probabilities for each category. Shape: (nCategories,)
+        """
+        def get_centers(k: int) -> np.ndarray:
+            """ Get the specific category centers for a given k."""
+            if 0 <= k < len(all_centers):
+                return np.array(list(all_centers[k][1].values()), dtype=np.float32)
+            else:
+                raise ValueError(f"Invalid k for condition {self.condition}")
+        c = data.choice
+        posteriors = []      
+        for k in range(max_k):
+            centers = get_centers(k)
+            params.k = k   
+            posteriors.append(self.predict(params, data, centers)[c] * weights[k])
+        
+        return np.sum(posteriors, axis=0) 
+
+    def posterior_wrapper(self, all_centers: List[Tuple[int, Dict[int, np.ndarray]]], weights: np.ndarray, max_k: int):
+        def wrapper(params: dataclass, data: TrialNumpyData):
+            return self.posterior(params, data, all_centers, weights, max_k)
+        return wrapper
+
     
     def fit(self,
             params: Dict[str, Union[int, float]],
@@ -224,9 +258,11 @@ class Base(Module):
             if best_k is None or result.fun < losses[best_k]:
                 best_k = k
                 best_beta = result.x[0]
-        return ({'k': best_k, 'beta': best_beta},
-                self.prior_wrapper(max_k),
-                self.likelihood_wrapper(get_centers(best_k)))
+        weights = np.exp(-np.array(losses) + losses[best_k]) # Shape: (max_k, )
+        return {'best_params': {'k': best_k, 'beta': best_beta},
+                'prior_fn': self.prior_wrapper(max_k),
+                'likelihood_fn': self.likelihood_wrapper(get_centers(best_k)),
+                'posterior_fn': self.posterior_wrapper(all_centers, weights, max_k)}
             
 
 
@@ -242,58 +278,25 @@ class Decision(Module):
             
         if not isinstance(params.phi, float):
             raise ValueError("Invalid parameter type")
-
-    def prior(self, params: dataclass, other_prior: Callable) -> float:
-        phi_prior = 1 if 0 <= params.phi <= 1 else 0
-        return phi_prior * other_prior(params)
-    
-    def prior_wrapper(self):
-        def wrapper(params: dataclass):
-            return self.prior(params)
-        return wrapper
-
-    def likelihood(self, params: dataclass, data: TrialNumpyData, other_likelihood: Callable, *, trial: int = -1) -> np.ndarray:
-        assert trial >= 0, "Trial number must be specified"
-        return params.phi * np.exp(-trial) + (1 - params.phi) * other_likelihood(params, data)
-    
-    def likelihood_wrapper(self, other_likelihood: Callable, *, trial: int = -1):
-        def wrapper(params: dataclass, data: TrialNumpyData):
-            return self.likelihood(params, data, other_likelihood, trial=trial)
-        return wrapper
-
-    def loss_fn(self, params: dataclass, data: List[TrialNumpyData], other_loss_fn: List[Callable]) -> np.ndarray:
-        assert len(other_loss_fn) == 2, "Two loss functions must be provided"
-        loss = -np.log(self.prior(params, other_loss_fn[0]))
-        for i, trial_data in enumerate(data):
-            loss += -np.log(self.likelihood(params, trial_data, other_loss_fn[1], trial=i))
-        return loss
-
-    def posterior(self, params: dataclass, trial_data: TrialNumpyData, other_posterior: Callable, *, trial: int = -1) -> np.ndarray:
-        assert trial >= 0, "Trial number must be specified"
-        random_phi = np.random.uniform(0, 1)
-        if random_phi < params.phi:
-            return np.exp(-trial)
-        else:
-            return other_posterior(params, trial_data)
         
-    def posterior_wrapper(self, other_posterior: Callable, *, trial: int = -1):
-        def wrapper(params: dataclass, trial_data: TrialNumpyData):
-            return self.posterior(params, trial_data, other_posterior, trial=trial)
-        return wrapper
+    def posterior(self, params: dataclass, data: TrialNumpyData, other_posterior_fn: Callable, c_nums: int) -> np.ndarray:
+        return (1 - params.phi) * other_posterior_fn(params, data) + params.phi / c_nums
     
-    def posteriors(self, params: dataclass, data: SubjectDataset, other_posterior: Callable, *, prod: bool = False) -> np.ndarray:
-        probs = [self.posterior(params, trial_data, other_posterior, trial=i) for i, trial_data in enumerate(data)]
-        if prod:
-            logits = np.prod(probs, axis=0)
-            return logits / np.sum(logits) # Shape: (nCategories,)
-        else:
-            return probs
+    def posterior_wrapper(self, other_posterior_fn: Callable, c_nums: int):
+        def wrapper(params: dataclass, data: TrialNumpyData):
+            return self.posterior(params, data, other_posterior_fn, c_nums)
+        return wrapper
+
+    def loss_fn(self, params: dataclass, data: TrialNumpyData, other_posterior_fn: Callable, c_nums: int) -> np.ndarray:
+        return -np.log(self.posterior(params, data, other_posterior_fn, c_nums))
+
         
     def fit(self,
             params: Dict[str, float],
             init_values: Dict[str, float],
-            data: List[TrialNumpyData],
-            other_loss_fn: List[Callable],
+            data: TrialNumpyData,
+            other_posterior_fn: Callable,
+            c_nums: int,
             phi_bounds: Tuple[float, float]
     ) -> Tuple[Dict[str, float], Callable, Callable]:
         best_phi = None       
@@ -302,13 +305,14 @@ class Decision(Module):
         other_init_values = {key: value for key, value in init_values.items() if key != 'phi'}
 
         result = minimize(
-            lambda phi: self.loss_fn(cls(phi=phi, **other_init_values), data, other_loss_fn),
+            lambda phi: self.loss_fn(cls(phi=phi, **other_init_values), data, other_posterior_fn, c_nums),
             x0=[init_values['phi']],
             bounds=[phi_bounds]
         )
         best_phi = result.x[0]
-        return ({'phi': best_phi},
-                self.prior_wrapper(),
-                self.likelihood_wrapper(other_loss_fn, trial=len(data)-1))
+        return {'best_params': {'phi': best_phi},
+                'prior_fn': None,
+                'likelihood_fn': None,
+                'posterior_fn': self.posterior_wrapper(other_posterior_fn, c_nums)}
 
         
