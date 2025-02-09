@@ -314,5 +314,81 @@ class Decision(Module):
                 'prior_fn': None,
                 'likelihood_fn': None,
                 'posterior_fn': self.posterior_wrapper(other_posterior_fn, c_nums)}
+    
 
+class Forget(Module):
+    def __init__(self):
+        super().__init__()
+        self.params = dict(gamma = float)
+
+    def check_params(self, params: dataclass) -> None:
+        for key in self.params.keys():
+            if key not in params.__annotations__:
+                raise ValueError(f"Missing parameter {key}")
+            
+        if not isinstance(params.gamma, float):
+            raise ValueError("Invalid parameter type")
+        
+    def prior(self, params: dataclass, other_prior_fn: Callable) -> float:
+        gamma_prior = 1 if 0 <= params.gamma <= 1 else 0
+        return gamma_prior * other_prior_fn(params)
+    
+    def prior_wrapper(self, other_prior_fn: Callable):
+        def wrapper(params: dataclass):
+            return self.prior(params, other_prior_fn)
+        return wrapper
+    
+    def likelihood(self, params: dataclass, data: TrialNumpyData, other_likelihood_fn: Callable, forget_trial: int) -> np.ndarray:
+        assert forget_trial >= 0, "Forget trial must be greater than or equal to 0"
+        return other_likelihood_fn(params, data) * params.gamma ** forget_trial
+    
+    def likelihood_wrapper(self, other_likelihood_fn: Callable):
+        """
+        Wrapper function for the likelihood method.
+        
+        Returns:
+            Callable: A wrapper of the likelihood wrapper. func(forget_trial: int) -> func(params: dataclass, data: TrialNumpyData)
+        """
+        def f_t_wrapper(forget_trial: int):
+            def wrapper(params: dataclass, data: TrialNumpyData):
+                return self.likelihood(params, data, other_likelihood_fn, forget_trial)
+            return wrapper
+        return f_t_wrapper
+    
+    def posterior(self, params: dataclass, data: TrialNumpyData, other_posterior_fn: Callable, forget_trial: int) -> np.ndarray:
+        return other_posterior_fn(params, data) * params.gamma ** forget_trial
+    
+    def posterior_wrapper(self, other_posterior_fn: Callable, forget_trial: int):
+        def wrapper(params: dataclass, data: TrialNumpyData):
+            return self.posterior(params, data, other_posterior_fn, forget_trial)
+        return wrapper
+    
+    def loss_fn(self, params: dataclass, data: List[TrialNumpyData], other_loss_fn: List[Callable]) -> np.ndarray:
+        loss = -np.log(self.prior(params, other_loss_fn[0]))
+        for i, trial_data in enumerate(data):
+            loss += -np.log(self.likelihood(params, trial_data, other_loss_fn[1], i))
+        return loss
+    
+    def fit(self,
+            params: Dict[str, float],
+            init_values: Dict[str, float],
+            data: List[TrialNumpyData],
+            other_loss_fn: List[Callable],
+            gamma_bounds: Tuple[float, float]
+    ) -> Tuple[Dict[str, float], Callable, Callable]:
+        best_gamma = None       
+        
+        cls = make_dataclass('ForgetParams', params)
+        other_init_values = {key: value for key, value in init_values.items() if key != 'gamma'}
+
+        result = minimize(
+            lambda gamma: self.loss_fn(cls(gamma=gamma, **other_init_values), data, other_loss_fn),
+            x0=[init_values['gamma']],
+            bounds=[gamma_bounds]
+        )
+        best_gamma = result.x[0]
+        return {'best_params': {'gamma': best_gamma},
+                'prior_fn': self.prior_wrapper(other_loss_fn[0]),
+                'likelihood_fn': self.likelihood_wrapper(other_loss_fn[1]),
+                'posterior_fn': self.posterior_wrapper(other_loss_fn[2], len(data))}
         

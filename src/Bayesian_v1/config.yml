@@ -11,3 +11,8 @@ decision:
     type: float
     default: 0.5
     bounds: [0.0, 1.]
+forget:
+  gamma:
+    type: float
+    default: 1.0
+    bounds: [0.0, 1.]

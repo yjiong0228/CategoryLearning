@@ -3,7 +3,7 @@ from dataclasses import make_dataclass
 from collections import OrderedDict
 from scipy.optimize import minimize
 
-from .modules import Module, Base, Decision
+from .modules import Module, Base, Decision, Forget
 from .utils.data import CategoryDataset, TrialData
 from .utils.partition import Partition
 
@@ -12,7 +12,8 @@ from typing import Dict, Tuple, List, Callable
 # Define all modules, each module is a tuple of (module, priority)
 all_modules = {
     'base': (Base(), 0),
-    'decision': (Decision(), 1),
+    'decision': (Decision(), 2),
+    'forget': (Forget(), 1),
 }
 all_modules = dict(sorted(all_modules.items(), key=lambda x: x[1][1]))
     
@@ -93,6 +94,18 @@ class BayesianModel:
                     )
                     for k, v in res['best_params'].items():
                         res_dict[k].append(v)
+                        self.init_values[k] = v
+                elif name == 'forget':
+                    res = module.fit(
+                        self.params,
+                        self.init_values,
+                        self.all_data[:i+1], 
+                        [res['prior_fn'], res['likelihood_fn'], res['posterior_fn']],
+                        self.config[name]['gamma']['bounds']
+                    )
+                    for k, v in res['best_params'].items():
+                        res_dict[k].append(v)
+                        self.init_values[k] = v
                 else:
                     raise ValueError("No module found")
         return res_dict
