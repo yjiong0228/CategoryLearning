@@ -1,33 +1,41 @@
 """
 Bayesian Engine
 """
-
-import numpy as np
-
 from typing import Dict, Tuple, List, Any
+import numpy as np
 
 
 class BaseSet:
     """Immutable"""
 
-    def __init__(self, items: Dict | Tuple | List):
+    def __init__(self, elements: Dict | Tuple | List):
         """init"""
-        self.items = dict((item, i) for i, item in enumerate(items))
-        self._size = len(items)
+        self.elements = dict(
+            (element, i) for i, element in enumerate(elements))
+        self._size = len(elements)
 
     @property
     def length(self):
+        """
+        Property length
+        """
         return self._size
 
     def __getitem__(self, key):
-        assert key in self.items, "Invalid key"
-        return self.items.get(key, -1)
+        assert key in self.elements, "Invalid key"
+        return self.elements.get(key, -1)
+
+    def __repr__(self):
+        return f"Base Set of (index, value)'s:\n{self.elements}"
 
 
 class BaseDistribution:
+    """
+    Base Distribution
+    """
 
     def __init__(self, space: BaseSet):
-        """\ndocstring"""
+        """Initialize"""
         self.value = np.ones(space.length, dtype=float) / space.length
 
     def update(self, value: np.ndarray):
@@ -36,16 +44,29 @@ class BaseDistribution:
         """
         self.value = value.copy()
 
+    def get_value(self):
+        """
+        Get value
+        """
+        return self.value
+
 
 class BasePrior(BaseDistribution):
+    """
+    Base Prior
+    """
 
     @property
-    def get_prior(self):
+    def prior(self):
+        """
+        Get Prior
+        """
         return self.value
 
 
 class BaseLikelihood(BaseDistribution):
     """
+    Base Class of Likelihood
     """
 
     def __init__(self, space: BaseSet, **kwargs):
@@ -58,6 +79,7 @@ class BaseLikelihood(BaseDistribution):
         super().__init__(space)
         self.h_set = space  # hypotheses set!
         # self.d_set = d_set
+        self.kwargs = kwargs
         self.cache = {None: self.value}
 
     def get_likelihood(self, observation):
@@ -66,11 +88,12 @@ class BaseLikelihood(BaseDistribution):
         ----------
         observation: any
         """
-        if observation in self.cache:
-            return self.cache[observation]
+        # print(observation)
+        # if observation in self.cache:
+        #     return self.cache[observation]
 
         raise NotImplementedError("get_likelihood not implemented")
-        return None  # 1. Calculate 2. Save 3. Return.
+        # return None  # 1. Calculate 2. Save 3. Return.
 
     def set_all(self, value: Dict[Any, np.ndarray]):
         """
@@ -119,7 +142,7 @@ class BaseEngine:
         ----------
         observations: List | Tuple of observations
         """
-        for o in observations:
-            self.infer_single(o)
+        for obs in observations:
+            self.infer_single(obs)
 
         return self.h_state.value

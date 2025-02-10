@@ -1,6 +1,9 @@
 """
 基于原型的类别中心点生成
 """
+from abc import ABC
+from typing import List, Tuple, Dict
+from copy import deepcopy
 import itertools
 # import pandas as pd
 import numpy as np
@@ -8,7 +11,7 @@ from .base_problem import softmax, cdist, euc_dist
 from ..inference_engine import BaseDistribution, BaseLikelihood
 
 
-class BasePartition:
+class BasePartition(ABC):
     """
     Base Partition
     """
@@ -29,17 +32,21 @@ class BasePartition:
                                         for x in p[1:]]
                                        for p in self.prototypes])
 
+        self.cached_dist: Dict[int, np.ndarray] = {}
+        # self.labels = [p[0] for p in self.prototypes]
+        # self.inv_labels = dict((l, i) for i, l in enumerate(self.labels))
+
     def get_all_splits(self):
         """
         Abstract
         """
-        return {}
+        raise NotImplementedError
 
     def get_centers(self):
         """
         Abstract
         """
-        return {}
+        raise NotImplementedError
 
     def get_prototypes(self):
         """
@@ -51,31 +58,43 @@ class BasePartition:
         """
         if self.n_protos == 1:
             return self.get_centers()
-        raise Exception("get_prototypes: Method case not implemented.")
+        raise NotImplementedError(
+            "get_prototypes: Method case not implemented.")
 
     def calc_likelihood(
-        self,
-        hypos: list | tuple,
-        data: list | tuple,
-        beta: list | tuple | float = 1,
-    ) -> BaseLikelihood:
+            self,
+            hypos: List[int] | Tuple[int],
+            data: list | tuple,
+            beta: list | tuple | float = 1.,
+            use_cached_dist: bool = False,
+            normalized: bool = True) -> np.ndarray:  # BaseLikelihood:
         """
         Calculate likelihood.
+
+        use_cached_dist: bool. This object caches the most recent distance
+                         to closest prototype. If True, use the cached dist.
+                         MAKE SURE you know the dist you calculate last time
+                         is suitable to use before setting
+                         `use_cached_dist = True`.
         """
         match beta:
-            case float() as b:
-                beta = [b] * len(hypos)
+            case float() as float_b:
+                beta = [float_b] * len(hypos)
             case _:
                 pass
-        ret = np.zeros([len(hypos), len(data)])
+        ret = np.zeros([len(data), len(hypos)])
         for j, h in enumerate(hypos):
-            ret[:, j] = self.calc_likelihood_entry(h, data, beta[j])
-
+            ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
+                                                   use_cached_dist)
+        if normalized:
+            return ret / np.sum(ret, axis=1, keepdims=True)
         return ret
 
-
-    def calc_likelihood_entry(self, hypo: int, data: list | tuple,
-                              beta: float):
+    def calc_likelihood_entry(self,
+                              hypo: int,
+                              data: list | tuple,
+                              beta: float,
+                              use_cached_dist: bool = False) -> np.ndarray:
         """
         Calculate single likelihood entry
 
@@ -94,13 +113,24 @@ class BasePartition:
         # choice = np.array([x[1] for x in data])
         # response = np.array([x[2] for x in data])
         # p(r==1 | (k, beta), (x,c) )
-        partition = self.prototypes_np[hypo]
-        distances = euc_dist(partition, np.array(stimuli))
-        typical_distances = np.min(distances, axis=0)
-        prob = softmax(typical_distances, beta)
+        choices = deepcopy(choices)
+
+        if use_cached_dist:
+            typical_distances = self.cached_dist[hypo]
+        else:
+            partition = self.prototypes_np[hypo]
+            distances = euc_dist(partition, np.array(stimuli))
+
+            typical_distances = np.min(distances, axis=0)
+            self.cached_dist[hypo] = typical_distances
+
+        prob = softmax(typical_distances, beta, axis=0)
+
         choices -= 1
-        return np.where(responses == 1, prob[np.arange(len(choices)), choices],
-                        1 - prob[np.arange(len(choices)), choices])
+        # print(responses, prob)
+        return np.where(responses == 1, prob[choices,
+                                             np.arange(len(choices))],
+                        1 - prob[choices, np.arange(len(choices))])
 
     def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
         """
