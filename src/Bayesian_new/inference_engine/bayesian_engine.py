@@ -4,10 +4,10 @@ Bayesian Engine
 
 import numpy as np
 
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Any
 
 
-class BaseSpace:
+class BaseSet:
     """Immutable"""
 
     def __init__(self, items: Dict | Tuple | List):
@@ -26,11 +26,14 @@ class BaseSpace:
 
 class BaseDistribution:
 
-    def __init__(self, space: BaseSpace):
+    def __init__(self, space: BaseSet):
         """\ndocstring"""
-        self.value = np.ones(space.length, dtype=float)/space.length
+        self.value = np.ones(space.length, dtype=float) / space.length
 
     def update(self, value: np.ndarray):
+        """
+        Update value
+        """
         self.value = value.copy()
 
 
@@ -41,18 +44,21 @@ class BasePrior(BaseDistribution):
         return self.value
 
 
-class BaseLikelihood:
+class BaseLikelihood(BaseDistribution):
+    """
+    """
 
-    def __init__(self, h_set: BaseSpace, d_set: BaseSpace, **kwargs):
+    def __init__(self, space: BaseSet, **kwargs):
         """
         Parameters
         ----------
         h_set
         d_set
         """
-        self.h_set = h_set
-        self.d_set = d_set
-        self.likelihood = None
+        super().__init__(space)
+        self.h_set = space  # hypotheses set!
+        # self.d_set = d_set
+        self.cache = {None: self.value}
 
     def get_likelihood(self, observation):
         """
@@ -60,35 +66,31 @@ class BaseLikelihood:
         ----------
         observation: any
         """
-        index = self.d_set[observation]
-        if self.likelihood is not None:
-            return self.likelihood[index]
+        if observation in self.cache:
+            return self.cache[observation]
 
+        raise NotImplementedError("get_likelihood not implemented")
         return None  # 1. Calculate 2. Save 3. Return.
 
-    def set_all(self, value: np.ndarray):
+    def set_all(self, value: Dict[Any, np.ndarray]):
         """
         Set the whole matrix
         """
-        self.likelihood = value.copy()
+        self.cache.update(value)
 
     def set_row(self, row, value):
         """
         Set Row
         """
-        self.likelihood[self.d_set[row]] = value
-
-
-    def set_col(self, col, value):
-        """
-        Set column
-        """
-        self.likelihood[:, self.h_set[col]] = value
+        self.cache[row] = value
 
 
 class BaseEngine:
+    """
+    Base Bayesian Engine
+    """
 
-    def __init__(self, hypotheses_set: BaseSpace, data_set: BaseSpace,
+    def __init__(self, hypotheses_set: BaseSet, data_set: BaseSet,
                  likelihood: BaseLikelihood):
         """
 
@@ -111,7 +113,6 @@ class BaseEngine:
 
         return self.h_state.value
 
-
     def infer(self, observations: list | tuple):
         """
         Parameters
@@ -122,4 +123,3 @@ class BaseEngine:
             self.infer_single(o)
 
         return self.h_state.value
-
