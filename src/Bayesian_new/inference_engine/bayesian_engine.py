@@ -4,15 +4,18 @@ Bayesian Engine
 from typing import Dict, Tuple, List, Any
 import numpy as np
 
+EPS = 0
+# 1e-323
+
 
 class BaseSet:
     """Immutable"""
 
     def __init__(self, elements: Dict | Tuple | List):
         """init"""
-        self.elements = dict(
-            (element, i) for i, element in enumerate(elements))
+        self.elements = tuple(elements)
         self._size = len(elements)
+        self.inv = dict((elt, i) for i, elt in enumerate(elements))
 
     @property
     def length(self):
@@ -22,11 +25,14 @@ class BaseSet:
         return self._size
 
     def __getitem__(self, key):
-        assert key in self.elements, "Invalid key"
-        return self.elements.get(key, -1)
+        assert key in self.inv, "Invalid key"
+        return self.inv.get(key, -1)
 
     def __repr__(self):
         return f"Base Set of (index, value)'s:\n{self.elements}"
+
+    def __iter__(self):
+        return iter(self.elements)
 
 
 class BaseDistribution:
@@ -113,36 +119,52 @@ class BaseEngine:
     Base Bayesian Engine
     """
 
-    def __init__(self, hypotheses_set: BaseSet, data_set: BaseSet,
-                 likelihood: BaseLikelihood):
+    def __init__(self, hypotheses_set: BaseSet, observation_set: BaseSet,
+                 prior: BasePrior, likelihood: BaseLikelihood):
         """
 
         """
         self.hypotheses_set = hypotheses_set
-        self.data_set = data_set
+        self.observation_set = observation_set
+        self.prior = prior
         self.likelihood = likelihood
-        self.h_state = BaseDistribution(self.hypotheses_set)
+        self.h_state = self.prior
 
-    def infer_single(self, observation):
+    def infer_single(self, observation, **kwargs):
         """
         Parameters
         ----------
         observation:
         """
 
-        likelihood_row = self.likelihood.get_likelihood(observation)
+        likelihood_row = self.likelihood.get_likelihood(observation, **kwargs)
         self.h_state.update(self.h_state.value * likelihood_row)
         self.h_state.update(self.h_state.value / self.h_state.value.sum())
 
         return self.h_state.value
 
-    def infer(self, observations: list | tuple):
+    def infer(self, observations: list | tuple, **kwargs):
         """
         Parameters
         ----------
         observations: List | Tuple of observations
         """
         for obs in observations:
-            self.infer_single(obs)
+            self.infer_single(obs, **kwargs)
 
         return self.h_state.value
+
+    def infer_log(self, observations, update: bool = False, **kwargs):
+        """
+        Log version of inference
+        """
+        likelihood = self.likelihood.get_likelihood(observations, **kwargs)
+        log_likelihood = np.log(np.maximum(likelihood, EPS))
+        log_prior = np.log(np.maximum(self.h_state.value, EPS))
+        log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
+            log_likelihood.shape) == 2 else log_likelihood)
+        posterior = np.exp(log_posterior)
+        posterior /= np.sum(posterior)
+        if update:
+            self.h_state.update(posterior)
+        return posterior

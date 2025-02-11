@@ -36,6 +36,14 @@ class BasePartition(ABC):
         # self.labels = [p[0] for p in self.prototypes]
         # self.inv_labels = dict((l, i) for i, l in enumerate(self.labels))
 
+    @property
+    def length(self):
+        """
+        Property: length
+        """
+
+        return len(self.prototypes)
+
     def get_all_splits(self):
         """
         Abstract
@@ -82,7 +90,8 @@ class BasePartition(ABC):
                 beta = [float_b] * len(hypos)
             case _:
                 pass
-        ret = np.zeros([len(data), len(hypos)])
+        ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
+        # print(hypos, ret.shape)
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
                                                    use_cached_dist)
@@ -108,10 +117,10 @@ class BasePartition(ABC):
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
         """
-        (stimuli, choices, responses) = data
+        (stimuli, choices, results) = data
         # stimuli = np.array([x[0] for x in data])
-        # choice = np.array([x[1] for x in data])
-        # response = np.array([x[2] for x in data])
+        # choices = np.array([x[1] for x in data])
+        # results = np.array([x[2] for x in data])
         # p(r==1 | (k, beta), (x,c) )
         choices = deepcopy(choices)
 
@@ -124,12 +133,12 @@ class BasePartition(ABC):
             typical_distances = np.min(distances, axis=0)
             self.cached_dist[hypo] = typical_distances
 
-        prob = softmax(typical_distances, beta, axis=0)
+        prob = softmax(typical_distances, -beta, axis=0)
 
         choices -= 1
-        # print(responses, prob)
-        return np.where(responses == 1, prob[choices,
-                                             np.arange(len(choices))],
+
+        return np.where(results == 1, prob[choices,
+                                           np.arange(len(choices))],
                         1 - prob[choices, np.arange(len(choices))])
 
     def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
@@ -168,7 +177,7 @@ class Partition(BasePartition):
     def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1):
         """Initialize"""
         super().__init__(n_dims, n_cats, n_protos)
-        self.vertices = []
+        self.vertices: List[Tuple[float, float, float, float]] = []
 
     def generate_vertices(self):
         """
