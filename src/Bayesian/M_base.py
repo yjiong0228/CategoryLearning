@@ -129,7 +129,7 @@ class M_Base:
             List[Dict]: List of results for each trial step.
         """
         step_results = []
-        for step in range(1, len(data)):
+        for step in range(1, len(data)+1):
             trial_data = data.iloc[:step]
             fitted_params, best_ll, best_post, k_post = self.fit(trial_data)
             
