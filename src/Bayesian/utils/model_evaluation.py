@@ -100,7 +100,7 @@ class ModelEval:
         """Calculate predictions based on fitted model results"""
         predictions = []
         
-        for step in range(len(step_results)):
+        for step in range(len(step_results)-1):
             next_trial = data.iloc[step + 1]
             x = next_trial[['feature1', 'feature2', 'feature3', 'feature4']].values
             fitted_params = step_results[step]['params']
