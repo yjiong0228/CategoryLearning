@@ -19,85 +19,52 @@ class M_Dec(M_Base):
     def __init__(self, config):
         self.config = config
         self.all_centers = None
-    
-    def prior(self, params, condition):
-        """Override prior to include phi parameter"""
-        max_k = self.get_max_k(condition)
-        k_prior = 1/max_k if 1 <= params.k <= max_k else 0
-        beta_prior = np.exp(-params.beta) if params.beta > 0 else 0
-        phi_prior = 1 if 0 < params.phi < 1 else 0
-        return k_prior * beta_prior * phi_prior
 
-    def fit(self, data) -> Tuple[ModelParams, float, float, Dict]:
-        condition = data['condition'].iloc[0]
-        max_k = self.get_max_k(condition)
-        
-        best_params, best_log_likelihood, best_posterior = None, -np.inf, -np.inf
-        k_posteriors = {}
-        
-        for k in range(1, max_k + 1):
-            result = minimize(
-                lambda beta: self.posterior(ModelParams(k, beta[0], phi=self.config['param_inits']['phi']), data, condition),
-                x0=[self.config['param_inits']['beta']],
-                bounds=[self.config['param_bounds']['beta']]
-            )
-            
-            beta_opt, posterior_opt = result.x[0], -result.fun
-            k_posteriors[k] = posterior_opt
-
-            log_likelihood = np.sum(np.log(
-                self.likelihood(ModelParams(k, beta_opt, phi=self.config['param_inits']['phi']), data, condition)
-            ))
-
-            if posterior_opt > best_posterior:
-                best_params = ModelParams(k=k, beta=beta_opt, phi=self.config['param_inits']['phi'])
-                best_log_likelihood, best_posterior = log_likelihood, posterior_opt
-        
-        # Normalize posteriors
-        max_log_posterior = max(k_posteriors.values())
-        k_posteriors = {k: np.exp(log_p - max_log_posterior) for k, log_p in k_posteriors.items()}
-        total = sum(k_posteriors.values())
-        k_posteriors = {k: p / total for k, p in k_posteriors.items()}
-        
-        return best_params, best_log_likelihood, best_posterior, k_posteriors
-
-    def fit_trial_by_trial(self, data):
+    def fit_trial_by_trial(self, data, base_step_results):
         """Override fit process to include phi parameter"""
+
+        fitted_params = [item['params'] for item in base_step_results]
+        k_post = [item['k_posteriors'] for item in base_step_results]
+        
         step_results = []
 
-        for step in range(1, len(data)):
-            trial_data = data.iloc[:step]
-            fitted_params, best_ll, best_post, k_post = self.fit(trial_data)
-            
-            # Predict next trial's choice
-            next_trial = data.iloc[step]
-            x_next = next_trial[['feature1', 'feature2', 'feature3', 'feature4']].values
-            c_actual = int(next_trial['choice'])
+        condition = data['condition'].iloc[0]
+        if condition == 1:
+            n_categories = 2
+        else:
+            n_categories = 4
 
-            condition = next_trial['condition']
-            if condition == 1:
-                n_categories = 2
-            else:
-                n_categories = 4
-            dec_prior = np.full(n_categories, 1/n_categories)
+        for step in range(1, len(data)+1):
+            fitted_k = fitted_params[step-1].k
+            fitted_beta = fitted_params[step-1].beta
+            step_k_post = k_post[step-1]
+
+            trial_data = data.iloc[:step]
+            x = trial_data[['feature1', 'feature2', 'feature3', 'feature4']].values
+            c = trial_data['choice'].values
+
             # Define a function to compute the negative log-likelihood for phi
             def nll_phi(phi):
+                dec_prior = np.tile(np.full(n_categories, 1/n_categories), (step, 1))
+                dec_lik = np.zeros_like(dec_prior)
+
                 # Compute the likelihood of each choice for each k and posterior
-                dec_lik = np.zeros(n_categories)
-                for k, posterior in k_post.items():
+                for k, posterior in step_k_post.items():
                     centers = self.get_centers(k, condition)
-                    distances = np.linalg.norm(x_next - np.array(centers), axis=1)
-                    logits = -fitted_params.beta * distances # logits based on k and beta
+                    distances = np.linalg.norm(x[:, np.newaxis, :] - np.array(centers), axis=2)
+                    logits = -fitted_beta * distances # logits based on k and beta
                     exp_logits = np.exp(logits)
-                    probs = exp_logits / np.sum(exp_logits)
+                    probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
                     dec_lik += posterior * probs # Summing weighted by k_post (posterior for each k)
                 
                 # Apply phi to mix decision likelihood with decision prior
                 dec_prob = (1 - phi) * dec_lik + phi * dec_prior  # phi is used to weight between data-driven and prior
                 
                 # Negative log-likelihood for the actual choice
-                return -np.log(dec_prob[c_actual - 1] + 1e-9)  # Avoid log(0) by adding a small value
-
+                nll = -np.log(dec_prob[np.arange(len(c)), c - 1] + 1e-9)
+            
+                return np.mean(nll)
+        
             # Optimize phi
             result = minimize(
                 nll_phi,
@@ -106,15 +73,12 @@ class M_Dec(M_Base):
             )
             phi = result.x[0]  # Update phi with the optimized value
 
-            params_with_phi = ModelParams(k=fitted_params.k, beta=fitted_params.beta, phi=phi)
+            params_with_phi = ModelParams(k=fitted_k, beta=fitted_beta, phi=phi)
 
             step_results.append({
-                'k': fitted_params.k,
-                'beta': fitted_params.beta,
+                'k': fitted_k,
+                'beta': fitted_beta,
                 'phi': phi,
-                'best_log_likelihood': best_ll,
-                'best_posterior': best_post,
-                'k_posteriors': k_post,
                 'params': params_with_phi
             })
         
