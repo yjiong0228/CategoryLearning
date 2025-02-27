@@ -5,7 +5,7 @@
 import numpy as np
 from scipy.optimize import minimize
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 from .M_base import M_Base
 
 @dataclass
@@ -23,9 +23,9 @@ class M_Fgt(M_Base):
         centers = self.all_centers['2_cats'] if condition == 1 else self.all_centers['4_cats']
         max_k = len(centers)
         k_prior = 1/max_k if 1 <= params.k <= max_k else 0
-        beta_prior = np.exp(-params.beta) if params.beta > 0 else 0
-        #gamma_prior = 1 if (0 <= params.gamma <= 1) else 0
-        return k_prior * beta_prior
+        beta_prior = 1 if params.beta > 0 else 0
+        gamma_prior = 1 if 0 <= params.gamma <= 1 else 0
+        return k_prior * beta_prior * gamma_prior
     
     def likelihood(self, params: ModelParams, data, condition: int) -> np.ndarray:
         k, beta, gamma = params.k, params.beta, params.gamma
@@ -39,13 +39,18 @@ class M_Fgt(M_Base):
         probs = np.exp(-beta * distances)
         probs /= np.sum(probs, axis=1, keepdims=True)
         p_c = probs[np.arange(len(c)), c - 1]
+        base_likelihood = np.where(r == 1, p_c, 1 - p_c)
 
-        # 添加记忆衰减
-        memory_weights = gamma ** np.arange(len(data)-1, -1, -1)
+        # 记忆衰减
+        base_weight = 0.1
+        decay_weights = gamma ** np.arange(len(data)-1, -1, -1)
+        memory_weights = base_weight + (1-base_weight) * decay_weights
 
-        return np.where(r == 1, p_c, 1 - p_c) * memory_weights
+        weighted_log_likelihood = memory_weights * np.log(base_likelihood)
 
-    def fit_with_gamma(self, data, gamma: float) -> Tuple[ModelParams, float, float, Dict]:
+        return np.exp(weighted_log_likelihood)
+
+    def fit_with_given_gamma(self, data, gamma: float) -> Tuple[ModelParams, float, float, Dict]:
         """在给定gamma时优化k和beta"""
         condition = data['condition'].iloc[0]
         max_k = self.get_max_k(condition)
@@ -85,7 +90,7 @@ class M_Fgt(M_Base):
         step_results = []
         for step in range(1, len(data)+1):
             trial_data = data.iloc[:step]
-            fitted_params, best_ll, best_post, k_post = self.fit_with_gamma(trial_data, gamma)
+            fitted_params, best_ll, best_post, k_post = self.fit_with_given_gamma(trial_data, gamma)
             
             step_results.append({
                 'k': fitted_params.k,
@@ -98,78 +103,87 @@ class M_Fgt(M_Base):
         
         return step_results
 
-    def optimize_gamma(self, block_data, n_steps=50, gamma_step_factor = 0.05, min_step_size = 0.001):
-        """优化gamma并返回最优gamma对应的step_results"""
-
-        current_gamma = self.config['param_inits']['gamma']
-        best_error = float('inf')
-        best_gamma = current_gamma
-        best_step_results = []
-
-        prev_error = best_error  # 之前的误差，用于计算梯度
-
-        for _ in range(n_steps):
-            # 逐试次拟合k和beta
-            step_results = self.fit_trial_by_trial(block_data, current_gamma)
-            
-            # 计算预测准确率
-            predicted = []
-            true_category = block_data['category'].values
-
-            for i, trial in block_data.iterrows():
-                fitted_params = step_results[i-block_data.index[0]]['params']
-                x = trial[['feature1', 'feature2', 'feature3', 'feature4']].values
-                condition = trial['condition']
-                pred = self.predict_choice(fitted_params, x, condition)
-                predicted.append(pred)
-            
-            predicted = np.array(predicted)
-            pred_accuracy = np.mean(predicted == true_category)
-            
-            # 计算真实准确率（基于feedback）和误差
-            true_accuracy = np.mean(block_data['feedback'] == 1)
-            error = abs(pred_accuracy - true_accuracy)
+    # 定义目标函数
+    def error_function(self, gamma, data, window_size=16):
+        """
+        误差目标函数，用于最小化每个试次段（如每16个试次）的预测准确率与真实准确率之间的差异。
         
-            # 计算误差梯度（误差的变化）
-            error_gradient = error - prev_error  # 误差变化率
-
-            # 根据误差梯度调整gamma的更新幅度
-            if error_gradient > 0:
-                # 如果误差增大，减小gamma更新幅度
-                gamma_step_factor = max(gamma_step_factor * 0.9, min_step_size)
-            elif error_gradient < 0:
-                # 如果误差减小，增大gamma更新幅度
-                gamma_step_factor = min(gamma_step_factor * 1.1, 1.0)
-
-            # 更新gamma
-            if pred_accuracy < true_accuracy:
-                current_gamma = min(current_gamma + gamma_step_factor, self.config['param_bounds']['gamma'][1])
-            else:
-                current_gamma = max(current_gamma - gamma_step_factor, self.config['param_bounds']['gamma'][0])
-
-            # 保留最优gamma
-            if error < best_error:
-                best_error = error
-                best_gamma = current_gamma
-                best_step_results = step_results
-
-            # 更新上一步的误差
-            prev_error = error
+        Args:
+            gamma (float): 当前的gamma值
+            block_data (DataFrame): 数据集
+            window_size (int): 每个段的大小，默认为16
             
-        return best_gamma, best_step_results
+        Returns:
+            float: 误差（目标函数值）
+        """
+        # 拟合k和beta
+        step_results = self.fit_trial_by_trial(data, gamma)
 
-    def fit_block_by_block(self, data, block_size=64):
+        # 计算每16个试次的误差
+        n_windows = len(data) // window_size
+        errors = []
+
+        for i in range(n_windows):
+            # 计算真实准确率（基于feedback）
+            start_idx = i * window_size
+            end_idx = (i + 1) * window_size
+            true_accuracy = np.mean(data['feedback'].iloc[start_idx:end_idx] == 1)
+
+            # 计算预测准确率（基于模型参数）
+            predicted = []
+
+            for j, trial in data.iterrows():
+                fitted_params = step_results[j-data.index[0]]['params']
+                condition = trial['condition'] 
+                x = trial[['feature1', 'feature2', 'feature3', 'feature4']].values
+                true_category = int(trial['category'])
+
+                true_category = np.where(condition == 1, 
+                                        np.where(np.isin(true_category, [1, 2]), 1, 2), 
+                                        true_category)
+
+                centers = self.get_centers(fitted_params.k, condition)
+                    
+                distances = np.linalg.norm(x - np.array(centers), axis=1)
+                probs = np.exp(-fitted_params.beta * distances)
+                probs /= np.sum(probs)
+
+                p_true = probs[true_category - 1]
+
+                predicted.append(p_true)
+            
+            pred_accuracy = np.mean(predicted)
+            error = abs(pred_accuracy - true_accuracy)
+
+            errors.append(error)
+
+        return np.mean(errors)
+
+    def optimize_gamma(self, data):
+        """优化gamma"""
+
+        # 使用minimize来最小化目标函数
+        result = minimize(
+            lambda gamma: self.error_function(gamma, data),
+            x0=[self.config['param_inits']['gamma']],
+            bounds=[self.config['param_bounds']['gamma']],
+            method='L-BFGS-B'
+        )
+        
+        # 获取最优gamma
+        best_gamma = result.x[0]
+        return best_gamma
+
+    def fit(self, data):
         step_results = []
         best_gammas = []
 
-        for start in range(0, len(data), block_size):
-            end = start + block_size
-            block_data = data.iloc[start:end]
+        best_gamma = self.optimize_gamma(data)
+        best_gammas.append(best_gamma)
 
-            # 优化gamma
-            best_gamma, step_results_for_block = self.optimize_gamma(block_data)
-            best_gammas.append(best_gamma)
-            step_results.extend(step_results_for_block)
+        # 逐试次拟合k和beta
+        step_results_for_block = self.fit_trial_by_trial(data, best_gamma)
+        for result in step_results_for_block:
+            step_results.append(result)
         
         return step_results, best_gammas
-
