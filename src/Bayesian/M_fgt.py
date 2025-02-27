@@ -55,10 +55,7 @@ class M_Fgt(M_Base):
         condition = data['condition'].iloc[0]
         max_k = self.get_max_k(condition)
         
-        best_params = None
-        best_log_likelihood = -np.inf
-        best_posterior = -np.inf
-        k_posteriors = {}
+        k_results = {}  # 存储每个k的优化结果
         
         for k in range(1, max_k + 1):
             result = minimize(
@@ -67,37 +64,55 @@ class M_Fgt(M_Base):
                 bounds=[self.config['param_bounds']['beta']]
             )
             
-            beta_opt, posterior_opt = result.x[0], -result.fun
-            k_posteriors[k] = posterior_opt
+            beta_opt, log_posterior = result.x[0], -result.fun
             
             log_likelihood = np.sum(np.log(
                 self.likelihood(ModelParams(k, beta_opt, gamma), data, condition)
             ))
 
-            if posterior_opt > best_posterior:
-                best_params = ModelParams(k=k, beta=beta_opt, gamma=gamma)
-                best_log_likelihood, best_posterior = log_likelihood, posterior_opt
+            # 保存结果
+            k_results[k] = {
+                'beta': beta_opt,
+                'log_likelihood': log_likelihood,
+                'log_posterior': log_posterior
+            }
         
+        # 找到具有最大对数后验的k
+        best_k = max(k_results, key=lambda x: k_results[x]['log_posterior'])
+        best_entry = k_results[best_k]
+        best_params = ModelParams(k=best_k, beta=best_entry['beta'])
+        best_log_likelihood = best_entry['log_likelihood']
+        best_log_posterior = best_entry['log_posterior']
+
         # Normalize posteriors
-        max_log_posterior = max(k_posteriors.values())
-        k_posteriors = {k: np.exp(log_p - max_log_posterior) for k, log_p in k_posteriors.items()}
+        log_posteriors = [entry['log_posterior'] for entry in k_results.values()]
+        max_log = max(log_posteriors)
+        k_posteriors = {k: np.exp(lp - max_log) for k, lp in zip(k_results.keys(), log_posteriors)}
         total = sum(k_posteriors.values())
-        k_posteriors = {k: p / total for k, p in k_posteriors.items()}
+        details = {
+            k: {
+                'beta': k_results[k]['beta'],
+                'posterior_prob': prob / total,  # 归一化后的后验概率
+                'log_likelihood': k_results[k]['log_likelihood'],
+                'log_posterior': k_results[k]['log_posterior']
+            }
+            for k, prob in k_posteriors.items()
+        }
         
-        return best_params, best_log_likelihood, best_posterior, k_posteriors
+        return best_params, best_log_likelihood, best_log_posterior, details
 
     def fit_trial_by_trial(self, data, gamma):
         step_results = []
         for step in range(1, len(data)+1):
             trial_data = data.iloc[:step]
-            fitted_params, best_ll, best_post, k_post = self.fit_with_given_gamma(trial_data, gamma)
+            fitted_params, best_ll, best_post, details = self.fit_with_given_gamma(trial_data, gamma)
             
             step_results.append({
                 'k': fitted_params.k,
                 'beta': fitted_params.beta,
                 'best_log_likelihood': best_ll,
                 'best_posterior': best_post,
-                'k_posteriors': k_post,
+                'details': details,
                 'params': fitted_params
             })
         
