@@ -290,7 +290,7 @@ class Preprocessor_B:
             base_columns = ['version', 'condition', 'iSession', 'iBlock', 'iTrial',
                             'neck_length', 'head_length', 'leg_length', 'tail_length',
                             'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
-            remaining_columns = ['category', 'choice', 'feedback', 'choRT']
+            remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
    
             combined_data = joint_data[base_columns].copy()
 
