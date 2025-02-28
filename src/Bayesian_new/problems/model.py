@@ -62,7 +62,7 @@ class PartitionLikelihood(BaseLikelihood):
 
 class SoftPartitionLikelihood(PartitionLikelihood):
     """
-    Likelihood with (parition, beta) as hypotheses.
+    Likelihood with (partition, beta) as hypotheses.
     """
 
     def __init__(self, space: BaseSet, partition: BasePartition,
@@ -103,12 +103,15 @@ class BaseModel:
         self.all_centers = None
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
+
         condition = kwargs.get("condition", 1)
         ndims = 4
         ncats = 2 if condition == 1 else 4
+
         self.partition_model = kwargs.get("partition", Partition(ndims, ncats))
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
+        
         self.engine = BaseEngine(
             self.hypotheses_set, self.observation_set,
             BasePrior(self.hypotheses_set),
@@ -154,28 +157,26 @@ class SingleRationalModel(BaseModel):
         """
         Fit
         """
-        opt_params = {}
-        opt_log_likelihood = {}
+        all_hypo_params = {}
+        all_hypo_ll = {}
 
-        def inner(beta, hypo_=None):
+        def _hypo_loglikelihood(beta, hypo_=None):
             likelihood = self.partition_model.calc_likelihood_entry(
-                hypo_, data, beta[0], **kwargs)
+                hypo, data, beta[0], **kwargs)
             return np.sum(np.log(np.maximum(likelihood, 0)), axis=0)
 
         for hypo in self.hypotheses_set:
-
-            result = minimize(lambda beta: -inner(beta, hypo),
+            result = minimize(lambda beta: -_hypo_loglikelihood(beta, hypo),
                               x0=[self.config["param_inits"]["beta"]],
                               bounds=[self.config["param_bounds"]["beta"]])
-            beta_opt, posterior_opt = result.x[0], -result.fun
-            opt_log_likelihood[hypo] = posterior_opt
-            # log_likelihood = inner(beta_opt, hypo)
-            opt_params[hypo] = ModelParams(hypo, beta_opt)
+            beta_opt, ll_max = result.x[0], -result.fun
+            
+            all_hypo_params[hypo] = ModelParams(hypo, beta_opt)
+            all_hypo_ll[hypo] = ll_max
 
-        opt_hypo = max(opt_log_likelihood, key=opt_log_likelihood.__getitem__)
-        # print(opt_log_likelihood)
-        return (opt_params[opt_hypo], opt_log_likelihood[opt_hypo], opt_params,
-                opt_log_likelihood)
+        best_hypo = max(all_hypo_ll, key=all_hypo_ll.get)
+        return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo], 
+                all_hypo_params, all_hypo_ll)
 
     def fit_trial_by_trial(self, data: Tuple[np.ndarray, np.ndarray,
                                              np.ndarray]):
@@ -189,26 +190,33 @@ class SingleRationalModel(BaseModel):
             List[Dict]: List of results for each trial step.
         """
         step_results = []
-        results = data[2]
-        for step in tqdm(range(len(results), 0, -1)):
-            # for step in range(len(results), 0, -1):
-            # print(len(results), step)
-            trial_data = [x[:step] for x in data]
-            fitted_params, best_ll, _, _ = self.fit(
-                trial_data, use_cached_dist=(step != len(results)))
 
-            best_post = self.engine.infer_log(
+        for step in tqdm(range(len(data[2]), 0, -1)):
+            trial_data = [x[:step] for x in data]
+            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
+                trial_data, use_cached_dist=(step != len(data[2])))
+
+            all_hypo_post = self.engine.infer_log(
                 trial_data,
-                use_cached_dist=(step != len(results)),
+                use_cached_dist=(step != len(data[2])),
                 normalized=True)
 
+            hypo_details = {}
+            for i, hypo in enumerate(self.hypotheses_set.elements):
+                hypo_details[hypo] = {
+                    'beta_opt': all_hypo_params[hypo].beta,
+                    'll_max': all_hypo_ll[hypo],
+                    'post_max': all_hypo_post[i], 
+                    'is_best': hypo == best_params.k
+                }
+
             step_results.append({
-                'k': fitted_params.k,
-                'beta': fitted_params.beta,
+                'best_k': best_params.k,
+                'best_beta': best_params.beta,
+                'best_params': best_params,
                 'best_log_likelihood': best_ll,
-                'best_posterior': np.max(best_post),
-                'k_posteriors': best_post,
-                'params': fitted_params
+                'best_norm_posterior': np.max(all_hypo_post),
+                'hypo_details': hypo_details
             })
 
         return step_results[::-1]
