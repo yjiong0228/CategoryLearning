@@ -80,7 +80,7 @@ class M_Fgt(M_Base):
         # 找到具有最大对数后验的k
         best_k = max(k_results, key=lambda x: k_results[x]['log_posterior'])
         best_entry = k_results[best_k]
-        best_params = ModelParams(k=best_k, beta=best_entry['beta'])
+        best_params = ModelParams(k=best_k, beta=best_entry['beta'], gamma=gamma)
         best_log_likelihood = best_entry['log_likelihood']
         best_log_posterior = best_entry['log_posterior']
 
@@ -151,18 +151,16 @@ class M_Fgt(M_Base):
                 fitted_params = step_results[j-data.index[0]]['params']
                 condition = trial['condition'] 
                 x = trial[['feature1', 'feature2', 'feature3', 'feature4']].values
-                true_category = int(trial['category'])
-
-                true_category = np.where(condition == 1, 
-                                        np.where(np.isin(true_category, [1, 2]), 1, 2), 
-                                        true_category)
 
                 centers = self.get_centers(fitted_params.k, condition)
-                    
                 distances = np.linalg.norm(x - np.array(centers), axis=1)
                 probs = np.exp(-fitted_params.beta * distances)
                 probs /= np.sum(probs)
 
+                true_category = int(trial['category'])
+                true_category = np.where(condition == 1, 
+                                        np.where(np.isin(true_category, [1, 2]), 1, 2), 
+                                        true_category)
                 p_true = probs[true_category - 1]
 
                 predicted.append(p_true)

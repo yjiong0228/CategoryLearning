@@ -10,7 +10,7 @@ config_base = {
 config_fgt = {
     'param_bounds': {
         'beta': (0.001, 30),
-        'gamma': (0.001, 1)
+        'gamma': (0.001, 0.999)
     },
     'param_inits': {
         'beta': 1,
