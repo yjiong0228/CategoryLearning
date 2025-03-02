@@ -13,6 +13,7 @@ class ModelParams:
     k: int
     beta: float
     gamma: float
+    w0: float
 
 class M_Fgt(M_Base):
     def __init__(self, config):
@@ -23,12 +24,13 @@ class M_Fgt(M_Base):
         centers = self.all_centers['2_cats'] if condition == 1 else self.all_centers['4_cats']
         max_k = len(centers)
         k_prior = 1/max_k if 1 <= params.k <= max_k else 0
-        beta_prior = np.exp(-params.beta) if params.beta > 0 else 0
+        beta_prior = 1 if params.beta > 0 else 0
         gamma_prior = 1 if 0 <= params.gamma <= 1 else 0
-        return k_prior * beta_prior * gamma_prior
+        w0_prior = 1 if 0 <= params.w0 <= 1 else 0  
+        return k_prior * beta_prior * gamma_prior * w0_prior
     
     def likelihood(self, params: ModelParams, data, condition: int) -> np.ndarray:
-        k, beta, gamma = params.k, params.beta, params.gamma
+        k, beta, gamma, w0 = params.k, params.beta, params.gamma, params.w0
         x = data[['feature1', 'feature2', 'feature3', 'feature4']].values
         c = data['choice'].values
         r = data['feedback'].values
@@ -42,7 +44,7 @@ class M_Fgt(M_Base):
         base_likelihood = np.where(r == 1, p_c, 1 - p_c)
 
         # 记忆衰减
-        base_weight = 0.1
+        base_weight = w0
         decay_weights = gamma ** np.arange(len(data)-1, -1, -1)
         memory_weights = base_weight + (1-base_weight) * decay_weights
 
@@ -50,8 +52,8 @@ class M_Fgt(M_Base):
 
         return np.exp(weighted_log_likelihood)
 
-    def fit_with_given_gamma(self, data, gamma: float) -> Tuple[ModelParams, float, float, Dict]:
-        """在给定gamma时优化k和beta"""
+    def fit_with_given_params(self, data, gamma: float, w0: float) -> Tuple[ModelParams, float, float, Dict]:
+        """在给定gamma和w0时优化k和beta"""
         condition = data['condition'].iloc[0]
         max_k = self.get_max_k(condition)
         
@@ -62,7 +64,7 @@ class M_Fgt(M_Base):
         
         for k in range(1, max_k + 1):
             result = minimize(
-                lambda beta: self.posterior(ModelParams(k, beta[0], gamma), data, condition),
+                lambda beta: self.posterior(ModelParams(k, beta, gamma, w0), data, condition),
                 x0=[self.config['param_inits']['beta']],
                 bounds=[self.config['param_bounds']['beta']]
             )
@@ -71,11 +73,11 @@ class M_Fgt(M_Base):
             k_posteriors[k] = posterior_opt
             
             log_likelihood = np.sum(np.log(
-                self.likelihood(ModelParams(k, beta_opt, gamma), data, condition)
+                self.likelihood(ModelParams(k, beta_opt, gamma, w0), data, condition)
             ))
 
             if posterior_opt > best_posterior:
-                best_params = ModelParams(k=k, beta=beta_opt, gamma=gamma)
+                best_params = ModelParams(k=k, beta=beta_opt, gamma=gamma, w0=w0)
                 best_log_likelihood, best_posterior = log_likelihood, posterior_opt
         
         # Normalize posteriors
@@ -86,11 +88,11 @@ class M_Fgt(M_Base):
         
         return best_params, best_log_likelihood, best_posterior, k_posteriors
 
-    def fit_trial_by_trial(self, data, gamma):
+    def fit_trial_by_trial(self, data, gamma, w0):
         step_results = []
         for step in range(1, len(data)+1):
             trial_data = data.iloc[:step]
-            fitted_params, best_ll, best_post, k_post = self.fit_with_given_gamma(trial_data, gamma)
+            fitted_params, best_ll, best_post, k_post = self.fit_with_given_params(trial_data, gamma, w0)
             
             step_results.append({
                 'k': fitted_params.k,
@@ -104,20 +106,21 @@ class M_Fgt(M_Base):
         return step_results
 
     # 定义目标函数
-    def error_function(self, gamma, data, window_size=16):
+    def error_function(self, params, data, window_size=16):
         """
-        误差目标函数，用于最小化每个试次段（如每16个试次）的预测准确率与真实准确率之间的差异。
+        误差目标函数，使用滑动窗口计算每个窗口的预测准确率与真实准确率之间的差异。
         
         Args:
             gamma (float): 当前的gamma值
             block_data (DataFrame): 数据集
-            window_size (int): 每个段的大小，默认为16
+            window_size (int): 滑动窗口的大小，默认为16
             
         Returns:
             float: 误差（目标函数值）
         """
         # 拟合k和beta
-        step_results = self.fit_trial_by_trial(data, gamma)
+        gamma, w0 = params
+        step_results = self.fit_trial_by_trial(data, gamma, w0)
 
         # 预计算所有试次的预测概率
         predicted = []
@@ -158,33 +161,35 @@ class M_Fgt(M_Base):
 
         return np.mean(errors), step_results
 
-    def optimize_gamma(self, data):
-        """网格搜索优化gamma"""
-        # 设置gamma的离散值
-        gamma_values = np.arange(0.1, 1.1, 0.1)  # [0.1, 0.2, ..., 1.0]
-
-        # 记录最优gamma和对应的误差
-        best_gamma = None
+    def optimize_params(self, data):
+        """二维网格搜索优化gamma和w0"""
+        param_values = {
+            'gamma': np.arange(0.1, 1.1, 0.1),
+            'w0': np.arange(0.1, 1.1, 0.1)
+        }
+        
+        best_params = (None, None)
         best_error = float('inf')
+        best_step_results = None
 
-        # 遍历gamma值，计算每个gamma对应的误差
-        for gamma in gamma_values:
-            error, step_results = self.error_function(gamma, data)
-            if error < best_error:
-                best_error = error
-                best_gamma = gamma
-                best_step_results = step_results
-
-        return best_gamma, best_step_results
+        for gamma in param_values['gamma']:
+            for w0 in param_values['w0']:
+                error, step_results = self.error_function((gamma, w0), data)
+                if error < best_error:
+                    best_error = error
+                    best_params = (gamma, w0)
+                    best_step_results = step_results
+        
+        return best_params, best_step_results
 
     def fit(self, data):
         step_results = []
-        best_gammas = []
+        best_params = []
 
         # 使用网格搜索优化gamma
-        best_gamma, step_results_for_block = self.optimize_gamma(data)
-        best_gammas.append(best_gamma)
+        (best_gamma, best_w0), step_results_for_block = self.optimize_params(data)
+        best_params.append((best_gamma, best_w0))
         for result in step_results_for_block:
             step_results.append(result)
         
-        return step_results, best_gammas
+        return step_results, best_params
