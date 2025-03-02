@@ -6,27 +6,26 @@ import pandas as pd
 import re
 
 class Processor:
-    # def process(self, processed_data):
 
+    def __init__(self):
+        # Define body parts and their corresponding column names
+        self.BODY_PARTS = {
+            '脖子': 'neck_value',
+            '头': 'head_value',
+            '腿': 'leg_value',
+            '尾巴': 'tail_value'
+        }
 
-    # Define body parts and their corresponding column names
-    BODY_PARTS = {
-        '脖子': 'neck_value',
-        '头': 'head_value',
-        '腿': 'leg_value',
-        '尾巴': 'tail_value'
-    }
+        # Define description keywords and their corresponding values
+        self.DESCRIPTIONS = {
+            '长': 3,
+            '短': 1,
+            '中等': 2,
+            '适中': 2
+        }
 
-    # Define description keywords and their corresponding values
-    DESCRIPTIONS = {
-        '长': 3,
-        '短': 1,
-        '中等': 2,
-        '适中': 2
-    }
-
-    # Define possible modifiers between body parts and descriptions in "比" pattern
-    MODIFIERS = ['比较', '很', '等']
+        # Define possible modifiers between body parts and descriptions in "比" pattern
+        self.MODIFIERS = ['比较', '很', '等']
 
     def extract_values(self, text):
         # Initialize the result dictionary with None
@@ -56,14 +55,14 @@ class Processor:
             has_comparison = "比" in item and "比较" not in item
             
             # Find all body parts mentioned in the item
-            mentioned_parts = [part for part in BODY_PARTS.keys() if part in item]
+            mentioned_parts = [part for part in self.BODY_PARTS.keys() if part in item]
             
             if not mentioned_parts:
                 continue
                 
             # Find description keywords, but ensure "长" is not part of another word
             descriptions_found = []
-            for desc in DESCRIPTIONS.keys():
+            for desc in self.DESCRIPTIONS.keys():
                 if desc == '长':
                     # Check if '长' exists but not as part of '长度'
                     if '长' in item and '长度' not in item:
@@ -73,7 +72,7 @@ class Processor:
                         descriptions_found.append(desc)
             
             if len(descriptions_found) >= 1:
-                desc_value = DESCRIPTIONS[descriptions_found[0]]
+                desc_value = self.DESCRIPTIONS[descriptions_found[0]]
                 
                 if has_comparison:
                     # Find the parts before and after "比"
@@ -84,22 +83,22 @@ class Processor:
                     
                     # Assign opposite values for parts before "比"
                     for part in parts_before:
-                        result[BODY_PARTS[part]] = desc_value
+                        result[self.BODY_PARTS[part]] = desc_value
                     
                     # Assign normal values for parts after "比"
                     for part in parts_after:
-                        result[BODY_PARTS[part]] = 4 - desc_value
+                        result[self.BODY_PARTS[part]] = 4 - desc_value
                 else:
                     # No comparison, assign same value to all parts
                     for part in mentioned_parts:
-                        result[BODY_PARTS[part]] = desc_value
+                        result[self.BODY_PARTS[part]] = desc_value
 
         # New Logic: Handle "其他" or "其余" with a description adjective
         for item in items:
             if any(keyword in item for keyword in ['其他', '其余']):
                 # Find description adjectives in the item
                 descriptions_found = []
-                for desc in DESCRIPTIONS.keys():
+                for desc in self.DESCRIPTIONS.keys():
                     if desc == '长':
                         # Ensure '长' is not part of '长度'
                         if '长' in item and '长度' not in item:
@@ -110,16 +109,16 @@ class Processor:
                 
                 if descriptions_found:
                     # Use the first found description
-                    desc_value = DESCRIPTIONS[descriptions_found[0]]
+                    desc_value = self.DESCRIPTIONS[descriptions_found[0]]
                     
                     # Assign to all body parts that are still None
-                    for part, col in BODY_PARTS.items():
+                    for part, col in self.BODY_PARTS.items():
                         if result[col] is None:
                             result[col] = desc_value
                     break  # Assuming only one "其他" or "其余" per text
 
         # Check if all body part values are still None
-        body_values = [result[col] for col in BODY_PARTS.values()]
+        body_values = [result[col] for col in self.BODY_PARTS.values()]
         if all(v is None for v in body_values):
             result['noinfo'] = 1
         else:
@@ -140,7 +139,7 @@ class Processor:
         df['tail_value'] = None
         
         # Apply the extraction function to each row
-        extracted_data = df['text'].apply(extract_values)
+        extracted_data = df['text'].apply(self.extract_values)
         
         # Populate the new columns based on the extracted data
         df['invalid'] = extracted_data.apply(lambda x: x['invalid'])
