@@ -138,47 +138,6 @@ class BasePartition(ABC):
                                            np.arange(len(choices))],
                         1 - prob[choices, np.arange(len(choices))])
 
-
-    def calc_trueprob_entry(self,
-                              hypo: int,
-                              data: list | tuple,
-                              beta: float,
-                              use_cached_dist: bool = False) -> np.ndarray:
-        """
-        Calculate single likelihood entry
-
-        Parameters
-        ----------
-        data: stimuli, choices, resposes, true_category
-
-        read partition (hypo) first, then calculate class probabilities
-        over each classes.
-
-        USE minimal distances between `data.stimulus` and `prototypes`
-        (if there are more than one prototypes else just barycenter)
-        """
-        (stimuli, choices, results, true_category) = data
-        # p(r==1 | (k, beta), (x,c) )
-        choices = deepcopy(choices)
-
-        if use_cached_dist:
-            typical_distances = self.cached_dist[hypo]
-        else:
-            partition = self.prototypes_np[hypo]
-            distances = euc_dist(partition, np.array(stimuli))
-
-            typical_distances = np.min(distances, axis=0)
-            self.cached_dist[hypo] = typical_distances
-
-        prob = softmax(typical_distances, -beta, axis=0)
-
-        choices -= 1
-
-        return np.where(results == 1, prob[choices,
-                                           np.arange(len(choices))],
-                        1 - prob[choices, np.arange(len(choices))])
-
-
     def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
         """
         Similar to old version M_Base.likelihood. NO `condition` argument,
