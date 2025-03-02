@@ -104,9 +104,9 @@ class BaseModel:
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
-        condition = kwargs.get("condition", 1)
+        self.condition = kwargs.get("condition", 1)
         ndims = 4
-        ncats = 2 if condition == 1 else 4
+        ncats = 2 if self.condition == 1 else 4
 
         self.partition_model = kwargs.get("partition", Partition(ndims, ncats))
         self.hypotheses_set = kwargs.get(

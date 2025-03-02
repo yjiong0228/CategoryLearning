@@ -81,7 +81,7 @@ class ForgetModel(BaseModel):
         step_results = []
         nTrial = len(data[2])
         
-        for step in tqdm(range(nTrial), 0, -1):
+        for step in tqdm(range(nTrial, 0, -1), leave=False):
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
                 trial_data, gamma, w0, use_cached_dist=(step != nTrial))
@@ -125,20 +125,18 @@ class ForgetModel(BaseModel):
         for i, res in enumerate(step_results):
             params = res['best_params']
             
-            # 获取当前试次的条件信息
-            condition = 1 if len(np.unique(categories[:i+1])) <= 2 else 2
             
             # 计算类别中心
             centers = self.partition_model.prototypes_np[params.k]
             
             # 计算当前刺激的预测概率
-            distances = euc_dist(centers, np.array(stimuli[:i+1]))
+            distances = euc_dist(centers, np.array(stimuli[i]))
             probs = softmax(np.min(distances, axis=0), -params.beta)
             
             # 处理类别映射
             true_cats = categories[:i+1].copy()
-            if condition == 1:
-                true_cats = np.where(np.isin(true_cats, [1,2]), 1, 2)
+            if self.condition == 1:
+                true_cats = (true_cats + 1) // 2
             
             # 记录正确类别的预测概率
             predicted_acc.append(probs[true_cats[-1]-1])
