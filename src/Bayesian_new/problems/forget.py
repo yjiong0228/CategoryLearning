@@ -15,8 +15,8 @@ from .base_problem import softmax, cdist, euc_dist
 @dataclass(unsafe_hash=True)
 class ForgetModelParams(ModelParams):
     """扩展参数类，添加遗忘参数"""
-    gamma: float = 1.0  # 遗忘率参数
-    w0: float = 0.1     # 基础记忆权重
+    gamma: float  # 遗忘率参数
+    w0: float     # 基础记忆权重
 
 
 class ForgetModel(BaseModel):
@@ -119,27 +119,26 @@ class ForgetModel(BaseModel):
         """
         # 解包带类别信息的数据
         stimuli, choices, responses, categories = data_with_cat
+        n_trials = len(responses)
         
         # 计算每个试次的预测准确率
         predicted_acc = []
-        for i, res in enumerate(step_results):
-            params = res['best_params']
+        for i in range(n_trials):
+            params = step_results[i]['best_params']
+            k, beta = params.k, params.beta
+
+            # 构造单个试次数据
+            trial_data = (
+                [stimuli[i]],
+                [choices[i]],
+                [responses[i]],
+                [categories[i]]
+            )
+
+            p_true = self.partition_model.calc_trueprob_entry(k, trial_data, beta,
+                                                              use_cached_dist=(i != n_trials))
             
-            
-            # 计算类别中心
-            centers = self.partition_model.prototypes_np[params.k]
-            
-            # 计算当前刺激的预测概率
-            distances = euc_dist(centers, np.array(stimuli[i]))
-            probs = softmax(np.min(distances, axis=0), -params.beta)
-            
-            # 处理类别映射
-            true_cats = categories[:i+1].copy()
-            if self.condition == 1:
-                true_cats = (true_cats + 1) // 2
-            
-            # 记录正确类别的预测概率
-            predicted_acc.append(probs[true_cats[-1]-1])
+            predicted_acc.append(p_true)
         
         # 转换为numpy数组
         pred_acc = np.array(predicted_acc)
@@ -157,11 +156,10 @@ class ForgetModel(BaseModel):
         
     def optimize_params(self, data_with_cat: tuple) -> Tuple[ForgetModelParams, list]:
         """二维网格搜索优化gamma和w0"""
-        best_error = float('inf')
-        best_params = None
-        best_step_results = None
-        
-        # 解包数据（包含category）
+        grid_errors = {}
+        grid_step_results = {}
+
+        # 解包数据
         s_data = data_with_cat[:3]  # (stimuli, choices, responses)
         
         # 网格搜索
@@ -169,26 +167,20 @@ class ForgetModel(BaseModel):
             for w0 in self.w0_values:
                 # 逐试次拟合
                 step_results = self.fit_trial_by_trial(s_data, gamma, w0)
-                
-                # 计算误差（传入完整数据含category）
+                # 计算误差
                 error = self.error_function(data_with_cat, step_results)
+                 # 记录结果
+                key = (round(gamma,2), round(w0,2))
+                grid_errors[key] = error
+                grid_step_results[key] = step_results
                 
-                # 更新最优结果
-                if error < best_error:
-                    best_error = error
-                    best_params = (gamma, w0)
-                    best_step_results = step_results
-        
-        return best_params, best_step_results
+        # 查找最优参数
+        best_key = min(grid_errors, key=lambda k: grid_errors[k])
 
-    def fit(self, data):
-        step_results = []
-        best_params = []
-
-        # 使用网格搜索优化gamma
-        (best_gamma, best_w0), step_results_for_block = self.optimize_params(data)
-        best_params.append((best_gamma, best_w0))
-        for result in step_results_for_block:
-            step_results.append(result)
-        
-        return step_results, best_params
+        return {
+            'best_params': best_key,
+            'best_error': grid_errors[best_key],
+            'best_step_results': grid_step_results[best_key],
+            'grid_errors': grid_errors,
+            'grid_step_results': grid_step_results
+        }
