@@ -78,7 +78,8 @@ class SoftPartitionLikelihood(PartitionLikelihood):
                        observation,
                        beta=None,
                        use_cached_dist: bool = False,
-                       normalized: bool = True):
+                       normalized: bool = True,
+                       **kwargs) -> np.ndarray:
         """
         Get Likelihood, Base
         """
@@ -88,7 +89,7 @@ class SoftPartitionLikelihood(PartitionLikelihood):
             ret += [
                 self.partition.calc_likelihood(self.h_indices, observation,
                                                beta_, use_cached_dist,
-                                               normalized)
+                                               normalized, **kwargs)
             ]
         return np.concatenate(ret, axis=1)
 
@@ -191,13 +192,9 @@ class SingleRationalModel(BaseModel):
         """
         step_results = []
         nTrial = len(data[2])
-<<<<<<< HEAD
 
-        for step in tqdm(range(nTrial), 0, -1):
-=======
-        
         for step in tqdm(range(nTrial, 0, -1)):
->>>>>>> main
+
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
                 trial_data, use_cached_dist=(step != nTrial))
