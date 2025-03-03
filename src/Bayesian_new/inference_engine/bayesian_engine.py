@@ -1,7 +1,7 @@
 """
 Bayesian Engine
 """
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
 
 EPS = 0
@@ -130,6 +130,37 @@ class BaseEngine:
         self.likelihood = likelihood
         self.h_state = self.prior
 
+    def generate_drift(self,
+                       base: np.ndarray,
+                       mode: Literal["add", "add&norm", "scale&norm"] = "add",
+                       **kwargs) -> np.ndarray:
+        """
+        Generate drift on Bayesian posterior. As another mechanism of
+        limited (imperfect) memory.
+        """
+        step_size = kwargs.get("step_size", 0.02)
+        generator = kwargs.get("generator", np.random.normal)
+
+        delta = generator(
+            kwargs.get(
+                "generator_kwargs", {
+                    "loc": 1. if mode == "scale&norm" else 0.,
+                    "scale": step_size,
+                    "size": self.hypotheses_set.length()
+                }))
+
+        match mode:
+            case "add":
+                ret = base + delta
+            case "add&norm":
+                ret = base + delta
+                ret /= np.sum(ret)
+            case "scale&norm":
+                ret = base * delta
+                ret /= np.sum(ret)
+
+        return ret
+
     def infer_single(self, observation, **kwargs):
         """
         Parameters
@@ -140,6 +171,10 @@ class BaseEngine:
         likelihood_row = self.likelihood.get_likelihood(observation, **kwargs)
         self.h_state.update(self.h_state.value * likelihood_row)
         self.h_state.update(self.h_state.value / self.h_state.value.sum())
+
+        if "drift" in kwargs:
+            value = self.generate_drift(self.h_state.value, **kwargs)
+            self.h_state.update(value)
 
         return self.h_state.value
 
@@ -161,6 +196,12 @@ class BaseEngine:
         likelihood = self.likelihood.get_likelihood(observations, **kwargs)
         log_likelihood = np.log(np.maximum(likelihood, EPS))
         log_prior = np.log(np.maximum(self.h_state.value, EPS))
+        if "faded" in kwargs:
+            gamma = kwargs.get("gamma", 0.9)
+            ratios = kwargs.get(
+                "ratios", gamma**np.arange(likelihood.shape[0] - 1, -1, -1))
+            log_likelihood = log_likelihood * ratios.reshape(-1, 1)
+
         log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
             log_likelihood.shape) == 2 else log_likelihood)
         posterior = np.exp(log_posterior)
