@@ -72,15 +72,15 @@ class ModelEval:
             ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
             
             num_steps = len(step_results)
-            max_k = max(k for result in step_results for k in result['k_posteriors'].keys())
+            max_k = max(k for result in step_results for k in result['hypo_details'].keys())
             
-            k_posteriors = {k: np.zeros(num_steps) for k in range(1, max_k + 1)}
+            k_posteriors = {k: np.zeros(num_steps) for k in range(0, max_k)}
             for step, result in enumerate(step_results):
-                for k in range(1, max_k + 1):
-                    k_posteriors[k][step] = result['k_posteriors'].get(k, 0)
+                for k in range(0, max_k):
+                    k_posteriors[k][step] = result['hypo_details'][k]['post_max']
             
-            for k in range(1, max_k + 1):
-                if (condition == 1 and k == 1) or (condition != 1 and k == 43):
+            for k in range(0, max_k):
+                if (condition == 1 and k == 0) or (condition != 1 and k == 42):
                     ax.plot(range(1, num_steps + 1), k_posteriors[k], 
                         linewidth=3, color='red', label=f'k={k}')
                 else:

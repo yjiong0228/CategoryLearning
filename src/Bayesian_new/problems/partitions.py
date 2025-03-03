@@ -134,8 +134,6 @@ class BasePartition(ABC):
 
         choices -= 1
 
-        print('ncats', self.n_cats, choices, prob)
-
         return np.where(responses == 1, prob[choices,
                                            np.arange(len(choices))],
                         1 - prob[choices, np.arange(len(choices))])
