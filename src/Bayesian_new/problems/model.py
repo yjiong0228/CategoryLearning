@@ -25,7 +25,7 @@ class ObservationType:
     """
     observation format
     """
-    stimuli: tuple
+    stimulus: tuple
     choices: tuple
     responses: tuple
 
@@ -104,9 +104,9 @@ class BaseModel:
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
-        self.condition = kwargs.get("condition", 1)
+        condition = kwargs.get("condition", 1)
         ndims = 4
-        ncats = 2 if self.condition == 1 else 4
+        ncats = 2 if condition == 1 else 4
 
         self.partition_model = kwargs.get("partition", Partition(ndims, ncats))
         self.hypotheses_set = kwargs.get(
@@ -191,8 +191,13 @@ class SingleRationalModel(BaseModel):
         """
         step_results = []
         nTrial = len(data[2])
+<<<<<<< HEAD
 
         for step in tqdm(range(nTrial), 0, -1):
+=======
+        
+        for step in tqdm(range(nTrial, 0, -1)):
+>>>>>>> main
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
                 trial_data, use_cached_dist=(step != nTrial))

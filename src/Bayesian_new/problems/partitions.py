@@ -109,7 +109,7 @@ class BasePartition(ABC):
 
         Parameters
         ----------
-        data: stimuli, choices, resposes
+        data: stimulus, choices, responses
 
         read partition (hypo) first, then calculate class probabilities
         over each classes.
@@ -117,11 +117,51 @@ class BasePartition(ABC):
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
         """
-        (stimuli, choices, results) = data
+        (stimulus, choices, responses) = data
         # p(r==1 | (k, beta), (x,c) )
         choices = deepcopy(choices)
 
         if use_cached_dist:
+            typical_distances = self.cached_dist[hypo]
+        else:
+            partition = self.prototypes_np[hypo]
+            distances = euc_dist(partition, np.array(stimulus))
+
+            typical_distances = np.min(distances, axis=0)
+            self.cached_dist[hypo] = typical_distances
+
+        prob = softmax(typical_distances, -beta, axis=0)
+
+        choices -= 1
+
+        print('ncats', self.n_cats, choices, prob)
+
+        return np.where(responses == 1, prob[choices,
+                                           np.arange(len(choices))],
+                        1 - prob[choices, np.arange(len(choices))])
+
+    def calc_trueprob_entry(self,
+                              hypo: int,
+                              data: list | tuple,
+                              beta: float,
+                              use_cached_dist: bool = False) -> np.ndarray:
+        """
+        Calculate probability of choosing true category entry
+
+        Parameters
+        ----------
+        data: stimuli, choice, response, category
+
+        read partition (hypo) first, then calculate class probabilities
+        over each classes.
+
+        USE minimal distances between `data.stimulus` and `prototypes`
+        (if there are more than one prototypes else just barycenter)
+        """
+        (stimuli, choice, response, category) = data
+        category = np.asarray(category)
+
+        if use_cached_dist and hypo in self.cached_dist:
             typical_distances = self.cached_dist[hypo]
         else:
             partition = self.prototypes_np[hypo]
@@ -132,11 +172,12 @@ class BasePartition(ABC):
 
         prob = softmax(typical_distances, -beta, axis=0)
 
-        choices -= 1
+        if self.n_cats == 2:
+            true_cat = np.where(np.isin(category, [1, 2]), 0, 1)
+        else:
+            true_cat = category.astype(int) - 1
 
-        return np.where(results == 1, prob[choices,
-                                           np.arange(len(choices))],
-                        1 - prob[choices, np.arange(len(choices))])
+        return prob[true_cat]
 
     def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
         """
