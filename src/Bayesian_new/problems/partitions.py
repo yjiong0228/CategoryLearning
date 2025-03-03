@@ -109,7 +109,7 @@ class BasePartition(ABC):
 
         Parameters
         ----------
-        data: stimuli, choices, resposes
+        data: stimulus, choices, responses
 
         read partition (hypo) first, then calculate class probabilities
         over each classes.
@@ -134,7 +134,7 @@ class BasePartition(ABC):
 
         choices -= 1
 
-        print(choices, prob)
+        print('ncats', self.n_cats, choices, prob)
 
         return np.where(responses == 1, prob[choices,
                                            np.arange(len(choices))],
@@ -150,7 +150,7 @@ class BasePartition(ABC):
 
         Parameters
         ----------
-        data: stimuli, choice, respose, category
+        data: stimuli, choice, response, category
 
         read partition (hypo) first, then calculate class probabilities
         over each classes.
@@ -158,7 +158,7 @@ class BasePartition(ABC):
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
         """
-        (stimuli, choice, result, category) = data
+        (stimuli, choice, response, category) = data
         category = np.asarray(category)
 
         if use_cached_dist and hypo in self.cached_dist:
