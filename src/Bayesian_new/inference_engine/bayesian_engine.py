@@ -196,11 +196,6 @@ class BaseEngine:
         likelihood = self.likelihood.get_likelihood(observations, **kwargs)
         log_likelihood = np.log(np.maximum(likelihood, EPS))
         log_prior = np.log(np.maximum(self.h_state.value, EPS))
-        if "faded" in kwargs:
-            gamma = kwargs.get("gamma", 0.9)
-            ratios = kwargs.get(
-                "ratios", gamma**np.arange(likelihood.shape[0] - 1, -1, -1))
-            log_likelihood = log_likelihood * ratios.reshape(-1, 1)
 
         log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
             log_likelihood.shape) == 2 else log_likelihood)
