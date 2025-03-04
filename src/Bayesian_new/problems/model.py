@@ -78,7 +78,8 @@ class SoftPartitionLikelihood(PartitionLikelihood):
                        observation,
                        beta=None,
                        use_cached_dist: bool = False,
-                       normalized: bool = True):
+                       normalized: bool = True,
+                       **kwargs) -> np.ndarray:
         """
         Get Likelihood, Base
         """
@@ -88,7 +89,7 @@ class SoftPartitionLikelihood(PartitionLikelihood):
             ret += [
                 self.partition.calc_likelihood(self.h_indices, observation,
                                                beta_, use_cached_dist,
-                                               normalized)
+                                               normalized, **kwargs)
             ]
         return np.concatenate(ret, axis=1)
 
@@ -111,7 +112,7 @@ class BaseModel:
         self.partition_model = kwargs.get("partition", Partition(ndims, ncats))
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
-        
+
         self.engine = BaseEngine(
             self.hypotheses_set, self.observation_set,
             BasePrior(self.hypotheses_set),
@@ -170,12 +171,12 @@ class SingleRationalModel(BaseModel):
                               x0=[self.config["param_inits"]["beta"]],
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
-            
+
             all_hypo_params[hypo] = ModelParams(hypo, beta_opt)
             all_hypo_ll[hypo] = ll_max
 
         best_hypo = max(all_hypo_ll, key=all_hypo_ll.get)
-        return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo], 
+        return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
                 all_hypo_params, all_hypo_ll)
 
     def fit_trial_by_trial(self, data: Tuple[np.ndarray, np.ndarray,
@@ -191,23 +192,24 @@ class SingleRationalModel(BaseModel):
         """
         step_results = []
         nTrial = len(data[2])
-        
+
         for step in tqdm(range(nTrial, 0, -1)):
+
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
                 trial_data, use_cached_dist=(step != nTrial))
 
-            all_hypo_post = self.engine.infer_log(
-                trial_data,
-                use_cached_dist=(step != nTrial),
-                normalized=True)
+            all_hypo_post = self.engine.infer_log(trial_data,
+                                                  use_cached_dist=(step
+                                                                   != nTrial),
+                                                  normalized=True)
 
             hypo_details = {}
             for i, hypo in enumerate(self.hypotheses_set.elements):
                 hypo_details[hypo] = {
                     'beta_opt': all_hypo_params[hypo].beta,
                     'll_max': all_hypo_ll[hypo],
-                    'post_max': all_hypo_post[i], 
+                    'post_max': all_hypo_post[i],
                     'is_best': hypo == best_params.k
                 }
 
@@ -221,3 +223,9 @@ class SingleRationalModel(BaseModel):
             })
 
         return step_results[::-1]
+
+    def predict_choice(self, params: ModelParams, x: np.ndarray,
+                       condition: int):
+        """
+        predict choice
+        """
