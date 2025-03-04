@@ -7,7 +7,7 @@ from copy import deepcopy
 import itertools
 # import pandas as pd
 import numpy as np
-from .base_problem import softmax, cdist, euc_dist
+from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 from ..inference_engine import BaseDistribution, BaseLikelihood
 
 
@@ -69,13 +69,13 @@ class BasePartition(ABC):
         raise NotImplementedError(
             "get_prototypes: Method case not implemented.")
 
-    def calc_likelihood(
-            self,
-            hypos: List[int] | Tuple[int],
-            data: list | tuple,
-            beta: list | tuple | float = 1.,
-            use_cached_dist: bool = False,
-            normalized: bool = True) -> np.ndarray:  # BaseLikelihood:
+    def calc_likelihood(self,
+                        hypos: List[int] | Tuple[int],
+                        data: list | tuple,
+                        beta: list | tuple | float = 1.,
+                        use_cached_dist: bool = False,
+                        normalized: bool = True,
+                        **kwargs) -> np.ndarray:  # BaseLikelihood:
         """
         Calculate likelihood.
 
@@ -94,7 +94,7 @@ class BasePartition(ABC):
         # print(hypos, ret.shape)
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
-                                                   use_cached_dist)
+                                                   use_cached_dist, **kwargs)
         if normalized:
             return ret / np.sum(ret, axis=1, keepdims=True)
         return ret
@@ -103,7 +103,8 @@ class BasePartition(ABC):
                               hypo: int,
                               data: list | tuple,
                               beta: float,
-                              use_cached_dist: bool = False) -> np.ndarray:
+                              use_cached_dist: bool = False,
+                              **kwargs) -> np.ndarray:
         """
         Calculate single likelihood entry
 
@@ -116,6 +117,13 @@ class BasePartition(ABC):
 
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
+
+
+        kwargs: dict
+        "gamma" and "w0" activates a two-factor-decay on memory
+        "amnesia":callable(data, **kwargs) and "amnesia_kwargs":dict
+            enables a more flexible way to implement the decay-forgetting
+            mechanism.
         """
         (stimulus, choices, responses) = data
         # p(r==1 | (k, beta), (x,c) )
@@ -129,20 +137,32 @@ class BasePartition(ABC):
 
             typical_distances = np.min(distances, axis=0)
             self.cached_dist[hypo] = typical_distances
+            # print(use_cached_dist, distances.shape)
+
+        print(typical_distances.shape)
+        if "gamma" in kwargs:
+            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
+            typical_distances *= coeff
+        elif (amnesia := kwargs.get("amnesia", False)):
+            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
+            typical_distances *= coeff
 
         prob = softmax(typical_distances, -beta, axis=0)
 
         choices -= 1
+        # print("PROB", prob.shape)
+        # print("STIMULUS", stimulus.shape, partition.shape)
+        # raise
 
         return np.where(responses == 1, prob[choices,
-                                           np.arange(len(choices))],
+                                             np.arange(len(choices))],
                         1 - prob[choices, np.arange(len(choices))])
 
     def calc_trueprob_entry(self,
-                              hypo: int,
-                              data: list | tuple,
-                              beta: float,
-                              use_cached_dist: bool = False) -> np.ndarray:
+                            hypo: int,
+                            data: list | tuple,
+                            beta: float,
+                            use_cached_dist: bool = False) -> np.ndarray:
         """
         Calculate probability of choosing true category entry
 
