@@ -139,7 +139,7 @@ class BasePartition(ABC):
             self.cached_dist[hypo] = typical_distances
             # print(use_cached_dist, distances.shape)
 
-        print(typical_distances.shape)
+        # print(typical_distances.shape)
         if "gamma" in kwargs:
             coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
             typical_distances *= coeff
