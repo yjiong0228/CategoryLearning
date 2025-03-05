@@ -76,7 +76,7 @@ class SoftPartitionLikelihood(PartitionLikelihood):
 
     def get_likelihood(self,
                        observation,
-                       beta=None,
+                       beta: list | tuple | float = 1.,
                        use_cached_dist: bool = False,
                        normalized: bool = True,
                        **kwargs) -> np.ndarray:
@@ -202,6 +202,7 @@ class SingleRationalModel(BaseModel):
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
                                                                    != nTrial),
+                                                  beta = [x.beta for x in best_params],
                                                   normalized=True)
 
             hypo_details = {}

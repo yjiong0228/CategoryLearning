@@ -88,7 +88,7 @@ class BaseLikelihood(BaseDistribution):
         self.kwargs = kwargs
         self.cache = {None: self.value}
 
-    def get_likelihood(self, observation):
+    def get_likelihood(self, observation, **kwargs):
         """
         Parameters
         ----------
