@@ -88,16 +88,18 @@ class ForgetModel(BaseModel):
                                              np.ndarray], gamma, w0):
         step_results = []
         nTrial = len(data[2])
-
-        for step in tqdm(range(nTrial, 0, -1), leave=False):
+        
+        for step in range(nTrial, 0, -1):
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
                 trial_data, gamma, w0, use_cached_dist=(step != nTrial))
 
+            hypo_betas = [all_hypo_params[hypo].beta for hypo in self.hypotheses_set.elements]
+
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
                                                                    != nTrial),
-                                                  beta = [x.beta for x in best_params],
+                                                  beta = hypo_betas,
                                                   normalized=True)
 
             hypo_details = {}
@@ -184,10 +186,11 @@ class ForgetModel(BaseModel):
         # 查找最优参数
         best_key = min(grid_errors, key=lambda k: grid_errors[k])
 
-        return {
+        optimize_results = {
             'best_params': best_key,
             'best_error': grid_errors[best_key],
             'best_step_results': grid_step_results[best_key],
-            'grid_errors': grid_errors,
-            'grid_step_results': grid_step_results
+            'grid_errors': grid_errors
         }
+
+        return optimize_results
