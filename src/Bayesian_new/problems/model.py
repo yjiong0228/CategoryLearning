@@ -199,10 +199,12 @@ class SingleRationalModel(BaseModel):
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
                 trial_data, use_cached_dist=(step != nTrial))
 
+            hypo_betas = [all_hypo_params[hypo].beta for hypo in self.hypotheses_set.elements]
+
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
                                                                    != nTrial),
-                                                  beta = [x.beta for x in best_params],
+                                                  beta = hypo_betas,
                                                   normalized=True)
 
             hypo_details = {}
