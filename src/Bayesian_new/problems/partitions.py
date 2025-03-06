@@ -99,6 +99,64 @@ class BasePartition(ABC):
             return ret / np.sum(ret, axis=1, keepdims=True)
         return ret
 
+    def calc_likelihood_base(self,
+                             hypo: int,
+                             data: list | tuple,
+                             beta: float,
+                             use_cached_dist: bool = False,
+                             **kwargs) -> np.ndarray:
+        """
+        Calculate single likelihood entry
+
+        Parameters
+        ----------
+        data: stimulus, choices, responses
+
+        read partition (hypo) first, then calculate class probabilities
+        over each classes.
+
+        USE minimal distances between `data.stimulus` and `prototypes`
+        (if there are more than one prototypes else just barycenter)
+
+
+        kwargs: dict
+        "gamma" and "w0" activates a two-factor-decay on memory
+        "amnesia":callable(data, **kwargs) and "amnesia_kwargs":dict
+            enables a more flexible way to implement the decay-forgetting
+            mechanism.
+
+        "indices": None | list | np.ndarray.
+                   retrieving distances cache on indices
+        """
+        (stimulus, choices) = data[:2]
+        # p(r==1 | (k, beta), (x,c) )
+        choices = np.array(choices).copy()
+        indices = kwargs.get("indices", None)
+        n = choices.shape[0]
+
+        if use_cached_dist:
+            typical_distances = (self.cached_dist[hypo][:,:n] if indices is None
+                                 else self.cached_dist[hypo][:,indices])
+        else:
+            partition = self.prototypes_np[hypo]
+            distances = euc_dist(partition, np.array(stimulus))
+
+            typical_distances = np.min(distances, axis=0)
+            self.cached_dist[hypo] = typical_distances
+            # print(use_cached_dist, distances.shape)
+
+        # print(typical_distances.shape)
+        if "gamma" in kwargs:
+            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
+            typical_distances *= coeff.reshape(1, -1)
+        elif (amnesia := kwargs.get("amnesia", False)):
+            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
+            typical_distances *= coeff.reshape(1, -1)
+
+        prob = softmax(typical_distances, -beta, axis=0)
+
+        return prob
+
     def calc_likelihood_entry(self,
                               hypo: int,
                               data: list | tuple,
@@ -125,30 +183,10 @@ class BasePartition(ABC):
             enables a more flexible way to implement the decay-forgetting
             mechanism.
         """
-        (stimulus, choices, responses) = data
-        # p(r==1 | (k, beta), (x,c) )
-        choices = deepcopy(choices)
+        prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
+                                         **kwargs)
 
-        if use_cached_dist:
-            typical_distances = self.cached_dist[hypo]
-        else:
-            partition = self.prototypes_np[hypo]
-            distances = euc_dist(partition, np.array(stimulus))
-
-            typical_distances = np.min(distances, axis=0)
-            self.cached_dist[hypo] = typical_distances
-            # print(use_cached_dist, distances.shape)
-
-        # print(typical_distances.shape)
-        if "gamma" in kwargs:
-            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
-            typical_distances *= coeff
-        elif (amnesia := kwargs.get("amnesia", False)):
-            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
-            typical_distances *= coeff
-
-        prob = softmax(typical_distances, -beta, axis=0)
-
+        choices, responses = data[1].copy(), data[2]
         choices -= 1
         # print("PROB", prob.shape)
         # print("STIMULUS", stimulus.shape, partition.shape)
@@ -161,8 +199,9 @@ class BasePartition(ABC):
     def calc_trueprob_entry(self,
                             hypo: int,
                             data: list | tuple,
-                            beta: float,
-                            use_cached_dist: bool = False) -> np.ndarray:
+                            beta: float | list | tuple | np.ndarray,
+                            use_cached_dist: bool = False,
+                            **kwargs) -> np.ndarray:
         """
         Calculate probability of choosing true category entry
 
@@ -176,24 +215,12 @@ class BasePartition(ABC):
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
         """
-        (stimuli, choice, response, category) = data
-        category = np.asarray(category)
 
-        if use_cached_dist and hypo in self.cached_dist:
-            typical_distances = self.cached_dist[hypo]
-        else:
-            partition = self.prototypes_np[hypo]
-            distances = euc_dist(partition, np.array(stimuli))
+        prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
+                                         **kwargs)
 
-            typical_distances = np.min(distances, axis=0)
-            self.cached_dist[hypo] = typical_distances
-
-        prob = softmax(typical_distances, -beta, axis=0)
-
-        if self.n_cats == 2:
-            true_cat = np.where(np.isin(category, [1, 2]), 0, 1)
-        else:
-            true_cat = category.astype(int) - 1
+        category = np.asarray(data[3], dtype=int) - 1
+        true_cat = category // 2 if self.n_cats == 2 else category
 
         return prob[true_cat]
 
