@@ -99,7 +99,7 @@ class ForgetModel(BaseModel):
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
                                                                    != nTrial),
-                                                  beta = hypo_betas,
+                                                  beta = hypo_betas, gamma=gamma, w0=w0,
                                                   normalized=True)
 
             hypo_details = {}
@@ -145,7 +145,7 @@ class ForgetModel(BaseModel):
                           [categories[i]])
 
             p_true = self.partition_model.calc_trueprob_entry(
-                k, trial_data, beta, use_cached_dist=(i != n_trials))
+                k, trial_data, beta, use_cached_dist=True)
 
             predicted_acc.append(p_true)
 

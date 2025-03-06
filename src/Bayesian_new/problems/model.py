@@ -50,13 +50,14 @@ class PartitionLikelihood(BaseLikelihood):
                        observation,
                        beta: list | tuple | float = 1.,
                        use_cached_dist: bool = False,
-                       normalized: bool = True):
+                       normalized: bool = True, 
+                       **kwargs):
         """
         Get Likelihood, Base
         """
 
         ret = self.partition.calc_likelihood(self.h_indices, observation, beta,
-                                             use_cached_dist, normalized)
+                                             use_cached_dist, normalized, **kwargs)
         return ret
 
 
