@@ -3,6 +3,7 @@ Model
 """
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
+from itertools import product
 import numpy as np
 from tqdm import tqdm
 from scipy.optimize import minimize
@@ -88,18 +89,23 @@ class ForgetModel(BaseModel):
                                              np.ndarray], gamma, w0):
         step_results = []
         nTrial = len(data[2])
-        
+
         for step in range(nTrial, 0, -1):
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
                 trial_data, gamma, w0, use_cached_dist=(step != nTrial))
 
-            hypo_betas = [all_hypo_params[hypo].beta for hypo in self.hypotheses_set.elements]
+            hypo_betas = [
+                all_hypo_params[hypo].beta
+                for hypo in self.hypotheses_set.elements
+            ]
 
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
                                                                    != nTrial),
-                                                  beta = hypo_betas, gamma=gamma, w0=w0,
+                                                  beta=hypo_betas,
+                                                  gamma=gamma,
+                                                  w0=w0,
                                                   normalized=True)
 
             hypo_details = {}
@@ -145,7 +151,7 @@ class ForgetModel(BaseModel):
                           [categories[i]])
 
             p_true = self.partition_model.calc_trueprob_entry(
-                k, trial_data, beta, use_cached_dist=True)
+                k, trial_data, beta, use_cached_dist=True, indices=[i])
 
             predicted_acc.append(p_true)
 
@@ -172,16 +178,16 @@ class ForgetModel(BaseModel):
         s_data = data_with_cat[:3]  # (stimuli, choices, responses)
 
         # 网格搜索
-        for gamma in tqdm(self.gamma_values, desc="Gamma"):
-            for w0 in self.w0_values:
-                # 逐试次拟合
-                step_results = self.fit_trial_by_trial(s_data, gamma, w0)
-                # 计算误差
-                error = self.error_function(data_with_cat, step_results)
-                # 记录结果
-                key = (round(gamma, 2), round(w0, 2))
-                grid_errors[key] = error
-                grid_step_results[key] = step_results
+        for gamma, w0 in tqdm(product(self.gamma_values, self.w0_values),
+                              desc="Gamma-W0", total=100):
+            # 逐试次拟合
+            step_results = self.fit_trial_by_trial(s_data, gamma, w0)
+            # 计算误差
+            error = self.error_function(data_with_cat, step_results)
+            # 记录结果
+            key = (round(gamma, 2), round(w0, 2))
+            grid_errors[key] = error
+            grid_step_results[key] = step_results
 
         # 查找最优参数
         best_key = min(grid_errors, key=lambda k: grid_errors[k])

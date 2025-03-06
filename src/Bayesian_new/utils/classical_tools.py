@@ -15,5 +15,5 @@ def two_factor_decay(data: List, gamma: float, lower: float):
     to guarantee the values in (lower, 1].
     """
 
-    length = len(data)
+    length = len(data[0])
     return (1 - lower) * gamma**np.arange(length - 1, -1, -1) + lower
