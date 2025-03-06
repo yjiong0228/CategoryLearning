@@ -31,7 +31,8 @@ class ModelEval:
 
         for idx, iSub in enumerate(sorted_subjects):
             subject_info = results[iSub]
-            step_results = subject_info['best_step_results']
+            optimize_results = subject_info['optimize_results']
+            step_results = optimize_results['best_step_results']
             condition = subject_info['condition']
             
             row = idx % n_rows
@@ -64,7 +65,8 @@ class ModelEval:
         
         for idx, iSub in enumerate(sorted_subjects):
             subject_info = results[iSub]
-            step_results = subject_info['best_step_results']
+            optimize_results = subject_info['optimize_results']
+            step_results = optimize_results['best_step_results']
             condition = subject_info['condition']
             
             row = idx % n_rows
