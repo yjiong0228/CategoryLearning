@@ -279,9 +279,9 @@ class Preprocessor_B:
 
             # Convert exact features into feature1-4
             if version == 1:
-                feature_names = self.convert("_length", structure1, structure2)
+                feature_names = self.convert("_length", [structure1, structure2])
             else:
-                feature_names = self.convert("_angle", structure1, structure2)
+                feature_names = self.convert("_angle", [structure1, structure2])
 
             rename_map = {
                 feature_names[i]: f'feature{i+1}' for i in range(4)
@@ -304,29 +304,29 @@ class Preprocessor_B:
 
         return combined_data
 
-    def convert(self, suffix, structure1, structure2):
+    def convert(self, suffix, structure):
         # feature selection
-        if structure1 == 1:
+        if structure[0] == 1:
             features = ["neck", "head", "leg", "tail"]
-        elif structure1 == 2:
+        elif structure[0] == 2:
             features = ["neck", "head", "tail", "leg"]
-        elif structure1 == 3:
+        elif structure[0] == 3:
             features = ["neck", "leg", "tail", "head"]
-        elif structure1 == 4:
+        elif structure[0] == 4:
             features = ["head", "leg", "tail", "neck"]
         
         # feature space segmentation
-        if structure2 == 1:
+        if structure[1] == 1:
             features = features[:]
-        elif structure2 == 2:
+        elif structure[1] == 2:
             features = [features[0], features[2], features[1], features[3]]
-        elif structure2 == 3:
+        elif structure[1] == 3:
             features = [features[1], features[0], features[2], features[3]]
-        elif structure2 == 4:
+        elif structure[1] == 4:
             features = [features[1], features[2], features[0], features[3]]
-        elif structure2 == 5:
+        elif structure[1] == 5:
             features = [features[2], features[0], features[1], features[3]]
-        elif structure2 == 6:
+        elif structure[1] == 6:
             features = [features[2], features[1], features[0], features[3]]
         
         # Final rearrangement
