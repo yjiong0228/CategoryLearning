@@ -70,7 +70,7 @@ class ForgetModel(BaseModel):
 
         for hypo in self.hypotheses_set.elements:
             result = minimize(lambda beta: -self.get_weighted_log_likelihood(
-                hypo, data, beta, gamma, w0, **kwargs),
+                hypo, data, beta, gamma=gamma, w0=w0, **kwargs),
                               x0=[self.config["param_inits"]["beta"]],
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun

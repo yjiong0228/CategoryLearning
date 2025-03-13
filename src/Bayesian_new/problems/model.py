@@ -50,14 +50,15 @@ class PartitionLikelihood(BaseLikelihood):
                        observation,
                        beta: list | tuple | float = 1.,
                        use_cached_dist: bool = False,
-                       normalized: bool = True, 
+                       normalized: bool = True,
                        **kwargs):
         """
         Get Likelihood, Base
         """
 
         ret = self.partition.calc_likelihood(self.h_indices, observation, beta,
-                                             use_cached_dist, normalized, **kwargs)
+                                             use_cached_dist, normalized,
+                                             **kwargs)
         return ret
 
 
@@ -192,20 +193,23 @@ class SingleRationalModel(BaseModel):
             List[Dict]: List of results for each trial step.
         """
         step_results = []
-        nTrial = len(data[2])
+        n_trial = len(data[2])
 
-        for step in tqdm(range(nTrial, 0, -1)):
+        for step in tqdm(range(n_trial, 0, -1)):
 
             trial_data = [x[:step] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
-                trial_data, use_cached_dist=(step != nTrial))
+                trial_data, use_cached_dist=(step != n_trial))
 
-            hypo_betas = [all_hypo_params[hypo].beta for hypo in self.hypotheses_set.elements]
+            hypo_betas = [
+                all_hypo_params[hypo].beta
+                for hypo in self.hypotheses_set.elements
+            ]
 
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
-                                                                   != nTrial),
-                                                  beta = hypo_betas,
+                                                                   != n_trial),
+                                                  beta=hypo_betas,
                                                   normalized=True)
 
             hypo_details = {}
