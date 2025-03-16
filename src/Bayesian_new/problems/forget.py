@@ -35,30 +35,6 @@ class ForgetModel(BaseModel):
         # 初始化记忆权重缓存
         self.memory_weights_cache: Dict = {}
 
-    def _get_memory_weights(self, n_trials: int, gamma: float,
-                            w0: float) -> np.ndarray:
-        """预计算记忆衰减权重"""
-        cache_key = (n_trials, gamma, w0)
-        if cache_key not in self.memory_weights_cache:
-            decay = gamma**np.arange(n_trials - 1, -1, -1)
-            weights = w0 + (1 - w0) * decay
-            self.memory_weights_cache[cache_key] = weights / np.sum(weights)
-        return self.memory_weights_cache[cache_key]
-
-    def get_weighted_log_likelihood(self, hypo: int, data: tuple, beta: float,
-                                    gamma: float, w0: float,
-                                    **kwargs) -> float:
-        """计算加权后的似然值"""
-        # 获取基础似然
-        base_likelihood = self.partition_model.calc_likelihood_entry(
-            hypo, data, beta, **kwargs)
-
-        # 应用记忆衰减权重
-        n_trials = len(data[2])
-        memory_weights = self._get_memory_weights(n_trials, gamma, w0)
-        weighted_log_likelihood = memory_weights * np.log(base_likelihood)
-        return np.sum(weighted_log_likelihood)
-
     def fit_with_given_params(
             self, data: tuple, gamma: float, w0: float,
             **kwargs) -> Tuple[ForgetModelParams, float, Dict, Dict]:
@@ -68,9 +44,13 @@ class ForgetModel(BaseModel):
         all_hypo_params = {}
         all_hypo_ll = {}
 
-        for hypo in self.hypotheses_set.elements:
-            result = minimize(lambda beta: -self.get_weighted_log_likelihood(
-                hypo, data, beta, gamma=gamma, w0=w0, **kwargs),
+        def _ll_per_hypo(beta, gamma, w0, hypo=None):
+            likelihood = self.partition_model.calc_likelihood_entry(
+                hypo, data, beta[0], gamma=gamma, w0=w0, **kwargs)
+            return np.sum(np.log(np.maximum(likelihood, 0)), axis=0)
+
+        for hypo in self.hypotheses_set:
+            result = minimize(lambda beta: -_ll_per_hypo(beta, gamma, w0, hypo),
                               x0=[self.config["param_inits"]["beta"]],
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
