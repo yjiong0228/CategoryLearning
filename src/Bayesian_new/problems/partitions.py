@@ -11,6 +11,39 @@ from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 from ..inference_engine import BaseDistribution, BaseLikelihood
 
 
+def amnesia_mechanism(func):
+    """
+        Wrapper of the amnesia_mechanism
+        if there is "gamma" or "amnesia" in kwargs,
+        it transforms likelihood(*) into amnesia_likelihood(*)
+        """
+
+    def wrapped(self,
+                hypo: int,
+                data: list | tuple,
+                beta: float,
+                use_cached_dist: bool = False,
+                **kwargs) -> np.ndarray:
+
+        nonlocal func
+        prob = func(self, hypo, data, beta, use_cached_dist, **kwargs)
+
+        if "gamma" in kwargs:
+
+            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
+            log_prob = np.log(prob)
+            log_prob *= coeff.reshape(-1)
+            return np.exp(log_prob)
+        if (amnesia := kwargs.get("amnesia", False)):
+            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
+            log_prob = np.log(prob)
+            log_prob *= coeff.reshape(-1)
+            return np.exp(log_prob)
+        return prob
+
+    return wrapped
+
+
 class BasePartition(ABC):
     """
     Base Partition
@@ -135,28 +168,24 @@ class BasePartition(ABC):
         n = choices.shape[0]
 
         if use_cached_dist:
-            typical_distances = (self.cached_dist[hypo][:,:n] if indices is None
-                                 else self.cached_dist[hypo][:,indices])
+            typical_distances = (self.cached_dist[hypo][:, :n] if indices
+                                 is None else self.cached_dist[hypo][:,
+                                                                     indices])
         else:
             partition = self.prototypes_np[hypo]
             distances = euc_dist(partition, np.array(stimulus))
 
             typical_distances = np.min(distances, axis=0)
             self.cached_dist[hypo] = typical_distances
-            # print(use_cached_dist, distances.shape)
+            # print(use_cached_dist, distances.shape
 
         # print(typical_distances.shape)
-        if "gamma" in kwargs:
-            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
-            typical_distances *= coeff.reshape(1, -1)
-        elif (amnesia := kwargs.get("amnesia", False)):
-            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
-            typical_distances *= coeff.reshape(1, -1)
 
         prob = softmax(typical_distances, -beta, axis=0)
 
         return prob
 
+    @amnesia_mechanism
     def calc_likelihood_entry(self,
                               hypo: int,
                               data: list | tuple,
@@ -196,6 +225,7 @@ class BasePartition(ABC):
                                              np.arange(len(choices))],
                         1 - prob[choices, np.arange(len(choices))])
 
+    @amnesia_mechanism
     def calc_trueprob_entry(self,
                             hypo: int,
                             data: list | tuple,
