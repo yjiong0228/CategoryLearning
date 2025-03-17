@@ -83,8 +83,11 @@ def cmp_log_likelihood():
         result_old = old_model.posterior(ModelParams(
             1, 1.0, 0.8, 0.2), data_old, 1) + np.log(
                 old_model.prior(ModelParams(1, 1.0, 0.8, 0.2), 1))
-        result_new = new_model.get_weighted_log_likelihood(
-            0, data_new, 1.0, 0.8, 0.2)
+        result_new = new_model.partition_model.calc_likelihood_entry(0,
+                                                                     data_new,
+                                                                     1.0,
+                                                                     gamma=0.8,
+                                                                     w0=0.2)
 
     return result_old, result_new
 
