@@ -181,13 +181,19 @@ class SingleRationalModel(BaseModel):
         return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
                 all_hypo_params, all_hypo_ll)
 
-    def fit_trial_by_trial(self, data: Tuple[np.ndarray, np.ndarray,
-                                             np.ndarray]):
+    def fit_trial_by_trial(self, 
+                           data: Tuple[np.ndarray, np.ndarray,np.ndarray],
+                           limited_hypos_list: List[List[int]] = None, 
+                           **kwargs):
         """
         Fit the model trial-by-trial to observe parameter evolution.
 
         Args:
             data (DataFrame): Data containing features, choices, and feedback.
+            limited_hypos_list: 如果不为 None，则是一个长度为 n_trial 的列表，
+                                每个元素都是一个假设子集（List[int]），
+                                用于限制当前 trial 的候选假设。
+                                若为 None，则使用原有的 '全集' self.hypotheses_set。
 
         Returns:
             List[Dict]: List of results for each trial step.
@@ -195,11 +201,32 @@ class SingleRationalModel(BaseModel):
         step_results = []
         n_trial = len(data[2])
 
+        # 备份一下原假设集
+        original_hypotheses_set = self.hypotheses_set
+        original_prior = self.engine.prior
+        original_likelihood = self.engine.likelihood
+
         for step in tqdm(range(n_trial, 0, -1)):
 
             trial_data = [x[:step] for x in data]
+
+            # 若给定了 limited_hypos_list，就用子集，否则用原有全集
+            if limited_hypos_list is not None:
+                current_hypos = limited_hypos_list[step - 1]
+                h_set = BaseSet(current_hypos)
+
+                # 重新构造 prior & likelihood
+                new_prior = BasePrior(h_set)
+                new_likelihood = PartitionLikelihood(h_set, self.partition_model)
+
+                # 刷新引擎
+                self.refresh_engine(h_set, new_prior, new_likelihood)
+            else:
+                # 不动；直接使用 self.hypotheses_set
+                pass
+
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
-                trial_data, use_cached_dist=(step != n_trial))
+                trial_data, use_cached_dist=(step != n_trial), **kwargs)
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
@@ -230,7 +257,86 @@ class SingleRationalModel(BaseModel):
                 'hypo_details': hypo_details
             })
 
+        # 恢复原假设集
+        if limited_hypos_list is not None:
+            self.refresh_engine(
+                original_hypotheses_set,
+                original_prior,
+                original_likelihood
+            )
+
         return step_results[::-1]
+
+    def oral_generate_hypos(
+        self,
+        data: Tuple[np.ndarray, np.ndarray],
+        top_k: int = 10,
+        dist_tol: float = 1e-9
+    ) -> List[List[int]]:
+        """
+        基于被试每个试次的口头汇报坐标 (oral_center) 与选择的类别 (choice)，
+        为每个试次生成一个可能的假设子集（limited_hypos）。
+
+        Args:
+            data:
+                - data[0]: oral_centers, shape = (n_trial, n_dims)
+                  每个试次被试“口头汇报”的类别中心坐标
+                - data[1]: choices, shape = (n_trial,)
+                  每个试次被试选择的类别(1-index)
+            top_k: 如果没有任何假设“完全符合” (距离=0) 时，
+                   就选取最小距离的前 top_k 个假设索引。
+            dist_tol: 判断距离是否等于 0 的容忍度（浮点运算误差范围）。
+
+        Returns:
+            limited_hypos_list: List[List[int]]，长度 = n_trial，
+                                每个元素是该试次对应的一批假设索引。
+        """
+
+        oral_centers, choices = data
+        n_trial = len(choices)
+        n_dims = oral_centers.shape[1]  # 假设 oral_centers.shape = (n_trial, n_dims)
+
+        # 假设全集指的是 partition 中所有可能的 hypothesis 索引
+        # self.partition_model.prototypes_np.shape = [num_hypos, n_cats, n_dims]
+        # 也可以用 self.hypotheses_set.elements，但大多数情况下
+        # 这俩应该保持一致（整型序号从 0 到 num_hypos-1）。
+        num_hypos = self.partition_model.prototypes_np.shape[0]
+        all_hypos = range(num_hypos)
+
+        limited_hypos_list = []
+
+        for i in range(n_trial):
+            # 当前试次选择了哪一类？(1-index) => (0-index)
+            cat_idx = choices[i] - 1
+
+            # 被试口头汇报的中心
+            oral_center_i = oral_centers[i]  # shape=(n_dims,)
+
+            # 计算该 oral_center_i 与每个假设 (h) 的对应类别 cat_idx 的“真中心”距离
+            # partition_model.prototypes_np[h, cat_idx, :] 就是 hypo=h 对应的某一类别中心
+            dist_list = []
+            for h in all_hypos:
+                true_center = self.partition_model.prototypes_np[h, 0, cat_idx, :]
+                dist = np.linalg.norm(oral_center_i - true_center)
+                dist_list.append((dist, h))
+
+            # 1) 判断有没有 dist=0 (在 float 范围内接近 0)
+            #    如果有，则只取这些“完全符合”的假设
+            #    如果没有，则取最小距离的前 top_k 个。
+            exact_matches = [h for (dist, h) in dist_list if dist <= dist_tol]
+
+            if len(exact_matches) > 0:
+                # 直接拿到全部“距离为0”的假设即可
+                chosen_hypos = exact_matches
+            else:
+                # 没有完全匹配，则按距离排序，取前 top_k
+                dist_list.sort(key=lambda x: x[0])  # 升序
+                chosen_hypos = [h for (_, h) in dist_list[:top_k]]
+
+            limited_hypos_list.append(chosen_hypos)
+
+        return limited_hypos_list
+
 
     def predict_choice(self, params: ModelParams, x: np.ndarray,
                        condition: int):

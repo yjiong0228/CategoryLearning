@@ -1,23 +1,89 @@
 """
-对Task2的口头汇报数据进行文本分析
+对Task2, Task3a, Task3b的数据进行预处理
 """
 
 import re
 import pandas as pd
-import importlib
-import src.preprocess as preprocess
-importlib.reload(preprocess)
-from src.preprocess import Preprocessor_B
-preprocessor_b = Preprocessor_B()
+import numpy as np
+ 
+class Preprocessor_B:
+    def process(self, taskID, stimulus_data, behavior_data, recording_data = None):
+        if taskID in ['Task2', 'Task3a']:
+            joint_data = pd.merge(stimulus_data, behavior_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
+            joint_data = joint_data.drop('category_y', axis=1)
 
-class Processor:
+            version = behavior_data['version'][0]
+            structure1 = behavior_data['structure1'][0]
+            structure2 = behavior_data['structure2'][0]
+
+            # Convert exact features into feature1-4
+            if version == 1:
+                feature_names = self.convert("_length", [structure1, structure2])
+            else:
+                feature_names = self.convert("_angle", [structure1, structure2])
+
+            base_columns = ['version', 'condition', 'iSession', 'iBlock', 'iTrial',
+                            'neck_length', 'head_length', 'leg_length', 'tail_length',
+                            'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
+            remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
+   
+            combined_data = joint_data[base_columns].copy()
+
+            for i, feature in enumerate(feature_names):
+                new_name = f'feature{i+1}'
+                combined_data[new_name] = joint_data[feature]
+
+            combined_data[remaining_columns] = joint_data[remaining_columns]
+
+            combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
+
+        if taskID in ['Task2']:
+            rec_processor = Recording_Processor()
+            recording_coded = rec_processor.process(recording_data, [structure1, structure2])
+            combined_data = pd.merge(combined_data, recording_coded, on=['iSession', 'iTrial'])
+
+        return combined_data
+
+    def convert(self, suffix, structure):
+        # feature selection
+        if structure[0] == 1:
+            features = ["neck", "head", "leg", "tail"]
+        elif structure[0] == 2:
+            features = ["neck", "head", "tail", "leg"]
+        elif structure[0] == 3:
+            features = ["neck", "leg", "tail", "head"]
+        elif structure[0] == 4:
+            features = ["head", "leg", "tail", "neck"]
+        
+        # feature space segmentation
+        if structure[1] == 1:
+            features = features[:]
+        elif structure[1] == 2:
+            features = [features[0], features[2], features[1], features[3]]
+        elif structure[1] == 3:
+            features = [features[1], features[0], features[2], features[3]]
+        elif structure[1] == 4:
+            features = [features[1], features[2], features[0], features[3]]
+        elif structure[1] == 5:
+            features = [features[2], features[0], features[1], features[3]]
+        elif structure[1] == 6:
+            features = [features[2], features[1], features[0], features[3]]
+        
+        # Final rearrangement
+        features = [features[0], features[2], features[1], features[3]]
+        
+        # Add suffix to feature names
+        return [f + suffix for f in features]
+    
+
+class Recording_Processor:
     def __init__(self):
         """初始化处理器，定义各类关键词映射"""
         self.body_parts = {
-            '脖子': 'neck_value',
-            '头': 'head_value',
-            '腿': 'leg_value',
-            '尾巴': 'tail_value'
+            '脖子': 'neck_oral',
+            '头': 'head_oral',
+            '腿': 'leg_oral',
+            '尾巴': 'tail_oral'
         }
 
         self.direct_descriptions = {
@@ -40,6 +106,95 @@ class Processor:
         self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各'}
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
+
+    def process(self, recording_raw, structure):
+        # Initialize new columns
+        recording_raw['invalid'] = 0
+        recording_raw['noinfo'] = 0
+        recording_raw['neck_oral'] = None
+        recording_raw['head_oral'] = None
+        recording_raw['leg_oral'] = None
+        recording_raw['tail_oral'] = None
+        
+        # Apply the extraction function to each row
+        extracted_data = recording_raw['text'].apply(self.extract_values)
+        
+        # Populate the new columns based on the extracted data
+        recording_raw['invalid'] = extracted_data.apply(lambda x: x['invalid'])
+        recording_raw['noinfo'] = extracted_data.apply(lambda x: x['noinfo'])
+        recording_raw['neck_oral'] = extracted_data.apply(lambda x: x['neck_oral'])
+        recording_raw['head_oral'] = extracted_data.apply(lambda x: x['head_oral'])
+        recording_raw['leg_oral'] = extracted_data.apply(lambda x: x['leg_oral'])
+        recording_raw['tail_oral'] = extracted_data.apply(lambda x: x['tail_oral'])
+        
+        preprocessor_b = Preprocessor_B()
+        feature_names = preprocessor_b.convert("_oral", structure)
+        for i, feature in enumerate(feature_names):
+            new_name = f'feature{i+1}_oral'
+            recording_raw[new_name] = recording_raw[feature]
+        
+        return recording_raw
+    
+    def extract_values(self, text):
+        """主处理函数"""
+        result = {
+            'invalid': 0,
+            'noinfo': 0,
+            'neck_oral': None,
+            'head_oral': None,
+            'leg_oral': None,
+            'tail_oral': None
+        }
+
+        if pd.isna(text) or not str(text).strip():
+            result['invalid'] = 1
+            return result
+
+        # 分割并清理items
+        raw_items = re.split(r'[，,]', str(text))
+        items = [self._clean_item(i) for i in raw_items]
+
+        # 处理排除逻辑
+        i = 0
+        while i < len(items):
+            current_item = self._clean_item(items[i])
+            if not current_item:
+                i += 1
+                continue
+
+            i = self._handle_exclusion(current_item, items, i, result)
+            i += 1
+
+        # 处理最高级
+        if self._handle_superlative(items, result):
+            result['noinfo'] = 0
+            return result
+
+        # 处理其他逻辑
+        for item in items:
+            if not item:
+                continue
+            if self._handle_superlative(item, result):
+                continue
+            if self._handle_universal_quantifier(item, result):
+                continue
+            if self._handle_exclusive_case(item, result):
+                continue
+            self._handle_comparison(item, result)
+            if self._handle_remaining_cases(item, result):
+                break
+            self._handle_general_case(item, result)
+
+        # 最终校验
+        body_values = [result[col] for col in self.body_parts.values()]
+        result['noinfo'] = int(all(v is None for v in body_values))
+
+        if result['noinfo'] == 0:
+            for part in self.body_parts.values():
+                if result[part] is None:
+                    result[part] = 0.5
+
+        return result
 
     def _clean_item(self, item):
         """清理文本中的标点符号"""
@@ -152,7 +307,7 @@ class Processor:
             return False
 
         for col in result:
-            if col.endswith('_value'):
+            if col.endswith('_oral'):
                 result[col] = desc_value
         return True
 
@@ -217,88 +372,6 @@ class Processor:
             return False
 
         for col in result:
-            if col.endswith('_value') and result[col] is None:
+            if col.endswith('_oral') and result[col] is None:
                 result[col] = desc_value
         return True
-
-    def extract_values(self, text):
-        """主处理函数"""
-        result = {
-            'invalid': 0,
-            'noinfo': 0,
-            'neck_value': None,
-            'head_value': None,
-            'leg_value': None,
-            'tail_value': None
-        }
-
-        if pd.isna(text) or not str(text).strip():
-            result['invalid'] = 1
-            return result
-
-        # 分割并清理items
-        raw_items = re.split(r'[，,]', str(text))
-        items = [self._clean_item(i) for i in raw_items]
-
-        # 处理排除逻辑
-        i = 0
-        while i < len(items):
-            current_item = self._clean_item(items[i])
-            if not current_item:
-                i += 1
-                continue
-
-            i = self._handle_exclusion(current_item, items, i, result)
-            i += 1
-
-        # 处理最高级
-        if self._handle_superlative(items, result):
-            result['noinfo'] = 0
-            return result
-
-        # 处理其他逻辑
-        for item in items:
-            if not item:
-                continue
-            if self._handle_superlative(item, result):
-                continue
-            if self._handle_universal_quantifier(item, result):
-                continue
-            if self._handle_exclusive_case(item, result):
-                continue
-            self._handle_comparison(item, result)
-            if self._handle_remaining_cases(item, result):
-                break
-            self._handle_general_case(item, result)
-
-        # 最终校验
-        body_values = [result[col] for col in self.body_parts.values()]
-        result['noinfo'] = int(all(v is None for v in body_values))
-        return result
-
-    def process(self, recording_raw, structure):
-        # Initialize new columns
-        recording_raw['invalid'] = 0
-        recording_raw['noinfo'] = 0
-        recording_raw['neck_value'] = None
-        recording_raw['head_value'] = None
-        recording_raw['leg_value'] = None
-        recording_raw['tail_value'] = None
-        
-        # Apply the extraction function to each row
-        extracted_data = recording_raw['text'].apply(self.extract_values)
-        
-        # Populate the new columns based on the extracted data
-        recording_raw['invalid'] = extracted_data.apply(lambda x: x['invalid'])
-        recording_raw['noinfo'] = extracted_data.apply(lambda x: x['noinfo'])
-        recording_raw['neck_value'] = extracted_data.apply(lambda x: x['neck_value'])
-        recording_raw['head_value'] = extracted_data.apply(lambda x: x['head_value'])
-        recording_raw['leg_value'] = extracted_data.apply(lambda x: x['leg_value'])
-        recording_raw['tail_value'] = extracted_data.apply(lambda x: x['tail_value'])
-        
-        feature_names = preprocessor_b.convert("_value", structure)
-        for i, feature in enumerate(feature_names):
-            new_name = f'feature{i+1}'
-            recording_raw[new_name] = recording_raw[feature]
-        
-        return recording_raw
