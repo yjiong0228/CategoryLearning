@@ -32,12 +32,12 @@ def amnesia_mechanism(func):
 
             coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
             log_prob = np.log(prob)
-            log_prob *= coeff.reshape(-1)
+            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
             return np.exp(log_prob)
         if (amnesia := kwargs.get("amnesia", False)):
             coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
             log_prob = np.log(prob)
-            log_prob *= coeff.reshape(-1)
+            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
             return np.exp(log_prob)
         return prob
 
@@ -168,8 +168,9 @@ class BasePartition(ABC):
         n = choices.shape[0]
 
         if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = (self.cached_dist[hypo][:,:n] if indices is None
-                                 else self.cached_dist[hypo][:,indices])
+            typical_distances = (self.cached_dist[hypo][:, :n] if indices
+                                 is None else self.cached_dist[hypo][:,
+                                                                     indices])
         else:
             partition = self.prototypes_np[hypo]
             distances = euc_dist(partition, np.array(stimulus))

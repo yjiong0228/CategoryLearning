@@ -3,6 +3,7 @@ Bayesian Engine
 """
 from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
+from ..utils import softmax
 
 EPS = 1e-15
 
@@ -198,8 +199,7 @@ class BaseEngine:
 
         log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
             log_likelihood.shape) == 2 else log_likelihood)
-        posterior = np.exp(log_posterior)
-        posterior /= np.sum(posterior)
+        posterior = softmax(log_posterior, beta=1.)
         if update:
             self.h_state.update(posterior)
         return posterior
