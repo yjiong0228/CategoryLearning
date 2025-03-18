@@ -5,12 +5,12 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 
-def softmax(mat: np.ndarray, beta: float = 1, axis=None) -> np.ndarray:
+def softmax(mat: np.ndarray, beta: float = 1., axis=None) -> np.ndarray:
     """
     Softmax on d
     """
     d = len(mat.shape)
-    m = mat - (np.max(mat) + np.min(mat)) / 2
+    m = mat - np.max(mat)
     ret = np.exp(m * beta)
     match axis:
         case None:
