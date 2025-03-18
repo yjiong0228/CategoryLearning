@@ -237,7 +237,11 @@ class Recording_Processor:
     def _handle_superlative(self, item, result):
         """处理最高级逻辑"""
         if '最' not in item:
-            return False
+            # 处理句式是“比其他”或“比其余”的情况
+            if '比其他' in item or '比其余' in item:
+                item = item.replace('比其他', '最').replace('比其余', '最')
+            else:
+                return False
         
         superlative_match = re.search(r'最(长|短)', item)
         if not superlative_match:
@@ -312,7 +316,7 @@ class Recording_Processor:
         return True
 
     def _handle_exclusive_case(self, item, result):
-        """处理'只有'的特殊情况"""
+        """处理'只有'逻辑"""
         if '只有' not in item:
             return False
 
@@ -363,7 +367,10 @@ class Recording_Processor:
             result[self.body_parts[part]] = opposite_value
 
     def _handle_remaining_cases(self, item, result):
-        """处理其他剩余情况"""
+        """处理'其他'逻辑"""
+        if '比其他' in item or '比其余' in item:
+            return False
+        
         if not any(kw in item for kw in ['其他', '其余']):
             return False
 
