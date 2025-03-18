@@ -98,6 +98,66 @@ class ModelEval:
             plt.savefig(save_path)
         plt.show()
 
+
+    def plot_error_grids(self, results: Dict, save_path: str = None):
+        """
+        Plots error grids for each subject based on optimize_results.
+
+        Args:
+            results (Dict): Dictionary containing optimization results for each subject.
+            save_path (str): Path to save the plot. If None, the plot will be shown.
+        """
+        n_subjects = len(results)
+        n_rows = 3
+        n_cols = (n_subjects + n_rows - 1) // n_rows
+
+        fig = plt.figure(figsize=(8*n_cols, 5*n_rows))
+        fig.suptitle('Error Grids by Subject', fontsize=16, y=0.99)
+
+        sorted_subjects = sorted(results.keys())
+
+        for idx, iSub in enumerate(sorted_subjects):
+            subject_info = results[iSub]
+            optimize_results = subject_info['optimize_results']
+            grid_errors = optimize_results['grid_errors']
+            condition = subject_info['condition']
+
+            row = idx % n_rows
+            col = idx // n_rows
+            ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
+
+            # 提取 gamma 和 w0 的取值
+            gamma_values = sorted(set(key[0] for key in grid_errors.keys()))
+            w0_values = sorted(set(key[1] for key in grid_errors.keys()))
+
+            # 创建 error 矩阵
+            error_matrix = np.zeros((len(gamma_values), len(w0_values)))
+            for (gamma, w0), error in grid_errors.items():
+                gamma_idx = gamma_values.index(gamma)
+                w0_idx = w0_values.index(w0)
+                error_matrix[gamma_idx, w0_idx] = error
+
+            # 创建 grid plot
+            cax = ax.matshow(error_matrix, cmap='viridis_r')
+            fig.colorbar(cax, ax=ax)
+
+            ax.set_xticks(range(len(w0_values)))
+            ax.set_yticks(range(len(gamma_values)))
+            ax.set_xticklabels([f'{w0:.1f}' for w0 in w0_values], rotation=90)
+            ax.set_yticklabels([f'{gamma:.1f}' for gamma in gamma_values])
+
+            ax.set_title(f'Subject {iSub} (Condition {condition})')
+            ax.set_xlabel('w0')
+            ax.set_ylabel('Gamma')
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+        plt.close()
+
+
     def calculate_predictions(self, model, data, step_results):
         """Calculate predictions based on fitted model results"""
         predictions = []

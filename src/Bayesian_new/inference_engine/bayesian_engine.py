@@ -4,8 +4,7 @@ Bayesian Engine
 from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
 
-EPS = 0
-# 1e-323
+EPS = 1e-15
 
 
 class BaseSet:
