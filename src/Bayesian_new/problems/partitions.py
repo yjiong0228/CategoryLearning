@@ -167,10 +167,9 @@ class BasePartition(ABC):
         indices = kwargs.get("indices", None)
         n = choices.shape[0]
 
-        if use_cached_dist:
-            typical_distances = (self.cached_dist[hypo][:, :n] if indices
-                                 is None else self.cached_dist[hypo][:,
-                                                                     indices])
+        if use_cached_dist and (hypo in self.cached_dist):
+            typical_distances = (self.cached_dist[hypo][:,:n] if indices is None
+                                 else self.cached_dist[hypo][:,indices])
         else:
             partition = self.prototypes_np[hypo]
             distances = euc_dist(partition, np.array(stimulus))

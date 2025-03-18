@@ -1,11 +1,10 @@
 """
-对所有任务的行为数据进行预处理
+对Task1a, Task1b, Task3c的数据进行预处理
 """
 
 import pandas as pd
 import numpy as np
  
-## Preprocessor of task1a & task1b & task3c ##
 class Preprocessor_A:
     def process(self, taskID, feature_init, mouse_trajactory, features_range, canvas_settings, body_length):
         # 移动前的初始特征值
@@ -265,72 +264,3 @@ class Preprocessor_A:
         
         return pd.DataFrame(results)[columns]
 
-
-## Preprocessor of task2 ##
-class Preprocessor_B:
-    def process(self, taskID, stimulus_data, behavior_data):
-        if taskID in ['Task2', 'Task3a']:
-            joint_data = pd.merge(stimulus_data, behavior_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
-            joint_data = joint_data.drop('category_y', axis=1)
-
-            version = behavior_data['version'][0]
-            structure1 = behavior_data['structure1'][0]
-            structure2 = behavior_data['structure2'][0]
-
-            # Convert exact features into feature1-4
-            if version == 1:
-                feature_names = self.convert("_length", [structure1, structure2])
-            else:
-                feature_names = self.convert("_angle", [structure1, structure2])
-
-            rename_map = {
-                feature_names[i]: f'feature{i+1}' for i in range(4)
-            }
-
-            base_columns = ['version', 'condition', 'iSession', 'iBlock', 'iTrial',
-                            'neck_length', 'head_length', 'leg_length', 'tail_length',
-                            'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
-            remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
-   
-            combined_data = joint_data[base_columns].copy()
-
-            for i, feature in enumerate(feature_names):
-                new_name = f'feature{i+1}'
-                combined_data[new_name] = joint_data[feature]
-
-            combined_data[remaining_columns] = joint_data[remaining_columns]
-
-            combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
-
-        return combined_data
-
-    def convert(self, suffix, structure):
-        # feature selection
-        if structure[0] == 1:
-            features = ["neck", "head", "leg", "tail"]
-        elif structure[0] == 2:
-            features = ["neck", "head", "tail", "leg"]
-        elif structure[0] == 3:
-            features = ["neck", "leg", "tail", "head"]
-        elif structure[0] == 4:
-            features = ["head", "leg", "tail", "neck"]
-        
-        # feature space segmentation
-        if structure[1] == 1:
-            features = features[:]
-        elif structure[1] == 2:
-            features = [features[0], features[2], features[1], features[3]]
-        elif structure[1] == 3:
-            features = [features[1], features[0], features[2], features[3]]
-        elif structure[1] == 4:
-            features = [features[1], features[2], features[0], features[3]]
-        elif structure[1] == 5:
-            features = [features[2], features[0], features[1], features[3]]
-        elif structure[1] == 6:
-            features = [features[2], features[1], features[0], features[3]]
-        
-        # Final rearrangement
-        features = [features[0], features[2], features[1], features[3]]
-        
-        # Add suffix to feature names
-        return [f + suffix for f in features]
