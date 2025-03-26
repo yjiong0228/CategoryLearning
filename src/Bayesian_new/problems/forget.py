@@ -234,7 +234,7 @@ class AdaptiveAmnesiaModel(BaseModel):
 
     def _build_amnesia_func(self, gamma_list: List[float], w0_list: List[float], step: int):
         """
-        给定 (gamma_list, w0_list) 和当前 step (表示我们拟合 0..step-1 条数据),
+        给定 (gamma_list, w0_list) 和当前 step,
         返回一个 callable: trial_specific_amnesia
         其中:
            coeff[i] = w0_list[i] + (1 - w0_list[i]) * (gamma_list[i])^(step-1 - i)
@@ -261,8 +261,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             w0_list: List[float],
             **kwargs) -> Tuple[AdaptiveAmnesiaParams, float, Dict, Dict]:
         """
-        在给定 gamma_list, w0_list(长度=step), 
-        拟合 (0..step-1) 条数据 => single MLE(针对所有 hypo，优化beta).
+        在给定 gamma_list, w0_list(长度=step)下拟合数据
 
         Returns:
           best_params, best_ll, all_hypo_params, all_hypo_ll
@@ -327,7 +326,7 @@ class AdaptiveAmnesiaModel(BaseModel):
 
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
                 trial_data, alpha_gamma, alpha_w0, gamma_list[:step], w0_list[:step], step=step,
-                use_cached_dist=True, **kwargs
+                use_cached_dist=False, **kwargs
             )
 
             hypo_betas = [
@@ -355,10 +354,13 @@ class AdaptiveAmnesiaModel(BaseModel):
 
             # 更新 gamma_list[i], w0_list[i]
             delta_post_i = np.sum(np.abs(all_hypo_post - prev_posterior))
-            new_gi = max(0., min(1., gamma_list[step-1] + alpha_gamma * delta_post_i))
-            new_wi = max(0., min(1., w0_list[step-1] + alpha_w0 * delta_post_i))
+            new_gi = max(0., min(1., self.base_gamma + alpha_gamma * delta_post_i))
+            new_wi = max(0., min(1., self.base_w0 + alpha_w0 * delta_post_i))
             gamma_list[step-1] = new_gi
             w0_list[step-1] = new_wi
+
+            # 更新 prev_posterior 为当前 step 的 posterior
+            prev_posterior = all_hypo_post.copy()
 
             step_results.append({
                 'best_k': best_params.k,
