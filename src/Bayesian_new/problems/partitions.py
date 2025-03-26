@@ -28,17 +28,35 @@ def amnesia_mechanism(func):
         nonlocal func
         prob = func(self, hypo, data, beta, use_cached_dist, **kwargs)
 
+        # 1) 如果 kwargs 里有"gamma" (以及"w0") => 用 two_factor_decay
         if "gamma" in kwargs:
-
             coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
             log_prob = np.log(prob)
             log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
             return np.exp(log_prob)
+        # 2) 如果 kwargs 中有 'amnesia' => 调用用户自定义函数
         if (amnesia := kwargs.get("amnesia", False)):
             coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
             log_prob = np.log(prob)
             log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
             return np.exp(log_prob)
+        # 3) 如果 kwargs 中有 'adaptive_amnesia' => 实现“试次个性化”逻辑
+        if "adaptive_amnesia" in kwargs:
+            adapt_info = kwargs["adaptive_amnesia"]
+
+            # 如果 adapt_info 是可调用:
+            if callable(adapt_info):
+                # adapt_info(data) => shape=[nTrial]
+                coeff = adapt_info(data, **kwargs.get("amnesia_kwargs", {}))
+            elif isinstance(adapt_info, np.ndarray):
+                coeff = adapt_info
+            else:
+                raise ValueError("adaptive_amnesia must be callable or an array")
+
+            log_prob = np.log(prob)
+            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
+            return np.exp(log_prob)
+
         return prob
 
     return wrapped
@@ -102,6 +120,20 @@ class BasePartition(ABC):
         raise NotImplementedError(
             "get_prototypes: Method case not implemented.")
 
+    def precompute_all_distances(self, stimuli: np.ndarray):
+        """
+        提前把所有 trial 的距离缓存到 self.cached_dist[hypo] 中，
+        这样后面做正序或倒序都不再重复算距离。
+
+        stimuli: shape = [nTrial, nDims]
+        """
+        nTrial = stimuli.shape[0]
+        for hypo in range(self.length):
+            partition = self.prototypes_np[hypo] # shape=[n_cats, n_dims]
+            distances = euc_dist(partition, stimuli) # shape=[n_cats, nTrial]
+            typical_distances = np.min(distances, axis=0) # shape=[nTrial]
+            self.cached_dist[hypo] = typical_distances
+
     def calc_likelihood(self,
                         hypos: List[int] | Tuple[int],
                         data: list | tuple,
@@ -139,7 +171,7 @@ class BasePartition(ABC):
                              use_cached_dist: bool = False,
                              **kwargs) -> np.ndarray:
         """
-        Calculate single likelihood entry
+        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[nTrial])。
 
         Parameters
         ----------
@@ -151,37 +183,22 @@ class BasePartition(ABC):
         USE minimal distances between `data.stimulus` and `prototypes`
         (if there are more than one prototypes else just barycenter)
 
-
-        kwargs: dict
-        "gamma" and "w0" activates a two-factor-decay on memory
-        "amnesia":callable(data, **kwargs) and "amnesia_kwargs":dict
-            enables a more flexible way to implement the decay-forgetting
-            mechanism.
-
         "indices": None | list | np.ndarray.
                    retrieving distances cache on indices
         """
         (stimulus, choices) = data[:2]
-        # p(r==1 | (k, beta), (x,c) )
         choices = np.array(choices).copy()
-        indices = kwargs.get("indices", None)
         n = choices.shape[0]
 
         if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = (self.cached_dist[hypo][:, :n] if indices
-                                 is None else self.cached_dist[hypo][:,
-                                                                     indices])
+            typical_distances = self.cached_dist[hypo][:n]
         else:
             partition = self.prototypes_np[hypo]
             distances = euc_dist(partition, np.array(stimulus))
-
             typical_distances = np.min(distances, axis=0)
             self.cached_dist[hypo] = typical_distances
-            # print(use_cached_dist, distances.shape
 
-        # print(typical_distances.shape)
-
-        prob = softmax(typical_distances, -beta, axis=0)
+        prob = softmax(typical_distances, -beta, axis=0) # shape=[nTrial]
 
         return prob
 
@@ -193,18 +210,13 @@ class BasePartition(ABC):
                               use_cached_dist: bool = False,
                               **kwargs) -> np.ndarray:
         """
-        Calculate single likelihood entry
+        核心函数, 被 amnesia_mechanism 包装，
+        内部先用 calc_likelihood_base 得到 prob (shape=[nTrial]),
+        然后在 wrapper 中根据kwargs进行遗忘衰减/试次个性化处理.
 
         Parameters
         ----------
         data: stimulus, choices, responses
-
-        read partition (hypo) first, then calculate class probabilities
-        over each classes.
-
-        USE minimal distances between `data.stimulus` and `prototypes`
-        (if there are more than one prototypes else just barycenter)
-
 
         kwargs: dict
         "gamma" and "w0" activates a two-factor-decay on memory
@@ -217,9 +229,6 @@ class BasePartition(ABC):
 
         choices, responses = data[1].copy(), data[2]
         choices -= 1
-        # print("PROB", prob.shape)
-        # print("STIMULUS", stimulus.shape, partition.shape)
-        # raise
 
         return np.where(responses == 1, prob[choices,
                                              np.arange(len(choices))],
@@ -233,17 +242,7 @@ class BasePartition(ABC):
                             use_cached_dist: bool = False,
                             **kwargs) -> np.ndarray:
         """
-        Calculate probability of choosing true category entry
-
-        Parameters
-        ----------
-        data: stimuli, choice, response, category
-
-        read partition (hypo) first, then calculate class probabilities
-        over each classes.
-
-        USE minimal distances between `data.stimulus` and `prototypes`
-        (if there are more than one prototypes else just barycenter)
+        计算true category被选中的概率, 同样交由amnesia_mechanism 装饰器来做加权处理。
         """
 
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
