@@ -113,6 +113,7 @@ class ForgetModel(BaseModel):
     def error_function(self,
                        data_with_cat: tuple,
                        step_results: list,
+                       use_cached_dist,
                        window_size=16) -> float:
         """
         计算滑动窗口预测误差
@@ -137,7 +138,7 @@ class ForgetModel(BaseModel):
             weighted_p_true = 0
             for k, post in zip(hypo_details.keys(), post_max):
                 p_true = self.partition_model.calc_trueprob_entry(
-                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=False, indices=[i])
+                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i])
                 weighted_p_true += post * p_true
             predicted_acc.append(weighted_p_true)
 
@@ -181,7 +182,7 @@ class ForgetModel(BaseModel):
             # 逐试次拟合
             step_results = self.fit_trial_by_trial(s_data, gamma, w0)
             # 计算误差
-            error_info = self.error_function(data_with_cat, step_results)
+            error_info = self.error_function(data_with_cat, step_results, use_cached_dist=True)
             error = np.mean(error_info['errors'])
             # 记录结果
             key = (round(gamma, 2), round(w0, 4))
@@ -337,7 +338,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             amnesia_func = self._build_amnesia_func(gamma_list[:step], w0_list[:step], step=step)
             all_hypo_post = self.engine.infer_log(
                 trial_data,
-                update=False,
+                use_cached_dist=False,
                 beta=hypo_betas,
                 adaptive_amnesia=amnesia_func,
                 normalized=True
@@ -378,6 +379,7 @@ class AdaptiveAmnesiaModel(BaseModel):
     def error_function(self,
                        data_with_cat: tuple,
                        step_results: list,
+                       use_cached_dist, 
                        window_size=16) -> float:
         """
         计算滑动窗口预测误差
@@ -404,7 +406,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             weighted_p_true = 0
             for k, post in zip(hypo_details.keys(), post_max):
                 p_true = self.partition_model.calc_trueprob_entry(
-                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=False, indices=[i],
+                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i],
                     adaptive_amnesia=amnesia_func)
                 weighted_p_true += post * p_true
             predicted_acc.append(weighted_p_true)
@@ -449,7 +451,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             # 逐试次拟合
             step_results = self.fit_trial_by_trial(s_data, alpha_gamma, alpha_w0)
             # 计算误差
-            error_info = self.error_function(data_with_cat, step_results)
+            error_info = self.error_function(data_with_cat, step_results, use_cached_dist=True)
             error = np.mean(error_info['errors'])
             # 记录结果
             key = (round(alpha_gamma, 2), round(alpha_w0, 2))

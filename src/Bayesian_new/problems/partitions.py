@@ -46,7 +46,7 @@ def amnesia_mechanism(func):
 
             # 如果 adapt_info 是可调用:
             if callable(adapt_info):
-                # adapt_info(data) => shape=[nTrial]
+                # adapt_info(data) => shape=[n_trials]
                 coeff = adapt_info(data, **kwargs.get("amnesia_kwargs", {}))
             elif isinstance(adapt_info, np.ndarray):
                 coeff = adapt_info
@@ -125,13 +125,13 @@ class BasePartition(ABC):
         提前把所有 trial 的距离缓存到 self.cached_dist[hypo] 中，
         这样后面做正序或倒序都不再重复算距离。
 
-        stimuli: shape = [nTrial, nDims]
+        stimuli: shape = [n_trials, nDims]
         """
-        nTrial = stimuli.shape[0]
+        n_trials = stimuli.shape[0]
         for hypo in range(self.length):
-            partition = self.prototypes_np[hypo] # shape=[n_cats, n_dims]
-            distances = euc_dist(partition, stimuli) # shape=[n_cats, nTrial]
-            typical_distances = np.min(distances, axis=0) # shape=[nTrial]
+            partition = self.prototypes_np[hypo]  # shape = [n_protos, n_cats, n_dims]
+            distances = euc_dist(partition, stimuli)  # shape = [n_protos, n_cats, n_trials]
+            typical_distances = np.min(distances, axis=0)  # shape = [n_cats, n_trials]
             self.cached_dist[hypo] = typical_distances
 
     def calc_likelihood(self,
@@ -171,7 +171,7 @@ class BasePartition(ABC):
                              use_cached_dist: bool = False,
                              **kwargs) -> np.ndarray:
         """
-        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[nTrial])。
+        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[n_trials])。
 
         Parameters
         ----------
@@ -186,19 +186,20 @@ class BasePartition(ABC):
         "indices": None | list | np.ndarray.
                    retrieving distances cache on indices
         """
-        (stimulus, choices) = data[:2]
-        choices = np.array(choices).copy()
-        n = choices.shape[0]
+        stimulus, _ = data[:2]  # shape = [n_trials, n_dims]
+        n_trials = len(stimulus)
+        indices = kwargs.get("indices", None)
 
         if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = self.cached_dist[hypo][:n]
+            typical_distances = (self.cached_dist[hypo][:n_trials] if indices is None
+                                else self.cached_dist[hypo][:,indices])
         else:
-            partition = self.prototypes_np[hypo]
-            distances = euc_dist(partition, np.array(stimulus))
-            typical_distances = np.min(distances, axis=0)
+            partition = self.prototypes_np[hypo]  # shape = [n_protos, n_cats, n_dims]
+            distances = euc_dist(partition, np.array(stimulus))  # shape = [n_protos, n_cats, n_trials]
+            typical_distances = np.min(distances, axis=0)  # shape = [n_cats, n_trials]
             self.cached_dist[hypo] = typical_distances
 
-        prob = softmax(typical_distances, -beta, axis=0) # shape=[nTrial]
+        prob = softmax(typical_distances, -beta, axis=0)  # shape = [n_cats, n_trials]
 
         return prob
 
@@ -211,7 +212,7 @@ class BasePartition(ABC):
                               **kwargs) -> np.ndarray:
         """
         核心函数, 被 amnesia_mechanism 包装，
-        内部先用 calc_likelihood_base 得到 prob (shape=[nTrial]),
+        内部先用 calc_likelihood_base 得到 prob (shape=[n_trials]),
         然后在 wrapper 中根据kwargs进行遗忘衰减/试次个性化处理.
 
         Parameters
@@ -261,9 +262,9 @@ class BasePartition(ABC):
 
         k, beta = params
         x = data[['feature1', 'feature2', 'feature3',
-                  'feature4']].values  # Shape: [nTrials, 4]
-        c = data['choice'].values  # Shape: [nTrials]
-        r = data['feedback'].values  # Shape: [nTrials]
+                  'feature4']].values  # Shape: [n_trialss, 4]
+        c = data['choice'].values  # Shape: [n_trialss]
+        r = data['feedback'].values  # Shape: [n_trialss]
         return self.calc_likelihood_entry(k, (x, c, r), beta)
 
 
