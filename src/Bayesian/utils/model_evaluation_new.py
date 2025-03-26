@@ -143,7 +143,7 @@ class ModelEval:
 
             ax.set_xticks(range(len(w0_values)))
             ax.set_yticks(range(len(gamma_values)))
-            ax.set_xticklabels([f'{w0:.1f}' for w0 in w0_values], rotation=90)
+            ax.set_xticklabels([f'{w0:.2f}' for w0 in w0_values], rotation=90)
             ax.set_yticklabels([f'{gamma:.1f}' for gamma in gamma_values])
 
             ax.set_title(f'Subject {iSub} (Condition {condition})')
@@ -156,6 +156,51 @@ class ModelEval:
         else:
             plt.show()
         plt.close()
+
+
+
+    def plot_accuracy_comparison(self, results: Dict, save_path: str = None):
+        """
+        Plots predicted and true accuracy for each subject.
+
+        Args:
+            results (Dict): Dictionary containing accuracy results for each subject.
+            save_path (str): Path to save the plot. If None, the plot will be shown.
+        """
+        n_subjects = len(results)
+        n_rows = 3
+        n_cols = (n_subjects + n_rows - 1) // n_rows
+
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(8*n_cols, 5*n_rows))
+        fig.suptitle('Predicted vs True Accuracy by Subject', fontsize=16, y=0.99)
+
+        sorted_subjects = sorted(results.keys())
+
+        for idx, iSub in enumerate(sorted_subjects):
+            row = idx % n_rows
+            col = idx // n_rows
+            ax = axes[row, col]
+            
+            pred_acc_avg = results[iSub]['pred_acc_avg']
+            true_acc_avg = results[iSub]['true_acc_avg']
+            condition = results[iSub].get('condition', 'Unknown')
+
+            ax.plot(pred_acc_avg, label='Predicted Accuracy')
+            ax.plot(true_acc_avg, label='True Accuracy')
+            ax.set_ylim(0, 1)
+            ax.set_title(f'Subject {iSub} (Condition {condition})')
+            ax.set_xlabel('Trial')
+            ax.set_ylabel('Accuracy')
+            ax.legend()
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+        plt.close()
+
+
 
 
     def calculate_predictions(self, model, data, step_results):
