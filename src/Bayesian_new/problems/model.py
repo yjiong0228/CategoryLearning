@@ -1,5 +1,5 @@
 """
-Model
+Base Model
 """
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
@@ -11,39 +11,62 @@ from .partitions import Partition, BasePartition
 
 
 @dataclass(unsafe_hash=True)
-class ModelParams:
+class BaseModelParams:
     """
-    Legacy
-    """
+    A data class that holds the base model parameters.
 
-    k: int  # index of partition method
-    beta: float  # softness of partition
+    Attributes
+    ----------
+    k : int
+        The index of the partition method.
+    beta : float
+        The softness of the partition.
+    """
+    k: int
+    beta: float
 
 
 @dataclass
 class ObservationType:
     """
-    observation format
+    A data class describing the format of an observation.
+
+    Attributes
+    ----------
+    stimulus : tuple
+        Stimulus data (e.g., visual inputs).
+    choices : tuple
+        Choices made in response to the stimulus.
+    responses : tuple
+        Response correctness or other feedback metrics.
+    categories : tuple
+        The true category of the stimulus.
     """
     stimulus: tuple
     choices: tuple
     responses: tuple
+    categories: tuple
 
 
 class PartitionLikelihood(BaseLikelihood):
     """
-    Likelihood in only partitions.
+    Likelihood for partitions only.
     """
 
     def __init__(self, space: BaseSet, partition: BasePartition):
-        """Initialize
+        """
+        Initialize PartitionLikelihood.
 
-        space: the set of k's, must be included in the partition.
+        Parameters
+        ----------
+        space : BaseSet
+            The set of hypotheses indices (k's).
+        partition : BasePartition
+            The partitioning object that calculates likelihoods.
         """
         super().__init__(space)
         self.partition = partition
-        # This may raise an exception if h_set is not a subset of
-        # partition labels.
+        # This may raise an exception if h_set is not a subset of partition labels.
         self.h_indices = list(self.h_set)
 
     def get_likelihood(self,
@@ -51,27 +74,54 @@ class PartitionLikelihood(BaseLikelihood):
                        beta: list | tuple | float = 1.,
                        use_cached_dist: bool = False,
                        normalized: bool = True,
-                       **kwargs):
+                       **kwargs) -> np.ndarray:
         """
-        Get Likelihood, Base
-        """
+        Compute the likelihood of an observation given the current partition.
 
-        ret = self.partition.calc_likelihood(self.h_indices, observation, beta,
-                                             use_cached_dist, normalized,
-                                             **kwargs)
-        return ret
+        Parameters
+        ----------
+        observation : any
+            Observation data.
+        beta : float or list/tuple
+            Softness parameter.
+        use_cached_dist : bool
+            Whether to use cached distances for speed-up.
+        normalized : bool
+            Whether to normalize the result.
+
+        Returns
+        -------
+        np.ndarray
+            An array of likelihood values.
+        """
+        likelihood_values = self.partition.calc_likelihood(
+            self.h_indices,
+            observation,
+            beta,
+            use_cached_dist,
+            normalized,
+            **kwargs
+        )
+        return likelihood_values
 
 
 class SoftPartitionLikelihood(PartitionLikelihood):
     """
-    Likelihood with (partition, beta) as hypotheses.
+    Likelihood using (partition, beta) as hypotheses.
     """
 
-    def __init__(self, space: BaseSet, partition: BasePartition,
-                 beta_grid: list):
-        """Initialize
+    def __init__(self, space: BaseSet, partition: BasePartition, beta_grid: list):
+        """
+        Initialize SoftPartitionLikelihood.
 
-        space: the set of k's, must be included in the partition.
+        Parameters
+        ----------
+        space : BaseSet
+            The set of hypotheses indices (k's).
+        partition : BasePartition
+            The partitioning object that calculates likelihoods.
+        beta_grid : list
+            A list of beta values to be considered.
         """
         super().__init__(space, partition)
         self.beta_grid = beta_grid
@@ -83,35 +133,65 @@ class SoftPartitionLikelihood(PartitionLikelihood):
                        normalized: bool = True,
                        **kwargs) -> np.ndarray:
         """
-        Get Likelihood, Base
-        """
+        Compute the likelihood of an observation over a grid of beta values.
 
-        ret = []
-        for beta_ in self.beta_grid:
-            ret += [
-                self.partition.calc_likelihood(self.h_indices, observation,
-                                               beta_, use_cached_dist,
-                                               normalized, **kwargs)
-            ]
-        return np.concatenate(ret, axis=1)
+        Parameters
+        ----------
+        observation : any
+            Observation data.
+        beta : float or list/tuple
+            Softness parameter (not used directly, since we use beta_grid).
+        use_cached_dist : bool
+            Whether to use cached distances for speed-up.
+        normalized : bool
+            Whether to normalize the result.
+
+        Returns
+        -------
+        np.ndarray
+            A concatenated array of likelihood values for each beta in beta_grid.
+        """
+        likelihood_collection = []
+        for beta_value in self.beta_grid:
+            likelihood_val = self.partition.calc_likelihood(
+                self.h_indices,
+                observation,
+                beta_value,
+                use_cached_dist,
+                normalized,
+                **kwargs
+            )
+            likelihood_collection.append(likelihood_val)
+        return np.concatenate(likelihood_collection, axis=1)
 
 
 class BaseModel:
     """
-    Base Model
+    Base Model class that initializes a default partition model,
+    hypotheses set, and inference engine.
     """
 
     def __init__(self, config: Dict, **kwargs):
+        """
+        Initialize BaseModel with a given configuration.
+
+        Parameters
+        ----------
+        config : Dict
+            A dictionary containing initial settings (e.g., parameter bounds).
+        **kwargs : dict
+            Additional keyword arguments.
+        """
         self.config = config
         self.all_centers = None
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
         condition = kwargs.get("condition", 1)
-        ndims = 4
-        ncats = 2 if condition == 1 else 4
+        n_dims = 4
+        n_cats = 2 if condition == 1 else 4
 
-        self.partition_model = kwargs.get("partition", Partition(ndims, ncats))
+        self.partition_model = kwargs.get("partition", Partition(n_dims, n_cats))
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
 
@@ -120,45 +200,82 @@ class BaseModel:
             BasePrior(self.hypotheses_set),
             PartitionLikelihood(self.hypotheses_set, self.partition_model))
 
-    def set_hypotheses(self, h_set: Dict | Tuple | List):
+    def set_hypotheses(self, hypothesis_collection: Dict | Tuple | List):
         """
-        Set hypotheses set
-        """
-        self.hypotheses_set = BaseSet(h_set)
+        Set the hypotheses set manually.
 
-    def refresh_engine(self, h_set, prior, likelihood):
-        """
-        Refresh engine with new set
-        """
-
-        self.hypotheses_set = h_set
-        self.engine = BaseEngine(h_set, self.observation_set, prior,
-                                 likelihood)
-
-    def fit(self, data, **kwargs) -> Tuple[ModelParams, float, Dict, Dict]:
-        """
         Parameters
         ----------
-        data :
+        hypothesis_collection : Dict or Tuple or List
+            A collection of hypotheses indices.
+        """
+        self.hypotheses_set = BaseSet(hypothesis_collection)
 
+    def refresh_engine(self, new_hypotheses_set, new_prior, new_likelihood):
+        """
+        Re-initialize the engine with a new set of hypotheses, prior, and likelihood.
+
+        Parameters
+        ----------
+        new_hypotheses_set : BaseSet
+            New set of hypotheses.
+        new_prior : BasePrior
+            New prior object.
+        new_likelihood : BaseLikelihood
+            New likelihood object.
+        """
+        self.hypotheses_set = new_hypotheses_set
+        self.engine = BaseEngine(
+            new_hypotheses_set,
+            self.observation_set,
+            new_prior,
+            new_likelihood
+        )
+
+    def fit(self, data, **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
+        """
+        Fit the model to data. NotImplementedError by default.
+
+        Parameters
+        ----------
+        data : any
+            Training data.
 
         Returns
         -------
-        out :
-
+        (BaseModelParams, float, Dict, Dict)
+            Stub return to be overridden in subclasses.
         """
         raise NotImplementedError
-        # return (data, 0., 0., {})
 
 
 class SingleRationalModel(BaseModel):
     """
-    Pure Rational
+    A model that fits each hypothesis with a rational approach
+    and returns the best-fitting one.
     """
 
-    def fit(self, data, **kwargs) -> Tuple[ModelParams, float, Dict, Dict]:
+    def fit_single_step(self, data, **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
         """
-        Fit
+        Fit the rational model by optimizing beta for each hypothesis.
+
+        Parameters
+        ----------
+        data : any
+            Observational data.
+        **kwargs : dict
+            Additional keyword arguments.
+
+        Returns
+        -------
+        best_params : BaseModelParams
+            Parameters (hypothesis, beta) that achieve the highest likelihood.
+        best_ll : float
+            The maximum log-likelihood value.
+        all_hypo_params : Dict
+            Mapping from hypothesis to BaseModelParams.
+        all_hypo_ll : Dict
+            Mapping from hypothesis to its best log-likelihood.
         """
         all_hypo_params = {}
         all_hypo_ll = {}
@@ -174,70 +291,80 @@ class SingleRationalModel(BaseModel):
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
 
-            all_hypo_params[hypo] = ModelParams(hypo, beta_opt)
+            all_hypo_params[hypo] = BaseModelParams(hypo, beta_opt)
             all_hypo_ll[hypo] = ll_max
 
-        best_hypo = max(all_hypo_ll, key=all_hypo_ll.get)
-        return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
-                all_hypo_params, all_hypo_ll)
+        best_hypo_idx = max(all_hypo_ll, key=all_hypo_ll.get)
 
-    def fit_trial_by_trial(self, 
-                           data: Tuple[np.ndarray, np.ndarray,np.ndarray],
-                           limited_hypos_list: List[List[int]] = None, 
-                           **kwargs):
+        return (all_hypo_params[best_hypo_idx], 
+                all_hypo_ll[best_hypo_idx],
+                all_hypo_params, 
+                all_hypo_ll)
+
+    def fit_step_by_step(self, 
+                         data: Tuple[np.ndarray, np.ndarray,np.ndarray],
+                         limited_hypos_list: List[List[int]] = None, 
+                         **kwargs) -> List[Dict]:
         """
-        Fit the model trial-by-trial to observe parameter evolution.
+        Fit the model trial-by-trial to observe how parameters evolve.
 
-        Args:
-            data (DataFrame): Data containing features, choices, and feedback.
-            limited_hypos_list: 如果不为 None，则是一个长度为 n_trial 的列表，
-                                每个元素都是一个假设子集（List[int]），
-                                用于限制当前 trial 的候选假设。
-                                若为 None，则使用原有的 '全集' self.hypotheses_set。
+        Parameters
+        ----------
+        data : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            A tuple containing (stimuli, choices, responses).
+        limited_hypos_list : List[List[int]], optional
+            If not None, it is a list of length n_trials. Each element is a
+            subset of hypotheses to be considered at each trial. If None, the
+            original full set (self.hypotheses_set) is used.
+        **kwargs : dict
+            Additional keyword arguments.
 
-        Returns:
-            List[Dict]: List of results for each trial step.
+        Returns
+        -------
+        List[Dict]
+            A list of dictionaries containing the fitting results for each
+            trial, such as the best hypothesis, beta, log-likelihood, and posterior.
         """
         step_results = []
-        n_trial = len(data[2])
+        n_trials = len(data[2])
 
-        # 备份一下原假设集
+        # Backup the original hypotheses set
         original_hypotheses_set = self.hypotheses_set
         original_prior = self.engine.prior
         original_likelihood = self.engine.likelihood
 
-        for step in tqdm(range(n_trial, 0, -1)):
+        for step_idx in tqdm(range(n_trials, 0, -1)):
+            selected_data = [x[:step_idx] for x in data]
 
-            trial_data = [x[:step] for x in data]
-
-            # 若给定了 limited_hypos_list，就用子集，否则用原有全集
             if limited_hypos_list is not None:
-                current_hypos = limited_hypos_list[step - 1]
-                h_set = BaseSet(current_hypos)
+                # Use a limited subset of hypotheses for this trial
+                current_hypos = limited_hypos_list[step_idx - 1]
+                new_hypotheses_set = BaseSet(current_hypos)
 
-                # 重新构造 prior & likelihood
-                new_prior = BasePrior(h_set)
-                new_likelihood = PartitionLikelihood(h_set, self.partition_model)
+                new_prior = BasePrior(new_hypotheses_set)
+                new_likelihood = PartitionLikelihood(new_hypotheses_set, self.partition_model)
 
-                # 刷新引擎
-                self.refresh_engine(h_set, new_prior, new_likelihood)
+                # Refresh the engine
+                self.refresh_engine(new_hypotheses_set, new_prior, new_likelihood)
             else:
-                # 不动；直接使用 self.hypotheses_set
+                # If limited_hypos_list is None, keep using self.hypotheses_set as is
                 pass
 
-            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit(
-                trial_data, use_cached_dist=(step != n_trial), **kwargs)
+            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
+                selected_data, 
+                use_cached_dist=(step_idx != n_trials), 
+                **kwargs)
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
                 for hypo in self.hypotheses_set.elements
             ]
 
-            all_hypo_post = self.engine.infer_log(trial_data,
-                                                  use_cached_dist=(step
-                                                                   != n_trial),
-                                                  beta=hypo_betas,
-                                                  normalized=True)
+            all_hypo_post = self.engine.infer_log(
+                selected_data,
+                use_cached_dist=(step_idx != n_trials),
+                beta=hypo_betas,
+                normalized=True)
 
             hypo_details = {}
             for i, hypo in enumerate(self.hypotheses_set.elements):
@@ -257,7 +384,7 @@ class SingleRationalModel(BaseModel):
                 'hypo_details': hypo_details
             })
 
-        # 恢复原假设集
+        # Restore the original hypotheses set if limited_hypos_list was used
         if limited_hypos_list is not None:
             self.refresh_engine(
                 original_hypotheses_set,
@@ -267,79 +394,130 @@ class SingleRationalModel(BaseModel):
 
         return step_results[::-1]
 
-    def oral_generate_hypos(
-        self,
-        data: Tuple[np.ndarray, np.ndarray],
-        top_k: int = 10,
-        dist_tol: float = 1e-9
-    ) -> List[List[int]]:
+    def oral_generate_hypos(self,
+                            data: Tuple[np.ndarray, np.ndarray],
+                            top_k: int = 10,
+                            dist_tol: float = 1e-9) -> List[List[int]]:
         """
-        基于被试每个试次的口头汇报坐标 (oral_center) 与选择的类别 (choice)，
-        为每个试次生成一个可能的假设子集（limited_hypos）。
+        Generate a limited hypothesis set for each trial based on the
+        participant's verbally reported center and the chosen category.
 
-        Args:
-            data:
-                - data[0]: oral_centers, shape = (n_trial, n_dims)
-                  每个试次被试“口头汇报”的类别中心坐标
-                - data[1]: choices, shape = (n_trial,)
-                  每个试次被试选择的类别(1-index)
-            top_k: 如果没有任何假设“完全符合” (距离=0) 时，
-                   就选取最小距离的前 top_k 个假设索引。
-            dist_tol: 判断距离是否等于 0 的容忍度（浮点运算误差范围）。
+        Parameters
+        ----------
+        data : Tuple[np.ndarray, np.ndarray]
+            data[0] : (n_trials, n_dims) containing the verbally reported category center per trial.
+            data[1] : (n_trials,) containing the chosen category index (1-indexed).
+        top_k : int
+            The number of closest hypotheses to choose if no exact match is found.
+        dist_tol : float
+            Tolerance within which distances are considered zero (floating-point errors).
 
-        Returns:
-            limited_hypos_list: List[List[int]]，长度 = n_trial，
-                                每个元素是该试次对应的一批假设索引。
+        Returns
+        -------
+        List[List[int]]
+            A list of length n_trials, where each element is a list of hypothesis indices.
         """
 
         oral_centers, choices = data
-        n_trial = len(choices)
-        n_dims = oral_centers.shape[1]  # 假设 oral_centers.shape = (n_trial, n_dims)
+        n_trials = len(choices)
 
-        # 假设全集指的是 partition 中所有可能的 hypothesis 索引
-        # self.partition_model.prototypes_np.shape = [num_hypos, n_cats, n_dims]
-        # 也可以用 self.hypotheses_set.elements，但大多数情况下
-        # 这俩应该保持一致（整型序号从 0 到 num_hypos-1）。
-        num_hypos = self.partition_model.prototypes_np.shape[0]
-        all_hypos = range(num_hypos)
+        n_hypos = self.partition_model.prototypes_np.shape[0]
+        all_hypos = range(n_hypos)
 
         limited_hypos_list = []
 
-        for i in range(n_trial):
-            # 当前试次选择了哪一类？(1-index) => (0-index)
-            cat_idx = choices[i] - 1
+        for trial_idx in range(n_trials):
+            cat_idx = choices[trial_idx] - 1
+            reported_center = oral_centers[trial_idx]
 
-            # 被试口头汇报的中心
-            oral_center_i = oral_centers[i]  # shape=(n_dims,)
+            distance_map = []
+            for hypo_idx in all_hypos:
+                # Compare with the (cat_idx)-th category prototype of hypothesis h
+                true_center = self.partition_model.prototypes_np[hypo_idx, 0, cat_idx, :]
+                distance_val = np.linalg.norm(reported_center - true_center)
+                distance_map.append((distance_val, hypo_idx))
 
-            # 计算该 oral_center_i 与每个假设 (h) 的对应类别 cat_idx 的“真中心”距离
-            # partition_model.prototypes_np[h, cat_idx, :] 就是 hypo=h 对应的某一类别中心
-            dist_list = []
-            for h in all_hypos:
-                true_center = self.partition_model.prototypes_np[h, 0, cat_idx, :]
-                dist = np.linalg.norm(oral_center_i - true_center)
-                dist_list.append((dist, h))
-
-            # 1) 判断有没有 dist=0 (在 float 范围内接近 0)
-            #    如果有，则只取这些“完全符合”的假设
-            #    如果没有，则取最小距离的前 top_k 个。
-            exact_matches = [h for (dist, h) in dist_list if dist <= dist_tol]
+            # Check for exact matches within tolerance
+            exact_matches = [hypo_idx for (dist, hypo_idx) in distance_map if dist <= dist_tol]
 
             if len(exact_matches) > 0:
-                # 直接拿到全部“距离为0”的假设即可
                 chosen_hypos = exact_matches
             else:
-                # 没有完全匹配，则按距离排序，取前 top_k
-                dist_list.sort(key=lambda x: x[0])  # 升序
-                chosen_hypos = [h for (_, h) in dist_list[:top_k]]
+                distance_map.sort(key=lambda x: x[0])
+                chosen_hypos = [hypo_idx for (_, hypo_idx) in distance_map[:top_k]]
 
             limited_hypos_list.append(chosen_hypos)
 
         return limited_hypos_list
 
+    def predict_choice(self,
+                       data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                       step_results: list,
+                       use_cached_dist, 
+                       window_size) -> Dict[str, np.ndarray]:
+        """
+        Predict choice trial by trial using fitted parameters and hypotheses.
 
-    def predict_choice(self, params: ModelParams, x: np.ndarray,
-                       condition: int):
+        Parameters
+        ----------
+        data : tuple
+            A tuple containing (stimuli, choices, responses, categories).
+        step_results : list
+            Output of fit_trial_by_trial, containing fitted results for each trial.
+        use_cached_dist : bool
+            Whether to use cached distances to speed up calculations.
+        window_size : int
+            Size of the sliding window for computing average accuracy.
+
+        Returns
+        -------
+        Dict[str, np.ndarray]
+            A dictionary containing arrays of true accuracy, predicted accuracy, 
+            and their sliding averages.
         """
-        predict choice
-        """
+        stimuli, choices, responses, categories = data
+        n_trials = len(responses)
+
+        true_acc = (np.array(responses) == 1).astype(float)
+        pred_acc = np.full(n_trials, np.nan, dtype=float)
+        
+        for trial_idx in range(1, n_trials):
+            trial_data = ([stimuli[trial_idx]], [choices[trial_idx]], 
+                          [responses[trial_idx]], [categories[trial_idx]])
+
+            # Extract the posterior probabilities for each hypothesis at last trial
+            hypo_details = step_results[trial_idx-1]['hypo_details']
+            post_max = [hypo_details[k]['post_max']
+                for k in hypo_details.keys()]
+
+            # Compute the weighted probability of being correct
+            weighted_p_true = 0
+            for k, post in zip(hypo_details.keys(), post_max):
+                p_true = self.partition_model.calc_trueprob_entry(
+                    k, trial_data, hypo_details[k]['beta_opt'], 
+                    use_cached_dist=use_cached_dist, indices=[trial_idx])
+                weighted_p_true += post * p_true
+
+            pred_acc[trial_idx] = weighted_p_true
+
+        # Compute sliding averages using a sliding window
+        sliding_true_acc = []
+        sliding_pred_acc = []
+        sliding_pred_acc_std = []
+        
+        for start_idx in range(1, n_trials - window_size + 2):  # Start from index 1
+            end_idx = start_idx + window_size
+            sliding_true_acc.append(np.mean(true_acc[start_idx:end_idx]))
+            pred_window = pred_acc[start_idx:end_idx]
+            sliding_pred_acc.append(np.mean(pred_window))
+            sliding_pred_acc_std.append(np.sqrt(np.sum(pred_window*(1 - pred_window)))/window_size)
+
+        predict_results = {
+            'true_acc': true_acc,
+            'pred_acc': pred_acc,
+            'sliding_true_acc': sliding_true_acc,
+            'sliding_pred_acc': sliding_pred_acc,
+            'sliding_pred_acc_std': sliding_pred_acc_std
+        }
+
+        return predict_results

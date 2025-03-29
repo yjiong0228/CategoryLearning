@@ -31,8 +31,8 @@ class ModelEval:
 
         for idx, iSub in enumerate(sorted_subjects):
             subject_info = results[iSub]
-            optimize_results = subject_info['optimize_results']
-            step_results = optimize_results['best_step_results']
+            # optimize_results = subject_info['optimize_results']
+            step_results = subject_info['best_step_results']
             condition = subject_info['condition']
             
             row = idx % n_rows
@@ -65,8 +65,8 @@ class ModelEval:
         
         for idx, iSub in enumerate(sorted_subjects):
             subject_info = results[iSub]
-            optimize_results = subject_info['optimize_results']
-            step_results = optimize_results['best_step_results']
+            # optimize_results = subject_info['optimize_results']
+            step_results = subject_info['best_step_results']
             condition = subject_info['condition']
             
             row = idx % n_rows
@@ -118,8 +118,8 @@ class ModelEval:
 
         for idx, iSub in enumerate(sorted_subjects):
             subject_info = results[iSub]
-            optimize_results = subject_info['optimize_results']
-            grid_errors = optimize_results['grid_errors']
+            # optimize_results = subject_info['optimize_results']
+            grid_errors = subject_info['grid_errors']
             condition = subject_info['condition']
 
             row = idx % n_rows
@@ -181,12 +181,18 @@ class ModelEval:
             col = idx // n_rows
             ax = axes[row, col]
             
-            pred_acc_avg = results[iSub]['pred_acc_avg']
-            true_acc_avg = results[iSub]['true_acc_avg']
+            sliding_true_acc = results[iSub]['sliding_true_acc']
+            sliding_pred_acc = results[iSub]['sliding_pred_acc']
+            sliding_pred_acc_std = results[iSub]['sliding_pred_acc_std']
+
             condition = results[iSub].get('condition', 'Unknown')
 
-            ax.plot(pred_acc_avg, label='Predicted Accuracy')
-            ax.plot(true_acc_avg, label='True Accuracy')
+            ax.plot(sliding_pred_acc, label='Predicted Accuracy', color='blue')
+            lower_bound = np.array(sliding_pred_acc) - np.array(sliding_pred_acc_std)
+            upper_bound = np.array(sliding_pred_acc) + np.array(sliding_pred_acc_std)
+            ax.fill_between(range(len(sliding_pred_acc)), lower_bound, upper_bound, color='blue', alpha=0.2, label='Predicted Accuracy ± Std')
+            ax.plot(sliding_true_acc, label='True Accuracy', color='orange')
+
             ax.set_ylim(0, 1)
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('Trial')
@@ -196,74 +202,4 @@ class ModelEval:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path)
-        else:
-            plt.show()
-        plt.close()
-
-
-
-
-    def calculate_predictions(self, model, data, step_results):
-        """Calculate predictions based on fitted model results"""
-        predictions = []
-        
-        for step in range(len(step_results)-1):
-            next_trial = data.iloc[step + 1]
-            x = next_trial[['feature1', 'feature2', 'feature3', 'feature4']].values
-            fitted_params = step_results[step]['params']
-            
-            predicted_choice = model.predict_choice(fitted_params, x, data['condition'].iloc[0])
-            actual_choice = next_trial['choice']
-            
-            predictions.append({
-                'trial': step + 1,
-                'predicted_choice': predicted_choice,
-                'actual_choice': actual_choice,
-                'correct': predicted_choice == actual_choice
-            })
-        
-        return predictions
-
-    def calculate_sliding_accuracy(self, predictions, window_size=32):
-        """Calculate sliding window accuracy from predictions"""
-        sliding_accuracy = []
-        num_predictions = len(predictions)
-        
-        for step in range(window_size - 1, num_predictions):
-            window_start = step - window_size + 1
-            window_predictions = predictions[window_start:step+1]
-            correct_in_window = sum(p['correct'] for p in window_predictions)
-            sliding_accuracy.append(correct_in_window / window_size)
-        
-        return sliding_accuracy
-    
-    def plot_predictive_accuracy(self, results: Dict, save_path: str = None):
-        # Plot cumulative accuracy for each subject, grouped by condition
-        plt.figure(figsize=(12, 8))
-
-        # Define colors and labels for each condition
-        condition_colors = {1: 'blue', 2: 'red', 3: 'green'}
-        condition_labels = {1: 'Family', 2: 'Species', 3: 'Both'}
-
-        # Plot separately for each condition
-        for condition in [1, 2, 3]:
-            for iSub, result in results.items():
-                if result['condition'] == condition:
-                    plt.plot(range(2, len(result['sliding_accuracy']) + 2), 
-                            result['sliding_accuracy'], 
-                            color=condition_colors[condition], 
-                            alpha=0.3)
-
-        # Add one line per condition for the legend
-        for condition in [1, 2, 3]:
-            plt.plot([], [], 
-                    color=condition_colors[condition], 
-                    label=condition_labels[condition])
-
-        plt.xlabel('Mini-block')
-        plt.ylabel('Sliding Prediction Accuracy')
-        plt.title('Prediction Accuracy Over Trials')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(save_path)
-        plt.close()
+        plt.show()

@@ -83,12 +83,10 @@ class ModelEval:
             for k in range(max_k):
                 if k_posteriors[k]:
                     steps, values = zip(*k_posteriors[k])
-                    ax.scatter(steps, values, label=f'k={k}', alpha=0.5)
-                    for i in range(1, len(steps)):
-                        if steps[i] == steps[i-1] + 1:
-                            ax.plot(steps[i-1:i+1], values[i-1:i+1], alpha=0.5)
                     if (condition == 1 and k == 0) or (condition != 1 and k == 42):
-                        ax.plot(steps, values, linewidth=3, color='red', label=f'k={k}')
+                        ax.scatter(steps, values, color='red', s=50, label=f'k={k}')
+                    else:
+                        ax.scatter(steps, values, label=f'k={k}', alpha=0.5)
                     
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('Trial')
