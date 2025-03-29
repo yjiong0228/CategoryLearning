@@ -125,7 +125,7 @@ class BasePartition(ABC):
         提前把所有 trial 的距离缓存到 self.cached_dist[hypo] 中，
         这样后面做正序或倒序都不再重复算距离。
 
-        stimuli: shape = [n_trials, nDims]
+        stimuli: shape = [n_trials, n_dims]
         """
         n_trials = stimuli.shape[0]
         for hypo in range(self.length):
@@ -171,7 +171,7 @@ class BasePartition(ABC):
                              use_cached_dist: bool = False,
                              **kwargs) -> np.ndarray:
         """
-        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[n_trials])。
+        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[n_cats, n_trials])。
 
         Parameters
         ----------
@@ -191,8 +191,8 @@ class BasePartition(ABC):
         indices = kwargs.get("indices", None)
 
         if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = (self.cached_dist[hypo][:n_trials] if indices is None
-                                else self.cached_dist[hypo][:,indices])
+            typical_distances = (self.cached_dist[hypo][:, :n_trials] if indices is None
+                                else self.cached_dist[hypo][:, indices])
         else:
             partition = self.prototypes_np[hypo]  # shape = [n_protos, n_cats, n_dims]
             distances = euc_dist(partition, np.array(stimulus))  # shape = [n_protos, n_cats, n_trials]

@@ -11,18 +11,18 @@ from scipy.optimize import minimize
 
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
-from .model import ModelParams, BaseModel
+from .model import BaseModelParams, BaseModel, SingleRationalModel
 from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 
 
 @dataclass(unsafe_hash=True)
-class ForgetModelParams(ModelParams):
+class ForgetModelParams(BaseModelParams):
     """扩展参数类，添加遗忘参数"""
     gamma: float  # 遗忘率参数
     w0: float  # 基础记忆权重
 
 
-class ForgetModel(BaseModel):
+class ForgetModel(SingleRationalModel):
     """
     Add forgetting mechanism
     """
@@ -30,16 +30,18 @@ class ForgetModel(BaseModel):
     def __init__(self, config: Dict, **kwargs):
         super().__init__(config, **kwargs)
 
+        # personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.0075, 0.15)})
+        # param_resolution = 20
+        personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.1, 1.0), "w0": (0.01, 0.1)})
+        param_resolution = 10
+        
         # 初始化参数搜索空间
-        self.gamma_values = np.arange(0.1, 1.1, 0.1)
-        self.w0_values = np.array([0.1 / i for i in range(1, 11)])
+        self.gamma_values = np.linspace(*personal_memory_range["gamma"], param_resolution, endpoint=True)
+        self.w0_values = [personal_memory_range["w0"][1] / (i + 1) for i in range(param_resolution)]
 
-        # 初始化记忆权重缓存
-        self.memory_weights_cache: Dict = {}
-
-    def fit_with_given_params(
-            self, data: tuple, gamma: float, w0: float,
-            **kwargs) -> Tuple[ForgetModelParams, float, Dict, Dict]:
+    def fit_single_step(self, 
+                     data: tuple, gamma: float, w0: float, 
+                     **kwargs) -> Tuple[ForgetModelParams, float, Dict, Dict]:
         """
         Fit
         """
@@ -67,15 +69,15 @@ class ForgetModel(BaseModel):
         return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
                 all_hypo_params, all_hypo_ll)
 
-    def fit_trial_by_trial(self, data: Tuple[np.ndarray, np.ndarray,
+    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray,
                                              np.ndarray], gamma, w0):
         step_results = []
-        nTrial = len(data[2])
+        n_trials = len(data[2])
 
-        for step in range(nTrial, 0, -1):
+        for step in range(n_trials, 0, -1):
             trial_data = [x[:step] for x in data]
-            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
-                trial_data, gamma, w0, use_cached_dist=(step != nTrial))
+            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
+                trial_data, gamma, w0, use_cached_dist=(step != n_trials))
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
@@ -84,7 +86,7 @@ class ForgetModel(BaseModel):
 
             all_hypo_post = self.engine.infer_log(trial_data,
                                                   use_cached_dist=(step
-                                                                   != nTrial),
+                                                                   != n_trials),
                                                   beta=hypo_betas,
                                                   gamma=gamma,
                                                   w0=w0,
@@ -110,62 +112,33 @@ class ForgetModel(BaseModel):
 
         return step_results[::-1]
 
-    def error_function(self,
-                       data_with_cat: tuple,
-                       step_results: list,
-                       use_cached_dist,
-                       window_size=16) -> float:
+
+    def compute_error_for_params(self, data_with_cat, gamma, w0, window_size=16):
         """
-        计算滑动窗口预测误差
-        输入数据需包含category信息：(stimuli, choices, responses, categories)
+        单次计算：给定 gamma, w0，先做 fit_step_by_step，然后做 predict_choice，
+        返回 (step_results, mean_error)
         """
-        # 解包带类别信息的数据
-        stimuli, choices, responses, categories = data_with_cat
-        n_trials = len(responses)
-
-        # 计算每个试次的预测准确率
-        predicted_acc = []
-        for i in range(n_trials):
-
-            # 构造单个试次数据
-            trial_data = ([stimuli[i]], [choices[i]], [responses[i]],
-                  [categories[i]])  
-            
-            hypo_details = step_results[i]['hypo_details']
-            post_max = [hypo_details[k]['post_max']
-                for k in hypo_details.keys()]
-
-            weighted_p_true = 0
-            for k, post in zip(hypo_details.keys(), post_max):
-                p_true = self.partition_model.calc_trueprob_entry(
-                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i])
-                weighted_p_true += post * p_true
-            predicted_acc.append(weighted_p_true)
-
-        # 转换为numpy数组
-        pred_acc = np.array(predicted_acc)
-        true_acc = (np.array(responses) == 1).astype(float)
-
-        # 滑动窗口误差计算
-        pred_acc_avg = []
-        true_acc_avg = []
-        errors = []
-        for start in range(len(pred_acc) - window_size + 1):
-            window_pred = pred_acc[start:start + window_size]
-            window_true = true_acc[start:start + window_size]
-            pred_acc_avg.append(np.mean(window_pred))
-            true_acc_avg.append(np.mean(window_true))
-            errors.append(np.abs(np.mean(window_pred) - np.mean(window_true)))
-
-        error_info = {
-            'pred_acc': pred_acc,
-            'true_acc': true_acc,
-            'pred_acc_avg': pred_acc_avg,
-            'true_acc_avg': true_acc_avg,
-            'errors': errors
-        }
-
-        return error_info
+        # 分割出 (stimuli, choices, responses)
+        s_data = data_with_cat[:3]
+        
+        # 1. 逐试次拟合
+        step_results = self.fit_step_by_step(s_data, gamma, w0)
+        
+        # 2. 做预测
+        predict_results = self.predict_choice(
+            data_with_cat, step_results,
+            use_cached_dist=True, window_size=window_size
+        )
+        
+        # 3. 计算滑窗误差（或你自己定义的误差）
+        mean_error = np.mean(
+            np.abs(
+                np.array(predict_results['sliding_true_acc']) 
+                - np.array(predict_results['sliding_pred_acc'])
+            )
+        )
+        
+        return step_results, mean_error
 
     def optimize_params(
             self, data_with_cat: tuple) -> Tuple[ForgetModelParams, list]:
@@ -177,16 +150,17 @@ class ForgetModel(BaseModel):
         s_data = data_with_cat[:3]  # (stimuli, choices, responses)
 
         # 网格搜索
+        total_combinations = len(self.gamma_values) * len(self.w0_values)
         for gamma, w0 in tqdm(product(self.gamma_values, self.w0_values),
-                              desc="Gamma-W0", total=100):
+                      desc="Gamma-W0", total=total_combinations):
             # 逐试次拟合
-            step_results = self.fit_trial_by_trial(s_data, gamma, w0)
+            step_results = self.fit_step_by_step(s_data, gamma, w0)
             # 计算误差
-            error_info = self.error_function(data_with_cat, step_results, use_cached_dist=True)
-            error = np.mean(error_info['errors'])
+            predict_results = self.predict_choice(data_with_cat, step_results, use_cached_dist=True, window_size=16)
+            mean_error = np.mean(np.abs(np.array(predict_results['sliding_true_acc']) - np.array(predict_results['sliding_pred_acc'])))
             # 记录结果
             key = (round(gamma, 2), round(w0, 4))
-            grid_errors[key] = error
+            grid_errors[key] = mean_error
             grid_step_results[key] = step_results
 
         # 查找最优参数
@@ -204,7 +178,7 @@ class ForgetModel(BaseModel):
 
 
 @dataclass(unsafe_hash=True)
-class AdaptiveAmnesiaParams(ModelParams):
+class AdaptiveAmnesiaParams(BaseModelParams):
     alpha_gamma: float  # gamma更新速率
     alpha_w0: float  # w0更新速率
 
@@ -223,8 +197,8 @@ class AdaptiveAmnesiaModel(BaseModel):
         self.base_gamma = base_gamma
         self.base_w0 = base_w0
 
-        self.alpha_gamma_values = alpha_gamma_values if alpha_gamma_values is not None else np.arange(0.0, 1.05, 0.1)
-        self.alpha_w0_values = alpha_w0_values if alpha_w0_values is not None else np.arange(0.0, 1.05, 0.1)
+        self.alpha_gamma_values = alpha_gamma_values if alpha_gamma_values is not None else np.linspace(0.9, 1., 2, endpoint=True)
+        self.alpha_w0_values = alpha_w0_values if alpha_w0_values is not None else np.linspace(0.9, 1., 2, endpoint=True)
 
     def precompute_distances(self, stimuli: np.ndarray):
         """
@@ -233,8 +207,9 @@ class AdaptiveAmnesiaModel(BaseModel):
         if hasattr(self.partition_model, "precompute_all_distances"):
             self.partition_model.precompute_all_distances(stimuli)
 
-    def _build_amnesia_func(self, gamma_list: List[float], w0_list: List[float], step: int):
+    def _build_amnesia_func(self, gamma_list: List[float], w0_list: List[float]):
         """
+        step is NOT in use.
         给定 (gamma_list, w0_list) 和当前 step,
         返回一个 callable: trial_specific_amnesia
         其中:
@@ -248,7 +223,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             for iTrial in range(n):
                 g_i = gamma_list[iTrial]
                 w_i = w0_list[iTrial]
-                exponent = max(0, (step-1 - iTrial))
+                exponent = max(0, (n - 1 - iTrial))
                 coeff[iTrial] = (w_i) + (1 - w_i)*(g_i**exponent)
             return coeff
         
@@ -268,8 +243,7 @@ class AdaptiveAmnesiaModel(BaseModel):
           best_params, best_ll, all_hypo_params, all_hypo_ll
         """
         # 1) 构造 adaptive_amnesia 函数
-        step = len(data[2])
-        amnesia_func = self._build_amnesia_func(gamma_list, w0_list, step)
+        amnesia_func = self._build_amnesia_func(gamma_list, w0_list)
 
         # 2) 定义对数似然(对每个hypo)
         def _ll_per_hypo(beta, hypo=None):
@@ -308,13 +282,13 @@ class AdaptiveAmnesiaModel(BaseModel):
           - 调用 fit_with_given_params(sub_data, gamma_list, w0_list)
         """
         stimuli, choices, responses = data
-        nTrial = len(responses)
+        n_trials = len(responses)
         
         # 先对 partition 做一次 precompute_all_distances
         self.partition_model.precompute_all_distances(stimuli)
 
-        gamma_list = [self.base_gamma]*nTrial
-        w0_list    = [self.base_w0]*nTrial
+        gamma_list = [self.base_gamma]*n_trials
+        w0_list    = [self.base_w0]*n_trials
 
         step_results = []
 
@@ -322,11 +296,11 @@ class AdaptiveAmnesiaModel(BaseModel):
         prior = np.ones(self.hypotheses_set.length) / self.hypotheses_set.length
         prev_posterior = prior
 
-        for step in range(1, nTrial+1):
+        for step in range(1, n_trials+1):
             trial_data = [x[:step] for x in data]
 
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
-                trial_data, alpha_gamma, alpha_w0, gamma_list[:step], w0_list[:step], step=step,
+                trial_data, alpha_gamma, alpha_w0, gamma_list[:step], w0_list[:step], 
                 use_cached_dist=False, **kwargs
             )
 
@@ -335,7 +309,7 @@ class AdaptiveAmnesiaModel(BaseModel):
                 for hypo in self.hypotheses_set.elements
             ]
 
-            amnesia_func = self._build_amnesia_func(gamma_list[:step], w0_list[:step], step=step)
+            amnesia_func = self._build_amnesia_func(gamma_list[:step], w0_list[:step])
             all_hypo_post = self.engine.infer_log(
                 trial_data,
                 use_cached_dist=False,
@@ -354,9 +328,9 @@ class AdaptiveAmnesiaModel(BaseModel):
                 }
 
             # 更新 gamma_list[i], w0_list[i]
-            delta_post_i = np.sum(np.abs(all_hypo_post - prev_posterior))
-            new_gi = max(0., min(1., self.base_gamma + alpha_gamma * delta_post_i))
-            new_wi = max(0., min(1., self.base_w0 + alpha_w0 * delta_post_i))
+            delta_post_i = np.sum(np.abs(all_hypo_post - prev_posterior))/2
+            new_gi = max(0., min(1., (1- alpha_gamma) * self.base_gamma + alpha_gamma * delta_post_i))
+            new_wi = max(0., min(1., (1- alpha_w0) * self.base_w0 + alpha_w0 * delta_post_i))
             gamma_list[step-1] = new_gi
             w0_list[step-1] = new_wi
 
@@ -391,13 +365,13 @@ class AdaptiveAmnesiaModel(BaseModel):
 
         # 计算每个试次的预测准确率
         predicted_acc = []
+        simulated_samples = []
+        
         for i in range(n_trials):
 
             # 构造单个试次数据
             trial_data = ([stimuli[i]], [choices[i]], [responses[i]],
                   [categories[i]])  
-            
-            amnesia_func = self._build_amnesia_func(step_results[i]['gamma_list'], step_results[i]['w0_list'], step=i+1)
 
             hypo_details = step_results[i]['hypo_details']
             post_max = [hypo_details[k]['post_max']
@@ -406,17 +380,19 @@ class AdaptiveAmnesiaModel(BaseModel):
             weighted_p_true = 0
             for k, post in zip(hypo_details.keys(), post_max):
                 p_true = self.partition_model.calc_trueprob_entry(
-                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i],
-                    adaptive_amnesia=amnesia_func)
+                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i])
                 weighted_p_true += post * p_true
             predicted_acc.append(weighted_p_true)
+            simulated_samples.append(np.random.choice([0, 1], p=np.array([1 - weighted_p_true, weighted_p_true]).reshape(-1)))
 
         # 转换为numpy数组
         pred_acc = np.array(predicted_acc)
         true_acc = (np.array(responses) == 1).astype(float)
+        simulated_acc = (np.array(simulated_samples) == 1).astype(float)
 
         # 滑动窗口误差计算
         pred_acc_avg = []
+        simulated_acc_avg = []
         true_acc_avg = []
         errors = []
         for start in range(len(pred_acc) - window_size + 1):
@@ -424,6 +400,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             window_true = true_acc[start:start + window_size]
             pred_acc_avg.append(np.mean(window_pred))
             true_acc_avg.append(np.mean(window_true))
+            simulated_acc_avg.append(np.mean(simulated_acc[start:start + window_size]))
             errors.append(np.abs(np.mean(window_pred) - np.mean(window_true)))
 
         error_info = {
@@ -431,6 +408,7 @@ class AdaptiveAmnesiaModel(BaseModel):
             'true_acc': true_acc,
             'pred_acc_avg': pred_acc_avg,
             'true_acc_avg': true_acc_avg,
+            'simulated_acc_avg': simulated_acc_avg,
             'errors': errors
         }
 

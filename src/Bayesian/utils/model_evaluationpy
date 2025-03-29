@@ -7,45 +7,42 @@
 """
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, List
+from typing import Dict
 
 class ModelEval:
     # plot parameters over trials
-    def plot_params_over_trials(self, results: List, params: str, save_path: str = None):
+    def plot_params_over_trials(self, results: Dict, params: str, save_path: str = None):
         """
-        Plots specified parameter over trials for each subject.
+        Plots specified parameter over trials for a given subject.
 
         Args:
-            results (list): List of subject data, each containing 'condition' and 'best_step_results'.
-                            We will add 'iSub' (subject ID) based on list index.
+            step_results (list of dict): List of dictionaries containing parameter values for each trial.
             params (str): The parameter to plot (e.g., 'k', 'beta').
         """
-        # Dynamically add 'iSub' to each subject based on their index in the list
-        for idx, subject_info in enumerate(results):
-            subject_info["iSub"] = idx  # Add iSub as the list index
-        
-        # Sort by the dynamically added 'iSub'
-        sorted_results = sorted(results, key=lambda x: x['iSub'])
-        n_subjects = len(sorted_results)
+
+        n_subjects = len(results)
         n_rows = 3
         n_cols = (n_subjects + n_rows - 1) // n_rows
 
         fig = plt.figure(figsize=(8*n_cols, 5*n_rows))
         fig.suptitle(f'{params}_over_trials by Subject', fontsize=16, y=0.99)
 
-        for idx, subject_info in enumerate(sorted_results):
-            iSub = subject_info['iSub']
+        sorted_subjects = sorted(results.keys())
+
+        for idx, iSub in enumerate(sorted_subjects):
+            subject_info = results[iSub]
+            step_results = subject_info['step_results']
             condition = subject_info['condition']
-            step_results = subject_info['best_step_results']
             
             row = idx % n_rows
             col = idx // n_rows
-            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
             
             num_steps = len(step_results)
             param_values = [result[params] for result in step_results]
 
             ax.plot(range(1, num_steps + 1), param_values, marker='o')
+
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('Trial')
             ax.set_ylabel(f'{params} value')
@@ -55,44 +52,40 @@ class ModelEval:
             plt.savefig(save_path)
         plt.close()
 
-    def plot_posterior_probabilities(self, results: List, save_path: str = None):
-        # Dynamically add 'iSub' to each subject based on their index in the list
-        for idx, subject_info in enumerate(results):
-            subject_info["iSub"] = idx  # Add iSub as the list index
-        
-        # Sort by the dynamically added 'iSub'
-        sorted_results = sorted(results, key=lambda x: x['iSub'])
-        n_subjects = len(sorted_results)
+    def plot_posterior_probabilities(self, results: Dict, save_path: str = None):
+        n_subjects = len(results)
         n_rows = 3
         n_cols = (n_subjects + n_rows - 1) // n_rows
-
+        
         fig = plt.figure(figsize=(8*n_cols, 5*n_rows))
         fig.suptitle('Posterior Probabilities for k by Subject', fontsize=16, y=0.99)
-
-        for idx, subject_info in enumerate(sorted_results):
-            iSub = subject_info['iSub']
+        
+        sorted_subjects = sorted(results.keys())
+        
+        for idx, iSub in enumerate(sorted_subjects):
+            subject_info = results[iSub]
+            step_results = subject_info['step_results']
             condition = subject_info['condition']
-            step_results = subject_info['best_step_results']
             
             row = idx % n_rows
             col = idx // n_rows
-            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
             
             num_steps = len(step_results)
-            max_k = max(k for result in step_results for k in result['hypo_details'].keys())
+            max_k = max(k for result in step_results for k in result['details'].keys())
             
-            k_posteriors = {k: np.zeros(num_steps) for k in range(max_k + 1)}
+            k_posteriors = {k: np.zeros(num_steps) for k in range(1, max_k+1)}
             for step, result in enumerate(step_results):
-                for k in range(max_k + 1):
-                    k_posteriors[k][step] = result['hypo_details'].get(k, {'post_max': 0})['post_max']
+                for k in range(1, max_k+1):
+                    k_posteriors[k][step] = result['details'][k]['posterior_prob']
             
-            for k in range(max_k + 1):
-                if (condition == 1 and k == 0) or (condition != 1 and k == 42):
-                    ax.plot(range(1, num_steps + 1), k_posteriors[k],
-                            linewidth=3, color='red', label=f'k={k}')
+            for k in range(1, max_k+1):
+                if (condition == 1 and k == 1) or (condition != 1 and k == 43):
+                    ax.plot(range(1, num_steps + 1), k_posteriors[k], 
+                        linewidth=3, color='red', label=f'k={k}')
                 else:
-                    ax.plot(range(1, num_steps + 1), k_posteriors[k],
-                            label=f'k={k}', alpha=0.5)
+                    ax.plot(range(1, num_steps + 1), k_posteriors[k], 
+                        label=f'k={k}', alpha=0.5)
             
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('Trial')
