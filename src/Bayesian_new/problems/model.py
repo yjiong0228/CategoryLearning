@@ -255,14 +255,16 @@ class SingleRationalModel(BaseModel):
     and returns the best-fitting one.
     """
 
-    def fit_single_step(self, data, **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
+    def fit_single_step(self, 
+                        data: Tuple[np.ndarray, np.ndarray,np.ndarray], 
+                        **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
         """
         Fit the rational model by optimizing beta for each hypothesis.
 
         Parameters
         ----------
-        data : any
-            Observational data.
+        data : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            A tuple containing (stimuli, choices, responses).
         **kwargs : dict
             Additional keyword arguments.
 
@@ -306,7 +308,7 @@ class SingleRationalModel(BaseModel):
                          limited_hypos_list: List[List[int]] = None, 
                          **kwargs) -> List[Dict]:
         """
-        Fit the model trial-by-trial to observe how parameters evolve.
+        Fit the model step-by-step to observe how parameters evolve.
 
         Parameters
         ----------
@@ -323,7 +325,7 @@ class SingleRationalModel(BaseModel):
         -------
         List[Dict]
             A list of dictionaries containing the fitting results for each
-            trial, such as the best hypothesis, beta, log-likelihood, and posterior.
+            step, such as the best hypothesis, beta, log-likelihood, and posterior.
         """
         step_results = []
         n_trials = len(data[2])

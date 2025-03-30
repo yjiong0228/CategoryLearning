@@ -17,33 +17,71 @@ from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 
 @dataclass(unsafe_hash=True)
 class ForgetModelParams(BaseModelParams):
-    """扩展参数类，添加遗忘参数"""
-    gamma: float  # 遗忘率参数
-    w0: float  # 基础记忆权重
+    """
+    Extended parameter class that includes forgetting parameters.
+
+    Attributes
+    ----------
+    k : int
+        Index of the partition method (inherited from ModelParams).
+    beta : float
+        Softness of the partition (inherited from ModelParams).
+    gamma : float
+        Memory decay rate.
+    w0 : float
+        Base memory weight.
+    """
+    gamma: float
+    w0: float
 
 
 class ForgetModel(SingleRationalModel):
     """
-    Add forgetting mechanism
+    A model that adds a forgetting mechanism on top of SingleRationalModel.
     """
 
     def __init__(self, config: Dict, **kwargs):
         super().__init__(config, **kwargs)
 
-        # personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.0075, 0.15)})
-        # param_resolution = 20
-        personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.1, 1.0), "w0": (0.01, 0.1)})
-        param_resolution = 10
+        personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.00375, 0.075)})
+        param_resolution = 20
+        # personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.1, 1.0), "w0": (0.01, 0.1)})
+        # param_resolution = 10
         
         # 初始化参数搜索空间
         self.gamma_values = np.linspace(*personal_memory_range["gamma"], param_resolution, endpoint=True)
-        self.w0_values = [personal_memory_range["w0"][1] / (i + 1) for i in range(param_resolution)]
+        self.w0_values = np.linspace(*personal_memory_range["w0"], param_resolution, endpoint=True)
+        # self.w0_values = [personal_memory_range["w0"][1] / (i + 1) for i in range(param_resolution)]
 
-    def fit_single_step(self, 
-                     data: tuple, gamma: float, w0: float, 
-                     **kwargs) -> Tuple[ForgetModelParams, float, Dict, Dict]:
+    def fit_single_step(self,
+                        data: Tuple[np.ndarray, np.ndarray, np.ndarray], 
+                        gamma: float, 
+                        w0: float, 
+                        **kwargs) -> Tuple[ForgetModelParams, float, Dict, Dict]:
         """
-        Fit
+        Optimize beta for each hypothesis while using fixed gamma and w0.
+
+        Parameters
+        ----------
+        data : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            A tuple containing (stimuli, choices, responses).
+        gamma : float
+            Memory decay rate.
+        w0 : float
+            Base memory weight.
+        **kwargs : dict
+            Additional arguments passed to the likelihood function.
+
+        Returns
+        -------
+        best_params : ForgetModelParams
+            Best parameters (including k, beta, gamma, w0).
+        best_ll : float
+            The maximum log-likelihood found.
+        all_hypo_params : Dict
+            A mapping from hypothesis index to fitted ForgetModelParams.
+        all_hypo_ll : Dict
+            A mapping from hypothesis index to its best log-likelihood.
         """
         all_hypo_params = {}
         all_hypo_ll = {}
@@ -69,28 +107,48 @@ class ForgetModel(SingleRationalModel):
         return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
                 all_hypo_params, all_hypo_ll)
 
-    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray,
-                                             np.ndarray], gamma, w0):
+    def fit_step_by_step(self, 
+                         data: Tuple[np.ndarray, np.ndarray, np.ndarray], 
+                         gamma: float, 
+                         w0: float) -> List[Dict]:
+        
+        """
+        Fit the model step-by-step with fixed gamma and w0.
+
+        Parameters
+        ----------
+        data : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            A tuple (stimuli, choices, responses).
+        gamma : float
+            Memory decay rate.
+        w0 : float
+            Base memory weight.
+
+        Returns
+        -------
+        List[Dict]
+            A list of dictionaries containing the fitting results for each step.
+        """
         step_results = []
         n_trials = len(data[2])
 
-        for step in range(n_trials, 0, -1):
-            trial_data = [x[:step] for x in data]
+        for step_idx in range(n_trials, 0, -1):
+            selected_data = [x[:step_idx] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
-                trial_data, gamma, w0, use_cached_dist=(step != n_trials))
+                selected_data, gamma, w0, use_cached_dist=(step_idx != n_trials))
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
                 for hypo in self.hypotheses_set.elements
             ]
 
-            all_hypo_post = self.engine.infer_log(trial_data,
-                                                  use_cached_dist=(step
-                                                                   != n_trials),
-                                                  beta=hypo_betas,
-                                                  gamma=gamma,
-                                                  w0=w0,
-                                                  normalized=True)
+            all_hypo_post = self.engine.infer_log(
+                selected_data,
+                use_cached_dist=(step_idx != n_trials),
+                beta=hypo_betas,
+                gamma=gamma,
+                w0=w0,
+                normalized=True)
 
             hypo_details = {}
             for i, hypo in enumerate(self.hypotheses_set.elements):
@@ -113,24 +171,45 @@ class ForgetModel(SingleRationalModel):
         return step_results[::-1]
 
 
-    def compute_error_for_params(self, data_with_cat, gamma, w0, window_size=16):
+    def compute_error_for_params(self, 
+                                 data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                                 gamma: float, 
+                                 w0: float, 
+                                 window_size=16) -> Tuple[List[Dict], float]:
         """
-        单次计算：给定 gamma, w0，先做 fit_step_by_step，然后做 predict_choice，
-        返回 (step_results, mean_error)
+        Perform a single pass of model fitting and prediction, then compute an error metric.
+
+        Parameters
+        ----------
+        data : tuple
+            A tuple containing (stimuli, choices, responses, categories).
+        gamma : float
+            Memory decay rate.
+        w0 : float
+            Base memory weight.
+        window_size : int
+            The window size used for sliding accuracy measurements.
+
+        Returns
+        -------
+        step_results : List[Dict]
+            Output of fit_step_by_step showing model fits for each trial.
+        mean_error : float
+            The average windowed error between predicted and true accuracy.
         """
-        # 分割出 (stimuli, choices, responses)
-        s_data = data_with_cat[:3]
+        # Fit the model with fixed gamma and w0
+        selected_data = data[:3]
+        step_results = self.fit_step_by_step(selected_data, gamma, w0)
         
-        # 1. 逐试次拟合
-        step_results = self.fit_step_by_step(s_data, gamma, w0)
-        
-        # 2. 做预测
+        # Get the predicted accuracy
         predict_results = self.predict_choice(
-            data_with_cat, step_results,
-            use_cached_dist=True, window_size=window_size
+            data, 
+            step_results,
+            use_cached_dist=True, 
+            window_size=window_size
         )
         
-        # 3. 计算滑窗误差（或你自己定义的误差）
+        # Calculate the mean absolute error between predicted and true accuracy
         mean_error = np.mean(
             np.abs(
                 np.array(predict_results['sliding_true_acc']) 
@@ -140,30 +219,43 @@ class ForgetModel(SingleRationalModel):
         
         return step_results, mean_error
 
-    def optimize_params(
-            self, data_with_cat: tuple) -> Tuple[ForgetModelParams, list]:
-        """二维网格搜索优化gamma和w0"""
+    def optimize_params(self, 
+                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+                        ) -> Tuple[ForgetModelParams, list]:
+        """
+        Perform a 2D grid search over gamma and w0 to find the parameters
+        that minimize the prediction error.
+
+        Parameters
+        ----------
+        data : tuple
+            A tuple containing (stimuli, choices, responses, categories).
+
+        Returns
+        -------
+        Dict
+            A dictionary containing:
+            - 'best_params': The (gamma, w0) pair that yields the minimal error.
+            - 'best_error': The best error value found.
+            - 'best_step_results': The step-by-step fit results for the best params.
+            - 'grid_errors': A dictionary mapping parameter pairs to error values.
+        """
         grid_errors = {}
         grid_step_results = {}
 
-        # 解包数据
-        s_data = data_with_cat[:3]  # (stimuli, choices, responses)
-
-        # 网格搜索
         total_combinations = len(self.gamma_values) * len(self.w0_values)
-        for gamma, w0 in tqdm(product(self.gamma_values, self.w0_values),
-                      desc="Gamma-W0", total=total_combinations):
-            # 逐试次拟合
-            step_results = self.fit_step_by_step(s_data, gamma, w0)
-            # 计算误差
-            predict_results = self.predict_choice(data_with_cat, step_results, use_cached_dist=True, window_size=16)
-            mean_error = np.mean(np.abs(np.array(predict_results['sliding_true_acc']) - np.array(predict_results['sliding_pred_acc'])))
-            # 记录结果
-            key = (round(gamma, 2), round(w0, 4))
+        for gamma, w0 in tqdm(
+            product(self.gamma_values, self.w0_values),
+            desc="Gamma-W0 Grid Search",
+            total=total_combinations):
+
+            step_results, mean_error = self.compute_error_for_params(data, gamma, w0, window_size=16)
+            
+            key = (round(gamma, 2), round(w0, 5))
             grid_errors[key] = mean_error
             grid_step_results[key] = step_results
 
-        # 查找最优参数
+        # Identify the best (gamma, w0) by minimum error
         best_key = min(grid_errors, key=lambda k: grid_errors[k])
 
         optimize_results = {
@@ -182,7 +274,7 @@ class AdaptiveAmnesiaParams(BaseModelParams):
     alpha_gamma: float  # gamma更新速率
     alpha_w0: float  # w0更新速率
 
-class AdaptiveAmnesiaModel(BaseModel):
+class AdaptiveAmnesiaModel(ForgetModel):
     """
     实现“动态” trial-specific 遗忘机制。
     """
@@ -197,8 +289,8 @@ class AdaptiveAmnesiaModel(BaseModel):
         self.base_gamma = base_gamma
         self.base_w0 = base_w0
 
-        self.alpha_gamma_values = alpha_gamma_values if alpha_gamma_values is not None else np.linspace(0.9, 1., 2, endpoint=True)
-        self.alpha_w0_values = alpha_w0_values if alpha_w0_values is not None else np.linspace(0.9, 1., 2, endpoint=True)
+        self.alpha_gamma_values = alpha_gamma_values if alpha_gamma_values is not None else np.linspace(0., 0.1, 11, endpoint=True)
+        self.alpha_w0_values = alpha_w0_values if alpha_w0_values is not None else np.linspace(0., 0.1, 11, endpoint=True)
 
     def precompute_distances(self, stimuli: np.ndarray):
         """
@@ -229,7 +321,7 @@ class AdaptiveAmnesiaModel(BaseModel):
         
         return trial_specific_amnesia
 
-    def fit_with_given_params(
+    def fit_single_step(
             self, data: tuple, 
             alpha_gamma: float,
             alpha_w0: float,
@@ -268,7 +360,7 @@ class AdaptiveAmnesiaModel(BaseModel):
         return (all_hypo_params[best_hypo], all_hypo_ll[best_hypo],
                 all_hypo_params, all_hypo_ll)
 
-    def fit_trial_by_trial(
+    def fit_step_by_step(
         self,
         data: Tuple[np.ndarray, np.ndarray, np.ndarray],
         alpha_gamma: float,
@@ -279,7 +371,7 @@ class AdaptiveAmnesiaModel(BaseModel):
         在每个step都:
           - 根据当前 step-1 之前的 posterior, 计算 gamma_i, w0_i
           - 插入到 gamma_list, w0_list
-          - 调用 fit_with_given_params(sub_data, gamma_list, w0_list)
+          - 调用 fit_single_step(sub_data, gamma_list, w0_list)
         """
         stimuli, choices, responses = data
         n_trials = len(responses)
@@ -299,7 +391,7 @@ class AdaptiveAmnesiaModel(BaseModel):
         for step in range(1, n_trials+1):
             trial_data = [x[:step] for x in data]
 
-            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_with_given_params(
+            best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
                 trial_data, alpha_gamma, alpha_w0, gamma_list[:step], w0_list[:step], 
                 use_cached_dist=False, **kwargs
             )
@@ -350,90 +442,22 @@ class AdaptiveAmnesiaModel(BaseModel):
 
         return step_results
 
-    def error_function(self,
-                       data_with_cat: tuple,
-                       step_results: list,
-                       use_cached_dist, 
-                       window_size=16) -> float:
-        """
-        计算滑动窗口预测误差
-        输入数据需包含category信息：(stimuli, choices, responses, categories)
-        """
-        # 解包带类别信息的数据
-        stimuli, choices, responses, categories = data_with_cat
-        n_trials = len(responses)
-
-        # 计算每个试次的预测准确率
-        predicted_acc = []
-        simulated_samples = []
-        
-        for i in range(n_trials):
-
-            # 构造单个试次数据
-            trial_data = ([stimuli[i]], [choices[i]], [responses[i]],
-                  [categories[i]])  
-
-            hypo_details = step_results[i]['hypo_details']
-            post_max = [hypo_details[k]['post_max']
-                for k in hypo_details.keys()]
-
-            weighted_p_true = 0
-            for k, post in zip(hypo_details.keys(), post_max):
-                p_true = self.partition_model.calc_trueprob_entry(
-                    k, trial_data, hypo_details[k]['beta_opt'], use_cached_dist=use_cached_dist, indices=[i])
-                weighted_p_true += post * p_true
-            predicted_acc.append(weighted_p_true)
-            simulated_samples.append(np.random.choice([0, 1], p=np.array([1 - weighted_p_true, weighted_p_true]).reshape(-1)))
-
-        # 转换为numpy数组
-        pred_acc = np.array(predicted_acc)
-        true_acc = (np.array(responses) == 1).astype(float)
-        simulated_acc = (np.array(simulated_samples) == 1).astype(float)
-
-        # 滑动窗口误差计算
-        pred_acc_avg = []
-        simulated_acc_avg = []
-        true_acc_avg = []
-        errors = []
-        for start in range(len(pred_acc) - window_size + 1):
-            window_pred = pred_acc[start:start + window_size]
-            window_true = true_acc[start:start + window_size]
-            pred_acc_avg.append(np.mean(window_pred))
-            true_acc_avg.append(np.mean(window_true))
-            simulated_acc_avg.append(np.mean(simulated_acc[start:start + window_size]))
-            errors.append(np.abs(np.mean(window_pred) - np.mean(window_true)))
-
-        error_info = {
-            'pred_acc': pred_acc,
-            'true_acc': true_acc,
-            'pred_acc_avg': pred_acc_avg,
-            'true_acc_avg': true_acc_avg,
-            'simulated_acc_avg': simulated_acc_avg,
-            'errors': errors
-        }
-
-        return error_info
-
     def optimize_params(
             self, data_with_cat: tuple) -> Tuple[AdaptiveAmnesiaParams, list]:
         """二维网格搜索优化gamma和w0"""
         grid_errors = {}
         grid_step_results = {}
 
-        # 解包数据
-        s_data = data_with_cat[:3]  # (stimuli, choices, responses)
+        total_combinations = len(self.alpha_gamma_values) * len(self.alpha_w0_values)
+        for alpha_gamma, alpha_w0 in tqdm(
+            product(self.alpha_gamma_values, self.alpha_w0_values),
+            desc="Alpha_gamma-Alpha_w0 Grid Search",
+            total=total_combinations):
 
-        # 网格搜索
-        for alpha_gamma, alpha_w0 in tqdm(product(self.alpha_gamma_values, self.alpha_w0_values),
-                              desc="Alpha_g-Alpha_w", total=100):
-            # 逐试次拟合
-            step_results = self.fit_trial_by_trial(s_data, alpha_gamma, alpha_w0)
-            # 计算误差
-            error_info = self.error_function(data_with_cat, step_results, use_cached_dist=True)
-            error = np.mean(error_info['errors'])
-            # 记录结果
+            step_results, mean_error = self.compute_error_for_params(data_with_cat, alpha_gamma, alpha_w0, window_size=16)
+
             key = (round(alpha_gamma, 2), round(alpha_w0, 2))
-            grid_errors[key] = error
+            grid_errors[key] = mean_error
             grid_step_results[key] = step_results
 
         # 查找最优参数

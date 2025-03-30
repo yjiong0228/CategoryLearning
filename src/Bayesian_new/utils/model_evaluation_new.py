@@ -143,8 +143,8 @@ class ModelEval:
 
             ax.set_xticks(range(len(w0_values)))
             ax.set_yticks(range(len(gamma_values)))
-            ax.set_xticklabels([f'{w0:.2f}' for w0 in w0_values], rotation=90)
-            ax.set_yticklabels([f'{gamma:.1f}' for gamma in gamma_values])
+            ax.set_xticklabels([f'{w0:.4f}' for w0 in w0_values], rotation=90)
+            ax.set_yticklabels([f'{gamma:.2f}' for gamma in gamma_values])
 
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('w0')
