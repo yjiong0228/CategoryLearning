@@ -74,7 +74,7 @@ class ModelEval:
             num_steps = len(step_results)
 
             if limit:
-                max_k = 19 if condition == 1 else 115
+                max_k = 19 if condition == 1 else 116
                 k_posteriors = {k: [] for k in range(max_k)}
 
                 for step, result in enumerate(step_results):

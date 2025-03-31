@@ -546,7 +546,7 @@ class Partition(BasePartition):
                                        [plane_sum, plane_axis2, plane_axis1]))
 
             # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
-            # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最大"的划分(dimension_max)
+            # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
             if n_dims == n_cats:
                 eq_planes = []
                 for i, j in itertools.combinations(range(n_dims), 2):
@@ -655,6 +655,7 @@ class Partition(BasePartition):
 
             # --------------- 四分类情况 ---------------
             elif n_cats == 4:
+                # 1. 两个超平面
                 # 1.1a 两个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5)
                 if split_type == '2d_axis_pair':
                     split_dims = []
@@ -814,6 +815,7 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
+                # 2. 三个超平面
                 # 2.1a 三个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5, x_k = 0.5)
                 elif split_type == '3d_axis_triple':
                     split_dims = []
@@ -952,11 +954,19 @@ class Partition(BasePartition):
                                 centers[cat_idx].append(0.5)
 
                 # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
+                # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
                 elif split_type == 'dimension_max':
                     for cat_idx in range(n_cats):
-                        center_coords = [0.4] * n_dims  # 先令所有维度都为 0.4
-                        center_coords[cat_idx] = 0.8  # 第 cat_idx 维取 0.8
-                        centers[cat_idx] = tuple(center_coords)
+                        # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
+                        center_coords_max = [0.4] * n_dims
+                        center_coords_max[cat_idx] = 0.8
+                        centers[cat_idx] = tuple(center_coords_max)
+
+                    for cat_idx in range(n_cats):
+                        # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
+                        center_coords_min = [0.8] * n_dims
+                        center_coords_min[cat_idx] = 0.4
+                        centers[cat_idx + n_cats] = tuple(center_coords_min)
 
             # 将列表转换为元组
             centers = {k: tuple(v) for k, v in centers.items()}
