@@ -52,7 +52,7 @@ class ModelEval:
             plt.savefig(save_path)
         plt.close()
 
-    def plot_posterior_probabilities(self, results: Dict, limit: str, save_path: str = None):
+    def plot_posterior_probabilities(self, results: Dict, limit: bool, save_path: str = None):
         n_subjects = len(results)
         n_rows = 3
         n_cols = (n_subjects + n_rows - 1) // n_rows

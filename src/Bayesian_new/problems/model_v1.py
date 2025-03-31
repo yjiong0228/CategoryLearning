@@ -316,7 +316,7 @@ class SingleRationalModel(BaseModel):
 
     def fit_step_by_step(self, 
                          data: Tuple[np.ndarray, np.ndarray,np.ndarray],
-                         dynamic_limit: bool = False,
+                         limited_hypos_list: List[List[int]] = None, 
                          **kwargs) -> List[Dict]:
         """
         Fit the model step-by-step to observe how parameters evolve.
@@ -325,8 +325,10 @@ class SingleRationalModel(BaseModel):
         ----------
         data : Tuple[np.ndarray, np.ndarray, np.ndarray]
             A tuple containing (stimulus, choices, responses).
-        dynamic_limit : bool
-            是否启用动态限缩假设集的机制 (True / False)。
+        limited_hypos_list : List[List[int]], optional
+            If not None, it is a list of length n_trials. Each element is a
+            subset of hypotheses to be considered at each trial. If None, the
+            original full set (self.hypotheses_set) is used.
         **kwargs : dict
             Additional keyword arguments.
 
@@ -352,6 +354,20 @@ class SingleRationalModel(BaseModel):
 
         for step_idx in tqdm(range(1, n_trials+1)):
             selected_data = [x[:step_idx] for x in data]
+
+            if limited_hypos_list is not None:
+                # Use a limited subset of hypotheses for this trial
+                current_hypos = limited_hypos_list[step_idx - 1]
+                new_hypotheses_set = BaseSet(current_hypos)
+
+                new_prior = BasePrior(new_hypotheses_set)
+                new_likelihood = PartitionLikelihood(new_hypotheses_set, self.partition_model)
+
+                # Refresh the engine
+                self.refresh_engine(new_hypotheses_set, new_prior, new_likelihood)
+            else:
+                # If limited_hypos_list is None, keep using self.hypotheses_set as is
+                pass
 
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
                 selected_data, 
@@ -387,57 +403,71 @@ class SingleRationalModel(BaseModel):
                 'hypo_details': hypo_details
             })
 
-            # 如果启用了 dynamic_limit，就基于后验分布来动态筛选下一步的假设子集
-            if dynamic_limit:
-                new_hypo_subset = self.model_generate_hypos(all_hypo_post, top_k=10)
-                
-                # 重新刷新引擎
-                new_hypotheses_set = BaseSet(new_hypo_subset)
-                new_prior = BasePrior(new_hypotheses_set)
-                new_likelihood = PartitionLikelihood(new_hypotheses_set, self.partition_model)
-                self.refresh_engine(new_hypotheses_set, new_prior, new_likelihood)
-            else:
-                # 如果不做限制，就保持 hypotheses_set 不变，不需刷新
-                pass
-
-        self.refresh_engine(
-            original_hypotheses_set,
-            original_prior,
-            original_likelihood
-        )
+        # Restore the original hypotheses set if limited_hypos_list was used
+        if limited_hypos_list is not None:
+            self.refresh_engine(
+                original_hypotheses_set,
+                original_prior,
+                original_likelihood
+            )
 
         return step_results
 
-    def model_generate_hypos(self, all_hypo_post: np.ndarray, top_k: int = 10) -> List[int]:
+    def oral_generate_hypos(self,
+                            data: Tuple[np.ndarray, np.ndarray],
+                            top_k: int = 10,
+                            dist_tol: float = 1e-9) -> List[List[int]]:
         """
-        基于上一试次的后验分布，选取前 top_k 个假设，返回其索引列表。
-        
+        Generate a limited hypothesis set for each trial based on the
+        participant's verbally reported center and the chosen category.
+
         Parameters
         ----------
-        all_hypo_post : np.ndarray
-            当前假设集合下，每个假设的后验概率（或已归一化过的 posterior）。
+        data : Tuple[np.ndarray, np.ndarray]
+            data[0] : (n_trials, n_dims) containing the verbally reported category center per trial.
+            data[1] : (n_trials,) containing the chosen category index (1-indexed).
         top_k : int
-            要保留的假设数量。
+            The number of closest hypotheses to choose if no exact match is found.
+        dist_tol : float
+            Tolerance within which distances are considered zero (floating-point errors).
 
         Returns
         -------
-        List[int]
-            根据后验排序后取前 top_k 个假设对应的索引。
+        List[List[int]]
+            A list of length n_trials, where each element is a list of hypothesis indices.
         """
-        # 获取当前引擎里的假设元素
-        current_hypos = self.hypotheses_set.elements
-        
-        # (posterior, hypothesis) 组合后按 posterior 从大到小排序
-        sorted_pairs = sorted(
-            zip(all_hypo_post, current_hypos),
-            key=lambda x: x[0],
-            reverse=True
-        )
-        
-        # 取前 top_k 个假设
-        new_hypo_subset = [h for _, h in sorted_pairs[:top_k]]
 
-        return new_hypo_subset
+        oral_centers, choices = data
+        n_trials = len(choices)
+
+        n_hypos = self.partition_model.prototypes_np.shape[0]
+        all_hypos = range(n_hypos)
+
+        limited_hypos_list = []
+
+        for trial_idx in range(n_trials):
+            cat_idx = choices[trial_idx] - 1
+            reported_center = oral_centers[trial_idx]
+
+            distance_map = []
+            for hypo_idx in all_hypos:
+                # Compare with the (cat_idx)-th category prototype of hypothesis h
+                true_center = self.partition_model.prototypes_np[hypo_idx, 0, cat_idx, :]
+                distance_val = np.linalg.norm(reported_center - true_center)
+                distance_map.append((distance_val, hypo_idx))
+
+            # Check for exact matches within tolerance
+            exact_matches = [hypo_idx for (dist, hypo_idx) in distance_map if dist <= dist_tol]
+
+            if len(exact_matches) > 0:
+                chosen_hypos = exact_matches
+            else:
+                distance_map.sort(key=lambda x: x[0])
+                chosen_hypos = [hypo_idx for (_, hypo_idx) in distance_map[:top_k]]
+
+            limited_hypos_list.append(chosen_hypos)
+
+        return limited_hypos_list
 
     def predict_choice(self,
                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
