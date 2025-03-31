@@ -255,6 +255,17 @@ class SingleRationalModel(BaseModel):
     and returns the best-fitting one.
     """
 
+    def precompute_distances(self, stimulus: np.ndarray):
+        """
+        Precompute all distance.
+
+        Parameters
+        ----------
+        stimulus : np.ndarray
+        """
+        if hasattr(self.partition_model, "precompute_all_distances"):
+            self.partition_model.precompute_all_distances(stimulus)
+
     def fit_single_step(self, 
                         data: Tuple[np.ndarray, np.ndarray,np.ndarray], 
                         **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
@@ -264,7 +275,7 @@ class SingleRationalModel(BaseModel):
         Parameters
         ----------
         data : Tuple[np.ndarray, np.ndarray, np.ndarray]
-            A tuple containing (stimuli, choices, responses).
+            A tuple containing (stimulus, choices, responses).
         **kwargs : dict
             Additional keyword arguments.
 
@@ -313,7 +324,7 @@ class SingleRationalModel(BaseModel):
         Parameters
         ----------
         data : Tuple[np.ndarray, np.ndarray, np.ndarray]
-            A tuple containing (stimuli, choices, responses).
+            A tuple containing (stimulus, choices, responses).
         limited_hypos_list : List[List[int]], optional
             If not None, it is a list of length n_trials. Each element is a
             subset of hypotheses to be considered at each trial. If None, the
@@ -327,15 +338,21 @@ class SingleRationalModel(BaseModel):
             A list of dictionaries containing the fitting results for each
             step, such as the best hypothesis, beta, log-likelihood, and posterior.
         """
-        step_results = []
-        n_trials = len(data[2])
+        
+        stimulus, choices, responses = data
+        n_trials = len(responses)
+
+        # Precompute all distances
+        self.partition_model.precompute_all_distances(stimulus)
 
         # Backup the original hypotheses set
         original_hypotheses_set = self.hypotheses_set
         original_prior = self.engine.prior
         original_likelihood = self.engine.likelihood
 
-        for step_idx in tqdm(range(n_trials, 0, -1)):
+        step_results = []
+
+        for step_idx in tqdm(range(1, n_trials+1)):
             selected_data = [x[:step_idx] for x in data]
 
             if limited_hypos_list is not None:
@@ -354,7 +371,7 @@ class SingleRationalModel(BaseModel):
 
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
                 selected_data, 
-                use_cached_dist=(step_idx != n_trials), 
+                use_cached_dist=True, 
                 **kwargs)
 
             hypo_betas = [
@@ -364,7 +381,7 @@ class SingleRationalModel(BaseModel):
 
             all_hypo_post = self.engine.infer_log(
                 selected_data,
-                use_cached_dist=(step_idx != n_trials),
+                use_cached_dist=True,
                 beta=hypo_betas,
                 normalized=True)
 
@@ -394,7 +411,7 @@ class SingleRationalModel(BaseModel):
                 original_likelihood
             )
 
-        return step_results[::-1]
+        return step_results
 
     def oral_generate_hypos(self,
                             data: Tuple[np.ndarray, np.ndarray],
@@ -463,7 +480,7 @@ class SingleRationalModel(BaseModel):
         Parameters
         ----------
         data : tuple
-            A tuple containing (stimuli, choices, responses, categories).
+            A tuple containing (stimulus, choices, responses, categories).
         step_results : list
             Output of fit_trial_by_trial, containing fitted results for each trial.
         use_cached_dist : bool
@@ -477,14 +494,14 @@ class SingleRationalModel(BaseModel):
             A dictionary containing arrays of true accuracy, predicted accuracy, 
             and their sliding averages.
         """
-        stimuli, choices, responses, categories = data
+        stimulus, choices, responses, categories = data
         n_trials = len(responses)
 
         true_acc = (np.array(responses) == 1).astype(float)
         pred_acc = np.full(n_trials, np.nan, dtype=float)
         
         for trial_idx in range(1, n_trials):
-            trial_data = ([stimuli[trial_idx]], [choices[trial_idx]], 
+            trial_data = ([stimulus[trial_idx]], [choices[trial_idx]], 
                           [responses[trial_idx]], [categories[trial_idx]])
 
             # Extract the posterior probabilities for each hypothesis at last trial
