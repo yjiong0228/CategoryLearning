@@ -52,7 +52,7 @@ class ModelEval:
             plt.savefig(save_path)
         plt.close()
 
-    def plot_posterior_probabilities(self, results: Dict, save_path: str = None):
+    def plot_posterior_probabilities(self, results: Dict, limit: str, save_path: str = None):
         n_subjects = len(results)
         n_rows = 3
         n_cols = (n_subjects + n_rows - 1) // n_rows
@@ -72,21 +72,39 @@ class ModelEval:
             ax = fig.add_subplot(n_rows, n_cols, row*n_cols + col + 1)
             
             num_steps = len(step_results)
-            max_k = max(k for result in step_results for k in result['hypo_details'].keys())
+
+            if limit:
+                max_k = 19 if condition == 1 else 115
+                k_posteriors = {k: [] for k in range(max_k)}
+
+                for step, result in enumerate(step_results):
+                    for k in range(max_k):
+                        if k in result['hypo_details']:
+                            k_posteriors[k].append((step + 1, result['hypo_details'][k]['post_max']))
+
+                for k in range(max_k):
+                    if k_posteriors[k]:
+                        steps, values = zip(*k_posteriors[k])
+                        if (condition == 1 and k == 0) or (condition != 1 and k == 42):
+                            ax.scatter(steps, values, color='red', s=50, label=f'k={k}')
+                        else:
+                            ax.scatter(steps, values, label=f'k={k}', alpha=0.5)                                
+            else:
+                max_k = max(k for result in step_results for k in result['hypo_details'].keys())
             
-            k_posteriors = {k: np.zeros(num_steps) for k in range(0, max_k)}
-            for step, result in enumerate(step_results):
+                k_posteriors = {k: np.zeros(num_steps) for k in range(0, max_k)}
+                for step, result in enumerate(step_results):
+                    for k in range(0, max_k):
+                        k_posteriors[k][step] = result['hypo_details'][k]['post_max']
+            
                 for k in range(0, max_k):
-                    k_posteriors[k][step] = result['hypo_details'][k]['post_max']
-            
-            for k in range(0, max_k):
-                if (condition == 1 and k == 0) or (condition != 1 and k == 42):
-                    ax.plot(range(1, num_steps + 1), k_posteriors[k], 
-                        linewidth=3, color='red', label=f'k={k}')
-                else:
-                    ax.plot(range(1, num_steps + 1), k_posteriors[k], 
-                        label=f'k={k}', alpha=0.5)
-            
+                    if (condition == 1 and k == 0) or (condition != 1 and k == 42):
+                        ax.plot(range(1, num_steps + 1), k_posteriors[k], 
+                            linewidth=3, color='red', label=f'k={k}')
+                    else:
+                        ax.plot(range(1, num_steps + 1), k_posteriors[k], 
+                            label=f'k={k}', alpha=0.5)
+
             ax.set_title(f'Subject {iSub} (Condition {condition})')
             ax.set_xlabel('Trial')
             ax.set_ylabel('Posterior Probability')
