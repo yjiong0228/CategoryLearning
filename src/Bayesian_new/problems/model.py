@@ -2,7 +2,7 @@
 Base Model
 """
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Callable
 from copy import deepcopy
 import numpy as np
 from tqdm import tqdm
@@ -189,7 +189,7 @@ class BaseModel:
             "space", BaseSet(list(range(self.partition_model.length))))
 
         self.full_likelihood = PartitionLikelihood(
-            list(range(self.partition_model.length)), self.partition_model)
+            BaseSet(list(range(self.partition_model.length))), self.partition_model)
         self.engine = BaseEngine(
             self.hypotheses_set, self.observation_set,
             BasePrior(self.hypotheses_set),
@@ -377,8 +377,14 @@ class SingleRationalModel(BaseModel):
             # 如果启用了 dynamic_limit，就基于后验分布来动态筛选下一步的假设子集
             if dynamic_limit:
 
-                new_hypo_subset = self.model_generate_hypos(all_hypo_post,
-                                                            top_k=10)
+                # new_hypo_subset = self.model_generate_hypos(all_hypo_post,
+                #                                             top_k=10)
+
+                new_hypo_subset = self.model_hypos_transition(all_hypo_post, selected_data,
+                                                              # customizable. 
+                                                              rule="top-likelihood"
+                                                              )
+
 
                 # 重新刷新引擎
                 new_hypotheses_set = BaseSet(new_hypo_subset)
@@ -435,7 +441,7 @@ class SingleRationalModel(BaseModel):
                                    "rule": 2,
                                    "random": 1
                                },
-                               rule: callable | str = "top-likelihood",
+                               rule: Callable | str = "top-likelihood",
                                **kwargs) -> List[int]:
         """
         Make a k-cluster transition.
@@ -460,7 +466,7 @@ class SingleRationalModel(BaseModel):
 
         match rule:
             case "top-likelihood":
-                obs = data[-1]
+                obs = [d[-1:] for d in data]
                 likelihood = self.full_likelihood.get_likelihood(obs, beta=2)
                 labeled = sorted(list(
                     zip(list(all_hypos), likelihood[list(all_hypos)])),
@@ -469,6 +475,29 @@ class SingleRationalModel(BaseModel):
                 rule_hypos = [x[0] for x in labeled[:rule_amt]]
                 all_hypos = all_hypos - set(rule_hypos)
                 new_hypo_list += rule_hypos
+
+            case "top-5-likelihood":
+                
+                obs = [d[-1:] for d in data]
+                likelihood = np.sum(-np.log(self.full_likelihood.get_likelihood(obs, beta=2)), 
+                                    axis=-1)
+                labeled = sorted(list(
+                    zip(list(all_hypos), likelihood[list(all_hypos)])),
+                                 key=lambda x: x[1],
+                                 reverse=True)
+                rule_hypos = [x[0] for x in labeled[:rule_amt]]
+                all_hypos = all_hypos - set(rule_hypos)
+                new_hypo_list += rule_hypos
+
+            case callable():
+                ref = rule(data)
+                labeled = sorted(list(zip(all_hypos, ref)),
+                                 key=lambda x:x[1],
+                                 reverse=True)
+                rule_hypos = [x[0] for x in labeled[:rule_amt]]
+                all_hypos = all_hypos - set(rule_hypos)
+                new_hypo_list += rule_hypos
+
             case _:
                 pass
 
