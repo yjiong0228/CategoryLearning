@@ -161,7 +161,7 @@ class BaseEngine:
 
         return ret
 
-    def infer_single(self, observation, **kwargs):
+    def infer_single(self, observation, **kwargs) -> float:
         """
         Parameters
         ----------
@@ -178,7 +178,7 @@ class BaseEngine:
 
         return self.h_state.value
 
-    def infer(self, observations: list | tuple, **kwargs):
+    def infer(self, observations: list | tuple, **kwargs) -> float:
         """
         Parameters
         ----------
@@ -189,7 +189,10 @@ class BaseEngine:
 
         return self.h_state.value
 
-    def infer_log(self, observations, update: bool = False, **kwargs):
+    def infer_log(self,
+                  observations,
+                  update: bool = False,
+                  **kwargs) -> np.ndarray:
         """
         Log version of inference
         """
