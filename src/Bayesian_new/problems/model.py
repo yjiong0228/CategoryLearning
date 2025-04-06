@@ -572,7 +572,7 @@ class SingleRationalModel(BaseModel):
     #     # Select hypotheses based on the rule
     #     match rule:
     #         case "top-likelihood":
-    #             obs = [d[-1:] for d in data]                                                                                                                                                不啵啵啵啵啵啵啵啵啵啵啵啵啵啵啵啵啵啵                                                                                                                                                           
+    #             obs = [d[-1:] for d in data]
     #             likelihood = self.full_likelihood.get_likelihood(obs, beta=2)
     #             # Ensure valid indices
     #             valid_hypos = [h for h in all_hypos if h < likelihood.shape[1]]
