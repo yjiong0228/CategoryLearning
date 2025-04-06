@@ -80,10 +80,10 @@ class Recording_Processor:
     def __init__(self):
         """初始化处理器，定义各类关键词映射"""
         self.body_parts = {
-            '脖子': 'neck_oral',
-            '头': 'head_oral',
-            '腿': 'leg_oral',
-            '尾巴': 'tail_oral'
+            '脖子': 0,
+            '头': 1,
+            '腿': 2,
+            '尾巴': 3,
         }
 
         self.direct_descriptions = {
@@ -107,94 +107,95 @@ class Recording_Processor:
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
 
-    def process(self, recording_raw, structure):
-        # Initialize new columns
-        recording_raw['invalid'] = 0
-        recording_raw['noinfo'] = 0
-        recording_raw['neck_oral'] = None
-        recording_raw['head_oral'] = None
-        recording_raw['leg_oral'] = None
-        recording_raw['tail_oral'] = None
+    def process(self, file_path, new_file_path):
+
+        df = pd.read_csv(file_path)
+        texts = df['text']
+        res = {
+            'val': [],
+            'un_pro': [],
+            'origin': [],
+        }
+        for text in texts:
+            vals, un_pro = self.extract_values(text)
+            if len(vals) == 0:
+                vals = [[-1]*4]
+            vals = np.array(vals).mean(axis=0).tolist()
+            res['val'].append(vals)
+            res['un_pro'].append(un_pro)
+            res['origin'].append(text)
         
-        # Apply the extraction function to each row
-        extracted_data = recording_raw['text'].apply(self.extract_values)
-        
-        # Populate the new columns based on the extracted data
-        recording_raw['invalid'] = extracted_data.apply(lambda x: x['invalid'])
-        recording_raw['noinfo'] = extracted_data.apply(lambda x: x['noinfo'])
-        recording_raw['neck_oral'] = extracted_data.apply(lambda x: x['neck_oral'])
-        recording_raw['head_oral'] = extracted_data.apply(lambda x: x['head_oral'])
-        recording_raw['leg_oral'] = extracted_data.apply(lambda x: x['leg_oral'])
-        recording_raw['tail_oral'] = extracted_data.apply(lambda x: x['tail_oral'])
-        
-        preprocessor_b = Preprocessor_B()
-        feature_names = preprocessor_b.convert("_oral", structure)
-        for i, feature in enumerate(feature_names):
-            new_name = f'feature{i+1}_oral'
-            recording_raw[new_name] = recording_raw[feature]
-        
-        return recording_raw
+
+        result_df = pd.DataFrame(res)
+        result_df.to_csv(new_file_path, index=False)
     
     def extract_values(self, text):
         """主处理函数"""
-        result = {
-            'invalid': 0,
-            'noinfo': 0,
-            'neck_oral': None,
-            'head_oral': None,
-            'leg_oral': None,
-            'tail_oral': None
-        }
+        results = []
+        un_pro = []
 
         if pd.isna(text) or not str(text).strip():
-            result['invalid'] = 1
-            return result
+            results.append([-1]*4)
 
         # 分割并清理items
         raw_items = re.split(r'[，,]', str(text))
         items = [self._clean_item(i) for i in raw_items]
 
-        # 处理排除逻辑
+        items = [i for i in items if i != '']  # 去除空值        
+
         i = 0
         while i < len(items):
-            current_item = self._clean_item(items[i])
-            if not current_item:
+            # 处理排除逻辑
+            if '除' in items[i]:
+                res, is_pro = self._handle_exclusion(items[i], items[i+1])
+                if is_pro:
+                    results.append(res)
+                    i += 2
+                    continue
+
+
+            # 处理最高级
+            res, is_pro = self._handle_superlative(items[i])
+            if is_pro:
+                results.append(res)
                 i += 1
                 continue
 
-            i = self._handle_exclusion(current_item, items, i, result)
-            i += 1
 
-        # 处理最高级
-        if self._handle_superlative(items, result):
-            result['noinfo'] = 0
-            return result
-
-        # 处理其他逻辑
-        for item in items:
-            if not item:
+            # 处理全称量词
+            res, is_pro = self._handle_universal_quantifier(items[i])
+            if is_pro:
+                results.append(res)
+                i += 1
                 continue
-            if self._handle_superlative(item, result):
-                continue
-            if self._handle_universal_quantifier(item, result):
-                continue
-            if self._handle_exclusive_case(item, result):
-                continue
-            self._handle_comparison(item, result)
-            if self._handle_remaining_cases(item, result):
-                break
-            self._handle_general_case(item, result)
 
-        # 最终校验
-        body_values = [result[col] for col in self.body_parts.values()]
-        result['noinfo'] = int(all(v is None for v in body_values))
+            
+            # 处理'只有'逻辑
+            res, is_pro = self._handle_exclusive_case(items[i])
+            if is_pro:
+                results.append(res)
+                i += 1
+                continue
 
-        if result['noinfo'] == 0:
-            for part in self.body_parts.values():
-                if result[part] is None:
-                    result[part] = 0.5
 
-        return result
+            # 处理比较逻辑
+            res, is_pro = self._handle_comparison(items[i])
+            if is_pro:
+                results.append(res)
+                i += 1
+                continue
+
+            # 处理普通描述逻辑
+            res, is_pro = self._handle_general_case(items[i])
+            if is_pro:
+                results.append(res)
+                i += 1
+                continue
+
+            un_pro.append(items[i])  
+            i += 1       
+
+        return results, un_pro
 
     def _clean_item(self, item):
         """清理文本中的标点符号"""
@@ -213,144 +214,145 @@ class Recording_Processor:
         
         return None
 
-    def _handle_general_case(self, item, result):
+    def _handle_general_case(self, item):
         """处理普通描述逻辑"""
+        res = [0.5]*4
         if '最' in item:
-            return False
+            return res, False
 
         mentioned_parts = [part for part in self.body_parts if part in item]
         if not mentioned_parts:
-            return False
+            return res, False
         
         # 尝试直接描述词
         desc_value = self._get_description_value(item, self.direct_descriptions)
         if desc_value is None:
-            return False
+            return res, False
         
         # 仅更新未赋值的部位
         for part in mentioned_parts:
             col = self.body_parts[part]
-            if result[col] is None:
-                result[col] = desc_value
-        return True
+            res[col] = desc_value
+        return res, True
 
-    def _handle_superlative(self, item, result):
+    def _handle_superlative(self, item):
         """处理最高级逻辑"""
+        res = [0.5] * 4
         if '最' not in item:
             # 处理句式是“比其他”或“比其余”的情况
             if '比其他' in item or '比其余' in item:
                 item = item.replace('比其他', '最').replace('比其余', '最')
             else:
-                return False
+                return res, False
         
         superlative_match = re.search(r'最(长|短)', item)
         if not superlative_match:
-            return False
+            return res, False
         
         # 只能包含一个身体部位
         mentioned_parts = [part for part in self.body_parts if part in item]
         if len(mentioned_parts) != 1:
-            return False
+            return res, False
 
         # 获取描述词和对应数值
         current_desc = superlative_match.group(1)
         superlative_value = self.max_descriptions.get(current_desc)
         if not superlative_value:
-            return False
+            return res, False
         
         # 获取相反描述的值
         opposite_desc = '短' if current_desc == '长' else '长'
         other_value = self.max_descriptions.get(opposite_desc)
         
         the_part = mentioned_parts[0]
-        result[self.body_parts[the_part]] = superlative_value
+        res[self.body_parts[the_part]] = superlative_value
         
         # 设置其他部位为相反值
         for p, col in self.body_parts.items():
             if p != the_part:
-                result[col] = other_value
-        
-        return True
+                res[col] = other_value
 
-    def _handle_exclusion(self, current_item, items, i, result):
+        return res, True
+
+    def _handle_exclusion(self, current_item, next_item):
         """处理排除逻辑"""
+        res = [0.5] * 4
         match = self.exclude_pattern.search(current_item)
         if not match:
-            return i
+            return res, False
         
         excluded_parts = [p.strip() for p in re.split('[和、及与]', match.group(1))]
-        if i+1 >= len(items):
-            return i
-
-        next_item = self._clean_item(items[i+1])
         desc_value = self._get_description_value(next_item, self.direct_descriptions)
         if not desc_value:
-            return i
+            return res, False
 
         # 处理被排除的部位
         valid_excluded = []
         for part in excluded_parts:
             if part in self.body_parts:
                 valid_excluded.append(part)
-                result[self.body_parts[part]] = 1 - desc_value
+                res[self.body_parts[part]] = 1 - desc_value
 
         # 处理未被排除的部位
         for part, col in self.body_parts.items():
-            if result[col] is None and part not in valid_excluded:
-                result[col] = desc_value
+            if part not in valid_excluded:
+                res[col] = desc_value
+        return res, True
 
-        return i + 1  # 跳过已处理的下一条
-
-    def _handle_universal_quantifier(self, item, result):
+    def _handle_universal_quantifier(self, item):
         """处理全称量词"""
+        res = [0.5] * 4
         if '都' not in item or not any(q in item for q in self.quantifiers):
-            return False
+            return res, False
 
         desc_value = self._get_description_value(item, self.direct_descriptions)
         if not desc_value:
-            return False
+            return res, False
 
-        for col in result:
-            if col.endswith('_oral'):
-                result[col] = desc_value
-        return True
 
-    def _handle_exclusive_case(self, item, result):
+        res = [desc_value] * 4
+
+        return res, True
+
+    def _handle_exclusive_case(self, item):
         """处理'只有'逻辑"""
+        res = [0.5] * 4
         if '只有' not in item:
-            return False
+            return res, False
 
         mentioned_parts = [part for part in self.body_parts if part in item]
         if not mentioned_parts:
-            return False
+            return res, False
 
         desc_value = self._get_description_value(item, self.direct_descriptions)
         if not desc_value:
-            return False
+            return res, False
 
         opposite = 1 - desc_value
         for part in mentioned_parts:
-            result[self.body_parts[part]] = desc_value
+            res[self.body_parts[part]] = desc_value
         for part, col in self.body_parts.items():
             if part not in mentioned_parts:
-                result[col] = opposite
-        return True
+                res[col] = opposite
 
-    def _handle_comparison(self, item, result):
+        return res, True
+
+    def _handle_comparison(self, item):
         """处理比较逻辑"""
+        res = [0.5] * 4
         if "比" not in item or "比较" in item:
-            return
+            return res, False
 
         desc_value = self._get_description_value(item, self.comp_descriptions)
         if not desc_value:
-            return
+            return res, False
 
         current_desc = next(
             (desc for desc, val in self.comp_descriptions.items() if val == desc_value),
             None
         )
         if not current_desc:
-            return
+            return res, False
 
         opposite_desc = '短' if current_desc == '长' else '长'
         opposite_value = self.comp_descriptions.get(opposite_desc, 1 - desc_value)
@@ -360,25 +362,13 @@ class Recording_Processor:
 
         parts_before = [p for p in mentioned_parts if item.find(p) < split_index]
         parts_after = [p for p in mentioned_parts if item.find(p) > split_index]
+        if len(parts_after) == 0 and ('比其他' in item or '比其余' in item):
+            parts_after = list(set(self.body_parts.keys()) - set(parts_before))
+
 
         for part in parts_before:
-            result[self.body_parts[part]] = desc_value
+            res[self.body_parts[part]] = desc_value
         for part in parts_after:
-            result[self.body_parts[part]] = opposite_value
+            res[self.body_parts[part]] = opposite_value
 
-    def _handle_remaining_cases(self, item, result):
-        """处理'其他'逻辑"""
-        if '比其他' in item or '比其余' in item:
-            return False
-        
-        if not any(kw in item for kw in ['其他', '其余']):
-            return False
-
-        desc_value = self._get_description_value(item, self.direct_descriptions)
-        if not desc_value:
-            return False
-
-        for col in result:
-            if col.endswith('_oral') and result[col] is None:
-                result[col] = desc_value
-        return True
+        return res, True
