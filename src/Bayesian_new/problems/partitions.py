@@ -156,7 +156,11 @@ class BasePartition(ABC):
             case _:
                 pass
         ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
-        # print(hypos, ret.shape)
+
+        # 如果 beta 是标量，将其转换为与 hypos 长度一致的数组
+        if isinstance(beta, (int, float)):
+            beta = [beta] * len(hypos)
+            
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
                                                    use_cached_dist, **kwargs)
@@ -956,17 +960,21 @@ class Partition(BasePartition):
                 # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
                 # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
                 elif split_type == 'dimension_max':
+                    centers_high = {}
+                    centers_low = {}
                     for cat_idx in range(n_cats):
                         # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
-                        center_coords_max = [0.4] * n_dims
-                        center_coords_max[cat_idx] = 0.8
-                        centers[cat_idx] = tuple(center_coords_max)
+                        center_coords_high = [0.4] * n_dims
+                        center_coords_high[cat_idx] = 0.8
+                        centers_high[cat_idx] = tuple(center_coords_high)
 
-                    for cat_idx in range(n_cats):
                         # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
-                        center_coords_min = [0.8] * n_dims
-                        center_coords_min[cat_idx] = 0.4
-                        centers[cat_idx + n_cats] = tuple(center_coords_min)
+                        center_coords_low = [0.8] * n_dims
+                        center_coords_low[cat_idx] = 0.4
+                        centers_low[cat_idx] = tuple(center_coords_low)
+                    results.append((split_type, centers_high))
+                    results.append((split_type, centers_low))
+                    continue
 
             # 将列表转换为元组
             centers = {k: tuple(v) for k, v in centers.items()}

@@ -547,10 +547,21 @@ class Partition:
 
                 # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
                 elif split_type == 'dimension_max':
+                    centers_high = {}
+                    centers_low = {}
                     for cat_idx in range(n_cats):
-                        center_coords = [0.4] * n_dims  # 先令所有维度都为 0.4
-                        center_coords[cat_idx] = 0.8    # 第 cat_idx 维取 0.8
-                        centers[cat_idx] = tuple(center_coords)
+                        # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
+                        center_coords_high = [0.4] * n_dims
+                        center_coords_high[cat_idx] = 0.8
+                        centers_high[cat_idx] = tuple(center_coords_high)
+
+                        # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
+                        center_coords_low = [0.8] * n_dims
+                        center_coords_low[cat_idx] = 0.4
+                        centers_low[cat_idx] = tuple(center_coords_low)
+                    results.append((split_type, centers_high))
+                    results.append((split_type, centers_low))
+                    continue
 
             # 将列表转换为元组
             centers = {k: tuple(v) for k, v in centers.items()}
