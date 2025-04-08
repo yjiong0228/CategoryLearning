@@ -388,7 +388,7 @@ class SingleRationalModel(BaseModel):
                 #                                               rule="top-likelihood"
                 #                                               )
 
-                # 5) 如果还没到最后一试次，就生成下一步要使用的 10 个假设，然后 refresh_engine
+                # 如果还没到最后一试次，就生成下一步要使用的 10 个假设，然后 refresh_engine
                 if step_idx < n_trials:
                     # 把当前所有 hypo 的后验拼成一个 dict {hypo: posterior}, 以及 {hypo: BaseModelParams}
                     cur_post_dict = {}
@@ -404,7 +404,7 @@ class SingleRationalModel(BaseModel):
                         all_hypos=full_hypo_list,
                         prev_post=cur_post_dict,
                         prev_params=cur_param_dict,
-                        use_cached_dist=kwargs.get('use_cached_dist', False),
+                        use_cached_dist=True,
                         **kwargs
                     )
 
