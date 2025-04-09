@@ -10,6 +10,9 @@ from scipy.optimize import minimize
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
 
+# [TODO] MOVE to CONFIG
+HYPO_CLUSTER_PROTOTYPE_AMOUNT = 1
+
 
 @dataclass(unsafe_hash=True)
 class BaseModelParams:
@@ -189,7 +192,8 @@ class BaseModel:
             "space", BaseSet(list(range(self.partition_model.length))))
 
         self.full_likelihood = PartitionLikelihood(
-            BaseSet(list(range(self.partition_model.length))), self.partition_model)
+            BaseSet(list(range(self.partition_model.length))),
+            self.partition_model)
         self.engine = BaseEngine(
             self.hypotheses_set, self.observation_set,
             BasePrior(self.hypotheses_set),
@@ -377,6 +381,18 @@ class SingleRationalModel(BaseModel):
                 'hypo_details': hypo_details
             })
 
+            if kwargs.get("cluster", False):
+                # [TODO] WIP: test it in real environment
+                if step_idx < n_trials:
+                    cur_post_dict = {
+                        h: det["post_max"]
+                        for h, det in hypo_details.items()
+                    }
+                    self.partition_model.cluster_transition(
+                        stimulus=data[0][step_idx],
+                        posterior=cur_post_dict,
+                        proto_hypo_amount=HYPO_CLUSTER_PROTOTYPE_AMOUNT)
+
             # 如果启用了 dynamic_limit，就基于后验分布来动态筛选下一步的假设子集
             if dynamic_limit:
 
@@ -384,7 +400,7 @@ class SingleRationalModel(BaseModel):
                 #                                             top_k=10)
 
                 # new_hypo_subset = self.model_hypos_transition(all_hypo_post, selected_data,
-                #                                               # customizable. 
+                #                                               # customizable.
                 #                                               rule="top-likelihood"
                 #                                               )
 
@@ -396,7 +412,8 @@ class SingleRationalModel(BaseModel):
                     for h, det in hypo_details.items():
                         cur_post_dict[h] = det['post_max']
                         # 这个 beta_opt 就是上一步对单一 hypo 拟合得到的最优 beta
-                        cur_param_dict[h] = BaseModelParams(k=h, beta=det['beta_opt'])
+                        cur_param_dict[h] = BaseModelParams(
+                            k=h, beta=det['beta_opt'])
 
                     next_hypos = self.select_next_hypotheses(
                         step_idx=step_idx,
@@ -405,8 +422,7 @@ class SingleRationalModel(BaseModel):
                         prev_post=cur_post_dict,
                         prev_params=cur_param_dict,
                         use_cached_dist=True,
-                        **kwargs
-                    )
+                        **kwargs)
 
                 # 重新刷新引擎
                 new_hypotheses_set = BaseSet(next_hypos)
@@ -423,8 +439,6 @@ class SingleRationalModel(BaseModel):
                             original_likelihood)
 
         return step_results
-
-
 
     def select_next_hypotheses(self,
                                step_idx: int,
@@ -473,13 +487,15 @@ class SingleRationalModel(BaseModel):
 
         # ============ (1) 从 prev_post 中选 posterior 最高的 top_posterior ============ #
         # prev_post 是一个 {hypo: posterior_value} dict
-        sorted_by_post = sorted(prev_post.items(), key=lambda x: x[1], reverse=True)
+        sorted_by_post = sorted(prev_post.items(),
+                                key=lambda x: x[1],
+                                reverse=True)
         top_posterior_hypos = [h for (h, _) in sorted_by_post[:top_posterior]]
 
         # ============ (2) 在剩余假设里，根据最近 5 个 trial 的 sum-likelihood 选 top_likelihood ============ #
         # 剩余假设 = “全集” - “posterior最高5个”
         remain_after_5 = list(set(all_hypos) - set(top_posterior_hypos))
-        
+
         # 最近 5 个 trial 的数据索引
         start_idx = max(0, step_idx - 5)  # 若 step_idx<5 则自动取 0
         # slice 数据
@@ -507,12 +523,11 @@ class SingleRationalModel(BaseModel):
             beta=beta_list,
             use_cached_dist=use_cached_dist,
             normalized=False,
-            **kwargs
-        )
+            **kwargs)
         # likelihood_mat shape = [num_trials_in_window, len(remain_after_5)]
         # 对试次维度做 sum，得到每个 hypo 的 sum-likelihood
         sum_lik = likelihood_mat.sum(axis=0)  # shape = [len(remain_after_5)]
-        
+
         # 取 sum-likelihood 最高的 top_likelihood
         idx_sorted = np.argsort(-sum_lik)  # 从大到小排序
         top_lik_indices = idx_sorted[:top_likelihood]
@@ -520,21 +535,23 @@ class SingleRationalModel(BaseModel):
 
         # ============ (3) 在剩余假设里随机挑选 random_pick 个 ============ #
         # 剩余 = “全集” - “(posterior前5) ∪ (likelihood前3)”
-        remain_after_8 = list(set(all_hypos) - set(top_posterior_hypos) - set(top_lik_hypos))
+        remain_after_8 = list(
+            set(all_hypos) - set(top_posterior_hypos) - set(top_lik_hypos))
         # 随机取 random_pick 个，注意万一剩余数量 < random_pick，需要取 min(...)
         num_to_pick = min(random_pick, len(remain_after_8))
-        rnd_hypos = np.random.choice(remain_after_8, size=num_to_pick, replace=False)
+        rnd_hypos = np.random.choice(remain_after_8,
+                                     size=num_to_pick,
+                                     replace=False)
 
         # ============ (4) 整合得到下一个 step 的 10 个假设 ============ #
         next_hypos = top_posterior_hypos + top_lik_hypos + list(rnd_hypos)
         # 如果担心去重（比如万一 top_lik_hypos 里出现了和 top_posterior_hypos 重叠的情况），可以再去一下重
         next_hypos = list(set(next_hypos))
-        
+
         # 最终最多 10 个
         # 若去重后恰好小于 10 也没关系，这里就保留实际数量
         # 如果你想严格限制成 10 个，可能需要再补一些随机，但一般来说不会有那么巧重叠
         return next_hypos
-
 
     # def model_hypos_transition(self,
     #                            all_hypo_post: np.ndarray,
@@ -586,7 +603,7 @@ class SingleRationalModel(BaseModel):
 
     #         case "top-5-likelihood":
     #             obs = [d[-1:] for d in data]
-    #             likelihood = np.sum(-np.log(self.full_likelihood.get_likelihood(obs, beta=2)), 
+    #             likelihood = np.sum(-np.log(self.full_likelihood.get_likelihood(obs, beta=2)),
     #                                 axis=-1)
     #             # Ensure valid indices
     #             valid_hypos = [h for h in all_hypos if h < likelihood.shape[0]]
@@ -617,7 +634,6 @@ class SingleRationalModel(BaseModel):
     #         np.random.choice(list(all_hypos), size=random_amt, replace=False))
 
     #     return new_hypo_list
-
 
     def model_generate_hypos(self,
                              all_hypo_post: np.ndarray,
