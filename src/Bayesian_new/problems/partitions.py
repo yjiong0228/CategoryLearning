@@ -51,7 +51,8 @@ def amnesia_mechanism(func):
             elif isinstance(adapt_info, np.ndarray):
                 coeff = adapt_info
             else:
-                raise ValueError("adaptive_amnesia must be callable or an array")
+                raise ValueError(
+                    "adaptive_amnesia must be callable or an array")
 
             log_prob = np.log(prob)
             log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
@@ -67,7 +68,7 @@ class BasePartition(ABC):
     Base Partition
     """
 
-    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1):
+    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
         """Initialize"""
         self.n_dims = n_dims
         self.n_cats = n_cats
@@ -129,9 +130,12 @@ class BasePartition(ABC):
         """
         n_trials = stimuli.shape[0]
         for hypo in range(self.length):
-            partition = self.prototypes_np[hypo]  # shape = [n_protos, n_cats, n_dims]
-            distances = euc_dist(partition, stimuli)  # shape = [n_protos, n_cats, n_trials]
-            typical_distances = np.min(distances, axis=0)  # shape = [n_cats, n_trials]
+            partition = self.prototypes_np[
+                hypo]  # shape = [n_protos, n_cats, n_dims]
+            distances = euc_dist(
+                partition, stimuli)  # shape = [n_protos, n_cats, n_trials]
+            typical_distances = np.min(distances,
+                                       axis=0)  # shape = [n_cats, n_trials]
             self.cached_dist[hypo] = typical_distances
 
     def calc_likelihood(self,
@@ -160,7 +164,7 @@ class BasePartition(ABC):
         # 如果 beta 是标量，将其转换为与 hypos 长度一致的数组
         if isinstance(beta, (int, float)):
             beta = [beta] * len(hypos)
-            
+
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
                                                    use_cached_dist, **kwargs)
@@ -195,15 +199,21 @@ class BasePartition(ABC):
         indices = kwargs.get("indices", None)
 
         if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = (self.cached_dist[hypo][:, :n_trials] if indices is None
-                                else self.cached_dist[hypo][:, indices])
+            typical_distances = (self.cached_dist[hypo][:, :n_trials]
+                                 if indices is None else
+                                 self.cached_dist[hypo][:, indices])
         else:
-            partition = self.prototypes_np[hypo]  # shape = [n_protos, n_cats, n_dims]
-            distances = euc_dist(partition, np.array(stimulus))  # shape = [n_protos, n_cats, n_trials]
-            typical_distances = np.min(distances, axis=0)  # shape = [n_cats, n_trials]
+            partition = self.prototypes_np[
+                hypo]  # shape = [n_protos, n_cats, n_dims]
+            distances = euc_dist(
+                partition,
+                np.array(stimulus))  # shape = [n_protos, n_cats, n_trials]
+            typical_distances = np.min(distances,
+                                       axis=0)  # shape = [n_cats, n_trials]
             self.cached_dist[hypo] = typical_distances
 
-        prob = softmax(typical_distances, -beta, axis=0)  # shape = [n_cats, n_trials]
+        prob = softmax(typical_distances, -beta,
+                       axis=0)  # shape = [n_cats, n_trials]
 
         return prob
 
@@ -291,9 +301,9 @@ class Partition(BasePartition):
         for j in range(i):
             binary_comb[i][j] = (tmp // (1 << j)) % 2
 
-    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1):
+    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
         """Initialize"""
-        super().__init__(n_dims, n_cats, n_protos)
+        super().__init__(n_dims, n_cats, n_protos, **kwargs)
         self.vertices: List[Tuple[float, float, float, float]] = []
 
     def generate_vertices(self):
