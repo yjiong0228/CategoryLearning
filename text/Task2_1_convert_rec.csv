@@ -1,129 +1,129 @@
-val,un_pro,origin
-"[0.5, 0.5, 0.4375, 0.4375]",[],头长度适中，脖子长度适中，腿短，尾巴短。
-"[0.5, 0.5625, 0.4375, 0.4375]",[],头长，脖子适中，腿较短，尾巴短。
-"[0.4375, 0.5, 0.4375, 0.4375]",[],头长度适中，脖子短，腿较短，尾巴短。
-"[0.5625, 0.4375, 0.5625, 0.5625]",[],头短，脖子较长，腿长，尾巴较长。
-"[0.4375, 0.5625, 0.5625, 0.5625]",[],头长，脖子短，腿长，尾巴较长。
-"[0.5625, 0.5625, 0.5, 0.4375]",[],头长，脖子长，腿适中，尾巴较短。
-"[0.4375, 0.4375, 0.5625, 0.4375]",[],头短，脖子较短，腿长，尾巴较短。
-"[0.4833333333333333, 0.5833333333333333, 0.4166666666666667, 0.4833333333333333]",[],头长，脖子较短，腿短，尾巴较短，头、脖子、尾巴均比腿长。
-"[0.5833333333333333, 0.45, 0.4166666666666667, 0.45]",[],头短，脖子长，腿较短，尾巴短，脖子比腿长很多。
-"[0.4166666666666667, 0.5166666666666667, 0.5833333333333333, 0.55]",[],头较长，脖子较短，腿长，尾巴较长，腿比脖子和头长很多。
-"[0.4166666666666667, 0.4166666666666667, 0.5833333333333333, 0.5833333333333333]",[],头短，脖子短，腿长，尾巴长，腿和尾巴比头和脖子长很多。
-"[0.4166666666666667, 0.55, 0.5833333333333333, 0.55]",[],头长，脖子短，腿长，尾巴长，腿比脖子长很多。
-"[0.5833333333333333, 0.55, 0.4166666666666667, 0.55]",[],头长，脖子长，腿短，尾巴长，腿比脖子短很多。
-"[0.4666666666666667, 0.55, 0.5833333333333333, 0.55]",[],头长，脖子长度适中，腿较长，尾巴较长，腿比脖子长。
-"[0.5, 0.4375, 0.5, 0.5]",['脖子、腿和尾巴的长度差不多'],头短，脖子长度适中，腿长度适中，尾巴长度适中，脖子、腿和尾巴的长度差不多。
-"[0.4166666666666667, 0.5, 0.5333333333333333, 0.45]",[],头长度适中，脖子短，腿长度适中，尾巴短，腿比脖子长。
-"[0.5833333333333333, 0.5, 0.4166666666666667, 0.5]",[],头长度适中，脖子长，腿短，尾巴长度适中，脖子比腿长。
-"[0.5625, 0.5625, 0.5625, 0.4375]",[],头长，脖子长，腿长，尾巴短。
-"[0.6388888888888888, 0.5, 0.4444444444444444, 0.5]",[],脖子长，腿长度适中，脖子比腿长。
-"[0.6666666666666666, 0.5, 0.3333333333333333, 0.5]",[],脖子比腿长。
-"[0.3611111111111111, 0.5, 0.6388888888888888, 0.5]",[],脖子较短，腿长，腿比脖子长。
-"[0.6388888888888888, 0.5, 0.3611111111111111, 0.5]",[],腿较短，脖子较长，脖子比腿长。
-"[0.5277777777777778, 0.5, 0.6388888888888888, 0.5]",[],脖子较长，腿很长，腿比脖子更长。
-"[0.6388888888888888, 0.5, 0.3611111111111111, 0.5]",[],脖子长，腿短，脖子比腿长很多。
-"[0.4444444444444444, 0.5, 0.6388888888888888, 0.5]",[],脖子长度适中，腿较长，腿比脖子长。
-"[0.625, 0.625, 0.625, 0.5]",[],腿和脖子差不多长，头部较长。
-"[0.3958333333333333, 0.5625, 0.6041666666666666, 0.5]",[],腿长，脖子短，腿比脖子长很多，头较长。
-"[0.6666666666666666, 0.5833333333333334, 0.6666666666666666, 0.4166666666666667]",[],头、脖子、腿都比较长，尾巴较短，脖子和腿差不多长。
-"[0.625, 0.5, 0.375, 0.5]",[],腿短，脖子长。
-"[0.5, 0.4166666666666667, 0.5, 0.4166666666666667]",[],脖子和腿长度适中，头短，尾巴短。
-"[0.6666666666666666, 0.5, 0.3333333333333333, 0.5]",[],脖子比腿长。
-"[0.6666666666666666, 0.4166666666666667, 0.6666666666666666, 0.5]",[],脖子和腿都比较长，脖子和腿差不多长，头比较短。
-"[0.5625, 0.5625, 0.5625, 0.4375]",['脖子和腿长度差不多'],头长，脖子长，腿长，尾巴较短，脖子和腿长度差不多。
-"[0.4305555555555556, 0.5833333333333334, 0.5694444444444444, 0.5833333333333334]",[],头长，脖子短，腿较长，尾巴长，头和尾巴都很长，但脖子比腿要短一些。
-"[0.6388888888888888, 0.4166666666666667, 0.5277777777777778, 0.4166666666666667]",[],脖子和腿较长，脖子比腿稍长一些，头和尾巴较短。
-"[0.5625, 0.5625, 0.5625, 0.4375]",[],头长，脖子长，腿长，尾巴短。
-"[0.4166666666666667, 0.55, 0.5833333333333333, 0.45]",[],头较长，脖子较短，腿长，尾巴较短，腿比脖子长很多。
-"[0.4166666666666667, 0.45, 0.5833333333333333, 0.45]",[],头短，脖子较短，腿较长，尾巴短，腿比脖子长很多。
-"[0.4375, 0.4375, 0.4375, 0.4375]",['整体看起来比较短小'],头短，脖子较短，腿较短，尾巴短，整体看起来比较短小。
-"[0.5833333333333333, 0.55, 0.5166666666666667, 0.55]",['头和脖子占的比重比较大'],头长，脖子长，腿较长，尾巴长，脖子比腿长一点，头和脖子占的比重比较大。
-"[0.5333333333333333, 0.45, 0.4666666666666667, 0.45]",[],头短，脖子长度适中，腿长度适中，尾巴较短，脖子比腿长一点。
-"[0.5833333333333333, 0.55, 0.5166666666666667, 0.45]",['头和脖子的比重比较大'],头长，脖子长，腿长，尾巴短，头和脖子的比重比较大，脖子比腿长一点。
-"[0.4375, 0.5625, 0.4375, 0.4375]",['整体看起来比较短小'],头长，脖子短，腿短，尾巴较短，整体看起来比较短小。
-"[0.55, 0.45, 0.6, 0.45]",[],头短，脖子长，腿长，尾巴短，腿很长。
-"[0.5, 0.5625, 0.5, 0.4375]",[],头长，脖子长度适中，腿长度适中，尾巴短。
-"[0.41666666666666663, 0.5, 0.7083333333333333, 0.5]",[],腿很长，腿比脖子长。
-"[0.625, 0.5, 0.375, 0.5]",[],腿短，脖子较长。
-"[0.4166666666666667, 0.5833333333333333, 0.4166666666666667, 0.4166666666666667]",['脖子和腿的长度差不多'],头长，脖子短，腿短，尾巴短，脖子和腿的长度差不多，头比其他的部位要长很多。
-"[0.6041666666666666, 0.4375, 0.5208333333333334, 0.4375]",[],头和尾巴比较短，脖子较长，腿较长，脖子比腿要长一点。
-"[0.5625, 0.4375, 0.5625, 0.4375]",['整体看起来比较修长'],头短，脖子较长，腿较长，尾巴较短，整体看起来比较修长。
-"[0.4375, 0.5, 0.4375, 0.4375]",['整体看起来比较短小'],头长度适中，脖子短，腿短，尾巴较短，整体看起来比较短小。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.625, 0.625, 0.375, 0.5]",[],腿比较短，脖子和头都很长。
-"[0.625, 0.625, 0.375, 0.5]",[],腿很短，脖子和头都很长。
-"[0.625, 0.625, 0.625, 0.5]",[],腿很长，头和脖子比较长。
-"[0.5625, 0.5625, 0.4375, 0.5]",[],腿长度适中，头和脖子比较长，尾巴长度适中，在整体比例中腿显得比较短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.625, 0.375, 0.5]",[],腿短，头很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",['其他部位都很长'],腿非常短，其他部位都很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.625, 0.5]",[],腿比较长，但跟其他部分比又不算是特别长。
-"[0.375, 0.375, 0.25, 0.375]",[],腿很短，几乎所有部位都很短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5833333333333333, 0.5, 0.41666666666666663, 0.5]",[],腿长度适中，腿比脖子短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.41666666666666663, 0.5, 0.5833333333333333, 0.5]",[],腿长度适中，和脖子比起来腿较短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿较长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿非常短，几乎是最短。
-"[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿很长，基本是最长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",['基本是最短'],腿非常短，基本是最短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿很长，基本是最长。
-"[0.5833333333333333, 0.5, 0.41666666666666663, 0.5]",['整体很修长'],腿长度适中，脖子比腿更长，整体很修长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿非常长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿非常短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿非常短，几乎是最短。
-"[0.625, 0.5, 0.625, 0.5]",[],腿比较长，脖子也比较长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.4166666666666667, 0.5833333333333334, 0.4166666666666667, 0.5]",[],腿比较短，脖子短，头很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿很短，几乎是最短。
-"[0.625, 0.625, 0.625, 0.5]",[],腿比较长，头和脖子也比较长。
-"[0.4166666666666667, 0.4166666666666667, 0.5833333333333334, 0.5]",[],腿比较长，头短，脖子短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿非常长，基本是最长。
-"[0.5833333333333334, 0.5833333333333334, 0.5833333333333334, 0.5]",[],头长，脖子长，腿也比较长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿很长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+exclusion,superlative,universal_quantifier,exclusive_case,comparison,general_case,addition,all,un_pro,origin
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.25]",[],头长度适中，脖子长度适中，腿短，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.75, 0.25, 0.25]","[None, None, None, None]","[0.5, 0.75, 0.25, 0.25]",[],头长，脖子适中，腿较短，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.25, 0.25]","[None, None, None, None]","[0.25, 0.5, 0.25, 0.25]",[],头长度适中，脖子短，腿较短，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.75]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.75]",[],头短，脖子较长，腿长，尾巴较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.25, 0.75, 0.75, 0.75]",[],头长，脖子短，腿长，尾巴较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.5, 0.25]","[None, None, None, None]","[0.75, 0.75, 0.5, 0.25]",[],头长，脖子长，腿适中，尾巴较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.25, 0.25, 0.75, 0.25]",[],头短，脖子较短，腿长，尾巴较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, 0.6666666666666666, 0.3333333333333333, 0.6666666666666666]","[0.25, 0.75, 0.25, 0.25]","[None, None, None, None]","[0.4583333333333333, 0.7083333333333333, 0.29166666666666663, 0.4583333333333333]",[],头长，脖子较短，腿短，尾巴较短，头、脖子、尾巴均比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.25, 0.25, 0.25]","[None, None, None, None]","[0.7083333333333333, 0.25, 0.29166666666666663, 0.25]",[],头短，脖子长，腿较短，尾巴短，脖子比腿长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, 0.3333333333333333, 0.6666666666666666, None]","[0.25, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.29166666666666663, 0.5416666666666666, 0.7083333333333333, 0.75]",[],头较长，脖子较短，腿长，尾巴较长，腿比脖子和头长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, 0.3333333333333333, 0.6666666666666666, 0.6666666666666666]","[0.25, 0.25, 0.75, 0.75]","[None, None, None, None]","[0.29166666666666663, 0.29166666666666663, 0.7083333333333333, 0.7083333333333333]",[],头短，脖子短，腿长，尾巴长，腿和尾巴比头和脖子长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.29166666666666663, 0.75, 0.7083333333333333, 0.75]",[],头长，脖子短，腿长，尾巴长，腿比脖子长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.75, 0.25, 0.75]","[None, None, None, None]","[0.7083333333333333, 0.75, 0.29166666666666663, 0.75]",[],头长，脖子长，腿短，尾巴长，腿比脖子短很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.5, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.41666666666666663, 0.75, 0.7083333333333333, 0.75]",[],头长，脖子长度适中，腿较长，尾巴较长，腿比脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",['脖子、腿和尾巴的长度差不多'],头短，脖子长度适中，腿长度适中，尾巴长度适中，脖子、腿和尾巴的长度差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.5, 0.5, 0.25]","[None, None, None, None]","[0.29166666666666663, 0.5, 0.5833333333333333, 0.25]",[],头长度适中，脖子短，腿长度适中，尾巴短，腿比脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.5, 0.25, 0.5]","[None, None, None, None]","[0.7083333333333333, 0.5, 0.29166666666666663, 0.5]",[],头长度适中，脖子长，腿短，尾巴长度适中，脖子比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]",[],头长，脖子长，腿长，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, None, 0.5, None]","[None, None, None, None]","[0.7083333333333333, 0.5, 0.41666666666666663, 0.5]",[],脖子长，腿长度适中，脖子比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, 0.5, 0.3333333333333333, 0.5]",[],脖子比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, None, 0.75, None]","[None, None, None, None]","[0.29166666666666663, 0.5, 0.7083333333333333, 0.5]",[],脖子较短，腿长，腿比脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.7083333333333333, 0.5, 0.29166666666666663, 0.5]",[],腿较短，脖子较长，脖子比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.75, None, 0.75, None]","[None, None, None, None]","[0.5416666666666666, 0.5, 0.7083333333333333, 0.5]",[],脖子较长，腿很长，腿比脖子更长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.7083333333333333, 0.5, 0.29166666666666663, 0.5]",[],脖子长，腿短，脖子比腿长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.5, None, 0.75, None]","[None, None, None, None]","[0.41666666666666663, 0.5, 0.7083333333333333, 0.5]",[],脖子长度适中，腿较长，腿比脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.5]",[],腿和脖子差不多长，头部较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.75, 0.75, None]","[None, None, None, None]","[0.29166666666666663, 0.75, 0.7083333333333333, 0.5]",[],腿长，脖子短，腿比脖子长很多，头较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]",[],头、脖子、腿都比较长，尾巴较短，脖子和腿差不多长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.75, 0.5, 0.25, 0.5]",[],腿短，脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.25]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.25]",[],脖子和腿长度适中，头短，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, 0.5, 0.3333333333333333, 0.5]",[],脖子比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.25, 0.75, None]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.5]",[],脖子和腿都比较长，脖子和腿差不多长，头比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]",['脖子和腿长度差不多'],头长，脖子长，腿长，尾巴较短，脖子和腿长度差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.29166666666666663, 0.75, 0.7083333333333333, 0.75]",[],头长，脖子短，腿较长，尾巴长，头和尾巴都很长，但脖子比腿要短一些。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.7083333333333333, 0.25, 0.5416666666666666, 0.25]",[],脖子和腿较长，脖子比腿稍长一些，头和尾巴较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.25]",[],头长，脖子长，腿长，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.29166666666666663, 0.75, 0.7083333333333333, 0.25]",[],头较长，脖子较短，腿长，尾巴较短，腿比脖子长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[0.25, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.29166666666666663, 0.25, 0.7083333333333333, 0.25]",[],头短，脖子较短，腿较长，尾巴短，腿比脖子长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]",['整体看起来比较短小'],头短，脖子较短，腿较短，尾巴短，整体看起来比较短小。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.7083333333333333, 0.75, 0.5416666666666666, 0.75]",['头和脖子占的比重比较大'],头长，脖子长，腿较长，尾巴长，脖子比腿长一点，头和脖子占的比重比较大。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.5, 0.25, 0.5, 0.25]","[None, None, None, None]","[0.5833333333333333, 0.25, 0.41666666666666663, 0.25]",[],头短，脖子长度适中，腿长度适中，尾巴较短，脖子比腿长一点。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.75, 0.75, 0.25]","[None, None, None, None]","[0.7083333333333333, 0.75, 0.5416666666666666, 0.25]",['头和脖子的比重比较大'],头长，脖子长，腿长，尾巴短，头和脖子的比重比较大，脖子比腿长一点。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.75, 0.25, 0.25]","[None, None, None, None]","[0.25, 0.75, 0.25, 0.25]",['整体看起来比较短小'],头长，脖子短，腿短，尾巴较短，整体看起来比较短小。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.25]",[],头短，脖子长，腿长，尾巴短，腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.25]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.25]",[],头长，脖子长度适中，腿长度适中，尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.3333333333333333, 0.5, 0.7083333333333333, 0.5]",[],腿很长，腿比脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.75, 0.5, 0.25, 0.5]",[],腿短，脖子较长。
+"[0.25, 0.75, 0.25, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.75, 0.25, 0.25]","[None, None, None, None]","[0.25, 0.75, 0.25, 0.5]",[],头长，脖子短，腿短，尾巴短，脖子和腿的长度差不多，头比其他的部位要长很多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[0.75, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.7083333333333333, 0.25, 0.5416666666666666, 0.25]",[],头和尾巴比较短，脖子较长，腿较长，脖子比腿要长一点。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.25]","[None, None, None, None]","[0.75, 0.25, 0.75, 0.25]",['整体看起来比较修长'],头短，脖子较长，腿较长，尾巴较短，整体看起来比较修长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.25, 0.25]","[None, None, None, None]","[0.25, 0.5, 0.25, 0.25]",['整体看起来比较短小'],头长度适中，脖子短，腿短，尾巴较短，整体看起来比较短小。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.25, None]","[None, None, None, None]","[0.75, 0.75, 0.25, 0.5]",[],腿比较短，脖子和头都很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.25, None]","[None, None, None, None]","[0.75, 0.75, 0.25, 0.5]",[],腿很短，脖子和头都很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.5]",[],腿很长，头和脖子比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.375, 0.5]","[None, None, None, None]","[0.75, 0.75, 0.375, 0.5]",[],腿长度适中，头和脖子比较长，尾巴长度适中，在整体比例中腿显得比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, 0.25, None]","[None, None, None, None]","[0.5, 0.75, 0.25, 0.5]",[],腿短，头很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[0.75, 0.75, 0.25, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.25, 0.75]",[],腿非常短，其他部位都很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[0.75, 0.75, 0.25, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.25, 0.75]",[],腿比较长，但跟其他部分比又不算是特别长。
+"[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]",[],腿很短，几乎所有部位都很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[None, None, 0.5, None]","[None, None, None, None]","[0.6666666666666666, 0.5, 0.41666666666666663, 0.5]",[],腿长度适中，腿比脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.3333333333333333, None, 0.6666666666666666, None]","[None, None, 0.5, None]","[None, None, None, None]","[0.3333333333333333, 0.5, 0.5833333333333333, 0.5]",[],腿长度适中，和脖子比起来腿较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿非常短，几乎是最短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿很长，基本是最长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",['基本是最短'],腿非常短，基本是最短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿很长，基本是最长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.6666666666666666, None, 0.3333333333333333, None]","[None, None, 0.5, None]","[None, None, None, None]","[0.6666666666666666, 0.5, 0.41666666666666663, 0.5]",['整体很修长'],腿长度适中，脖子比腿更长，整体很修长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿非常长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿非常短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿非常短，几乎是最短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.75, None]","[None, None, None, None]","[0.75, 0.5, 0.75, 0.5]",[],腿比较长，脖子也比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.75, 0.25, None]","[None, None, None, None]","[0.25, 0.75, 0.25, 0.5]",[],腿比较短，脖子短，头很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",['几乎是最短'],腿很短，几乎是最短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.5]",[],腿比较长，头和脖子也比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.75, None]","[None, None, None, None]","[0.25, 0.25, 0.75, 0.5]",[],腿比较长，头短，脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",['基本是最长'],腿非常长，基本是最长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.5]",[],头长，脖子长，腿也比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿比较长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿很短。
