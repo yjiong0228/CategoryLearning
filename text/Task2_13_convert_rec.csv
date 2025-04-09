@@ -1,257 +1,257 @@
-val,un_pro,origin
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[0.5, 0.5, 0.6666666666666666, 0.5]",[],腿比躯干长。
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[-1.0, -1.0, -1.0, -1.0]",['头朝左'],头朝左。
-"[0.5, 0.5, 0.5, 0.6666666666666666]",[],尾巴比躯干长。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.5, 0.3333333333333333, 0.5, 0.5]",[],头比躯干短。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.5, 0.3333333333333333, 0.5, 0.5]",[],头比躯干短。
-"[0.5, 0.3333333333333333, 0.5, 0.5]",[],头比躯干短。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.5, 0.5, 0.5, 0.3333333333333333]",[],尾巴比躯干短。
-"[0.5, 0.5, 0.5, 0.3333333333333333]",[],尾巴比躯干短。
-"[-1.0, -1.0, -1.0, -1.0]",['头朝左'],头朝左。
-"[0.5, 0.5, 0.6666666666666666, 0.5]",[],腿比躯干长。
-"[0.5, 0.75, 0.5, 0.75]",[],头和尾巴一样长。
-"[0.5, 0.75, 0.5, 0.75]",[],头和尾巴不一样长。
-"[0.5, 0.75, 0.5, 0.75]",[],头和尾巴不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.4, 0.4, 0.8, 0.4]",[],腿最长。
-"[0.25, 0.25, 0.25, 0.25]",[],四个部位都比较短。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很短'],一个部位很短。
-"[0.5, 0.5, 0.5, 0.5]",[],四个部位都中等长度。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['四个部位都差不多'],四个部位都差不多。
-"[-1.0, -1.0, -1.0, -1.0]",['四个部位都差不多'],四个部位都差不多。
-"[0.25, 0.25, 0.25, 0.25]",[],四个部位都比较短。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['四个部位都差不多'],四个部位都差不多。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[-1.0, -1.0, -1.0, -1.0]",['四个部位都差不多'],四个部位都差不多。
-"[-1.0, -1.0, -1.0, -1.0]",['一个部位很长'],一个部位很长。
-"[0.8, 0.8, 0.4, 0.8]",[],腿最短。
-"[0.8, 0.4, 0.4, 0.4]",[],脖子最长。
-"[0.4, 0.4, 0.4, 0.8]",[],尾巴最长。
-"[-1.0, -1.0, -1.0, -1.0]",['四个部位都差不多'],四个部位都差不多。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['没有两个部位一样长'],没有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[0.5, 0.25, 0.5, 0.5]",[],头短。
-"[-1.0, -1.0, -1.0, -1.0]",['有两个部位一样长'],有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['没有两个部位一样长'],没有两个部位一样长。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头等于尾巴'],头等于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头高于尾巴'],头高于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头高于尾巴'],头高于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头高于尾巴'],头高于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头等于尾巴'],头等于尾巴。
-"[-1.0, -1.0, -1.0, -1.0]",['头的高度和尾巴类似'],头的高度和尾巴类似。
-"[-1.0, -1.0, -1.0, -1.0]",['头低于尾巴'],头低于尾巴。
-"[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
-"[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
-"[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
-"[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
-"[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
-"[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
-"[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
-"[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
-"[-1.0, -1.0, -1.0, -1.0]",['头在腿之上'],头在腿之上。
-"[-1.0, -1.0, -1.0, -1.0]",['头接近于腿的高度'],头接近于腿的高度。
-"[-1.0, -1.0, -1.0, -1.0]",['头在腿之上'],头在腿之上。
-"[-1.0, -1.0, -1.0, -1.0]",['头在腿上'],头在腿上。
-"[-1.0, -1.0, -1.0, -1.0]",['头在腿上'],头在腿上。
-"[-1.0, -1.0, -1.0, -1.0]",['低头'],低头。
-"[-1.0, -1.0, -1.0, -1.0]",['低头'],低头。
-"[-1.0, -1.0, -1.0, -1.0]",['抬头'],抬头。
-"[-1.0, -1.0, -1.0, -1.0]",['低头'],低头。
-"[-1.0, -1.0, -1.0, -1.0]",['低头'],低头。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.5, 0.25, 0.5]",['低头'],腿短，低头。
-"[-1.0, -1.0, -1.0, -1.0]",['头在腿之上'],头在腿之上。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头与躯干持平'],头与躯干持平。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之上'],头在躯干之上。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之上'],头在躯干之上。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之上'],头在躯干之上。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头与躯干持平'],头与躯干持平。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头与躯干持平'],头与躯干持平。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之下'],头在躯干之下。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[-1.0, -1.0, -1.0, -1.0]",['头在躯干之上'],头在躯干之上。
-"[0.5, 0.25, 0.5, 0.5]",[],头短。
-"[0.5, 0.75, 0.5, 0.5]",[],头长。
-"[0.25, 0.25, 0.25, 0.25]",[],四个部位都比躯干短。
-"[0.5, 0.5, 0.5, 0.5]",[],有一个部位比躯干长。
-"[0.5, 0.5, 0.5, 0.5]",[],有一个部位比躯干长。
-"[0.5, 0.6666666666666666, 0.6666666666666666, 0.6666666666666666]",[],头、尾巴和腿都比躯干长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
-"[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.625, 0.5, 0.375, 0.5]",[],腿短，脖子长。
-"[0.375, 0.5, 0.625, 0.5]",[],腿长，脖子短。
-"[0.375, 0.5, 0.625, 0.5]",[],腿长，脖子短。
-"[0.375, 0.5, 0.625, 0.5]",[],腿长，脖子短。
-"[0.625, 0.5, 0.375, 0.5]",[],腿短，脖子长。
-"[0.625, 0.5, 0.375, 0.5]",[],腿短，脖子长。
-"[0.625, 0.5, 0.625, 0.5]",[],腿长，脖子长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.75, 0.5, 0.5, 0.75]",[],尾巴和脖子不一样长。
-"[0.5, 0.75, 0.5, 0.5]",[],头和躯干一样长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子和躯干一样长。
-"[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
-"[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
-"[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴和躯干一样长。
-"[0.5, 0.6666666666666666, 0.5, 0.5]",[],头比躯干长。
-"[0.75, 0.5, 0.5, 0.75]",[],脖子和尾巴不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],脖子尾巴不一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],脖子尾巴一样长。
-"[0.75, 0.5, 0.5, 0.75]",[],脖子和尾巴一样长。
-"[0.8, 0.8, 0.8, 0.4]",[],尾巴最短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿和躯干一样长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿和躯干不一样长。
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿和躯干一样长。
-"[0.5, 0.5, 0.3333333333333333, 0.5]",[],腿比躯干短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿和躯干一样长。
-"[0.5, 0.5, 0.75, 0.5]",[],腿和躯干一样长。
-"[0.5, 0.5, 0.25, 0.5]",[],腿短。
-"[0.5, 0.5, 0.75, 0.5]",[],腿长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
-"[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.25, 0.5, 0.5, 0.5]",[],脖子短。
-"[0.75, 0.5, 0.5, 0.5]",[],脖子长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.3333333333333333, 0.5, 0.5, 0.5]",[],脖子比躯干短。
-"[0.6666666666666666, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+exclusion,superlative,universal_quantifier,exclusive_case,comparison,general_case,addition,all,un_pro,origin
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头朝左'],头朝左。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.25, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",[],头比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.25, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",[],头比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.25, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",[],头比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头朝左'],头朝左。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头和尾巴一样长'],头和尾巴一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头和尾巴不一样长'],头和尾巴不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头和尾巴不一样长'],头和尾巴不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子一样长'],尾巴和脖子一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[0.4, 0.4, 0.8, 0.4]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.4, 0.4, 0.8, 0.4]",[],腿最长。
+"[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]",[],四个部位都比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很短'],一个部位很短。
+"[None, None, None, None]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.5]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.5]",[],四个部位都中等长度。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['四个部位都差不多'],四个部位都差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['四个部位都差不多'],四个部位都差不多。
+"[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]",[],四个部位都比较短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['四个部位都差不多'],四个部位都差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['四个部位都差不多'],四个部位都差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['一个部位很长'],一个部位很长。
+"[None, None, None, None]","[0.8, 0.8, 0.4, 0.8]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.8, 0.8, 0.4, 0.8]",[],腿最短。
+"[None, None, None, None]","[0.8, 0.4, 0.4, 0.4]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.8, 0.4, 0.4, 0.4]",[],脖子最长。
+"[None, None, None, None]","[0.4, 0.4, 0.4, 0.8]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.4, 0.4, 0.4, 0.8]",[],尾巴最长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['四个部位都差不多'],四个部位都差不多。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子一样长'],尾巴和脖子一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子一样长'],尾巴和脖子一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['没有两个部位一样长'],没有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.25, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",[],头短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有两个部位一样长'],有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['没有两个部位一样长'],没有两个部位一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头等于尾巴'],头等于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头高于尾巴'],头高于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头高于尾巴'],头高于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头高于尾巴'],头高于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头等于尾巴'],头等于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头的高度和尾巴类似'],头的高度和尾巴类似。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头低于尾巴'],头低于尾巴。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.3333333333333333, 0.6666666666666666, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.6666666666666666, 0.3333333333333333, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.3333333333333333, 0.6666666666666666, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.3333333333333333, 0.6666666666666666, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.6666666666666666, 0.3333333333333333, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.3333333333333333, 0.6666666666666666, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.3333333333333333, 0.6666666666666666, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.3333333333333333, 0.6666666666666666, 0.5]",[],头比腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.6666666666666666, 0.3333333333333333, None]","[None, None, None, None]","[None, None, None, None]","[0.5, 0.6666666666666666, 0.3333333333333333, 0.5]",[],头比腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在腿之上'],头在腿之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头接近于腿的高度'],头接近于腿的高度。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在腿之上'],头在腿之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在腿上'],头在腿上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在腿上'],头在腿上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['低头'],低头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['低头'],低头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['抬头'],抬头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['低头'],低头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['低头'],低头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",['低头'],腿短，低头。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在腿之上'],头在腿之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头与躯干持平'],头与躯干持平。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之上'],头在躯干之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之上'],头在躯干之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之上'],头在躯干之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头与躯干持平'],头与躯干持平。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头与躯干持平'],头与躯干持平。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之下'],头在躯干之下。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头在躯干之上'],头在躯干之上。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.25, None, None]","[None, None, None, None]","[0.5, 0.25, 0.5, 0.5]",[],头短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头长。
+"[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, 0.25, 0.25, 0.25]",[],四个部位都比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有一个部位比躯干长'],有一个部位比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['有一个部位比躯干长'],有一个部位比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, 0.75, 0.75]","[None, None, None, None]","[0.5, 0.75, 0.75, 0.75]",[],头、尾巴和腿都比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.75, 0.5, 0.25, 0.5]",[],腿短，脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, 0.75, None]","[None, None, None, None]","[0.25, 0.5, 0.75, 0.5]",[],腿长，脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, 0.75, None]","[None, None, None, None]","[0.25, 0.5, 0.75, 0.5]",[],腿长，脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, 0.75, None]","[None, None, None, None]","[0.25, 0.5, 0.75, 0.5]",[],腿长，脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.75, 0.5, 0.25, 0.5]",[],腿短，脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.25, None]","[None, None, None, None]","[0.75, 0.5, 0.25, 0.5]",[],腿短，脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, 0.75, None]","[None, None, None, None]","[0.75, 0.5, 0.75, 0.5]",[],腿长，脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和脖子不一样长'],尾巴和脖子不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['头和躯干一样长'],头和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['脖子和躯干一样长'],脖子和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
+"[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
+"[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, 0.75, 0.75, 0.75]",[],四个部位和躯干都不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['尾巴和躯干一样长'],尾巴和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, 0.75, None, None]","[None, None, None, None]","[0.5, 0.75, 0.5, 0.5]",[],头比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['脖子和尾巴不一样长'],脖子和尾巴不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['脖子尾巴不一样长'],脖子尾巴不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['脖子尾巴一样长'],脖子尾巴一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['脖子和尾巴一样长'],脖子和尾巴一样长。
+"[None, None, None, None]","[0.8, 0.8, 0.8, 0.4]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.8, 0.8, 0.8, 0.4]",[],尾巴最短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['腿和躯干一样长'],腿和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['腿和躯干不一样长'],腿和躯干不一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['腿和躯干一样长'],腿和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['腿和躯干一样长'],腿和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]",['腿和躯干一样长'],腿和躯干一样长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.25, None]","[None, None, None, None]","[0.5, 0.5, 0.25, 0.5]",[],腿短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, 0.75, None]","[None, None, None, None]","[0.5, 0.5, 0.75, 0.5]",[],腿长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.75]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.75]",[],尾巴长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, 0.25]","[None, None, None, None]","[0.5, 0.5, 0.5, 0.25]",[],尾巴短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.25, None, None, None]","[None, None, None, None]","[0.25, 0.5, 0.5, 0.5]",[],脖子比躯干短。
+"[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[None, None, None, None]","[0.75, None, None, None]","[None, None, None, None]","[0.75, 0.5, 0.5, 0.5]",[],脖子比躯干长。
