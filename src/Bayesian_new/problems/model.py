@@ -388,10 +388,16 @@ class SingleRationalModel(BaseModel):
                         h: det["post_max"]
                         for h, det in hypo_details.items()
                     }
-                    self.partition_model.cluster_transition(
+                    next_hypos = self.partition_model.cluster_transition(
                         stimulus=data[0][step_idx],
                         posterior=cur_post_dict,
                         proto_hypo_amount=HYPO_CLUSTER_PROTOTYPE_AMOUNT)
+                    new_hypotheses_set = BaseSet(next_hypos)
+                    new_prior = BasePrior(new_hypotheses_set)
+                    new_likelihood = PartitionLikelihood(
+                        new_hypotheses_set, self.partition_model)
+                    self.refresh_engine(new_hypotheses_set, new_prior,
+                                        new_likelihood)
 
             # 如果启用了 dynamic_limit，就基于后验分布来动态筛选下一步的假设子集
             if dynamic_limit:
