@@ -11,9 +11,10 @@ from scipy.optimize import minimize
 
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
-from .model import BaseModelParams, BaseModel, SingleRationalModel
+from .model import BaseModelParams, BaseModel, SingleRationalModel, PartitionLikelihood
 from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 
+HYPO_CLUSTER_PROTOTYPE_AMOUNT = 1
 
 @dataclass(unsafe_hash=True)
 class ForgetModelParams(BaseModelParams):
@@ -110,7 +111,8 @@ class ForgetModel(SingleRationalModel):
     def fit_step_by_step(self, 
                          data: Tuple[np.ndarray, np.ndarray, np.ndarray], 
                          gamma: float, 
-                         w0: float) -> List[Dict]:
+                         w0: float,
+                         **kwargs) -> List[Dict]:
         
         """
         Fit the model step-by-step with fixed gamma and w0.
@@ -129,13 +131,20 @@ class ForgetModel(SingleRationalModel):
         List[Dict]
             A list of dictionaries containing the fitting results for each step.
         """
-        step_results = []
-        n_trials = len(data[2])
 
-        for step_idx in range(n_trials, 0, -1):
+        stimulus, _, responses = data
+        n_trials = len(responses)
+
+        # Precompute all distances
+        self.partition_model.precompute_all_distances(stimulus)
+
+        step_results = []        
+
+        for step_idx in range(1, n_trials + 1):
             selected_data = [x[:step_idx] for x in data]
             best_params, best_ll, all_hypo_params, all_hypo_ll = self.fit_single_step(
-                selected_data, gamma, w0, use_cached_dist=(step_idx != n_trials))
+                selected_data, gamma, w0, use_cached_dist=True,
+                                                 **kwargs)
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
@@ -144,7 +153,7 @@ class ForgetModel(SingleRationalModel):
 
             all_hypo_post = self.engine.infer_log(
                 selected_data,
-                use_cached_dist=(step_idx != n_trials),
+                use_cached_dist=True,
                 beta=hypo_betas,
                 gamma=gamma,
                 w0=w0,
@@ -168,14 +177,33 @@ class ForgetModel(SingleRationalModel):
                 'hypo_details': hypo_details
             })
 
-        return step_results[::-1]
+            if kwargs.get("cluster", False):
+                # [TODO] WIP: test it in real environment
+                if step_idx < n_trials:
+                    cur_post_dict = {
+                        h: det["post_max"]
+                        for h, det in hypo_details.items()
+                    }
+                    next_hypos = self.partition_model.cluster_transition(
+                        stimulus=data[0][step_idx],
+                        posterior=cur_post_dict,
+                        proto_hypo_amount=HYPO_CLUSTER_PROTOTYPE_AMOUNT)
+                    new_hypotheses_set = BaseSet(next_hypos)
+                    new_prior = BasePrior(new_hypotheses_set)
+                    new_likelihood = PartitionLikelihood(
+                        new_hypotheses_set, self.partition_model)
+                    self.refresh_engine(new_hypotheses_set, new_prior,
+                                        new_likelihood)
+
+        return step_results
 
 
     def compute_error_for_params(self, 
                                  data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
                                  gamma: float, 
-                                 w0: float, 
-                                 window_size=16) -> Tuple[List[Dict], float]:
+                                 w0: float,
+                                 window_size=16,
+                                 **kwargs) -> Tuple[List[Dict], float]:
         """
         Perform a single pass of model fitting and prediction, then compute an error metric.
 
@@ -199,7 +227,7 @@ class ForgetModel(SingleRationalModel):
         """
         # Fit the model with fixed gamma and w0
         selected_data = data[:3]
-        step_results = self.fit_step_by_step(selected_data, gamma, w0)
+        step_results = self.fit_step_by_step(selected_data, gamma, w0, **kwargs)
         
         # Get the predicted accuracy
         predict_results = self.predict_choice(
