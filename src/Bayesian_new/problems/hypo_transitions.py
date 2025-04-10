@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import List, Tuple, Dict, Set
 import numpy as np
 from .partitions import Partition
-from .base_problem import (cdist, BaseSet)
+from .base_problem import (cdist, softmax, BaseSet)
 
 
 class PartitionCluster(Partition):
@@ -94,7 +94,7 @@ class PartitionCluster(Partition):
                     break
                 new_hypos.append((i, new_hypos[-1][1] + sorted_by_post[i][1]))
 
-            return [x for x, _ in new_hypos]\
+            return [x for x, _ in new_hypos]
 
         # original top-n case
         return [x for x, _ in sorted_by_post][:amount]
@@ -121,7 +121,22 @@ class PartitionCluster(Partition):
         proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
         ref_hypos = sorted([(i, p) for i, p in posterior.items()],
                            key=lambda x: x[1],
-                           reverse=True)[:proto_hypo_amount]
+                           reverse=True)
+
+        match kwargs.get("proto_hypo_method", "top"):
+            case "top":
+                ref_hypos = ref_hypos[:proto_hypo_amount]
+            case "random":
+                ref_hypos = [
+                    ref_hypos[i]
+                    for i in np.random.choice(np.arange(len(ref_hypos)),
+                                              size=proto_hypo_amount,
+                                              p=[x for _, x in ref_hypos],
+                                              replace=False)
+                ]
+            case _:
+                ref_hypos = ref_hypos[:proto_hypo_amount]
+
         # in case that proto_hypo_amount is greater than len(ref_hypos)
         proto_hypo_amount = len(ref_hypos)
         # prepare the reference hypos: index, chioce, posterior
@@ -151,14 +166,26 @@ class PartitionCluster(Partition):
         # print("candidate_full_center.shape", candidate_full_center.shape)
         # print("ref_hypos_center.shape", ref_hypos_center.shape)
         exp_dist = np.exp([[
-            -10 * self.center_dist(ref_hypos_center[i],
-                                   candidate_full_center[j, ref_choices[i]])
+            -1 * self.center_dist(ref_hypos_center[i],
+                                  candidate_full_center[j, ref_choices[i]])
             for i, _ in enumerate(ref_hypos_index)
         ] for j, _ in enumerate(candidate_hypos_index)])
         score = np.einsum("ij,j->i", exp_dist, ref_hypos_post)
 
-        return list(
-            np.array(candidate_hypos_index)[np.argsort(score)[-amount:]])
+        match kwargs.get("cluster_hypo_method", "top"):
+            case "top":
+                argscore = np.argsort(score)[-amount:]
+                ret_val = np.array(candidate_hypos_index)[argscore]
+            case "random":
+                ret_val = np.random.choice(candidate_hypos_index,
+                                           p=softmax(score),
+                                           size=amount,
+                                           replace=False)
+            case _:
+                argscore = np.argsort(score)[-amount:]
+                ret_val = np.array(candidate_hypos_index)[argscore]
+
+        return list(ret_val)
 
     def cluster_transition(self,
                            full_hypo_set: BaseSet | None = None,
