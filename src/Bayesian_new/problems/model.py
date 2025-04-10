@@ -391,7 +391,10 @@ class SingleRationalModel(BaseModel):
                     next_hypos = self.partition_model.cluster_transition(
                         stimulus=data[0][step_idx],
                         posterior=cur_post_dict,
-                        proto_hypo_amount=HYPO_CLUSTER_PROTOTYPE_AMOUNT)
+                        proto_hypo_amount=kwargs.get(
+                            "cluster_prototype_amount",
+                            HYPO_CLUSTER_PROTOTYPE_AMOUNT),
+                        **kwargs.get("cluster_kwargs", {}))
                     new_hypotheses_set = BaseSet(next_hypos)
                     new_prior = BasePrior(new_hypotheses_set)
                     new_likelihood = PartitionLikelihood(
