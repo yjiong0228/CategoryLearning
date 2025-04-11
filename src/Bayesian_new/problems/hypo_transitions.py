@@ -119,7 +119,7 @@ class PartitionCluster(Partition):
         if posterior is None:
             raise Exception("ArgumentError: posterior is absent or not a Dict")
         proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
-        ref_hypos = sorted([(i, p) for i, p in posterior.items()],
+        ref_hypos = sorted([(i, *p) for i, p in posterior.items()],
                            key=lambda x: x[1],
                            reverse=True)
 
@@ -131,7 +131,7 @@ class PartitionCluster(Partition):
                     ref_hypos[i]
                     for i in np.random.choice(np.arange(len(ref_hypos)),
                                               size=proto_hypo_amount,
-                                              p=[x for _, x in ref_hypos],
+                                              p=[x for _, x, _ in ref_hypos],
                                               replace=False)
                 ]
             case _:
@@ -140,8 +140,9 @@ class PartitionCluster(Partition):
         # in case that proto_hypo_amount is greater than len(ref_hypos)
         proto_hypo_amount = len(ref_hypos)
         # prepare the reference hypos: index, chioce, posterior
-        ref_hypos_index = np.array([k for k, _ in ref_hypos])
-        ref_hypos_post = np.array([x for _, x in ref_hypos])
+        ref_hypos_index = np.array([k for k, _, _ in ref_hypos])
+        ref_hypos_post = np.array([x for _, x, _ in ref_hypos])
+        ref_hypos_beta = np.array([x for _, _, x in ref_hypos])
         # ref_full_centers is of shape (proto_hypo_amount, n_cats, n_dims)
         ref_full_centers = np.array(
             [list(self.centers[k][1].values()) for k in ref_hypos_index])
@@ -149,7 +150,12 @@ class PartitionCluster(Partition):
             np.array(stimulus).reshape(1, -1),
             ref_full_centers.reshape(-1, self.n_dims))
         # given stimulus, the argmin choices on each reference hypo
-        ref_choices = np.argmin(ref_dist.reshape(-1, self.n_cats), axis=1)
+        ref_choices = [
+            np.random.choice(self.n_cats, p=prob)
+            for prob in softmax(ref_dist.reshape(-1, self.n_cats),
+                                beta=-ref_hypos_beta.reshape(-1, 1),
+                                axis=1)
+        ]
         # prepare the reference centers(shape=[proto_hypo_amount, n_dims])
         ref_hypos_center = ref_full_centers[range(proto_hypo_amount),
                                             ref_choices]
