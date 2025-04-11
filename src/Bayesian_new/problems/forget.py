@@ -181,7 +181,7 @@ class ForgetModel(SingleRationalModel):
             if cluster == True:
                 if step_idx < n_trials:
                     cur_post_dict = {
-                        h: det["post_max"]
+                        h: (det["post_max"], det["beta_opt"])
                         for h, det in hypo_details.items()
                     }
                     next_hypos = self.partition_model.cluster_transition(
