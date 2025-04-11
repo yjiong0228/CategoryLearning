@@ -112,6 +112,7 @@ class ForgetModel(SingleRationalModel):
                          data: Tuple[np.ndarray, np.ndarray, np.ndarray], 
                          gamma: float, 
                          w0: float,
+                         cluster: bool = False,
                          **kwargs) -> List[Dict]:
         
         """
@@ -177,8 +178,7 @@ class ForgetModel(SingleRationalModel):
                 'hypo_details': hypo_details
             })
 
-            if kwargs.get("cluster", False):
-                # [TODO] WIP: test it in real environment
+            if cluster == True:
                 if step_idx < n_trials:
                     cur_post_dict = {
                         h: det["post_max"]
@@ -202,6 +202,7 @@ class ForgetModel(SingleRationalModel):
                                  data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
                                  gamma: float, 
                                  w0: float,
+                                 cluster: bool = False,
                                  window_size=16,
                                  **kwargs) -> Tuple[List[Dict], float]:
         """
@@ -227,7 +228,7 @@ class ForgetModel(SingleRationalModel):
         """
         # Fit the model with fixed gamma and w0
         selected_data = data[:3]
-        step_results = self.fit_step_by_step(selected_data, gamma, w0, **kwargs)
+        step_results = self.fit_step_by_step(selected_data, gamma, w0, cluster, **kwargs)
         
         # Get the predicted accuracy
         predict_results = self.predict_choice(
@@ -248,8 +249,9 @@ class ForgetModel(SingleRationalModel):
         return step_results, mean_error
 
     def optimize_params(self, 
-                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-                        ) -> Tuple[ForgetModelParams, list]:
+                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                        cluster: bool = False,
+                        **kwargs) -> Tuple[ForgetModelParams, list]:
         """
         Perform a 2D grid search over gamma and w0 to find the parameters
         that minimize the prediction error.
@@ -277,7 +279,7 @@ class ForgetModel(SingleRationalModel):
             desc="Gamma-W0 Grid Search",
             total=total_combinations):
 
-            step_results, mean_error = self.compute_error_for_params(data, gamma, w0, window_size=16)
+            step_results, mean_error = self.compute_error_for_params(data, gamma, w0, cluster, window_size=16, **kwargs)
             
             key = (round(gamma, 2), round(w0, 5))
             grid_errors[key] = mean_error
