@@ -380,28 +380,7 @@ class SingleRationalModel(BaseModel):
                 'best_norm_posterior': np.max(all_hypo_post),
                 'hypo_details': hypo_details
             })
-
-            if kwargs.get("cluster", False):
-                # [TODO] WIP: test it in real environment
-                if step_idx < n_trials:
-                    cur_post_dict = {
-                        h: det["post_max"]
-                        for h, det in hypo_details.items()
-                    }
-                    next_hypos = self.partition_model.cluster_transition(
-                        stimulus=data[0][step_idx],
-                        posterior=cur_post_dict,
-                        proto_hypo_amount=kwargs.get(
-                            "cluster_prototype_amount",
-                            HYPO_CLUSTER_PROTOTYPE_AMOUNT),
-                        **kwargs.get("cluster_kwargs", {}))
-                    new_hypotheses_set = BaseSet(next_hypos)
-                    new_prior = BasePrior(new_hypotheses_set)
-                    new_likelihood = PartitionLikelihood(
-                        new_hypotheses_set, self.partition_model)
-                    self.refresh_engine(new_hypotheses_set, new_prior,
-                                        new_likelihood)
-
+            
             # 如果启用了 dynamic_limit，就基于后验分布来动态筛选下一步的假设子集
             if dynamic_limit:
 
