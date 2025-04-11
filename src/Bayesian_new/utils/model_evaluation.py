@@ -55,7 +55,7 @@ class ModelEval:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path)
-        plt.show()
+        plt.close()
 
     def plot_posterior_probabilities(self,
                                      results: Dict,
