@@ -31,3 +31,12 @@ def euc_dist(this: np.ndarray, other: np.ndarray):
                 other.reshape(-1, other_shape[-1]))
 
     return mat.reshape(*this_shape[:-1], *other_shape[:-1])
+
+
+def entropy(dist: np.ndarray):
+    """
+    Calculate the entropy
+    Assert: np.sum(dist) == 1
+    """
+    dist = dist[dist != 0]
+    return np.sum(dist * np.log(dist))

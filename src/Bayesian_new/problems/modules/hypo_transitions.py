@@ -1,19 +1,80 @@
 """
-Modeling Hypothesis-cluster transition dynamics
+Module: Modeling Hypothesis-cluster transition dynamics
 """
+from abc import ABC
 from collections.abc import Callable
 from typing import List, Tuple, Dict, Set
 import numpy as np
-from .partitions import Partition
-from .base_problem import (cdist, softmax, BaseSet)
+from .base_module import BasePartition, BaseModule
+from .base_module import (cdist, softmax, BaseSet, entropy)
 
 
-class PartitionCluster(Partition):
+class BaseCluster(BaseModule):
+
+    amount_evaluators = {}
+
+    def __init__(self,
+                 model,
+                 cluster_config: Dict = {},
+                 **kwargs):
+        super().__init__(model, **kwargs)
+        self.model = model
+        self.config = cluster_config
+        self.partition = self.model.partition_model
+        self.n_dims = self.partition.n_dims
+        self.n_cats = self.partition.n_cats
+        self.current_cluster = BaseSet([])
+        self.length = self.partition.length
+
+    @classmethod
+    def adaptive_amount_evalutator(cls, amount: float | str | Callable,
+                                   **kwargs) -> float:
+        """
+        Adaptively deal with evaluator / number format of amount
+        """
+        match amount:
+            case int():
+                return amount
+            case Callable():
+                return amount(**kwargs)
+            case str() if amount in cls.amount_evaluators:
+                return cls.amount_evaluators[amount](**kwargs)
+            case _:
+                raise Exception("Unexpected amount type.")
+
+    def _amount_entropy_gen(self, max_amount=3):
+
+        def _amount_entropy_based(
+                              posterior=np.ones(10) / 10,
+                              max_amount=max_amount,
+                              **kwargs) -> int:
+            """
+            Use whether a model is decisive in its posterior to tune the amount.
+            """
+            posterior = np.array(list(posterior.values()))
+            p_entropy = entropy(posterior)
+            return max(0, int(max_amount - min(np.exp(p_entropy), max_amount + 3)) + 2)
+
+        return _amount_entropy_based
+
+
+class PartitionCluster(BaseCluster):
     """
     Partition with hypothesis cluster structure
     """
 
-    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
+    amount_evaluators = {"entropy": BaseCluster._amount_entropy_gen(3),
+                         "entropy_1": BaseCluster._amount_entropy_gen(1),
+                         "entropy_2": BaseCluster._amount_entropy_gen(2),
+                         "entropy_3": BaseCluster._amount_entropy_gen(3),
+                         "entropy_4": BaseCluster._amount_entropy_gen(4),
+                         "entropy_5": BaseCluster._amount_entropy_gen(5),
+                         }
+
+    def __init__(self,
+                 model,
+                 cluster_config: Dict = {},
+                 **kwargs):
         """
         Initialize
 
@@ -23,13 +84,19 @@ class PartitionCluster(Partition):
         strategy: a spectrum, in terms of a list
                   [(amount: int, method: str|Callable)]
         """
-        super().__init__(n_dims, n_cats, n_protos, **kwargs)
+        super().__init__(model, **kwargs)
         self.set_cluster_transition_strategy(
             kwargs.get("transition_spec", [(10, "stable")]))
-        self.current_cluster = BaseSet([])
         self.cached_dist: Dict[Tuple, float] = {}
-        for _, left in self.centers:
-            for _, right in self.centers:
+        self._calc_cached_dist()
+
+    def _calc_cached_dist(self):
+        """
+        Calculate Cached diatances
+        """
+        self.cached_dist = {}
+        for _, left in self.partition.centers:
+            for _, right in self.partition.centers:
                 for _, c_l in left.items():
                     for _, c_r in right.items():
                         key = (*c_l, *c_r)
@@ -144,8 +211,10 @@ class PartitionCluster(Partition):
         ref_hypos_post = np.array([x for _, x, _ in ref_hypos])
         ref_hypos_beta = np.array([x for _, _, x in ref_hypos])
         # ref_full_centers is of shape (proto_hypo_amount, n_cats, n_dims)
-        ref_full_centers = np.array(
-            [list(self.centers[k][1].values()) for k in ref_hypos_index])
+        ref_full_centers = np.array([
+            list(self.partition.centers[k][1].values())
+            for k in ref_hypos_index
+        ])
         ref_dist = cdist(
             np.array(stimulus).reshape(1, -1),
             ref_full_centers.reshape(-1, self.n_dims))
@@ -164,13 +233,11 @@ class PartitionCluster(Partition):
         candidate_hypos_index = [
             k for k in available_hypos if k not in ref_hypos_index
         ]
-        candidate_full_center = np.array(
-            [list(self.centers[k][1].values()) for k in candidate_hypos_index])
+        candidate_full_center = np.array([
+            list(self.partition.centers[k][1].values())
+            for k in candidate_hypos_index
+        ])
 
-        # print("test",
-        #       set(range(self.length)).difference(set(candidate_hypos_index)))
-        # print("candidate_full_center.shape", candidate_full_center.shape)
-        # print("ref_hypos_center.shape", ref_hypos_center.shape)
         exp_dist = np.exp([[
             -1 * self.center_dist(ref_hypos_center[i],
                                   candidate_full_center[j, ref_choices[i]])
@@ -200,7 +267,6 @@ class PartitionCluster(Partition):
         Make the transition
         """
         new_hypos: Set[int] = set([])
-        full_hypos = set(range(self.length))
         if full_hypo_set is None:
             available_hypos = set(range(self.length))
         else:
@@ -208,11 +274,18 @@ class PartitionCluster(Partition):
 
         for amount, method in self.cluster_transition_strategy:
 
-            new_part = method(amount, available_hypos, **kwargs)
+            numerical_amount = self.adaptive_amount_evalutator(
+                amount, **kwargs)
+            new_part = method(numerical_amount, available_hypos, **kwargs)
             new_hypos = new_hypos.union(set(new_part))
             available_hypos = available_hypos.difference(new_part)
 
         return list(new_hypos)
+
+
+    def cluster_init(self, **kwargs):
+        return self._cluster_strategy_random(10, set(range(self.length)))
+
 
     def set_cluster_transition_strategy(
         self,
