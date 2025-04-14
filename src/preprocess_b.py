@@ -102,8 +102,14 @@ class Recording_Processor:
             '长': 0.8,
             '短': 0.4
         }
+        self.addition_descriptions = {
+            '长': 2/3,
+            '短': 1/3,
+            '大于': 2/3,
+            '小于': 1/3
+        }
 
-        self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各'}
+        self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各', '所有都', '总体'}
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
 
@@ -111,31 +117,54 @@ class Recording_Processor:
 
         df = pd.read_csv(file_path)
         texts = df['text']
-        res = {
-            'val': [],
+        results = {
+            'exclusion': [],
+            'superlative': [],
+            'universal_quantifier': [],
+            'exclusive_case': [],
+            'comparison': [],
+            'general_case': [],
+            'addition': [],
+            'all': [],
             'un_pro': [],
             'origin': [],
         }
         for text in texts:
-            vals, un_pro = self.extract_values(text)
-            if len(vals) == 0:
-                vals = [[-1]*4]
-            vals = np.array(vals).mean(axis=0).tolist()
-            res['val'].append(vals)
-            res['un_pro'].append(un_pro)
-            res['origin'].append(text)
+            res, un_pro = self.extract_values(text)
+            for key in res:
+                results[key].append(res[key])
+            results['un_pro'].append(un_pro)
+            results['origin'].append(text)
         
 
-        result_df = pd.DataFrame(res)
+        result_df = pd.DataFrame(results)
         result_df.to_csv(new_file_path, index=False)
     
     def extract_values(self, text):
         """主处理函数"""
-        results = []
+        results = {
+            'exclusion': [None]*4,
+            'superlative': [None]*4,
+            'universal_quantifier': [None]*4,
+            'exclusive_case': [None]*4,
+            'comparison': [None]*4,
+            'general_case': [None]*4,
+            'addition': [None]*4,
+            'all': [None]*4,
+        }
         un_pro = []
 
+        def merge(*vals):
+            """合并多个值"""
+            new_val = [None]*4
+            for i in range(4):
+                merged_val = [val[i] for val in vals if val[i] is not None]
+                if merged_val:
+                    new_val[i] = np.mean(merged_val)
+            return new_val
+
         if pd.isna(text) or not str(text).strip():
-            results.append([-1]*4)
+            return results, ''
 
         # 分割并清理items
         raw_items = re.split(r'[，,]', str(text))
@@ -146,10 +175,10 @@ class Recording_Processor:
         i = 0
         while i < len(items):
             # 处理排除逻辑
-            if '除' in items[i]:
+            if '除' in items[i] or (i + 1 < len(items) and ('其他' in items[i + 1] or '其余' in items[i + 1] or '另外' in items[i + 1])):
                 res, is_pro = self._handle_exclusion(items[i], items[i+1])
                 if is_pro:
-                    results.append(res)
+                    results['exclusion'] = merge(results['exclusion'], res)
                     i += 2
                     continue
 
@@ -157,15 +186,7 @@ class Recording_Processor:
             # 处理最高级
             res, is_pro = self._handle_superlative(items[i])
             if is_pro:
-                results.append(res)
-                i += 1
-                continue
-
-
-            # 处理全称量词
-            res, is_pro = self._handle_universal_quantifier(items[i])
-            if is_pro:
-                results.append(res)
+                results['superlative'] = merge(results['superlative'], res)
                 i += 1
                 continue
 
@@ -173,7 +194,14 @@ class Recording_Processor:
             # 处理'只有'逻辑
             res, is_pro = self._handle_exclusive_case(items[i])
             if is_pro:
-                results.append(res)
+                results['exclusive_case'] = merge(results['exclusive_case'], res)
+                i += 1
+                continue
+
+            # 处理相加逻辑
+            res, is_pro = self._handle_addition(items[i])
+            if is_pro:
+                results['addition'] = merge(results['addition'], res)
                 i += 1
                 continue
 
@@ -181,19 +209,44 @@ class Recording_Processor:
             # 处理比较逻辑
             res, is_pro = self._handle_comparison(items[i])
             if is_pro:
-                results.append(res)
+                results['comparison'] = merge(results['comparison'], res)
+                i += 1
+                continue
+
+            # 处理全称量词
+            res, is_pro = self._handle_universal_quantifier(items[i])
+            if is_pro:
+                results['universal_quantifier'] = merge(results['universal_quantifier'], res)
                 i += 1
                 continue
 
             # 处理普通描述逻辑
             res, is_pro = self._handle_general_case(items[i])
             if is_pro:
-                results.append(res)
+                results['general_case'] = merge(results['general_case'], res)
                 i += 1
                 continue
 
             un_pro.append(items[i])  
             i += 1       
+
+        results['all'] = merge(
+            results['exclusion'],
+            results['superlative'],
+            results['universal_quantifier'],
+            results['exclusive_case'],
+            results['comparison'],
+            results['general_case'],
+            results['addition'],
+        )
+
+
+        if all(v is None for v in results['all']):
+            pass
+        else:
+            for i in range(4):
+                if results['all'][i] is None:
+                    results['all'][i] = 0.5
 
         return results, un_pro
 
@@ -216,8 +269,8 @@ class Recording_Processor:
 
     def _handle_general_case(self, item):
         """处理普通描述逻辑"""
-        res = [0.5]*4
-        if '最' in item:
+        res = [None]*4
+        if '一样' in item:
             return res, False
 
         mentioned_parts = [part for part in self.body_parts if part in item]
@@ -237,7 +290,7 @@ class Recording_Processor:
 
     def _handle_superlative(self, item):
         """处理最高级逻辑"""
-        res = [0.5] * 4
+        res = [None]*4
         if '最' not in item:
             # 处理句式是“比其他”或“比其余”的情况
             if '比其他' in item or '比其余' in item:
@@ -276,12 +329,9 @@ class Recording_Processor:
 
     def _handle_exclusion(self, current_item, next_item):
         """处理排除逻辑"""
-        res = [0.5] * 4
-        match = self.exclude_pattern.search(current_item)
-        if not match:
-            return res, False
+        res = [None]*4
         
-        excluded_parts = [p.strip() for p in re.split('[和、及与]', match.group(1))]
+        excluded_parts = [part for part in self.body_parts if part in current_item]
         desc_value = self._get_description_value(next_item, self.direct_descriptions)
         if not desc_value:
             return res, False
@@ -301,7 +351,7 @@ class Recording_Processor:
 
     def _handle_universal_quantifier(self, item):
         """处理全称量词"""
-        res = [0.5] * 4
+        res = [None]*4
         if '都' not in item or not any(q in item for q in self.quantifiers):
             return res, False
 
@@ -316,7 +366,7 @@ class Recording_Processor:
 
     def _handle_exclusive_case(self, item):
         """处理'只有'逻辑"""
-        res = [0.5] * 4
+        res = [None]*4
         if '只有' not in item:
             return res, False
 
@@ -339,8 +389,10 @@ class Recording_Processor:
 
     def _handle_comparison(self, item):
         """处理比较逻辑"""
-        res = [0.5] * 4
+        res = [None]*4
         if "比" not in item or "比较" in item:
+            return res, False
+        if '比躯干' in item:
             return res, False
 
         desc_value = self._get_description_value(item, self.comp_descriptions)
@@ -372,3 +424,33 @@ class Recording_Processor:
             res[self.body_parts[part]] = opposite_value
 
         return res, True
+    
+    def _handle_addition(self, item):
+        """处理相加逻辑"""
+        res = [None]*4
+        if '加' not in item:
+            return res, False
+        
+        if '比' in item:
+            items = item.split('比')
+        elif '大于' in item:
+            items = item.split('大于')
+        elif '小于' in item:
+            items = item.split('小于')
+        else:
+            return res, False
+
+        front_item, back_item = items[0], items[1]
+        front_parts = [part for part in self.body_parts if part in front_item]
+        back_parts = [part for part in self.body_parts if part in back_item]
+
+
+        desc_value = self._get_description_value(item, self.addition_descriptions)
+
+        for part in front_parts:
+            res[self.body_parts[part]] = desc_value
+        for part in back_parts:
+            res[self.body_parts[part]] = 1 - desc_value
+        return res, True
+
+        
