@@ -39,4 +39,4 @@ def entropy(dist: np.ndarray):
     Assert: np.sum(dist) == 1
     """
     dist = dist[dist != 0]
-    return np.sum(dist * np.log(dist))
+    return np.sum(-dist * np.log(dist))

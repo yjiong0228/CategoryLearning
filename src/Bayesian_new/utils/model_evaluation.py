@@ -154,8 +154,12 @@ class ModelEval:
             save_path (str): Path to save the plot. If None, the plot will be shown.
         """
         n_subjects = len(results)
-        n_rows = 3
-        n_cols = (n_subjects + n_rows - 1) // n_rows
+        if n_subjects == 1:
+            n_rows = 1
+            n_cols = 1
+        else:
+            n_rows = 3
+            n_cols = (n_subjects + n_rows - 1) // n_rows
 
         fig, axes = plt.subplots(n_rows,
                                  n_cols,
@@ -167,9 +171,14 @@ class ModelEval:
         sorted_subjects = sorted(results.keys())
 
         for idx, iSub in tqdm(enumerate(sorted_subjects)):
-            row = idx % n_rows
-            col = idx // n_rows
-            ax = axes[row, col]
+            if n_subjects == 1:
+
+                ax = axes
+
+            else:
+                row = idx % n_rows
+                col = idx // n_rows
+                ax = axes[row, col]
 
             sliding_true_acc = results[iSub]['sliding_true_acc']
             sliding_pred_acc = results[iSub]['sliding_pred_acc']
