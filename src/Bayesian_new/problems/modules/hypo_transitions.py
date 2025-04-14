@@ -39,7 +39,8 @@ class BaseCluster(BaseModule):
             case _:
                 raise Exception("Unexpected amount type.")
 
-    def _amount_entropy_gen(self, max_amount=3):
+    @classmethod
+    def _amount_entropy_gen(cls, max_amount=3):
 
         def _amount_entropy_based(posterior: Dict,
                                   max_amount=max_amount,
@@ -47,15 +48,16 @@ class BaseCluster(BaseModule):
             """
             Use whether a model is decisive in its posterior to tune the amount.
             """
-            posterior = np.array(list(posterior.values()))
-            p_entropy = entropy(posterior)
+            posterior_ = np.array(list(posterior.values()))
+            p_entropy = entropy(posterior_)
             return max(
                 0,
                 int(max_amount - min(np.exp(p_entropy), max_amount + 30)) + 2)
 
         return _amount_entropy_based
 
-    def _amount_max_gen(self, max_amount=3):
+    @classmethod
+    def _amount_max_gen(cls, max_amount=3):
 
         def _amount_max_based(posterior=Dict, max_amount=max_amount, **kwargs):
             posterior = np.array(list(posterior.values()))
@@ -63,6 +65,20 @@ class BaseCluster(BaseModule):
             return 0 if 3. / max_post > max_amount else int(3. / max_post)
 
         return _amount_max_based
+
+    @classmethod
+    def _amount_random_gen(cls, max_amount=3):
+
+        def _amount_random_based(posterior=Dict,
+                                 max_amount=max_amount,
+                                 **kwargs):
+            posterior = np.array(list(posterior.values()))
+            max_post = np.max(posterior)
+            return np.random.choice(max_amount + 1,
+                                    p=[1 - max_post] +
+                                    [max_post / max_amount] * max_amount)
+
+        return _amount_random_based
 
 
 class PartitionCluster(BaseCluster):
@@ -77,6 +93,16 @@ class PartitionCluster(BaseCluster):
         "entropy_3": BaseCluster._amount_entropy_gen(3),
         "entropy_4": BaseCluster._amount_entropy_gen(4),
         "entropy_5": BaseCluster._amount_entropy_gen(5),
+        "max_1": BaseCluster._amount_max_gen(1),
+        "max_2": BaseCluster._amount_max_gen(2),
+        "max_3": BaseCluster._amount_max_gen(3),
+        "max_4": BaseCluster._amount_max_gen(4),
+        "max_5": BaseCluster._amount_max_gen(5),
+        "random_1": BaseCluster._amount_random_gen(1),
+        "random_2": BaseCluster._amount_random_gen(2),
+        "random_3": BaseCluster._amount_random_gen(3),
+        "random_4": BaseCluster._amount_random_gen(4),
+        "random_5": BaseCluster._amount_random_gen(5),
     }
 
     def __init__(self, model, cluster_config: Dict = {}, **kwargs):
@@ -93,12 +119,8 @@ class PartitionCluster(BaseCluster):
         self.set_cluster_transition_strategy(
             kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
-        try:
-            self._calc_cached_dist()
-        except Exception as e:
-            print(e)
-            print(self.partition.centers)
-            raise e
+
+        self._calc_cached_dist()
 
     def _calc_cached_dist(self):
         """
