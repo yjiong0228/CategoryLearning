@@ -13,10 +13,7 @@ class BaseCluster(BaseModule):
 
     amount_evaluators = {}
 
-    def __init__(self,
-                 model,
-                 cluster_config: Dict = {},
-                 **kwargs):
+    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
         super().__init__(model, **kwargs)
         self.model = model
         self.config = cluster_config
@@ -28,7 +25,7 @@ class BaseCluster(BaseModule):
 
     @classmethod
     def adaptive_amount_evalutator(cls, amount: float | str | Callable,
-                                   **kwargs) -> float:
+                                   **kwargs) -> int:
         """
         Adaptively deal with evaluator / number format of amount
         """
@@ -44,18 +41,28 @@ class BaseCluster(BaseModule):
 
     def _amount_entropy_gen(self, max_amount=3):
 
-        def _amount_entropy_based(
-                              posterior=np.ones(10) / 10,
-                              max_amount=max_amount,
-                              **kwargs) -> int:
+        def _amount_entropy_based(posterior: Dict,
+                                  max_amount=max_amount,
+                                  **kwargs) -> int:
             """
             Use whether a model is decisive in its posterior to tune the amount.
             """
             posterior = np.array(list(posterior.values()))
             p_entropy = entropy(posterior)
-            return max(0, int(max_amount - min(np.exp(p_entropy), max_amount + 3)) + 2)
+            return max(
+                0,
+                int(max_amount - min(np.exp(p_entropy), max_amount + 30)) + 2)
 
         return _amount_entropy_based
+
+    def _amount_max_gen(self, max_amount=3):
+
+        def _amount_max_based(posterior=Dict, max_amount=max_amount, **kwargs):
+            posterior = np.array(list(posterior.values()))
+            max_post = np.max(posterior)
+            return 0 if 3. / max_post > max_amount else int(3. / max_post)
+
+        return _amount_max_based
 
 
 class PartitionCluster(BaseCluster):
@@ -63,18 +70,16 @@ class PartitionCluster(BaseCluster):
     Partition with hypothesis cluster structure
     """
 
-    amount_evaluators = {"entropy": BaseCluster._amount_entropy_gen(3),
-                         "entropy_1": BaseCluster._amount_entropy_gen(1),
-                         "entropy_2": BaseCluster._amount_entropy_gen(2),
-                         "entropy_3": BaseCluster._amount_entropy_gen(3),
-                         "entropy_4": BaseCluster._amount_entropy_gen(4),
-                         "entropy_5": BaseCluster._amount_entropy_gen(5),
-                         }
+    amount_evaluators = {
+        "entropy": BaseCluster._amount_entropy_gen(3),
+        "entropy_1": BaseCluster._amount_entropy_gen(1),
+        "entropy_2": BaseCluster._amount_entropy_gen(2),
+        "entropy_3": BaseCluster._amount_entropy_gen(3),
+        "entropy_4": BaseCluster._amount_entropy_gen(4),
+        "entropy_5": BaseCluster._amount_entropy_gen(5),
+    }
 
-    def __init__(self,
-                 model,
-                 cluster_config: Dict = {},
-                 **kwargs):
+    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
         """
         Initialize
 
@@ -88,24 +93,34 @@ class PartitionCluster(BaseCluster):
         self.set_cluster_transition_strategy(
             kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
-        self._calc_cached_dist()
+        try:
+            self._calc_cached_dist()
+        except Exception as e:
+            print(e)
+            print(self.partition.centers)
+            raise e
 
     def _calc_cached_dist(self):
         """
         Calculate Cached diatances
         """
         self.cached_dist = {}
-        for _, left in self.partition.centers:
-            for _, right in self.partition.centers:
-                for _, c_l in left.items():
-                    for _, c_r in right.items():
-                        key = (*c_l, *c_r)
-                        inv = (*c_r, *c_l)
-                        if key in self.cached_dist or inv in self.cached_dist:
-                            continue
-                        self.cached_dist[key] = np.sum(
-                            (np.array(c_l) - np.array(c_r))**2)**0.5
-                        self.cached_dist[inv] = self.cached_dist[key]
+        for i_l, left in self.partition.centers:
+            for i_r, right in self.partition.centers:
+                try:
+                    for _, c_l in left.items():
+                        for _, c_r in right.items():
+                            key = (*c_l, *c_r)
+                            inv = (*c_r, *c_l)
+                            if key in self.cached_dist or inv in self.cached_dist:
+                                continue
+                            self.cached_dist[key] = np.sum(
+                                (np.array(c_l) - np.array(c_r))**2)**0.5
+                            self.cached_dist[inv] = self.cached_dist[key]
+                except Exception as e:
+                    print(e)
+                    print(i_l, left, i_r, right)
+                    raise e
 
     def center_dist(self, this, other) -> float:
         """
@@ -282,10 +297,8 @@ class PartitionCluster(BaseCluster):
 
         return list(new_hypos)
 
-
     def cluster_init(self, **kwargs):
         return self._cluster_strategy_random(10, set(range(self.length)))
-
 
     def set_cluster_transition_strategy(
         self,
