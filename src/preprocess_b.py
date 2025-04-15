@@ -39,7 +39,16 @@ class Preprocessor_B:
 
         if taskID in ['Task2']:
             rec_processor = Recording_Processor()
-            recording_coded = rec_processor.process(recording_data, [structure1, structure2])
+            result_df = rec_processor.process(recording_data)
+            result_df[['neck_oral', 'head_oral', 'leg_oral', 'tail_oral']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
+            
+            recording_coded = result_df[['iSession', 'iTrial', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral', 'text']].copy()
+            
+            oral_feature_names = self.convert("_oral", [structure1, structure2])
+            for i, feature in enumerate(oral_feature_names):
+                oral_new_name = f'feature{i+1}_oral'
+                recording_coded[oral_new_name] = recording_coded[feature]
+
             combined_data = pd.merge(combined_data, recording_coded, on=['iSession', 'iTrial'])
 
         return combined_data
@@ -54,7 +63,7 @@ class Preprocessor_B:
             features = ["neck", "leg", "tail", "head"]
         elif structure[0] == 4:
             features = ["head", "leg", "tail", "neck"]
-        
+
         # feature space segmentation
         if structure[1] == 1:
             features = features[:]
@@ -109,13 +118,11 @@ class Recording_Processor:
             '小于': 1/3
         }
 
-        self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各', '所有都', '总体'}
+        self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各', '各个', '总体', '整体'}
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
 
-    def process(self, file_path, new_file_path):
-
-        df = pd.read_csv(file_path)
+    def process(self, df):
         texts = df['text']
         results = {
             'exclusion': [],
@@ -127,18 +134,25 @@ class Recording_Processor:
             'addition': [],
             'all': [],
             'un_pro': [],
-            'origin': [],
+            'text': [],
         }
         for text in texts:
             res, un_pro = self.extract_values(text)
             for key in res:
                 results[key].append(res[key])
             results['un_pro'].append(un_pro)
-            results['origin'].append(text)
+            results['text'].append(text)
         
-
         result_df = pd.DataFrame(results)
-        result_df.to_csv(new_file_path, index=False)
+        # Retain iSession and iTrial columns
+        result_df['iSession'] = df['iSession']
+        result_df['iTrial'] = df['iTrial']
+        
+        # Move iSession and iTrial to the front
+        columns = ['iSession', 'iTrial'] + [col for col in result_df.columns if col not in ['iSession', 'iTrial']]
+        result_df = result_df[columns]
+        
+        return result_df
     
     def extract_values(self, text):
         """主处理函数"""
