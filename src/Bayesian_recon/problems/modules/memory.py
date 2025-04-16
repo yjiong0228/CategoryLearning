@@ -5,7 +5,7 @@ Module: Memory Mechanism
 from abc import ABC
 from dataclasses import dataclass
 from collections.abc import Callable
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Sequence
 import numpy as np
 from scipy.optimize import minimize
 from .base_module import BaseModule
@@ -23,7 +23,7 @@ class BaseMemory(BaseModule):
         """
         super().__init__(model, **kwargs)
         personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.00375, 0.075)})
-        param_resolution = 20
+        param_resolution = kwargs.pop("param_resolution", 20)
 
         # 初始化参数搜索空间
         self.gamma_values = np.linspace(*personal_memory_range["gamma"], param_resolution, endpoint=True)
@@ -38,4 +38,14 @@ class BaseMemory(BaseModule):
         return {
             "gamma": float,
             "w0": float,
+        }
+
+    @property
+    def optimize_params_dict(self) -> Dict[str, Sequence]:
+        """
+        Returns a dictionary of parameters and their values for optimization.
+        """
+        return {
+            "gamma": self.gamma_values,
+            "w0": self.w0_values,
         }
