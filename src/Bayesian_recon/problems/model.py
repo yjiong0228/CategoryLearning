@@ -3,11 +3,14 @@ Base Model
 """
 from abc import ABC
 from dataclasses import dataclass, make_dataclass
-from typing import Dict, Tuple, List, Callable
+from typing import Dict, Tuple, List, Callable, Optional
 from copy import deepcopy
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
+from joblib import Parallel, delayed
 from scipy.optimize import minimize
+from itertools import product
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
 
@@ -215,11 +218,6 @@ class BaseModel:
         for key, (mod_cls, mod_kwargs) in self.module_config.items():
             self.modules[key] = mod_cls(self, **mod_kwargs)
         
-        # Initialize model parameters
-        self.params_dict = {'k': int, 'v': float}
-        for key, mod in self.modules.items():
-            if hasattr(mod, 'params_dict'):
-                self.params_dict.update(mod.params_dict)
     def set_hypotheses(self, hypothesis_collection: Dict | Tuple | List):
         """
         Set the hypotheses set manually.
@@ -286,6 +284,20 @@ class StandardModel(BaseModel):
         """
         if hasattr(self.partition_model, "precompute_all_distances"):
             self.partition_model.precompute_all_distances(stimulus)
+    
+    def initialize_modules(self):
+        super().initialize_modules()
+
+        # Initialize model parameters
+        self.params_dict = {'k': int, 'beta': float}
+        for key, mod in self.modules.items():
+            if hasattr(mod, 'params_dict'):
+                self.params_dict.update(mod.params_dict)
+
+        self.optimize_params_dict = {}
+        for key, mod in self.modules.items():
+            if hasattr(mod, 'optimize_params_dict'):
+                self.optimize_params_dict.update(mod.optimize_params_dict)
 
     def fit_single_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray],
                         **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
@@ -524,8 +536,6 @@ class StandardModel(BaseModel):
     def compute_error_for_params(self,
                                  data: Tuple[np.ndarray, np.ndarray,
                                              np.ndarray, np.ndarray],
-                                 gamma: float,
-                                 w0: float,
                                  window_size=16,
                                  **kwargs) -> Tuple[List[Dict], float]:
         """
@@ -552,8 +562,6 @@ class StandardModel(BaseModel):
         # Fit the model with fixed gamma and w0
         selected_data = data[:3]
         step_results = self.fit_step_by_step(selected_data,
-                                             gamma=gamma,
-                                             w0=w0,
                                              **kwargs)
 
         # Get the predicted accuracy
@@ -569,3 +577,75 @@ class StandardModel(BaseModel):
                 np.array(predict_results['sliding_pred_acc'])))
 
         return step_results, mean_error
+    
+    def optimize_params(self, 
+                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                        **kwargs) -> Tuple[BaseModelParams, list]:
+
+        grid_errors = {}
+        grid_step_results = {}
+
+        total_combinations = 1
+        for key, values in self.optimize_params_dict.items():
+            total_combinations *= len(values)
+        
+        def evaluate_params(grid_values):
+            grid_params = dict(zip(self.optimize_params_dict.keys(), grid_values))
+            step_results, mean_error = self.compute_error_for_params(
+                data, window_size=kwargs.get("window_size", 16), **grid_params
+            )
+            return tuple(grid_params.values()), step_results, mean_error
+
+        eval_list = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
+            delayed(evaluate_params)(grid_values) 
+            for grid_values in tqdm(
+                product(*self.optimize_params_dict.values()),
+                desc="Evaluating parameter combinations",
+                total=total_combinations,
+            )
+        )
+
+        for key, step_results, mean_error in eval_list:
+            grid_errors[key] = mean_error
+            grid_step_results[key] = step_results            
+
+        best_key = min(grid_errors, key=grid_errors.get)
+
+        optimized_params_results = {
+            "optim_params": self.optimize_params_dict.keys(),
+            "best_params": best_key,
+            "best_error": grid_errors[best_key],
+            "best_step_results": grid_step_results[best_key],
+            "grid_errors": grid_errors,
+        }
+
+        return optimized_params_results
+    
+    def optimize_params_with_subs_parallel(self,
+                                           learning_data: pd.DataFrame,
+                                           subjects: Optional[List[str]] = None,
+                                           n_jobs: int = 2):
+        if subjects is None:
+            subjects = learning_data["subject"].unique()
+        subject_data_map = {iSub: learning_data[learning_data["iSub"] == iSub] for iSub in subjects}
+        
+        total_combinations = len(subjects)
+        for key, values in self.optimize_params_dict.items():
+            total_combinations *= len(values)
+
+        def process_single_task(iSub, subject_data, **kwargs):
+            condition = subject_data["condition"].iloc[0]
+
+            s_data = (
+                subject_data[["feature1", "feature2", "feature3", "feature4"]].values,
+                subject_data["choice"].values,
+                subject_data["feedback"].values, 
+                subject_data["category"].values
+            )
+            
+            
+        
+        
+
+
+
