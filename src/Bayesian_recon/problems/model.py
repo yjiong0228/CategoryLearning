@@ -214,16 +214,12 @@ class BaseModel:
 
         for key, (mod_cls, mod_kwargs) in self.module_config.items():
             self.modules[key] = mod_cls(self, **mod_kwargs)
-<<<<<<< Updated upstream
-
-=======
         
         # Initialize model parameters
         self.params_dict = {'k': int, 'v': float}
         for key, mod in self.modules.items():
             if hasattr(mod, 'params_dict'):
                 self.params_dict.update(mod.params_dict)
->>>>>>> Stashed changes
     def set_hypotheses(self, hypothesis_collection: Dict | Tuple | List):
         """
         Set the hypotheses set manually.
