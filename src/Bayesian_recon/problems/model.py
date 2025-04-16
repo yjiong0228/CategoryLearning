@@ -2,7 +2,7 @@
 Base Model
 """
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, make_dataclass
 from typing import Dict, Tuple, List, Callable
 from copy import deepcopy
 import numpy as np
@@ -214,7 +214,16 @@ class BaseModel:
 
         for key, (mod_cls, mod_kwargs) in self.module_config.items():
             self.modules[key] = mod_cls(self, **mod_kwargs)
+<<<<<<< Updated upstream
 
+=======
+        
+        # Initialize model parameters
+        self.params_dict = {'k': int, 'v': float}
+        for key, mod in self.modules.items():
+            if hasattr(mod, 'params_dict'):
+                self.params_dict.update(mod.params_dict)
+>>>>>>> Stashed changes
     def set_hypotheses(self, hypothesis_collection: Dict | Tuple | List):
         """
         Set the hypotheses set manually.
@@ -320,7 +329,16 @@ class StandardModel(BaseModel):
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
 
-            all_hypo_params[hypo] = BaseModelParams(hypo, beta_opt)
+            ModelParams = make_dataclass('ModelParams', self.params_dict.keys())
+            params_values = {}
+            for key in self.params_dict.keys():
+                if key == "k":
+                    params_values[key] = hypo
+                elif key == "beta":
+                    params_values[key] = beta_opt
+                else:
+                    params_values[key] = kwargs.get(key)
+            all_hypo_params[hypo] = ModelParams(**params_values)
             all_hypo_ll[hypo] = ll_max
 
         best_hypo_idx = max(all_hypo_ll, key=all_hypo_ll.get)
@@ -377,10 +395,18 @@ class StandardModel(BaseModel):
                 for hypo in self.hypotheses_set.elements
             ]
 
-            all_hypo_post = self.engine.infer_log(selected_data,
-                                                  use_cached_dist=True,
-                                                  beta=hypo_betas,
-                                                  normalized=True)
+            infer_log_kwargs = {
+                "use_cached_dist": True,
+                "normalized": True,
+            }
+            for key in self.params_dict.keys():
+                if key == "k":
+                    continue
+                elif key == "beta":
+                    infer_log_kwargs[key] = hypo_betas
+                else:
+                    infer_log_kwargs[key] = kwargs.get(key)
+            all_hypo_post = self.engine.infer_log(selected_data, **infer_log_kwargs)
 
             hypo_details = {}
 
