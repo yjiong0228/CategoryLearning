@@ -620,29 +620,6 @@ class StandardModel(BaseModel):
         }
 
         return optimized_params_results
-    
-    def optimize_params_with_subs_parallel(self,
-                                           learning_data: pd.DataFrame,
-                                           subjects: Optional[List[str]] = None,
-                                           n_jobs: int = 2):
-        if subjects is None:
-            subjects = learning_data["subject"].unique()
-        subject_data_map = {iSub: learning_data[learning_data["iSub"] == iSub] for iSub in subjects}
-        
-        total_combinations = len(subjects)
-        for key, values in self.optimize_params_dict.items():
-            total_combinations *= len(values)
-
-        def process_single_task(iSub, subject_data, **kwargs):
-            condition = subject_data["condition"].iloc[0]
-
-            s_data = (
-                subject_data[["feature1", "feature2", "feature3", "feature4"]].values,
-                subject_data["choice"].values,
-                subject_data["feedback"].values, 
-                subject_data["category"].values
-            )
-            
             
         
         
