@@ -145,6 +145,60 @@ class ModelEval:
             plt.savefig(save_path)
         plt.show()
 
+
+    def plot_hypo_posterior_sums(self, results: Dict, limited_hypos_list: Dict, save_path: str = None):
+        """
+        Plots the sum of posterior probabilities for hypotheses in limited_hypos_list over trials.
+
+        Args:
+            results (Dict): Dictionary containing results for each subject.
+            limited_hypos_list (Dict): Dictionary containing hypothesis lists for each subject.
+            save_path (str): Path to save the plot. If None, the plot will be shown.
+        """
+        n_subjects = len(results)
+        n_rows = 3
+        n_cols = (n_subjects + n_rows - 1) // n_rows
+
+        fig = plt.figure(figsize=(8 * n_cols, 5 * n_rows))
+        fig.suptitle('Sum of Posterior Probabilities for Limited Hypotheses by Subject',
+                    fontsize=16,
+                    y=0.99)
+
+        sorted_subjects = sorted(results.keys())
+
+        for idx, iSub in enumerate(sorted_subjects):
+            subject_info = results[iSub]
+            step_results = subject_info['step_results']
+            condition = subject_info['condition']
+            subject_hypos = limited_hypos_list[iSub]
+
+            row = idx % n_rows
+            col = idx // n_rows
+            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+
+            num_steps = len(step_results)
+            posterior_sums = []
+
+            for step, result in enumerate(step_results):
+                # 获取当前试次的假设列表
+                current_hypos = subject_hypos[step]
+                # 计算当前试次中所有假设的后验概率之和
+                posterior_sum = sum(result['hypo_details'][k]['post_max'] for k in current_hypos if k in result['hypo_details'])
+                posterior_sums.append(posterior_sum)
+
+            ax.plot(range(1, num_steps + 1), posterior_sums, marker='o', label='Posterior Sum')
+
+            ax.set_title(f'Subject {iSub} (Condition {condition})')
+            ax.set_xlabel('Trial')
+            ax.set_ylabel('Sum of Posterior Probabilities')
+            ax.set_ylim(0, 1)
+            ax.legend()
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        plt.show()
+
     def plot_accuracy_comparison(self, results: Dict, save_path: str = None):
         """
         Plots predicted and true accuracy for each subject.
