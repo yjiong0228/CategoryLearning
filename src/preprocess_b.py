@@ -43,13 +43,19 @@ class Preprocessor_B:
             result_df[['neck_oral', 'head_oral', 'leg_oral', 'tail_oral']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
             
             recording_coded = result_df[['iSession', 'iTrial', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral', 'text']].copy()
-            
             oral_feature_names = self.convert("_oral", [structure1, structure2])
             for i, feature in enumerate(oral_feature_names):
                 oral_new_name = f'feature{i+1}_oral'
-                recording_coded[oral_new_name] = recording_coded[feature]
+                recording_coded[oral_new_name] = recording_coded[feature] 
+                           
+            result_use = rec_processor.process_use(recording_data).copy()
+            oraluse_feature_names = self.convert("_use", [structure1, structure2])
+            for i, feature in enumerate(oraluse_feature_names):
+                oraluse_new_name = f'feature{i+1}_use'
+                result_use[oraluse_new_name] = result_use[feature]
 
             combined_data = pd.merge(combined_data, recording_coded, on=['iSession', 'iTrial'])
+            combined_data = pd.merge(combined_data, result_use, on=['iSession', 'iTrial'])
 
         return combined_data
 
@@ -121,6 +127,42 @@ class Recording_Processor:
         self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各', '各个', '总体', '整体'}
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
+
+
+    def process_use(self, df):
+        """
+        根据 text 列生成一个新的 DataFrame，包含 iSession、iTrial 和四个新的列：
+        neck_use、head_use、leg_use、tail_use。
+        """
+        # 初始化结果字典
+        results = {
+            'iSession': df['iSession'],
+            'iTrial': df['iTrial'],
+            'neck_use': [0] * len(df),
+            'head_use': [0] * len(df),
+            'leg_use': [0] * len(df),
+            'tail_use': [0] * len(df),
+        }
+
+        # 遍历每一行的文本
+        for idx, text in enumerate(df['text']):
+            if pd.isna(text) or not str(text).strip():
+                continue  # 跳过空文本
+
+            # 检查每个身体部位是否出现在文本中
+            if '脖子' in text:
+                results['neck_use'][idx] = 1
+            if '头' in text:
+                results['head_use'][idx] = 1
+            if '腿' in text:
+                results['leg_use'][idx] = 1
+            if '尾巴' in text:
+                results['tail_use'][idx] = 1
+
+        # 转换为 DataFrame
+        results_df = pd.DataFrame(results)
+        return results_df
+
 
     def process(self, df):
         texts = df['text']

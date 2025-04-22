@@ -72,11 +72,16 @@ class BaseCluster(BaseModule):
         def _amount_random_based(posterior=Dict,
                                  max_amount=max_amount,
                                  **kwargs):
-            posterior = np.array(list(posterior.values()))
-            max_post = np.max(posterior)
-            return np.random.choice(max_amount + 1,
-                                    p=[1 - max_post] +
-                                    [max_post / max_amount] * max_amount)
+            # ---------- 加一行归一化 ----------
+            posterior_vals = np.array(list(posterior.values()), dtype=float)
+            if posterior_vals.size == 0 or posterior_vals.sum() == 0:
+                max_post_norm = 0.0                     # 退化情况
+            else:
+                max_post_norm = posterior_vals.max() / posterior_vals.sum()
+            # ----------------------------------
+
+            probs = [1 - max_post_norm] + [max_post_norm / max_amount] * max_amount
+            return np.random.choice(max_amount + 1, p=probs)
 
         return _amount_random_based
 
