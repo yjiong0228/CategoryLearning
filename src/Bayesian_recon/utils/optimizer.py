@@ -33,15 +33,21 @@ class Optimizer(object):
         self.n_jobs = n_jobs
         self.optimize_params_dict = {}
 
-        modules = {}
-        for key, (mod_cls, mod_kwargs) in self.module_config.items():
-            try:
-                modules[key] = mod_cls(self, **mod_kwargs)
-            except Exception as e:
-                print(f"Error initializing module {key}: {e}")
-        for key, mod in modules.items():
-            if hasattr(mod, 'optimize_params_dict'):
-                self.optimize_params_dict.update(mod.optimize_params_dict)
+        # -------- ① 处理非 cluster 模块（与旧代码相同） -----------------------
+        for key, (mod_cls, mod_kwargs) in module_config.items():
+            if key == "cluster":
+                # -------- ② 直接读取 amount_range，避免实例化 PartitionCluster ----
+                amount_range = mod_kwargs.get("amount_range", [(1, 5)])
+                for idx, (lo, hi) in enumerate(amount_range):
+                    self.optimize_params_dict[f"cluster_amount_{idx}"] = list(range(lo, hi + 1))
+            else:
+                # 无依赖的模块仍可直接实例化以获取搜索网格
+                try:
+                    modules = mod_cls(self, **mod_kwargs)        # 仅用于拿 optimize_params_dict
+                    if hasattr(modules, 'optimize_params_dict'):
+                        self.optimize_params_dict.update(modules.optimize_params_dict)
+                except Exception as e:
+                    print(f"Error initializing module {key}: {e}")
 
     def prepare_data(self, data_path: str = DEFAULT_DATA_PATH):
         """
@@ -77,12 +83,19 @@ class Optimizer(object):
             return iSub, grad_params, mean_error, step_results
         
         all_kwargs = []
+        param_names = list(self.optimize_params_dict.keys())
         for task_values in product(subjects, *self.optimize_params_dict.values()):
             iSub = task_values[0]
             grid_values = task_values[1:]
             kwargs = dict(zip(self.optimize_params_dict.keys(), grid_values))
             kwargs['iSub'] = iSub
             kwargs['subject_data'] = subject_data_map[iSub]
+
+            # ---- ✨ 关键：过滤 “cluster_amount 全 0” 的组合 ----
+            cluster_keys = [k for k in param_names if k.startswith("cluster_amount_")]
+            if cluster_keys and all(kwargs[k] == 0 for k in cluster_keys):
+                continue  # 跳过此次组合
+
             all_kwargs.append(kwargs)
 
         results = Parallel(n_jobs=self.n_jobs, batch_size=1)(
@@ -92,12 +105,12 @@ class Optimizer(object):
         subject_grid_errors = defaultdict(dict)
         subject_best_combo = {}
 
-        for iSub, grad_params, mean_error, step_results in results:
-            subject_grid_errors[iSub][tuple(grad_params.values())] = mean_error
+        for iSub, grid_params, mean_error, step_results in results:
+            subject_grid_errors[iSub][tuple(grid_params.values())] = mean_error
 
             if iSub not in subject_best_combo:
                 subject_best_combo[iSub] = {
-                    "params": grad_params,
+                    "params": grid_params,
                     "error": mean_error,
                     "step_results": step_results
                 }
@@ -105,7 +118,7 @@ class Optimizer(object):
                 best_error = subject_best_combo[iSub]["error"]
                 if mean_error < best_error:
                     subject_best_combo[iSub] = {
-                        "params": grad_params,
+                        "params": grid_params,
                         "error": mean_error,
                         "step_results": step_results
                     }

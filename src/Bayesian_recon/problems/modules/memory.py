@@ -22,13 +22,13 @@ class BaseMemory(BaseModule):
         Initialize
         """
         super().__init__(model, **kwargs)
-        personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.00375, 0.075)})
+        personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.075, 0.15)})
         param_resolution = kwargs.pop("param_resolution", 20)
 
         # 初始化参数搜索空间
         self.gamma_values = np.linspace(*personal_memory_range["gamma"], param_resolution, endpoint=True)
-        self.w0_values = np.linspace(*personal_memory_range["w0"], param_resolution, endpoint=True)
-
+        #self.w0_values = np.linspace(*personal_memory_range["w0"], param_resolution, endpoint=True)
+        self.w0_values = [personal_memory_range["w0"][1] / (i + 1) for i in range(param_resolution)]
     
     @property
     def params_dict(self) -> Dict[str, type]:

@@ -545,10 +545,6 @@ class StandardModel(BaseModel):
         ----------
         data : tuple
             A tuple containing (stimuli, choices, responses, categories).
-        gamma : float
-            Memory decay rate.
-        w0 : float
-            Base memory weight.
         window_size : int
             The window size used for sliding accuracy measurements.
 
@@ -559,10 +555,19 @@ class StandardModel(BaseModel):
         mean_error : float
             The average windowed error between predicted and true accuracy.
         """
-        # Fit the model with fixed gamma and w0
+        # 1. 把所有 cluster 参数拎出来 -----------------------------------------
+        cluster_param_keys = [k for k in kwargs if k.startswith("cluster_amount_")]
+        cluster_kwargs = {k: kwargs[k] for k in cluster_param_keys}
+
+        # 2. 其余参数原封不动 ---------------------------------------------------
+        other_kwargs = {k: v for k, v in kwargs.items() if k not in cluster_param_keys}
+        #   将 cluster_kwargs 打包传下去
+        other_kwargs["cluster_kwargs"] = cluster_kwargs
+
+        # Fit the model with fixed params
         selected_data = data[:3]
         step_results = self.fit_step_by_step(selected_data,
-                                             **kwargs)
+                                             **other_kwargs)
 
         # Get the predicted accuracy
         predict_results = self.predict_choice(data,
