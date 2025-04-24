@@ -1,15 +1,13 @@
 import os
-import sys
-import importlib
 from pathlib import Path
-import pandas as pd
-import numpy as np
 import joblib
-from tqdm import tqdm
-from joblib import Parallel, delayed
-from itertools import product
-from collections import defaultdict
-import matplotlib.pyplot as plt
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 # 设定项目根目录
@@ -19,10 +17,7 @@ project_root = Path(os.getcwd())
 # 导入模型
 from src.Bayesian_recon import *
 
-import src.Bayesian_recon.problems.model as model
-from src.Bayesian_recon.problems.model import StandardModel as Model
 
-import src.Bayesian_recon.problems.config as config
 from src.Bayesian_recon.problems.config import config_fgt
 
 from src.Bayesian_recon.problems import *
@@ -44,14 +39,16 @@ optimizer = Optimizer(module_config, n_jobs=100)
 processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
-res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt,
-    # [1,4]
-    list(range(1, 25)) 
-)
-
 # 保存拟合结果
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_ran_5_5_5_10_10.joblib')
+for i in range(1, 11):
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt,
+        [i]
+        # list(range(1, 25)) 
+    )
+
+    joblib.dump(res, result_path / f'M_fgt_cl_ran_5_5_5_10_10_sub{i}.joblib')
+    logger.info(f"Finished processing for sub {i}.")
