@@ -380,8 +380,7 @@ class ModelEval:
                 for step, r in enumerate(step_results)
             ]
             log_posterior_sums = np.log(posterior_sums)  # 取 log
-            cum_avg = np.cumsum(log_posterior_sums) / (
-                np.arange(len(log_posterior_sums)) + 1)  # = cumulative average
+            cum_avg = pd.Series(log_posterior_sums).rolling(window=16, min_periods=16).mean().to_numpy()
             # 取 exp
             return np.exp(cum_avg)  # 返回 cumulative average 的 exp 值
 
