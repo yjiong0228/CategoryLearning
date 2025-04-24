@@ -2,7 +2,7 @@
 Base Model
 """
 from abc import ABC
-from dataclasses import dataclass, make_dataclass
+from dataclasses import dataclass, make_dataclass, asdict
 from typing import Dict, Tuple, List, Callable, Optional
 from copy import deepcopy
 import numpy as np
@@ -429,7 +429,7 @@ class StandardModel(BaseModel):
             step_results.append({
                 'best_k': best_params.k,
                 'best_beta': best_params.beta,
-                'best_params': best_params,
+                'best_params': asdict(best_params),
                 'best_log_likelihood': best_ll,
                 'best_norm_posterior': np.max(all_hypo_post),
                 'hypo_details': hypo_details
