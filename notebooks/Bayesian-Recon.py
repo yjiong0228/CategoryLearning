@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 import joblib
+
+import numexpr
+numexpr.set_num_threads(128)
+
 import logging
 logging.basicConfig(
     level=logging.INFO,
@@ -16,14 +20,11 @@ project_root = Path(os.getcwd())
 
 # 导入模型
 from src.Bayesian_recon import *
-
-
 from src.Bayesian_recon.problems.config import config_fgt
-
 from src.Bayesian_recon.problems import *
-
 from src.Bayesian_recon.utils.optimizer import Optimizer
 
+# 模型配置
 module_config = {
     "cluster": (PartitionCluster, {
         "amount_range": [(0, 5), (0, 5), (0, 5)],
@@ -43,12 +44,11 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-for i in range(1, 11):
+for i in range(1, 25):
     res = optimizer.optimize_params_with_subs_parallel(
         config_fgt,
         [i]
-        # list(range(1, 25)) 
     )
 
-    joblib.dump(res, result_path / f'M_fgt_cl_ran_5_5_5_10_10_sub{i}.joblib')
+    joblib.dump(res, result_path / f'M_fgt_cl_en_5_5_5_10_10_sub{i}.joblib')
     logger.info(f"Finished processing for sub {i}.")
