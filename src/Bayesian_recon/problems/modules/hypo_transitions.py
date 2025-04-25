@@ -72,78 +72,66 @@ class BaseCluster(BaseModule):
         def _amount_random_based(posterior=Dict,
                                  max_amount=max_amount,
                                  **kwargs):
-            posterior = np.array(list(posterior.values()))
-            max_post = np.max(posterior)
-            return np.random.choice(max_amount + 1,
-                                    p=[1 - max_post] +
-                                    [max_post / max_amount] * max_amount)
+            # ---------- 加一行归一化 ----------
+            posterior_vals = np.array(list(posterior.values()), dtype=float)
+            if posterior_vals.size == 0 or posterior_vals.sum() == 0:
+                max_post_norm = 0.0                     # 退化情况
+            else:
+                max_post_norm = posterior_vals.max() / posterior_vals.sum()
+            # ----------------------------------
+
+            probs = [1 - max_post_norm] + [max_post_norm / max_amount] * max_amount
+            return np.random.choice(max_amount + 1, p=probs)
 
         return _amount_random_based
 
 
 class PartitionCluster(BaseCluster):
     """
-    Cluster 模块
-
-    示例 cluster_config
-    -------------------
-    {
-        "amount_range": [(1, 5), (1, 5), (1, 5)],
-        "transition_spec": ["posterior_entropy", "ksimilar_centers", "random"]
-    }
+    Partition with hypothesis cluster structure
     """
 
-    # 静态注册 amount_evaluators（继承即可使用）
     amount_evaluators = {
-        # entropy-系列
-        **{f"entropy_{n}": BaseCluster._amount_entropy_gen(n) for n in range(1, 6)},
-        # max-系列
-        **{f"max_{n}": BaseCluster._amount_max_gen(n) for n in range(1, 6)},
-        # random-系列
-        **{f"random_{n}": BaseCluster._amount_random_gen(n) for n in range(1, 6)},
+        "entropy": BaseCluster._amount_entropy_gen(3),
+        "entropy_1": BaseCluster._amount_entropy_gen(1),
+        "entropy_2": BaseCluster._amount_entropy_gen(2),
+        "entropy_3": BaseCluster._amount_entropy_gen(3),
+        "entropy_4": BaseCluster._amount_entropy_gen(4),
+        "entropy_5": BaseCluster._amount_entropy_gen(5),
+        "max_1": BaseCluster._amount_max_gen(1),
+        "max_2": BaseCluster._amount_max_gen(2),
+        "max_3": BaseCluster._amount_max_gen(3),
+        "max_4": BaseCluster._amount_max_gen(4),
+        "max_5": BaseCluster._amount_max_gen(5),
+        "random_1": BaseCluster._amount_random_gen(1),
+        "random_2": BaseCluster._amount_random_gen(2),
+        "random_3": BaseCluster._amount_random_gen(3),
+        "random_4": BaseCluster._amount_random_gen(4),
+        "random_5": BaseCluster._amount_random_gen(5),
     }
 
-    # ---------------------- 初始化 & 网格声明 -------------------------------
-
     def __init__(self, model, cluster_config: Dict = {}, **kwargs):
+        """
+        Initialize
+
+        Model:
+        current_cluster: a subset of all partition prototypes
+                         (named by their index in self.partition)
+        strategy: a spectrum, in terms of a list
+                  [(amount: int, method: str|Callable)]
+        """
         super().__init__(model, **kwargs)
-
-        # 1. 解析配置
-        self.amount_range: List[Tuple[int, int]] = cluster_config.get("amount_range", [(1, 5)])
-        self.transition_spec: List[str] = cluster_config.get("transition_spec", ["random"])
-        if len(self.amount_range) != len(self.transition_spec):
-            raise ValueError("amount_range 与 transition_spec 长度必须一致")
-
-        # 2. 声明供模型收集的参数
-        self._params_dict: Dict[str, type] = {
-            f"cluster_amount_{i}": int for i in range(len(self.amount_range))
-        }
-        self._optimize_params_dict: Dict[str, List[int]] = {
-            f"cluster_amount_{i}": list(range(lo, hi + 1))
-            for i, (lo, hi) in enumerate(self.amount_range)
-        }
-
-        # 3. 预计算中心距离
+        self.set_cluster_transition_strategy(
+            kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
+
         self._calc_cached_dist()
-
-    # ----- properties 让 StandardModel 自动收集 -----------------------------
-
-    @property
-    def params_dict(self):
-        return self._params_dict
-
-    @property
-    def optimize_params_dict(self):
-        return self._optimize_params_dict
-
-    # ---------------------- 距离缓存 ----------------------------------------
 
     def _calc_cached_dist(self):
         """
-        计算并缓存所有 center 间欧氏距离
+        Calculate Cached diatances
         """
-        self.cached_dist.clear()
+        self.cached_dist = {}
         for i_l, left in self.partition.centers:
             for i_r, right in self.partition.centers:
                 try:
@@ -151,147 +139,226 @@ class PartitionCluster(BaseCluster):
                         for _, c_r in right.items():
                             key = (*c_l, *c_r)
                             inv = (*c_r, *c_l)
-                            if key in self.cached_dist:
+                            if key in self.cached_dist or inv in self.cached_dist:
                                 continue
-                            d = np.linalg.norm(np.array(c_l) - np.array(c_r))
-                            self.cached_dist[key] = self.cached_dist[inv] = d
+                            self.cached_dist[key] = np.sum(
+                                (np.array(c_l) - np.array(c_r))**2)**0.5
+                            self.cached_dist[inv] = self.cached_dist[key]
                 except Exception as e:
-                    print("Error in _calc_cached_dist:", e)
-                    raise
+                    print(e)
+                    print(i_l, left, i_r, right)
+                    raise e
 
     def center_dist(self, this, other) -> float:
+        """
+        Read out center distances
+        """
         return self.cached_dist.get((*this, *other), np.inf)
 
-    # ----------------------- 基础 strategy ----------------------------------
+    @classmethod
+    def _cluster_strategy_stable(cls, amount: int, available_hypos: Set,
+                                 **kwargs) -> List:
+        """
+        Cluster strategy: stable
+        """
+        return list(available_hypos)[:amount]
 
     @classmethod
-    def _cluster_strategy_stable(cls, amount: int, available: Set[int], **_):
-        return list(available)[:amount]
+    def _cluster_strategy_random(cls, amount: int, available_hypos: Set,
+                                 **kwargs) -> List:
+        """
+        Cluster strategy: stable
+        """
+        return np.random.choice(list(available_hypos),
+                                size=amount,
+                                replace=False).tolist()
 
     @classmethod
-    def _cluster_strategy_random(cls, amount: int, available: Set[int], **_):
-        return np.random.choice(list(available), size=amount, replace=False).tolist()
+    def _cluster_strategy_top_post(cls,
+                                   amount: int,
+                                   available_hypos: Set,
+                                   posterior: Dict | None = None,
+                                   **kwargs) -> List:
+        """
+        Cluster strategy: stable
 
-    @classmethod
-    def _cluster_strategy_top_post(
-        cls,
-        amount: int,
-        available: Set[int],
-        posterior: Dict | None = None,
-        **kwargs,
-    ):
+
+        - functional args in kwargs:
+        top_p: float between 0 to 1. Drives this method filter via top-p
+               mechanism, default value results in top-n with amount setup.
+        """
+        # posterior as a dict
         posterior = posterior or {}
-        sorted_h = sorted(
-            [(i, p) for i, p in posterior.items() if i in available],
+        # sort the posterior in their posterior probabilities
+        sorted_by_post = sorted(
+            [(i, p) for i, p in posterior.items() if i in available_hypos],
             key=lambda x: x[1],
-            reverse=True,
-        )
-        return [i for i, _ in sorted_h][:amount]
+            reverse=True)
 
-    # -- k-similar-centers (与原实现保持一致，略有精简) -----------------------
+        # process the "Top-p" case
+        if (prob := kwargs.get("top_p", 0.)) > 0:
+            new_hypos = [sorted_by_post[0]]
+            for i in range(1, len(sorted_by_post)):
+                if new_hypos[-1][1] > prob:
+                    break
+                new_hypos.append((i, new_hypos[-1][1] + sorted_by_post[i][1]))
 
-    def _cluster_strategy_ksimilar_centers(
-        self,
-        amount: int,
-        available_hypos: Set[int],
-        posterior: Dict | None = None,
-        stimulus: np.ndarray = np.zeros(4),
-        **kwargs,
-    ):
+            return [x for x, _ in new_hypos]
+
+        # original top-n case
+        return [x for x, _ in sorted_by_post][:amount]
+
+    def _cluster_strategy_ksimilar_centers(self,
+                                           amount: int,
+                                           available_hypos: Set,
+                                           posterior: Dict | None = None,
+                                           stimulus: np.ndarray = np.zeros(4),
+                                           **kwargs):
+        """
+        Cluster strategy: ksimilar distance version
+
+        - functional args in kwargs:
+        proto_hypo_amounts: use this number of hypotheses as prototype for
+                            recalling other hypos from full k-space, default 1.
+
+        top_p: float between 0 to 1. Drives this method filter via top-p
+               mechanism, default value results in top-n with amount setup.
+        """
+
         if posterior is None:
-            raise ValueError("posterior 必须提供给 ksimilar_centers")
+            raise Exception("ArgumentError: posterior is absent or not a Dict")
+        proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
+        ref_hypos = sorted([(i, *p) for i, p in posterior.items()],
+                           key=lambda x: x[1],
+                           reverse=True)
 
-        # proto hypo
-        proto_amount = kwargs.get("proto_hypo_amount", 1)
-        proto_method = kwargs.get("proto_hypo_method", "top")
-        ref_hypos = sorted(posterior.items(), key=lambda x: x[1], reverse=True)
-
-        if proto_method == "random":
-            idx = np.random.choice(len(ref_hypos), size=proto_amount, replace=False, p=None)
-            ref_hypos = [ref_hypos[i] for i in idx]
-        else:  # "top"
-            ref_hypos = ref_hypos[:proto_amount]
-
-        ref_idx = np.array([i for i, _ in ref_hypos])
-        ref_post = np.array([p for _, p in ref_hypos])
-        ref_beta = ref_post  # 原实现把 posterior 当 beta，这里保持一致
-
-        ref_centers = np.array(
-            [list(self.partition.centers[i][1].values()) for i in ref_idx]
-        )  # shape: (P, n_cats, n_dims)
-
-        ref_dist = cdist(
-            stimulus.reshape(1, -1),
-            ref_centers.reshape(-1, self.n_dims),
-        ).reshape(len(ref_idx), self.n_cats)
-        ref_choices = [
-            np.random.choice(self.n_cats, p=softmax(dist, beta=-b))
-            for dist, b in zip(ref_dist, ref_beta)
-        ]
-        ref_center_pts = ref_centers[np.arange(len(ref_idx)), ref_choices]
-
-        # candidate
-        cand_idx = [k for k in available_hypos if k not in ref_idx]
-        cand_centers = np.array(
-            [list(self.partition.centers[k][1].values()) for k in cand_idx]
-        )
-
-        exp_dist = np.exp(
-            [
-                [
-                    -self.center_dist(ref_center_pts[i], cand_centers[j, ref_choices[i]])
-                    for i in range(len(ref_idx))
+        match kwargs.get("proto_hypo_method", "top"):
+            case "top":
+                ref_hypos = ref_hypos[:proto_hypo_amount]
+            case "random":
+                ref_hypos = [
+                    ref_hypos[i]
+                    for i in np.random.choice(np.arange(len(ref_hypos)),
+                                              size=proto_hypo_amount,
+                                              p=[x for _, x, _ in ref_hypos],
+                                              replace=False)
                 ]
-                for j in range(len(cand_idx))
-            ]
-        )  # shape: (C, P)
+            case _:
+                ref_hypos = ref_hypos[:proto_hypo_amount]
 
-        score = exp_dist @ ref_post  # (C,)
-        if kwargs.get("cluster_hypo_method", "top") == "random":
-            chosen = np.random.choice(cand_idx, size=amount, replace=False, p=softmax(score))
+        # in case that proto_hypo_amount is greater than len(ref_hypos)
+        proto_hypo_amount = len(ref_hypos)
+        # prepare the reference hypos: index, chioce, posterior
+        ref_hypos_index = np.array([k for k, _, _ in ref_hypos])
+        ref_hypos_post = np.array([x for _, x, _ in ref_hypos])
+        ref_hypos_beta = np.array([x for _, _, x in ref_hypos])
+        # ref_full_centers is of shape (proto_hypo_amount, n_cats, n_dims)
+        ref_full_centers = np.array([
+            list(self.partition.centers[k][1].values())
+            for k in ref_hypos_index
+        ])
+        ref_dist = cdist(
+            np.array(stimulus).reshape(1, -1),
+            ref_full_centers.reshape(-1, self.n_dims))
+        # given stimulus, the argmin choices on each reference hypo
+        ref_choices = [
+            np.random.choice(self.n_cats, p=prob)
+            for prob in softmax(ref_dist.reshape(-1, self.n_cats),
+                                beta=-ref_hypos_beta.reshape(-1, 1),
+                                axis=1)
+        ]
+        # prepare the reference centers(shape=[proto_hypo_amount, n_dims])
+        ref_hypos_center = ref_full_centers[range(proto_hypo_amount),
+                                            ref_choices]
+
+        # prepare the candidate hypos: index and center(shape=[K,d])
+        candidate_hypos_index = [
+            k for k in available_hypos if k not in ref_hypos_index
+        ]
+        candidate_full_center = np.array([
+            list(self.partition.centers[k][1].values())
+            for k in candidate_hypos_index
+        ])
+
+        exp_dist = np.exp([[
+            -1 * self.center_dist(ref_hypos_center[i],
+                                  candidate_full_center[j, ref_choices[i]])
+            for i, _ in enumerate(ref_hypos_index)
+        ] for j, _ in enumerate(candidate_hypos_index)])
+        score = np.einsum("ij,j->i", exp_dist, ref_hypos_post)
+
+        match kwargs.get("cluster_hypo_method", "top"):
+            case "top":
+                argscore = np.argsort(score)[-amount:]
+                ret_val = np.array(candidate_hypos_index)[argscore]
+            case "random":
+                ret_val = np.random.choice(candidate_hypos_index,
+                                           p=softmax(score),
+                                           size=amount,
+                                           replace=False)
+            case _:
+                argscore = np.argsort(score)[-amount:]
+                ret_val = np.array(candidate_hypos_index)[argscore]
+
+        return list(ret_val)
+
+    def cluster_transition(self,
+                           full_hypo_set: BaseSet | None = None,
+                           **kwargs) -> List:
+        """
+        Make the transition
+        """
+        new_hypos: Set[int] = set([])
+        if full_hypo_set is None:
+            available_hypos = set(range(self.length))
         else:
-            chosen = np.array(cand_idx)[np.argsort(score)[-amount:]]
-        return chosen.tolist()
+            available_hypos = set(full_hypo_set)
 
-    # --------------------- 核心：cluster_transition -------------------------
+        for amount, method in self.cluster_transition_strategy:
 
-    def cluster_transition(self, full_hypo_set: BaseSet | None = None, **kwargs):
-        """
-        动态读取 cluster_amount_i，组装并执行策略
-        """
-        available = set(range(self.length)) if full_hypo_set is None else set(full_hypo_set)
-        new_hypos: Set[int] = set()
-
-        for idx, spec in enumerate(self.transition_spec):
-            amt_key = f"cluster_amount_{idx}"
-            amount_val = kwargs.get(amt_key, self.amount_range[idx][0])  # 默认区间下界
-
-            # spec → callable & amount 处理
-            if spec.startswith("posterior_"):
-                method = self._cluster_strategy_top_post
-                amount_val = f"{spec.split('_')[1]}_{amount_val}"
-            elif spec == "ksimilar_centers":
-                method = self._cluster_strategy_ksimilar_centers
-            elif spec == "random":
-                method = self._cluster_strategy_random
-            elif spec == "stable":
-                method = self._cluster_strategy_stable
-            else:
-                raise ValueError(f"未知 transition_spec: {spec}")
-
-            n_amount = self.adaptive_amount_evalutator(amount_val, **kwargs)
-            part = method(n_amount, available, **kwargs)
-            new_hypos.update(part)
-            available.difference_update(part)
-
-        if not new_hypos:
-            new_hypos.add(np.random.choice(list(available)))
+            numerical_amount = self.adaptive_amount_evalutator(
+                amount, **kwargs)
+            new_part = method(numerical_amount, available_hypos, **kwargs)
+            new_hypos = new_hypos.union(set(new_part))
+            available_hypos = available_hypos.difference(new_part)
 
         return list(new_hypos)
 
     def cluster_init(self, **kwargs):
+        return self._cluster_strategy_random(10, set(range(self.length)))
+
+    def set_cluster_transition_strategy(
+        self,
+        strategy: List[Tuple[int, str | Callable]],
+    ):
         """
-        fit_step_by_step() 在第 0 trial 调用，用于给模型一个初始 hypo pool
+        Set cluster transition strategy
+
+        strategy: a list in terms of [(amount, method)]
         """
-        init_size = min(10, self.length)
-        return self._cluster_strategy_random(init_size, set(range(self.length)))
+
+        self.cluster_transition_strategy = []
+        for k_amount, k_strategy in strategy:
+            match k_strategy:
+                case "stable":
+                    self.cluster_transition_strategy.append(
+                        (k_amount, self._cluster_strategy_stable))
+
+                case "top_posterior":
+                    self.cluster_transition_strategy.append(
+                        (k_amount, self._cluster_strategy_top_post))
+
+                case "random":
+                    self.cluster_transition_strategy.append(
+                        (k_amount, self._cluster_strategy_random))
+
+                case "ksimilar_centers":
+                    self.cluster_transition_strategy.append(
+                        (k_amount, self._cluster_strategy_ksimilar_centers))
+
+                case Callable() as method:
+                    self.cluster_transition_strategy.append((k_amount, method))
+
+                case _:
+                    raise Exception(
+                        f"Filtering method {method} is not a valid choice!")
