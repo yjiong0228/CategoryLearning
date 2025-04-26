@@ -27,12 +27,15 @@ from src.Bayesian_recon.utils.optimizer import Optimizer
 # 模型配置
 module_config = {
     "cluster": (PartitionCluster, {
-        "amount_range": [(0, 5), (0, 5), (0, 5)],
-        "transition_spec": ["posterior_random", "ksimilar_centers", "random"]
+        "transition_spec": [("entropy_4", "top_posterior"),
+                            (1, "ksimilar_centers"), (2, "random")]
     }),
     "memory": (BaseMemory, {
-        "personal_memory_range": {"gamma": (0.1, 1.0), "w0": (0.01, 0.1)},
-        "param_resolution": 10
+        "personal_memory_range": {
+            "gamma": (0.05, 1.0),
+            "w0": (0.075, 0.15)
+        },
+        "param_resolution": 20
     })
 }
 optimizer = Optimizer(module_config, n_jobs=100)
@@ -40,15 +43,14 @@ optimizer = Optimizer(module_config, n_jobs=100)
 processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
+
+res = optimizer.optimize_params_with_subs_parallel(
+    config_fgt,
+    list(range(1, 25)) 
+)
+
 # 保存拟合结果
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-for i in range(1, 25):
-    res = optimizer.optimize_params_with_subs_parallel(
-        config_fgt,
-        [i]
-    )
-
-    joblib.dump(res, result_path / f'M_fgt_cl_en_5_5_5_10_10_sub{i}.joblib')
-    logger.info(f"Finished processing for sub {i}.")
+joblib.dump(res, result_path / 'M_fgt_cl_entropy4.joblib')

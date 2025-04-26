@@ -217,7 +217,7 @@ class BaseModel:
 
         for key, (mod_cls, mod_kwargs) in self.module_config.items():
             self.modules[key] = mod_cls(self, **mod_kwargs)
-        
+
     def set_hypotheses(self, hypothesis_collection: Dict | Tuple | List):
         """
         Set the hypotheses set manually.
@@ -284,7 +284,7 @@ class StandardModel(BaseModel):
         """
         if hasattr(self.partition_model, "precompute_all_distances"):
             self.partition_model.precompute_all_distances(stimulus)
-    
+
     def initialize_modules(self):
         super().initialize_modules()
 
@@ -337,7 +337,8 @@ class StandardModel(BaseModel):
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
 
-            ModelParams = make_dataclass('ModelParams', self.params_dict.keys())
+            ModelParams = make_dataclass('ModelParams',
+                                         self.params_dict.keys())
             params_values = {}
             for key in self.params_dict.keys():
                 if key == "k":
@@ -414,7 +415,8 @@ class StandardModel(BaseModel):
                     infer_log_kwargs[key] = hypo_betas
                 else:
                     infer_log_kwargs[key] = kwargs.get(key)
-            all_hypo_post = self.engine.infer_log(selected_data, **infer_log_kwargs)
+            all_hypo_post = self.engine.infer_log(selected_data,
+                                                  **infer_log_kwargs)
 
             hypo_details = {}
 
@@ -559,8 +561,7 @@ class StandardModel(BaseModel):
 
         # Fit the model with fixed params
         selected_data = data[:3]
-        step_results = self.fit_step_by_step(selected_data,
-                                             **kwargs)
+        step_results = self.fit_step_by_step(selected_data, **kwargs)
 
         # Get the predicted accuracy
         predict_results = self.predict_choice(data,
@@ -575,9 +576,9 @@ class StandardModel(BaseModel):
                 np.array(predict_results['sliding_pred_acc'])))
 
         return step_results, mean_error
-    
-    def optimize_params(self, 
-                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+
+    def optimize_params(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
+                                          np.ndarray],
                         **kwargs) -> Tuple[BaseModelParams, list]:
 
         grid_errors = {}
@@ -586,26 +587,24 @@ class StandardModel(BaseModel):
         total_combinations = 1
         for key, values in self.optimize_params_dict.items():
             total_combinations *= len(values)
-        
+
         def evaluate_params(grid_values):
-            grid_params = dict(zip(self.optimize_params_dict.keys(), grid_values))
+            grid_params = dict(
+                zip(self.optimize_params_dict.keys(), grid_values))
             step_results, mean_error = self.compute_error_for_params(
-                data, window_size=kwargs.get("window_size", 16), **grid_params
-            )
+                data, window_size=kwargs.get("window_size", 16), **grid_params)
             return tuple(grid_params.values()), step_results, mean_error
 
         eval_list = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
-            delayed(evaluate_params)(grid_values) 
-            for grid_values in tqdm(
+            delayed(evaluate_params)(grid_values) for grid_values in tqdm(
                 product(*self.optimize_params_dict.values()),
                 desc="Evaluating parameter combinations",
                 total=total_combinations,
-            )
-        )
+            ))
 
         for key, step_results, mean_error in eval_list:
             grid_errors[key] = mean_error
-            grid_step_results[key] = step_results            
+            grid_step_results[key] = step_results
 
         best_key = min(grid_errors, key=grid_errors.get)
 
@@ -618,9 +617,3 @@ class StandardModel(BaseModel):
         }
 
         return optimized_params_results
-            
-        
-        
-
-
-
