@@ -68,13 +68,13 @@ class Optimizer(object):
             )
 
             model = StandardModel(model_config, module_config=self.module_config, condition=condition)
-            grad_params = {}
+            grid_params = {}
             for key in self.optimize_params_dict.keys():
-                grad_params[key] = kwargs[key]
+                grid_params[key] = kwargs[key]
             step_results, mean_error = model.compute_error_for_params(
-                s_data, window_size=kwargs.get("window_size", 16), **grad_params
+                s_data, window_size=kwargs.get("window_size", 16), **grid_params
             )
-            return iSub, grad_params, mean_error, step_results
+            return iSub, grid_params, mean_error, step_results
         
         all_kwargs = []
         for task_values in product(subjects, *self.optimize_params_dict.values()):
@@ -194,7 +194,6 @@ class Optimizer(object):
         )
         for iSub, predict_result in results:
             predict_results[iSub] = predict_result
-        
 
         return predict_results
     

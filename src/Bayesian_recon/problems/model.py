@@ -443,6 +443,7 @@ class StandardModel(BaseModel):
                     }
                     next_hypos = self.modules["cluster"].cluster_transition(
                         stimulus=data[0][step_idx],
+                        feedbacks=data[2][max(0, step_idx - 16): step_idx],
                         posterior=cur_post_dict,
                         proto_hypo_amount=kwargs.get(
                             "cluster_prototype_amount",
