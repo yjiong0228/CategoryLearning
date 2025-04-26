@@ -22,13 +22,16 @@ class BaseCluster(BaseModule):
         self.n_cats = self.partition.n_cats
         self.current_cluster = BaseSet([])
         self.length = self.partition.length
+        self.previous_accuracy = None  # 用于存储上一轮的准确率
+        self.accuracy_history = []  # 用于记录每次计算的准确率
 
     @classmethod
-    def adaptive_amount_evalutator(cls, amount: float | str | Callable,
-                                   **kwargs) -> int:
+    def adaptive_amount_evaluator(cls, amount: float | str | Callable,
+                                  **kwargs) -> int:
         """
         Adaptively deal with evaluator / number format of amount
         """
+        print(f"Evaluating amount: {amount}")  # 调试输出   
         match amount:
             case int():
                 return amount
@@ -37,7 +40,7 @@ class BaseCluster(BaseModule):
             case str() if amount in cls.amount_evaluators:
                 return cls.amount_evaluators[amount](**kwargs)
             case _:
-                raise Exception("Unexpected amount type.")
+                raise Exception("Unexpected amount type: {type(amount)}.")
 
     @classmethod
     def _amount_entropy_gen(cls, max_amount=3):
@@ -75,15 +78,62 @@ class BaseCluster(BaseModule):
             # ---------- 加一行归一化 ----------
             posterior_vals = np.array(list(posterior.values()), dtype=float)
             if posterior_vals.size == 0 or posterior_vals.sum() == 0:
-                max_post_norm = 0.0                     # 退化情况
+                max_post_norm = 0.0  # 退化情况
             else:
                 max_post_norm = posterior_vals.max() / posterior_vals.sum()
             # ----------------------------------
 
-            probs = [1 - max_post_norm] + [max_post_norm / max_amount] * max_amount
+            probs = [1 - max_post_norm
+                     ] + [max_post_norm / max_amount] * max_amount
             return np.random.choice(max_amount + 1, p=probs)
 
         return _amount_random_based
+
+    @classmethod
+    def _amount_accuracy_gen(cls, max_amount=3):
+        """
+        基于准确率动态调整 amount
+        """
+
+        def _amount_accuracy_based(current_accuracy: float, **kwargs) -> int:
+            """
+            根据反馈准确率调整策略的amount。
+            如果当前准确率比上一轮高，增加top_posterior的amount，减少random的amount。
+            如果当前准确率比上一轮低，减少top_posterior的amount，增加random的amount。
+            """
+
+            # 保存当前准确率到history中
+            cls.accuracy_history.append(current_accuracy)
+
+            # 如果有上一轮的准确率，则计算差异
+            if cls.previous_accuracy is not None:
+                # 如果当前准确率比上一轮高，增加top_posterior的amount，减少random的amount
+                # 如果当前准确率比上一轮低，减少top_posterior的amount，增加random的amount
+                top_posterior_amount = kwargs.get('top_posterior_amount',
+                                                  5)  # 默认值为5
+                random_amount = kwargs.get('random_amount', 5)  # 默认值为5
+
+                if current_accuracy > cls.previous_accuracy:
+                    top_posterior_amount = min(top_posterior_amount + 1,
+                                               max_amount)
+                    random_amount = max(random_amount - 1, 0)
+                elif current_accuracy < cls.previous_accuracy:
+                    top_posterior_amount = max(top_posterior_amount - 1, 0)
+                    random_amount = min(random_amount + 1, max_amount)
+
+                # 更新上一轮的准确率
+                cls.previous_accuracy = current_accuracy
+
+                # 返回调整后的amount
+                return top_posterior_amount, random_amount
+            else:
+                # 如果没有上一轮准确率，则初始化
+                cls.previous_accuracy = current_accuracy
+                return kwargs.get('top_posterior_amount',
+                                  5), kwargs.get('random_amount', 5)
+
+        return _amount_accuracy_based
+
 
 
 class PartitionCluster(BaseCluster):
@@ -108,6 +158,7 @@ class PartitionCluster(BaseCluster):
         "random_3": BaseCluster._amount_random_gen(3),
         "random_4": BaseCluster._amount_random_gen(4),
         "random_5": BaseCluster._amount_random_gen(5),
+        "accuracy": BaseCluster._amount_accuracy_gen(8)
     }
 
     def __init__(self, model, cluster_config: Dict = {}, **kwargs):
@@ -314,10 +365,14 @@ class PartitionCluster(BaseCluster):
         else:
             available_hypos = set(full_hypo_set)
 
+        # Get feedback from the data (past 15 trials)
+        feedback = kwargs.get("feedback", [])
+        current_accuracy = np.mean(feedback)  # Calculate accuracy
+
         for amount, method in self.cluster_transition_strategy:
 
-            numerical_amount = self.adaptive_amount_evalutator(
-                amount, **kwargs)
+            numerical_amount = self.adaptive_amount_evaluator(
+                amount, current_accuracy=current_accuracy, **kwargs)
             new_part = method(numerical_amount, available_hypos, **kwargs)
             new_hypos = new_hypos.union(set(new_part))
             available_hypos = available_hypos.difference(new_part)
