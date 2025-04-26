@@ -8,6 +8,7 @@ from typing import Optional, List, Dict
 from itertools import product
 from collections import defaultdict
 from matplotlib import pyplot as plt
+import matplotlib.ticker as mticker
 import seaborn as sns
 import numpy as np
 import logging
@@ -318,6 +319,7 @@ class Optimizer(object):
                 plt.xlabel('Trail')
                 plt.ylabel('Posterior Probability')
 
+        plt.tight_layout()
         if save_path:
             g.savefig(save_path)
             logger.info(f"Posterior probabilities saved to {save_path}")
@@ -397,6 +399,7 @@ class Optimizer(object):
                 plt.ylabel('Accuracy')
                 plt.legend()
 
+        plt.tight_layout()
         if save_path:
             g.savefig(save_path)
             logger.info(f"Accuracy comparison saved to {save_path}")
@@ -426,8 +429,8 @@ class Optimizer(object):
         n_cols = kwargs.get("n_cols", max_subjects_per_condition)
         n_rows = n_conditions
 
-        g = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        g.suptitle('Grid Search Error by Subject',
+        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        fig.suptitle('Grid Search Error by Subject',
                    fontsize=kwargs.get("fontsize", 16),
                    y=kwargs.get("y", 0.99))
 
@@ -451,16 +454,19 @@ class Optimizer(object):
                 error_matrix = df.pivot_table(index=field_names[0],
                                             columns=field_names[1],
                                             values='Error')
-                plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
+                ax = fig.add_subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
                 sns.heatmap(error_matrix,
                             #annot=True,
                             #fmt=".2f",
                             cmap='viridis',
                             cbar_kws={'label': 'Error'})
-                plt.title(f'Subject {iSub} (Condition {condition})')
-                plt.xlabel(field_names[1])
-                plt.ylabel(field_names[0])
-                
+                ax.set_title(f'Subject {iSub} (Condition {condition})')
+                ax.set_xlabel(field_names[1])
+                ax.set_ylabel(field_names[0])
+                ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.4f'))
+                ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+        
+        plt.tight_layout()
         if save_path:
-            g.savefig(save_path)
+            plt.savefig(save_path)
             logger.info(f"Error grids saved to {save_path}")

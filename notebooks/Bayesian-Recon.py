@@ -3,7 +3,7 @@ from pathlib import Path
 import joblib
 
 import numexpr
-numexpr.set_num_threads(128)
+numexpr.set_num_threads(64)
 
 import logging
 logging.basicConfig(
@@ -27,7 +27,7 @@ from src.Bayesian_recon.utils.optimizer import Optimizer
 # 模型配置
 module_config = {
     "cluster": (PartitionCluster, {
-        "transition_spec": [("entropy_4", "top_posterior"),
+        "transition_spec": [("random_4", "top_posterior"),
                             (1, "ksimilar_centers"), (2, "random")]
     }),
     "memory": (BaseMemory, {
@@ -53,4 +53,4 @@ res = optimizer.optimize_params_with_subs_parallel(
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_entropy4.joblib')
+joblib.dump(res, result_path / 'M_fgt_cl_random4.joblib')
