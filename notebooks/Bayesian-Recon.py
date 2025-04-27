@@ -40,19 +40,17 @@ def post_acc_amount_f(x):
         return 5
     elif 0.7 <= x < 0.8:
         return 6
-    elif 0.8 <= x < 0.9:
+    elif 0.8 <= x <= 1:
         return 7
-    elif 0.9 <= x <= 1:
-        return 8
 
 def random_acc_amount_f(x):
-    return 8 - post_acc_amount_f(x)
+    return 7 - post_acc_amount_f(x)
 
 module_config = {
     "cluster": (PartitionCluster, {
-        "transition_spec": [(PartitionCluster._amount_accuracy_gen(post_acc_amount_f, 8), "random_posterior"),
-                            (1, "ksimilar_centers"), 
-                            (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 8), "random")]
+        "transition_spec": [(PartitionCluster._amount_accuracy_gen(post_acc_amount_f, 7), "random_posterior"),
+                            (3, "ksimilar_centers"),
+                            (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")]
     }),
     "memory": (BaseMemory, {
         "personal_memory_range": {
@@ -62,7 +60,7 @@ module_config = {
         "param_resolution": 20
     })
 }
-optimizer = Optimizer(module_config, n_jobs=100)
+optimizer = Optimizer(module_config, n_jobs=128)
 
 processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
@@ -77,4 +75,4 @@ res = optimizer.optimize_params_with_subs_parallel(
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_acc_randp.joblib')
+joblib.dump(res, result_path / 'M_fgt_cl_acc7_randp_k3.joblib')

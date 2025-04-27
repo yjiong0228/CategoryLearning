@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import os
 import matplotlib.colors as mc
+from matplotlib import cm
 import colorsys
 import joblib
 import matplotlib.pyplot as plt
@@ -114,21 +115,6 @@ class Processor:
         # 定义平面位置
         plane_position = 0.5
 
-        # # 绘制平面 feature1=0.5
-        # y, z = np.meshgrid(np.linspace(0, 1, 10), np.linspace(0, 1, 10))
-        # x = np.full_like(y, plane_position)
-        # ax.plot_surface(x, y, z, color='grey', alpha=0.07)
-
-        # # 绘制平面 feature2=0.5
-        # x, z = np.meshgrid(np.linspace(0, 1, 10), np.linspace(0, 1, 10))
-        # y = np.full_like(x, plane_position)
-        # ax.plot_surface(x, y, z, color='grey', alpha=0.07)
-
-        # # 绘制平面 feature3=0.5
-        # x, y = np.meshgrid(np.linspace(0, 1, 10), np.linspace(0, 1, 10))
-        # z = np.full_like(x, plane_position)
-        # ax.plot_surface(x, y, z, color='grey', alpha=0.07)
-
         # 绘制交线（六条）
         # 1. feature1=0.5 与 feature2=0.5 的交线 (x=0.5, y=0.5, z从0到1)
         ax.plot([plane_position, plane_position],
@@ -171,6 +157,50 @@ class Processor:
         new_color = colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
         return new_color
 
+
+    def _plot_grad_line_and_points(self,
+                                ax,
+                                xs,
+                                ys,
+                                zs,
+                                cmap_name="Blues",
+                                cmap_low=0.25,
+                                cmap_high=1.0,
+                                lw=1.5,
+                                s=30):
+        """
+        在 3-D 轴上绘渐变折线，同时把每个顶点画成同色散点。
+
+        cmap_low / cmap_high 决定使用 colormap 的哪一段；
+        0-1 之间，数值越大越深，默认 0.25→1.0 可以避免“过白”。
+        """
+        xs, ys, zs = map(np.asarray, (xs, ys, zs))
+        n_pts = len(xs)
+        if n_pts < 2:
+            # 只有一个点：画单个散点，颜色取 cmap_high
+            color = cm.get_cmap(cmap_name)(cmap_high)
+            ax.scatter(xs, ys, zs, color=color, s=s, edgecolors='w')
+            return
+
+        cmap = cm.get_cmap(cmap_name)
+        # 生成 n_pts 颜色：起点 cmap_low，终点 cmap_high
+        t_vals = np.linspace(cmap_low, cmap_high, n_pts)
+        colors = cmap(t_vals)
+
+        # ——逐段画线 + 点——
+        for i in range(n_pts - 1):
+            # 线段：用第 i 段的起点颜色
+            ax.plot(xs[i:i + 2],
+                    ys[i:i + 2],
+                    zs[i:i + 2],
+                    color=colors[i],
+                    linewidth=lw)
+            # 点：散点画第 i 个顶点
+            ax.scatter(xs[i], ys[i], zs[i], color=colors[i], s=s, edgecolors='w')
+        # 收尾：最后一个顶点
+        ax.scatter(xs[-1], ys[-1], zs[-1], color=colors[-1], s=s, edgecolors='w')
+
+
     def plot_choice_graph(self,
                           ncats,
                           iSub,
@@ -178,7 +208,6 @@ class Processor:
                           iTrial,
                           choice,
                           features_list,
-                          color_mapping,
                           plots_dir,
                           plot_side='both'):
         """
@@ -244,10 +273,6 @@ class Processor:
                     1, 1, 1, projection='3d')
             self.draw_cube(ax_left)
 
-            # 淡化后的颜色
-            lighter_color = self.lighten_color(color_mapping[choice],
-                                               amount=0.7)
-
             # 目标点
             if choice in yellow_point_coords:
                 y_point = yellow_point_coords[choice]
@@ -259,19 +284,9 @@ class Processor:
 
             # Plot trajectory line
             if len(features_list) > 1:
-                ax_left.plot(human_x,
-                             human_y,
-                             human_z,
-                             color=lighter_color,
-                             linewidth=1)
-            # Plot current point
-            ax_left.scatter(human_x[-1],
-                            human_y[-1],
-                            human_z[-1],
-                            color=color_mapping[choice],
-                            s=100,
-                            alpha=0.8,
-                            edgecolors='w')
+                self._plot_grad_line_and_points(ax_left, human_x, human_y, human_z,
+                                                cmap_name="Blues", cmap_low=0.25)
+
             # 设置坐标轴刻度
             ax_left.set_xticks([0, 0.5, 1])
             ax_left.set_yticks([0, 0.5, 1])
@@ -296,10 +311,6 @@ class Processor:
                 ax_right = fig.add_subplot(1, 1, 1, projection='3d')
             self.draw_cube(ax_right)
 
-            # 淡化后的颜色
-            lighter_color = self.lighten_color(color_mapping[choice],
-                                               amount=0.7)
-
             # 目标点
             if choice in yellow_point_coords:
                 y_point = yellow_point_coords[choice]
@@ -311,19 +322,9 @@ class Processor:
 
             # Plot trajectory line
             if len(features_list) > 1:
-                ax_right.plot(bayesian_x,
-                              bayesian_y,
-                              bayesian_z,
-                              color=lighter_color,
-                              linewidth=1)
-            # Plot current point
-            ax_right.scatter(bayesian_x[-1],
-                             bayesian_y[-1],
-                             bayesian_z[-1],
-                             color=color_mapping[choice],
-                             s=100,
-                             alpha=0.8,
-                             edgecolors='w')
+                self._plot_grad_line_and_points(ax_right, bayesian_x, bayesian_y, bayesian_z,
+                                                cmap_name="Blues", cmap_low=0.25)
+
             # 设置坐标轴刻度
             ax_right.set_xticks([0, 0.5, 1])
             ax_right.set_yticks([0, 0.5, 1])
@@ -389,12 +390,15 @@ class Processor:
         # last_known_features = {choice: [feature_dict1, feature_dict2, ...]}
         last_known_features = {1: [], 2: [], 3: [], 4: []}
 
+        progress_tracker = {c: 0 for c in range(1, ncats + 1)}
+
         # 7. 迭代每一行数据，生成图表
         for index, row in df.iterrows():
             iSub = row.get('iSub', 'Unknown')  # 假设有 'iSub' 列
             iSession = row['iSession']
             iTrial = row['iTrial']
             current_choice = row['choice']
+            progress_tracker[current_choice] += 1
 
             if pd.isna(current_choice):
                 print(f"第 {index} 行缺少 'choice' 数据，跳过绘图。")
@@ -449,7 +453,6 @@ class Processor:
                 iTrial=iTrial,
                 choice=current_choice,
                 features_list=last_known_features[current_choice],
-                color_mapping=color_mapping,
                 plots_dir=plots_dir,
                 plot_side=plot_side)
 
@@ -466,7 +469,6 @@ class Processor:
                         iTrial=iTrial,
                         choice=choice,
                         features_list=last_known_features[choice],
-                        color_mapping=color_mapping,
                         plots_dir=plots_dir,
                         plot_side=plot_side)
                 else:
