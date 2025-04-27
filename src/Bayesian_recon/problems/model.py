@@ -443,7 +443,7 @@ class StandardModel(BaseModel):
                         h: (det["post_max"], det["beta_opt"])
                         for h, det in hypo_details.items()
                     }
-                    next_hypos = self.modules["cluster"].cluster_transition(
+                    next_hypos, strategy_amounts = self.modules["cluster"].cluster_transition(
                         stimulus=data[0][step_idx],
                         feedbacks=data[2][max(0, step_idx - 16): step_idx],
                         posterior=cur_post_dict,
@@ -451,6 +451,7 @@ class StandardModel(BaseModel):
                             "cluster_prototype_amount",
                             HYPO_CLUSTER_PROTOTYPE_AMOUNT),
                         **kwargs.get("cluster_kwargs", {}))
+                    step_results[-1]['best_step_amount'] = strategy_amounts
                     new_hypotheses_set = BaseSet(next_hypos)
                     new_prior = BasePrior(new_hypotheses_set)
                     new_likelihood = PartitionLikelihood(
