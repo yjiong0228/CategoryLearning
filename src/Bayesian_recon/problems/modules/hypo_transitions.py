@@ -23,6 +23,7 @@ class BaseCluster(BaseModule):
         self.current_cluster = BaseSet([])
         self.length = self.partition.length
 
+
     def adaptive_amount_evalutator(self, amount: float | str | Callable,
                                    **kwargs) -> int:
         """
@@ -354,6 +355,7 @@ class PartitionCluster(BaseCluster):
         Make the transition
         """
         new_hypos: Set[int] = set([])
+        numerical_amounts = []
         if full_hypo_set is None:
             available_hypos = set(range(self.length))
         else:
@@ -362,11 +364,12 @@ class PartitionCluster(BaseCluster):
         for amount, method in self.cluster_transition_strategy:
             numerical_amount = self.adaptive_amount_evalutator(
                 amount, **kwargs)
+            numerical_amounts.append(numerical_amount)
             new_part = method(numerical_amount, available_hypos, **kwargs)
             new_hypos = new_hypos.union(set(new_part))
             available_hypos = available_hypos.difference(new_part)
 
-        return list(new_hypos)
+        return list(new_hypos), {k:v for k, v in zip(self.strategy_name, numerical_amounts)}
 
     def cluster_init(self, **kwargs):
         return self._cluster_strategy_random(10, set(range(self.length)))
@@ -382,7 +385,12 @@ class PartitionCluster(BaseCluster):
         """
 
         self.cluster_transition_strategy = []
+        self.strategy_name = []
         for k_amount, k_strategy in strategy:
+            if isinstance(k_strategy, str):
+                self.strategy_name.append(k_strategy)
+            else:
+                self.strategy_name.append(k_strategy.__name__)
             match k_strategy:
                 case "stable":
                     self.cluster_transition_strategy.append(
