@@ -118,6 +118,8 @@ class PartitionCluster(BaseCluster):
         "random_3": BaseCluster._amount_random_gen(3),
         "random_4": BaseCluster._amount_random_gen(4),
         "random_5": BaseCluster._amount_random_gen(5),
+        "random_6": BaseCluster._amount_random_gen(6),
+        "random_7": BaseCluster._amount_random_gen(7),
     }
 
     def __init__(self, model, cluster_config: Dict = {}, **kwargs):
