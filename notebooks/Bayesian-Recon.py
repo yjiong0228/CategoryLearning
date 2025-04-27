@@ -25,10 +25,34 @@ from src.Bayesian_recon.problems import *
 from src.Bayesian_recon.utils.optimizer import Optimizer
 
 # 模型配置
+def post_acc_amount_f(x):
+    if x <= 0.2:
+        return 0
+    elif 0.2 < x < 0.3:
+        return 1 
+    elif 0.3 <= x < 0.4:
+        return 2
+    elif 0.4 <= x < 0.5:
+        return 3
+    elif 0.5 <= x < 0.6:
+        return 4
+    elif 0.6 <= x < 0.7:
+        return 5
+    elif 0.7 <= x < 0.8:
+        return 6
+    elif 0.8 <= x < 0.9:
+        return 7
+    elif 0.9 <= x <= 1:
+        return 8
+
+def random_acc_amount_f(x):
+    return 8 - post_acc_amount_f(x)
+
 module_config = {
     "cluster": (PartitionCluster, {
-        "transition_spec": [("random_4", "top_posterior"),
-                            (1, "ksimilar_centers"), (2, "random")]
+        "transition_spec": [(PartitionCluster._amount_accuracy_gen(post_acc_amount_f, 8), "random_posterior"),
+                            (1, "ksimilar_centers"), 
+                            (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 8), "random")]
     }),
     "memory": (BaseMemory, {
         "personal_memory_range": {
@@ -53,4 +77,4 @@ res = optimizer.optimize_params_with_subs_parallel(
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_random4.joblib')
+joblib.dump(res, result_path / 'M_fgt_cl_acc_randp.joblib')

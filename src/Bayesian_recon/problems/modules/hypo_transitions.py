@@ -189,8 +189,7 @@ class PartitionCluster(BaseCluster):
                                    posterior: Dict | None = None,
                                    **kwargs) -> List:
         """
-        Cluster strategy: stable
-
+        Cluster strategy: top posterior
 
         - functional args in kwargs:
         top_p: float between 0 to 1. Drives this method filter via top-p
@@ -216,6 +215,43 @@ class PartitionCluster(BaseCluster):
 
         # original top-n case
         return [x for x, _ in sorted_by_post][:amount]
+
+    @classmethod
+    def _cluster_strategy_random_post(cls,
+                                      amount: int,
+                                      available_hypos: Set,
+                                      posterior: Dict | None = None,
+                                      **kwargs) -> List:
+        """
+        Cluster strategy: random n from posterior                                        
+        """
+        # posterior as a dict
+        posterior = posterior or {}
+
+        # 只保留同时出现在 posterior 与 available_hypos 里的下标
+        cand_idx = [i for i in available_hypos if i in posterior]
+        if not cand_idx:
+            return []
+
+        # 取概率质量（支持 float 或 (prob, β) 形式）
+        raw_w = np.asarray([
+            posterior[i][0] if isinstance(posterior[i], (list, tuple, np.ndarray))
+            else posterior[i]
+            for i in cand_idx
+        ], dtype=float)
+
+        n_pos = int((raw_w > 0).sum())
+        amount = min(amount, len(cand_idx))            # 安全上限
+        if n_pos < amount:                             # 权重为 0 的太多
+            # → 退化为均匀随机（或也可以给零权重加一个极小值）
+            chosen = np.random.choice(cand_idx, size=amount, replace=False)
+            return chosen.tolist()
+
+        prob = raw_w / raw_w.sum()
+        chosen = np.random.choice(cand_idx, size=amount,
+                                replace=False, p=prob)
+        return chosen.tolist()        
+
 
     def _cluster_strategy_ksimilar_centers(self,
                                            amount: int,
@@ -355,6 +391,10 @@ class PartitionCluster(BaseCluster):
                 case "top_posterior":
                     self.cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_top_post))
+
+                case "random_posterior":
+                    self.cluster_transition_strategy.append(
+                        (k_amount, self._cluster_strategy_random_post))
 
                 case "random":
                     self.cluster_transition_strategy.append(
