@@ -8,8 +8,11 @@ import os
 import matplotlib.colors as mc
 from matplotlib import cm
 import colorsys
-import joblib
+import matplotlib as mpl
+from mpl_toolkits.mplot3d.art3d import Line3D
 import matplotlib.pyplot as plt
+from scipy.interpolate import splprep, splev
+from math import isfinite
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.lines import Line2D
 import os
@@ -70,7 +73,7 @@ class Processor:
 
         return result
 
-    def draw_cube(self, ax):
+    def draw_cube(self, ax, edge_color='#A0A0A0', lw=0.8):
         """
         在给定的轴上绘制一个立方体。
         
@@ -103,103 +106,126 @@ class Processor:
             x_vals = [vertices[start][0], vertices[end][0]]
             y_vals = [vertices[start][1], vertices[end][1]]
             z_vals = [vertices[start][2], vertices[end][2]]
-            ax.plot(x_vals, y_vals, z_vals, color='grey')
+            ax.plot(x_vals,
+                    y_vals,
+                    z_vals,
+                    color=edge_color,
+                    linewidth=lw,
+                    label='_cube_edge')
 
-    def draw_intersection_lines(self, ax):
+    def _beautify_axes(self, ax):
+        # —— 1) 只隐藏 pane（面板）和 grid，不把整个 axis 关掉 —— 
+        for axis_name in ('xaxis', 'yaxis', 'zaxis'):
+            # 先试 ax.xaxis，再试 ax.w_xaxis
+            if hasattr(ax, axis_name):
+                axis = getattr(ax, axis_name)
+            elif hasattr(ax, f"w_{axis_name}"):
+                axis = getattr(ax, f"w_{axis_name}")
+            else:
+                continue
+
+            # 隐藏 pane 背景 & 隐藏网格线
+            axis.set_pane_color((1, 1, 1, 0))
+            axis._axinfo['grid']['color'] = (1, 1, 1, 0)
+
+        # —— 2) 刻度 & 范围 & 标签 —— 
+        ticks = [0.0, 0.5, 1.0]
+        ax.set_xticks(ticks); ax.set_yticks(ticks); ax.set_zticks(ticks)
+        ax.set_xlim(0, 1);    ax.set_ylim(0, 1);    ax.set_zlim(0, 1)
+        ax.set_xlabel('Feature 1', labelpad=10)
+        ax.set_ylabel('Feature 2', labelpad=10)
+        ax.set_zlabel('Feature 3', labelpad=10)
+
+        # —— 3) 确保刻度标签打开，给一个正的 pad —— 
+        for axis_name in ('xaxis', 'yaxis', 'zaxis'):
+            if hasattr(ax, axis_name):
+                axis = getattr(ax, axis_name)
+            elif hasattr(ax, f"w_{axis_name}"):
+                axis = getattr(ax, f"w_{axis_name}")
+            else:
+                continue
+            axis.set_tick_params(label1On=True, pad=2)
+
+        # —— 4) 最后再画三条彩色主轴 —— 
+        ax.plot([0,1], [0,0], [0,0], color='#d62728', lw=2.5, zorder=5)  # X 红
+        ax.plot([0,0], [0,1], [0,0], color='#2ca02c', zorder=5, lw=2.5)  # Y 绿
+        ax.plot([0,0], [0,0], [0,1], color='#1f77b4', zorder=5, lw=2.5)  # Z 蓝
+
+
+    def _plot_smooth_grad_line_and_points(self,
+                                          ax,
+                                          xs,
+                                          ys,
+                                          zs,
+                                          cmap_name="Blues",
+                                          cmap_low=0.25,
+                                          cmap_high=1.0,
+                                          lw=1.5,
+                                          s=30,
+                                          n_interp=300,
+                                          smooth=0.0):
         """
-        在给定的轴上绘制灰色的三个平面的交线，共六条。
-        
-        Parameters:
-            ax (Axes3D): 三维坐标轴对象。
-        """
-        # 定义平面位置
-        plane_position = 0.5
-
-        # 绘制交线（六条）
-        # 1. feature1=0.5 与 feature2=0.5 的交线 (x=0.5, y=0.5, z从0到1)
-        ax.plot([plane_position, plane_position],
-                [plane_position, plane_position], [0, 1],
-                color='grey',
-                linestyle='--',
-                linewidth=1)
-
-        # 2. feature1=0.5 与 feature3=0.5 的交线 (x=0.5, y从0到1, z=0.5)
-        ax.plot([plane_position, plane_position], [0, 1],
-                [plane_position, plane_position],
-                color='grey',
-                linestyle='--',
-                linewidth=1)
-
-        # 3. feature2=0.5 与 feature3=0.5 的交线 (x从0到1, y=0.5, z=0.5)
-        ax.plot([0, 1], [plane_position, plane_position],
-                [plane_position, plane_position],
-                color='grey',
-                linestyle='--',
-                linewidth=1)
-
-    def lighten_color(self, color, amount=0.5):
-        """
-        淡化颜色，使其更浅。
-
-        Parameters:
-            color (str): 原始颜色名称或RGB值。
-            amount (float): 淡化程度，0表示不变，1表示白色。
-
-        Returns:
-            tuple: 淡化后的RGB颜色。
-        """
-        try:
-            c = mc.cnames[color]
-        except:
-            c = color
-        c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-        # 淡化颜色
-        new_color = colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
-        return new_color
-
-
-    def _plot_grad_line_and_points(self,
-                                ax,
-                                xs,
-                                ys,
-                                zs,
-                                cmap_name="Blues",
-                                cmap_low=0.25,
-                                cmap_high=1.0,
-                                lw=1.5,
-                                s=30):
-        """
-        在 3-D 轴上绘渐变折线，同时把每个顶点画成同色散点。
-
-        cmap_low / cmap_high 决定使用 colormap 的哪一段；
-        0-1 之间，数值越大越深，默认 0.25→1.0 可以避免“过白”。
+        画“平滑渐变曲线 + 渐变散点”，对 NaN/重复点和插值失败都能容错
         """
         xs, ys, zs = map(np.asarray, (xs, ys, zs))
-        n_pts = len(xs)
-        if n_pts < 2:
-            # 只有一个点：画单个散点，颜色取 cmap_high
-            color = cm.get_cmap(cmap_name)(cmap_high)
-            ax.scatter(xs, ys, zs, color=color, s=s, edgecolors='w')
+
+        # ---------- 1. 清洗无效点 ----------
+        mask_valid = np.array([all(map(isfinite, p)) for p in zip(xs, ys, zs)])
+        xs, ys, zs = xs[mask_valid], ys[mask_valid], zs[mask_valid]
+
+        # 若全是 NaN，就直接退出
+        if len(xs) == 0:
             return
 
+        # ---------- 2. 去掉连续重复 ----------
+        # 保留第一个点 & 所有与前一个不同的点
+        keep = [0] + [
+            i for i in range(1, len(xs))
+            if (xs[i], ys[i], zs[i]) != (xs[i - 1], ys[i - 1], zs[i - 1])
+        ]
+        xs, ys, zs = xs[keep], ys[keep], zs[keep]
+        n_pts = len(xs)
+
+        # ---------- 3. 小于 3 点：用直线/单点 ----------
         cmap = cm.get_cmap(cmap_name)
-        # 生成 n_pts 颜色：起点 cmap_low，终点 cmap_high
-        t_vals = np.linspace(cmap_low, cmap_high, n_pts)
-        colors = cmap(t_vals)
+        if n_pts == 1:
+            ax.scatter(xs, ys, zs, color=cmap(cmap_high), s=s, edgecolors='w')
+            return
+        if n_pts == 2:
+            c1, c2 = cmap(cmap_low), cmap(cmap_high)
+            ax.plot(xs, ys, zs, color=c1, linewidth=lw)
+            ax.scatter(xs, ys, zs, color=[c1, c2], s=s, edgecolors='w')
+            return
 
-        # ——逐段画线 + 点——
-        for i in range(n_pts - 1):
-            # 线段：用第 i 段的起点颜色
-            ax.plot(xs[i:i + 2],
-                    ys[i:i + 2],
-                    zs[i:i + 2],
-                    color=colors[i],
+        # ---------- 4. ≥3 点：尝试样条 ----------
+        k = min(3, n_pts - 1)
+        try:
+            tck, u = splprep([xs, ys, zs], s=smooth, k=k)
+            u_fine = np.linspace(0, 1, n_interp)
+            x_f, y_f, z_f = splev(u_fine, tck)
+        except Exception as e:  # 任意插值失败都回退到折线
+            # 折线 & 渐变散点
+            colors = cmap(np.linspace(cmap_low, cmap_high, n_pts))
+            for i in range(n_pts - 1):
+                ax.plot(xs[i:i + 2],
+                        ys[i:i + 2],
+                        zs[i:i + 2],
+                        color=colors[i],
+                        linewidth=lw)
+            ax.scatter(xs, ys, zs, color=colors, s=s, edgecolors='w')
+            return
+
+        # ---------- 5. 成功则画平滑曲线 ----------
+        line_colors = cmap(np.linspace(cmap_low, cmap_high, n_interp - 1))
+        for i in range(n_interp - 1):
+            ax.plot(x_f[i:i + 2],
+                    y_f[i:i + 2],
+                    z_f[i:i + 2],
+                    color=line_colors[i],
                     linewidth=lw)
-            # 点：散点画第 i 个顶点
-            ax.scatter(xs[i], ys[i], zs[i], color=colors[i], s=s, edgecolors='w')
-        # 收尾：最后一个顶点
-        ax.scatter(xs[-1], ys[-1], zs[-1], color=colors[-1], s=s, edgecolors='w')
 
+        pt_colors = cmap(cmap_low + (cmap_high - cmap_low) * u)
+        ax.scatter(xs, ys, zs, color=pt_colors, s=s, edgecolors='w')
 
     def plot_choice_graph(self,
                           ncats,
@@ -229,12 +255,13 @@ class Processor:
             os.makedirs(choice_folder)
 
         # 创建图表
-        fig = plt.figure(figsize=(12, 6) if plot_side == 'both' else (6, 6))
+        fig = plt.figure(figsize=(12, 6) if plot_side == 'both' else (6, 6),
+                         facecolor='none')
 
         # 添加主标题
-        fig.suptitle(
-            f"iSub={iSub}, iSession={iSession}, iTrial={iTrial}, Category={choice}",
-            fontsize=16)
+        # fig.suptitle(
+        #     f"iSub={iSub}, iSession={iSession}, iTrial={iTrial}, Category={choice}",
+        #     fontsize=16)
 
         # Prepare yellow point coordinates
         if ncats == 2:
@@ -284,24 +311,30 @@ class Processor:
 
             # Plot trajectory line
             if len(features_list) > 1:
-                self._plot_grad_line_and_points(ax_left, human_x, human_y, human_z,
-                                                cmap_name="Blues", cmap_low=0.25)
+                self._plot_smooth_grad_line_and_points(ax_left,
+                                                       human_x,
+                                                       human_y,
+                                                       human_z,
+                                                       cmap_name="Blues",
+                                                       cmap_low=0.25)
+
+            ax_left.view_init(elev=15, azim=30)  # 调整视角
+            self._beautify_axes(ax_left)
+            ax_left.patch.set_alpha(0)
 
             # 设置坐标轴刻度
-            ax_left.set_xticks([0, 0.5, 1])
-            ax_left.set_yticks([0, 0.5, 1])
-            ax_left.set_zticks([0, 0.5, 1])
-            ax_left.set_xlim(0, 1)
-            ax_left.set_ylim(0, 1)
-            ax_left.set_zlim(0, 1)
-            ax_left.set_xlabel('Feature 2')
-            ax_left.set_ylabel('Feature 1')
-            ax_left.set_zlabel('Feature 3')
-            ax_left.view_init(elev=15., azim=30)  # 调整视角
-            # 绘制平面和交线
-            # draw_intersection_lines(ax_left)
+            # ax_left.set_xticks([0, 0.5, 1])
+            # ax_left.set_yticks([0, 0.5, 1])
+            # ax_left.set_zticks([0, 0.5, 1])
+            # ax_left.set_xlim(0, 1)
+            # ax_left.set_ylim(0, 1)
+            # ax_left.set_zlim(0, 1)
+            # ax_left.set_xlabel('Feature 2')
+            # ax_left.set_ylabel('Feature 1')
+            # ax_left.set_zlabel('Feature 3')
+
             # 添加子图标题
-            ax_left.set_title("Human")
+            # ax_left.set_title("Human")
 
         # 绘制右图（feature2, 3, 4）
         if plot_side in ['right', 'both']:
@@ -322,29 +355,34 @@ class Processor:
 
             # Plot trajectory line
             if len(features_list) > 1:
-                self._plot_grad_line_and_points(ax_right, bayesian_x, bayesian_y, bayesian_z,
-                                                cmap_name="Blues", cmap_low=0.25)
+                self._plot_smooth_grad_line_and_points(ax_right,
+                                                       bayesian_x,
+                                                       bayesian_y,
+                                                       bayesian_z,
+                                                       cmap_name="Blues",
+                                                       cmap_low=0.25)
 
+            ax_right.view_init(elev=8, azim=-90)  # 调整视角
+            self._beautify_axes(ax_right)
+            ax_right.patch.set_alpha(0)
             # 设置坐标轴刻度
-            ax_right.set_xticks([0, 0.5, 1])
-            ax_right.set_yticks([0, 0.5, 1])
-            ax_right.set_zticks([0, 0.5, 1])
-            ax_right.set_xlim(0, 1)
-            ax_right.set_ylim(0, 1)
-            ax_right.set_zlim(0, 1)
-            ax_right.set_xlabel('Feature 2')
-            ax_right.set_ylabel('Feature 1')
-            ax_right.set_zlabel('Feature 3')
-            ax_right.view_init(elev=15., azim=30)  # 调整视角
-            # 绘制平面和交线
-            # draw_intersection_lines(ax_right)
+            # ax_right.set_xticks([0, 0.5, 1])
+            # ax_right.set_yticks([0, 0.5, 1])
+            # ax_right.set_zticks([0, 0.5, 1])
+            # ax_right.set_xlim(0, 1)
+            # ax_right.set_ylim(0, 1)
+            # ax_right.set_zlim(0, 1)
+            # ax_right.set_xlabel('Feature 2')
+            # ax_right.set_ylabel('Feature 1')
+            # ax_right.set_zlabel('Feature 3')
+
             # 添加子图标题
-            ax_right.set_title("Bayesian learner")
+            # ax_right.set_title("Bayesian learner")
 
         # 保存图表到对应的 choice 文件夹
         filename = f"{iSub}_{iSession}_{iTrial}_c{choice}.png"
         filepath = os.path.join(choice_folder, filename)
-        plt.savefig(filepath)
+        plt.savefig(filepath, transparent=True, dpi=300, bbox_inches='tight')
         plt.close()
 
     def process_and_plot(self,
@@ -377,14 +415,6 @@ class Processor:
             folder_path = os.path.join(plots_dir, folder_name)
             if not os.path.exists(folder_path):
                 os.makedirs(folder_path)
-
-        # 5. 定义颜色映射
-        color_mapping = {
-            1: 'darkgreen',
-            2: 'darkgreen',
-            3: 'darkred',
-            4: 'darkred'
-        }
 
         # 6. 初始化 last_known_features
         # last_known_features = {choice: [feature_dict1, feature_dict2, ...]}

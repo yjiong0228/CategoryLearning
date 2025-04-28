@@ -470,3 +470,101 @@ class Optimizer(object):
         if save_path:
             plt.savefig(save_path)
             logger.info(f"Error grids saved to {save_path}")
+
+
+    def plot_cluster_amount(self,
+                                     results: Dict,
+                                     subjects: Optional[List[str]] = None,
+                                     save_path: str = None,
+                                     **kwargs) -> None:
+        if subjects is not None:
+            results = {
+                iSub: results[iSub]
+                for iSub in subjects if iSub in results
+            }
+
+        # 按 condition 分组
+        grouped_results = defaultdict(list)
+        for iSub, subject_info in results.items():
+            condition = subject_info['condition']
+            grouped_results[condition].append((iSub, subject_info))
+
+        # 确定行列数
+        n_conditions = len(grouped_results)
+        max_subjects_per_condition = max(
+            len(subjects) for subjects in grouped_results.values())
+        n_cols = kwargs.get("n_cols", max_subjects_per_condition)
+        n_rows = n_conditions
+
+        g = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        g.suptitle('Posterior Probabilities for k by Subject',
+                   fontsize=kwargs.get("fontsize", 16),
+                   y=kwargs.get("y", 0.99))
+        limit = kwargs.get("limit", True)
+
+        # 按 condition 绘制子图
+        for row_idx, (condition,
+                      subjects) in enumerate(sorted(grouped_results.items())):
+            for col_idx, (iSub, subject_info) in enumerate(subjects):
+                step_results = subject_info['best_step_results']
+
+                plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
+
+                if limit:
+                    max_k = 19 if condition == 1 else 116
+                    data = []
+                    for step, result in enumerate(step_results):
+                        for k in range(max_k):
+                            if k in result['hypo_details']:
+                                data.append({
+                                    'Step':
+                                    step + 1,
+                                    'k':
+                                    k,
+                                    'Posterior':
+                                    result['hypo_details'][k]['post_max']
+                                })
+                    df = pd.DataFrame(data)
+
+                else:
+                    max_k = max(k for result in step_results
+                                for k in result['hypo_details'].keys())
+                    data = []
+                    for step, result in enumerate(step_results):
+                        for k in range(max_k):
+                            if k in result['hypo_details']:
+                                data.append({
+                                    'Step':
+                                    step + 1,
+                                    'k':
+                                    k,
+                                    'Posterior':
+                                    result['hypo_details'][k]['post_max']
+                                })
+                    df = pd.DataFrame(data)
+
+                sns.scatterplot(data=df,
+                                x='Step',
+                                y='Posterior',
+                                hue='k',
+                                palette='tab10',
+                                alpha=0.5,
+                                legend=False)
+
+                highlight_k = 0 if condition == 1 else 42
+                highlight_data = df[df['k'] == highlight_k]
+                sns.scatterplot(
+                    data=highlight_data,
+                    x='Step',
+                    y='Posterior',
+                    color='red',
+                    s=50,
+                )
+                plt.title(f'Subject {iSub} (Condition {condition})')
+                plt.xlabel('Trail')
+                plt.ylabel('Posterior Probability')
+
+        plt.tight_layout()
+        if save_path:
+            g.savefig(save_path)
+            logger.info(f"Posterior probabilities saved to {save_path}")
