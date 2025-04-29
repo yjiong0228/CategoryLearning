@@ -493,7 +493,11 @@ class StandardModel(BaseModel):
         for step in range(len(all_step_results[0])):
             hypo_details = {}
             best_params = dict()
+            cluster_prototype_amount = 0
             for i in range(mc_samples):
+                if "cluster_prototype_amount" in all_step_results[i][step]:
+                    cluster_prototype_amount += all_step_results[i][step][
+                        'best_step_amount']
                 for hypo, details in all_step_results[i][step]['hypo_details'].items():
                     if hypo not in hypo_details:
                         hypo_details[hypo] = {'post_max': [], 'beta_opt': details['beta_opt'], 'll_max': details['ll_max']}
@@ -512,6 +516,8 @@ class StandardModel(BaseModel):
                 'best_norm_posterior': np.max([hypo_details[hypo]['post_max'] for hypo in hypo_details]),
                 'hypo_details': hypo_details
             })
+            if cluster_prototype_amount > 0:
+                step_results[-1]['best_step_amount'] = cluster_prototype_amount / mc_samples
         return step_results
 
     def predict_choice(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
