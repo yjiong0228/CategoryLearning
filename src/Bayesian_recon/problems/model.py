@@ -621,7 +621,7 @@ class StandardModel(BaseModel):
 
         # Fit the model with fixed params
         selected_data = data[:3]
-        step_results = self.fit_step_by_step(selected_data, **kwargs)
+        step_results = self.fit_step_by_step_mc(selected_data, **kwargs)
 
         # Get the predicted accuracy
         predict_results = self.predict_choice(data,
