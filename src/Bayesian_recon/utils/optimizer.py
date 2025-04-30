@@ -138,93 +138,110 @@ class Optimizer(object):
             }
         return fitting_results
 
+
     def optimize_params_with_mcmc(self,
-                                  model_config: Dict,
-                                  gamma_values: Dict,
-                                  w0_values: Dict,
-                                  subjects: Optional[List[str]] = None,
-                                  mc_samples: int = 1000,
-                                  **kwargs):
+                                model_config: Dict,
+                                gamma_values: Dict,
+                                w0_values: Dict,
+                                subjects: Optional[List[str]] = None,
+                                mc_samples: int = 1000,
+                                **kwargs):
         """
-        Optimize parameters using MCMC method with progress bars.
+        Optimize parameters using MCMC across subjects and samples in parallel,
+        with robust aggregation avoiding KeyError.
         """
+        # 1. Prepare subjects and data
         if subjects is None:
             subjects = self.learning_data["iSub"].unique()
         subject_data_map = {
-            i: self.learning_data[self.learning_data["iSub"] == i]
-            for i in subjects
+            iSub: self.learning_data[self.learning_data["iSub"] == iSub]
+            for iSub in subjects
         }
 
-        def process_single_task(iSub):
+        # 2. Flatten tasks: one job per (subject, sample)
+        tasks = [(iSub, idx) for iSub in subjects for idx in range(mc_samples)]
+
+        # 3. Worker: run a single MCMC draw for one subject
+        def run_task(iSub, _):
             data = subject_data_map[iSub]
-            condition = data["condition"].iloc[0]
-            stimulus = data[["feature1", "feature2", "feature3",
-                             "feature4"]].values
+            cond = data["condition"].iloc[0]
+            stim = data[["feature1","feature2","feature3","feature4"]].values
             choices = data["choice"].values
             feedback = data["feedback"].values
-            s_data = (stimulus, choices, feedback)
+            s_data = (stim, choices, feedback)
 
             model = StandardModel(model_config,
-                                  module_config=self.module_config,
-                                  condition=condition)
-            this_gamma = gamma_values[iSub]
-            this_w0 = w0_values[iSub]
+                                module_config=self.module_config,
+                                condition=cond)
+            step_res = model.fit_step_by_step(
+                s_data,
+                gamma=gamma_values[iSub],
+                w0=w0_values[iSub],
+                **kwargs
+            )
+            return iSub, step_res
 
-            # MCMC sampling with a progress bar per subject
-            all_step_results = []
-            for _ in tqdm(range(mc_samples),
-                          desc=f"Subject {iSub} MCMC",
-                          leave=False,
-                          ncols=100):
-                sr = model.fit_step_by_step(s_data,
-                                            gamma=this_gamma,
-                                            w0=this_w0,
-                                            **kwargs)
-                all_step_results.append(sr)
+        # 4. Parallel execution with progress bar
+        results = Parallel(n_jobs=self.n_jobs, verbose=5)(
+            delayed(run_task)(iSub, idx)
+            for iSub, idx in tqdm(tasks, desc="MCMC tasks", ncols=80)
+        )
 
-            # Aggregate per-step results
-            n_steps = len(all_step_results[0])
+        # 5. Group samples by subject
+        samples_by_sub = defaultdict(list)
+        for iSub, step_res in results:
+            samples_by_sub[iSub].append(step_res)
+
+        # 6. Aggregate per subject with robust det0 selection
+        fitting_results = {}
+        for iSub, samples in samples_by_sub.items():
+            data = subject_data_map[iSub]
+            cond = data["condition"].iloc[0]
+            gamma = gamma_values[iSub]
+            w0 = w0_values[iSub]
+
+            n_steps = len(samples[0])
             aggregated = []
             for step_idx in range(n_steps):
-                hypo_details = {}
-                cluster_proto_sum = 0
-                for sample in all_step_results:
-                    step = sample[step_idx]
-                    if "best_step_amount" in step:
-                        cluster_proto_sum += step["best_step_amount"]
+                # collect posterior values per hypothesis
+                post_vals = defaultdict(list)
+                for sr in samples:
+                    step = sr[step_idx]
                     for h, det in step["hypo_details"].items():
-                        hypo_details.setdefault(h, {
-                            "beta_opt": det["beta_opt"],
-                            "ll_max": det["ll_max"],
-                            "post_max_list": []
-                        })
-                        hypo_details[h]["post_max_list"].append(det["post_max"])
-                for h, det in hypo_details.items():
-                    det["post_max"] = np.mean(det.pop("post_max_list"))
+                        post_vals[h].append(det["post_max"])
+                # build aggregated hypo_details
+                hypo_details = {}
+                for h, vals in post_vals.items():
+                    # find first sample that has h in hypo_details
+                    for sr in samples:
+                        det0 = sr[step_idx]["hypo_details"].get(h)
+                        if det0 is not None:
+                            break
+                    hypo_details[h] = {
+                        "post_max": float(np.mean(vals)),
+                        "beta_opt": det0["beta_opt"],
+                        "ll_max": det0["ll_max"]
+                    }
+                # select best hypothesis
                 best_h = max(hypo_details, key=lambda h: hypo_details[h]["post_max"])
-                entry = {
+                aggregated.append({
                     "best_k": best_h,
                     "best_beta": hypo_details[best_h]["beta_opt"],
                     "best_log_likelihood": hypo_details[best_h]["ll_max"],
                     "best_norm_posterior": hypo_details[best_h]["post_max"],
                     "hypo_details": hypo_details
-                }
-                if cluster_proto_sum > 0:
-                    entry["best_step_amount"] = cluster_proto_sum / mc_samples
-                aggregated.append(entry)
+                })
 
-            return iSub, {
-                "condition": condition,
-                "gamma": this_gamma,
-                "w0": this_w0,
+            fitting_results[iSub] = {
+                "condition": cond,
+                "gamma": gamma,
+                "w0": w0,
                 "step_results": aggregated
             }
 
-        # Parallel execution with joblib verbose output
-        results = Parallel(n_jobs=self.n_jobs,
-                           verbose=5)(delayed(process_single_task)(iSub)
-                                      for iSub in subjects)
-        return {iSub: res for iSub, res in results}
+        return fitting_results
+
+
 
     def save_results(self, results: Dict, output_path: str):
         """
