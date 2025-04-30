@@ -9,6 +9,8 @@ import matplotlib as mpl
 from matplotlib.collections import LineCollection
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from typing import Dict, Optional
+from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
 
 
 
@@ -44,7 +46,7 @@ class Fig1B:
                  (2, 6), (3, 7)]
         for u, v in edges:
             x, y, z = zip(verts[u], verts[v])
-            ax.plot(x, y, z, color=edge_color, linewidth=lw)
+            ax.plot(x, y, z, color=edge_color, linewidth=lw, alpha=0.9)
 
     def _beautify_axes(self, ax):
         ax.set_axis_off()
@@ -56,9 +58,9 @@ class Fig1B:
         }
 
         # 手动绘制三条主轴线
-        ax.plot([0, 1], [0, 0], [0, 0], color=colors['x'], lw=2.5, alpha=0.9)
-        ax.plot([0, 0], [0, 1], [0, 0], color=colors['y'], lw=2.5, alpha=0.9)
-        ax.plot([0, 0], [0, 0], [0, 1], color=colors['z'], lw=2.5, alpha=0.9)
+        ax.plot([0, 1], [0, 0], [0, 0], color='#808080', lw=2.5)
+        ax.plot([0, 0], [0, 1], [0, 0], color='#808080', lw=2.5)
+        ax.plot([0, 0], [0, 0], [0, 1], color='#808080', lw=2.5)
 
         # 三个轴的手动标题
         ax.text(1.2,
@@ -293,17 +295,17 @@ class Fig1B:
             }
             last_feats[choice].append(feat)
             if idx in target:
-                # self.plot_choice_graph(ncats, row.get('iSub', 'Unknown'),
-                #                        row['iSession'], row['iTrial'], choice,
-                #                        last_feats[choice], plots_dir)
-                self.plot_feature4_time_series(
-                    row.get('iSub', 'Unknown'),
-                    row['iSession'],
-                    row['iTrial'],
-                    choice,
-                    last_feats[choice],
-                    plots_dir
-                )
+                self.plot_choice_graph(ncats, row.get('iSub', 'Unknown'),
+                                       row['iSession'], row['iTrial'], choice,
+                                       last_feats[choice], plots_dir)
+                # self.plot_feature4_time_series(
+                #     row.get('iSub', 'Unknown'),
+                #     row['iSession'],
+                #     row['iTrial'],
+                #     choice,
+                #     last_feats[choice],
+                #     plots_dir
+                # )
 
         print(f"完成：仅绘制行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
 
@@ -425,10 +427,7 @@ class Fig1C:
             raise ValueError("请提供三个被试编号，例如 [1, 5, 7]")
 
         # 创建画布和 GridSpec，wspace 调小以减小子图间距
-        fig = plt.figure(figsize=figsize)
-        fig.patch.set_facecolor('none')
-
-        gs = gridspec.GridSpec(nrows=1, ncols=3, width_ratios=widths)
+        fig, gs = create_grid_figure(widths, figsize)
 
         for idx, sub in enumerate(subject_ids):
             ax = fig.add_subplot(gs[idx])
@@ -440,47 +439,12 @@ class Fig1C:
             # 画曲线
             ax.plot(trials, acc, color=color_acc, linewidth=2)
 
-            # 每64 trial 画分割线
-            max_trial = int(trials.max())
-            for x in range(64, max_trial + 1, 64):
-                ax.axvline(x=x,
-                        color='grey',
-                        alpha=0.3,
-                        linestyle='--',
-                        linewidth=1)
+            add_segmentation_lines(ax, len(trials), interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
+            style_axis(ax, show_ylabel=(idx == 0))
+            annotate_label(ax, f"S{sub}")
 
-            # 横坐标设置
-            ax.set_xticks(range(0, max_trial + 1, 64))
-            ax.set_xticklabels(range(0, max_trial + 1, 64), fontsize=15)
-            ax.set_xlabel('Trial', fontsize=18)
-
-            # 纵坐标：只有第一个子图显示
-            if idx == 0:
-                ax.set_yticks([0, 0.5, 1.0])
-                ax.set_yticklabels(['0', '0.5', '1'], fontsize=15)
-                ax.set_ylabel('Accuracy', fontsize=18)
-            else:
-                ax.set_yticks([])
-                ax.set_ylabel('')
-
-            # 样式微调
-            ax.grid(False)
-            ax.set_facecolor('none')
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            for spine in ['left', 'bottom']:
-                ax.spines[spine].set_linewidth(2)
-            ax.tick_params(width=2)
-
-            # 标注被试编号
-            ax.text(0.95,
-                    0.05,
-                    f"S{sub}",
-                    transform=ax.transAxes,
-                    fontsize=18,
-                    ha='right',
-                    va='bottom',
-                    color='black')
+            # if idx == 2:
+            #     ax.legend(loc='upper right', fontsize=12)
 
         # 调整子图间距
         # plt.subplots_adjust(left=0.05,
@@ -529,9 +493,7 @@ class Fig1C:
         if len(subject_ids) != 3:
             raise ValueError("请提供三个被试编号，例如 [1, 5, 7]")
 
-        fig = plt.figure(figsize=figsize)
-        fig.patch.set_facecolor('none')
-        gs = gridspec.GridSpec(nrows=1, ncols=3, width_ratios=widths)
+        fig, gs = create_grid_figure(widths, figsize)
 
         for idx, sub in enumerate(subject_ids):
             ax = fig.add_subplot(gs[idx])
@@ -547,42 +509,9 @@ class Fig1C:
                         alpha=0.8,
                         linewidth=2)
 
-            # 分割线
-            max_trial = int(trials.max())
-            for x in range(64, max_trial + 1, 64):
-                ax.axvline(x=x, color='grey', alpha=0.3, linestyle='--', linewidth=1)
-
-            # 坐标轴设置
-            ax.set_xticks(range(0, max_trial + 1, 64))
-            ax.set_xticklabels(range(0, max_trial + 1, 64), fontsize=15)
-            ax.set_xlabel('Trial', fontsize=18)
-
-            if idx == 0:
-                ax.set_yticks([0, 0.5, 1.0])
-                ax.set_yticklabels(['0', '0.5', '1'], fontsize=15)
-                ax.set_ylabel('Feature use', fontsize=18)
-            else:
-                ax.set_yticks([])
-                ax.set_ylabel('')
-
-            # 样式
-            ax.grid(False)
-            ax.set_facecolor('none')
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            for spine in ['left', 'bottom']:
-                ax.spines[spine].set_linewidth(2)
-            ax.tick_params(width=2)
-
-            # 子图标题或标签
-            ax.text(0.95,
-                    0.05,
-                    f"S{sub}",
-                    transform=ax.transAxes,
-                    fontsize=18,
-                    ha='right',
-                    va='bottom',
-                    color='black')
+            add_segmentation_lines(ax, len(trials), interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
+            style_axis(ax, show_ylabel=(idx == 0))
+            annotate_label(ax, f"S{sub}")
 
             # if idx == 2:
             #     ax.legend(loc='upper right', fontsize=12)
@@ -593,6 +522,73 @@ class Fig1C:
         #                     bottom=0.10,
         #                     wspace=0.10)
 
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close()
+
+
+class Fig3:
+    def plot_acc_comparison(self,
+                            results,
+                            subject_ids,
+                            widths=(2, 1, 1),
+                            figsize=(15, 5),
+                            color_acc='#45B53F',
+                            save_path=None):
+
+        # 创建画布和 GridSpec，wspace 调小以减小子图间距
+        fig, gs = create_grid_figure(widths, figsize)
+
+        for idx, sub in enumerate(subject_ids):
+            ax = fig.add_subplot(gs[idx])
+
+            sliding_true_acc = results[sub]['sliding_true_acc']
+            sliding_pred_acc = results[sub]['sliding_pred_acc']
+            sliding_pred_acc_std = results[sub]['sliding_pred_acc_std']
+
+            # 在每列数据的最前面添加15个空值
+            sliding_true_acc = [np.nan] * 15 + sliding_true_acc
+            sliding_pred_acc = [np.nan] * 15 + sliding_pred_acc
+            sliding_pred_acc_std = [np.nan] * 15 + sliding_pred_acc_std
+
+            num_steps = len(sliding_pred_acc)
+
+            ax.plot(range(1, num_steps + 1),
+                    sliding_true_acc,
+                    label='True',
+                    color='#A6A6A6',
+                    linewidth=2)
+
+            ax.plot(range(1, num_steps + 1),
+                    sliding_pred_acc,
+                    label='Predicted',
+                    color=color_acc,
+                    linewidth=2)
+
+            lower_bound = np.array(sliding_pred_acc) - np.array(
+                sliding_pred_acc_std)
+            upper_bound = np.array(sliding_pred_acc) + np.array(
+                sliding_pred_acc_std)
+            ax.fill_between(range(1, num_steps + 1),
+                            lower_bound,
+                            upper_bound,
+                            color=color_acc,
+                            alpha=0.4,
+                            label='Predicted Std')
+
+            add_segmentation_lines(ax, num_steps, interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
+            style_axis(ax, show_ylabel=(idx == 0))
+            annotate_label(ax, f"S{sub}")
+
+        # 调整子图间距
+        # plt.subplots_adjust(left=0.05,
+        #                     right=0.98,
+        #                     top=0.95,
+        #                     bottom=0.10,
+        #                     wspace=0.10)
+
+        # 保存或展示
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Figure saved to {save_path}")
