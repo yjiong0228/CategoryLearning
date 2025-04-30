@@ -373,16 +373,19 @@ class ModelEval:
 
         def _collect_cumavg(subject_info, subject_hypos):
             """返回某个 subject 的 cumulative‐avg 序列"""
-            step_results = subject_info['step_results']
+            step_results = subject_info.get(
+                    'step_results', subject_info.get('best_step_results'))
             posterior_sums = [
                 sum(r['hypo_details'][k]['post_max']  # 与原代码一致
                     for k in subject_hypos[step] if k in r['hypo_details'])
                 for step, r in enumerate(step_results)
             ]
             log_posterior_sums = np.log(posterior_sums)  # 取 log
-            cum_avg = pd.Series(log_posterior_sums).rolling(window=16, min_periods=16).mean().to_numpy()
+            cum_avg = np.cumsum(log_posterior_sums) / (
+                np.arange(len(log_posterior_sums)) + 1)  # = cumulative average
             # 取 exp
             return np.exp(cum_avg)  # 返回 cumulative average 的 exp 值
+
 
         merged = defaultdict(
             list)  # {condition: [(iSub, base_info, forget_info), …]}
@@ -402,7 +405,7 @@ class ModelEval:
             fig, axs = init_figure(n_rows, n_cols)
 
             global_max = max(
-                len(t[1]['step_results'])  # 取 base_info 的 trial 数
+                len(t[1].get('step_results', t[1].get('best_step_results', [])))  # 取 base_info 的 trial 数
                 for t in triples)
 
             for idx, (iSub, base_info, forget_info,
