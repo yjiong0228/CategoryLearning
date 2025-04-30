@@ -57,8 +57,22 @@ class Optimizer(object):
 
     def optimize_params_with_subs_parallel(self,
                                            model_config: Dict,
-                                           subjects: Optional[List[str]] = None
-                                           ):
+                                           subjects: Optional[List[str]] = None,
+                                           window_size: int = 16,
+                                           grid_repeat: int = 5,
+                                           mc_samples: int = 100,                                            
+                                           ) -> Dict:
+        """
+        Optimize parameters using grid search across subjects in parallel.
+        Args:
+            model_config (Dict): The model configuration.
+            subjects (Optional[List[str]]): List of subjects to optimize for.
+            window_size (int): Size of the sliding window.
+            grid_repeat (int): Number of repetitions for grid search.
+            mc_samples (int): Number of Monte Carlo samples.
+        Returns:
+            Dict: A dictionary containing the optimization results for each subject.
+        """
         if subjects is None:
             subjects = self.learning_data["subject"].unique()
         subject_data_map = {
@@ -81,11 +95,12 @@ class Optimizer(object):
             grid_params = {}
             for key in self.optimize_params_dict.keys():
                 grid_params[key] = kwargs[key]
-            step_results, mean_error = model.compute_error_for_params(
+            all_step_results, all_mean_error = model.compute_error_for_params(
                 s_data,
-                window_size=kwargs.get("window_size", 16),
+                window_size=window_size, 
+                repeat=grid_repeat,
                 **grid_params)
-            return iSub, grid_params, mean_error, step_results
+            return iSub, grid_params, all_mean_error, all_step_results
 
         all_kwargs = []
         for task_values in product(subjects,
@@ -109,31 +124,55 @@ class Optimizer(object):
         subject_grid_errors = defaultdict(dict)
         subject_best_combo = {}
 
-        for iSub, grid_params, mean_error, step_results in results:
-            subject_grid_errors[iSub][tuple(grid_params.values())] = mean_error
+        for iSub, grid_params, all_mean_error, all_step_results in results:
+            subject_grid_errors[iSub][tuple(grid_params.values())] = all_mean_error
 
             if iSub not in subject_best_combo:
                 subject_best_combo[iSub] = {
                     "params": grid_params,
-                    "error": mean_error,
-                    "step_results": step_results
+                    "error": all_mean_error,
+                    "step_results": all_step_results
                 }
             else:
-                best_error = subject_best_combo[iSub]["error"]
-                if mean_error < best_error:
+                best_error = np.mean(subject_best_combo[iSub]["error"])
+                if np.mean(all_mean_error) < best_error:
                     subject_best_combo[iSub] = {
                         "params": grid_params,
-                        "error": mean_error,
-                        "step_results": step_results
+                        "error": all_mean_error,
+                        "step_results": all_step_results
                     }
+
+        def refit_model(iSub, subject_data, specific_params):
+            condition = subject_data["condition"].iloc[0]
+            s_data = (subject_data[[
+                "feature1", "feature2", "feature3", "feature4"
+            ]].values, subject_data["choice"].values,
+                      subject_data["feedback"].values,
+                      subject_data["category"].values)
+
+            model = StandardModel(model_config,
+                                  module_config=self.module_config,
+                                  condition=condition)
+            all_step_results, all_mean_error = model.compute_error_for_params(
+                s_data,
+                window_size=window_size,
+                repeat=mc_samples,
+                multiprocess=True,
+                n_jobs=self.n_jobs,
+                **specific_params)
+            return iSub, all_step_results, all_mean_error
 
         fitting_results = {}
         for iSub in subject_grid_errors.keys():
+            _, all_step_results, all_mean_error = refit_model(iSub, subject_data_map[iSub],
+                                        subject_best_combo[iSub]["params"])
+            idx = np.argmin(all_mean_error)
             fitting_results[iSub] = {
                 "condition": subject_data_map[iSub]["condition"].iloc[0],
                 "best_params": subject_best_combo[iSub]["params"],
-                "best_error": subject_best_combo[iSub]["error"],
-                "best_step_results": subject_best_combo[iSub]["step_results"],
+                "best_error": all_mean_error[idx],
+                "best_step_results": all_step_results[idx],
+                "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub]
             }
         return fitting_results
