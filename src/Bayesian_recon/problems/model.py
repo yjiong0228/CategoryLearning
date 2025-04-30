@@ -600,6 +600,8 @@ class StandardModel(BaseModel):
                                  data: Tuple[np.ndarray, np.ndarray,
                                              np.ndarray, np.ndarray],
                                  window_size=16,
+                                 repeat=1,
+                                 multiprocess=False,
                                  **kwargs) -> Tuple[List[Dict], float]:
         """
         Perform a single pass of model fitting and prediction, then compute an error metric.
@@ -610,32 +612,70 @@ class StandardModel(BaseModel):
             A tuple containing (stimuli, choices, responses, categories).
         window_size : int
             The window size used for sliding accuracy measurements.
+        repeat : int
+            The number of times to repeat the fitting process.
+        multiprocess : bool
+            Whether to use multiprocessing for parallel computation.
+        n_jobs : int
+            The number of jobs to run in parallel (if multiprocess is True).
 
         Returns
         -------
-        step_results : List[Dict]
-            Output of fit_step_by_step showing model fits for each trial.
-        mean_error : float
-            The average windowed error between predicted and true accuracy.
+        all_step_results : List[List[Dict]]
+            A list of output of fit_step_by_step showing model fits for each trial.
+        all_mean_error : List[float]
+            A list of average windowed errors between predicted and true accuracy.
         """
 
         # Fit the model with fixed params
-        selected_data = data[:3]
-        step_results = self.fit_step_by_step(selected_data, **kwargs)
 
-        # Get the predicted accuracy
-        predict_results = self.predict_choice(data,
-                                              step_results,
-                                              use_cached_dist=True,
-                                              window_size=window_size)
 
-        # Calculate the mean absolute error between predicted and true accuracy
-        mean_error = np.mean(
-            np.abs(
-                np.array(predict_results['sliding_true_acc']) -
-                np.array(predict_results['sliding_pred_acc'])))
+        if multiprocess:
+            from joblib import Parallel, delayed
+            from tqdm import tqdm
 
-        return step_results, mean_error
+            def compute_single_fit(data, **kwargs):
+                step_results = self.fit_step_by_step(data[:3], **kwargs)
+                predict_results = self.predict_choice(data,
+                                                      step_results,
+                                                      use_cached_dist=True,
+                                                      window_size=window_size)
+                mean_error = np.mean(
+                    np.abs(
+                        np.array(predict_results['sliding_true_acc']) -
+                        np.array(predict_results['sliding_pred_acc'])))
+                return step_results, mean_error
+            results = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
+                delayed(compute_single_fit)(data, **kwargs)
+                for i in tqdm(range(repeat), desc="Computing error for params")
+            )
+            all_step_results = [result[0] for result in results]
+            all_mean_error = [result[1] for result in results]
+
+        else:
+            selected_data = data[:3]
+            all_step_results = []
+            all_mean_error = []            
+            
+            for _ in range(repeat):
+                step_results = self.fit_step_by_step(selected_data, **kwargs)
+                all_step_results.append(step_results)
+
+                # Get the predicted accuracy
+                predict_results = self.predict_choice(data,
+                                                    step_results,
+                                                    use_cached_dist=True,
+                                                    window_size=window_size)
+
+                # Calculate the mean absolute error between predicted and true accuracy
+                mean_error = np.mean(
+                    np.abs(
+                        np.array(predict_results['sliding_true_acc']) -
+                        np.array(predict_results['sliding_pred_acc'])))
+                all_mean_error.append(mean_error)
+
+
+        return all_step_results, all_mean_error
 
     def optimize_params(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
                                           np.ndarray],
@@ -651,9 +691,13 @@ class StandardModel(BaseModel):
         def evaluate_params(grid_values):
             grid_params = dict(
                 zip(self.optimize_params_dict.keys(), grid_values))
-            step_results, mean_error = self.compute_error_for_params(
-                data, window_size=kwargs.get("window_size", 16), **grid_params)
-            return tuple(grid_params.values()), step_results, mean_error
+            all_step_results, all_mean_error = self.compute_error_for_params(
+                data,
+                window_size=kwargs.get("window_size", 16), 
+                repeat=kwargs.get("grid_repeat", 5),
+                multiprocess=False
+                **grid_params)
+            return tuple(grid_params.values()), all_step_results, all_mean_error
 
         eval_list = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
             delayed(evaluate_params)(grid_values) for grid_values in tqdm(
@@ -662,17 +706,33 @@ class StandardModel(BaseModel):
                 total=total_combinations,
             ))
 
-        for key, step_results, mean_error in eval_list:
-            grid_errors[key] = mean_error
-            grid_step_results[key] = step_results
+        for key, all_step_results, all_mean_error in eval_list:
+            grid_errors[key] = all_mean_error
+            grid_step_results[key] = all_step_results
 
-        best_key = min(grid_errors, key=grid_errors.get)
+        best_key = min(
+            grid_errors, key=lambda x: np.mean(grid_errors[x])
+        )
+
+        mc_samples = kwargs.get("mc_samples", 100)
+
+        def refit_model(specific_params):
+            step_results, mean_error = self.compute_error_for_params(
+                data, window_size=kwargs.get("window_size", 16),
+                repeat=mc_samples, 
+                multiprocess=True,
+                n_jobs=kwargs.get("n_jobs", 2),
+                **specific_params)
+            idx = np.argmin(mean_error)
+            return step_results[idx], mean_error[idx]
+        best_step_results, best_mean_error = refit_model(
+            dict(zip(self.optimize_params_dict.keys(), best_key)))
 
         optimized_params_results = {
             "optim_params": self.optimize_params_dict.keys(),
             "best_params": best_key,
-            "best_error": grid_errors[best_key],
-            "best_step_results": grid_step_results[best_key],
+            "best_error": best_mean_error,
+            "best_step_results": best_step_results,
             "grid_errors": grid_errors,
         }
 
