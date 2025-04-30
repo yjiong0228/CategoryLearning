@@ -139,12 +139,12 @@ class Optimizer(object):
         return fitting_results
 
     def optimize_params_with_mcmc(self,
-                                model_config: Dict,
-                                gamma_values,
-                                w0_values,
-                                subjects: Optional[List[str]] = None,
-                                mc_samples: int = 1000,
-                                **kwargs):
+                                  model_config: Dict,
+                                  gamma_values,
+                                  w0_values,
+                                  subjects: Optional[List[str]] = None,
+                                  mc_samples: int = 1000,
+                                  **kwargs):
         """
         Optimize parameters using MCMC across subjects and samples in parallel.
         - raw_step_results: list of all sample step_results (length mc_samples)
@@ -162,11 +162,17 @@ class Optimizer(object):
 
         # 2. Normalize gamma and w0
         if not isinstance(gamma_values, dict):
-            gamma_map = {subj: gamma_values[idx] for idx, subj in enumerate(subjects)}
+            gamma_map = {
+                subj: gamma_values[idx]
+                for idx, subj in enumerate(subjects)
+            }
         else:
             gamma_map = gamma_values
         if not isinstance(w0_values, dict):
-            w0_map = {subj: w0_values[idx] for idx, subj in enumerate(subjects)}
+            w0_map = {
+                subj: w0_values[idx]
+                for idx, subj in enumerate(subjects)
+            }
         else:
             w0_map = w0_values
 
@@ -183,26 +189,28 @@ class Optimizer(object):
         def run_task(iSub, _):
             data = subject_data_map[iSub]
             cond = data["condition"].iloc[0]
-            stim = data[["feature1", "feature2", "feature3", "feature4"]].values
+            stim = data[["feature1", "feature2", "feature3",
+                         "feature4"]].values
             choices = data["choice"].values
             feedback = data["feedback"].values
             s_data = (stim, choices, feedback)
 
             model = StandardModel(model_config,
-                                module_config=self.module_config,
-                                condition=cond)
-            return iSub, model.fit_step_by_step(
-                s_data,
-                gamma=gamma_map[iSub],
-                w0=w0_map[iSub],
-                **kwargs
-            )
+                                  module_config=self.module_config,
+                                  condition=cond)
+
+            task_kwargs = dict(kwargs)  # shallow copy
+            task_kwargs["gamma"] = gamma_map[iSub]
+            task_kwargs["w0"] = w0_map[iSub]
+
+            # fit_step_by_step 会从 **task_kwargs 里 pick up gamma/w0
+            step_res = model.fit_step_by_step(s_data, **task_kwargs)
+            return iSub, step_res
 
         # 6. Parallel execution
         results = Parallel(n_jobs=self.n_jobs, verbose=5)(
             delayed(run_task)(iSub, idx)
-            for iSub, idx in tqdm(tasks, desc="MCMC tasks", ncols=80)
-        )
+            for iSub, idx in tqdm(tasks, desc="MCMC tasks", ncols=80))
 
         # 7. Group raw samples
         samples_by_sub = defaultdict(list)
@@ -250,7 +258,8 @@ class Optimizer(object):
                         amounts.append(bsa)
 
                 # Determine best hypothesis by averaged post_max
-                best_h = max(hypo_details, key=lambda x: hypo_details[x]["post_max"])
+                best_h = max(hypo_details,
+                             key=lambda x: hypo_details[x]["post_max"])
                 entry = {
                     "best_k": best_h,
                     "best_beta": hypo_details[best_h]["beta_opt"],
@@ -334,7 +343,8 @@ class Optimizer(object):
                                   condition=condition)
 
             sub_results = self.fitting_results[iSub]
-            step_results = sub_results.get('step_results', sub_results.get('best_step_results'))
+            step_results = sub_results.get(
+                'step_results', sub_results.get('best_step_results'))
             results = model.predict_choice(s_data,
                                            step_results,
                                            use_cached_dist=False,
@@ -396,7 +406,8 @@ class Optimizer(object):
         for row_idx, (condition,
                       subjects) in enumerate(sorted(grouped_results.items())):
             for col_idx, (iSub, subject_info) in enumerate(subjects):
-                step_results = subject_info.get('step_results', subject_info.get('best_step_results'))
+                step_results = subject_info.get(
+                    'step_results', subject_info.get('best_step_results'))
 
                 plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
 
