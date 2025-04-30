@@ -138,30 +138,46 @@ class Optimizer(object):
             }
         return fitting_results
 
-
     def optimize_params_with_mcmc(self,
                                 model_config: Dict,
-                                gamma_values: Dict,
-                                w0_values: Dict,
+                                gamma_values,
+                                w0_values,
                                 subjects: Optional[List[str]] = None,
                                 mc_samples: int = 1000,
                                 **kwargs):
         """
-        Optimize parameters using MCMC across subjects and samples in parallel,
-        with robust aggregation avoiding KeyError.
+        Optimize parameters using MCMC, retaining raw samples and computing mean_post_max.
+        Returns:
+            Dict of {iSub: {
+                condition, gamma, w0,
+                step_results: List[List[step_dict]]  # length=mc_samples
+                mean_step_results: List[Dict[hypo, mean_post_max]]  # length=n_steps
+            }}
         """
-        # 1. Prepare subjects and data
+        # 1. 准备 subjects 列表
         if subjects is None:
-            subjects = self.learning_data["iSub"].unique()
+            subjects = list(self.learning_data["iSub"].unique())
+
+        # 2. 将 gamma_values、w0_values 规范化为 dict(subject->value)
+        if not isinstance(gamma_values, dict):
+            gamma_map = {subj: gamma_values[idx] for idx, subj in enumerate(subjects)}
+        else:
+            gamma_map = gamma_values
+        if not isinstance(w0_values, dict):
+            w0_map = {subj: w0_values[idx] for idx, subj in enumerate(subjects)}
+        else:
+            w0_map = w0_values
+
+        # 3. 按 subject 分组数据
         subject_data_map = {
             iSub: self.learning_data[self.learning_data["iSub"] == iSub]
             for iSub in subjects
         }
 
-        # 2. Flatten tasks: one job per (subject, sample)
-        tasks = [(iSub, idx) for iSub in subjects for idx in range(mc_samples)]
+        # 4. 生成平坦化任务列表 (subject, sample_idx)
+        tasks = [(iSub, sidx) for iSub in subjects for sidx in range(mc_samples)]
 
-        # 3. Worker: run a single MCMC draw for one subject
+        # 5. 单次 MCMC 抽样的 worker
         def run_task(iSub, _):
             data = subject_data_map[iSub]
             cond = data["condition"].iloc[0]
@@ -173,75 +189,59 @@ class Optimizer(object):
             model = StandardModel(model_config,
                                 module_config=self.module_config,
                                 condition=cond)
-            step_res = model.fit_step_by_step(
+            # 返回单次 fit_step_by_step 的完整 step 结果列表
+            return iSub, model.fit_step_by_step(
                 s_data,
-                gamma=gamma_values[iSub],
-                w0=w0_values[iSub],
+                gamma=gamma_map[iSub],
+                w0=w0_map[iSub],
                 **kwargs
             )
-            return iSub, step_res
 
-        # 4. Parallel execution with progress bar
+        # 6. 并行执行所有 (subject, sample) 任务
         results = Parallel(n_jobs=self.n_jobs, verbose=5)(
-            delayed(run_task)(iSub, idx)
-            for iSub, idx in tqdm(tasks, desc="MCMC tasks", ncols=80)
+            delayed(run_task)(iSub, sidx)
+            for iSub, sidx in tqdm(tasks, desc="MCMC tasks", ncols=80)
         )
 
-        # 5. Group samples by subject
+        # 7. 按 subject 收集所有样本的 step_results
         samples_by_sub = defaultdict(list)
         for iSub, step_res in results:
             samples_by_sub[iSub].append(step_res)
 
-        # 6. Aggregate per subject with robust det0 selection
+        # 8. 组装最终输出
         fitting_results = {}
-        for iSub, samples in samples_by_sub.items():
+        for iSub, sample_list in samples_by_sub.items():
             data = subject_data_map[iSub]
             cond = data["condition"].iloc[0]
-            gamma = gamma_values[iSub]
-            w0 = w0_values[iSub]
+            gamma = gamma_map[iSub]
+            w0 = w0_map[iSub]
 
-            n_steps = len(samples[0])
-            aggregated = []
+            # raw MCMC draws
+            step_results = sample_list
+
+            # 计算 mean_step_results：每个 step 上，不同 hypo 的平均 post_max
+            n_steps = len(sample_list[0])
+            mean_step_results = []
             for step_idx in range(n_steps):
-                # collect posterior values per hypothesis
                 post_vals = defaultdict(list)
-                for sr in samples:
-                    step = sr[step_idx]
-                    for h, det in step["hypo_details"].items():
+                # 收集所有样本在该 step 上的各 hypothesis post_max
+                for sr in sample_list:
+                    for h, det in sr[step_idx]["hypo_details"].items():
                         post_vals[h].append(det["post_max"])
-                # build aggregated hypo_details
-                hypo_details = {}
-                for h, vals in post_vals.items():
-                    # find first sample that has h in hypo_details
-                    for sr in samples:
-                        det0 = sr[step_idx]["hypo_details"].get(h)
-                        if det0 is not None:
-                            break
-                    hypo_details[h] = {
-                        "post_max": float(np.mean(vals)),
-                        "beta_opt": det0["beta_opt"],
-                        "ll_max": det0["ll_max"]
-                    }
-                # select best hypothesis
-                best_h = max(hypo_details, key=lambda h: hypo_details[h]["post_max"])
-                aggregated.append({
-                    "best_k": best_h,
-                    "best_beta": hypo_details[best_h]["beta_opt"],
-                    "best_log_likelihood": hypo_details[best_h]["ll_max"],
-                    "best_norm_posterior": hypo_details[best_h]["post_max"],
-                    "hypo_details": hypo_details
+                # 计算并存储平均值
+                mean_step_results.append({
+                    h: float(np.mean(vals)) for h, vals in post_vals.items()
                 })
 
             fitting_results[iSub] = {
                 "condition": cond,
                 "gamma": gamma,
                 "w0": w0,
-                "step_results": aggregated
+                "step_results": step_results,
+                "mean_step_results": mean_step_results
             }
 
         return fitting_results
-
-
 
     def save_results(self, results: Dict, output_path: str):
         """
@@ -304,9 +304,9 @@ class Optimizer(object):
                                   condition=condition)
 
             sub_results = self.fitting_results[iSub]
-            best_step_results = sub_results["best_step_results"]
+            step_results = sub_results.get('step_results', sub_results.get('best_step_results'))
             results = model.predict_choice(s_data,
-                                           best_step_results,
+                                           step_results,
                                            use_cached_dist=False,
                                            window_size=window_size)
             predict_result = {
@@ -366,7 +366,7 @@ class Optimizer(object):
         for row_idx, (condition,
                       subjects) in enumerate(sorted(grouped_results.items())):
             for col_idx, (iSub, subject_info) in enumerate(subjects):
-                step_results = subject_info['best_step_results']
+                step_results = subject_info.get('step_results', subject_info.get('best_step_results'))
 
                 plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
 
