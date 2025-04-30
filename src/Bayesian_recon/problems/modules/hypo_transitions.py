@@ -348,7 +348,7 @@ class PartitionCluster(BaseCluster):
                 argscore = np.argsort(score)[-amount:]
                 ret_val = np.array(candidate_hypos_index)[argscore]
 
-        return list(ret_val)
+        return ret_val.tolist()
 
     def cluster_transition(self,
                            full_hypo_set: BaseSet | None = None,
@@ -358,6 +358,7 @@ class PartitionCluster(BaseCluster):
         """
         new_hypos: Set[int] = set([])
         numerical_amounts = []
+        hypo_choices = []
         if full_hypo_set is None:
             available_hypos = set(range(self.length))
         else:
@@ -368,10 +369,11 @@ class PartitionCluster(BaseCluster):
                 amount, **kwargs)
             numerical_amounts.append(numerical_amount)
             new_part = method(numerical_amount, available_hypos, **kwargs)
+            hypo_choices.append(new_part)
             new_hypos = new_hypos.union(set(new_part))
             available_hypos = available_hypos.difference(new_part)
 
-        return list(new_hypos), {k:v for k, v in zip(self.strategy_name, numerical_amounts)}
+        return list(new_hypos), {k:(v1, v2) for k, v1, v2 in zip(self.strategy_name, numerical_amounts, hypo_choices)}
 
     def cluster_init(self, **kwargs):
         return self._cluster_strategy_random(10, set(range(self.length)))
