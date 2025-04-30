@@ -245,7 +245,7 @@ class Optimizer(object):
                         if det0 is not None:
                             break
                     hypo_details[h] = {
-                        "post_max": float(np.mean(vals)),
+                        "post_max": float(np.sum(vals) / mc_samples),
                         "beta_opt": det0["beta_opt"],
                         "ll_max": det0["ll_max"]
                     }
