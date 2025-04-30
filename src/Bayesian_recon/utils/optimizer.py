@@ -109,12 +109,12 @@ class Optimizer(object):
         subject_grid_errors = defaultdict(dict)
         subject_best_combo = {}
 
-        for iSub, grad_params, mean_error, step_results in results:
-            subject_grid_errors[iSub][tuple(grad_params.values())] = mean_error
+        for iSub, grid_params, mean_error, step_results in results:
+            subject_grid_errors[iSub][tuple(grid_params.values())] = mean_error
 
             if iSub not in subject_best_combo:
                 subject_best_combo[iSub] = {
-                    "params": grad_params,
+                    "params": grid_params,
                     "error": mean_error,
                     "step_results": step_results
                 }
@@ -122,7 +122,7 @@ class Optimizer(object):
                 best_error = subject_best_combo[iSub]["error"]
                 if mean_error < best_error:
                     subject_best_combo[iSub] = {
-                        "params": grad_params,
+                        "params": grid_params,
                         "error": mean_error,
                         "step_results": step_results
                     }
@@ -137,6 +137,94 @@ class Optimizer(object):
                 "grid_errors": subject_grid_errors[iSub]
             }
         return fitting_results
+
+    def optimize_params_with_mcmc(self,
+                                  model_config: Dict,
+                                  gamma_values: Dict,
+                                  w0_values: Dict,
+                                  subjects: Optional[List[str]] = None,
+                                  mc_samples: int = 1000,
+                                  **kwargs):
+        """
+        Optimize parameters using MCMC method with progress bars.
+        """
+        if subjects is None:
+            subjects = self.learning_data["iSub"].unique()
+        subject_data_map = {
+            i: self.learning_data[self.learning_data["iSub"] == i]
+            for i in subjects
+        }
+
+        def process_single_task(iSub):
+            data = subject_data_map[iSub]
+            condition = data["condition"].iloc[0]
+            stimulus = data[["feature1", "feature2", "feature3",
+                             "feature4"]].values
+            choices = data["choice"].values
+            feedback = data["feedback"].values
+            s_data = (stimulus, choices, feedback)
+
+            model = StandardModel(model_config,
+                                  module_config=self.module_config,
+                                  condition=condition)
+            this_gamma = gamma_values[iSub]
+            this_w0 = w0_values[iSub]
+
+            # MCMC sampling with a progress bar per subject
+            all_step_results = []
+            for _ in tqdm(range(mc_samples),
+                          desc=f"Subject {iSub} MCMC",
+                          leave=False,
+                          ncols=100):
+                sr = model.fit_step_by_step(s_data,
+                                            gamma=this_gamma,
+                                            w0=this_w0,
+                                            **kwargs)
+                all_step_results.append(sr)
+
+            # Aggregate per-step results
+            n_steps = len(all_step_results[0])
+            aggregated = []
+            for step_idx in range(n_steps):
+                hypo_details = {}
+                cluster_proto_sum = 0
+                for sample in all_step_results:
+                    step = sample[step_idx]
+                    if "best_step_amount" in step:
+                        cluster_proto_sum += step["best_step_amount"]
+                    for h, det in step["hypo_details"].items():
+                        hypo_details.setdefault(h, {
+                            "beta_opt": det["beta_opt"],
+                            "ll_max": det["ll_max"],
+                            "post_max_list": []
+                        })
+                        hypo_details[h]["post_max_list"].append(det["post_max"])
+                for h, det in hypo_details.items():
+                    det["post_max"] = np.mean(det.pop("post_max_list"))
+                best_h = max(hypo_details, key=lambda h: hypo_details[h]["post_max"])
+                entry = {
+                    "best_k": best_h,
+                    "best_beta": hypo_details[best_h]["beta_opt"],
+                    "best_log_likelihood": hypo_details[best_h]["ll_max"],
+                    "best_norm_posterior": hypo_details[best_h]["post_max"],
+                    "hypo_details": hypo_details
+                }
+                if cluster_proto_sum > 0:
+                    entry["best_step_amount"] = cluster_proto_sum / mc_samples
+                aggregated.append(entry)
+
+            return iSub, {
+                "condition": condition,
+                "gamma": this_gamma,
+                "w0": this_w0,
+                "step_results": aggregated
+            }
+
+        # Parallel execution with joblib verbose output
+        results = Parallel(n_jobs=self.n_jobs,
+                           verbose=5)(delayed(process_single_task)(iSub)
+                                      for iSub in subjects)
+        return {iSub: res for iSub, res in results}
 
     def save_results(self, results: Dict, output_path: str):
         """
@@ -431,8 +519,8 @@ class Optimizer(object):
 
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle('Grid Search Error by Subject',
-                   fontsize=kwargs.get("fontsize", 16),
-                   y=kwargs.get("y", 0.99))
+                     fontsize=kwargs.get("fontsize", 16),
+                     y=kwargs.get("y", 0.99))
 
         # 按 condition 绘制子图
         for row_idx, (condition,
@@ -452,31 +540,34 @@ class Optimizer(object):
                 df = pd.DataFrame(data)
 
                 error_matrix = df.pivot_table(index=field_names[0],
-                                            columns=field_names[1],
-                                            values='Error')
-                ax = fig.add_subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
-                sns.heatmap(error_matrix,
-                            #annot=True,
-                            #fmt=".2f",
-                            cmap='viridis',
-                            cbar_kws={'label': 'Error'})
+                                              columns=field_names[1],
+                                              values='Error')
+                ax = fig.add_subplot(n_rows, n_cols,
+                                     row_idx * n_cols + col_idx + 1)
+                sns.heatmap(
+                    error_matrix,
+                    #annot=True,
+                    #fmt=".2f",
+                    cmap='viridis',
+                    cbar_kws={'label': 'Error'})
                 ax.set_title(f'Subject {iSub} (Condition {condition})')
                 ax.set_xlabel(field_names[1])
                 ax.set_ylabel(field_names[0])
-                ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.4f'))
-                ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-        
+                ax.xaxis.set_major_formatter(
+                    mticker.FormatStrFormatter('%.4f'))
+                ax.yaxis.set_major_formatter(
+                    mticker.FormatStrFormatter('%.2f'))
+
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path)
             logger.info(f"Error grids saved to {save_path}")
 
-
     def plot_cluster_amount(self,
-                                     results: Dict,
-                                     subjects: Optional[List[str]] = None,
-                                     save_path: str = None,
-                                     **kwargs) -> None:
+                            results: Dict,
+                            subjects: Optional[List[str]] = None,
+                            save_path: str = None,
+                            **kwargs) -> None:
         if subjects is not None:
             results = {
                 iSub: results[iSub]

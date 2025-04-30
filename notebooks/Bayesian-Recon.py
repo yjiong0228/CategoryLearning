@@ -46,11 +46,16 @@ def post_acc_amount_f(x):
 def random_acc_amount_f(x):
     return 7 - post_acc_amount_f(x)
 
+
+post_setting = ("random_7", "random_posterior")
+ksimilar_setting = (3, "ksimilar_centers")
+random_setting = (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")
+
 module_config = {
     "cluster": (PartitionCluster, {
-        "transition_spec": [(PartitionCluster._amount_accuracy_gen(post_acc_amount_f, 7), "random_posterior"),
-                            (3, "ksimilar_centers"),
-                            (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")]
+        "transition_spec": [post_setting,
+                            ksimilar_setting,
+                            random_setting]
     }),
     "memory": (BaseMemory, {
         "personal_memory_range": {
