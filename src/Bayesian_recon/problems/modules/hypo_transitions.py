@@ -278,7 +278,8 @@ class PartitionCluster(BaseCluster):
         top_p: float between 0 to 1. Drives this method filter via top-p
                mechanism, default value results in top-n with amount setup.
         """
-
+        if amount == 0:
+            return []
         if posterior is None:
             raise Exception("ArgumentError: posterior is absent or not a Dict")
         proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
