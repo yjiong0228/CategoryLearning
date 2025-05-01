@@ -1,13 +1,12 @@
-import numpy as np
 import os
-import matplotlib.pyplot as plt
+import numpy as np
 from scipy.interpolate import splprep, splev
 from math import isfinite
+import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import font_manager
 import matplotlib as mpl
 from matplotlib.collections import LineCollection
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from typing import Dict, Optional
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
@@ -397,8 +396,7 @@ class Fig1B:
 
 
 class Fig1C:
-
-    def plot_accuracy(self, 
+    def plot_accuracy(self,
                     learning_data,
                     subject_ids,
                     widths=(2, 1, 1),
@@ -530,66 +528,50 @@ class Fig1C:
 
 class Fig3:
     def plot_acc_comparison(self,
-                            results,
-                            subject_ids,
-                            widths=(2, 1, 1),
+                            results_1,
+                            results_2,
+                            subject_id,
                             figsize=(15, 5),
-                            color_acc='#45B53F',
+                            color_1='#45B53F',
+                            color_2='#DDAA33',
+                            color_true='#A6A6A6',
+                            label_1='Model 1',
+                            label_2='Model 2',
                             save_path=None):
+        # 基础设置
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.patch.set_facecolor('none')
+        padding = [np.nan] * 15
+        x_vals = None
 
-        # 创建画布和 GridSpec，wspace 调小以减小子图间距
-        fig, gs = create_grid_figure(widths, figsize)
+        # 真实准确率
+        true_acc = padding + list(results_1[subject_id]['sliding_true_acc'])
+        x_vals = np.arange(1, len(true_acc) + 1)
+        ax.plot(x_vals, true_acc, label='Human', color=color_true, linewidth=2)
 
-        for idx, sub in enumerate(subject_ids):
-            ax = fig.add_subplot(gs[idx])
+        # 循环绘制预测结果
+        for results, label, color in (
+                (results_1, label_1, color_1),
+                (results_2, label_2, color_2)):
+            pred = padding + list(results[subject_id]['sliding_pred_acc'])
+            std = padding + list(results[subject_id]['sliding_pred_acc_std'])
+            ax.plot(x_vals, pred, label=label, color=color, linewidth=2)
+            low = np.array(pred) - np.array(std)
+            high = np.array(pred) + np.array(std)
+            ax.fill_between(x_vals, low, high, color=color, alpha=0.4)
 
-            sliding_true_acc = results[sub]['sliding_true_acc']
-            sliding_pred_acc = results[sub]['sliding_pred_acc']
-            sliding_pred_acc_std = results[sub]['sliding_pred_acc_std']
-
-            # 在每列数据的最前面添加15个空值
-            sliding_true_acc = [np.nan] * 15 + sliding_true_acc
-            sliding_pred_acc = [np.nan] * 15 + sliding_pred_acc
-            sliding_pred_acc_std = [np.nan] * 15 + sliding_pred_acc_std
-
-            num_steps = len(sliding_pred_acc)
-
-            ax.plot(range(1, num_steps + 1),
-                    sliding_true_acc,
-                    label='True',
-                    color='#A6A6A6',
-                    linewidth=2)
-
-            ax.plot(range(1, num_steps + 1),
-                    sliding_pred_acc,
-                    label='Predicted',
-                    color=color_acc,
-                    linewidth=2)
-
-            lower_bound = np.array(sliding_pred_acc) - np.array(
-                sliding_pred_acc_std)
-            upper_bound = np.array(sliding_pred_acc) + np.array(
-                sliding_pred_acc_std)
-            ax.fill_between(range(1, num_steps + 1),
-                            lower_bound,
-                            upper_bound,
-                            color=color_acc,
-                            alpha=0.4,
-                            label='Predicted Std')
-
-            add_segmentation_lines(ax, num_steps, interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
-            style_axis(ax, show_ylabel=(idx == 0))
-            annotate_label(ax, f"S{sub}")
-
-        # 调整子图间距
-        # plt.subplots_adjust(left=0.05,
-        #                     right=0.98,
-        #                     top=0.95,
-        #                     bottom=0.10,
-        #                     wspace=0.10)
+        # 辅助元素
+        add_segmentation_lines(ax, len(x_vals), interval=128,
+                               color='grey', alpha=0.3,
+                               linestyle='--', linewidth=1)
+        style_axis(ax, show_ylabel=True, xtick_interval=128)
+        # annotate_label(ax, f"S{subject_id}")
+        ax.legend()
+        fig.tight_layout()
 
         # 保存或展示
         if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            fig.savefig(save_path, dpi=300,
+                        bbox_inches='tight', transparent=True)
             print(f"Figure saved to {save_path}")
-        plt.close()
+        plt.close(fig)

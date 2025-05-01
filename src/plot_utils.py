@@ -37,7 +37,7 @@ def add_segmentation_lines(ax, max_trial, interval=64, **line_kwargs):
 
 def style_axis(ax, show_ylabel=False, yticks=(0, 0.5, 1.0),
                yticklabels=('0', '0.5', '1'), xlabel='Trial',
-               ylabel='Accuracy', fontsize=18, tick_fontsize=15):
+               ylabel='Accuracy', xtick_interval=64, fontsize=18, tick_fontsize=15):
     """
     Apply common styling to an axis.
 
@@ -59,8 +59,8 @@ def style_axis(ax, show_ylabel=False, yticks=(0, 0.5, 1.0),
     tick_fontsize : int
         Font size for tick labels.
     """
-    ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, 64))
-    ax.set_xticklabels(range(0, int(ax.get_xlim()[1]) + 1, 64), fontsize=tick_fontsize)
+    ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+    ax.set_xticklabels(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval), fontsize=tick_fontsize)
     ax.set_xlabel(xlabel, fontsize=fontsize)
 
     if show_ylabel:
