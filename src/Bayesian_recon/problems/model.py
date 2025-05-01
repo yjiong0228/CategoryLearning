@@ -461,64 +461,6 @@ class StandardModel(BaseModel):
                                         new_likelihood)
 
         return step_results
-    
-    def fit_step_by_step_mc(self, data: Tuple[np.ndarray, np.ndarray,
-                                                np.ndarray],
-                            **kwargs) -> List[Dict]:
-        """
-        Fit the model step-by-step using Monte Carlo sampling.
-
-        Parameters
-        ----------
-        data : Tuple[np.ndarray, np.ndarray, np.ndarray]
-            A tuple containing (stimulus, choices, responses).
-        mc_samples : int
-            The number of Monte Carlo samples to fit.
-        **kwargs : dict
-            Additional keyword arguments.
-
-        Returns
-        -------
-        List[Dict]
-            A list of dictionaries containing the fitting results for each
-            step, such as the best hypothesis, beta, log-likelihood, and posterior.
-        """
-        mc_samples = kwargs.get("mc_samples", 1000)
-        all_step_results = []
-        for _ in range(mc_samples):
-            step_results = self.fit_step_by_step(data, **kwargs)
-            all_step_results.append(step_results)
-
-        step_results = []
-        for step in range(len(all_step_results[0])):
-            hypo_details = {}
-            best_params = dict()
-            cluster_prototype_amount = 0
-            for i in range(mc_samples):
-                if "cluster_prototype_amount" in all_step_results[i][step]:
-                    cluster_prototype_amount += all_step_results[i][step][
-                        'best_step_amount']
-                for hypo, details in all_step_results[i][step]['hypo_details'].items():
-                    if hypo not in hypo_details:
-                        hypo_details[hypo] = {'post_max': [], 'beta_opt': details['beta_opt'], 'll_max': details['ll_max']}
-                    if hypo not in best_params:
-                        best_params[hypo] = all_step_results[i][step]['best_params']
-                    hypo_details[hypo]['post_max'].append(all_step_results[i][step]['hypo_details'][hypo]['post_max'])
-
-            for hypo in hypo_details:
-                hypo_details[hypo]['post_max'] = np.sum(hypo_details[hypo]['post_max']) / mc_samples
-            
-            step_results.append({
-                'best_k': max(hypo_details, key=lambda x: hypo_details[x]['post_max']),
-                'best_beta': hypo_details[max(hypo_details, key=lambda x: hypo_details[x]['post_max'])]['beta_opt'],
-                'best_params': best_params[max(hypo_details, key=lambda x: hypo_details[x]['post_max'])],
-                'best_log_likelihood': hypo_details[max(hypo_details, key=lambda x: hypo_details[x]['post_max'])]['ll_max'],
-                'best_norm_posterior': np.max([hypo_details[hypo]['post_max'] for hypo in hypo_details]),
-                'hypo_details': hypo_details
-            })
-            if cluster_prototype_amount > 0:
-                step_results[-1]['best_step_amount'] = cluster_prototype_amount / mc_samples
-        return step_results
 
     def predict_choice(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
                                          np.ndarray], step_results: list,
@@ -628,12 +570,7 @@ class StandardModel(BaseModel):
         """
 
         # Fit the model with fixed params
-
-
         if multiprocess:
-            from joblib import Parallel, delayed
-            from tqdm import tqdm
-
             def compute_single_fit(data, **kwargs):
                 step_results = self.fit_step_by_step(data[:3], **kwargs)
                 predict_results = self.predict_choice(data,
@@ -673,7 +610,6 @@ class StandardModel(BaseModel):
                         np.array(predict_results['sliding_true_acc']) -
                         np.array(predict_results['sliding_pred_acc'])))
                 all_mean_error.append(mean_error)
-
 
         return all_step_results, all_mean_error
 

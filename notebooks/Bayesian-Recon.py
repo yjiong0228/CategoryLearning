@@ -29,7 +29,7 @@ def post_acc_amount_f(x):
     if x <= 0.2:
         return 0
     elif 0.2 < x < 0.3:
-        return 1 
+        return 1
     elif 0.3 <= x < 0.4:
         return 2
     elif 0.4 <= x < 0.5:
@@ -65,19 +65,19 @@ module_config = {
         "param_resolution": 20
     })
 }
-optimizer = Optimizer(module_config, n_jobs=128)
+optimizer = Optimizer(module_config, n_jobs=120)
 
 processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 
 res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt,
-    list(range(1, 25)) 
-)
+    config_fgt, list(range(1, 25)), 16, 5, 1000)
+# list(range(1, 25)))
+
 
 # 保存拟合结果
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_acc7_randp_k3.joblib')
+joblib.dump(res, result_path / 'M_fgt_cl_rand7_randp_k3_.joblib')

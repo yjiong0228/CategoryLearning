@@ -55,13 +55,14 @@ class Optimizer(object):
         """
         self.learning_data = pd.read_csv(data_path)
 
-    def optimize_params_with_subs_parallel(self,
-                                           model_config: Dict,
-                                           subjects: Optional[List[str]] = None,
-                                           window_size: int = 16,
-                                           grid_repeat: int = 5,
-                                           mc_samples: int = 100,                                            
-                                           ) -> Dict:
+    def optimize_params_with_subs_parallel(
+        self,
+        model_config: Dict,
+        subjects: Optional[List[str]] = None,
+        window_size: int = 16,
+        grid_repeat: int = 5,
+        mc_samples: int = 100,
+    ) -> Dict:
         """
         Optimize parameters using grid search across subjects in parallel.
         Args:
@@ -97,7 +98,7 @@ class Optimizer(object):
                 grid_params[key] = kwargs[key]
             all_step_results, all_mean_error = model.compute_error_for_params(
                 s_data,
-                window_size=window_size, 
+                window_size=window_size,
                 repeat=grid_repeat,
                 **grid_params)
             return iSub, grid_params, all_mean_error, all_step_results
@@ -125,7 +126,8 @@ class Optimizer(object):
         subject_best_combo = {}
 
         for iSub, grid_params, all_mean_error, all_step_results in results:
-            subject_grid_errors[iSub][tuple(grid_params.values())] = all_mean_error
+            subject_grid_errors[iSub][tuple(
+                grid_params.values())] = all_mean_error
 
             if iSub not in subject_best_combo:
                 subject_best_combo[iSub] = {
@@ -164,8 +166,9 @@ class Optimizer(object):
 
         fitting_results = {}
         for iSub in subject_grid_errors.keys():
-            _, all_step_results, all_mean_error = refit_model(iSub, subject_data_map[iSub],
-                                        subject_best_combo[iSub]["params"])
+            _, all_step_results, all_mean_error = refit_model(
+                iSub, subject_data_map[iSub],
+                subject_best_combo[iSub]["params"])
             idx = np.argmin(all_mean_error)
             fitting_results[iSub] = {
                 "condition": subject_data_map[iSub]["condition"].iloc[0],
@@ -175,150 +178,6 @@ class Optimizer(object):
                 "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub]
             }
-        return fitting_results
-
-    def optimize_params_with_mcmc(self,
-                                  model_config: Dict,
-                                  gamma_values,
-                                  w0_values,
-                                  subjects: Optional[List[str]] = None,
-                                  mc_samples: int = 1000,
-                                  **kwargs):
-        """
-        Optimize parameters using MCMC across subjects and samples in parallel.
-        - raw_step_results: list of all sample step_results (length mc_samples)
-        - step_results: aggregated results per step with averaged fields
-        Returns:
-            Dict of {iSub: {
-                condition, gamma, w0,
-                raw_step_results: List[List[step_dict]],
-                step_results: List[step_dict]
-            }}
-        """
-        # 1. Prepare subjects
-        if subjects is None:
-            subjects = list(self.learning_data["iSub"].unique())
-
-        # 2. Normalize gamma and w0
-        if not isinstance(gamma_values, dict):
-            gamma_map = {
-                subj: gamma_values[idx]
-                for idx, subj in enumerate(subjects)
-            }
-        else:
-            gamma_map = gamma_values
-        if not isinstance(w0_values, dict):
-            w0_map = {
-                subj: w0_values[idx]
-                for idx, subj in enumerate(subjects)
-            }
-        else:
-            w0_map = w0_values
-
-        # 3. Data per subject
-        subject_data_map = {
-            iSub: self.learning_data[self.learning_data["iSub"] == iSub]
-            for iSub in subjects
-        }
-
-        # 4. Flatten tasks
-        tasks = [(iSub, idx) for iSub in subjects for idx in range(mc_samples)]
-
-        # 5. Worker
-        def run_task(iSub, _):
-            data = subject_data_map[iSub]
-            cond = data["condition"].iloc[0]
-            stim = data[["feature1", "feature2", "feature3",
-                         "feature4"]].values
-            choices = data["choice"].values
-            feedback = data["feedback"].values
-            s_data = (stim, choices, feedback)
-
-            model = StandardModel(model_config,
-                                  module_config=self.module_config,
-                                  condition=cond)
-
-            task_kwargs = dict(kwargs)  # shallow copy
-            task_kwargs["gamma"] = gamma_map[iSub]
-            task_kwargs["w0"] = w0_map[iSub]
-
-            # fit_step_by_step 会从 **task_kwargs 里 pick up gamma/w0
-            step_res = model.fit_step_by_step(s_data, **task_kwargs)
-            return iSub, step_res
-
-        # 6. Parallel execution
-        results = Parallel(n_jobs=self.n_jobs, verbose=5)(
-            delayed(run_task)(iSub, idx)
-            for iSub, idx in tqdm(tasks, desc="MCMC tasks", ncols=80))
-
-        # 7. Group raw samples
-        samples_by_sub = defaultdict(list)
-        for iSub, step_res in results:
-            samples_by_sub[iSub].append(step_res)
-
-        # 8. Aggregate and assemble output
-        fitting_results = {}
-        for iSub, sample_list in samples_by_sub.items():
-            data = subject_data_map[iSub]
-            cond = data["condition"].iloc[0]
-            gamma = gamma_map[iSub]
-            w0 = w0_map[iSub]
-
-            raw_step_results = sample_list
-            n_steps = len(sample_list[0])
-            step_results = []
-            for step_idx in range(n_steps):
-                # Collect post_max values per hypothesis
-                post_vals = defaultdict(list)
-                for sr in sample_list:
-                    for h, det in sr[step_idx]["hypo_details"].items():
-                        post_vals[h].append(det["post_max"])
-
-                # Build hypo_details with averaged post_max
-                hypo_details = {}
-                for h, vals in post_vals.items():
-                    # find a representative det0
-                    det0 = None
-                    for sr in sample_list:
-                        det0 = sr[step_idx]["hypo_details"].get(h)
-                        if det0 is not None:
-                            break
-                    hypo_details[h] = {
-                        "post_max": float(np.sum(vals)/mc_samples),
-                        "beta_opt": det0["beta_opt"],
-                        "ll_max": det0["ll_max"]
-                    }
-
-                # Compute best_step_amount safely
-                amounts = []
-                for sr in sample_list:
-                    bsa = sr[step_idx].get("best_step_amount")
-                    if isinstance(bsa, (int, float)):
-                        amounts.append(bsa)
-
-                # Determine best hypothesis by averaged post_max
-                best_h = max(hypo_details,
-                             key=lambda x: hypo_details[x]["post_max"])
-                entry = {
-                    "best_k": best_h,
-                    "best_beta": hypo_details[best_h]["beta_opt"],
-                    "best_log_likelihood": hypo_details[best_h]["ll_max"],
-                    "best_norm_posterior": hypo_details[best_h]["post_max"],
-                    "hypo_details": hypo_details
-                }
-                if amounts:
-                    entry["best_step_amount"] = sum(amounts) / len(amounts)
-
-                step_results.append(entry)
-
-            fitting_results[iSub] = {
-                "condition": cond,
-                "gamma": gamma,
-                "w0": w0,
-                # "raw_step_results": raw_step_results,
-                "step_results": step_results
-            }
-
         return fitting_results
 
     def save_results(self, results: Dict, output_path: str):

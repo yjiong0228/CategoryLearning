@@ -181,6 +181,13 @@ class PartitionCluster(BaseCluster):
         """
         Cluster strategy: stable
         """
+        amount = int(amount)
+        N = len(available_hypos)
+        if amount <= 0 or N == 0:
+            return []
+        # clamp to the size of the pool
+        amount = min(amount, N)
+
         return np.random.choice(list(available_hypos),
                                 size=amount,
                                 replace=False).tolist()
@@ -254,7 +261,6 @@ class PartitionCluster(BaseCluster):
         chosen = np.random.choice(cand_idx, size=amount,
                                 replace=False, p=prob)
         return chosen.tolist()        
-
 
     def _cluster_strategy_ksimilar_centers(self,
                                            amount: int,
@@ -359,21 +365,33 @@ class PartitionCluster(BaseCluster):
         new_hypos: Set[int] = set([])
         numerical_amounts = []
         hypo_choices = []
+
         if full_hypo_set is None:
             available_hypos = set(range(self.length))
         else:
             available_hypos = set(full_hypo_set)
 
         for amount, method in self.cluster_transition_strategy:
+            # 1. compute how many to draw
             numerical_amount = self.adaptive_amount_evalutator(
                 amount, **kwargs)
+            # 2. clamp so you never ask for more than you have
+            numerical_amount = max(0,
+                                   min(numerical_amount, len(available_hypos)))
+
             numerical_amounts.append(numerical_amount)
+
+            # 3. sample
             new_part = method(numerical_amount, available_hypos, **kwargs)
             hypo_choices.append(new_part)
-            new_hypos = new_hypos.union(set(new_part))
-            available_hypos = available_hypos.difference(new_part)
+            new_hypos |= set(new_part)
+            available_hypos -= set(new_part)
 
-        return list(new_hypos), {k:(v1, v2) for k, v1, v2 in zip(self.strategy_name, numerical_amounts, hypo_choices)}
+        return list(new_hypos), {
+            k: (amt, ch)
+            for k, amt, ch in zip(self.strategy_name, numerical_amounts,
+                                  hypo_choices)
+        }
 
     def cluster_init(self, **kwargs):
         return self._cluster_strategy_random(10, set(range(self.length)))
