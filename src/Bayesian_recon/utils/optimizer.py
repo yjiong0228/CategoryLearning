@@ -18,6 +18,8 @@ from ..problems import (
     StandardModel
 )
 
+from .stream import StreamList
+
 PROJECT_ROOT_PATH = Path(os.getcwd()).parent.parent.parent.parent.parent
 DEFAULT_DATA_PATH = Path(PROJECT_ROOT_PATH, "data", "processed", "Task2_processed.csv")
 
@@ -184,19 +186,27 @@ class Optimizer(object):
             }
         return fitting_results
 
-    def save_results(self, results: Dict, output_path: str):
+    def save_results(self, results: Dict, name: str, output_dir: str = os.getcwd()) -> None:
         """
         Save the optimization results to a file.
 
         Args:
             results (Dict): The optimization results to save.
-            output_path (str): The path to save the results.
+            output_name (str): The name to save the results.
         """
+        for iSub, subject_info in results.items():            
+            cache_path = os.path.join(output_dir, "cache", name, f"{iSub}.gz")
+            if not os.path.exists(os.path.dirname(cache_path)):
+                os.makedirs(os.path.dirname(cache_path))
+            raw_step_results = StreamList(cache_path, 0)
+            raw_step_results.extend(subject_info['raw_step_results'])
+            subject_info['raw_step_results'] = (cache_path, len(raw_step_results))
+        output_path = os.path.join(output_dir, f'{name}.joblib')
         with open(output_path, 'wb') as f:
             joblib.dump(results, f)
         logger.info(f"Results saved to {output_path}")
 
-    def load_results(self, input_path: str) -> None:
+    def load_results(self, input_path: str) -> Dict:
         """
         Load the optimization results from a file.
 
@@ -205,8 +215,12 @@ class Optimizer(object):
         """
         with open(input_path, 'rb') as f:
             results = joblib.load(f)
+        for iSub, subject_info in results.items():
+            cache_path = subject_info['raw_step_results'][0]
+            raw_step_results = StreamList(cache_path, subject_info['raw_step_results'][1])
+            subject_info['raw_step_results'] = raw_step_results
         logger.info(f"Results loaded from {input_path}")
-        self.set_results(results)
+        return results
 
     def set_results(self, results: Dict) -> None:
         """
