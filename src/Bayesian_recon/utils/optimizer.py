@@ -93,15 +93,18 @@ class Optimizer(object):
             model = StandardModel(model_config,
                                   module_config=self.module_config,
                                   condition=condition)
+
             grid_params = {}
             for key in self.optimize_params_dict.keys():
                 grid_params[key] = kwargs[key]
-            all_step_results, all_mean_error = model.compute_error_for_params(
+
+            grid_step_results, grid_error = model.compute_error_for_params(
                 s_data,
                 window_size=window_size,
                 repeat=grid_repeat,
                 **grid_params)
-            return iSub, grid_params, all_mean_error, all_step_results
+
+            return iSub, grid_params, grid_error, grid_step_results
 
         all_kwargs = []
         for task_values in product(subjects,
@@ -125,23 +128,22 @@ class Optimizer(object):
         subject_grid_errors = defaultdict(dict)
         subject_best_combo = {}
 
-        for iSub, grid_params, all_mean_error, all_step_results in results:
-            subject_grid_errors[iSub][tuple(
-                grid_params.values())] = all_mean_error
+        for iSub, grid_params, grid_error, grid_step_results in results:
+            subject_grid_errors[iSub][tuple(grid_params.values())] = grid_error
 
             if iSub not in subject_best_combo:
                 subject_best_combo[iSub] = {
                     "params": grid_params,
-                    "error": all_mean_error,
-                    "step_results": all_step_results
+                    "error": grid_error,
+                    "step_results": grid_step_results
                 }
             else:
                 best_error = np.mean(subject_best_combo[iSub]["error"])
-                if np.mean(all_mean_error) < best_error:
+                if np.mean(grid_error) < best_error:
                     subject_best_combo[iSub] = {
                         "params": grid_params,
-                        "error": all_mean_error,
-                        "step_results": all_step_results
+                        "error": grid_error,
+                        "step_results": grid_step_results
                     }
 
         def refit_model(iSub, subject_data, specific_params):
@@ -170,13 +172,15 @@ class Optimizer(object):
                 iSub, subject_data_map[iSub],
                 subject_best_combo[iSub]["params"])
             idx = np.argmin(all_mean_error)
+
             fitting_results[iSub] = {
                 "condition": subject_data_map[iSub]["condition"].iloc[0],
                 "best_params": subject_best_combo[iSub]["params"],
                 "best_error": all_mean_error[idx],
                 "best_step_results": all_step_results[idx],
-                "raw_step_results": all_step_results,
-                "grid_errors": subject_grid_errors[iSub]
+                # "raw_step_results": all_step_results,
+                "grid_errors": subject_grid_errors[iSub],
+                "sample_errors": all_mean_error
             }
         return fitting_results
 
