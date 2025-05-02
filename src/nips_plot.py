@@ -9,6 +9,7 @@ import matplotlib as mpl
 from matplotlib.collections import LineCollection
 import matplotlib.gridspec as gridspec
 from typing import Dict, Optional
+import pandas as pd
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
 
 
@@ -527,6 +528,85 @@ class Fig1C:
 
 
 class Fig3:
+
+    def plot_error_comparison(self,
+                              results_1,
+                              results_2,
+                              results_3,
+                              figsize=(6, 5),
+                              color_1='#45B53F',
+                              color_2='#DDAA33',
+                              color_3='#A6A6A6',
+                              label_1='Base',
+                              label_2='Forget',
+                              label_3='Fgt+Jump',
+                              save_path=None):
+
+        # 计算每个被试的 error
+        def compute_errors(results):
+            errors = {}
+            for subject_id, data in results.items():
+                err = np.mean(
+                    np.abs(
+                        np.array(data['sliding_true_acc']) -
+                        np.array(data['sliding_pred_acc'])
+                    )
+                )
+                errors[subject_id] = err
+            return errors
+
+        errors_1 = compute_errors(results_1)
+        errors_2 = compute_errors(results_2)
+        errors_3 = compute_errors(results_3)
+
+        df = pd.DataFrame({
+            'Model': ['Model 1'] * len(errors_1) + 
+                    ['Model 2'] * len(errors_2) +
+                    ['Model 3'] * len(errors_3),
+            'Error': list(errors_1.values()) +
+                    list(errors_2.values()) +
+                    list(errors_3.values())
+        })
+        summary = df.groupby('Model')['Error'].agg(['mean','sem']).reindex(
+            ['Model 1','Model 2','Model 3']
+        ).reset_index()
+
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.bar(summary['Model'],
+            summary['mean'],
+            yerr=summary['sem'],
+            color=[color_1, color_2, color_3],
+            capsize=5,
+            width=0.6,
+            edgecolor='black')
+
+        subs = sorted(set(errors_1) & set(errors_2) & set(errors_3))
+        x_base = np.arange(3)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), 3))
+
+        for i, sid in enumerate(subs):
+            ys = [errors_1[sid], errors_2[sid], errors_3[sid]]
+            xs = x_base + jitter[i]
+            # 连线
+            ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
+            # 散点（只给第一次画点加 legend）
+            ax.scatter(xs, ys,
+                    color='black', alpha=0.6, s=20,
+                    label='Individual Data' if i == 0 else None)
+
+        ax.set_ylabel('Error', fontsize=14)
+        ax.set_xlabel('Model', fontsize=14)
+        ax.set_title('Error Comparison Across Models', fontsize=16)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels([label_1,label_2,label_3], fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.legend()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close()
+
     def plot_acc_comparison(self,
                             results_1,
                             results_2,
@@ -550,9 +630,8 @@ class Fig3:
         ax.plot(x_vals, true_acc, label='Human', color=color_true, linewidth=2)
 
         # 循环绘制预测结果
-        for results, label, color in (
-                (results_1, label_1, color_1),
-                (results_2, label_2, color_2)):
+        for results, label, color in ((results_1, label_1, color_1),
+                                      (results_2, label_2, color_2)):
             pred = padding + list(results[subject_id]['sliding_pred_acc'])
             std = padding + list(results[subject_id]['sliding_pred_acc_std'])
             ax.plot(x_vals, pred, label=label, color=color, linewidth=2)
@@ -561,9 +640,13 @@ class Fig3:
             ax.fill_between(x_vals, low, high, color=color, alpha=0.4)
 
         # 辅助元素
-        add_segmentation_lines(ax, len(x_vals), interval=128,
-                               color='grey', alpha=0.3,
-                               linestyle='--', linewidth=1)
+        add_segmentation_lines(ax,
+                               len(x_vals),
+                               interval=128,
+                               color='grey',
+                               alpha=0.3,
+                               linestyle='--',
+                               linewidth=1)
         style_axis(ax, show_ylabel=True, xtick_interval=128)
         # annotate_label(ax, f"S{subject_id}")
         ax.legend()
@@ -571,7 +654,9 @@ class Fig3:
 
         # 保存或展示
         if save_path:
-            fig.savefig(save_path, dpi=300,
-                        bbox_inches='tight', transparent=True)
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
             print(f"Figure saved to {save_path}")
         plt.close(fig)
