@@ -388,11 +388,20 @@ class PartitionCluster(BaseCluster):
             new_hypos |= set(new_part)
             available_hypos -= set(new_part)
 
-        return list(new_hypos), {
-            k: (amt, ch)
-            for k, amt, ch in zip(self.strategy_name, numerical_amounts,
-                                  hypo_choices)
-        }
+        if len(new_hypos) == 0:
+            new_hypos = set(
+                np.random.choice(list(available_hypos),
+                                 size=1,
+                                 replace=False).tolist())
+            return list(new_hypos), {
+                'random from available': (1, list(new_hypos))
+            }
+        else:
+            return list(new_hypos), {
+                k: (amt, ch)
+                for k, amt, ch in zip(self.strategy_name, numerical_amounts,
+                                    hypo_choices)
+            }
 
     def cluster_init(self, **kwargs):
         return self._cluster_strategy_random(10, set(range(self.length)))
