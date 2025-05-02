@@ -257,11 +257,13 @@ class ModelEval:
             # 现在 axs 一定是 shape == (n_rows, n_cols)
 
             global_max = max(
-                len(subject_info['step_results'])
+                len(subject_info.get(
+                    'step_results', subject_info.get('best_step_results')))
                 for _, subject_info in subjects)
 
             for idx, (iSub, subject_info) in enumerate(subjects):
-                step_results = subject_info['step_results']
+                step_results = subject_info.get(
+                    'step_results', subject_info.get('best_step_results'))
 
                 row, col = divmod(idx, n_cols)
                 ax = axs[row, col]

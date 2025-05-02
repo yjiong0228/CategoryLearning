@@ -7,11 +7,9 @@ from matplotlib import cm
 from matplotlib import font_manager
 import matplotlib as mpl
 from matplotlib.collections import LineCollection
-import matplotlib.gridspec as gridspec
-from typing import Dict, Optional
+from typing import Dict, Tuple, List, Any
 import pandas as pd
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
-
 
 
 # 1. 注册本地字体（把路径换成你机器上 Arial.ttf 的实际路径）
@@ -23,7 +21,7 @@ prop = font_manager.FontProperties(fname=font_path)
 mpl.rcParams['font.family'] = prop.get_name()
 
 
-class Fig1B:
+class Fig1D:
 
     def read_data(self, df):
         """
@@ -560,7 +558,7 @@ class Fig3:
         errors_3 = compute_errors(results_3)
 
         df = pd.DataFrame({
-            'Model': ['Model 1'] * len(errors_1) + 
+            'Model': ['Model 1'] * len(errors_1) +
                     ['Model 2'] * len(errors_2) +
                     ['Model 3'] * len(errors_3),
             'Error': list(errors_1.values()) +
@@ -659,4 +657,156 @@ class Fig3:
                         bbox_inches='tight',
                         transparent=True)
             print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+
+class Fig3D:
+
+    def get_oral_probability(self,
+                             data: Tuple[np.ndarray, np.ndarray],
+                             model,
+                             condition: int,
+                             window_size: int = 16) -> Dict[str, Any]:
+        """
+        For each trial, compute an (unnormalised) Euclidean distance from the
+        reported centre to every hypothesis' prototype of the chosen category,
+        **normalise the distances across hypotheses** so they sum to 1, convert
+        them to probabilities via `p = 1 - d_norm`, and finally return the moving
+        average trajectory for the target hypothesis (h=0 for condition-1, h=42
+        otherwise).
+
+        Returns
+        -------
+        dict
+            {
+                'step_hit' : List[float]   # smoothed P(h=target)
+                'raw'      : np.ndarray    # per-trial P(h=target)
+                'condition': int
+            }
+        """
+        centres, choices = data
+        n_trials = len(choices)
+        protos = model.partition_model.prototypes_np
+        n_hypos = protos.shape[0]
+
+        # ---------- distance matrix --------------------------------------------
+        d = np.empty((n_hypos, n_trials), dtype=float)
+        for t in range(n_trials):
+            cat = int(choices[t]) - 1
+            d[:, t] = np.linalg.norm(protos[:, 0, cat, :] - centres[t], axis=1)
+
+        eps = 1e-12
+        sims = 1.0 / (d + eps)
+        probs = sims / sims.sum(axis=0, keepdims=True)
+
+        target_h = 0 if condition == 1 else 42
+        raw_curve = probs[target_h, :]
+
+        ma_curve = (
+            pd.Series(raw_curve).rolling(window=window_size,
+                                         min_periods=1)  # 允许前期不足
+            .mean().tolist())
+
+        return {
+            'step_hit': ma_curve,
+            'raw': raw_curve,
+            'condition': condition,
+        }
+
+    def plot_k_comparison(self,
+                          oral_distances: Dict[int, Dict[str, Any]],
+                          results_1: Dict[int, Any],
+                          results_2: Dict[int, Any],
+                          subject_id: int,
+                          figsize: Tuple[int, int] = (6, 5),
+                          color_1: str = '#45B53F',
+                          color_2: str = '#DDAA33',
+                          color_true: str = '#4C7AD1',
+                          label_1: str = 'Model 1',
+                          label_2: str = 'Model 2',
+                          save_path: str | None = None):
+        """
+        Overlay (i) the subject’s distance-to-prototype trajectory and
+        (ii) the posterior probability of the *same* target hypothesis
+        produced by one or two competing models.
+
+        Parameters
+        ----------
+        oral_distances : dict
+            Subject-wise output from ``get_oral_distance`` –
+            ``oral_distances[subject_id]['step_hit']`` is the smoothed curve.
+        results_1 / results_2 : dict
+            Step-wise posterior dumps from your fitting routine.  Each must have
+            the structure  
+            ``results_[subject_id]['step_results'][step]['hypo_details'][k]['post_max']``.
+        subject_id : int
+            ID whose data will be drawn.
+        """
+        # ---------- figure -------------------------------------------------------
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.patch.set_facecolor('none')
+
+        # ---------- oral-distance curve -----------------------------------------
+        odict = oral_distances[subject_id]
+        step_hit = odict['step_hit']
+        n_steps = len(step_hit)
+        x_vals = np.arange(1, n_steps + 1)
+
+        ax.plot(x_vals, step_hit, lw=3, label='Human', color=color_true)
+
+        # ---------- posterior curve(s) ------------------------------------------
+        def _extract_ma(results, k_special, win=16):
+            step_res = results.get('step_results',
+                                   results.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special,
+                                                {}).get('post_max', 0.0)
+                # 保底：非数字或 None 一律视为 0
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return (pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy())
+
+        condition = odict['condition']
+        k_special = 0 if condition == 1 else 42
+        ma1 = _extract_ma(results_1[subject_id], k_special)
+        ax.plot(x_vals[:len(ma1)],
+                ma1,
+                lw=3,
+                color=color_1,
+                label=f'{label_1}: k={k_special}')
+        ma2 = _extract_ma(results_2[subject_id], k_special)
+        ax.plot(x_vals[:len(ma2)],
+                ma2,
+                lw=3,
+                color=color_2,
+                label=f'{label_2}: k={k_special}')
+
+        # ---------- cosmetics ----------------------------------------------------
+        add_segmentation_lines(ax,
+                               n_steps,
+                               interval=128,
+                               color='grey',
+                               alpha=0.3,
+                               linestyle='--',
+                               linewidth=1)
+        style_axis(ax,
+                   show_ylabel=True,
+                   ylabel='Probability',
+                   xtick_interval=128)
+
+        ax.legend()
+        fig.tight_layout()
+
+        # ---------- save / show --------------------------------------------------
+        if save_path:
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
+            print(f'[Fig3D] saved → {save_path}')
         plt.close(fig)
