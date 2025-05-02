@@ -386,6 +386,57 @@ class Optimizer(object):
             g.savefig(save_path)
             logger.info(f"Posterior probabilities saved to {save_path}")
 
+    def plot_oral_prababilities(self,
+                                results: Dict,
+                                subjects: Optional[List[str]] = None,
+                                save_path: str = None,
+                                **kwargs) -> None:
+        if subjects is not None:
+            results = {
+                iSub: results[iSub]
+                for iSub in subjects if iSub in results
+            }
+
+        # 按 condition 分组
+        grouped_results = defaultdict(list)
+        for iSub, subject_info in results.items():
+            condition = subject_info['condition']
+            grouped_results[condition].append((iSub, subject_info))
+
+        # 确定行列数
+        n_conditions = len(grouped_results)
+        max_subjects_per_condition = max(
+            len(subjects) for subjects in grouped_results.values())
+        n_cols = kwargs.get("n_cols", max_subjects_per_condition)
+        n_rows = n_conditions
+
+        g = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        g.suptitle('Predicted vs True K by Subject',
+                   fontsize=kwargs.get("fontsize", 16),
+                   y=kwargs.get("y", 0.99))
+
+        # 按 condition 绘制子图
+        for row_idx, (condition,
+                      subjects) in enumerate(sorted(grouped_results.items())):
+            for col_idx, (iSub, subject_info) in enumerate(subjects):
+                step_hit = results[iSub]['step_hit']
+
+                plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
+
+                num_steps = len(step_hit)
+                plt.plot(range(1, num_steps + 1), step_hit, linewidth=3)
+
+                plt.ylim(0, 1)
+                plt.title(f'Subject {iSub} (Condition {condition})')
+                plt.xlabel('Trial')
+                plt.ylabel('K')
+                plt.legend()
+
+        plt.tight_layout()
+        if save_path:
+            g.savefig(save_path)
+            logger.info(f"K comparison saved to {save_path}")
+
     def plot_accuracy_comparison(self,
                                  results: Dict,
                                  subjects: Optional[List[str]] = None,

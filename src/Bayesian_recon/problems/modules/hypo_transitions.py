@@ -113,6 +113,8 @@ class PartitionCluster(BaseCluster):
         "max_3": BaseCluster._amount_max_gen(3),
         "max_4": BaseCluster._amount_max_gen(4),
         "max_5": BaseCluster._amount_max_gen(5),
+        "max_6": BaseCluster._amount_max_gen(6),
+        "max_7": BaseCluster._amount_max_gen(7),
         "random_1": BaseCluster._amount_random_gen(1),
         "random_2": BaseCluster._amount_random_gen(2),
         "random_3": BaseCluster._amount_random_gen(3),
