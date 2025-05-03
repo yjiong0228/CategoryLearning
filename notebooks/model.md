@@ -1,18 +1,13 @@
-## 3 A resource-rational hypothesis-space framework
-
-Our task asks how human participants translate a stream of multidimensional stimuli into graded categorical beliefs while operating under finite cognitive resources.  We formalise this process with a two-tier framework (Fig.3):
- 
- **Rational backbone.** A family of partition hypotheses forms the Bayesian core, turning four-dimensional stimulus features into probabilistic category beliefs and refining those beliefs trial-by-trial through sequential Bayesian updating.
- 
- **Bounded-rational adaptations.** Three auxiliary modules—noisy perception, leaky memory and hypothesis-set jumping—capture well-documented departures from Bayesian optimality.
 
 ### 3.1 Rational backbone
- 
+
+ We posit that each learner entertains a library of geometric “partition” hypotheses that carve the four-dimensional feature space into regions associated with category labels. Bayesian belief updating over this hypothesis space provides a normative engine that converts stimuli into graded category probabilities and refines those probabilities from trial to trial.
+
  **Hypothesis space.**
  A parametric family of soft Voronoi partitions maps the *feature space* $\mathbf X=[0,1]^D$ (here $D=4$) to the *category probability space* $\Delta^{N-1}$. Throughout we denote a *hypothesis* by $\theta=(k,\beta,\mathbf C)$, where $k\in\{1,\dots,K\}$ indexes a discrete partition rule, $\beta>0$ governs category sharpness, and $\mathbf C=\{\mathbf c_i\}_{i=1}^{N}$ are region centroids.  
  
  **Bayesian updation.**
- Participants begin with an uninformative prior over the $K$ candidate partition rules, $ p(k)=\frac1K$, and a uniform prior over $\beta\in[\beta_{\min},\beta_{\max}]$.
+ Participants begin with an uninformative prior over the $K$ candidate partition rules, $p(k)=\frac1K$, and a uniform prior over $\beta\in[\beta_{\min},\beta_{\max}]$.
 
 A schematic posterior update for a single trial is:
 $$
@@ -49,7 +44,9 @@ For a fixed $k$ we obtain $\hat\beta_k$ by maximising the weighted log-posterior
 The pair $(\hat k,\hat\beta_{\hat k})$ with highest posterior mass constitutes the online estimate at trial $T$.
 
 ### 3.2 Bounded-rational adaptations
- **Noisy perception.** Observed features are corrupted by an independent Gaussian channel,
+Three auxiliary modules—noisy perception, leaky memory and hypothesis-set jumping—tune how closely the learner can approximate the Bayesian ideal, allowing the model to reconcile optimal computations with realistic human constraints. 
+
+**Noisy perception.**  Noisy perception injects sensory uncertainty, blurring the effective stimulus the learner sees. Observed features are corrupted by an independent Gaussian channel,
 $$
 \tilde{\mathbf x}
 =\mathbf x+\boldsymbol\varepsilon,\qquad
@@ -57,26 +54,26 @@ $$
 \tag{4}
 $$
 with diagonal $\Sigma$ collected from the Perception Calibration task (see Sec.2.1 and App. A).
- 
- **Leaky memory.** To mimic forgetting, earlier trials receive exponentially decaying weights and rescales the log-likelihood sum in (3):
+
+**Leaky memory.** Leaky memory down-weights older evidence via an exponential decay, mirroring finite mnemonic capacity. Earlier trials receive exponentially decaying weights and rescales the log-likelihood sum in (3):
 $$
 w_j = w_0+\gamma^{T-j},\qquad 0\le\gamma\le 1 .
 \tag{5}
 $$
 Here $\gamma$ controls the decay rate (smaller $\gamma$ ⇒ faster forgetting) and $w_0$ provides a baseline weight that every past trial retains; both parameters are estimated separately for each participant.
 
-**Hypothesis-set jumping.** Humans rarely track the full hypothesis pool.  At each trial we maintain a working set $\mathcal H_t$ of size $M$ built from
+**Hypothesis-set jumping.** Hypothesis-set jumping restricts on-line inference to a small, dynamically changing subset of hypotheses, capturing the exploratory “generate–and–test” behaviour observed in Section 2.  At each trial we maintain a working set $\mathcal H_t$ of size $M$ built from
 $$
 \mathcal H_{t+1}=S_1^{(t)}\cup S_2^{(t)}\cup S_3^{(t)},
 \tag{6}
 $$
 where
- $S_1^{(t)}$:  top-$m_1$ hypotheses by posterior probability (exploitation*);
- $S_2^{(t)}$:  $m_2$ hypotheses most similar to the current stimulus (cue-driven associative recall*);
- $S_3^{(t)}$:  $m_3$ uniformly sampled novel candidates (exploration*).
+ $S_1^{(t)}$:  top-$m_1$ hypotheses by posterior probability (exploitation*);
+ $S_2^{(t)}$:  $m_2$ hypotheses most similar to the current stimulus (cue-driven associative recall*);
+ $S_3^{(t)}$:  $m_3$ uniformly sampled novel candidates (exploration*).
 Analytic forms for similarity scores and the swap schedule are summarised in App. B.3.
 
-## 3.3 Model fitting and comparison
+### 3.3 Model fitting and comparison
 **Model space.**
 
 **Optimisation protocol.**
