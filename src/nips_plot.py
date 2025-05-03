@@ -21,7 +21,7 @@ prop = font_manager.FontProperties(fname=font_path)
 mpl.rcParams['font.family'] = prop.get_name()
 
 
-class Fig1D:
+class Fig1_Oral:
 
     def read_data(self, df):
         """
@@ -48,12 +48,6 @@ class Fig1D:
 
     def _beautify_axes(self, ax):
         ax.set_axis_off()
-
-        colors = {
-            'x': '#B56DFF',  # 浅紫
-            'y': '#70AD47',  # 浅绿
-            'z': '#ED7D31',  # 浅橙
-        }
 
         # 手动绘制三条主轴线
         ax.plot([0, 1], [0, 0], [0, 0], color='#808080', lw=2.5)
@@ -394,135 +388,135 @@ class Fig1D:
 
 
 
-class Fig1C:
+class Fig1_Ntrial:
+
+    def plot_trial_number(self,
+                        learning_data: pd.DataFrame,
+                        figsize=(15, 5),
+                        color_1='#45B53F',
+                        color_2='#DDAA33',
+                        color_3='#A6A6A6',
+                        label_1='Cond 1',
+                        label_2='Cond 2',
+                        label_3='Cond 3',
+                        save_path: str = None):
+
+        counts = (
+            learning_data
+            .groupby(['condition', 'iSub'])
+            .size()
+            .reset_index(name='total_trials')
+        )
+
+        cond_order = sorted(counts['condition'].unique())
+
+        pivot = counts.pivot(index='iSub', columns='condition', values='total_trials')
+
+        summary = pd.DataFrame({
+            'condition': cond_order,
+            'mean': pivot.mean(axis=0).values,
+            'sem': pivot.sem(axis=0).values
+        })
+
+        fig, ax = plt.subplots(figsize=figsize)
+        x_base = np.arange(len(cond_order))
+        colors = [color_1, color_2, color_3]
+
+        ax.bar(x_base,
+            summary['mean'],
+            yerr=summary['sem'],
+            color=colors,
+            capsize=5,
+            width=0.6,
+            edgecolor='black')
+
+        subs = pivot.index.tolist()
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), len(cond_order)))
+
+        for i, sid in enumerate(subs):
+            ys = pivot.loc[sid].values
+            xs = x_base + jitter[i]
+            ax.scatter(xs,
+                    ys,
+                    color='black',
+                    alpha=0.6,
+                    s=20,
+                    label='Individual Data' if i == 0 else None)
+
+        ax.set_ylabel('Total trial number', fontsize=14)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels([label_1, label_2, label_3], fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.legend()
+
+        fig.savefig(save_path,
+                    dpi=300,
+                    bbox_inches='tight',
+                    transparent=True)
+        print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+class Fig1_Acc:
     def plot_accuracy(self,
-                    learning_data,
-                    subject_ids,
-                    widths=(2, 1, 1),
+                    learning_data: pd.DataFrame,
+                    block_size: int = 64,
                     figsize=(15, 5),
-                    color_acc='#DDAA33',
-                    save_path=None):
-        """
-        为三个被试绘制滑动窗口正确率曲线，三个子图之间间距更小，并可保存整张图。
+                    widths=(2, 1, 1),
+                    colors=('C0', 'C1', 'C2'),
+                    save_path: str = None):
 
-        参数
-        ----
-        learning_data : pandas.DataFrame
-            已包含 'iSub', 'trial_in_sub' 和 'rolling_accuracy' 等字段。
-        subject_ids : list of int
-            长度为 3 的被试编号列表。
-        widths : tuple of 3 ints
-            三个子图的相对宽度，例如 (2,1,1)。
-        figsize : tuple
-            整个画布的尺寸 (宽, 高)。
-        color_acc : str
-            正确率曲线的颜色。
-        save_path : str or pathlib.Path, optional
-            如果提供，保存整张图到该路径（支持 png, pdf 等格式）。
-        """
-        if len(subject_ids) != 3:
-            raise ValueError("请提供三个被试编号，例如 [1, 5, 7]")
+        # 1) 给每个 trial 添加序号和 block 编号
+        learning_data = learning_data.copy()
+        learning_data['trial_in_sub'] = learning_data.groupby('iSub').cumcount() + 1
+        learning_data['block'] = ((learning_data['trial_in_sub'] - 1)
+                                // block_size + 1)
 
-        # 创建画布和 GridSpec，wspace 调小以减小子图间距
-        fig, gs = create_grid_figure(widths, figsize)
+        # 2) 按 condition、iSub、block 计算 block-wise accuracy
+        blk_acc = (learning_data
+                .groupby(['condition', 'iSub', 'block'])['feedback']
+                .mean()
+                .reset_index(name='block_accuracy'))
 
-        for idx, sub in enumerate(subject_ids):
-            ax = fig.add_subplot(gs[idx])
-            subj_data = learning_data[learning_data['iSub'] == sub].reset_index(
-                drop=True)
-            trials = subj_data['trial_in_sub']
-            acc = subj_data['rolling_accuracy']
+        # 3) 确定 condition 列表及其子图宽度
+        conds = sorted(blk_acc['condition'].unique())
+        if len(conds) != 3:
+            raise ValueError(f"Expected 3 conditions, but found {len(conds)}: {conds}")
 
-            # 画曲线
-            ax.plot(trials, acc, color=color_acc, linewidth=2)
+        # 4) 创建一行三列子图，按 widths 比例分配宽度
+        fig, axes = plt.subplots(1, 3, figsize=figsize,
+                                gridspec_kw={'width_ratios': widths},
+                                sharey=True)
 
-            add_segmentation_lines(ax, len(trials), interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
-            style_axis(ax, show_ylabel=(idx == 0))
-            annotate_label(ax, f"S{sub}")
+        # 5) 对每个 condition 画所有被试的 block accuracy 曲线
+        for ax, cond, c in zip(axes, conds, colors):
+            sub_df = blk_acc[blk_acc['condition'] == cond]
+            subs = sorted(sub_df['iSub'].unique())
+            for sid in subs:
+                df_sub = sub_df[sub_df['iSub'] == sid]
+                ax.plot(df_sub['block'],
+                        df_sub['block_accuracy'],
+                        alpha=0.6,
+                        lw=1,
+                        color=c,
+                        label='Subject lines' if sid == subs[0] else None)
 
-            # if idx == 2:
-            #     ax.legend(loc='upper right', fontsize=12)
+            ax.set_title(f'Condition {cond}', fontsize=14)
+            ax.set_xlabel('Block Number', fontsize=12)
+            ax.set_xlim(1, df_sub['block'].max())
+            ax.grid(True, axis='y', linestyle='--', alpha=0.3)
 
-        # 调整子图间距
-        # plt.subplots_adjust(left=0.05,
-        #                     right=0.98,
-        #                     top=0.95,
-        #                     bottom=0.10,
-        #                     wspace=0.10)
+        # 6) 全局美化：左侧子图显示 y 轴标签
+        axes[0].set_ylabel('Block-wise Accuracy', fontsize=14)
+        axes[0].legend(fontsize=10, loc='lower right')
 
-        # 保存或展示
-        if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
-            print(f"Figure saved to {save_path}")
-        plt.close()
+        plt.tight_layout()
 
-    def plot_feature(self,
-                     learning_data,
-                     subject_ids,
-                     widths=(2, 1, 1),
-                     figsize=(15, 5),
-                     feature_cols=('rolling_feature1_use',
-                                   'rolling_feature2_use',
-                                   'rolling_feature3_use',
-                                   'rolling_feature4_use'),
-                     colors=('#70AD47', '#B56DFF', '#ED7D31', '#808080'),
-                     save_path=None):
-        """
-        为三个被试绘制四条特征使用率轨迹，画在三张子图中，并可保存透明背景图。
+        fig.savefig(save_path, dpi=300,
+                    bbox_inches='tight', transparent=True)
+        print(f"Figure saved to {save_path}")
+        plt.close(fig)
 
-        参数
-        ----
-        learning_data : pandas.DataFrame
-            已包含 'iSub', 'trial_in_sub' 及各 rolling_featureX_use 字段。
-        subject_ids : list of int
-            长度为 3 的被试编号列表。
-        widths : tuple of 3 ints
-            三个子图的相对宽度。
-        figsize : tuple
-            整个画布尺寸 (宽, 高)。
-        feature_cols : tuple of str
-            要绘制的四个列名。
-        colors : tuple of str
-            对应四条曲线的颜色。
-        save_path : str or pathlib.Path, optional
-            如果提供，保存整张图到该路径（支持 png, pdf 等格式）。
-        """
-        if len(subject_ids) != 3:
-            raise ValueError("请提供三个被试编号，例如 [1, 5, 7]")
 
-        fig, gs = create_grid_figure(widths, figsize)
-
-        for idx, sub in enumerate(subject_ids):
-            ax = fig.add_subplot(gs[idx])
-            subj_data = learning_data[learning_data['iSub'] == sub].reset_index(drop=True)
-            trials = subj_data['trial_in_sub']
-
-            # 绘制四条特征曲线
-            for col, col_color in zip(feature_cols, colors):
-                ax.plot(trials,
-                        subj_data[col],
-                        label=col.replace('rolling_', ''),
-                        color=col_color,
-                        alpha=0.8,
-                        linewidth=2)
-
-            add_segmentation_lines(ax, len(trials), interval=64, color='grey', alpha=0.3, linestyle='--', linewidth=1)
-            style_axis(ax, show_ylabel=(idx == 0))
-            annotate_label(ax, f"S{sub}")
-
-            # if idx == 2:
-            #     ax.legend(loc='upper right', fontsize=12)
-
-        # plt.subplots_adjust(left=0.05,
-        #                     right=0.98,
-        #                     top=0.95,
-        #                     bottom=0.10,
-        #                     wspace=0.10)
-
-        if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
-            print(f"Figure saved to {save_path}")
-        plt.close()
 
 
 class Fig3:
@@ -662,59 +656,52 @@ class Fig3:
 
 class Fig3D:
 
-    def get_oral_probability(self,
-                             data: Tuple[np.ndarray, np.ndarray],
-                             model,
-                             condition: int,
-                             window_size: int = 16) -> Dict[str, Any]:
-        """
-        For each trial, compute an (unnormalised) Euclidean distance from the
-        reported centre to every hypothesis' prototype of the chosen category,
-        **normalise the distances across hypotheses** so they sum to 1, convert
-        them to probabilities via `p = 1 - d_norm`, and finally return the moving
-        average trajectory for the target hypothesis (h=0 for condition-1, h=42
-        otherwise).
+    def get_oral_hypos_list(self,
+                            data: Tuple[np.ndarray, np.ndarray],
+                            model,
+                            top_k: int = 10,
+                            dist_tol: float = 1e-9) -> Dict[str, Any]:
 
-        Returns
-        -------
-        dict
-            {
-                'step_hit' : List[float]   # smoothed P(h=target)
-                'raw'      : np.ndarray    # per-trial P(h=target)
-                'condition': int
-            }
-        """
-        centres, choices = data
+        oral_centers, choices = data
         n_trials = len(choices)
-        protos = model.partition_model.prototypes_np
-        n_hypos = protos.shape[0]
 
-        # ---------- distance matrix --------------------------------------------
-        dis = np.empty((n_hypos, n_trials), dtype=float)
-        for t in range(n_trials):
-            cat = int(choices[t]) - 1
-            dis[:, t] = np.linalg.norm(protos[:, 0, cat, :] - centres[t],
-                                       axis=1)
+        n_hypos = model.partition_model.prototypes_np.shape[0]
+        all_hypos = range(n_hypos)
 
-        eps = 1e-12
-        sims = 1.0 / (dis + eps)
-        probs = sims / sims.sum(axis=0, keepdims=True)
+        oral_hypos_list = []
 
-        target_h = 0 if condition == 1 else 42
-        prob_true = probs[target_h, :]
+        for trial_idx in range(n_trials):
+            cat_idx = choices[trial_idx] - 1
+            reported_center = oral_centers[trial_idx]
 
-        rolling_prob_true = (pd.Series(prob_true).rolling(
-            window=window_size, min_periods=window_size).mean().tolist())
+            distance_map = []
+            for hypo_idx in all_hypos:
+                # Compare with the (cat_idx)-th category prototype of hypothesis h
+                true_center = model.partition_model.prototypes_np[hypo_idx, 0,
+                                                                  cat_idx, :]
+                distance_val = np.linalg.norm(reported_center - true_center)
+                distance_map.append((distance_val, hypo_idx))
 
-        return {
-            'condition': condition,
-            'dis_true': dis[target_h, :],
-            'prob_true': prob_true,
-            'rolling_prob_true': rolling_prob_true,
-        }
+            # Check for exact matches within tolerance
+            exact_matches = [
+                hypo_idx for (dist, hypo_idx) in distance_map
+                if dist <= dist_tol
+            ]
+
+            if len(exact_matches) > 0:
+                chosen_hypos = exact_matches
+            else:
+                distance_map.sort(key=lambda x: x[0])
+                chosen_hypos = [
+                    hypo_idx for (_, hypo_idx) in distance_map[:top_k]
+                ]
+
+            oral_hypos_list.append(chosen_hypos)
+
+        return oral_hypos_list
 
     def plot_k_comparison(self,
-                          oral_probabilitis: Dict[int, Dict[str, Any]],
+                          oral_hypo_hits: Dict[int, Dict[str, Any]],
                           results_1: Dict[int, Any],
                           results_2: Dict[int, Any],
                           subject_id: int,
@@ -732,9 +719,9 @@ class Fig3D:
 
         Parameters
         ----------
-        oral_distances : dict
+        oral_hypo_hits : dict
             Subject-wise output from ``get_oral_distance`` –
-            ``oral_distances[subject_id]['step_hit']`` is the smoothed curve.
+            ``oral_hypo_hits[subject_id]['rolling_hits']`` is the smoothed curve.
         results_1 / results_2 : dict
             Step-wise posterior dumps from your fitting routine.  Each must have
             the structure  
@@ -747,12 +734,16 @@ class Fig3D:
         fig.patch.set_facecolor('none')
 
         # ---------- oral-distance curve -----------------------------------------
-        odict = oral_probabilitis[subject_id]
-        rolling_prob_true = odict['rolling_prob_true']
-        n_steps = len(rolling_prob_true)
+        odict = oral_hypo_hits[subject_id]
+        rolling_hits = odict['rolling_hits']
+        n_steps = len(rolling_hits)
         x_vals = np.arange(1, n_steps + 1)
 
-        ax.plot(x_vals, rolling_prob_true, lw=3, label='Human', color=color_true)
+        ax.plot(x_vals,
+                rolling_hits,
+                lw=3,
+                label='Human',
+                color=color_true)
 
         # ---------- posterior curve(s) ------------------------------------------
         def _extract_ma(results, k_special, win=16):
