@@ -5,7 +5,7 @@
 import re
 import pandas as pd
 import numpy as np
- 
+
 class Preprocessor_B:
     def process(self, taskID, stimulus_data, behavior_data, recording_data = None):
         if taskID in ['Task2', 'Task3a']:
@@ -26,7 +26,7 @@ class Preprocessor_B:
                             'neck_length', 'head_length', 'leg_length', 'tail_length',
                             'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
             remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
-   
+
             combined_data = joint_data[base_columns].copy()
 
             for i, feature in enumerate(feature_names):
@@ -41,13 +41,13 @@ class Preprocessor_B:
             rec_processor = Recording_Processor()
             result_df = rec_processor.process(recording_data)
             result_df[['neck_oral', 'head_oral', 'leg_oral', 'tail_oral']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
-            
+
             recording_coded = result_df[['iSession', 'iTrial', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral', 'text']].copy()
             oral_feature_names = self.convert("_oral", [structure1, structure2])
             for i, feature in enumerate(oral_feature_names):
                 oral_new_name = f'feature{i+1}_oral'
-                recording_coded[oral_new_name] = recording_coded[feature] 
-                           
+                recording_coded[oral_new_name] = recording_coded[feature]
+
             result_use = rec_processor.process_use(recording_data).copy()
             oraluse_feature_names = self.convert("_use", [structure1, structure2])
             for i, feature in enumerate(oraluse_feature_names):
@@ -83,15 +83,16 @@ class Preprocessor_B:
             features = [features[2], features[0], features[1], features[3]]
         elif structure[1] == 6:
             features = [features[2], features[1], features[0], features[3]]
-        
+
         # Final rearrangement
         features = [features[0], features[2], features[1], features[3]]
-        
+
         # Add suffix to feature names
         return [f + suffix for f in features]
-    
+
 
 class Recording_Processor:
+
     def __init__(self):
         """初始化处理器，定义各类关键词映射"""
         self.body_parts = {
@@ -101,33 +102,23 @@ class Recording_Processor:
             '尾巴': 3,
         }
 
-        self.direct_descriptions = {
-            '长': 0.75,
-            '短': 0.25,
-            '中等': 0.5,
-            '适中': 0.5
-        }
+        self.direct_descriptions = {'长': 0.75, '短': 0.25, '中等': 0.5, '适中': 0.5}
 
-        self.comp_descriptions = {
-            '长': 2/3,
-            '短': 1/3
-        }
+        self.comp_descriptions = {'长': 2 / 3, '短': 1 / 3}
 
-        self.max_descriptions = {
-            '长': 0.8,
-            '短': 0.4
-        }
+        self.max_descriptions = {'长': 0.8, '短': 0.4}
         self.addition_descriptions = {
-            '长': 2/3,
-            '短': 1/3,
-            '大于': 2/3,
-            '小于': 1/3
+            '长': 2 / 3,
+            '短': 1 / 3,
+            '大于': 2 / 3,
+            '小于': 1 / 3
         }
 
-        self.quantifiers = {'四个', '所有', '每一个', '每个', '全部', '各', '各个', '总体', '整体'}
+        self.quantifiers = {
+            '四个', '所有', '每一个', '每个', '全部', '各', '各个', '总体', '整体'
+        }
         self.exclude_pattern = re.compile(r'除(?:了)?([^，。]+?)外')
         self.punctuation = '。.？?！!、'
-
 
     def process_use(self, df):
         """
@@ -163,7 +154,6 @@ class Recording_Processor:
         results_df = pd.DataFrame(results)
         return results_df
 
-
     def process(self, df):
         texts = df['text']
         results = {
@@ -184,35 +174,38 @@ class Recording_Processor:
                 results[key].append(res[key])
             results['un_pro'].append(un_pro)
             results['text'].append(text)
-        
+
         result_df = pd.DataFrame(results)
         # Retain iSession and iTrial columns
         result_df['iSession'] = df['iSession']
         result_df['iTrial'] = df['iTrial']
-        
+
         # Move iSession and iTrial to the front
-        columns = ['iSession', 'iTrial'] + [col for col in result_df.columns if col not in ['iSession', 'iTrial']]
+        columns = ['iSession', 'iTrial'] + [
+            col
+            for col in result_df.columns if col not in ['iSession', 'iTrial']
+        ]
         result_df = result_df[columns]
-        
+
         return result_df
-    
+
     def extract_values(self, text):
         """主处理函数"""
         results = {
-            'exclusion': [None]*4,
-            'superlative': [None]*4,
-            'universal_quantifier': [None]*4,
-            'exclusive_case': [None]*4,
-            'comparison': [None]*4,
-            'general_case': [None]*4,
-            'addition': [None]*4,
-            'all': [None]*4,
+            'exclusion': [None] * 4,
+            'superlative': [None] * 4,
+            'universal_quantifier': [None] * 4,
+            'exclusive_case': [None] * 4,
+            'comparison': [None] * 4,
+            'general_case': [None] * 4,
+            'addition': [None] * 4,
+            'all': [None] * 4,
         }
         un_pro = []
 
         def merge(*vals):
             """合并多个值"""
-            new_val = [None]*4
+            new_val = [None] * 4
             for i in range(4):
                 merged_val = [val[i] for val in vals if val[i] is not None]
                 if merged_val:
@@ -226,18 +219,19 @@ class Recording_Processor:
         raw_items = re.split(r'[，,]', str(text))
         items = [self._clean_item(i) for i in raw_items]
 
-        items = [i for i in items if i != '']  # 去除空值        
+        items = [i for i in items if i != '']  # 去除空值
 
         i = 0
         while i < len(items):
             # 处理排除逻辑
-            if '除' in items[i] or (i + 1 < len(items) and ('其他' in items[i + 1] or '其余' in items[i + 1] or '另外' in items[i + 1])):
-                res, is_pro = self._handle_exclusion(items[i], items[i+1])
+            if '除' in items[i] or (i + 1 < len(items) and
+                                   ('其他' in items[i + 1] or '其余'
+                                    in items[i + 1] or '另外' in items[i + 1])):
+                res, is_pro = self._handle_exclusion(items[i], items[i + 1])
                 if is_pro:
                     results['exclusion'] = merge(results['exclusion'], res)
                     i += 2
                     continue
-
 
             # 处理最高级
             res, is_pro = self._handle_superlative(items[i])
@@ -246,11 +240,11 @@ class Recording_Processor:
                 i += 1
                 continue
 
-            
             # 处理'只有'逻辑
             res, is_pro = self._handle_exclusive_case(items[i])
             if is_pro:
-                results['exclusive_case'] = merge(results['exclusive_case'], res)
+                results['exclusive_case'] = merge(results['exclusive_case'],
+                                                  res)
                 i += 1
                 continue
 
@@ -260,7 +254,6 @@ class Recording_Processor:
                 results['addition'] = merge(results['addition'], res)
                 i += 1
                 continue
-
 
             # 处理比较逻辑
             res, is_pro = self._handle_comparison(items[i])
@@ -272,7 +265,8 @@ class Recording_Processor:
             # 处理全称量词
             res, is_pro = self._handle_universal_quantifier(items[i])
             if is_pro:
-                results['universal_quantifier'] = merge(results['universal_quantifier'], res)
+                results['universal_quantifier'] = merge(
+                    results['universal_quantifier'], res)
                 i += 1
                 continue
 
@@ -283,8 +277,8 @@ class Recording_Processor:
                 i += 1
                 continue
 
-            un_pro.append(items[i])  
-            i += 1       
+            un_pro.append(items[i])
+            i += 1
 
         results['all'] = merge(
             results['exclusion'],
@@ -295,7 +289,6 @@ class Recording_Processor:
             results['general_case'],
             results['addition'],
         )
-
 
         if all(v is None for v in results['all']):
             pass
@@ -314,30 +307,31 @@ class Recording_Processor:
         """从文本中提取描述词对应的数值"""
         if '长' in item and '长度' not in item:
             return desc_dict['长']
-        
+
         for desc in desc_dict:
-            if desc == '长': 
+            if desc == '长':
                 continue
             if desc in item:
                 return desc_dict[desc]
-        
+
         return None
 
     def _handle_general_case(self, item):
         """处理普通描述逻辑"""
-        res = [None]*4
-        if '一样' in item:
+        res = [None] * 4
+        if '一样' in item or '差不多' in item or '不是' in item:
             return res, False
 
         mentioned_parts = [part for part in self.body_parts if part in item]
         if not mentioned_parts:
             return res, False
-        
+
         # 尝试直接描述词
-        desc_value = self._get_description_value(item, self.direct_descriptions)
+        desc_value = self._get_description_value(item,
+                                                 self.direct_descriptions)
         if desc_value is None:
             return res, False
-        
+
         # 仅更新未赋值的部位
         for part in mentioned_parts:
             col = self.body_parts[part]
@@ -346,18 +340,21 @@ class Recording_Processor:
 
     def _handle_superlative(self, item):
         """处理最高级逻辑"""
-        res = [None]*4
+        res = [None] * 4
+        if '不是' in item and '最' in item:
+            return res, False
+
         if '最' not in item:
             # 处理句式是“比其他”或“比其余”的情况
             if '比其他' in item or '比其余' in item:
                 item = item.replace('比其他', '最').replace('比其余', '最')
             else:
                 return res, False
-        
-        superlative_match = re.search(r'最(长|短)', item)
+
+        superlative_match = re.search(r'最.{0,2}(长|短)', item)
         if not superlative_match:
             return res, False
-        
+
         # 只能包含一个身体部位
         mentioned_parts = [part for part in self.body_parts if part in item]
         if len(mentioned_parts) != 1:
@@ -368,14 +365,14 @@ class Recording_Processor:
         superlative_value = self.max_descriptions.get(current_desc)
         if not superlative_value:
             return res, False
-        
+
         # 获取相反描述的值
         opposite_desc = '短' if current_desc == '长' else '长'
         other_value = self.max_descriptions.get(opposite_desc)
-        
+
         the_part = mentioned_parts[0]
         res[self.body_parts[the_part]] = superlative_value
-        
+
         # 设置其他部位为相反值
         for p, col in self.body_parts.items():
             if p != the_part:
@@ -385,10 +382,13 @@ class Recording_Processor:
 
     def _handle_exclusion(self, current_item, next_item):
         """处理排除逻辑"""
-        res = [None]*4
-        
-        excluded_parts = [part for part in self.body_parts if part in current_item]
-        desc_value = self._get_description_value(next_item, self.direct_descriptions)
+        res = [None] * 4
+
+        excluded_parts = [
+            part for part in self.body_parts if part in current_item
+        ]
+        desc_value = self._get_description_value(next_item,
+                                                 self.direct_descriptions)
         if not desc_value:
             return res, False
 
@@ -407,14 +407,14 @@ class Recording_Processor:
 
     def _handle_universal_quantifier(self, item):
         """处理全称量词"""
-        res = [None]*4
+        res = [None] * 4
         if '都' not in item or not any(q in item for q in self.quantifiers):
             return res, False
 
-        desc_value = self._get_description_value(item, self.direct_descriptions)
+        desc_value = self._get_description_value(item,
+                                                 self.direct_descriptions)
         if not desc_value:
             return res, False
-
 
         res = [desc_value] * 4
 
@@ -422,7 +422,7 @@ class Recording_Processor:
 
     def _handle_exclusive_case(self, item):
         """处理'只有'逻辑"""
-        res = [None]*4
+        res = [None] * 4
         if '只有' not in item:
             return res, False
 
@@ -430,7 +430,8 @@ class Recording_Processor:
         if not mentioned_parts:
             return res, False
 
-        desc_value = self._get_description_value(item, self.direct_descriptions)
+        desc_value = self._get_description_value(item,
+                                                 self.direct_descriptions)
         if not desc_value:
             return res, False
 
@@ -445,7 +446,7 @@ class Recording_Processor:
 
     def _handle_comparison(self, item):
         """处理比较逻辑"""
-        res = [None]*4
+        res = [None] * 4
         if "比" not in item or "比较" in item:
             return res, False
         if '比躯干' in item:
@@ -455,24 +456,27 @@ class Recording_Processor:
         if not desc_value:
             return res, False
 
-        current_desc = next(
-            (desc for desc, val in self.comp_descriptions.items() if val == desc_value),
-            None
-        )
+        current_desc = next((desc
+                             for desc, val in self.comp_descriptions.items()
+                             if val == desc_value), None)
         if not current_desc:
             return res, False
 
         opposite_desc = '短' if current_desc == '长' else '长'
-        opposite_value = self.comp_descriptions.get(opposite_desc, 1 - desc_value)
+        opposite_value = self.comp_descriptions.get(opposite_desc,
+                                                    1 - desc_value)
 
         mentioned_parts = [part for part in self.body_parts if part in item]
         split_index = item.find('比')
 
-        parts_before = [p for p in mentioned_parts if item.find(p) < split_index]
-        parts_after = [p for p in mentioned_parts if item.find(p) > split_index]
+        parts_before = [
+            p for p in mentioned_parts if item.find(p) < split_index
+        ]
+        parts_after = [
+            p for p in mentioned_parts if item.find(p) > split_index
+        ]
         if len(parts_after) == 0 and ('比其他' in item or '比其余' in item):
             parts_after = list(set(self.body_parts.keys()) - set(parts_before))
-
 
         for part in parts_before:
             res[self.body_parts[part]] = desc_value
@@ -480,13 +484,13 @@ class Recording_Processor:
             res[self.body_parts[part]] = opposite_value
 
         return res, True
-    
+
     def _handle_addition(self, item):
         """处理相加逻辑"""
-        res = [None]*4
+        res = [None] * 4
         if '加' not in item:
             return res, False
-        
+
         if '比' in item:
             items = item.split('比')
         elif '大于' in item:
@@ -500,13 +504,11 @@ class Recording_Processor:
         front_parts = [part for part in self.body_parts if part in front_item]
         back_parts = [part for part in self.body_parts if part in back_item]
 
-
-        desc_value = self._get_description_value(item, self.addition_descriptions)
+        desc_value = self._get_description_value(item,
+                                                 self.addition_descriptions)
 
         for part in front_parts:
             res[self.body_parts[part]] = desc_value
         for part in back_parts:
             res[self.body_parts[part]] = 1 - desc_value
         return res, True
-
-        

@@ -690,31 +690,31 @@ class Fig3D:
         n_hypos = protos.shape[0]
 
         # ---------- distance matrix --------------------------------------------
-        d = np.empty((n_hypos, n_trials), dtype=float)
+        dis = np.empty((n_hypos, n_trials), dtype=float)
         for t in range(n_trials):
             cat = int(choices[t]) - 1
-            d[:, t] = np.linalg.norm(protos[:, 0, cat, :] - centres[t], axis=1)
+            dis[:, t] = np.linalg.norm(protos[:, 0, cat, :] - centres[t],
+                                       axis=1)
 
         eps = 1e-12
-        sims = 1.0 / (d + eps)
+        sims = 1.0 / (dis + eps)
         probs = sims / sims.sum(axis=0, keepdims=True)
 
         target_h = 0 if condition == 1 else 42
-        raw_curve = probs[target_h, :]
+        prob_true = probs[target_h, :]
 
-        ma_curve = (
-            pd.Series(raw_curve).rolling(window=window_size,
-                                         min_periods=1)  # 允许前期不足
-            .mean().tolist())
+        rolling_prob_true = (pd.Series(prob_true).rolling(
+            window=window_size, min_periods=window_size).mean().tolist())
 
         return {
-            'step_hit': ma_curve,
-            'raw': raw_curve,
             'condition': condition,
+            'dis_true': dis[target_h, :],
+            'prob_true': prob_true,
+            'rolling_prob_true': rolling_prob_true,
         }
 
     def plot_k_comparison(self,
-                          oral_distances: Dict[int, Dict[str, Any]],
+                          oral_probabilitis: Dict[int, Dict[str, Any]],
                           results_1: Dict[int, Any],
                           results_2: Dict[int, Any],
                           subject_id: int,
@@ -747,12 +747,12 @@ class Fig3D:
         fig.patch.set_facecolor('none')
 
         # ---------- oral-distance curve -----------------------------------------
-        odict = oral_distances[subject_id]
-        step_hit = odict['step_hit']
-        n_steps = len(step_hit)
+        odict = oral_probabilitis[subject_id]
+        rolling_prob_true = odict['rolling_prob_true']
+        n_steps = len(rolling_prob_true)
         x_vals = np.arange(1, n_steps + 1)
 
-        ax.plot(x_vals, step_hit, lw=3, label='Human', color=color_true)
+        ax.plot(x_vals, rolling_prob_true, lw=3, label='Human', color=color_true)
 
         # ---------- posterior curve(s) ------------------------------------------
         def _extract_ma(results, k_special, win=16):
