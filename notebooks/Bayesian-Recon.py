@@ -56,13 +56,6 @@ module_config = {
         "transition_spec": [post_setting,
                             ksimilar_setting,
                             random_setting]
-    }),
-    "memory": (BaseMemory, {
-        "personal_memory_range": {
-            "gamma": (0.05, 1.0),
-            "w0": (0.075, 0.15)
-        },
-        "param_resolution": 20
     })
 }
 optimizer = Optimizer(module_config, n_jobs=120)
@@ -72,7 +65,7 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 
 res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), 16, 5, 1000)
+    config_fgt, list(range(1, 25)), 16, 1, 1000)
 # list(range(1, 25)))
 
 
@@ -80,4 +73,4 @@ res = optimizer.optimize_params_with_subs_parallel(
 result_path = Path(project_root) / 'results' / 'Bayesian_recon'
 os.makedirs(result_path, exist_ok=True)
 
-joblib.dump(res, result_path / 'M_fgt_cl_max7_randp_k1_acc7.joblib')
+joblib.dump(res, result_path / 'M_cl_max7_randp_k1_acc7.joblib')

@@ -2,11 +2,16 @@ import os
 import numpy as np
 from scipy.interpolate import splprep, splev
 from math import isfinite
+from scipy.stats import ttest_rel
+from statsmodels.stats.multitest import multipletests
+import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import font_manager
 import matplotlib as mpl
+import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, Tuple, List, Any
 import pandas as pd
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
@@ -34,10 +39,33 @@ class Fig1_Oral:
         missing = [col for col in required if col not in df.columns]
         if missing:
             raise ValueError(f"缺少必要列: {missing}")
-        # 直接返回所需列，无需重命名
         return df[required]
 
-    def draw_cube(self, ax, edge_color='#808080', lw=1.5):
+    def get_model_centers(self, step_results, model, ncats):
+
+        all_centers = model.partition_model.get_centers()
+
+        model_fitting = [[step['best_k'], all_centers[step['best_k']][1]]
+                         for step in step_results]
+
+        columns = [
+            f'choice_{choice}_feature_{feature}'
+            for choice in range(1, ncats + 1) for feature in range(1, 5)
+        ]
+
+        rows = []
+        for entry in model_fitting:
+            k, center_dict = entry
+            row = []
+            for choice_key in range(ncats):  # 键 0 到 3
+                features = center_dict.get(choice_key, (None, ) * 4)
+                row.extend(features)
+            rows.append(row)
+
+        df = pd.DataFrame(rows, columns=columns)
+        return df
+
+    def draw_cube(self, ax, edge_color, lw):
         verts = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1),
                  (1, 0, 1), (1, 1, 1), (0, 1, 1)]
         edges = [(1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 4), (1, 5),
@@ -49,98 +77,36 @@ class Fig1_Oral:
     def _beautify_axes(self, ax):
         ax.set_axis_off()
 
-        # 手动绘制三条主轴线
-        ax.plot([0, 1], [0, 0], [0, 0], color='#808080', lw=2.5)
-        ax.plot([0, 0], [0, 1], [0, 0], color='#808080', lw=2.5)
-        ax.plot([0, 0], [0, 0], [0, 1], color='#808080', lw=2.5)
+        # 三条主轴线
+        lines = [([0, 1], [0, 0], [0, 0]), ([0, 0], [0, 1], [0, 0]),
+                 ([0, 0], [0, 0], [0, 1])]
+        for x, y, z in lines:
+            ax.plot(x, y, z, color='#808080', lw=2.5)
+        # 轴标题和刻度
+        self._label_axes(ax)
+        self._add_ticks(ax)
 
-        # 三个轴的手动标题
-        ax.text(1.2,
-                -0.4,
-                0.0,
-                'Feature 2',
-                fontsize=18,
-                horizontalalignment='left',
-                verticalalignment='center',
-                fontfamily='Arial')
-        ax.text(0.0,
-                1.26,
-                0.0,
-                'Feature 1',
-                fontsize=18,
-                horizontalalignment='center',
-                verticalalignment='bottom',
-                fontfamily='Arial')
-        ax.text(0.2,
-                0.0,
-                1.08,
-                'Feature 3',
-                fontsize=18,
-                horizontalalignment='center',
-                verticalalignment='bottom',
-                fontfamily='Arial')
+    def _label_axes(self, ax):
+        labels = [((1.1, -0.05, 0), 'F$_2$'), ((0, 1.12, 0.0), 'F$_1$'),
+                  ((0, 0, 1.12), 'F$_3$')]
+        for pos, txt in labels:
+            ax.text(*pos,
+                    txt,
+                    fontsize=18,
+                    ha='center',
+                    va='center',
+                    fontfamily='Arial')
 
-        # 4) 手动添加刻度标签
-        # 原点
-        ax.text(0,
-                0,
-                -0.05,
-                '0',
-                fontsize=15,
-                ha='right',
-                va='top',
-                fontfamily='Arial')
-        # X 轴刻度
-        ax.text(0.45,
-                0,
-                -0.05,
-                '0.5',
-                fontsize=15,
-                ha='center',
-                va='top',
-                fontfamily='Arial')
-        ax.text(0.9,
-                0,
-                -0.05,
-                '1',
-                fontsize=15,
-                ha='center',
-                va='top',
-                fontfamily='Arial')
-        # Y 轴刻度
-        ax.text(0,
-                0.48,
-                -0.05,
-                '0.5',
-                fontsize=15,
-                ha='right',
-                va='center',
-                fontfamily='Arial')
-        ax.text(0,
-                0.96,
-                -0.05,
-                '1',
-                fontsize=15,
-                ha='right',
-                va='center',
-                fontfamily='Arial')
-        # Z 轴刻度
-        ax.text(0,
-                -0.03,
-                0.45,
-                '0.5',
-                fontsize=15,
-                ha='right',
-                va='bottom',
-                fontfamily='Arial')
-        ax.text(0,
-                -0.03,
-                0.9,
-                '1',
-                fontsize=15,
-                ha='right',
-                va='bottom',
-                fontfamily='Arial')
+    def _add_ticks(self, ax):
+        ticks = [((0, 0, -0.05), '0', 'right', 'top'),
+                 ((0.45, 0, -0.05), '0.5', 'center', 'top'),
+                 ((0.9, 0, -0.05), '1', 'center', 'top'),
+                 ((0, 0.48, -0.05), '0.5', 'right', 'center'),
+                 ((0, 0.96, -0.05), '1', 'right', 'center'),
+                 ((0, -0.03, 0.45), '0.5', 'right', 'bottom'),
+                 ((0, -0.03, 0.9), '1', 'right', 'bottom')]
+        for pos, txt, ha, va in ticks:
+            ax.text(*pos, txt, fontsize=15, ha=ha, va=va, fontfamily='Arial')
 
     def _plot_smooth_grad_line_and_points(self,
                                           ax,
@@ -159,8 +125,6 @@ class Fig1_Oral:
         # ---------- 1. 清洗无效点 ----------
         mask_valid = np.array([all(map(isfinite, p)) for p in zip(xs, ys, zs)])
         xs, ys, zs = xs[mask_valid], ys[mask_valid], zs[mask_valid]
-
-        # 若全是 NaN，就直接退出
         if len(xs) == 0:
             return
 
@@ -183,65 +147,53 @@ class Fig1_Oral:
             ax.plot(xs, ys, zs, color=c1, linewidth=lw)
             ax.scatter(xs, ys, zs, color=[c1, c2], s=s, edgecolors='w')
             return
+        else:
+            self._plot_spline_or_fallback(ax, xs, ys, zs, cmap, cmap_low,
+                                          cmap_high, lw, s)
 
-        # ---------- 4. ≥3 点：尝试样条 ----------
-        k = min(3, n_pts - 1)
+    def _plot_spline_or_fallback(self, ax, xs, ys, zs, cmap, cmap_low,
+                                 cmap_high, lw, s):
         try:
-            tck, u = splprep([xs, ys, zs], s=smooth, k=k)
-            u_fine = np.linspace(0, 1, n_interp)
+            k = min(3, len(xs) - 1)
+            tck, u = splprep([xs, ys, zs], s=0.0, k=k)
+            u_fine = np.linspace(0, 1, 300)
             x_f, y_f, z_f = splev(u_fine, tck)
-        except Exception as e:  # 任意插值失败都回退到折线
-            # 折线 & 渐变散点
-            colors = cmap(np.linspace(cmap_low, cmap_high, n_pts))
-            for i in range(n_pts - 1):
-                ax.plot(xs[i:i + 2],
-                        ys[i:i + 2],
-                        zs[i:i + 2],
+            colors = cmap(np.linspace(cmap_low, cmap_high, len(x_f) - 1))
+            for i in range(len(x_f) - 1):
+                ax.plot(x_f[i:i + 2],
+                        y_f[i:i + 2],
+                        z_f[i:i + 2],
                         color=colors[i],
                         linewidth=lw)
-            ax.scatter(xs, ys, zs, color=colors, s=s, edgecolors='w')
-            return
+            pt_colors = cmap(cmap_low + (cmap_high - cmap_low) * u)
+            ax.scatter(xs, ys, zs, color=pt_colors, s=s, edgecolors='w')
+        except Exception:
+            self._plot_fallback_lines(ax, xs, ys, zs, cmap, cmap_low,
+                                      cmap_high, lw, s)
 
-        # ---------- 5. 成功则画平滑曲线 ----------
-        line_colors = cmap(np.linspace(cmap_low, cmap_high, n_interp - 1))
-        for i in range(n_interp - 1):
-            ax.plot(x_f[i:i + 2],
-                    y_f[i:i + 2],
-                    z_f[i:i + 2],
-                    color=line_colors[i],
+    def _plot_fallback_lines(self, ax, xs, ys, zs, cmap, cmap_low, cmap_high,
+                             lw, s):
+        n = len(xs)
+        colors = cmap(np.linspace(cmap_low, cmap_high, n))
+        for i in range(n - 1):
+            ax.plot(xs[i:i + 2],
+                    ys[i:i + 2],
+                    zs[i:i + 2],
+                    color=colors[i],
                     linewidth=lw)
+        ax.scatter(xs, ys, zs, color=colors, s=s, edgecolors='w')
 
-        pt_colors = cmap(cmap_low + (cmap_high - cmap_low) * u)
-        ax.scatter(xs, ys, zs, color=pt_colors, s=s, edgecolors='w')
-
-    def plot_choice_graph(self, ncats, iSub, iSession, iTrial, choice,
-                          features_list, plots_dir):
-        folder = os.path.join(plots_dir, f"choice{choice}")
+    def plot_feature123(self, ncats, iSub, iSession, iTrial, choice,
+                        features_list, plots_dir):
+        folder = os.path.join(plots_dir)
         os.makedirs(folder, exist_ok=True)
         fig = plt.figure(figsize=(6, 6), facecolor='none')
         ax = fig.add_subplot(111, projection='3d')
 
-        if ncats == 2:
-            yellow_point_coords = {
-                1: (0.5, 0.25, 0.5),
-                2: (0.5, 0.75, 0.5),
-            }
-        elif ncats == 4:
-            yellow_point_coords = {
-                1: (0.25, 0.25, 0.5),
-                2: (0.25, 0.75, 0.5),
-                3: (0.75, 0.5, 0.25),
-                4: (0.75, 0.5, 0.75)
-            }
+        # 黄色点背景
+        self._draw_radial_highlight(ax, ncats, choice)
 
-        if choice in yellow_point_coords:
-            y_point = yellow_point_coords[choice]
-            ax.scatter(*y_point,
-                       color='yellow',
-                       s=200,
-                       alpha=0.7,
-                       edgecolors='k')
-
+        # 主线
         xs = [f['feature2_oral'] for f in features_list]
         ys = [f['feature1_oral'] for f in features_list]
         zs = [f['feature3_oral'] for f in features_list]
@@ -251,56 +203,39 @@ class Fig1_Oral:
 
         ax.view_init(elev=15, azim=30)
         self._beautify_axes(ax)
-        self.draw_cube(ax)
+        self.draw_cube(ax, '#808080', 1.5)
         ax.patch.set_alpha(0)
 
         fname = f"{iSub}_{iSession}_{iTrial}_c{choice}.png"
-        # fig.tight_layout()
         plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
         plt.close()
 
-    def process_and_plot(self,
-                         ncats,
-                         subject_data,
-                         plots_dir,
-                         row_indices=None):
-        """处理 DataFrame 并仅对指定行绘图，展示行之前的累积轨迹"""
-        df = self.read_data(subject_data)
-        # 确定要绘制的行
-        if row_indices is None:
-            target = set(df.index)
-        elif isinstance(row_indices, int):
-            target = {row_indices}
-        else:
-            target = set(row_indices)
-        # 创建输出文件夹
-        os.makedirs(plots_dir, exist_ok=True)
-        for c in range(1, ncats + 1):
-            os.makedirs(os.path.join(plots_dir, f"choice{c}"), exist_ok=True)
-        # 累积 human 特征，并在目标行时绘图
-        last_feats = {c: [] for c in range(1, ncats + 1)}
-        for idx, row in df.iterrows():
-            choice = int(row['choice'])
-            feat = {
-                f'feature{i}_oral': row[f'feature{i}_oral']
-                for i in range(1, 5)
+    def _draw_radial_highlight(self, ax, ncats, choice):
+        coords = {
+            2: {
+                1: (0.5, 0.25, 0.5),
+                2: (0.5, 0.75, 0.5)
+            },
+            4: {
+                1: (0.25, 0.25, 0.5),
+                2: (0.25, 0.75, 0.5),
+                3: (0.75, 0.5, 0.25),
+                4: (0.75, 0.5, 0.75)
             }
-            last_feats[choice].append(feat)
-            if idx in target:
-                self.plot_choice_graph(ncats, row.get('iSub', 'Unknown'),
-                                       row['iSession'], row['iTrial'], choice,
-                                       last_feats[choice], plots_dir)
-                # self.plot_feature4_time_series(
-                #     row.get('iSub', 'Unknown'),
-                #     row['iSession'],
-                #     row['iTrial'],
-                #     choice,
-                #     last_feats[choice],
-                #     plots_dir
-                # )
-
-        print(f"完成：仅绘制行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
-
+        }
+        point = coords.get(ncats, {}).get(choice)
+        if not point: return
+        n_layers, outer_size, inner_size = 20, 6000, 80
+        outer_alpha, inner_alpha = 0.05, 0.1
+        sizes = np.linspace(outer_size, inner_size, n_layers)
+        alphas = np.linspace(outer_alpha, inner_alpha, n_layers)
+        for s, a in zip(sizes, alphas):
+            ax.scatter(*point,
+                       color='yellow',
+                       s=s,
+                       alpha=a,
+                       edgecolors='none',
+                       depthshade=False)
 
     def plot_feature4_time_series(self,
                                   iSub,
@@ -320,15 +255,18 @@ class Fig1_Oral:
         Plot the trajectory of feature4_oral over trials: x-axis is trial number, y-axis is feature4_oral, with optional gradient coloring.
         """
         # Ensure output folder exists for this choice
-        folder = os.path.join(plots_dir, f"choice{choice}")
+        folder = os.path.join(plots_dir)
         os.makedirs(folder, exist_ok=True)
 
         # Prepare figure and axis
-        fig, ax = plt.subplots(figsize=(4, 4), facecolor='none')
+        fig, ax = plt.subplots(figsize=(3.5, 4), facecolor='none')
 
         # Extract trial numbers and feature4 values
-        trials = np.array([f.get('iTrial', idx+1) for idx, f in enumerate(features_list)], dtype=float)
-        vals = np.array([f['feature4_oral'] for f in features_list], dtype=float)
+        trials = np.array(
+            [f.get('iTrial', idx + 1) for idx, f in enumerate(features_list)],
+            dtype=float)
+        vals = np.array([f['feature4_oral'] for f in features_list],
+                        dtype=float)
 
         # Mask invalid points
         mask = np.isfinite(trials) & np.isfinite(vals)
@@ -357,14 +295,24 @@ class Fig1_Oral:
                        edgecolors='w')
 
         # Set labels
-        ax.set_xlabel('Trial', fontfamily='Arial', fontsize=18)
-        ax.set_ylabel('Feature 4', fontfamily='Arial', fontsize=18)
+        ax.set_xlabel('Trial', fontfamily='Arial', fontsize=21)
+        # ax.set_ylabel('Feature 4', fontfamily='Arial', fontsize=18)
+
+        # Add text to the top-right corner
+        ax.text(0.95,
+                0.95,
+                'F$_4$',
+                transform=ax.transAxes,
+                fontsize=21,
+                ha='right',
+                va='top',
+                fontfamily='Arial')
 
         # Set ticks: y at [0,0.5,1], x only last at 190
         ax.set_yticks([0, 0.5, 1])
-        ax.set_yticklabels(['0', '0.5', '1'], fontsize=15)
-        ax.set_xticks([83])
-        ax.set_xticklabels(['190'], fontsize=15)
+        ax.set_yticklabels(['0', '0.5', '1'], fontsize=18)
+        ax.set_xticks([30])
+        ax.set_xticklabels(['30'], fontsize=18)
 
         # Set limits
         ax.set_xlim(trials.min() - 0.5, trials.max() + 0.5)
@@ -382,35 +330,127 @@ class Fig1_Oral:
         plt.subplots_adjust(left=0.2)
 
         # Save and close
-        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}_feature4_ts.png"
+        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}_f4_ts.png"
         plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
         plt.close()
 
+    def plot_human_trajactory(self,
+                              ncats,
+                              subject_data,
+                              type,
+                              plots_dir,
+                              row_indices=None):
+        """处理 DataFrame 并仅对指定行绘图，展示行之前的累积轨迹"""
+        df = self.read_data(subject_data)
+        # 确定要绘制的行
+        if row_indices is None:
+            target = set(df.index)
+        elif isinstance(row_indices, int):
+            target = {row_indices}
+        else:
+            target = set(row_indices)
+        # 创建输出文件夹
+        os.makedirs(plots_dir, exist_ok=True)
+        for c in range(1, ncats + 1):
+            os.makedirs(os.path.join(plots_dir, f"choice{c}"), exist_ok=True)
+
+        # 累积 human 特征，并在目标行时绘图
+        last_feats = {c: [] for c in range(1, ncats + 1)}
+        for idx, row in df.iterrows():
+            choice = int(row['choice'])
+            feat = {
+                f'feature{i}_oral': row[f'feature{i}_oral']
+                for i in range(1, 5)
+            }
+            last_feats[choice].append(feat)
+            if idx in target:
+                folder = os.path.join(plots_dir, f"choice{c}")
+                if type == 1:
+                    self.plot_feature123(ncats, row.get('iSub', 'Unknown'),
+                                         row['iSession'], row['iTrial'],
+                                         choice, last_feats[choice], folder)
+                else:
+                    self.plot_feature4_time_series(row.get('iSub', 'Unknown'),
+                                                   row['iSession'],
+                                                   row['iTrial'], choice,
+                                                   last_feats[choice], folder)
+
+        print(f"完成：仅绘制行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
+
+    def plot_model_trajactory(self,
+                              ncats,
+                              df,
+                              type,
+                              plots_dir,
+                              row_indices=None):
+        # 确定要绘制的行
+        if row_indices is None:
+            target = set(df.index)
+        elif isinstance(row_indices, int):
+            target = {row_indices}
+        else:
+            target = set(row_indices)
+        # 创建输出文件夹
+        os.makedirs(plots_dir, exist_ok=True)
+        for c in range(1, ncats + 1):
+            os.makedirs(os.path.join(plots_dir, f"Model_choice{c}"),
+                        exist_ok=True)
+
+        # 累积 human 特征，并在目标行时绘图
+        last_feats = {c: [] for c in range(1, ncats + 1)}
+        for idx, row in df.iterrows():
+            for c in range(1, ncats + 1):
+                feat = {
+                    f'feature{i}_oral': row[f'choice_{c}_feature_{i}']
+                    for i in range(1, 5)
+                }
+                last_feats[c].append(feat)
+
+            # 在目标行输出图
+            if idx in target:
+                iSub = row['iSub']
+                iTrial = row['iTrial']
+
+                for c in range(1, ncats + 1):
+                    model_folder = os.path.join(plots_dir, f"Model_choice{c}")
+                    if type == 1:
+                        self.plot_feature123(
+                            ncats,
+                            iSub,
+                            None,  # 没有 session
+                            iTrial,
+                            c,
+                            last_feats[c],
+                            model_folder)
+                    else:
+                        self.plot_feature4_time_series(iSub, None, iTrial, c,
+                                                       last_feats[c],
+                                                       model_folder)
+
+        print(f"完成模型轨迹绘制：行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
 
 
 class Fig1_Ntrial:
 
     def plot_trial_number(self,
-                        learning_data: pd.DataFrame,
-                        figsize=(15, 5),
-                        color_1='#45B53F',
-                        color_2='#DDAA33',
-                        color_3='#A6A6A6',
-                        label_1='Cond 1',
-                        label_2='Cond 2',
-                        label_3='Cond 3',
-                        save_path: str = None):
+                          learning_data: pd.DataFrame,
+                          figsize=(15, 5),
+                          color_1='#45B53F',
+                          color_2='#DDAA33',
+                          color_3='#A6A6A6',
+                          label_1='Cond 1',
+                          label_2='Cond 2',
+                          label_3='Cond 3',
+                          save_path: str = None):
 
-        counts = (
-            learning_data
-            .groupby(['condition', 'iSub'])
-            .size()
-            .reset_index(name='total_trials')
-        )
+        counts = (learning_data.groupby(
+            ['condition', 'iSub']).size().reset_index(name='total_trials'))
 
         cond_order = sorted(counts['condition'].unique())
 
-        pivot = counts.pivot(index='iSub', columns='condition', values='total_trials')
+        pivot = counts.pivot(index='iSub',
+                             columns='condition',
+                             values='total_trials')
 
         summary = pd.DataFrame({
             'condition': cond_order,
@@ -423,96 +463,140 @@ class Fig1_Ntrial:
         colors = [color_1, color_2, color_3]
 
         ax.bar(x_base,
-            summary['mean'],
-            yerr=summary['sem'],
-            color=colors,
-            capsize=5,
-            width=0.6,
-            edgecolor='black')
+               summary['mean'],
+               yerr=summary['sem'],
+               color=colors,
+               capsize=5,
+               width=0.7,
+               error_kw={'elinewidth': 2})
 
         subs = pivot.index.tolist()
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), len(cond_order)))
+        jitter = np.random.uniform(-0.1,
+                                   0.1,
+                                   size=(len(subs), len(cond_order)))
 
         for i, sid in enumerate(subs):
             ys = pivot.loc[sid].values
             xs = x_base + jitter[i]
-            ax.scatter(xs,
-                    ys,
-                    color='black',
-                    alpha=0.6,
-                    s=20,
-                    label='Individual Data' if i == 0 else None)
+            ax.scatter(xs, ys, color='black', alpha=0.6, s=30)
 
-        ax.set_ylabel('Total trial number', fontsize=14)
+        ax.tick_params(axis='y', labelsize=15)
+        ax.set_ylabel('Total trial number', fontsize=18)
         ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1, label_2, label_3], fontsize=12)
-        ax.tick_params(axis='both', which='major', labelsize=12)
-        ax.legend()
+        ax.set_xticklabels([label_1, label_2, label_3], fontsize=18)
 
-        fig.savefig(save_path,
-                    dpi=300,
-                    bbox_inches='tight',
-                    transparent=True)
+        ax.grid(False)
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Figure saved to {save_path}")
         plt.close(fig)
 
+
 class Fig1_Acc:
+
     def plot_accuracy(self,
-                    learning_data: pd.DataFrame,
-                    block_size: int = 64,
-                    figsize=(15, 5),
-                    widths=(2, 1, 1),
-                    colors=('C0', 'C1', 'C2'),
-                    save_path: str = None):
+                      learning_data: pd.DataFrame,
+                      block_size: int = 64,
+                      figsize=(15, 5),
+                      widths=(2, 1, 1),
+                      save_path: str = None):
 
         # 1) 给每个 trial 添加序号和 block 编号
         learning_data = learning_data.copy()
-        learning_data['trial_in_sub'] = learning_data.groupby('iSub').cumcount() + 1
-        learning_data['block'] = ((learning_data['trial_in_sub'] - 1)
-                                // block_size + 1)
+        learning_data['trial_in_sub'] = learning_data.groupby(
+            'iSub').cumcount() + 1
+        learning_data['block'] = (
+            (learning_data['trial_in_sub'] - 1) // block_size + 1)
 
+        learning_data = learning_data[learning_data['ambigous'] != 1]
         # 2) 按 condition、iSub、block 计算 block-wise accuracy
-        blk_acc = (learning_data
-                .groupby(['condition', 'iSub', 'block'])['feedback']
-                .mean()
-                .reset_index(name='block_accuracy'))
+        blk_acc = (learning_data.groupby(
+            ['condition', 'iSub',
+             'block'])['feedback'].mean().reset_index(name='block_accuracy'))
+
+        max_blocks = (blk_acc.groupby('condition')['block'].max())
 
         # 3) 确定 condition 列表及其子图宽度
         conds = sorted(blk_acc['condition'].unique())
         if len(conds) != 3:
-            raise ValueError(f"Expected 3 conditions, but found {len(conds)}: {conds}")
+            raise ValueError(
+                f"Expected 3 conditions, but found {len(conds)}: {conds}")
 
         # 4) 创建一行三列子图，按 widths 比例分配宽度
-        fig, axes = plt.subplots(1, 3, figsize=figsize,
-                                gridspec_kw={'width_ratios': widths},
-                                sharey=True)
+        fig, axes = plt.subplots(1,
+                                 3,
+                                 figsize=figsize,
+                                 gridspec_kw={'width_ratios': widths},
+                                 sharey=True)
 
         # 5) 对每个 condition 画所有被试的 block accuracy 曲线
-        for ax, cond, c in zip(axes, conds, colors):
+        for ax, cond in zip(axes, conds):
             sub_df = blk_acc[blk_acc['condition'] == cond]
-            subs = sorted(sub_df['iSub'].unique())
-            for sid in subs:
+            # 1) count trials per subject (after filtering ambiguous trials)
+            cond_data = learning_data[learning_data['condition'] == cond]
+            trial_counts = cond_data.groupby('iSub').size()
+            # 2) sort subjects by count (ascending)
+            sorted_sids = trial_counts.sort_values().index.tolist()
+
+            # 3) build an 8-entry gradient from magenta to cyan
+            mag_cy = LinearSegmentedColormap.from_list('mag_cy', ['magenta', 'cyan'])
+            color_gradient = [mag_cy(t) for t in np.linspace(0, 1, len(sorted_sids))]
+
+            # 4) plot in order of trial-count
+            for idx, sid in enumerate(sorted_sids):
                 df_sub = sub_df[sub_df['iSub'] == sid]
+                col = color_gradient[idx]
                 ax.plot(df_sub['block'],
                         df_sub['block_accuracy'],
                         alpha=0.6,
                         lw=1,
-                        color=c,
-                        label='Subject lines' if sid == subs[0] else None)
+                        color=col,
+                        label='Subject lines' if idx == 0 else None,
+                        clip_on=False)
+                ax.scatter(df_sub['block'],
+                        df_sub['block_accuracy'],
+                        s=20,
+                        alpha=0.8,
+                        color=col,
+                        clip_on=False)
 
-            ax.set_title(f'Condition {cond}', fontsize=14)
-            ax.set_xlabel('Block Number', fontsize=12)
-            ax.set_xlim(1, df_sub['block'].max())
+            ax.axhline(y=0.9,
+                       color='grey',
+                       linestyle='--',
+                       linewidth=1,
+                       alpha=0.8)
+
+            max_blk = max_blocks[cond]
+            ax.set_xlim(1, max_blk)
+            xticks = np.arange(1, max_blocks[cond] + 1, 2)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xticks, fontsize=15)
+
+            ax.set_title(f'Exp {cond}', fontsize=18, pad=12)
+            ax.set_xlabel('Block', fontsize=18)
             ax.grid(True, axis='y', linestyle='--', alpha=0.3)
 
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(2)
+
         # 6) 全局美化：左侧子图显示 y 轴标签
-        axes[0].set_ylabel('Block-wise Accuracy', fontsize=14)
-        axes[0].legend(fontsize=10, loc='lower right')
+        axes[0].set_ylim(0, 1)
+        axes[0].tick_params(axis='y', labelsize=15)
+        axes[0].set_ylabel('Block-wise Accuracy', fontsize=18)
+
+        # axes.margins(x=0.02, y=0.02)
 
         plt.tight_layout()
 
-        fig.savefig(save_path, dpi=300,
-                    bbox_inches='tight', transparent=True)
+        fig.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.05, transparent=True)
         print(f"Figure saved to {save_path}")
         plt.close(fig)
 
@@ -521,18 +605,23 @@ class Fig1_Acc:
 
 class Fig3:
 
-    def plot_error_comparison(self,
-                              results_1,
-                              results_2,
-                              results_3,
-                              figsize=(6, 5),
-                              color_1='#45B53F',
-                              color_2='#DDAA33',
-                              color_3='#A6A6A6',
-                              label_1='Base',
-                              label_2='Forget',
-                              label_3='Fgt+Jump',
-                              save_path=None):
+    def plot_error_comparison(
+            self,
+            results_1,
+            results_2,
+            results_3,
+            results_4,
+            mc_method='bonferroni',  # 'bonferroni', 'holm', 'fdr_bh', etc.
+            figsize=(6, 5),
+            color_1='#45B53F',
+            color_2='#478ECC',
+            color_3='#DDAA33',
+            color_4='#A6A6A6',
+            label_1='Base',
+            label_2='Jump',
+            label_3='Forget',
+            label_4='Fgt+Jump',
+            save_path=None):
 
         # 计算每个被试的 error
         def compute_errors(results):
@@ -541,63 +630,108 @@ class Fig3:
                 err = np.mean(
                     np.abs(
                         np.array(data['sliding_true_acc']) -
-                        np.array(data['sliding_pred_acc'])
-                    )
-                )
+                        np.array(data['sliding_pred_acc'])))
                 errors[subject_id] = err
             return errors
 
-        errors_1 = compute_errors(results_1)
-        errors_2 = compute_errors(results_2)
-        errors_3 = compute_errors(results_3)
+        errors = [
+            compute_errors(results_1),
+            compute_errors(results_2),
+            compute_errors(results_3),
+            compute_errors(results_4),
+        ]
 
         df = pd.DataFrame({
-            'Model': ['Model 1'] * len(errors_1) +
-                    ['Model 2'] * len(errors_2) +
-                    ['Model 3'] * len(errors_3),
-            'Error': list(errors_1.values()) +
-                    list(errors_2.values()) +
-                    list(errors_3.values())
+            'Model':
+            sum([[f'Model {i+1}'] * len(errors[i]) for i in range(4)], []),
+            'Error':
+            sum([list(e.values()) for e in errors], [])
         })
-        summary = df.groupby('Model')['Error'].agg(['mean','sem']).reindex(
-            ['Model 1','Model 2','Model 3']
-        ).reset_index()
+        summary = df.groupby('Model')['Error'].agg(['mean', 'sem']).reindex(
+            ['Model 1', 'Model 2', 'Model 3', 'Model 4']).reset_index()
+
+        subs = sorted(
+            set(errors[0]) & set(errors[1]) & set(errors[2]) & set(errors[3]))
+
+        arrs = [np.array([errors[i][sid] for sid in subs]) for i in range(4)]
+
+        raw_ps = []
+        for i in range(3):
+            _, p = ttest_rel(arrs[i], arrs[i + 1])
+            raw_ps.append(p)
+
+        # 5) 多重比较校正
+        reject, p_corrected, _, _ = multipletests(raw_ps,
+                                                  alpha=0.05,
+                                                  method=mc_method)
 
         fig, ax = plt.subplots(figsize=figsize)
-        ax.bar(summary['Model'],
-            summary['mean'],
-            yerr=summary['sem'],
-            color=[color_1, color_2, color_3],
-            capsize=5,
-            width=0.6,
-            edgecolor='black')
+        bars = ax.bar(summary['Model'],
+                      summary['mean'],
+                      yerr=summary['sem'],
+                      color=[color_1, color_2, color_3, color_4],
+                      capsize=5,
+                      width=0.6,
+                      edgecolor='black')
 
-        subs = sorted(set(errors_1) & set(errors_2) & set(errors_3))
-        x_base = np.arange(3)
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), 3))
-
+        # 画连线+散点
+        x_base = np.arange(4)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), 4))
         for i, sid in enumerate(subs):
-            ys = [errors_1[sid], errors_2[sid], errors_3[sid]]
+            ys = [errors[j][sid] for j in range(4)]
             xs = x_base + jitter[i]
-            # 连线
             ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
-            # 散点（只给第一次画点加 legend）
-            ax.scatter(xs, ys,
-                    color='black', alpha=0.6, s=20,
-                    label='Individual Data' if i == 0 else None)
+            ax.scatter(xs,
+                       ys,
+                       color='black',
+                       alpha=0.6,
+                       s=20,
+                       label='Individual Data' if i == 0 else None)
 
-        ax.set_ylabel('Error', fontsize=14)
+        # 7) 在柱子上方添加显著性标注
+        def get_star(p):
+            if p < 0.001: return '***'
+            if p < 0.01: return '**'
+            if p < 0.05: return '*'
+            return 'n.s.'
+
+        y_max = (summary['mean'] + summary['sem']).max()
+        h = y_max * 0.05  # 标注高度增量
+        for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
+            x1, x2 = x_base[i], x_base[i + 1]
+            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                    summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']) + h
+            # 横线
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y],
+                    lw=1.5,
+                    color='black')
+            # 星号或 n.s.
+            ax.text((x1 + x2) / 2,
+                    y + h * 1.1,
+                    get_star(p_corr),
+                    ha='center',
+                    va='bottom',
+                    fontsize=14)
+
+        ax.set_ylabel('Accuracy deviation', fontsize=14)
         ax.set_xlabel('Model', fontsize=14)
-        ax.set_title('Error Comparison Across Models', fontsize=16)
+        # ax.set_title('Accuracy deviation Comparison Across Models', fontsize=16)
         ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1,label_2,label_3], fontsize=12)
+        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.legend()
 
         if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
             print(f"Figure saved to {save_path}")
         plt.close()
+
+        print("Raw p-values:        ", np.round(raw_ps, 4))
+        print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
+        print("Reject null hypotheses:", reject)
 
     def plot_acc_comparison(self,
                             results_1,
@@ -800,4 +934,64 @@ class Fig3D:
                         bbox_inches='tight',
                         transparent=True)
             print(f'[Fig3D] saved → {save_path}')
+        plt.close(fig)
+
+
+class Fig4A:
+
+    def plot_amount(self,
+                    results: Dict[int, Any],
+                    subject_id: int,
+                    window_size: int = 16,
+                    figsize: Tuple[int, int] = (6, 5),
+                    color_1: str = '#DDAA33',
+                    color_2: str = '#DDAA33',
+                    label_1: str = 'Exploitation',
+                    label_2: str = 'Exploration',
+                    save_path: str | None = None):
+
+        # Extract data for the subject
+        step_results = results[subject_id].get('best_step_results', [])
+        random_posterior = [
+            step['best_step_amount']['random_posterior'][0]
+            for step in step_results if 'best_step_amount' in step
+        ]
+        random = [
+            step['best_step_amount']['random'][0]
+            for step in step_results if 'best_step_amount' in step
+        ]
+
+        # Compute rolling averages with a window of 16 trials
+        rolling_exploitation = pd.Series(random_posterior).rolling(window=window_size, min_periods=window_size).mean().to_list()
+        rolling_exploration = pd.Series(random).rolling(window=window_size, min_periods=window_size).mean().to_list()
+        x_vals = np.arange(1, len(random_posterior) + 1)
+
+        # Create the figure and axis
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.patch.set_facecolor('none')
+
+        # Plot the data
+        ax.plot(x_vals, rolling_exploitation, label=label_1, color=color_1, lw=2)
+        ax.plot(x_vals,
+                rolling_exploration,
+                label=label_2,
+                color=color_2,
+                lw=2)
+
+        # Add labels and legend
+        ax.set_xlabel('Trial', fontsize=14)
+        ax.set_ylabel('Amount', fontsize=14)
+        ax.legend(fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.5)
+
+        # Adjust layout
+        fig.tight_layout()
+
+        # Save or show the plot
+        if save_path:
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
+            print(f"Figure saved to {save_path}")
         plt.close(fig)
