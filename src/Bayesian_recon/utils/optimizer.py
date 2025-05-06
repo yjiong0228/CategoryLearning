@@ -186,7 +186,10 @@ class Optimizer(object):
             }
         return fitting_results
 
-    def save_results(self, results: Dict, name: str, output_dir: str = os.getcwd()) -> None:
+    def save_results(self,
+                     results: Dict,
+                     name: str,
+                     output_dir: str = os.getcwd()) -> None:
         """
         Save the optimization results to a file.
 
@@ -194,13 +197,14 @@ class Optimizer(object):
             results (Dict): The optimization results to save.
             output_name (str): The name to save the results.
         """
-        for iSub, subject_info in results.items():            
+        for iSub, subject_info in results.items():
             cache_path = os.path.join(output_dir, "cache", name, f"{iSub}.gz")
             if not os.path.exists(os.path.dirname(cache_path)):
                 os.makedirs(os.path.dirname(cache_path))
             raw_step_results = StreamList(cache_path, 0)
             raw_step_results.extend(subject_info['raw_step_results'])
-            subject_info['raw_step_results'] = (cache_path, len(raw_step_results))
+            subject_info['raw_step_results'] = (cache_path,
+                                                len(raw_step_results))
         output_path = os.path.join(output_dir, f'{name}.joblib')
         with open(output_path, 'wb') as f:
             joblib.dump(results, f)
@@ -217,7 +221,8 @@ class Optimizer(object):
             results = joblib.load(f)
         for iSub, subject_info in results.items():
             cache_path = subject_info['raw_step_results'][0]
-            raw_step_results = StreamList(cache_path, subject_info['raw_step_results'][1])
+            raw_step_results = StreamList(cache_path,
+                                          subject_info['raw_step_results'][1])
             subject_info['raw_step_results'] = raw_step_results
         logger.info(f"Results loaded from {input_path}")
         return results
@@ -591,6 +596,7 @@ class Optimizer(object):
     def plot_cluster_amount(self,
                             results: Dict,
                             subjects: Optional[List[str]] = None,
+                            window_size: int = 16,
                             save_path: str = None,
                             **kwargs) -> None:
         if subjects is not None:
@@ -613,10 +619,9 @@ class Optimizer(object):
         n_rows = n_conditions
 
         g = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        g.suptitle('Posterior Probabilities for k by Subject',
+        g.suptitle('Strategy Amount by Subject',
                    fontsize=kwargs.get("fontsize", 16),
                    y=kwargs.get("y", 0.99))
-        limit = kwargs.get("limit", True)
 
         # 按 condition 绘制子图
         for row_idx, (condition,
@@ -624,63 +629,106 @@ class Optimizer(object):
             for col_idx, (iSub, subject_info) in enumerate(subjects):
                 step_results = subject_info['best_step_results']
 
+                random_posterior = [
+                    step['best_step_amount']['random_posterior'][0]
+                    for step in step_results if 'best_step_amount' in step
+                ]
+                random = [
+                    step['best_step_amount']['random'][0]
+                    for step in step_results if 'best_step_amount' in step
+                ]
+
+                # Compute rolling averages with a window of 16 trials
+                rolling_exploitation = pd.Series(random_posterior).rolling(
+                    window=window_size,
+                    min_periods=window_size).mean().to_list()
+                rolling_exploration = pd.Series(random).rolling(
+                    window=window_size,
+                    min_periods=window_size).mean().to_list()
+                x_vals = np.arange(1, len(random_posterior) + 1)
+
                 plt.subplot(n_rows, n_cols, row_idx * n_cols + col_idx + 1)
 
-                if limit:
-                    max_k = 19 if condition == 1 else 116
-                    data = []
-                    for step, result in enumerate(step_results):
-                        for k in range(max_k):
-                            if k in result['hypo_details']:
-                                data.append({
-                                    'Step':
-                                    step + 1,
-                                    'k':
-                                    k,
-                                    'Posterior':
-                                    result['hypo_details'][k]['post_max']
-                                })
-                    df = pd.DataFrame(data)
+                plt.plot(x_vals,
+                         rolling_exploitation,
+                         label='Exploitation',
+                         color='#F39972',
+                         lw=2)
+                plt.plot(x_vals,
+                         rolling_exploration,
+                         label='Exploration',
+                         color='#A4A0B7',
+                         lw=2)
 
-                else:
-                    max_k = max(k for result in step_results
-                                for k in result['hypo_details'].keys())
-                    data = []
-                    for step, result in enumerate(step_results):
-                        for k in range(max_k):
-                            if k in result['hypo_details']:
-                                data.append({
-                                    'Step':
-                                    step + 1,
-                                    'k':
-                                    k,
-                                    'Posterior':
-                                    result['hypo_details'][k]['post_max']
-                                })
-                    df = pd.DataFrame(data)
-
-                sns.scatterplot(data=df,
-                                x='Step',
-                                y='Posterior',
-                                hue='k',
-                                palette='tab10',
-                                alpha=0.5,
-                                legend=False)
-
-                highlight_k = 0 if condition == 1 else 42
-                highlight_data = df[df['k'] == highlight_k]
-                sns.scatterplot(
-                    data=highlight_data,
-                    x='Step',
-                    y='Posterior',
-                    color='red',
-                    s=50,
-                )
                 plt.title(f'Subject {iSub} (Condition {condition})')
-                plt.xlabel('Trail')
-                plt.ylabel('Posterior Probability')
+                plt.xlabel('Trial')
+                plt.ylabel('Amount')
 
         plt.tight_layout()
         if save_path:
             g.savefig(save_path)
-            logger.info(f"Posterior probabilities saved to {save_path}")
+            logger.info(f"Amount saved to {save_path}")
+
+
+
+    def _find_crossings(self, exp: np.ndarray, explor: np.ndarray) -> list[int]:
+        """
+        找到 exp 与 explor 曲线的所有交点（横坐标，取最近整数）。
+        """
+        diff = exp - explor
+        crossings = []
+        for i in range(len(diff)-1):
+            # 如果正好落在某个点
+            if diff[i] == 0:
+                crossings.append(i+1)
+            # 如果两点符号相反，则在 i→i+1 之间有一次交点
+            elif diff[i] * diff[i+1] < 0:
+                # 线性插值位置：diff[i] + t*(diff[i+1]-diff[i]) = 0
+                t = diff[i] / (diff[i] - diff[i+1])
+                x_cross = (i+1) + t
+                crossings.append(int(round(x_cross)))
+        return crossings
+
+    def compute_crossing_metrics(self, results: dict,
+                                window_size: int = 16) -> pd.DataFrame:
+        """
+        对每个被试，计算第一/最后一次交点的 x 轴位置，并输出差值。
+        """
+        rows = []
+        for iSub, subject_info in results.items():
+            steps = subject_info['best_step_results']
+            rand_post = [st['best_step_amount']['random_posterior'][0]
+                        for st in steps if 'best_step_amount' in st]
+            rand_expl = [st['best_step_amount']['random'][0]
+                        for st in steps if 'best_step_amount' in st]
+
+            exp = pd.Series(rand_post).rolling(window=window_size,
+                                            min_periods=window_size).mean().to_numpy()
+            explor = pd.Series(rand_expl).rolling(window=window_size,
+                                                min_periods=window_size).mean().to_numpy()
+
+            # trim 开头那些 < window_size 的 NaN
+            valid_idx = ~np.isnan(exp) & ~np.isnan(explor)
+            exp = exp[valid_idx]
+            explor = explor[valid_idx]
+
+            xs = np.arange(1, len(exp) + 1)
+            crossings = self._find_crossings(exp, explor)
+
+            if crossings:
+                first = crossings[0]
+                last = crossings[-1]
+                delta = last - first
+            else:
+                first = last = delta = np.nan
+
+            rows.append({
+                'Subject': iSub,
+                'FirstCross': first,
+                'LastCross':  last,
+                'Span':       delta
+            })
+
+        df = pd.DataFrame(rows).set_index('Subject')
+        return df
+
