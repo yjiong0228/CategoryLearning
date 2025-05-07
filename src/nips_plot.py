@@ -734,15 +734,12 @@ class Fig3:
         print("Reject null hypotheses:", reject)
 
     def plot_acc_comparison(self,
-                            results_1,
-                            results_2,
+                            results,
                             subject_id,
+                            label,
+                            color,
                             figsize=(15, 5),
-                            color_1='#45B53F',
-                            color_2='#DDAA33',
                             color_true='#A6A6A6',
-                            label_1='Model 1',
-                            label_2='Model 2',
                             save_path=None):
         # 基础设置
         fig, ax = plt.subplots(figsize=figsize)
@@ -751,19 +748,17 @@ class Fig3:
         x_vals = None
 
         # 真实准确率
-        true_acc = padding + list(results_1[subject_id]['sliding_true_acc'])
+        true_acc = padding + list(results[subject_id]['sliding_true_acc'])
         x_vals = np.arange(1, len(true_acc) + 1)
         ax.plot(x_vals, true_acc, label='Human', color=color_true, linewidth=2)
 
-        # 循环绘制预测结果
-        for results, label, color in ((results_1, label_1, color_1),
-                                      (results_2, label_2, color_2)):
-            pred = padding + list(results[subject_id]['sliding_pred_acc'])
-            std = padding + list(results[subject_id]['sliding_pred_acc_std'])
-            ax.plot(x_vals, pred, label=label, color=color, linewidth=2)
-            low = np.array(pred) - np.array(std)
-            high = np.array(pred) + np.array(std)
-            ax.fill_between(x_vals, low, high, color=color, alpha=0.4)
+        # 绘制预测结果
+        pred = padding + list(results[subject_id]['sliding_pred_acc'])
+        std = padding + list(results[subject_id]['sliding_pred_acc_std'])
+        ax.plot(x_vals, pred, label=label, color=color, linewidth=2)
+        low = np.array(pred) - np.array(std)
+        high = np.array(pred) + np.array(std)
+        ax.fill_between(x_vals, low, high, color=color, alpha=0.4)
 
         # 辅助元素
         add_segmentation_lines(ax,
@@ -774,7 +769,6 @@ class Fig3:
                                linestyle='--',
                                linewidth=1)
         style_axis(ax, show_ylabel=True, xtick_interval=128)
-        # annotate_label(ax, f"S{subject_id}")
         ax.legend()
         fig.tight_layout()
 
@@ -836,15 +830,15 @@ class Fig3D:
 
     def plot_k_comparison(self,
                           oral_hypo_hits: Dict[int, Dict[str, Any]],
-                          results_1: Dict[int, Any],
-                          results_2: Dict[int, Any],
+                          results: Dict[int, Any],
+                        #   results_2: Dict[int, Any],
                           subject_id: int,
                           figsize: Tuple[int, int] = (6, 5),
-                          color_1: str = '#45B53F',
-                          color_2: str = '#DDAA33',
+                          color: str = '#45B53F',
+                        #   color_2: str = '#DDAA33',
                           color_true: str = '#4C7AD1',
-                          label_1: str = 'Model 1',
-                          label_2: str = 'Model 2',
+                          label: str = 'Model 1',
+                        #   label_2: str = 'Model 2',
                           save_path: str | None = None):
         """
         Overlay (i) the subject’s distance-to-prototype trajectory and
@@ -898,18 +892,18 @@ class Fig3D:
 
         condition = odict['condition']
         k_special = 0 if condition == 1 else 42
-        ma1 = _extract_ma(results_1[subject_id], k_special)
+        ma1 = _extract_ma(results[subject_id], k_special)
         ax.plot(x_vals[:len(ma1)],
                 ma1,
                 lw=3,
-                color=color_1,
-                label=f'{label_1}: k={k_special}')
-        ma2 = _extract_ma(results_2[subject_id], k_special)
-        ax.plot(x_vals[:len(ma2)],
-                ma2,
-                lw=3,
-                color=color_2,
-                label=f'{label_2}: k={k_special}')
+                color=color,
+                label=f'{label}: k={k_special}')
+        # ma2 = _extract_ma(results_2[subject_id], k_special)
+        # ax.plot(x_vals[:len(ma2)],
+        #         ma2,
+        #         lw=3,
+        #         color=color_2,
+        #         label=f'{label_2}: k={k_special}')
 
         # ---------- cosmetics ----------------------------------------------------
         add_segmentation_lines(ax,

@@ -94,6 +94,12 @@ class BaseCluster(BaseModule):
 
         return _amount_accuracy_static
 
+    @classmethod
+    def _amount_opposite_random_gen(cls, max_amount=7):
+        base_rand = cls._amount_random_gen(max_amount)
+        def _opposite_random(posterior: Dict, max_amount=max_amount, **kwargs) -> int:
+            return max_amount - base_rand(posterior, max_amount=max_amount, **kwargs)
+        return _opposite_random
 
 
 class PartitionCluster(BaseCluster):
@@ -122,6 +128,7 @@ class PartitionCluster(BaseCluster):
         "random_5": BaseCluster._amount_random_gen(5),
         "random_6": BaseCluster._amount_random_gen(6),
         "random_7": BaseCluster._amount_random_gen(7),
+        "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
     }
 
     def __init__(self, model, cluster_config: Dict = {}, **kwargs):
