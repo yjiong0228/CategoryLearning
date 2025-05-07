@@ -8,204 +8,160 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Dict
-from tqdm import tqdm
+import pandas as pd
+from typing import Optional, List, Dict
+from collections import defaultdict
+from matplotlib import pyplot as plt
+import matplotlib.ticker as mticker
+import seaborn as sns
+import numpy as np
+import logging
+logger = logging.getLogger(__name__)
 
 
 class ModelEval:
-    # plot parameters over trials
-    def plot_params_over_trials(self,
-                                results: Dict,
-                                params: str,
-                                save_path: str = None):
-        """
-        Plots specified parameter over trials for a given subject.
+    @staticmethod
+    def _filter_results(results, subjects):
+        if subjects is not None:
+            return {iSub: results[iSub] for iSub in subjects if iSub in results}
+        return results
 
-        Args:
-            step_results (list of dict): List of dictionaries containing parameter values for each trial.
-            params (str): The parameter to plot (e.g., 'k', 'beta').
-        """
+    def _plot_by_condition(self, results, subjects, save_path, title, plot_body, **kwargs):
+        # Filter and group
+        results = self._filter_results(results, subjects)
+        grouped = defaultdict(list)
+        for iSub, info in results.items():
+            grouped[info['condition']].append((iSub, info))
 
-        n_subjects = len(results)
-        n_rows = 3
-        n_cols = (n_subjects + n_rows - 1) // n_rows
+        # Layout
+        n_rows = len(grouped)
+        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        fig.suptitle(title, fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
-        fig = plt.figure(figsize=(8 * n_cols, 5 * n_rows))
-        fig.suptitle(f'{params}_over_trials by Subject', fontsize=16, y=0.99)
-
-        sorted_subjects = sorted(results.keys())
-
-        for idx, iSub in tqdm(enumerate(sorted_subjects)):
-            subject_info = results[iSub]
-            step_results = subject_info['step_results']
-            condition = subject_info['condition']
-
-            row = idx % n_rows
-            col = idx // n_rows
-            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
-
-            num_steps = len(step_results)
-            param_values = [result[params] for result in step_results]
-
-            ax.plot(range(1, num_steps + 1), param_values, marker='o')
-
-            ax.set_title(f'Subject {iSub} (Condition {condition})')
-            ax.set_xlabel('Trial')
-            ax.set_ylabel(f'{params} value')
+        # Subplots
+        for row, (condition, subs) in enumerate(sorted(grouped.items())):
+            for col, (iSub, info) in enumerate(subs):
+                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+                plot_body(ax, condition, iSub, info)
 
         plt.tight_layout()
         if save_path:
-            plt.savefig(save_path)
-        plt.close()
+            fig.savefig(save_path)
+            logger.info(f"{title} saved to {save_path}")
 
-    def plot_posterior_probabilities(self,
-                                     results: Dict,
-                                     limit: bool,
-                                     save_path: str = None):
-        n_subjects = len(results)
-        n_rows = 3
-        n_cols = (n_subjects + n_rows - 1) // n_rows
-
-        fig = plt.figure(figsize=(8 * n_cols, 5 * n_rows))
-        fig.suptitle('Posterior Probabilities for k by Subject',
-                     fontsize=16,
-                     y=0.99)
-
-        sorted_subjects = sorted(results.keys())
-
-        for idx, iSub in tqdm(enumerate(sorted_subjects)):
-            subject_info = results[iSub]
-            step_results = subject_info['step_results']
-            condition = subject_info['condition']
-
-            row = idx % n_rows
-            col = idx // n_rows
-            ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
-
-            num_steps = len(step_results)
-
-            if limit:
-                max_k = 19 if condition == 1 else 116
-                k_posteriors = {k: [] for k in range(max_k)}
-
-                for step, result in enumerate(step_results):
-                    for k in range(max_k):
-                        if k in result['hypo_details']:
-                            k_posteriors[k].append(
-                                (step + 1,
-                                 result['hypo_details'][k]['post_max']))
-
+    def plot_posterior_probabilities(self, results, subjects=None, save_path=None, limit=True, **kwargs):
+        def body(ax, condition, iSub, info):
+            step_results = info.get('step_results', info.get('best_step_results', []))
+            max_k = (19 if condition == 1 else 116) if limit else \
+                    max(k for sr in step_results for k in sr['hypo_details'])
+            data = []
+            for step, res in enumerate(step_results):
                 for k in range(max_k):
-                    if k_posteriors[k]:
-                        steps, values = zip(*k_posteriors[k])
-                        if (condition == 1 and k == 0) or (condition != 1
-                                                           and k == 42):
-                            ax.scatter(steps,
-                                       values,
-                                       color='red',
-                                       s=50,
-                                       label=f'k={k}')
-                        else:
-                            ax.scatter(steps,
-                                       values,
-                                       label=f'k={k}',
-                                       alpha=0.5)
-            else:
-                max_k = max(k for result in step_results
-                            for k in result['hypo_details'].keys())
+                    if k in res['hypo_details']:
+                        data.append({'Step': step + 1, 'k': k, 'Posterior': res['hypo_details'][k]['post_max']})
+            df = pd.DataFrame(data)
+            sns.scatterplot(data=df, x='Step', y='Posterior', hue='k', palette='tab10', alpha=0.5, legend=False, ax=ax)
+            hk = 0 if condition == 1 else 42
+            sns.scatterplot(data=df[df['k'] == hk], x='Step', y='Posterior', color='red', s=50, ax=ax)
+            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
 
-                k_posteriors = {
-                    k: np.zeros(num_steps)
-                    for k in range(0, max_k)
-                }
-                for step, result in enumerate(step_results):
-                    for k in range(0, max_k):
-                        k_posteriors[k][step] = result['hypo_details'][k][
-                            'post_max']
+        self._plot_by_condition(results, subjects, save_path,
+                                'Posterior Probabilities for k by Subject', body, **kwargs)
 
-                for k in range(0, max_k):
-                    if (condition == 1 and k == 0) or (condition != 1
-                                                       and k == 42):
-                        ax.plot(range(1, num_steps + 1),
-                                k_posteriors[k],
-                                linewidth=3,
-                                color='red',
-                                label=f'k={k}')
-                    else:
-                        ax.plot(range(1, num_steps + 1),
-                                k_posteriors[k],
-                                label=f'k={k}',
-                                alpha=0.5)
+    def plot_k_oral_comparison(self, model_results, oral_results, subjects=None, save_path=None, window_size=16, **kwargs):
+        def extract_ma(step_results, k_special, win):
+            posts = []
+            for sr in step_results:
+                p = sr['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                try:
+                    p = float(p)
+                except:
+                    p = 0.0
+                posts.append(p)
+            return pd.Series(posts).rolling(window=win, min_periods=win).mean().to_numpy()
 
-            ax.set_title(f'Subject {iSub} (Condition {condition})')
-            ax.set_xlabel('Trial')
-            ax.set_ylabel('Posterior Probability')
+        # Filter both dicts
+        model_res = self._filter_results(model_results, subjects)
+        oral_res = self._filter_results(oral_results, subjects)
+
+        # Group by condition from true_res
+        grouped = defaultdict(list)
+        for iSub, info in model_res.items():
+            grouped[info['condition']].append(iSub)
+
+        n_rows = len(grouped)
+        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        fig.suptitle('True k vs Oral K by Subject', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
+
+        for row, (condition, subs) in enumerate(sorted(grouped.items())):
+            for col, iSub in enumerate(subs):
+                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+                # Model k
+                info = model_res[iSub]
+                sr = info.get('step_results', info.get('best_step_results', []))
+                ks = 0 if condition == 1 else 42
+                ma = extract_ma(sr, ks, window_size)
+                x_ma = np.arange(1, len(ma) + 1)
+                ax.plot(x_ma[:len(ma)], ma, lw=2, label='Model k')
+                # Oral K
+                oral_hits = oral_res[iSub]['rolling_hits']
+                x_oral = np.arange(1, len(oral_hits) + 1)
+                ax.plot(x_oral, oral_hits, lw=2, label='Oral K')
+                ax.set_ylim(0, 1)
+                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Value')
+                ax.legend()
 
         plt.tight_layout()
         if save_path:
-            plt.savefig(save_path)
-        plt.show()
-
-    def plot_accuracy_comparison(self, results: Dict, save_path: str = None):
-        """
-        Plots predicted and true accuracy for each subject.
-
-        Args:
-            results (Dict): Dictionary containing accuracy results for each subject.
-            save_path (str): Path to save the plot. If None, the plot will be shown.
-        """
-        n_subjects = len(results)
-        if n_subjects == 1:
-            n_rows = 1
-            n_cols = 1
-        else:
-            n_rows = 3
-            n_cols = (n_subjects + n_rows - 1) // n_rows
-
-        fig, axes = plt.subplots(n_rows,
-                                 n_cols,
-                                 figsize=(8 * n_cols, 5 * n_rows))
-        fig.suptitle('Predicted vs True Accuracy by Subject',
-                     fontsize=16,
-                     y=0.99)
-
-        sorted_subjects = sorted(results.keys())
-
-        for idx, iSub in tqdm(enumerate(sorted_subjects)):
-            if n_subjects == 1:
-
-                ax = axes
-
-            else:
-                row = idx % n_rows
-                col = idx // n_rows
-                ax = axes[row, col]
-
-            sliding_true_acc = results[iSub]['sliding_true_acc']
-            sliding_pred_acc = results[iSub]['sliding_pred_acc']
-            sliding_pred_acc_std = results[iSub]['sliding_pred_acc_std']
-
-            condition = results[iSub].get('condition', 'Unknown')
-
-            ax.plot(sliding_pred_acc, label='Predicted Accuracy', color='blue')
-            lower_bound = np.array(sliding_pred_acc) - np.array(
-                sliding_pred_acc_std)
-            upper_bound = np.array(sliding_pred_acc) + np.array(
-                sliding_pred_acc_std)
-            ax.fill_between(range(len(sliding_pred_acc)),
-                            lower_bound,
-                            upper_bound,
-                            color='blue',
-                            alpha=0.2,
-                            label='Predicted Accuracy ± Std')
-            ax.plot(sliding_true_acc, label='True Accuracy', color='orange')
-
+            fig.savefig(save_path)
+            logger.info(f"Model k vs Oral K comparison saved to {save_path}")
+            
+    def plot_accuracy_comparison(self, results, subjects=None, save_path=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            t = info['sliding_true_acc']
+            p = info['sliding_pred_acc']
+            std = info['sliding_pred_acc_std']
+            df = pd.DataFrame({'Trial': range(len(p)), 'Pred': p, 'True': t,
+                               'Low': np.array(p) - std, 'High': np.array(p) + std})
+            sns.lineplot(data=df, x='Trial', y='Pred', label='Predicted', ax=ax)
+            sns.lineplot(data=df, x='Trial', y='True', label='True', ax=ax)
+            ax.fill_between(df['Trial'], df['Low'], df['High'], alpha=0.2)
             ax.set_ylim(0, 1)
-            ax.set_title(f'Subject {iSub} (Condition {condition})')
-            ax.set_xlabel('Trial')
-            ax.set_ylabel('Accuracy')
+            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Accuracy')
             ax.legend()
 
-        plt.tight_layout()
-        if save_path:
-            plt.savefig(save_path)
-        plt.show()
+        self._plot_by_condition(results, subjects, save_path,
+                                'Predicted vs True Accuracy by Subject', body, **kwargs)
+
+    def plot_error_grids(self, results, subjects=None, field_names=None, save_path=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            fname = field_names or list(self.optimize_params_dict.keys())[:2]
+            data = [{'Param1': params[0], 'Param2': params[1], 'Error': err}
+                    for params, err in info['grid_errors'].items()]
+            df = pd.DataFrame(data)
+            em = df.pivot_table(index='Param1', columns='Param2', values='Error')
+            sns.heatmap(em, cbar_kws={'label': 'Error'}, ax=ax)
+            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel=fname[1], ylabel=fname[0])
+            ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.4f'))
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+
+        self._plot_by_condition(results, subjects, save_path,
+                                'Grid Search Error by Subject', body, **kwargs)
+
+    def plot_cluster_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            steps = info.get('best_step_results', [])
+            vals = [s['best_step_amount']['random_posterior'][0] for s in steps if 'best_step_amount' in s]
+            r = [s['best_step_amount']['random'][0] for s in steps if 'best_step_amount' in s]
+            re = pd.Series(vals).rolling(window=window_size, min_periods=window_size).mean()
+            ex = pd.Series(r).rolling(window=window_size, min_periods=window_size).mean()
+            x = np.arange(1, len(vals) + 1)
+            ax.plot(x, re, label='Exploitation', lw=2)
+            ax.plot(x, ex, label='Exploration', lw=2)
+            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Amount')
+            ax.legend()
+
+        self._plot_by_condition(results, subjects, save_path,
+                                'Strategy Amount by Subject', body, **kwargs)
