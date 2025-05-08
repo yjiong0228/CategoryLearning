@@ -603,9 +603,9 @@ class Fig1_Acc:
 
 
 
-class Fig3:
+class Fig3_Group:
 
-    def plot_error_comparison(
+    def plot_group_acc_error(
             self,
             results_1,
             results_2,
@@ -733,6 +733,311 @@ class Fig3:
         print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
         print("Reject null hypotheses:", reject)
 
+    def plot_group_k_corr(self,
+                          oral_hypo_hits,
+                          results_1,
+                          results_2,
+                          results_3,
+                          results_4,
+                          mc_method='bonferroni',
+                          figsize=(6, 5),
+                          color_1='#45B53F',
+                          color_2='#478ECC',
+                          color_3='#DDAA33',
+                          color_4='#A6A6A6',
+                          label_1='Base',
+                          label_2='Jump',
+                          label_3='Forget',
+                          label_4='Fgt+Jump',
+                          save_path=None):
+        """
+        绘制四个模型在rolling_hits与模型移动平均之间相关度的组水平对比。
+
+        参数：
+        - oral_hypo_hits: dict, 每个被试的真实rolling_hits和condition信息
+        - results_1..4: dict, 四个模型的step_results或best_step_results
+        - mc_method: 多重比较校正方法
+        - color_* / label_*: 各模型颜色与标签
+        - save_path: 保存路径
+        """
+
+        # ---------- 移动平均提取函数 ----------
+        def _extract_ma(step_dict, k_special, win=16):
+            step_res = step_dict.get('step_results',
+                                     step_dict.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special,
+                                                {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
+
+        # ---------- 计算每个被试的相关度 ----------
+        def compute_k_corrs(results):
+            corrs = {}
+            for subject_id, odict in oral_hypo_hits.items():
+                if subject_id not in results:
+                    continue
+                rolling_hits = np.array(odict['rolling_hits'], dtype=float)
+                condition = odict['condition']
+                k_special = 0 if condition == 1 else 42
+                ma = _extract_ma(results[subject_id], k_special)
+                n = min(len(rolling_hits), len(ma))
+                x = rolling_hits[:n]
+                y = ma[:n]
+                valid = ~np.isnan(y)
+                if valid.sum() < 2 or np.nanstd(x[valid]) == 0 or np.nanstd(
+                        y[valid]) == 0:
+                    corrs[subject_id] = np.nan
+                else:
+                    corrs[subject_id] = np.corrcoef(x[valid], y[valid])[0, 1]
+            return corrs
+
+        # 四个模型相关度字典
+        corrs_list = [
+            compute_k_corrs(results_1),
+            compute_k_corrs(results_2),
+            compute_k_corrs(results_3),
+            compute_k_corrs(results_4),
+        ]
+
+        # 构建DataFrame并计算mean与sem
+        df = pd.DataFrame({
+            'Model':
+            sum([[f'Model {i+1}'] * len(corrs_list[i]) for i in range(4)], []),
+            'Correlation':
+            sum([list(c.values()) for c in corrs_list], [])
+        })
+        summary = df.groupby('Model')['Correlation'].agg(
+            ['mean',
+             'sem']).reindex(['Model 1', 'Model 2', 'Model 3',
+                              'Model 4']).reset_index()
+
+        # 取共有被试
+        shared_subs = sorted(
+            set(corrs_list[0]) & set(corrs_list[1]) & set(corrs_list[2])
+            & set(corrs_list[3]))
+        arrs = [
+            np.array([corrs_list[i][sid] for sid in shared_subs])
+            for i in range(4)
+        ]
+
+        # 统计检验（配对 t 检验）
+        raw_ps = []
+        for i in range(3):
+            _, p = ttest_rel(arrs[i], arrs[i + 1])
+            raw_ps.append(p)
+        reject, p_corrected, _, _ = multipletests(raw_ps,
+                                                  alpha=0.05,
+                                                  method=mc_method)
+
+        # ---------- 绘图 ----------
+        fig, ax = plt.subplots(figsize=figsize)
+        bars = ax.bar(summary['Model'],
+                      summary['mean'],
+                      yerr=summary['sem'],
+                      color=[color_1, color_2, color_3, color_4],
+                      capsize=5,
+                      width=0.6,
+                      edgecolor='black')
+        # 个体连线与散点
+        x_base = np.arange(4)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), 4))
+        for i, sid in enumerate(shared_subs):
+            ys = [corrs_list[j][sid] for j in range(4)]
+            xs = x_base + jitter[i]
+            ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
+            ax.scatter(xs,
+                       ys,
+                       color='black',
+                       alpha=0.6,
+                       s=20,
+                       label='Individual Data' if i == 0 else None)
+
+        # 显著性标注函数
+        def get_star(p):
+            if p < 0.001:
+                return '***'
+            if p < 0.01:
+                return '**'
+            if p < 0.05:
+                return '*'
+            return 'n.s.'
+
+        # 添加显著性标注
+        y_max = (summary['mean'] + summary['sem']).max()
+        h = y_max * 0.05
+        for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
+            x1, x2 = x_base[i], x_base[i + 1]
+            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                    summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']) + h
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y],
+                    lw=1.5,
+                    color='black')
+            ax.text((x1 + x2) / 2,
+                    y + h * 1.1,
+                    get_star(p_corr),
+                    ha='center',
+                    va='bottom',
+                    fontsize=14)
+
+        # 坐标与标签
+        ax.set_ylabel('Correlation coefficient', fontsize=14)
+        ax.set_xlabel('Model', fontsize=14)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.legend()
+
+        # 保存与输出
+        if save_path:
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
+            print(f"Figure saved to {save_path}")
+            plt.close()
+        print("Raw p-values:        ", np.round(raw_ps, 4))
+        print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
+        print("Reject null hypotheses:", reject)
+
+    def plot_group_aic(self,
+                       results_1,
+                       results_2,
+                       results_3,
+                       results_4,
+                       mc_method='bonferroni',
+                       figsize=(6, 5),
+                       color_1='#45B53F',
+                       color_2='#478ECC',
+                       color_3='#DDAA33',
+                       color_4='#A6A6A6',
+                       label_1='Base',
+                       label_2='Jump',
+                       label_3='Forget',
+                       label_4='Fgt+Jump',
+                       save_path=None):
+        """
+        计算并绘制四个模型的AIC对比。
+        """
+
+        def compute_aic(results, extra_params=0):
+            aics = {}
+            for subject_id, res in results.items():
+                step_res = res.get('step_results',
+                                   res.get('best_step_results', []))
+                ll_vals = []
+                for step in step_res:
+                    ll = step.get('best_log_likelihood', 0.0)
+                    try:
+                        ll = float(ll)
+                    except:
+                        ll = 0.0
+                    ll_vals.append(ll)
+                total_ll = np.mean(ll_vals)
+                k = 2 + extra_params
+                aics[subject_id] = 2 * k - 2 * total_ll
+            return aics
+
+        extras = [0, 0, 2, 2]
+        aic_list = [
+            compute_aic(results_1, extras[0]),
+            compute_aic(results_2, extras[1]),
+            compute_aic(results_3, extras[2]),
+            compute_aic(results_4, extras[3]),
+        ]
+        df = pd.DataFrame({
+            'Model':
+            sum([[f'Model {i+1}'] * len(aic_list[i]) for i in range(4)], []),
+            'AIC':
+            sum([list(a.values()) for a in aic_list], [])
+        })
+        summary = df.groupby('Model')['AIC'].agg(['mean', 'sem']).reindex(
+            ['Model 1', 'Model 2', 'Model 3', 'Model 4']).reset_index()
+
+        shared = sorted(
+            set(aic_list[0]) & set(aic_list[1]) & set(aic_list[2])
+            & set(aic_list[3]))
+        arrs = [
+            np.array([aic_list[i][sid] for sid in shared]) for i in range(4)
+        ]
+        raw_ps = []
+        for i in range(3):
+            _, p = ttest_rel(arrs[i], arrs[i + 1])
+            raw_ps.append(p)
+        reject, p_corrected, _, _ = multipletests(raw_ps,
+                                                  alpha=0.05,
+                                                  method=mc_method)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.bar(summary['Model'],
+               summary['mean'],
+               yerr=summary['sem'],
+               color=[color_1, color_2, color_3, color_4],
+               capsize=5,
+               width=0.6,
+               edgecolor='black')
+        x_base = np.arange(4)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared), 4))
+        for i, sid in enumerate(shared):
+            ys = [aic_list[j][sid] for j in range(4)]
+            xs = x_base + jitter[i]
+            ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
+            ax.scatter(xs,
+                       ys,
+                       color='black',
+                       alpha=0.6,
+                       s=20,
+                       label='Individual Data' if i == 0 else None)
+
+        def get_star(p):
+            if p < 0.001: return '***'
+            if p < 0.01: return '**'
+            if p < 0.05: return '*'
+            return 'n.s.'
+
+        y_max = (summary['mean'] + summary['sem']).max()
+        h = y_max * 0.05
+        for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
+            x1, x2 = x_base[i], x_base[i + 1]
+            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                    summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']) + h
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y],
+                    lw=1.5,
+                    color='black')
+            ax.text((x1 + x2) / 2,
+                    y + h * 1.1,
+                    get_star(p_corr),
+                    ha='center',
+                    va='bottom',
+                    fontsize=14)
+
+        ax.set_ylabel('AIC', fontsize=14)
+        ax.set_xlabel('Model', fontsize=14)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.legend()
+        if save_path:
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
+            plt.close()
+        print("Raw p-values:", np.round(raw_ps, 4))
+        print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
+        print("Reject:", reject)
+        # print(aic_list)
+
+
+
+class Fig3_Individual:
+
     def plot_acc_comparison(self,
                             results,
                             subject_id,
@@ -782,8 +1087,6 @@ class Fig3:
         plt.close(fig)
 
 
-class Fig3D:
-
     def get_oral_hypos_list(self,
                             data: Tuple[np.ndarray, np.ndarray],
                             model,
@@ -831,14 +1134,11 @@ class Fig3D:
     def plot_k_comparison(self,
                           oral_hypo_hits: Dict[int, Dict[str, Any]],
                           results: Dict[int, Any],
-                        #   results_2: Dict[int, Any],
                           subject_id: int,
                           figsize: Tuple[int, int] = (6, 5),
                           color: str = '#45B53F',
-                        #   color_2: str = '#DDAA33',
                           color_true: str = '#4C7AD1',
                           label: str = 'Model 1',
-                        #   label_2: str = 'Model 2',
                           save_path: str | None = None):
         """
         Overlay (i) the subject’s distance-to-prototype trajectory and
@@ -892,18 +1192,12 @@ class Fig3D:
 
         condition = odict['condition']
         k_special = 0 if condition == 1 else 42
-        ma1 = _extract_ma(results[subject_id], k_special)
-        ax.plot(x_vals[:len(ma1)],
-                ma1,
+        ma = _extract_ma(results[subject_id], k_special)
+        ax.plot(x_vals[:len(ma)],
+                ma,
                 lw=3,
                 color=color,
                 label=f'{label}: k={k_special}')
-        # ma2 = _extract_ma(results_2[subject_id], k_special)
-        # ax.plot(x_vals[:len(ma2)],
-        #         ma2,
-        #         lw=3,
-        #         color=color_2,
-        #         label=f'{label_2}: k={k_special}')
 
         # ---------- cosmetics ----------------------------------------------------
         add_segmentation_lines(ax,
@@ -931,7 +1225,7 @@ class Fig3D:
         plt.close(fig)
 
 
-class Fig4A:
+class Fig4:
 
     def plot_amount(self,
                     results: Dict[int, Any],
