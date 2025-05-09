@@ -4,9 +4,9 @@ import joblib
 from pathlib import Path
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from itertools import product
-from collections import defaultdict
+from collections import defaultdict, UserDict
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
 import seaborn as sns
@@ -24,6 +24,17 @@ PROJECT_ROOT_PATH = Path(os.getcwd()).parent.parent.parent.parent.parent
 DEFAULT_DATA_PATH = Path(PROJECT_ROOT_PATH, "data", "processed", "Task2_processed.csv")
 
 
+class ConstantDict(UserDict):
+    def __init__(self, constant_value):
+        super().__init__()
+        self._constant_value = constant_value
+
+    def __getitem__(self, key):
+        return self._constant_value
+    
+    def get(self, key, default=None):
+        return self._constant_value
+
 class Optimizer(object):
 
     def __init__(self, module_config: dict, n_jobs: int):
@@ -36,17 +47,33 @@ class Optimizer(object):
         """
         self.module_config = module_config
         self.n_jobs = n_jobs
-        self.optimize_params_dict = {}
+        
 
-        modules = {}
-        for key, (mod_cls, mod_kwargs) in self.module_config.items():
-            try:
-                modules[key] = mod_cls(self, **mod_kwargs)
-            except Exception as e:
-                print(f"Error initializing module {key}: {e}")
-        for key, mod in modules.items():
-            if hasattr(mod, 'optimize_params_dict'):
-                self.optimize_params_dict.update(mod.optimize_params_dict)
+        if all(isinstance(key, int) for key in self.module_config.keys()):
+            self.optimize_params_dict = defaultdict(dict)
+            modules = defaultdict(dict)
+            for iSub, config in self.module_config.items():
+                for key, (mod_cls, mod_kwargs) in config.items():
+                    try:
+                        modules[iSub][key] = mod_cls(self, **mod_kwargs)
+                    except Exception as e:
+                        print(f"Error initializing module {key}: {e}")
+                for key, mod in modules[iSub].items():
+                    if hasattr(mod, 'optimize_params_dict'):
+                        self.optimize_params_dict[iSub].update(mod.optimize_params_dict)
+        else:
+            self.optimize_params_dict = {}
+            modules = {}
+            for key, (mod_cls, mod_kwargs) in self.module_config.items():
+                try:
+                    modules[key] = mod_cls(self, **mod_kwargs)
+                except Exception as e:
+                    print(f"Error initializing module {key}: {e}")
+            for key, mod in modules.items():
+                if hasattr(mod, 'optimize_params_dict'):
+                    self.optimize_params_dict.update(mod.optimize_params_dict)
+            self.module_config = ConstantDict(self.module_config)
+            self.optimize_params_dict = ConstantDict(self.optimize_params_dict)
 
     def prepare_data(self, data_path: str = DEFAULT_DATA_PATH):
         """
@@ -61,18 +88,18 @@ class Optimizer(object):
         self,
         model_config: Dict,
         subjects: Optional[List[str]] = None,
-        window_size: int = 16,
-        grid_repeat: int = 5,
-        mc_samples: int = 100,
+        window_size: Union[int, Dict[int, int]] = 16,
+        grid_repeat: Union[int, Dict[int, int]] = 5,
+        mc_samples: Union[int, Dict[int, int]] = 100,
     ) -> Dict:
         """
         Optimize parameters using grid search across subjects in parallel.
         Args:
             model_config (Dict): The model configuration.
             subjects (Optional[List[str]]): List of subjects to optimize for.
-            window_size (int): Size of the sliding window.
-            grid_repeat (int): Number of repetitions for grid search.
-            mc_samples (int): Number of Monte Carlo samples.
+            window_size (Union[int, Dict[int, int]]): Size of the sliding window.
+            grid_repeat (Union[int, Dict[int, int]]): Number of repetitions for grid search.
+            mc_samples (Union[int, Dict[int, int]]): Number of Monte Carlo samples.
         Returns:
             Dict: A dictionary containing the optimization results for each subject.
         """
@@ -82,6 +109,12 @@ class Optimizer(object):
             iSub: self.learning_data[self.learning_data["iSub"] == iSub]
             for iSub in subjects
         }
+        if isinstance(window_size, int):
+            window_size = ConstantDict(window_size)
+        if isinstance(grid_repeat, int):
+            grid_repeat = ConstantDict(grid_repeat)
+        if isinstance(mc_samples, int):
+            mc_samples = ConstantDict(mc_samples)
 
         def process_single_task(iSub, subject_data, **kwargs):
             condition = subject_data["condition"].iloc[0]
@@ -93,31 +126,29 @@ class Optimizer(object):
                       subject_data["category"].values)
 
             model = StandardModel(model_config,
-                                  module_config=self.module_config,
+                                  module_config=self.module_config[iSub],
                                   condition=condition)
 
             grid_params = {}
-            for key in self.optimize_params_dict.keys():
+            for key in self.optimize_params_dict[iSub].keys():
                 grid_params[key] = kwargs[key]
 
             grid_step_results, grid_error = model.compute_error_for_params(
                 s_data,
-                window_size=window_size,
-                repeat=grid_repeat,
+                window_size=window_size[iSub],
+                repeat=grid_repeat[iSub],
                 iSub=iSub,
                 **grid_params)
 
             return iSub, grid_params, grid_error, grid_step_results
 
         all_kwargs = []
-        for task_values in product(subjects,
-                                   *self.optimize_params_dict.values()):
-            iSub = task_values[0]
-            grid_values = task_values[1:]
-            kwargs = dict(zip(self.optimize_params_dict.keys(), grid_values))
-            kwargs['iSub'] = iSub
-            kwargs['subject_data'] = subject_data_map[iSub]
-            all_kwargs.append(kwargs)
+        for iSub in subjects:
+            for values in self.optimize_params_dict[iSub].values():
+                kwargs = dict(zip(self.optimize_params_dict[iSub].keys(), values))
+                kwargs['iSub'] = iSub
+                kwargs['subject_data'] = subject_data_map[iSub]
+                all_kwargs.append(kwargs)
 
         results = Parallel(n_jobs=self.n_jobs, batch_size=1)(
             delayed(process_single_task)(**kwargs)
@@ -158,12 +189,12 @@ class Optimizer(object):
                       subject_data["category"].values)
 
             model = StandardModel(model_config,
-                                  module_config=self.module_config,
+                                  module_config=self.module_config[iSub],
                                   condition=condition)
             all_step_results, all_mean_error = model.compute_error_for_params(
                 s_data,
-                window_size=window_size,
-                repeat=mc_samples,
+                window_size=window_size[iSub],
+                repeat=mc_samples[iSub],
                 multiprocess=True,
                 n_jobs=self.n_jobs,
                 iSub=iSub,
@@ -182,7 +213,7 @@ class Optimizer(object):
                 "best_params": subject_best_combo[iSub]["params"],
                 "best_error": all_mean_error[idx],
                 "best_step_results": all_step_results[idx],
-                # "raw_step_results": all_step_results,
+                "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub],
                 "sample_errors": all_mean_error
             }
@@ -262,7 +293,7 @@ class Optimizer(object):
                       subject_data["feedback"].values,
                       subject_data["category"].values)
             model = StandardModel(model_config,
-                                  module_config=self.module_config,
+                                  module_config=self.module_config[iSub],
                                   condition=condition)
 
             sub_results = self.fitting_results[iSub]
@@ -271,7 +302,7 @@ class Optimizer(object):
             results = model.predict_choice(s_data,
                                            step_results,
                                            use_cached_dist=False,
-                                           window_size=window_size)
+                                           window_size=window_size[iSub])
             predict_result = {
                 'condition': condition,
                 'true_acc': results['true_acc'],
