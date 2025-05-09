@@ -375,6 +375,10 @@ class StandardModel(BaseModel):
             step, such as the best hypothesis, beta, log-likelihood, and posterior.
         """
 
+        if "perception" in self.modules:
+            iSub = kwargs.get("iSub")
+            new_stimulus = self.modules["perception"].sample(iSub, data[0])
+            data = (new_stimulus, data[1], data[2])
         stimulus, _, responses = data
         n_trials = len(responses)
 
@@ -435,7 +439,8 @@ class StandardModel(BaseModel):
                 'best_params': asdict(best_params),
                 'best_log_likelihood': best_ll,
                 'best_norm_posterior': np.max(all_hypo_post),
-                'hypo_details': hypo_details
+                'hypo_details': hypo_details,
+                'perception_stimuli': data[0][step_idx - 1] if "perception" in self.modules else None,
             })
 
             if "cluster" in self.modules:
@@ -495,6 +500,11 @@ class StandardModel(BaseModel):
         for trial_idx in range(1, n_trials):
             trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
                           [responses[trial_idx]], [categories[trial_idx]])
+            
+            if step_results[trial_idx - 1]['perception_stimulus'] is not None:
+                trial_data = list(trial_data)
+                trial_data[0] = step_results[trial_idx - 1]['perception_stimulus']
+                trial_data = tuple(trial_data)
 
             # Extract the posterior probabilities for each hypothesis at last trial
             hypo_details = step_results[trial_idx - 1]['hypo_details']
