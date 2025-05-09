@@ -70,22 +70,41 @@ class ModelEval:
                                 'Posterior Probabilities for k by Subject', body, **kwargs)
 
     def plot_k_oral_comparison(self, model_results, oral_results, subjects=None, save_path=None, window_size=16, **kwargs):
-        def extract_ma(step_results, k_special, win):
+        """
+        Compare smoothed posterior of true k and smoothed oral hits, filtering out empty trials.
+        """
+        def extract_model_ma_filtered(step_results, k_special, valid_idx, win):
             posts = []
             for sr in step_results:
                 p = sr['hypo_details'].get(k_special, {}).get('post_max', 0.0)
                 try:
                     p = float(p)
-                except:
+                except (TypeError, ValueError):
                     p = 0.0
                 posts.append(p)
-            return pd.Series(posts).rolling(window=win, min_periods=win).mean().to_numpy()
+            # filter only valid trials
+            filtered = [posts[i] for i in valid_idx]
+            return pd.Series(filtered, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+
+        def extract_oral_ma_filtered(hits, valid_idx, win):
+            # compute rolling average ignoring empty entries
+            rolling = []
+            n = len(hits)
+            for i in range(n):
+                if i + 1 < win:
+                    rolling.append(np.nan)
+                else:
+                    window = [hits[j] for j in range(i-win+1, i+1) if isinstance(hits[j], (int, float))]
+                    rolling.append(float(np.mean(window)) if window else np.nan)
+            # filter to valid_idx
+            filtered = [rolling[i] for i in valid_idx]
+            return np.array(filtered)
 
         # Filter both dicts
         model_res = self._filter_results(model_results, subjects)
         oral_res = self._filter_results(oral_results, subjects)
 
-        # Group by condition from true_res
+        # Group by condition
         grouped = defaultdict(list)
         for iSub, info in model_res.items():
             grouped[info['condition']].append(iSub)
@@ -93,30 +112,39 @@ class ModelEval:
         n_rows = len(grouped)
         n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        fig.suptitle('True k vs Oral K by Subject', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
+        fig.suptitle('Model k vs Oral k (Filtered & Smoothed)', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
         for row, (condition, subs) in enumerate(sorted(grouped.items())):
             for col, iSub in enumerate(subs):
                 ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
-                # Model k
+
+                # true model posterior
                 info = model_res[iSub]
                 sr = info.get('step_results', info.get('best_step_results', []))
                 ks = 0 if condition == 1 else 42
-                ma = extract_ma(sr, ks, window_size)
-                x_ma = np.arange(1, len(ma) + 1)
-                ax.plot(x_ma[:len(ma)], ma, lw=2, label='Model k')
-                # Oral K
-                oral_hits = oral_res[iSub]['rolling_hits']
-                x_oral = np.arange(1, len(oral_hits) + 1)
-                ax.plot(x_oral, oral_hits, lw=2, label='Oral K')
+                # prepare hits for this subject
+                oral_hits = oral_res[iSub]['hits']
+                # valid trials where hits is numeric
+                valid_idx = [i for i, h in enumerate(oral_hits) if isinstance(h, (int, float))]
+
+                rolling_model = extract_model_ma_filtered(sr, ks, valid_idx, window_size)
+                x_model = np.array(valid_idx)[window_size-1:] + 1
+                ax.plot(x_model, rolling_model[window_size-1:], lw=2, label='Model k', **kwargs)
+
+                # oral smoothed hits
+                rolling_oral = extract_oral_ma_filtered(oral_hits, valid_idx, window_size)
+                x_oral = np.array(valid_idx) + 1
+                ax.plot(x_oral, rolling_oral, lw=2, label='Oral k', **kwargs)
+
                 ax.set_ylim(0, 1)
-                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Value')
+                ax.set(title=f'Subject {iSub} (Cond {condition})', xlabel='Trial', ylabel='Probability')
                 ax.legend()
 
         plt.tight_layout()
         if save_path:
-            fig.savefig(save_path)
-            logger.info(f"Model k vs Oral K comparison saved to {save_path}")
+            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Filtered comparison saved to {save_path}")
+
             
     def plot_accuracy_comparison(self, results, subjects=None, save_path=None, **kwargs):
         def body(ax, condition, iSub, info):

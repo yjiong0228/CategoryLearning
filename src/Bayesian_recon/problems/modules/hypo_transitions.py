@@ -128,6 +128,7 @@ class PartitionCluster(BaseCluster):
         "random_5": BaseCluster._amount_random_gen(5),
         "random_6": BaseCluster._amount_random_gen(6),
         "random_7": BaseCluster._amount_random_gen(7),
+        "opp_random_4": BaseCluster._amount_opposite_random_gen(4),
         "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
     }
 
@@ -413,7 +414,7 @@ class PartitionCluster(BaseCluster):
             }
 
     def cluster_init(self, **kwargs):
-        return self._cluster_strategy_random(10, set(range(self.length)))
+        return self._cluster_strategy_random(3, set(range(self.length)))
 
     def set_cluster_transition_strategy(
         self,
