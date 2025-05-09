@@ -1088,9 +1088,9 @@ class Fig3_Individual:
 
 
     def get_oral_hypos_list(self,
+                            condition: int,
                             data: Tuple[np.ndarray, np.ndarray],
                             model,
-                            top_k: int = 10,
                             dist_tol: float = 1e-9) -> Dict[str, Any]:
 
         oral_centers, choices = data
@@ -1102,34 +1102,42 @@ class Fig3_Individual:
         oral_hypos_list = []
 
         for trial_idx in range(n_trials):
-            cat_idx = choices[trial_idx] - 1
             reported_center = oral_centers[trial_idx]
 
+            # If reported_center is missing or all NaNs, return empty list
+            if reported_center is None \
+            or (isinstance(reported_center, np.ndarray) and reported_center.size == 0) \
+            or (isinstance(reported_center, np.ndarray) and np.all(np.isnan(reported_center))):
+                oral_hypos_list.append([])
+                continue
+
+            cat_idx = choices[trial_idx] - 1
+
+            # Compute distances to each hypothesis prototype
             distance_map = []
             for hypo_idx in all_hypos:
-                # Compare with the (cat_idx)-th category prototype of hypothesis h
-                true_center = model.partition_model.prototypes_np[hypo_idx, 0,
-                                                                  cat_idx, :]
+                true_center = model.partition_model.prototypes_np[hypo_idx, 0, cat_idx, :]
                 distance_val = np.linalg.norm(reported_center - true_center)
                 distance_map.append((distance_val, hypo_idx))
 
-            # Check for exact matches within tolerance
-            exact_matches = [
-                hypo_idx for (dist, hypo_idx) in distance_map
-                if dist <= dist_tol
-            ]
+            # Exact matches within tolerance
+            exact_matches = [h for (d, h) in distance_map if d <= dist_tol]
 
-            if len(exact_matches) > 0:
+            if condition == 1:
+                top_k = 5
+            else:
+                top_k = 10
+
+            if exact_matches:
                 chosen_hypos = exact_matches
             else:
                 distance_map.sort(key=lambda x: x[0])
-                chosen_hypos = [
-                    hypo_idx for (_, hypo_idx) in distance_map[:top_k]
-                ]
+                chosen_hypos = [h for (_, h) in distance_map[:top_k]]
 
             oral_hypos_list.append(chosen_hypos)
 
         return oral_hypos_list
+
 
     def plot_k_comparison(self,
                           oral_hypo_hits: Dict[int, Dict[str, Any]],
@@ -1163,38 +1171,57 @@ class Fig3_Individual:
 
         # ---------- oral-distance curve -----------------------------------------
         odict = oral_hypo_hits[subject_id]
-        rolling_hits = odict['rolling_hits']
-        n_steps = len(rolling_hits)
+        hits = odict['hits']
+        n_steps = len(hits)
         x_vals = np.arange(1, n_steps + 1)
+        win = 16
+
+        # compute rolling_hits, ignoring empty-list entries in each window
+        rolling_hits = []
+        for i in range(n_steps):
+            if i + 1 < win:
+                rolling_hits.append(np.nan)
+            else:
+                window = hits[i-win+1:i+1]
+                # filter out empty entries
+                vals = [h for h in window if isinstance(h, (int, float))]
+                if not vals:
+                    rolling_hits.append(np.nan)
+                else:
+                    rolling_hits.append(float(np.mean(vals)))
 
         ax.plot(x_vals,
-                rolling_hits,
+                hits,
                 lw=3,
                 label='Human',
                 color=color_true)
+        
+        valid_idx = [i for i, h in enumerate(hits) if isinstance(h, (int, float))]
 
         # ---------- posterior curve(s) ------------------------------------------
-        def _extract_ma(results, k_special, win=16):
-            step_res = results.get('step_results',
-                                   results.get('best_step_results', []))
+        def _extract_ma_filtered(results_sub, k_special, valid_idx, win):
+            # get raw posteriors
+            step_res = results_sub.get('step_results', results_sub.get('best_step_results', []))
             post_vals = []
             for step in step_res:
-                post = step['hypo_details'].get(k_special,
-                                                {}).get('post_max', 0.0)
-                # 保底：非数字或 None 一律视为 0
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
                 try:
                     post = float(post)
                 except (TypeError, ValueError):
                     post = 0.0
                 post_vals.append(post)
-            return (pd.Series(post_vals, dtype=float).rolling(
-                window=win, min_periods=win).mean().to_numpy())
+            # filter to only valid trials
+            filtered = [post_vals[i] for i in valid_idx]
+            # compute rolling mean
+            return pd.Series(filtered, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
 
         condition = odict['condition']
         k_special = 0 if condition == 1 else 42
-        ma = _extract_ma(results[subject_id], k_special)
-        ax.plot(x_vals[:len(ma)],
-                ma,
+        rolling_k = _extract_ma_filtered(results[subject_id], k_special, valid_idx, win)
+        # plot posterior aligned to valid x positions
+        x_k = np.array(valid_idx)[win-1:] + 1  # only plot where rolling defined
+        ax.plot(x_k,
+                rolling_k[win-1:],
                 lw=3,
                 color=color,
                 label=f'{label}: k={k_special}')
