@@ -501,9 +501,9 @@ class StandardModel(BaseModel):
             trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
                           [responses[trial_idx]], [categories[trial_idx]])
             
-            if step_results[trial_idx - 1]['perception_stimulus'] is not None:
+            if step_results[trial_idx - 1]['perception_stimuli'] is not None:
                 trial_data = list(trial_data)
-                trial_data[0] = step_results[trial_idx - 1]['perception_stimulus']
+                trial_data[0] = step_results[trial_idx - 1]['perception_stimuli']
                 trial_data = tuple(trial_data)
 
             # Extract the posterior probabilities for each hypothesis at last trial
