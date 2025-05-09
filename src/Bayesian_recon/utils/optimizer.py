@@ -277,7 +277,7 @@ class Optimizer(object):
         Predict the choice probabilities for each subject using the fitted model parameters.
         """
 
-        window_size = kwargs.get("window_size", 16)
+        window_size_arg = kwargs.get("window_size", 16)
         if subjects is None:
             subjects = self.learning_data["subject"].unique()
 
@@ -299,10 +299,20 @@ class Optimizer(object):
             sub_results = self.fitting_results[iSub]
             step_results = sub_results.get(
                 'step_results', sub_results.get('best_step_results'))
+            
+            if isinstance(window_size_arg, dict):
+                ws = window_size_arg.get(iSub, 16)
+            elif isinstance(window_size_arg, (list, tuple)):
+                # 假设 subjects 顺序和 list 对应
+                idx = subjects.index(iSub)
+                ws = window_size_arg[idx]
+            else:
+                ws = window_size_arg 
+
             results = model.predict_choice(s_data,
                                            step_results,
                                            use_cached_dist=False,
-                                           window_size=window_size[iSub])
+                                           window_size=ws)
             predict_result = {
                 'condition': condition,
                 'true_acc': results['true_acc'],

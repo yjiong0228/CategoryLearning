@@ -73,7 +73,7 @@ class ModelEval:
         """
         Compare smoothed posterior of true k and smoothed oral hits, filtering out empty trials.
         """
-        def extract_model_ma_filtered(step_results, k_special, valid_idx, win):
+        def extract_model_ma(step_results, k_special, win):
             posts = []
             for sr in step_results:
                 p = sr['hypo_details'].get(k_special, {}).get('post_max', 0.0)
@@ -82,11 +82,9 @@ class ModelEval:
                 except (TypeError, ValueError):
                     p = 0.0
                 posts.append(p)
-            # filter only valid trials
-            filtered = [posts[i] for i in valid_idx]
-            return pd.Series(filtered, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+            return pd.Series(posts, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
 
-        def extract_oral_ma_filtered(hits, valid_idx, win):
+        def extract_oral_ma(hits, win):
             # compute rolling average ignoring empty entries
             rolling = []
             n = len(hits)
@@ -94,11 +92,10 @@ class ModelEval:
                 if i + 1 < win:
                     rolling.append(np.nan)
                 else:
-                    window = [hits[j] for j in range(i-win+1, i+1) if isinstance(hits[j], (int, float))]
-                    rolling.append(float(np.mean(window)) if window else np.nan)
-            # filter to valid_idx
-            filtered = [rolling[i] for i in valid_idx]
-            return np.array(filtered)
+                    window = hits[i-win+1 : i+1]
+                    vals = [(h if isinstance(h, (int, float)) else 0) for h in window]
+                    rolling.append(float(np.mean(vals)))
+            return np.array(rolling)
 
         # Filter both dicts
         model_res = self._filter_results(model_results, subjects)
@@ -124,15 +121,14 @@ class ModelEval:
                 ks = 0 if condition == 1 else 42
                 # prepare hits for this subject
                 oral_hits = oral_res[iSub]['hits']
-                # valid trials where hits is numeric
-                valid_idx = [i for i, h in enumerate(oral_hits) if isinstance(h, (int, float))]
 
-                rolling_model = extract_model_ma_filtered(sr, ks, valid_idx, window_size)
+                rolling_model = extract_model_ma(sr, ks, window_size)
+                valid_idx = np.arange(len(rolling_model))
                 x_model = np.array(valid_idx)[window_size-1:] + 1
                 ax.plot(x_model, rolling_model[window_size-1:], lw=2, label='Model k', **kwargs)
 
                 # oral smoothed hits
-                rolling_oral = extract_oral_ma_filtered(oral_hits, valid_idx, window_size)
+                rolling_oral = extract_oral_ma(oral_hits, window_size)
                 x_oral = np.array(valid_idx) + 1
                 ax.plot(x_oral, rolling_oral, lw=2, label='Oral k', **kwargs)
 
@@ -163,18 +159,23 @@ class ModelEval:
         self._plot_by_condition(results, subjects, save_path,
                                 'Predicted vs True Accuracy by Subject', body, **kwargs)
 
-    def plot_error_grids(self, results, subjects=None, field_names=None, save_path=None, **kwargs):
+    def plot_error_grids(self, results, subjects=None, fname=None, save_path=None, **kwargs):
         def body(ax, condition, iSub, info):
-            fname = field_names or list(self.optimize_params_dict.keys())[:2]
-            data = [{'Param1': params[0], 'Param2': params[1], 'Error': err}
-                    for params, err in info['grid_errors'].items()]
+            data = []
+            for (g, w0), errs in info['grid_errors'].items():
+                # if errs is already a float, this does nothing
+                err_val = float(np.mean(errs))  # or errs if it’s already scalar
+                data.append({'gamma': g, 'w0': w0, 'Error': err_val})
             df = pd.DataFrame(data)
-            em = df.pivot_table(index='Param1', columns='Param2', values='Error')
+            em = df.pivot(index='gamma', columns='w0', values='Error')
             sns.heatmap(em, cbar_kws={'label': 'Error'}, ax=ax)
-            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel=fname[1], ylabel=fname[0])
-            ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.4f'))
-            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-
+            ax.set(title=f'Subject {iSub} (Condition {condition})',
+                xlabel=fname[1], ylabel=fname[0])
+            ax.set_xticks(np.arange(len(em.columns)) + 0.5)
+            ax.set_xticklabels([f"{v:.4f}" for v in em.columns], rotation=45, ha="right")
+            ax.set_yticks(np.arange(len(em.index)) + 0.5)
+            ax.set_yticklabels([f"{v:.2f}" for v in em.index], rotation=0)
+        
         self._plot_by_condition(results, subjects, save_path,
                                 'Grid Search Error by Subject', body, **kwargs)
 

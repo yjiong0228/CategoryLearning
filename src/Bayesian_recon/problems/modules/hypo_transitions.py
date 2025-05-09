@@ -128,6 +128,7 @@ class PartitionCluster(BaseCluster):
         "random_5": BaseCluster._amount_random_gen(5),
         "random_6": BaseCluster._amount_random_gen(6),
         "random_7": BaseCluster._amount_random_gen(7),
+        "opp_random_2": BaseCluster._amount_opposite_random_gen(2),
         "opp_random_4": BaseCluster._amount_opposite_random_gen(4),
         "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
     }
