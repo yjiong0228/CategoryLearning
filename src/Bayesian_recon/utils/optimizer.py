@@ -104,6 +104,7 @@ class Optimizer(object):
                 s_data,
                 window_size=window_size,
                 repeat=grid_repeat,
+                iSub=iSub,
                 **grid_params)
 
             return iSub, grid_params, grid_error, grid_step_results
@@ -165,6 +166,7 @@ class Optimizer(object):
                 repeat=mc_samples,
                 multiprocess=True,
                 n_jobs=self.n_jobs,
+                iSub=iSub,
                 **specific_params)
             return iSub, all_step_results, all_mean_error
 
