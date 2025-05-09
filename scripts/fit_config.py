@@ -34,9 +34,8 @@ random_setting = ("opp_random_7", "random")
 module_configs = {
     1: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [post_setting,
-                                ksimilar_setting,
-                                random_setting]}),
+            "transition_spec": [("random_2", "top_posterior"),
+                                ("opp_random_2", "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
                 "gamma": (0.05, 1.0),
@@ -47,9 +46,21 @@ module_configs = {
     },
     4: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [post_setting,
-                                ksimilar_setting,
-                                random_setting]}),
+            "transition_spec": [("random_2", "top_posterior"),
+                                ("opp_random_2", "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
+            },
+            "param_resolution": 20
+        }),
+        "perception": (BasePerception, {}),
+    },
+        13: {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_2", "top_posterior"),
+                                ("opp_random_2", "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
                 "gamma": (0.05, 1.0),
