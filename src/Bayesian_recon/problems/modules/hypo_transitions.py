@@ -145,6 +145,8 @@ class PartitionCluster(BaseCluster):
         """
         super().__init__(model, **kwargs)
         self.set_cluster_transition_strategy(
+            kwargs.get("init_strategy", [(3, "random")]), init_strategy=True)
+        self.set_cluster_transition_strategy(
             kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
 
@@ -405,6 +407,10 @@ class PartitionCluster(BaseCluster):
                                  size=1,
                                  replace=False).tolist())
             return list(new_hypos), {
+                k: (amt, ch)
+                for k, amt, ch in zip(self.strategy_name, numerical_amounts,
+                                    hypo_choices)
+            } | {
                 'random from available': (1, list(new_hypos))
             }
         else:
@@ -415,11 +421,47 @@ class PartitionCluster(BaseCluster):
             }
 
     def cluster_init(self, **kwargs):
-        return self._cluster_strategy_random(3, set(range(self.length)))
+        """
+        cluster init
+        """
+        new_hypos: Set[int] = set([])
+        numerical_amounts = []
+        hypo_choices = []
+        available_hypos = set(range(self.length))
+        for amount, method in self.cluster_init_strategy:
+            numerical_amount = self.adaptive_amount_evalutator(
+                amount, **kwargs)
+            numerical_amount = max(0,
+                                   min(numerical_amount, len(available_hypos)))
+            numerical_amounts.append(numerical_amount)
+
+            new_part = method(numerical_amount, available_hypos, **kwargs)
+            hypo_choices.append(new_part)
+            new_hypos |= set(new_part)
+            available_hypos -= set(new_part)
+        if len(new_hypos) == 0:
+            new_hypos = set(
+                np.random.choice(list(available_hypos),
+                                 size=1,
+                                 replace=False).tolist())
+            return list(new_hypos), {
+                k: (amt, ch)
+                for k, amt, ch in zip(self.init_strategy_name,
+                                    numerical_amounts, hypo_choices)
+            } | {
+                'random from available': (1, list(new_hypos))
+            }
+        else:
+            return list(new_hypos), {
+                k: (amt, ch)
+                for k, amt, ch in zip(self.init_strategy_name,
+                                    numerical_amounts, hypo_choices)
+            }
 
     def set_cluster_transition_strategy(
         self,
         strategy: List[Tuple[int, str | Callable]],
+        init_strategy: bool = False,
     ):
         """
         Set cluster transition strategy
@@ -427,37 +469,43 @@ class PartitionCluster(BaseCluster):
         strategy: a list in terms of [(amount, method)]
         """
 
-        self.cluster_transition_strategy = []
-        self.strategy_name = []
+        cluster_transition_strategy = []
+        strategy_name = []
         for k_amount, k_strategy in strategy:
             if isinstance(k_strategy, str):
-                self.strategy_name.append(k_strategy)
+                strategy_name.append(k_strategy)
             else:
-                self.strategy_name.append(k_strategy.__name__)
+                strategy_name.append(k_strategy.__name__)
             match k_strategy:
                 case "stable":
-                    self.cluster_transition_strategy.append(
+                    cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_stable))
 
                 case "top_posterior":
-                    self.cluster_transition_strategy.append(
+                    cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_top_post))
 
                 case "random_posterior":
-                    self.cluster_transition_strategy.append(
+                    cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_random_post))
 
                 case "random":
-                    self.cluster_transition_strategy.append(
+                    cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_random))
 
                 case "ksimilar_centers":
-                    self.cluster_transition_strategy.append(
+                    cluster_transition_strategy.append(
                         (k_amount, self._cluster_strategy_ksimilar_centers))
 
                 case Callable() as method:
-                    self.cluster_transition_strategy.append((k_amount, method))
+                    cluster_transition_strategy.append((k_amount, method))
 
                 case _:
                     raise Exception(
                         f"Filtering method {method} is not a valid choice!")
+        if init_strategy:
+            self.cluster_init_strategy = cluster_transition_strategy
+            self.init_strategy_name = strategy_name
+        else:
+            self.cluster_transition_strategy = cluster_transition_strategy
+            self.strategy_name = strategy_name

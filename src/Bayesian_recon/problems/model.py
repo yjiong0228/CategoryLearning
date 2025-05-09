@@ -388,7 +388,7 @@ class StandardModel(BaseModel):
         step_results = []
 
         if "cluster" in self.modules:
-            next_hypos = self.modules["cluster"].cluster_init(
+            next_hypos, init_strategy_amounts = self.modules["cluster"].cluster_init(
                 **kwargs.get("cluster_kwargs", {}))
             new_hypotheses_set = BaseSet(next_hypos)
             new_prior = BasePrior(new_hypotheses_set)
@@ -465,6 +465,8 @@ class StandardModel(BaseModel):
                         new_hypotheses_set, self.partition_model)
                     self.refresh_engine(new_hypotheses_set, new_prior,
                                         new_likelihood)
+                elif step_idx == n_trials:
+                    step_results[-1]['init_amount'] = init_strategy_amounts
 
         return step_results
 
