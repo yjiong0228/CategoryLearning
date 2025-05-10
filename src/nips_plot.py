@@ -4,6 +4,9 @@ from scipy.interpolate import splprep, splev
 from math import isfinite
 from scipy.stats import ttest_rel
 from statsmodels.stats.multitest import multipletests
+from scipy.stats import pearsonr
+from scipy.spatial.distance import euclidean
+from fastdtw import fastdtw
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -12,7 +15,7 @@ import matplotlib as mpl
 import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Any, Union, Optional
 import pandas as pd
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
 
@@ -27,7 +30,7 @@ mpl.rcParams['font.family'] = prop.get_name()
 
 
 class Fig1_Oral:
-
+    
     def read_data(self, df):
         """
         读取 DataFrame，只保留 feature1_oral 到 feature4_oral，并保留 iSub、iSession、iTrial、choice。
@@ -87,8 +90,8 @@ class Fig1_Oral:
         self._add_ticks(ax)
 
     def _label_axes(self, ax):
-        labels = [((1.1, -0.05, 0), 'F$_2$'), ((0, 1.12, 0.0), 'F$_1$'),
-                  ((0, 0, 1.12), 'F$_3$')]
+        labels = [((1.1, -0.05, 0), 'feat$_2$'), ((0, 1.12, 0.0), 'feat$_1$'),
+                  ((0, 0, 1.12), 'feat$_3$')]
         for pos, txt in labels:
             ax.text(*pos,
                     txt,
@@ -113,8 +116,8 @@ class Fig1_Oral:
                                           xs,
                                           ys,
                                           zs,
-                                          cmap_name="Blues",
-                                          cmap_low=0.25,
+                                          cmap_name="plasma_r",
+                                          cmap_low=0,
                                           cmap_high=1.0,
                                           lw=1.5,
                                           s=30,
@@ -183,33 +186,6 @@ class Fig1_Oral:
                     linewidth=lw)
         ax.scatter(xs, ys, zs, color=colors, s=s, edgecolors='w')
 
-    def plot_feature123(self, ncats, iSub, iSession, iTrial, choice,
-                        features_list, plots_dir):
-        folder = os.path.join(plots_dir)
-        os.makedirs(folder, exist_ok=True)
-        fig = plt.figure(figsize=(6, 6), facecolor='none')
-        ax = fig.add_subplot(111, projection='3d')
-
-        # 黄色点背景
-        self._draw_radial_highlight(ax, ncats, choice)
-
-        # 主线
-        xs = [f['feature2_oral'] for f in features_list]
-        ys = [f['feature1_oral'] for f in features_list]
-        zs = [f['feature3_oral'] for f in features_list]
-
-        if len(xs) > 1:
-            self._plot_smooth_grad_line_and_points(ax, xs, ys, zs)
-
-        ax.view_init(elev=15, azim=30)
-        self._beautify_axes(ax)
-        self.draw_cube(ax, '#808080', 1.5)
-        ax.patch.set_alpha(0)
-
-        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}.png"
-        plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
-        plt.close()
-
     def _draw_radial_highlight(self, ax, ncats, choice):
         coords = {
             2: {
@@ -237,6 +213,33 @@ class Fig1_Oral:
                        edgecolors='none',
                        depthshade=False)
 
+    def plot_feature123(self, ncats, iSub, iSession, iTrial, choice,
+                        features_list, plots_dir):
+        folder = os.path.join(plots_dir)
+        os.makedirs(folder, exist_ok=True)
+        fig = plt.figure(figsize=(6, 6), facecolor='none')
+        ax = fig.add_subplot(111, projection='3d')
+
+        # 黄色点背景
+        self._draw_radial_highlight(ax, ncats, choice)
+
+        # 主线
+        xs = [f['feature2_oral'] for f in features_list]
+        ys = [f['feature1_oral'] for f in features_list]
+        zs = [f['feature3_oral'] for f in features_list]
+
+        if len(xs) > 1:
+            self._plot_smooth_grad_line_and_points(ax, xs, ys, zs)
+
+        ax.view_init(elev=15, azim=30)
+        self._beautify_axes(ax)
+        self.draw_cube(ax, '#808080', 1.5)
+        ax.patch.set_alpha(0)
+
+        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}.svg"
+        plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
+        plt.close()
+
     def plot_feature4_time_series(self,
                                   iSub,
                                   iSession,
@@ -244,8 +247,8 @@ class Fig1_Oral:
                                   choice,
                                   features_list,
                                   plots_dir,
-                                  cmap_name="Blues",
-                                  cmap_low=0.35,
+                                  cmap_name="gist_gray",
+                                  cmap_low=0,
                                   cmap_high=1.0,
                                   lw=2,
                                   s=30,
@@ -301,7 +304,7 @@ class Fig1_Oral:
         # Add text to the top-right corner
         ax.text(0.95,
                 0.95,
-                'F$_4$',
+                'feat$_4$',
                 transform=ax.transAxes,
                 fontsize=21,
                 ha='right',
@@ -330,7 +333,7 @@ class Fig1_Oral:
         plt.subplots_adjust(left=0.2)
 
         # Save and close
-        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}_f4_ts.png"
+        fname = f"{iSub}_{iSession}_{iTrial}_c{choice}_f4_ts.svg"
         plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
         plt.close()
 
@@ -501,85 +504,139 @@ class Fig1_Acc:
 
     def plot_accuracy(self,
                       learning_data: pd.DataFrame,
+                      subject_ids: List[int],
+                      subfig: int,
+                      nrow: int,
+                      window_size: int = 16,
                       block_size: int = 64,
+                      h_pad: int = 8,
+                      color: Union[str, List[str]] = 'C0',
+                      max_trial: Optional[int] = None,
+                      sub_text: Optional[List[Union[int, str]]] = None,
                       figsize=(15, 5),
-                      widths=(2, 1, 1),
                       save_path: str = None):
+        """
+        Plot rolling average accuracy for specified subjects, each in its own subplot.
 
-        # 1) 给每个 trial 添加序号和 block 编号
-        learning_data = learning_data.copy()
-        learning_data['trial_in_sub'] = learning_data.groupby(
-            'iSub').cumcount() + 1
-        learning_data['block'] = (
-            (learning_data['trial_in_sub'] - 1) // block_size + 1)
+        Args:
+            learning_data: DataFrame with columns ['iSub','feedback','ambigous',...].
+            subject_ids: List of subject IDs to plot, in desired order.
+            nrow: Number of rows in the subplot grid.
+            window_size: Window size (in trials) for rolling average.
+            block_size: Trials per block for vertical grid lines and x-ticks.
+            color: Either a single color string (applies to all rows) or a list of colors
+                (each entry applies to the corresponding row).
+            figsize: Figure size tuple.
+            save_path: Path to save the figure.
+        """
 
-        learning_data = learning_data[learning_data['ambigous'] != 1]
-        # 2) 按 condition、iSub、block 计算 block-wise accuracy
-        blk_acc = (learning_data.groupby(
-            ['condition', 'iSub',
-             'block'])['feedback'].mean().reset_index(name='block_accuracy'))
+        # Prepare and filter data
+        df = learning_data.copy()
+        df = df[df['iSub'].isin(subject_ids)]
+        if df.empty:
+            raise ValueError(f"No data found for subject IDs {subject_ids}")
 
-        max_blocks = (blk_acc.groupby('condition')['block'].max())
+        # Compute trial indices per subject
+        df['trial_in_sub'] = df.groupby('iSub').cumcount() + 1
+        # Determine max_trial
+        if max_trial is None:
+            overall_max = df['trial_in_sub'].max()
+        else:
+            overall_max = int(max_trial)
 
-        # 3) 确定 condition 列表及其子图宽度
-        conds = sorted(blk_acc['condition'].unique())
-        if len(conds) != 3:
-            raise ValueError(
-                f"Expected 3 conditions, but found {len(conds)}: {conds}")
+        # Grid size
+        n_sub = len(subject_ids)
+        ncol = int(np.ceil(n_sub / nrow))
 
-        # 4) 创建一行三列子图，按 widths 比例分配宽度
-        fig, axes = plt.subplots(1,
-                                 3,
+        # Create subplots
+        fig, axes = plt.subplots(nrow,
+                                 ncol,
                                  figsize=figsize,
-                                 gridspec_kw={'width_ratios': widths},
-                                 sharey=True)
+                                 sharex=False,
+                                 sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
 
-        # 5) 对每个 condition 画所有被试的 block accuracy 曲线
-        for ax, cond in zip(axes, conds):
-            sub_df = blk_acc[blk_acc['condition'] == cond]
-            # 1) count trials per subject (after filtering ambiguous trials)
-            cond_data = learning_data[learning_data['condition'] == cond]
-            trial_counts = cond_data.groupby('iSub').size()
-            # 2) sort subjects by count (ascending)
-            sorted_sids = trial_counts.sort_values().index.tolist()
+        # Increase vertical spacing between rows
+        plt.tight_layout(h_pad=h_pad)
 
-            # 3) build an 8-entry gradient from magenta to cyan
-            mag_cy = LinearSegmentedColormap.from_list('mag_cy', ['magenta', 'cyan'])
-            color_gradient = [mag_cy(t) for t in np.linspace(0, 1, len(sorted_sids))]
+        for idx, sid in enumerate(subject_ids):
+            ax = axes_flat[idx]
+            sub_df = df[df['iSub'] == sid].sort_values('trial_in_sub')
+            if sub_df.empty:
+                continue
 
-            # 4) plot in order of trial-count
-            for idx, sid in enumerate(sorted_sids):
-                df_sub = sub_df[sub_df['iSub'] == sid]
-                col = color_gradient[idx]
-                ax.plot(df_sub['block'],
-                        df_sub['block_accuracy'],
-                        alpha=0.6,
-                        lw=1,
-                        color=col,
-                        label='Subject lines' if idx == 0 else None,
-                        clip_on=False)
-                ax.scatter(df_sub['block'],
-                        df_sub['block_accuracy'],
-                        s=20,
-                        alpha=0.8,
-                        color=col,
-                        clip_on=False)
+            # Rolling accuracy
+            sub_df['rolling_acc'] = sub_df['feedback'].rolling(
+                window=window_size, min_periods=window_size).mean()
 
-            ax.axhline(y=0.9,
-                       color='grey',
-                       linestyle='--',
-                       linewidth=1,
-                       alpha=0.8)
+            # Determine row for color selection
+            row = idx // ncol
+            if isinstance(color, (list, tuple)):
+                color_plot = color[row] if row < len(color) else color[0]
+            else:
+                color_plot = color
 
-            max_blk = max_blocks[cond]
-            ax.set_xlim(1, max_blk)
-            xticks = np.arange(1, max_blocks[cond] + 1, 2)
-            ax.set_xticks(xticks)
-            ax.set_xticklabels(xticks, fontsize=15)
+            ax.plot(sub_df['trial_in_sub'],
+                    sub_df['rolling_acc'],
+                    alpha=0.6,
+                    lw=2,
+                    color=color_plot,
+                    clip_on=False)
 
-            ax.set_title(f'Exp {cond}', fontsize=18, pad=12)
-            ax.set_xlabel('Block', fontsize=18)
-            ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+            # Vertical block lines
+            for x in range(block_size, overall_max + 1, block_size):
+                ax.axvline(x=x,
+                           color='grey',
+                           alpha=0.3,
+                           linestyle='dashed',
+                           linewidth=1)
+
+            # Limits and title
+            ax.set_xlim(0, overall_max)
+            ax.set_ylim(0, 1)
+
+            # Determine row and column for labels
+            col = idx % ncol
+
+            # Y-axis ticks/labels: only for leftmost column
+
+            ax.set_yticks([0, 0.5, 1])
+
+            if subfig == 1:
+                if col == 0:
+                    ax.set_yticklabels(['0', '0.5', '1'], fontsize=22)
+                else:
+                    ax.set_yticklabels([])
+                    ax.set_ylabel(None)
+            elif subfig == 2:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+
+            # X-axis ticks/labels: only for bottom row
+            ax.set_xticks(range(0, overall_max + 1, block_size * 2))
+            if row == nrow - 1:
+                ax.set_xticklabels(range(0, overall_max + 1, block_size * 2),
+                                fontsize=22)
+            else:
+                ax.set_xticklabels([])
+                ax.set_xlabel(None)
+
+            # Determine subplot label
+            if sub_text is not None and idx < len(sub_text):
+                raw_label = str(sub_text[idx])
+                label = raw_label if raw_label.upper().startswith(
+                    'S') else f"S{raw_label}"
+            else:
+                label = f"S{idx + 1}"
+
+            ax.text(0.95,
+                    0.05,
+                    label,
+                    transform=ax.transAxes,
+                    fontsize=25,
+                    ha='right',
+                    va='bottom',
+                    color='black')
 
             ax.set_facecolor('none')
             ax.spines['top'].set_visible(False)
@@ -587,17 +644,26 @@ class Fig1_Acc:
             for spine in ['left', 'bottom']:
                 ax.spines[spine].set_linewidth(2)
 
-        # 6) 全局美化：左侧子图显示 y 轴标签
-        axes[0].set_ylim(0, 1)
-        axes[0].tick_params(axis='y', labelsize=15)
-        axes[0].set_ylabel('Block-wise Accuracy', fontsize=18)
+        # Global labels
+        fig.text(0.5, -0.07, 'Trial', ha='center', fontsize=25)
+        if subfig == 1:
+            fig.text(-0.15,
+                     0.5,
+                     'Accuracy',
+                     va='center',
+                     rotation='vertical',
+                     fontsize=25)
 
-        # axes.margins(x=0.02, y=0.02)
+        # Hide unused subplots
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
 
-        plt.tight_layout()
-
-        fig.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.05, transparent=True)
-        print(f"Figure saved to {save_path}")
+        if save_path:
+            fig.savefig(save_path,
+                        bbox_inches='tight',
+                        pad_inches=0.05,
+                        transparent=True)
+            print(f"Figure saved to {save_path}")
         plt.close(fig)
 
 
@@ -906,6 +972,186 @@ class Fig3_Group:
         print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
         print("Reject null hypotheses:", reject)
 
+
+    def plot_group_k_rdelta(self,
+                          oral_hypo_hits,
+                          results_1,
+                          results_2,
+                          results_3,
+                          results_4,
+                          mc_method='bonferroni',
+                          figsize=(6, 5),
+                          color_1='#45B53F',
+                          color_2='#478ECC',
+                          color_3='#DDAA33',
+                          color_4='#A6A6A6',
+                          label_1='Base',
+                          label_2='Jump',
+                          label_3='Forget',
+                          label_4='Fgt+Jump',
+                          save_path=None):
+        """
+        绘制四个模型在rolling_hits与模型移动平均之间相关度的组水平对比。
+
+        参数：
+        - oral_hypo_hits: dict, 每个被试的真实rolling_hits和condition信息
+        - results_1..4: dict, 四个模型的step_results或best_step_results
+        - mc_method: 多重比较校正方法
+        - color_* / label_*: 各模型颜色与标签
+        - save_path: 保存路径
+        """
+
+        # ---------- 移动平均提取函数 ----------
+        def _extract_ma(step_dict, k_special, win=16):
+            step_res = step_dict.get('step_results',
+                                     step_dict.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special,
+                                                {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
+
+        # ---------- 计算每个被试的相关度 ----------
+        def compute_k_corrs(results):
+            corrs = {}
+            for subject_id, odict in oral_hypo_hits.items():
+                if subject_id not in results:
+                    continue
+                rolling_hits = np.array(odict['rolling_hits'], dtype=float)
+                condition = odict['condition']
+                k_special = 0 if condition == 1 else 42
+                rolling_ks = _extract_ma(results[subject_id], k_special)
+                n = min(len(rolling_hits), len(rolling_ks))
+                x = rolling_hits[:n]
+                y = rolling_ks[:n]
+                valid = ~np.isnan(y)
+                if valid.sum() < 2 or np.nanstd(x[valid]) == 0 or np.nanstd(
+                        y[valid]) == 0:
+                    corrs[subject_id] = np.nan
+                else:
+                    # corrs[subject_id] = np.corrcoef(x[valid], y[valid])[0, 1]
+                    # r_delta, _ = pearsonr(np.diff(x[valid]), np.diff(y[valid]))
+                    # sign_match = (np.sign(np.diff(x[valid])) == np.sign(np.diff(y[valid]))).mean()
+                    dtw_dist, _ = fastdtw(x[valid], y[valid], dist=euclidean)
+                    dtw_sim = 1 / (1 + dtw_dist / len(x[valid]))
+                    corrs[subject_id] = np.nan_to_num(dtw_sim)
+            return corrs
+
+        # 四个模型相关度字典
+        corrs_list = [
+            compute_k_corrs(results_1),
+            compute_k_corrs(results_2),
+            compute_k_corrs(results_3),
+            compute_k_corrs(results_4),
+        ]
+
+        # 构建DataFrame并计算mean与sem
+        df = pd.DataFrame({
+            'Model':
+            sum([[f'Model {i+1}'] * len(corrs_list[i]) for i in range(4)], []),
+            'Correlation':
+            sum([list(c.values()) for c in corrs_list], [])
+        })
+        summary = df.groupby('Model')['Correlation'].agg(
+            ['mean',
+             'sem']).reindex(['Model 1', 'Model 2', 'Model 3',
+                              'Model 4']).reset_index()
+
+        # 取共有被试
+        shared_subs = sorted(
+            set(corrs_list[0]) & set(corrs_list[1]) & set(corrs_list[2])
+            & set(corrs_list[3]))
+        arrs = [
+            np.array([corrs_list[i][sid] for sid in shared_subs])
+            for i in range(4)
+        ]
+
+        # 统计检验（配对 t 检验）
+        raw_ps = []
+        for i in range(3):
+            _, p = ttest_rel(arrs[i], arrs[i + 1])
+            raw_ps.append(p)
+        reject, p_corrected, _, _ = multipletests(raw_ps,
+                                                  alpha=0.05,
+                                                  method=mc_method)
+
+        # ---------- 绘图 ----------
+        fig, ax = plt.subplots(figsize=figsize)
+        bars = ax.bar(summary['Model'],
+                      summary['mean'],
+                      yerr=summary['sem'],
+                      color=[color_1, color_2, color_3, color_4],
+                      capsize=5,
+                      width=0.6,
+                      edgecolor='black')
+        # 个体连线与散点
+        x_base = np.arange(4)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), 4))
+        for i, sid in enumerate(shared_subs):
+            ys = [corrs_list[j][sid] for j in range(4)]
+            xs = x_base + jitter[i]
+            ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
+            ax.scatter(xs,
+                       ys,
+                       color='black',
+                       alpha=0.6,
+                       s=20,
+                       label='Individual Data' if i == 0 else None)
+
+        # 显著性标注函数
+        def get_star(p):
+            if p < 0.001:
+                return '***'
+            if p < 0.01:
+                return '**'
+            if p < 0.05:
+                return '*'
+            return 'n.s.'
+
+        # 添加显著性标注
+        y_max = (summary['mean'] + summary['sem']).max()
+        h = y_max * 0.05
+        for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
+            x1, x2 = x_base[i], x_base[i + 1]
+            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                    summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']) + h
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y],
+                    lw=1.5,
+                    color='black')
+            ax.text((x1 + x2) / 2,
+                    y + h * 1.1,
+                    get_star(p_corr),
+                    ha='center',
+                    va='bottom',
+                    fontsize=14)
+
+        # 坐标与标签
+        ax.set_ylabel('Correlation coefficient', fontsize=14)
+        ax.set_xlabel('Model', fontsize=14)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.legend()
+
+        # 保存与输出
+        if save_path:
+            fig.savefig(save_path,
+                        dpi=300,
+                        bbox_inches='tight',
+                        transparent=True)
+            print(f"Figure saved to {save_path}")
+            plt.close()
+        print("Raw p-values:        ", np.round(raw_ps, 4))
+        print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
+        print("Reject null hypotheses:", reject)
+
+
     def plot_group_aic(self,
                        results_1,
                        results_2,
@@ -1195,7 +1441,7 @@ class Fig3_Individual:
                 lw=3,
                 label='Human',
                 color=color_true)
-        
+
         valid_idx = [i for i, h in enumerate(hits) if isinstance(h, (int, float))]
 
         # ---------- posterior curve(s) ------------------------------------------
