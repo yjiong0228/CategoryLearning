@@ -182,7 +182,7 @@ class ModelEval:
     def plot_cluster_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
         def body(ax, condition, iSub, info):
             steps = info.get('best_step_results', [])
-            vals = [s['best_step_amount']['random_posterior'][0] for s in steps if 'best_step_amount' in s]
+            vals = [s['best_step_amount'].get('random_posterior', s['best_step_amount'].get('top_posterior', [0]))[0] for s in steps if 'best_step_amount' in s]
             r = [s['best_step_amount']['random'][0] for s in steps if 'best_step_amount' in s]
             re = pd.Series(vals).rolling(window=window_size, min_periods=window_size).mean()
             ex = pd.Series(r).rolling(window=window_size, min_periods=window_size).mean()
@@ -194,3 +194,67 @@ class ModelEval:
 
         self._plot_by_condition(results, subjects, save_path,
                                 'Strategy Amount by Subject', body, **kwargs)
+
+
+
+    def _find_crossings(self, exp: np.ndarray, explor: np.ndarray) -> list[int]:
+        """
+        找到 exp 与 explor 曲线的所有交点（横坐标，取最近整数）。
+        """
+        diff = exp - explor
+        crossings = []
+        for i in range(len(diff)-1):
+            # 如果正好落在某个点
+            if diff[i] == 0:
+                crossings.append(i+1)
+            # 如果两点符号相反，则在 i→i+1 之间有一次交点
+            elif diff[i] * diff[i+1] < 0:
+                # 线性插值位置：diff[i] + t*(diff[i+1]-diff[i]) = 0
+                t = diff[i] / (diff[i] - diff[i+1])
+                x_cross = (i+1) + t
+                crossings.append(int(round(x_cross)))
+        return crossings
+
+    def compute_crossing_metrics(self, results: dict,
+                                window_size: int = 16) -> pd.DataFrame:
+        """
+        对每个被试，计算第一/最后一次交点的 x 轴位置，并输出差值。
+        """
+        rows = []
+        for iSub, subject_info in results.items():
+            steps = subject_info['best_step_results']
+            post = [st['best_step_amount'].get('random_posterior', st['best_step_amount'].get('top_posterior', [0]))[0]
+                        for st in steps if 'best_step_amount' in st]
+            rand_expl = [st['best_step_amount']['random'][0]
+                        for st in steps if 'best_step_amount' in st]
+
+            exp = pd.Series(post).rolling(window=window_size,
+                                            min_periods=window_size).mean().to_numpy()
+            explor = pd.Series(rand_expl).rolling(window=window_size,
+                                                min_periods=window_size).mean().to_numpy()
+
+            # trim 开头那些 < window_size 的 NaN
+            valid_idx = ~np.isnan(exp) & ~np.isnan(explor)
+            exp = exp[valid_idx]
+            explor = explor[valid_idx]
+
+            xs = np.arange(1, len(exp) + 1)
+            crossings = self._find_crossings(exp, explor)
+
+            if crossings:
+                first = crossings[0]
+                last = crossings[-1]
+                delta = last - first
+            else:
+                first = last = delta = np.nan
+
+            rows.append({
+                'Subject': iSub,
+                'FirstCross': first,
+                'LastCross':  last,
+                'Span':       delta
+            })
+
+        df = pd.DataFrame(rows).set_index('Subject')
+        return df
+
