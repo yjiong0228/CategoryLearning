@@ -73,8 +73,9 @@ module_configs = {
 }
 
 window_size_configs = {
-    1: 16,
+    1: 8,
     4: 8,
+    13:8
 }
 
 grid_repeat_configs = {

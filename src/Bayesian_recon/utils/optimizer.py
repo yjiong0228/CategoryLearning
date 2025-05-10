@@ -213,7 +213,7 @@ class Optimizer(object):
                 "best_params": subject_best_combo[iSub]["params"],
                 "best_error": all_mean_error[idx],
                 "best_step_results": all_step_results[idx],
-                "raw_step_results": all_step_results,
+                # "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub],
                 "sample_errors": all_mean_error
             }
