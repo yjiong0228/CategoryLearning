@@ -26,10 +26,11 @@ class BasePerception(BaseModule):
         """
         super().__init__(model, **kwargs)
         self.processed_data_dir = kwargs.pop("processed_data_path", DEFAULT_PROCESSED_DATA_DIR)
-        self.variances : Dict[str, Dict[str, float]] = {}
+        self.mean : Dict[str, Dict[str, float]] = {}
+        self.std : Dict[str, Dict[str, float]] = {}
         processed_data = pd.read_csv(os.path.join(self.processed_data_dir, "Task1b_processed.csv"))
         error = self.error_calculation(processed_data)
-        self.variances = self.variances_calculation(error)
+        self.mean, self.std = self.calculate_mean_std(error)
         self.structures : Dict[str, List]= self.get_structures()
 
     def error_calculation(self, processed_data):
@@ -57,21 +58,25 @@ class BasePerception(BaseModule):
 
         return error
     
-    def variances_calculation(self, error):
+    def calculate_mean_std(self, error):
         """
-        Calculate variances for each subject
+        Calculate mean and standard deviation for each subject
 
         Args:
             error (pd.DataFrame): DataFrame containing error data
         Returns:
-            dict: Variances for each subject
+            dict: Mean and standard deviation for each subject
         """
-        variances = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').pow(2).mean()
+        mean = error.groupby('iSub').apply(
+            lambda group: group.filter(like='_diff').mean()
         )
-        variances = variances.to_dict(orient='index')
-        variances = {k: {key.split('_length')[0]: value for key, value in v.items()} for k, v in variances.items()}
-        return variances
+        std = error.groupby('iSub').apply(
+            lambda group: group.filter(like='_diff').std()
+        )
+
+        mean = mean.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
+        std = std.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
+        return mean, std
 
     def get_structures(self):
         """
@@ -100,8 +105,8 @@ class BasePerception(BaseModule):
         Returns:
             np.ndarray: Sampled stimulus with noise added, shape (trials, features)
         """
-        if iSub not in self.variances:
-            raise ValueError(f"iSub {iSub} not found in variances.")
+        if iSub not in self.mean or iSub not in self.std:
+            raise ValueError(f"Subject {iSub} not found in mean or std data.")
         
         def convert(structure):
             # feature selection
@@ -138,6 +143,6 @@ class BasePerception(BaseModule):
         n_trials = len(stimulus)
         for i in range(stimulus.shape[1]):
             stimulus[:, i] = stimulus[:, i] + np.random.normal(
-                loc=0, scale=np.sqrt(self.variances[iSub][feat[i]]), size=n_trials
+                loc=self.mean[iSub][feat[i]], scale=self.std[iSub][feat[i]], size=n_trials
             )
         return stimulus
