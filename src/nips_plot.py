@@ -691,131 +691,150 @@ class Fig3_Group:
 
     def plot_group_acc_error(
             self,
-            results_1,
-            results_2,
-            results_3,
-            results_4,
+            results_list,
             mc_method='bonferroni',  # 'bonferroni', 'holm', 'fdr_bh', etc.
             figsize=(6, 5),
-            color_1='#45B53F',
-            color_2='#478ECC',
-            color_3='#DDAA33',
-            color_4='#A6A6A6',
-            label_1='Base',
-            label_2='Jump',
-            label_3='Forget',
-            label_4='Fgt+Jump',
+            colors=None,
+            labels=None,
             save_path=None):
+        """
+        Plot mean absolute accuracy deviation across multiple result sets, with
+        pairwise statistical comparisons and error bars.
 
-        # 计算每个被试的 error
+        Args:
+            results_list: list of dicts, each mapping subject_id to a dict containing
+                          'sliding_true_acc' and 'sliding_pred_acc' arrays.
+            mc_method: string, correction method for multiple comparisons.
+            figsize: tuple, figure size.
+            colors: list of color strings, one per model. Defaults will be used if None.
+            labels: list of label strings for the models. Defaults to 'Model 1', 'Model 2', etc.
+            save_path: path to save the figure (optional).
+        """
+        # Default colors and labels
+        n_models = len(results_list)
+        if colors is None:
+            default_palette = ['#45B53F', '#478ECC', '#DDAA33', '#A6A6A6']
+            colors = default_palette[:n_models]
+        if labels is None:
+            labels = [f'Model {i+1}' for i in range(n_models)]
+
+        # Compute per-subject errors for each model
         def compute_errors(results):
-            errors = {}
-            for subject_id, data in results.items():
-                err = np.mean(
+            return {
+                sid: np.mean(
                     np.abs(
                         np.array(data['sliding_true_acc']) -
-                        np.array(data['sliding_pred_acc'])))
-                errors[subject_id] = err
-            return errors
+                        np.array(data['sliding_pred_acc'])
+                    )
+                )
+                for sid, data in results.items()
+            }
+        errors = [compute_errors(res) for res in results_list]
 
-        errors = [
-            compute_errors(results_1),
-            compute_errors(results_2),
-            compute_errors(results_3),
-            compute_errors(results_4),
-        ]
+        # Prepare DataFrame for summary statistics
+        model_names = []
+        error_vals = []
+        for i, err_dict in enumerate(errors):
+            name = labels[i]
+            for val in err_dict.values():
+                model_names.append(name)
+                error_vals.append(val)
+        df = pd.DataFrame({'Model': model_names, 'Error': error_vals})
+        summary = (
+            df.groupby('Model')['Error']
+              .agg(['mean', 'sem'])
+              .reindex(labels)
+              .reset_index()
+        )
 
-        df = pd.DataFrame({
-            'Model':
-            sum([[f'Model {i+1}'] * len(errors[i]) for i in range(4)], []),
-            'Error':
-            sum([list(e.values()) for e in errors], [])
-        })
-        summary = df.groupby('Model')['Error'].agg(['mean', 'sem']).reindex(
-            ['Model 1', 'Model 2', 'Model 3', 'Model 4']).reset_index()
+        # Subjects common to all models
+        common_subs = set(errors[0].keys())
+        for err in errors[1:]:
+            common_subs &= set(err.keys())
+        subs = sorted(common_subs)
 
-        subs = sorted(
-            set(errors[0]) & set(errors[1]) & set(errors[2]) & set(errors[3]))
+        # Arrange data arrays for paired tests
+        arrs = [np.array([err[sid] for sid in subs]) for err in errors]
 
-        arrs = [np.array([errors[i][sid] for sid in subs]) for i in range(4)]
-
+        # Compute paired t-tests between adjacent models
         raw_ps = []
-        for i in range(3):
+        for i in range(n_models - 1):
             _, p = ttest_rel(arrs[i], arrs[i + 1])
             raw_ps.append(p)
 
-        # 5) 多重比较校正
-        reject, p_corrected, _, _ = multipletests(raw_ps,
-                                                  alpha=0.05,
-                                                  method=mc_method)
+        # Multiple comparisons correction
+        reject, p_corrected, _, _ = multipletests(raw_ps, alpha=0.05, method=mc_method)
 
+        # Plotting
         fig, ax = plt.subplots(figsize=figsize)
-        bars = ax.bar(summary['Model'],
-                      summary['mean'],
-                      yerr=summary['sem'],
-                      color=[color_1, color_2, color_3, color_4],
-                      capsize=5,
-                      width=0.6,
-                      edgecolor='black')
+        x_base = np.arange(n_models)
+        bars = ax.bar(
+            x_base,
+            summary['mean'],
+            yerr=summary['sem'],
+            color=colors,
+            capsize=5,
+            width=0.6,
+            edgecolor='black'
+        )
 
-        # 画连线+散点
-        x_base = np.arange(4)
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), 4))
+        # Plot individual lines and points
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), n_models))
         for i, sid in enumerate(subs):
-            ys = [errors[j][sid] for j in range(4)]
+            ys = [errors[j][sid] for j in range(n_models)]
             xs = x_base + jitter[i]
             ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
-            ax.scatter(xs,
-                       ys,
-                       color='black',
-                       alpha=0.6,
-                       s=20,
-                       label='Individual Data' if i == 0 else None)
+            ax.scatter(
+                xs,
+                ys,
+                color='black',
+                alpha=0.6,
+                s=20,
+                label='Individual Data' if i == 0 else None
+            )
 
-        # 7) 在柱子上方添加显著性标注
+        # Add significance annotations
         def get_star(p):
-            if p < 0.001: return '***'
-            if p < 0.01: return '**'
-            if p < 0.05: return '*'
+            if p < 0.001:
+                return '***'
+            if p < 0.01:
+                return '**'
+            if p < 0.05:
+                return '*'
             return 'n.s.'
 
         y_max = (summary['mean'] + summary['sem']).max()
-        h = y_max * 0.05  # 标注高度增量
+        h = y_max * 0.05
         for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
             x1, x2 = x_base[i], x_base[i + 1]
-            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
-                    summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']) + h
-            # 横线
-            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y],
-                    lw=1.5,
-                    color='black')
-            # 星号或 n.s.
-            ax.text((x1 + x2) / 2,
-                    y + h * 1.1,
-                    get_star(p_corr),
-                    ha='center',
-                    va='bottom',
-                    fontsize=14)
+            y = max(
+                summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']
+            ) + h
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, color='black')
+            ax.text((x1 + x2) / 2, y + h * 1.1, get_star(p_corr), ha='center', va='bottom', fontsize=14)
 
-        ax.set_ylabel('Accuracy deviation', fontsize=14)
+        # Labels and aesthetics
+        ax.set_ylabel('Accuracy Deviation', fontsize=14)
         ax.set_xlabel('Model', fontsize=14)
-        # ax.set_title('Accuracy deviation Comparison Across Models', fontsize=16)
         ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.set_xticklabels(labels, fontsize=12)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.legend()
 
+        # Save if requested
         if save_path:
-            fig.savefig(save_path,
-                        dpi=300,
-                        bbox_inches='tight',
-                        transparent=True)
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Figure saved to {save_path}")
-        plt.close()
+            plt.close(fig)
+        else:
+            plt.close(fig)
 
+        # Print test results
         print("Raw p-values:        ", np.round(raw_ps, 4))
         print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
         print("Reject null hypotheses:", reject)
+
 
     def plot_group_k_corr(self,
                           oral_hypo_hits,
