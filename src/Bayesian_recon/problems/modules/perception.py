@@ -89,6 +89,6 @@ class BasePerception(BaseModule):
         n_trials = len(stimulus)
         for i in range(stimulus.shape[1]):
             stimulus[:, i] = stimulus[:, i] + np.random.normal(
-                loc=0, scale=self.variances[iSub][feat[i]], size=n_trials
+                loc=0, scale=np.sqrt(self.variances[iSub][feat[i]]), size=n_trials
             )
         return stimulus
