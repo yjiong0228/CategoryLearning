@@ -84,32 +84,32 @@ class Fig1_Oral:
         lines = [([0, 1], [0, 0], [0, 0]), ([0, 0], [0, 1], [0, 0]),
                  ([0, 0], [0, 0], [0, 1])]
         for x, y, z in lines:
-            ax.plot(x, y, z, color='#808080', lw=2.5)
+            ax.plot(x, y, z, color='#808080', lw=2.6)
         # 轴标题和刻度
         self._label_axes(ax)
         self._add_ticks(ax)
 
     def _label_axes(self, ax):
-        labels = [((1.1, -0.05, 0), 'feat$_2$'), ((0, 1.12, 0.0), 'feat$_1$'),
-                  ((0, 0, 1.12), 'feat$_3$')]
+        labels = [((1.2, -0.07, 0), 'feat$_2$'), ((0, 1.2, 0.0), 'feat$_1$'),
+                  ((0, 0, 1.14), 'feat$_3$')]
         for pos, txt in labels:
             ax.text(*pos,
                     txt,
-                    fontsize=18,
+                    fontsize=22,
                     ha='center',
                     va='center',
                     fontfamily='Arial')
 
     def _add_ticks(self, ax):
-        ticks = [((0, 0, -0.05), '0', 'right', 'top'),
+        ticks = [((-0.01, 0, -0.05), '0', 'right', 'top'),
                  ((0.45, 0, -0.05), '0.5', 'center', 'top'),
                  ((0.9, 0, -0.05), '1', 'center', 'top'),
-                 ((0, 0.48, -0.05), '0.5', 'right', 'center'),
-                 ((0, 0.96, -0.05), '1', 'right', 'center'),
+                 ((0, 0.51, -0.09), '0.5', 'right', 'center'),
+                 ((0, 1, -0.09), '1', 'right', 'center'),
                  ((0, -0.03, 0.45), '0.5', 'right', 'bottom'),
                  ((0, -0.03, 0.9), '1', 'right', 'bottom')]
         for pos, txt, ha, va in ticks:
-            ax.text(*pos, txt, fontsize=15, ha=ha, va=va, fontfamily='Arial')
+            ax.text(*pos, txt, fontsize=18, ha=ha, va=va, fontfamily='Arial')
 
     def _plot_smooth_grad_line_and_points(self,
                                           ax,
@@ -118,29 +118,46 @@ class Fig1_Oral:
                                           zs,
                                           cmap_name="plasma_r",
                                           cmap_low=0,
-                                          cmap_high=1.0,
+                                          cmap_high=0.9,
                                           lw=1.5,
                                           s=30,
                                           n_interp=300,
-                                          smooth=0.0):
+                                          jitter_sd: float = 0.05,       # 噪声幅度，可按需调整
+                                          random_state: int | None = None,
+                                          smooth: float = 0.0 ):
+        """
+        绘制 3D 轨迹并在端点加渐变散点。
+        当检测到连续重复点时，为后一个点加入微小随机扰动 (jitter)，
+        以避免完全重合导致轨迹中断或被过滤。
+
+        Parameters
+        ----------
+        jitter_sd : float
+            对重复点添加的高斯噪声标准差（单位与坐标一致，默认 0.002）。
+        random_state : int | None
+            随机种子，方便复现；None 则使用全局随机数生成器。
+        """        
+        rng = np.random.default_rng(random_state)
         xs, ys, zs = map(np.asarray, (xs, ys, zs))
 
-        # ---------- 1. 清洗无效点 ----------
-        mask_valid = np.array([all(map(isfinite, p)) for p in zip(xs, ys, zs)])
+        # ---------- 1. 清洗无效 (NaN/Inf) ----------
+        mask_valid = np.array([all(map(np.isfinite, p)) for p in zip(xs, ys, zs)])
         xs, ys, zs = xs[mask_valid], ys[mask_valid], zs[mask_valid]
         if len(xs) == 0:
             return
 
-        # ---------- 2. 去掉连续重复 ----------
-        # 保留第一个点 & 所有与前一个不同的点
-        keep = [0] + [
-            i for i in range(1, len(xs))
-            if (xs[i], ys[i], zs[i]) != (xs[i - 1], ys[i - 1], zs[i - 1])
-        ]
-        xs, ys, zs = xs[keep], ys[keep], zs[keep]
+        # ---------- 2. 处理重复 (保留并抖动) ----------
+        xs_j, ys_j, zs_j = [xs[0]], [ys[0]], [zs[0]]
+        for x, y, z in zip(xs[1:], ys[1:], zs[1:]):
+            if x == xs_j[-1] and y == ys_j[-1] and z == zs_j[-1]:
+                dx, dy, dz = rng.normal(scale=jitter_sd, size=3)
+                x, y, z = np.clip([x + dx, y + dy, z + dz], 0.0, 1.0)
+            xs_j.append(x); ys_j.append(y); zs_j.append(z)
+
+        xs, ys, zs = map(np.asarray, (xs_j, ys_j, zs_j))
         n_pts = len(xs)
 
-        # ---------- 3. 小于 3 点：用直线/单点 ----------
+        # ---------- 3. 小于 3 点：散点 / 直线 ----------
         cmap = cm.get_cmap(cmap_name)
         if n_pts == 1:
             ax.scatter(xs, ys, zs, color=cmap(cmap_high), s=s, edgecolors='w')
@@ -150,41 +167,28 @@ class Fig1_Oral:
             ax.plot(xs, ys, zs, color=c1, linewidth=lw)
             ax.scatter(xs, ys, zs, color=[c1, c2], s=s, edgecolors='w')
             return
-        else:
-            self._plot_spline_or_fallback(ax, xs, ys, zs, cmap, cmap_low,
-                                          cmap_high, lw, s)
 
-    def _plot_spline_or_fallback(self, ax, xs, ys, zs, cmap, cmap_low,
-                                 cmap_high, lw, s):
+        # ---------- 4. ≥3 点：样条拟合（回退折线） ----------
         try:
-            k = min(3, len(xs) - 1)
-            tck, u = splprep([xs, ys, zs], s=0.0, k=k)
-            u_fine = np.linspace(0, 1, 300)
+            k = min(3, n_pts - 1)
+            tck, u = splprep([xs, ys, zs], s=smooth, k=k)
+            u_fine = np.linspace(0, 1, n_interp)
             x_f, y_f, z_f = splev(u_fine, tck)
             colors = cmap(np.linspace(cmap_low, cmap_high, len(x_f) - 1))
             for i in range(len(x_f) - 1):
-                ax.plot(x_f[i:i + 2],
-                        y_f[i:i + 2],
-                        z_f[i:i + 2],
-                        color=colors[i],
-                        linewidth=lw)
+                ax.plot(x_f[i:i+2], y_f[i:i+2], z_f[i:i+2],
+                        color=colors[i], linewidth=lw)
             pt_colors = cmap(cmap_low + (cmap_high - cmap_low) * u)
             ax.scatter(xs, ys, zs, color=pt_colors, s=s, edgecolors='w')
         except Exception:
-            self._plot_fallback_lines(ax, xs, ys, zs, cmap, cmap_low,
-                                      cmap_high, lw, s)
+            # 样条失败时回退为分段折线
+            n = n_pts
+            seg_colors = cmap(np.linspace(cmap_low, cmap_high, n))
+            for i in range(n - 1):
+                ax.plot(xs[i:i+2], ys[i:i+2], zs[i:i+2],
+                        color=seg_colors[i], linewidth=lw)
+            ax.scatter(xs, ys, zs, color=seg_colors, s=s, edgecolors='w')
 
-    def _plot_fallback_lines(self, ax, xs, ys, zs, cmap, cmap_low, cmap_high,
-                             lw, s):
-        n = len(xs)
-        colors = cmap(np.linspace(cmap_low, cmap_high, n))
-        for i in range(n - 1):
-            ax.plot(xs[i:i + 2],
-                    ys[i:i + 2],
-                    zs[i:i + 2],
-                    color=colors[i],
-                    linewidth=lw)
-        ax.scatter(xs, ys, zs, color=colors, s=s, edgecolors='w')
 
     def _draw_radial_highlight(self, ax, ncats, choice):
         coords = {
@@ -202,12 +206,12 @@ class Fig1_Oral:
         point = coords.get(ncats, {}).get(choice)
         if not point: return
         n_layers, outer_size, inner_size = 20, 6000, 80
-        outer_alpha, inner_alpha = 0.05, 0.1
+        outer_alpha, inner_alpha = 0.005, 0.2
         sizes = np.linspace(outer_size, inner_size, n_layers)
         alphas = np.linspace(outer_alpha, inner_alpha, n_layers)
         for s, a in zip(sizes, alphas):
             ax.scatter(*point,
-                       color='yellow',
+                       color='#A6A6A6',
                        s=s,
                        alpha=a,
                        edgecolors='none',
@@ -233,11 +237,11 @@ class Fig1_Oral:
 
         ax.view_init(elev=15, azim=30)
         self._beautify_axes(ax)
-        self.draw_cube(ax, '#808080', 1.5)
+        self.draw_cube(ax, '#808080', 1.7)
         ax.patch.set_alpha(0)
 
         fname = f"{iSub}_{iSession}_{iTrial}_c{choice}.svg"
-        plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
+        plt.savefig(os.path.join(folder, fname), transparent=True)
         plt.close()
 
     def plot_feature4_time_series(self,
@@ -246,8 +250,10 @@ class Fig1_Oral:
                                   iTrial,
                                   choice,
                                   features_list,
+                                  xstick,
+                                  xsticklabel,
                                   plots_dir,
-                                  cmap_name="gist_gray",
+                                  cmap_name="plasma_r",
                                   cmap_low=0,
                                   cmap_high=1.0,
                                   lw=2,
@@ -298,7 +304,7 @@ class Fig1_Oral:
                        edgecolors='w')
 
         # Set labels
-        ax.set_xlabel('Trial', fontfamily='Arial', fontsize=21)
+        ax.set_xlabel('Trial', fontfamily='Arial', fontsize=28)
         # ax.set_ylabel('Feature 4', fontfamily='Arial', fontsize=18)
 
         # Add text to the top-right corner
@@ -306,16 +312,16 @@ class Fig1_Oral:
                 0.95,
                 'feat$_4$',
                 transform=ax.transAxes,
-                fontsize=21,
+                fontsize=28,
                 ha='right',
                 va='top',
                 fontfamily='Arial')
 
         # Set ticks: y at [0,0.5,1], x only last at 190
         ax.set_yticks([0, 0.5, 1])
-        ax.set_yticklabels(['0', '0.5', '1'], fontsize=18)
-        ax.set_xticks([30])
-        ax.set_xticklabels(['30'], fontsize=18)
+        ax.set_yticklabels(['0', '0.5', '1'], fontsize=25)
+        ax.set_xticks([xstick])
+        ax.set_xticklabels([f'{xsticklabel}'], fontsize=25)
 
         # Set limits
         ax.set_xlim(trials.min() - 0.5, trials.max() + 0.5)
@@ -334,7 +340,7 @@ class Fig1_Oral:
 
         # Save and close
         fname = f"{iSub}_{iSession}_{iTrial}_c{choice}_f4_ts.svg"
-        plt.savefig(os.path.join(folder, fname), transparent=True, dpi=300)
+        plt.savefig(os.path.join(folder, fname), transparent=True)
         plt.close()
 
     def plot_human_trajactory(self,
@@ -342,6 +348,8 @@ class Fig1_Oral:
                               subject_data,
                               type,
                               plots_dir,
+                              xstick=1, 
+                              xsticklabel=1,
                               row_indices=None):
         """处理 DataFrame 并仅对指定行绘图，展示行之前的累积轨迹"""
         df = self.read_data(subject_data)
@@ -376,7 +384,7 @@ class Fig1_Oral:
                     self.plot_feature4_time_series(row.get('iSub', 'Unknown'),
                                                    row['iSession'],
                                                    row['iTrial'], choice,
-                                                   last_feats[choice], folder)
+                                                   last_feats[choice], xstick, xsticklabel, folder)
 
         print(f"完成：仅绘制行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
 
@@ -385,6 +393,8 @@ class Fig1_Oral:
                               df,
                               type,
                               plots_dir,
+                              xstick=1, 
+                              xsticklabel=1,
                               row_indices=None):
         # 确定要绘制的行
         if row_indices is None:
@@ -427,7 +437,7 @@ class Fig1_Oral:
                             model_folder)
                     else:
                         self.plot_feature4_time_series(iSub, None, iTrial, c,
-                                                       last_feats[c],
+                                                       last_feats[c],xstick,xsticklabel,
                                                        model_folder)
 
         print(f"完成模型轨迹绘制：行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
@@ -437,56 +447,61 @@ class Fig1_Ntrial:
 
     def plot_trial_number(self,
                           learning_data: pd.DataFrame,
+                          iCon: int,
                           figsize=(15, 5),
-                          color_1='#45B53F',
-                          color_2='#DDAA33',
-                          color_3='#A6A6A6',
-                          label_1='Cond 1',
-                          label_2='Cond 2',
-                          label_3='Cond 3',
+                          color: str = '#45B53F',
                           save_path: str = None):
+        # Aggregate trial counts by condition and subject
+        counts = (
+            learning_data
+            .groupby(['condition', 'iSub'])
+            .size()
+            .reset_index(name='total_trials')
+        )
 
-        counts = (learning_data.groupby(
-            ['condition', 'iSub']).size().reset_index(name='total_trials'))
+        # Check condition exists
+        available = sorted(counts['condition'].unique())
+        if iCon not in available:
+            raise ValueError(f"Condition {iCon} not found. Available: {available}")
 
-        cond_order = sorted(counts['condition'].unique())
+        # Filter for the selected condition
+        cond_counts = counts[counts['condition'] == iCon]
+        trials = cond_counts.set_index('iSub')['total_trials']
 
-        pivot = counts.pivot(index='iSub',
-                             columns='condition',
-                             values='total_trials')
+        # Compute summary stats
+        mean_trials = trials.mean()
+        sem_trials = trials.sem()
 
-        summary = pd.DataFrame({
-            'condition': cond_order,
-            'mean': pivot.mean(axis=0).values,
-            'sem': pivot.sem(axis=0).values
-        })
-
+        # Plotting
         fig, ax = plt.subplots(figsize=figsize)
-        x_base = np.arange(len(cond_order))
-        colors = [color_1, color_2, color_3]
+        x = np.array([0])
 
-        ax.bar(x_base,
-               summary['mean'],
-               yerr=summary['sem'],
-               color=colors,
-               capsize=5,
-               width=0.7,
-               error_kw={'elinewidth': 2})
+        ax.bar(
+            x,
+            mean_trials,
+            yerr=sem_trials,
+            color=color,
+            capsize=5,
+            width=0.2,
+            error_kw={'elinewidth': 3, 'capthick': 3}
+        )
+        ax.margins(x=0.6)
 
-        subs = pivot.index.tolist()
-        jitter = np.random.uniform(-0.1,
-                                   0.1,
-                                   size=(len(subs), len(cond_order)))
+        # Scatter individual values with jitter
+        jitter = np.random.uniform(-0.1, 0.1, size=len(trials))
+        ax.scatter(
+            x + jitter,
+            trials.values,
+            color='black',
+            alpha=0.6,
+            s=50
+        )
 
-        for i, sid in enumerate(subs):
-            ys = pivot.loc[sid].values
-            xs = x_base + jitter[i]
-            ax.scatter(xs, ys, color='black', alpha=0.6, s=30)
-
-        ax.tick_params(axis='y', labelsize=15)
-        ax.set_ylabel('Total trial number', fontsize=18)
-        ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1, label_2, label_3], fontsize=18)
+        # Formatting
+        ax.set_xticks(x)
+        ax.set_xticklabels([])
+        ax.set_ylabel('Total trial number', rotation='vertical',fontsize=25)
+        ax.tick_params(axis='y', labelsize=22)
 
         ax.grid(False)
         ax.set_facecolor('none')
@@ -495,9 +510,12 @@ class Fig1_Ntrial:
         for spine in ['left', 'bottom']:
             ax.spines[spine].set_linewidth(2)
 
-        fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
-        print(f"Figure saved to {save_path}")
+        # Save figure
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
         plt.close(fig)
+
 
 
 class Fig1_Acc:
