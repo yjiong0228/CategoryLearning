@@ -145,4 +145,6 @@ class BasePerception(BaseModule):
             stimulus[:, i] = stimulus[:, i] + np.random.normal(
                 loc=self.mean[iSub][feat[i]], scale=self.std[iSub][feat[i]], size=n_trials
             )
+        # Ensure the values are in the range of [0, 1]
+        stimulus = np.clip(stimulus, 0, 1)
         return stimulus

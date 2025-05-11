@@ -261,12 +261,14 @@ class BasePartition(ABC):
         """
 
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                         **kwargs)
+                                         **kwargs) # shape: (n_cats, nTrial)
 
         category = np.asarray(data[3], dtype=int) - 1
-        true_cat = category // 2 if self.n_cats == 2 else category
-
-        return prob[true_cat]
+        true_cat = category // 2 if self.n_cats == 2 else category # shape: (nTrial,)
+        if prob.ndim == 1:
+            prob = prob.reshape(-1, 1)
+        return prob[true_cat.flatten(), np.arange(prob.shape[1])] # shape: (nTrial,)
+        # return prob[true_cat]
 
     def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
         """
