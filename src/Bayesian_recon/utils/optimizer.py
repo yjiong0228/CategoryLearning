@@ -144,7 +144,7 @@ class Optimizer(object):
 
         all_kwargs = []
         for iSub in subjects:
-            for values in self.optimize_params_dict[iSub].values():
+            for values in product(*self.optimize_params_dict[iSub].values()):
                 kwargs = dict(zip(self.optimize_params_dict[iSub].keys(), values))
                 kwargs['iSub'] = iSub
                 kwargs['subject_data'] = subject_data_map[iSub]
