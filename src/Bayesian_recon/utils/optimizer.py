@@ -134,6 +134,9 @@ class Optimizer(object):
             for key in self.optimize_params_dict[iSub].keys():
                 grid_params[key] = kwargs[key]
 
+            if grid_repeat[iSub] == 0:
+                return iSub, grid_params, None, None
+
             grid_step_results, grid_error = model.compute_error_for_params(
                 s_data,
                 window_size=window_size[iSub],
