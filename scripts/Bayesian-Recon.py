@@ -24,6 +24,27 @@ from src.Bayesian_recon.problems.config import config_fgt
 from src.Bayesian_recon.problems import *
 from src.Bayesian_recon.utils.optimizer import Optimizer
 
+def post_acc_amount_f(x):
+    if x <= 0.2:
+        return 0
+    elif 0.2 < x < 0.3:
+        return 1
+    elif 0.3 <= x < 0.4:
+        return 2
+    elif 0.4 <= x < 0.5:
+        return 3
+    elif 0.5 <= x < 0.6:
+        return 4
+    elif 0.6 <= x < 0.7:
+        return 5
+    elif 0.7 <= x < 0.8:
+        return 6
+    elif 0.8 <= x <= 1:
+        return 7
+
+def random_acc_amount_f(x):
+    return 7 - post_acc_amount_f(x)
+
 # M0_base model
 # module_configs = {}
 
@@ -31,16 +52,20 @@ from src.Bayesian_recon.utils.optimizer import Optimizer
 # module_configs = {"perception": (BasePerception, {})}
 
 # # M2_M model
-module_configs = {"memory": (BaseMemory, {
-                    "personal_memory_range": {
-                        "gamma": (0.05, 1.0),
-                        "w0": (0.075, 0.15)
-                    },
-                    "param_resolution": 20
-                })}
+# module_configs = {"memory": (BaseMemory, {
+#                     "personal_memory_range": {
+#                         "gamma": (0.05, 1.0),
+#                         "w0": (0.075, 0.15)
+#                     },
+#                     "param_resolution": 20
+#                 })}
 
 # # M3_H model
-
+# module_configs = {"cluster": (PartitionCluster, {
+#             "transition_spec": [("random_7", "random_posterior"),
+#                                 (1, "ksimilar_centers"),
+#                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+#             "init_strategy": [(10, "random")]})}
 
 # # M4_PM model
 # module_configs = {
@@ -54,7 +79,12 @@ module_configs = {"memory": (BaseMemory, {
 #         "perception": (BasePerception, {})}
 
 # M5_PH model
-
+module_configs = {"cluster": (PartitionCluster, {
+                            "transition_spec": [("random_7", "random_posterior"),
+                                                (1, "ksimilar_centers"),
+                                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                            "init_strategy": [(10, "random")]}),
+            "perception": (BasePerception, {})}
 
 # M6_MH model
 
@@ -78,16 +108,20 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 #     config_fgt, list(range(1, 25)), 16, 0, 100)
 
 # # M2_M model
-res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), 16, 1, 1)
+# res = optimizer.optimize_params_with_subs_parallel(
+#     config_fgt, list(range(1, 25)), 16, 1, 1)
 
-# # M3_H model
-
+# # # M3_H model
+# res = optimizer.optimize_params_with_subs_parallel(
+#     config_fgt, list(range(1, 25)), 16, 0, 1000)
 
 # # M4_PM model
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), 16, 5, 1000)
 
+# # M5_PH model
+res = optimizer.optimize_params_with_subs_parallel(
+    config_fgt, list(range(1, 25)), 16, 0, 1000)
 
 # Full model
 # res = optimizer.optimize_params_with_subs_parallel(
@@ -100,4 +134,4 @@ result_path = Path(project_root) / 'results' / 'Model_results'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M2_M.joblib') 
+joblib.dump(res, result_path / 'M5_PH.joblib') 
