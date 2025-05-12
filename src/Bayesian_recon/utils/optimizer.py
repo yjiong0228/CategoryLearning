@@ -151,7 +151,7 @@ class Optimizer(object):
                 kwargs['subject_data'] = subject_data_map[iSub]
                 all_kwargs.append(kwargs)
 
-        results = Parallel(n_jobs=self.n_jobs, batch_size=1)(
+        results = Parallel(n_jobs=min(self.n_jobs, len(all_kwargs)), batch_size=1)(
             delayed(process_single_task)(**kwargs)
             for kwargs in tqdm(all_kwargs,
                                desc="Processing tasks",
@@ -180,6 +180,21 @@ class Optimizer(object):
                         "error": grid_error,
                         "step_results": grid_step_results
                     }
+        
+        fitting_results = {}
+        for iSub in subject_best_combo.keys():
+            if grid_repeat[iSub] >= mc_samples[iSub]:
+                logger.info(f'Subject {iSub} has enough grid repeat samples.')
+                idx = np.argmin(subject_best_combo[iSub]['error'])                
+                fitting_results[iSub] = {
+                    "condition": subject_data_map[iSub]["condition"].iloc[0],
+                    "best_params": subject_best_combo[iSub]["params"],
+                    "best_error": subject_best_combo[iSub]["error"][idx],
+                    "best_step_results": subject_best_combo[iSub]["step_results"][idx],
+                    "grid_errors": subject_grid_errors[iSub],
+                    "sample_errors": subject_best_combo[iSub]["error"]
+                }
+                subject_grid_errors.pop(iSub)                   
 
         def refit_model(iSub, subject_data, specific_params):
             condition = subject_data["condition"].iloc[0]
@@ -202,7 +217,7 @@ class Optimizer(object):
                 **specific_params)
             return iSub, all_step_results, all_mean_error
 
-        fitting_results = {}
+        # fitting_results = {}
         for iSub in subject_grid_errors.keys():
             _, all_step_results, all_mean_error = refit_model(
                 iSub, subject_data_map[iSub],
