@@ -49,7 +49,8 @@ class Optimizer(object):
         self.n_jobs = n_jobs
         
 
-        if all(isinstance(key, int) for key in self.module_config.keys()):
+        if self.module_config and all(isinstance(key, int) for key in self.module_config.keys()):
+            print("Using parallel optimization for multiple subjects.")
             self.optimize_params_dict = defaultdict(dict)
             modules = defaultdict(dict)
             for iSub, config in self.module_config.items():
