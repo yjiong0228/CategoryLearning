@@ -240,14 +240,13 @@ class BasePartition(ABC):
             mechanism.
         """
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                         **kwargs)
-
-        choices, responses = data[1].copy(), data[2]
+                                         **kwargs) # shape = [n_cats, n_trials]
+        choices, responses = data[1].copy(), data[2] # shape = [n_trials]
         choices -= 1
 
         return np.where(responses == 1, prob[choices,
                                              np.arange(len(choices))],
-                        1 - prob[choices, np.arange(len(choices))])
+                        1 - prob[choices, np.arange(len(choices))]) # shape = [n_trials]
 
     @amnesia_mechanism
     def calc_trueprob_entry(self,
