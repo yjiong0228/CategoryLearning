@@ -28,8 +28,8 @@ def random_acc_amount_f(x):
 module_configs = {
     1: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -122,8 +122,8 @@ module_configs = {
 
     7: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -169,8 +169,8 @@ module_configs = {
 
     10: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -216,8 +216,8 @@ module_configs = {
 
     13: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -263,8 +263,8 @@ module_configs = {
 
     16: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(10, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -310,8 +310,8 @@ module_configs = {
 
     19: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -357,8 +357,8 @@ module_configs = {
 
     22: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {

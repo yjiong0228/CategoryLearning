@@ -87,10 +87,10 @@ def random_acc_amount_f(x):
 #             "perception": (BasePerception, {})}
 
 # M6_MH model
-from .fit_config_M6 import module_configs, window_size_configs
+# from .fit_config_M6 import module_configs, window_size_configs
 
 # M7_PMH model
-# from .fit_config import module_configs, window_size_configs
+from .fit_config import module_configs, window_size_configs
 
 
 optimizer = Optimizer(module_configs, n_jobs=120)
@@ -123,13 +123,13 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), 16, 0, 1000)
 
-# M6_MH model
+# # M6_MH model
+# res = optimizer.optimize_params_with_subs_parallel(
+#     config_fgt, [1,4,7,10,13,16,19,22], window_size_configs, 5, 1000)
+
+# M7_PMH model
 res = optimizer.optimize_params_with_subs_parallel(
     config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
-
-# # M7_PMH model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
 
 
 
@@ -138,4 +138,4 @@ result_path = Path(project_root) / 'results' / 'Model_results'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M6_MH.joblib') 
+joblib.dump(res, result_path / 'M7_PMH.joblib') 
