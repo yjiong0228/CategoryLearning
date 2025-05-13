@@ -713,8 +713,7 @@ class Fig3_Group:
         # Default colors and labels
         n_models = len(results_list)
         if colors is None:
-            default_palette = ['#45B53F', '#478ECC', '#DDAA33', '#A6A6A6']
-            colors = default_palette[:n_models]
+            colors = ['#A6A6A6'] * n_models
         if labels is None:
             labels = [f'Model {i+1}' for i in range(n_models)]
 
@@ -837,41 +836,38 @@ class Fig3_Group:
 
 
     def plot_group_k_corr(self,
-                          oral_hypo_hits,
-                          results_1,
-                          results_2,
-                          results_3,
-                          results_4,
-                          mc_method='bonferroni',
-                          figsize=(6, 5),
-                          color_1='#45B53F',
-                          color_2='#478ECC',
-                          color_3='#DDAA33',
-                          color_4='#A6A6A6',
-                          label_1='Base',
-                          label_2='Jump',
-                          label_3='Forget',
-                          label_4='Fgt+Jump',
-                          save_path=None):
+                        oral_hypo_hits,
+                        results_list,
+                        mc_method='bonferroni',
+                        figsize=(6, 5),
+                        colors=None,
+                        labels=None,
+                        save_path=None):
         """
-        绘制四个模型在rolling_hits与模型移动平均之间相关度的组水平对比。
+        绘制多个模型在 rolling_hits 与模型移动平均之间相关度的组水平对比。
 
         参数：
-        - oral_hypo_hits: dict, 每个被试的真实rolling_hits和condition信息
-        - results_1..4: dict, 四个模型的step_results或best_step_results
-        - mc_method: 多重比较校正方法
-        - color_* / label_*: 各模型颜色与标签
-        - save_path: 保存路径
+        - oral_hypo_hits: dict, 每个被试的真实 rolling_hits 和 condition 信息。
+        - results_list: list, 包含多个模型的结果，每个结果是一个字典。
+        - mc_method: str, 多重比较校正方法。
+        - colors: list, 每个模型的颜色。
+        - labels: list, 每个模型的标签。
+        - save_path: str, 保存路径。
         """
+        # 默认颜色和标签
+        n_models = len(results_list)
+        if colors is None:
+            colors = ['#A6A6A6'] * n_models
+        if labels is None:
+            labels = [f'Model {i+1}' for i in range(n_models)]
 
         # ---------- 移动平均提取函数 ----------
         def _extract_ma(step_dict, k_special, win=16):
             step_res = step_dict.get('step_results',
-                                     step_dict.get('best_step_results', []))
+                                    step_dict.get('best_step_results', []))
             post_vals = []
             for step in step_res:
-                post = step['hypo_details'].get(k_special,
-                                                {}).get('post_max', 0.0)
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
                 try:
                     post = float(post)
                 except (TypeError, ValueError):
@@ -901,66 +897,57 @@ class Fig3_Group:
                     corrs[subject_id] = np.corrcoef(x[valid], y[valid])[0, 1]
             return corrs
 
-        # 四个模型相关度字典
-        corrs_list = [
-            compute_k_corrs(results_1),
-            compute_k_corrs(results_2),
-            compute_k_corrs(results_3),
-            {k: v + 0.1 for k, v in compute_k_corrs(results_4).items()},
-        ]
+        # 计算每个模型的相关度字典
+        corrs_list = [compute_k_corrs(results) for results in results_list]
 
-        # 构建DataFrame并计算mean与sem
+        # 构建 DataFrame 并计算 mean 和 sem
         df = pd.DataFrame({
             'Model':
-            sum([[f'Model {i+1}'] * len(corrs_list[i]) for i in range(4)], []),
+            sum([[labels[i]] * len(corrs_list[i]) for i in range(n_models)], []),
             'Correlation':
             sum([list(c.values()) for c in corrs_list], [])
         })
         summary = df.groupby('Model')['Correlation'].agg(
-            ['mean',
-             'sem']).reindex(['Model 1', 'Model 2', 'Model 3',
-                              'Model 4']).reset_index()
+            ['mean', 'sem']).reindex(labels).reset_index()
 
         # 取共有被试
         shared_subs = sorted(
-            set(corrs_list[0]) & set(corrs_list[1]) & set(corrs_list[2])
-            & set(corrs_list[3]))
+            set.intersection(*[set(corrs.keys()) for corrs in corrs_list]))
         arrs = [
-            np.array([corrs_list[i][sid] for sid in shared_subs])
-            for i in range(4)
+            np.array([corrs[sid] for sid in shared_subs]) for corrs in corrs_list
         ]
 
         # 统计检验（配对 t 检验）
         raw_ps = []
-        for i in range(3):
+        for i in range(n_models - 1):
             _, p = ttest_rel(arrs[i], arrs[i + 1])
             raw_ps.append(p)
         reject, p_corrected, _, _ = multipletests(raw_ps,
-                                                  alpha=0.05,
-                                                  method=mc_method)
+                                                alpha=0.05,
+                                                method=mc_method)
 
         # ---------- 绘图 ----------
         fig, ax = plt.subplots(figsize=figsize)
         bars = ax.bar(summary['Model'],
-                      summary['mean'],
-                      yerr=summary['sem'],
-                      color=[color_1, color_2, color_3, color_4],
-                      capsize=5,
-                      width=0.6,
-                      edgecolor='black')
+                    summary['mean'],
+                    yerr=summary['sem'],
+                    color=colors,
+                    capsize=5,
+                    width=0.6,
+                    edgecolor='black')
         # 个体连线与散点
-        x_base = np.arange(4)
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), 4))
+        x_base = np.arange(n_models)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), n_models))
         for i, sid in enumerate(shared_subs):
-            ys = [corrs_list[j][sid] for j in range(4)]
+            ys = [corrs_list[j][sid] for j in range(n_models)]
             xs = x_base + jitter[i]
             ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
             ax.scatter(xs,
-                       ys,
-                       color='black',
-                       alpha=0.6,
-                       s=20,
-                       label='Individual Data' if i == 0 else None)
+                    ys,
+                    color='black',
+                    alpha=0.6,
+                    s=20,
+                    label='Individual Data' if i == 0 else None)
 
         # 显著性标注函数
         def get_star(p):
@@ -993,7 +980,7 @@ class Fig3_Group:
         ax.set_ylabel('Correlation coefficient', fontsize=14)
         ax.set_xlabel('Model', fontsize=14)
         ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.set_xticklabels(labels, fontsize=12)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.legend()
 
@@ -1011,41 +998,38 @@ class Fig3_Group:
 
 
     def plot_group_k_rdelta(self,
-                          oral_hypo_hits,
-                          results_1,
-                          results_2,
-                          results_3,
-                          results_4,
-                          mc_method='bonferroni',
-                          figsize=(6, 5),
-                          color_1='#45B53F',
-                          color_2='#478ECC',
-                          color_3='#DDAA33',
-                          color_4='#A6A6A6',
-                          label_1='Base',
-                          label_2='Jump',
-                          label_3='Forget',
-                          label_4='Fgt+Jump',
-                          save_path=None):
+                            oral_hypo_hits,
+                            results_list,
+                            mc_method='bonferroni',
+                            figsize=(6, 5),
+                            colors=None,
+                            labels=None,
+                            save_path=None):
         """
-        绘制四个模型在rolling_hits与模型移动平均之间相关度的组水平对比。
+        绘制多个模型在 rolling_hits 与模型移动平均之间相关度的组水平对比。
 
         参数：
-        - oral_hypo_hits: dict, 每个被试的真实rolling_hits和condition信息
-        - results_1..4: dict, 四个模型的step_results或best_step_results
-        - mc_method: 多重比较校正方法
-        - color_* / label_*: 各模型颜色与标签
-        - save_path: 保存路径
+        - oral_hypo_hits: dict, 每个被试的真实 rolling_hits 和 condition 信息。
+        - results_list: list, 包含多个模型的结果，每个结果是一个字典。
+        - mc_method: str, 多重比较校正方法。
+        - colors: list, 每个模型的颜色。
+        - labels: list, 每个模型的标签。
+        - save_path: str, 保存路径。
         """
+        # 默认颜色和标签
+        n_models = len(results_list)
+        if colors is None:
+            colors = ['#A6A6A6'] * n_models
+        if labels is None:
+            labels = [f'Model {i+1}' for i in range(n_models)]
 
         # ---------- 移动平均提取函数 ----------
         def _extract_ma(step_dict, k_special, win=16):
             step_res = step_dict.get('step_results',
-                                     step_dict.get('best_step_results', []))
+                                    step_dict.get('best_step_results', []))
             post_vals = []
             for step in step_res:
-                post = step['hypo_details'].get(k_special,
-                                                {}).get('post_max', 0.0)
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
                 try:
                     post = float(post)
                 except (TypeError, ValueError):
@@ -1060,86 +1044,93 @@ class Fig3_Group:
             for subject_id, odict in oral_hypo_hits.items():
                 if subject_id not in results:
                     continue
+
                 rolling_hits = np.array(odict['rolling_hits'], dtype=float)
-                condition = odict['condition']
-                k_special = 0 if condition == 1 else 42
-                rolling_ks = _extract_ma(results[subject_id], k_special)
-                n = min(len(rolling_hits), len(rolling_ks))
-                x = rolling_hits[:n]
-                y = rolling_ks[:n]
+                condition   = odict['condition']
+                k_special   = 0 if condition == 1 else 42
+                ma          = _extract_ma(results[subject_id], k_special)
+
+                # truncate to same length & mask NaNs
+                n     = min(len(rolling_hits), len(ma))
+                x, y  = ma[:n], rolling_hits[:n]
                 valid = ~np.isnan(y)
-                if valid.sum() < 2 or np.nanstd(x[valid]) == 0 or np.nanstd(
-                        y[valid]) == 0:
+                
+                if valid.sum() < 2 or np.nanstd(x[valid]) == 0 or np.nanstd(y[valid]) == 0:
                     corrs[subject_id] = np.nan
                 else:
-                    # corrs[subject_id] = np.corrcoef(x[valid], y[valid])[0, 1]
-                    # r_delta, _ = pearsonr(np.diff(x[valid]), np.diff(y[valid]))
+                    r_delta, _ = pearsonr(np.diff(x[valid]), np.diff(y[valid]))
+                    r_delta = np.nan_to_num(r_delta)
+                    corrs[subject_id] = r_delta
+
                     # sign_match = (np.sign(np.diff(x[valid])) == np.sign(np.diff(y[valid]))).mean()
-                    dtw_dist, _ = fastdtw(x[valid], y[valid], dist=euclidean)
-                    dtw_sim = 1 / (1 + dtw_dist / len(x[valid]))
-                    corrs[subject_id] = np.nan_to_num(dtw_sim)
+                    # corrs[subject_id] = sign_match
+
+                    # dtw_dist, _ = fastdtw(x[valid], y[valid], dist=euclidean)
+                    # dtw_sim = 1 / (1 + dtw_dist / len(x[valid]))
+                    # dtw_sim = np.nan_to_num(dtw_sim)
+                    # corrs[subject_id] = dtw_sim
+                    
+                    # mse = np.mean((x[valid] - y[valid]) ** 2)
+                    # denom = np.var(y[valid])
+                    # if denom == 0:
+                    #     return np.nan
+                    # nrmse_val = np.sqrt(mse / denom)
+                    # corrs[subject_id] = nrmse_val
+
             return corrs
 
-        # 四个模型相关度字典
-        corrs_list = [
-            compute_k_corrs(results_1),
-            compute_k_corrs(results_2),
-            compute_k_corrs(results_3),
-            compute_k_corrs(results_4),
-        ]
 
-        # 构建DataFrame并计算mean与sem
+        # 计算每个模型的相关度字典
+        corrs_list = [compute_k_corrs(results) for results in results_list]
+
+        # 构建 DataFrame 并计算 mean 和 sem
         df = pd.DataFrame({
             'Model':
-            sum([[f'Model {i+1}'] * len(corrs_list[i]) for i in range(4)], []),
+            sum([[labels[i]] * len(corrs_list[i]) for i in range(n_models)], []),
             'Correlation':
             sum([list(c.values()) for c in corrs_list], [])
         })
         summary = df.groupby('Model')['Correlation'].agg(
-            ['mean',
-             'sem']).reindex(['Model 1', 'Model 2', 'Model 3',
-                              'Model 4']).reset_index()
+            ['mean', 'sem']).reindex(labels).reset_index()
 
         # 取共有被试
         shared_subs = sorted(
-            set(corrs_list[0]) & set(corrs_list[1]) & set(corrs_list[2])
-            & set(corrs_list[3]))
+            set.intersection(*[set(corrs.keys()) for corrs in corrs_list]))
         arrs = [
-            np.array([corrs_list[i][sid] for sid in shared_subs])
-            for i in range(4)
+            np.array([corrs[sid] for sid in shared_subs]) for corrs in corrs_list
         ]
 
         # 统计检验（配对 t 检验）
         raw_ps = []
-        for i in range(3):
+        for i in range(n_models - 1):
             _, p = ttest_rel(arrs[i], arrs[i + 1])
             raw_ps.append(p)
         reject, p_corrected, _, _ = multipletests(raw_ps,
-                                                  alpha=0.05,
-                                                  method=mc_method)
+                                                alpha=0.05,
+                                                method=mc_method)
 
         # ---------- 绘图 ----------
         fig, ax = plt.subplots(figsize=figsize)
         bars = ax.bar(summary['Model'],
-                      summary['mean'],
-                      yerr=summary['sem'],
-                      color=[color_1, color_2, color_3, color_4],
-                      capsize=5,
-                      width=0.6,
-                      edgecolor='black')
+                    summary['mean'],
+                    yerr=summary['sem'],
+                    color=colors,
+                    capsize=5,
+                    width=0.6,
+                    edgecolor='black')
         # 个体连线与散点
-        x_base = np.arange(4)
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), 4))
+        x_base = np.arange(n_models)
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(shared_subs), n_models))
         for i, sid in enumerate(shared_subs):
-            ys = [corrs_list[j][sid] for j in range(4)]
+            ys = [corrs_list[j][sid] for j in range(n_models)]
             xs = x_base + jitter[i]
             ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
             ax.scatter(xs,
-                       ys,
-                       color='black',
-                       alpha=0.6,
-                       s=20,
-                       label='Individual Data' if i == 0 else None)
+                    ys,
+                    color='black',
+                    alpha=0.6,
+                    s=20,
+                    label='Individual Data' if i == 0 else None)
 
         # 显著性标注函数
         def get_star(p):
@@ -1172,7 +1163,7 @@ class Fig3_Group:
         ax.set_ylabel('Correlation coefficient', fontsize=14)
         ax.set_xlabel('Model', fontsize=14)
         ax.set_xticks(x_base)
-        ax.set_xticklabels([label_1, label_2, label_3, label_4], fontsize=12)
+        ax.set_xticklabels(labels, fontsize=12)
         ax.tick_params(axis='both', which='major', labelsize=12)
         ax.legend()
 
