@@ -116,7 +116,7 @@ class Fig1_Oral:
                                           xs,
                                           ys,
                                           zs,
-                                          cmap_name="plasma_r",
+                                          cmap_name="viridis_r",
                                           cmap_low=0,
                                           cmap_high=0.9,
                                           lw=1.5,
@@ -233,7 +233,7 @@ class Fig1_Oral:
         zs = [f['feature3_oral'] for f in features_list]
 
         if len(xs) > 1:
-            self._plot_smooth_grad_line_and_points(ax, xs, ys, zs)
+            self._plot_smooth_grad_line_and_points(ax, xs, ys, zs, cmap_low=0, cmap_high=1)
 
         ax.view_init(elev=15, azim=30)
         self._beautify_axes(ax)
@@ -253,8 +253,8 @@ class Fig1_Oral:
                                   xstick,
                                   xsticklabel,
                                   plots_dir,
-                                  cmap_name="plasma_r",
-                                  cmap_low=0,
+                                  cmap_name="viridis_r",
+                                  cmap_low=0.7,
                                   cmap_high=1.0,
                                   lw=2,
                                   s=30,
