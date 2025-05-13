@@ -51,7 +51,7 @@ def random_acc_amount_f(x):
 # # M1_P model
 # module_configs = {"perception": (BasePerception, {})}
 
-# # M2_M model
+# M2_M model
 # module_configs = {"memory": (BaseMemory, {
 #                     "personal_memory_range": {
 #                         "gamma": (0.05, 1.0),
@@ -79,18 +79,18 @@ def random_acc_amount_f(x):
 #         "perception": (BasePerception, {})}
 
 # M5_PH model
-module_configs = {"cluster": (PartitionCluster, {
-                            "transition_spec": [("random_7", "random_posterior"),
-                                                (1, "ksimilar_centers"),
-                                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-                            "init_strategy": [(10, "random")]}),
-            "perception": (BasePerception, {})}
+# module_configs = {"cluster": (PartitionCluster, {
+#                             "transition_spec": [("random_7", "random_posterior"),
+#                                                 (1, "ksimilar_centers"),
+#                                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+#                             "init_strategy": [(10, "random")]}),
+#             "perception": (BasePerception, {})}
 
 # M6_MH model
-
+from .fit_config_M6 import module_configs, window_size_configs
 
 # M7_PMH model
-# from .fit_config import module_configs, window_size_configs, grid_repeat_configs, mc_sample_configs
+# from .fit_config import module_configs, window_size_configs
 
 
 optimizer = Optimizer(module_configs, n_jobs=120)
@@ -99,7 +99,7 @@ processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 
-# M0_base model
+# # M0_base model
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), 16, 1, 1)
 
@@ -111,19 +111,23 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), 16, 1, 1)
 
-# # # M3_H model
+# # M3_H model
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), 16, 0, 1000)
 
 # # M4_PM model
 # res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 5, 1000)
+#     config_fgt, list(range(1, 25)), 16, 3, 500)
 
 # # M5_PH model
-res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), 16, 0, 1000)
+# res = optimizer.optimize_params_with_subs_parallel(
+#     config_fgt, list(range(1, 25)), 16, 0, 1000)
 
-# Full model
+# M6_MH model
+res = optimizer.optimize_params_with_subs_parallel(
+    config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
+
+# # M7_PMH model
 # res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
 
@@ -134,4 +138,4 @@ result_path = Path(project_root) / 'results' / 'Model_results'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M5_PH.joblib') 
+joblib.dump(res, result_path / 'M6_MH.joblib') 
