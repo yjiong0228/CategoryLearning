@@ -33,89 +33,93 @@ module_configs = {
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.55, 0.55),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     2: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.8, 0.8),
+                "w0": (0.0075, 0.0075)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     3: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.05, 0.05),
+                "w0": (0.05, 0.05)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     4: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_2", "top_posterior"),
-                                ("opp_random_2", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.9, 0.9),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     5: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.65, 0.65),
+                "w0": (0.0125, 0.0125)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     6: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.01, 0.01)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -137,32 +141,34 @@ module_configs = {
 
     8: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     9: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -184,32 +190,34 @@ module_configs = {
 
     11: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     12: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -231,32 +239,34 @@ module_configs = {
 
     14: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     15: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -278,32 +288,34 @@ module_configs = {
 
     17: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     18: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -325,32 +337,34 @@ module_configs = {
 
     20: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     21: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
@@ -372,32 +386,34 @@ module_configs = {
 
     23: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.0136, 0.0136)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
 
     24: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("max_2", "random_posterior"),
+                                ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-            "init_strategy": [(10, "random")]}),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
+            "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
+                "gamma": (0.7, 0.7),
+                "w0": (0.15, 0.15)
             },
-            "param_resolution": 20
+            "param_resolution": 1
         }),
         "perception": (BasePerception, {}),
     },
