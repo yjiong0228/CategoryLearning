@@ -1516,35 +1516,18 @@ class Fig3_Individual:
 
         # ---------- oral-distance curve -----------------------------------------
         odict = oral_hypo_hits[subject_id]
-        hits = odict['hits']
-        n_steps = len(hits)
+        rolling_hits = odict['rolling_hits']
+        n_steps = len(rolling_hits)
         x_vals = np.arange(1, n_steps + 1)
-        win = 16
-
-        # compute rolling_hits, ignoring empty-list entries in each window
-        rolling_hits = []
-        for i in range(n_steps):
-            if i + 1 < win:
-                rolling_hits.append(np.nan)
-            else:
-                window = hits[i-win+1:i+1]
-                # filter out empty entries
-                vals = [h for h in window if isinstance(h, (int, float))]
-                if not vals:
-                    rolling_hits.append(np.nan)
-                else:
-                    rolling_hits.append(float(np.mean(vals)))
 
         ax.plot(x_vals,
-                hits,
+                rolling_hits,
                 lw=3,
                 label='Human',
                 color=color_true)
 
-        valid_idx = [i for i, h in enumerate(hits) if isinstance(h, (int, float))]
-
         # ---------- posterior curve(s) ------------------------------------------
-        def _extract_ma_filtered(results_sub, k_special, valid_idx, win):
+        def _extract_ma_filtered(results_sub, k_special, win=16):
             # get raw posteriors
             step_res = results_sub.get('step_results', results_sub.get('best_step_results', []))
             post_vals = []
@@ -1555,17 +1538,16 @@ class Fig3_Individual:
                 except (TypeError, ValueError):
                     post = 0.0
                 post_vals.append(post)
-            # filter to only valid trials
-            filtered = [post_vals[i] for i in valid_idx]
             # compute rolling mean
-            return pd.Series(filtered, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+            return pd.Series(post_vals, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
 
         condition = odict['condition']
         k_special = 0 if condition == 1 else 42
-        rolling_k = _extract_ma_filtered(results[subject_id], k_special, valid_idx, win)
+        win =16
+        rolling_k = _extract_ma_filtered(results[subject_id], k_special, win)
         # plot posterior aligned to valid x positions
-        x_k = np.array(valid_idx)[win-1:] + 1  # only plot where rolling defined
-        ax.plot(x_k,
+        # x_k = np.arange(1, len(rolling_k) + 1)  # only plot where rolling defined
+        ax.plot(x_vals[win-1:],
                 rolling_k[win-1:],
                 lw=3,
                 color=color,
@@ -1584,7 +1566,7 @@ class Fig3_Individual:
                    ylabel='Probability',
                    xtick_interval=128)
 
-        ax.legend()
+        # ax.legend()
         fig.tight_layout()
 
         # ---------- save / show --------------------------------------------------
@@ -1593,11 +1575,11 @@ class Fig3_Individual:
                         dpi=300,
                         bbox_inches='tight',
                         transparent=True)
-            print(f'[Fig3D] saved → {save_path}')
+            print(f'Figure saved to {save_path}')
         plt.close(fig)
 
 
-class Fig4:
+class Fig5:
 
     def plot_amount(self,
                     results: Dict[int, Any],
