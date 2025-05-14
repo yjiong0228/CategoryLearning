@@ -14,6 +14,7 @@ from matplotlib import font_manager
 import matplotlib as mpl
 import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, Tuple, List, Any, Union, Optional
 import pandas as pd
@@ -441,6 +442,129 @@ class Fig1_Oral:
                                                        model_folder)
 
         print(f"完成模型轨迹绘制：行 {sorted(target)}，图表已保存至 {plots_dir}/choice*/ 文件夹。")
+
+
+class Fig2_Partition:
+    def __init__(self, edge_color='#808080', lw1=2, lw2=4, plane_color='#808080', plane_alpha=0.5):
+        """
+        edge_color : str
+            Color for the cube edges and axes lines.
+        lw : float
+            Linewidth for cube edges and axes lines.
+        plane_color : str
+            Color for the partition plane.
+        plane_alpha : float
+            Transparency for the partition plane.
+        """
+        self.edge_color = edge_color
+        self.lw1 = lw1
+        self.lw2 = lw2
+        self.plane_color = plane_color
+        self.plane_alpha = plane_alpha
+
+    def draw_cube(self, ax):
+        """
+        Draws the unit cube edges on the given 3D axes.
+        """
+        verts = [
+            (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+            (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)
+        ]
+        edges = [
+            (0, 1), (1, 2), (2, 3), (3, 0),  # bottom face
+            (4, 5), (5, 6), (6, 7), (7, 4),  # top face
+            (0, 4), (1, 5), (2, 6), (3, 7)   # vertical edges
+        ]
+        for u, v in edges:
+            x, y, z = zip(verts[u], verts[v])
+            ax.plot(x, y, z, color=self.edge_color, linewidth=self.lw1, alpha=0.9)
+
+    def _beautify_axes(self, ax):
+        """
+        Removes default axes and draws three principal axes lines.
+        """
+        ax.set_axis_off()
+        lines = [
+            ([0, 1], [0, 0], [0, 0]),
+            ([0, 0], [0, 1], [0, 0]),
+            ([0, 0], [0, 0], [0, 1])
+        ]
+        for x, y, z in lines:
+            ax.plot(x, y, z, color=self.edge_color, linewidth=self.lw2)
+
+    def _draw_plane1(self, ax):
+        """
+        Draws the partition plane x = 0.5 within the cube.
+        """
+        verts = [
+            (0, 0.5, 0),
+            (1, 0.5, 0),
+            (1, 0.5, 1),
+            (0, 0.5, 1)
+        ]
+        poly = Poly3DCollection([verts], color=self.plane_color, alpha=self.plane_alpha)
+        ax.add_collection3d(poly)
+
+    def _draw_plane2(self, ax):
+        """
+        Draws the partition plane x = 0.5 within the cube.
+        """
+        verts = [
+            (0, 0, 0.5),
+            (1, 0, 0.5),
+            (1, 1, 0.5),
+            (0, 1, 0.5)
+        ]
+        poly = Poly3DCollection([verts], color=self.plane_color, alpha=self.plane_alpha)
+        ax.add_collection3d(poly)
+
+    def _draw_plane_x_equals_y(self, ax):
+        """
+        Draws the partition plane x = y within the cube.
+        """
+        verts = [
+            (0, 0, 0), (1, 1, 0),
+            (1, 1, 1), (0, 0, 1)
+        ]
+        poly = Poly3DCollection([verts],
+                                 color=self.plane_color,
+                                 alpha=self.plane_alpha)
+        ax.add_collection3d(poly)
+
+    def plot(self, i, save_path=None, show=True):
+        """
+        Creates the 3D plot with cube, axes, and partition plane.
+
+        Parameters
+        ----------
+        save_path : str or None
+            File path to save the figure as SVG or PNG. If None, figure is not saved.
+        show : bool
+            Whether to display the figure interactively.
+        """
+        fig = plt.figure(figsize=(6, 6), facecolor='none')
+        ax = fig.add_subplot(111, projection='3d')
+
+        self._beautify_axes(ax)
+        self.draw_cube(ax)
+
+        if i == 1:
+            self._draw_plane1(ax)
+        elif i == 2:
+            self._draw_plane2(ax)
+        elif i == 3:
+            self._draw_plane_x_equals_y(ax)
+
+        ax.view_init(elev=15, azim=30)
+        ax.patch.set_alpha(0)
+
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, transparent=True)
+            plt.close(fig)
+        if show:
+            plt.show()
+
 
 
 class Fig1_Ntrial:

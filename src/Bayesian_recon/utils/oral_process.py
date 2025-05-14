@@ -44,7 +44,7 @@ class Oral_to_coordinate:
             if condition == 1:
                 top_k = 4
             else:
-                top_k = 10
+                top_k = 15
 
             if exact_matches:
                 chosen_hypos = exact_matches
