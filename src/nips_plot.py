@@ -31,7 +31,7 @@ mpl.rcParams['font.family'] = prop.get_name()
 
 
 class Fig1_Oral:
-    
+
     def read_data(self, df):
         """
         读取 DataFrame，只保留 feature1_oral 到 feature4_oral，并保留 iSub、iSession、iTrial、choice。
@@ -137,7 +137,7 @@ class Fig1_Oral:
             对重复点添加的高斯噪声标准差（单位与坐标一致，默认 0.002）。
         random_state : int | None
             随机种子，方便复现；None 则使用全局随机数生成器。
-        """        
+        """
         rng = np.random.default_rng(random_state)
         xs, ys, zs = map(np.asarray, (xs, ys, zs))
 
@@ -349,7 +349,7 @@ class Fig1_Oral:
                               subject_data,
                               type,
                               plots_dir,
-                              xstick=1, 
+                              xstick=1,
                               xsticklabel=1,
                               row_indices=None):
         """处理 DataFrame 并仅对指定行绘图，展示行之前的累积轨迹"""
@@ -394,7 +394,7 @@ class Fig1_Oral:
                               df,
                               type,
                               plots_dir,
-                              xstick=1, 
+                              xstick=1,
                               xsticklabel=1,
                               row_indices=None):
         # 确定要绘制的行
@@ -1178,7 +1178,7 @@ class Fig3_Group:
                 n     = min(len(rolling_hits), len(ma))
                 x, y  = ma[:n], rolling_hits[:n]
                 valid = ~np.isnan(y)
-                
+
                 if valid.sum() < 2 or np.nanstd(x[valid]) == 0 or np.nanstd(y[valid]) == 0:
                     corrs[subject_id] = np.nan
                 else:
@@ -1193,7 +1193,7 @@ class Fig3_Group:
                     # dtw_sim = 1 / (1 + dtw_dist / len(x[valid]))
                     # dtw_sim = np.nan_to_num(dtw_sim)
                     # corrs[subject_id] = dtw_sim
-                    
+
                     # mse = np.mean((x[valid] - y[valid]) ** 2)
                     # denom = np.var(y[valid])
                     # if denom == 0:
@@ -1439,10 +1439,12 @@ class Fig3_Individual:
     def plot_acc_comparison(self,
                             results,
                             subject_id,
-                            label,
                             color,
+                            color_true,
+                            xtick_interval,
+                            subject_label,
+                            model_label,
                             figsize=(15, 5),
-                            color_true='#A6A6A6',
                             save_path=None):
         # 基础设置
         fig, ax = plt.subplots(figsize=figsize)
@@ -1453,45 +1455,78 @@ class Fig3_Individual:
         # 真实准确率
         true_acc = padding + list(results[subject_id]['sliding_true_acc'])
         x_vals = np.arange(1, len(true_acc) + 1)
-        ax.plot(x_vals, true_acc, label='Human', color=color_true, linewidth=2)
+        ax.plot(x_vals,
+                true_acc,
+                label='Human',
+                color=color_true,
+                linewidth=2,
+                clip_on=False)
 
         # 绘制预测结果
         pred = padding + list(results[subject_id]['sliding_pred_acc'])
         std = padding + list(results[subject_id]['sliding_pred_acc_std'])
-        ax.plot(x_vals, pred, label=label, color=color, linewidth=2)
+        ax.plot(x_vals, pred, label=model_label,color=color, linewidth=2, clip_on=False)
         low = np.array(pred) - np.array(std)
         high = np.array(pred) + np.array(std)
-        ax.fill_between(x_vals, low, high, color=color, alpha=0.4)
+        ax.fill_between(x_vals, low, high, color=color, alpha=0.3)
 
         # 辅助元素
         add_segmentation_lines(ax,
                                len(x_vals),
-                               interval=128,
+                               interval=64,
                                color='grey',
                                alpha=0.3,
-                               linestyle='--',
+                               linestyle='dashed',
                                linewidth=1)
-        style_axis(ax, show_ylabel=True, xtick_interval=128)
-        # ax.legend()
-        fig.tight_layout()
+
+        ax.set_xlim(0, len(x_vals) + 1)
+        ax.set_ylim(0, 1)
+
+        yticks = np.arange(0, 1.01, 0.2)
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
+        ax.set_ylabel('Learning performance', fontsize=19)
+
+        ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+        ax.set_xticklabels(range(0,
+                                 int(ax.get_xlim()[1]) + 1, xtick_interval),
+                           fontsize=16)
+        ax.set_xlabel('Trial', fontsize=19)
+
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        ax.text(0.12,
+                0.88,
+                f"S{subject_label}",
+                transform=ax.transAxes,
+                fontsize=20,
+                ha='right',
+                va='bottom',
+                color='black')
+
+        ax.legend(loc='upper left', bbox_to_anchor=(0.85, 0.3), fontsize=15, framealpha=0.0)
+        # fig.tight_layout()
 
         # 保存或展示
         if save_path:
-            fig.savefig(save_path,
-                        bbox_inches='tight',
-                        transparent=True)
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
             print(f"Figure saved to {save_path}")
         plt.close(fig)
-
 
     def plot_k_comparison(self,
                           oral_hypo_hits: Dict[int, Dict[str, Any]],
                           results: Dict[int, Any],
                           subject_id: int,
-                          figsize: Tuple[int, int] = (6, 5),
                           color: str = '#45B53F',
                           color_true: str = '#4C7AD1',
-                          label: str = 'Model 1',
+                          xtick_interval: int = 128,
+                          subject_label: str = 'Model 1',
+                          model_label: str = 'PMH',
+                          figsize: Tuple[int, int] = (6, 5),
                           save_path: str | None = None):
         """
         Overlay (i) the subject’s distance-to-prototype trajectory and
@@ -1522,61 +1557,412 @@ class Fig3_Individual:
 
         ax.plot(x_vals,
                 rolling_hits,
-                lw=3,
+                lw=2,
                 label='Human',
-                color=color_true)
+                color=color_true,
+                clip_on=False)
 
         # ---------- posterior curve(s) ------------------------------------------
         def _extract_ma_filtered(results_sub, k_special, win=16):
             # get raw posteriors
-            step_res = results_sub.get('step_results', results_sub.get('best_step_results', []))
+            step_res = results_sub.get(
+                'step_results', results_sub.get('best_step_results', []))
             post_vals = []
             for step in step_res:
-                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                post = step['hypo_details'].get(k_special,
+                                                {}).get('post_max', 0.0)
                 try:
                     post = float(post)
                 except (TypeError, ValueError):
                     post = 0.0
                 post_vals.append(post)
             # compute rolling mean
-            return pd.Series(post_vals, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
 
         condition = odict['condition']
         k_special = 0 if condition == 1 else 42
-        win =16
+        win = 16
         rolling_k = _extract_ma_filtered(results[subject_id], k_special, win)
         # plot posterior aligned to valid x positions
         # x_k = np.arange(1, len(rolling_k) + 1)  # only plot where rolling defined
-        ax.plot(x_vals[win-1:],
-                rolling_k[win-1:],
-                lw=3,
+        ax.plot(x_vals[win - 1:],
+                rolling_k[win - 1:],
+                label=model_label,
+                lw=2,
                 color=color,
-                label=f'{label}: k={k_special}')
+                clip_on=False)
 
         # ---------- cosmetics ----------------------------------------------------
         add_segmentation_lines(ax,
                                n_steps,
-                               interval=128,
+                               interval=64,
                                color='grey',
                                alpha=0.3,
                                linestyle='--',
                                linewidth=1)
-        style_axis(ax,
-                   show_ylabel=True,
-                   ylabel='Probability',
-                   xtick_interval=128)
 
-        # ax.legend()
-        fig.tight_layout()
+        ax.set_xlim(0, len(x_vals) + 1)
+        ax.set_ylim(0, 1)
+
+        yticks = np.arange(0, 1.01, 0.2)
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
+        ax.set_ylabel('True-hypo probability', fontsize=19)
+
+        ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+        ax.set_xticklabels(range(0,
+                                 int(ax.get_xlim()[1]) + 1, xtick_interval),
+                           fontsize=16)
+        ax.set_xlabel('Trial', fontsize=19)
+
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        ax.text(0.12,
+                0.85,
+                f"S{subject_label}",
+                transform=ax.transAxes,
+                fontsize=20,
+                ha='right',
+                va='bottom',
+                color='black')
+
+        ax.legend(loc='upper left', bbox_to_anchor=(0.85, 0.35), fontsize=15, framealpha=0.0)
 
         # ---------- save / show --------------------------------------------------
         if save_path:
             fig.savefig(save_path,
-                        dpi=300,
                         bbox_inches='tight',
                         transparent=True)
             print(f'Figure saved to {save_path}')
         plt.close(fig)
+
+
+    def plot_acc_comparison_subs(self,
+                                 results,
+                                 subject_ids,
+                                 nrow,
+                                 color,
+                                 color_true,
+                                 xtick_interval,
+                                 subject_labels,
+                                 figsize=(15, 5),
+                                 save_path=None):
+
+        # Grid size
+        n_sub = len(subject_ids)
+        ncol = int(np.ceil(n_sub / nrow))
+
+        # 基础设置
+        fig, axes = plt.subplots(nrow,
+                                 ncol,
+                                 figsize=figsize,
+                                 sharex=False,
+                                 sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
+        plt.tight_layout(h_pad=3)
+
+        padding = [np.nan] * 15
+        x_vals = None
+
+        for idx, subject_id in enumerate(subject_ids):
+            ax = axes_flat[idx]
+
+            # 真实准确率
+            true_acc = padding + list(results[subject_id]['sliding_true_acc'])
+            x_vals = np.arange(1, len(true_acc) + 1)
+            ax.plot(x_vals,
+                    true_acc,
+                    label='Human',
+                    color=color_true,
+                    linewidth=2)
+
+            # 绘制预测结果
+            pred = padding + list(results[subject_id]['sliding_pred_acc'])
+            std = padding + list(results[subject_id]['sliding_pred_acc_std'])
+            ax.plot(x_vals, pred, color=color, linewidth=2, clip_on=False)
+            low = np.array(pred) - np.array(std)
+            high = np.array(pred) + np.array(std)
+            ax.fill_between(x_vals, low, high, color=color, alpha=0.3)
+
+            # 辅助元素
+            add_segmentation_lines(ax,
+                                   len(x_vals),
+                                   interval=64,
+                                   color='grey',
+                                   alpha=0.3,
+                                   linestyle='dashed',
+                                   linewidth=1)
+
+            ax.set_xlim(0, len(x_vals) + 1)
+            ax.set_ylim(0, 1)
+
+            col = idx % ncol
+            yticks = np.arange(0, 1.01, 0.2)
+            ax.set_yticks(yticks)
+            if col == 0:
+                ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+
+            ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+            ax.set_xticklabels(range(0,
+                                     int(ax.get_xlim()[1]) + 1,
+                                     xtick_interval),
+                               fontsize=16)
+            ax.set_xlabel(None)
+
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(2)
+
+            if col == 0:
+                textx = 0.15
+            else:
+                textx = 0.2
+            ax.text(textx,
+                    0.87,
+                    f'S{subject_labels[subject_ids.index(subject_id)]}',
+                    transform=ax.transAxes,
+                    fontsize=20,
+                    ha='right',
+                    va='bottom',
+                    color='black')
+
+        fig.text(0.5, -0.03, 'Trial', ha='center', fontsize=19)
+        fig.text(-0.035,
+                 0.5,
+                 'Learning performance',
+                 va='center',
+                 rotation='vertical',
+                 fontsize=19)
+
+        # Hide unused subplots
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
+
+        # 保存或展示
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+    def plot_k_comparison_small(self,
+                          oral_hypo_hits: Dict[int, Dict[str, Any]],
+                          results: Dict[int, Any],
+                          subject_id: int,
+                          color: str = '#45B53F',
+                          color_true: str = '#4C7AD1',
+                          xtick_interval: int = 128,
+                          subject_label: str = 'Model 1',
+                          figsize: Tuple[int, int] = (6, 5),
+                          save_path: str | None = None):
+        # ---------- figure -------------------------------------------------------
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.patch.set_facecolor('none')
+
+        # ---------- oral-distance curve -----------------------------------------
+        odict = oral_hypo_hits[subject_id]
+        rolling_hits = odict['rolling_hits']
+        n_steps = len(rolling_hits)
+        x_vals = np.arange(1, n_steps + 1)
+
+        ax.plot(x_vals,
+                rolling_hits,
+                lw=2,
+                label='Human',
+                color=color_true,
+                clip_on=False)
+
+        # ---------- posterior curve(s) ------------------------------------------
+        def _extract_ma_filtered(results_sub, k_special, win=16):
+            # get raw posteriors
+            step_res = results_sub.get(
+                'step_results', results_sub.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special,
+                                                {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            # compute rolling mean
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
+
+        condition = odict['condition']
+        k_special = 0 if condition == 1 else 42
+        win = 16
+        rolling_k = _extract_ma_filtered(results[subject_id], k_special, win)
+        # plot posterior aligned to valid x positions
+        # x_k = np.arange(1, len(rolling_k) + 1)  # only plot where rolling defined
+        ax.plot(x_vals[win - 1:],
+                rolling_k[win - 1:],
+                lw=2,
+                color=color,
+                clip_on=False)
+
+        ax.set_xlim(0, len(x_vals) + 1)
+        ax.set_ylim(0, 1)
+
+        yticks = np.arange(0, 1.01, 0.2)
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([])
+        ax.set_ylabel(None)
+
+        ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+        ax.set_xticklabels([])
+        ax.set_xlabel(None)
+
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        # ---------- save / show --------------------------------------------------
+        if save_path:
+            fig.savefig(save_path,
+                        bbox_inches='tight',
+                        transparent=True)
+            print(f'Figure saved to {save_path}')
+        plt.close(fig)
+
+
+class Fig4:
+
+    def plot_acc_comparison_models(self,
+                                   results_list,
+                                   subject_id,
+                                   colors,
+                                   color_true,
+                                   xtick_interval,
+                                   subject_label,
+                                   model_labels,
+                                   figsize=(8, 5),
+                                   width_ratios=None,
+                                   wspace=None,
+                                   save_path=None):
+        """
+        Compare human accuracy vs. multiple model predictions for one subject.
+
+        Parameters
+        ----------
+        results_list : list of dict
+            Each dict maps subject_id -> {'sliding_true_acc', 'sliding_pred_acc', 'sliding_pred_acc_std'}.
+        subject_id : int
+            ID of the subject to plot.
+        model_labels : list of str
+            Names of each model, for the legend.
+        colors : list of str
+            Line colors for each model curve.
+        color_true : str
+            Color for the human (true) accuracy line.
+        xtick_interval : int
+            Interval between x‐axis ticks (in trials).
+        subject_label : str
+            Label for the subject (e.g. “S12”), shown on the plot.
+        figsize : tuple
+            Figure size.
+        save_path : Path or str, optional
+            Where to save the figure.
+        """
+        n_models = len(results_list)
+        # default to equal widths
+        if width_ratios is None:
+            width_ratios = [1] * n_models
+
+        # build figure + axes with specified width ratios
+        fig, axes = plt.subplots(1,
+                                 n_models,
+                                 figsize=figsize,
+                                 sharey=True,
+                                 gridspec_kw={'width_ratios': width_ratios})
+
+        fig.subplots_adjust(wspace=wspace)
+
+        # ensure axes is always iterable
+        if n_models == 1:
+            axes = [axes]
+
+        # prepare x axis once
+        true_acc = [np.nan] * 15 + list(
+            results_list[0][subject_id]['sliding_true_acc'])
+        x_vals = np.arange(1, len(true_acc) + 1)
+
+        for idx, ax in enumerate(axes):
+            # human
+            ax.plot(x_vals,
+                    true_acc,
+                    label='Human',
+                    color=color_true,
+                    linewidth=2)
+
+            # this model
+            res = results_list[idx]
+            pred = [np.nan] * 15 + list(res[subject_id]['sliding_pred_acc'])
+            std = [np.nan] * 15 + list(res[subject_id]['sliding_pred_acc_std'])
+            ax.plot(x_vals,
+                    pred,
+                    label=model_labels[idx],
+                    color=colors[idx],
+                    linewidth=2,
+                    clip_on=False)
+            low, high = np.array(pred) - np.array(std), np.array(
+                pred) + np.array(std)
+            ax.fill_between(x_vals, low, high, color=colors[idx], alpha=0.3)
+
+            # segmentation lines
+            add_segmentation_lines(ax,
+                                   len(x_vals),
+                                   interval=64,
+                                   color='grey',
+                                   alpha=0.3,
+                                   linestyle='dashed',
+                                   linewidth=1)
+
+            # styling
+            ax.set_xlim(0, len(x_vals) + 1)
+            ax.set_ylim(0, 1)
+
+            ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+            ax.set_xticklabels(range(0,
+                                     int(ax.get_xlim()[1]) + 1,
+                                     xtick_interval),
+                               fontsize=15)
+            ax.set_xlabel('Trial', fontsize=18)
+
+            ax.set_yticks(np.arange(0, 1.01, 0.2))
+            ax.set_yticklabels([f"{y:.1f}" for y in np.arange(0, 1.01, 0.2)],
+                               fontsize=15)
+            ax.set_ylabel('Learning performance', fontsize=18)
+
+            # legend & subject label
+            ax.legend(loc='lower right', fontsize=12, frameon=False)
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(2)
+            ax.set_facecolor('none')
+
+        plt.tight_layout()
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+
+
 
 
 class Fig5:
@@ -1701,4 +2087,3 @@ class Fig5:
 
         df = pd.DataFrame(rows).set_index('Subject')
         return df
-
