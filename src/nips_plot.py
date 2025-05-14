@@ -1472,13 +1472,12 @@ class Fig3_Individual:
                                linestyle='--',
                                linewidth=1)
         style_axis(ax, show_ylabel=True, xtick_interval=128)
-        ax.legend()
+        # ax.legend()
         fig.tight_layout()
 
         # 保存或展示
         if save_path:
             fig.savefig(save_path,
-                        dpi=300,
                         bbox_inches='tight',
                         transparent=True)
             print(f"Figure saved to {save_path}")
