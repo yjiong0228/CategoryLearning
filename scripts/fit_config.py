@@ -152,6 +152,23 @@ module_configs[3] = {
         "perception": (BasePerception, {}),
     }
 
+module_configs[12] = {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_3", "random_posterior"),
+                                (3, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 5), "random")],
+            "init_strategy": [(25, "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (memory_params_M2[12]['gamma'], memory_params_M2[12]['gamma']),
+                "w0": (memory_params_M2[12]['w0'], memory_params_M2[12]['w0'])
+            },
+            "param_resolution": 1
+        }),
+        "perception": (BasePerception, {}),
+    }
+
 module_configs[23] = {
         "cluster": (PartitionCluster, {
             "transition_spec": [("max_2", "random_posterior"),
