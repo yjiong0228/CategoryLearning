@@ -152,6 +152,57 @@ module_configs[3] = {
         "perception": (BasePerception, {}),
     }
 
+module_configs[5] = {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_5", "random_posterior"),
+                                (3, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 2), "random")],
+            "init_strategy": [(25, "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (memory_params_M2[5]['gamma'], memory_params_M2[5]['gamma']),
+                "w0": (memory_params_M2[5]['w0'], memory_params_M2[5]['w0'])
+            },
+            "param_resolution": 1
+        }),
+        "perception": (BasePerception, {}),
+    }
+
+module_configs[7] = {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior")],
+            "init_strategy": [(3, "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (memory_params_M2[3]['gamma'], memory_params_M2[3]['gamma']),
+                "w0": (memory_params_M2[3]['w0'], memory_params_M2[3]['w0'])
+            },
+            "param_resolution": 1
+        }),
+        "perception": (BasePerception, {}),
+    }
+
+module_configs[8] = {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_5", "random_posterior"),
+                                (3, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 2), "random")],
+            "init_strategy": [(25, "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (memory_params_M2[8]['gamma'], memory_params_M2[8]['gamma']),
+                "w0": (memory_params_M2[8]['w0'], memory_params_M2[8]['w0'])
+            },
+            "param_resolution": 1
+        }),
+        "perception": (BasePerception, {}),
+    }
+
+
 module_configs[12] = {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_3", "random_posterior"),
@@ -163,6 +214,23 @@ module_configs[12] = {
             "personal_memory_range": {
                 "gamma": (memory_params_M2[12]['gamma'], memory_params_M2[12]['gamma']),
                 "w0": (memory_params_M2[12]['w0'], memory_params_M2[12]['w0'])
+            },
+            "param_resolution": 1
+        }),
+        "perception": (BasePerception, {}),
+    }
+
+module_configs[17] = {
+        "cluster": (PartitionCluster, {
+            "transition_spec": [("random_4", "random_posterior"),
+                                (4, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 2), "random")],
+            "init_strategy": [(25, "random")]}),
+        "memory": (BaseMemory, {
+            "personal_memory_range": {
+                "gamma": (memory_params_M2[17]['gamma'], memory_params_M2[17]['gamma']),
+                "w0": (memory_params_M2[17]['w0'], memory_params_M2[17]['w0'])
             },
             "param_resolution": 1
         }),
