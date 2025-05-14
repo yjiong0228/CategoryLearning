@@ -83,6 +83,7 @@ module_configs.update({
             "transition_spec": [("max_2", "random_posterior"),
                                 ("random_9", "random_posterior"),
                                 (1, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.8 else 0, 1), "top_posterior"),
                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
@@ -103,6 +104,7 @@ module_configs.update({
             "transition_spec": [("max_2", "random_posterior"),
                                 ("random_6", "random_posterior"),
                                 (1, "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.8 else 0, 1), "top_posterior"),
                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 3), "random")],
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
