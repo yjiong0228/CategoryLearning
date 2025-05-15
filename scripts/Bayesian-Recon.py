@@ -129,7 +129,7 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 # M7_PMH model
 res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), window_size_configs, 1, 2000)
+    config_fgt, list(range(1, 25)), window_size_configs, 1, 10000)
 
 
 
