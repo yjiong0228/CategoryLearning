@@ -89,8 +89,12 @@ class BaseCluster(BaseModule):
                 **kwargs) -> int:
             feedbacks = [int(f) for f in feedbacks]
             accuracy = np.sum(feedbacks) / len(feedbacks)
-            return amount_function(accuracy) if amount_function(
-                accuracy) < max_amount else max_amount
+            amount = amount_function(accuracy)
+            match amount:
+                case int():
+                    return amount if amount < max_amount else max_amount
+                case Callable():
+                    return amount(**kwargs)
 
         return _amount_accuracy_static
 
@@ -474,7 +478,13 @@ class PartitionCluster(BaseCluster):
         strategy_name = []
         for k_amount, k_strategy in strategy:
             if isinstance(k_strategy, str):
-                strategy_name.append(k_strategy)
+                if k_strategy not in strategy_name:
+                    strategy_name.append(k_strategy)
+                else:
+                    suffix = 1
+                    while f"{k_strategy}_{suffix}" in strategy_name:
+                        suffix += 1
+                    strategy_name.append(f"{k_strategy}_{suffix}")
             else:
                 strategy_name.append(k_strategy.__name__)
             match k_strategy:

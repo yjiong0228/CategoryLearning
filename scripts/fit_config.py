@@ -220,12 +220,17 @@ module_configs[12] = {
         "perception": (BasePerception, {}),
     }
 
+def random_and_acc_amount_f(x, f):
+    if x>0.7:
+        return f(2)
+    else:
+        return f(4)
 module_configs[17] = {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_4", "random_posterior"),
-                                (4, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(lambda x: 1 if x>0.85 else 0, 1), "top_posterior"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 2), "random")],
+            "transition_spec": [(PartitionCluster._amount_accuracy_gen(lambda x: random_and_acc_amount_f(x, PartitionCluster._amount_max_gen), 4), "random_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: random_and_acc_amount_f(x, PartitionCluster._amount_random_gen), 4), "random_posterior"),
+                                (PartitionCluster._amount_accuracy_gen(lambda x: 4 if x<0.6 else 0, 4), "ksimilar_centers"),
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 5), "random")],
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
