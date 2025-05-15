@@ -5,6 +5,8 @@ from math import isfinite
 from scipy.stats import ttest_rel
 from statsmodels.stats.multitest import multipletests
 from scipy.stats import pearsonr
+from scipy.stats import linregress
+from scipy.optimize import curve_fit
 from scipy.spatial.distance import euclidean
 from fastdtw import fastdtw
 import seaborn as sns
@@ -15,6 +17,7 @@ import matplotlib as mpl
 import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib.lines import Line2D
 from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, Tuple, List, Any, Union, Optional
 import pandas as pd
@@ -1723,16 +1726,12 @@ class Fig3_Individual:
             for spine in ['left', 'bottom']:
                 ax.spines[spine].set_linewidth(2)
 
-            if col == 0:
-                textx = 0.15
-            else:
-                textx = 0.2
-            ax.text(textx,
+            ax.text(0.07,
                     0.87,
                     f'S{subject_labels[subject_ids.index(subject_id)]}',
                     transform=ax.transAxes,
                     fontsize=20,
-                    ha='right',
+                    ha='left',
                     va='bottom',
                     color='black')
 
@@ -1841,17 +1840,16 @@ class Fig3_Individual:
 class Fig4:
 
     def plot_acc_comparison_models(self,
-                                   results_list,
-                                   subject_id,
-                                   colors,
-                                   color_true,
-                                   xtick_interval,
-                                   subject_label,
-                                   model_labels,
-                                   figsize=(8, 5),
-                                   width_ratios=None,
-                                   wspace=None,
-                                   save_path=None):
+                                    results_list,
+                                    subject_id,
+                                    colors,
+                                    color_true,
+                                    xtick_interval,
+                                    subject_label,
+                                    model_labels,
+                                    figsize=(8, 5),
+                                    width_ratios=None,
+                                    save_path=None):
         """
         Compare human accuracy vs. multiple model predictions for one subject.
 
@@ -1876,27 +1874,22 @@ class Fig4:
         save_path : Path or str, optional
             Where to save the figure.
         """
+
         n_models = len(results_list)
-        # default to equal widths
         if width_ratios is None:
             width_ratios = [1] * n_models
 
-        # build figure + axes with specified width ratios
-        fig, axes = plt.subplots(1,
-                                 n_models,
-                                 figsize=figsize,
-                                 sharey=True,
-                                 gridspec_kw={'width_ratios': width_ratios})
-
-        fig.subplots_adjust(wspace=wspace)
-
-        # ensure axes is always iterable
+        fig, axes = plt.subplots(
+            1, n_models,
+            figsize=figsize,
+            sharey=False,
+            gridspec_kw={'width_ratios': width_ratios}
+        )
+        
         if n_models == 1:
             axes = [axes]
 
-        # prepare x axis once
-        true_acc = [np.nan] * 15 + list(
-            results_list[0][subject_id]['sliding_true_acc'])
+        true_acc = [np.nan] * 15 + list(results_list[0][subject_id]['sliding_true_acc'])
         x_vals = np.arange(1, len(true_acc) + 1)
 
         for idx, ax in enumerate(axes):
@@ -1917,51 +1910,233 @@ class Fig4:
                     color=colors[idx],
                     linewidth=2,
                     clip_on=False)
-            low, high = np.array(pred) - np.array(std), np.array(
-                pred) + np.array(std)
+            low = np.array(pred) - np.array(std)
+            high = np.array(pred) + np.array(std)
             ax.fill_between(x_vals, low, high, color=colors[idx], alpha=0.3)
 
             # segmentation lines
-            add_segmentation_lines(ax,
-                                   len(x_vals),
-                                   interval=64,
-                                   color='grey',
-                                   alpha=0.3,
-                                   linestyle='dashed',
-                                   linewidth=1)
+            add_segmentation_lines(
+                ax,
+                len(x_vals),
+                interval=64,
+                color='grey',
+                alpha=0.3,
+                linestyle='dashed',
+                linewidth=1
+            )
 
             # styling
             ax.set_xlim(0, len(x_vals) + 1)
             ax.set_ylim(0, 1)
-
             ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
-            ax.set_xticklabels(range(0,
-                                     int(ax.get_xlim()[1]) + 1,
-                                     xtick_interval),
-                               fontsize=15)
-            ax.set_xlabel('Trial', fontsize=18)
+            ax.set_xticklabels([])
+            ax.set_xlabel(None)
 
-            ax.set_yticks(np.arange(0, 1.01, 0.2))
-            ax.set_yticklabels([f"{y:.1f}" for y in np.arange(0, 1.01, 0.2)],
-                               fontsize=15)
-            ax.set_ylabel('Learning performance', fontsize=18)
+            col = idx % len(axes)
+            yticks = np.arange(0, 1.01, 0.2)
+            ax.set_yticks(yticks)
+            if col == 0:
+                ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
+                ax.set_ylabel('Learning performance', fontsize=19)
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
 
-            # legend & subject label
-            ax.legend(loc='lower right', fontsize=12, frameon=False)
+            ax.text(0.95,
+                    0.05,
+                    f'S{subject_label}',
+                    transform=ax.transAxes,
+                    fontsize=20,
+                    ha='right',
+                    va='bottom',
+                    color='black')
 
+            # hide individual legends
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             for spine in ['left', 'bottom']:
                 ax.spines[spine].set_linewidth(2)
             ax.set_facecolor('none')
 
-        plt.tight_layout()
+        # adjust layout to make room for legend on the right
+        fig.tight_layout(rect=[0, 0, 0.94, 1], w_pad=5)
+
+        # create single legend for entire figure
+        human_handle = Line2D([0], [0], color=color_true, linewidth=2)
+        model_handles = [Line2D([0], [0], color=colors[i], linewidth=2) for i in range(n_models)]
+        legend_handles = [human_handle] + model_handles
+        legend_labels = ['Human'] + model_labels
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc='center right',
+            bbox_to_anchor=(1.02, -0.1),
+            fontsize=15,
+            framealpha=0.0
+        )
+
         if save_path:
             fig.savefig(save_path, bbox_inches='tight', transparent=True)
             print(f"Figure saved to {save_path}")
         plt.close(fig)
 
 
+
+    def plot_k_comparison_models(self,
+                                  oral_hypo_hits: Dict[int, Dict[str, Any]],
+                                  results_list: List[Dict[int, Any]],
+                                  subject_id: int,
+                                  colors: List[str],
+                                  color_true: str,
+                                  xtick_interval: int,
+                                  subject_label: str,
+                                  model_labels: List[str],
+                                  figsize: Tuple[int, int] = (6, 5),
+                                  width_ratios: Optional[List[float]] = None,
+                                  win: int = 16,
+                                  save_path: Optional[str] = None):
+        """
+        Compare human rolling-hits curve vs. multiple models' rolling posterior for a special hypothesis.
+
+        Parameters
+        ----------
+        oral_hypo_hits : dict
+            Subject-wise output from ``get_oral_distance`` – ``oral_hypo_hits[subject_id]['rolling_hits']`` is the smoothed curve.
+        results_list : list of dict
+            Each dict is a model's step-wise posterior dumps: results_list[i][subject_id] -> {
+            'step_results': [...], each with ['hypo_details'][k_special]['post_max'] }.
+        subject_id : int
+            ID whose data will be drawn.
+        colors : list of str
+            Line colors for each model posterior curve.
+        color_true : str
+            Color for the human (true) rolling-hits line.
+        xtick_interval : int
+            Interval between x-axis ticks (in trials).
+        subject_label : str
+            Label for the subject (e.g. “12”), shown on each subplot.
+        model_labels : list of str
+            Names of each model, for the legend.
+        figsize : tuple
+            Figure size.
+        width_ratios : list of float, optional
+            Width ratios for subplots; defaults to equal.
+        win : int
+            Window size for moving average of posterior.
+        save_path : str or Path, optional
+            Where to save the figure.
+        """
+        # number of models / subplots
+        n_models = len(results_list)
+        if width_ratios is None:
+            width_ratios = [1] * n_models
+
+        # prepare figure and axes
+        fig, axes = plt.subplots(
+            1,
+            n_models,
+            figsize=figsize,
+            sharey=False,
+            gridspec_kw={'width_ratios': width_ratios}
+        )
+        if n_models == 1:
+            axes = [axes]
+
+        # extract human curve
+        odict = oral_hypo_hits[subject_id]
+        rolling_hits = odict['rolling_hits']
+        n_steps = len(rolling_hits)
+        x_vals = np.arange(1, n_steps + 1)
+
+        # helper: rolling mean filtered posterior
+        def _extract_ma_filtered(results_sub, k_special, win):
+            step_res = results_sub.get(
+                'step_results', results_sub.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
+
+        # plot each subplot
+        for idx, ax in enumerate(axes):
+            # human rolling-hits
+            ax.plot(x_vals,
+                    rolling_hits,
+                    lw=2,
+                    label='Human',
+                    color=color_true,
+                    clip_on=False)
+
+            # determine k_special based on condition
+            condition = odict.get('condition', 1)
+            k_special = 0 if condition == 1 else 42
+            # model rolling posterior
+            rolling_k = _extract_ma_filtered(results_list[idx][subject_id], k_special, win)
+            ax.plot(x_vals[win - 1:],
+                    rolling_k[win - 1:],
+                    lw=2,
+                    label=model_labels[idx],
+                    color=colors[idx],
+                    clip_on=False)
+
+            # segmentation lines
+            add_segmentation_lines(ax,
+                                   n_steps,
+                                   interval=64,
+                                   color='grey',
+                                   alpha=0.3,
+                                   linestyle='--',
+                                   linewidth=1)
+
+            # styling
+            ax.set_xlim(0, n_steps + 1)
+            ax.set_ylim(0, 1)
+            yticks = np.arange(0, 1.01, 0.2)
+            ax.set_yticks(yticks)
+            if idx == 0:
+                ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
+                ax.set_ylabel('True-hypo probability', fontsize=19)
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+
+            ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, xtick_interval))
+            ax.set_xticklabels(range(0,
+                                    int(ax.get_xlim()[1]) + 1, xtick_interval),
+                            fontsize=16)
+            ax.set_xlabel('Trial', fontsize=19)
+
+            # spines and facecolor
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(2)
+
+            # subject label
+            ax.text(0.95,
+                    0.05,
+                    f'S{subject_label}',
+                    transform=ax.transAxes,
+                    fontsize=20,
+                    ha='right',
+                    va='bottom',
+                    color='black')
+
+        # adjust layout for legend
+        fig.tight_layout(w_pad=3.7)
+
+        # save if requested
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
 
 
 
@@ -2025,6 +2200,40 @@ class Fig5:
         plt.close(fig)
 
 
+    def plot_correlation(self,results):
+
+        metrics_df = self.compute_crossing_metrics(results, window_size=16)
+
+        # 提取 metrics_df 中的 Span 列
+        spans = metrics_df['Span']
+        w0s = [results[i]['best_params']['w0'] for i in metrics_df.index]
+
+        # 定义双曲线函数
+        def hyperbola(x, a, b):
+            return a / x + b
+
+        # 去掉 w0=0.15 的极端值并过滤掉 NaN 值
+        filtered_data = [(w0, fc) for w0, fc in zip(w0s, spans) if w0 != 0.16 and not np.isnan(fc)]
+        filtered_w0s, filtered_spans = zip(*filtered_data)
+
+        # 拟合双曲线
+        params, _ = curve_fit(hyperbola, filtered_w0s, filtered_spans, maxfev=10000)
+        a, b = params
+
+        # 绘制拟合曲线
+        w0_range = np.linspace(min(filtered_w0s), max(filtered_w0s), 100)
+        fitted_spans = hyperbola(w0_range, a, b)
+
+        plt.scatter(filtered_w0s, filtered_spans, alpha=0.7, label='Data points')
+        plt.plot(w0_range, fitted_spans, color='red', label='Hyperbolic fit')
+        plt.xlabel('w0')
+        plt.ylabel('FirstCross')
+        plt.title('Hyperbolic Fit between FirstCross and w0')
+        plt.legend()
+        plt.show()
+
+        # 输出拟合的双曲线参数
+        print(f"Hyperbolic fit parameters: a = {a}, b = {b}")
 
 
     def _find_crossings(self, exp: np.ndarray, explor: np.ndarray) -> list[int]:
