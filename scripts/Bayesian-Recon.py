@@ -129,7 +129,7 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 # M7_PMH model
 res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), window_size_configs, 1, 10000)
+    config_fgt, [17], window_size_configs, 1, 2000)
 
 
 
@@ -138,4 +138,4 @@ result_path = Path(project_root) / 'results' / 'Model_results'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M7_PMH.joblib') 
+joblib.dump(res, result_path / 'M7_PMH_sub17_v3.joblib') 
