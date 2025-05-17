@@ -182,16 +182,41 @@ class ModelEval:
     def plot_cluster_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
         def body(ax, condition, iSub, info):
             steps = info.get('best_step_results', [])
-            vals = [s['best_step_amount'].get('random_posterior', s['best_step_amount'].get('top_posterior', [0]))[0] for s in steps if 'best_step_amount' in s]
-            r = [s['best_step_amount']['random'][0] for s in steps if 'best_step_amount' in s]
+            vals = []
+            r    = []
+            for s in steps:
+                bsa = s.get('best_step_amount', {})
+
+                # sum every posterior‐named list’s first entry
+                posterior_vals = [
+                    v[0]
+                    for k, v in bsa.items()
+                    if 'posterior' in k and isinstance(v, (list, tuple)) and v
+                ]
+                vals.append(sum(posterior_vals))
+
+                # always append something for 'random' (0 if missing)
+                r.append(bsa.get('random', [0])[0])
+
+            # now both lists have the same length
             re = pd.Series(vals).rolling(window=window_size, min_periods=window_size).mean()
             ex = pd.Series(r).rolling(window=window_size, min_periods=window_size).mean()
+
             x = np.arange(1, len(vals) + 1)
             ax.plot(x, re, label='Exploitation', lw=2)
             ax.plot(x, ex, label='Exploration', lw=2)
-            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Amount')
+            ax.set(
+                title=f'Subject {iSub} (Condition {condition})',
+                xlabel='Trial',
+                ylabel='Amount'
+            )
             ax.legend()
 
-        self._plot_by_condition(results, subjects, save_path,
-                                'Strategy Amount by Subject', body, **kwargs)
-
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            'Strategy Amount by Subject',
+            body,
+            **kwargs
+        )

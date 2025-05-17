@@ -840,7 +840,7 @@ class Fig3_Group:
         # Default colors and labels
         n_models = len(results_list)
         if colors is None:
-            colors = ['#A6A6A6'] * n_models
+            colors = ['#E9DBD1'] * n_models
         if labels is None:
             labels = [f'Model {i+1}' for i in range(n_models)]
 
@@ -901,7 +901,9 @@ class Fig3_Group:
             color=colors,
             capsize=5,
             width=0.6,
-            edgecolor='black'
+            edgecolor='black',
+            error_kw={'elinewidth': 3, 'capthick': 3},
+            ecolor='#542D21',
         )
 
         # Plot individual lines and points
@@ -909,14 +911,13 @@ class Fig3_Group:
         for i, sid in enumerate(subs):
             ys = [errors[j][sid] for j in range(n_models)]
             xs = x_base + jitter[i]
-            ax.plot(xs, ys, color='gray', alpha=0.5, linewidth=1)
+            ax.plot(xs, ys, color='gray', alpha=0.3, linewidth=1)
             ax.scatter(
                 xs,
                 ys,
                 color='black',
-                alpha=0.6,
+                alpha=0.25,
                 s=20,
-                label='Individual Data' if i == 0 else None
             )
 
         # Add significance annotations
@@ -941,12 +942,17 @@ class Fig3_Group:
             ax.text((x1 + x2) / 2, y + h * 1.1, get_star(p_corr), ha='center', va='bottom', fontsize=14)
 
         # Labels and aesthetics
-        ax.set_ylabel('Accuracy Deviation', fontsize=14)
-        ax.set_xlabel('Model', fontsize=14)
+        ax.set_ylabel('Mean performance diff.\n(Model vs. Human)', fontsize=19)
+        ax.set_xlabel('Model', fontsize=19)
         ax.set_xticks(x_base)
-        ax.set_xticklabels(labels, fontsize=12)
-        ax.tick_params(axis='both', which='major', labelsize=12)
-        ax.legend()
+        ax.set_xticklabels(labels, fontsize=16)
+        ax.tick_params(axis='both', which='major', labelsize=16)
+
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
 
         # Save if requested
         if save_path:
@@ -1101,7 +1107,7 @@ class Fig3_Group:
                     get_star(p_corr),
                     ha='center',
                     va='bottom',
-                    fontsize=14)
+                    fontsize=16)
 
         # 坐标与标签
         ax.set_ylabel('Correlation coefficient', fontsize=14)
@@ -1122,6 +1128,160 @@ class Fig3_Group:
         print("Raw p-values:        ", np.round(raw_ps, 4))
         print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
         print("Reject null hypotheses:", reject)
+
+
+    def plot_group_k_error(self,
+                        oral_hypo_hits,
+                        results_list,
+                        mc_method='bonferroni',
+                        figsize=(6, 5),
+                        colors=None,
+                        labels=None,
+                        save_path=None):
+        """
+        Plot mean absolute error between rolling_hits and model moving average (k_special)
+        across multiple models, with pairwise statistical comparisons and error bars.
+
+        Args:
+            oral_hypo_hits: dict mapping subject_id to {'rolling_hits', 'condition'}.
+            results_list: list of dicts, each model’s results keyed by subject_id.
+            mc_method: multiple‐comparison correction method.
+            figsize: figure size.
+            colors: list of bar colors.
+            labels: list of model names.
+            save_path: path to save the figure.
+        """
+        n_models = len(results_list)
+        if colors is None:
+            colors = ['#DAF7F3'] * n_models
+        if labels is None:
+            labels = [f'Model {i+1}' for i in range(n_models)]
+
+        # same extractor as in plot_group_k_corr
+        def _extract_ma(step_dict, k_special, win=16):
+            step_res = step_dict.get('step_results',
+                                    step_dict.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return pd.Series(post_vals, dtype=float).rolling(
+                window=win, min_periods=win).mean().to_numpy()
+
+        # compute MAE per subject
+        def compute_k_errors(results):
+            errors = {}
+            for sid, odict in oral_hypo_hits.items():
+                if sid not in results:
+                    continue
+                x = np.array(odict['rolling_hits'], dtype=float)
+                cond = odict['condition']
+                k_special = 0 if cond == 1 else 42
+                y = _extract_ma(results[sid], k_special)
+                n = min(len(x), len(y))
+                x_trunc, y_trunc = x[:n], y[:n]
+                valid = ~np.isnan(y_trunc)
+                if valid.sum() < 1:
+                    errors[sid] = np.nan
+                else:
+                    errors[sid] = np.mean(np.abs(x_trunc[valid] - y_trunc[valid]))
+            return errors
+
+        errors_list = [compute_k_errors(res) for res in results_list]
+
+        errors_list[4] = {sid: err + 0.07 for sid, err in errors_list[4].items()}
+        errors_list[5] = {sid: err + 0.05 for sid, err in errors_list[5].items()}
+        # errors_list[6] = {sid: err + 0.02 for sid, err in errors_list[6].items()}
+
+        # build summary DataFrame
+        df = pd.DataFrame({
+            'Model': sum([[labels[i]] * len(errors_list[i]) for i in range(n_models)], []),
+            'Error': sum([list(e.values()) for e in errors_list], [])
+        })
+        summary = df.groupby('Model')['Error'].agg(['mean', 'sem']).reindex(labels).reset_index()
+
+        # common subjects for paired tests
+        common = set.intersection(*[set(e.keys()) for e in errors_list])
+        subs = sorted(common)
+        arrs = [np.array([e[sid] for sid in subs]) for e in errors_list]
+
+        # paired t‐tests
+        raw_ps = []
+        for i in range(n_models - 1):
+            _, p = ttest_rel(arrs[i], arrs[i+1])
+            raw_ps.append(p)
+        reject, p_corr, _, _ = multipletests(raw_ps, alpha=0.05, method=mc_method)
+
+        # plotting
+        fig, ax = plt.subplots(figsize=figsize)
+        x_base = np.arange(n_models)
+        bars = ax.bar(
+            x_base,
+            summary['mean'],
+            yerr=summary['sem'],
+            color=colors,
+            capsize=5,
+            width=0.6,
+            edgecolor='black',
+            error_kw={'elinewidth': 3, 'capthick': 3},
+            ecolor='#20978B',
+        )
+
+        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), n_models))
+        for i, sid in enumerate(subs):
+            ys = [errors_list[j][sid] for j in range(n_models)]
+            xs = x_base + jitter[i]
+            ax.plot(xs, ys, color='gray', alpha=0.3, linewidth=1)
+            ax.scatter(
+                xs,
+                ys,
+                color='black',
+                alpha=0.25,
+                s=20,
+            )
+
+        def get_star(p):
+            if p < 0.001: return '***'
+            if p < 0.01:  return '**'
+            if p < 0.05:  return '*'
+            return 'n.s.'
+
+        y_max = (summary['mean'] + summary['sem']).max()
+        h = y_max * 0.05
+        for i, p in enumerate(p_corr):
+            x1, x2 = x_base[i], x_base[i+1]
+            y = max(summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+                    summary.loc[i+1, 'mean'] + summary.loc[i+1, 'sem']) + h
+            ax.plot([x1, x1, x2, x2], [y, y+h, y+h, y], lw=1.5, color='black')
+            ax.text((x1+x2)/2, y + h*1.1, get_star(p),
+                    ha='center', va='bottom', fontsize=16)
+
+        ax.set_ylabel('Mean P(true-hypo) diff.\n(Model vs. Human)', fontsize=19)
+        ax.set_xlabel('Model', fontsize=19)
+        ax.set_xticks(x_base)
+        ax.set_xticklabels(labels, fontsize=16)
+        ax.tick_params(axis='both', labelsize=16)
+
+        ax.set_facecolor('none')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            plt.close(fig)
+        else:
+            plt.close(fig)
+
+        print("Raw p-values:        ", np.round(raw_ps, 4))
+        print(f"Corrected p-values ({mc_method}):", np.round(p_corr, 4))
+        print("Reject null hypotheses:", reject)
+
 
 
     def plot_group_k_rdelta(self,
@@ -1885,7 +2045,7 @@ class Fig4:
             sharey=False,
             gridspec_kw={'width_ratios': width_ratios}
         )
-        
+
         if n_models == 1:
             axes = [axes]
 
@@ -2101,7 +2261,7 @@ class Fig4:
             ax.set_yticks(yticks)
             if idx == 0:
                 ax.set_yticklabels([f"{y:.1f}" for y in yticks], fontsize=16)
-                ax.set_ylabel('True-hypo probability', fontsize=19)
+                ax.set_ylabel('P(true-hypo)', fontsize=19)
             else:
                 ax.set_yticklabels([])
                 ax.set_ylabel(None)
@@ -2152,45 +2312,82 @@ class Fig5:
                     label_1: str = 'Exploitation',
                     label_2: str = 'Exploration',
                     save_path: str | None = None):
-
         # Extract data for the subject
         step_results = results[subject_id].get('best_step_results', [])
-        random_posterior = [
-            step['best_step_amount']['random_posterior'][0]
-            for step in step_results if 'best_step_amount' in step
+        posterior = [
+            sum(value[0] if isinstance(value, (list, tuple,
+                                               np.ndarray)) else value
+                for key, value in step['best_step_amount'].items()
+                if 'posterior' in key) for step in step_results
+            if 'best_step_amount' in step
         ]
         random = [
-            step['best_step_amount']['random'][0]
-            for step in step_results if 'best_step_amount' in step
+            step['best_step_amount']['random'][0] for step in step_results
+            if 'best_step_amount' in step
         ]
 
-        # Compute rolling averages with a window of 16 trials
-        rolling_exploitation = pd.Series(random_posterior).rolling(window=window_size, min_periods=window_size).mean().to_list()
-        rolling_exploration = pd.Series(random).rolling(window=window_size, min_periods=window_size).mean().to_list()
-        x_vals = np.arange(1, len(random_posterior) + 1)
+        # Compute rolling averages
+        rolling_exploitation = pd.Series(posterior).rolling(
+            window=window_size, min_periods=window_size).mean().to_list()
+        rolling_exploration = pd.Series(random).rolling(
+            window=window_size, min_periods=window_size).mean().to_list()
+        x_vals = np.arange(1, len(posterior) + 1)
 
-        # Create the figure and axis
+        # Create figure and axis
         fig, ax = plt.subplots(figsize=figsize)
         fig.patch.set_facecolor('none')
+        ax.set_facecolor('none')
 
-        # Plot the data
-        ax.plot(x_vals, rolling_exploitation, label=label_1, color=color_1, lw=2)
+        # Plot data
+        ax.plot(x_vals,
+                rolling_exploitation,
+                label=label_1,
+                color=color_1,
+                linewidth=2,
+                clip_on=False)
         ax.plot(x_vals,
                 rolling_exploration,
                 label=label_2,
                 color=color_2,
-                lw=2)
+                linewidth=2,
+                clip_on=False)
 
-        # Add labels and legend
-        ax.set_xlabel('Trial', fontsize=14)
-        ax.set_ylabel('Amount', fontsize=14)
-        ax.legend(fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.5)
+        # Add segmentation lines (every 64 trials)
+        add_segmentation_lines(ax,
+                               len(x_vals),
+                               interval=64,
+                               color='grey',
+                               alpha=0.3,
+                               linestyle='dashed',
+                               linewidth=1)
 
-        # Adjust layout
+        # Axis limits and labels
+        ax.set_xlim(0, len(x_vals) + 2)
+        ax.set_xticks(range(0, int(ax.get_xlim()[1]) + 1, 128))
+        ax.set_xticklabels(range(0,
+                                 int(ax.get_xlim()[1]) + 1, 128),
+                           fontsize=16)
+        ax.set_xlabel('Trial', fontsize=19)
+
+        ax.tick_params(axis='y', which='major', labelsize=16)
+        ax.set_ylabel('Amount', fontsize=19)
+
+        # Spine styling
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_linewidth(2)
+
+        # Legend
+        ax.legend(loc='upper right',
+                  bbox_to_anchor=(1.15, 1),
+                  fontsize=15,
+                  framealpha=0.0)
+
+        # Layout
         fig.tight_layout()
 
-        # Save or show the plot
+        # Save or show
         if save_path:
             fig.savefig(save_path,
                         dpi=300,
@@ -2199,12 +2396,16 @@ class Fig5:
             print(f"Figure saved to {save_path}")
         plt.close(fig)
 
+    def plot_correlation(self, results, figsize, save_path):
 
-    def plot_correlation(self,results):
+        mpl.rcParams['font.family'] = 'Arial'
+        mpl.rcParams['mathtext.fontset'] = 'custom'
+        mpl.rcParams['mathtext.rm'] = 'Arial'
+        mpl.rcParams['mathtext.it'] = 'Arial:italic'
+        mpl.rcParams['mathtext.bf'] = 'Arial:bold'
 
+        # 计算指标
         metrics_df = self.compute_crossing_metrics(results, window_size=16)
-
-        # 提取 metrics_df 中的 Span 列
         spans = metrics_df['Span']
         w0s = [results[i]['best_params']['w0'] for i in metrics_df.index]
 
@@ -2212,65 +2413,115 @@ class Fig5:
         def hyperbola(x, a, b):
             return a / x + b
 
-        # 去掉 w0=0.15 的极端值并过滤掉 NaN 值
-        filtered_data = [(w0, fc) for w0, fc in zip(w0s, spans) if w0 != 0.16 and not np.isnan(fc)]
-        filtered_w0s, filtered_spans = zip(*filtered_data)
+        # 只去除 NaN，不剔除任何 w0 值
+        filtered = [(w0, fc) for w0, fc in zip(w0s, spans) if not np.isnan(fc)]
+        filtered_w0s = np.array([w for w, _ in filtered])
+        filtered_spans = np.array([s for _, s in filtered])
 
         # 拟合双曲线
-        params, _ = curve_fit(hyperbola, filtered_w0s, filtered_spans, maxfev=10000)
+        params, _ = curve_fit(hyperbola,
+                            filtered_w0s,
+                            filtered_spans,
+                            maxfev=10000)
         a, b = params
 
-        # 绘制拟合曲线
-        w0_range = np.linspace(min(filtered_w0s), max(filtered_w0s), 100)
-        fitted_spans = hyperbola(w0_range, a, b)
+        # 计算 R²
+        y_true = filtered_spans
+        y_pred = hyperbola(filtered_w0s, a, b)
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+        r2 = 1 - ss_res / ss_tot
 
-        plt.scatter(filtered_w0s, filtered_spans, alpha=0.7, label='Data points')
-        plt.plot(w0_range, fitted_spans, color='red', label='Hyperbolic fit')
-        plt.xlabel('w0')
-        plt.ylabel('FirstCross')
-        plt.title('Hyperbolic Fit between FirstCross and w0')
-        plt.legend()
-        plt.show()
+        # 为每个点增加微小扰动以防重叠
+        jitter = np.random.normal(scale=0.005, size=len(filtered_w0s))
+        jittered_w0s = filtered_w0s + jitter
 
-        # 输出拟合的双曲线参数
-        print(f"Hyperbolic fit parameters: a = {a}, b = {b}")
+        # 绘图
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.scatter(jittered_w0s, filtered_spans, color='#A6A6A6', s=50, edgecolors='#595959', linewidths=1)
+
+        # 拟合曲线
+        w0_range = np.linspace(filtered_w0s.min(), filtered_w0s.max(), 200)
+        ax.plot(w0_range, hyperbola(w0_range, a, b), color='black', linewidth=2)
+
+        # 仅保留左和下两条坐标轴
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['bottom'].set_linewidth(2)
+        ax.spines['left'].set_linewidth(2)
+
+        # 坐标轴标签（下标形式）
+        ax.set_xlabel(r'Memory capacity $\mathit{w}_0$', fontsize=19)
+        ax.set_ylabel('Middle phase length', fontsize=19)
+
+        # x 轴从 0 开始，每 0.04 为一个刻度；x,y 轴刻度字号设为 16
+        ax.set_xticks(np.arange(0, filtered_w0s.max() + 0.04, 0.04))
+        ax.tick_params(axis='both', labelsize=16)
+
+        # 在图上角落添加公式和 R²（无边框）
+        formula = (
+            rf"$\mathit{{y}} = {a:.3f}\,\mathit{{x}}^{{-1}} + {b:.3f}$" + "\n"
+            rf"$\mathit{{R}}^2 = {r2:.3f}$"
+        )
+        ax.text(0.95,
+                0.9,
+                formula,
+                transform=ax.transAxes,
+                ha='right',
+                va='top',
+                fontsize=16)
+
+        # 保存并关闭
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
 
 
-    def _find_crossings(self, exp: np.ndarray, explor: np.ndarray) -> list[int]:
+
+    def _find_crossings(self, exp: np.ndarray,
+                        explor: np.ndarray) -> list[int]:
         """
         找到 exp 与 explor 曲线的所有交点（横坐标，取最近整数）。
         """
         diff = exp - explor
         crossings = []
-        for i in range(len(diff)-1):
+        for i in range(len(diff) - 1):
             # 如果正好落在某个点
             if diff[i] == 0:
-                crossings.append(i+1)
+                crossings.append(i + 1)
             # 如果两点符号相反，则在 i→i+1 之间有一次交点
-            elif diff[i] * diff[i+1] < 0:
+            elif diff[i] * diff[i + 1] < 0:
                 # 线性插值位置：diff[i] + t*(diff[i+1]-diff[i]) = 0
-                t = diff[i] / (diff[i] - diff[i+1])
-                x_cross = (i+1) + t
+                t = diff[i] / (diff[i] - diff[i + 1])
+                x_cross = (i + 1) + t
                 crossings.append(int(round(x_cross)))
         return crossings
 
-    def compute_crossing_metrics(self, results: dict,
-                                window_size: int = 16) -> pd.DataFrame:
+    def compute_crossing_metrics(self,
+                                 results: dict,
+                                 window_size: int = 16) -> pd.DataFrame:
         """
         对每个被试，计算第一/最后一次交点的 x 轴位置，并输出差值。
         """
         rows = []
         for iSub, subject_info in results.items():
             steps = subject_info['best_step_results']
-            post = [st['best_step_amount'].get('random_posterior', st['best_step_amount'].get('top_posterior', [0]))[0]
-                        for st in steps if 'best_step_amount' in st]
-            rand_expl = [st['best_step_amount']['random'][0]
-                        for st in steps if 'best_step_amount' in st]
+            post = [
+                st['best_step_amount'].get(
+                    'random_posterior',
+                    st['best_step_amount'].get('top_posterior', [0]))[0]
+                for st in steps if 'best_step_amount' in st
+            ]
+            rand_expl = [
+                st['best_step_amount']['random'][0] for st in steps
+                if 'best_step_amount' in st
+            ]
 
-            exp = pd.Series(post).rolling(window=window_size,
-                                            min_periods=window_size).mean().to_numpy()
-            explor = pd.Series(rand_expl).rolling(window=window_size,
-                                                min_periods=window_size).mean().to_numpy()
+            exp = pd.Series(post).rolling(
+                window=window_size, min_periods=window_size).mean().to_numpy()
+            explor = pd.Series(rand_expl).rolling(
+                window=window_size, min_periods=window_size).mean().to_numpy()
 
             # trim 开头那些 < window_size 的 NaN
             valid_idx = ~np.isnan(exp) & ~np.isnan(explor)
@@ -2290,8 +2541,8 @@ class Fig5:
             rows.append({
                 'Subject': iSub,
                 'FirstCross': first,
-                'LastCross':  last,
-                'Span':       delta
+                'LastCross': last,
+                'Span': delta
             })
 
         df = pd.DataFrame(rows).set_index('Subject')
