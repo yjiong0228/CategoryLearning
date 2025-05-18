@@ -67,10 +67,10 @@ module_configs.update({
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[i]['gamma'], memory_params_M2[i]['gamma']),
-                "w0": (memory_params_M2[i]['w0'], memory_params_M2[i]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     } for i in sub_cond1
@@ -88,10 +88,10 @@ module_configs.update({
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[i]['gamma'], memory_params_M2[i]['gamma']),
-                "w0": (memory_params_M2[i]['w0'], memory_params_M2[i]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     } for i in sub_cond2
@@ -109,10 +109,10 @@ module_configs.update({
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[i]['gamma'], memory_params_M2[i]['gamma']),
-                "w0": (memory_params_M2[i]['w0'], memory_params_M2[i]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     } for i in sub_cond3
@@ -128,10 +128,10 @@ module_configs[2] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[23]['gamma'], memory_params_M2[23]['gamma']),
-                "w0": (memory_params_M2[23]['w0'], memory_params_M2[23]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -144,10 +144,10 @@ module_configs[3] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[3]['gamma'], memory_params_M2[3]['gamma']),
-                "w0": (memory_params_M2[3]['w0'], memory_params_M2[3]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -161,10 +161,10 @@ module_configs[5] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[5]['gamma'], memory_params_M2[5]['gamma']),
-                "w0": (memory_params_M2[5]['w0'], memory_params_M2[5]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -177,10 +177,10 @@ module_configs[7] = {
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[3]['gamma'], memory_params_M2[3]['gamma']),
-                "w0": (memory_params_M2[3]['w0'], memory_params_M2[3]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -194,10 +194,10 @@ module_configs[8] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[8]['gamma'], memory_params_M2[8]['gamma']),
-                "w0": (memory_params_M2[8]['w0'], memory_params_M2[8]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -212,19 +212,21 @@ module_configs[12] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[12]['gamma'], memory_params_M2[12]['gamma']),
-                "w0": (memory_params_M2[12]['w0'], memory_params_M2[12]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
 
+
 def random_and_acc_amount_f(x, f):
-    if x>0.7:
+    if x > 0.7:
         return f(2)
     else:
         return f(4)
+
 module_configs[17] = {
         "cluster": (PartitionCluster, {
             "transition_spec": [(PartitionCluster._amount_accuracy_gen(lambda x: random_and_acc_amount_f(x, PartitionCluster._amount_max_gen), 4), "random_posterior"),
@@ -234,10 +236,10 @@ module_configs[17] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[17]['gamma'], memory_params_M2[17]['gamma']),
-                "w0": (memory_params_M2[17]['w0'], memory_params_M2[17]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }
@@ -251,10 +253,10 @@ module_configs[23] = {
             "init_strategy": [(25, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
-                "gamma": (memory_params_M2[23]['gamma'], memory_params_M2[23]['gamma']),
-                "w0": (memory_params_M2[23]['w0'], memory_params_M2[23]['w0'])
+                "gamma": (0.05, 1.0),
+                "w0": (0.075, 0.15)
             },
-            "param_resolution": 1
+            "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
     }

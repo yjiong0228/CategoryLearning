@@ -24,26 +24,26 @@ from src.Bayesian_recon.problems.config import config_fgt
 from src.Bayesian_recon.problems import *
 from src.Bayesian_recon.utils.optimizer import Optimizer
 
-def post_acc_amount_f(x):
-    if x <= 0.2:
-        return 0
-    elif 0.2 < x < 0.3:
-        return 1
-    elif 0.3 <= x < 0.4:
-        return 2
-    elif 0.4 <= x < 0.5:
-        return 3
-    elif 0.5 <= x < 0.6:
-        return 4
-    elif 0.6 <= x < 0.7:
-        return 5
-    elif 0.7 <= x < 0.8:
-        return 6
-    elif 0.8 <= x <= 1:
-        return 7
+# def post_acc_amount_f(x):
+#     if x <= 0.2:
+#         return 0
+#     elif 0.2 < x < 0.3:
+#         return 1
+#     elif 0.3 <= x < 0.4:
+#         return 2
+#     elif 0.4 <= x < 0.5:
+#         return 3
+#     elif 0.5 <= x < 0.6:
+#         return 4
+#     elif 0.6 <= x < 0.7:
+#         return 5
+#     elif 0.7 <= x < 0.8:
+#         return 6
+#     elif 0.8 <= x <= 1:
+#         return 7
 
-def random_acc_amount_f(x):
-    return 7 - post_acc_amount_f(x)
+# def random_acc_amount_f(x):
+#     return 7 - post_acc_amount_f(x)
 
 # M0_base model
 # module_configs = {}
@@ -129,7 +129,7 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 # M7_PMH model
 res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, [17], window_size_configs, 1, 2000)
+    config_fgt, list(range(1, 25)), window_size_configs, 30, 2000)
 
 
 
@@ -138,4 +138,4 @@ result_path = Path(project_root) / 'results' / 'Model_results'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M7_PMH_sub17_v3.joblib') 
+joblib.dump(res, result_path / 'M7_PMH_30_2000.joblib') 
