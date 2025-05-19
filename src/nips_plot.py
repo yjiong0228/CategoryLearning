@@ -654,6 +654,7 @@ class Fig1_Acc:
                       nrow: int,
                       window_size: int = 16,
                       block_size: int = 64,
+                      xtick_interval: int = 128,
                       h_pad: int = 8,
                       color: Union[str, List[str]] = 'C0',
                       max_trial: Optional[int] = None,
@@ -758,9 +759,9 @@ class Fig1_Acc:
                 ax.set_ylabel(None)
 
             # X-axis ticks/labels: only for bottom row
-            ax.set_xticks(range(0, overall_max + 1, block_size * 2))
+            ax.set_xticks(range(0, overall_max + 1, xtick_interval))
             if row == nrow - 1:
-                ax.set_xticklabels(range(0, overall_max + 1, block_size * 2),
+                ax.set_xticklabels(range(0, overall_max + 1, xtick_interval),
                                 fontsize=22)
             else:
                 ax.set_xticklabels([])
