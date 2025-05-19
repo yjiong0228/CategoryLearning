@@ -81,7 +81,7 @@ class BaseCluster(BaseModule):
         return _amount_random_based
 
     @classmethod
-    def _amount_accuracy_gen(cls, amount_function: Callable, max_amount=3):
+    def _amount_accuracy_gen(cls, amount_function: Callable, max_amount=3, static=True):
 
         def _amount_accuracy_static(
                 feedbacks: List[float],
@@ -95,8 +95,23 @@ class BaseCluster(BaseModule):
                     return amount if amount < max_amount else max_amount
                 case Callable():
                     return amount(**kwargs)
+                
+        def _amount_accuracy_delta(
+                feedbacks: List[float],
+                amount_function: Callable = amount_function,
+                **kwargs) -> int:
+            feedbacks = [int(f) for f in feedbacks]
+            old_acc = np.sum(feedbacks[:len(feedbacks) // 2]) / (len(feedbacks) // 2)
+            new_acc = np.sum(feedbacks[len(feedbacks) // 2:]) / (len(feedbacks) // 2)
+            delta_acc = new_acc - old_acc
+            amount = amount_function(delta_acc)
+            match amount:
+                case int():
+                    return amount if amount < max_amount else max_amount
+                case Callable():
+                    return amount(**kwargs)
 
-        return _amount_accuracy_static
+        return _amount_accuracy_static if static else _amount_accuracy_delta
 
     @classmethod
     def _amount_opposite_random_gen(cls, max_amount=7):
