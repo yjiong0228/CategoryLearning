@@ -21,6 +21,7 @@ from matplotlib.lines import Line2D
 from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, Tuple, List, Any, Union, Optional
 import pandas as pd
+from math import ceil
 from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
 
 
@@ -2800,6 +2801,87 @@ class FigS3:
                 va='center',
                 rotation='vertical',
                 fontsize=19)
+
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
+
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+
+    def plot_grid_subs(self, results: Dict[int, Any],
+                    subject_ids: List[int],
+                    nrow: int,
+                    subject_labels: List[str],
+                    fname: Tuple[str, str] = ('gamma', 'w0'),
+                    figsize: Tuple[int, int] = (15, 5),
+                    save_path: str | None = None):
+        """
+        Plot grid search errors for each subject in a subplot layout.
+
+        Parameters
+        ----------
+        results : dict
+            Dictionary containing grid search results for each subject.
+        subject_ids : list of int
+            List of subject IDs to include.
+        nrow : int
+            Number of rows in subplot grid.
+        subject_labels : list of str
+            Labels for each subject to annotate subplots.
+        fname : tuple of str
+            Names of the parameters to be shown on the axes.
+        figsize : tuple of int
+            Figure size.
+        save_path : str or None
+            If specified, path to save the resulting figure.
+        """
+        n_sub = len(subject_ids)
+        ncol = int(ceil(n_sub / nrow))
+
+        fig, axes = plt.subplots(nrow, ncol, figsize=figsize, sharex=False, sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
+        plt.tight_layout(h_pad=3)
+
+        for idx, subject_id in enumerate(subject_ids):
+            ax = axes_flat[idx]
+            info = results[subject_id]
+            data = []
+            for (g, w0), errs in info['grid_errors'].items():
+                err_val = float(np.mean(errs))
+                data.append({'gamma': g, 'w0': w0, 'Error': err_val})
+            df = pd.DataFrame(data)
+            em = df.pivot(index='gamma', columns='w0', values='Error')
+            sns.heatmap(em, ax=ax, cmap='viridis_r')
+
+            ax.set_title(f'S{subject_labels[idx]}', fontsize=16)
+
+            row = idx // ncol
+            col = idx % ncol
+
+            if row == nrow - 1:
+                ax.set_xticks(np.arange(len(em.columns)) + 0.5)
+                ax.set_xticklabels([f"{v:.4f}" for v in em.columns], rotation=45, ha="right")
+            else:
+                ax.set_xticks([])
+            ax.set_xlabel(None)
+
+            if col == 0:
+                ax.set_yticks(np.arange(len(em.index)) + 0.5)
+                ax.set_yticklabels([f"{v:.2f}" for v in em.index], rotation=0)
+            else:
+                ax.set_yticks([])
+            ax.set_ylabel(None)
+
+        fig.text(0.5, -0.03, r'$w_0$', ha='center', fontsize=19)
+        fig.text(-0.025,
+                0.5,
+                r'$\gamma$',
+                va='center',
+                rotation='vertical',
+                fontsize=19)  
 
         for j in range(n_sub, nrow * ncol):
             axes_flat[j].axis('off')
