@@ -2843,7 +2843,7 @@ class FigS3:
 
         fig, axes = plt.subplots(nrow, ncol, figsize=figsize, sharex=False, sharey=False)
         axes_flat = np.array(axes).reshape(-1)
-        plt.tight_layout(h_pad=3)
+        plt.tight_layout()
 
         for idx, subject_id in enumerate(subject_ids):
             ax = axes_flat[idx]
@@ -2882,6 +2882,90 @@ class FigS3:
                 va='center',
                 rotation='vertical',
                 fontsize=19)  
+
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
+
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+
+    def plot_amount_subs(self, results: Dict[int, Any],
+                        subject_ids: List[int],
+                        nrow: int,
+                        subject_labels: List[str],
+                        window_size: int = 16,
+                        figsize: Tuple[int, int] = (15, 5),
+                        color_1: str = '#DDAA33',
+                        color_2: str = '#DDAA33',
+                        label_1: str = 'Exploitation',
+                        label_2: str = 'Exploration',
+                        save_path: str | None = None):
+        n_sub = len(subject_ids)
+        ncol = int(ceil(n_sub / nrow))
+
+        fig, axes = plt.subplots(nrow, ncol, figsize=figsize, sharex=False, sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
+        plt.tight_layout(h_pad=3)
+
+        for idx, subject_id in enumerate(subject_ids):
+            ax = axes_flat[idx]
+            step_results = results[subject_id].get('best_step_results', [])
+            
+            posterior = [
+                sum(value[0] if isinstance(value, (list, tuple, np.ndarray)) else value
+                    for key, value in step['best_step_amount'].items()
+                    if 'posterior' in key) for step in step_results
+                if 'best_step_amount' in step
+            ]
+            random = [
+                step['best_step_amount']['random'][0] for step in step_results
+                if 'best_step_amount' in step
+            ]
+
+            rolling_exploitation = pd.Series(posterior).rolling(window=window_size, min_periods=window_size).mean().to_list()
+            rolling_exploration = pd.Series(random).rolling(window=window_size, min_periods=window_size).mean().to_list()
+            x_vals = np.arange(1, len(posterior) + 1)
+
+            ax.plot(x_vals, rolling_exploitation, label=label_1, color=color_1, linewidth=2, clip_on=False)
+            ax.plot(x_vals, rolling_exploration, label=label_2, color=color_2, linewidth=2, clip_on=False)
+
+            add_segmentation_lines(ax,
+                                len(x_vals),
+                                interval=64,
+                                color='grey',
+                                alpha=0.3,
+                                linestyle='--',
+                                linewidth=0.6)
+
+            ax.set_xlim(0, len(x_vals) + 2)
+            x_max = int(ax.get_xlim()[1])
+            xtick_step = 256 if x_max > 1000 else 64 if x_max < 130 else 128
+            xticks = np.arange(0, x_max + 1, xtick_step)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xticks, fontsize=16)
+            ax.set_xlabel(None)
+
+            # ax.set_yticks([0, 0.5, 1])
+            # if idx % ncol == 0:
+            ax.tick_params(axis='y', which='major', labelsize=16)
+            # else:
+                # ax.set_yticklabels([])
+            ax.set_ylabel(None)
+
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(1.186)
+
+            ax.text(0.95, 0.05, f'S{subject_labels[subject_ids.index(subject_id)]}',
+                    transform=ax.transAxes, fontsize=20, ha='right', va='bottom', color='black')
+
+        fig.text(0.5, -0.03, 'Trial', ha='center', fontsize=19)
+        fig.text(-0.01, 0.5, 'Amount', va='center', rotation='vertical', fontsize=19)
 
         for j in range(n_sub, nrow * ncol):
             axes_flat[j].axis('off')
