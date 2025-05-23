@@ -9,7 +9,9 @@ class Oral_to_coordinate:
                             condition: int,
                             data: Tuple[np.ndarray, np.ndarray],
                             model,
-                            dist_tol: float = 1e-9) -> Dict[str, Any]:
+                            dist_tol: float = 1e-9,
+                            top_k: Optional[int] = None,
+                            ) -> Dict[str, Any]:
 
         oral_centers, choices = data
         n_trials = len(choices)
@@ -41,10 +43,11 @@ class Oral_to_coordinate:
             # Exact matches within tolerance
             exact_matches = [h for (d, h) in distance_map if d <= dist_tol]
 
-            if condition == 1:
-                top_k = 4
-            else:
-                top_k = 10
+            if top_k is None or top_k == 0:
+                if condition == 1:
+                    top_k = 4
+                else:
+                    top_k = 10
 
             if exact_matches:
                 chosen_hypos = exact_matches

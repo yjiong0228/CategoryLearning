@@ -2548,3 +2548,263 @@ class Fig5:
 
         df = pd.DataFrame(rows).set_index('Subject')
         return df
+
+
+class FigS3:
+
+    def plot_acc_comparison_subs(self,
+                                 results,
+                                 subject_ids,
+                                 nrow,
+                                 color,
+                                 color_true,
+                                 xtick_interval,
+                                 subject_labels,
+                                 figsize=(15, 5),
+                                 save_path=None):
+
+        # Grid size
+        n_sub = len(subject_ids)
+        ncol = int(np.ceil(n_sub / nrow))
+
+        # 基础设置
+        fig, axes = plt.subplots(nrow,
+                                 ncol,
+                                 figsize=figsize,
+                                 sharex=False,
+                                 sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
+        plt.tight_layout(h_pad=3)
+
+        padding = [np.nan] * 15
+        x_vals = None
+
+        for idx, subject_id in enumerate(subject_ids):
+            ax = axes_flat[idx]
+
+            # 真实准确率
+            true_acc = padding + list(results[subject_id]['sliding_true_acc'])
+            x_vals = np.arange(1, len(true_acc) + 1)
+            ax.plot(x_vals,
+                    true_acc,
+                    label='Human',
+                    color=color_true,
+                    linewidth=1.5)
+
+            # 绘制预测结果
+            pred = padding + list(results[subject_id]['sliding_pred_acc'])
+            std = padding + list(results[subject_id]['sliding_pred_acc_std'])
+            ax.plot(x_vals, pred, color=color, linewidth=1.5, clip_on=False)
+            low = np.array(pred) - np.array(std)
+            high = np.array(pred) + np.array(std)
+            ax.fill_between(x_vals, low, high, color=color, alpha=0.3)
+
+            # 辅助元素
+            add_segmentation_lines(ax,
+                                   len(x_vals),
+                                   interval=64,
+                                   color='grey',
+                                   alpha=0.3,
+                                   linestyle='dashed',
+                                   linewidth=0.6)
+
+            ax.set_xlim(0, len(x_vals) + 1)
+            ax.set_ylim(0, 1)
+
+            col = idx % ncol
+
+            yticks = [0, 0.5, 1]
+            ax.set_yticks(yticks)
+            if col == 0:
+                ax.set_yticklabels(['0', '0.5', '1'], fontsize=16)
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+
+            x_max = int(ax.get_xlim()[1])
+            if x_max > 1000:
+                xtick_step = 256
+            elif x_max < 130:
+                xtick_step = 64
+            else:
+                xtick_step = xtick_interval
+            xticks = np.arange(0, x_max + 1, xtick_step)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xticks, fontsize=16)
+            ax.set_xlabel(None)
+
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(1.186)
+
+            ax.text(0.95,
+                    0.05,
+                    f'S{subject_labels[subject_ids.index(subject_id)]}',
+                    transform=ax.transAxes,
+                    fontsize=20,
+                    ha='right',
+                    va='bottom',
+                    color='black')
+
+        fig.text(0.5, -0.03, 'Trial', ha='center', fontsize=19)
+        fig.text(-0.025,
+                 0.5,
+                 'Learning performance',
+                 va='center',
+                 rotation='vertical',
+                 fontsize=19)
+
+        # Hide unused subplots
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
+
+        # 保存或展示
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
+
+
+
+    def plot_k_comparison_subs(self,
+                            oral_hypo_hits: Dict[int, Dict[str, Any]],
+                            results: Dict[int, Any],
+                            subject_ids: List[int],
+                            nrow: int,
+                            color: str = '#45B53F',
+                            color_true: str = '#4C7AD1',
+                            xtick_interval: int = 128,
+                            subject_labels: List[str] = None,
+                            model_label: str = 'PMH',
+                            figsize: Tuple[int, int] = (15, 5),
+                            save_path: str | None = None):
+        """
+        Compare true-hypothesis curves vs. posterior over special hypothesis across multiple subjects.
+
+        Parameters
+        ----------
+        oral_hypo_hits : dict
+            Output from get_oral_distance for all subjects.
+        results : dict
+            Posterior results for all subjects.
+        subject_ids : list of int
+            List of subject IDs to include.
+        nrow : int
+            Number of rows in subplot grid.
+        ...
+        """
+        n_sub = len(subject_ids)
+        ncol = int(np.ceil(n_sub / nrow))
+
+        fig, axes = plt.subplots(nrow,
+                                ncol,
+                                figsize=figsize,
+                                sharex=False,
+                                sharey=False)
+        axes_flat = np.array(axes).reshape(-1)
+        plt.tight_layout(h_pad=3)
+
+        def _extract_ma_filtered(results_sub, k_special, win=16):
+            step_res = results_sub.get('step_results', results_sub.get('best_step_results', []))
+            post_vals = []
+            for step in step_res:
+                post = step['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                try:
+                    post = float(post)
+                except (TypeError, ValueError):
+                    post = 0.0
+                post_vals.append(post)
+            return pd.Series(post_vals, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+
+        for idx, subject_id in enumerate(subject_ids):
+            ax = axes_flat[idx]
+
+            # 数据提取
+            odict = oral_hypo_hits[subject_id]
+            condition = odict['condition']
+            k_special = 0 if condition == 1 else 42
+            win = 16
+
+            rolling_hits = odict['rolling_hits']
+            x_vals = np.arange(1, len(rolling_hits) + 1)
+
+            ax.plot(x_vals,
+                    rolling_hits,
+                    lw=1.5,
+                    label='Human',
+                    color=color_true,
+                    clip_on=False)
+
+            rolling_k = _extract_ma_filtered(results[subject_id], k_special, win)
+            ax.plot(x_vals[win - 1:],
+                    rolling_k[win - 1:],
+                    label=model_label,
+                    lw=1.5,
+                    color=color,
+                    clip_on=False)
+
+            # 分割线
+            add_segmentation_lines(ax,
+                                len(x_vals),
+                                interval=64,
+                                color='grey',
+                                alpha=0.3,
+                                linestyle='--',
+                                linewidth=0.6)
+
+            ax.set_xlim(0, len(x_vals) + 1)
+            ax.set_ylim(0, 1)
+
+            col = idx % ncol
+            yticks = [0, 0.5, 1]
+            ax.set_yticks(yticks)
+            if col == 0:
+                ax.set_yticklabels(['0', '0.5', '1'], fontsize=16)
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+
+            x_max = int(ax.get_xlim()[1])
+            if x_max > 1000:
+                xtick_step = 256
+            elif x_max < 130:
+                xtick_step = 64
+            else:
+                xtick_step = xtick_interval
+            xticks = np.arange(0, x_max + 1, xtick_step)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(xticks, fontsize=16)
+            ax.set_xlabel(None)
+
+            ax.set_facecolor('none')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            for spine in ['left', 'bottom']:
+                ax.spines[spine].set_linewidth(1.186)
+
+            ax.text(0.95,
+                    0.05,
+                    f'S{subject_labels[subject_ids.index(subject_id)]}',
+                    transform=ax.transAxes,
+                    fontsize=20,
+                    ha='right',
+                    va='bottom',
+                    color='black')
+
+        fig.text(0.5, -0.03, 'Trial', ha='center', fontsize=19)
+        fig.text(-0.025,
+                0.5,
+                'True-hypo probability',
+                va='center',
+                rotation='vertical',
+                fontsize=19)
+
+        for j in range(n_sub, nrow * ncol):
+            axes_flat[j].axis('off')
+
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight', transparent=True)
+            print(f"Figure saved to {save_path}")
+        plt.close(fig)
