@@ -101,8 +101,9 @@ class BaseCluster(BaseModule):
                 amount_function: Callable = amount_function,
                 **kwargs) -> int:
             feedbacks = [int(f) for f in feedbacks]
-            old_acc = np.sum(feedbacks[:len(feedbacks) // 2]) / (len(feedbacks) // 2)
-            new_acc = np.sum(feedbacks[len(feedbacks) // 2:]) / (len(feedbacks) // 2)
+            length = 8
+            old_acc = np.sum(feedbacks[:length]) / length
+            new_acc = np.sum(feedbacks[length:]) / length
             delta_acc = new_acc - old_acc
             amount = amount_function(delta_acc)
             match amount:
