@@ -64,6 +64,7 @@ def amnesia_mechanism(func):
 
 
 class BasePartition(ABC):
+    EPS = 1e-12
     """
     Base Partition
     """
@@ -243,10 +244,31 @@ class BasePartition(ABC):
                                          **kwargs) # shape = [n_cats, n_trials]
         choices, responses = data[1].copy(), data[2] # shape = [n_trials]
         choices -= 1
+        n_trials = len(choices)
 
-        return np.where(responses == 1, prob[choices,
-                                             np.arange(len(choices))],
-                        1 - prob[choices, np.arange(len(choices))]) # shape = [n_trials]
+        # (a) species-level 正确
+        p_species = prob[choices, np.arange(n_trials)]
+
+        # (b) family-level 正确（species 错）
+        fam_sum = np.zeros(n_trials)
+        conn_map = getattr(self, "connectivity_map", {})
+        if conn_map:
+            for t in range(n_trials):
+                alt_cats = conn_map[hypo][choices[t]]   # 不含自身
+                if alt_cats:                            # 有连通的物种
+                    fam_sum[t] = prob[alt_cats, t].sum()
+
+        # (c) 完全错误
+        p_wrong = 1.0 - p_species
+
+        # (d) 根据 feedback 取对应概率
+        likelihood = np.where(responses == 1,      p_species,
+                      np.where(responses == 0.5,   fam_sum,
+                               p_wrong))
+        
+        likelihood = np.clip(likelihood, self.EPS, 1. - self.EPS)
+
+        return likelihood      # shape = (n_trials,)
 
     @amnesia_mechanism
     def calc_trueprob_entry(self,
@@ -290,7 +312,7 @@ class Partition(BasePartition):
     1. 使用 get_all_splits(n_dims, n_cats) 生成各种分割方式对应的超平面组合。
     2. 使用 get_centers(n_dims, n_cats) 计算在这些分割方式下, 各个区域(类别)的代表中心点(重心)。
     """
-    epsilon = 1e-7
+    EPS = 1e-7
 
     binary_comb = {}
     # generage matrices of shape (i, 2**i), for i in 1-5 like
@@ -306,6 +328,31 @@ class Partition(BasePartition):
         """Initialize"""
         super().__init__(n_dims, n_cats, n_protos, **kwargs)
         self.vertices: List[Tuple[float, float, float, float]] = []
+
+        self.connectivity_map = self._compute_connectivity_map()
+
+    def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
+        conn = {}
+        n_cats, n_dims = self.n_cats, self.n_dims
+        # 原型坐标：shape = [n_hypos, n_cats, n_dims]
+        centers_all = self.prototypes_np.squeeze(axis=1)  # n_protos=1 → squeeze
+
+        for h in range(self.length):
+            centers = centers_all[h]          # shape (n_cats, n_dims)
+            conn[h] = {c: [] for c in range(n_cats)}
+
+            # 枚举所有类别对 (a,b)
+            for a in range(n_cats):
+                for b in range(a + 1, n_cats):
+                    # 统计有多少维“明显不同”
+                    diff_cnt = np.sum(
+                        np.abs(centers[a] - centers[b]) > self.EPS
+                    )
+                    if diff_cnt == 1:         # 仅 1 维不同 → 认为 family 相连
+                        conn[h][a].append(b)
+                        conn[h][b].append(a)
+        return conn
+
 
     def generate_vertices(self):
         """
@@ -335,7 +382,7 @@ class Partition(BasePartition):
                                    dtype=float)
                     print("MATMAT", mat)
                     # Check whether equation system is singular
-                    if np.linalg.det(mat) < self.epsilon:
+                    if np.linalg.det(mat) < self.EPS:
                         continue
 
                     # all intersections of plane (split) to edges.
