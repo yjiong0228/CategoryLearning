@@ -90,7 +90,7 @@ module_configs = {}
 # from .fit_config_M6 import module_configs, window_size_configs
 
 # M7_PMH model
-# from .fit_config import module_configs, window_size_configs
+from .fit_config import module_configs, window_size_configs
 
 
 optimizer = Optimizer(module_configs, n_jobs=120)
@@ -100,8 +100,8 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 
 # M0_base model
-res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), 16, 1, 1)
+# res = optimizer.optimize_params_with_subs_parallel(
+#     config_fgt, list(range(1, 25)), 16, 1, 1)
 
 # # M1_P model
 # res = optimizer.optimize_params_with_subs_parallel(
@@ -128,9 +128,8 @@ res = optimizer.optimize_params_with_subs_parallel(
 #     config_fgt, [1,4,7,10,13,16,19,22], window_size_configs, 5, 1000)
 
 # M7_PMH model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, [4,22,2,20,23,3,9,15], window_size_configs, 5, 1000)
-
+res = optimizer.optimize_params_with_subs_parallel(
+    config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
 
 
 # 保存拟合结果
@@ -138,4 +137,4 @@ result_path = Path(project_root) / 'results' / 'Model_results_v2'
 os.makedirs(result_path, exist_ok=True)
 
 # optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M0_base.joblib') 
+joblib.dump(res, result_path / 'M7_PMH.joblib') 
