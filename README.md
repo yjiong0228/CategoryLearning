@@ -1,4 +1,3 @@
-# Beyond Behavioral Fit: Tracing the Internal Mind’s Trajectory via Modular Bayesian Inference in Human Category Learning
 
 This project is designed to facilitate category-based learning and organization.
 
