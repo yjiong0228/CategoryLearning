@@ -168,7 +168,7 @@ class ModelEval:
                 data.append({'gamma': g, 'w0': w0, 'Error': err_val})
             df = pd.DataFrame(data)
             em = df.pivot(index='gamma', columns='w0', values='Error')
-            sns.heatmap(em, cbar_kws={'label': 'Error'}, ax=ax)
+            sns.heatmap(em, cbar_kws={'label': 'Error'}, ax=ax, cmap='viridis_r')
             ax.set(title=f'Subject {iSub} (Condition {condition})',
                 xlabel=fname[1], ylabel=fname[0])
             ax.set_xticks(np.arange(len(em.columns)) + 0.5)

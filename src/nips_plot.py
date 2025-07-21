@@ -1,28 +1,23 @@
 import os
 import numpy as np
+import pandas as pd
+from math import ceil
 from scipy.interpolate import splprep, splev
-from math import isfinite
 from scipy.stats import ttest_rel
 from statsmodels.stats.multitest import multipletests
 from scipy.stats import pearsonr
-from scipy.stats import linregress
 from scipy.optimize import curve_fit
-from scipy.spatial.distance import euclidean
-from fastdtw import fastdtw
+
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import font_manager
-import matplotlib as mpl
-import matplotlib.ticker as mticker
 from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.lines import Line2D
-from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, Tuple, List, Any, Union, Optional
-import pandas as pd
-from math import ceil
-from .plot_utils import (create_grid_figure,add_segmentation_lines,style_axis,annotate_label)
+
 
 
 # 1. 注册本地字体（把路径换成你机器上 Arial.ttf 的实际路径）
@@ -33,6 +28,13 @@ prop = font_manager.FontProperties(fname=font_path)
 # 2. 在绘图前设置默认字体
 mpl.rcParams['font.family'] = prop.get_name()
 
+
+def add_segmentation_lines(ax, max_trial, interval=64, **line_kwargs):
+    """
+    Add vertical segmentation lines every `interval` trials.
+    """
+    for x in range(interval, max_trial + 1, interval):
+        ax.axvline(x=x, **line_kwargs)
 
 class Fig1_Oral:
 
@@ -2881,7 +2883,7 @@ class FigS3:
                 r'$\gamma$',
                 va='center',
                 rotation='vertical',
-                fontsize=19)  
+                fontsize=19)
 
         for j in range(n_sub, nrow * ncol):
             axes_flat[j].axis('off')
@@ -2913,7 +2915,7 @@ class FigS3:
         for idx, subject_id in enumerate(subject_ids):
             ax = axes_flat[idx]
             step_results = results[subject_id].get('best_step_results', [])
-            
+
             posterior = [
                 sum(value[0] if isinstance(value, (list, tuple, np.ndarray)) else value
                     for key, value in step['best_step_amount'].items()
@@ -2952,7 +2954,7 @@ class FigS3:
             # if idx % ncol == 0:
             ax.tick_params(axis='y', which='major', labelsize=16)
             # else:
-                # ax.set_yticklabels([])
+            # ax.set_yticklabels([])
             ax.set_ylabel(None)
 
             ax.set_facecolor('none')
