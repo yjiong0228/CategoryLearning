@@ -17,11 +17,7 @@ class BaseCluster(BaseModule):
         super().__init__(model, **kwargs)
         self.model = model
         self.config = cluster_config
-        self.partition = self.model.partition_model
-        self.n_dims = self.partition.n_dims
-        self.n_cats = self.partition.n_cats
         self.current_cluster = BaseSet([])
-        self.length = self.partition.length
 
 
     def adaptive_amount_evalutator(self, amount: float | str | Callable,
@@ -171,12 +167,14 @@ class PartitionCluster(BaseCluster):
             kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
 
-        self._calc_cached_dist()
 
     def _calc_cached_dist(self):
         """
         Calculate Cached diatances
         """
+        if not hasattr(self.model, "partition_model") or self.model.partition_model is None:
+            raise ValueError("partition_model is not initialized before calling _calc_cached_dist().")
+
         self.cached_dist = {}
         for i_l, left in self.partition.centers:
             for i_r, right in self.partition.centers:
@@ -199,6 +197,9 @@ class PartitionCluster(BaseCluster):
         """
         Read out center distances
         """
+        if not self.cached_dist:
+            self._calc_cached_dist()
+
         return self.cached_dist.get((*this, *other), np.inf)
 
     @classmethod
@@ -348,11 +349,11 @@ class PartitionCluster(BaseCluster):
         ])
         ref_dist = cdist(
             np.array(stimulus).reshape(1, -1),
-            ref_full_centers.reshape(-1, self.n_dims))
+            ref_full_centers.reshape(-1, self.model.partition_model.n_dims))
         # given stimulus, the argmin choices on each reference hypo
         ref_choices = [
-            np.random.choice(self.n_cats, p=prob)
-            for prob in softmax(ref_dist.reshape(-1, self.n_cats),
+            np.random.choice(self.model.partition_model.n_cats, p=prob)
+            for prob in softmax(ref_dist.reshape(-1, self.model.partition_model.n_cats),
                                 beta=-ref_hypos_beta.reshape(-1, 1),
                                 axis=1)
         ]
@@ -402,7 +403,7 @@ class PartitionCluster(BaseCluster):
         hypo_choices = []
 
         if full_hypo_set is None:
-            available_hypos = set(range(self.length))
+            available_hypos = set(range(self.model.partition_model.length))
         else:
             available_hypos = set(full_hypo_set)
 
@@ -448,7 +449,7 @@ class PartitionCluster(BaseCluster):
         new_hypos: Set[int] = set([])
         numerical_amounts = []
         hypo_choices = []
-        available_hypos = set(range(self.length))
+        available_hypos = set(range(self.model.partition_model.length))
         for amount, method in self.cluster_init_strategy:
             numerical_amount = self.adaptive_amount_evalutator(
                 amount, **kwargs)
