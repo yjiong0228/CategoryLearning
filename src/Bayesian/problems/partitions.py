@@ -253,10 +253,13 @@ class BasePartition(ABC):
         fam_sum = np.zeros(n_trials)
         conn_map = getattr(self, "connectivity_map", {})
         if conn_map:
+            mask = np.zeros_like(prob, dtype=bool)  # shape = [n_cats, n_trials]
             for t in range(n_trials):
                 alt_cats = conn_map[hypo][choices[t]]   # 不含自身
-                if alt_cats:                            # 有连通的物种
-                    fam_sum[t] = prob[alt_cats, t].sum()
+                mask[alt_cats, t] = True
+            fam_sum = (prob * mask).sum(axis=0)
+        else:
+            fam_sum = np.zeros(n_trials)
 
         # (c) 完全错误
         p_wrong = 1.0 - p_species
