@@ -18,123 +18,149 @@ logger = logging.getLogger(__name__)
 project_root = Path(os.getcwd())
 # sys.path.append(str(project_root))
 
+result_path = Path(project_root) / 'results' / 'Model_results'
+os.makedirs(result_path, exist_ok=True)
+
+
 # 导入模型
 from src.Bayesian import *
 from src.Bayesian.problems.config import config_fgt
 from src.Bayesian.problems import *
 from src.Bayesian.utils.optimizer import Optimizer
+from src.Bayesian.utils.model_evaluation import ModelEval
 
-# def post_acc_amount_f(x):
-#     if x <= 0.2:
-#         return 0
-#     elif 0.2 < x < 0.3:
-#         return 1
-#     elif 0.3 <= x < 0.4:
-#         return 2
-#     elif 0.4 <= x < 0.5:
-#         return 3
-#     elif 0.5 <= x < 0.6:
-#         return 4
-#     elif 0.6 <= x < 0.7:
-#         return 5
-#     elif 0.7 <= x < 0.8:
-#         return 6
-#     elif 0.8 <= x <= 1:
-#         return 7
 
-# def random_acc_amount_f(x):
-#     return 7 - post_acc_amount_f(x)
+# model_name = 'M0_Base'
+model_name = 'M1_P'
+# model_name = 'M2_M'
+# model_name = 'M3_H'
+# model_name = 'M4_PM'
+# model_name = 'M5_PH'
+# model_name = 'M6_MH'
+# model_name = 'M7_PMH'
 
-# M0_base model
-module_configs = {}
 
-# # M1_P model
-# module_configs = {"perception": (BasePerception, {})}
+from src.Bayesian.problems.fit_config import window_size_configs
 
-# M2_M model
-# module_configs = {"memory": (BaseMemory, {
-#                     "personal_memory_range": {
-#                         "gamma": (0.05, 1.0),
-#                         "w0": (0.075, 0.15)
-#                     },
-#                     "param_resolution": 20
-#                 })}
+if model_name == 'M0_Base':
+    module_configs = {}
 
-# # M3_H model
-# module_configs = {"cluster": (PartitionCluster, {
-#             "transition_spec": [("random_7", "random_posterior"),
-#                                 (1, "ksimilar_centers"),
-#                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-#             "init_strategy": [(10, "random")]})}
+elif model_name == 'M1_P':
+    module_configs = {"perception": (BasePerception, {})}
 
-# # M4_PM model
-# module_configs = {
-#         "memory": (BaseMemory, {
-#             "personal_memory_range": {
-#                 "gamma": (0.05, 1.0),
-#                 "w0": (0.075, 0.15)
-#             },
-#             "param_resolution": 20
-#         }),
-#         "perception": (BasePerception, {})}
+elif model_name == 'M2_M':
+    module_configs = {"memory": (BaseMemory, {
+                        "personal_memory_range": {
+                            "gamma": (0.05, 1.0),
+                            "w0": (0.075, 0.15)
+                        },
+                        "param_resolution": 20
+                    })}
+    
+elif model_name == 'M3_H':
+    from src.Bayesian.problems.fit_config import module_configs_M3
 
-# M5_PH model
-# module_configs = {"cluster": (PartitionCluster, {
-#                             "transition_spec": [("random_7", "random_posterior"),
-#                                                 (1, "ksimilar_centers"),
-#                                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
-#                             "init_strategy": [(10, "random")]}),
-#             "perception": (BasePerception, {})}
+elif model_name == 'M4_PM':
+    from src.Bayesian.problems.fit_config import module_configs_M4
 
-# M6_MH model
-# from .fit_config_M6 import module_configs, window_size_configs
+elif model_name == 'M5_PH':
+    module_configs = {
+            "memory": (BaseMemory, {
+                "personal_memory_range": {
+                    "gamma": (0.05, 1.0),
+                    "w0": (0.075, 0.15)
+                },
+                "param_resolution": 20
+            }),
+            "perception": (BasePerception, {})}
 
-# M7_PMH model
-# from ..src.Bayesian.problems.fit_config import module_configs, window_size_configs
+elif model_name == 'M6_MH':
+    from src.Bayesian.problems.fit_config import module_configs_M6
+
+elif model_name == 'M7_PMH':
+    from src.Bayesian.problems.fit_config import module_configs_M7
+
+
 
 
 optimizer = Optimizer(module_configs, n_jobs=120)
+subsect_ids = list(range(1, 25)) 
 
 processed_path = Path(project_root) / 'data' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 
-# M0_base model
-res = optimizer.optimize_params_with_subs_parallel(
-    config_fgt, list(range(1, 25)), 16, 1, 1)
 
-# # M1_P model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 0, 100)
+if model_name == 'M0_Base':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 1, 1)
 
-# # M2_M model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 1, 1)
+elif model_name == 'M1_P':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 0, 500)
+    
+elif model_name == 'M2_M':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 1, 1)
+    
+elif model_name == 'M3_H':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 0, 1000)
+    
+elif model_name == 'M4_PM':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 3, 500)
+    
+elif model_name == 'M5_PH':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 0, 1000)
+    
+elif model_name == 'M6_MH': 
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 5, 1000)
 
-# # M3_H model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 0, 1000)
-
-# # M4_PM model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 3, 500)
-
-# # M5_PH model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), 16, 0, 1000)
-
-# # M6_MH model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, [1,4,7,10,13,16,19,22], window_size_configs, 5, 1000)
-
-# # M7_PMH model
-# res = optimizer.optimize_params_with_subs_parallel(
-#     config_fgt, list(range(1, 25)), window_size_configs, 5, 1000)
+elif model_name == 'M7_PMH':
+    res = optimizer.optimize_params_with_subs_parallel(
+        config_fgt, subsect_ids, window_size_configs, 5, 1000)
+    
+# 保存结果
+# optimizer.save_results(res, model_name, result_path)
+joblib.dump(res, result_path / f'{model_name}.joblib')
 
 
-# 保存拟合结果
-result_path = Path(project_root) / 'results' / 'Model_results'
-os.makedirs(result_path, exist_ok=True)
 
-# optimizer.save_results(res, 'M_fgt_cl_per', result_path)
-joblib.dump(res, result_path / 'M0_Base.joblib') 
+# 加载模型结果
+# res = joblib.load(result_path / f'{model_name}.joblib')
+
+# plot posterior probabilities
+model_eval = ModelEval()
+model_eval.plot_posterior_probabilities(
+    res, save_path=result_path/f'{model_name}_post.png')
+
+# get predictions 
+optimizer.set_results(res)
+prediction = optimizer.predict_with_subs_parallel(
+    config_fgt, subsect_ids)
+joblib.dump(prediction, result_path / f'{model_name}_predict.joblib')
+
+# plot accuracy comparison
+model_eval.plot_accuracy_comparison(prediction, save_path=result_path/f'{model_name}_acc.png')
+
+# plot model k vs oral k
+from src.Bayesian.utils.oral_process import Oral_to_coordinate
+oral_to_coordinate = Oral_to_coordinate()
+
+learning_data = pd.read_csv(processed_path / 'Task2_processed.csv')
+oral_hypo_hits = oral_to_coordinate.get_oral_hypo_hits(learning_data)
+
+model_eval.plot_k_oral_comparison(
+    res, oral_hypo_hits,
+    range(1,25), save_path=result_path/f'{model_name}_oral.png')
+
+
+# plot gamma and w0 grids
+if model_name in ['M2_M', 'M4_PM', 'M6_MH', 'M7_PMH']:
+    model_eval.plot_error_grids(res, fname=['gamma','w0'], save_path=result_path/f'{model_name}_grid.png')
+
+if model_name in ['M3_H', 'M5_PH', 'M6_MH', 'M7_PMH']:
+    model_eval.plot_cluster_amount(res, window_size=16, save_path=result_path/f'{model_name}_amount.png')
