@@ -76,7 +76,7 @@ module_configs_M3.update({
                                 (1, "ksimilar_centers"),
                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
             "init_strategy": [(10, "random")]}),
-    } for i in sub_cond2 or sub_cond3
+    } for i in (sub_cond2 + sub_cond3)
 })
 
 
@@ -113,7 +113,7 @@ module_configs_M4.update({
             },
             "param_resolution": 20
         }),
-    } for i in sub_cond2 or sub_cond3
+    } for i in (sub_cond2 + sub_cond3)
 })
 
 
@@ -151,7 +151,7 @@ module_configs_M6.update({
             "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
-    } for i in sub_cond2 or sub_cond3
+    } for i in (sub_cond2 + sub_cond3)
 })
 
 
@@ -189,7 +189,7 @@ module_configs_M7.update({
             "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
-    } for i in sub_cond2 or sub_cond3
+    } for i in (sub_cond2 + sub_cond3)
 })
 
 

@@ -31,8 +31,8 @@ from src.Bayesian.utils.model_evaluation import ModelEval
 
 
 # model_name = 'M0_Base'
-model_name = 'M1_P'
-# model_name = 'M2_M'
+# model_name = 'M1_P'
+model_name = 'M2_M'
 # model_name = 'M3_H'
 # model_name = 'M4_PM'
 # model_name = 'M5_PH'
@@ -59,9 +59,11 @@ elif model_name == 'M2_M':
     
 elif model_name == 'M3_H':
     from src.Bayesian.problems.fit_config import module_configs_M3
+    module_configs = module_configs_M3
 
 elif model_name == 'M4_PM':
     from src.Bayesian.problems.fit_config import module_configs_M4
+    module_configs = module_configs_M4
 
 elif model_name == 'M5_PH':
     module_configs = {
@@ -76,10 +78,11 @@ elif model_name == 'M5_PH':
 
 elif model_name == 'M6_MH':
     from src.Bayesian.problems.fit_config import module_configs_M6
+    module_configs = module_configs_M6
 
 elif model_name == 'M7_PMH':
     from src.Bayesian.problems.fit_config import module_configs_M7
-
+    module_configs = module_configs_M7
 
 
 
