@@ -81,38 +81,26 @@ module_configs_M3.update({
 
 
 
-module_configs_M4 = {}
+module_configs_M5 = {}
 
-module_configs_M4.update({
+module_configs_M5.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_4", "top_posterior"),
                                 ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
-        "memory": (BaseMemory, {
-            "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
-            },
-            "param_resolution": 20
-        }),
+        "perception": (BasePerception, {}),
     } for i in sub_cond1
 })
 
-module_configs_M4.update({
+module_configs_M5.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
                                 (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
             "init_strategy": [(10, "random")]}),
-        "memory": (BaseMemory, {
-            "personal_memory_range": {
-                "gamma": (0.05, 1.0),
-                "w0": (0.075, 0.15)
-            },
-            "param_resolution": 20
-        }),
+        "perception": (BasePerception, {}),
     } for i in (sub_cond2 + sub_cond3)
 })
 
