@@ -176,8 +176,8 @@ class PartitionCluster(BaseCluster):
             raise ValueError("partition_model is not initialized before calling _calc_cached_dist().")
 
         self.cached_dist = {}
-        for i_l, left in self.partition.centers:
-            for i_r, right in self.partition.centers:
+        for i_l, left in self.model.partition_model.centers:
+            for i_r, right in self.model.partition_model.centers:
                 try:
                     for _, c_l in left.items():
                         for _, c_r in right.items():
@@ -344,7 +344,7 @@ class PartitionCluster(BaseCluster):
         ref_hypos_beta = np.array([x for _, _, x in ref_hypos])
         # ref_full_centers is of shape (proto_hypo_amount, n_cats, n_dims)
         ref_full_centers = np.array([
-            list(self.partition.centers[k][1].values())
+            list(self.model.partition_model.centers[k][1].values())
             for k in ref_hypos_index
         ])
         ref_dist = cdist(
@@ -366,7 +366,7 @@ class PartitionCluster(BaseCluster):
             k for k in available_hypos if k not in ref_hypos_index
         ]
         candidate_full_center = np.array([
-            list(self.partition.centers[k][1].values())
+            list(self.model.partition_model.centers[k][1].values())
             for k in candidate_hypos_index
         ])
 

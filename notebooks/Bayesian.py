@@ -32,9 +32,9 @@ from src.Bayesian.utils.model_evaluation import ModelEval
 
 # model_name = 'M0_Base'
 # model_name = 'M1_P'
-model_name = 'M2_M'
+# model_name = 'M2_M'
 # model_name = 'M3_H'
-# model_name = 'M4_PM'
+model_name = 'M4_PM'
 # model_name = 'M5_PH'
 # model_name = 'M6_MH'
 # model_name = 'M7_PMH'
