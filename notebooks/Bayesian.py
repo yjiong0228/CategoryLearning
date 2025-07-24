@@ -62,10 +62,6 @@ elif model_name == 'M3_H':
     module_configs = module_configs_M3
 
 elif model_name == 'M4_PM':
-    from src.Bayesian.problems.fit_config import module_configs_M4
-    module_configs = module_configs_M4
-
-elif model_name == 'M5_PH':
     module_configs = {
             "memory": (BaseMemory, {
                 "personal_memory_range": {
@@ -75,6 +71,11 @@ elif model_name == 'M5_PH':
                 "param_resolution": 20
             }),
             "perception": (BasePerception, {})}
+    
+elif model_name == 'M5_PH':
+    from src.Bayesian.problems.fit_config import module_configs_M5
+    module_configs = module_configs_M5
+
 
 elif model_name == 'M6_MH':
     from src.Bayesian.problems.fit_config import module_configs_M6
