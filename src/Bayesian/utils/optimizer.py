@@ -7,9 +7,6 @@ from joblib import Parallel, delayed
 from typing import Optional, List, Dict, Union
 from itertools import product
 from collections import defaultdict, UserDict
-from matplotlib import pyplot as plt
-import matplotlib.ticker as mticker
-import seaborn as sns
 import numpy as np
 import logging
 logger = logging.getLogger(__name__)
@@ -232,7 +229,7 @@ class Optimizer(object):
                 "best_params": subject_best_combo[iSub]["params"],
                 "best_error": all_mean_error[idx],
                 "best_step_results": all_step_results[idx],
-                # "raw_step_results": all_step_results,
+                "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub],
                 "sample_errors": all_mean_error
             }
@@ -249,15 +246,15 @@ class Optimizer(object):
             results (Dict): The optimization results to save.
             output_name (str): The name to save the results.
         """
+        output_dir = Path(output_dir)
         for iSub, subject_info in results.items():
-            cache_path = os.path.join(output_dir, "cache", name, f"{iSub}.gz")
-            if not os.path.exists(os.path.dirname(cache_path)):
-                os.makedirs(os.path.dirname(cache_path))
+            cache_path = output_dir / "cache" / name / f"{iSub}.gz"
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
             raw_step_results = StreamList(cache_path, 0)
             raw_step_results.extend(subject_info['raw_step_results'])
             subject_info['raw_step_results'] = (cache_path,
                                                 len(raw_step_results))
-        output_path = os.path.join(output_dir, f'{name}.joblib')
+        output_path = output_dir / f'{name}.joblib'
         with open(output_path, 'wb') as f:
             joblib.dump(results, f)
         logger.info(f"Results saved to {output_path}")
