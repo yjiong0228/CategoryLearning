@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(os.getcwd())
 # sys.path.append(str(project_root))
 
-result_path = Path(project_root) / 'results' / 'Model_results'
+result_path = Path(project_root) / 'results' / 'Model_results_new' 
 os.makedirs(result_path, exist_ok=True)
 
 
@@ -34,10 +34,10 @@ from src.Bayesian.utils.model_evaluation import ModelEval
 # model_name = 'M1_P'
 # model_name = 'M2_M'
 # model_name = 'M3_H'
-model_name = 'M4_PM'
+# model_name = 'M4_PM'
 # model_name = 'M5_PH'
 # model_name = 'M6_MH'
-# model_name = 'M7_PMH'
+model_name = 'M7_PMH'
 
 
 from src.Bayesian.problems.fit_config import window_size_configs
@@ -97,7 +97,7 @@ optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 if model_name == 'M0_Base':
     res = optimizer.optimize_params_with_subs_parallel(
-        config_fgt, subsect_ids, window_size_configs, 1, 1)
+        config_fgt, subsect_ids, window_size_configs, 1, 0)
 
 elif model_name == 'M1_P':
     res = optimizer.optimize_params_with_subs_parallel(
@@ -105,7 +105,7 @@ elif model_name == 'M1_P':
     
 elif model_name == 'M2_M':
     res = optimizer.optimize_params_with_subs_parallel(
-        config_fgt, subsect_ids, window_size_configs, 1, 1)
+        config_fgt, subsect_ids, window_size_configs, 1, 0)
     
 elif model_name == 'M3_H':
     res = optimizer.optimize_params_with_subs_parallel(
@@ -125,11 +125,11 @@ elif model_name == 'M6_MH':
 
 elif model_name == 'M7_PMH':
     res = optimizer.optimize_params_with_subs_parallel(
-        config_fgt, subsect_ids, window_size_configs, 5, 1000)
+        config_fgt, subsect_ids, window_size_configs, 5, 1500)
     
 # 保存结果
-# optimizer.save_results(res, model_name, result_path)
-joblib.dump(res, result_path / f'{model_name}.joblib')
+optimizer.save_results(res, model_name, result_path)
+# joblib.dump(res, result_path / f'{model_name}.joblib')
 
 
 
