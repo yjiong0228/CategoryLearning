@@ -25,7 +25,7 @@ class BaseSet:
         return self._size
 
     def __getitem__(self, key):
-        assert key in self.inv, "Invalid key"
+        assert key in self.inv, f"Invalid key: {key} in {self.inv}"
         return self.inv.get(key, -1)
 
     def __repr__(self):

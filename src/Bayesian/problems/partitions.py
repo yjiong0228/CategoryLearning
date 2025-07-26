@@ -241,8 +241,8 @@ class BasePartition(ABC):
             mechanism.
         """
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                         **kwargs) # shape = [n_cats, n_trials]
-        choices, responses = data[1].copy(), data[2] # shape = [n_trials]
+                                         **kwargs)  # shape = [n_cats, n_trials]
+        choices, responses = data[1].copy(), data[2]  # shape = [n_trials]
         choices -= 1
         n_trials = len(choices)
 
