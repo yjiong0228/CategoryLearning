@@ -1,9 +1,6 @@
 *.png
+*.csv
 *.pyc
-*.joblib
-**/__pycache__
-**/.ipynb_checkpoints
 
-**/.#*
-**/*~
-debug*
+*/.#*
+*/*~
