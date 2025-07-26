@@ -1,5 +1,6 @@
 *.png
 *.pyc
+*.gz
 *.joblib
 **/__pycache__
 **/.ipynb_checkpoints
