@@ -53,6 +53,27 @@ class BaseCluster(BaseModule):
         return _amount_entropy_based
 
     @classmethod
+    def _amount_opposite_entropy_gen(cls, max_amount=3):
+
+        def _amount_opposite_entropy_based(posterior: Dict,
+                                        max_amount=max_amount,
+                                        **kwargs) -> int:
+            posterior_ = np.array(list(posterior.values()))[:, 0]
+            p_entropy = entropy(posterior_)
+
+            # scale entropy to (0, max_amount), assume max entropy is log(n)
+            n_hypos = len(posterior_)
+            max_possible_entropy = np.log(n_hypos) if n_hypos > 1 else 1.0
+            normalized_entropy = p_entropy / max_possible_entropy
+
+            # Scale to range [1, max_amount]
+            scaled_amount = 1 + int(normalized_entropy * (max_amount - 1))
+            return min(scaled_amount, max_amount)
+
+        return _amount_opposite_entropy_based
+
+
+    @classmethod
     def _amount_max_gen(cls, max_amount=3):
 
         def _amount_max_based(posterior=Dict, max_amount=max_amount, **kwargs):
@@ -130,6 +151,11 @@ class PartitionCluster(BaseCluster):
         "entropy_3": BaseCluster._amount_entropy_gen(3),
         "entropy_4": BaseCluster._amount_entropy_gen(4),
         "entropy_5": BaseCluster._amount_entropy_gen(5),
+        "entropy_6": BaseCluster._amount_entropy_gen(6),
+        "entropy_7": BaseCluster._amount_entropy_gen(7),
+        "opp_entropy_2": BaseCluster._amount_opposite_entropy_gen(2),
+        "opp_entropy_4": BaseCluster._amount_opposite_entropy_gen(4),
+        "opp_entropy_7": BaseCluster._amount_opposite_entropy_gen(7),
         "max_1": BaseCluster._amount_max_gen(1),
         "max_2": BaseCluster._amount_max_gen(2),
         "max_3": BaseCluster._amount_max_gen(3),

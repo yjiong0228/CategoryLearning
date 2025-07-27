@@ -148,8 +148,8 @@ module_configs_M7 = {}
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_4", "top_posterior"),
-                                ("opp_random_4", "random")],
+            "transition_spec": [("entropy_4", "top_posterior"),
+                                ("opp_entropy_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -165,9 +165,9 @@ module_configs_M7.update({
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("random_7", "random_posterior"),
+            "transition_spec": [("entropy_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                                ("opp_entropy_7", "random")],
             "init_strategy": [(10, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {

@@ -873,9 +873,9 @@ class StandardModel(BaseModel):
             self.refresh_engine(new_hypotheses_set, new_prior, new_likelihood)
         hypo_set = self.engine.hypotheses_set
         prior = self.engine.prior.value
-        print("\n" * 5, initial_step_state)
+        # print("\n" * 5, initial_step_state)
 
-        for step_idx in range(on_policy_start_trial, n_trials + 1):
+        for step_idx in range(on_policy_start_trial + 1, n_trials + 1):
 
             # generate selection (choice) and response
             data[1][step_idx - 1] = self.on_policy_decision_making(
