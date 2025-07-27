@@ -407,8 +407,6 @@ class Optimizer(object):
         }
         if isinstance(window_size, int):
             window_size = ConstantDict(window_size)
-        # if isinstance(grid_repeat, int):
-        #     grid_repeat = ConstantDict(grid_repeat)
         if isinstance(mc_samples, int):
             mc_samples = ConstantDict(mc_samples)
 
@@ -522,6 +520,7 @@ class Optimizer(object):
                 "best_step_results": all_step_results[idx],
                 "raw_step_results": all_step_results,
                 "grid_errors": initial_states[iSub]["grid_errors"],
-                "sample_errors": all_mean_error
+                "sample_errors": all_mean_error,
+                "start_idx": len(initial_states[iSub]["best_step_results"]) + 1
             }
         return fitting_results
