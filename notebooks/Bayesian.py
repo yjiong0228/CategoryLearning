@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(os.getcwd())
 # sys.path.append(str(project_root))
 
-result_path = Path(project_root) / 'results' / 'Model_results_entropy' 
+result_path = Path(project_root) / 'results' / 'Model_results_new' 
 os.makedirs(result_path, exist_ok=True)
 
 
@@ -36,8 +36,8 @@ from src.Bayesian.utils.model_evaluation import ModelEval
 # model_name = 'M3_H'
 # model_name = 'M4_PM'
 # model_name = 'M5_PH'
-# model_name = 'M6_MH'
-model_name = 'M7_PMH'
+model_name = 'M6_MH'
+# model_name = 'M7_PMH'
 
 
 from src.Bayesian.problems.fit_config import window_size_configs
