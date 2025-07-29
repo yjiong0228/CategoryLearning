@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(os.getcwd())
 # sys.path.append(str(project_root))
 
-result_path = Path(project_root) / 'results' / 'Model_results_new' 
+result_path = Path(project_root) / 'results' / 'Model_results_trainingtest' 
 os.makedirs(result_path, exist_ok=True)
 
 
@@ -125,7 +125,7 @@ elif model_name == 'M6_MH':
 
 elif model_name == 'M7_PMH':
     res = optimizer.optimize_params_with_subs_parallel(
-        config_fgt, subsect_ids, window_size_configs, 5, 1500)
+        config_fgt, subsect_ids, window_size_configs, 5, 1500, stop_at=0.8)
     
 # 保存结果
 optimizer.save_results(res, model_name, result_path)
