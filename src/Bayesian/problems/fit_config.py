@@ -120,7 +120,6 @@ module_configs_M6.update({
             },
             "param_resolution": 20
         }),
-        "perception": (BasePerception, {}),
     } for i in sub_cond1
 })
 
@@ -138,7 +137,6 @@ module_configs_M6.update({
             },
             "param_resolution": 20
         }),
-        "perception": (BasePerception, {}),
     } for i in (sub_cond2 + sub_cond3)
 })
 
@@ -148,8 +146,8 @@ module_configs_M7 = {}
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("entropy_4", "top_posterior"),
-                                ("opp_entropy_4", "random")],
+            "transition_spec": [("random_4", "top_posterior"),
+                                ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -165,9 +163,9 @@ module_configs_M7.update({
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
-            "transition_spec": [("entropy_7", "random_posterior"),
+            "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                ("opp_entropy_7", "random")],
+                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
             "init_strategy": [(10, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
