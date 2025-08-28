@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from math import ceil
 from scipy.interpolate import splprep, splev
-from scipy.stats import ttest_rel
+from scipy.stats import ttest_rel, shapiro, wilcoxon
 from statsmodels.stats.multitest import multipletests
 from scipy.stats import pearsonr
 from scipy.optimize import curve_fit
@@ -21,7 +21,7 @@ from typing import Dict, Tuple, List, Any, Union, Optional
 
 
 # 1. 注册本地字体（把路径换成你机器上 Arial.ttf 的实际路径）
-font_path = '/home/yangjiong/CategoryLearning/src/Arial.ttf'
+font_path = '/home/yangjiong/CategoryLearning_gitcode/src/Arial.ttf'
 font_manager.fontManager.addfont(font_path)
 prop = font_manager.FontProperties(fname=font_path)
 
@@ -887,89 +887,137 @@ class Fig3_Group:
         arrs = [np.array([err[sid] for sid in subs]) for err in errors]
 
         # Compute paired t-tests between adjacent models
-        raw_ps = []
+        raw_ps_ttest = []
+        raw_ps_wilcoxon = []
+        normality_flags = []
+
         for i in range(n_models - 1):
-            _, p = ttest_rel(arrs[i], arrs[i + 1])
-            raw_ps.append(p)
+            diff = arrs[i] - arrs[i + 1]
+            
+            # 正态性检验
+            stat, p_norm = shapiro(diff)
+            is_normal = p_norm > 0.05
+            normality_flags.append(is_normal)
 
-        # Multiple comparisons correction
-        reject, p_corrected, _, _ = multipletests(raw_ps, alpha=0.05, method=mc_method)
+            # 配对t检验
+            _, p_t = ttest_rel(arrs[i], arrs[i + 1])
+            raw_ps_ttest.append(p_t)
 
-        # Plotting
-        fig, ax = plt.subplots(figsize=figsize)
-        x_base = np.arange(n_models)
-        bars = ax.bar(
-            x_base,
-            summary['mean'],
-            yerr=summary['sem'],
-            color=colors,
-            capsize=5,
-            width=0.6,
-            edgecolor='black',
-            error_kw={'elinewidth': 3, 'capthick': 3},
-            ecolor='#542D21',
-        )
+            # Wilcoxon signed-rank 检验
+            try:
+                _, p_w = wilcoxon(arrs[i], arrs[i + 1])
+            except ValueError:
+                p_w = np.nan  # 如果数据全部相等可能报错
+            raw_ps_wilcoxon.append(p_w)
 
-        # Plot individual lines and points
-        jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), n_models))
-        for i, sid in enumerate(subs):
-            ys = [errors[j][sid] for j in range(n_models)]
-            xs = x_base + jitter[i]
-            ax.plot(xs, ys, color='gray', alpha=0.3, linewidth=1)
-            ax.scatter(
-                xs,
-                ys,
-                color='black',
-                alpha=0.25,
-                s=20,
-            )
+        # 多重比较校正
+        _, p_t_corrected, _, _ = multipletests(raw_ps_ttest, alpha=0.05, method=mc_method)
+        _, p_w_corrected, _, _ = multipletests(raw_ps_wilcoxon, alpha=0.05, method=mc_method)
 
-        # Add significance annotations
-        def get_star(p):
-            if p < 0.001:
-                return '***'
-            if p < 0.01:
-                return '**'
-            if p < 0.05:
-                return '*'
-            return 'n.s.'
+        # 选择使用哪种p值（可切换）
+        use_wilcoxon = True  # 或改为False使用t-test
 
-        y_max = (summary['mean'] + summary['sem']).max()
-        h = y_max * 0.05
-        for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
-            x1, x2 = x_base[i], x_base[i + 1]
-            y = max(
-                summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
-                summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']
-            ) + h
-            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, color='black')
-            ax.text((x1 + x2) / 2, y + h * 1.1, get_star(p_corr), ha='center', va='bottom', fontsize=14)
-
-        # Labels and aesthetics
-        ax.set_ylabel('Mean performance diff.\n(Model vs. Human)', fontsize=19)
-        ax.set_xlabel('Model', fontsize=19)
-        ax.set_xticks(x_base)
-        ax.set_xticklabels(labels, fontsize=16)
-        ax.tick_params(axis='both', which='major', labelsize=16)
-
-        ax.set_facecolor('none')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        for spine in ['left', 'bottom']:
-            ax.spines[spine].set_linewidth(2)
-
-        # Save if requested
-        if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
-            print(f"Figure saved to {save_path}")
-            plt.close(fig)
+        if use_wilcoxon:
+            p_corrected = p_w_corrected
+            raw_ps = raw_ps_wilcoxon
+            test_name = "Wilcoxon signed-rank test"
         else:
-            plt.close(fig)
+            p_corrected = p_t_corrected
+            raw_ps = raw_ps_ttest
+            test_name = "Paired t-test"
 
-        # Print test results
-        print("Raw p-values:        ", np.round(raw_ps, 4))
-        print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
-        print("Reject null hypotheses:", reject)
+        reject = p_corrected < 0.05
+
+        # 打印所有检验信息
+        print(f"\n=== Pairwise Comparison Summary ===")
+        for i in range(n_models - 1):
+            print(f"Model {labels[i]} vs {labels[i + 1]}:")
+            print(f"  Normality of differences: {'PASS' if normality_flags[i] else 'FAIL'} (p = {shapiro(arrs[i] - arrs[i + 1])[1]:.4f})")
+            print(f"  Paired t-test p = {raw_ps_ttest[i]:.4f}")
+            print(f"  Wilcoxon test p = {raw_ps_wilcoxon[i]:.4f}")
+            print(f"  => {'REJECT' if reject[i] else 'n.s.'} after correction (method: {mc_method})\n")
+
+        print(f"Used test: {test_name}")
+        print("Corrected p-values:", np.round(p_corrected, 4))
+
+
+
+
+        # # Plotting
+        # fig, ax = plt.subplots(figsize=figsize)
+        # x_base = np.arange(n_models)
+        # bars = ax.bar(
+        #     x_base,
+        #     summary['mean'],
+        #     yerr=summary['sem'],
+        #     color=colors,
+        #     capsize=5,
+        #     width=0.6,
+        #     edgecolor='black',
+        #     error_kw={'elinewidth': 3, 'capthick': 3},
+        #     ecolor='#542D21',
+        # )
+
+        # # Plot individual lines and points
+        # jitter = np.random.uniform(-0.1, 0.1, size=(len(subs), n_models))
+        # for i, sid in enumerate(subs):
+        #     ys = [errors[j][sid] for j in range(n_models)]
+        #     xs = x_base + jitter[i]
+        #     ax.plot(xs, ys, color='gray', alpha=0.3, linewidth=1)
+        #     ax.scatter(
+        #         xs,
+        #         ys,
+        #         color='black',
+        #         alpha=0.25,
+        #         s=20,
+        #     )
+
+        # # Add significance annotations
+        # def get_star(p):
+        #     if p < 0.001:
+        #         return '***'
+        #     if p < 0.01:
+        #         return '**'
+        #     if p < 0.05:
+        #         return '*'
+        #     return 'n.s.'
+
+        # y_max = (summary['mean'] + summary['sem']).max()
+        # h = y_max * 0.05
+        # for i, (p_corr, rej) in enumerate(zip(p_corrected, reject)):
+        #     x1, x2 = x_base[i], x_base[i + 1]
+        #     y = max(
+        #         summary.loc[i, 'mean'] + summary.loc[i, 'sem'],
+        #         summary.loc[i + 1, 'mean'] + summary.loc[i + 1, 'sem']
+        #     ) + h
+        #     ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, color='black')
+        #     ax.text((x1 + x2) / 2, y + h * 1.1, get_star(p_corr), ha='center', va='bottom', fontsize=14)
+
+        # # Labels and aesthetics
+        # ax.set_ylabel('Mean performance diff.\n(Model vs. Human)', fontsize=19)
+        # ax.set_xlabel('Model', fontsize=19)
+        # ax.set_xticks(x_base)
+        # ax.set_xticklabels(labels, fontsize=16)
+        # ax.tick_params(axis='both', which='major', labelsize=16)
+
+        # ax.set_facecolor('none')
+        # ax.spines['top'].set_visible(False)
+        # ax.spines['right'].set_visible(False)
+        # for spine in ['left', 'bottom']:
+        #     ax.spines[spine].set_linewidth(2)
+
+        # # Save if requested
+        # if save_path:
+        #     fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+        #     print(f"Figure saved to {save_path}")
+        #     plt.close(fig)
+        # else:
+        #     plt.close(fig)
+
+        # # Print test results
+        # print("Raw p-values:        ", np.round(raw_ps, 4))
+        # print(f"Corrected p-values ({mc_method}):", np.round(p_corrected, 4))
+        # print("Reject null hypotheses:", reject)
 
 
     def plot_group_k_corr(self,

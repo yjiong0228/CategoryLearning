@@ -519,7 +519,6 @@ class Optimizer(object):
                 "best_error": all_mean_error[idx],
                 "best_step_results": all_step_results[idx],
                 "raw_step_results": all_step_results,
-                "grid_errors": initial_states[iSub]["grid_errors"],
                 "sample_errors": all_mean_error,
                 "start_idx": len(initial_states[iSub]["best_step_results"]) + 1
             }
