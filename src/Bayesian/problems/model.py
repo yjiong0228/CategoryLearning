@@ -781,13 +781,38 @@ class StandardModel(BaseModel):
         return all_step_results, all_mean_error
 
     def on_policy_judge(self, a, b):
-        if a == b:
-            return 1.
-        if self.condition == 3 and a // 2 == b // 2:
-            return 0.5
-        return 0.
+        """
+        Judge feedback based on model's choice (a) and ground truth (b).
+        
+        Returns:
+            float: feedback value (1.0 / 0.5 / 0.0)
+        """
+        if self.condition == 1:
+            # 类别分组：{1,2}, {3,4}
+            if (a == 1 and b in (1, 2)) or (a == 2 and b in (3, 4)):
+                return 1.0
+            else:
+                return 0.0
+        elif self.condition == 2:
+            # 完全匹配
+            return 1.0 if a == b else 0.0
+        elif self.condition == 3:
+            # 精细反馈：同类1.0，粗类0.5
+            if a == b:
+                return 1.0
+            elif (a in (1, 2) and b in (1, 2)) or (a in (3, 4) and b in (3, 4)):
+                return 0.5
+            else:
+                return 0.0
 
-    def on_policy_decision_making(self, x, beta, hypo_set, prior, **kwargs):
+
+    def on_policy_decision_making(self,
+                                  x,
+                                  beta,
+                                  hypo_set,
+                                  prior,
+                                  return_prob=False,
+                                  **kwargs):
         """
         Make a decision based on the given stimulus.
         Parameters
@@ -806,7 +831,8 @@ class StandardModel(BaseModel):
                 k, [np.array([x]), np.array([1]),
                     np.array([0])], beta[i], **kwargs)
             prob += likelihood.reshape(-1) * prior[i]
-
+        if return_prob:
+            return prob
         # [TODO] 这里把Decision模块加进来实现吧？
         return np.random.choice(self.n_cats, p=prob) + 1
 
@@ -878,11 +904,22 @@ class StandardModel(BaseModel):
         for step_idx in range(on_policy_start_trial + 1, n_trials + 1):
 
             # generate selection (choice) and response
-            data[1][step_idx - 1] = self.on_policy_decision_making(
-                data[0][step_idx - 1], hypo_betas, hypo_set, prior)
+            prob = self.on_policy_decision_making(data[0][step_idx - 1],
+                                                  hypo_betas,
+                                                  hypo_set,
+                                                  prior,
+                                                  return_prob=True)
 
-            data[2][step_idx - 1] = self.on_policy_judge(
-                data[1][step_idx - 1], ground_truth[step_idx - 1])
+            subject_choice = data[1][step_idx - 1]
+
+            onpolicy_chosen = np.random.choice(self.n_cats, p=prob) + 1
+            data[1][step_idx - 1] = onpolicy_chosen
+            # data[1][step_idx - 1] = self.on_policy_decision_making(
+            #     data[0][step_idx - 1], hypo_betas, hypo_set, prior)
+
+            onpolicy_feedback = self.on_policy_judge(
+                onpolicy_chosen, ground_truth[step_idx - 1])
+            data[2][step_idx - 1] = onpolicy_feedback
 
             selected_data = [x[:step_idx] for x in data]
 
@@ -941,10 +978,16 @@ class StandardModel(BaseModel):
                 'perception_stimuli':
                 data[0][step_idx -
                         1] if "perception" in self.modules else None,
+                'ground_truth':
+                ground_truth[step_idx - 1],
+                'subject_choice':
+                subject_choice,
                 'on_policy_choice':
-                data[1],
+                onpolicy_chosen,
                 'on_policy_response':
-                data[2],
+                onpolicy_feedback,
+                # "decision_distribution":
+                # prob.tolist(),
             })
 
             if "cluster" in self.modules:
