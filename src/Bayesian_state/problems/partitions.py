@@ -218,7 +218,7 @@ class BasePartition(ABC):
 
         return prob
 
-    @amnesia_mechanism
+    #@amnesia_mechanism # TODO：修饰的地方要改为posterior
     def calc_likelihood_entry(self,
                               hypo: int,
                               data: list | tuple,

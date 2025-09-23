@@ -22,7 +22,12 @@ class BaseMemory(BaseModule):
         Initialize
         """
         super().__init__(model, **kwargs)
+
+        # TODO：增加其他参数？
+
         personal_memory_range = kwargs.pop("personal_memory_range", {"gamma": (0.05, 1.0), "w0": (0.075, 0.15)})
+        
+
         param_resolution = kwargs.pop("param_resolution", 20)
 
         # 初始化参数搜索空间
