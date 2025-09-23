@@ -14,6 +14,9 @@ from collections import Counter
 from itertools import product
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
+from ..utils import softmax
+
+EPS = 1e-15
 
 # [TODO] MOVE to CONFIG
 HYPO_CLUSTER_PROTOTYPE_AMOUNT = 1
@@ -191,12 +194,12 @@ class BaseModel:
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
-        condition = kwargs.get("condition", 1)
+        self.condition = kwargs.get("condition", 1)
         n_dims = 4
-        n_cats = 2 if condition == 1 else 4
+        self.n_cats = 2 if self.condition == 1 else 4
 
         self.partition_model = kwargs.get("partition",
-                                          Partition(n_dims, n_cats))
+                                          Partition(n_dims, self.n_cats))
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
 
@@ -208,6 +211,8 @@ class BaseModel:
             BasePrior(self.hypotheses_set),
             PartitionLikelihood(self.hypotheses_set, self.partition_model))
 
+        if "initial_states" in kwargs:
+            self.initial_states = kwargs["initial_states"]
         self.initialize_modules()
 
     def initialize_modules(self):
@@ -301,7 +306,8 @@ class StandardModel(BaseModel):
                 self.optimize_params_dict.update(mod.optimize_params_dict)
 
     def fit_single_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray],
-                        **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
+                        prior_now, **kwargs) -> Tuple[BaseModelParams, float, Dict, Dict]:
+        # TODO: 注释和变量名中的likelihood/ll改为posterior
         """
         Fit the rational model by optimizing beta for each hypothesis.
 
@@ -326,14 +332,28 @@ class StandardModel(BaseModel):
         """
         all_hypo_params = {}
         all_hypo_ll = {}
+        # NEW: 目标改为posterior
+        def _post_per_hypo(beta, hypo=None):
+            idx = self.engine.hypotheses_set.inv[hypo]
+            likelihood = self.partition_model.calc_likelihood_entry(
+                hypo, data, beta[0], **kwargs)
+            prior = prior_now[idx]
+            log_likelihood = np.log(np.maximum(likelihood, EPS))
+            log_prior = np.log(np.maximum(prior, EPS))
 
+            log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
+                log_likelihood.shape) == 2 else log_likelihood)
+            posterior = softmax(log_posterior, beta=1.)
+            
+            return np.sum(np.log(np.maximum(posterior, 0)), axis=0)
+        '''
         def _ll_per_hypo(beta, hypo=None):
             likelihood = self.partition_model.calc_likelihood_entry(
                 hypo, data, beta[0], **kwargs)
-            return np.sum(np.log(np.maximum(likelihood, 0)), axis=0)
+            return np.sum(np.log(np.maximum(likelihood, 0)), axis=0)'''
 
         for hypo in self.hypotheses_set:
-            result = minimize(lambda beta: -_ll_per_hypo(beta, hypo),
+            result = minimize(lambda beta: -_post_per_hypo(beta, hypo),
                               x0=[self.config["param_inits"]["beta"]],
                               bounds=[self.config["param_bounds"]["beta"]])
             beta_opt, ll_max = result.x[0], -result.fun
@@ -356,8 +376,9 @@ class StandardModel(BaseModel):
         return (all_hypo_params[best_hypo_idx], all_hypo_ll[best_hypo_idx],
                 all_hypo_params, all_hypo_ll)
 
-    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray],
-                         **kwargs) -> List[Dict]:
+    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray], 
+                         slicing: str = "last", apply_trans=None, trans_kwargs=None, **kwargs) -> List[Dict]:
+        # TODO: 传参-遗忘机制
         """
         Fit the model step-by-step to observe how parameters evolve.
 
@@ -388,49 +409,36 @@ class StandardModel(BaseModel):
         step_results = []
 
         if "cluster" in self.modules:
-            next_hypos, init_strategy_amounts = self.modules["cluster"].cluster_init(
-                **kwargs.get("cluster_kwargs", {}))
+            next_hypos, init_strategy_amounts = self.modules[
+                "cluster"].cluster_init(**kwargs.get("cluster_kwargs", {}))
             new_hypotheses_set = BaseSet(next_hypos)
             new_prior = BasePrior(new_hypotheses_set)
             new_likelihood = PartitionLikelihood(new_hypotheses_set,
                                                  self.partition_model)
             self.refresh_engine(new_hypotheses_set, new_prior, new_likelihood)
 
-        # NEW init posterior
-        n_hypos = self.hypotheses_set._size
-        last_posterior = np.ones(n_hypos) / n_hypos
-
         for step_idx in range(1, n_trials + 1):
-            # NEW only use data up to current step
-            selected_data = [x[step_idx - 1:step_idx] for x in data]
-
-            (best_params, best_ll, all_hypo_params,
-             all_hypo_ll) = self.fit_single_step(selected_data,
-                                                 use_cached_dist=True,
-                                                 **kwargs)
+            # New: 兼容不同切片
+            if slicing == "all":
+                selected_data = [x[:step_idx] for x in data]
+                (best_params, best_ll, all_hypo_params,
+                all_hypo_ll) = self.fit_single_step(selected_data, 
+                                                    self.engine.prior.value,
+                                                    use_cached_dist=True,
+                                                    **kwargs)
+            elif slicing == "last":
+                selected_data = [x[step_idx - 1:step_idx] for x in data]
+                (best_params, best_ll, all_hypo_params,
+                all_hypo_ll) = self.fit_single_step(selected_data, 
+                                                    self.engine.h_state.value,
+                                                    use_cached_dist=True,
+                                                    **kwargs)
 
             hypo_betas = [
                 all_hypo_params[hypo].beta
                 for hypo in self.hypotheses_set.elements
             ]
 
-            # NEW compute likelihood for current trial
-            likelihoods = []
-            for i, hypo in enumerate(self.hypotheses_set.elements):
-                likelihood = self.partition_model.calc_likelihood_entry(
-                    hypo, selected_data, hypo_betas[i], use_cached_dist=True, **kwargs)
-                likelihoods.append(likelihood[0] if isinstance(likelihood, (list, np.ndarray)) else likelihood)
-            likelihoods = np.array(likelihoods)
-
-            # NEW update posterior
-            posterior = last_posterior * likelihoods
-            if posterior.sum() == 0:
-                posterior = np.ones_like(posterior) / len(posterior)
-            else:
-                posterior = posterior / posterior.sum()
-            last_posterior = posterior
-
-            '''
             infer_log_kwargs = {
                 "use_cached_dist": True,
                 "normalized": True,
@@ -442,8 +450,8 @@ class StandardModel(BaseModel):
                     infer_log_kwargs[key] = hypo_betas
                 else:
                     infer_log_kwargs[key] = kwargs.get(key)
-            all_hypo_post = self.engine.infer_log(selected_data,
-                                                  **infer_log_kwargs)'''
+            all_hypo_post = self.engine.infer_log_state(selected_data,                         
+                                                        apply_trans=apply_trans, trans_kwargs=trans_kwargs, **infer_log_kwargs)
 
             hypo_details = {}
 
@@ -451,18 +459,26 @@ class StandardModel(BaseModel):
                 hypo_details[hypo] = {
                     'beta_opt': all_hypo_params[hypo].beta,
                     'll_max': all_hypo_ll[hypo],
-                    'post_max': posterior[i], # NEW posterior updated
+                    'post_max': all_hypo_post[i],
                     'is_best': hypo == best_params.k
                 }
 
             step_results.append({
-                'best_k': best_params.k,
-                'best_beta': best_params.beta,
-                'best_params': asdict(best_params),
-                'best_log_likelihood': best_ll,
-                'best_norm_posterior': np.max(posterior), # NEW,
-                'hypo_details': hypo_details,
-                'perception_stimuli': data[0][step_idx - 1] if "perception" in self.modules else None,
+                'best_k':
+                best_params.k,
+                'best_beta':
+                best_params.beta,
+                'best_params':
+                asdict(best_params),
+                'best_log_likelihood':
+                best_ll,
+                'best_norm_posterior':
+                np.max(all_hypo_post),
+                'hypo_details':
+                hypo_details,
+                'perception_stimuli':
+                data[0][step_idx -
+                        1] if "perception" in self.modules else None,
             })
 
             if "cluster" in self.modules:
@@ -492,9 +508,13 @@ class StandardModel(BaseModel):
 
         return step_results
 
-    def predict_choice(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
-                                         np.ndarray], step_results: list,
-                       use_cached_dist, window_size) -> Dict[str, np.ndarray]:
+    def predict_choice(self,
+                       data: Tuple[np.ndarray, np.ndarray, np.ndarray,
+                                   np.ndarray],
+                       step_results: list,
+                       use_cached_dist,
+                       window_size,
+                       start_idx=0) -> Dict[str, np.ndarray]:
         """
         Predict choice trial by trial using fitted parameters and hypotheses.
 
@@ -521,17 +541,22 @@ class StandardModel(BaseModel):
         true_acc = (np.array(responses) == 1).astype(float)
         pred_acc = np.full(n_trials, np.nan, dtype=float)
 
-        for trial_idx in range(1, n_trials):
+        for trial_idx in range(start_idx + 1, n_trials):
             trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
                           [responses[trial_idx]], [categories[trial_idx]])
-            
-            if step_results[trial_idx]['perception_stimuli'] is not None:
+
+            if (step_results[trial_idx - start_idx]['perception_stimuli']
+                    is not None):
+
                 trial_data = list(trial_data)
-                trial_data[0] = step_results[trial_idx]['perception_stimuli']
+                trial_data[0] = step_results[trial_idx -
+                                             start_idx]['perception_stimuli']
                 trial_data = tuple(trial_data)
 
             # Extract the posterior probabilities for each hypothesis at last trial
-            hypo_details = step_results[trial_idx - 1]['hypo_details']
+            hypo_details = step_results[trial_idx - 1 -
+                                        start_idx]['hypo_details']
+
             post_max = [
                 hypo_details[k]['post_max'] for k in hypo_details.keys()
             ]
@@ -608,7 +633,10 @@ class StandardModel(BaseModel):
         if multiprocess:
 
             def compute_single_fit(data, **kwargs):
-                step_results = self.fit_step_by_step(data[:3], **kwargs)
+                step_results = self.fit_step_by_step(data[:3],
+                                                     ground_truth=data[3],
+                                                     **kwargs)
+
                 predict_results = self.predict_choice(data,
                                                       step_results,
                                                       use_cached_dist=True,
