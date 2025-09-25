@@ -519,10 +519,15 @@ class StandardModel(BaseModel):
                 post_t = np.exp(log_post_all)
 
                 # 取最佳 (k, beta)
-                best_idx = int(np.argmax(post_t))
-                k_idx, b_idx = divmod(best_idx, n_b)
-                best_k = base_k_set.elements[k_idx]
-                best_beta = float(beta_grid[b_idx])
+                post_k_sum = np.zeros(n_h, dtype=float)
+                for k_i in range(n_h):
+                    start = k_i * n_b
+                    end = start + n_b
+                    post_k_sum[k_i] = np.sum(post_t[start:end])
+
+                best_k_idx = int(np.argmax(post_k_sum))
+                best_k = base_k_set.elements[best_k_idx]
+                best_beta = float(beta_grid[int(np.argmax(post_t[best_k_idx*n_b:(best_k_idx+1)*n_b]))])
 
                 # 组装每个 k 的摘要：对 beta 维度取最大后验
                 hypo_details = {}
@@ -534,9 +539,11 @@ class StandardModel(BaseModel):
                     hypo_details[k_val] = {
                         "beta_opt": float(beta_grid[b_star_local]),
                         "ll_max": None,                 # 这里不追踪 ll，可按需添加
+                        "post_sum": float(np.sum(post_slice)),   # ← 关键：边缘化后验
                         "post_max": float(np.max(post_slice)),
                         "is_best": (k_val == best_k),
                     }
+                best_norm_posterior = float(np.max(post_k_sum))
 
             elif slicing == "last":
                 obs_t = (
@@ -557,10 +564,16 @@ class StandardModel(BaseModel):
                 post_t = np.exp(log_post)
 
                 # Identify the best composite hypothesis
-                best_idx = int(np.argmax(post_t))
-                k_idx, b_idx = divmod(best_idx, n_b)
-                best_k = base_k_set.elements[k_idx]
-                best_beta = float(beta_grid[b_idx])
+                post_k_sum = np.zeros(n_h, dtype=float)
+                for k_i in range(n_h):
+                    start = k_i * n_b
+                    end = start + n_b
+                    post_k_sum[k_i] = np.sum(post_t[start:end])
+
+                best_k_idx = int(np.argmax(post_k_sum))
+                best_k = base_k_set.elements[best_k_idx]
+                best_beta = float(beta_grid[int(np.argmax(post_t[best_k_idx*n_b:(best_k_idx+1)*n_b]))])
+
 
                 hypo_details = {}
                 for k_i, k_val in enumerate(base_k_set.elements):
@@ -574,9 +587,11 @@ class StandardModel(BaseModel):
                               ),  # best beta *at this step* for this k
                         "ll_max":
                         None,  # not defined in pure-grid mode; fill if you want running sums
+                        "post_sum": float(np.sum(post_slice)),   # ← 关键：边缘化后验
                         "post_max": float(np.max(post_slice)),
                         "is_best": (k_val == best_k),
                     }
+                best_norm_posterior = float(np.max(post_k_sum))
 
             step_results.append({
                 "best_k":
@@ -590,7 +605,7 @@ class StandardModel(BaseModel):
                 "best_log_likelihood":
                 None,  # not tracked in grid mode; you can add cumulative log-likelihood if needed
                 "best_norm_posterior":
-                float(np.max(post_t)),
+                best_norm_posterior,
                 "hypo_details":
                 hypo_details,
                 "perception_stimuli":
