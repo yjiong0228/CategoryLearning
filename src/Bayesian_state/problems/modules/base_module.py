@@ -9,8 +9,8 @@ from ..base_problem import *
 
 class BaseModule(ABC):
 
-    def __init__(self, model, **kwargs):
+    def __init__(self, engine, **kwargs):
         """
         Initialize
         """
-        self.model = model
+        self.engine = engine
