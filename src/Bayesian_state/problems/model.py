@@ -362,7 +362,7 @@ class StandardModel(BaseModel):
         """
         Fit the rational model by optimizing beta for each hypothesis.
 
-        Parameters
+         Parameters
         ----------
         data : Tuple[np.ndarray, np.ndarray, np.ndarray]
             A tuple containing (stimulus, choices, responses).
@@ -428,6 +428,22 @@ class StandardModel(BaseModel):
 
         return (all_hypo_params[best_hypo_idx], all_hypo_ll[best_hypo_idx],
                 all_hypo_params, all_hypo_ll)
+
+
+
+
+    def fit_step_by_step_ideal(self, data, **kwargs):
+        """
+        """
+        data = data or self.data
+        step_log = []
+        for datum in data:
+             self.posterior, log = self.fit_single_step(data, **kwargs)
+             step_log += [log]
+
+        self.save(self.posterior, step_log)
+        return self.posterior
+
 
     def fit_step_by_step(self,
                          data: Tuple[np.ndarray, np.ndarray, np.ndarray],

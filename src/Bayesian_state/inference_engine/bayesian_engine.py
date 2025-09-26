@@ -4,6 +4,7 @@ Bayesian Engine
 from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
 from ..utils import softmax
+from ..problems.moduels import BaseModule
 
 EPS = 1e-15
 
@@ -87,6 +88,7 @@ class BaseLikelihood(BaseDistribution):
         # self.d_set = d_set
         self.kwargs = kwargs
         self.cache = {None: self.value}
+
 
     def get_likelihood(self, observation, **kwargs):
         """
@@ -203,13 +205,18 @@ class BaseEngine:
         log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
             log_likelihood.shape) == 2 else log_likelihood)
         posterior = softmax(log_posterior, beta=1.)
-        
+
         if update:
             self.h_state.update(posterior)
         return posterior
 
     # 对state先遗忘衰减，再进行贝叶斯更新。
-    def infer_log_state(self, observation, apply_trans=None, trans_kwargs=None, update: bool = True, **kwargs) -> np.ndarray:
+    def infer_log_state(self,
+                        observation,
+                        apply_trans=None,
+                        trans_kwargs=None,
+                        update: bool = True,
+                        **kwargs) -> np.ndarray:
         """
         贝叶斯log更新，支持对h_state先进行处理，再进行贝叶斯更新
         
@@ -221,7 +228,7 @@ class BaseEngine:
         update: 是否更新h_state
         kwargs: 传递给likelihood的参数
         """
-        
+
         # 可选：对prior进行转换
         if apply_trans is not None:
             trans_kwargs = trans_kwargs or {}
@@ -231,12 +238,11 @@ class BaseEngine:
         likelihood = self.likelihood.get_likelihood(observation, **kwargs)
         log_likelihood = np.log(np.maximum(likelihood, EPS))
         log_prior = np.log(np.maximum(self.h_state.value, EPS))
-        log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(log_likelihood.shape) == 2 else log_likelihood)
+        log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
+            log_likelihood.shape) == 2 else log_likelihood)
         posterior = softmax(log_posterior, beta=1.)
         if update:
             self.h_state.update(posterior)
         return posterior
-    
-    # 
-    
-    
+
+    #
