@@ -56,3 +56,6 @@ class Decision(BaseDecision):
                 choice = np.random.choice(probability.shape[0], p=probability)
 
         return choice
+
+    def process(self) -> int:
+        pass

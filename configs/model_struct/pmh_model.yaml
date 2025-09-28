@@ -1,0 +1,24 @@
+modules:
+  memory:
+    class: BaseMemory
+    kwargs: {}
+
+  likelihood:
+    class: BaseLikelihood
+    kwargs: {}
+
+  perception:
+    class: BasePerception
+    kwargs: {}
+
+  hypotheses:
+    class: BaseHypotheses
+    kwargs: {}
+
+
+
+agenda:
+  - perception
+  - likelihood
+  - hypotheses
+  - memory
