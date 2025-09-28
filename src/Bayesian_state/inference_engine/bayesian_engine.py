@@ -89,7 +89,6 @@ class BaseLikelihood(BaseDistribution):
         self.kwargs = kwargs
         self.cache = {None: self.value}
 
-
     def get_likelihood(self, observation, **kwargs):
         """
         Parameters
@@ -116,63 +115,102 @@ class BaseLikelihood(BaseDistribution):
         self.cache[row] = value
 
 
+# the new bayesian engine
 class BaseEngine:
     """
-    Base Bayesian Engine
+    A flexible Bayesian engine that can be dynamically configured with various
+    computational modules.
     """
 
-    def __init__(self, hypotheses_set: BaseSet, observation_set: BaseSet,
-                 prior: BasePrior, likelihood: BaseLikelihood):
+    def __init__(self, module_configs: dict = None):
         """
+        Initializes the engine.
 
-        """
-        self.hypotheses_set = hypotheses_set
-        self.observation_set = observation_set
-        self.prior = prior
-        self.likelihood = likelihood
-        self.h_state = self.prior
-
-    def generate_drift(self,
-                       base: np.ndarray,
-                       mode: Literal["add", "add&norm", "scale&norm"] = "add",
-                       **kwargs) -> np.ndarray:
-        """
-        Generate drift on Bayesian posterior. As another mechanism of
-        limited (imperfect) memory.
-        """
-        step_size = kwargs.get("step_size", 0.02)
-        generator = kwargs.get("generator", np.random.normal)
-
-        delta = generator(
-            kwargs.get(
-                "generator_kwargs", {
-                    "loc": 1. if mode == "scale&norm" else 0.,
-                    "scale": step_size,
-                    "size": self.hypotheses_set.length()
-                }))
-
-        match mode:
-            case "add":
-                ret = base + delta
-            case "add&norm":
-                ret = base + delta
-                ret /= np.sum(ret)
-            case "scale&norm":
-                ret = base * delta
-                ret /= np.sum(ret)
-
-        return ret
-
-    def infer_single(self, observation, **kwargs) -> float:
-        """
         Parameters
         ----------
-        observation:
+        module_configs : dict, optional
+            A dictionary defining the modules to be built and registered.
+            If provided, modules are built upon initialization.
+        """
+        self.hypotheses_set = None
+        self.prior = None
+        self.posterior = None
+        self.likelihood = None
+        self.h_state = None
+        self.observation = None  # 记录当前观测
+        # 模块列表，按顺序更新
+        self.modules = []
+
+        # 在初始化时直接构建模块
+        if module_configs:
+            self.build_modules(module_configs)
+
+    def build_modules(self, module_configs: Dict[str, Dict]):
+        """
+        Dynamically builds and registers modules from a configuration dictionary.
+
+        Each module is instantiated and becomes an attribute of the engine.
+        The engine instance itself is passed to each module's constructor,
+        allowing modules to access the engine's state.
+
+        Parameters
+        ----------
+        module_configs : Dict[str, Dict]
+            Configuration for the modules. **Attention: Order is very important**
+            Example:
+            {
+                'perception': {
+                    'class': PerceptionModule,
+                    'params': {'noise': 0.1}
+                },
+                'memory': {
+                    'class': MemoryModule,
+                    'params': {'decay_rate': 0.95}
+                }
+            }
         """
 
-        likelihood_row = self.likelihood.get_likelihood(observation, **kwargs)
-        self.h_state.update(self.h_state.value * likelihood_row)
-        self.h_state.update(self.h_state.value / self.h_state.value.sum())
+        for name, config in module_configs.items():
+
+            module_class = config['class']
+            module_params = config.get('params', {})
+
+            print(
+                f"  - Instantiating module '{name}' of type {module_class.__name__}..."
+            )
+            module_instance = module_class(engine=self, **module_params)
+
+            # 将实例化的模块注册为 engine 的一个成员 (属性)
+            setattr(self, name, module_instance)
+            print(f"  - Module '{name}' registered as 'self.{name}'.")
+            # 添加到模块列表
+            self.modules.append(module_instance)
+        print("All modules built successfully.")
+
+    def update_all_modules(self, **kwargs):
+        """
+        Calls the 'update' method on all registered modules in sequence.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Additional arguments to pass to each module's update method.
+        """
+
+        for module in self.modules:
+            # 约定：每个模块都应该有一个 update 方法
+            if hasattr(module, 'update'):
+                module.update(**kwargs)
+            else:
+                print(
+                    f"Warning: Module {module.__class__.__name__} has no 'update' method and was skipped."
+                )
+
+    def infer_single(self, observation, **kwargs) -> float:
+
+        self.observation = observation  # 更新当前观测
+        # 按顺序调用所有模块的 update 方法
+        self.update_all_modules(**kwargs)
 
         if "drift" in kwargs:
             value = self.generate_drift(self.h_state.value, **kwargs)
