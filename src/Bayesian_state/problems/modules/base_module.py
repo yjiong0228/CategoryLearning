@@ -14,3 +14,8 @@ class BaseModule(ABC):
         Initialize
         """
         self.engine = engine
+
+    def process(self, **kwargs):
+        """
+        """
+        pass

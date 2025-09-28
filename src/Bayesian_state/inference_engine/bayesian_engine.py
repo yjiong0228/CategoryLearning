@@ -3,8 +3,7 @@ Bayesian Engine
 """
 from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
-from ..utils import softmax
-from ..problems.moduels import BaseModule
+from ..utils import softmax, print, LOGGER
 
 EPS = 1e-15
 
@@ -121,8 +120,13 @@ class BaseEngine:
     A flexible Bayesian engine that can be dynamically configured with various
     computational modules.
     """
+    upper_numerical_bound = 1e15
+    lower_numerical_bound = 1e-15
 
-    def __init__(self, module_configs: dict = None):
+    def __init__(self,
+                 module_configs: dict | None = None,
+                 agenda: List[str] | None = None,
+                 **kwargs):
         """
         Initializes the engine.
 
@@ -139,11 +143,27 @@ class BaseEngine:
         self.h_state = None
         self.observation = None  # 记录当前观测
         # 模块列表，按顺序更新
-        self.modules = []
+        self.modules = {"__self__": self}
+        self.agenda = agenda
+        self.log_posterior = None
+        self.log_likelihood = None
+        self.log_posterior = None
 
         # 在初始化时直接构建模块
-        if module_configs:
+        if module_configs is not None:
             self.build_modules(module_configs)
+
+    @staticmethod
+    def translate_from_log(log: np.ndarray) -> np.ndarray:
+        log -= np.max(log)
+        exp = np.exp(log)
+        return exp / np.sum(exp)
+
+    @staticmethod
+    def translate_to_log(exp: np.ndarray) -> np.ndarray:
+        return np.log(
+            np.max(np.min(exp, self.upper_numerical_bound),
+                   self.lower_numerical_bound))
 
     def build_modules(self, module_configs: Dict[str, Dict]):
         """
@@ -182,15 +202,15 @@ class BaseEngine:
 
             # 将实例化的模块注册为 engine 的一个成员 (属性)
             setattr(self, name, module_instance)
-            print(f"  - Module '{name}' registered as 'self.{name}'.")
+            LOGGER.info(f"  - Module '{name}' registered as 'self.{name}'.")
             # 添加到模块列表
-            self.modules.append(module_instance)
+            self.modules[name](module_instance)
         print("All modules built successfully.")
 
     def update_all_modules(self, **kwargs):
         """
         Calls the 'update' method on all registered modules in sequence.
-        
+
         Parameters
         ----------
         **kwargs : dict
@@ -206,7 +226,35 @@ class BaseEngine:
                     f"Warning: Module {module.__class__.__name__} has no 'update' method and was skipped."
                 )
 
-    def infer_single(self, observation, **kwargs) -> float:
+    def infer_single(self, observation, mod_kwargs: Dict | None = None):
+        """
+        Infer single new data.
+        """
+        self.observation = observation
+        if self.agenda is None:
+            raise Exception("inference agenda is not defined.")
+        valid_modules = [x not in self.modules for x in self.agenda]
+        if any(valid_modules):
+            raise Exception(
+                "unknown agenda items:",
+                [self.agenda[i] for i, x in enumerate(valid_modules) if x])
+
+        for mod_name in self.agneda:
+            self.modules[mod_name].process(**mod_kwargs.get(mod_name, {}))
+
+    def process(self, **kwargs):
+        """
+        A standard Bayesian Inference
+        """
+        self.log_prior = self.translate_to_log(self.prior)
+        self.log_likelihood = self.translate_to_log(self.likelihood)
+        self.log_posterior = self.log_prior + self.log_likelihood
+        self.posterior = self.translate_from_log(self.log_posterior)
+        return self.posterior
+
+    # ========================================================================================== #
+
+    def infer_single_old(self, observation, **kwargs) -> float:
 
         self.observation = observation  # 更新当前观测
         # 按顺序调用所有模块的 update 方法
@@ -257,7 +305,7 @@ class BaseEngine:
                         **kwargs) -> np.ndarray:
         """
         贝叶斯log更新，支持对h_state先进行处理，再进行贝叶斯更新
-        
+
         Parameters
         ----------
         observation: 当前观测
@@ -282,5 +330,3 @@ class BaseEngine:
         if update:
             self.h_state.update(posterior)
         return posterior
-
-    #

@@ -14,7 +14,9 @@ from collections import Counter
 from itertools import product
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
-from ..utils import softmax
+from ..utils import softmax, PATHS, BASE_CONFIG, MODEL_STRUCT, print
+
+print(MODEL_STRUCT, s=2)
 
 EPS = 1e-15
 
@@ -177,13 +179,16 @@ class SoftGridFlatLikelihood(BaseLikelihood):
     likelihoods; we reshape it into a vector of length n_h * n_beta so the
     BaseEngine can treat each (k, beta) as one hypothesis.
     """
-    def __init__(self, space: BaseSet, partition: BasePartition, base_k_set: BaseSet, beta_grid: list):
+
+    def __init__(self, space: BaseSet, partition: BasePartition,
+                 base_k_set: BaseSet, beta_grid: list):
         super().__init__(space)
         self.partition = partition
         self.base_k_set = base_k_set
         self.beta_grid = list(beta_grid)
         # Reuse the provided SoftPartitionLikelihood for efficient batch calc
-        self.inner = SoftPartitionLikelihood(base_k_set, partition, self.beta_grid)
+        self.inner = SoftPartitionLikelihood(base_k_set, partition,
+                                             self.beta_grid)
         self.n_h = len(base_k_set.elements)
         self.n_b = len(self.beta_grid)
 
@@ -209,6 +214,7 @@ class SoftGridFlatLikelihood(BaseLikelihood):
 
     def pair_to_index(self, k_idx: int, b_idx: int) -> int:
         return k_idx * self.n_b + b_idx
+
 
 class BaseModel:
     """
@@ -256,6 +262,14 @@ class BaseModel:
         if "initial_states" in kwargs:
             self.initial_states = kwargs["initial_states"]
         self.initialize_modules()
+
+        for key, val in module_conifg.items():
+            if isinstance(val.get("class", 0), str):
+                try:
+                    val["class"] = eval(val["class"])
+                except Exception as e:
+                    LOGGER.error(e)
+                    raise e
 
     def initialize_modules(self):
         """
@@ -310,8 +324,6 @@ class BaseModel:
             Stub return to be overridden in subclasses.
         """
         raise NotImplementedError
-
-
 
 
 def _log_normalize(vec: np.ndarray) -> np.ndarray:
@@ -429,21 +441,17 @@ class StandardModel(BaseModel):
         return (all_hypo_params[best_hypo_idx], all_hypo_ll[best_hypo_idx],
                 all_hypo_params, all_hypo_ll)
 
-
-
-
     def fit_step_by_step_ideal(self, data, **kwargs):
         """
         """
         data = data or self.data
         step_log = []
         for datum in data:
-             self.posterior, log = self.fit_single_step(data, **kwargs)
-             step_log += [log]
+            self.posterior, log = self.fit_single_step(data, **kwargs)
+            step_log += [log]
 
         self.save(self.posterior, step_log)
         return self.posterior
-
 
     def fit_step_by_step(self,
                          data: Tuple[np.ndarray, np.ndarray, np.ndarray],
@@ -519,14 +527,13 @@ class StandardModel(BaseModel):
 
                 for i in range(t):
                     obs_i = (
-                        np.array([stimulus[i]]),   # (1, n_dims)
-                        np.array([choices[i]]),    # (1,)
-                        np.array([responses[i]])   # (1,)
+                        np.array([stimulus[i]]),  # (1, n_dims)
+                        np.array([choices[i]]),  # (1,)
+                        np.array([responses[i]])  # (1,)
                     )
                     like_i = flat_likelihood.get_likelihood(
-                        obs_i, use_cached_dist=True, normalized=False
-                    )
-                    like_i = np.clip(like_i, 1e-300, None)       # 数值稳定
+                        obs_i, use_cached_dist=True, normalized=False)
+                    like_i = np.clip(like_i, 1e-300, None)  # 数值稳定
                     log_like_acc += np.log(like_i)
 
                 # 加上先验并归一化，得到当前步的 posterior_t
@@ -543,7 +550,9 @@ class StandardModel(BaseModel):
 
                 best_k_idx = int(np.argmax(post_k_sum))
                 best_k = base_k_set.elements[best_k_idx]
-                best_beta = float(beta_grid[int(np.argmax(post_t[best_k_idx*n_b:(best_k_idx+1)*n_b]))])
+                best_beta = float(beta_grid[int(
+                    np.argmax(post_t[best_k_idx * n_b:(best_k_idx + 1) *
+                                     n_b]))])
 
                 # 组装每个 k 的摘要：对 beta 维度取最大后验
                 hypo_details = {}
@@ -554,8 +563,8 @@ class StandardModel(BaseModel):
                     b_star_local = int(np.argmax(post_slice))
                     hypo_details[k_val] = {
                         "beta_opt": float(beta_grid[b_star_local]),
-                        "ll_max": None,                 # 这里不追踪 ll，可按需添加
-                        "post_sum": float(np.sum(post_slice)),   # ← 关键：边缘化后验
+                        "ll_max": None,  # 这里不追踪 ll，可按需添加
+                        "post_sum": float(np.sum(post_slice)),  # ← 关键：边缘化后验
                         "post_max": float(np.max(post_slice)),
                         "is_best": (k_val == best_k),
                     }
@@ -563,9 +572,9 @@ class StandardModel(BaseModel):
 
             elif slicing == "last":
                 obs_t = (
-                    np.array([stimulus[t - 1]]),     # 形状: (1, n_dims)
-                    np.array([choices[t - 1]]),      # 形状: (1,)
-                    np.array([responses[t - 1]])     # 形状: (1,)
+                    np.array([stimulus[t - 1]]),  # 形状: (1, n_dims)
+                    np.array([choices[t - 1]]),  # 形状: (1,)
+                    np.array([responses[t - 1]])  # 形状: (1,)
                 )
 
                 # Single-trial likelihood over the *flattened* hypothesis space
@@ -588,8 +597,9 @@ class StandardModel(BaseModel):
 
                 best_k_idx = int(np.argmax(post_k_sum))
                 best_k = base_k_set.elements[best_k_idx]
-                best_beta = float(beta_grid[int(np.argmax(post_t[best_k_idx*n_b:(best_k_idx+1)*n_b]))])
-
+                best_beta = float(beta_grid[int(
+                    np.argmax(post_t[best_k_idx * n_b:(best_k_idx + 1) *
+                                     n_b]))])
 
                 hypo_details = {}
                 for k_i, k_val in enumerate(base_k_set.elements):
@@ -603,7 +613,7 @@ class StandardModel(BaseModel):
                               ),  # best beta *at this step* for this k
                         "ll_max":
                         None,  # not defined in pure-grid mode; fill if you want running sums
-                        "post_sum": float(np.sum(post_slice)),   # ← 关键：边缘化后验
+                        "post_sum": float(np.sum(post_slice)),  # ← 关键：边缘化后验
                         "post_max": float(np.max(post_slice)),
                         "is_best": (k_val == best_k),
                     }
@@ -625,8 +635,7 @@ class StandardModel(BaseModel):
                 "hypo_details":
                 hypo_details,
                 "perception_stimuli":
-                data[0][t -
-                        1] if "perception" in self.modules else None,
+                data[0][t - 1] if "perception" in self.modules else None,
                 "beta_grid":
                 list(beta_grid),
             })

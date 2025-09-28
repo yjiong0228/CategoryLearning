@@ -1,2 +1,18 @@
-modules:
-  memory
+# modules:
+#   memory:
+#     class: BaseMemory
+#     params: {}
+
+
+#   hypotheses:
+#     class: BaseHypo
+#     params: {}
+
+#   perception:
+#     class: BaseModule
+#     params: {}
+
+
+
+MODEL_CHOICE: pmh_model
+
