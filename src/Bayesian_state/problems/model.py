@@ -15,6 +15,7 @@ from itertools import product
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
 from ..utils import softmax, PATHS, BASE_CONFIG, MODEL_STRUCT, print
+from ..utils.base import LOGGER
 
 print(MODEL_STRUCT, s=2)
 
@@ -270,6 +271,7 @@ class BaseModel:
                 except Exception as e:
                     LOGGER.error(e)
                     raise e
+                
 
     def initialize_modules(self):
         """
@@ -331,6 +333,86 @@ def _log_normalize(vec: np.ndarray) -> np.ndarray:
     z = m + np.log(np.sum(np.exp(vec - m)))
     return vec - z
 
+
+
+#################################### 新的 Model ####################################
+
+class StateModel:
+    """
+    State Model, initialize an engine
+    Refreshes the engine step by step:
+        StateModel ----[data]----> engine
+        engine ----[posterior]----> StateModel
+    """
+
+    def __init__(self, engine_config, **kwargs):
+        """
+        """
+
+        # initialize attributes
+        self.engine_config = engine_config
+        self.all_centers = None
+        self.hypotheses_set = BaseSet([])
+        self.observation_set = BaseSet([])
+
+        self.condition = kwargs.get("condition", 1)
+        n_dims = 4
+        self.n_cats = 2 if self.condition == 1 else 4
+
+        # Initialize engine
+        for key, value in kwargs.items(): # Merge module_configs and **kwargs
+            if key in self.engine_config["modules"]:
+                self.engine_config["modules"][key].update(value)
+
+        self.engine = BaseEngine(self.engine_config["modules"],
+                                 self.engine_config["agenda"])
+        # Initialize partition
+        self.partition_model = kwargs.get("partition",
+                                          Partition(n_dims, self.n_cats))
+        # Initialize hypotheses set (length = partition_model.length)
+        self.hypotheses_set = kwargs.get(
+            "space", BaseSet(list(range(self.partition_model.length))))
+        
+
+
+    def precompute_distances(self, stimulus: np.ndarray):
+        """
+        Precompute all distances.
+        """
+        if hasattr(self.partition_model, "precompute_all_distances"):
+            self.partition_model.precompute_all_distances(stimulus)
+
+
+
+    def save(self, posterior_log, step_log):
+        """
+        保存结果
+        """
+        self.posterior_log = posterior_log
+        self.step_log = step_log
+
+
+
+    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray], **kwargs):
+        """
+        """
+        # load module kwargs
+        mod_kwargs = kwargs.get("module_kwargs", {})
+        # fit step by step
+        data = data or self.data
+        step_log = []
+        posterior_log = []
+        for datum in data:
+            posterior, log = self.engine.infer_single(datum, mod_kwargs)
+            step_log += [log]
+            posterior_log += [posterior]
+
+        self.save(posterior_log, step_log)
+        return posterior_log[-1]
+
+
+
+#################################### Model #########################################
 
 class StandardModel(BaseModel):
     """
@@ -441,6 +523,10 @@ class StandardModel(BaseModel):
         return (all_hypo_params[best_hypo_idx], all_hypo_ll[best_hypo_idx],
                 all_hypo_params, all_hypo_ll)
 
+
+
+
+
     def fit_step_by_step_ideal(self, data, **kwargs):
         """
         """
@@ -452,6 +538,10 @@ class StandardModel(BaseModel):
 
         self.save(self.posterior, step_log)
         return self.posterior
+
+
+
+
 
     def fit_step_by_step(self,
                          data: Tuple[np.ndarray, np.ndarray, np.ndarray],
@@ -1203,3 +1293,4 @@ class StandardModel(BaseModel):
                     step_results[-1]['init_amount'] = init_strategy_amounts
 
         return step_results
+    

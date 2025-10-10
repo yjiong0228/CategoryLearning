@@ -136,22 +136,24 @@ class BaseEngine:
             A dictionary defining the modules to be built and registered.
             If provided, modules are built upon initialization.
         """
+
         self.hypotheses_set = None
         self.prior = None
         self.posterior = None
         self.likelihood = None
         self.h_state = None
         self.observation = None  # 记录当前观测
+        
         # 模块列表，按顺序更新
+        self.agenda = agenda if agenda is not None and {} else ["__self__"]
         self.modules = {"__self__": self}
-        self.agenda = agenda
+        
         self.log_posterior = None
         self.log_likelihood = None
         self.log_posterior = None
 
         # 在初始化时直接构建模块
-        if module_configs is not None:
-            self.build_modules(module_configs)
+        self.build_modules(module_configs)
 
     @staticmethod
     def translate_from_log(log: np.ndarray) -> np.ndarray:
@@ -162,8 +164,8 @@ class BaseEngine:
     @staticmethod
     def translate_to_log(exp: np.ndarray) -> np.ndarray:
         return np.log(
-            np.max(np.min(exp, self.upper_numerical_bound),
-                   self.lower_numerical_bound))
+            np.max([np.min([exp, BaseEngine.upper_numerical_bound]),
+                   BaseEngine.lower_numerical_bound]))
 
     def build_modules(self, module_configs: Dict[str, Dict]):
         """
@@ -239,7 +241,7 @@ class BaseEngine:
                 "unknown agenda items:",
                 [self.agenda[i] for i, x in enumerate(valid_modules) if x])
 
-        for mod_name in self.agneda:
+        for mod_name in self.agenda:
             self.modules[mod_name].process(**mod_kwargs.get(mod_name, {}))
 
     def process(self, **kwargs):
