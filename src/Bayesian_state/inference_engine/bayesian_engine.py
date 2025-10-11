@@ -124,7 +124,7 @@ class BaseEngine:
     lower_numerical_bound = 1e-15
 
     def __init__(self,
-                 module_configs: dict | None = None,
+                 #module_configs: dict | None = None,
                  agenda: List[str] | None = None,
                  **kwargs):
         """
@@ -138,22 +138,38 @@ class BaseEngine:
         """
 
         self.hypotheses_set = None
+        self.hypotheses_mask = None
         self.prior = None
         self.posterior = None
         self.likelihood = None
         self.h_state = None
         self.observation = None  # 记录当前观测
+
+        # 如果 kwargs 中有同名参数，则赋值给成员变量
+        for attr in [
+            "hypotheses_set", "prior", "posterior", "likelihood", "h_state", "observation"
+        ]:
+            if attr in kwargs:
+                setattr(self, attr, kwargs[attr])
         
+        # 如果传入 hypotheses_set，则概率向量长度为集合大小
+        if self.hypotheses_set is not None:
+            self.set_size = self.hypotheses_set.length
+
+            # FIXME: 这里的 prior 和 likelihood 初始化为 array 还是 BaseDistribution?
+            if self.prior is None:
+                self.prior = BasePrior(self.hypotheses_set).value
+            if self.likelihood is None:
+                self.likelihood = BaseLikelihood(self.hypotheses_set).value
+
         # 模块列表，按顺序更新
-        self.agenda = agenda if agenda is not None and {} else ["__self__"]
+        self.agenda = agenda if agenda is not None and {}    else ["__self__"]
         self.modules = {"__self__": self}
         
         self.log_posterior = None
         self.log_likelihood = None
         self.log_posterior = None
 
-        # 在初始化时直接构建模块
-        self.build_modules(module_configs)
 
     @staticmethod
     def translate_from_log(log: np.ndarray) -> np.ndarray:
@@ -163,9 +179,8 @@ class BaseEngine:
 
     @staticmethod
     def translate_to_log(exp: np.ndarray) -> np.ndarray:
-        return np.log(
-            np.max([np.min([exp, BaseEngine.upper_numerical_bound]),
-                   BaseEngine.lower_numerical_bound]))
+        clipped = np.clip(exp, BaseEngine.lower_numerical_bound, BaseEngine.upper_numerical_bound)
+        return np.log(clipped)
 
     def build_modules(self, module_configs: Dict[str, Dict]):
         """
@@ -209,29 +224,16 @@ class BaseEngine:
             self.modules[name](module_instance)
         print("All modules built successfully.")
 
-    def update_all_modules(self, **kwargs):
-        """
-        Calls the 'update' method on all registered modules in sequence.
 
-        Parameters
-        ----------
-        **kwargs : dict
-            Additional arguments to pass to each module's update method.
-        """
-
-        for module in self.modules:
-            # 约定：每个模块都应该有一个 update 方法
-            if hasattr(module, 'update'):
-                module.update(**kwargs)
-            else:
-                print(
-                    f"Warning: Module {module.__class__.__name__} has no 'update' method and was skipped."
-                )
 
     def infer_single(self, observation, mod_kwargs: Dict | None = None):
         """
         Infer single new data.
         """
+
+        # TODO: 是否需要实现 logging？
+        log_info = {}
+
         self.observation = observation
         if self.agenda is None:
             raise Exception("inference agenda is not defined.")
@@ -241,8 +243,14 @@ class BaseEngine:
                 "unknown agenda items:",
                 [self.agenda[i] for i, x in enumerate(valid_modules) if x])
 
+        # 按 agenda 顺序调用所有模块的 process 方法
         for mod_name in self.agenda:
+            # 约定：每个模块都应该有一个 process 方法
+            if not hasattr(self.modules[mod_name], 'process'):
+                raise Exception(f"Module {mod_name} has no 'process' method.")
             self.modules[mod_name].process(**mod_kwargs.get(mod_name, {}))
+
+        return self.posterior, log_info
 
     def process(self, **kwargs):
         """
