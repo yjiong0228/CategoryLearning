@@ -359,19 +359,22 @@ class StateModel:
         n_dims = 4
         self.n_cats = 2 if self.condition == 1 else 4
 
-        # Initialize engine
-        for key, value in kwargs.items(): # Merge module_configs and **kwargs
-            if key in self.engine_config["modules"]:
-                self.engine_config["modules"][key].update(value)
-
-        self.engine = BaseEngine(self.engine_config["modules"],
-                                 self.engine_config["agenda"])
         # Initialize partition
         self.partition_model = kwargs.get("partition",
                                           Partition(n_dims, self.n_cats))
         # Initialize hypotheses set (length = partition_model.length)
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
+        
+        # Initialize engine
+        for key, value in kwargs.items(): # Merge module_configs and **kwargs
+            if key in self.engine_config["modules"]:
+                self.engine_config["modules"][key].update(value)
+        # initialize engine
+        self.engine = BaseEngine(self.engine_config["agenda"], hypotheses_set = self.hypotheses_set)
+        # build modules for the engine
+        self.engine.build_modules(self.engine_config["modules"])
+        
         
 
 
@@ -412,7 +415,7 @@ class StateModel:
 
 
 
-#################################### Model #########################################
+#################################### 新的 Model END #######################################
 
 class StandardModel(BaseModel):
     """
