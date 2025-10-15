@@ -5,6 +5,7 @@ from abc import ABC
 from typing import List, Tuple, Dict
 from copy import deepcopy
 import itertools
+from itertools import product
 # import pandas as pd
 import numpy as np
 from .base_problem import softmax, cdist, euc_dist, two_factor_decay
@@ -309,6 +310,25 @@ class BasePartition(ABC):
         return self.calc_likelihood_entry(k, (x, c, r), beta)
 
 
+
+def signed_distance_to_category(x, cat_ineqs):
+    """
+    计算点x到类别区域的带符号距离:
+      >0 在区域内部
+       0 在边界上
+      <0 在区域外
+    """
+    dists = []
+    for (a, b, sign) in cat_ineqs:
+        a = np.asarray(a)
+        norm = np.linalg.norm(a) + 1e-9
+        signed = (np.dot(a, x) - b) / norm
+        inward = -sign * signed
+        dists.append(inward)
+    return np.min(dists)
+
+
+
 # define partition rules
 class Partition(BasePartition):
     """
@@ -317,6 +337,114 @@ class Partition(BasePartition):
     2. 使用 get_centers(n_dims, n_cats) 计算在这些分割方式下, 各个区域(类别)的代表中心点(重心)。
     """
     EPS = 1e-7
+
+
+    # ================================
+    # 1. 生成每个类别的边界不等式
+    # ================================
+    def generate_category_inequalities(self, split_type, hyperplanes):
+        """
+        根据分割方式生成每个类别的不等式定义
+        返回: List[{'ineqs': [(a,b,sign), ...]}, ...]
+        """
+        n_planes = len(hyperplanes)
+        n_cats = self.n_cats
+        categories = []
+
+        # ---------- 通用情况: 所有超平面独立切割 ----------
+        if split_type not in ["3d_axis_triple", "dimension_max"]:
+            # 所有符号组合 (左/右, 下/上, ...)
+            for signs in product([-1, 1], repeat=n_planes):
+                ineqs = [(a, b, s) for (a, b), s in zip(hyperplanes, signs)]
+                categories.append({'ineqs': ineqs})
+            return categories
+
+        # ---------- 特殊情况 1: 3d_axis_triple ----------
+        if split_type == "3d_axis_triple":
+            # 三个超平面分别对应 x_i, x_j, x_k
+            # 第一个平面 x_i=0.5 把空间分两半:
+            #   左半区(类别0,1): 再用第二个平面x_j=0.5划分
+            #   右半区(类别2,3): 再用第三个平面x_k=0.5划分
+            planes = [hp for hp in hyperplanes]
+            (a1, b1), (a2, b2), (a3, b3) = planes
+
+            # 区域 0: x_i < 0.5, x_j < 0.5
+            # 区域 1: x_i < 0.5, x_j > 0.5
+            # 区域 2: x_i > 0.5, x_k < 0.5
+            # 区域 3: x_i > 0.5, x_k > 0.5
+            cats = [
+                [(a1, b1, +1), (a2, b2, +1)],
+                [(a1, b1, +1), (a2, b2, -1)],
+                [(a1, b1, -1), (a3, b3, +1)],
+                [(a1, b1, -1), (a3, b3, -1)],
+            ]
+            categories = [{'ineqs': c} for c in cats]
+            return categories
+
+        # ---------- 特殊情况 2: dimension_max ----------
+        if split_type == "dimension_max":
+            # 4维示例: 每一类对应“第i维最大”
+            n_dims = self.n_dims
+            # 先检查维度
+            if n_cats != n_dims:
+                raise ValueError("dimension_max only supports n_cats == n_dims")
+
+            # 每个类别 = “该维度最大” ⇒ x_i >= x_j for all j != i
+            for i in range(n_dims):
+                ineqs = []
+                for j in range(n_dims):
+                    if i == j:
+                        continue
+                    a = np.zeros(n_dims)
+                    a[i] = 1
+                    a[j] = -1
+                    ineqs.append((a, 0, -1))  # x_i >= x_j
+                categories.append({'ineqs': ineqs})
+
+            # 另一个版本："第i维最小"
+            for i in range(n_dims):
+                ineqs = []
+                for j in range(n_dims):
+                    if i == j:
+                        continue
+                    a = np.zeros(n_dims)
+                    a[i] = -1
+                    a[j] = 1
+                    ineqs.append((a, 0, -1))  # x_i <= x_j
+                categories.append({'ineqs': ineqs})
+
+            # 共 8 个类别（4个max + 4个min）
+            return categories
+
+        return categories
+
+
+    def calc_likelihood_boundary(self, hypo: int, data: list | tuple, beta: float = 5.0, **kwargs):
+        """
+        基于边界距离的Likelihood计算方法。
+        对每个trial计算到各类别区域的带符号距离，然后softmax成类别概率。
+        """
+        stimuli, _ = data[:2]
+        split_type, hyperplanes = self.splits[hypo]
+
+        # 自动生成各类别不等式集合
+        categories = self.generate_category_inequalities(split_type, hyperplanes)
+        n_cats = len(categories)
+        n_trials = len(stimuli)
+
+        cat_dists = np.zeros((n_cats, n_trials))
+
+        for c, cat in enumerate(categories):
+            for t, x in enumerate(stimuli):
+                cat_dists[c, t] = signed_distance_to_category(x, cat['ineqs'])
+
+        # softmax 归一化
+        exp_scores = np.exp(beta * cat_dists)
+        prob = exp_scores / np.sum(exp_scores, axis=0, keepdims=True)
+        return prob
+
+
+
 
     binary_comb = {}
     # generage matrices of shape (i, 2**i), for i in 1-5 like
@@ -358,55 +486,6 @@ class Partition(BasePartition):
         return conn
 
 
-    def generate_vertices(self):
-        """
-        Generate all vertices
-
-        Should be a partially correct (only when all partitions are convex)
-        simplification of `generate_mesh` method (NOT implemented yet)
-
-        Arguments are of the same meaning as in `get_all_splits`.
-
-
-        [TODO] Not completed.
-        """
-        n_dims = self.n_dims
-        n_cats = self.n_cats
-        self.get_all_splits()
-
-        if n_cats == 2:
-            for split in self.splits:
-                assert len(split[1]) == 1
-                plane = split[0]
-                intersections = []
-                for i in range(n_dims):
-                    mat = np.array([plane[0]] + [
-                        x for j, x in enumerate(self.base_spaces[0]) if j != i
-                    ],
-                                   dtype=float)
-                    print("MATMAT", mat)
-                    # Check whether equation system is singular
-                    if np.linalg.det(mat) < self.EPS:
-                        continue
-
-                    # all intersections of plane (split) to edges.
-                    tmp_intersections = [
-                        np.linalg.inv(mat) @ np.concatenate([
-                            np.array([[plane[1]] * (1 << n_dims - 1)]),
-                            self.binary_comb[n_dims - 1]
-                        ])
-                    ]
-
-            return self.vertices
-
-        for split in self.splits:
-
-            pass
-
-        return self.vertices
-
-    def generate_centers(self):
-        pass
 
     def get_all_splits(self):
         """
