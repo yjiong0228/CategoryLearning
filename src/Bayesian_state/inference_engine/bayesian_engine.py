@@ -4,6 +4,7 @@ Bayesian Engine
 from typing import Dict, Tuple, List, Any, Literal
 import numpy as np
 from ..utils import softmax, print, LOGGER
+import importlib # FIXME: 模块从config里的string转化为真正的class在哪里实现？
 
 EPS = 1e-15
 
@@ -144,6 +145,7 @@ class BaseEngine:
         self.likelihood = None
         self.h_state = None
         self.observation = None  # 记录当前观测
+        self.partition = kwargs.get('partition', None) # FIXME: partition 这样写吗？
 
         # 如果 kwargs 中有同名参数，则赋值给成员变量
         for attr in [
@@ -163,14 +165,14 @@ class BaseEngine:
                 self.likelihood = BaseLikelihood(self.hypotheses_set).value
 
         # 模块列表，按顺序更新
-        self.agenda = agenda if agenda is not None and {}    else ["__self__"]
+        self.agenda = agenda if agenda is not None  else ["__self__"]
         self.modules = {"__self__": self}
         
         self.log_posterior = None
         self.log_likelihood = None
         self.log_posterior = None
 
-
+        
     @staticmethod
     def translate_from_log(log: np.ndarray) -> np.ndarray:
         log -= np.max(log)
@@ -181,6 +183,17 @@ class BaseEngine:
     def translate_to_log(exp: np.ndarray) -> np.ndarray:
         clipped = np.clip(exp, BaseEngine.lower_numerical_bound, BaseEngine.upper_numerical_bound)
         return np.log(clipped)
+
+
+    def _get_class_from_string(self, class_path: str):
+        """根据字符串路径动态导入类"""
+        try:
+            module_path, class_name = class_path.rsplit('.', 1)
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
+        except (ImportError, AttributeError, ValueError) as e:
+            raise ImportError(f"无法从路径 '{class_path}' 导入类") from e
+        
 
     def build_modules(self, module_configs: Dict[str, Dict]):
         """
@@ -206,23 +219,29 @@ class BaseEngine:
                 }
             }
         """
-
+        # DEBUG
+        print(module_configs, s=5)
         for name, config in module_configs.items():
 
-            module_class = config['class']
-            module_params = config.get('params', {})
+            class_path = config['class']
+            # 如果 class_path 是str, 则动态导入
+            if isinstance(class_path, str):
+                module_class = self._get_class_from_string(class_path)
+            else:
+                # 如果已经是类对象, 直接使用
+                module_class = class_path
 
-            print(
-                f"  - Instantiating module '{name}' of type {module_class.__name__}..."
-            )
+            module_params = config.get('params', {})
             module_instance = module_class(engine=self, **module_params)
 
             # 将实例化的模块注册为 engine 的一个成员 (属性)
             setattr(self, name, module_instance)
             LOGGER.info(f"  - Module '{name}' registered as 'self.{name}'.")
             # 添加到模块列表
-            self.modules[name](module_instance)
-        print("All modules built successfully.")
+            self.modules[name] = module_instance
+        # DEBUG
+        #print("All modules built successfully.")
+        #print("modules", self.modules, s=7)
 
 
 
@@ -249,6 +268,8 @@ class BaseEngine:
             if not hasattr(self.modules[mod_name], 'process'):
                 raise Exception(f"Module {mod_name} has no 'process' method.")
             self.modules[mod_name].process(**mod_kwargs.get(mod_name, {}))
+            # DEBUG
+            #print(mod_name, "done", s=2)
 
         return self.posterior, log_info
 
