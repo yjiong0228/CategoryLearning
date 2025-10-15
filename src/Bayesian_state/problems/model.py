@@ -371,7 +371,7 @@ class StateModel:
             if key in self.engine_config["modules"]:
                 self.engine_config["modules"][key].update(value)
         # initialize engine
-        self.engine = BaseEngine(self.engine_config["agenda"], hypotheses_set = self.hypotheses_set)
+        self.engine = BaseEngine(self.engine_config["agenda"], hypotheses_set = self.hypotheses_set, partition=self.partition_model)
         # build modules for the engine
         self.engine.build_modules(self.engine_config["modules"])
         
@@ -407,11 +407,13 @@ class StateModel:
         posterior_log = []
         for datum in data:
             posterior, log = self.engine.infer_single(datum, mod_kwargs)
+            # DEBUG
+            #print("Current observation:", self.engine.observation, s=2)
             step_log += [log]
             posterior_log += [posterior]
 
         self.save(posterior_log, step_log)
-        return posterior_log[-1]
+        return posterior_log
 
 
 

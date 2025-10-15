@@ -1,0 +1,8 @@
+modules:
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs: {}
+
+agenda:
+  - likelihood_mod
+  - __self__

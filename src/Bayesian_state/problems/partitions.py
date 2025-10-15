@@ -218,7 +218,6 @@ class BasePartition(ABC):
 
         return prob
 
-    #@amnesia_mechanism # TODO：修饰的地方要改为posterior
     def calc_likelihood_entry(self,
                               hypo: int,
                               data: list | tuple,
@@ -242,7 +241,9 @@ class BasePartition(ABC):
         """
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
                                          **kwargs)  # shape = [n_cats, n_trials]
-        choices, responses = data[1].copy(), data[2]  # shape = [n_trials]
+        # Convert to numpy array to ensure correct operations
+        choices = np.array(data[1])
+        responses = np.array(data[2]) # shape = [n_trials]
         choices -= 1
         n_trials = len(choices)
 
