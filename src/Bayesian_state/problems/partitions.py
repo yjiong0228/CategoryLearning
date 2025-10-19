@@ -270,7 +270,7 @@ class BasePartition(ABC):
         likelihood = np.where(responses == 1,      p_species,
                       np.where(responses == 0.5,   fam_sum,
                                p_wrong))
-        
+
         likelihood = np.clip(likelihood, self.EPS, 1. - self.EPS)
 
         return likelihood      # shape = (n_trials,)
@@ -338,124 +338,6 @@ class Partition(BasePartition):
     """
     EPS = 1e-7
 
-
-    # ================================
-    # 1. 生成每个类别的边界不等式
-    # ================================
-    def generate_category_inequalities(self, split_type, hyperplanes):
-        """
-        根据分割方式生成每个类别的不等式定义
-        返回: List[{'ineqs': [(a,b,sign), ...]}, ...]
-        """
-        n_planes = len(hyperplanes)
-        n_cats = self.n_cats
-        categories = []
-
-        # ---------- 通用情况: 所有超平面独立切割 ----------
-        if split_type not in ["3d_axis_triple", "dimension_max"]:
-            # 所有符号组合 (左/右, 下/上, ...)
-            for signs in product([-1, 1], repeat=n_planes):
-                ineqs = [(a, b, s) for (a, b), s in zip(hyperplanes, signs)]
-                categories.append({'ineqs': ineqs})
-            return categories
-
-        # ---------- 特殊情况 1: 3d_axis_triple ----------
-        if split_type == "3d_axis_triple":
-            # 三个超平面分别对应 x_i, x_j, x_k
-            # 第一个平面 x_i=0.5 把空间分两半:
-            #   左半区(类别0,1): 再用第二个平面x_j=0.5划分
-            #   右半区(类别2,3): 再用第三个平面x_k=0.5划分
-            planes = [hp for hp in hyperplanes]
-            (a1, b1), (a2, b2), (a3, b3) = planes
-
-            # 区域 0: x_i < 0.5, x_j < 0.5
-            # 区域 1: x_i < 0.5, x_j > 0.5
-            # 区域 2: x_i > 0.5, x_k < 0.5
-            # 区域 3: x_i > 0.5, x_k > 0.5
-            cats = [
-                [(a1, b1, +1), (a2, b2, +1)],
-                [(a1, b1, +1), (a2, b2, -1)],
-                [(a1, b1, -1), (a3, b3, +1)],
-                [(a1, b1, -1), (a3, b3, -1)],
-            ]
-            categories = [{'ineqs': c} for c in cats]
-            return categories
-
-        # ---------- 特殊情况 2: dimension_max ----------
-        if split_type == "dimension_max":
-            # 4维示例: 每一类对应“第i维最大”
-            n_dims = self.n_dims
-            # 先检查维度
-            if n_cats != n_dims:
-                raise ValueError("dimension_max only supports n_cats == n_dims")
-
-            # 每个类别 = “该维度最大” ⇒ x_i >= x_j for all j != i
-            for i in range(n_dims):
-                ineqs = []
-                for j in range(n_dims):
-                    if i == j:
-                        continue
-                    a = np.zeros(n_dims)
-                    a[i] = 1
-                    a[j] = -1
-                    ineqs.append((a, 0, -1))  # x_i >= x_j
-                categories.append({'ineqs': ineqs})
-
-            # 另一个版本："第i维最小"
-            for i in range(n_dims):
-                ineqs = []
-                for j in range(n_dims):
-                    if i == j:
-                        continue
-                    a = np.zeros(n_dims)
-                    a[i] = -1
-                    a[j] = 1
-                    ineqs.append((a, 0, -1))  # x_i <= x_j
-                categories.append({'ineqs': ineqs})
-
-            # 共 8 个类别（4个max + 4个min）
-            return categories
-
-        return categories
-
-
-    def calc_likelihood_boundary(self, hypo: int, data: list | tuple, beta: float = 5.0, **kwargs):
-        """
-        基于边界距离的Likelihood计算方法。
-        对每个trial计算到各类别区域的带符号距离，然后softmax成类别概率。
-        """
-        stimuli, _ = data[:2]
-        split_type, hyperplanes = self.splits[hypo]
-
-        # 自动生成各类别不等式集合
-        categories = self.generate_category_inequalities(split_type, hyperplanes)
-        n_cats = len(categories)
-        n_trials = len(stimuli)
-
-        cat_dists = np.zeros((n_cats, n_trials))
-
-        for c, cat in enumerate(categories):
-            for t, x in enumerate(stimuli):
-                cat_dists[c, t] = signed_distance_to_category(x, cat['ineqs'])
-
-        # softmax 归一化
-        exp_scores = np.exp(beta * cat_dists)
-        prob = exp_scores / np.sum(exp_scores, axis=0, keepdims=True)
-        return prob
-
-
-
-
-    binary_comb = {}
-    # generage matrices of shape (i, 2**i), for i in 1-5 like
-    #  [ 0 1 0 1]
-    #  [ 0 0 1 1]
-    for i in range(1, 6):
-        binary_comb[i] = np.zeros([i, 1 << i], dtype=float)
-        tmp = np.arange(1 << i)
-        for j in range(i):
-            binary_comb[i][j] = (tmp // (1 << j)) % 2
-
     def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
         """Initialize"""
         super().__init__(n_dims, n_cats, n_protos, **kwargs)
@@ -467,10 +349,11 @@ class Partition(BasePartition):
         conn = {}
         n_cats, n_dims = self.n_cats, self.n_dims
         # 原型坐标：shape = [n_hypos, n_cats, n_dims]
-        centers_all = self.prototypes_np.squeeze(axis=1)  # n_protos=1 → squeeze
+        centers_all = self.prototypes_np.squeeze(
+            axis=1)  # n_protos=1 → squeeze
 
         for h in range(self.length):
-            centers = centers_all[h]          # shape (n_cats, n_dims)
+            centers = centers_all[h]  # shape (n_cats, n_dims)
             conn[h] = {c: [] for c in range(n_cats)}
 
             # 枚举所有类别对 (a,b)
@@ -478,15 +361,202 @@ class Partition(BasePartition):
                 for b in range(a + 1, n_cats):
                     # 统计有多少维“明显不同”
                     diff_cnt = np.sum(
-                        np.abs(centers[a] - centers[b]) > self.EPS
-                    )
-                    if diff_cnt == 1:         # 仅 1 维不同 → 认为 family 相连
+                        np.abs(centers[a] - centers[b]) > self.EPS)
+                    if diff_cnt == 1:  # 仅 1 维不同 → 认为 family 相连
                         conn[h][a].append(b)
                         conn[h][b].append(a)
         return conn
 
+    # ======================================================================
+    # ========== 一、辅助几何函数 ===========================================
+    # ======================================================================
+    @staticmethod
+    def _project_to_halfspace(y, a, b):
+        a = np.asarray(a, dtype=float)
+        diff = np.dot(a, y) - b
+        if diff <= 0:
+            return y
+        return y - diff / (np.dot(a, a) + 1e-9) * a
+
+    @staticmethod
+    def _project_to_box01(y):
+        return np.clip(y, 0.0, 1.0)
+
+    @classmethod
+    def _project_to_polytope(cls, y, A, b, n_iter=100):
+        """
+        Dykstra投影到多面体 {x | A x <= b, 0<=x<=1}
+        """
+        yk = y.copy()
+        p = [np.zeros_like(y) for _ in range(len(A))]
+        for _ in range(n_iter):
+            for i in range(len(A)):
+                y_hat = yk + p[i]
+                y_new = cls._project_to_halfspace(y_hat, A[i], b[i])
+                p[i] = y_hat - y_new
+                yk = y_new
+            yk = cls._project_to_box01(yk)
+        return yk
+
+    @classmethod
+    def _distance_to_region(cls, x, A, b):
+        """
+        点到区域的距离：区域内=0，区域外=到多面体最近点距离
+        """
+        vals = A @ x - b
+        if np.all(vals <= 0 + 1e-9):
+            return 0.0
+        proj = cls._project_to_polytope(x, A, b)
+        return np.linalg.norm(x - proj)
+
+    # ======================================================================
+    # ========== 二、生成类别区域的不等式定义 ===============================
+    # ======================================================================
+    def generate_category_inequalities(self, split_type, hyperplanes):
+        """
+        根据分割方式生成每个类别区域对应的线性约束 (A,b)
+        """
+        three_plane_types = {
+            "3d_axis_triple", "3d_axis_equality_sum", "4d_equality_axis_pair",
+            "4d_sum_axis_pair"
+        }
+
+        # ---------- 一般情况 ----------
+        if split_type not in three_plane_types and split_type not in (
+                "dimension_max", "dimension_min"):
+            categories = []
+            for signs in product([-1, 1], repeat=len(hyperplanes)):
+                A, b = [], []
+                for (a, bi), s in zip(hyperplanes, signs):
+                    A.append(s * np.array(a))
+                    b.append(s * bi)
+                categories.append({'A': np.vstack(A), 'b': np.array(b)})
+            return categories
+
+        # ---------- 三平面类型 ----------
+        if split_type in three_plane_types:
+            (a1, b1), (a2, b2), (a3, b3) = hyperplanes
+            a1, a2, a3 = map(np.asarray, (a1, a2, a3))
+            cats = [
+                {
+                    'A': np.vstack([a1, a2]),
+                    'b': np.array([b1, b2])
+                },  # 左下
+                {
+                    'A': np.vstack([a1, -a2]),
+                    'b': np.array([b1, -b2])
+                },  # 左上
+                {
+                    'A': np.vstack([-a1, a3]),
+                    'b': np.array([-b1, b3])
+                },  # 右下
+                {
+                    'A': np.vstack([-a1, -a3]),
+                    'b': np.array([-b1, -b3])
+                }  # 右上
+            ]
+            return cats
+
+        # ---------- 维度极值类型 ----------
+        if split_type in ("dimension_max", "dimension_min"):
+            n_dims = self.n_dims
+            cats = []
+            for i in range(n_dims):
+                As, bs = [], []
+                for j in range(n_dims):
+                    if i == j:
+                        continue
+                    a = np.zeros(n_dims, dtype=float)
+                    if split_type == "dimension_max":
+                        # x_i >= x_j   <=>   -x_i + x_j <= 0
+                        a[i], a[j] = -1., 1.
+                        bi = 0.0
+                    else:
+                        # x_i <= x_j   <=>    x_i - x_j <= 0
+                        a[i], a[j] = 1., -1.
+                        bi = 0.0
+                    As.append(a)
+                    bs.append(bi)
+                A = np.vstack(As) if As else np.zeros((0, n_dims))
+                b = np.array(bs, dtype=float)
+                cats.append({'A': A, 'b': b})
+            return cats
+
+    # ======================================================================
+    # ========== 三、基于边界距离的Likelihood计算 ==========================
+    # ======================================================================
+    def calc_likelihood_boundary(self,
+                                 hypo: int,
+                                 data: list | tuple,
+                                 beta: float = 5.0,
+                                 **kwargs):
+        """
+        基于边界距离的likelihood计算：
+          - 区域内: 距离=0
+          - 区域外: 距离=点到该多面体的最短欧式距离
+        """
+        stimuli, _ = data[:2]
+        split_type, hyperplanes = self.splits[hypo]
+        categories = self.generate_category_inequalities(
+            split_type, hyperplanes)
+
+        n_cats = len(categories)
+        n_trials = len(stimuli)
+        dmat = np.zeros((n_trials, n_cats))
+
+        for c, cat in enumerate(categories):
+            A, b = cat['A'], cat['b']
+            for t, x in enumerate(stimuli):
+                dmat[t, c] = self._distance_to_region(np.array(x), A, b)
+
+        # softmax(-β * 距离)
+        scores = np.exp(-beta * dmat)
+        prob = scores / np.sum(scores, axis=1, keepdims=True)
+
+        return prob.T
+
+    # ======================================================================
+    # ========== 四、对接主接口 calc_likelihood_entry ======================
+    # ======================================================================
+    def calc_likelihood_entry(self,
+                              hypo: int,
+                              data: list | tuple,
+                              beta: float,
+                              use_cached_dist: bool = False,
+                              **kwargs) -> np.ndarray:
+        """
+        当 use_boundary=True 时，使用基于边界距离的概率计算。
+        其余部分（反馈映射）与原逻辑一致。
+        """
+        if kwargs.get("use_boundary", False):
+            prob = self.calc_likelihood_boundary(hypo, data, beta, **kwargs)
+        else:
+            prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
+                                             **kwargs)
+
+        choices, responses = data[1].copy(), data[2]
+        choices -= 1
+        n_trials = len(choices)
+        p_species = prob[choices, np.arange(n_trials)]
+
+        fam_sum = np.zeros(n_trials)
+        conn_map = getattr(self, "connectivity_map", {})
+        if conn_map:
+            mask = np.zeros_like(prob, dtype=bool)
+            for t in range(n_trials):
+                alt = conn_map[hypo][choices[t]]
+                mask[alt, t] = True
+            fam_sum = (prob * mask).sum(axis=0)
+        p_wrong = 1. - p_species
+
+        likelihood = np.where(responses == 1, p_species,
+                              np.where(responses == 0.5, fam_sum, p_wrong))
+        return np.clip(likelihood, self.EPS, 1. - self.EPS)
 
 
+    # ======================================================================
+    # ========== 原版分割 ======================
+    # ======================================================================
     def get_all_splits(self):
         """
         根据维度数 n_dims 和分类数 n_cats, 生成所有可用的分割方式 (split_type)
@@ -696,10 +766,11 @@ class Partition(BasePartition):
                 eq_planes = []
                 for i, j in itertools.combinations(range(n_dims), 2):
                     plane = ([0] * n_dims, 0)
-                    plane[0][i], plane[0][j] = 1, -1
+                    plane[0][i], plane[0][j] = 1, -1  # x_i - x_j = 0
                     eq_planes.append(plane)
 
                 splits.append(('dimension_max', eq_planes))
+                splits.append(('dimension_min', eq_planes))
 
         return splits
 
@@ -1100,20 +1171,23 @@ class Partition(BasePartition):
 
                 # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
                 # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
+                # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
                 elif split_type == 'dimension_max':
                     centers_high = {}
-                    centers_low = {}
                     for cat_idx in range(n_cats):
-                        # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
                         center_coords_high = [0.4] * n_dims
                         center_coords_high[cat_idx] = 0.8
                         centers_high[cat_idx] = tuple(center_coords_high)
+                    results.append((split_type, centers_high))
+                    continue
 
-                        # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
+                # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
+                elif split_type == 'dimension_min':
+                    centers_low = {}
+                    for cat_idx in range(n_cats):
                         center_coords_low = [0.8] * n_dims
                         center_coords_low[cat_idx] = 0.4
                         centers_low[cat_idx] = tuple(center_coords_low)
-                    results.append((split_type, centers_high))
                     results.append((split_type, centers_low))
                     continue
 
