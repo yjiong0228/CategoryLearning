@@ -535,6 +535,7 @@ class Partition(BasePartition):
                                              **kwargs)
 
         choices, responses = data[1].copy(), data[2]
+        choices = np.asarray(data[1])
         choices -= 1
         n_trials = len(choices)
         p_species = prob[choices, np.arange(n_trials)]

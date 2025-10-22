@@ -1,0 +1,12 @@
+modules:
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs: {}
+  perception_mod:
+    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    kwargs: {mean: 0.0, std: 0.05}
+
+agenda:
+  - perception_mod
+  - likelihood_mod
+  - __self__

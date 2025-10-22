@@ -8,6 +8,8 @@ from collections.abc import Callable
 from typing import List, Tuple, Dict, Set, Sequence
 import numpy as np
 from scipy.optimize import minimize
+
+#from CategoryLearning.Old_version.Bayesian_new.inference_engine.bayesian_engine import BaseEngine
 from .base_module import BaseModule
 from .base_module import (cdist, softmax, BaseSet, entropy)
 from ..model import BaseModelParams
@@ -121,3 +123,76 @@ class DualStateMemory(BaseMemory):
             self.state[key] *= self.mask
 
 
+
+
+###################### NEW Memory Module ######################
+
+class DualMemoryModule(BaseModule):
+
+    upper_numerical_bound = 1e15
+    lower_numerical_bound = 1e-15
+
+    """
+    Memory Module
+    """
+
+    def __init__(self, engine, **kwargs):
+        super().__init__(engine, **kwargs)
+        
+        self.state = kwargs.pop("default_state_init", {
+            "fade": None,
+            "static": None
+        })
+        self.gamma = kwargs.get("gamma", 0.9)
+        self.w0 = kwargs.get("w0", 0.1)
+        # FIXME: mask 要怎么处理？
+        self.mask = self.engine.hypotheses_mask if self.engine.hypotheses_mask is not None else np.ones(self.engine.hypotheses_set.length)
+        # state 初始化为 prior
+        if hasattr(self.engine, "prior") and self.engine.prior is not None:
+            for key in self.state:
+                self.state[key] = self.translate_to_log(self.engine.prior, mask=self.mask)
+
+
+    @staticmethod
+    def translate_from_log(log: np.ndarray, mask=None) -> np.ndarray:
+        log -= np.max(log)
+        exp = np.exp(log)
+        if mask is not None:
+            exp *= mask
+        return exp / np.sum(exp)
+
+    @staticmethod
+    def translate_to_log(exp: np.ndarray, mask=None) -> np.ndarray:
+        clipped = np.clip(exp, DualMemoryModule.lower_numerical_bound, DualMemoryModule.upper_numerical_bound)
+        if mask is not None:
+            clipped *= mask
+        return np.log(clipped)
+
+    def state_update(self, likelihood):
+        """
+        Update the memory state with new observation likelihoods
+
+        Args:
+            likelihood (np.ndarray): Likelihoods of the new observation for each hypothesis
+        """
+        if "fade" in self.state:
+            self.state["fade"] = self.state["fade"] * self.gamma + self.translate_to_log(likelihood, mask=self.mask)
+        if "static" in self.state:
+            self.state["static"] = self.state["static"] + self.translate_to_log(likelihood, mask=self.mask)
+
+    def process(self, **kwargs):
+        """
+        Process the likelihoods with memory mechanism
+        """
+        likelihood = kwargs.get("likelihood", self.engine.likelihood)
+
+        self.state_update(likelihood)
+        
+        posterior_fade = self.translate_from_log(self.state["fade"], mask=self.mask)
+        posterior_static = self.translate_from_log(self.state["static"], mask=self.mask)
+        posterior = self.w0 * posterior_fade + (1 - self.w0) * posterior_static
+        self.engine.posterior = posterior
+
+        return posterior
+
+    
