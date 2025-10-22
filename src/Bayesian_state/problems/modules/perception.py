@@ -148,3 +148,50 @@ class BasePerception(BaseModule):
         # Ensure the values are in the range of [0, 1]
         stimulus = np.clip(stimulus, 0, 1)
         return stimulus
+    
+
+
+################### NEW Perception Module ###################
+
+# FIXME: 这里的 mean 和 std 都是从 module 外部传入的
+
+class PerceptionModule(BaseModule):
+    """
+    Perception Module
+    """
+
+    def __init__(self, engine, **kwargs):
+        """
+        Initialize
+
+        Args:
+            model (BaseModelParams): Model parameters
+            **kwargs: Additional keyword arguments
+        """
+        super().__init__(engine, **kwargs)
+        self.features = kwargs.pop("features", 4)
+        self.mean = kwargs.pop("mean", np.zeros(self.features))
+        self.std = kwargs.pop("std", 0.1 * np.ones(self.features))
+
+    def sample(self, stimu):
+        """
+        stimu for single trial, shape: (features, )
+        """
+        # stimu 的每个维度加上各个特征各自的mean和std采样的噪声
+        noise = np.random.normal(loc=self.mean, scale=self.std, size=stimu.shape)
+        return stimu + noise
+    
+    def process(self, **kwargs):
+        """
+        Process the stimulus with perception noise
+
+        Args:
+            **kwargs: Additional keyword arguments
+                - stimu (np.ndarray): Stimulus to process, shape: (features, )
+        """
+        stimu = kwargs.get("stimu", self.engine.observation[0])
+        sampled = self.sample(stimu)
+        # Ensure the values are in the range of [0, 1]
+        sampled = np.clip(sampled, 0, 1)
+        self.engine.observation = (sampled, self.engine.observation[1], self.engine.observation[2])
+        return sampled

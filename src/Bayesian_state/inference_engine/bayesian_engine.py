@@ -231,7 +231,11 @@ class BaseEngine:
                 # 如果已经是类对象, 直接使用
                 module_class = class_path
 
-            module_params = config.get('params', {})
+            module_params = config.get('kwargs', {})
+            
+            # DEBUG module_kwargs
+            print("name:", name, "mod_kwargs:", module_params, s=4)
+
             module_instance = module_class(engine=self, **module_params)
 
             # 将实例化的模块注册为 engine 的一个成员 (属性)
@@ -252,6 +256,7 @@ class BaseEngine:
 
         # TODO: 是否需要实现 logging？
         log_info = {}
+
 
         self.observation = observation
         if self.agenda is None:
@@ -281,6 +286,7 @@ class BaseEngine:
         self.log_likelihood = self.translate_to_log(self.likelihood)
         self.log_posterior = self.log_prior + self.log_likelihood
         self.posterior = self.translate_from_log(self.log_posterior)
+        self.prior = self.posterior.copy()
         return self.posterior
 
     # ========================================================================================== #

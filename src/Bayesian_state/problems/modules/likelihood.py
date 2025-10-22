@@ -51,7 +51,7 @@ class LikelihoodModule(BaseModule):
         )
 
         # Extract beta from the module's or method's kwargs, with a default.
-        beta = self.kwargs.get('beta', kwargs.get('beta', 1.0))
+        beta = self.kwargs.get('beta', kwargs.get('beta', 10.0))
 
         # `calc_likelihood` returns shape [n_trials, n_hypos].
         # For a single trial, this will be [1, n_hypos].
@@ -60,7 +60,7 @@ class LikelihoodModule(BaseModule):
             data=single_trial_data,
             beta=beta,
             use_cached_dist=kwargs.get('use_cached_dist', False),
-            normalized=False,  # Normalization should happen in the engine
+            normalized=True,
             **self.kwargs
         )
 

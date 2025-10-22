@@ -1,0 +1,14 @@
+modules:
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs: {}
+  memory_mod:
+    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    kwargs: {
+      w0: 0.2, 
+      gamma: 0.8,
+    }
+
+agenda:
+  - likelihood_mod
+  - memory_mod
