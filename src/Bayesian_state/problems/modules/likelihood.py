@@ -58,7 +58,7 @@ class LikelihoodModule(BaseModule):
         likelihood_matrix = self.partition.calc_likelihood(
             hypos=self.h_indices,
             data=single_trial_data,
-            beta=beta,
+            #beta=beta,
             use_cached_dist=kwargs.get('use_cached_dist', False),
             normalized=True,
             **self.kwargs

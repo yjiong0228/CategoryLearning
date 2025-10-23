@@ -188,9 +188,8 @@ class DualMemoryModule(BaseModule):
 
         self.state_update(likelihood)
         
-        posterior_fade = self.translate_from_log(self.state["fade"], mask=self.mask)
-        posterior_static = self.translate_from_log(self.state["static"], mask=self.mask)
-        posterior = self.w0 * posterior_fade + (1 - self.w0) * posterior_static
+        log_posterior = self.w0 * self.state["fade"] + (1 - self.w0) * self.state["static"]
+        posterior = self.translate_from_log(log_posterior, mask=self.mask)
         self.engine.posterior = posterior
 
         return posterior
