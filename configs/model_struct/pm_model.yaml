@@ -1,16 +1,21 @@
 modules:
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {}
+    kwargs: {
+      beta: 5.
+    }
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.2, 
+      w0: 0.5, 
       gamma: 0.8,
     }
   perception_mod:
     class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
-    kwargs: {mean: 0.0, std: 0.05}
+    kwargs: {
+      mean: 0.0, 
+      std: 0.05
+    }
 
 agenda:
   - perception_mod
