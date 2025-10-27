@@ -534,8 +534,7 @@ class Partition(BasePartition):
             prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
                                              **kwargs)
 
-        choices, responses = data[1].copy(), data[2]
-        choices = np.asarray(data[1])
+        choices, responses = np.array(data[1].copy()), np.array(data[2])
         choices -= 1
         n_trials = len(choices)
         p_species = prob[choices, np.arange(n_trials)]
