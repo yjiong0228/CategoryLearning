@@ -1,24 +1,32 @@
 modules:
-  memory:
-    class: BaseMemory
-    kwargs: {}
-
-  likelihood:
-    class: BaseLikelihood
-    kwargs: {}
-
-  perception:
-    class: BasePerception
-    kwargs: {}
-
-  hypotheses:
-    class: BaseHypotheses
-    kwargs: {}
-
-
+  perception_mod:
+    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    kwargs: {
+      mean: 0.0, 
+      std: 0.05
+    }
+  hypo_transitions_mod:
+    class: 'src.Bayesian_state.problems.modules.hypo_transitions.FixedNumHypothesisModule'
+    kwargs: {
+      fixed_hypo_num: 10,
+      init_strategy: 'random',
+      transition_mode: 'top_posterior',
+      throw_num: 1,
+    }
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs: {
+      beta: 5.
+    }
+  memory_mod:
+    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    kwargs: {
+      w0: 0.8, 
+      gamma: 0.8,
+    }
 
 agenda:
-  - perception
-  - likelihood
-  - hypotheses
-  - memory
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
