@@ -1,565 +1,146 @@
-"""
-Module: Modeling Hypothesis-cluster transition dynamics
-"""
-from abc import ABC
-from collections.abc import Callable
-from typing import List, Tuple, Dict, Set
+"""Simple fixed-number hypothesis module for the state-based engine."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Sequence
+
 import numpy as np
-from .base_module import BasePartition, BaseModule
-from .base_module import (cdist, softmax, BaseSet, entropy)
+
+from .base_module import BaseModule
 
 
-class BaseCluster(BaseModule):
-
-    amount_evaluators = {}
-
-    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
-        super().__init__(model, **kwargs)
-        self.model = model
-        self.config = cluster_config
-        self.current_cluster = BaseSet([])
+@dataclass
+class _Config:
+    fixed_hypo_num: int = 7
+    init_strategy: str = "random"
+    transition_mode: str = "stable"
+    throw_num: int = 1
+    random_seed: int | None = None
 
 
-    def adaptive_amount_evalutator(self, amount: float | str | Callable,
-                                   **kwargs) -> int:
-        """
-        Adaptively deal with evaluator / number format of amount
-        """
-        match amount:
-            case int():
-                return amount
-            case Callable():
-                return amount(**kwargs)
-            case str() if amount in self.amount_evaluators:
-                return self.amount_evaluators[amount](**kwargs)
-            case _:
-                raise Exception(f"Unexpected amount type. {amount}")
+class FixedNumHypothesisModule(BaseModule):
+    """Maintains a fixed-size hypothesis mask with simple strategies."""
 
-    @classmethod
-    def _amount_entropy_gen(cls, max_amount=3):
+    def __init__(self, engine, **kwargs):
+        super().__init__(engine, **kwargs)
 
-        def _amount_entropy_based(posterior: Dict,
-                                  max_amount=max_amount,
-                                  **kwargs) -> int:
-            """
-            Use whether a model is decisive in its posterior to tune the amount.
-            """
-            posterior_ = np.array(list(posterior.values()))[:, 0]
-            p_entropy = entropy(posterior_)
-            return max(
-                0,
-                int(max_amount - min(np.exp(p_entropy), max_amount + 30)) + 2)
+        total_hypo = self.engine.set_size
+        
+        cfg = _Config(
+            fixed_hypo_num=int(kwargs.get("fixed_hypo_num", 1)),
+            init_strategy=str(kwargs.get("init_strategy", "random")),
+            transition_mode=str(kwargs.get("transition_mode", "stable")),
+            throw_num=int(kwargs.get("throw_num", 1)),
+            random_seed=kwargs.get("random_seed", None),
+        )
 
-        return _amount_entropy_based
+        if not (0 < cfg.fixed_hypo_num <= total_hypo):
+            raise ValueError("fixed_hypo_num must be between 1 and the total number of hypotheses.")
 
-    @classmethod
-    def _amount_opposite_entropy_gen(cls, max_amount=3):
+        self.cfg = cfg
+        self.total_hypo = total_hypo
+        self.full_indices = np.arange(total_hypo, dtype=int)
+        self.rng = np.random.default_rng(cfg.random_seed)
+        self.active: np.ndarray | None = None
+        self._init_mask()
 
-        def _amount_opposite_entropy_based(posterior: Dict,
-                                        max_amount=max_amount,
-                                        **kwargs) -> int:
-            posterior_ = np.array(list(posterior.values()))[:, 0]
-            p_entropy = entropy(posterior_)
+    def process(self, **_: object) -> None:
+        self._transition()
+        self._apply_mask()
 
-            # scale entropy to (0, max_amount), assume max entropy is log(n)
-            n_hypos = len(posterior_)
-            max_possible_entropy = np.log(n_hypos) if n_hypos > 1 else 1.0
-            normalized_entropy = p_entropy / max_possible_entropy
-
-            # Scale to range [1, max_amount]
-            scaled_amount = 1 + int(normalized_entropy * (max_amount - 1))
-            return min(scaled_amount, max_amount)
-
-        return _amount_opposite_entropy_based
-
-
-    @classmethod
-    def _amount_max_gen(cls, max_amount=3):
-
-        def _amount_max_based(posterior=Dict, max_amount=max_amount, **kwargs):
-            posterior_ = np.array(list(posterior.values()))[:, 0]
-            max_post = np.max(posterior_)
-            return 0 if 3. / max_post > max_amount else int(3. / max_post)
-
-        return _amount_max_based
-
-    @classmethod
-    def _amount_random_gen(cls, max_amount=3):
-
-        def _amount_random_based(posterior=Dict,
-                                 max_amount=max_amount,
-                                 **kwargs):
-            posterior_ = np.array(list(posterior.values()))[:, 0]
-            max_post = np.max(posterior_)
-            return np.random.choice(max_amount + 1,
-                                    p=[1 - max_post] +
-                                    [max_post / max_amount] * max_amount)
-
-        return _amount_random_based
-
-    @classmethod
-    def _amount_accuracy_gen(cls, amount_function: Callable, max_amount=3, static=True):
-
-        def _amount_accuracy_static(
-                feedbacks: List[float],
-                amount_function: Callable = amount_function,
-                **kwargs) -> int:
-            feedbacks = [int(f) for f in feedbacks]
-            accuracy = np.sum(feedbacks) / len(feedbacks)
-            amount = amount_function(accuracy)
-            match amount:
-                case int():
-                    return amount if amount < max_amount else max_amount
-                case Callable():
-                    return amount(**kwargs)
-                
-        def _amount_accuracy_delta(
-                feedbacks: List[float],
-                amount_function: Callable = amount_function,
-                **kwargs) -> int:
-            feedbacks = [int(f) for f in feedbacks]
-            length = 8
-            old_acc = np.sum(feedbacks[:length]) / length
-            new_acc = np.sum(feedbacks[length:]) / length
-            delta_acc = new_acc - old_acc
-            amount = amount_function(delta_acc)
-            match amount:
-                case int():
-                    return amount if amount < max_amount else max_amount
-                case Callable():
-                    return amount(**kwargs)
-
-        return _amount_accuracy_static if static else _amount_accuracy_delta
-
-    @classmethod
-    def _amount_opposite_random_gen(cls, max_amount=7):
-        base_rand = cls._amount_random_gen(max_amount)
-        def _opposite_random(posterior: Dict, max_amount=max_amount, **kwargs) -> int:
-            return max_amount - base_rand(posterior, max_amount=max_amount, **kwargs)
-        return _opposite_random
-
-
-class PartitionCluster(BaseCluster):
-    """
-    Partition with hypothesis cluster structure
-    """
-
-    amount_evaluators = {
-        "entropy": BaseCluster._amount_entropy_gen(3),
-        "entropy_1": BaseCluster._amount_entropy_gen(1),
-        "entropy_2": BaseCluster._amount_entropy_gen(2),
-        "entropy_3": BaseCluster._amount_entropy_gen(3),
-        "entropy_4": BaseCluster._amount_entropy_gen(4),
-        "entropy_5": BaseCluster._amount_entropy_gen(5),
-        "entropy_6": BaseCluster._amount_entropy_gen(6),
-        "entropy_7": BaseCluster._amount_entropy_gen(7),
-        "opp_entropy_2": BaseCluster._amount_opposite_entropy_gen(2),
-        "opp_entropy_4": BaseCluster._amount_opposite_entropy_gen(4),
-        "opp_entropy_7": BaseCluster._amount_opposite_entropy_gen(7),
-        "max_1": BaseCluster._amount_max_gen(1),
-        "max_2": BaseCluster._amount_max_gen(2),
-        "max_3": BaseCluster._amount_max_gen(3),
-        "max_4": BaseCluster._amount_max_gen(4),
-        "max_5": BaseCluster._amount_max_gen(5),
-        "max_6": BaseCluster._amount_max_gen(6),
-        "max_7": BaseCluster._amount_max_gen(7),
-        "random_1": BaseCluster._amount_random_gen(1),
-        "random_2": BaseCluster._amount_random_gen(2),
-        "random_3": BaseCluster._amount_random_gen(3),
-        "random_4": BaseCluster._amount_random_gen(4),
-        "random_5": BaseCluster._amount_random_gen(5),
-        "random_6": BaseCluster._amount_random_gen(6),
-        "random_7": BaseCluster._amount_random_gen(7),
-        "random_9": BaseCluster._amount_random_gen(9),
-        "opp_random_2": BaseCluster._amount_opposite_random_gen(2),
-        "opp_random_4": BaseCluster._amount_opposite_random_gen(4),
-        "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
-    }
-
-    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
-        """
-        Initialize
-
-        Model:
-        current_cluster: a subset of all partition prototypes
-                         (named by their index in self.partition)
-        strategy: a spectrum, in terms of a list
-                  [(amount: int, method: str|Callable)]
-        """
-        super().__init__(model, **kwargs)
-        self.set_cluster_transition_strategy(
-            kwargs.get("init_strategy", [(3, "random")]), init_strategy=True)
-        self.set_cluster_transition_strategy(
-            kwargs.get("transition_spec", [(10, "stable")]))
-        self.cached_dist: Dict[Tuple, float] = {}
-
-
-    def _calc_cached_dist(self):
-        """
-        Calculate Cached diatances
-        """
-        if not hasattr(self.model, "partition_model") or self.model.partition_model is None:
-            raise ValueError("partition_model is not initialized before calling _calc_cached_dist().")
-
-        self.cached_dist = {}
-        for i_l, left in self.model.partition_model.centers:
-            for i_r, right in self.model.partition_model.centers:
-                try:
-                    for _, c_l in left.items():
-                        for _, c_r in right.items():
-                            key = (*c_l, *c_r)
-                            inv = (*c_r, *c_l)
-                            if key in self.cached_dist or inv in self.cached_dist:
-                                continue
-                            self.cached_dist[key] = np.sum(
-                                (np.array(c_l) - np.array(c_r))**2)**0.5
-                            self.cached_dist[inv] = self.cached_dist[key]
-                except Exception as e:
-                    print(e)
-                    print(i_l, left, i_r, right)
-                    raise e
-
-    def center_dist(self, this, other) -> float:
-        """
-        Read out center distances
-        """
-        if not self.cached_dist:
-            self._calc_cached_dist()
-
-        return self.cached_dist.get((*this, *other), np.inf)
-
-    @classmethod
-    def _cluster_strategy_stable(cls, amount: int, available_hypos: Set,
-                                 **kwargs) -> List:
-        """
-        Cluster strategy: stable
-        """
-        return list(available_hypos)[:amount]
-
-    @classmethod
-    def _cluster_strategy_random(cls, amount: int, available_hypos: Set,
-                                 **kwargs) -> List:
-        """
-        Cluster strategy: stable
-        """
-        amount = int(amount)
-        N = len(available_hypos)
-        if amount <= 0 or N == 0:
-            return []
-        # clamp to the size of the pool
-        amount = min(amount, N)
-
-        return np.random.choice(list(available_hypos),
-                                size=amount,
-                                replace=False).tolist()
-
-    @classmethod
-    def _cluster_strategy_top_post(cls,
-                                   amount: int,
-                                   available_hypos: Set,
-                                   posterior: Dict | None = None,
-                                   **kwargs) -> List:
-        """
-        Cluster strategy: top posterior
-
-        - functional args in kwargs:
-        top_p: float between 0 to 1. Drives this method filter via top-p
-               mechanism, default value results in top-n with amount setup.
-        """
-        # posterior as a dict
-        posterior = posterior or {}
-        # sort the posterior in their posterior probabilities
-        sorted_by_post = sorted(
-            [(i, p) for i, p in posterior.items() if i in available_hypos],
-            key=lambda x: x[1],
-            reverse=True)
-
-        # process the "Top-p" case
-        if (prob := kwargs.get("top_p", 0.)) > 0:
-            new_hypos = [sorted_by_post[0]]
-            for i in range(1, len(sorted_by_post)):
-                if new_hypos[-1][1] > prob:
-                    break
-                new_hypos.append((i, new_hypos[-1][1] + sorted_by_post[i][1]))
-
-            return [x for x, _ in new_hypos]
-
-        # original top-n case
-        return [x for x, _ in sorted_by_post][:amount]
-
-    @classmethod
-    def _cluster_strategy_random_post(cls,
-                                      amount: int,
-                                      available_hypos: Set,
-                                      posterior: Dict | None = None,
-                                      **kwargs) -> List:
-        """
-        Cluster strategy: random n from posterior                                        
-        """
-        # posterior as a dict
-        posterior = posterior or {}
-
-        # 只保留同时出现在 posterior 与 available_hypos 里的下标
-        cand_idx = [i for i in available_hypos if i in posterior]
-        if not cand_idx:
-            return []
-
-        # 取概率质量（支持 float 或 (prob, β) 形式）
-        raw_w = np.asarray([
-            posterior[i][0] if isinstance(posterior[i], (list, tuple, np.ndarray))
-            else posterior[i]
-            for i in cand_idx
-        ], dtype=float)
-
-        n_pos = int((raw_w > 0).sum())
-        amount = min(amount, len(cand_idx))            # 安全上限
-        if n_pos < amount:                             # 权重为 0 的太多
-            # → 退化为均匀随机（或也可以给零权重加一个极小值）
-            chosen = np.random.choice(cand_idx, size=amount, replace=False)
-            return chosen.tolist()
-
-        prob = raw_w / raw_w.sum()
-        chosen = np.random.choice(cand_idx, size=amount,
-                                replace=False, p=prob)
-        return chosen.tolist()        
-
-    def _cluster_strategy_ksimilar_centers(self,
-                                           amount: int,
-                                           available_hypos: Set,
-                                           posterior: Dict | None = None,
-                                           stimulus: np.ndarray = np.zeros(4),
-                                           **kwargs):
-        """
-        Cluster strategy: ksimilar distance version
-
-        - functional args in kwargs:
-        proto_hypo_amounts: use this number of hypotheses as prototype for
-                            recalling other hypos from full k-space, default 1.
-
-        top_p: float between 0 to 1. Drives this method filter via top-p
-               mechanism, default value results in top-n with amount setup.
-        """
-        if amount == 0:
-            return []
-        if posterior is None:
-            raise Exception("ArgumentError: posterior is absent or not a Dict")
-        proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
-        ref_hypos = sorted([(i, *p) for i, p in posterior.items()],
-                           key=lambda x: x[1],
-                           reverse=True)
-
-        match kwargs.get("proto_hypo_method", "top"):
-            case "top":
-                ref_hypos = ref_hypos[:proto_hypo_amount]
-            case "random":
-                ref_hypos = [
-                    ref_hypos[i]
-                    for i in np.random.choice(np.arange(len(ref_hypos)),
-                                              size=proto_hypo_amount,
-                                              p=[x for _, x, _ in ref_hypos],
-                                              replace=False)
-                ]
-            case _:
-                ref_hypos = ref_hypos[:proto_hypo_amount]
-
-        # in case that proto_hypo_amount is greater than len(ref_hypos)
-        proto_hypo_amount = len(ref_hypos)
-        # prepare the reference hypos: index, chioce, posterior
-        ref_hypos_index = np.array([k for k, _, _ in ref_hypos])
-        ref_hypos_post = np.array([x for _, x, _ in ref_hypos])
-        ref_hypos_beta = np.array([x for _, _, x in ref_hypos])
-        # ref_full_centers is of shape (proto_hypo_amount, n_cats, n_dims)
-        ref_full_centers = np.array([
-            list(self.model.partition_model.centers[k][1].values())
-            for k in ref_hypos_index
-        ])
-        ref_dist = cdist(
-            np.array(stimulus).reshape(1, -1),
-            ref_full_centers.reshape(-1, self.model.partition_model.n_dims))
-        # given stimulus, the argmin choices on each reference hypo
-        ref_choices = [
-            np.random.choice(self.model.partition_model.n_cats, p=prob)
-            for prob in softmax(ref_dist.reshape(-1, self.model.partition_model.n_cats),
-                                beta=-ref_hypos_beta.reshape(-1, 1),
-                                axis=1)
-        ]
-        # prepare the reference centers(shape=[proto_hypo_amount, n_dims])
-        ref_hypos_center = ref_full_centers[range(proto_hypo_amount),
-                                            ref_choices]
-
-        # prepare the candidate hypos: index and center(shape=[K,d])
-        candidate_hypos_index = [
-            k for k in available_hypos if k not in ref_hypos_index
-        ]
-        candidate_full_center = np.array([
-            list(self.model.partition_model.centers[k][1].values())
-            for k in candidate_hypos_index
-        ])
-
-        exp_dist = np.exp([[
-            -1 * self.center_dist(ref_hypos_center[i],
-                                  candidate_full_center[j, ref_choices[i]])
-            for i, _ in enumerate(ref_hypos_index)
-        ] for j, _ in enumerate(candidate_hypos_index)])
-        score = np.einsum("ij,j->i", exp_dist, ref_hypos_post)
-
-        match kwargs.get("cluster_hypo_method", "top"):
-            case "top":
-                argscore = np.argsort(score)[-amount:]
-                ret_val = np.array(candidate_hypos_index)[argscore]
-            case "random":
-                ret_val = np.random.choice(candidate_hypos_index,
-                                           p=softmax(score),
-                                           size=amount,
-                                           replace=False)
-            case _:
-                argscore = np.argsort(score)[-amount:]
-                ret_val = np.array(candidate_hypos_index)[argscore]
-
-        return ret_val.tolist()
-
-    def cluster_transition(self,
-                           full_hypo_set: BaseSet | None = None,
-                           **kwargs) -> List:
-        """
-        Make the transition
-        """
-        new_hypos: Set[int] = set([])
-        numerical_amounts = []
-        hypo_choices = []
-
-        if full_hypo_set is None:
-            available_hypos = set(range(self.model.partition_model.length))
+    def _init_mask(self) -> None:
+        if self.cfg.init_strategy == "stable":
+            selection = self.full_indices[: self.cfg.fixed_hypo_num]
+        elif self.cfg.init_strategy == "random":
+            selection = self._sample_from_pool(self.full_indices, self.cfg.fixed_hypo_num)
         else:
-            available_hypos = set(full_hypo_set)
+            raise ValueError(f"Unknown init_strategy: {self.cfg.init_strategy}")
+        self.active = np.sort(np.array(selection, dtype=int))
+        self._apply_mask()
 
-        for amount, method in self.cluster_transition_strategy:
-            # 1. compute how many to draw
-            numerical_amount = self.adaptive_amount_evalutator(
-                amount, **kwargs)
-            # 2. clamp so you never ask for more than you have
-            numerical_amount = max(0,
-                                   min(numerical_amount, len(available_hypos)))
+    def _transition(self) -> None:
+        """Update the active hypothesis set based on the transition mode."""
+        if self.cfg.transition_mode == "stable" or self.cfg.throw_num <= 0:
+            return
 
-            numerical_amounts.append(numerical_amount)
+        current = np.array(self.active, copy=True)
+        throw_count = int(min(self.cfg.throw_num, current.size))
+        if throw_count <= 0:
+            return
 
-            # 3. sample
-            new_part = method(numerical_amount, available_hypos, **kwargs)
-            hypo_choices.append(new_part)
-            new_hypos |= set(new_part)
-            available_hypos -= set(new_part)
-
-        if len(new_hypos) == 0:
-            new_hypos = set(
-                np.random.choice(list(available_hypos),
-                                 size=1,
-                                 replace=False).tolist())
-            return list(new_hypos), {
-                k: (amt, ch)
-                for k, amt, ch in zip(self.strategy_name, numerical_amounts,
-                                    hypo_choices)
-            } | {
-                'random from available': (1, list(new_hypos))
-            }
+        if self.cfg.transition_mode == "random":
+            to_drop = self._sample_from_pool(current, throw_count)
+        elif self.cfg.transition_mode == "top_posterior":
+            to_drop = self._drop_lowest_posterior(current, throw_count)
         else:
-            return list(new_hypos), {
-                k: (amt, ch)
-                for k, amt, ch in zip(self.strategy_name, numerical_amounts,
-                                    hypo_choices)
-            }
+            raise ValueError(f"Unknown transition_mode: {self.cfg.transition_mode}")
+        print(to_drop)
 
-    def cluster_init(self, **kwargs):
+        survivors = current[~np.isin(current, to_drop)]
+        self.active = self._resample_deficit(survivors, to_drop)
+
+    def _drop_lowest_posterior(self, active: np.ndarray, count: int) -> np.ndarray:
+        source = self._get_posterior_like()
+        if source is None:
+            return self._sample_from_pool(active, count)
+
+        scores = source[active]
+        order = np.argsort(scores)
+        return active[order[:count]]
+
+    def _resample_deficit(self, survivors: np.ndarray, to_drop: np.ndarray) -> np.ndarray:
+        """Uniformly resample new hypotheses to maintain fixed size after dropping some."""
+        need = self.cfg.fixed_hypo_num - survivors.size
+        if need <= 0:
+            return np.sort(survivors)
+
+        available = self._exclude(self.full_indices, survivors)
+        if available.size < need:
+            available = np.unique(np.concatenate([available, to_drop]))
+
+        newcomers = self._sample_from_pool(available, need)
+        return np.sort(np.concatenate([survivors, newcomers]))
+
+    def _apply_mask(self) -> None:
+        """Apply the current active hypothesis mask."""
+        if self.active is None:
+            return
+        mask = np.zeros(self.total_hypo, dtype=float)
+        mask[self.active] = 1.0
+        self.engine.hypotheses_mask = mask
+
+    def _get_posterior_like(self) -> np.ndarray | None:
+        posterior = getattr(self.engine, "posterior", None)
+        prior = getattr(self.engine, "prior", None)
+
+        if posterior is not None and len(posterior) == self.total_hypo:
+            return np.asarray(posterior, dtype=float)
+        if prior is not None and len(prior) == self.total_hypo:
+            return np.asarray(prior, dtype=float)
+        return None
+
+    def _sample_from_pool(self, pool: Sequence[int] | np.ndarray, size: int) -> np.ndarray:
+        """Uniformly sample 'size' elements from 'pool' without replacement.
+        
+        Args:
+            pool: Sequence or array of integers to sample from.
+            size: Number of elements to sample.
         """
-        cluster init
-        """
-        new_hypos: Set[int] = set([])
-        numerical_amounts = []
-        hypo_choices = []
-        available_hypos = set(range(self.model.partition_model.length))
-        for amount, method in self.cluster_init_strategy:
-            numerical_amount = self.adaptive_amount_evalutator(
-                amount, **kwargs)
-            numerical_amount = max(0,
-                                   min(numerical_amount, len(available_hypos)))
-            numerical_amounts.append(numerical_amount)
+        if size <= 0:
+            return np.empty(0, dtype=int)
 
-            new_part = method(numerical_amount, available_hypos, **kwargs)
-            hypo_choices.append(new_part)
-            new_hypos |= set(new_part)
-            available_hypos -= set(new_part)
-        if len(new_hypos) == 0:
-            new_hypos = set(
-                np.random.choice(list(available_hypos),
-                                 size=1,
-                                 replace=False).tolist())
-            return list(new_hypos), {
-                k: (amt, ch)
-                for k, amt, ch in zip(self.init_strategy_name,
-                                    numerical_amounts, hypo_choices)
-            } | {
-                'random from available': (1, list(new_hypos))
-            }
-        else:
-            return list(new_hypos), {
-                k: (amt, ch)
-                for k, amt, ch in zip(self.init_strategy_name,
-                                    numerical_amounts, hypo_choices)
-            }
+        pool_array = np.asarray(pool, dtype=int)
+        if pool_array.size <= size:
+            shuffled = np.array(pool_array, copy=True)
+            self.rng.shuffle(shuffled)
+            return shuffled[:size]
 
-    def set_cluster_transition_strategy(
-        self,
-        strategy: List[Tuple[int, str | Callable]],
-        init_strategy: bool = False,
-    ):
-        """
-        Set cluster transition strategy
+        indices = self.rng.choice(pool_array.size, size=size, replace=False)
+        return pool_array[indices]
 
-        strategy: a list in terms of [(amount, method)]
-        """
+    def _exclude(self, pool: np.ndarray, used: np.ndarray) -> np.ndarray:
+        """Return elements in 'pool' that are not in 'used'."""
+        mask = ~np.isin(pool, used)
+        return pool[mask]
 
-        cluster_transition_strategy = []
-        strategy_name = []
-        for k_amount, k_strategy in strategy:
-            if isinstance(k_strategy, str):
-                if k_strategy not in strategy_name:
-                    strategy_name.append(k_strategy)
-                else:
-                    suffix = 1
-                    while f"{k_strategy}_{suffix}" in strategy_name:
-                        suffix += 1
-                    strategy_name.append(f"{k_strategy}_{suffix}")
-            else:
-                strategy_name.append(k_strategy.__name__)
-            match k_strategy:
-                case "stable":
-                    cluster_transition_strategy.append(
-                        (k_amount, self._cluster_strategy_stable))
-
-                case "top_posterior":
-                    cluster_transition_strategy.append(
-                        (k_amount, self._cluster_strategy_top_post))
-
-                case "random_posterior":
-                    cluster_transition_strategy.append(
-                        (k_amount, self._cluster_strategy_random_post))
-
-                case "random":
-                    cluster_transition_strategy.append(
-                        (k_amount, self._cluster_strategy_random))
-
-                case "ksimilar_centers":
-                    cluster_transition_strategy.append(
-                        (k_amount, self._cluster_strategy_ksimilar_centers))
-
-                case Callable() as method:
-                    cluster_transition_strategy.append((k_amount, method))
-
-                case _:
-                    raise Exception(
-                        f"Filtering method {method} is not a valid choice!")
-        if init_strategy:
-            self.cluster_init_strategy = cluster_transition_strategy
-            self.init_strategy_name = strategy_name
-        else:
-            self.cluster_transition_strategy = cluster_transition_strategy
-            self.strategy_name = strategy_name
