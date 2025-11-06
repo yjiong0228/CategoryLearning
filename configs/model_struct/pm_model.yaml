@@ -7,15 +7,11 @@ modules:
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.8, 
-      gamma: 0.8,
+      w0: 0.9, 
+      gamma: 0.7,
     }
   perception_mod:
     class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
-    kwargs: {
-      mean: 0.0, 
-      std: 0.05
-    }
 
 agenda:
   - perception_mod

@@ -139,17 +139,58 @@ class DualMemoryModule(BaseModule):
     def __init__(self, engine, **kwargs):
         super().__init__(engine, **kwargs)
         
-        self.state = kwargs.pop("default_state_init", {
+        self.engine.state = kwargs.pop("default_state_init", {
             "fade": None,
             "static": None
         })
+        self.state = self.engine.state
+
         self.gamma = kwargs.get("gamma", 0.9)
         self.w0 = kwargs.get("w0", 0.1)
+
+
+        ##### For parameter optimization #####
+        personal_memory_range = kwargs.get("personal_memory_range", {
+            "gamma": (0.05, 1.0),
+            "w0": (0.075, 0.15),
+        })
+        param_resolution = max(1, int(kwargs.get("param_resolution", 20)))
+
+        gamma_grid = kwargs.get("gamma_grid")
+        if gamma_grid is not None:
+            self.gamma_grid = np.asarray(gamma_grid, dtype=float)
+        else:
+            gamma_range = personal_memory_range.get("gamma", (0.05, 1.0))
+            gamma_start = float(gamma_range[0])
+            gamma_stop = float(gamma_range[1])
+            self.gamma_grid = np.linspace(gamma_start,
+                                          gamma_stop,
+                                          param_resolution,
+                                          endpoint=True)
+
+        w0_grid = kwargs.get("w0_grid")
+        if w0_grid is not None:
+            self.w0_grid = np.asarray(w0_grid, dtype=float)
+        else:
+            w0_range = personal_memory_range.get("w0", (0.075, 0.15))
+            upper = float(w0_range[1])
+            self.w0_grid = np.array(
+                [upper / (i + 1) for i in range(param_resolution)],
+                dtype=float,
+            )
+        ####################################
+
         # Ensure we always work with a numeric mask array
-        raw_mask = getattr(self.engine, "hypotheses_mask", None)
-        if raw_mask is None:
-            raise ValueError("Engine must have 'hypotheses_mask' attribute for DualMemoryModule.")
-        self.mask = np.asarray(raw_mask, dtype=float)
+        # Default to an all-one mask when the engine has not installed a hypothesis mask yet
+        mask = getattr(self.engine, "hypotheses_mask", None)
+        if mask is None:
+            set_size = int(getattr(self.engine, "set_size", 0))
+            if set_size <= 0:
+                raise ValueError("DualMemoryModule requires a positive engine set_size to initialise the mask.")
+            mask = np.ones(set_size, dtype=float)
+        self.mask = np.asarray(mask, dtype=float)
+        if np.sum(self.mask) <= 0:
+            self.mask = np.ones_like(self.mask, dtype=float)
         # state 初始化为 prior
         self.prior = getattr(engine, "prior", np.ones_like(self.mask) / np.sum(self.mask)).copy()
         for key in self.state:
@@ -190,40 +231,30 @@ class DualMemoryModule(BaseModule):
 
         likelihood = kwargs.get("likelihood", self.engine.likelihood)
 
-        self.state_transition()
+        new_mask = getattr(self.engine, "hypotheses_mask", None)
+        if new_mask is None:
+            new_mask = np.ones_like(self.mask, dtype=float)
+        self.mask = np.asarray(new_mask, dtype=float)
+        if np.sum(self.mask) <= 0:
+            self.mask = np.ones_like(self.mask, dtype=float)
         self.state_update(likelihood)
         
         log_posterior = self.w0 * self.state["fade"] + (1 - self.w0) * self.state["static"]
         posterior = self.translate_from_log(log_posterior, mask=self.mask)
         self.engine.posterior = posterior
 
-    def state_transition(self):
-        """
-        State transition from posterior_t to prior_{t+1}
-        ## mask applied here ##
-        """
-        old_mask_bool = np.asarray(self.mask, dtype=bool)
+    @property
+    def optimize_params_dict(self) -> Dict[str, np.ndarray]:
+        return {
+            "gamma": np.asarray(self.gamma_grid, dtype=float),
+            "w0": np.asarray(self.w0_grid, dtype=float),
+        }
 
-        new_mask_raw = getattr(self.engine, "hypotheses_mask", None)
-        if new_mask_raw is None:
-            raise ValueError("Engine must have 'hypotheses_mask' attribute for DualMemoryModule.")
-        new_mask = np.asarray(new_mask_raw, dtype=float)
-        new_mask_bool = new_mask.astype(bool)
+    @property
+    def params_dict(self) -> Dict[str, type]:
+        return {
+            "gamma": float,
+            "w0": float,
+        }
 
-        # 比对较旧的 mask 和当前的 mask，找出新增和移除的 hypotheses
-        added = np.logical_and(new_mask_bool, np.logical_not(old_mask_bool))
-        removed = np.logical_and(np.logical_not(new_mask_bool), old_mask_bool)
-        for key in self.state:
-            # 对于被移除的 hypotheses，设定为 log(0)
-            if np.any(removed):
-                self.state[key][removed] = -np.inf
-            # 对于留下的 hypotheses，其概率之和scale到 (留下总数/(留下+新增))
-            if np.any(removed) or np.any(added):
-                current_probs = self.translate_from_log(self.state[key], mask=new_mask)
-                scale_factor = np.sum(new_mask) / np.sum(old_mask_bool)
-                scaled_probs = current_probs * scale_factor
-                self.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
-            # 对于新增的 hypotheses，设定为平均值
-            if np.any(added):
-                self.state[key][added] = self.translate_to_log(np.ones(np.sum(added)) / np.sum(new_mask))
-        self.mask = new_mask
+

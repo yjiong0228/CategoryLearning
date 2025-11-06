@@ -143,7 +143,7 @@ class BaseEngine:
         self.prior = None
         self.posterior = None
         self.likelihood = None
-        self.h_state = None
+        self.state = None
         self.observation = None  # 记录当前观测
         self.partition = kwargs.get('partition', None) # FIXME: partition 这样写吗？
 

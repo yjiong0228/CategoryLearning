@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
-
-import numpy as np
+from ...utils import print
 
 from .base_module import BaseModule
-
+import numpy as np
 
 @dataclass
 class _Config:
@@ -20,9 +19,29 @@ class _Config:
 
 
 class FixedNumHypothesisModule(BaseModule):
-    """Maintains a fixed-size hypothesis mask with simple strategies."""
+    """
+    Maintains a fixed-size hypothesis mask with simple strategies.
+    
+    At each processing step, the module throws out a fixed number of hypotheses and resamples new ones.
+    """
+    upper_numerical_bound = 1e15
+    lower_numerical_bound = 1e-15
+    @staticmethod
+    def translate_from_log(log: np.ndarray, mask=None) -> np.ndarray:
+        log -= np.max(log)
+        exp = np.exp(log)
+        if mask is not None:
+            exp *= mask
+        return exp / np.sum(exp)
+    @staticmethod
+    def translate_to_log(exp: np.ndarray, mask=None) -> np.ndarray:
+        clipped = np.clip(exp, FixedNumHypothesisModule.lower_numerical_bound, FixedNumHypothesisModule.upper_numerical_bound)
+        if mask is not None:
+            clipped *= mask
+        return np.log(clipped)
 
     def __init__(self, engine, **kwargs):
+        """INITIALIZE BEFORE MEMORY MODULE"""
         super().__init__(engine, **kwargs)
 
         total_hypo = self.engine.set_size
@@ -43,11 +62,14 @@ class FixedNumHypothesisModule(BaseModule):
         self.full_indices = np.arange(total_hypo, dtype=int)
         self.rng = np.random.default_rng(cfg.random_seed)
         self.active: np.ndarray | None = None
+        self.old_active: np.ndarray | None = None
         self._init_mask()
+        self.debug = kwargs.get("hypothesis_debug", False)
 
     def process(self, **_: object) -> None:
         self._transition()
         self._apply_mask()
+        self._state_transition()
 
     def _init_mask(self) -> None:
         if self.cfg.init_strategy == "stable":
@@ -75,9 +97,13 @@ class FixedNumHypothesisModule(BaseModule):
             to_drop = self._drop_lowest_posterior(current, throw_count)
         else:
             raise ValueError(f"Unknown transition_mode: {self.cfg.transition_mode}")
-        print(to_drop)
+        
+        # DEBUG
+        if self.debug:
+            print("Hypotheses now:", current, "Dropping hypotheses:", to_drop, s=1)
 
         survivors = current[~np.isin(current, to_drop)]
+        self.old_active = self.active.copy()
         self.active = self._resample_deficit(survivors, to_drop)
 
     def _drop_lowest_posterior(self, active: np.ndarray, count: int) -> np.ndarray:
@@ -143,4 +169,35 @@ class FixedNumHypothesisModule(BaseModule):
         """Return elements in 'pool' that are not in 'used'."""
         mask = ~np.isin(pool, used)
         return pool[mask]
+    
+    def _state_transition(self):
+        """
+        State transition from posterior_t to prior_{t+1}
+        ## mask applied here ##
+        """
+        # 比对 old_active 和 active，找出 removed 和 added 的 hypotheses
+        if self.old_active is None:
+            return  # 初始时没有 old_active，跳过
+        old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
+        old_mask_bool[self.old_active] = True
+        new_mask = np.zeros(self.total_hypo, dtype=float)
+        new_mask[self.active] = 1.0
+        removed = old_mask_bool & (~new_mask.astype(bool))
+        added = (~old_mask_bool) & new_mask.astype(bool)
+        for key in self.engine.state:
+            # 对于被移除的 hypotheses，设定为 log(0)
+            if np.any(removed):
+                self.engine.state[key][removed] = -np.inf
+            # 对于留下的 hypotheses，其概率之和scale到 (留下总数/(留下+新增))
+            if np.any(removed) or np.any(added):
+                current_probs = self.translate_from_log(self.engine.state[key], mask=new_mask)
+                scale_factor = np.sum(new_mask) / np.sum(old_mask_bool)
+                scaled_probs = current_probs * scale_factor
+                self.engine.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
+            # 对于新增的 hypotheses，设定为平均值
+            if np.any(added):
+                self.engine.state[key][added] = self.translate_to_log(np.ones(np.sum(added)) / np.sum(new_mask))
+
+
+
 
