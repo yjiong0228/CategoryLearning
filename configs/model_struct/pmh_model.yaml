@@ -1,28 +1,24 @@
 modules:
   perception_mod:
     class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
-    kwargs: {
-      mean: 0.0, 
-      std: 0.05
-    }
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.FixedNumHypothesisModule'
     kwargs: {
-      fixed_hypo_num: 10,
+      fixed_hypo_num: 20,
       init_strategy: 'random',
       transition_mode: 'top_posterior',
-      throw_num: 1,
+      throw_num: 5,
     }
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {
-      beta: 5.
+      beta: 2.
     }
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.8, 
-      gamma: 0.8,
+      w0: 0.5, 
+      gamma: 0.9,
     }
 
 agenda:

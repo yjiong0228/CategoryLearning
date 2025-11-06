@@ -156,22 +156,66 @@ class BasePerception(BaseModule):
 # FIXME: 这里的 mean 和 std 都是从 module 外部传入的
 
 class PerceptionModule(BaseModule):
-    """
-    Perception Module
-    """
+    """Perception noise module with subject-specific parameters."""
 
     def __init__(self, engine, **kwargs):
-        """
-        Initialize
+        """Initialize the perception module.
 
-        Args:
-            model (BaseModelParams): Model parameters
-            **kwargs: Additional keyword arguments
+        Parameters
+        ----------
+        engine: BaseEngine
+            Hosting inference engine instance.
+        features: int, optional
+            Number of stimulus features (defaults to 4).
+        mean: Sequence[float] | dict | float, optional
+            Mean offsets for each feature. Scalars are broadcast, iterables are
+            coerced to numpy arrays, and dictionaries keyed by feature names or
+            indices are supported.
+        std: Sequence[float] | dict | float, optional
+            Standard deviations for each feature. Scalars are broadcast and
+            dictionaries mirror the behaviour described for ``mean``.
+        subject_id: int, optional
+            Stored for debugging/logging; it does not affect computations.
         """
+
         super().__init__(engine, **kwargs)
         self.features = kwargs.pop("features", 4)
-        self.mean = kwargs.pop("mean", np.zeros(self.features))
-        self.std = kwargs.pop("std", 0.1 * np.ones(self.features))
+        self.subject_id = kwargs.pop("subject_id", None)
+
+        self.mean = self._coerce_vector(kwargs.pop("mean", 0.0), "mean")
+        self.std = np.abs(
+            self._coerce_vector(kwargs.pop("std", 0.1), "std")
+        )
+
+    def _coerce_vector(self, value, name: str) -> np.ndarray:
+        """Convert incoming parameter to a feature-sized numpy array."""
+
+        if isinstance(value, (float, int)):
+            return np.full(self.features, float(value), dtype=float)
+
+        if isinstance(value, dict):
+            if all(k in value for k in range(self.features)):
+                ordered = [float(value[i]) for i in range(self.features)]
+                return np.asarray(ordered, dtype=float)
+            if all(k in value for k in ["neck", "head", "leg", "tail"]):
+                ordered = [
+                    float(value[key]) for key in ["neck", "head", "leg", "tail"]
+                ]
+                if len(ordered) != self.features:
+                    raise ValueError(
+                        f"Expected {self.features} feature entries for {name}"
+                    )
+                return np.asarray(ordered, dtype=float)
+            raise ValueError(
+                f"Unsupported dictionary format for parameter '{name}'"
+            )
+
+        array = np.asarray(value, dtype=float)
+        if array.ndim != 1 or array.shape[0] != self.features:
+            raise ValueError(
+                f"Parameter '{name}' must be a 1-D array of length {self.features}"
+            )
+        return np.nan_to_num(array, nan=0.0)
 
     def sample(self, stimu):
         """

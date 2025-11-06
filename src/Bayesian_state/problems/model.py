@@ -5,6 +5,7 @@ from abc import ABC
 from dataclasses import dataclass, make_dataclass, asdict
 from typing import Dict, Tuple, List, Callable, Optional
 from copy import deepcopy
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -15,6 +16,10 @@ from itertools import product
 from .base_problem import (BaseSet, BaseEngine, BaseLikelihood, BasePrior)
 from .partitions import Partition, BasePartition
 from ..utils import softmax, PATHS, BASE_CONFIG, MODEL_STRUCT, print
+from ..utils.perception_stats import (
+    get_perception_noise_stats,
+    PerceptionStatsError,
+)
 from ..utils.base import LOGGER
 
 print(MODEL_STRUCT, s=2)
@@ -349,33 +354,134 @@ class StateModel:
         """
         """
 
-        # initialize attributes
-        self.engine_config = engine_config
+        # Initialize attributes
+        self.engine_config = deepcopy(engine_config)
         self.all_centers = None
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
         self.condition = kwargs.get("condition", 1)
+        self.subject_id = kwargs.pop("subject_id", None)
+        processed_data_dir = kwargs.pop("processed_data_dir", None)
+        if processed_data_dir is None:
+            self.processed_data_dir = (
+                PATHS["root"].parent / "data" / "processed"
+            ).resolve()
+        else:
+            self.processed_data_dir = Path(processed_data_dir).resolve()
+
         n_dims = 4
         self.n_cats = 2 if self.condition == 1 else 4
 
         # Initialize partition
-        self.partition_model = kwargs.get("partition",
-                                          Partition(n_dims, self.n_cats))
+        self.partition_model = kwargs.get(
+            "partition", Partition(n_dims, self.n_cats))
         # Initialize hypotheses set (length = partition_model.length)
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
-        
-        # Initialize engine
-        for key, value in kwargs.items(): # Merge module_configs and **kwargs
-            if key in self.engine_config["modules"]:
+
+        # Merge module overrides provided via kwargs
+        for key, value in kwargs.items():
+            if key in self.engine_config.get("modules", {}):
                 self.engine_config["modules"][key].update(value)
+
+        self.perception_mean = None
+        self.perception_std = None
+        self._inject_perception_parameters()
+
         # initialize engine
-        self.engine = BaseEngine(self.engine_config["agenda"], hypotheses_set = self.hypotheses_set, partition=self.partition_model)
+        self.engine = BaseEngine(
+            self.engine_config["agenda"],
+            hypotheses_set=self.hypotheses_set,
+            partition=self.partition_model,
+        )
         # build modules for the engine
         self.engine.build_modules(self.engine_config["modules"])
-        
-        
+
+    def _inject_perception_parameters(self) -> None:
+        modules_cfg = self.engine_config.get("modules", {})
+        if not modules_cfg:
+            return
+
+        perception_modules = [
+            name for name, cfg in modules_cfg.items()
+            if self._is_perception_module(cfg.get("class"))
+        ]
+        if not perception_modules:
+            return
+
+        if self.subject_id is None:
+            raise ValueError(
+                "StateModel requires 'subject_id' when a perception module is configured."
+            )
+
+        try:
+            mean_map, std_map = get_perception_noise_stats(self.processed_data_dir)
+        except PerceptionStatsError as exc:
+            raise ValueError(
+                f"Failed to compute perception statistics from {self.processed_data_dir}"
+            ) from exc
+
+        if self.subject_id not in mean_map:
+            raise ValueError(
+                f"Subject {self.subject_id} does not exist in perception statistics"
+            )
+
+        mean_vector = mean_map[self.subject_id]
+        std_vector = std_map[self.subject_id]
+
+        self.perception_mean = mean_vector
+        self.perception_std = std_vector
+
+        mean_list = np.asarray(mean_vector, dtype=float).tolist()
+        std_list = np.asarray(std_vector, dtype=float).tolist()
+
+        for mod_name in perception_modules:
+            mod_cfg = modules_cfg[mod_name]
+            mod_kwargs = mod_cfg.setdefault("kwargs", {})
+
+            if not self._parameter_is_vector(mod_kwargs.get("mean")):
+                mod_kwargs["mean"] = mean_list
+            else:
+                mod_kwargs["mean"] = np.asarray(mod_kwargs["mean"], dtype=float).tolist()
+
+            if not self._parameter_is_vector(mod_kwargs.get("std")):
+                mod_kwargs["std"] = std_list
+            else:
+                mod_kwargs["std"] = np.asarray(mod_kwargs["std"], dtype=float).tolist()
+
+            mod_kwargs.setdefault("subject_id", self.subject_id)
+
+    @staticmethod
+    def _parameter_is_vector(value, size: int = 4) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, (float, int)):
+            return False
+        if isinstance(value, dict):
+            if all(isinstance(k, int) for k in value.keys()):
+                return all(k in value for k in range(size))
+            return all(k in value for k in ["neck", "head", "leg", "tail"])
+        try:
+            arr = np.asarray(value, dtype=float)
+        except Exception:
+            return False
+        return arr.ndim == 1 and arr.shape[0] == size
+
+    @staticmethod
+    def _is_perception_module(class_spec) -> bool:
+        if class_spec is None:
+            return False
+        if isinstance(class_spec, str):
+            return class_spec.split(".")[-1] == "PerceptionModule"
+        try:
+            from .modules.perception import PerceptionModule as _PerceptionModule  # pylint: disable=import-outside-toplevel
+        except ImportError:
+            return False
+        try:
+            return issubclass(class_spec, _PerceptionModule)
+        except TypeError:
+            return False
 
 
     def precompute_distances(self, stimulus: np.ndarray):
@@ -399,6 +505,8 @@ class StateModel:
     def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray], **kwargs):
         """
         """
+        # TODO: optimize w0, gamma in memory module
+        
         # load module kwargs
         mod_kwargs = kwargs.get("module_kwargs", {})
         # fit step by step
