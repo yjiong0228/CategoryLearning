@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from ..problems import StateModel
+# from ..problems import StateModel
 from ..utils.base import LOGGER
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
