@@ -310,6 +310,46 @@ class BasePartition(ABC):
         return self.calc_likelihood_entry(k, (x, c, r), beta)
 
 
+    # ======================================================================
+    # ========== (新方法) 基于原型的类别归属 =============================
+    # ======================================================================
+    def _get_category_assignments(self,
+                                  hypo: int,
+                                  stimuli: np.ndarray) -> np.ndarray:
+        """
+        为给定的刺激点, 找出在某个假设下, 它们各自归属的类别 (基于最近原型)。
+        
+        Parameters:
+        ----------
+        hypo: int
+            假设的索引。
+        stimuli: np.ndarray
+            形状为 [n_samples, n_dims] 的刺激点。
+
+        Returns:
+        -------
+        np.ndarray:
+            形状为 [n_samples] 的数组, 每个元素是该点所属的类别索引 (0 to n_cats-1)。
+        """
+        if hypo >= len(self.prototypes_np):
+            raise IndexError(f"Hypothesis index {hypo} out of bounds for prototypes_np with length {len(self.prototypes_np)}.")
+        
+        # partition shape = [n_protos, n_cats, n_dims]
+        partition = self.prototypes_np[hypo]  
+        
+        # euc_dist(partition, stimuli) -> shape [n_protos, n_cats, n_samples]
+        distances = euc_dist(partition, stimuli)
+        
+        # 找到每个点到每个类别的"最小"原型距离
+        # shape = [n_cats, n_samples]
+        typical_distances = np.min(distances, axis=0)
+        
+        # 找到每个点距离最近的类别
+        # shape = [n_samples]
+        assignments = np.argmin(typical_distances, axis=0)
+        
+        return assignments
+
 
 def signed_distance_to_category(x, cat_ineqs):
     """
@@ -344,6 +384,12 @@ class Partition(BasePartition):
         self.vertices: List[Tuple[float, float, float, float]] = []
 
         self.connectivity_map = self._compute_connectivity_map()
+
+        # ========== (新) 自动计算并存储相似性矩阵 ==========
+        # 允许用户通过 'similarity_n_samples' 指定采样点数, 否则默认为 100,000
+        n_samples = kwargs.get("similarity_n_samples", 100000)
+        self.similarity_matrix = self._compute_hypothesis_similarity_matrix(n_samples)
+        # ==================================================
 
     def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
         conn = {}
@@ -552,6 +598,44 @@ class Partition(BasePartition):
         likelihood = np.where(responses == 1, p_species,
                               np.where(responses == 0.5, fam_sum, p_wrong))
         return np.clip(likelihood, self.EPS, 1. - self.EPS)
+
+
+    def _compute_hypothesis_similarity_matrix(self, n_samples: int = 100000) -> np.ndarray:
+        """
+        使用蒙特卡洛积分计算所有假设(splits)之间的相似性矩阵。
+        在 __init__ 期间被调用一次, 结果存储在 self.similarity_matrix。
+        """
+        n_hypos = self.length
+        if n_hypos == 0:
+            return np.array([])
+
+        print(f"Initializing Partition: Calculating similarity matrix for {n_hypos} hypotheses using {n_samples} samples...")
+
+        # 1. 在 [0, 1]^n_dims 空间中均匀采样 N 个点
+        X_samples = np.random.rand(n_samples, self.n_dims)
+
+        # 2. 缓存所有假设对这些点的分类结果
+        all_assignments = np.zeros((n_hypos, n_samples), dtype=int)
+        
+        for h in range(n_hypos):
+            # 调用在 BasePartition 中定义的辅助方法
+            all_assignments[h] = self._get_category_assignments(h, X_samples)
+
+        # 3. 计算相似性矩阵
+        sim_matrix = np.zeros((n_hypos, n_hypos))
+
+        for i in range(n_hypos):
+            sim_matrix[i, i] = 1.0  # 与自身的相似度为1
+            for j in range(i + 1, n_hypos):
+                # 计算两个假设分类结果一致的点的比例
+                n_agree = np.sum(all_assignments[i] == all_assignments[j])
+                similarity = n_agree / n_samples
+                
+                sim_matrix[i, j] = similarity
+                sim_matrix[j, i] = similarity # 矩阵是对称的
+
+        print("Similarity matrix calculation complete.")
+        return sim_matrix
 
 
     # ======================================================================
