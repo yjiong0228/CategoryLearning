@@ -357,6 +357,7 @@ class StateModel:
         # Initialize attributes
         self.engine_config = deepcopy(engine_config)
         self.all_centers = None
+        self.data = None
         self.hypotheses_set = BaseSet([])
         self.observation_set = BaseSet([])
 
@@ -502,7 +503,7 @@ class StateModel:
 
 
 
-    def fit_step_by_step(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray], **kwargs):
+    def fit_step_by_step(self, data: List | np.ndarray, **kwargs):
         """
         """
         # TODO: optimize w0, gamma in memory module
@@ -1406,4 +1407,4 @@ class StandardModel(BaseModel):
                     step_results[-1]['init_amount'] = init_strategy_amounts
 
         return step_results
-    
+

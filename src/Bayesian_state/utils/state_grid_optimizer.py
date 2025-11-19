@@ -7,10 +7,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+
+
 import numpy as np
 import pandas as pd
 
-# from ..problems import StateModel
+from ..problems.model import StateModel
 from ..utils.base import LOGGER
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -47,10 +49,11 @@ def _compute_prediction_metrics(
     choices: np.ndarray,
     feedback: np.ndarray,
     categories: np.ndarray,
-    gamma: float,
-    w0: float,
     window_size: int,
 ) -> Dict[str, np.ndarray | float]:
+    # Memory weighting is assumed to be embedded in the posterior trajectory
+    # produced during fitting, so we evaluate predictions without reapplying
+    # (gamma, w0) here.
     partition = model.partition_model
     hypotheses = list(model.hypotheses_set)
     beta_param = float(
@@ -92,8 +95,6 @@ def _compute_prediction_metrics(
                 trial_slice,
                 beta_param,
                 use_cached_dist=True,
-                gamma=gamma,
-                w0=w0,
             )
             weighted_prob += weight * float(np.ravel(lik)[0])
 
@@ -308,8 +309,6 @@ class StateModelGridOptimizer:
             choices,
             feedback,
             categories,
-            gamma,
-            w0,
             window_size,
         )
 
