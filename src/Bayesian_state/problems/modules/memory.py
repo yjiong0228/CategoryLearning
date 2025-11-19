@@ -203,6 +203,7 @@ class DualMemoryModule(BaseModule):
         exp = np.exp(log)
         if mask is not None:
             exp *= mask
+        # 归一化
         return exp / np.sum(exp)
 
     @staticmethod
@@ -212,6 +213,46 @@ class DualMemoryModule(BaseModule):
             clipped *= mask
         return np.log(clipped)
 
+    def _state_transition(self, new_mask: np.ndarray) -> None:
+        """
+        State transition from posterior_t to prior_{t+1}
+        """
+        old_mask_bool = self.mask.astype(bool)
+        new_mask_bool = new_mask.astype(bool)
+        
+        # If masks are identical, no transition needed
+        if np.array_equal(old_mask_bool, new_mask_bool):
+            return
+
+        removed = old_mask_bool & (~new_mask_bool)
+        added = (~old_mask_bool) & new_mask_bool
+        
+        for key in self.state:
+            # For removed hypotheses, set to log(0) -> -inf
+            if np.any(removed):
+                self.state[key][removed] = -np.inf
+            
+            # For surviving hypotheses, scale probabilities
+            if np.any(removed) or np.any(added):
+                # translate_from_log normalizes the exp(log) * mask
+                # Since added are likely -inf in current state, this normalizes survivors to sum to 1
+                current_probs = self.translate_from_log(self.state[key], mask=new_mask)
+                
+                n_new = np.sum(new_mask)
+                n_old = np.sum(old_mask_bool)
+                scale_factor = n_new / n_old if n_old > 0 else 1.0
+                
+                scaled_probs = current_probs * scale_factor
+                self.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
+            
+            # For added hypotheses, set to uniform 1/N_new
+            if np.any(added):
+                n_new = np.sum(new_mask)
+                added_count = np.sum(added)
+                if n_new > 0:
+                    uniform_val = np.ones(added_count) / n_new
+                    self.state[key][added] = self.translate_to_log(uniform_val)
+
     def state_update(self, likelihood):
         """
         Update the memory state with new observation likelihoods
@@ -219,6 +260,7 @@ class DualMemoryModule(BaseModule):
         Args:
             likelihood (np.ndarray): Likelihoods of the new observation for each hypothesis
         """
+        # TODO: 归一化
         if "fade" in self.state:
             self.state["fade"] = self.state["fade"] * self.gamma + self.translate_to_log(likelihood, mask=self.mask)
         if "static" in self.state:
@@ -234,12 +276,16 @@ class DualMemoryModule(BaseModule):
         new_mask = getattr(self.engine, "hypotheses_mask", None)
         if new_mask is None:
             new_mask = np.ones_like(self.mask, dtype=float)
+        
+        # Perform state transition before updating mask and state
+        self._state_transition(np.asarray(new_mask, dtype=float))
+
         self.mask = np.asarray(new_mask, dtype=float)
         if np.sum(self.mask) <= 0:
             self.mask = np.ones_like(self.mask, dtype=float)
         self.state_update(likelihood)
         
-        log_posterior = self.w0 * self.state["fade"] + (1 - self.w0) * self.state["static"]
+        log_posterior = self.w0 * self.state["static"] + (1 - self.w0) * self.state["fade"]
         posterior = self.translate_from_log(log_posterior, mask=self.mask)
         self.engine.posterior = posterior
 
@@ -256,5 +302,3 @@ class DualMemoryModule(BaseModule):
             "gamma": float,
             "w0": float,
         }
-
-

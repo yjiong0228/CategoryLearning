@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, List, Dict, Set, Any, Tuple
 from ...utils import print
 
 from .base_module import BaseModule
@@ -69,7 +69,7 @@ class FixedNumHypothesisModule(BaseModule):
     def process(self, **_: object) -> None:
         self._transition()
         self._apply_mask()
-        self._state_transition()
+        # self._state_transition() # Moved to memory module
 
     def _init_mask(self) -> None:
         if self.cfg.init_strategy == "stable":
@@ -169,34 +169,214 @@ class FixedNumHypothesisModule(BaseModule):
         """Return elements in 'pool' that are not in 'used'."""
         mask = ~np.isin(pool, used)
         return pool[mask]
+
+# TODO: Requires testing
+class DynamicHypothesisModule(BaseModule):
+    """
+    Maintains a dynamic-size hypothesis mask based on entropy and other strategies.
     
-    def _state_transition(self):
-        """
-        State transition from posterior_t to prior_{t+1}
-        ## mask applied here ##
-        """
-        # 比对 old_active 和 active，找出 removed 和 added 的 hypotheses
-        if self.old_active is None:
-            return  # 初始时没有 old_active，跳过
-        old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
-        old_mask_bool[self.old_active] = True
-        new_mask = np.zeros(self.total_hypo, dtype=float)
-        new_mask[self.active] = 1.0
-        removed = old_mask_bool & (~new_mask.astype(bool))
-        added = (~old_mask_bool) & new_mask.astype(bool)
-        for key in self.engine.state:
-            # 对于被移除的 hypotheses，设定为 log(0)
-            if np.any(removed):
-                self.engine.state[key][removed] = -np.inf
-            # 对于留下的 hypotheses，其概率之和scale到 (留下总数/(留下+新增))
-            if np.any(removed) or np.any(added):
-                current_probs = self.translate_from_log(self.engine.state[key], mask=new_mask)
-                scale_factor = np.sum(new_mask) / np.sum(old_mask_bool)
-                scaled_probs = current_probs * scale_factor
-                self.engine.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
-            # 对于新增的 hypotheses，设定为平均值
-            if np.any(added):
-                self.engine.state[key][added] = self.translate_to_log(np.ones(np.sum(added)) / np.sum(new_mask))
+    This module allows for a variable number of hypotheses to be active at any given time,
+    determined by strategies such as posterior entropy.
+    """
+    def __init__(self, engine, **kwargs):
+        """INITIALIZE BEFORE MEMORY MODULE"""
+        super().__init__(engine, **kwargs)
+
+        self.total_hypo = self.engine.set_size
+        self.full_indices = np.arange(self.total_hypo, dtype=int)
+        self.rng = np.random.default_rng(kwargs.get("random_seed", None))
+        
+        # Config: strategies is a list of dicts
+        # Example: [{"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7}, ...]
+        self.strategies = kwargs.get("strategies", [
+            {"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7},
+            {"amount": "fixed", "method": "random", "value": 1}
+        ])
+        self.init_num = int(kwargs.get("init_num", 5))
+        
+        self.active: np.ndarray | None = None
+        self.old_active: np.ndarray | None = None
+        self._init_mask()
+        self.debug = kwargs.get("hypothesis_debug", False)
+
+    def process(self, **_: object) -> None:
+        self._transition()
+        self._apply_mask()
+
+    def _init_mask(self) -> None:
+        # Simple random init
+        selection = self._sample_from_pool(self.full_indices, self.init_num)
+        self.active = np.sort(np.array(selection, dtype=int))
+        self._apply_mask()
+
+    def _transition(self) -> None:
+        self.old_active = self.active.copy() if self.active is not None else None
+        
+        posterior = self._get_posterior_like()
+        # If posterior is None (e.g. first step), use uniform
+        if posterior is None:
+            posterior = np.ones(self.total_hypo) / self.total_hypo
+
+        new_active_set = set()
+        
+        for strat in self.strategies:
+            amount_type = strat.get("amount", "fixed")
+            method_type = strat.get("method", "random")
+            
+            # 1. Calculate Amount
+            count = 0
+            if amount_type == "fixed":
+                count = int(strat.get("value", 1))
+            elif amount_type == "entropy":
+                min_n = int(strat.get("min", 1))
+                max_n = int(strat.get("max", 5))
+                count = self._calc_amount_entropy(posterior, min_n, max_n)
+            
+            # 2. Select
+            if count > 0:
+                selected = self._select_hypotheses(method_type, count, posterior, exclude=new_active_set)
+                new_active_set.update(selected)
+        
+        if not new_active_set:
+            # Fallback if empty
+            new_active_set.update(self._sample_from_pool(self.full_indices, 1))
+
+        self.active = np.sort(list(new_active_set))
+        if self.debug:
+            print(f"DynamicHypothesis: {len(self.old_active) if self.old_active is not None else 0} -> {len(self.active)} hypos")
+
+    def _calc_amount_entropy(self, posterior: np.ndarray, min_n: int, max_n: int) -> int:
+        # Calculate entropy of the ACTIVE hypotheses
+        if self.active is None:
+            return max_n
+            
+        # Extract posterior of currently active hypotheses
+        active_post = posterior[self.active]
+        # Normalize
+        if active_post.sum() == 0:
+            return max_n
+        p = active_post / active_post.sum()
+        
+        # Entropy
+        # H = -sum(p * log(p))
+        # Avoid log(0)
+        p = p[p > 0]
+        ent = -np.sum(p * np.log(p))
+        
+        # Max possible entropy for N items is log(N)
+        max_ent = np.log(len(self.active)) if len(self.active) > 1 else 1.0
+        norm_ent = ent / max_ent
+        
+        # Map norm_ent [0, 1] to [min_n, max_n]
+        # High entropy (uncertain) -> More hypotheses
+        scaled = min_n + (max_n - min_n) * norm_ent
+        return int(np.round(scaled))
+
+    def _select_hypotheses(self, method: str, count: int, posterior: np.ndarray, exclude: Set[int]) -> List[int]:
+        if count <= 0:
+            return []
+            
+        if method == "top_posterior":
+            # Select from currently active ones based on posterior
+            if self.active is None:
+                return []
+            
+            # Filter out already selected
+            candidates = [x for x in self.active if x not in exclude]
+            if not candidates:
+                return []
+                
+            cand_indices = np.array(candidates)
+            scores = posterior[cand_indices]
+            
+            # Top K
+            if len(scores) <= count:
+                return candidates
+            
+            top_args = np.argsort(scores)[-count:]
+            return cand_indices[top_args].tolist()
+
+        elif method == "random":
+            # Select from ALL available (exploration)
+            # Exclude 'exclude' set
+            pool = self._exclude(self.full_indices, np.array(list(exclude)))
+            return self._sample_from_pool(pool, count).tolist()
+            
+        elif method == "random_posterior":
+             # Softmax sampling from active
+            if self.active is None:
+                return []
+            candidates = [x for x in self.active if x not in exclude]
+            if not candidates:
+                return []
+            
+            cand_indices = np.array(candidates)
+            scores = posterior[cand_indices]
+            if scores.sum() == 0:
+                probs = None
+            else:
+                probs = scores / scores.sum()
+                
+            return self.rng.choice(cand_indices, size=min(count, len(cand_indices)), replace=False, p=probs).tolist()
+
+        return []
+
+    def _apply_mask(self) -> None:
+        if self.active is None:
+            return
+        mask = np.zeros(self.total_hypo, dtype=float)
+        mask[self.active] = 1.0
+        self.engine.hypotheses_mask = mask
+
+    def _get_posterior_like(self) -> np.ndarray | None:
+        posterior = getattr(self.engine, "posterior", None)
+        prior = getattr(self.engine, "prior", None)
+
+        if posterior is not None and len(posterior) == self.total_hypo:
+            return np.asarray(posterior, dtype=float)
+        if prior is not None and len(prior) == self.total_hypo:
+            return np.asarray(prior, dtype=float)
+        return None
+
+    def _sample_from_pool(self, pool: Sequence[int] | np.ndarray, size: int) -> np.ndarray:
+        if size <= 0: return np.empty(0, dtype=int)
+        pool_array = np.asarray(pool, dtype=int)
+        if pool_array.size <= size: return pool_array
+        indices = self.rng.choice(pool_array.size, size=size, replace=False)
+        return pool_array[indices]
+
+    def _exclude(self, pool: np.ndarray, used: np.ndarray) -> np.ndarray:
+        mask = ~np.isin(pool, used)
+        return pool[mask]
+    
+    # def _state_transition(self):
+    #     # FIXME: 交给memory做
+    #     """
+    #     State transition from posterior_t to prior_{t+1}
+    #     ## mask applied here ##
+    #     """
+    #     # 比对 old_active 和 active，找出 removed 和 added 的 hypotheses
+    #     if self.old_active is None:
+    #         return  # 初始时没有 old_active，跳过
+    #     old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
+    #     old_mask_bool[self.old_active] = True
+    #     new_mask = np.zeros(self.total_hypo, dtype=float)
+    #     new_mask[self.active] = 1.0
+    #     removed = old_mask_bool & (~new_mask.astype(bool))
+    #     added = (~old_mask_bool) & new_mask.astype(bool)
+    #     for key in self.engine.state:
+    #         # 对于被移除的 hypotheses，设定为 log(0)
+    #         if np.any(removed):
+    #             self.engine.state[key][removed] = -np.inf
+    #         # 对于留下的 hypotheses，其概率之和scale到 (留下总数/(留下+新增))
+    #         if np.any(removed) or np.any(added):
+    #             current_probs = self.translate_from_log(self.engine.state[key], mask=new_mask)
+    #             scale_factor = np.sum(new_mask) / np.sum(old_mask_bool)
+    #             scaled_probs = current_probs * scale_factor
+    #             self.engine.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
+    #         # 对于新增的 hypotheses，设定为平均值
+    #         if np.any(added):
+    #             self.engine.state[key][added] = self.translate_to_log(np.ones(np.sum(added)) / np.sum(new_mask))
 
 
 
