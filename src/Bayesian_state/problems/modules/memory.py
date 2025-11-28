@@ -216,6 +216,7 @@ class DualMemoryModule(BaseModule):
     def _state_transition(self, new_mask: np.ndarray) -> None:
         """
         State transition from posterior_t to prior_{t+1}
+        Adjusts state so that exp(w0*static + (1-w0)*fade) is proportional to engine.prior
         """
         old_mask_bool = self.mask.astype(bool)
         new_mask_bool = new_mask.astype(bool)
@@ -223,35 +224,52 @@ class DualMemoryModule(BaseModule):
         # If masks are identical, no transition needed
         if np.array_equal(old_mask_bool, new_mask_bool):
             return
+        # Get the new prior (prior_{t+1}) from engine
+        prior_new = getattr(self.engine, "prior", None)
+        if prior_new is None:
+            # Fallback: uniform on new mask
+            n_new = np.sum(new_mask)
+            prior_new = np.zeros_like(new_mask)
+            if n_new > 0:
+                prior_new[new_mask_bool] = 1.0 / n_new
+        # Target log probability
+        target_log = self.translate_to_log(prior_new, mask=new_mask)
 
-        removed = old_mask_bool & (~new_mask_bool)
-        added = (~old_mask_bool) & new_mask_bool
-        
+        # Masks
+        added_mask = new_mask_bool & (~old_mask_bool)
+        survivor_mask = new_mask_bool & old_mask_bool
+        removed_mask = old_mask_bool & (~new_mask_bool)
+
+        # Removed Hypotheses -> -inf
         for key in self.state:
-            # For removed hypotheses, set to log(0) -> -inf
-            if np.any(removed):
-                self.state[key][removed] = -np.inf
+            if np.any(removed_mask):
+                self.state[key][removed_mask] = -np.inf
+
+        # Calculate shift from survivors to align new hypotheses' scale
+        shift = 0.0
+        if np.any(survivor_mask):
+            s_static = self.state.get("static")
+            s_fade = self.state.get("fade")
             
-            # For surviving hypotheses, scale probabilities
-            if np.any(removed) or np.any(added):
-                # translate_from_log normalizes the exp(log) * mask
-                # Since added are likely -inf in current state, this normalizes survivors to sum to 1
-                current_probs = self.translate_from_log(self.state[key], mask=new_mask)
-                
-                n_new = np.sum(new_mask)
-                n_old = np.sum(old_mask_bool)
-                scale_factor = n_new / n_old if n_old > 0 else 1.0
-                
-                scaled_probs = current_probs * scale_factor
-                self.state[key] = self.translate_to_log(scaled_probs, mask=new_mask)
-            
-            # For added hypotheses, set to uniform 1/N_new
-            if np.any(added):
-                n_new = np.sum(new_mask)
-                added_count = np.sum(added)
-                if n_new > 0:
-                    uniform_val = np.ones(added_count) / n_new
-                    self.state[key][added] = self.translate_to_log(uniform_val)
+            if s_static is not None and s_fade is not None:
+                current_combined = self.w0 * s_static + (1 - self.w0) * s_fade
+            elif s_static is not None:
+                current_combined = s_static
+            elif s_fade is not None:
+                current_combined = s_fade
+            else:
+                current_combined = np.zeros_like(target_log)
+
+            # shift = mean(state[survivors] - target_log[survivors])
+            diffs = current_combined[survivor_mask] - target_log[survivor_mask]
+            shift = np.mean(diffs)
+
+        # Added Hypotheses -> static = fade = log(prior) + shift
+        if np.any(added_mask):
+            for key in self.state:
+                self.state[key][added_mask] = target_log[added_mask] + shift
+
+
 
     def state_update(self, likelihood):
         """

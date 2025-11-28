@@ -69,7 +69,7 @@ class FixedNumHypothesisModule(BaseModule):
     def process(self, **_: object) -> None:
         self._transition()
         self._apply_mask()
-        # self._state_transition() # Moved to memory module
+        self._posterior_to_prior_transition()
 
     def _init_mask(self) -> None:
         if self.cfg.init_strategy == "stable":
@@ -169,6 +169,91 @@ class FixedNumHypothesisModule(BaseModule):
         """Return elements in 'pool' that are not in 'used'."""
         mask = ~np.isin(pool, used)
         return pool[mask]
+    
+    def _posterior_to_prior_transition(self):
+        """
+        Update engine.prior based on the transition from old_active to active hypotheses.
+        Uses similarity-weighted sum of old posteriors to initialize new hypotheses.
+        """
+        if self.old_active is None or self.active is None:
+            return
+
+        # Get current posterior (from previous step)
+        # If posterior is not available, fallback to prior or uniform
+        current_posterior = self.engine.posterior.copy() if hasattr(self.engine, "posterior") else None
+        if current_posterior is None:
+            # If no posterior, just ensure prior is uniform on active set
+            mask = np.zeros(self.total_hypo, dtype=float)
+            mask[self.active] = 1.0
+            self.engine.prior = mask / mask.sum()
+            return
+
+        # Create boolean masks
+        old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
+        old_mask_bool[self.old_active] = True
+        
+        new_mask_bool = np.zeros(self.total_hypo, dtype=bool)
+        new_mask_bool[self.active] = True
+
+        # Identify added hypotheses
+        added_mask = new_mask_bool & (~old_mask_bool)
+        added_indices = np.where(added_mask)[0]
+        old_indices = self.old_active
+
+        # Initialize new prior with current posterior
+        new_prior = current_posterior.copy()
+
+        
+        if np.any(old_mask_bool & new_mask_bool): # at least one survivor
+            # Get similarity matrix
+            partition = getattr(self.engine, "partition", None)
+            similarity_matrix = getattr(partition, "similarity_matrix", None)
+
+            # Calculate prior for ADDED hypotheses based on similarity
+            if np.any(added_mask) and similarity_matrix is not None:
+                # S[added, old]
+                sim_sub = similarity_matrix[np.ix_(added_indices, old_indices)]
+                
+                # Normalize rows to sum to 1 (weights)
+                row_sums = sim_sub.sum(axis=1, keepdims=True)
+                # Avoid division by zero
+                row_sums[row_sums == 0] = 1.0 
+                weights = sim_sub / row_sums
+                
+                # Weighted sum of old posteriors (normalized on old active set)
+                old_probs_active = current_posterior[old_indices]
+                # Ensure old probs sum to 1 for correct weighting (though they should be close)
+                if old_probs_active.sum() > 0:
+                    old_probs_active /= old_probs_active.sum()
+                
+                added_probs = weights @ old_probs_active
+                new_prior[added_indices] = added_probs
+            elif np.any(added_mask):
+                # Fallback if no similarity matrix: uniform distribution for added
+                # This is a rough heuristic; ideally similarity should be used.
+                # We set them to average of survivors or just uniform 1/N
+                new_prior[added_indices] = 1.0 / len(self.active)
+
+            # Apply new mask (sets removed to 0)
+            new_mask_float = new_mask_bool.astype(float)
+            new_prior *= new_mask_float
+            
+            # Normalize on new active set
+            total_prob = new_prior.sum()
+            if total_prob > 0:
+                new_prior /= total_prob
+            else:
+                # Fallback: uniform on new mask
+                new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
+        else:
+            # No survivors, uniform on new active set
+            new_prior = np.zeros(self.total_hypo, dtype=float)
+            new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
+
+        # Update engine.prior
+        self.engine.prior = new_prior
+
+
 
 # TODO: Requires testing
 class DynamicHypothesisModule(BaseModule):
