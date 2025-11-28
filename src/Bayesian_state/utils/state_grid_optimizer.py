@@ -5,14 +5,13 @@ from dataclasses import dataclass
 from itertools import product
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
-
-
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from ..problems.model import StateModel
+if TYPE_CHECKING:
+    from ..problems.model import StateModel
 from ..utils.base import LOGGER
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -292,6 +291,7 @@ class StateModelGridOptimizer:
         kwargs = memory_cfg.setdefault("kwargs", {})
         kwargs.update({"gamma": gamma, "w0": w0})
 
+        from ..problems.model import StateModel
         model = StateModel(
             engine_config,
             condition=condition,
