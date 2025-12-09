@@ -1,32 +1,45 @@
 """Grid search utilities for tuning StateModel memory parameters."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Any, Union
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
+from tqdm import tqdm
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..problems.model import StateModel
+    from ..problems import StateModel
 from ..utils.base import LOGGER
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_PATH = _REPO_ROOT / "data" / "processed" / "Task2_processed.csv"
 
 
-@dataclass(slots=True)
+@dataclass
 class GridPointResult:
-    """Container for a single (gamma, w0) evaluation."""
-
-    gamma: float
-    w0: float
+    """Container for a single parameter combination evaluation."""
+    
+    params: Dict[str, Any]
     mean_error: float
     metrics: Dict[str, np.ndarray | float]
     posterior_log: Sequence[np.ndarray]
+    n_repeats: int = 1
+    std_error: float = 0.0
+
+    @property
+    def gamma(self) -> float:
+        return self.params.get("gamma", float("nan"))
+
+    @property
+    def w0(self) -> float:
+        return self.params.get("w0", float("nan"))
 
 
 def _prepare_trial_sequence(
@@ -55,11 +68,12 @@ def _compute_prediction_metrics(
     # (gamma, w0) here.
     partition = model.partition_model
     hypotheses = list(model.hypotheses_set)
-    beta_param = float(
-        getattr(model.engine, "likelihood_mod", None).kwargs.get("beta", 10.0)
-        if hasattr(model.engine, "likelihood_mod")
-        else 10.0
-    )
+    
+    # Try to find beta in likelihood_mod, default to 10.0
+    beta_param = 10.0
+    if hasattr(model.engine, "likelihood_mod"):
+        lik_mod = getattr(model.engine, "likelihood_mod")
+        beta_param = float(lik_mod.kwargs.get("beta", 10.0))
 
     post_arr = np.asarray(posterior_log, dtype=float)
     if post_arr.ndim == 1:
@@ -132,13 +146,86 @@ def _compute_prediction_metrics(
     }
 
 
+def _inject_params(config: Dict, params: Dict[str, Any]) -> None:
+    """
+    Inject parameters into the configuration dictionary.
+    Supports dot notation (e.g. 'modules.memory_mod.kwargs.gamma')
+    and shortcuts for common parameters.
+    """
+    shortcuts = {
+        "gamma": "modules.memory_mod.kwargs.gamma",
+        "w0": "modules.memory_mod.kwargs.w0",
+        "beta": "modules.likelihood_mod.kwargs.beta",
+    }
+
+    def set_by_path(root: Dict, path: str, value: Any):
+        parts = path.split(".")
+        curr = root
+        for part in parts[:-1]:
+            curr = curr.setdefault(part, {})
+        curr[parts[-1]] = value
+
+    for key, value in params.items():
+        path = shortcuts.get(key, key)
+        set_by_path(config, path, value)
+
+
+def _evaluate_single_run(
+    subject_id: int,
+    condition: int,
+    arrays: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    params: Dict[str, Any],
+    engine_config_template: Dict,
+    processed_data_dir: Path,
+    window_size: int,
+) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray]]:
+    """
+    Worker function to evaluate a single parameter combination.
+    """
+    stimulus, choices, feedback, categories = arrays
+    trial_sequence = _prepare_trial_sequence(stimulus, choices, feedback)
+
+    # Prepare config
+    engine_config = deepcopy(engine_config_template)
+    _inject_params(engine_config, params)
+
+    # Initialize model
+    from ..problems import StateModel
+    model = StateModel(
+        engine_config,
+        condition=condition,
+        subject_id=subject_id,
+        processed_data_dir=processed_data_dir,
+    )
+
+    # Run model
+    model.precompute_distances(stimulus)
+    posterior_log = model.fit_step_by_step(trial_sequence)
+
+    # Compute metrics
+    metrics = _compute_prediction_metrics(
+        model,
+        posterior_log,
+        stimulus,
+        choices,
+        feedback,
+        categories,
+        window_size,
+    )
+    
+    return params, float(metrics["mean_error"]), metrics, posterior_log
+
+
 class StateModelGridOptimizer:
-    """Grid-search helper for StateModel memory parameters."""
+    """
+    Grid-search helper for StateModel parameters with parallel execution support.
+    """
 
     def __init__(
         self,
         engine_config: Dict,
         processed_data_dir: Optional[Path | str] = None,
+        n_jobs: int = 1,
     ) -> None:
         self._engine_config_template = deepcopy(engine_config)
         self._processed_data_dir = (
@@ -147,6 +234,7 @@ class StateModelGridOptimizer:
             else _REPO_ROOT / "data" / "processed"
         )
         self.learning_data: Optional[pd.DataFrame] = None
+        self.n_jobs = n_jobs
 
     def prepare_data(self, data_path: Path | str = DEFAULT_DATA_PATH) -> None:
         data_path = Path(data_path).resolve()
@@ -170,7 +258,161 @@ class StateModelGridOptimizer:
         stop_index = max(1, int(len(subject_frame) * stop_at + 0.5))
         return subject_frame.iloc[:stop_index].copy()
 
+    def _extract_arrays(
+        self,
+        subject_frame: pd.DataFrame,
+        max_trials: Optional[int],
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        stimulus = subject_frame[["feature1", "feature2", "feature3", "feature4"]].to_numpy(dtype=float)
+        choices = subject_frame["choice"].to_numpy(dtype=int)
+        feedback = subject_frame["feedback"].to_numpy(dtype=float)
+        categories = subject_frame["category"].to_numpy(dtype=int)
+
+        if max_trials is not None:
+            usable = min(max_trials, stimulus.shape[0])
+            stimulus = stimulus[:usable]
+            choices = choices[:usable]
+            feedback = feedback[:usable]
+            categories = categories[:usable]
+
+        return stimulus, choices, feedback, categories
+
+    def optimize_subject(
+        self,
+        subject_id: int,
+        param_grid: Dict[str, Sequence[Any]],
+        n_repeats: int = 1,
+        window_size: int = 16,
+        stop_at: float = 1.0,
+        max_trials: Optional[int] = None,
+    ) -> Dict[str, object]:
+        """
+        Optimize parameters for a single subject using parallel grid search.
+        
+        Args:
+            subject_id: The subject ID to optimize for.
+            param_grid: Dictionary mapping parameter names to lists of values.
+                        Supports dot notation (e.g. 'modules.memory_mod.kwargs.gamma')
+                        and shortcuts ('gamma', 'w0', 'beta').
+            n_repeats: Number of times to repeat each parameter combination (for stochastic models).
+            window_size: Sliding window size for error calculation.
+            stop_at: Fraction of data to use (0.0 to 1.0).
+            max_trials: Maximum number of trials to use (overrides stop_at if set).
+        """
+        subject_frame = self._get_subject_frame(subject_id, stop_at)
+        condition = int(subject_frame["condition"].iloc[0])
+        arrays = self._extract_arrays(subject_frame, max_trials)
+
+        # Generate all parameter combinations
+        param_names = list(param_grid.keys())
+        param_values = list(param_grid.values())
+        combinations = list(product(*param_values))
+        
+        # Create tasks: (params, repeat_idx)
+        tasks = []
+        for combo in combinations:
+            params = dict(zip(param_names, combo))
+            for _ in range(n_repeats):
+                tasks.append(params)
+
+        LOGGER.info(
+            f"Optimizing subject {subject_id}: {len(combinations)} combos * {n_repeats} repeats = {len(tasks)} tasks"
+        )
+
+        # Run parallel execution
+        results = Parallel(n_jobs=self.n_jobs)(
+            delayed(_evaluate_single_run)(
+                subject_id,
+                condition,
+                arrays,
+                params,
+                self._engine_config_template,
+                self._processed_data_dir,
+                window_size
+            )
+            for params in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
+        )
+
+        # Aggregate results
+        grouped_results = defaultdict(list)
+        for params, error, metrics, posterior_log in results:
+            # Create a hashable key for the parameters
+            param_key = tuple(sorted(params.items()))
+            grouped_results[param_key].append((error, metrics, posterior_log))
+
+        final_grid_results: List[GridPointResult] = []
+        
+        for param_key, runs in grouped_results.items():
+            params = dict(param_key)
+            errors = [r[0] for r in runs]
+            mean_error = float(np.mean(errors))
+            std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
+            
+            # Pick the run closest to the mean error as the representative metrics
+            best_run_idx = np.argmin([abs(e - mean_error) for e in errors])
+            _, best_metrics, best_posterior = runs[best_run_idx]
+            
+            final_grid_results.append(GridPointResult(
+                params=params,
+                mean_error=mean_error,
+                metrics=best_metrics,
+                posterior_log=best_posterior,
+                n_repeats=n_repeats,
+                std_error=std_error
+            ))
+
+        if not final_grid_results:
+            raise RuntimeError("No results produced.")
+
+        best_result = min(final_grid_results, key=lambda item: item.mean_error)
+
+        return {
+            "subject_id": subject_id,
+            "condition": condition,
+            "best": best_result,
+            "grid": final_grid_results,
+            "param_grid": param_grid,
+        }
+
+    # -------------------------------------------------------------------------
+    # Deprecated / Backward Compatibility Methods
+    # -------------------------------------------------------------------------
+
+    def grid_search_subject(
+        self,
+        subject_id: int,
+        gamma_grid: Optional[Sequence[float]] = None,
+        w0_grid: Optional[Sequence[float]] = None,
+        window_size: int = 16,
+        stop_at: float = 1.0,
+        max_trials: Optional[int] = None,
+    ) -> Dict[str, object]:
+        """
+        Legacy wrapper for backward compatibility.
+        Translates gamma_grid/w0_grid to generic param_grid.
+        """
+        # Resolve default grids if None
+        if gamma_grid is None or w0_grid is None:
+            d_gamma, d_w0 = self._default_grids()
+            gamma_grid = d_gamma if gamma_grid is None else gamma_grid
+            w0_grid = d_w0 if w0_grid is None else w0_grid
+            
+        param_grid: Dict[str, Sequence[Any]] = {
+            "gamma": list(gamma_grid) if gamma_grid is not None else [],
+            "w0": list(w0_grid) if w0_grid is not None else []
+        }
+        
+        return self.optimize_subject(
+            subject_id=subject_id,
+            param_grid=param_grid,
+            n_repeats=1,
+            window_size=window_size,
+            stop_at=stop_at,
+            max_trials=max_trials
+        )
+
     def _default_grids(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Legacy helper to get default grids from config."""
         mod_cfg = self._engine_config_template.get("modules", {}).get("memory_mod", {})
         kwargs = mod_cfg.get("kwargs", {})
 
@@ -196,84 +438,6 @@ class StateModelGridOptimizer:
 
         return gamma_grid, w0_grid
 
-    def grid_search_subject(
-        self,
-        subject_id: int,
-        gamma_grid: Optional[Sequence[float]] = None,
-        w0_grid: Optional[Sequence[float]] = None,
-        window_size: int = 16,
-        stop_at: float = 1.0,
-        max_trials: Optional[int] = None,
-    ) -> Dict[str, object]:
-        subject_frame = self._get_subject_frame(subject_id, stop_at)
-        gamma_candidates, w0_candidates = self._coerce_grids(gamma_grid, w0_grid)
-
-        condition = int(subject_frame["condition"].iloc[0])
-        arrays = self._extract_arrays(subject_frame, max_trials)
-
-        results: List[GridPointResult] = []
-        for gamma_val, w0_val in product(gamma_candidates, w0_candidates):
-            result = self._evaluate_combination(
-                subject_id,
-                condition,
-                arrays,
-                float(gamma_val),
-                float(w0_val),
-                window_size,
-            )
-            results.append(result)
-
-        if not results:
-            raise RuntimeError("No parameter combinations were evaluated")
-
-        best_result = min(results, key=lambda item: item.mean_error)
-
-        return {
-            "subject_id": subject_id,
-            "condition": condition,
-            "best": best_result,
-            "grid": results,
-            "gamma_grid": np.asarray(gamma_candidates, dtype=float),
-            "w0_grid": np.asarray(w0_candidates, dtype=float),
-        }
-
-    def _coerce_grids(
-        self,
-        gamma_grid: Optional[Sequence[float]],
-        w0_grid: Optional[Sequence[float]],
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        if gamma_grid is None or w0_grid is None:
-            default_gamma, default_w0 = self._default_grids()
-            gamma_grid = default_gamma if gamma_grid is None else gamma_grid
-            w0_grid = default_w0 if w0_grid is None else w0_grid
-
-        gamma_arr = np.asarray(list(gamma_grid), dtype=float)
-        w0_arr = np.asarray(list(w0_grid), dtype=float)
-
-        if gamma_arr.size == 0 or w0_arr.size == 0:
-            raise ValueError("Parameter grids must be non-empty")
-
-        return gamma_arr, w0_arr
-
-    def _extract_arrays(
-        self,
-        subject_frame: pd.DataFrame,
-        max_trials: Optional[int],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        stimulus = subject_frame[["feature1", "feature2", "feature3", "feature4"]].to_numpy(dtype=float)
-        choices = subject_frame["choice"].to_numpy(dtype=int)
-        feedback = subject_frame["feedback"].to_numpy(dtype=float)
-        categories = subject_frame["category"].to_numpy(dtype=int)
-
-        if max_trials is not None:
-            usable = min(max_trials, stimulus.shape[0])
-            stimulus = stimulus[:usable]
-            choices = choices[:usable]
-            feedback = feedback[:usable]
-            categories = categories[:usable]
-
-        return stimulus, choices, feedback, categories
-
     def _evaluate_combination(
         self,
         subject_id: int,
@@ -283,47 +447,22 @@ class StateModelGridOptimizer:
         w0: float,
         window_size: int,
     ) -> GridPointResult:
-        stimulus, choices, feedback, categories = arrays
-        trial_sequence = _prepare_trial_sequence(stimulus, choices, feedback)
-
-        engine_config = deepcopy(self._engine_config_template)
-        memory_cfg = engine_config.setdefault("modules", {}).setdefault("memory_mod", {})
-        kwargs = memory_cfg.setdefault("kwargs", {})
-        kwargs.update({"gamma": gamma, "w0": w0})
-
-        from ..problems.model import StateModel
-        model = StateModel(
-            engine_config,
-            condition=condition,
-            subject_id=subject_id,
-            processed_data_dir=self._processed_data_dir,
-        )
-
-        model.precompute_distances(stimulus)
-        posterior_log = model.fit_step_by_step(trial_sequence)
-
-        metrics = _compute_prediction_metrics(
-            model,
-            posterior_log,
-            stimulus,
-            choices,
-            feedback,
-            categories,
-            window_size,
-        )
-
-        LOGGER.debug(
-            "Evaluated subject %s gamma=%.3f w0=%.3f -> error %.4f",
+        """
+        Legacy helper for single evaluation.
+        """
+        params = {"gamma": gamma, "w0": w0}
+        _, mean_error, metrics, posterior_log = _evaluate_single_run(
             subject_id,
-            gamma,
-            w0,
-            metrics["mean_error"],
+            condition,
+            arrays,
+            params,
+            self._engine_config_template,
+            self._processed_data_dir,
+            window_size
         )
-
         return GridPointResult(
-            gamma=gamma,
-            w0=w0,
-            mean_error=float(metrics["mean_error"]),
+            params=params,
+            mean_error=mean_error,
             metrics=metrics,
-            posterior_log=posterior_log,
+            posterior_log=posterior_log
         )

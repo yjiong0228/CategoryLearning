@@ -17,7 +17,7 @@ modules:
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.5, 
+      w0: 0.3, 
       gamma: 0.9,
     }
 

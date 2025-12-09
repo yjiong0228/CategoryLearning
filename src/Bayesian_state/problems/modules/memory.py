@@ -195,6 +195,15 @@ class DualMemoryModule(BaseModule):
         self.prior = getattr(engine, "prior", np.ones_like(self.mask) / np.sum(self.mask)).copy()
         for key in self.state:
             self.state[key] = self.translate_to_log(self.prior, mask=self.mask)
+        
+        # Initialize baseline state (tracks a hypothetical hypothesis with uniform likelihood)
+        # Initial value corresponds to log(1/N)
+        n_init = np.sum(self.mask)
+        init_log_val = np.log(1.0 / n_init) if n_init > 0 else np.log(1.0 / len(self.mask))
+        self.baseline_state = {
+            "fade": init_log_val,
+            "static": init_log_val
+        }
 
 
     @staticmethod
@@ -245,29 +254,35 @@ class DualMemoryModule(BaseModule):
             if np.any(removed_mask):
                 self.state[key][removed_mask] = -np.inf
 
-        # Calculate shift from survivors to align new hypotheses' scale
-        shift = 0.0
-        if np.any(survivor_mask):
-            s_static = self.state.get("static")
-            s_fade = self.state.get("fade")
-            
-            if s_static is not None and s_fade is not None:
-                current_combined = self.w0 * s_static + (1 - self.w0) * s_fade
-            elif s_static is not None:
-                current_combined = s_static
-            elif s_fade is not None:
-                current_combined = s_fade
-            else:
-                current_combined = np.zeros_like(target_log)
+        # Calculate shift using baseline state
+        b_static = self.baseline_state["static"]
+        b_fade = self.baseline_state["fade"]
+        b_combined = self.w0 * b_static + (1 - self.w0) * b_fade
+        
+        # Offset between static and fade from baseline
+        offset = b_static - b_fade
+        
+        # Shift to align target_log (normalized) with state (unnormalized)
+        # We assume baseline corresponds to uniform probability 1/N_active
+        n_active = np.sum(new_mask)
+        log_uniform = np.log(1.0 / n_active) if n_active > 0 else 0.0
+        
+        # state[new] = target_log + (B_combined - log(1/N))
+        shift = b_combined - log_uniform
 
-            # shift = mean(state[survivors] - target_log[survivors])
-            diffs = current_combined[survivor_mask] - target_log[survivor_mask]
-            shift = np.mean(diffs)
-
-        # Added Hypotheses -> static = fade = log(prior) + shift
+        # Added Hypotheses
         if np.any(added_mask):
-            for key in self.state:
-                self.state[key][added_mask] = target_log[added_mask] + shift
+            target_val = target_log[added_mask] + shift
+            
+            if "static" in self.state and "fade" in self.state:
+                # w0 * static + (1-w0) * fade = target
+                # static - fade = offset
+                self.state["fade"][added_mask] = target_val - self.w0 * offset
+                self.state["static"][added_mask] = target_val + (1 - self.w0) * offset
+            elif "static" in self.state:
+                self.state["static"][added_mask] = target_val
+            elif "fade" in self.state:
+                self.state["fade"][added_mask] = target_val
 
 
 
@@ -278,7 +293,18 @@ class DualMemoryModule(BaseModule):
         Args:
             likelihood (np.ndarray): Likelihoods of the new observation for each hypothesis
         """
-        # TODO: 归一化
+        # NEW: Update baseline state with fake likelihood
+        n_total = len(self.mask)
+        # n_total = np.sum(self.mask)
+        log_fake_likelihood = np.log(1.0 / n_total) if n_total > 0 else -np.inf
+        # Clip to avoid numerical issues if needed, though 1/N is usually safe
+        log_fake_likelihood = np.clip(log_fake_likelihood, np.log(DualMemoryModule.lower_numerical_bound), np.log(DualMemoryModule.upper_numerical_bound))
+
+        if "fade" in self.baseline_state:
+            self.baseline_state["fade"] = self.baseline_state["fade"] * self.gamma + log_fake_likelihood
+        if "static" in self.baseline_state:
+            self.baseline_state["static"] = self.baseline_state["static"] + log_fake_likelihood
+
         if "fade" in self.state:
             self.state["fade"] = self.state["fade"] * self.gamma + self.translate_to_log(likelihood, mask=self.mask)
         if "static" in self.state:
