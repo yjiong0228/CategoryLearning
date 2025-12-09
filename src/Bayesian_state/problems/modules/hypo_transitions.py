@@ -180,7 +180,10 @@ class FixedNumHypothesisModule(BaseModule):
 
         # Get current posterior (from previous step)
         # If posterior is not available, fallback to prior or uniform
-        current_posterior = self.engine.posterior.copy() if hasattr(self.engine, "posterior") else None
+        current_posterior = None
+        if hasattr(self.engine, "posterior") and self.engine.posterior is not None:
+            current_posterior = self.engine.posterior.copy()
+        
         if current_posterior is None:
             # If no posterior, just ensure prior is uniform on active set
             mask = np.zeros(self.total_hypo, dtype=float)
