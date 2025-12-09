@@ -268,6 +268,7 @@ class BaseEngine:
                 [self.agenda[i] for i, x in enumerate(valid_modules) if x])
 
         # 按 agenda 顺序调用所有模块的 process 方法
+        mod_kwargs = mod_kwargs or {}
         for mod_name in self.agenda:
             # 约定：每个模块都应该有一个 process 方法
             if not hasattr(self.modules[mod_name], 'process'):
