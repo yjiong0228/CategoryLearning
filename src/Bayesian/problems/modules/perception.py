@@ -8,8 +8,9 @@ import os
 import pandas as pd
 from .base_module import BaseModule
 
-DEFAULT_PROCESSED_DATA_DIR = os.path.join(
-    os.path.dirname(__file__), "../../../../data/processed")
+DEFAULT_PROCESSED_DATA_DIR = os.path.join(os.path.dirname(__file__),
+                                          "../../../../data/processed")
+
 
 class BasePerception(BaseModule):
     """
@@ -25,13 +26,15 @@ class BasePerception(BaseModule):
             **kwargs: Additional keyword arguments
         """
         super().__init__(model, **kwargs)
-        self.processed_data_dir = kwargs.pop("processed_data_path", DEFAULT_PROCESSED_DATA_DIR)
-        self.mean : Dict[str, Dict[str, float]] = {}
-        self.std : Dict[str, Dict[str, float]] = {}
-        processed_data = pd.read_csv(os.path.join(self.processed_data_dir, "Task1b_processed.csv"))
+        self.processed_data_dir = kwargs.pop("processed_data_path",
+                                             DEFAULT_PROCESSED_DATA_DIR)
+        self.mean: Dict[str, Dict[str, float]] = {}
+        self.std: Dict[str, Dict[str, float]] = {}
+        processed_data = pd.read_csv(
+            os.path.join(self.processed_data_dir, "Task1b_processed.csv"))
         error = self.error_calculation(processed_data)
         self.mean, self.std = self.calculate_mean_std(error)
-        self.structures : Dict[str, List]= self.get_structures()
+        self.structures: Dict[str, List] = self.get_structures()
 
     def error_calculation(self, processed_data):
         """
@@ -43,21 +46,23 @@ class BasePerception(BaseModule):
             pd.DataFrame: DataFrame containing error data
         """
         columns = ['neck_length', 'head_length', 'leg_length', 'tail_length']
-        
+
         results = []
         for iSub, group in processed_data.groupby('iSub'):
             target = group[group['type'] == 'target'].reset_index(drop=True)
-            adjust_after = group[group['type'] == 'adjust_after'].reset_index(drop=True)
+            adjust_after = group[group['type'] == 'adjust_after'].reset_index(
+                drop=True)
 
-            result = target[['iSub','iTrial'] + columns].reset_index(drop=True).copy()
+            result = target[['iSub', 'iTrial'] +
+                            columns].reset_index(drop=True).copy()
             for col in columns:
                 result[f'{col}_diff'] = adjust_after[col] - target[col]
             results.append(result)
-            
+
         error = pd.concat(results, ignore_index=True)
 
         return error
-    
+
     def calculate_mean_std(self, error):
         """
         Calculate mean and standard deviation for each subject
@@ -68,14 +73,16 @@ class BasePerception(BaseModule):
             dict: Mean and standard deviation for each subject
         """
         mean = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').mean()
-        )
+            lambda group: group.filter(like='_diff').mean())
         std = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').std()
-        )
+            lambda group: group.filter(like='_diff').std())
 
-        mean = mean.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
-        std = std.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
+        mean = mean.rename(
+            columns=lambda x: x.replace('_length_diff', '')).to_dict(
+                orient='index')
+        std = std.rename(
+            columns=lambda x: x.replace('_length_diff', '')).to_dict(
+                orient='index')
         return mean, std
 
     def get_structures(self):
@@ -86,11 +93,13 @@ class BasePerception(BaseModule):
             dict: Structures for each subject
         """
         structures = {}
-        processed_data = pd.read_csv(os.path.join(self.processed_data_dir, "Task2_processed.csv"))
+        processed_data = pd.read_csv(
+            os.path.join(self.processed_data_dir, "Task2_processed.csv"))
 
         for iSub, group in processed_data.groupby('iSub'):
             structures[iSub] = group[['structure1', 'structure2']].values
-            assert np.all(structures[iSub] == structures[iSub][0]), f"iSub {iSub} has inconsistent structures."
+            assert np.all(structures[iSub] == structures[iSub]
+                          [0]), f"iSub {iSub} has inconsistent structures."
             structures[iSub] = structures[iSub][0].tolist()
 
         return structures
@@ -107,7 +116,7 @@ class BasePerception(BaseModule):
         """
         if iSub not in self.mean or iSub not in self.std:
             raise ValueError(f"Subject {iSub} not found in mean or std data.")
-        
+
         def convert(structure):
             # feature selection
             if structure[0] == 1:
@@ -138,13 +147,14 @@ class BasePerception(BaseModule):
 
             # Add suffix to feature names
             return features
-        
+
         feat = convert(self.structures[iSub])
         n_trials = len(stimulus)
         for i in range(stimulus.shape[1]):
             stimulus[:, i] = stimulus[:, i] + np.random.normal(
-                loc=self.mean[iSub][feat[i]], scale=self.std[iSub][feat[i]], size=n_trials
-            )
+                loc=self.mean[iSub][feat[i]],
+                scale=self.std[iSub][feat[i]],
+                size=n_trials)
         # Ensure the values are in the range of [0, 1]
         stimulus = np.clip(stimulus, 0, 1)
         return stimulus

@@ -8,7 +8,6 @@ import itertools
 from itertools import product
 # import pandas as pd
 import numpy as np
-from pathlib import Path
 from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 from ..inference_engine import BaseDistribution, BaseLikelihood
 
@@ -379,13 +378,7 @@ class Partition(BasePartition):
     """
     EPS = 1e-7
 
-    # === 类级缓存：用于在当前运行的程序中存储已加载的矩阵 ===
-    # 格式: { (n_dims, n_cats): matrix_array }
-    _loaded_matrices_cache = {}
-
-    # === 默认存储路径 ===
-    # 默认存在当前文件同级目录下的 'cache' 文件夹中
-    DEFAULT_CACHE_DIR = Path(__file__).parent / "cache"
+    similarity_matrix = None
 
     def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
         """Initialize"""
@@ -394,23 +387,11 @@ class Partition(BasePartition):
 
         self.connectivity_map = self._compute_connectivity_map()
 
-        # ========== (新) 加载或计算相似性矩阵 ==========
-        # 1. 确定缓存目录和文件名
-        cache_dir = kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR)
-        cache_dir = Path(cache_dir)
-        
-        # 确保目录存在
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # 文件名必须包含维度信息，防止混用
-        # 例如: similarity_matrix_d4_c4.npy
-        filename = f"similarity_matrix_d{n_dims}_c{n_cats}.npy"
-        file_path = cache_dir / filename
-        
-        # 2. 调用加载逻辑
-        self.similarity_matrix = self._load_or_compute_similarity(
-            n_dims, n_cats, file_path, kwargs.get("similarity_n_samples", 100000)
-        )
+        # ========== (新) 自动计算并存储相似性矩阵 ==========
+        # 允许用户通过 'similarity_n_samples' 指定采样点数, 否则默认为 100,000
+        n_samples = kwargs.get("similarity_n_samples", 100000)
+        self.similarity_matrix = self._compute_hypothesis_similarity_matrix(n_samples)
+        # ==================================================
 
     def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
         conn = {}
@@ -621,52 +602,16 @@ class Partition(BasePartition):
         return np.clip(likelihood, self.EPS, 1. - self.EPS)
 
 
-    def _load_or_compute_similarity(self, n_dims, n_cats, file_path, n_samples):
-        """
-        核心逻辑：内存缓存 -> 磁盘文件 -> 重新计算
-        """
-        cache_key = (n_dims, n_cats)
-
-        # --- A. 检查内存缓存 (Class Level) ---
-        if cache_key in Partition._loaded_matrices_cache:
-            # print(f"Loading similarity matrix from RAM cache for d={n_dims}, c={n_cats}")
-            return Partition._loaded_matrices_cache[cache_key]
-
-        # --- B. 检查磁盘文件 (Disk Level) ---
-        if file_path.exists():
-            print(f"Loading similarity matrix from disk: {file_path}")
-            try:
-                matrix = np.load(file_path)
-                # 校验加载的矩阵形状是否正确
-                expected_len = self.length
-                if matrix.shape[0] == expected_len and matrix.shape[1] == expected_len:
-                    # 存入内存缓存并返回
-                    Partition._loaded_matrices_cache[cache_key] = matrix
-                    return matrix
-                else:
-                    print("Cached matrix shape mismatch. Recomputing...")
-            except Exception as e:
-                print(f"Error loading cache file: {e}. Recomputing...")
-
-        # --- C. 都不存在，重新计算 (Compute) ---
-        print(f"Computing similarity matrix for d={n_dims}, c={n_cats} (will save to {file_path.name})...")
-        matrix = self._compute_hypothesis_similarity_matrix(n_samples)
-        
-        # 1. 存入磁盘 (使用 numpy 二进制格式，速度快体积小)
-        np.save(file_path, matrix)
-        
-        # 2. 存入内存缓存
-        Partition._loaded_matrices_cache[cache_key] = matrix
-        
-        return matrix
-
     def _compute_hypothesis_similarity_matrix(self, n_samples: int = 100000) -> np.ndarray:
         """
         使用蒙特卡洛积分计算所有假设(splits)之间的相似性矩阵。
+        在 __init__ 期间被调用一次, 结果存储在 self.similarity_matrix。
         """
         n_hypos = self.length
         if n_hypos == 0:
             return np.array([])
+
+        print(f"Initializing Partition: Calculating similarity matrix for {n_hypos} hypotheses using {n_samples} samples...")
 
         # 1. 在 [0, 1]^n_dims 空间中均匀采样 N 个点
         X_samples = np.random.rand(n_samples, self.n_dims)
@@ -675,19 +620,21 @@ class Partition(BasePartition):
         all_assignments = np.zeros((n_hypos, n_samples), dtype=int)
         
         for h in range(n_hypos):
-            # 调用 BasePartition 中的辅助方法
+            # 调用在 BasePartition 中定义的辅助方法
             all_assignments[h] = self._get_category_assignments(h, X_samples)
 
         # 3. 计算相似性矩阵
         sim_matrix = np.zeros((n_hypos, n_hypos))
 
         for i in range(n_hypos):
-            sim_matrix[i, i] = 1.0
+            sim_matrix[i, i] = 1.0  # 与自身的相似度为1
             for j in range(i + 1, n_hypos):
+                # 计算两个假设分类结果一致的点的比例
                 n_agree = np.sum(all_assignments[i] == all_assignments[j])
                 similarity = n_agree / n_samples
+                
                 sim_matrix[i, j] = similarity
-                sim_matrix[j, i] = similarity 
+                sim_matrix[j, i] = similarity # 矩阵是对称的
 
         print("Similarity matrix calculation complete.")
         return sim_matrix
