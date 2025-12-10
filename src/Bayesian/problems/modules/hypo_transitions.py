@@ -1,29 +1,43 @@
 """
 Module: Modeling Hypothesis-cluster transition dynamics
 """
-from abc import ABC
 from collections.abc import Callable
 from typing import List, Tuple, Dict, Set
 import numpy as np
-from .base_module import BasePartition, BaseModule
+from .base_module import BaseModule
 from .base_module import (cdist, softmax, BaseSet, entropy)
 
 
 class BaseCluster(BaseModule):
-
+    """
+    Base class for modeling cluster transition dynamics.
+    """
     amount_evaluators = {}
 
-    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
+    def __init__(self, model, cluster_config: Dict | None = None, **kwargs):
         super().__init__(model, **kwargs)
         self.model = model
-        self.config = cluster_config
+        self.config = cluster_config or {}
         self.current_cluster = BaseSet([])
-
 
     def adaptive_amount_evalutator(self, amount: float | str | Callable,
                                    **kwargs) -> int:
         """
-        Adaptively deal with evaluator / number format of amount
+        Adaptively deal with evaluator / number format of amount.
+
+        Parameters
+        ----------
+        amount: float | str | Callable
+            The amount of hypotheses to be sampled.
+            If it is ...
+            a number, it is directly used.
+            a string, it is used as a key to look up in amount_evaluators.
+            a callable, it is called with kwargs.
+
+        Returns
+        -------
+        int
+            The amount of hypotheses to be sampled.
         """
         match amount:
             case int():
@@ -33,16 +47,19 @@ class BaseCluster(BaseModule):
             case str() if amount in self.amount_evaluators:
                 return self.amount_evaluators[amount](**kwargs)
             case _:
-                raise Exception(f"Unexpected amount type. {amount}")
+                raise TypeError(f"Unexpected amount type. {amount}")
 
     @classmethod
     def _amount_entropy_gen(cls, max_amount=3):
+        """
+        Generate a amount evaluator based on entropy of posterior.
+        """
 
         def _amount_entropy_based(posterior: Dict,
                                   max_amount=max_amount,
                                   **kwargs) -> int:
             """
-            Use whether a model is decisive in its posterior to tune the amount.
+            Use whether a hypo is decisive in posterior to tune the amount.
             """
             posterior_ = np.array(list(posterior.values()))[:, 0]
             p_entropy = entropy(posterior_)
@@ -54,10 +71,13 @@ class BaseCluster(BaseModule):
 
     @classmethod
     def _amount_opposite_entropy_gen(cls, max_amount=3):
+        """
+        Generate a amount evaluator based on opposite entropy of posterior.
+        """
 
         def _amount_opposite_entropy_based(posterior: Dict,
-                                        max_amount=max_amount,
-                                        **kwargs) -> int:
+                                           max_amount=max_amount,
+                                           **kwargs) -> int:
             posterior_ = np.array(list(posterior.values()))[:, 0]
             p_entropy = entropy(posterior_)
 
@@ -72,9 +92,11 @@ class BaseCluster(BaseModule):
 
         return _amount_opposite_entropy_based
 
-
     @classmethod
     def _amount_max_gen(cls, max_amount=3):
+        """
+        Generate a amount evaluator based on max posterior.
+        """
 
         def _amount_max_based(posterior=Dict, max_amount=max_amount, **kwargs):
             posterior_ = np.array(list(posterior.values()))[:, 0]
@@ -88,7 +110,10 @@ class BaseCluster(BaseModule):
 
         def _amount_random_based(posterior=Dict,
                                  max_amount=max_amount,
-                                 **kwargs):
+                                 **kwargs) -> int:
+            """
+            Use random amount based on posterior.
+            """
             posterior_ = np.array(list(posterior.values()))[:, 0]
             max_post = np.max(posterior_)
             return np.random.choice(max_amount + 1,
@@ -98,7 +123,10 @@ class BaseCluster(BaseModule):
         return _amount_random_based
 
     @classmethod
-    def _amount_accuracy_gen(cls, amount_function: Callable, max_amount=3, static=True):
+    def _amount_accuracy_gen(cls,
+                             amount_function: Callable,
+                             max_amount=3,
+                             static=True):
 
         def _amount_accuracy_static(
                 feedbacks: List[float],
@@ -112,11 +140,10 @@ class BaseCluster(BaseModule):
                     return amount if amount < max_amount else max_amount
                 case Callable():
                     return amount(**kwargs)
-                
-        def _amount_accuracy_delta(
-                feedbacks: List[float],
-                amount_function: Callable = amount_function,
-                **kwargs) -> int:
+
+        def _amount_accuracy_delta(feedbacks: List[float],
+                                   amount_function: Callable = amount_function,
+                                   **kwargs) -> int:
             feedbacks = [int(f) for f in feedbacks]
             length = 8
             old_acc = np.sum(feedbacks[:length]) / length
@@ -134,8 +161,13 @@ class BaseCluster(BaseModule):
     @classmethod
     def _amount_opposite_random_gen(cls, max_amount=7):
         base_rand = cls._amount_random_gen(max_amount)
-        def _opposite_random(posterior: Dict, max_amount=max_amount, **kwargs) -> int:
-            return max_amount - base_rand(posterior, max_amount=max_amount, **kwargs)
+
+        def _opposite_random(posterior: Dict,
+                             max_amount=max_amount,
+                             **kwargs) -> int:
+            return max_amount - base_rand(
+                posterior, max_amount=max_amount, **kwargs)
+
         return _opposite_random
 
 
@@ -176,7 +208,7 @@ class PartitionCluster(BaseCluster):
         "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
     }
 
-    def __init__(self, model, cluster_config: Dict = {}, **kwargs):
+    def __init__(self, model, cluster_config: Dict | None = None, **kwargs):
         """
         Initialize
 
@@ -186,20 +218,24 @@ class PartitionCluster(BaseCluster):
         strategy: a spectrum, in terms of a list
                   [(amount: int, method: str|Callable)]
         """
-        super().__init__(model, **kwargs)
-        self.set_cluster_transition_strategy(
-            kwargs.get("init_strategy", [(3, "random")]), init_strategy=True)
+        super().__init__(model, cluster_config, **kwargs)
+        self.set_cluster_transition_strategy(kwargs.get(
+            "init_strategy", [(3, "random")]),
+                                             init_strategy=True)
         self.set_cluster_transition_strategy(
             kwargs.get("transition_spec", [(10, "stable")]))
         self.cached_dist: Dict[Tuple, float] = {}
-
 
     def _calc_cached_dist(self):
         """
         Calculate Cached diatances
         """
-        if not hasattr(self.model, "partition_model") or self.model.partition_model is None:
-            raise ValueError("partition_model is not initialized before calling _calc_cached_dist().")
+        if not hasattr(
+                self.model,
+                "partition_model") or self.model.partition_model is None:
+            raise ValueError(
+                "partition_model is not initialized before calling "
+                "_calc_cached_dist().")
 
         self.cached_dist = {}
         for i_l, left in self.model.partition_model.centers:
@@ -209,7 +245,8 @@ class PartitionCluster(BaseCluster):
                         for _, c_r in right.items():
                             key = (*c_l, *c_r)
                             inv = (*c_r, *c_l)
-                            if key in self.cached_dist or inv in self.cached_dist:
+                            if (key in self.cached_dist
+                                    or inv in self.cached_dist):
                                 continue
                             self.cached_dist[key] = np.sum(
                                 (np.array(c_l) - np.array(c_r))**2)**0.5
@@ -306,22 +343,23 @@ class PartitionCluster(BaseCluster):
 
         # 取概率质量（支持 float 或 (prob, β) 形式）
         raw_w = np.asarray([
-            posterior[i][0] if isinstance(posterior[i], (list, tuple, np.ndarray))
-            else posterior[i]
+            posterior[i][0] if isinstance(posterior[i],
+                                          (list, tuple,
+                                           np.ndarray)) else posterior[i]
             for i in cand_idx
-        ], dtype=float)
+        ],
+                           dtype=float)
 
         n_pos = int((raw_w > 0).sum())
-        amount = min(amount, len(cand_idx))            # 安全上限
-        if n_pos < amount:                             # 权重为 0 的太多
+        amount = min(amount, len(cand_idx))  # 安全上限
+        if n_pos < amount:  # 权重为 0 的太多
             # → 退化为均匀随机（或也可以给零权重加一个极小值）
             chosen = np.random.choice(cand_idx, size=amount, replace=False)
             return chosen.tolist()
 
         prob = raw_w / raw_w.sum()
-        chosen = np.random.choice(cand_idx, size=amount,
-                                replace=False, p=prob)
-        return chosen.tolist()        
+        chosen = np.random.choice(cand_idx, size=amount, replace=False, p=prob)
+        return chosen.tolist()
 
     def _cluster_strategy_ksimilar_centers(self,
                                            amount: int,
@@ -342,7 +380,8 @@ class PartitionCluster(BaseCluster):
         if amount == 0:
             return []
         if posterior is None:
-            raise Exception("ArgumentError: posterior is absent or not a Dict")
+            raise ValueError(
+                "ArgumentError: posterior is absent or not a Dict")
         proto_hypo_amount = kwargs.get("proto_hypo_amount", 1)
         ref_hypos = sorted([(i, *p) for i, p in posterior.items()],
                            key=lambda x: x[1],
@@ -379,7 +418,8 @@ class PartitionCluster(BaseCluster):
         # given stimulus, the argmin choices on each reference hypo
         ref_choices = [
             np.random.choice(self.model.partition_model.n_cats, p=prob)
-            for prob in softmax(ref_dist.reshape(-1, self.model.partition_model.n_cats),
+            for prob in softmax(ref_dist.reshape(
+                -1, self.model.partition_model.n_cats),
                                 beta=-ref_hypos_beta.reshape(-1, 1),
                                 axis=1)
         ]
@@ -451,13 +491,12 @@ class PartitionCluster(BaseCluster):
 
         if len(new_hypos) == 0:
             new_hypos = set(
-                np.random.choice(list(available_hypos),
-                                 size=1,
+                np.random.choice(list(available_hypos), size=1,
                                  replace=False).tolist())
             return list(new_hypos), {
                 k: (amt, ch)
                 for k, amt, ch in zip(self.strategy_name, numerical_amounts,
-                                    hypo_choices)
+                                      hypo_choices)
             } | {
                 'random from available': (1, list(new_hypos))
             }
@@ -465,7 +504,7 @@ class PartitionCluster(BaseCluster):
             return list(new_hypos), {
                 k: (amt, ch)
                 for k, amt, ch in zip(self.strategy_name, numerical_amounts,
-                                    hypo_choices)
+                                      hypo_choices)
             }
 
     def cluster_init(self, **kwargs):
@@ -489,13 +528,12 @@ class PartitionCluster(BaseCluster):
             available_hypos -= set(new_part)
         if len(new_hypos) == 0:
             new_hypos = set(
-                np.random.choice(list(available_hypos),
-                                 size=1,
+                np.random.choice(list(available_hypos), size=1,
                                  replace=False).tolist())
             return list(new_hypos), {
                 k: (amt, ch)
                 for k, amt, ch in zip(self.init_strategy_name,
-                                    numerical_amounts, hypo_choices)
+                                      numerical_amounts, hypo_choices)
             } | {
                 'random from available': (1, list(new_hypos))
             }
@@ -503,7 +541,7 @@ class PartitionCluster(BaseCluster):
             return list(new_hypos), {
                 k: (amt, ch)
                 for k, amt, ch in zip(self.init_strategy_name,
-                                    numerical_amounts, hypo_choices)
+                                      numerical_amounts, hypo_choices)
             }
 
     def set_cluster_transition_strategy(
@@ -555,7 +593,7 @@ class PartitionCluster(BaseCluster):
                     cluster_transition_strategy.append((k_amount, method))
 
                 case _:
-                    raise Exception(
+                    raise ValueError(
                         f"Filtering method {method} is not a valid choice!")
         if init_strategy:
             self.cluster_init_strategy = cluster_transition_strategy
