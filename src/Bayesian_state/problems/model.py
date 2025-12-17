@@ -514,15 +514,17 @@ class StateModel:
         data = data or self.data
         step_log = []
         posterior_log = []
+        prior_log = []
         for datum in data:
             posterior, log = self.engine.infer_single(datum, mod_kwargs)
             # DEBUG
             #print("Current observation:", self.engine.observation, s=2)
             step_log += [log]
             posterior_log += [posterior]
+            prior_log += [log.get('prior')]
 
         self.save(posterior_log, step_log)
-        return posterior_log
+        return posterior_log, prior_log
 
 
 
