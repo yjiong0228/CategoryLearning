@@ -275,8 +275,8 @@ class BasePartition(ABC):
         likelihood = np.clip(likelihood, self.EPS, 1. - self.EPS)
 
         return likelihood      # shape = (n_trials,)
-
-    @amnesia_mechanism
+    
+    # Removed "amnesia_mechanism"
     def calc_trueprob_entry(self,
                             hypo: int,
                             data: list | tuple,

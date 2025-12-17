@@ -2,17 +2,17 @@ modules:
   perception_mod:
     class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transitions.FixedNumHypothesisModule'
+    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs: {
-      fixed_hypo_num: 30,
-      init_strategy: 'random',
-      transition_mode: 'top_posterior',
-      throw_num: 5,
+      "strategies": original_strategies,
+      "init_num":8,
+      "beta": 10.
     }
+   
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {
-      beta: 5.
+      beta: 10.
     }
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'

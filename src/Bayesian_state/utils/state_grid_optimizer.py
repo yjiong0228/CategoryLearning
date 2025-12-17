@@ -29,7 +29,8 @@ class GridPointResult:
     params: Dict[str, Any]
     mean_error: float
     metrics: Dict[str, np.ndarray | float]
-    posterior_log: Sequence[np.ndarray]
+    posterior_log: Optional[Sequence[np.ndarray]] = None
+    prior_log: Optional[Sequence[np.ndarray]] = None
     n_repeats: int = 1
     std_error: float = 0.0
 
@@ -56,16 +57,15 @@ def _prepare_trial_sequence(
 
 def _compute_prediction_metrics(
     model: StateModel,
-    posterior_log: Sequence[np.ndarray],
+    prior_log: Sequence[np.ndarray],
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
     categories: np.ndarray,
     window_size: int,
 ) -> Dict[str, np.ndarray | float]:
-    # Memory weighting is assumed to be embedded in the posterior trajectory
-    # produced during fitting, so we evaluate predictions without reapplying
-    # (gamma, w0) here.
+    # Memory weighting is assumed to be embedded in the prior trajectory
+    # produced during fitting.
     partition = model.partition_model
     hypotheses = list(model.hypotheses_set)
     
@@ -75,22 +75,23 @@ def _compute_prediction_metrics(
         lik_mod = getattr(model.engine, "likelihood_mod")
         beta_param = float(lik_mod.kwargs.get("beta", 10.0))
 
-    post_arr = np.asarray(posterior_log, dtype=float)
-    if post_arr.ndim == 1:
-        post_arr = post_arr.reshape(1, -1)
+
+    prior_arr = np.asarray(prior_log, dtype=float)
+    if prior_arr.ndim == 1:
+        prior_arr = prior_arr.reshape(1, -1)
 
     n_trials = len(feedback)
-    if post_arr.shape[0] != n_trials:
+    if prior_arr.shape[0] != n_trials:
         raise ValueError(
-            "Posterior log length does not match number of trials: "
-            f"{post_arr.shape[0]} vs {n_trials}"
+            "Prior log length does not match number of trials: "
+            f"{prior_arr.shape[0]} vs {n_trials}"
         )
 
     true_acc = (feedback == 1.0).astype(float)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
 
-    for trial_idx in range(1, n_trials):
-        prev_post = post_arr[trial_idx - 1]
+    for trial_idx in range(n_trials):
+        current_prior = prior_arr[trial_idx]
         weighted_prob = 0.0
 
         trial_slice = (
@@ -99,18 +100,19 @@ def _compute_prediction_metrics(
             [feedback[trial_idx]],
             [categories[trial_idx]],
         )
-
-        for weight, hypo in zip(prev_post, hypotheses):
+    
+        for idx, (weight, hypo) in enumerate(zip(current_prior, hypotheses)):
             if weight <= 0:
                 continue
             lik = partition.calc_trueprob_entry(
                 hypo,
                 trial_slice,
                 beta_param,
-                use_cached_dist=True,
+                use_cached_dist=False, # FIXME：必须是false
             )
             weighted_prob += weight * float(np.ravel(lik)[0])
 
+        
         pred_acc[trial_idx] = weighted_prob
 
     sliding_true_acc: List[float] = []
@@ -178,7 +180,7 @@ def _evaluate_single_run(
     engine_config_template: Dict,
     processed_data_dir: Path,
     window_size: int,
-) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray]]:
+) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray], Sequence[np.ndarray]]:
     """
     Worker function to evaluate a single parameter combination.
     """
@@ -200,12 +202,12 @@ def _evaluate_single_run(
 
     # Run model
     model.precompute_distances(stimulus)
-    posterior_log = model.fit_step_by_step(trial_sequence)
+    posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
 
     # Compute metrics
     metrics = _compute_prediction_metrics(
         model,
-        posterior_log,
+        prior_log,
         stimulus,
         choices,
         feedback,
@@ -213,7 +215,7 @@ def _evaluate_single_run(
         window_size,
     )
     
-    return params, float(metrics["mean_error"]), metrics, posterior_log
+    return params, float(metrics["mean_error"]), metrics, posterior_log, prior_log
 
 
 class StateModelGridOptimizer:
@@ -282,9 +284,11 @@ class StateModelGridOptimizer:
         subject_id: int,
         param_grid: Dict[str, Sequence[Any]],
         n_repeats: int = 1,
+        refit_repeats: int = 0,
         window_size: int = 16,
         stop_at: float = 1.0,
         max_trials: Optional[int] = None,
+        keep_logs: bool = False,
     ) -> Dict[str, object]:
         """
         Optimize parameters for a single subject using parallel grid search.
@@ -292,12 +296,13 @@ class StateModelGridOptimizer:
         Args:
             subject_id: The subject ID to optimize for.
             param_grid: Dictionary mapping parameter names to lists of values.
-                        Supports dot notation (e.g. 'modules.memory_mod.kwargs.gamma')
-                        and shortcuts ('gamma', 'w0', 'beta').
-            n_repeats: Number of times to repeat each parameter combination (for stochastic models).
+            n_repeats: Number of times to repeat each parameter combination (grid search).
+            refit_repeats: Number of times to repeat the best parameter combination (refinement).
             window_size: Sliding window size for error calculation.
             stop_at: Fraction of data to use (0.0 to 1.0).
             max_trials: Maximum number of trials to use (overrides stop_at if set).
+            keep_logs: Whether to keep posterior/prior logs for all grid points. 
+                       If False, only the best result's logs are kept.
         """
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = int(subject_frame["condition"].iloc[0])
@@ -335,10 +340,10 @@ class StateModelGridOptimizer:
 
         # Aggregate results
         grouped_results = defaultdict(list)
-        for params, error, metrics, posterior_log in results:
+        for params, error, metrics, posterior_log, prior_log in results:
             # Create a hashable key for the parameters
             param_key = tuple(sorted(params.items()))
-            grouped_results[param_key].append((error, metrics, posterior_log))
+            grouped_results[param_key].append((error, metrics, posterior_log, prior_log))
 
         final_grid_results: List[GridPointResult] = []
         
@@ -350,13 +355,19 @@ class StateModelGridOptimizer:
             
             # Pick the run closest to the mean error as the representative metrics
             best_run_idx = np.argmin([abs(e - mean_error) for e in errors])
-            _, best_metrics, best_posterior = runs[best_run_idx]
+            _, best_metrics, best_posterior, best_prior = runs[best_run_idx]
             
+            # Memory optimization: discard logs if not requested
+            if not keep_logs:
+                best_posterior = None
+                best_prior = None
+
             final_grid_results.append(GridPointResult(
                 params=params,
                 mean_error=mean_error,
                 metrics=best_metrics,
                 posterior_log=best_posterior,
+                prior_log=best_prior,
                 n_repeats=n_repeats,
                 std_error=std_error
             ))
@@ -365,6 +376,41 @@ class StateModelGridOptimizer:
             raise RuntimeError("No results produced.")
 
         best_result = min(final_grid_results, key=lambda item: item.mean_error)
+
+        # --- Refit Stage ---
+        if refit_repeats > 0:
+            LOGGER.info(f"Refitting best params for subject {subject_id} with {refit_repeats} repeats.")
+            refit_tasks = [best_result.params] * refit_repeats
+            
+            refit_results = Parallel(n_jobs=self.n_jobs)(
+                delayed(_evaluate_single_run)(
+                    subject_id,
+                    condition,
+                    arrays,
+                    params,
+                    self._engine_config_template,
+                    self._processed_data_dir,
+                    window_size
+                )
+                for params in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
+            )
+            
+            # Aggregate refit results
+            refit_errors = [r[1] for r in refit_results]
+            refit_mean_error = float(np.mean(refit_errors))
+            refit_std_error = float(np.std(refit_errors))
+            
+            # Find representative run
+            best_refit_idx = np.argmin([abs(e - refit_mean_error) for e in refit_errors])
+            _, _, best_refit_metrics, best_refit_posterior, best_refit_prior = refit_results[best_refit_idx]
+            
+            # Update best_result
+            best_result.mean_error = refit_mean_error
+            best_result.std_error = refit_std_error
+            best_result.metrics = best_refit_metrics
+            best_result.posterior_log = best_refit_posterior
+            best_result.prior_log = best_refit_prior
+            best_result.n_repeats = refit_repeats
 
         return {
             "subject_id": subject_id,
@@ -451,7 +497,7 @@ class StateModelGridOptimizer:
         Legacy helper for single evaluation.
         """
         params = {"gamma": gamma, "w0": w0}
-        _, mean_error, metrics, posterior_log = _evaluate_single_run(
+        _, mean_error, metrics, posterior_log, prior_log = _evaluate_single_run(
             subject_id,
             condition,
             arrays,

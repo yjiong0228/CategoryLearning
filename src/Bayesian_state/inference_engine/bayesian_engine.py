@@ -171,6 +171,7 @@ class BaseEngine:
         self.log_posterior = None
         self.log_likelihood = None
         self.log_posterior = None
+        self.last_prior = None
 
         
     @staticmethod
@@ -277,6 +278,7 @@ class BaseEngine:
             # DEBUG
             #print(mod_name, "done", s=2)
 
+        log_info['prior'] = self.last_prior if self.last_prior is not None else self.prior.copy()
         return self.posterior, log_info
 
     def process(self, **kwargs):
@@ -287,6 +289,7 @@ class BaseEngine:
         self.log_likelihood = self.translate_to_log(self.likelihood)
         self.log_posterior = self.log_prior + self.log_likelihood
         self.posterior = self.translate_from_log(self.log_posterior)
+        self.last_prior = self.prior.copy()
         self.prior = self.posterior.copy()
         return self.posterior
 

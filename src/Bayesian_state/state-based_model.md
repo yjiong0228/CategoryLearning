@@ -56,11 +56,7 @@ The `infer_single` method executes the modules in the order defined by `agenda`.
 
     **State Transition**:
     When the set of active hypotheses changes (handled by Hypothesis Transition module), the memory states are adjusted to align with the new prior:
-    *目前实现有问题*：
-    - 尝试1：staic=fade，导致新 hypos 很快取代旧的
-    - 尝试2：使新 hypos staic-fade = mean(static - fade)[旧的上的]，结果看上去可以
-    - 尝试3：用假的 likelihood（1/N_tau）维持 baseline states，依然新的会很快取代旧的
-    - 尝试4：
+    *TODO: offset align with baseline*
 
 ## Execution Flow
 For each observation $D_t$:

@@ -153,8 +153,6 @@ class BasePerception(BaseModule):
 
 ################### NEW Perception Module ###################
 
-# FIXME: 这里的 mean 和 std 都是从 module 外部传入的
-
 class PerceptionModule(BaseModule):
     """Perception noise module with subject-specific parameters."""
 

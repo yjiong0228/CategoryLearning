@@ -222,7 +222,7 @@ class DualMemoryModule(BaseModule):
             clipped *= mask
         return np.log(clipped)
 
-    def _state_transition(self, new_mask: np.ndarray) -> None:
+    def _state_transition(self, new_mask: np.ndarray, force_sync: bool = False) -> None:
         """
         State transition from posterior_t to prior_{t+1}
         Adjusts state so that exp(w0*static + (1-w0)*fade) is proportional to engine.prior
@@ -230,8 +230,8 @@ class DualMemoryModule(BaseModule):
         old_mask_bool = self.mask.astype(bool)
         new_mask_bool = new_mask.astype(bool)
         
-        # If masks are identical, no transition needed
-        if np.array_equal(old_mask_bool, new_mask_bool):
+        # If masks are identical, no transition needed unless force_sync is True
+        if np.array_equal(old_mask_bool, new_mask_bool) and not force_sync:
             return
         # Get the new prior (prior_{t+1}) from engine
         prior_new = getattr(self.engine, "prior", None)
@@ -270,19 +270,27 @@ class DualMemoryModule(BaseModule):
         # state[new] = target_log + (B_combined - log(1/N))
         shift = b_combined - log_uniform
 
-        # Added Hypotheses
-        if np.any(added_mask):
-            target_val = target_log[added_mask] + shift
+        # Determine which hypotheses to update
+        if force_sync:
+            # Update ALL active hypotheses (added + survivors)
+            update_mask = new_mask_bool
+        else:
+            # Update only ADDED hypotheses
+            update_mask = added_mask
+
+        # Update Hypotheses
+        if np.any(update_mask):
+            target_val = target_log[update_mask] + shift
             
             if "static" in self.state and "fade" in self.state:
                 # w0 * static + (1-w0) * fade = target
                 # static - fade = offset
-                self.state["fade"][added_mask] = target_val - self.w0 * offset
-                self.state["static"][added_mask] = target_val + (1 - self.w0) * offset
+                self.state["fade"][update_mask] = target_val - self.w0 * offset
+                self.state["static"][update_mask] = target_val + (1 - self.w0) * offset
             elif "static" in self.state:
-                self.state["static"][added_mask] = target_val
+                self.state["static"][update_mask] = target_val
             elif "fade" in self.state:
-                self.state["fade"][added_mask] = target_val
+                self.state["fade"][update_mask] = target_val
 
 
 
@@ -321,15 +329,32 @@ class DualMemoryModule(BaseModule):
         if new_mask is None:
             new_mask = np.ones_like(self.mask, dtype=float)
         
+        # FIXME: 这是实现比较粗糙，为了解决没有 hypothesis 时的 prior 更新问题。
+        # Check if a hypothesis transition module exists
+        hypo_module_exists = False
+        if hasattr(self.engine, "modules"):
+            for module in self.engine.modules.values():
+                if "Hypothesis" in module.__class__.__name__:
+                    hypo_module_exists = True
+                    break
+        
         # Perform state transition before updating mask and state
-        self._state_transition(np.asarray(new_mask, dtype=float))
+        # If Hypo module exists, we trust engine.prior and force sync
+        self._state_transition(np.asarray(new_mask, dtype=float), force_sync=hypo_module_exists)
 
         self.mask = np.asarray(new_mask, dtype=float)
-        if np.sum(self.mask) <= 0:
-            self.mask = np.ones_like(self.mask, dtype=float)
+
+        if not hypo_module_exists:
+            # 没有 H 模块就自己更新 prior
+            if self.engine.posterior is not None:
+                self.engine.prior = self.engine.posterior.copy()
+        
         self.state_update(likelihood)
         
         log_posterior = self.w0 * self.state["static"] + (1 - self.w0) * self.state["fade"]
+        # Safety check for nan/inf
+        log_posterior = np.nan_to_num(log_posterior, nan=-np.inf, posinf=1e15, neginf=-1e15)
+        
         posterior = self.translate_from_log(log_posterior, mask=self.mask)
         self.engine.posterior = posterior
 
