@@ -7,8 +7,7 @@ modules:
       "strategies": original_strategies,
       "init_num":8,
       "beta": 10.
-    }
-   
+    } 
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {

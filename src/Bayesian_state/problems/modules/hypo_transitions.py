@@ -66,6 +66,8 @@ class FixedNumHypothesisModule(BaseModule):
         self.old_active: np.ndarray | None = None
         self._init_mask()
         self.debug = kwargs.get("hypothesis_debug", False)
+        # Track how many hypotheses each strategy selects per transition step
+        self.strategy_counts_log: List[Dict[str, int]] = []
 
     def process(self, **_: object) -> None:
         self._transition()
@@ -302,7 +304,9 @@ class DynamicHypothesisModule(BaseModule):
         self.old_active: np.ndarray | None = None
         self._init_mask()
         self.debug = kwargs.get("hypothesis_debug", False)
-        
+        # Track how many hypotheses each strategy selects per transition step (for plotting)
+        self.strategy_counts_log: List[Dict[str, int]] = []
+
         self.cached_dist: Dict[Tuple, float] = {}
 
         # Register amount evaluators
@@ -351,7 +355,7 @@ class DynamicHypothesisModule(BaseModule):
         """
         return [
             # 1. Exploitation: Keep hypotheses based on confidence (Weighted Sampling)
-            {"amount": "confidence_7", "method": "random_posterior"}, # FIXME: 这里尝试 top/random posterior 都不行
+            {"amount": "confidence_7", "method": "top_posterior"}, # FIXME: 这里尝试 top/random posterior 都不行
             # 2. Exploration: Add random hypotheses (complementary to above)
             {"amount": "opp_confidence_7", "method": "random"},
             # 3. Association: Add similar hypotheses
@@ -717,6 +721,8 @@ class DynamicHypothesisModule(BaseModule):
             print(f"Transition Debug: Beta = {beta_debug}")
 
         new_active_set = set()
+        # Track counts for this step
+        step_counts: Dict[str, int] = {}
         
         for strat in self.strategies:
             amount_type = strat.get("amount", "fixed")
@@ -744,11 +750,14 @@ class DynamicHypothesisModule(BaseModule):
             if self.debug:
                 print(f"  Strategy {method_type}: amount={count}")
 
+            selected: List[int] = []
             if count > 0 or ("top_p" in strat and method_type == "top_posterior"):
                 selected = self._select_hypotheses(method_type, count, posterior, exclude=new_active_set, strategy_config=strat, **kwargs)
                 if self.debug:
                     print(f"    Selected: {selected}")
                 new_active_set.update(selected)
+            # Record per-strategy count
+            step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
             # Fallback if empty
@@ -757,6 +766,12 @@ class DynamicHypothesisModule(BaseModule):
             new_active_set.update(self._sample_from_pool(self.full_indices, 1))
 
         self.active = np.sort(list(new_active_set))
+        # Record totals for plotting/logging
+        step_counts["active_total"] = len(self.active)
+        # Defensive: ensure log list exists even if older instances skip __init__ field
+        if not hasattr(self, "strategy_counts_log"):
+            self.strategy_counts_log = []
+        self.strategy_counts_log.append(step_counts)
         if self.debug:
             print(f"DynamicHypothesis: {len(self.old_active) if self.old_active is not None else 0} -> {len(self.active)} hypos")
             if 42 in self.active:
