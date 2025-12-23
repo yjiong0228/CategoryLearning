@@ -330,6 +330,7 @@ class DualMemoryModule(BaseModule):
             new_mask = np.ones_like(self.mask, dtype=float)
         
         # FIXME: 这是实现比较粗糙，为了解决没有 hypothesis 时的 prior 更新问题。
+        # TODO: 改到 engine 里做更合适
         # Check if a hypothesis transition module exists
         hypo_module_exists = False
         if hasattr(self.engine, "modules"):
