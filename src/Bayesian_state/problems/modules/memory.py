@@ -332,23 +332,12 @@ class DualMemoryModule(BaseModule):
         # FIXME: 这是实现比较粗糙，为了解决没有 hypothesis 时的 prior 更新问题。
         # TODO: 改到 engine 里做更合适
         # Check if a hypothesis transition module exists
-        hypo_module_exists = False
-        if hasattr(self.engine, "modules"):
-            for module in self.engine.modules.values():
-                if "Hypothesis" in module.__class__.__name__:
-                    hypo_module_exists = True
-                    break
         
         # Perform state transition before updating mask and state
         # If Hypo module exists, we trust engine.prior and force sync
-        self._state_transition(np.asarray(new_mask, dtype=float), force_sync=hypo_module_exists)
+        self._state_transition(np.asarray(new_mask, dtype=float), force_sync=False)
 
         self.mask = np.asarray(new_mask, dtype=float)
-
-        if not hypo_module_exists:
-            # 没有 H 模块就自己更新 prior
-            if self.engine.posterior is not None:
-                self.engine.prior = self.engine.posterior.copy()
         
         self.state_update(likelihood)
         

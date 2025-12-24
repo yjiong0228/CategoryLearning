@@ -711,8 +711,6 @@ class DynamicHypothesisModule(BaseModule):
         self.old_active = self.active.copy() if self.active is not None else None
         
         posterior = self._get_posterior_like()
-        if posterior is None:
-            posterior = np.ones(self.total_hypo) / self.total_hypo
         
         if self.debug:
             max_post = np.max(posterior)
@@ -911,21 +909,13 @@ class DynamicHypothesisModule(BaseModule):
         Update engine.prior based on the transition from old_active to active hypotheses.
         Uses similarity-weighted sum of old posteriors to initialize new hypotheses.
         """
+        # TODO: Prior estimation with "confidence"
+
         if self.old_active is None or self.active is None:
             return
-
-        # Get current posterior (from previous step)
-        # If posterior is not available, fallback to prior or uniform
-        current_posterior = None
-        if hasattr(self.engine, "posterior") and self.engine.posterior is not None:
-            current_posterior = self.engine.posterior.copy()
         
-        if current_posterior is None:
-            # If no posterior, just ensure prior is uniform on active set
-            mask = np.zeros(self.total_hypo, dtype=float)
-            mask[self.active] = 1.0
-            self.engine.prior = mask / mask.sum()
-            return
+        # get prior on old active set
+        current_prior = self.engine.prior
 
         # Create boolean masks
         old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
@@ -940,8 +930,7 @@ class DynamicHypothesisModule(BaseModule):
         old_indices = self.old_active
 
         # Initialize new prior with current posterior
-        new_prior = current_posterior.copy()
-
+        new_prior = current_prior.copy()
         
         if np.any(old_mask_bool & new_mask_bool): # at least one survivor
             # Get similarity matrix
@@ -960,7 +949,7 @@ class DynamicHypothesisModule(BaseModule):
                 weights = sim_sub / row_sums
                 
                 # Weighted sum of old posteriors (normalized on old active set)
-                old_probs_active = current_posterior[old_indices]
+                old_probs_active = current_prior[old_indices]
                 # Ensure old probs sum to 1 for correct weighting (though they should be close)
                 if old_probs_active.sum() > 0:
                     old_probs_active /= old_probs_active.sum()
