@@ -258,7 +258,6 @@ class BaseEngine:
         # TODO: 是否需要实现 logging？
         log_info = {}
 
-
         self.observation = observation
         if self.agenda is None:
             raise Exception("inference agenda is not defined.")
@@ -268,6 +267,8 @@ class BaseEngine:
                 "unknown agenda items:",
                 [self.agenda[i] for i, x in enumerate(valid_modules) if x])
 
+        # Update prior = posterior from last time
+        self.prior = self.posterior.copy() if self.posterior is not None else self.prior.copy()
         # 按 agenda 顺序调用所有模块的 process 方法
         mod_kwargs = mod_kwargs or {}
         for mod_name in self.agenda:
@@ -278,7 +279,7 @@ class BaseEngine:
             # DEBUG
             #print(mod_name, "done", s=2)
 
-        log_info['prior'] = self.last_prior if self.last_prior is not None else self.prior.copy()
+        log_info['prior'] = self.prior.copy()
         return self.posterior, log_info
 
     def process(self, **kwargs):
@@ -289,85 +290,6 @@ class BaseEngine:
         self.log_likelihood = self.translate_to_log(self.likelihood)
         self.log_posterior = self.log_prior + self.log_likelihood
         self.posterior = self.translate_from_log(self.log_posterior)
-        self.last_prior = self.prior.copy()
-        self.prior = self.posterior.copy()
         return self.posterior
 
     # ========================================================================================== #
-
-    def infer_single_old(self, observation, **kwargs) -> float:
-
-        self.observation = observation  # 更新当前观测
-        # 按顺序调用所有模块的 update 方法
-        self.update_all_modules(**kwargs)
-
-        if "drift" in kwargs:
-            value = self.generate_drift(self.h_state.value, **kwargs)
-            self.h_state.update(value)
-
-        return self.h_state.value
-
-    def infer(self, observations: list | tuple, **kwargs) -> float:
-        """
-        Parameters
-        ----------
-        observations: List | Tuple of observations
-        """
-        for obs in observations:
-            self.infer_single(obs, **kwargs)
-
-        return self.h_state.value
-
-    def infer_log(self,
-                  observations,
-                  update: bool = False,
-                  **kwargs) -> np.ndarray:
-        """
-        Log version of inference
-        """
-        likelihood = self.likelihood.get_likelihood(observations, **kwargs)
-        log_likelihood = np.log(np.maximum(likelihood, EPS))
-        log_prior = np.log(np.maximum(self.h_state.value, EPS))
-
-        log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
-            log_likelihood.shape) == 2 else log_likelihood)
-        posterior = softmax(log_posterior, beta=1.)
-
-        if update:
-            self.h_state.update(posterior)
-        return posterior
-
-    # 对state先遗忘衰减，再进行贝叶斯更新。
-    def infer_log_state(self,
-                        observation,
-                        apply_trans=None,
-                        trans_kwargs=None,
-                        update: bool = True,
-                        **kwargs) -> np.ndarray:
-        """
-        贝叶斯log更新，支持对h_state先进行处理，再进行贝叶斯更新
-
-        Parameters
-        ----------
-        observation: 当前观测
-        apply_trans: 可选，对h_state的转换函数，形如 f(h_state, **trans_kwargs)
-        trans_kwargs: dict, 传递给apply_trans的参数
-        update: 是否更新h_state
-        kwargs: 传递给likelihood的参数
-        """
-
-        # 可选：对prior进行转换
-        if apply_trans is not None:
-            trans_kwargs = trans_kwargs or {}
-            prior = apply_trans(prior, **trans_kwargs)
-            prior = prior / prior.sum()
-        # log Bayesian update
-        likelihood = self.likelihood.get_likelihood(observation, **kwargs)
-        log_likelihood = np.log(np.maximum(likelihood, EPS))
-        log_prior = np.log(np.maximum(self.h_state.value, EPS))
-        log_posterior = log_prior + (np.sum(log_likelihood, axis=0) if len(
-            log_likelihood.shape) == 2 else log_likelihood)
-        posterior = softmax(log_posterior, beta=1.)
-        if update:
-            self.h_state.update(posterior)
-        return posterior
