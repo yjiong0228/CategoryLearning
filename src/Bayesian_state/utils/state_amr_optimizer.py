@@ -57,7 +57,7 @@ def _prepare_trial_sequence(
 
 def _compute_prediction_metrics(
     model: StateModel,
-    post_log: Sequence[np.ndarray],
+    prior_log: Sequence[np.ndarray],
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
@@ -76,22 +76,22 @@ def _compute_prediction_metrics(
         beta_param = float(lik_mod.kwargs.get("beta", 10.0))
 
 
-    post_arr = np.asarray(post_log, dtype=float)
-    if post_arr.ndim == 1:
-        post_arr = post_arr.reshape(1, -1)
+    prior_arr = np.asarray(prior_log, dtype=float)
+    if prior_arr.ndim == 1:
+        prior_arr = prior_arr.reshape(1, -1)
 
     n_trials = len(feedback)
-    if post_arr.shape[0] != n_trials:
+    if prior_arr.shape[0] != n_trials:
         raise ValueError(
-            "Post log length does not match number of trials: "
-            f"{post_arr.shape[0]} vs {n_trials}"
+            "Prior log length does not match number of trials: "
+            f"{prior_arr.shape[0]} vs {n_trials}"
         )
 
     true_acc = (feedback == 1.0).astype(float)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
 
     for trial_idx in range(n_trials):
-        current_post = post_arr[trial_idx]
+        current_prior = prior_arr[trial_idx]
         weighted_prob = 0.0
 
         trial_slice = (
@@ -101,7 +101,7 @@ def _compute_prediction_metrics(
             [categories[trial_idx]],
         )
     
-        for idx, (weight, hypo) in enumerate(zip(current_post, hypotheses)):
+        for idx, (weight, hypo) in enumerate(zip(current_prior, hypotheses)):
             if weight <= 0:
                 continue
             lik = partition.calc_trueprob_entry(
@@ -207,7 +207,7 @@ def _evaluate_single_run(
     # Compute metrics
     metrics = _compute_prediction_metrics(
         model,
-        posterior_log,
+        prior_log,
         stimulus,
         choices,
         feedback,
