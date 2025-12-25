@@ -355,7 +355,7 @@ class DynamicHypothesisModule(BaseModule):
         """
         return [
             # 1. Exploitation: Keep hypotheses based on confidence (Weighted Sampling)
-            {"amount": "confidence_7", "method": "top_posterior"}, # FIXME: 这里尝试 top/random posterior 都不行
+            {"amount": "confidence_7", "method": "random_posterior"}, # FIXME: 这里尝试 top/random posterior 都不行
             # 2. Exploration: Add random hypotheses (complementary to above)
             {"amount": "opp_confidence_7", "method": "random"},
             # 3. Association: Add similar hypotheses

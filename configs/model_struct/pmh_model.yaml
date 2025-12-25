@@ -6,7 +6,6 @@ modules:
     kwargs: {
       "strategies": original_strategies,
       "init_num":8,
-      "beta": 5.
     } 
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
@@ -16,7 +15,7 @@ modules:
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.3, 
+      w0: 0.05, 
       gamma: 0.9,
     }
 
