@@ -4,7 +4,7 @@ modules:
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs: {
-      "strategies": original_strategies,
+      "strategies": original_strategies_a,
       "init_num":8,
     } 
   likelihood_mod:
