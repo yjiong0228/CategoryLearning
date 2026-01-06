@@ -200,13 +200,35 @@ def main() -> None:
 	n_jobs_inner = int(op_cfg.get("n_jobs_inner", 4))
 	n_repeats = int(op_cfg.get("n_repeats", 4))
 	refit_repeats = int(op_cfg.get("refit_repeats", 8))
-	window_size = int(op_cfg.get("window_size", 16))
+	raw_window_size = op_cfg.get("window_size", 16)
+	overrides_raw = op_cfg.get("window_size_overrides") or {}
+	window_size_overrides = {int(k): int(v) for k, v in overrides_raw.items()}
 	stop_at = float(op_cfg.get("stop_at", 1.0))
 	max_trials_val = op_cfg.get("max_trials", None)
 	max_trials = int(max_trials_val) if max_trials_val is not None else None
 	keep_logs = bool(op_cfg.get("keep_logs", False))
 
 	output_dir.mkdir(parents=True, exist_ok=True)
+
+	if isinstance(raw_window_size, (list, tuple)):
+		window_size_list = [int(x) for x in raw_window_size]
+		if len(window_size_list) != len(subjects):
+			raise ValueError(
+				"window_size list length must match number of subjects when using per-subject window sizes"
+			)
+		window_size_map = {sid: window_size_list[idx] for idx, sid in enumerate(subjects)}
+
+		def resolve_window_size(sid: int) -> int:
+			if sid in window_size_overrides:
+				return window_size_overrides[sid]
+			return window_size_map[sid]
+	else:
+		default_window_size = int(raw_window_size)
+
+		def resolve_window_size(sid: int) -> int:
+			if sid in window_size_overrides:
+				return window_size_overrides[sid]
+			return default_window_size
 
 	Parallel(n_jobs=n_jobs_subjects)(
 		delayed(run_single_subject)(
@@ -218,7 +240,7 @@ def main() -> None:
 			output_dir=output_dir,
 			n_repeats=n_repeats,
 			refit_repeats=refit_repeats,
-			window_size=window_size,
+			window_size=resolve_window_size(sid),
 			stop_at=stop_at,
 			max_trials=max_trials,
 			n_jobs_inner=n_jobs_inner,

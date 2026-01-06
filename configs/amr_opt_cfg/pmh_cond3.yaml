@@ -46,15 +46,16 @@ n_repeats: 16
 refit_repeats: 256
 
 # Evaluation
+# Single value applies to all subjects (cond3)
 window_size: 16
 stop_at: 1.0
 max_trials: null
 keep_logs: false
 
 param_grid:
-  gamma: [0.05, 0.95]
-  w0: [0.01, 0.9]
-  beta: [2.0, 32.0]
+  gamma: [0.05, 0.999]
+  w0: [0.01, 1.0]
+  beta: [1.0, 100.0]
 
 amr_kwargs:
   max_evals: 1000
