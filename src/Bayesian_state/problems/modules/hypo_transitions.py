@@ -285,7 +285,11 @@ class DynamicHypothesisModule(BaseModule):
         # Example: [{"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7}, ...]
         strategies_input = kwargs.get("strategies", None)
         if strategies_input == "original_strategies":
-            self.strategies = self.get_original_strategy_config()
+            self.strategies = self.get_original_strategy_config_b() # Default to B (Cond 2/3) for compat
+        elif strategies_input == "original_strategies_a":
+            self.strategies = self.get_original_strategy_config_a()
+        elif strategies_input == "original_strategies_b":
+            self.strategies = self.get_original_strategy_config_b()
         elif strategies_input is None:
             self.strategies = [
                 {"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7},
@@ -345,23 +349,51 @@ class DynamicHypothesisModule(BaseModule):
         }
 
     @classmethod
-    def get_original_strategy_config(cls) -> List[Dict]:
+    def get_original_strategy_config_a(cls) -> List[Dict]:
         """
-        Returns the strategy configuration that mimics the original version.
-        Strategies:
-        1. Confidence-based retention (random_posterior)
-        2. Complementary random exploration (random)
-        3. Associative memory (ksimilar_centers)
+        Returns the strategy configuration for Condition 1 (Sub 1, 4, 7...).
+        Ref: M7 config in fit_config.py for sub_cond1.
+        Features: 
+        - Max 4 hypotheses
+        - Top Posterior for exploitation (confident)
+        - Random for exploration (uncertainty)
+        - No association (ksimilar)
         """
         return [
-            # 1. Exploitation: Keep hypotheses based on confidence (Weighted Sampling)
-            {"amount": "confidence_7", "method": "random_posterior"}, # FIXME: 这里尝试 top/random posterior 都不行
-            # 2. Exploration: Add random hypotheses (complementary to above)
-            {"amount": "opp_confidence_7", "method": "random"},
+            # 1. Exploitation: entropy-based retention (Low Entropy -> Retain more)
+            # using top_posterior as per old M7 Cond 1
+            {"amount": "entropy_4", "method": "top_posterior", "top_p": 0.0},
+            # 2. Exploration: entropy complement (High Entropy -> Explore more)
+            {"amount": "opp_entropy_4", "method": "random"},
+        ]
+
+    @classmethod
+    def get_original_strategy_config_b(cls) -> List[Dict]:
+        """
+        Returns the strategy configuration for Condition 2 & 3 (Sub 2, 3, 5, 6...).
+        Ref: M7 config in fit_config.py for sub_cond2 + sub_cond3.
+        Features:
+        - Max 7 hypotheses
+        - Random Posterior for exploitation (confident)
+        - Random for exploration (uncertainty)
+        - Association (ksimilar) included (1 neighbor)
+        """
+        return [
+            # 1. Exploitation: entropy-based retention (higher entropy -> more)
+            {"amount": "entropy_7", "method": "random_posterior"},
+            # 2. Exploration: entropy complement (entropy low -> fewer random)
+            {"amount": "opp_entropy_7", "method": "random"},
             # 3. Association: Add similar hypotheses
             {"amount": "fixed", "method": "ksimilar_centers", "value": 1, 
              "proto_hypo_amount": 1, "proto_hypo_method": "top", "cluster_hypo_method": "top"}
         ]
+    
+    @classmethod
+    def get_original_strategy_config(cls) -> List[Dict]:
+        """
+        Deprecated. Alias for get_original_strategy_config_b.
+        """
+        return cls.get_original_strategy_config_b()
 
     def adaptive_amount_evaluator(self, amount: float | str | Callable, **kwargs) -> int:
         """
