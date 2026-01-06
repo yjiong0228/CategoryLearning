@@ -939,78 +939,95 @@ class DynamicHypothesisModule(BaseModule):
     def _posterior_to_prior_transition(self):
         """
         Update engine.prior based on the transition from old_active to active hypotheses.
-        Uses similarity-weighted sum of old posteriors to initialize new hypotheses.
+        Uses a heuristic mixture of Similarity (Exploitation) and Novelty (Exploration)
+        to initialize new hypotheses.
         """
-        # TODO: Prior estimation with "confidence"
-
         if self.old_active is None or self.active is None:
             return
         
-        # get prior on old active set
-        current_prior = self.engine.prior
-
-        # Create boolean masks
-        old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
-        old_mask_bool[self.old_active] = True
+        # 1. Get current posterior (from previous step)
+        current_posterior = None
+        if hasattr(self.engine, "posterior") and self.engine.posterior is not None:
+            current_posterior = self.engine.posterior.copy()
         
-        new_mask_bool = np.zeros(self.total_hypo, dtype=bool)
-        new_mask_bool[self.active] = True
-
-        # Identify added hypotheses
-        added_mask = new_mask_bool & (~old_mask_bool)
-        added_indices = np.where(added_mask)[0]
+        if current_posterior is None:
+            # Fallback: uniform
+            mask = np.zeros(self.total_hypo, dtype=float)
+            mask[self.active] = 1.0
+            self.engine.prior = mask / mask.sum()
+            return
+            
+        # 2. Identify Survivors vs Newcomers
         old_indices = self.old_active
-
-        # Initialize new prior with current posterior
-        new_prior = current_prior.copy()
+        active_indices = self.active
         
-        if np.any(old_mask_bool & new_mask_bool): # at least one survivor
-            # Get similarity matrix
+        # Boolean masks
+        is_survivor = np.isin(active_indices, old_indices)
+        survivor_indices = active_indices[is_survivor]
+        newcomer_indices = active_indices[~is_survivor]
+
+        # 3. Calculate Confidence of the previous step
+        # using max posterior probability of the *original* global posterior
+        confidence = np.max(current_posterior) if len(current_posterior) > 0 else 0.0
+
+        # Prepare normalized old values for matrix product
+        old_posterior_values = current_posterior[old_indices].copy()
+        if old_posterior_values.sum() > 0:
+            old_posterior_values /= old_posterior_values.sum()
+        
+        # 4. Initialize new prior
+        # Survivors carry over their previous posterior (raw values from engine.posterior)
+        new_prior = np.zeros(self.total_hypo, dtype=float)
+        new_prior[survivor_indices] = current_posterior[survivor_indices]
+
+        # 5. Calculate Prior for Newcomers
+        if len(newcomer_indices) > 0:
             partition = getattr(self.engine, "partition", None)
             similarity_matrix = getattr(partition, "similarity_matrix", None)
 
-            # Calculate prior for ADDED hypotheses based on similarity
-            if np.any(added_mask) and similarity_matrix is not None:
-                # S[added, old]
-                sim_sub = similarity_matrix[np.ix_(added_indices, old_indices)]
-                
-                # Normalize rows to sum to 1 (weights)
-                row_sums = sim_sub.sum(axis=1, keepdims=True)
-                # Avoid division by zero
-                row_sums[row_sums == 0] = 1.0 
-                weights = sim_sub / row_sums
-                
-                # Weighted sum of old posteriors (normalized on old active set)
-                old_probs_active = current_prior[old_indices]
-                # Ensure old probs sum to 1 for correct weighting (though they should be close)
-                if old_probs_active.sum() > 0:
-                    old_probs_active /= old_probs_active.sum()
-                
-                added_probs = weights @ old_probs_active
-                new_prior[added_indices] = added_probs
-            elif np.any(added_mask):
-                # Fallback if no similarity matrix: uniform distribution for added
-                # This is a rough heuristic; ideally similarity should be used.
-                # We set them to average of survivors or just uniform 1/N
-                new_prior[added_indices] = 1.0 / len(self.active)
+            if similarity_matrix is not None:
+                # S[new, old]
+                sim_sub = similarity_matrix[np.ix_(newcomer_indices, old_indices)]
 
-            # Apply new mask (sets removed to 0)
-            new_mask_float = new_mask_bool.astype(float)
-            new_prior *= new_mask_float
-            
-            # Normalize on new active set
-            total_prob = new_prior.sum()
-            if total_prob > 0:
-                new_prior /= total_prob
+                # Component A: Similarity-based (Likelihood propagation)
+                # "Similar to good is good" (Exploitation)
+                p_sim = sim_sub @ old_posterior_values
+
+                # Component B: Novelty-based (Repulsion)
+                # "Dissimilar to bad is good" (Exploration)
+                max_sim_to_old = np.max(sim_sub, axis=1) # (n_new,)
+                p_nov = 1.0 - max_sim_to_old
+                p_nov = np.clip(p_nov, 0, 1)
+
+                # Mixture based on Confidence
+                # High Confidence -> Trust similarity (Exploit)
+                # Low Confidence -> Trust novelty (Explore)
+                raw_score = confidence * p_sim + (1.0 - confidence) * p_nov
+                
+                # SCALING Factor applied to Newcomers
+                # If Confident, new hypotheses should have low prior mass to preserve survivor dominance.
+                # If Uncertain, new hypotheses should have higher mass to encourage replacement.
+                # min_scale ensures we don't zero out completely (keeps 5% budget for pure exploration).
+                scale_factor = max(1.0 - confidence, 0.05)
+                
+                prior_newcomers = scale_factor * raw_score
+                new_prior[newcomer_indices] = prior_newcomers
             else:
-                # Fallback: uniform on new mask
-                new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
-        else:
-            # No survivors, uniform on new active set
-            new_prior = np.zeros(self.total_hypo, dtype=float)
-            new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
+                # Fallback if no similarity matrix: uniform scaled by uncertainty
+                scale_factor = max(1.0 - confidence, 0.05)
+                # Distribute scale_factor * avg_survivor_mass? 
+                # Or just assign relative to current survivors.
+                # Heuristic: Assign small value relative to max.
+                fill_val = (1.0 / len(self.active)) * scale_factor
+                new_prior[newcomer_indices] = fill_val
 
-        # Update engine.prior
+        # 6. Normalize
+        total_mass = new_prior.sum()
+        if total_mass > 0:
+            new_prior /= total_mass
+        else:
+            new_prior[self.active] = 1.0 / len(self.active)
+
         self.engine.prior = new_prior
 
 # TODO: 现在有了similarity matrix，能不能简化dynamic hypothesis module的transition逻辑？
