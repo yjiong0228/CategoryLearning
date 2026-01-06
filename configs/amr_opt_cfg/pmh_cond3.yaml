@@ -1,0 +1,63 @@
+# AMR optimization config for Condition 2/3 subjects (old config replica)
+# Uses original_strategies_b (random_posterior + random + ksimilar=1)
+
+engine_config:
+  modules:
+    perception_mod:
+      class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    hypo_transitions_mod:
+      class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+      kwargs:
+        # Match M7 cond2/3: random posterior, +1 ksimilar, random
+        strategies:
+          - {amount: "random_7", method: "random_posterior"}
+          - {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+          - {amount: "random_7", method: "random"}
+        init_num: 10
+    likelihood_mod:
+      class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+      kwargs:
+        beta: None
+    memory_mod:
+      class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+      kwargs:
+        w0: None
+        gamma: None
+  agenda:
+    - perception_mod
+    - hypo_transitions_mod
+    - likelihood_mod
+    - memory_mod
+
+# Subjects: conditions 3
+subjects: [3, 6, 9, 12, 15, 18, 21, 24]
+# or use subject_range: [1, 24]
+
+# Paths (relative to this YAML)
+data_path: ../../data/processed/Task2_processed.csv
+output_dir: ../../results/state-based-AMR-result/pmh/cond3
+
+# Parallelism
+n_jobs_subjects: 4
+n_jobs_inner: 16
+
+# Repeats
+n_repeats: 16
+refit_repeats: 256
+
+# Evaluation
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: false
+
+param_grid:
+  gamma: [0.05, 0.95]
+  w0: [0.01, 0.9]
+  beta: [2.0, 32.0]
+
+amr_kwargs:
+  max_evals: 1000
+  coarse_grid_per_dim: 3
+  split_factor: 2
+  refine_top_k: 3
