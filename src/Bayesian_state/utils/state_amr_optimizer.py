@@ -162,7 +162,16 @@ def _evaluate_single_run(
 	engine_config_template: Dict,
 	processed_data_dir: Path,
 	window_size: int,
-) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray], Sequence[np.ndarray]]:
+	keep_logs: bool,
+) -> Tuple[
+	Dict[str, Any],
+	float,
+	Dict[str, Any],
+	Sequence[np.ndarray] | None,
+	Sequence[np.ndarray] | None,
+	Sequence[Dict[str, Any]] | None,
+	Sequence[Dict[str, Any]] | None,
+]:
 	stimulus, choices, feedback, categories = arrays
 	trial_sequence = _prepare_trial_sequence(stimulus, choices, feedback)
 
@@ -180,10 +189,25 @@ def _evaluate_single_run(
 
 	model.precompute_distances(stimulus)
 	posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
+	step_log = getattr(model, "step_log", None)
+
+	strategy_log = None
+	hypo_mod = None
+	if hasattr(model, "engine") and hasattr(model.engine, "modules"):
+		modules = getattr(model.engine, "modules", {})
+		hypo_mod = modules.get("hypo_transitions_mod") if isinstance(modules, dict) else None
+	if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
+		strategy_log = getattr(hypo_mod, "strategy_counts_log")
+
+	if not keep_logs:
+		posterior_log = None
+		prior_log = None
+		step_log = None
+		strategy_log = None
 
 	metrics = _compute_prediction_metrics(
 		model,
-		posterior_log,
+		posterior_log if posterior_log is not None else [],
 		stimulus,
 		choices,
 		feedback,
@@ -191,7 +215,15 @@ def _evaluate_single_run(
 		window_size,
 	)
 
-	return params, float(metrics["mean_error"]), metrics, posterior_log, prior_log
+	return (
+		params,
+		float(metrics["mean_error"]),
+		metrics,
+		posterior_log,
+		prior_log,
+		step_log,
+		strategy_log,
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +313,7 @@ class StateModelAMROptimizer:
 					self._engine_config_template,
 					self._processed_data_dir,
 					window_size,
+					keep_logs,
 				)
 			]
 		else:
@@ -293,6 +326,7 @@ class StateModelAMROptimizer:
 					self._engine_config_template,
 					self._processed_data_dir,
 					window_size,
+					keep_logs,
 				)
 				for _ in range(n_repeats)
 			)
@@ -302,11 +336,13 @@ class StateModelAMROptimizer:
 		std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
 
 		best_idx = int(np.argmin([abs(e - mean_error) for e in errors]))
-		_, _, metrics, posterior_log, prior_log = runs[best_idx]
+		_, _, metrics, posterior_log, prior_log, step_log, strategy_log = runs[best_idx]
 
 		if not keep_logs:
 			posterior_log = None
 			prior_log = None
+			step_log = None
+			strategy_log = None
 
 		return GridPointResult(
 			params=dict(params),
@@ -314,6 +350,8 @@ class StateModelAMROptimizer:
 			metrics=metrics,
 			posterior_log=posterior_log,
 			prior_log=prior_log,
+			step_results=step_log,
+			strategy_counts_log=strategy_log,
 			n_repeats=n_repeats,
 			std_error=std_error,
 		)

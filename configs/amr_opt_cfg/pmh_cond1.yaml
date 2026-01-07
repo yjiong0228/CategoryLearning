@@ -8,10 +8,8 @@ engine_config:
     hypo_transitions_mod:
       class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
       kwargs:
-        # Match M7 cond1: drop 4 by posterior, add 4 random
-        strategies:
-          - {amount: "random_4", method: "top_posterior"}
-          - {amount: "opp_random_4", method: "random"}
+        # Use predefined Condition 1 strategy (Entropy-based, more stable than random)
+        strategies: "original_strategies_a"
         init_num: 3
     likelihood_mod:
       class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
@@ -38,19 +36,20 @@ data_path: ../../data/processed/Task2_processed.csv
 output_dir: ../../results/state-based-AMR-result/pmh/cond1
 
 # Parallelism
-n_jobs_subjects: 4
-n_jobs_inner: 16
+# Run all 8 subjects in parallel and give each 12 inner workers (≈96 cores total)
+n_jobs_subjects: 8
+n_jobs_inner: 12
 
 # Repeats
-n_repeats: 16
-refit_repeats: 256
+n_repeats: 12
+refit_repeats: 128
 
 # Evaluation
-# Per-subject window sizes align with the subjects order above
-window_size: [8, 8, 8, 8, 8, 8, 8, 8]
+# Per-subject window sizes align with the subjects order above (Increased to 16 for smoother plots)
+window_size: [16, 16, 16, 16, 16, 16, 16, 16]
 stop_at: 1.0
 max_trials: null
-keep_logs: false
+keep_logs: true
 
 param_grid:
   gamma: [0.05, 0.999]
@@ -58,7 +57,7 @@ param_grid:
   beta: [1.0, 100.0]
 
 amr_kwargs:
-  max_evals: 1000
+  max_evals: 512
   coarse_grid_per_dim: 3
   split_factor: 2
   refine_top_k: 3

@@ -80,34 +80,39 @@ def resolve_amr_kwargs(opt_cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def serialize_result(subject_id: int, condition: int, result: Dict[str, Any]) -> Dict[str, Any]:
-	"""Convert optimizer output to JSON-serializable dict."""
-	best = result["best"]
-	metrics = best.metrics
+    """Convert optimizer output to JSON-serializable dict, including optional step logs."""
+    best = result["best"]
+    metrics = best.metrics
 
-	def _tolist(x):
-		if x is None:
-			return None
-		if isinstance(x, (list, tuple)):
-			return list(x)
-		try:
-			import numpy as np  # local import to keep top clean
+    def _recursive_to_builtin(obj):
+        import numpy as np
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (list, tuple)):
+            return [_recursive_to_builtin(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _recursive_to_builtin(v) for k, v in obj.items()}
+        return obj
 
-			if isinstance(x, np.ndarray):
-				return x.tolist()
-		except Exception:
-			pass
-		return x
-
-	return {
-		"subject_id": subject_id,
-		"condition": condition,
-		"best_params": best.params,
-		"mean_error": best.mean_error,
-		"std_error": getattr(best, "std_error", 0.0),
-		"n_repeats": getattr(best, "n_repeats", 1),
-		"metrics": {k: _tolist(v) for k, v in metrics.items()},
-		"param_grid": result.get("param_grid", {}),
-	}
+    data = {
+        "subject_id": subject_id,
+        "condition": condition,
+        "best_params": best.params,
+        "mean_error": best.mean_error,
+        "std_error": getattr(best, "std_error", 0.0),
+        "n_repeats": getattr(best, "n_repeats", 1),
+        "metrics": metrics,
+        "param_grid": result.get("param_grid", {}),
+        "best_step_results": getattr(best, "step_results", None),
+        "strategy_counts_log": getattr(best, "strategy_counts_log", None),
+        "posterior_log": getattr(best, "posterior_log", None),
+        "prior_log": getattr(best, "prior_log", None),
+    }
+    return _recursive_to_builtin(data)
 
 
 def save_json(obj: Dict[str, Any], path: Path) -> None:
