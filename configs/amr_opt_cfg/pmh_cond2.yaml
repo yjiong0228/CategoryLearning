@@ -38,11 +38,11 @@ data_path: ../../data/processed/Task2_processed.csv
 output_dir: ../../results/state-based-AMR-result/pmh/cond2
 
 # Parallelism
-n_jobs_subjects: 4
-n_jobs_inner: 16
+n_jobs_subjects: 8
+n_jobs_inner: 14
 
 # Repeats
-n_repeats: 16
+n_repeats: 14
 refit_repeats: 256
 
 # Evaluation
@@ -50,7 +50,7 @@ refit_repeats: 256
 window_size: 16
 stop_at: 1.0
 max_trials: null
-keep_logs: false
+keep_logs: true
 
 param_grid:
   gamma: [0.05, 0.999]
