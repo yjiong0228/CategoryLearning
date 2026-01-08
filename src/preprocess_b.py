@@ -18,18 +18,21 @@ class Preprocessor_B:
 
             # Convert exact features into feature1-4
             if version == 1:
-                feature_names = self.convert("_length", [structure1, structure2])
+                feature_names_with_suffix = self.convert("_length", [structure1, structure2])
+                feature_names = [name.replace("_length", "") for name in feature_names_with_suffix]
             else:
-                feature_names = self.convert("_angle", [structure1, structure2])
+                feature_names_with_suffix = self.convert("_angle", [structure1, structure2])
+                feature_names = [name.replace("_angle", "") for name in feature_names_with_suffix]
 
-            base_columns = ['version', 'condition', 'structure1', 'structure2', 'iSession', 'iBlock', 'iTrial',
-                            'neck_length', 'head_length', 'leg_length', 'tail_length',
-                            'neck_angle', 'head_angle', 'leg_angle', 'tail_angle']
+            base_columns = ['version', 'condition', 'structure1', 'structure2', 'iSession', 'iBlock', 'iTrial']
             remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
 
             combined_data = joint_data[base_columns].copy()
 
-            for i, feature in enumerate(feature_names):
+            for i, name in enumerate(feature_names):
+                combined_data[f'feature{i+1}_name'] = name
+
+            for i, feature in enumerate(feature_names_with_suffix):
                 new_name = f'feature{i+1}'
                 combined_data[new_name] = joint_data[feature]
 
