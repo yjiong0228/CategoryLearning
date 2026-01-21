@@ -13,57 +13,6 @@ from .base_problem import softmax, cdist, euc_dist, two_factor_decay
 from ..inference_engine import BaseDistribution, BaseLikelihood
 
 
-def amnesia_mechanism(func):
-    """
-        Wrapper of the amnesia_mechanism
-        if there is "gamma" or "amnesia" in kwargs,
-        it transforms likelihood(*) into amnesia_likelihood(*)
-        """
-
-    def wrapped(self,
-                hypo: int,
-                data: list | tuple,
-                beta: float,
-                use_cached_dist: bool = False,
-                **kwargs) -> np.ndarray:
-
-        nonlocal func
-        prob = func(self, hypo, data, beta, use_cached_dist, **kwargs)
-
-        # 1) 如果 kwargs 里有"gamma" (以及"w0") => 用 two_factor_decay
-        if "gamma" in kwargs:
-            coeff = two_factor_decay(list(data), kwargs["gamma"], kwargs["w0"])
-            log_prob = np.log(prob)
-            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
-            return np.exp(log_prob)
-        # 2) 如果 kwargs 中有 'amnesia' => 调用用户自定义函数
-        if (amnesia := kwargs.get("amnesia", False)):
-            coeff = amnesia(data, **kwargs.get("amnesia_kwargs", {}))
-            log_prob = np.log(prob)
-            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
-            return np.exp(log_prob)
-        # 3) 如果 kwargs 中有 'adaptive_amnesia' => 实现“试次个性化”逻辑
-        if "adaptive_amnesia" in kwargs:
-            adapt_info = kwargs["adaptive_amnesia"]
-
-            # 如果 adapt_info 是可调用:
-            if callable(adapt_info):
-                # adapt_info(data) => shape=[n_trials]
-                coeff = adapt_info(data, **kwargs.get("amnesia_kwargs", {}))
-            elif isinstance(adapt_info, np.ndarray):
-                coeff = adapt_info
-            else:
-                raise ValueError(
-                    "adaptive_amnesia must be callable or an array")
-
-            log_prob = np.log(prob)
-            log_prob *= coeff.reshape(list(prob.shape)[:-1] + [-1])
-            return np.exp(log_prob)
-
-        return prob
-
-    return wrapped
-
 
 class BasePartition(ABC):
     EPS = 1e-12
@@ -227,8 +176,7 @@ class BasePartition(ABC):
                               use_cached_dist: bool = False,
                               **kwargs) -> np.ndarray:
         """
-        核心函数, 被 amnesia_mechanism 包装，
-        内部先用 calc_likelihood_base 得到 prob (shape=[n_trials]),
+        先用 calc_likelihood_base 得到 prob (shape=[n_trials]),
         然后在 wrapper 中根据kwargs进行遗忘衰减/试次个性化处理.
 
         Parameters
@@ -276,7 +224,6 @@ class BasePartition(ABC):
 
         return likelihood      # shape = (n_trials,)
     
-    # Removed "amnesia_mechanism"
     def calc_trueprob_entry(self,
                             hypo: int,
                             data: list | tuple,
@@ -284,31 +231,17 @@ class BasePartition(ABC):
                             use_cached_dist: bool = False,
                             **kwargs) -> np.ndarray:
         """
-        计算true category被选中的概率, 同样交由amnesia_mechanism 装饰器来做加权处理。
+        计算true category被选中的概率
         """
 
         prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
                                          **kwargs) # shape: (n_cats, nTrial)
 
-        category = np.asarray(data[3], dtype=int) - 1
-        true_cat = category // 2 if self.n_cats == 2 else category # shape: (nTrial,)
+        category = np.asarray(data[3], dtype=int) - 1 # shape: (nTrial,)
         if prob.ndim == 1:
             prob = prob.reshape(-1, 1)
-        return prob[true_cat.flatten(), np.arange(prob.shape[1])] # shape: (nTrial,)
-        # return prob[true_cat]
-
-    def MBase_likelihood(self, params: tuple, data) -> np.ndarray:
-        """
-        Similar to old version M_Base.likelihood. NO `condition` argument,
-        `params` is just a tuple
-        """
-
-        k, beta = params
-        x = data[['feature1', 'feature2', 'feature3',
-                  'feature4']].values  # Shape: [n_trialss, 4]
-        c = data['choice'].values  # Shape: [n_trialss]
-        r = data['feedback'].values  # Shape: [n_trialss]
-        return self.calc_likelihood_entry(k, (x, c, r), beta)
+        return prob[category.flatten(), np.arange(prob.shape[1])] # shape: (nTrial,)
+        # return prob[category]
 
 
     # ======================================================================
