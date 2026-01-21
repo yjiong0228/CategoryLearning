@@ -7,57 +7,76 @@ import pandas as pd
 import numpy as np
 
 class Preprocessor_B:
-    def process(self, taskID, stimulus_data, behavior_data, recording_data = None):
-        if taskID in ['Task2', 'Task3a']:
-            joint_data = pd.merge(stimulus_data, behavior_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
-            joint_data = joint_data.drop('category_y', axis=1)
+    def process(self, stimulus_data, behavior_data, recording_data = None):
 
-            version = behavior_data['version'][0]
-            structure1 = behavior_data['structure1'][0]
-            structure2 = behavior_data['structure2'][0]
+        joint_data = pd.merge(behavior_data, stimulus_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
+        joint_data = joint_data.drop('category_y', axis=1)
 
-            # Convert exact features into feature1-4
-            if version == 1:
-                feature_names_with_suffix = self.convert("_length", [structure1, structure2])
-                feature_names = [name.replace("_length", "") for name in feature_names_with_suffix]
-            else:
-                feature_names_with_suffix = self.convert("_angle", [structure1, structure2])
-                feature_names = [name.replace("_angle", "") for name in feature_names_with_suffix]
+        version = joint_data['version'][0]
+        feature1_name = joint_data['feature1_name'][0]
+        feature2_name = joint_data['feature2_name'][0]
+        feature3_name = joint_data['feature3_name'][0]
+        feature4_name = joint_data['feature4_name'][0]
+        
+        # Convert exact features into feature1-4
+        if version == 1:
+            feature1_col = f"{feature1_name}_length"
+            feature2_col = f"{feature2_name}_length"
+            feature3_col = f"{feature3_name}_length"
+            feature4_col = f"{feature4_name}_length"
+        else:
+            feature1_col = f"{feature1_name}_angle"
+            feature2_col = f"{feature2_name}_angle"
+            feature3_col = f"{feature3_name}_angle"
+            feature4_col = f"{feature4_name}_angle"
 
-            base_columns = ['version', 'condition', 'structure1', 'structure2', 'iSession', 'iBlock', 'iTrial']
-            remaining_columns = ['category', 'choice', 'feedback', 'ambigous', 'choRT']
+        joint_data['feature1'] = joint_data[feature1_col]
+        joint_data['feature2'] = joint_data[feature2_col]
+        joint_data['feature3'] = joint_data[feature3_col]
+        joint_data['feature4'] = joint_data[feature4_col]
 
-            combined_data = joint_data[base_columns].copy()
+        base_columns = ['version', 'condition', 'feature1_name', 'feature2_name', 'feature3_name', 'feature4_name', 
+                        'iSession', 'iBlock', 'iTrial', 'feature1', 'feature2', 'feature3', 'feature4', 
+                        'category', 'choice', 'feedback', 'ambiguous', 'choRT']
 
-            for i, name in enumerate(feature_names):
-                combined_data[f'feature{i+1}_name'] = name
+        combined_data = joint_data[base_columns].copy()
+        
+        combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
 
-            for i, feature in enumerate(feature_names_with_suffix):
-                new_name = f'feature{i+1}'
-                combined_data[new_name] = joint_data[feature]
-
-            combined_data[remaining_columns] = joint_data[remaining_columns]
-
-            combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
-
-        if taskID in ['Task2']:
+        if recording_data is not None:
             rec_processor = Recording_Processor()
+            
+            # process
             result_df = rec_processor.process(recording_data)
             result_df[['neck_oral', 'head_oral', 'leg_oral', 'tail_oral']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
 
-            recording_coded = result_df[['iSession', 'iTrial', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral', 'text']].copy()
-            oral_feature_names = self.convert("_oral", [structure1, structure2])
-            for i, feature in enumerate(oral_feature_names):
-                oral_new_name = f'feature{i+1}_oral'
-                recording_coded[oral_new_name] = recording_coded[feature]
+            recording_coded = result_df[['iSession', 'iTrial', 'text', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral']].copy()
+            
+            feature1_oral_col = f"{feature1_name}_oral"
+            feature2_oral_col = f"{feature2_name}_oral"
+            feature3_oral_col = f"{feature3_name}_oral"
+            feature4_oral_col = f"{feature4_name}_oral"
 
-            result_use = rec_processor.process_use(recording_data).copy()
-            oraluse_feature_names = self.convert("_use", [structure1, structure2])
-            for i, feature in enumerate(oraluse_feature_names):
-                oraluse_new_name = f'feature{i+1}_use'
-                result_use[oraluse_new_name] = result_use[feature]
+            recording_coded['feature1_oral'] = recording_coded[feature1_oral_col]
+            recording_coded['feature2_oral'] = recording_coded[feature2_oral_col]
+            recording_coded['feature3_oral'] = recording_coded[feature3_oral_col]
+            recording_coded['feature4_oral'] = recording_coded[feature4_oral_col]
 
             combined_data = pd.merge(combined_data, recording_coded, on=['iSession', 'iTrial'])
+            
+            # process_use
+            result_use = rec_processor.process_use(recording_data).copy()
+            
+            feature1_oraluse_col = f"{feature1_name}_oraluse"
+            feature2_oraluse_col = f"{feature2_name}_oraluse"
+            feature3_oraluse_col = f"{feature3_name}_oraluse"
+            feature4_oraluse_col = f"{feature4_name}_oraluse"
+
+            result_use['feature1_oraluse'] = result_use[feature1_oraluse_col]
+            result_use['feature2_oraluse'] = result_use[feature2_oraluse_col]
+            result_use['feature3_oraluse'] = result_use[feature3_oraluse_col]
+            result_use['feature4_oraluse'] = result_use[feature4_oraluse_col]
+
             combined_data = pd.merge(combined_data, result_use, on=['iSession', 'iTrial'])
 
         return combined_data

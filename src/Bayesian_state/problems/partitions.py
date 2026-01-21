@@ -394,6 +394,8 @@ class Partition(BasePartition):
 
         self.connectivity_map = self._compute_connectivity_map()
 
+        self.n_samples_used = kwargs.get("similarity_n_samples", 100000)
+
         # ========== (新) 加载或计算相似性矩阵 ==========
         # 1. 确定缓存目录和文件名
         cache_dir = kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR)
@@ -409,7 +411,7 @@ class Partition(BasePartition):
         
         # 2. 调用加载逻辑
         self.similarity_matrix = self._load_or_compute_similarity(
-            n_dims, n_cats, file_path, kwargs.get("similarity_n_samples", 100000)
+            n_dims, n_cats, file_path, self.n_samples_used
         )
 
     def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
@@ -691,6 +693,29 @@ class Partition(BasePartition):
 
         print("Similarity matrix calculation complete.")
         return sim_matrix
+
+
+    def get_similarity_error_matrix(self) -> np.ndarray:
+        """
+        计算当前相似性矩阵的标准误 (Standard Error)。
+        公式: SE = sqrt( p * (1-p) / N )
+        
+        Returns:
+        -------
+        np.ndarray: 形状与 similarity_matrix 相同的误差矩阵。
+        """
+        # 1. 获取当前的 p (相似度矩阵)
+        p = self.similarity_matrix
+        
+        # 2. 获取计算该矩阵时使用的采样数 N
+        N = getattr(self, 'n_samples_used', 100000) 
+        
+        # 3. 计算标准误
+        # 注意: 对角线上 p=1, 1-p=0, 误差为0, 符合逻辑
+        se_matrix = np.sqrt(p * (1 - p) / N)
+        
+        return se_matrix
+
 
 
     # ======================================================================
