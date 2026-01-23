@@ -12,30 +12,12 @@ class Preprocessor_B:
         joint_data = pd.merge(behavior_data, stimulus_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
         joint_data = joint_data.drop('category_y', axis=1)
 
-        version = joint_data['version'][0]
         feature1_name = joint_data['feature1_name'][0]
         feature2_name = joint_data['feature2_name'][0]
         feature3_name = joint_data['feature3_name'][0]
         feature4_name = joint_data['feature4_name'][0]
-        
-        # Convert exact features into feature1-4
-        if version == 1:
-            feature1_col = f"{feature1_name}_length"
-            feature2_col = f"{feature2_name}_length"
-            feature3_col = f"{feature3_name}_length"
-            feature4_col = f"{feature4_name}_length"
-        else:
-            feature1_col = f"{feature1_name}_angle"
-            feature2_col = f"{feature2_name}_angle"
-            feature3_col = f"{feature3_name}_angle"
-            feature4_col = f"{feature4_name}_angle"
 
-        joint_data['feature1'] = joint_data[feature1_col]
-        joint_data['feature2'] = joint_data[feature2_col]
-        joint_data['feature3'] = joint_data[feature3_col]
-        joint_data['feature4'] = joint_data[feature4_col]
-
-        base_columns = ['version', 'condition', 'feature1_name', 'feature2_name', 'feature3_name', 'feature4_name', 
+        base_columns = ['condition', 'feature1_name', 'feature2_name', 'feature3_name', 'feature4_name', 
                         'iSession', 'iBlock', 'iTrial', 'feature1', 'feature2', 'feature3', 'feature4', 
                         'category', 'choice', 'feedback', 'ambiguous', 'choRT']
 
