@@ -1,4 +1,7 @@
 *.png
+!results/Model_results/
+!results/Model_results/*.png
+
 *.csv
 *.pyc
 *.gz
