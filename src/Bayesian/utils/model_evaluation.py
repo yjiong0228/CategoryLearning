@@ -61,6 +61,23 @@ class ModelEval:
         self._plot_by_condition(results, subjects, save_path,
                                 'Posterior Probabilities for k by Subject', body, **kwargs)
 
+    def plot_beta_parameters(self, results, subjects=None, save_path=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            step_results = info.get('step_results', info.get('best_step_results', []))
+            data = []
+            for step, res in enumerate(step_results):
+                for k, details in res['hypo_details'].items():
+                    beta = details.get('beta_opt', np.nan)
+                    data.append({'Step': step + 1, 'k': k, 'Beta': beta})
+            df = pd.DataFrame(data)
+            sns.scatterplot(data=df, x='Step', y='Beta', hue='k', palette='tab10', alpha=0.5, legend=False, ax=ax)
+            hk = 0 if condition == 1 else 42
+            sns.scatterplot(data=df[df['k'] == hk], x='Step', y='Beta', color='red', s=50, ax=ax)
+            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Beta Parameter')
+
+        self._plot_by_condition(results, subjects, save_path,
+                                'Beta Parameters for k by Subject', body, **kwargs)
+
     def plot_k_oral_comparison(self, model_results, oral_results, subjects=None, save_path=None, window_size=16, **kwargs):
         """
         Compare smoothed posterior of true k and smoothed oral hits, filtering out empty trials.
