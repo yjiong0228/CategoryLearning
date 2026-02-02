@@ -40,6 +40,11 @@ def aggregate(input_dir: Path) -> Dict[str, Any]:
             "mean_error": payload.get("mean_error"),
             "std_error": payload.get("std_error"),
             "best_params": payload.get("best_params"),
+            # Optional logs for oral/cluster plots
+            "best_step_results": payload.get("best_step_results"),
+            "strategy_counts_log": payload.get("strategy_counts_log"),
+            "posterior_log": payload.get("posterior_log"),
+            "prior_log": payload.get("prior_log"),
         }
     if not results:
         raise RuntimeError(f"No subject_*.json found in {input_dir}")

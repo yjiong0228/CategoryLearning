@@ -2,15 +2,14 @@ from typing import Optional, List, Dict, Union, Tuple, Any
 import numpy as np
 import pandas as pd
 
-from ..problems.model import StandardModel
-from ..problems.config import config_base
+from ..problems.partitions import Partition
 
 class Oral_to_coordinate:
 
     def get_oral_hypos_list(self,
                             condition: int,
                             data: Tuple[np.ndarray, np.ndarray],
-                            model,
+                            partition,
                             dist_tol: float = 1e-9,
                             top_k: Optional[int] = None,
                             ) -> Dict[str, Any]:
@@ -18,7 +17,7 @@ class Oral_to_coordinate:
         oral_centers, choices = data
         n_trials = len(choices)
 
-        n_hypos = model.partition_model.prototypes_np.shape[0]
+        n_hypos = partition.prototypes_np.shape[0]
         all_hypos = range(n_hypos)
 
         oral_hypos_list = []
@@ -38,7 +37,7 @@ class Oral_to_coordinate:
             # Compute distances to each hypothesis prototype
             distance_map = []
             for hypo_idx in all_hypos:
-                true_center = model.partition_model.prototypes_np[hypo_idx, 0, cat_idx, :]
+                true_center = partition.prototypes_np[hypo_idx, 0, cat_idx, :]
                 distance_val = np.linalg.norm(reported_center - true_center)
                 distance_map.append((distance_val, hypo_idx))
 
@@ -71,14 +70,16 @@ class Oral_to_coordinate:
         for _, subj_df in learning_data.groupby('iSub'):
             iSub   = int(subj_df['iSub'].iloc[0])
             cond   = int(subj_df['condition'].iloc[0])
-            model  = StandardModel(config_base, condition=cond)
+            # Use Partition directly instead of StandardModel
+            n_cats = 2 if cond == 1 else 4
+            partition = Partition(n_dims=4, n_cats=n_cats)
 
             centres = subj_df[['feature1_oral','feature2_oral',
                             'feature3_oral','feature4_oral']].values
             choices = subj_df['choice'].values
 
             oral_hypos_list[iSub] = self.get_oral_hypos_list(cond,
-                (centres, choices), model)
+                (centres, choices), partition)
             
         oral_hypo_hits = {}
 
