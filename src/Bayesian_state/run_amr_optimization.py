@@ -80,34 +80,39 @@ def resolve_amr_kwargs(opt_cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def serialize_result(subject_id: int, condition: int, result: Dict[str, Any]) -> Dict[str, Any]:
-	"""Convert optimizer output to JSON-serializable dict."""
-	best = result["best"]
-	metrics = best.metrics
+    """Convert optimizer output to JSON-serializable dict, including optional step logs."""
+    best = result["best"]
+    metrics = best.metrics
 
-	def _tolist(x):
-		if x is None:
-			return None
-		if isinstance(x, (list, tuple)):
-			return list(x)
-		try:
-			import numpy as np  # local import to keep top clean
+    def _recursive_to_builtin(obj):
+        import numpy as np
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (list, tuple)):
+            return [_recursive_to_builtin(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _recursive_to_builtin(v) for k, v in obj.items()}
+        return obj
 
-			if isinstance(x, np.ndarray):
-				return x.tolist()
-		except Exception:
-			pass
-		return x
-
-	return {
-		"subject_id": subject_id,
-		"condition": condition,
-		"best_params": best.params,
-		"mean_error": best.mean_error,
-		"std_error": getattr(best, "std_error", 0.0),
-		"n_repeats": getattr(best, "n_repeats", 1),
-		"metrics": {k: _tolist(v) for k, v in metrics.items()},
-		"param_grid": result.get("param_grid", {}),
-	}
+    data = {
+        "subject_id": subject_id,
+        "condition": condition,
+        "best_params": best.params,
+        "mean_error": best.mean_error,
+        "std_error": getattr(best, "std_error", 0.0),
+        "n_repeats": getattr(best, "n_repeats", 1),
+        "metrics": metrics,
+        "param_grid": result.get("param_grid", {}),
+        "best_step_results": getattr(best, "step_results", None),
+        "strategy_counts_log": getattr(best, "strategy_counts_log", None),
+        "posterior_log": getattr(best, "posterior_log", None),
+        "prior_log": getattr(best, "prior_log", None),
+    }
+    return _recursive_to_builtin(data)
 
 
 def save_json(obj: Dict[str, Any], path: Path) -> None:
@@ -200,13 +205,35 @@ def main() -> None:
 	n_jobs_inner = int(op_cfg.get("n_jobs_inner", 4))
 	n_repeats = int(op_cfg.get("n_repeats", 4))
 	refit_repeats = int(op_cfg.get("refit_repeats", 8))
-	window_size = int(op_cfg.get("window_size", 16))
+	raw_window_size = op_cfg.get("window_size", 16)
+	overrides_raw = op_cfg.get("window_size_overrides") or {}
+	window_size_overrides = {int(k): int(v) for k, v in overrides_raw.items()}
 	stop_at = float(op_cfg.get("stop_at", 1.0))
 	max_trials_val = op_cfg.get("max_trials", None)
 	max_trials = int(max_trials_val) if max_trials_val is not None else None
 	keep_logs = bool(op_cfg.get("keep_logs", False))
 
 	output_dir.mkdir(parents=True, exist_ok=True)
+
+	if isinstance(raw_window_size, (list, tuple)):
+		window_size_list = [int(x) for x in raw_window_size]
+		if len(window_size_list) != len(subjects):
+			raise ValueError(
+				"window_size list length must match number of subjects when using per-subject window sizes"
+			)
+		window_size_map = {sid: window_size_list[idx] for idx, sid in enumerate(subjects)}
+
+		def resolve_window_size(sid: int) -> int:
+			if sid in window_size_overrides:
+				return window_size_overrides[sid]
+			return window_size_map[sid]
+	else:
+		default_window_size = int(raw_window_size)
+
+		def resolve_window_size(sid: int) -> int:
+			if sid in window_size_overrides:
+				return window_size_overrides[sid]
+			return default_window_size
 
 	Parallel(n_jobs=n_jobs_subjects)(
 		delayed(run_single_subject)(
@@ -218,7 +245,7 @@ def main() -> None:
 			output_dir=output_dir,
 			n_repeats=n_repeats,
 			refit_repeats=refit_repeats,
-			window_size=window_size,
+			window_size=resolve_window_size(sid),
 			stop_at=stop_at,
 			max_trials=max_trials,
 			n_jobs_inner=n_jobs_inner,

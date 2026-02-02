@@ -25,12 +25,14 @@ DEFAULT_DATA_PATH = _REPO_ROOT / "data" / "processed" / "Task2_processed.csv"
 @dataclass
 class GridPointResult:
     """Container for a single parameter combination evaluation."""
-    
+
     params: Dict[str, Any]
     mean_error: float
     metrics: Dict[str, np.ndarray | float]
     posterior_log: Optional[Sequence[np.ndarray]] = None
     prior_log: Optional[Sequence[np.ndarray]] = None
+    step_results: Optional[Sequence[Dict[str, Any]]] = None
+    strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
     n_repeats: int = 1
     std_error: float = 0.0
 
