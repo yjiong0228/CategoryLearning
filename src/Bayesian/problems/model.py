@@ -787,16 +787,7 @@ class StandardModel(BaseModel):
         Returns:
             float: feedback value (1.0 / 0.5 / 0.0)
         """
-        if self.condition == 1:
-            # 类别分组：{1,2}, {3,4}
-            if (a == 1 and b in (1, 2)) or (a == 2 and b in (3, 4)):
-                return 1.0
-            else:
-                return 0.0
-        elif self.condition == 2:
-            # 完全匹配
-            return 1.0 if a == b else 0.0
-        elif self.condition == 3:
+        if self.condition == 3:
             # 精细反馈：同类1.0，粗类0.5
             if a == b:
                 return 1.0
@@ -804,6 +795,9 @@ class StandardModel(BaseModel):
                 return 0.5
             else:
                 return 0.0
+        else:
+            return 1.0 if a == b else 0.0
+
 
 
     def on_policy_decision_making(self,
