@@ -146,6 +146,10 @@ class BaseEngine:
         self.state = None
         self.observation = None  # 记录当前观测
         self.partition = kwargs.get('partition', None) # FIXME: partition 这样写吗？
+        
+        # Per-hypothesis beta array (inverse temperature for likelihood softmax)
+        # Initialized as None; will be set by BetaModule if present
+        self.beta = None
 
         # 如果 kwargs 中有同名参数，则赋值给成员变量
         for attr in [

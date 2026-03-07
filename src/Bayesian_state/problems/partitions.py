@@ -144,29 +144,48 @@ class BasePartition(ABC):
     def calc_likelihood(self,
                         hypos: List[int] | Tuple[int],
                         data: list | tuple,
-                        beta: list | tuple | float = 1.,
+                        beta: list | tuple | float | np.ndarray = 1.,
                         use_cached_dist: bool = False,
                         normalized: bool = True,
                         **kwargs) -> np.ndarray:  # BaseLikelihood:
         """
         Calculate likelihood.
 
-        use_cached_dist: bool. This object caches the most recent distance
-                         to closest prototype. If True, use the cached dist.
-                         MAKE SURE you know the dist you calculate last time
-                         is suitable to use before setting
-                         `use_cached_dist = True`.
-        """
-        match beta:
-            case float() as float_b:
-                beta = [float_b] * len(hypos)
-            case _:
-                pass
-        ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
+        Parameters
+        ----------
+        hypos : List[int] | Tuple[int]
+            List of hypothesis indices.
+        data : list | tuple
+            Observation data (stimulus, choices, responses).
+        beta : float | list | tuple | np.ndarray
+            Softmax inverse temperature. Can be:
+            - A scalar (applied to all hypotheses)
+            - A list/tuple/array of per-hypothesis beta values
+        use_cached_dist : bool
+            Whether to use cached distances for speed-up.
+        normalized : bool
+            Whether to normalize the result.
 
-        # 如果 beta 是标量，将其转换为与 hypos 长度一致的数组
-        if isinstance(beta, (int, float)):
-            beta = [beta] * len(hypos)
+        Returns
+        -------
+        np.ndarray
+            Likelihood matrix of shape [n_trials, n_hypos].
+        """
+        # Convert beta to list if needed
+        if isinstance(beta, np.ndarray):
+            beta = beta.tolist()
+        elif isinstance(beta, (int, float)):
+            beta = [float(beta)] * len(hypos)
+        elif not isinstance(beta, (list, tuple)):
+            beta = [float(beta)] * len(hypos)
+        
+        # Ensure beta length matches hypos length
+        if len(beta) != len(hypos):
+            # If mismatch, use first value as default
+            default_beta = beta[0] if len(beta) > 0 else 1.0
+            beta = [default_beta] * len(hypos)
+
+        ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
 
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],

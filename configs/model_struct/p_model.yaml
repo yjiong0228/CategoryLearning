@@ -1,4 +1,7 @@
 modules:
+  beta_mod:
+    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    kwargs: {}
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {}
@@ -9,3 +12,4 @@ agenda:
   - perception_mod
   - likelihood_mod
   - __self__
+  - beta_mod

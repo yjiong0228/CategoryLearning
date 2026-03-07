@@ -5,6 +5,17 @@ engine_config:
   modules:
     perception_mod:
       class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    beta_mod:
+      class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+      kwargs:
+        beta_init: 3.0
+        beta_min: 0.1
+        beta_max: 100.0
+        increase_rate: 1.15
+        decrease_rate: 0.3
+        correct_additive: 0.5
+        use_prior_scaling: true
+        prior_beta_scale: 10.0
     hypo_transitions_mod:
       class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
       kwargs:
@@ -13,8 +24,7 @@ engine_config:
         init_num: 3
     likelihood_mod:
       class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-      kwargs:
-        beta: None
+      kwargs: {}
     memory_mod:
       class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
       kwargs:
@@ -25,6 +35,7 @@ engine_config:
     - hypo_transitions_mod
     - likelihood_mod
     - memory_mod
+    - beta_mod
 
 # Set subjects after running list_conditions.py; example:
 # subjects: [1, 4, 7, 10, 13, 16, 19, 22]
@@ -54,7 +65,7 @@ keep_logs: true
 param_grid:
   gamma: [0.05, 0.999]
   w0: [0.01, 1.0]
-  beta: [1.0, 100.0]
+  # beta removed - now managed by BetaModule with per-hypothesis dynamic evolution
 
 amr_kwargs:
   max_evals: 512
