@@ -1,4 +1,16 @@
 modules:
+  beta_mod:
+    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    kwargs: {
+      beta_init: 3.0,
+      beta_min: 0.1,
+      beta_max: 100.0,
+      # increase_rate: 1.1,
+      decrease_rate: 0.5,
+      correct_additive: 2.0,
+      use_prior_scaling: true,
+      prior_beta_scale: 10.0
+    }
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {}
@@ -6,3 +18,4 @@ modules:
 agenda:
   - likelihood_mod
   - __self__
+  - beta_mod

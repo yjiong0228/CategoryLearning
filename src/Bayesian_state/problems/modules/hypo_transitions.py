@@ -178,6 +178,7 @@ class FixedNumHypothesisModule(BaseModule):
         """
         Update engine.prior based on the transition from old_active to active hypotheses.
         Uses similarity-weighted sum of old posteriors to initialize new hypotheses.
+        Also initializes beta values for newly added hypotheses via BetaModule.
         """
         if self.old_active is None or self.active is None:
             return
@@ -193,6 +194,7 @@ class FixedNumHypothesisModule(BaseModule):
             mask = np.zeros(self.total_hypo, dtype=float)
             mask[self.active] = 1.0
             self.engine.prior = mask / mask.sum()
+            self._initialize_beta_for_newcomers(self.active, self.engine.prior)
             return
 
         # Create boolean masks
@@ -259,6 +261,28 @@ class FixedNumHypothesisModule(BaseModule):
 
         # Update engine.prior
         self.engine.prior = new_prior
+        
+        # Initialize beta for newly added hypotheses
+        self._initialize_beta_for_newcomers(added_indices, new_prior)
+
+    def _initialize_beta_for_newcomers(self, newcomer_indices: np.ndarray, prior: np.ndarray) -> None:
+        """
+        Initialize beta values for newly added hypotheses using BetaModule.
+        
+        Parameters
+        ----------
+        newcomer_indices : np.ndarray
+            Indices of newly added hypotheses.
+        prior : np.ndarray
+            Prior probability distribution.
+        """
+        if len(newcomer_indices) == 0:
+            return
+            
+        # Check if BetaModule exists
+        beta_mod = self.engine.modules.get("beta_mod", None)
+        if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
+            beta_mod.initialize_beta_for_hypotheses(newcomer_indices, prior)
 
 
 
@@ -1029,6 +1053,29 @@ class DynamicHypothesisModule(BaseModule):
             new_prior[self.active] = 1.0 / len(self.active)
 
         self.engine.prior = new_prior
+        
+        # 7. Initialize beta for newcomers via BetaModule
+        self._initialize_beta_for_newcomers(newcomer_indices, new_prior)
+
+    def _initialize_beta_for_newcomers(self, newcomer_indices: np.ndarray, prior: np.ndarray) -> None:
+        """
+        Initialize beta values for newly added hypotheses using BetaModule.
+        
+        Parameters
+        ----------
+        newcomer_indices : np.ndarray
+            Indices of newly added hypotheses.
+        prior : np.ndarray
+            Prior probability distribution.
+        """
+        if len(newcomer_indices) == 0:
+            return
+            
+        # Check if BetaModule exists
+        beta_mod = self.engine.modules.get("beta_mod", None)
+        if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
+            beta_mod.initialize_beta_for_hypotheses(newcomer_indices, prior)
+
 
 # TODO: 现在有了similarity matrix，能不能简化dynamic hypothesis module的transition逻辑？
 

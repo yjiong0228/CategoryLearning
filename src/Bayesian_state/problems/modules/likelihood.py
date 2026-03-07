@@ -1,6 +1,7 @@
 """
 Likelihood Module
 """
+import numpy as np
 from .base_module import BaseModule
 
 
@@ -8,6 +9,10 @@ class LikelihoodModule(BaseModule):
     """
     A module responsible for calculating the likelihood of an observation
     based on a partition model.
+    
+    Supports both global beta and per-hypothesis beta arrays:
+    - If engine.beta is available (set by BetaModule), uses per-hypothesis beta
+    - Otherwise, falls back to a global beta from kwargs
     """
 
     def __init__(self, engine, **kwargs):
@@ -21,13 +26,32 @@ class LikelihoodModule(BaseModule):
         partition : BasePartition
             The partition model used for likelihood calculations.
         **kwargs:
-            Additional keyword arguments, e.g., `beta`.
+            Additional keyword arguments, e.g., `beta` (fallback global beta).
         """
         super().__init__(engine)
         self.partition = kwargs.get('partition', self.engine.partition)
         # Get the list of hypothesis indices from the engine's hypothesis set
         self.h_indices = list(self.engine.hypotheses_set)
         self.kwargs = kwargs
+        
+        # Default global beta (used as fallback if no BetaModule is present)
+        self.default_beta = float(kwargs.get('beta', 10.0))
+
+    def _get_beta_values(self) -> np.ndarray | float:
+        """
+        Get beta values for likelihood calculation.
+        
+        Returns per-hypothesis beta array if available from engine,
+        otherwise returns the default global beta.
+        """
+        # Check if engine has per-hypothesis beta from BetaModule
+        engine_beta = getattr(self.engine, "beta", None)
+        if engine_beta is not None and isinstance(engine_beta, np.ndarray):
+            # Return beta values for active hypotheses
+            return engine_beta[self.h_indices]
+        
+        # Fallback to global beta
+        return self.default_beta
 
     def process(self, **kwargs):
         """
@@ -50,18 +74,18 @@ class LikelihoodModule(BaseModule):
             [observation[2]]   # response
         )
 
-        # Extract beta from the module's or method's kwargs, with a default.
-        beta = self.kwargs.get('beta', kwargs.get('beta', 10.0))
+        # Get beta values (per-hypothesis array or global scalar)
+        beta = self._get_beta_values()
 
         # `calc_likelihood` returns shape [n_trials, n_hypos].
         # For a single trial, this will be [1, n_hypos].
         likelihood_matrix = self.partition.calc_likelihood(
             hypos=self.h_indices,
             data=single_trial_data,
-            #beta=beta,
+            beta=beta,
             use_cached_dist=kwargs.get('use_cached_dist', False),
             normalized=True,
-            **self.kwargs
+            **{k: v for k, v in self.kwargs.items() if k != 'beta'}
         )
 
         # Squeeze the result to a 1D array of shape (n_hypos,)

@@ -71,11 +71,16 @@ def _compute_prediction_metrics(
     partition = model.partition_model
     hypotheses = list(model.hypotheses_set)
     
-    # Try to find beta in likelihood_mod, default to 10.0
-    beta_param = 10.0
-    if hasattr(model.engine, "likelihood_mod"):
-        lik_mod = getattr(model.engine, "likelihood_mod")
-        beta_param = float(lik_mod.kwargs.get("beta", 10.0))
+    # Get per-hypothesis beta from engine if available, otherwise use default
+    engine_beta = getattr(model.engine, "beta", None)
+    if engine_beta is None:
+        # Fallback: try to get from likelihood_mod (legacy), or use default
+        beta_param = 10.0
+        if hasattr(model.engine, "likelihood_mod"):
+            lik_mod = getattr(model.engine, "likelihood_mod")
+            beta_param = float(lik_mod.kwargs.get("beta", 10.0))
+        # Create uniform beta array
+        engine_beta = np.full(len(hypotheses), beta_param)
 
 
     post_arr = np.asarray(post_log, dtype=float)
@@ -106,10 +111,12 @@ def _compute_prediction_metrics(
         for idx, (weight, hypo) in enumerate(zip(current_post, hypotheses)):
             if weight <= 0:
                 continue
+            # Use per-hypothesis beta
+            beta_for_hypo = float(engine_beta[hypo]) if hypo < len(engine_beta) else 10.0
             lik = partition.calc_trueprob_entry(
                 hypo,
                 trial_slice,
-                beta_param,
+                beta_for_hypo,
                 use_cached_dist=False, # FIXME：必须是false
             )
             weighted_prob += weight * float(np.ravel(lik)[0])
@@ -155,11 +162,14 @@ def _inject_params(config: Dict, params: Dict[str, Any]) -> None:
     Inject parameters into the configuration dictionary.
     Supports dot notation (e.g. 'modules.memory_mod.kwargs.gamma')
     and shortcuts for common parameters.
+    
+    Note: beta is no longer optimized as a global parameter.
+    Per-hypothesis beta is managed by BetaModule with dynamic evolution.
     """
     shortcuts = {
         "gamma": "modules.memory_mod.kwargs.gamma",
         "w0": "modules.memory_mod.kwargs.w0",
-        "beta": "modules.likelihood_mod.kwargs.beta",
+        # "beta" removed - now managed by BetaModule with per-hypo evolution
     }
 
     def set_by_path(root: Dict, path: str, value: Any):
@@ -170,6 +180,9 @@ def _inject_params(config: Dict, params: Dict[str, Any]) -> None:
         curr[parts[-1]] = value
 
     for key, value in params.items():
+        # Skip beta if present (for backward compatibility)
+        if key == "beta":
+            continue
         path = shortcuts.get(key, key)
         set_by_path(config, path, value)
 
