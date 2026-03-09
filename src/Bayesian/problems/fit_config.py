@@ -5,60 +5,23 @@ from src.Bayesian.utils.optimizer import Optimizer
 
 
 
-window_size_configs = {
-    1: 8,
-    2: 16,
-    3: 16,
-    4: 8,
-    5: 16,
-    6: 16,
-    7: 8,
-    8: 16,
-    9: 16,
-    10: 8,
-    11: 16,
-    12: 16,
-    13: 8,
-    14: 16,
-    15: 16,
-    16: 8,
-    17: 16,
-    18: 16,
-    19: 8,
-    20: 16,
-    21: 16,
-    22: 8,
-    23: 16,
-    24: 16}
+
+subIDs = []
+for condition in [1, 2, 3]:
+    for last_two_digits in range(1, 50):
+        subID = condition * 100 + last_two_digits
+        subIDs.append(subID)
 
 
-def post_acc_amount_f(x):
-    if x <= 0.2:
-        return 0
-    elif 0.2 < x < 0.3:
-        return 1
-    elif 0.3 <= x < 0.4:
-        return 2
-    elif 0.4 <= x < 0.5:
-        return 3
-    elif 0.5 <= x < 0.6:
-        return 4
-    elif 0.6 <= x < 0.7:
-        return 5
-    elif 0.7 <= x < 0.8:
-        return 6
-    elif 0.8 <= x <= 1:
-        return 7
-
-def random_acc_amount_f(x):
-    return 7 - post_acc_amount_f(x)
+#### window_size config
+window_size_configs = {}
+for subID in subIDs:
+    first_digit = subID // 100
+    window_size_configs[subID] = 8 if first_digit == 1 else 16
 
 
-sub_cond1 = [i for i in range(1, 25) if i % 3 == 1]
-sub_cond2 = [i for i in range(1, 25) if i % 3 == 2]
-sub_cond3 = [i for i in range(1, 25) if i % 3 == 0]
 
-
+#### module config for M3
 module_configs_M3 = {}
 module_configs_M3.update({
     i: {
@@ -66,23 +29,21 @@ module_configs_M3.update({
             "transition_spec": [("random_4", "top_posterior"),
                                 ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
-    } for i in sub_cond1 
+    } for i in subIDs if i // 100 == 1
 })
-
 module_configs_M3.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                                ("opp_acc_7", "random")],
             "init_strategy": [(10, "random")]}),
-    } for i in (sub_cond2 + sub_cond3)
+    } for i in subIDs if i // 100 in [2, 3]
 })
 
 
-
+#### module config for M5
 module_configs_M5 = {}
-
 module_configs_M5.update({
     i: {
         "cluster": (PartitionCluster, {
@@ -90,23 +51,21 @@ module_configs_M5.update({
                                 ("opp_random_4", "random")],
             "init_strategy": [(3, "random")]}),
         "perception": (BasePerception, {}),
-    } for i in sub_cond1
+    } for i in subIDs if i // 100 == 1
 })
-
 module_configs_M5.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                                ("opp_acc_7", "random")],
             "init_strategy": [(10, "random")]}),
         "perception": (BasePerception, {}),
-    } for i in (sub_cond2 + sub_cond3)
+    } for i in subIDs if i // 100 in [2, 3]
 })
 
 
 module_configs_M6 = {}
-
 module_configs_M6.update({
     i: {
         "cluster": (PartitionCluster, {
@@ -120,15 +79,14 @@ module_configs_M6.update({
             },
             "param_resolution": 20
         }),
-    } for i in sub_cond1
+    } for i in subIDs if i // 100 == 1
 })
-
 module_configs_M6.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                                ("opp_acc_7", "random")],
             "init_strategy": [(10, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -137,12 +95,11 @@ module_configs_M6.update({
             },
             "param_resolution": 20
         }),
-    } for i in (sub_cond2 + sub_cond3)
+    } for i in subIDs if i // 100 in [2, 3]
 })
 
 
 module_configs_M7 = {}
-
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
@@ -157,15 +114,14 @@ module_configs_M7.update({
             "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
-    } for i in sub_cond1
+    } for i in subIDs if i // 100 == 1
 })
-
 module_configs_M7.update({
     i: {
         "cluster": (PartitionCluster, {
             "transition_spec": [("random_7", "random_posterior"),
                                 (1, "ksimilar_centers"),
-                                (PartitionCluster._amount_accuracy_gen(random_acc_amount_f, 7), "random")],
+                                ("opp_acc_7", "random")],
             "init_strategy": [(10, "random")]}),
         "memory": (BaseMemory, {
             "personal_memory_range": {
@@ -175,7 +131,7 @@ module_configs_M7.update({
             "param_resolution": 20
         }),
         "perception": (BasePerception, {}),
-    } for i in (sub_cond2 + sub_cond3)
+    } for i in subIDs if i // 100 in [2, 3]
 })
 
 

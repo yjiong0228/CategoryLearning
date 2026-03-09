@@ -2,7 +2,10 @@
 !results/Model_results/
 !results/Model_results/*.png
 
-*.csv
+# *.csv
+*data/不用
+*src/Hybrid
+
 *.pyc
 *.gz
 *.joblib
