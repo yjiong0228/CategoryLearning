@@ -25,26 +25,41 @@ class Preprocessor_B:
         
         combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
 
+        # 这些是 recording_data 存在时会额外产生的列
+        extra_columns = [
+            'text', 'feature1_oraluse', 'feature2_oraluse', 'feature3_oraluse', 'feature4_oraluse',
+            'feature1_oralvalue', 'feature2_oralvalue', 'feature3_oralvalue', 'feature4_oralvalue'
+        ]
+
         if recording_data is not None:
             rec_processor = Recording_Processor()
             
-            # process
+            # process value
             result_df = rec_processor.process(recording_data)
-            result_df[['neck_oral', 'head_oral', 'leg_oral', 'tail_oral']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
+            result_df[['neck_oralvalue', 'head_oralvalue', 'leg_oralvalue', 'tail_oralvalue']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
 
-            recording_coded = result_df[['iSession', 'iTrial', 'text', 'neck_oral', 'head_oral', 'leg_oral', 'tail_oral']].copy()
+            recording_coded = result_df[['iSession', 'iTrial', 'text', 'neck_oralvalue', 'head_oralvalue', 'leg_oralvalue', 'tail_oralvalue']].copy()
             
-            feature1_oral_col = f"{feature1_name}_oral"
-            feature2_oral_col = f"{feature2_name}_oral"
-            feature3_oral_col = f"{feature3_name}_oral"
-            feature4_oral_col = f"{feature4_name}_oral"
+            feature1_oralvalue_col = f"{feature1_name}_oralvalue"
+            feature2_oralvalue_col = f"{feature2_name}_oralvalue"
+            feature3_oralvalue_col = f"{feature3_name}_oralvalue"
+            feature4_oralvalue_col = f"{feature4_name}_oralvalue"
 
-            recording_coded['feature1_oral'] = recording_coded[feature1_oral_col]
-            recording_coded['feature2_oral'] = recording_coded[feature2_oral_col]
-            recording_coded['feature3_oral'] = recording_coded[feature3_oral_col]
-            recording_coded['feature4_oral'] = recording_coded[feature4_oral_col]
+            recording_coded['feature1_oralvalue'] = recording_coded[feature1_oralvalue_col]
+            recording_coded['feature2_oralvalue'] = recording_coded[feature2_oralvalue_col]
+            recording_coded['feature3_oralvalue'] = recording_coded[feature3_oralvalue_col]
+            recording_coded['feature4_oralvalue'] = recording_coded[feature4_oralvalue_col]
 
-            combined_data = pd.merge(combined_data, recording_coded, on=['iSession', 'iTrial'])
+            keep_cols = [
+                'iSession', 'iTrial', 'text', 
+                'feature1_oralvalue', 'feature2_oralvalue',
+                'feature3_oralvalue', 'feature4_oralvalue'
+            ]
+
+            combined_data = pd.merge(
+                combined_data, recording_coded[keep_cols], 
+                on=['iSession', 'iTrial'], 
+                how='left')
             
             # process_use
             result_use = rec_processor.process_use(recording_data).copy()
@@ -59,40 +74,28 @@ class Preprocessor_B:
             result_use['feature3_oraluse'] = result_use[feature3_oraluse_col]
             result_use['feature4_oraluse'] = result_use[feature4_oraluse_col]
 
-            combined_data = pd.merge(combined_data, result_use, on=['iSession', 'iTrial'])
+            keep_cols = [
+                'iSession', 'iTrial',
+                'feature1_oraluse', 'feature2_oraluse',
+                'feature3_oraluse', 'feature4_oraluse'
+            ]
+            combined_data = pd.merge(
+                combined_data, result_use[keep_cols],
+                on=['iSession', 'iTrial'],
+                how='left'
+            )
+        else:
+            # recording_data 缺失时，补齐这些列，值为空
+            for col in extra_columns:
+                combined_data[col] = pd.NA
+                
+        final_columns = base_columns + [
+            'text','feature1_oraluse', 'feature2_oraluse', 'feature3_oraluse', 'feature4_oraluse',
+            'feature1_oralvalue', 'feature2_oralvalue', 'feature3_oralvalue', 'feature4_oralvalue'
+        ]
+        combined_data = combined_data[final_columns]                
 
         return combined_data
-
-    def convert(self, suffix, structure):
-        # feature selection
-        if structure[0] == 1:
-            features = ["neck", "head", "leg", "tail"]
-        elif structure[0] == 2:
-            features = ["neck", "head", "tail", "leg"]
-        elif structure[0] == 3:
-            features = ["neck", "leg", "tail", "head"]
-        elif structure[0] == 4:
-            features = ["head", "leg", "tail", "neck"]
-
-        # feature space segmentation
-        if structure[1] == 1:
-            features = features[:]
-        elif structure[1] == 2:
-            features = [features[0], features[2], features[1], features[3]]
-        elif structure[1] == 3:
-            features = [features[1], features[0], features[2], features[3]]
-        elif structure[1] == 4:
-            features = [features[1], features[2], features[0], features[3]]
-        elif structure[1] == 5:
-            features = [features[2], features[0], features[1], features[3]]
-        elif structure[1] == 6:
-            features = [features[2], features[1], features[0], features[3]]
-
-        # Final rearrangement
-        features = [features[0], features[2], features[1], features[3]]
-
-        # Add suffix to feature names
-        return [f + suffix for f in features]
 
 
 class Recording_Processor:
@@ -133,10 +136,10 @@ class Recording_Processor:
         results = {
             'iSession': df['iSession'],
             'iTrial': df['iTrial'],
-            'neck_use': [0] * len(df),
-            'head_use': [0] * len(df),
-            'leg_use': [0] * len(df),
-            'tail_use': [0] * len(df),
+            'neck_oraluse': [0] * len(df),
+            'head_oraluse': [0] * len(df),
+            'leg_oraluse': [0] * len(df),
+            'tail_oraluse': [0] * len(df),
         }
 
         # 遍历每一行的文本
@@ -146,13 +149,13 @@ class Recording_Processor:
 
             # 检查每个身体部位是否出现在文本中
             if '脖子' in text:
-                results['neck_use'][idx] = 1
+                results['neck_oraluse'][idx] = 1
             if '头' in text:
-                results['head_use'][idx] = 1
+                results['head_oraluse'][idx] = 1
             if '腿' in text:
-                results['leg_use'][idx] = 1
+                results['leg_oraluse'][idx] = 1
             if '尾巴' in text:
-                results['tail_use'][idx] = 1
+                results['tail_oraluse'][idx] = 1
 
         # 转换为 DataFrame
         results_df = pd.DataFrame(results)
