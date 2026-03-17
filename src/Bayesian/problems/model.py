@@ -711,6 +711,19 @@ class StandardModel(BaseModel):
                 all_mean_error.append(mean_error)
 
         return all_step_results, all_mean_error
+    
+    
+    
+    def compute_error_for_params_new(self, 
+                                    data: Tuple[np.ndarray, np.ndarray,
+                                             np.ndarray, np.ndarray],
+                                    window_size=16,
+                                    repeat=1,
+                                    multiprocess=False,
+                                    **kwargs) -> Tuple[List[Dict], float]:
+                                     
+        return                   
+    
 
     def optimize_params(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
                                           np.ndarray],
