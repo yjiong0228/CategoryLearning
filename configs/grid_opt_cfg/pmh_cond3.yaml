@@ -1,0 +1,65 @@
+# Grid optimization config for Condition 3 subjects
+# Uses original_strategies_b (random_posterior + ksimilar(1) + random)
+# Beta: per-hypothesis dynamic evolution via BetaModule (NOT optimized)
+
+engine_config:
+  modules:
+    perception_mod:
+      class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    beta_mod:
+      class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+      kwargs:
+        beta_init: 3.0
+        beta_min: 0.1
+        beta_max: 100.0
+        increase_rate: 1.15
+        decrease_rate: 0.3
+        correct_additive: 0.5
+        use_prior_scaling: true
+        prior_beta_scale: 10.0
+    hypo_transitions_mod:
+      class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+      kwargs:
+        strategies:
+          - {amount: "random_7", method: "random_posterior"}
+          - {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+          - {amount: "random_7", method: "random"}
+        init_num: 10
+    likelihood_mod:
+      class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+      kwargs: {}
+    memory_mod:
+      class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+      kwargs:
+        w0: null
+        gamma: null
+  agenda:
+    - perception_mod
+    - hypo_transitions_mod
+    - likelihood_mod
+    - memory_mod
+    - beta_mod
+
+subjects: [3, 6, 9, 12, 15, 18, 21, 24]
+
+# Paths (relative to this YAML)
+data_path: ../../data/processed/Task2_processed.csv
+output_dir: ../../results/state-based-grid-result/pmh/cond3
+
+# Parallelism (inner jobs for repeats within one subject)
+n_jobs: 14
+
+# Repeats
+n_repeats: 32
+refit_repeats: 256
+
+# Evaluation
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+# Non-linear grid: gamma dense near 1, w0 dense near 0
+param_grid:
+  gamma: [0.05, 0.1, 0.3, 0.5, 0.7, 0.85, 0.9, 0.95, 0.99, 0.999]
+  w0:    [0.01, 0.02, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0]
