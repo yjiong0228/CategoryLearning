@@ -1,5 +1,11 @@
 *.png
-*.csv
+!results/Model_results/
+!results/Model_results/*.png
+
+# *.csv
+*data/不用
+*src/Hybrid
+
 *.pyc
 *.gz
 *.joblib

@@ -380,6 +380,75 @@ class Optimizer(object):
 
         return predict_results
 
+
+
+    def predict_probs_with_subs_parallel(self,
+                                   model_config: Dict,
+                                   subjects: Optional[List[str]] = None,
+                                   **kwargs) -> Dict:
+        """
+        Predict the choice probabilities for each subject using the fitted model parameters.
+        """
+
+        window_size_arg = kwargs.get("window_size", 16)
+        if subjects is None:
+            subjects = self.learning_data["subject"].unique()
+
+        predict_probs_results = {}
+
+        def process_single_task(iSub):
+            subject_data = self.learning_data[self.learning_data["iSub"] ==
+                                              iSub]
+            condition = subject_data["condition"].iloc[0]
+            s_data = (subject_data[[
+                "feature1", "feature2", "feature3", "feature4"
+            ]].values, subject_data["choice"].values,
+                      subject_data["feedback"].values,
+                      subject_data["category"].values)
+            model = StandardModel(model_config,
+                                  module_config=self.module_config[iSub],
+                                  condition=condition)
+
+            sub_results = self.fitting_results[iSub]
+            step_results = sub_results.get(
+                'step_results', sub_results.get('best_step_results'))
+
+            if isinstance(window_size_arg, dict):
+                ws = window_size_arg.get(iSub, 16)
+            elif isinstance(window_size_arg, (list, tuple)):
+                # 假设 subjects 顺序和 list 对应
+                idx = subjects.index(iSub)
+                ws = window_size_arg[idx]
+            else:
+                ws = window_size_arg
+
+            results = model.predict_probs(s_data,
+                                           step_results,
+                                           use_cached_dist=False,
+                                           window_size=ws)
+            predict_probs_result = {
+                'condition': condition,
+                'true_choice': results['true_choice'],
+                'pred_choice': results['pred_choice'],
+                'top1_choice': results['top1_choice'],
+                'pred_probs': results['pred_probs'],
+            }
+            return iSub, predict_probs_result
+
+        results = Parallel(n_jobs=self.n_jobs, batch_size=1)(
+            delayed(process_single_task)(iSub)
+            for iSub in tqdm(subjects,
+                             desc="Predicting tasks",
+                             total=len(subjects),
+                             ncols=100,
+                             leave=True,
+                             position=0))
+        for iSub, predict_result in results:
+            predict_probs_results[iSub] = predict_result
+
+        return predict_probs_results
+
+
     def on_policy_with_subs_parallel(
         self,
         initial_states: Dict,

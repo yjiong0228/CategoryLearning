@@ -570,6 +570,69 @@ class StandardModel(BaseModel):
 
         return predict_results
 
+    def predict_probs(self,
+                       data: Tuple[np.ndarray, np.ndarray, np.ndarray,
+                                   np.ndarray],
+                       step_results: list,
+                       use_cached_dist,
+                       window_size,
+                       start_idx=0) -> Dict[str, np.ndarray]:
+        stimulus, choices, responses, categories = data
+        n_trials = len(choices)
+        
+        pred_probs = np.full((n_trials, 4), np.nan, dtype = float)
+        pred_choice = np.zeros(n_trials, dtype = int)
+        top1_choice = np.zeros(n_trials, dtype = int)
+
+        for trial_idx in range(start_idx + 1, n_trials):
+            trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
+                          [responses[trial_idx]], [categories[trial_idx]])
+
+            if (step_results[trial_idx - start_idx]['perception_stimuli']
+                    is not None):
+
+                trial_data = list(trial_data)
+                trial_data[0] = step_results[trial_idx -
+                                             start_idx]['perception_stimuli']
+                trial_data = tuple(trial_data)
+
+            # Extract the posterior probabilities for each hypothesis at last trial
+            hypo_details = step_results[trial_idx - 1 -
+                                        start_idx]['hypo_details']
+
+            post_max = [
+                hypo_details[k]['post_max'] for k in hypo_details.keys()
+            ]
+
+            # Compute the weighted probability of being correct
+            weighted_probs = np.zeros(4, dtype = float)
+            for k, post in zip(hypo_details.keys(), post_max):
+                probs = self.partition_model.calc_likelihood_base(
+                    k,
+                    trial_data,
+                    hypo_details[k]['beta_opt'],
+                    use_cached_dist=use_cached_dist,
+                    indices=[trial_idx])
+                probs = np.asarray(probs, dtype = float).reshape(-1)
+                weighted_probs += post * probs
+            weighted_pred_choice = np.random.choice(self.n_cats, p = weighted_probs) + 1
+            weighted_top1_choice = np.argmax(weighted_probs) + 1
+
+            pred_probs[trial_idx,:] = weighted_probs
+            pred_choice[trial_idx] = weighted_pred_choice
+            top1_choice[trial_idx] = weighted_top1_choice
+            
+        predict_probs_results = {
+            'true_choice': choices,
+            'pred_choice': pred_choice,
+            'top1_choice': top1_choice,
+            'pred_probs': pred_probs,
+        }
+
+        return predict_probs_results
+                
+        
+
     def compute_error_for_params(self,
                                  data: Tuple[np.ndarray, np.ndarray,
                                              np.ndarray, np.ndarray],
@@ -648,6 +711,19 @@ class StandardModel(BaseModel):
                 all_mean_error.append(mean_error)
 
         return all_step_results, all_mean_error
+    
+    
+    
+    def compute_error_for_params_new(self, 
+                                    data: Tuple[np.ndarray, np.ndarray,
+                                             np.ndarray, np.ndarray],
+                                    window_size=16,
+                                    repeat=1,
+                                    multiprocess=False,
+                                    **kwargs) -> Tuple[List[Dict], float]:
+                                     
+        return                   
+    
 
     def optimize_params(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
                                           np.ndarray],
@@ -787,16 +863,7 @@ class StandardModel(BaseModel):
         Returns:
             float: feedback value (1.0 / 0.5 / 0.0)
         """
-        if self.condition == 1:
-            # 类别分组：{1,2}, {3,4}
-            if (a == 1 and b in (1, 2)) or (a == 2 and b in (3, 4)):
-                return 1.0
-            else:
-                return 0.0
-        elif self.condition == 2:
-            # 完全匹配
-            return 1.0 if a == b else 0.0
-        elif self.condition == 3:
+        if self.condition == 3:
             # 精细反馈：同类1.0，粗类0.5
             if a == b:
                 return 1.0
@@ -804,6 +871,9 @@ class StandardModel(BaseModel):
                 return 0.5
             else:
                 return 0.0
+        else:
+            return 1.0 if a == b else 0.0
+
 
 
     def on_policy_decision_making(self,
@@ -835,6 +905,7 @@ class StandardModel(BaseModel):
             return prob
         # [TODO] 这里把Decision模块加进来实现吧？
         return np.random.choice(self.n_cats, p=prob) + 1
+
 
     def on_policy_fit_step_by_step(
         self,
