@@ -180,5 +180,4 @@ learning_data = pd.read_csv(processed_path / 'Task2_processed.csv')
 oral_hypo_hits = oral_to_coordinate.get_oral_hypo_hits(learning_data)
 
 model_eval.plot_k_oral_comparison(
-    res, oral_hypo_hits,
-    range(1,25), save_path=result_path/f'{model_name}_oral.png')
+    res, oral_hypo_hits, save_path=result_path/f'{model_name}_oral.png')
