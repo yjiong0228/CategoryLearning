@@ -171,6 +171,28 @@ class BaseCluster(BaseModule):
         return _opposite_random
 
 
+def post_acc_amount_f(x):
+    if x <= 0.2:
+        return 0
+    elif 0.2 < x < 0.3:
+        return 1
+    elif 0.3 <= x < 0.4:
+        return 2
+    elif 0.4 <= x < 0.5:
+        return 3
+    elif 0.5 <= x < 0.6:
+        return 4
+    elif 0.6 <= x < 0.7:
+        return 5
+    elif 0.7 <= x < 0.8:
+        return 6
+    elif 0.8 <= x <= 1:
+        return 7
+
+def random_acc_amount_f(x):
+    return 7 - post_acc_amount_f(x)
+
+
 class PartitionCluster(BaseCluster):
     """
     Partition with hypothesis cluster structure
@@ -206,6 +228,7 @@ class PartitionCluster(BaseCluster):
         "opp_random_2": BaseCluster._amount_opposite_random_gen(2),
         "opp_random_4": BaseCluster._amount_opposite_random_gen(4),
         "opp_random_7": BaseCluster._amount_opposite_random_gen(7),
+        "opp_acc_7": BaseCluster._amount_accuracy_gen(random_acc_amount_f, 7),
     }
 
     def __init__(self, model, cluster_config: Dict | None = None, **kwargs):

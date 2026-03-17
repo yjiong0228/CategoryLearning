@@ -61,42 +61,43 @@ class Oral_to_coordinate:
 
         return oral_hypos_list
 
-    def get_oral_hypo_hits(self,
-                            data: pd.DataFrame,
-                            ):
+    def get_oral_hypo_hits(self, data: pd.DataFrame):
         
         learning_data = data
         oral_hypos_list = {}
 
         for _, subj_df in learning_data.groupby('iSub'):
-            iSub   = int(subj_df['iSub'].iloc[0])
-            cond   = int(subj_df['condition'].iloc[0])
-            model  = StandardModel(config_base, condition=cond)
+            iSub = int(subj_df['iSub'].iloc[0])
+            cond = int(subj_df['condition'].iloc[0])
+            model = StandardModel(config_base, condition=cond)
 
-            centres = subj_df[['feature1_oral','feature2_oral',
-                            'feature3_oral','feature4_oral']].values
+            centres = subj_df[['feature1_oralvalue', 'feature2_oralvalue',
+                            'feature3_oralvalue', 'feature4_oralvalue']].values
             choices = subj_df['choice'].values
 
-            oral_hypos_list[iSub] = self.get_oral_hypos_list(cond,
-                (centres, choices), model)
+            oral_hypos_list[iSub] = self.get_oral_hypos_list(
+                cond, (centres, choices), model
+            )
             
         oral_hypo_hits = {}
 
         for iSub, hypos in oral_hypos_list.items():
-            condition = learning_data[learning_data['iSub'] ==
-                                        iSub]['condition'].iloc[0]
+            condition = learning_data.loc[learning_data['iSub'] == iSub, 'condition'].iloc[0]
             target_value = 0 if condition == 1 else 42
 
-            hits = []  # 用于存储每个 trial 的 hit 值
+            hits = []
             for trial_hypos in hypos:
                 if not trial_hypos:
-                    hits.append([])
+                    hits.append(np.nan)   # 没有 oral hypothesis，用 NaN 表示
                 else:
                     hits.append(1 if target_value in trial_hypos else 0)
-                    # 计算hits的16试次滑动平均
-                    numeric_hits = [h if isinstance(h, (int, float)) else 0 for h in hits]  # Convert non-numeric values to 0
-                    rolling_hits = pd.Series(numeric_hits).rolling(window=16, min_periods=16).mean().tolist()
-                    
+
+            # 统一在循环结束后计算 rolling_hits
+            rolling_hits = pd.Series(hits).rolling(
+                window=16,
+                min_periods=16
+            ).mean().tolist()
+
             oral_hypo_hits[iSub] = {
                 'iSub': iSub,
                 'condition': condition,

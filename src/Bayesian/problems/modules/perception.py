@@ -8,7 +8,7 @@ import os
 import pandas as pd
 from .base_module import BaseModule
 
-DEFAULT_PROCESSED_DATA_DIR = os.path.join(os.path.dirname(__file__),
+DEFAULT_processed_data_DIR = os.path.join(os.path.dirname(__file__),
                                           "../../../../data/processed")
 
 
@@ -27,41 +27,20 @@ class BasePerception(BaseModule):
         """
         super().__init__(model, **kwargs)
         self.processed_data_dir = kwargs.pop("processed_data_path",
-                                             DEFAULT_PROCESSED_DATA_DIR)
+                                             DEFAULT_processed_data_DIR)
+
+        perception_error_data = pd.read_csv(
+            os.path.join(self.processed_data_dir, "Task1b_errorsummary_24.csv"))
+
         self.mean: Dict[str, Dict[str, float]] = {}
         self.std: Dict[str, Dict[str, float]] = {}
-        processed_data = pd.read_csv(
-            os.path.join(self.processed_data_dir, "Task1b_processed.csv"))
-        error = self.error_calculation(processed_data)
-        self.mean, self.std = self.calculate_mean_std(error)
-        self.structures: Dict[str, List] = self.get_structures()
-
-    def error_calculation(self, processed_data):
-        """
-        Calculate error between target and adjust_after
-
-        Args:
-            processed_data (pd.DataFrame): DataFrame containing processed data
-        Returns:
-            pd.DataFrame: DataFrame containing error data
-        """
-        columns = ['neck_length', 'head_length', 'leg_length', 'tail_length']
-
-        results = []
-        for iSub, group in processed_data.groupby('iSub'):
-            target = group[group['type'] == 'target'].reset_index(drop=True)
-            adjust_after = group[group['type'] == 'adjust_after'].reset_index(
-                drop=True)
-
-            result = target[['iSub', 'iTrial'] +
-                            columns].reset_index(drop=True).copy()
-            for col in columns:
-                result[f'{col}_diff'] = adjust_after[col] - target[col]
-            results.append(result)
-
-        error = pd.concat(results, ignore_index=True)
-
-        return error
+        self.mean, self.std = self.calculate_mean_std(perception_error_data)
+        
+        learning_data = pd.read_csv(
+            os.path.join(self.processed_data_dir, "Task2_processed.csv"))    
+        self.feature_names : Dict[int, Dict[str, str]]
+        self.feature_names = self.get_feature_names(learning_data)
+        
 
     def calculate_mean_std(self, error):
         """
@@ -73,36 +52,40 @@ class BasePerception(BaseModule):
             dict: Mean and standard deviation for each subject
         """
         mean = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').mean())
+            lambda group: group.filter(like='_error_mean').mean())
         std = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').std())
+            lambda group: group.filter(like='_error_sd').std())
 
         mean = mean.rename(
-            columns=lambda x: x.replace('_length_diff', '')).to_dict(
+            columns=lambda x: x.replace('_length_error_mean', '')).to_dict(
                 orient='index')
         std = std.rename(
-            columns=lambda x: x.replace('_length_diff', '')).to_dict(
+            columns=lambda x: x.replace('_length_error_sd', '')).to_dict(
                 orient='index')
         return mean, std
 
-    def get_structures(self):
-        """
-        Get structures for each subject
 
-        Returns:
-            dict: Structures for each subject
-        """
-        structures = {}
-        processed_data = pd.read_csv(
-            os.path.join(self.processed_data_dir, "Task2_processed.csv"))
+    def get_feature_names(self, learning_data):
+        feature_cols = ["feature1_name", "feature2_name", "feature3_name", "feature4_name"]
 
-        for iSub, group in processed_data.groupby('iSub'):
-            structures[iSub] = group[['structure1', 'structure2']].values
-            assert np.all(structures[iSub] == structures[iSub]
-                          [0]), f"iSub {iSub} has inconsistent structures."
-            structures[iSub] = structures[iSub][0].tolist()
+        sub_feature_df = learning_data[["iSub"] + feature_cols].drop_duplicates(subset=["iSub"])
 
-        return structures
+        for sub_id, group in learning_data.groupby("iSub"):
+            unique_rows = group[feature_cols].drop_duplicates()
+            if len(unique_rows) > 1:
+                raise ValueError(f"iSub={sub_id} has inconsistent feature names across rows.")
+
+            feature_names = {
+                int(row["iSub"]): [
+                    row["feature1_name"],
+                    row["feature2_name"],
+                    row["feature3_name"],
+                    row["feature4_name"],
+                ]
+            for _, row in sub_feature_df.iterrows()
+        }
+        return feature_names
+
 
     def sample(self, iSub, stimulus):
         """
@@ -117,43 +100,12 @@ class BasePerception(BaseModule):
         if iSub not in self.mean or iSub not in self.std:
             raise ValueError(f"Subject {iSub} not found in mean or std data.")
 
-        def convert(structure):
-            # feature selection
-            if structure[0] == 1:
-                features = ["neck", "head", "leg", "tail"]
-            elif structure[0] == 2:
-                features = ["neck", "head", "tail", "leg"]
-            elif structure[0] == 3:
-                features = ["neck", "leg", "tail", "head"]
-            elif structure[0] == 4:
-                features = ["head", "leg", "tail", "neck"]
-
-            # feature space segmentation
-            if structure[1] == 1:
-                features = features[:]
-            elif structure[1] == 2:
-                features = [features[0], features[2], features[1], features[3]]
-            elif structure[1] == 3:
-                features = [features[1], features[0], features[2], features[3]]
-            elif structure[1] == 4:
-                features = [features[1], features[2], features[0], features[3]]
-            elif structure[1] == 5:
-                features = [features[2], features[0], features[1], features[3]]
-            elif structure[1] == 6:
-                features = [features[2], features[1], features[0], features[3]]
-
-            # Final rearrangement
-            features = [features[0], features[2], features[1], features[3]]
-
-            # Add suffix to feature names
-            return features
-
-        feat = convert(self.structures[iSub])
+        feature_names_sub = self.feature_names[iSub]
         n_trials = len(stimulus)
         for i in range(stimulus.shape[1]):
             stimulus[:, i] = stimulus[:, i] + np.random.normal(
-                loc=self.mean[iSub][feat[i]],
-                scale=self.std[iSub][feat[i]],
+                loc=self.mean[iSub][feature_names_sub[i]],
+                scale=self.std[iSub][feature_names_sub[i]],
                 size=n_trials)
         # Ensure the values are in the range of [0, 1]
         stimulus = np.clip(stimulus, 0, 1)
