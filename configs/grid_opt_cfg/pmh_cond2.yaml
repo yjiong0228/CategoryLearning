@@ -21,9 +21,9 @@ engine_config:
       class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
       kwargs:
         strategies:
-          - {amount: "random_7", method: "random_posterior"}
+          - {amount: "entropy_7", method: "random_posterior"}
           - {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
-          - {amount: "random_7", method: "random"}
+          - {amount: "opp_entropy_7", method: "random"}
         init_num: 10
     likelihood_mod:
       class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
@@ -40,7 +40,7 @@ engine_config:
     - memory_mod
     - beta_mod
 
-subjects: [2, 5, 8, 11, 14, 17, 20, 23]
+subjects: [225, 226, 227, 228, 229, 230, 231, 232]
 
 # Paths (relative to this YAML)
 data_path: ../../data/processed/Task2_processed.csv
@@ -61,5 +61,5 @@ keep_logs: true
 
 # Non-linear grid: gamma dense near 1, w0 dense near 0
 param_grid:
-  gamma: [0.05, 0.1, 0.3, 0.5, 0.7, 0.85, 0.9, 0.95, 0.99, 0.999]
-  w0:    [0.01, 0.02, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0]
+  gamma: [0.1, 0.3, 0.5, 0.7, 0.8, 0.85, 0.9, 0.95, 0.99, 0.995, 0.999]
+  w0:    [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0]
