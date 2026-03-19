@@ -195,7 +195,7 @@ def _evaluate_single_run(
     engine_config_template: Dict,
     processed_data_dir: Path,
     window_size: int,
-) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray], Sequence[np.ndarray]]:
+) -> Tuple[Dict[str, Any], float, Dict[str, Any], Sequence[np.ndarray], Sequence[np.ndarray], Optional[Sequence[Dict[str, Any]]]]:
     """
     Worker function to evaluate a single parameter combination.
     """
@@ -219,6 +219,12 @@ def _evaluate_single_run(
     model.precompute_distances(stimulus)
     posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
 
+    # Collect strategy_counts_log if the hypothesis module recorded it
+    strategy_counts_log = None
+    hypo_mod = getattr(model.engine, "modules", {}).get("hypo_transitions_mod") if hasattr(model, "engine") else None
+    if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
+        strategy_counts_log = getattr(hypo_mod, "strategy_counts_log")
+
     # Compute metrics
     metrics = _compute_prediction_metrics(
         model,
@@ -230,7 +236,7 @@ def _evaluate_single_run(
         window_size,
     )
     
-    return params, float(metrics["mean_error"]), metrics, posterior_log, prior_log
+    return params, float(metrics["mean_error"]), metrics, posterior_log, prior_log, strategy_counts_log
 
 
 class StateModelGridOptimizer:
@@ -355,10 +361,10 @@ class StateModelGridOptimizer:
 
         # Aggregate results
         grouped_results = defaultdict(list)
-        for params, error, metrics, posterior_log, prior_log in results:
+        for params, error, metrics, posterior_log, prior_log, strategy_counts_log in results:
             # Create a hashable key for the parameters
             param_key = tuple(sorted(params.items()))
-            grouped_results[param_key].append((error, metrics, posterior_log, prior_log))
+            grouped_results[param_key].append((error, metrics, posterior_log, prior_log, strategy_counts_log))
 
         final_grid_results: List[GridPointResult] = []
         
@@ -370,12 +376,13 @@ class StateModelGridOptimizer:
             
             # Pick the run closest to the mean error as the representative metrics
             best_run_idx = np.argmin([abs(e - mean_error) for e in errors])
-            _, best_metrics, best_posterior, best_prior = runs[best_run_idx]
+            _, best_metrics, best_posterior, best_prior, best_strategy_log = runs[best_run_idx]
             
             # Memory optimization: discard logs if not requested
             if not keep_logs:
                 best_posterior = None
                 best_prior = None
+                best_strategy_log = None
 
             final_grid_results.append(GridPointResult(
                 params=params,
@@ -383,6 +390,7 @@ class StateModelGridOptimizer:
                 metrics=best_metrics,
                 posterior_log=best_posterior,
                 prior_log=best_prior,
+                strategy_counts_log=best_strategy_log,
                 n_repeats=n_repeats,
                 std_error=std_error
             ))
@@ -417,7 +425,12 @@ class StateModelGridOptimizer:
             
             # Find representative run
             best_refit_idx = np.argmin([abs(e - refit_mean_error) for e in refit_errors])
-            _, _, best_refit_metrics, best_refit_posterior, best_refit_prior = refit_results[best_refit_idx]
+            _, _, best_refit_metrics, best_refit_posterior, best_refit_prior, best_refit_strategy = refit_results[best_refit_idx]
+
+            if not keep_logs:
+                best_refit_posterior = None
+                best_refit_prior = None
+                best_refit_strategy = None
             
             # Update best_result
             best_result.mean_error = refit_mean_error
@@ -425,6 +438,7 @@ class StateModelGridOptimizer:
             best_result.metrics = best_refit_metrics
             best_result.posterior_log = best_refit_posterior
             best_result.prior_log = best_refit_prior
+            best_result.strategy_counts_log = best_refit_strategy
             best_result.n_repeats = refit_repeats
 
         return {

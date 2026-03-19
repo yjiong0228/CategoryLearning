@@ -390,7 +390,6 @@ class StateModel:
     def fit_step_by_step(self, data: List | np.ndarray, **kwargs):
         """
         """
-        # TODO: optimize w0, gamma in memory module
         
         # load module kwargs
         mod_kwargs = kwargs.get("module_kwargs", {})

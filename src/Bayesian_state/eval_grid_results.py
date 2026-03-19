@@ -177,6 +177,11 @@ def _has_steps(aggregated: Dict[int, Dict[str, Any]]) -> bool:
     return any(v.get("best_step_results") for v in aggregated.values())
 
 
+def _serialize_grid_errors(grid_errors: Dict[Tuple[float, float], List[float]]) -> Dict[str, List[float]]:
+    """Make grid_errors JSON friendly by stringifying tuple keys."""
+    return {f"gamma={g},w0={w0}": errs for (g, w0), errs in grid_errors.items()}
+
+
 def main() -> None:
     args = parse_args()
     input_dir = args.input_dir.resolve()
@@ -195,8 +200,13 @@ def main() -> None:
     oral_data_path = args.oral_data
 
     aggregated = aggregate_grid_results(input_dir)
+    aggregated_serializable = {
+        sid: {**info, "grid_errors": _serialize_grid_errors(info.get("grid_errors", {}))}
+        for sid, info in aggregated.items()
+    }
+
     agg_out.parent.mkdir(parents=True, exist_ok=True)
-    agg_out.write_text(json.dumps(aggregated, ensure_ascii=False, indent=2), encoding="utf-8")
+    agg_out.write_text(json.dumps(aggregated_serializable, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Aggregated {len(aggregated)} subjects -> {agg_out}")
 
     me = ModelEval()
