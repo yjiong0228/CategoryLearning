@@ -9,14 +9,14 @@ engine_config:
     beta_mod:
       class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
       kwargs:
-        beta_init: 3.0
+        beta_init: 1.0
         beta_min: 0.1
         beta_max: 100.0
-        increase_rate: 1.15
-        decrease_rate: 0.3
-        correct_additive: 0.5
+        decrease_rate: 0.2
+        correct_additive: 0.8
         use_prior_scaling: true
-        prior_beta_scale: 10.0
+        prior_beta_scale: 5.0
+        
     hypo_transitions_mod:
       class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
       kwargs:
@@ -47,11 +47,11 @@ data_path: ../../data/processed/Task2_processed.csv
 output_dir: ../../results/state-based-grid-result/pmh/cond2
 
 # Parallelism (inner jobs for repeats within one subject)
-n_jobs: 14
+n_jobs: 96
 
 # Repeats
-n_repeats: 14
-refit_repeats: 256
+n_repeats: 32
+refit_repeats: 1024
 
 # Evaluation
 window_size: 16

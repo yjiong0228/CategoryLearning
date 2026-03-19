@@ -7,7 +7,6 @@ modules:
       beta_init: 1.0,
       beta_min: 0.1,
       beta_max: 100.0,
-      # increase_rate: 1.15,
       decrease_rate: 0.2,
       correct_additive: 0.8,
       use_prior_scaling: true,
@@ -16,8 +15,8 @@ modules:
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs: {
-      "strategies": original_strategies_b,
-      "init_num":10,
+      "strategies": original_strategies_a,
+      "init_num":4,
     } 
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
@@ -25,8 +24,8 @@ modules:
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.05, 
-      gamma: 0.9,
+      w0: 0.2, 
+      gamma: 0.95,
     }
 
 agenda:
