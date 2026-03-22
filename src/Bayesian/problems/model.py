@@ -583,6 +583,7 @@ class StandardModel(BaseModel):
         pred_probs = np.full((n_trials, 4), np.nan, dtype = float)
         pred_choice = np.zeros(n_trials, dtype = int)
         top1_choice = np.zeros(n_trials, dtype = int)
+        true_acc = (np.array(responses) == 1).astype(float)
 
         for trial_idx in range(start_idx + 1, n_trials):
             trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
@@ -622,16 +623,240 @@ class StandardModel(BaseModel):
             pred_choice[trial_idx] = weighted_pred_choice
             top1_choice[trial_idx] = weighted_top1_choice
             
+        # Compute sliding averages using a sliding window
+        sliding_true_acc = []
+        for start_idx in range(1, n_trials - window_size +
+                               2):  # Start from index 1
+            end_idx = start_idx + window_size
+            sliding_true_acc.append(np.mean(true_acc[start_idx:end_idx]))
+                
         predict_probs_results = {
             'true_choice': choices,
             'pred_choice': pred_choice,
             'top1_choice': top1_choice,
             'pred_probs': pred_probs,
+            'true_acc': true_acc,
+            'sliding_true_acc': sliding_true_acc,
         }
 
         return predict_probs_results
                 
-        
+    def predict_probs_new(self,
+                        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                        step_results: list,
+                        use_cached_dist,
+                        window_size,
+                        start_idx=0,
+                        eps=1e-12) -> Dict[str, np.ndarray]:
+        stimulus, choices, responses, categories = data
+        n_trials = len(choices)
+        n_cats = self.n_cats
+
+        pred_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
+        pred_choice = np.zeros(n_trials, dtype=int)
+        top1_choice = np.zeros(n_trials, dtype=int)
+
+        true_acc = (np.asarray(responses) == 1).astype(float)
+        pred_acc = np.full(n_trials, np.nan, dtype=float)
+
+        # 新目标新增：真实 choice 的概率与 NLL
+        true_choice_prob = np.full(n_trials, np.nan, dtype=float)
+        choice_nll = np.full(n_trials, np.nan, dtype=float)
+
+        # 与原逻辑保持一致：从 start_idx+1 开始预测
+        for trial_idx in range(start_idx + 1, n_trials):
+            trial_data = (
+                [stimulus[trial_idx]],
+                [choices[trial_idx]],
+                [responses[trial_idx]],
+                [categories[trial_idx]],
+            )
+
+            # 当前 trial 的 perception stimulus（如果有）
+            cur_step = step_results[trial_idx - start_idx]
+            if cur_step['perception_stimuli'] is not None:
+                trial_data = list(trial_data)
+                trial_data[0] = cur_step['perception_stimuli']
+                trial_data = tuple(trial_data)
+
+            # 使用上一个 trial 的 posterior
+            hypo_details = step_results[trial_idx - 1 - start_idx]['hypo_details']
+
+            weighted_p_true = 0.0
+            for k, hinfo in hypo_details.items():
+                post = hinfo['post_max']
+                p_true = self.partition_model.calc_trueprob_entry(
+                    k,
+                    trial_data,
+                    hinfo['beta_opt'],
+                    use_cached_dist=use_cached_dist,
+                    indices=[trial_idx]
+                )
+                weighted_p_true += post * p_true
+
+            pred_acc[trial_idx] = float(weighted_p_true)
+
+            weighted_probs = np.zeros(n_cats, dtype=float)
+            for k, hinfo in hypo_details.items():
+                post = hinfo['post_max']
+                probs = self.partition_model.calc_likelihood_base(
+                    k,
+                    trial_data,
+                    hinfo['beta_opt'],
+                    use_cached_dist=use_cached_dist,
+                    indices=[trial_idx]
+                )
+                probs = np.asarray(probs, dtype=float).reshape(-1)
+                weighted_probs += post * probs
+
+            # 数值保护 + 归一化
+            weighted_probs = np.asarray(weighted_probs, dtype=float)
+            weighted_probs = np.clip(weighted_probs, 0.0, None)
+
+            prob_sum = weighted_probs.sum()
+            if (not np.isfinite(prob_sum)) or (prob_sum <= 0):
+                weighted_probs = np.ones(n_cats, dtype=float) / n_cats
+            else:
+                weighted_probs = weighted_probs / prob_sum
+
+            weighted_top1_choice = np.argmax(weighted_probs) + 1
+            weighted_pred_choice = np.random.choice(self.n_cats, p = weighted_probs) + 1  
+
+            pred_probs[trial_idx, :] = weighted_probs
+            pred_choice[trial_idx] = weighted_pred_choice
+            top1_choice[trial_idx] = weighted_top1_choice
+
+            # true choice 的概率与 NLL（新优化目标）
+            true_idx = int(choices[trial_idx]) - 1
+            p_choice = np.clip(weighted_probs[true_idx], eps, 1.0)
+
+            true_choice_prob[trial_idx] = p_choice
+            choice_nll[trial_idx] = -np.log(p_choice)
+
+        # 滑窗
+        sliding_true_acc = []
+        sliding_pred_acc = []
+        sliding_pred_acc_std = []
+
+        for win_start in range(1, n_trials - window_size + 2):
+            win_end = win_start + window_size
+
+            true_window = true_acc[win_start:win_end]
+            pred_window = pred_acc[win_start:win_end]
+
+            sliding_true_acc.append(np.mean(true_window))
+            sliding_pred_acc.append(np.nanmean(pred_window))
+
+            valid_pred = pred_window[np.isfinite(pred_window)]
+            if len(valid_pred) == 0:
+                sliding_pred_acc_std.append(np.nan)
+            else:
+                sliding_pred_acc_std.append(
+                    np.sqrt(np.sum(valid_pred * (1.0 - valid_pred))) / len(valid_pred)
+                )
+
+        valid_choice_mask = np.isfinite(choice_nll)
+
+        predict_probs_results = {
+            'true_choice': np.asarray(choices),
+            'pred_choice': pred_choice,
+            'top1_choice': top1_choice,
+            'pred_probs': pred_probs,
+            'true_acc': true_acc,
+            'pred_acc': pred_acc,
+            'sliding_true_acc': np.asarray(sliding_true_acc, dtype=float),
+            'sliding_pred_acc': np.asarray(sliding_pred_acc, dtype=float),
+            'sliding_pred_acc_std': np.asarray(sliding_pred_acc_std, dtype=float),
+            'true_choice_prob': true_choice_prob,
+            'choice_nll': choice_nll,
+            'mean_choice_nll': (
+                float(np.nanmean(choice_nll[valid_choice_mask]))
+                if np.any(valid_choice_mask) else np.nan
+            ),
+        }
+
+        return predict_probs_results
+    
+    def compute_error_for_params_new(self,
+                             data: Tuple[np.ndarray, np.ndarray,
+                                         np.ndarray, np.ndarray],
+                             window_size=16,
+                             repeat=1,
+                             multiprocess=False,
+                             **kwargs) -> Tuple[List[Dict], float]:
+        """
+        Perform a single pass of model fitting and prediction, then compute an error metric.
+
+        New objective:
+        ----------------
+        Minimize trial-by-trial choice prediction error,
+        i.e. minimize the negative log-likelihood (NLL) of the subject's true choices.
+
+        Parameters
+        ----------
+        data : tuple
+            A tuple containing (stimuli, choices, responses, categories).
+        window_size : int
+            Kept for compatibility.
+        repeat : int
+            The number of times to repeat the fitting process.
+        multiprocess : bool
+            Whether to use multiprocessing for parallel computation.
+
+        Returns
+        -------
+        all_step_results : List[List[Dict]]
+            A list of output of fit_step_by_step showing model fits for each trial.
+        all_mean_error : List[float]
+            A list of average choice NLL values (lower is better).
+        """
+
+        if multiprocess:
+
+            def compute_single_fit(data, **kwargs):
+                step_results = self.fit_step_by_step(
+                    data[:3],
+                    ground_truth=data[3],
+                    **kwargs
+                )
+
+                predict_results = self.predict_probs_new(
+                    data,
+                    step_results,
+                    use_cached_dist=True,
+                    window_size=window_size
+                )
+                mean_error = predict_results['mean_choice_nll']
+                return step_results, mean_error
+
+            results = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
+                delayed(compute_single_fit)(data, **kwargs)
+                for _ in tqdm(range(repeat), desc="Computing error for params")
+            )
+            all_step_results = [result[0] for result in results]
+            all_mean_error = [result[1] for result in results]
+
+        else:
+            selected_data = data[:3]
+            all_step_results = []
+            all_mean_error = []
+
+            for _ in range(repeat):
+                step_results = self.fit_step_by_step(selected_data, **kwargs)
+                all_step_results.append(step_results)
+
+                predict_results = self.predict_probs_new(
+                    data,
+                    step_results,
+                    use_cached_dist=True,
+                    window_size=window_size
+                )
+
+                # 新目标：最小化真实 choice 的平均负对数似然
+                mean_error = predict_results['mean_choice_nll']
+                all_mean_error.append(mean_error)
+
+        return all_step_results, all_mean_error
 
     def compute_error_for_params(self,
                                  data: Tuple[np.ndarray, np.ndarray,
@@ -710,19 +935,7 @@ class StandardModel(BaseModel):
                         np.array(predict_results['sliding_pred_acc'])))
                 all_mean_error.append(mean_error)
 
-        return all_step_results, all_mean_error
-    
-    
-    
-    def compute_error_for_params_new(self, 
-                                    data: Tuple[np.ndarray, np.ndarray,
-                                             np.ndarray, np.ndarray],
-                                    window_size=16,
-                                    repeat=1,
-                                    multiprocess=False,
-                                    **kwargs) -> Tuple[List[Dict], float]:
-                                     
-        return                   
+        return all_step_results, all_mean_error              
     
 
     def optimize_params(self, data: Tuple[np.ndarray, np.ndarray, np.ndarray,
