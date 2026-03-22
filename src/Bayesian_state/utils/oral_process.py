@@ -74,8 +74,16 @@ class Oral_to_coordinate:
             n_cats = 2 if cond == 1 else 4
             partition = Partition(n_dims=4, n_cats=n_cats)
 
-            centres = subj_df[['feature1_oral','feature2_oral',
-                            'feature3_oral','feature4_oral']].values
+            oral_cols = ['feature1_oral','feature2_oral','feature3_oral','feature4_oral']
+            oral_value_cols = ['feature1_oralvalue','feature2_oralvalue','feature3_oralvalue','feature4_oralvalue']
+
+            if all(col in subj_df.columns for col in oral_cols):
+                centres = subj_df[oral_cols].to_numpy(dtype=float)
+            elif all(col in subj_df.columns for col in oral_value_cols):
+                centres = subj_df[oral_value_cols].to_numpy(dtype=float)
+            else:
+                missing = set(oral_cols) - set(subj_df.columns)
+                raise KeyError(f"Oral coordinate columns missing. Expected {oral_cols} or {oral_value_cols}; missing {sorted(missing)}")
             choices = subj_df['choice'].values
 
             oral_hypos_list[iSub] = self.get_oral_hypos_list(cond,
@@ -94,9 +102,10 @@ class Oral_to_coordinate:
                     hits.append([])
                 else:
                     hits.append(1 if target_value in trial_hypos else 0)
-                    # 计算hits的16试次滑动平均
-                    numeric_hits = [h if isinstance(h, (int, float)) else 0 for h in hits]  # Convert non-numeric values to 0
-                    rolling_hits = pd.Series(numeric_hits).rolling(window=16, min_periods=16).mean().tolist()
+
+            # 计算hits的16试次滑动平均（统一在循环结束后计算，避免未定义）
+            numeric_hits = [h if isinstance(h, (int, float)) else 0 for h in hits]
+            rolling_hits = pd.Series(numeric_hits).rolling(window=16, min_periods=16).mean().tolist()
                     
             oral_hypo_hits[iSub] = {
                 'iSub': iSub,

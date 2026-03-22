@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd  # type: ignore[import]
@@ -73,22 +73,79 @@ def _compute_error_dataframe(task1b_df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(errors, ignore_index=True)
 
 
-def _extract_structures(task2_df: pd.DataFrame) -> Dict[int, Tuple[int, int]]:
-    """Map subject ids to their (structure1, structure2) pair."""
-    structures: Dict[int, Tuple[int, int]] = {}
+def _compute_error_stats_from_diff_file(task1b_error_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute per-subject mean/std from Task1b error files with *_diff columns."""
+    diff_columns = [f"{col}_diff" for col in FEATURE_COLUMNS]
+    missing_cols = [col for col in diff_columns if col not in task1b_error_df.columns]
+    if missing_cols:
+        raise PerceptionStatsError(
+            "Task1b error dataset is missing required columns: "
+            + ", ".join(missing_cols)
+        )
+
+    error_df = task1b_error_df[["iSub", *diff_columns]].copy()
+    rename_map = {
+        "neck_length_diff": "neck",
+        "head_length_diff": "head",
+        "leg_length_diff": "leg",
+        "tail_length_diff": "tail",
+    }
+    error_df = error_df.rename(columns=rename_map)
+
+    mean_df = error_df.groupby("iSub")[FEATURE_NAMES].mean().fillna(0.0)
+    std_df = error_df.groupby("iSub")[FEATURE_NAMES].std().fillna(0.0)
+    return mean_df, std_df
+
+
+def _extract_feature_orders(task2_df: pd.DataFrame) -> Dict[int, List[str]]:
+    """Map subject ids to ordered feature names for perception stats alignment."""
+    feature_orders: Dict[int, List[str]] = {}
+
+    has_structure_cols = {"structure1", "structure2"}.issubset(task2_df.columns)
+    has_name_cols = {
+        "feature1_name",
+        "feature2_name",
+        "feature3_name",
+        "feature4_name",
+    }.issubset(task2_df.columns)
+
+    if not has_structure_cols and not has_name_cols:
+        raise PerceptionStatsError(
+            "Task2 dataset must contain either structure columns or feature name columns"
+        )
+
     for i_sub, group in task2_df.groupby("iSub"):
-        values = group[["structure1", "structure2"]].drop_duplicates()
+        if has_structure_cols:
+            values = group[["structure1", "structure2"]].drop_duplicates()
+            if values.empty:
+                continue
+            if len(values) != 1:
+                raise PerceptionStatsError(
+                    f"Subject {i_sub} has inconsistent structure annotations"
+                )
+            structure_pair = tuple(int(v) for v in values.iloc[0].tolist())
+            feature_orders[i_sub] = list(_convert_structure(structure_pair))
+            continue
+
+        values = group[["feature1_name", "feature2_name", "feature3_name", "feature4_name"]].drop_duplicates()
         if values.empty:
             continue
         if len(values) != 1:
             raise PerceptionStatsError(
-                f"Subject {i_sub} has inconsistent structure annotations"
+                f"Subject {i_sub} has inconsistent feature-name annotations"
             )
-        structure_pair = tuple(int(v) for v in values.iloc[0].tolist())
-        structures[i_sub] = structure_pair  # type: ignore[assignment]
-    if not structures:
-        raise PerceptionStatsError("No subject structures found in Task2 data")
-    return structures
+
+        names = [str(v).strip().lower() for v in values.iloc[0].tolist()]
+        invalid_names = [name for name in names if name not in FEATURE_NAMES]
+        if invalid_names:
+            raise PerceptionStatsError(
+                f"Subject {i_sub} has unknown feature names: {invalid_names}"
+            )
+        feature_orders[i_sub] = names
+
+    if not feature_orders:
+        raise PerceptionStatsError("No subject feature orders found in Task2 data")
+    return feature_orders
 
 
 def _convert_structure(structure: Tuple[int, int]) -> Iterable[str]:
@@ -146,24 +203,34 @@ def get_perception_noise_stats(
 
     resolved_dir = _resolve_processed_dir(processed_data_dir)
 
-    task1b_df = _load_dataframe(resolved_dir, "Task1b_processed.csv")
+    task1b_processed_path = resolved_dir / "Task1b_processed.csv"
+    task1b_error_path = resolved_dir / "Task1b_error_24.csv"
+
+    if task1b_processed_path.exists():
+        task1b_df = _load_dataframe(resolved_dir, "Task1b_processed.csv")
+        error_df = _compute_error_dataframe(task1b_df)
+        mean_df = error_df.groupby("iSub")[FEATURE_NAMES].mean().fillna(0.0)
+        std_df = error_df.groupby("iSub")[FEATURE_NAMES].std().fillna(0.0)
+    elif task1b_error_path.exists():
+        task1b_error_df = _load_dataframe(resolved_dir, "Task1b_error_24.csv")
+        mean_df, std_df = _compute_error_stats_from_diff_file(task1b_error_df)
+    else:
+        raise PerceptionStatsError(
+            f"Required dataset is missing: {task1b_processed_path} or {task1b_error_path}"
+        )
+
     task2_df = _load_dataframe(resolved_dir, "Task2_processed.csv")
 
-    error_df = _compute_error_dataframe(task1b_df)
-    mean_df = error_df.groupby("iSub")[FEATURE_NAMES].mean().fillna(0.0)
-    std_df = error_df.groupby("iSub")[FEATURE_NAMES].std().fillna(0.0)
-
-    structures = _extract_structures(task2_df)
+    feature_orders = _extract_feature_orders(task2_df)
 
     mean_map: Dict[int, np.ndarray] = {}
     std_map: Dict[int, np.ndarray] = {}
 
-    for sub_id, structure in structures.items():
+    for sub_id, feature_order in feature_orders.items():
         if sub_id not in mean_df.index:
             # Skip subjects without Task1b stats – keep behaviour consistent with
             # the original implementation by omitting them silently.
             continue
-        feature_order = list(_convert_structure(structure))
         subject_mean = mean_df.loc[sub_id].to_dict()
         subject_std = std_df.loc[sub_id].to_dict()
 
