@@ -9,7 +9,7 @@ with dynamic evolution rules that reflect learning behavior:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, Optional, List
+from typing import Optional, List
 import numpy as np
 from .base_module import BaseModule
 
@@ -45,7 +45,6 @@ class BetaModule(BaseModule):
             - beta_init: Initial beta value for new hypotheses (default: 3.0)
             - beta_min: Minimum beta value (default: 0.1)
             - beta_max: Maximum beta value (default: 100.0)
-            - increase_rate: Multiplicative factor for correct responses (default: 1.15)
             - decrease_rate: Multiplicative factor for incorrect responses (default: 0.3)
             - correct_additive: Additive bonus for correct responses (default: 0.5)
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
@@ -59,7 +58,6 @@ class BetaModule(BaseModule):
         self.beta_max = float(kwargs.get("beta_max", self.BETA_MAX))
         
         # Evolution parameters (nonlinear dynamics)
-        self.increase_rate = float(kwargs.get("increase_rate", 1.15))  # Multiplicative
         self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))   # Multiplicative (sharp drop)
         self.correct_additive = float(kwargs.get("correct_additive", 0.5))  # Small additive bonus
         
@@ -80,53 +78,32 @@ class BetaModule(BaseModule):
         # Track beta history for visualization
         self.beta_log: List[np.ndarray] = []
         
-        # Cache for stimulus-to-category mapping per hypothesis
-        self._category_cache: Dict[int, int] = {}
-        
     def _get_stimulus_category(self, stimulus: np.ndarray, hypo: int) -> int:
         """
         Determine which category a stimulus belongs to under a given hypothesis.
         
-        Uses the partition model's **boundary-based** method (not prototype-based)
-        to compute which category region the stimulus falls into or is closest to.
-        
-        This matches the ground truth classification rule used in experiments.
+        Uses the partition model's **prototype-based** method (aligned with the
+        likelihood calculation) to compute which category is closest to the
+        stimulus.
         """
         partition = getattr(self.engine, "partition", None)
-        if partition is None:
+        if partition is None or not hasattr(partition, "prototypes_np"):
             return 0
-        
-        stimulus = np.asarray(stimulus).flatten()
-        
-        # Use boundary-based distance calculation (same as calc_likelihood_boundary)
-        if hasattr(partition, "splits") and hasattr(partition, "generate_category_inequalities"):
-            try:
-                split_type, hyperplanes = partition.splits[hypo]
-                categories = partition.generate_category_inequalities(split_type, hyperplanes)
-                
-                # Compute distance to each category region
-                distances = []
-                for cat in categories:
-                    A, b = cat['A'], cat['b']
-                    dist = partition._distance_to_region(stimulus, A, b)
-                    distances.append(dist)
-                
-                # Return category with minimum distance (0 if inside the region)
-                return int(np.argmin(distances))
-            except (IndexError, KeyError, AttributeError):
-                pass
-        
-        # Fallback to prototype-based if boundary method unavailable
-        if hasattr(partition, "prototypes_np"):
-            protos = partition.prototypes_np[hypo]
-            if protos.ndim == 3:
-                protos = protos.squeeze(axis=0)
-            elif protos.ndim != 2:
-                return 0
-            distances = np.linalg.norm(protos - stimulus, axis=1)
-            return int(np.argmin(distances))
-        
-        return 0
+
+        protos = partition.prototypes_np
+        if hypo >= len(protos):
+            return 0
+
+        stimulus_vec = np.asarray(stimulus, dtype=float).flatten()
+        proto_block = protos[hypo]
+        if proto_block.ndim == 2:
+            proto_block = proto_block[np.newaxis, ...]
+        elif proto_block.ndim != 3:
+            return 0
+
+        distances = np.linalg.norm(proto_block - stimulus_vec, axis=-1)  # [n_protos, n_cats]
+        typical = np.min(distances, axis=0)  # [n_cats]
+        return int(np.argmin(typical))
     
     def initialize_beta_for_hypotheses(self, 
                                        indices: np.ndarray,
@@ -230,7 +207,7 @@ class BetaModule(BaseModule):
                     # Use additive increase for stability: β_new = β + increment
                     # Increment scales with how far from beta_max we are (diminishing returns)
                     headroom = self.beta_max - current_beta
-                    increment = self.correct_additive * (1 + headroom / self.beta_max)
+                    increment = self.correct_additive * (headroom / self.beta_max)
                     new_beta = current_beta + increment
                     self.beta[hypo_idx] = min(new_beta, self.beta_max)
                 else:
@@ -249,6 +226,10 @@ class BetaModule(BaseModule):
                         self.beta[hypo_idx] * (1 - self.decrease_rate),
                         self.beta_min
                     )
+        # for other hypos, set beta to zero
+        for hypo_idx in range(len(self.beta)):
+            if hypo_idx not in active_indices:
+                self.beta[hypo_idx] = 0.
         
         # Ensure engine.beta reference is updated
         self.engine.beta = self.beta
@@ -301,4 +282,3 @@ class BetaModule(BaseModule):
         self.beta.fill(self.beta_init)
         self.engine.beta = self.beta
         self.beta_log.clear()
-        self._category_cache.clear()
