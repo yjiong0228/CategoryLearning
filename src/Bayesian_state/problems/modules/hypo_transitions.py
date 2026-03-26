@@ -386,9 +386,9 @@ class DynamicHypothesisModule(BaseModule):
         return [
             # 1. Exploitation: entropy-based retention (Low Entropy -> Retain more)
             # using top_posterior as per old M7 Cond 1
-            {"amount": "entropy_4", "method": "top_posterior", "top_p": 0.0},
+            {"amount": "random_4", "method": "top_posterior", "top_p": 0.0},
             # 2. Exploration: entropy complement (High Entropy -> Explore more)
-            {"amount": "opp_entropy_4", "method": "random"},
+            {"amount": "opp_random_4", "method": "random"},
         ]
 
     @classmethod
