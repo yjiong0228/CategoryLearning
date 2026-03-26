@@ -6,11 +6,11 @@ modules:
     kwargs: {
       beta_init: 1.0,
       beta_min: 0.1,
-      beta_max: 100.0,
-      decrease_rate: 0.2,
-      correct_additive: 0.8,
+      beta_max: 50.0,
+      decrease_rate: 0.3,
+      correct_additive: 1,
       use_prior_scaling: true,
-      prior_beta_scale: 5.0
+      prior_beta_scale: 10.0
     }
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
@@ -20,12 +20,12 @@ modules:
     } 
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {}
+    kwargs: {use_boundary: false}
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {
-      w0: 0.2, 
-      gamma: 0.95,
+      w0: 0.01, 
+      gamma: 0.98,
     }
 
 agenda:
