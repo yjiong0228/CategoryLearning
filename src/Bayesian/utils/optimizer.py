@@ -271,9 +271,11 @@ class Optimizer(object):
         grid_repeat: Union[int, Dict[int, int]] = 5,
         mc_samples: Union[int, Dict[int, int]] = 100,
         stop_at: float = 1.0,
+        objective: str = 'focal',
     ) -> Dict:
         """
         Optimize parameters using grid search across subjects in parallel.
+
         Args:
             model_config (Dict): The model configuration.
             subjects (Optional[List[str]]): List of subjects to optimize for.
@@ -281,15 +283,26 @@ class Optimizer(object):
             grid_repeat (Union[int, Dict[int, int]]): Number of repetitions for grid search.
             mc_samples (Union[int, Dict[int, int]]): Number of Monte Carlo samples.
             stop_at (float): The fraction of data to stop at.
+            objective (str): Choice objective. Supported:
+                'focal', 'nll', 'lapse_nll'
+
         Returns:
             Dict: A dictionary containing the optimization results for each subject.
         """
+        # ===== fixed internal objective hyperparameters =====
+        gamma = 2.0
+        lapse = 0.05
+        eps = 1e-12
+        # ===== end fixed internal objective hyperparameters =====
+
         if subjects is None:
             subjects = self.learning_data["subject"].unique()
+
         subject_data_map = {
             iSub: self.learning_data[self.learning_data["iSub"] == iSub]
             for iSub in subjects
         }
+
         if isinstance(window_size, int):
             window_size = ConstantDict(window_size)
         if isinstance(grid_repeat, int):
@@ -300,27 +313,23 @@ class Optimizer(object):
         def process_single_task(iSub, subject_data, **kwargs):
             """
             Process a single task for a subject.
-            Args:
-                iSub (int): The subject index.
-                subject_data (pd.DataFrame): The subject-specific data.
-                **kwargs: Additional keyword arguments.
-            Returns:
-                tuple: A tuple containing the subject index, grid parameters, grid error, and grid step results.
             """
             nonlocal stop_at
             stop_index = int(stop_at * len(subject_data["choice"]) + 0.5)
             condition = subject_data["condition"].iloc[0]
+
             s_data = (
-                subject_data[["feature1", "feature2", "feature3",
-                              "feature4"]].values[:stop_index],
+                subject_data[["feature1", "feature2", "feature3", "feature4"]].values[:stop_index],
                 subject_data["choice"].values[:stop_index],
                 subject_data["feedback"].values[:stop_index],
                 subject_data["category"].values[:stop_index],
             )
 
-            model = StandardModel(model_config,
-                                  module_config=self.module_config[iSub],
-                                  condition=condition)
+            model = StandardModel(
+                model_config,
+                module_config=self.module_config[iSub],
+                condition=condition
+            )
 
             grid_params = {}
             for key in self.optimize_params_dict[iSub].keys():
@@ -333,29 +342,35 @@ class Optimizer(object):
                 s_data,
                 window_size=window_size[iSub],
                 repeat=grid_repeat[iSub],
+                objective=objective,
                 iSub=iSub,
-                **grid_params)
+                **grid_params
+            )
 
             return iSub, grid_params, grid_error, grid_step_results
 
         all_kwargs = []
         for iSub in subjects:
             for values in product(*self.optimize_params_dict[iSub].values()):
-                kwargs = dict(
-                    zip(self.optimize_params_dict[iSub].keys(), values))
-                kwargs['iSub'] = iSub
-                kwargs['subject_data'] = subject_data_map[iSub]
+                kwargs = dict(zip(self.optimize_params_dict[iSub].keys(), values))
+                kwargs["iSub"] = iSub
+                kwargs["subject_data"] = subject_data_map[iSub]
                 all_kwargs.append(kwargs)
 
-        results = Parallel(n_jobs=min(self.n_jobs, len(all_kwargs)),
-                           batch_size=1)(
-                               delayed(process_single_task)(**kwargs)
-                               for kwargs in tqdm(all_kwargs,
-                                                  desc="Processing tasks",
-                                                  total=len(all_kwargs),
-                                                  ncols=100,
-                                                  leave=True,
-                                                  position=0))
+        results = Parallel(
+            n_jobs=min(self.n_jobs, len(all_kwargs)),
+            batch_size=1
+        )(
+            delayed(process_single_task)(**kwargs)
+            for kwargs in tqdm(
+                all_kwargs,
+                desc="Processing tasks",
+                total=len(all_kwargs),
+                ncols=100,
+                leave=True,
+                position=0
+            )
+        )
 
         subject_grid_errors = defaultdict(dict)
         subject_best_combo = {}
@@ -381,21 +396,16 @@ class Optimizer(object):
         fitting_results = {}
         for iSub in subject_best_combo.keys():
             if grid_repeat[iSub] >= mc_samples[iSub]:
-                logger.info(f'Subject {iSub} has enough grid repeat samples.')
-                idx = np.argmin(subject_best_combo[iSub]['error'])
+                logger.info(f"Subject {iSub} has enough grid repeat samples.")
+                idx = np.argmin(subject_best_combo[iSub]["error"])
                 fitting_results[iSub] = {
-                    "condition":
-                    subject_data_map[iSub]["condition"].iloc[0],
-                    "best_params":
-                    subject_best_combo[iSub]["params"],
-                    "best_error":
-                    subject_best_combo[iSub]["error"][idx],
-                    "best_step_results":
-                    subject_best_combo[iSub]["step_results"][idx],
-                    "grid_errors":
-                    subject_grid_errors[iSub],
-                    "sample_errors":
-                    subject_best_combo[iSub]["error"]
+                    "condition": subject_data_map[iSub]["condition"].iloc[0],
+                    "best_params": subject_best_combo[iSub]["params"],
+                    "best_error": subject_best_combo[iSub]["error"][idx],
+                    "best_step_results": subject_best_combo[iSub]["step_results"][idx],
+                    "grid_errors": subject_grid_errors[iSub],
+                    "sample_errors": subject_best_combo[iSub]["error"],
+                    "objective": objective,
                 }
                 subject_grid_errors.pop(iSub)
 
@@ -403,32 +413,38 @@ class Optimizer(object):
             nonlocal stop_at
             stop_index = int(stop_at * len(subject_data["choice"]) + 0.5)
             condition = subject_data["condition"].iloc[0]
+
             s_data = (
-                subject_data[["feature1", "feature2", "feature3",
-                              "feature4"]].values[:stop_index],
+                subject_data[["feature1", "feature2", "feature3", "feature4"]].values[:stop_index],
                 subject_data["choice"].values[:stop_index],
                 subject_data["feedback"].values[:stop_index],
                 subject_data["category"].values[:stop_index],
             )
 
-            model = StandardModel(model_config,
-                                  module_config=self.module_config[iSub],
-                                  condition=condition)
+            model = StandardModel(
+                model_config,
+                module_config=self.module_config[iSub],
+                condition=condition
+            )
+
             all_step_results, all_mean_error = model.compute_error_for_params_new(
                 s_data,
                 window_size=window_size[iSub],
                 repeat=mc_samples[iSub],
                 multiprocess=True,
                 n_jobs=self.n_jobs,
+                objective=objective,
                 iSub=iSub,
-                **specific_params)
+                **specific_params
+            )
             return iSub, all_step_results, all_mean_error
 
-        # fitting_results = {}
         for iSub in subject_grid_errors.keys():
             _, all_step_results, all_mean_error = refit_model(
-                iSub, subject_data_map[iSub],
-                subject_best_combo[iSub]["params"])
+                iSub,
+                subject_data_map[iSub],
+                subject_best_combo[iSub]["params"]
+            )
             idx = np.argmin(all_mean_error)
 
             fitting_results[iSub] = {
@@ -438,8 +454,10 @@ class Optimizer(object):
                 "best_step_results": all_step_results[idx],
                 "raw_step_results": all_step_results,
                 "grid_errors": subject_grid_errors[iSub],
-                "sample_errors": all_mean_error
+                "sample_errors": all_mean_error,
+                "objective": objective,
             }
+
         return fitting_results
     
     def save_results(self,
@@ -612,7 +630,16 @@ class Optimizer(object):
                 'top1_choice': results['top1_choice'],
                 'pred_probs': results['pred_probs'],
                 'true_acc': results['true_acc'],
-                'sliding_true_acc': results['sliding_true_acc'],               
+                'pred_acc': results['pred_acc'],
+                'sliding_true_acc': results['sliding_true_acc'],
+                'sliding_pred_acc': results['sliding_pred_acc'],    
+                'sliding_pred_acc_std': results['sliding_pred_acc_std'], 
+                # 新增
+                'original_posterior': results['original_posterior'],
+                'choice_constrained_posterior': results['choice_constrained_posterior'],
+                'original_true_choice_prob': results['original_true_choice_prob'],
+                'cc_true_choice_prob': results['cc_true_choice_prob'],
+                'posterior_shift_tv': results['posterior_shift_tv'],             
             }
             return iSub, predict_probs_result
 
