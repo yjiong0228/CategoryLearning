@@ -571,72 +571,189 @@ class StandardModel(BaseModel):
         return predict_results
 
     def predict_probs(self,
-                       data: Tuple[np.ndarray, np.ndarray, np.ndarray,
-                                   np.ndarray],
-                       step_results: list,
-                       use_cached_dist,
-                       window_size,
-                       start_idx=0) -> Dict[str, np.ndarray]:
+                    data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                    step_results: list,
+                    use_cached_dist,
+                    window_size,
+                    start_idx=0,
+                    alpha=1.0,
+                    eps=1e-12) -> Dict[str, np.ndarray]:
         stimulus, choices, responses, categories = data
         n_trials = len(choices)
-        
-        pred_probs = np.full((n_trials, 4), np.nan, dtype = float)
-        pred_choice = np.zeros(n_trials, dtype = int)
-        top1_choice = np.zeros(n_trials, dtype = int)
+        n_cats = self.n_cats
+
+        pred_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
+        pred_choice = np.zeros(n_trials, dtype=int)
+        top1_choice = np.zeros(n_trials, dtype=int)
         true_acc = (np.array(responses) == 1).astype(float)
+        pred_acc = np.full(n_trials, np.nan, dtype=float)
+
+        # 新增输出
+        original_posterior = [None] * n_trials
+        choice_constrained_posterior = [None] * n_trials
+
+        original_true_choice_prob = np.full(n_trials, np.nan, dtype=float)
+        cc_true_choice_prob = np.full(n_trials, np.nan, dtype=float)
+        posterior_shift_tv = np.full(n_trials, np.nan, dtype=float)
 
         for trial_idx in range(start_idx + 1, n_trials):
             trial_data = ([stimulus[trial_idx]], [choices[trial_idx]],
-                          [responses[trial_idx]], [categories[trial_idx]])
+                        [responses[trial_idx]], [categories[trial_idx]])
 
             if (step_results[trial_idx - start_idx]['perception_stimuli']
                     is not None):
-
                 trial_data = list(trial_data)
-                trial_data[0] = step_results[trial_idx -
-                                             start_idx]['perception_stimuli']
+                trial_data[0] = step_results[trial_idx - start_idx]['perception_stimuli']
                 trial_data = tuple(trial_data)
 
-            # Extract the posterior probabilities for each hypothesis at last trial
-            hypo_details = step_results[trial_idx - 1 -
-                                        start_idx]['hypo_details']
+            # 当前 trial 的前向预测，使用上一 trial 的 posterior
+            hypo_details = step_results[trial_idx - 1 - start_idx]['hypo_details']
+            hypo_ids = list(hypo_details.keys())
 
-            post_max = [
-                hypo_details[k]['post_max'] for k in hypo_details.keys()
-            ]
+            # 原始 posterior p_t(h)
+            orig_post = np.array(
+                [hypo_details[h]['post_max'] for h in hypo_ids],
+                dtype=float
+            )
+            orig_post = np.clip(orig_post, 0.0, None)
+            post_sum = orig_post.sum()
+            if (not np.isfinite(post_sum)) or (post_sum <= 0):
+                orig_post = np.ones(len(hypo_ids), dtype=float) / len(hypo_ids)
+            else:
+                orig_post = orig_post / post_sum
 
-            # Compute the weighted probability of being correct
-            weighted_probs = np.zeros(4, dtype = float)
-            for k, post in zip(hypo_details.keys(), post_max):
-                probs = self.partition_model.calc_likelihood_base(
-                    k,
+            original_posterior[trial_idx] = {
+                h: orig_post[i] for i, h in enumerate(hypo_ids)
+            }
+
+            # 逐 hypothesis 取当前 stimulus 下的类别分布
+            weighted_probs = np.zeros(n_cats, dtype=float)
+            hypo_choice_prob = np.zeros(len(hypo_ids), dtype=float)
+            hypo_prob_cache = []
+
+            true_idx = int(choices[trial_idx]) - 1
+            weighted_p_true = 0.0
+            
+            for i, h in enumerate(hypo_ids):
+                beta = hypo_details[h]['beta_opt']
+                # 1) pred_acc
+                p_true = self.partition_model.calc_trueprob_entry(
+                    h,
                     trial_data,
-                    hypo_details[k]['beta_opt'],
+                    beta,
                     use_cached_dist=use_cached_dist,
-                    indices=[trial_idx])
-                probs = np.asarray(probs, dtype = float).reshape(-1)
-                weighted_probs += post * probs
-            weighted_pred_choice = np.random.choice(self.n_cats, p = weighted_probs) + 1
-            weighted_top1_choice = np.argmax(weighted_probs) + 1
+                    indices=[trial_idx]
+                )
+                p_true = float(np.asarray(p_true).reshape(-1)[0])
+                weighted_p_true += orig_post[i] * p_true
 
-            pred_probs[trial_idx,:] = weighted_probs
+                # 2) full choice distribution
+                probs = self.partition_model.calc_likelihood_base(
+                    h,
+                    trial_data,
+                    hypo_details[h]['beta_opt'],
+                    use_cached_dist=use_cached_dist,
+                    indices=[trial_idx]
+                )
+                probs = np.asarray(probs, dtype=float).reshape(-1)
+                probs = np.clip(probs, 0.0, None)
+
+                prob_sum = probs.sum()
+                if (not np.isfinite(prob_sum)) or (prob_sum <= 0):
+                    probs = np.ones(n_cats, dtype=float) / n_cats
+                else:
+                    probs = probs / prob_sum
+
+                hypo_prob_cache.append(probs)
+                weighted_probs += orig_post[i] * probs
+                hypo_choice_prob[i] = np.clip(probs[true_idx], eps, 1.0)
+                
+            pred_acc[trial_idx] = weighted_p_true
+            # 原始模型对当前 trial 的总体 choice 概率分布
+            weighted_probs = np.asarray(weighted_probs, dtype=float)
+            weighted_probs = np.clip(weighted_probs, 0.0, None)
+            wp_sum = weighted_probs.sum()
+            if (not np.isfinite(wp_sum)) or (wp_sum <= 0):
+                weighted_probs = np.ones(n_cats, dtype=float) / n_cats
+            else:
+                weighted_probs = weighted_probs / wp_sum
+
+            weighted_top1_choice = np.argmax(weighted_probs) + 1
+            weighted_pred_choice = weighted_top1_choice  ## sampling-->argmax
+
+            pred_probs[trial_idx, :] = weighted_probs
             pred_choice[trial_idx] = weighted_pred_choice
             top1_choice[trial_idx] = weighted_top1_choice
-            
-        # Compute sliding averages using a sliding window
+
+            # 原始模型给真实 choice 的概率
+            original_true_choice_prob[trial_idx] = np.clip(
+                weighted_probs[true_idx], eps, 1.0
+            )
+
+            # 只对 non-hit trial 做 choice-constrained posterior
+            if weighted_pred_choice != int(choices[trial_idx]):
+                cc_unnorm = orig_post * np.power(hypo_choice_prob, alpha)
+                cc_sum = cc_unnorm.sum()
+
+                if (not np.isfinite(cc_sum)) or (cc_sum <= 0):
+                    cc_post = orig_post.copy()
+                else:
+                    cc_post = cc_unnorm / cc_sum
+
+                choice_constrained_posterior[trial_idx] = {
+                    h: cc_post[i] for i, h in enumerate(hypo_ids)
+                }
+
+                # cc posterior 下重新得到 choice probability
+                cc_weighted_probs = np.zeros(n_cats, dtype=float)
+                for i, probs in enumerate(hypo_prob_cache):
+                    cc_weighted_probs += cc_post[i] * probs
+
+                cc_weighted_probs = np.clip(cc_weighted_probs, 0.0, None)
+                cc_wp_sum = cc_weighted_probs.sum()
+                if (not np.isfinite(cc_wp_sum)) or (cc_wp_sum <= 0):
+                    cc_weighted_probs = np.ones(n_cats, dtype=float) / n_cats
+                else:
+                    cc_weighted_probs = cc_weighted_probs / cc_wp_sum
+
+                cc_true_choice_prob[trial_idx] = np.clip(
+                    cc_weighted_probs[true_idx], eps, 1.0
+                )
+
+                # posterior shift：TV distance
+                posterior_shift_tv[trial_idx] = 0.5 * np.sum(np.abs(cc_post - orig_post))
+
+        # 滑窗输出
         sliding_true_acc = []
+        sliding_pred_acc = []
+        sliding_pred_acc_std = []
+
         for start_idx in range(1, n_trials - window_size +
                                2):  # Start from index 1
             end_idx = start_idx + window_size
             sliding_true_acc.append(np.mean(true_acc[start_idx:end_idx]))
-                
+            pred_window = pred_acc[start_idx:end_idx]
+            sliding_pred_acc.append(np.mean(pred_window))
+            sliding_pred_acc_std.append(
+                np.sqrt(np.sum(pred_window * (1 - pred_window))) / window_size)
+
         predict_probs_results = {
             'true_choice': choices,
             'pred_choice': pred_choice,
             'top1_choice': top1_choice,
             'pred_probs': pred_probs,
             'true_acc': true_acc,
-            'sliding_true_acc': sliding_true_acc,
+            'pred_acc': pred_acc,
+            'sliding_true_acc': np.asarray(sliding_true_acc, dtype=float),
+            'sliding_pred_acc': np.asarray(sliding_pred_acc, dtype=float),
+            'sliding_pred_acc_std': np.asarray(sliding_pred_acc_std, dtype=float),
+
+            # 新增
+            'original_posterior': original_posterior,
+            'choice_constrained_posterior': choice_constrained_posterior,
+            'original_true_choice_prob': original_true_choice_prob,
+            'cc_true_choice_prob': cc_true_choice_prob,
+            'posterior_shift_tv': posterior_shift_tv,
         }
 
         return predict_probs_results
@@ -720,7 +837,7 @@ class StandardModel(BaseModel):
                 weighted_probs = weighted_probs / prob_sum
 
             weighted_top1_choice = np.argmax(weighted_probs) + 1
-            weighted_pred_choice = np.random.choice(self.n_cats, p = weighted_probs) + 1  
+            weighted_pred_choice = weighted_top1_choice # = np.random.choice(self.n_cats, p = weighted_probs) + 1  
 
             pred_probs[trial_idx, :] = weighted_probs
             pred_choice[trial_idx] = weighted_pred_choice
@@ -777,39 +894,103 @@ class StandardModel(BaseModel):
 
         return predict_probs_results
     
-    def compute_error_for_params_new(self,
-                             data: Tuple[np.ndarray, np.ndarray,
-                                         np.ndarray, np.ndarray],
-                             window_size=16,
-                             repeat=1,
-                             multiprocess=False,
-                             **kwargs) -> Tuple[List[Dict], float]:
+    def compute_error_for_params_new(
+                                    self,
+                                    data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                                    window_size=16,
+                                    repeat=1,
+                                    multiprocess=False,
+                                    objective='focal',
+                                    **kwargs
+                                ) -> Tuple[List[Dict], float]:
         """
-        Perform a single pass of model fitting and prediction, then compute an error metric.
+        Perform repeated model fitting and compute a configurable choice objective.
 
-        New objective:
-        ----------------
-        Minimize trial-by-trial choice prediction error,
-        i.e. minimize the negative log-likelihood (NLL) of the subject's true choices.
-
-        Parameters
-        ----------
-        data : tuple
-            A tuple containing (stimuli, choices, responses, categories).
-        window_size : int
-            Kept for compatibility.
-        repeat : int
-            The number of times to repeat the fitting process.
-        multiprocess : bool
-            Whether to use multiprocessing for parallel computation.
-
-        Returns
-        -------
-        all_step_results : List[List[Dict]]
-            A list of output of fit_step_by_step showing model fits for each trial.
-        all_mean_error : List[float]
-            A list of average choice NLL values (lower is better).
+        Supported objective
+        -------------------
+        'focal'
+        'nll'
+        'lapse_nll'
+        'brier'
+        'linear'
         """
+
+        # ===== fixed internal objective hyperparameters =====
+        focal_gamma = 2.0
+        lapse = 0.05
+        eps = 1e-12
+        # ===== end fixed internal objective hyperparameters =====
+
+        def compute_choice_objective_from_predict_results(
+            predict_results,
+            objective='focal'
+        ):
+            true_choice = np.asarray(predict_results['true_choice'], dtype=float)
+            pred_probs = np.asarray(predict_results['pred_probs'], dtype=float)
+            p_true = np.asarray(predict_results['true_choice_prob'], dtype=float)
+
+            # ---------- focal / nll / lapse_nll / linear ----------
+            if objective in ['focal', 'nll', 'lapse_nll', 'linear']:
+                valid_mask = np.isfinite(p_true)
+                p_true_valid = np.clip(p_true[valid_mask], eps, 1.0)
+
+                if len(p_true_valid) == 0:
+                    return np.nan
+
+                if objective == 'focal':
+                    per_trial_loss = -((1.0 - p_true_valid) ** focal_gamma) * np.log(p_true_valid)
+
+                elif objective == 'nll':
+                    per_trial_loss = -np.log(p_true_valid)
+
+                elif objective == 'lapse_nll':
+                    p_mix = (1.0 - lapse) * p_true_valid + lapse / self.n_cats
+                    p_mix = np.clip(p_mix, eps, 1.0)
+                    per_trial_loss = -np.log(p_mix)
+
+                elif objective == 'linear':
+                    per_trial_loss = 1.0 - p_true_valid
+
+                return float(np.mean(per_trial_loss))
+
+            # ---------- brier ----------
+            elif objective == 'brier':
+                if pred_probs.ndim != 2:
+                    return np.nan
+
+                n_trials, n_cats = pred_probs.shape
+
+                valid_mask = (
+                    np.isfinite(true_choice) &
+                    np.all(np.isfinite(pred_probs), axis=1)
+                )
+
+                if not np.any(valid_mask):
+                    return np.nan
+
+                true_choice_valid = true_choice[valid_mask].astype(int)
+                pred_probs_valid = pred_probs[valid_mask]
+
+                # 你的 true_choice 是 1-based 编码
+                true_idx = true_choice_valid - 1
+                idx_valid_mask = (true_idx >= 0) & (true_idx < n_cats)
+
+                if not np.any(idx_valid_mask):
+                    return np.nan
+
+                true_idx = true_idx[idx_valid_mask]
+                pred_probs_valid = pred_probs_valid[idx_valid_mask]
+
+                y_onehot = np.eye(n_cats, dtype=float)[true_idx]
+                per_trial_loss = np.sum((pred_probs_valid - y_onehot) ** 2, axis=1)
+
+                return float(np.mean(per_trial_loss))
+
+            else:
+                raise ValueError(
+                    f"Unsupported objective: {objective}. "
+                    f"Choose from ['focal', 'nll', 'lapse_nll', 'brier', 'linear']"
+                )
 
         if multiprocess:
 
@@ -824,9 +1005,15 @@ class StandardModel(BaseModel):
                     data,
                     step_results,
                     use_cached_dist=True,
-                    window_size=window_size
+                    window_size=window_size,
+                    eps=eps
                 )
-                mean_error = predict_results['mean_choice_nll']
+
+                mean_error = compute_choice_objective_from_predict_results(
+                    predict_results=predict_results,
+                    objective=objective
+                )
+
                 return step_results, mean_error
 
             results = Parallel(n_jobs=kwargs.get("n_jobs", 2))(
@@ -849,11 +1036,15 @@ class StandardModel(BaseModel):
                     data,
                     step_results,
                     use_cached_dist=True,
-                    window_size=window_size
+                    window_size=window_size,
+                    eps=eps
                 )
 
-                # 新目标：最小化真实 choice 的平均负对数似然
-                mean_error = predict_results['mean_choice_nll']
+                mean_error = compute_choice_objective_from_predict_results(
+                    predict_results=predict_results,
+                    objective=objective
+                )
+
                 all_mean_error.append(mean_error)
 
         return all_step_results, all_mean_error

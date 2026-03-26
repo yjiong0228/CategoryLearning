@@ -31,10 +31,11 @@ class BasePartition(ABC):
         self.splits = self.get_all_splits()
         self.centers = self.get_centers()
         self.prototypes = self.get_prototypes()
-
         self.prototypes_np = np.array([[[t for i, t in sorted(x.items())]
                                         for x in p[1:]]
                                        for p in self.prototypes])
+
+        self.regions = list(self.get_regions())
 
         self.cached_dist: Dict[int, np.ndarray] = {}
         # self.labels = [p[0] for p in self.prototypes]
@@ -72,6 +73,15 @@ class BasePartition(ABC):
             return self.get_centers()
         raise NotImplementedError(
             "get_prototypes: Method case not implemented.")
+
+    def get_regions(self):
+        """
+        
+        """
+        return [
+            self.generate_category_inequalities(split_type, hyperplanes)
+            for split_type, hyperplanes in self.splits
+        ]
 
     def precompute_all_distances(self, stimuli: np.ndarray):
         """
@@ -263,45 +273,7 @@ class BasePartition(ABC):
         # return prob[category]
 
 
-    # ======================================================================
-    # ========== (新方法) 基于原型的类别归属 =============================
-    # ======================================================================
-    def _get_category_assignments(self,
-                                  hypo: int,
-                                  stimuli: np.ndarray) -> np.ndarray:
-        """
-        为给定的刺激点, 找出在某个假设下, 它们各自归属的类别 (基于最近原型)。
-        
-        Parameters:
-        ----------
-        hypo: int
-            假设的索引。
-        stimuli: np.ndarray
-            形状为 [n_samples, n_dims] 的刺激点。
 
-        Returns:
-        -------
-        np.ndarray:
-            形状为 [n_samples] 的数组, 每个元素是该点所属的类别索引 (0 to n_cats-1)。
-        """
-        if hypo >= len(self.prototypes_np):
-            raise IndexError(f"Hypothesis index {hypo} out of bounds for prototypes_np with length {len(self.prototypes_np)}.")
-        
-        # partition shape = [n_protos, n_cats, n_dims]
-        partition = self.prototypes_np[hypo]  
-        
-        # euc_dist(partition, stimuli) -> shape [n_protos, n_cats, n_samples]
-        distances = euc_dist(partition, stimuli)
-        
-        # 找到每个点到每个类别的"最小"原型距离
-        # shape = [n_cats, n_samples]
-        typical_distances = np.min(distances, axis=0)
-        
-        # 找到每个点距离最近的类别
-        # shape = [n_samples]
-        assignments = np.argmin(typical_distances, axis=0)
-        
-        return assignments
 
 
 def signed_distance_to_category(x, cat_ineqs):
@@ -575,6 +547,11 @@ class Partition(BasePartition):
         return np.clip(likelihood, self.EPS, 1. - self.EPS)
 
 
+
+    # ======================================================================
+    # ========== 相似性计算 =============================
+    # ======================================================================
+
     def _load_or_compute_similarity(self, n_dims, n_cats, file_path, n_samples):
         """
         核心逻辑：内存缓存 -> 磁盘文件 -> 重新计算
@@ -613,60 +590,175 @@ class Partition(BasePartition):
         Partition._loaded_matrices_cache[cache_key] = matrix
         
         return matrix
-
-    def _compute_hypothesis_similarity_matrix(self, n_samples: int = 100000) -> np.ndarray:
+    
+    def _get_category_assignments(self,
+                                  hypo: int,
+                                  stimuli: np.ndarray) -> np.ndarray:
         """
-        使用蒙特卡洛积分计算所有假设(splits)之间的相似性矩阵。
+        为给定的刺激点, 找出在某个假设下, 它们各自归属的类别 (基于最近原型)。
+        
+        Parameters:
+        ----------
+        hypo: int
+            假设的索引。
+        stimuli: np.ndarray
+            形状为 [n_samples, n_dims] 的刺激点。
+
+        Returns:
+        -------
+        np.ndarray:
+            形状为 [n_samples] 的数组, 每个元素是该点所属的类别索引 (0 to n_cats-1)。
+        """
+        if hypo >= len(self.prototypes_np):
+            raise IndexError(f"Hypothesis index {hypo} out of bounds for prototypes_np with length {len(self.prototypes_np)}.")
+        
+        # partition shape = [n_protos, n_cats, n_dims]
+        partition = self.prototypes_np[hypo]  
+        
+        # euc_dist(partition, stimuli) -> shape [n_protos, n_cats, n_samples]
+        distances = euc_dist(partition, stimuli)
+        
+        # 找到每个点到每个类别的"最小"原型距离
+        # shape = [n_cats, n_samples]
+        typical_distances = np.min(distances, axis=0)
+        
+        # 找到每个点距离最近的类别
+        # shape = [n_samples]
+        assignments = np.argmin(typical_distances, axis=0)
+        
+        return assignments
+
+
+    def _get_category_assignments_region(
+        self,
+        hypo: int,
+        stimuli: np.ndarray,
+        tol: float = 1e-9
+    ) -> np.ndarray:
+        """
+        基于 regions (A x <= b) 的硬判类。
+        对每个 stimulus，优先按“是否落在某个类别区域内”决定类别；
+        若由于数值误差出现多重命中或零命中，则回退到 violation / distance 规则。
+
+        Parameters
+        ----------
+        hypo : int
+            hypothesis index
+        stimuli : np.ndarray
+            shape = [n_samples, n_dims]
+        tol : float
+            判断 A @ x <= b + tol 的容忍度
+
+        Returns
+        -------
+        assignments : np.ndarray
+            shape = [n_samples], 每个元素是类别索引 0..n_cats-1
+        """
+        if hypo >= len(self.regions):
+            raise IndexError(
+                f"Hypothesis index {hypo} out of bounds for regions with length {len(self.regions)}."
+            )
+
+        categories = self.regions[hypo]   # list of {'A': ..., 'b': ...}
+        n_samples = stimuli.shape[0]
+        assignments = np.full(n_samples, -1, dtype=int)
+
+        for i, x in enumerate(stimuli):
+            inside_cats = []
+            violation_scores = []
+
+            for c, cat in enumerate(categories):
+                A = np.asarray(cat['A'], dtype=float)
+                b = np.asarray(cat['b'], dtype=float)
+
+                vals = A @ x - b   # <= 0 表示满足该约束
+                pos_violation = np.clip(vals, 0.0, None)
+                violation_sum = np.sum(pos_violation)
+
+                violation_scores.append(violation_sum)
+
+                if np.all(vals <= tol):
+                    inside_cats.append(c)
+
+            if len(inside_cats) == 1:
+                assignments[i] = inside_cats[0]
+
+            elif len(inside_cats) > 1:
+                # 多个 region 同时满足：选 violation 最小的
+                # 通常边界点会出现这种情况
+                best_cat = min(inside_cats, key=lambda c: violation_scores[c])
+                assignments[i] = best_cat
+
+            else:
+                # 一个 region 都不满足：选距离最近的 region
+                distances = []
+                for cat in categories:
+                    A = np.asarray(cat['A'], dtype=float)
+                    b = np.asarray(cat['b'], dtype=float)
+                    d = self._distance_to_region(x, A, b)
+                    distances.append(d)
+
+                assignments[i] = int(np.argmin(distances))
+
+        return assignments
+
+    def _compute_hypothesis_similarity_matrix(
+        self,
+        n_samples: int = 100000,
+        tol: float = 1e-9,
+        random_state: int | None = None
+    ) -> np.ndarray:
+        """
+        使用 Monte Carlo 积分计算所有 hypothesis 之间的相似性矩阵。
+        相似性定义为：在 [0,1]^n_dims 上均匀采样的点中，
+        两个 hypothesis 给出相同类别标签的比例。
+
+        Parameters
+        ----------
+        n_samples : int
+            Monte Carlo 采样点数量。
+        tol : float
+            region 判类时的不等式容忍度。
+        random_state : int | None
+            随机种子，便于复现。
+
+        Returns
+        -------
+        np.ndarray
+            shape = [n_hypos, n_hypos] 的相似性矩阵。
         """
         n_hypos = self.length
         if n_hypos == 0:
             return np.array([])
 
-        # 1. 在 [0, 1]^n_dims 空间中均匀采样 N 个点
-        X_samples = np.random.rand(n_samples, self.n_dims)
+        rng = np.random.default_rng(random_state)
 
-        # 2. 缓存所有假设对这些点的分类结果
+        # 1. 在 [0,1]^n_dims 中均匀采样
+        X_samples = rng.random((n_samples, self.n_dims))
+
+        # 2. 缓存所有 hypo 对这些点的 region-based 分类结果
         all_assignments = np.zeros((n_hypos, n_samples), dtype=int)
-        
+
         for h in range(n_hypos):
-            # 调用 BasePartition 中的辅助方法
-            all_assignments[h] = self._get_category_assignments(h, X_samples)
+            all_assignments[h] = self._get_category_assignments_region(
+                hypo=h,
+                stimuli=X_samples,
+                tol=tol
+            )
 
         # 3. 计算相似性矩阵
-        sim_matrix = np.zeros((n_hypos, n_hypos))
+        sim_matrix = np.zeros((n_hypos, n_hypos), dtype=float)
 
         for i in range(n_hypos):
             sim_matrix[i, i] = 1.0
             for j in range(i + 1, n_hypos):
-                n_agree = np.sum(all_assignments[i] == all_assignments[j])
-                similarity = n_agree / n_samples
+                similarity = np.mean(all_assignments[i] == all_assignments[j])
                 sim_matrix[i, j] = similarity
-                sim_matrix[j, i] = similarity 
+                sim_matrix[j, i] = similarity
 
-        print("Similarity matrix calculation complete.")
+        print("Region-based similarity matrix calculation complete.")
         return sim_matrix
 
-
-    def get_similarity_error_matrix(self) -> np.ndarray:
-        """
-        计算当前相似性矩阵的标准误 (Standard Error)。
-        公式: SE = sqrt( p * (1-p) / N )
-        
-        Returns:
-        -------
-        np.ndarray: 形状与 similarity_matrix 相同的误差矩阵。
-        """
-        # 1. 获取当前的 p (相似度矩阵)
-        p = self.similarity_matrix
-        
-        # 2. 获取计算该矩阵时使用的采样数 N
-        N = getattr(self, 'n_samples_used', 100000) 
-        
-        # 3. 计算标准误
-        # 注意: 对角线上 p=1, 1-p=0, 误差为0, 符合逻辑
-        se_matrix = np.sqrt(p * (1 - p) / N)
-        
-        return se_matrix
 
 
 

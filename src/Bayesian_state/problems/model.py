@@ -238,6 +238,8 @@ class StateModel:
         """
         """
 
+        if engine_config is None:
+            raise ValueError("engine_config must be a dict; got None. Check MODEL_STRUCT and model_choice settings.")
         # Initialize attributes
         self.engine_config = deepcopy(engine_config)
         self.all_centers = None
@@ -250,7 +252,7 @@ class StateModel:
         processed_data_dir = kwargs.pop("processed_data_dir", None)
         if processed_data_dir is None:
             self.processed_data_dir = (
-                PATHS["root"].parent / "data" / "processed"
+                PATHS["root"] / "data" / "processed"
             ).resolve()
         else:
             self.processed_data_dir = Path(processed_data_dir).resolve()
