@@ -1,20 +1,25 @@
 """
 Root of the tree
 """
-from pathlib import Path
-import logging.config
 from logging import getLogger
 from datetime import datetime as dt
 from .console_styles import print
+from .paths import (
+    UTILS_DIR,
+    SRC_DIR,
+    ROOT_DIR,
+    CONFIGS_DIR,
+    LOGS_DIR,
+)
 # Useful Paths
 
 PATHS = {}
 
-PATHS["utils"] = Path(__file__).parent
-PATHS["src"] = PATHS["utils"].parent.parent
-PATHS["root"] = PATHS["src"].parent
-PATHS["configs"] = PATHS["root"] / "configs"
-PATHS["logs"] = PATHS["root"] / "logs"
+PATHS["utils"] = UTILS_DIR
+PATHS["src"] = SRC_DIR
+PATHS["root"] = ROOT_DIR
+PATHS["configs"] = CONFIGS_DIR
+PATHS["logs"] = LOGS_DIR
 
 for k, v in PATHS.items():
     v.mkdir(parents=True, exist_ok=True)

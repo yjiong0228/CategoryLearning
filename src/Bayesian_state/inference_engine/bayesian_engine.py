@@ -1,9 +1,9 @@
 """
 Bayesian Engine
 """
-from typing import Dict, Tuple, List, Any, Literal
+from typing import Dict, Tuple, List, Any
 import numpy as np
-from ..utils import softmax, print, LOGGER
+from ..utils import print, LOGGER
 import importlib # FIXME: 模块从config里的string转化为真正的class在哪里实现？
 
 EPS = 1e-15
