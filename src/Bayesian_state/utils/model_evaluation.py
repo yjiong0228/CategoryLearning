@@ -1,12 +1,8 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-from matplotlib import pyplot as plt
-import matplotlib.ticker as mticker
 import seaborn as sns
-import numpy as np
 import logging
 logger = logging.getLogger(__name__)
 

@@ -2,12 +2,8 @@
 Module: Decision
 """
 
-from abc import ABC
-from collections.abc import Callable
-from typing import List, Tuple, Dict, Set
 import numpy as np
-from .base_module import BasePartition, BaseModule
-from .base_module import (cdist, softmax, BaseSet)
+from .base_module import BaseModule
 
 
 class BaseDecision(BaseModule):

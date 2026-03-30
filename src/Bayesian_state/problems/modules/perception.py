@@ -2,153 +2,150 @@
 Module: Perception Mechanism
 """
 
-from typing import Dict, List
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, Tuple
 import numpy as np
-import os
 import pandas as pd
 from .base_module import BaseModule
+from ...utils.paths import (
+    PROCESSED_DATA_DIR,
+    TASK1B_ERRORSUMMARY_PATH,
+    TASK2_PROCESSED_PATH,
+)
 
-DEFAULT_PROCESSED_DATA_DIR = os.path.join(
-    os.path.dirname(__file__), "../../../../data/processed")
+FEATURE_NAMES = ["neck", "head", "leg", "tail"]
+SUMMARY_MEAN_COLUMNS = [
+    "neck_length_error_mean",
+    "head_length_error_mean",
+    "leg_length_error_mean",
+    "tail_length_error_mean",
+]
+SUMMARY_STD_COLUMNS = [
+    "neck_length_error_sd",
+    "head_length_error_sd",
+    "leg_length_error_sd",
+    "tail_length_error_sd",
+]
 
-class BasePerception(BaseModule):
-    """
-    Base Perception
-    """
 
-    def __init__(self, model, **kwargs):
-        """
-        Initialize
+@lru_cache(maxsize=None)
+def _load_csv_cached(summary_path: str) -> pd.DataFrame:
+    csv_path = Path(summary_path)
+    if not csv_path.exists():
+        raise ValueError(f"Required dataset is missing: {csv_path}")
+    return pd.read_csv(csv_path)
 
-        Args:
-            model (BaseModelParams): Model parameters
-            **kwargs: Additional keyword arguments
-        """
-        super().__init__(model, **kwargs)
-        self.processed_data_dir = kwargs.pop("processed_data_path", DEFAULT_PROCESSED_DATA_DIR)
-        self.mean : Dict[str, Dict[str, float]] = {}
-        self.std : Dict[str, Dict[str, float]] = {}
-        processed_data = pd.read_csv(os.path.join(self.processed_data_dir, "Task1b_processed.csv"))
-        error = self.error_calculation(processed_data)
-        self.mean, self.std = self.calculate_mean_std(error)
-        self.structures : Dict[str, List]= self.get_structures()
 
-    def error_calculation(self, processed_data):
-        """
-        Calculate error between target and adjust_after
-
-        Args:
-            processed_data (pd.DataFrame): DataFrame containing processed data
-        Returns:
-            pd.DataFrame: DataFrame containing error data
-        """
-        columns = ['neck_length', 'head_length', 'leg_length', 'tail_length']
-        
-        results = []
-        for iSub, group in processed_data.groupby('iSub'):
-            target = group[group['type'] == 'target'].reset_index(drop=True)
-            adjust_after = group[group['type'] == 'adjust_after'].reset_index(drop=True)
-
-            result = target[['iSub','iTrial'] + columns].reset_index(drop=True).copy()
-            for col in columns:
-                result[f'{col}_diff'] = adjust_after[col] - target[col]
-            results.append(result)
-            
-        error = pd.concat(results, ignore_index=True)
-
-        return error
-    
-    def calculate_mean_std(self, error):
-        """
-        Calculate mean and standard deviation for each subject
-
-        Args:
-            error (pd.DataFrame): DataFrame containing error data
-        Returns:
-            dict: Mean and standard deviation for each subject
-        """
-        mean = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').mean()
-        )
-        std = error.groupby('iSub').apply(
-            lambda group: group.filter(like='_diff').std()
+def _compute_subject_stats_from_summary(
+    summary_df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    required_cols = {"iSub", *SUMMARY_MEAN_COLUMNS, *SUMMARY_STD_COLUMNS}
+    missing_cols = [col for col in required_cols if col not in summary_df.columns]
+    if missing_cols:
+        raise ValueError(
+            "Task1b error summary is missing required columns: "
+            + ", ".join(sorted(missing_cols))
         )
 
-        mean = mean.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
-        std = std.rename(columns=lambda x: x.replace('_length_diff', '')).to_dict(orient='index')
-        return mean, std
+    grouped = summary_df.groupby("iSub", as_index=True)
+    mean_df = grouped[SUMMARY_MEAN_COLUMNS].mean().rename(
+        columns=dict(zip(SUMMARY_MEAN_COLUMNS, FEATURE_NAMES))
+    )
+    std_df = grouped[SUMMARY_STD_COLUMNS].mean().rename(
+        columns=dict(zip(SUMMARY_STD_COLUMNS, FEATURE_NAMES))
+    )
 
-    def get_structures(self):
-        """
-        Get structures for each subject
+    mean_df = mean_df.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    std_df = std_df.replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-        Returns:
-            dict: Structures for each subject
-        """
-        structures = {}
-        processed_data = pd.read_csv(os.path.join(self.processed_data_dir, "Task2_processed.csv"))
+    if mean_df.empty:
+        raise ValueError(
+            "Task1b error summary does not contain valid subject statistics"
+        )
 
-        for iSub, group in processed_data.groupby('iSub'):
-            structures[iSub] = group[['structure1', 'structure2']].values
-            assert np.all(structures[iSub] == structures[iSub][0]), f"iSub {iSub} has inconsistent structures."
-            structures[iSub] = structures[iSub][0].tolist()
+    return mean_df, std_df
 
-        return structures
 
-    def sample(self, iSub, stimulus):
-        """
-        Sample from the model
+def _extract_feature_orders(task2_df: pd.DataFrame) -> Dict[int, list[str]]:
+    required_cols = [
+        "iSub",
+        "feature1_name",
+        "feature2_name",
+        "feature3_name",
+        "feature4_name",
+    ]
+    missing_cols = [col for col in required_cols if col not in task2_df.columns]
+    if missing_cols:
+        raise ValueError(
+            "Task2 dataset is missing required columns: "
+            + ", ".join(sorted(missing_cols))
+        )
 
-        Args:
-            iSub (int): Subject index
-            stimulus (np.ndarray): Stimulus to sample from, shape (trials, features)
-        Returns:
-            np.ndarray: Sampled stimulus with noise added, shape (trials, features)
-        """
-        if iSub not in self.mean or iSub not in self.std:
-            raise ValueError(f"Subject {iSub} not found in mean or std data.")
-        
-        def convert(structure):
-            # feature selection
-            if structure[0] == 1:
-                features = ["neck", "head", "leg", "tail"]
-            elif structure[0] == 2:
-                features = ["neck", "head", "tail", "leg"]
-            elif structure[0] == 3:
-                features = ["neck", "leg", "tail", "head"]
-            elif structure[0] == 4:
-                features = ["head", "leg", "tail", "neck"]
-
-            # feature space segmentation
-            if structure[1] == 1:
-                features = features[:]
-            elif structure[1] == 2:
-                features = [features[0], features[2], features[1], features[3]]
-            elif structure[1] == 3:
-                features = [features[1], features[0], features[2], features[3]]
-            elif structure[1] == 4:
-                features = [features[1], features[2], features[0], features[3]]
-            elif structure[1] == 5:
-                features = [features[2], features[0], features[1], features[3]]
-            elif structure[1] == 6:
-                features = [features[2], features[1], features[0], features[3]]
-
-            # Final rearrangement
-            features = [features[0], features[2], features[1], features[3]]
-
-            # Add suffix to feature names
-            return features
-        
-        feat = convert(self.structures[iSub])
-        n_trials = len(stimulus)
-        for i in range(stimulus.shape[1]):
-            stimulus[:, i] = stimulus[:, i] + np.random.normal(
-                loc=self.mean[iSub][feat[i]], scale=self.std[iSub][feat[i]], size=n_trials
+    feature_orders: Dict[int, list[str]] = {}
+    for sub_id, group in task2_df.groupby("iSub"):
+        rows = group[
+            ["feature1_name", "feature2_name", "feature3_name", "feature4_name"]
+        ].drop_duplicates()
+        if rows.empty:
+            continue
+        if len(rows) != 1:
+            raise ValueError(
+                f"Subject {sub_id} has inconsistent feature name order in Task2 data"
             )
-        # Ensure the values are in the range of [0, 1]
-        stimulus = np.clip(stimulus, 0, 1)
-        return stimulus
-    
+
+        names = [str(v).strip().lower() for v in rows.iloc[0].tolist()]
+        invalid = [name for name in names if name not in FEATURE_NAMES]
+        if invalid:
+            raise ValueError(
+                f"Subject {sub_id} has unknown feature names: {invalid}"
+            )
+        feature_orders[int(sub_id)] = names
+
+    if not feature_orders:
+        raise ValueError("Task2 dataset does not contain valid subject feature orders")
+    return feature_orders
+
+
+def _get_perception_noise_stats(
+    processed_data_dir: Path | str | None,
+) -> Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray]]:
+    if processed_data_dir is None:
+        summary_path = TASK1B_ERRORSUMMARY_PATH.resolve()
+        task2_path = TASK2_PROCESSED_PATH.resolve()
+    else:
+        resolved_dir = Path(processed_data_dir).resolve()
+        summary_path = (resolved_dir / TASK1B_ERRORSUMMARY_PATH.name).resolve()
+        task2_path = (resolved_dir / TASK2_PROCESSED_PATH.name).resolve()
+
+    summary_df = _load_csv_cached(str(summary_path))
+    task2_df = _load_csv_cached(str(task2_path))
+    mean_df, std_df = _compute_subject_stats_from_summary(summary_df)
+    feature_orders = _extract_feature_orders(task2_df)
+
+    mean_map: Dict[int, np.ndarray] = {}
+    std_map: Dict[int, np.ndarray] = {}
+
+    for sub_id in mean_df.index:
+        i_sub = int(sub_id)
+        if i_sub not in feature_orders:
+            raise ValueError(f"Subject {i_sub} not found in Task2 feature order data")
+
+        order = feature_orders[i_sub]
+        mean_dict = mean_df.loc[sub_id, FEATURE_NAMES].to_dict()
+        std_dict = std_df.loc[sub_id, FEATURE_NAMES].to_dict()
+
+        subject_mean = np.array([mean_dict[name] for name in order], dtype=float)
+        subject_std = np.array([std_dict[name] for name in order], dtype=float)
+        mean_map[i_sub] = np.nan_to_num(subject_mean, nan=0.0)
+        std_map[i_sub] = np.nan_to_num(subject_std, nan=0.0)
+
+    if not mean_map:
+        raise ValueError(
+            "Failed to compute perception statistics for any subject"
+        )
+
+    return mean_map, std_map
 
 
 ################### NEW Perception Module ###################
@@ -165,48 +162,63 @@ class PerceptionModule(BaseModule):
             Hosting inference engine instance.
         features: int, optional
             Number of stimulus features (defaults to 4).
-        mean: Sequence[float] | dict | float, optional
-            Mean offsets for each feature. Scalars are broadcast, iterables are
-            coerced to numpy arrays, and dictionaries keyed by feature names or
-            indices are supported.
-        std: Sequence[float] | dict | float, optional
+        mean: Sequence[float] | float, optional
+            Mean offsets for each feature. Scalars are broadcast and iterables
+            are coerced to numpy arrays.
+        std: Sequence[float] | float, optional
             Standard deviations for each feature. Scalars are broadcast and
-            dictionaries mirror the behaviour described for ``mean``.
+            iterables are coerced to numpy arrays.
         subject_id: int, optional
             Stored for debugging/logging; it does not affect computations.
         """
 
         super().__init__(engine, **kwargs)
         self.features = kwargs.pop("features", 4)
-        self.subject_id = kwargs.pop("subject_id", None)
-
-        self.mean = self._coerce_vector(kwargs.pop("mean", 0.0), "mean")
-        self.std = np.abs(
-            self._coerce_vector(kwargs.pop("std", 0.1), "std")
+        self.subject_id = kwargs.pop("subject_id", getattr(engine, "subject_id", None))
+        processed_data_dir = kwargs.pop(
+            "processed_data_dir", getattr(engine, "processed_data_dir", PROCESSED_DATA_DIR)
         )
+
+        mean_value = kwargs.pop("mean", None)
+        std_value = kwargs.pop("std", None)
+
+        if mean_value is None or std_value is None:
+            if self.subject_id is None:
+                raise ValueError(
+                    "PerceptionModule requires 'subject_id' when mean/std are not provided."
+                )
+            auto_mean, auto_std = self._load_subject_stats(
+                int(self.subject_id),
+                processed_data_dir,
+            )
+            if mean_value is None:
+                mean_value = auto_mean
+            if std_value is None:
+                std_value = auto_std
+
+        self.mean = self._coerce_vector(mean_value, "mean")
+        self.std = np.abs(self._coerce_vector(std_value, "std"))
+
+    @staticmethod
+    def _load_subject_stats(subject_id: int, processed_data_dir: Path | str | None):
+        try:
+            mean_map, std_map = _get_perception_noise_stats(processed_data_dir)
+        except ValueError as exc:
+            raise ValueError(
+                f"Failed to load perception statistics from {processed_data_dir}"
+            ) from exc
+
+        if subject_id not in mean_map:
+            raise ValueError(
+                f"Subject {subject_id} does not exist in perception statistics"
+            )
+        return mean_map[subject_id], std_map[subject_id]
 
     def _coerce_vector(self, value, name: str) -> np.ndarray:
         """Convert incoming parameter to a feature-sized numpy array."""
 
         if isinstance(value, (float, int)):
             return np.full(self.features, float(value), dtype=float)
-
-        if isinstance(value, dict):
-            if all(k in value for k in range(self.features)):
-                ordered = [float(value[i]) for i in range(self.features)]
-                return np.asarray(ordered, dtype=float)
-            if all(k in value for k in ["neck", "head", "leg", "tail"]):
-                ordered = [
-                    float(value[key]) for key in ["neck", "head", "leg", "tail"]
-                ]
-                if len(ordered) != self.features:
-                    raise ValueError(
-                        f"Expected {self.features} feature entries for {name}"
-                    )
-                return np.asarray(ordered, dtype=float)
-            raise ValueError(
-                f"Unsupported dictionary format for parameter '{name}'"
-            )
 
         array = np.asarray(value, dtype=float)
         if array.ndim != 1 or array.shape[0] != self.features:

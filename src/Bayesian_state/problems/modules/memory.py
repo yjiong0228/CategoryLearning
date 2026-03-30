@@ -2,18 +2,11 @@
 Module: Memory Mechanism
 """
 
-from abc import ABC
-from dataclasses import dataclass
-from collections.abc import Callable
-from operator import ge
-from typing import List, Tuple, Dict, Set, Sequence
+from typing import List, Dict, Sequence
 import numpy as np
-from scipy.optimize import minimize
 
 #from CategoryLearning.Old_version.Bayesian_new.inference_engine.bayesian_engine import BaseEngine
 from .base_module import BaseModule
-from .base_module import (cdist, softmax, BaseSet, entropy)
-from ..model import BaseModelParams
 
 
 class BaseMemory(BaseModule):

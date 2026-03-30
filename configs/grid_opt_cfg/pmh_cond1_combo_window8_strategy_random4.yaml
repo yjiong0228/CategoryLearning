@@ -1,42 +1,6 @@
 # Grid optimization config for Condition 1 subjects (Combination control)
 # Combine window_size=8 and legacy-like random_4 / opp_random_4 strategy.
-
-engine_config:
-  modules:
-    perception_mod:
-      class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
-    beta_mod:
-      class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
-      kwargs:
-        beta_init: 1.0
-        beta_min: 0.1
-        beta_max: 100.0
-        decrease_rate: 0.2
-        correct_additive: 0.8
-        use_prior_scaling: true
-        prior_beta_scale: 5.0
-
-    hypo_transitions_mod:
-      class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
-      kwargs:
-        strategies:
-          - {amount: "random_4", method: "top_posterior"}
-          - {amount: "opp_random_4", method: "random"}
-        init_num: 3
-    likelihood_mod:
-      class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-      kwargs: {}
-    memory_mod:
-      class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
-      kwargs:
-        w0: null
-        gamma: null
-  agenda:
-    - perception_mod
-    - hypo_transitions_mod
-    - likelihood_mod
-    - memory_mod
-    - beta_mod
+engine_config_path: ../model_struct/pmh_grid_cond1_strategy_random4.yaml
 
 subjects: [125, 126, 127, 128, 129, 130, 131, 132]
 
