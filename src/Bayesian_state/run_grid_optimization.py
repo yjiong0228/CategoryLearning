@@ -8,24 +8,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
 import yaml
 
-def _add_project_root() -> Path:
-    root = Path(__file__).resolve().parents[2]
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-    return root
+from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer  # noqa: E402
+from src.Bayesian_state.utils.paths import (
+    ROOT_DIR,
+    TASK2_PROCESSED_PATH,
+    GRID_RESULTS_DIR,
+)
 
-PROJECT_ROOT = _add_project_root()
-
-from src.Bayesian_state.utils.state_grid_optimizer import StateModelGridOptimizer  # noqa: E402
-
-DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "processed" / "Task2_processed.csv"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "results" / "state-based-grid-result"
+DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
+DEFAULT_OUTPUT_DIR = GRID_RESULTS_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -45,16 +41,38 @@ def _resolve_path(base: Path, maybe_path: Any, default: Path) -> Path:
     return p
 
 
+def _deep_update(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_update(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def resolve_engine_config(cfg: Dict[str, Any], yaml_dir: Path) -> Dict[str, Any]:
-    if "engine_config" in cfg and isinstance(cfg["engine_config"], dict):
-        return cfg["engine_config"]
-    engine_path = cfg.get("engine_config_path")
-    if not engine_path:
+    inline_cfg = cfg.get("engine_config")
+    path_cfg = cfg.get("engine_config_path")
+
+    if inline_cfg is not None and not isinstance(inline_cfg, dict):
+        raise ValueError("engine_config must be a mapping when provided")
+
+    base_cfg: Dict[str, Any] = {}
+    if path_cfg:
+        engine_path = Path(path_cfg)
+        if not engine_path.is_absolute():
+            engine_path = (yaml_dir / engine_path).resolve()
+        loaded = load_yaml(engine_path)
+        if not isinstance(loaded, dict):
+            raise ValueError(f"Engine config must be a mapping: {engine_path}")
+        base_cfg = loaded
+
+    if inline_cfg is None and not path_cfg:
         raise ValueError("Config must provide engine_config or engine_config_path")
-    engine_path = Path(engine_path)
-    if not engine_path.is_absolute():
-        engine_path = (yaml_dir / engine_path).resolve()
-    return load_yaml(engine_path)
+    if inline_cfg is None:
+        return base_cfg
+    return _deep_update(base_cfg, inline_cfg)
 
 
 def resolve_param_grid(cfg: Dict[str, Any]) -> Dict[str, Sequence[Any]]:
@@ -127,7 +145,7 @@ def main() -> None:
     args = parse_args()
     cfg_path = args.config
     if not cfg_path.is_absolute():
-        cfg_path = (PROJECT_ROOT / cfg_path).resolve()
+        cfg_path = (ROOT_DIR / cfg_path).resolve()
     cfg = load_yaml(cfg_path)
 
     engine_config = resolve_engine_config(cfg, cfg_path.parent)

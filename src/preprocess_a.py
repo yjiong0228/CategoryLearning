@@ -11,21 +11,76 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from scipy.interpolate import UnivariateSpline
 from scipy.interpolate import interp1d
+import math
+
+
+BODY_LENGTH = 130
+FEATURES_RANGE = {
+    'neck_length': {
+        'min': BODY_LENGTH / 4,
+        'max': BODY_LENGTH * 5 / 4
+    },
+    'head_length': {
+        'min': BODY_LENGTH / 4,
+        'max': BODY_LENGTH * 5 / 4
+    },
+
+    'leg_length': {
+        'min': BODY_LENGTH / 4,
+        'max': BODY_LENGTH * 5 / 4
+    },
+    'tail_length': {
+        'min': BODY_LENGTH / 4,
+        'max': BODY_LENGTH * 5 / 4
+    },    
+    'neck_angle': {
+        'min': -math.pi / 3,
+        'max': 0
+    },
+    'head_angle': {
+        'min': 0,
+        'max': math.pi / 3
+    },
+    'leg_angle': {
+        'min': math.pi * 11 / 36,
+        'max': math.pi * 17 / 36
+    },
+    'tail_angle': {
+        'min': -math.pi / 3,
+        'max': 0
+    }
+}
+
+CANVAS_SETTINGS = {
+    'Task1a' : {
+        'canvas_height': 600,
+        'canvas_width' : 1200
+    },
+    'Task1b' : {
+        'canvas_height_max': 700,
+        'canvas_height_min': 400,
+        'canvas_width' : 780
+    },
+    'Task3c' : {
+        'canvas_height': 600,
+        'canvas_width' : 1200
+    },
+}
 
 
 class Preprocessor_A:
-    def process(self, taskID, feature_init, mouse_trajactory, features_range, canvas_settings, body_length):
+    def process(self, taskID, feature_init, mouse_trajactory):
         # 移动前的初始特征值
-        feature_init_real = self.transform_to_real_feature(features_range, feature_init)
+        feature_init_real = self.transform_to_real_feature(FEATURES_RANGE, feature_init)
 
         # 转换为坐标
         if taskID == 'Task1a':
-            feature_init_real = self.extract_body_ori(feature_init_real, mouse_trajactory, canvas_settings)
-        coor_init = self.transform_feature_to_coor(taskID, feature_init_real, canvas_settings, body_length)
+            feature_init_real = self.extract_body_ori(feature_init_real, mouse_trajactory, CANVAS_SETTINGS)
+        coor_init = self.transform_feature_to_coor(taskID, feature_init_real, CANVAS_SETTINGS, BODY_LENGTH)
 
         # 得到移动后的坐标
-        coor_trajactory = self.complete_coor(taskID, coor_init, mouse_trajactory, canvas_settings)
-        feature_trajactory = self.transform_coor_to_feature(taskID, coor_trajactory, features_range)
+        coor_trajactory = self.complete_coor(taskID, coor_init, mouse_trajactory, CANVAS_SETTINGS)
+        feature_trajactory = self.transform_coor_to_feature(taskID, coor_trajactory, FEATURES_RANGE)
         
         return feature_trajactory
 

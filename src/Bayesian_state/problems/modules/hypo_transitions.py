@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence, List, Dict, Set, Any, Tuple, Callable
+from typing import Sequence, List, Dict, Set, Tuple, Callable
 from scipy.spatial.distance import cdist
 from ...utils import print, entropy, softmax
 
@@ -1078,4 +1078,3 @@ class DynamicHypothesisModule(BaseModule):
 
 
 # TODO: 现在有了similarity matrix，能不能简化dynamic hypothesis module的transition逻辑？
-
