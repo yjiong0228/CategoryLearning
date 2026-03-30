@@ -1,0 +1,33 @@
+modules:
+  perception_mod:
+    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+  beta_mod:
+    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    kwargs:
+      beta_init: 1.0
+      beta_min: 0.1
+      beta_max: 100.0
+      decrease_rate: 0.2
+      correct_additive: 0.8
+      use_prior_scaling: true
+      prior_beta_scale: 5.0
+  hypo_transitions_mod:
+    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    kwargs:
+      strategies: "original_strategies_a"
+      init_num: 3
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs: {}
+  memory_mod:
+    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    kwargs:
+      w0: null
+      gamma: null
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod

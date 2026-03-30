@@ -24,10 +24,40 @@ import matplotlib
 # Use non-interactive backend for batch plotting
 matplotlib.use("Agg")
 
-from src.Bayesian_state.aggregate_amr_results import aggregate
 from src.Bayesian_state.utils.model_evaluation import ModelEval
-from src.Bayesian_state.utils.oral_process import Oral_to_coordinate
+from src.Bayesian_state.utils.oral_process import Oral_center_analysis
+from src.Bayesian_state.utils.paths import TASK2_PROCESSED_PATH
 import pandas as pd
+
+
+def load_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def aggregate(input_dir: Path) -> dict:
+    """Aggregate subject_*.json files into ModelEval-friendly structure."""
+    results = {}
+    for file in sorted(input_dir.glob("subject_*.json")):
+        payload = load_json(file)
+        sid = int(payload["subject_id"])
+        metrics = payload.get("metrics", {})
+        results[sid] = {
+            "condition": payload.get("condition"),
+            "sliding_true_acc": metrics.get("sliding_true_acc"),
+            "sliding_pred_acc": metrics.get("sliding_pred_acc"),
+            "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
+            "mean_error": payload.get("mean_error"),
+            "std_error": payload.get("std_error"),
+            "best_params": payload.get("best_params"),
+            "best_step_results": payload.get("best_step_results"),
+            "strategy_counts_log": payload.get("strategy_counts_log"),
+            "posterior_log": payload.get("posterior_log"),
+            "prior_log": payload.get("prior_log"),
+        }
+    if not results:
+        raise RuntimeError(f"No subject_*.json found in {input_dir}")
+    return results
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--oral-data",
         type=Path,
-        default=Path("data/processed/Task2_processed.csv"),
+        default=TASK2_PROCESSED_PATH,
         help="Path to Task2 processed CSV with oral fields (for oral vs model plot)",
     )
     return p.parse_args()
@@ -101,7 +131,7 @@ def main() -> None:
         # Oral comparison: build oral hits from processed CSV if available
         if oral_data_path and oral_data_path.exists():
             oral_df = pd.read_csv(oral_data_path)
-            oral_hits = Oral_to_coordinate().get_oral_hypo_hits(oral_df)
+            oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
             me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
             print(f"Saved oral vs model plot -> {plot_oral}")
         else:

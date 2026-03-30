@@ -1,245 +1,216 @@
 """Adaptive mesh refinement optimizer for StateModel parameters.
 
 This module mirrors StateModelGridOptimizer but replaces the exhaustive
-grid enumeration with the AMRGridSearch heuristic defined in amr_optimizer.py.
+grid enumeration with an inline AMRGridSearch heuristic.
 It keeps the same input/output contract so callers can switch optimizers
 without changing downstream code.
 """
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Any
+import math
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 from itertools import product
 
 from joblib import Parallel, delayed
 
 import numpy as np
-import pandas as pd
 
-from src.Bayesian_state import problems
-
-from .amr_optimizer import AMRGridSearch
-from .state_grid_optimizer import GridPointResult
+from .optimization_common import (
+	BaseStateOptimizer,
+	GridPointResult,
+	evaluate_state_model_run,
+)
 from ..utils.base import LOGGER
 
+Params = Dict[str, float]
+Bounds = Dict[str, Tuple[float, float]]
 
-# ---------------------------------------------------------------------------
-# Shared helpers (copied to avoid tight coupling to state_grid_optimizer internals)
-# ---------------------------------------------------------------------------
-def _prepare_trial_sequence(
-	stimulus: np.ndarray,
-	choices: np.ndarray,
-	feedback: np.ndarray,
-) -> List[List[float]]:
-	trials: List[List[float]] = []
-	for stim, choice, fb in zip(stimulus, choices, feedback):
-		trial: List[float] = [stim, int(choice), float(fb)]
-		trials.append(trial)
-	return trials
 
-from ..problems.model import StateModel
-def _compute_prediction_metrics(
-	model: StateModel,
-	post_log: Sequence[np.ndarray],
-	stimulus: np.ndarray,
-	choices: np.ndarray,
-	feedback: np.ndarray,
-	categories: np.ndarray,
-	window_size: int,
-) -> Dict[str, np.ndarray | float]:
-	# Memory weighting is assumed to be embedded in the prior trajectory
-	# produced during fitting.
-	partition = model.partition_model
-	hypotheses = list(model.hypotheses_set)
+@dataclass(order=True)
+class Cell:
+	priority: float
+	depth: int
+	center: Params = field(compare=False)
+	half_span: Params = field(compare=False)
+	corners: List[Params] = field(compare=False, default_factory=list)
+	scores: List[float] = field(compare=False, default_factory=list)
 
-	# Get per-hypothesis beta from engine if available, otherwise use default
-	engine_beta = getattr(model.engine, "beta", None)
-	if engine_beta is None:
-		# Fallback: try to get from likelihood_mod (legacy), or use default
-		beta_param = 10.0
-		if hasattr(model.engine, "likelihood_mod"):
-			lik_mod = getattr(model.engine, "likelihood_mod")
-			beta_param = float(lik_mod.kwargs.get("beta", 10.0))
-		# Create uniform beta array
-		engine_beta = np.full(len(hypotheses), beta_param)
 
-	post_arr = np.asarray(post_log, dtype=float)
-	if post_arr.ndim == 1:
-		post_arr = post_arr.reshape(1, -1)
+@dataclass
+class AMRResult:
+	best_params: Params
+	best_score: float
+	history: List[Tuple[Params, float]]
 
-	n_trials = len(feedback)
-	if post_arr.shape[0] != n_trials:
-		raise ValueError(
-			"Post log length does not match number of trials: "
-			f"{post_arr.shape[0]} vs {n_trials}"
-		)
 
-	true_acc = (feedback == 1.0).astype(float)
-	pred_acc = np.full(n_trials, np.nan, dtype=float)
+class AMRGridSearch:
+	"""Adaptive Mesh Refinement for continuous parameter spaces.
 
-	for trial_idx in range(n_trials):
-		current_post = post_arr[trial_idx]
-		weighted_prob = 0.0
+	Supports optional coarse-grid seeding and configurable axis-aligned splits.
+	"""
 
-		trial_slice = (
-			[stimulus[trial_idx]],
-			[choices[trial_idx]],
-			[feedback[trial_idx]],
-			[categories[trial_idx]],
-		)
+	def __init__(
+		self,
+		bounds: Bounds,
+		objective: Callable[[Params], float],
+		max_evals: int = 200,
+		max_depth: int = 8,
+		min_half_span: float = 1e-3,
+		refine_top_k: int = 1,
+		split_factor: int = 2,
+		coarse_grid_per_dim: int | None = None,
+		coarse_keep_top_k: int = 4,
+	) -> None:
+		self.bounds = bounds
+		self.objective = objective
+		self.max_evals = max_evals
+		self.max_depth = max_depth
+		self.min_half_span = min_half_span
+		self.refine_top_k = refine_top_k
+		self.split_factor = max(2, int(split_factor))
+		self.coarse_grid_per_dim = coarse_grid_per_dim
+		self.coarse_keep_top_k = max(1, int(coarse_keep_top_k))
+		self.dim_names = list(bounds.keys())
+		self._history: List[Tuple[Params, float]] = []
+		self.best_params: Params | None = None
+		self.best_score: float = math.inf
 
-		for weight, hypo in zip(current_post, hypotheses):
-			if weight <= 0:
+	def _initial_cell(self) -> Cell:
+		center: Params = {}
+		half_span: Params = {}
+		corners: List[Params] = []
+		for k, (lo, hi) in self.bounds.items():
+			c = 0.5 * (lo + hi)
+			h = 0.5 * (hi - lo)
+			center[k] = c
+			half_span[k] = h
+		for mask in range(2 ** len(self.dim_names)):
+			corner: Params = {}
+			for i, name in enumerate(self.dim_names):
+				sign = 1 if (mask >> i) & 1 else -1
+				corner[name] = center[name] + sign * half_span[name]
+			corners.append(corner)
+		return Cell(priority=math.inf, depth=0, center=center, half_span=half_span, corners=corners)
+
+	def _coarse_seed_cells(self) -> List[Cell]:
+		if self.coarse_grid_per_dim is None or self.coarse_grid_per_dim <= 1:
+			return [self._initial_cell()]
+
+		per_dim = int(self.coarse_grid_per_dim)
+		grids = []
+		for name in self.dim_names:
+			lo, hi = self.bounds[name]
+			step = (hi - lo) / per_dim
+			grids.append(np.linspace(lo + 0.5 * step, hi - 0.5 * step, per_dim))
+
+		seeds: List[Cell] = []
+		for combo in product(*grids):
+			center: Params = {name: float(val) for name, val in zip(self.dim_names, combo)}
+			half_span: Params = {}
+			for name in self.dim_names:
+				lo, hi = self.bounds[name]
+				half_span[name] = 0.5 * (hi - lo) / per_dim
+			corners: List[Params] = []
+			for mask in range(2 ** len(self.dim_names)):
+				corner: Params = {}
+				for i, name in enumerate(self.dim_names):
+					sign = 1 if (mask >> i) & 1 else -1
+					corner[name] = center[name] + sign * half_span[name]
+				corners.append(corner)
+			seeds.append(Cell(priority=math.inf, depth=0, center=center, half_span=half_span, corners=corners))
+
+		for cell in seeds:
+			self._eval_cell(cell)
+		seeds = sorted(seeds, key=lambda c: c.priority)[: self.coarse_keep_top_k]
+		return seeds
+
+	def _eval_point(self, params: Params) -> float:
+		score = float(self.objective(params))
+		self._history.append((dict(params), score))
+		if score < self.best_score:
+			self.best_score = score
+			self.best_params = dict(params)
+		return score
+
+	def _eval_cell(self, cell: Cell) -> None:
+		center_score = self._eval_point(cell.center)
+		scores = [center_score]
+		for corner in cell.corners:
+			scores.append(self._eval_point(corner))
+		cell.scores = scores
+		cell.priority = min(scores)
+
+	def _should_stop(self, cell: Cell, evals_done: int) -> bool:
+		if evals_done >= self.max_evals:
+			return True
+		if cell.depth >= self.max_depth:
+			return True
+		for h in cell.half_span.values():
+			if h < self.min_half_span:
+				return True
+		return False
+
+	def _split_cell(self, cell: Cell) -> List[Cell]:
+		m = self.split_factor
+		children: List[Cell] = []
+		for name in self.dim_names:
+			new_half_span = dict(cell.half_span)
+			new_half_span[name] = cell.half_span[name] / m
+			for step in range(-m + 1, m, 2):
+				new_center = dict(cell.center)
+				new_center[name] = cell.center[name] + step * new_half_span[name]
+				corners: List[Params] = []
+				for mask in range(2 ** len(self.dim_names)):
+					corner: Params = {}
+					for i, dim in enumerate(self.dim_names):
+						s = 1 if (mask >> i) & 1 else -1
+						corner[dim] = new_center[dim] + s * new_half_span[dim]
+					corners.append(corner)
+				child = Cell(
+					priority=math.inf,
+					depth=cell.depth + 1,
+					center=new_center,
+					half_span=dict(new_half_span),
+					corners=corners,
+				)
+				children.append(child)
+		return children
+
+	def run(self) -> AMRResult:
+		import heapq
+
+		seeds = self._coarse_seed_cells()
+		evals_done = 0
+		heap: List[Cell] = []
+		for cell in seeds:
+			evals_done += len(cell.scores)
+			heapq.heappush(heap, cell)
+
+		while heap and evals_done < self.max_evals:
+			cell = heapq.heappop(heap)
+			if self._should_stop(cell, evals_done):
 				continue
-			# Use per-hypothesis beta
-			beta_for_hypo = float(engine_beta[hypo]) if hypo < len(engine_beta) else 10.0
-			lik = partition.calc_trueprob_entry(
-				hypo,
-				trial_slice,
-				beta_for_hypo,
-				use_cached_dist=False,
-			)
-			weighted_prob += weight * float(np.ravel(lik)[0])
 
-		pred_acc[trial_idx] = weighted_prob
+			children = self._split_cell(cell)
+			for child in children:
+				self._eval_cell(child)
+				evals_done += len(child.scores)
+				heapq.heappush(heap, child)
+				if evals_done >= self.max_evals:
+					break
 
-	sliding_true_acc: List[float] = []
-	sliding_pred_acc: List[float] = []
-	sliding_pred_std: List[float] = []
+			if len(heap) > self.refine_top_k * len(self.dim_names) * 4:
+				heap = heapq.nsmallest(self.refine_top_k * len(self.dim_names) * 4, heap)
+				heapq.heapify(heap)
 
-	for start in range(1, n_trials - window_size + 2):
-		end = start + window_size
-		true_window = true_acc[start:end]
-		pred_window = pred_acc[start:end]
-
-		sliding_true_acc.append(float(np.mean(true_window)))
-		sliding_pred_acc.append(float(np.nanmean(pred_window)))
-
-		valid = pred_window[~np.isnan(pred_window)]
-		if valid.size == 0:
-			sliding_pred_std.append(np.nan)
-		else:
-			sliding_pred_std.append(
-				float(np.sqrt(np.sum(valid * (1 - valid))) / window_size)
-			)
-
-	error = np.abs(np.array(sliding_true_acc) - np.array(sliding_pred_acc))
-	mean_error = float(np.nanmean(error)) if error.size else float("nan")
-
-	return {
-		"true_acc": true_acc,
-		"pred_acc": pred_acc,
-		"sliding_true_acc": np.asarray(sliding_true_acc, dtype=float),
-		"sliding_pred_acc": np.asarray(sliding_pred_acc, dtype=float),
-		"sliding_pred_acc_std": np.asarray(sliding_pred_std, dtype=float),
-		"mean_error": mean_error,
-	}
-
-
-def _inject_params(config: Dict, params: Dict[str, Any]) -> None:
-	"""
-	Inject parameters into the configuration dictionary.
-	Supports dot notation (e.g. 'modules.memory_mod.kwargs.gamma')
-	and shortcuts for common parameters.
-	"""
-	shortcuts = {
-		"gamma": "modules.memory_mod.kwargs.gamma",
-		"w0": "modules.memory_mod.kwargs.w0",
-		# "beta" removed - now managed by BetaModule with per-hypo evolution
-	}
-
-	def set_by_path(root: Dict, path: str, value: Any):
-		parts = path.split(".")
-		curr = root
-		for part in parts[:-1]:
-			curr = curr.setdefault(part, {})
-		curr[parts[-1]] = value
-
-	for key, value in params.items():
-		# Skip beta if present (for backward compatibility)
-		if key == "beta":
-			continue
-		path = shortcuts.get(key, key)
-		set_by_path(config, path, value)
-
-
-def _evaluate_single_run(
-	subject_id: int,
-	condition: int,
-	arrays: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-	params: Dict[str, Any],
-	engine_config_template: Dict,
-	processed_data_dir: Path,
-	window_size: int,
-	keep_logs: bool,
-) -> Tuple[
-	Dict[str, Any],
-	float,
-	Dict[str, Any],
-	Sequence[np.ndarray] | None,
-	Sequence[np.ndarray] | None,
-	Sequence[Dict[str, Any]] | None,
-	Sequence[Dict[str, Any]] | None,
-]:
-	stimulus, choices, feedback, categories = arrays
-	trial_sequence = _prepare_trial_sequence(stimulus, choices, feedback)
-
-	engine_config = deepcopy(engine_config_template)
-	_inject_params(engine_config, params)
-
-	from ..problems import StateModel
-
-	model = StateModel(
-		engine_config,
-		condition=condition,
-		subject_id=subject_id,
-		processed_data_dir=processed_data_dir,
-	)
-
-	model.precompute_distances(stimulus)
-	posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
-	step_log = getattr(model, "step_log", None)
-
-	strategy_log = None
-	hypo_mod = None
-	if hasattr(model, "engine") and hasattr(model.engine, "modules"):
-		modules = getattr(model.engine, "modules", {})
-		hypo_mod = modules.get("hypo_transitions_mod") if isinstance(modules, dict) else None
-	if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
-		strategy_log = getattr(hypo_mod, "strategy_counts_log")
-
-	if not keep_logs:
-		posterior_log = None
-		prior_log = None
-		step_log = None
-		strategy_log = None
-
-	metrics = _compute_prediction_metrics(
-		model,
-		posterior_log if posterior_log is not None else [],
-		stimulus,
-		choices,
-		feedback,
-		categories,
-		window_size,
-	)
-
-	return (
-		params,
-		float(metrics["mean_error"]),
-		metrics,
-		posterior_log,
-		prior_log,
-		step_log,
-		strategy_log,
-	)
+		return AMRResult(best_params=self.best_params or {}, best_score=self.best_score, history=self._history)
 
 
 # ---------------------------------------------------------------------------
 # AMR optimizer
 # ---------------------------------------------------------------------------
-class StateModelAMROptimizer:
+class StateModelAMROptimizer(BaseStateOptimizer):
 	"""
 	Adaptive-mesh replacement for StateModelGridOptimizer.
 
@@ -250,58 +221,12 @@ class StateModelAMROptimizer:
 	def __init__(
 		self,
 		engine_config: Dict,
-		processed_data_dir: Optional[Path | str] = None,
+		processed_data_dir: Optional[str] = None,
 		n_jobs: int = 1,
 		amr_kwargs: Optional[Dict[str, Any]] = None,
 	) -> None:
-		self._engine_config_template = deepcopy(engine_config)
-		self._processed_data_dir = (
-			Path(processed_data_dir).resolve()
-			if processed_data_dir is not None
-			else Path(__file__).resolve().parents[3] / "data" / "processed"
-		)
-		self.learning_data: Optional[pd.DataFrame] = None
-		self.n_jobs = n_jobs
+		super().__init__(engine_config, processed_data_dir=processed_data_dir, n_jobs=n_jobs)
 		self._amr_kwargs = amr_kwargs or {}
-
-	def prepare_data(self, data_path: Path | str) -> None:
-		data_path = Path(data_path).resolve()
-		if not data_path.exists():
-			raise FileNotFoundError(f"Dataset not found: {data_path}")
-		self.learning_data = pd.read_csv(data_path)
-
-	def _get_subject_frame(self, subject_id: int, stop_at: float) -> pd.DataFrame:
-		if self.learning_data is None:
-			# Lazy-load default
-			default_path = Path(__file__).resolve().parents[3] / "data" / "processed" / "Task2_processed.csv"
-			self.prepare_data(default_path)
-		assert self.learning_data is not None
-
-		subject_frame = self.learning_data[self.learning_data["iSub"] == subject_id]
-		if subject_frame.empty:
-			raise ValueError(f"Subject {subject_id} not found in dataset")
-
-		stop_index = max(1, int(len(subject_frame) * stop_at + 0.5))
-		return subject_frame.iloc[:stop_index].copy()
-
-	def _extract_arrays(
-		self,
-		subject_frame: pd.DataFrame,
-		max_trials: Optional[int],
-	) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-		stimulus = subject_frame[["feature1", "feature2", "feature3", "feature4"]].to_numpy(dtype=float)
-		choices = subject_frame["choice"].to_numpy(dtype=int)
-		feedback = subject_frame["feedback"].to_numpy(dtype=float)
-		categories = subject_frame["category"].to_numpy(dtype=int)
-
-		if max_trials is not None:
-			usable = min(max_trials, stimulus.shape[0])
-			stimulus = stimulus[:usable]
-			choices = choices[:usable]
-			feedback = feedback[:usable]
-			categories = categories[:usable]
-
-		return stimulus, choices, feedback, categories
 
 	def _evaluate_params(
 		self,
@@ -315,7 +240,7 @@ class StateModelAMROptimizer:
 	) -> GridPointResult:
 		if n_repeats <= 1:
 			runs = [
-				_evaluate_single_run(
+				evaluate_state_model_run(
 					subject_id,
 					condition,
 					arrays,
@@ -324,11 +249,12 @@ class StateModelAMROptimizer:
 					self._processed_data_dir,
 					window_size,
 					keep_logs,
+					True,
 				)
 			]
 		else:
 			runs = Parallel(n_jobs=self.n_jobs)(
-				delayed(_evaluate_single_run)(
+				delayed(evaluate_state_model_run)(
 					subject_id,
 					condition,
 					arrays,
@@ -337,16 +263,22 @@ class StateModelAMROptimizer:
 					self._processed_data_dir,
 					window_size,
 					keep_logs,
+					True,
 				)
 				for _ in range(n_repeats)
 			)
 
-		errors = [r[1] for r in runs]
+		errors = [r.mean_error for r in runs]
 		mean_error = float(np.mean(errors))
 		std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
 
 		best_idx = int(np.argmin([abs(e - mean_error) for e in errors]))
-		_, _, metrics, posterior_log, prior_log, step_log, strategy_log = runs[best_idx]
+		best_run = runs[best_idx]
+		metrics = best_run.metrics
+		posterior_log = best_run.posterior_log
+		prior_log = best_run.prior_log
+		step_log = best_run.step_log
+		strategy_log = best_run.strategy_counts_log
 
 		if not keep_logs:
 			posterior_log = None

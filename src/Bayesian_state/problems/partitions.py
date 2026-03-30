@@ -3,14 +3,12 @@
 """
 from abc import ABC
 from typing import List, Tuple, Dict
-from copy import deepcopy
 import itertools
 from itertools import product
 # import pandas as pd
 import numpy as np
 from pathlib import Path
-from .base_problem import softmax, cdist, euc_dist, two_factor_decay
-from ..inference_engine import BaseDistribution, BaseLikelihood
+from .base_problem import softmax, euc_dist
 
 
 

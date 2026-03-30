@@ -1,11 +1,7 @@
 import secrets
-import json
-import hashlib
 import logging
-from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 def gen_rand_str(n: int = 32):

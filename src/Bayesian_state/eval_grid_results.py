@@ -26,7 +26,8 @@ import pandas as pd
 matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.model_evaluation import ModelEval
-from src.Bayesian_state.utils.oral_process import Oral_to_coordinate
+from src.Bayesian_state.utils.oral_process import Oral_center_analysis
+from src.Bayesian_state.utils.paths import TASK2_PROCESSED_PATH
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -163,7 +164,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--oral-data",
         type=Path,
-        default=Path("data/processed/Task2_processed.csv"),
+        default=TASK2_PROCESSED_PATH,
         help="Path to Task2 processed CSV with oral fields (for oral vs model plot)",
     )
     return p.parse_args()
@@ -229,7 +230,7 @@ def main() -> None:
 
         if oral_data_path and oral_data_path.exists():
             oral_df = pd.read_csv(oral_data_path)
-            oral_hits = Oral_to_coordinate().get_oral_hypo_hits(oral_df)
+            oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
             me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
             print(f"Saved oral vs model plot -> {plot_oral}")
         else:
