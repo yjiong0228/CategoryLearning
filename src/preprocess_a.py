@@ -349,30 +349,29 @@ class Preprocessor_A:
 
     def error_summary(self, error):
         parts = ['neck', 'head', 'leg', 'tail']
-        
-        lengths = error['neck_length'].unique()
-        subs = error['iSub'].unique()
-        base_df = pd.DataFrame([(sub, length) for sub in subs for length in lengths],
-                            columns=['iSub', 'length'])
-        
-        stats = []
+        rows = []
+
         for part in parts:
-            grouped = error.groupby(['iSub', f'{part}_length'])[f'{part}_length_diff'].agg(['mean', 'std']).reset_index()
-            
-            grouped.columns = ['iSub', f'{part}_length', 
-                            f'{part}_length_error_mean', f'{part}_length_error_sd']
-            stats.append(grouped)
-        
-        result = base_df.copy()
-        for part in parts:
-            result[f'{part}_length'] = result['length']
-        result = result.drop('length', axis=1)
-        
-        for stat_df in stats:
-            merge_cols = ['iSub', f'{stat_df.columns[1].split("_")[0]}_length']
-            result = result.merge(stat_df, on=merge_cols, how='left')
-        
-        return result.sort_values(['iSub', 'neck_length'])
+            length_col = f'{part}_length'
+            diff_col = f'{part}_length_diff'
+
+            grouped = (
+                error.groupby(['iSub', length_col], as_index=False)[diff_col]
+                .agg(['mean', 'std'])
+                .reset_index()
+                .rename(
+                    columns={
+                        length_col: 'feature_value',
+                        'mean': 'error_mean',
+                        'std': 'error_std',
+                    }
+                )
+            )
+            grouped.insert(1, 'feature_name', part)
+            rows.append(grouped[['iSub', 'feature_name', 'feature_value', 'error_mean', 'error_std']])
+
+        result = pd.concat(rows, ignore_index=True)
+        return result.sort_values(['iSub', 'feature_name', 'feature_value']).reset_index(drop=True)
 
 
     def plot_error(self, error, attribute, save_path):
@@ -666,4 +665,3 @@ class Preprocessor_A:
             output_filename = save_path / f'error_{body_part}_distribution.png'
             plt.savefig(output_filename, dpi=300, bbox_inches='tight')
             plt.close()
-
