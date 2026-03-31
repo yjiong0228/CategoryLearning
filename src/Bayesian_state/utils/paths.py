@@ -16,6 +16,7 @@ RESULTS_DIR = ROOT_DIR / "results"
 PROCESSED_DATA_DIR = ROOT_DIR / "data" / "processed"
 TASK2_PROCESSED_PATH = PROCESSED_DATA_DIR / "Task2_processed_new.csv"
 TASK1B_ERRORSUMMARY_PATH = PROCESSED_DATA_DIR / "Task1b_errorsummary_24.csv"
+TASK1B_ERRORSUMMARY_72_PATH = PROCESSED_DATA_DIR / "Task1b_errorsummary_72.csv"
 
 GRID_RESULTS_DIR = RESULTS_DIR / "state-based-grid-result"
 AMR_RESULTS_DIR = RESULTS_DIR / "state-based-AMR-result"
