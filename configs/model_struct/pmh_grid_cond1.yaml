@@ -3,14 +3,15 @@ modules:
     class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
   beta_mod:
     class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
-    kwargs:
-      beta_init: 1.0
-      beta_min: 0.1
-      beta_max: 100.0
-      decrease_rate: 0.2
-      correct_additive: 0.8
-      use_prior_scaling: true
-      prior_beta_scale: 5.0
+    kwargs: {
+      beta_init: 1.0,
+      beta_min: 0.1,
+      beta_max: 50.0,
+      decrease_rate: 0.2,
+      correct_additive: 1,
+      use_prior_scaling: true,
+      prior_beta_scale: 10.0
+      }
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs:
