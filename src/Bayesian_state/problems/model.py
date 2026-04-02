@@ -280,6 +280,11 @@ class StateModel:
         self.posterior_log = posterior_log
         self.step_log = step_log
 
+    def precompute_distances(self, stimulus: np.ndarray):
+        """Precompute prototype distances when the partition supports caching."""
+        if hasattr(self.partition_model, "precompute_all_distances"):
+            self.partition_model.precompute_all_distances(stimulus)
+
 
 
     def fit_step_by_step(self, data: List | np.ndarray, **kwargs):

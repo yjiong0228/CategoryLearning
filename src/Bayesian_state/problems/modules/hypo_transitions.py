@@ -10,282 +10,6 @@ from ...utils import print, entropy, softmax
 from .base_module import BaseModule
 import numpy as np
 
-@dataclass
-class _Config:
-    fixed_hypo_num: int = 7
-    init_strategy: str = "random"
-    transition_mode: str = "stable"
-    throw_num: int = 1
-    random_seed: int | None = None
-
-
-class FixedNumHypothesisModule(BaseModule):
-    """
-    Maintains a fixed-size hypothesis mask with simple strategies.
-    
-    At each processing step, the module throws out a fixed number of hypotheses and resamples new ones.
-    """
-    upper_numerical_bound = 1e15
-    lower_numerical_bound = 1e-15
-    @staticmethod
-    def translate_from_log(log: np.ndarray, mask=None) -> np.ndarray:
-        log -= np.max(log)
-        exp = np.exp(log)
-        if mask is not None:
-            exp *= mask
-        return exp / np.sum(exp)
-    @staticmethod
-    def translate_to_log(exp: np.ndarray, mask=None) -> np.ndarray:
-        clipped = np.clip(exp, FixedNumHypothesisModule.lower_numerical_bound, FixedNumHypothesisModule.upper_numerical_bound)
-        if mask is not None:
-            clipped *= mask
-        return np.log(clipped)
-
-    def __init__(self, engine, **kwargs):
-        """INITIALIZE BEFORE MEMORY MODULE"""
-        super().__init__(engine, **kwargs)
-
-        total_hypo = self.engine.set_size
-        
-        cfg = _Config(
-            fixed_hypo_num=int(kwargs.get("fixed_hypo_num", 1)),
-            init_strategy=str(kwargs.get("init_strategy", "random")),
-            transition_mode=str(kwargs.get("transition_mode", "stable")),
-            throw_num=int(kwargs.get("throw_num", 1)),
-            random_seed=kwargs.get("random_seed", None),
-        )
-
-        if not (0 < cfg.fixed_hypo_num <= total_hypo):
-            raise ValueError("fixed_hypo_num must be between 1 and the total number of hypotheses.")
-
-        self.cfg = cfg
-        self.total_hypo = total_hypo
-        self.full_indices = np.arange(total_hypo, dtype=int)
-        self.rng = np.random.default_rng(cfg.random_seed)
-        self.active: np.ndarray | None = None
-        self.old_active: np.ndarray | None = None
-        self._init_mask()
-        self.debug = kwargs.get("hypothesis_debug", False)
-        # Track how many hypotheses each strategy selects per transition step
-        self.strategy_counts_log: List[Dict[str, int]] = []
-
-    def process(self, **_: object) -> None:
-        self._transition()
-        self._apply_mask()
-        self._posterior_to_prior_transition()
-
-    def _init_mask(self) -> None:
-        if self.cfg.init_strategy == "stable":
-            selection = self.full_indices[: self.cfg.fixed_hypo_num]
-        elif self.cfg.init_strategy == "random":
-            selection = self._sample_from_pool(self.full_indices, self.cfg.fixed_hypo_num)
-        else:
-            raise ValueError(f"Unknown init_strategy: {self.cfg.init_strategy}")
-        self.active = np.sort(np.array(selection, dtype=int))
-        self._apply_mask()
-
-    def _transition(self) -> None:
-        """Update the active hypothesis set based on the transition mode."""
-        if self.cfg.transition_mode == "stable" or self.cfg.throw_num <= 0:
-            self.old_active = self.active.copy()
-            return
-
-        current = np.array(self.active, copy=True)
-        throw_count = int(min(self.cfg.throw_num, current.size))
-        if throw_count <= 0:
-            return
-
-        if self.cfg.transition_mode == "random":
-            to_drop = self._sample_from_pool(current, throw_count)
-        elif self.cfg.transition_mode == "top_posterior":
-            to_drop = self._drop_lowest_posterior(current, throw_count)
-        else:
-            raise ValueError(f"Unknown transition_mode: {self.cfg.transition_mode}")
-        
-        # DEBUG
-        if self.debug:
-            print("Hypotheses now:", current, "Dropping hypotheses:", to_drop, s=1)
-
-        survivors = current[~np.isin(current, to_drop)]
-        self.old_active = self.active.copy()
-        self.active = self._resample_deficit(survivors, to_drop)
-
-    def _drop_lowest_posterior(self, active: np.ndarray, count: int) -> np.ndarray:
-        source = self._get_posterior_like()
-        if source is None:
-            return self._sample_from_pool(active, count)
-
-        scores = source[active]
-        order = np.argsort(scores)
-        return active[order[:count]]
-
-    def _resample_deficit(self, survivors: np.ndarray, to_drop: np.ndarray) -> np.ndarray:
-        """Uniformly resample new hypotheses to maintain fixed size after dropping some."""
-        need = self.cfg.fixed_hypo_num - survivors.size
-        if need <= 0:
-            return np.sort(survivors)
-
-        available = self._exclude(self.full_indices, survivors)
-        if available.size < need:
-            available = np.unique(np.concatenate([available, to_drop]))
-
-        newcomers = self._sample_from_pool(available, need)
-        return np.sort(np.concatenate([survivors, newcomers]))
-
-    def _apply_mask(self) -> None:
-        """Apply the current active hypothesis mask."""
-        if self.active is None:
-            return
-        mask = np.zeros(self.total_hypo, dtype=float)
-        mask[self.active] = 1.0
-        self.engine.hypotheses_mask = mask
-
-    def _get_posterior_like(self) -> np.ndarray | None:
-        posterior = getattr(self.engine, "posterior", None)
-        prior = getattr(self.engine, "prior", None)
-
-        if posterior is not None and len(posterior) == self.total_hypo:
-            return np.asarray(posterior, dtype=float)
-        if prior is not None and len(prior) == self.total_hypo:
-            return np.asarray(prior, dtype=float)
-        return None
-
-    def _sample_from_pool(self, pool: Sequence[int] | np.ndarray, size: int) -> np.ndarray:
-        """Uniformly sample 'size' elements from 'pool' without replacement.
-        
-        Args:
-            pool: Sequence or array of integers to sample from.
-            size: Number of elements to sample.
-        """
-        if size <= 0:
-            return np.empty(0, dtype=int)
-
-        pool_array = np.asarray(pool, dtype=int)
-        if pool_array.size <= size:
-            shuffled = np.array(pool_array, copy=True)
-            self.rng.shuffle(shuffled)
-            return shuffled[:size]
-
-        indices = self.rng.choice(pool_array.size, size=size, replace=False)
-        return pool_array[indices]
-
-    def _exclude(self, pool: np.ndarray, used: np.ndarray) -> np.ndarray:
-        """Return elements in 'pool' that are not in 'used'."""
-        mask = ~np.isin(pool, used)
-        return pool[mask]
-    
-    def _posterior_to_prior_transition(self):
-        """
-        Update engine.prior based on the transition from old_active to active hypotheses.
-        Uses similarity-weighted sum of old posteriors to initialize new hypotheses.
-        Also initializes beta values for newly added hypotheses via BetaModule.
-        """
-        if self.old_active is None or self.active is None:
-            return
-
-        # Get current posterior (from previous step)
-        # If posterior is not available, fallback to prior or uniform
-        current_posterior = None
-        if hasattr(self.engine, "posterior") and self.engine.posterior is not None:
-            current_posterior = self.engine.posterior.copy()
-        
-        if current_posterior is None:
-            # If no posterior, just ensure prior is uniform on active set
-            mask = np.zeros(self.total_hypo, dtype=float)
-            mask[self.active] = 1.0
-            self.engine.prior = mask / mask.sum()
-            self._initialize_beta_for_newcomers(self.active, self.engine.prior)
-            return
-
-        # Create boolean masks
-        old_mask_bool = np.zeros(self.total_hypo, dtype=bool)
-        old_mask_bool[self.old_active] = True
-        
-        new_mask_bool = np.zeros(self.total_hypo, dtype=bool)
-        new_mask_bool[self.active] = True
-
-        # Identify added hypotheses
-        added_mask = new_mask_bool & (~old_mask_bool)
-        added_indices = np.where(added_mask)[0]
-        old_indices = self.old_active
-
-        # Initialize new prior with current posterior
-        new_prior = current_posterior.copy()
-
-        
-        if np.any(old_mask_bool & new_mask_bool): # at least one survivor
-            # Get similarity matrix
-            partition = getattr(self.engine, "partition", None)
-            similarity_matrix = getattr(partition, "similarity_matrix", None)
-
-            # Calculate prior for ADDED hypotheses based on similarity
-            if np.any(added_mask) and similarity_matrix is not None:
-                # S[added, old]
-                sim_sub = similarity_matrix[np.ix_(added_indices, old_indices)]
-                
-                # Normalize rows to sum to 1 (weights)
-                row_sums = sim_sub.sum(axis=1, keepdims=True)
-                # Avoid division by zero
-                row_sums[row_sums == 0] = 1.0 
-                weights = sim_sub / row_sums
-                
-                # Weighted sum of old posteriors (normalized on old active set)
-                old_probs_active = current_posterior[old_indices]
-                # Ensure old probs sum to 1 for correct weighting (though they should be close)
-                if old_probs_active.sum() > 0:
-                    old_probs_active /= old_probs_active.sum()
-                
-                added_probs = weights @ old_probs_active
-                new_prior[added_indices] = added_probs
-            elif np.any(added_mask):
-                # Fallback if no similarity matrix: uniform distribution for added
-                # This is a rough heuristic; ideally similarity should be used.
-                # We set them to average of survivors or just uniform 1/N
-                new_prior[added_indices] = 1.0 / len(self.active)
-
-            # Apply new mask (sets removed to 0)
-            new_mask_float = new_mask_bool.astype(float)
-            new_prior *= new_mask_float
-            
-            # Normalize on new active set
-            total_prob = new_prior.sum()
-            if total_prob > 0:
-                new_prior /= total_prob
-            else:
-                # Fallback: uniform on new mask
-                new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
-        else:
-            # No survivors, uniform on new active set
-            new_prior = np.zeros(self.total_hypo, dtype=float)
-            new_prior[new_mask_bool] = 1.0 / new_mask_bool.sum()
-
-        # Update engine.prior
-        self.engine.prior = new_prior
-        
-        # Initialize beta for newly added hypotheses
-        self._initialize_beta_for_newcomers(added_indices, new_prior)
-
-    def _initialize_beta_for_newcomers(self, newcomer_indices: np.ndarray, prior: np.ndarray) -> None:
-        """
-        Initialize beta values for newly added hypotheses using BetaModule.
-        
-        Parameters
-        ----------
-        newcomer_indices : np.ndarray
-            Indices of newly added hypotheses.
-        prior : np.ndarray
-            Prior probability distribution.
-        """
-        if len(newcomer_indices) == 0:
-            return
-            
-        # Check if BetaModule exists
-        beta_mod = self.engine.modules.get("beta_mod", None)
-        if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
-            beta_mod.initialize_beta_for_hypotheses(newcomer_indices, prior)
-
-
-
 
 class DynamicHypothesisModule(BaseModule):
     """
@@ -315,12 +39,20 @@ class DynamicHypothesisModule(BaseModule):
         elif strategies_input == "original_strategies_b":
             self.strategies = self.get_original_strategy_config_b()
         elif strategies_input is None:
-            self.strategies = [
-                {"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7},
-                {"amount": "fixed", "method": "random", "value": 1}
-            ]
+            raise ValueError("Strategies configuration is required. Set strategies to 'original_strategies', 'original_strategies_a', or 'original_strategies_b', or provide a custom list of strategy dicts.")
         else:
             self.strategies = strategies_input
+
+        # Hard cap for total active hypotheses after each transition.
+        # Defaults are aligned with legacy condition-specific strategy presets.
+        self.max_active_hypotheses: int | None = kwargs.get("max_active_hypotheses", None)
+        if self.max_active_hypotheses is None:
+            if strategies_input == "original_strategies_a":
+                self.max_active_hypotheses = 4
+            elif strategies_input in ("original_strategies", "original_strategies_b"):
+                self.max_active_hypotheses = 7
+        if self.max_active_hypotheses is not None:
+            self.max_active_hypotheses = max(1, int(self.max_active_hypotheses))
             
         # Global parameters for strategies
         self.strategy_params = {
@@ -767,6 +499,9 @@ class DynamicHypothesisModule(BaseModule):
         self.old_active = self.active.copy() if self.active is not None else None
         
         posterior = self._get_posterior_like()
+        if posterior is None:
+            posterior = np.ones(self.total_hypo, dtype=float)
+            posterior /= posterior.sum()
         
         if self.debug:
             max_post = np.max(posterior)
@@ -794,6 +529,14 @@ class DynamicHypothesisModule(BaseModule):
                 except Exception as e:
                     if self.debug: print(f"Error in amount evaluator {amount_type}: {e}")
                     count = 1 # Fallback
+
+            # Enforce a global budget for active hypotheses.
+            remaining_budget = None
+            if self.max_active_hypotheses is not None:
+                remaining_budget = self.max_active_hypotheses - len(new_active_set)
+                if remaining_budget <= 0:
+                    break
+                count = min(count, remaining_budget)
             
             # 2. Select
             # If top_p is specified in strat, we might ignore count or use it as limit
@@ -801,12 +544,24 @@ class DynamicHypothesisModule(BaseModule):
                  # Special handling for top_p
                  pass 
 
+            top_p_val = 0.0
+            if method_type == "top_posterior":
+                try:
+                    top_p_val = float(strat.get("top_p", 0.0))
+                except (TypeError, ValueError):
+                    top_p_val = 0.0
+            has_positive_top_p = method_type == "top_posterior" and top_p_val > 0.0
+
             if self.debug:
                 print(f"  Strategy {method_type}: amount={count}")
 
             selected: List[int] = []
-            if count > 0 or ("top_p" in strat and method_type == "top_posterior"):
+            if count > 0 or has_positive_top_p:
                 selected = self._select_hypotheses(method_type, count, posterior, exclude=new_active_set, strategy_config=strat, **kwargs)
+                if remaining_budget is not None and len(selected) > remaining_budget:
+                    selected_arr = np.array(selected, dtype=int)
+                    keep_args = np.argsort(posterior[selected_arr])[-remaining_budget:]
+                    selected = selected_arr[keep_args].tolist()
                 if self.debug:
                     print(f"    Selected: {selected}")
                 new_active_set.update(selected)
@@ -820,6 +575,9 @@ class DynamicHypothesisModule(BaseModule):
             new_active_set.update(self._sample_from_pool(self.full_indices, 1))
 
         self.active = np.sort(list(new_active_set))
+        if self.max_active_hypotheses is not None and len(self.active) > self.max_active_hypotheses:
+            keep_args = np.argsort(posterior[self.active])[-self.max_active_hypotheses:]
+            self.active = np.sort(self.active[keep_args])
         # Record totals for plotting/logging
         step_counts["active_total"] = len(self.active)
         # Defensive: ensure log list exists even if older instances skip __init__ field
@@ -877,7 +635,7 @@ class DynamicHypothesisModule(BaseModule):
         chosen = self.rng.choice(cand_indices, size=actual_amount, replace=False, p=prob)
         return chosen.tolist()
 
-    def _select_hypotheses(self, method: str, count: int, posterior: np.ndarray, exclude: Set[int], strategy_config: Dict = None, **kwargs) -> List[int]:
+    def _select_hypotheses(self, method: str, count: int, posterior: np.ndarray, exclude: Set[int], strategy_config: Dict | None = None, **kwargs) -> List[int]:
         strategy_config = strategy_config or {}
         
         if method == "ksimilar_centers":
@@ -918,6 +676,8 @@ class DynamicHypothesisModule(BaseModule):
                 return selected_indices
 
             # Top K
+            if count <= 0:
+                return []
             if len(scores) <= count:
                 return candidates
             
