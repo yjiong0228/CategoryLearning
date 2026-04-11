@@ -43,8 +43,32 @@ def _to_float(value: Any, default: float = 0.0) -> float:
 
 
 def _build_grid_errors(payload: Dict[str, Any]) -> Dict[Tuple[float, float], List[float]]:
-    """Adapt run_grid_optimization's grid_summary -> ModelEval grid_errors format."""
+    """Adapt result JSON to ModelEval grid_errors format.
+
+    Priority:
+    1) schema v2 grid_errors entries with explicit error samples
+    2) legacy grid_summary mean-only entries
+    """
     grid_errors: Dict[Tuple[float, float], List[float]] = {}
+
+    raw_grid_errors = payload.get("grid_errors")
+    if isinstance(raw_grid_errors, list) and raw_grid_errors:
+        for item in raw_grid_errors:
+            if not isinstance(item, dict):
+                continue
+            params = item.get("params", {}) or {}
+            if "gamma" not in params or "w0" not in params:
+                continue
+            key = (_to_float(params.get("gamma"), float("nan")), _to_float(params.get("w0"), float("nan")))
+
+            samples = item.get("errors")
+            if isinstance(samples, list) and samples:
+                grid_errors[key] = [_to_float(v, float("nan")) for v in samples]
+            else:
+                grid_errors.setdefault(key, []).append(_to_float(item.get("mean_error"), float("nan")))
+        if grid_errors:
+            return grid_errors
+
     for item in payload.get("grid_summary", []) or []:
         params = item.get("params", {}) or {}
         if "gamma" not in params or "w0" not in params:
@@ -116,22 +140,26 @@ def aggregate_grid_results(input_dir: Path) -> Dict[int, Dict[str, Any]]:
     for file in sorted(input_dir.glob("subject_*.json")):
         payload = load_json(file)
         sid = int(payload["subject_id"])
-        metrics = payload.get("metrics", {}) or {}
+        metrics = payload.get("best_metrics") or payload.get("metrics", {}) or {}
         step_results = _build_step_results(payload)
+        mean_error = payload.get("best_error", payload.get("mean_error"))
+        std_error = payload.get("refit_std_error", payload.get("std_error"))
 
         results[sid] = {
             "condition": payload.get("condition"),
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
-            "mean_error": payload.get("mean_error"),
-            "std_error": payload.get("std_error"),
+            "mean_error": mean_error,
+            "std_error": std_error,
             "best_params": payload.get("best_params"),
             "best_step_results": step_results,
             "step_results": step_results,
             "strategy_counts_log": payload.get("strategy_counts_log"),
             "posterior_log": payload.get("posterior_log"),
             "prior_log": payload.get("prior_log"),
+            "sample_errors": payload.get("sample_errors"),
+            "selection_meta": payload.get("selection_meta"),
             "grid_errors": _build_grid_errors(payload),
             "grid_summary": payload.get("grid_summary", []),
         }
@@ -231,8 +259,11 @@ def main() -> None:
         if oral_data_path and oral_data_path.exists():
             oral_df = pd.read_csv(oral_data_path)
             oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
-            me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
-            print(f"Saved oral vs model plot -> {plot_oral}")
+            if oral_hits:
+                me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
+                print(f"Saved oral vs model plot -> {plot_oral}")
+            else:
+                print("Oral data available but missing required columns/content; skipping oral plot.")
         else:
             print(f"Oral data not found at {oral_data_path}; skipping oral plot.")
     else:

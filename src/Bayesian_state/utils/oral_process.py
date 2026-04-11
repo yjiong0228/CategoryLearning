@@ -10,12 +10,16 @@ This module provides two analysis paths:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
 from ..problems.partitions import Partition
+
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_top_k(condition: int, top_k: Optional[int]) -> int:
@@ -385,6 +389,14 @@ class Oral_center_analysis:
         """Compute hit trajectories per subject for center-based oral reports."""
         learning_data = data.copy()
         results: Dict[int, Dict[str, Any]] = {}
+        oral_value_cols = ["feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue"]
+        missing_cols = [col for col in oral_value_cols if col not in learning_data.columns]
+        if missing_cols:
+            logger.warning(
+                "Skipping oral center analysis; missing oral value columns: %s",
+                ", ".join(missing_cols),
+            )
+            return results
 
         for _, subj_df in learning_data.groupby("iSub"):
             sid = int(subj_df["iSub"].iloc[0])
@@ -393,7 +405,6 @@ class Oral_center_analysis:
             n_cats = 2 if cond == 1 else 4
             partition = Partition(n_dims=4, n_cats=n_cats)
 
-            oral_value_cols = ["feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue"]
             centers = subj_df[oral_value_cols].to_numpy(dtype=float)
             center_valid_mask = np.array(
                 [bool(np.asarray(center, dtype=float).size > 0 and not np.all(np.isnan(center))) for center in centers],

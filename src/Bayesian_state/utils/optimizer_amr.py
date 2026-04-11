@@ -19,6 +19,7 @@ import numpy as np
 from .optimizer_common import (
 	BaseStateOptimizer,
 	GridPointResult,
+	SingleRunResult,
 	evaluate_state_model_run,
 )
 from ..utils.base import LOGGER
@@ -238,6 +239,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 		n_repeats: int,
 		keep_logs: bool,
 	) -> GridPointResult:
+		runs: List[SingleRunResult]
 		if n_repeats <= 1:
 			runs = [
 				evaluate_state_model_run(
@@ -253,7 +255,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 				)
 			]
 		else:
-			runs = Parallel(n_jobs=self.n_jobs)(
+			raw_runs = list(Parallel(n_jobs=self.n_jobs)(
 				delayed(evaluate_state_model_run)(
 					subject_id,
 					condition,
@@ -266,25 +268,33 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 					True,
 				)
 				for _ in range(n_repeats)
-			)
+			))
+			runs = [r for r in raw_runs if r is not None]
+
+		runs = list(runs)
+		if not runs:
+			raise RuntimeError("AMR evaluation produced no runs.")
 
 		errors = [r.mean_error for r in runs]
 		mean_error = float(np.mean(errors))
 		std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
 
-		best_idx = int(np.argmin([abs(e - mean_error) for e in errors]))
+		best_idx = int(np.argmin(errors))
 		best_run = runs[best_idx]
 		metrics = best_run.metrics
 		posterior_log = best_run.posterior_log
 		prior_log = best_run.prior_log
 		step_log = best_run.step_log
 		strategy_log = best_run.strategy_counts_log
+		sample_errors = [float(e) for e in errors]
+		raw_step_results = [r.step_log for r in runs if r.step_log is not None]
 
 		if not keep_logs:
 			posterior_log = None
 			prior_log = None
 			step_log = None
 			strategy_log = None
+			raw_step_results = None
 
 		return GridPointResult(
 			params=dict(params),
@@ -294,6 +304,12 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 			prior_log=prior_log,
 			step_results=step_log,
 			strategy_counts_log=strategy_log,
+			raw_step_results=raw_step_results,
+			sample_errors=sample_errors,
+			best_error=float(errors[best_idx]),
+			refit_mean_error=mean_error,
+			refit_std_error=std_error,
+			representative_run_index=best_idx,
 			n_repeats=n_repeats,
 			std_error=std_error,
 		)
@@ -388,6 +404,17 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 				keep_logs,
 			)
 			best_result = refit_gp
+		else:
+			if best_result.best_error is None:
+				best_result.best_error = float(best_result.mean_error)
+			if best_result.refit_mean_error is None:
+				best_result.refit_mean_error = float(best_result.mean_error)
+			if best_result.refit_std_error is None:
+				best_result.refit_std_error = float(best_result.std_error)
+			if best_result.sample_errors is None:
+				best_result.sample_errors = [float(best_result.mean_error)]
+			if best_result.representative_run_index is None:
+				best_result.representative_run_index = 0
 
 		# Return structure mirrors grid optimizer
 		return {
@@ -396,6 +423,10 @@ class StateModelAMROptimizer(BaseStateOptimizer):
 			"best": best_result,
 			"grid": grid_results,
 			"param_grid": param_grid,
+			"selection_meta": {
+				"param_selection": "min_mean_error",
+				"run_selection": "min_error",
+			},
 		}
 
 

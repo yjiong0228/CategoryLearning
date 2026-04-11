@@ -41,6 +41,10 @@ class ModelEval:
     def plot_posterior_probabilities(self, results, subjects=None, save_path=None, limit=True, **kwargs):
         def body(ax, condition, iSub, info):
             step_results = info.get('step_results', info.get('best_step_results', []))
+            if not step_results:
+                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
+                ax.text(0.5, 0.5, 'No posterior data', ha='center', va='center', transform=ax.transAxes)
+                return
             max_k = (19 if condition == 1 else 116) if limit else \
                     max(k for sr in step_results for k in sr['hypo_details'])
             data = []
@@ -49,6 +53,10 @@ class ModelEval:
                     if k in res['hypo_details']:
                         data.append({'Step': step + 1, 'k': k, 'Posterior': res['hypo_details'][k]['post_max']})
             df = pd.DataFrame(data)
+            if df.empty or ('Step' not in df.columns):
+                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
+                ax.text(0.5, 0.5, 'No posterior data', ha='center', va='center', transform=ax.transAxes)
+                return
             sns.scatterplot(data=df, x='Step', y='Posterior', hue='k', palette='tab10', alpha=0.5, legend=False, ax=ax)
             hk = 0 if condition == 1 else 42
             sns.scatterplot(data=df[df['k'] == hk], x='Step', y='Posterior', color='red', s=50, ax=ax)
@@ -148,6 +156,8 @@ class ModelEval:
                                 'Predicted vs True Accuracy by Subject', body, **kwargs)
 
     def plot_error_grids(self, results, subjects=None, fname=None, save_path=None, **kwargs):
+        labels = fname if isinstance(fname, (list, tuple)) and len(fname) >= 2 else ("gamma", "w0")
+
         def body(ax, condition, iSub, info):
             data = []
             for (g, w0), errs in info['grid_errors'].items():
@@ -158,7 +168,7 @@ class ModelEval:
             em = df.pivot(index='gamma', columns='w0', values='Error')
             sns.heatmap(em, cbar_kws={'label': 'Error'}, ax=ax, cmap='viridis_r')
             ax.set(title=f'Subject {iSub} (Condition {condition})',
-                xlabel=fname[1], ylabel=fname[0])
+                xlabel=labels[1], ylabel=labels[0])
             ax.set_xticks(np.arange(len(em.columns)) + 0.5)
             ax.set_xticklabels([f"{v:.4f}" for v in em.columns], rotation=45, ha="right")
             ax.set_yticks(np.arange(len(em.index)) + 0.5)
@@ -168,6 +178,18 @@ class ModelEval:
                                 'Grid Search Error by Subject', body, **kwargs)
 
     def plot_cluster_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
+        def _first_numeric(value, default=0.0):
+            if isinstance(value, (list, tuple)):
+                if not value:
+                    return float(default)
+                return float(value[0])
+            if value is None:
+                return float(default)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return float(default)
+
         def body(ax, condition, iSub, info):
             steps = info.get('best_step_results', [])
             vals = []
@@ -177,14 +199,14 @@ class ModelEval:
 
                 # sum every posterior‐named list’s first entry
                 posterior_vals = [
-                    v[0]
+                    _first_numeric(v)
                     for k, v in bsa.items()
-                    if 'posterior' in k and isinstance(v, (list, tuple)) and v
+                    if 'posterior' in k
                 ]
                 vals.append(sum(posterior_vals))
 
                 # always append something for 'random' (0 if missing)
-                r.append(bsa.get('random', [0])[0])
+                r.append(_first_numeric(bsa.get('random', 0.0)))
 
             # now both lists have the same length
             re = pd.Series(vals).rolling(window=window_size, min_periods=window_size).mean()

@@ -14,6 +14,7 @@ from typing import Any, Dict, Sequence
 import yaml
 
 from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer  # noqa: E402
+from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
     ROOT_DIR,
     TASK2_PROCESSED_PATH,
@@ -100,26 +101,77 @@ def _recursive_to_builtin(obj: Any) -> Any:
     return obj
 
 
-def serialize_result(subject_id: int, condition: int, result: Dict[str, Any]) -> Dict[str, Any]:
+def _dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int, tag: str) -> Dict[str, Any] | None:
+    if not items:
+        return None
+    rel_path = Path("cache") / f"subject_{subject_id}_{tag}.gz"
+    abs_path = output_dir / rel_path
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+
+    stream = StreamList(str(abs_path), 0)
+    stream.extend(items)
+    return {
+        "format": "stream-gzip-pickle",
+        "path": rel_path.as_posix(),
+        "count": len(stream),
+    }
+
+
+def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
+    records: list[Dict[str, Any]] = []
+    for gp in result.get("grid", []) or []:
+        records.append(
+            {
+                "params": gp.params,
+                "errors": list(getattr(gp, "sample_errors", []) or []),
+                "mean_error": gp.mean_error,
+                "std_error": gp.std_error,
+                "best_error": getattr(gp, "best_error", gp.mean_error),
+            }
+        )
+    return records
+
+
+def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], output_dir: Path) -> Dict[str, Any]:
     """Convert optimizer output to JSON-serializable dict."""
     best = result["best"]
+    best_error = float(getattr(best, "best_error", best.mean_error))
+    refit_mean_error = float(getattr(best, "refit_mean_error", best.mean_error))
+    refit_std_error = float(getattr(best, "refit_std_error", best.std_error))
+    sample_errors = list(getattr(best, "sample_errors", []) or [])
+    raw_step_ref = _dump_stream(getattr(best, "raw_step_results", None), output_dir, subject_id, "raw_step_results")
+
     data = {
+        "schema_version": 2,
         "subject_id": subject_id,
         "condition": condition,
         "best_params": best.params,
-        "mean_error": best.mean_error,
-        "std_error": getattr(best, "std_error", 0.0),
+        "mean_error": best_error,
+        "best_error": best_error,
+        "refit_mean_error": refit_mean_error,
+        "std_error": refit_std_error,
+        "refit_std_error": refit_std_error,
         "n_repeats": getattr(best, "n_repeats", 1),
-        "sample_errors": getattr(best, "sample_errors", None),
+        "sample_errors": sample_errors,
         "metrics": best.metrics,
+        "best_metrics": best.metrics,
         "param_grid": result.get("param_grid", {}),
         "best_step_results": getattr(best, "step_results", None),
         "strategy_counts_log": getattr(best, "strategy_counts_log", None),
         "posterior_log": getattr(best, "posterior_log", None),
         "prior_log": getattr(best, "prior_log", None),
+        "representative_run_index": getattr(best, "representative_run_index", 0),
+        "selection_meta": result.get("selection_meta", {}),
+        "raw_step_results_ref": raw_step_ref,
+        "grid_errors": _build_grid_errors(result),
         # grid summary (compact)
         "grid_summary": [
-            {"params": gp.params, "mean_error": gp.mean_error, "std_error": gp.std_error}
+            {
+                "params": gp.params,
+                "mean_error": gp.mean_error,
+                "std_error": gp.std_error,
+                "best_error": getattr(gp, "best_error", gp.mean_error),
+            }
             for gp in result.get("grid", [])
         ],
     }
@@ -203,7 +255,7 @@ def main() -> None:
         print(f"Subject {sid}")
         print(f"{'='*60}")
 
-        result = optimizer.optimize_subject(
+        result: Dict[str, Any] = optimizer.optimize_subject(
             subject_id=sid,
             param_grid=param_grid,
             n_repeats=n_repeats,
@@ -214,11 +266,15 @@ def main() -> None:
             keep_logs=keep_logs,
         )
 
-        best = result["best"]
+        best: Any = result["best"]
         print(f"  Best params: {best.params}")
-        print(f"  Mean error:  {best.mean_error:.6f} ± {best.std_error:.6f}")
+        best_error = float(getattr(best, "best_error", best.mean_error))
+        refit_mean = float(getattr(best, "refit_mean_error", best.mean_error))
+        refit_std = float(getattr(best, "refit_std_error", best.std_error))
+        print(f"  Best run error: {best_error:.6f}")
+        print(f"  Refit mean:     {refit_mean:.6f} ± {refit_std:.6f}")
 
-        payload = serialize_result(sid, result["condition"], result)
+        payload = serialize_result(sid, int(result["condition"]), result, output_dir)
         save_path = output_dir / f"subject_{sid}.json"
         save_json(payload, save_path)
         print(f"  Saved → {save_path}")

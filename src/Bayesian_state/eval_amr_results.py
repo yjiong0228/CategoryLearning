@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any, Dict, List
 
 import matplotlib
 
@@ -35,25 +36,81 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _strategy_to_best_step_amount(strategy_step: Dict[str, Any]) -> Dict[str, List[float]]:
+    converted: Dict[str, List[float]] = {}
+    for key, value in (strategy_step or {}).items():
+        if key == "active_total":
+            continue
+        if key == "random":
+            converted["random"] = [_to_float(value)]
+        else:
+            converted[f"{key}_posterior"] = [_to_float(value)]
+    converted.setdefault("random", [0.0])
+    return converted
+
+
+def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    existing = payload.get("best_step_results") or payload.get("step_results")
+    if isinstance(existing, list) and existing:
+        return existing
+
+    posterior_log = payload.get("posterior_log") or []
+    strategy_counts = payload.get("strategy_counts_log") or []
+    if not isinstance(posterior_log, list) or not posterior_log:
+        return []
+
+    step_results: List[Dict[str, Any]] = []
+    for idx, posterior in enumerate(posterior_log):
+        if not isinstance(posterior, list):
+            continue
+        hypo_details = {
+            int(hypo_idx): {"post_max": _to_float(prob)}
+            for hypo_idx, prob in enumerate(posterior)
+            if _to_float(prob) > 0
+        }
+        step_item: Dict[str, Any] = {"hypo_details": hypo_details}
+
+        if idx < len(strategy_counts) and isinstance(strategy_counts[idx], dict):
+            step_item["best_step_amount"] = _strategy_to_best_step_amount(strategy_counts[idx])
+
+        if hypo_details:
+            best_k = max(hypo_details.items(), key=lambda item: item[1]["post_max"])[0]
+            step_item["best_k"] = int(best_k)
+
+        step_results.append(step_item)
+    return step_results
+
+
 def aggregate(input_dir: Path) -> dict:
     """Aggregate subject_*.json files into ModelEval-friendly structure."""
     results = {}
     for file in sorted(input_dir.glob("subject_*.json")):
         payload = load_json(file)
         sid = int(payload["subject_id"])
-        metrics = payload.get("metrics", {})
+        metrics = payload.get("best_metrics") or payload.get("metrics", {}) or {}
+        step_results = _build_step_results(payload)
         results[sid] = {
             "condition": payload.get("condition"),
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
-            "mean_error": payload.get("mean_error"),
-            "std_error": payload.get("std_error"),
+            "mean_error": payload.get("best_error", payload.get("mean_error")),
+            "std_error": payload.get("refit_std_error", payload.get("std_error")),
             "best_params": payload.get("best_params"),
-            "best_step_results": payload.get("best_step_results"),
+            "best_step_results": step_results,
+            "step_results": step_results,
             "strategy_counts_log": payload.get("strategy_counts_log"),
             "posterior_log": payload.get("posterior_log"),
             "prior_log": payload.get("prior_log"),
+            "sample_errors": payload.get("sample_errors"),
+            "selection_meta": payload.get("selection_meta"),
         }
     if not results:
         raise RuntimeError(f"No subject_*.json found in {input_dir}")

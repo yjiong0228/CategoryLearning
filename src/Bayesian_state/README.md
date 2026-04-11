@@ -90,11 +90,31 @@ python -m src.Bayesian_state.eval_amr_results \
 
 优化输出目录下通常有：
 
-- `subject_<id>.json`：单被试最优结果和（可选）step日志
+- `subject_<id>.json`：单被试结果摘要（schema v2，含 best run 与 refit 统计）
+- `cache/subject_<id>_raw_step_results.gz`：可选的 refit 全部 step 轨迹流式缓存（当 `keep_logs: true`）
 - `all_subjects.json`：聚合结果
 - `accuracy.png`：准确率对比图
 - `cluster_amount.png`：策略/簇变化图（需要 step 日志）
 - `oral_vs_model.png`：口头报告与模型假设对比图
+
+### 7.1 `subject_<id>.json`（schema v2）核心字段
+
+- `best_error`：最佳参数下 refit 多次中的最小误差（best run）
+- `mean_error`：与 `best_error` 对齐的兼容字段（用于旧脚本兼容）
+- `refit_mean_error` / `refit_std_error`：最佳参数下 refit 误差分布统计
+- `sample_errors`：最佳参数下每次 refit 的误差样本
+- `best_metrics` / `metrics`：best run 对应的预测曲线（`metrics` 保留为兼容别名）
+- `grid_errors`：每个参数组合的误差样本列表
+- `grid_summary`：每个参数组合的均值/方差摘要
+- `selection_meta`：参数选择与 run 选择规则
+- `raw_step_results_ref`：若存在，指向 `cache/*.gz` 的流式轨迹引用
+
+说明：
+
+- 参数选择口径：按参数组合平均误差最小（`min_mean_error`）
+- run 保存口径：在最佳参数下保存误差最小的那次 run（`min_error`）
+
+评估脚本（`eval_grid_results.py` / `eval_amr_results.py`）已兼容旧 schema 与新 schema。
 
 ## 8. 口头报告分析（oral_process）
 

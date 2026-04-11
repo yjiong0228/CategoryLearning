@@ -113,21 +113,29 @@ results/state-based-grid-result/subject_325.json
 
 每个 `subject_*.json` 主要包含：
 
+- `schema_version`：结果 schema 版本（当前为 `2`）
 - `subject_id`：被试编号
 - `condition`：条件编号
 - `best_params`：最优参数（例如 `gamma`, `w0`）
-- `mean_error`：最优参数平均误差
-- `std_error`：最优参数误差标准差
-- `n_repeats`：最优点重复次数
-- `sample_errors`：最优点的样本误差列表（若可用）
-- `metrics`：最优结果指标（如滑窗拟合指标）
+- `best_error`：最优参数下 refit 的最佳单次误差（best run）
+- `mean_error`：兼容字段，与 `best_error` 对齐
+- `refit_mean_error` / `refit_std_error`：最优参数 refit 误差分布统计
+- `std_error`：兼容字段，与 `refit_std_error` 对齐
+- `n_repeats`：最优参数 refit 次数
+- `sample_errors`：最优参数下所有 refit 误差样本
+- `best_metrics` / `metrics`：best run 对应指标（`metrics` 为兼容别名）
 - `param_grid`：本次网格定义
-- `best_step_results`：最优重拟合 step 级结果（若可用）
+- `best_step_results`：best run 的 step 级结果（若可用）
 - `strategy_counts_log`：策略计数日志（若可用）
 - `posterior_log` / `prior_log`：后验/先验日志（若可用）
-- `grid_summary`：所有网格点的紧凑摘要（`params`, `mean_error`, `std_error`）
+- `grid_errors`：每个网格点的误差样本（`params`, `errors`, `mean_error`, `std_error`）
+- `grid_summary`：所有网格点的紧凑摘要（用于热图快速读取）
+- `selection_meta`：参数与 run 选择规则（`param_selection`, `run_selection`）
+- `raw_step_results_ref`：若存在，指向 `cache/*.gz` 的 refit 全轨迹缓存
 
 > 所有内容会被转换成 JSON 可序列化类型（例如 numpy 数组转 list）。
+>
+> 大体量的 refit 轨迹会以 `StreamList`（gzip + pickle）形式落在 `cache/` 目录，并在 JSON 中通过 `raw_step_results_ref` 引用。
 
 ---
 
@@ -152,7 +160,7 @@ python -m src.Bayesian_state.eval_grid_results \
 
 - 聚合 JSON：`<input-dir>/all_subjects.json`
 - 图目录：`<input-dir>/plots/`
-  - `accuracy.png`（best fit 曲线：预测 vs 真实）
+  - `accuracy.png`（best run 曲线：预测 vs 真实）
   - `error_grid.png`（gamma × w0 误差热图）
   - `posterior.png`（posterior 轨迹）
   - `cluster_amount.png`（hypo 集合变化/策略动态）
@@ -169,3 +177,10 @@ python -m src.Bayesian_state.eval_grid_results \
 
 - 若希望稳定输出 5 张图，请在优化阶段设置 `keep_logs: true`。
 - `keep_logs: false` 时，仍可输出 `accuracy` 与 `error_grid`，但 `posterior/cluster/oral` 可能因缺少 step-level 日志而自动跳过。
+
+---
+
+## 兼容性说明
+
+- `eval_grid_results.py` 已支持读取旧版结果（仅 `metrics/grid_summary`）与新版结果（`best_metrics/grid_errors`）。
+- 旧结果不会被重写；要得到新版字段，需要重新运行优化脚本。

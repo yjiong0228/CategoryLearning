@@ -22,6 +22,12 @@ class GridPointResult:
     prior_log: Optional[Sequence[np.ndarray]] = None
     step_results: Optional[Sequence[Dict[str, Any]]] = None
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
+    raw_step_results: Optional[Sequence[Sequence[Dict[str, Any]]]] = None
+    sample_errors: Optional[Sequence[float]] = None
+    best_error: Optional[float] = None
+    refit_mean_error: Optional[float] = None
+    refit_std_error: Optional[float] = None
+    representative_run_index: Optional[int] = None
     n_repeats: int = 1
     std_error: float = 0.0
 
@@ -173,7 +179,7 @@ def compute_prediction_metrics(
     sliding_pred_acc: List[float] = []
     sliding_pred_std: List[float] = []
 
-    for start in range(1, n_trials - window_size + 2):
+    for start in range(0, n_trials - window_size + 1):
         end = start + window_size
         true_window = true_acc[start:end]
         pred_window = pred_acc[start:end]
