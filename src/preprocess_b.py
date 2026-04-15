@@ -98,9 +98,13 @@ class Preprocessor_B:
         return combined_data
 
 
-    def process_new(self, stimulus_data, behavior_data, recording_data = None):
+    def process_new(self, feature_map, stimulus_data, behavior_data, recording_data = None):
 
-        joint_data = pd.merge(behavior_data, stimulus_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
+        # Check if 'iSession' exists in stimulus_data
+        if 'iSession' in stimulus_data.columns:
+            joint_data = pd.merge(behavior_data, stimulus_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
+        else:
+            joint_data = pd.merge(behavior_data, stimulus_data, on=['stiID'], suffixes=('', '_y'))
         joint_data = joint_data.drop('category_y', axis=1)
 
         feature1_name = joint_data['feature1_name'][0]
@@ -109,7 +113,6 @@ class Preprocessor_B:
         feature4_name = joint_data['feature4_name'][0]
         
         # 将[feature1, feature2, feature3, feature4]转换为对应的数字顺序
-        feature_map = {'neck': 0, 'head': 1, 'leg': 2, 'tail': 3}
         feature_order = [
             feature_map[feature1_name],
             feature_map[feature2_name],
@@ -117,13 +120,17 @@ class Preprocessor_B:
             feature_map[feature4_name],
         ]
 
+        # Check if 'iBlock' exists in joint_data, otherwise use 'iRun'
+        block_column = 'iBlock' if 'iBlock' in joint_data.columns else 'iRun'
         base_columns = ['condition', 'feature1_name', 'feature2_name', 'feature3_name', 'feature4_name', 
-                        'iSession', 'iBlock', 'iTrial', 'feature1', 'feature2', 'feature3', 'feature4', 
-                        'category', 'choice', 'feedback', 'ambiguous', 'choRT']
+            'iSession', block_column, 'iTrial', 'feature1', 'feature2', 'feature3', 'feature4', 
+            'category', 'choice', 'feedback', 'ambiguous', 'choRT']
+        if 'rating' in joint_data.columns:
+            base_columns.insert(9, 'rating')
 
         combined_data = joint_data[base_columns].copy()
         
-        combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
+        combined_data = combined_data.sort_values(by=['iSession', 'iTrial'])
 
         # 这些是 recording_data 存在时会额外产生的列
         extra_columns = [
