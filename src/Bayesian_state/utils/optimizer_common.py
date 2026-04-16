@@ -22,6 +22,7 @@ class GridPointResult:
     prior_log: Optional[Sequence[np.ndarray]] = None
     step_results: Optional[Sequence[Dict[str, Any]]] = None
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
+    raw_runs: Optional[Sequence[Dict[str, Any]]] = None
     raw_step_results: Optional[Sequence[Sequence[Dict[str, Any]]]] = None
     sample_errors: Optional[Sequence[float]] = None
     best_error: Optional[float] = None
