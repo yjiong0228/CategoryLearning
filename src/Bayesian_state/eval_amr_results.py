@@ -21,14 +21,21 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import matplotlib
+import pandas as pd
+import yaml
 
 # Use non-interactive backend for batch plotting
 matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.model_evaluation import ModelEval
-from src.Bayesian_state.utils.oral_process import Oral_center_analysis
-from src.Bayesian_state.utils.paths import TASK2_PROCESSED_PATH
-import pandas as pd
+from src.Bayesian_state.utils.oral_process import Oral_center_analysis, Oral_region_analysis
+
+
+ORAL_MODE_CHOICES = ("center", "region")
+COMMON_REQUIRED_COLS = ("iSub", "condition", "choice")
+CENTER_REQUIRED_COLS = ("feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue")
+REGION_REQUIRED_COLS = ("A", "b")
+DEFAULT_REGION_N_SAMPLES = 1000
 
 
 def load_json(path: Path) -> dict:
@@ -121,6 +128,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Aggregate AMR results and plot evaluation charts")
     p.add_argument("--input-dir", type=Path, required=True, help="Directory containing subject_*.json")
     p.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional optimization YAML to resolve oral config defaults",
+    )
+    p.add_argument(
         "--aggregate-output",
         type=Path,
         default=None,
@@ -145,12 +158,124 @@ def parse_args() -> argparse.Namespace:
         help="Optional: save cluster amount comparison (requires best_step_results)",
     )
     p.add_argument(
+        "--oral-mode",
+        type=str,
+        choices=ORAL_MODE_CHOICES,
+        default=None,
+        help="Oral encoding mode. Overrides config oral.mode when provided.",
+    )
+    p.add_argument(
         "--oral-data",
         type=Path,
-        default=TASK2_PROCESSED_PATH,
-        help="Path to Task2 processed CSV with oral fields (for oral vs model plot)",
+        default=None,
+        help="Path to Task2 processed CSV with oral fields. Overrides config oral.*_data_path.",
+    )
+    p.add_argument(
+        "--oral-region-n-samples",
+        type=int,
+        default=None,
+        help="Monte Carlo samples per overlap estimate for region mode. Overrides config oral.region_n_samples.",
     )
     return p.parse_args()
+
+
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as f:
+        loaded = yaml.safe_load(f)
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Config file must parse to a dict: {path}")
+    return loaded
+
+
+def _resolve_oral_settings(args: argparse.Namespace) -> tuple[str, Path, int]:
+    config_mode = None
+    config_data_path = None
+    config_region_n_samples = None
+
+    if args.config is not None:
+        config_path = args.config.resolve()
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        config = _load_yaml(config_path)
+        oral_cfg = config.get("oral")
+        if isinstance(oral_cfg, dict):
+            raw_mode = oral_cfg.get("mode")
+            if isinstance(raw_mode, str):
+                raw_mode = raw_mode.strip().lower()
+                if raw_mode in ORAL_MODE_CHOICES:
+                    config_mode = raw_mode
+                else:
+                    raise ValueError(
+                        f"Invalid oral.mode '{raw_mode}' in {config_path}. "
+                        f"Supported values: {ORAL_MODE_CHOICES}"
+                    )
+            if config_mode is not None:
+                data_key = f"{config_mode}_data_path"
+                raw_data_path = oral_cfg.get(data_key)
+                if raw_data_path is not None:
+                    config_data_path = (config_path.parent / str(raw_data_path)).resolve()
+            raw_region_n_samples = oral_cfg.get("region_n_samples")
+            if raw_region_n_samples is not None:
+                config_region_n_samples = int(raw_region_n_samples)
+
+    final_mode = args.oral_mode or config_mode
+    if final_mode is None:
+        raise ValueError(
+            "Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML."
+        )
+
+    final_data_path = args.oral_data
+    if final_data_path is None:
+        final_data_path = config_data_path
+    if final_data_path is None:
+        raise ValueError(
+            f"Oral data path is required for mode='{final_mode}'. "
+            f"Provide --oral-data or set oral.{final_mode}_data_path in --config YAML."
+        )
+
+    region_n_samples = args.oral_region_n_samples
+    if region_n_samples is None:
+        region_n_samples = config_region_n_samples
+    if region_n_samples is None:
+        region_n_samples = DEFAULT_REGION_N_SAMPLES
+    if int(region_n_samples) <= 0:
+        raise ValueError(f"oral region n_samples must be > 0, got {region_n_samples}")
+
+    return final_mode, final_data_path.resolve(), int(region_n_samples)
+
+
+def _build_oral_hits(
+    mode: str,
+    oral_df: pd.DataFrame,
+    oral_data_path: Path,
+    region_n_samples: int,
+) -> Dict[int, Dict[str, Any]]:
+    if mode == "center":
+        required_cols = COMMON_REQUIRED_COLS + CENTER_REQUIRED_COLS
+        missing = [col for col in required_cols if col not in oral_df.columns]
+        if missing:
+            raise ValueError(
+                f"Oral center evaluation failed for {oral_data_path}: "
+                f"missing columns {missing}."
+            )
+        oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
+    else:
+        required_cols = COMMON_REQUIRED_COLS + REGION_REQUIRED_COLS
+        missing = [col for col in required_cols if col not in oral_df.columns]
+        if missing:
+            raise ValueError(
+                f"Oral region evaluation failed for {oral_data_path}: "
+                f"missing columns {missing}."
+            )
+        oral_hits = Oral_region_analysis().get_oral_hypo_hits(oral_df, n_samples=region_n_samples)
+
+    if not oral_hits:
+        raise RuntimeError(
+            f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}."
+        )
+    return oral_hits
 
 
 def main() -> None:
@@ -164,7 +289,11 @@ def main() -> None:
     plot_out = args.plot_accuracy or (input_dir / "accuracy.png")
     plot_oral = args.plot_oral or (input_dir / "oral_vs_model.png")
     plot_cluster = args.plot_cluster or (input_dir / "cluster_amount.png")
-    oral_data_path = args.oral_data
+    oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
+    print(
+        f"Oral evaluation mode={oral_mode}, oral_data={oral_data_path}, "
+        f"region_n_samples={oral_region_n_samples}"
+    )
 
     # Aggregate per-subject results
     aggregated = aggregate(input_dir)
@@ -179,22 +308,19 @@ def main() -> None:
 
     # Optional plots when step logs exist
     has_steps = any(v.get("best_step_results") for v in aggregated.values())
-    if has_steps:
-        if args.plot_cluster is not None or plot_cluster:
-            me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
-            print(f"Saved cluster amount plot -> {plot_cluster}")
-        else:
-            print("Cluster plot targ0et not provided; skipping.")
-        # Oral comparison: build oral hits from processed CSV if available
-        if oral_data_path and oral_data_path.exists():
-            oral_df = pd.read_csv(oral_data_path)
-            oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
-            me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
-            print(f"Saved oral vs model plot -> {plot_oral}")
-        else:
-            print(f"Oral data not found at {oral_data_path}; skipping oral vs model plot.")
-    else:
-        print("No best_step_results found; skipping oral/cluster plots.")
+    if not has_steps:
+        raise RuntimeError("No best_step_results found; cannot generate cluster/oral plots.")
+
+    me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
+    print(f"Saved cluster amount plot -> {plot_cluster}")
+
+    if not oral_data_path.is_file():
+        raise FileNotFoundError(f"Oral data file not found: {oral_data_path}")
+
+    oral_df = pd.read_csv(oral_data_path)
+    oral_hits = _build_oral_hits(oral_mode, oral_df, oral_data_path, oral_region_n_samples)
+    me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
+    print(f"Saved oral vs model plot -> {plot_oral}")
 
 
 if __name__ == "__main__":

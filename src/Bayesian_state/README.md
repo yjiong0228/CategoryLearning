@@ -143,3 +143,57 @@ python -m src.Bayesian_state.eval_amr_results \
 3. `problems/modules/`（尤其 perception / memory / hypo_transitions）
 4. `utils/optimizer_grid.py` 与 `utils/optimizer_amr.py`
 5. `eval_amr_results.py` / `eval_grid_results.py`
+
+## 11. Oral mode configuration and error policy
+
+Both `eval_grid_results.py` and `eval_amr_results.py` now support dual oral encodings:
+
+- `center`: uses `Oral_center_analysis` and `Task2_processed.csv` style columns (`feature*_oralvalue`)
+- `region`: uses `Oral_region_analysis` and `Task2_processed_new.csv` style columns (`A`, `b`)
+
+CLI arguments:
+
+- `--config`: optimization yaml (reads `oral.mode` and `oral.{mode}_data_path`)
+- `--oral-mode {center,region}`: overrides yaml `oral.mode`
+- `--oral-data`: overrides final oral csv path (highest priority)
+- `--oral-region-n-samples`: region mode overlap sampling count (overrides `oral.region_n_samples`)
+
+Priority order:
+
+1. CLI (`--oral-mode`, `--oral-data`)
+2. YAML (`oral.mode`, `oral.center_data_path`, `oral.region_data_path`)
+3. Missing required values -> raise error
+
+Region speed tip:
+
+- default `region_n_samples` is reduced for evaluation speed.
+- for smoke tests, keep it small (for example 200-1000).
+
+Examples:
+
+```bash
+python -m src.Bayesian_state.eval_grid_results \
+  --input-dir results/state-based-grid-result/pmh/cond1 \
+  --config configs/grid_opt_cfg/pmh_cond1.yaml
+```
+
+```bash
+python -m src.Bayesian_state.eval_grid_results \
+  --input-dir results/state-based-grid-result/pmh/cond1 \
+  --config configs/grid_opt_cfg/pmh_cond1.yaml \
+  --oral-mode region
+```
+
+```bash
+python -m src.Bayesian_state.eval_amr_results \
+  --input-dir results/state-based-AMR-result/pmh/cond1 \
+  --config configs/amr_opt_cfg/pmh_cond1.yaml \
+  --oral-data data/processed/Task2_processed.csv
+```
+
+Error policy:
+
+- Oral mode/data mismatch raises explicit error (with missing columns).
+- Missing oral file raises `FileNotFoundError`.
+- Empty oral hit results raise `RuntimeError`.
+- Grid/AMR evaluation no longer silently skips oral plotting when oral is requested.

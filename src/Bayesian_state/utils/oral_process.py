@@ -58,8 +58,19 @@ class Oral_region_analysis:
             A = np.asarray(region["A"], dtype=float)
             b = np.asarray(region["b"], dtype=float)
         elif isinstance(region, (list, tuple)) and len(region) == 2:
-            A = np.asarray(region[0], dtype=float)
-            b = np.asarray(region[1], dtype=float)
+            raw_A, raw_b = region
+            if isinstance(raw_A, str):
+                try:
+                    raw_A = json.loads(raw_A)
+                except json.JSONDecodeError:
+                    return None, None
+            if isinstance(raw_b, str):
+                try:
+                    raw_b = json.loads(raw_b)
+                except json.JSONDecodeError:
+                    return None, None
+            A = np.asarray(raw_A, dtype=float)
+            b = np.asarray(raw_b, dtype=float)
         else:
             return None, None
 
