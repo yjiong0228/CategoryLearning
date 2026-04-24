@@ -284,6 +284,8 @@ class BaseEngine:
             #print(mod_name, "done", s=2)
 
         log_info['prior'] = self.prior.copy() if self.prior is not None else None
+        if self.observation is not None:
+            log_info["perceived_stimulus"] = np.asarray(self.observation[0], dtype=float).copy()
 
         # Add hypo_details: {k: {'post_max': p}} for active hypotheses
         if self.posterior is not None:

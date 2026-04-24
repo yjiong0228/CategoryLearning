@@ -7,6 +7,11 @@ subjects: [125, 126, 127, 128, 129, 130, 131, 132]
 # Paths (relative to this YAML)
 data_path: ../../data/processed/Task2_processed_new.csv
 output_dir: ../../results/state-based-grid-result/pmh/cond1
+oral:
+  mode: center # region
+  center_data_path: ../../data/processed/Task2_processed.csv
+  region_data_path: ../../data/processed/Task2_processed_new.csv
+  # region_n_samples: 100
 
 # Parallelism (inner jobs for repeats within one subject)
 n_jobs: 128
