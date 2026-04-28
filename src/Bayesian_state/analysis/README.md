@@ -1,6 +1,7 @@
 # FFT Run Clustering
 
 This folder provides clustering analysis for run-level accuracy trajectories cached in `schema_version=3` result files (`raw_runs_ref`).
+Clustering is done **within each subject** (`subject_id`) independently.
 
 ## Input
 
@@ -27,14 +28,27 @@ conda run -n cate_learn python -m src.Bayesian_state.analysis.run_fft_clustering
 
 ## Outputs
 
-Outputs are written to `<input-dir>/analysis` by default:
+Outputs are written to `<input-dir>/analysis` by default.
+Each subject gets an independent subfolder:
 
-- `cluster_assignments.csv`
-- `fft_features.npy`
-- `embedding_pca_2d.csv`
-- `cluster_scatter.png`
-- `cluster_mean_trajectories.png`
-- `cluster_representative_trajectories.png`
+- `subject_<id>/cluster_assignments.csv`
+- `subject_<id>/fft_features.npy`
+- `subject_<id>/embedding_pca_2d.csv`
+- `subject_<id>/cluster_scatter.png`
+- `subject_<id>/cluster_mean_trajectories.png`
+- `subject_<id>/cluster_representative_trajectories.png`
+- `subject_<id>/clustering_report.json`
+
+`cluster_assignments.csv` includes:
+
+- `cluster_label`
+- `cluster_confidence` (max posterior probability for that sample)
+- `cluster_prob_json` (full posterior probability vector)
+
+Top-level summary files:
+
+- `cluster_assignments_all_subjects.csv`
+- `embedding_pca_2d_all_subjects.csv`
 - `analysis_meta.json`
 
 ## Methods
@@ -45,4 +59,12 @@ Supported clustering methods:
 - `agglomerative`
 - `dbscan`
 - `gmm`
+- `dpmm` (truncated DPMM via `BayesianGaussianMixture`)
 
+For `dpmm`, additional CLI options are available:
+
+- `--dp-max-components`
+- `--dp-weight-concentration-prior`
+- `--dp-covariance-type {full,diag}`
+- `--dp-max-iter`
+- `--dp-n-init`

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering, DBSCAN, KMeans
 from sklearn.decomposition import PCA
-from sklearn.mixture import GaussianMixture
+from sklearn.mixture import BayesianGaussianMixture, GaussianMixture
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--method",
         type=str,
-        choices=("kmeans", "agglomerative", "dbscan", "gmm"),
+        choices=("kmeans", "agglomerative", "dbscan", "gmm", "dpmm"),
         default="kmeans",
         help="Clustering method",
     )
@@ -62,6 +62,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dbscan-eps", type=float, default=0.8, help="DBSCAN eps")
     parser.add_argument("--dbscan-min-samples", type=int, default=8, help="DBSCAN min_samples")
     parser.add_argument("--random-state", type=int, default=42, help="Random state for kmeans/gmm")
+    parser.add_argument("--dp-max-components", type=int, default=12, help="Max mixture components for truncated DPMM")
+    parser.add_argument(
+        "--dp-weight-concentration-prior",
+        type=float,
+        default=1.0,
+        help="DP concentration prior for BayesianGaussianMixture",
+    )
+    parser.add_argument(
+        "--dp-covariance-type",
+        type=str,
+        choices=("full", "diag"),
+        default="full",
+        help="Covariance type for BayesianGaussianMixture",
+    )
+    parser.add_argument("--dp-max-iter", type=int, default=1000, help="Max iterations for DPMM variational fit")
+    parser.add_argument("--dp-n-init", type=int, default=3, help="Init count for DPMM variational fit")
     return parser.parse_args()
 
 
@@ -184,21 +200,65 @@ def cluster_features(
     dbscan_eps: float,
     dbscan_min_samples: int,
     random_state: int,
-) -> np.ndarray:
+    dp_max_components: int,
+    dp_weight_concentration_prior: float,
+    dp_covariance_type: str,
+    dp_max_iter: int,
+    dp_n_init: int,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    cluster_probabilities: np.ndarray
+    model_info: dict[str, Any] = {"method": method}
     if method == "kmeans":
         model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=20)
-        return model.fit_predict(X)
-    if method == "agglomerative":
+        labels = model.fit_predict(X)
+        cluster_probabilities = np.eye(n_clusters, dtype=float)[labels]
+        return labels, cluster_probabilities, model_info
+    elif method == "agglomerative":
         model = AgglomerativeClustering(n_clusters=n_clusters)
-        return model.fit_predict(X)
-    if method == "dbscan":
+        labels = model.fit_predict(X)
+        cluster_probabilities = np.eye(n_clusters, dtype=float)[labels]
+        return labels, cluster_probabilities, model_info
+    elif method == "dbscan":
         model = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples)
-        return model.fit_predict(X)
-    if method == "gmm":
+        labels = model.fit_predict(X)
+        unique_labels = sorted(set(int(x) for x in labels))
+        label_to_col = {label: i for i, label in enumerate(unique_labels)}
+        cluster_probabilities = np.zeros((len(labels), len(unique_labels)), dtype=float)
+        for i, label in enumerate(labels):
+            cluster_probabilities[i, label_to_col[int(label)]] = 1.0
+        model_info["label_space"] = unique_labels
+        return labels, cluster_probabilities, model_info
+    elif method == "gmm":
         model = GaussianMixture(n_components=n_clusters, random_state=random_state)
         model.fit(X)
-        return model.predict(X)
-    raise ValueError(f"Unsupported method: {method}")
+        cluster_probabilities = model.predict_proba(X)
+        labels = cluster_probabilities.argmax(axis=1).astype(int)
+        return labels, cluster_probabilities, model_info
+    elif method == "dpmm":
+        model = BayesianGaussianMixture(
+            n_components=dp_max_components,
+            covariance_type=dp_covariance_type,
+            weight_concentration_prior_type="dirichlet_process",
+            weight_concentration_prior=dp_weight_concentration_prior,
+            max_iter=dp_max_iter,
+            n_init=dp_n_init,
+            random_state=random_state,
+        )
+        model.fit(X)
+        cluster_probabilities = model.predict_proba(X)
+        labels = cluster_probabilities.argmax(axis=1).astype(int)
+        model_info.update(
+            {
+                "active_weight_threshold": 1e-3,
+                "component_weights": model.weights_.astype(float).tolist(),
+                "active_components": int(np.sum(model.weights_ > 1e-3)),
+                "converged": bool(model.converged_),
+                "n_iter": int(model.n_iter_),
+            }
+        )
+        return labels, cluster_probabilities, model_info
+    else:
+        raise ValueError(f"Unsupported method: {method}")
 
 
 def save_outputs(
@@ -207,6 +267,7 @@ def save_outputs(
     X: np.ndarray,
     labels: np.ndarray,
     pca_2d: np.ndarray,
+    cluster_probabilities: np.ndarray,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     np.save(output_dir / "fft_features.npy", X)
@@ -221,6 +282,8 @@ def save_outputs(
                 "run_index": sample.run_index,
                 "mean_error": sample.mean_error,
                 "cluster_label": int(labels[i]),
+                "cluster_confidence": float(np.max(cluster_probabilities[i])),
+                "cluster_prob_json": json.dumps(cluster_probabilities[i].astype(float).tolist(), ensure_ascii=False),
                 "params_json": json.dumps(sample.params, ensure_ascii=False, sort_keys=True),
             }
         )
@@ -321,36 +384,101 @@ def main() -> None:
     output_dir = (args.output_dir or (input_dir / "analysis")).resolve()
 
     samples = load_run_samples(input_dir, args.trajectory_key)
-    X, min_len, keep_bins = build_feature_matrix(samples, args.fft_keep_ratio, args.fft_keep_bins)
-    labels = cluster_features(
-        X=X,
-        method=args.method,
-        n_clusters=args.n_clusters,
-        dbscan_eps=args.dbscan_eps,
-        dbscan_min_samples=args.dbscan_min_samples,
-        random_state=args.random_state,
-    )
-    pca_2d = PCA(n_components=2).fit_transform(X)
+    subject_ids = sorted(set(s.subject_id for s in samples))
+    all_assignment_frames: list[pd.DataFrame] = []
+    all_embedding_frames: list[pd.DataFrame] = []
+    subject_meta: list[dict[str, Any]] = []
 
-    save_outputs(output_dir, samples, X, labels, pca_2d)
-    plot_cluster_scatter(output_dir, pca_2d, labels)
-    plot_cluster_mean_trajectories(output_dir, samples, labels)
-    plot_cluster_representatives(output_dir, samples, labels, X)
+    for sid in subject_ids:
+        subject_samples = [s for s in samples if s.subject_id == sid]
+        subject_output_dir = output_dir / f"subject_{sid}"
+        X, min_len, keep_bins = build_feature_matrix(
+            subject_samples,
+            args.fft_keep_ratio,
+            args.fft_keep_bins,
+        )
+        labels, cluster_probabilities, model_info = cluster_features(
+            X=X,
+            method=args.method,
+            n_clusters=args.n_clusters,
+            dbscan_eps=args.dbscan_eps,
+            dbscan_min_samples=args.dbscan_min_samples,
+            random_state=args.random_state,
+            dp_max_components=args.dp_max_components,
+            dp_weight_concentration_prior=args.dp_weight_concentration_prior,
+            dp_covariance_type=args.dp_covariance_type,
+            dp_max_iter=args.dp_max_iter,
+            dp_n_init=args.dp_n_init,
+        )
+        pca_2d = PCA(n_components=2).fit_transform(X)
+
+        save_outputs(subject_output_dir, subject_samples, X, labels, pca_2d, cluster_probabilities)
+        plot_cluster_scatter(subject_output_dir, pca_2d, labels)
+        plot_cluster_mean_trajectories(subject_output_dir, subject_samples, labels)
+        plot_cluster_representatives(subject_output_dir, subject_samples, labels, X)
+
+        with (subject_output_dir / "clustering_report.json").open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "method": args.method,
+                    "params": {
+                        "n_clusters": args.n_clusters,
+                        "dbscan_eps": args.dbscan_eps,
+                        "dbscan_min_samples": args.dbscan_min_samples,
+                        "random_state": args.random_state,
+                        "dp_max_components": args.dp_max_components,
+                        "dp_weight_concentration_prior": args.dp_weight_concentration_prior,
+                        "dp_covariance_type": args.dp_covariance_type,
+                        "dp_max_iter": args.dp_max_iter,
+                        "dp_n_init": args.dp_n_init,
+                    },
+                    "num_samples": len(subject_samples),
+                    "num_clusters_found": int(len(set(int(x) for x in labels))),
+                    "model_info": model_info,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        assign_df = pd.read_csv(subject_output_dir / "cluster_assignments.csv")
+        embed_df = pd.read_csv(subject_output_dir / "embedding_pca_2d.csv")
+        all_assignment_frames.append(assign_df)
+        all_embedding_frames.append(embed_df)
+        subject_meta.append(
+            {
+                "subject_id": int(sid),
+                "num_samples": int(len(subject_samples)),
+                "trajectory_min_length": int(min_len),
+                "fft_keep_bins": int(keep_bins),
+                "num_clusters_found": int(len(set(int(x) for x in labels))),
+            }
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.concat(all_assignment_frames, ignore_index=True).to_csv(
+        output_dir / "cluster_assignments_all_subjects.csv",
+        index=False,
+    )
+    pd.concat(all_embedding_frames, ignore_index=True).to_csv(
+        output_dir / "embedding_pca_2d_all_subjects.csv",
+        index=False,
+    )
 
     meta = {
         "input_dir": str(input_dir),
         "output_dir": str(output_dir),
         "num_samples": int(len(samples)),
+        "num_subjects": int(len(subject_ids)),
         "trajectory_key": args.trajectory_key,
-        "trajectory_min_length": int(min_len),
-        "fft_keep_bins": int(keep_bins),
         "method": args.method,
         "n_clusters": int(args.n_clusters),
+        "subjects": subject_meta,
     }
     with (output_dir / "analysis_meta.json").open("w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
-    print(f"Done. Wrote analysis outputs to {output_dir}")
+    print(f"Done. Wrote per-subject analysis outputs to {output_dir}")
 
 
 if __name__ == "__main__":
