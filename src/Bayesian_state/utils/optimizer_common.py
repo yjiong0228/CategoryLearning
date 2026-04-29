@@ -173,6 +173,7 @@ def _compute_single_mode_metrics(
     hypotheses: Sequence[int],
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
+    distance_mode = getattr(model.engine, "distance_mode", "prototype")
     n_trials = len(feedback)
     n_features = int(stimulus.shape[1])
 
@@ -218,6 +219,7 @@ def _compute_single_mode_metrics(
                 trial_slice,
                 beta_for_hypo,
                 use_cached_dist=False,
+                distance_mode=distance_mode,
             )
             weighted_prob += weight * float(np.ravel(lik)[0])
         pred_acc[trial_idx] = weighted_prob

@@ -140,6 +140,8 @@ class DualMemoryModule(BaseModule):
 
         self.gamma = kwargs.get("gamma", 0.9)
         self.w0 = kwargs.get("w0", 0.1)
+        if not np.isfinite(self.w0) or self.w0 < 0.0 or self.w0 > 1.0:
+            raise ValueError(f"w0 must be a finite float in [0, 1], got {self.w0!r}.")
 
 
         ##### For parameter optimization #####
@@ -210,10 +212,33 @@ class DualMemoryModule(BaseModule):
 
     @staticmethod
     def translate_to_log(exp: np.ndarray, mask=None) -> np.ndarray:
-        clipped = np.clip(exp, DualMemoryModule.lower_numerical_bound, DualMemoryModule.upper_numerical_bound)
-        if mask is not None:
-            clipped *= mask
-        return np.log(clipped)
+        """
+        Translate probabilities to log-space with optional hypothesis masking.
+
+        Inactive hypotheses (mask == 0) are explicitly set to -inf instead of
+        relying on log(0), which avoids runtime warnings while preserving the
+        intended memory semantics.
+        """
+        exp_arr = np.asarray(exp, dtype=float)
+        clipped = np.clip(
+            exp_arr,
+            DualMemoryModule.lower_numerical_bound,
+            DualMemoryModule.upper_numerical_bound,
+        )
+        if mask is None:
+            return np.log(clipped)
+
+        mask_arr = np.asarray(mask)
+        if mask_arr.shape != clipped.shape:
+            raise ValueError(
+                f"Mask shape {mask_arr.shape} is incompatible with exp shape {clipped.shape}."
+            )
+
+        active = mask_arr.astype(bool)
+        out = np.full(clipped.shape, -np.inf, dtype=float)
+        if np.any(active):
+            out[active] = np.log(clipped[active])
+        return out
 
     def _state_transition(self, new_mask: np.ndarray, force_sync: bool = False) -> None:
         """
@@ -333,8 +358,32 @@ class DualMemoryModule(BaseModule):
         self.mask = np.asarray(new_mask, dtype=float)
         
         self.state_update(likelihood)
-        
-        log_posterior = self.w0 * self.state["static"] + (1 - self.w0) * self.state["fade"]
+
+        # Avoid 0 * (-inf) when w0 is at boundaries; memory semantics remain unchanged.
+        w0 = float(self.w0)
+        if np.isclose(w0, 1.0):
+            log_posterior = np.array(self.state["static"], copy=True)
+        elif np.isclose(w0, 0.0):
+            log_posterior = np.array(self.state["fade"], copy=True)
+        else:
+            static = np.asarray(self.state["static"], dtype=float)
+            fade = np.asarray(self.state["fade"], dtype=float)
+            log_posterior = np.full(static.shape, -np.inf, dtype=float)
+
+            static_finite = np.isfinite(static)
+            fade_finite = np.isfinite(fade)
+
+            both_finite = static_finite & fade_finite
+            static_only = static_finite & (~fade_finite)
+            fade_only = (~static_finite) & fade_finite
+
+            if np.any(both_finite):
+                log_posterior[both_finite] = w0 * static[both_finite] + (1.0 - w0) * fade[both_finite]
+            if np.any(static_only):
+                log_posterior[static_only] = w0 * static[static_only]
+            if np.any(fade_only):
+                log_posterior[fade_only] = (1.0 - w0) * fade[fade_only]
+
         # Safety check for nan/inf
         log_posterior = np.nan_to_num(log_posterior, nan=-np.inf, posinf=1e15, neginf=-1e15)
         

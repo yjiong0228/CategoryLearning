@@ -258,3 +258,17 @@ Example shape:
 ```
 
 `metrics` / `best_metrics` are no longer emitted in the new schema.
+
+## Likelihood Distance Mode
+
+`LikelihoodModule` supports a single explicit config key:
+
+- `modules.likelihood_mod.kwargs.distance_mode: prototype | boundary`
+
+This mode is used consistently across:
+
+- trial likelihood updates in inference
+- prediction metric computation in optimization/evaluation
+- category assignment logic inside `BetaModule`
+
+Note: `oral_process` center/region analyses are standalone analysis paths and are not controlled by `distance_mode`.
