@@ -37,7 +37,14 @@ def parse_args() -> argparse.Namespace:
         "--trajectory-key",
         type=str,
         default="sliding_pred_acc",
-        help="Metrics key used as trajectory, e.g. sliding_pred_acc or sliding_true_acc",
+        help="Trajectory key in metrics_by_mode[--prediction-mode], e.g. sliding_pred_acc or sliding_true_acc",
+    )
+    parser.add_argument(
+        "--prediction-mode",
+        type=str,
+        choices=("prior_t", "posterior_t_minus_1"),
+        default="prior_t",
+        help="Prediction mode to read from metrics_by_mode (default: prior_t)",
     )
     parser.add_argument(
         "--fft-keep-ratio",
@@ -112,7 +119,7 @@ def _to_float_array(values: Any, context: str) -> np.ndarray:
     return arr
 
 
-def load_run_samples(input_dir: Path, trajectory_key: str) -> list[RunSample]:
+def load_run_samples(input_dir: Path, trajectory_key: str, prediction_mode: str) -> list[RunSample]:
     samples: list[RunSample] = []
     subject_files = sorted(input_dir.glob("subject_*.json"))
     if not subject_files:
@@ -134,11 +141,28 @@ def load_run_samples(input_dir: Path, trajectory_key: str) -> list[RunSample]:
         for run_obj in _iter_pickle_gz(cache_path):
             if not isinstance(run_obj, dict):
                 raise ValueError(f"Unexpected run object type in {cache_path}")
-            metrics = run_obj.get("metrics")
+            metrics_by_mode = run_obj.get("metrics_by_mode")
+            if not isinstance(metrics_by_mode, dict):
+                raise ValueError(
+                    f"Run payload does not match current schema (missing metrics_by_mode) in {cache_path}"
+                )
+            if prediction_mode not in metrics_by_mode:
+                available_modes = sorted(metrics_by_mode.keys())
+                raise ValueError(
+                    f"Run missing metrics_by_mode['{prediction_mode}'] in {cache_path}. "
+                    f"Available modes: {available_modes}"
+                )
+            metrics = metrics_by_mode[prediction_mode]
             if not isinstance(metrics, dict):
-                raise ValueError(f"Run missing metrics in {cache_path}")
+                raise ValueError(
+                    f"Invalid metrics_by_mode['{prediction_mode}'] type in {cache_path}: {type(metrics)}"
+                )
             if trajectory_key not in metrics:
-                raise ValueError(f"Run missing metrics['{trajectory_key}'] in {cache_path}")
+                available_keys = sorted(metrics.keys())
+                raise ValueError(
+                    f"Run missing metrics_by_mode['{prediction_mode}']['{trajectory_key}'] in {cache_path}. "
+                    f"Available keys: {available_keys}"
+                )
 
             trajectory = _to_float_array(
                 metrics[trajectory_key],
@@ -383,7 +407,7 @@ def main() -> None:
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
     output_dir = (args.output_dir or (input_dir / "analysis")).resolve()
 
-    samples = load_run_samples(input_dir, args.trajectory_key)
+    samples = load_run_samples(input_dir, args.trajectory_key, args.prediction_mode)
     subject_ids = sorted(set(s.subject_id for s in samples))
     all_assignment_frames: list[pd.DataFrame] = []
     all_embedding_frames: list[pd.DataFrame] = []
