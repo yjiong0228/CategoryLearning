@@ -10,6 +10,15 @@ import numpy as np
 import pandas as pd
 from .paths import PROCESSED_DATA_DIR, TASK2_PROCESSED_PATH
 
+PREDICTION_MODE_POSTERIOR_T_MINUS_1 = "posterior_t_minus_1"
+PREDICTION_MODE_PRIOR_T = "prior_t"
+PREDICTION_MODE_BOTH = "both"
+PREDICTION_MODE_CHOICES = (
+    PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    PREDICTION_MODE_PRIOR_T,
+    PREDICTION_MODE_BOTH,
+)
+
 
 @dataclass
 class GridPointResult:
@@ -17,7 +26,8 @@ class GridPointResult:
 
     params: Dict[str, Any]
     mean_error: float
-    metrics: Dict[str, np.ndarray | float]
+    metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]]
+    selection_prediction_mode: str
     posterior_log: Optional[Sequence[np.ndarray]] = None
     prior_log: Optional[Sequence[np.ndarray]] = None
     step_results: Optional[Sequence[Dict[str, Any]]] = None
@@ -45,7 +55,8 @@ class GridPointResult:
 class SingleRunResult:
     params: Dict[str, Any]
     mean_error: float
-    metrics: Dict[str, np.ndarray | float]
+    metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]]
+    selection_prediction_mode: str
     posterior_log: Optional[Sequence[np.ndarray]]
     prior_log: Optional[Sequence[np.ndarray]]
     step_log: Optional[Sequence[Dict[str, Any]]]
@@ -120,57 +131,55 @@ def prepare_trial_sequence(
     return trials
 
 
-def compute_prediction_metrics(
+def _get_prediction_modes(prediction_mode: str) -> List[str]:
+    if prediction_mode not in PREDICTION_MODE_CHOICES:
+        raise ValueError(
+            f"Unsupported prediction_mode '{prediction_mode}'. "
+            f"Valid values: {PREDICTION_MODE_CHOICES}"
+        )
+    if prediction_mode == PREDICTION_MODE_BOTH:
+        return [PREDICTION_MODE_POSTERIOR_T_MINUS_1, PREDICTION_MODE_PRIOR_T]
+    return [prediction_mode]
+
+
+def _extract_distribution_from_step(
+    step_item: Dict[str, Any],
+    key: str,
+    set_size: int,
+    trial_idx: int,
+) -> np.ndarray:
+    if key not in step_item:
+        raise ValueError(f"Missing {key} in step log at trial index {trial_idx}")
+    dist = np.asarray(step_item[key], dtype=float)
+    if dist.ndim != 1 or dist.shape[0] != set_size:
+        raise ValueError(
+            f"Invalid {key} shape at trial index {trial_idx}: "
+            f"expected ({set_size},), got {dist.shape}"
+        )
+    return dist
+
+
+def _compute_single_mode_metrics(
+    mode: str,
     model,
-    post_log: Sequence[np.ndarray],
+    post_arr: np.ndarray,
     step_log: Sequence[Dict[str, Any]],
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
     categories: np.ndarray,
     window_size: int,
+    engine_beta: np.ndarray,
+    hypotheses: Sequence[int],
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
-    hypotheses = list(model.hypotheses_set)
-
-    engine_beta = getattr(model.engine, "beta", None)
-    if engine_beta is None:
-        beta_param = 10.0
-        if hasattr(model.engine, "likelihood_mod"):
-            lik_mod = getattr(model.engine, "likelihood_mod")
-            beta_param = float(lik_mod.kwargs.get("beta", 10.0))
-        engine_beta = np.full(len(hypotheses), beta_param)
-
-    post_arr = np.asarray(post_log, dtype=float)
-    if post_arr.ndim == 1:
-        post_arr = post_arr.reshape(1, -1)
-
     n_trials = len(feedback)
-    if window_size <= 0:
-        raise ValueError(f"window_size must be positive, got {window_size}")
-    min_trials_for_window = window_size + 1
-    if n_trials < min_trials_for_window:
-        raise ValueError(
-            "Not enough trials for sliding-window metrics with t-1 posterior alignment: "
-            f"need at least {min_trials_for_window} trials, got {n_trials}"
-        )
-    if post_arr.shape[0] != n_trials:
-        raise ValueError(
-            "Post log length does not match number of trials: "
-            f"{post_arr.shape[0]} vs {n_trials}"
-        )
-    if len(step_log) != n_trials:
-        raise ValueError(
-            "Step log length does not match number of trials: "
-            f"{len(step_log)} vs {n_trials}"
-        )
+    n_features = int(stimulus.shape[1])
 
     true_acc = (feedback == 1.0).astype(float)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
 
-    n_features = int(stimulus.shape[1])
     for trial_idx in range(1, n_trials):
-        current_post = post_arr[trial_idx - 1]
         step_item = step_log[trial_idx]
         if "perceived_stimulus" not in step_item:
             raise ValueError(f"Missing perceived_stimulus in step log at trial index {trial_idx}")
@@ -181,6 +190,18 @@ def compute_prediction_metrics(
                 f"{trial_idx}: expected ({n_features},), got {perceived_stimulus.shape}"
             )
 
+        if mode == PREDICTION_MODE_POSTERIOR_T_MINUS_1:
+            current_dist = post_arr[trial_idx - 1]
+        elif mode == PREDICTION_MODE_PRIOR_T:
+            current_dist = _extract_distribution_from_step(
+                step_item=step_item,
+                key="prior",
+                set_size=len(hypotheses),
+                trial_idx=trial_idx,
+            )
+        else:
+            raise ValueError(f"Unexpected mode: {mode}")
+
         weighted_prob = 0.0
         trial_slice = (
             [perceived_stimulus],
@@ -188,7 +209,7 @@ def compute_prediction_metrics(
             [feedback[trial_idx]],
             [categories[trial_idx]],
         )
-        for weight, hypo in zip(current_post, hypotheses):
+        for weight, hypo in zip(current_dist, hypotheses):
             if weight <= 0:
                 continue
             beta_for_hypo = float(engine_beta[hypo]) if hypo < len(engine_beta) else 10.0
@@ -230,6 +251,74 @@ def compute_prediction_metrics(
     }
 
 
+def compute_prediction_metrics(
+    model,
+    post_log: Sequence[np.ndarray],
+    step_log: Sequence[Dict[str, Any]],
+    stimulus: np.ndarray,
+    choices: np.ndarray,
+    feedback: np.ndarray,
+    categories: np.ndarray,
+    window_size: int,
+    prediction_mode: str,
+) -> Dict[str, Dict[str, np.ndarray | float]]:
+    hypotheses = list(model.hypotheses_set)
+
+    engine_beta = getattr(model.engine, "beta", None)
+    if engine_beta is None:
+        beta_param = 10.0
+        if hasattr(model.engine, "likelihood_mod"):
+            lik_mod = getattr(model.engine, "likelihood_mod")
+            beta_param = float(lik_mod.kwargs.get("beta", 10.0))
+        engine_beta = np.full(len(hypotheses), beta_param)
+
+    post_arr = np.asarray(post_log, dtype=float)
+    if post_arr.ndim == 1:
+        post_arr = post_arr.reshape(1, -1)
+
+    n_trials = len(feedback)
+    if window_size <= 0:
+        raise ValueError(f"window_size must be positive, got {window_size}")
+    min_trials_for_window = window_size + 1
+    if n_trials < min_trials_for_window:
+        raise ValueError(
+            "Not enough trials for sliding-window metrics with t-1 posterior alignment: "
+            f"need at least {min_trials_for_window} trials, got {n_trials}"
+        )
+    if post_arr.shape[0] != n_trials:
+        raise ValueError(
+            "Post log length does not match number of trials: "
+            f"{post_arr.shape[0]} vs {n_trials}"
+        )
+    if post_arr.shape[1] != len(hypotheses):
+        raise ValueError(
+            "Posterior width does not match hypothesis set size: "
+            f"{post_arr.shape[1]} vs {len(hypotheses)}"
+        )
+    if len(step_log) != n_trials:
+        raise ValueError(
+            "Step log length does not match number of trials: "
+            f"{len(step_log)} vs {n_trials}"
+        )
+
+    metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]] = {}
+    for mode in _get_prediction_modes(prediction_mode):
+        metrics_by_mode[mode] = _compute_single_mode_metrics(
+            mode=mode,
+            model=model,
+            post_arr=post_arr,
+            step_log=step_log,
+            stimulus=stimulus,
+            choices=choices,
+            feedback=feedback,
+            categories=categories,
+            window_size=window_size,
+            engine_beta=np.asarray(engine_beta, dtype=float),
+            hypotheses=hypotheses,
+        )
+    return metrics_by_mode
+
+
 def inject_params(config: Dict[str, Any], params: Dict[str, Any]) -> None:
     """Inject runtime params into engine config (supports dot-path and shortcuts)."""
     shortcuts = {
@@ -261,6 +350,8 @@ def evaluate_state_model_run(
     window_size: int,
     keep_logs: bool = True,
     include_step_log: bool = False,
+    prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     stimulus, choices, feedback, categories = arrays
@@ -289,7 +380,7 @@ def evaluate_state_model_run(
     if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
         strategy_log = getattr(hypo_mod, "strategy_counts_log")
 
-    metrics = compute_prediction_metrics(
+    metrics_by_mode = compute_prediction_metrics(
         model,
         posterior_log,
         all_step_log,
@@ -298,7 +389,14 @@ def evaluate_state_model_run(
         feedback,
         categories,
         window_size,
+        prediction_mode=prediction_mode,
     )
+
+    if selection_prediction_mode not in metrics_by_mode:
+        raise ValueError(
+            f"selection_prediction_mode '{selection_prediction_mode}' is unavailable. "
+            f"Available: {tuple(metrics_by_mode.keys())}"
+        )
 
     if not keep_logs:
         posterior_log = None
@@ -306,10 +404,13 @@ def evaluate_state_model_run(
         step_log = None
         strategy_log = None
 
+    selected_mean_error = float(metrics_by_mode[selection_prediction_mode]["mean_error"])
+
     return SingleRunResult(
         params=dict(params),
-        mean_error=float(metrics["mean_error"]),
-        metrics=metrics,
+        mean_error=selected_mean_error,
+        metrics_by_mode=metrics_by_mode,
+        selection_prediction_mode=selection_prediction_mode,
         posterior_log=posterior_log,
         prior_log=prior_log,
         step_log=step_log,

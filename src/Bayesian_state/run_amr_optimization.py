@@ -11,6 +11,10 @@ import yaml
 from joblib import Parallel, delayed
 
 from src.Bayesian_state.utils.optimizer_amr import StateModelAMROptimizer  # noqa: E402
+from src.Bayesian_state.utils.optimizer_common import (
+    PREDICTION_MODE_CHOICES,
+    PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+)
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
     ROOT_DIR,
@@ -21,7 +25,6 @@ from src.Bayesian_state.utils.paths import (
 DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = AMR_RESULTS_DIR
 
-# Per-process cache to avoid loading the same CSV repeatedly in worker tasks.
 _LEARNING_DATA_CACHE: dict[str, pd.DataFrame] = {}
 
 
@@ -93,6 +96,20 @@ def resolve_amr_kwargs(opt_cfg: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
+    prediction_mode = str(cfg.get("prediction_mode", PREDICTION_MODE_POSTERIOR_T_MINUS_1))
+    selection_prediction_mode = str(cfg.get("selection_prediction_mode", PREDICTION_MODE_POSTERIOR_T_MINUS_1))
+    if prediction_mode not in PREDICTION_MODE_CHOICES:
+        raise ValueError(f"Unsupported prediction_mode '{prediction_mode}'. Valid: {PREDICTION_MODE_CHOICES}")
+    if selection_prediction_mode not in ("posterior_t_minus_1", "prior_t"):
+        raise ValueError("selection_prediction_mode must be 'posterior_t_minus_1' or 'prior_t'")
+    if prediction_mode != "both" and selection_prediction_mode != prediction_mode:
+        raise ValueError(
+            "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
+        )
+    return prediction_mode, selection_prediction_mode
+
+
 def _recursive_to_builtin(obj: Any) -> Any:
     import numpy as np
 
@@ -127,6 +144,7 @@ def _dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int,
 
 def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
     records: list[Dict[str, Any]] = []
+    selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
     for gp in result.get("grid", []) or []:
         records.append(
             {
@@ -135,13 +153,13 @@ def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
                 "mean_error": gp.mean_error,
                 "std_error": gp.std_error,
                 "best_error": getattr(gp, "best_error", gp.mean_error),
+                "selection_prediction_mode": selection_mode,
             }
         )
     return records
 
 
 def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], output_dir: Path) -> Dict[str, Any]:
-    """Convert optimizer output to JSON-serializable dict."""
     best = result["best"]
     best_error = float(getattr(best, "best_error", best.mean_error))
     refit_mean_error = float(getattr(best, "refit_mean_error", best.mean_error))
@@ -149,8 +167,12 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
     sample_errors = list(getattr(best, "sample_errors", []) or [])
     raw_step_ref = _dump_stream(getattr(best, "raw_step_results", None), output_dir, subject_id, "raw_step_results")
 
+    metrics_by_mode = getattr(best, "metrics_by_mode", None) or {}
+    selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
+    available_modes = sorted(metrics_by_mode.keys())
+
     data = {
-        "schema_version": 2,
+        "schema_version": 4,
         "subject_id": subject_id,
         "condition": condition,
         "best_params": best.params,
@@ -161,8 +183,10 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         "refit_std_error": refit_std_error,
         "n_repeats": getattr(best, "n_repeats", 1),
         "sample_errors": sample_errors,
-        "metrics": best.metrics,
-        "best_metrics": best.metrics,
+        "prediction_mode": result.get("selection_meta", {}).get("prediction_mode"),
+        "selection_prediction_mode": selection_mode,
+        "available_prediction_modes": available_modes,
+        "metrics_by_mode": metrics_by_mode,
         "param_grid": result.get("param_grid", {}),
         "best_step_results": getattr(best, "step_results", None),
         "strategy_counts_log": getattr(best, "strategy_counts_log", None),
@@ -212,6 +236,8 @@ def run_single_subject(
     max_trials: int | None,
     n_jobs_inner: int,
     keep_logs: bool,
+    prediction_mode: str,
+    selection_prediction_mode: str,
 ) -> None:
     opt = StateModelAMROptimizer(
         engine_config=engine_config,
@@ -219,7 +245,6 @@ def run_single_subject(
         amr_kwargs=amr_kwargs,
         n_jobs=n_jobs_inner,
     )
-    # Avoid repeated CSV I/O for every subject task inside worker processes.
     opt.learning_data = _get_learning_data(data_path)
 
     res: Dict[str, Any] = opt.optimize_subject(
@@ -231,6 +256,8 @@ def run_single_subject(
         stop_at=stop_at,
         max_trials=max_trials,
         keep_logs=keep_logs,
+        prediction_mode=prediction_mode,
+        selection_prediction_mode=selection_prediction_mode,
     )
 
     payload = serialize_result(subject_id, int(res["condition"]), res, output_dir)
@@ -241,7 +268,6 @@ def run_single_subject(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Batch AMR optimization (single YAML config)")
-    # Keep --opt-config as backward-compatible alias; unify UX to --config.
     p.add_argument("--config", "--opt-config", dest="config", required=True, type=Path, help="Optimization YAML config")
     return p.parse_args()
 
@@ -256,8 +282,8 @@ def main() -> None:
     engine_config = resolve_engine_config(cfg, cfg_path.parent)
     param_grid = resolve_param_grid(cfg)
     amr_kwargs = resolve_amr_kwargs(cfg)
+    prediction_mode, selection_prediction_mode = resolve_prediction_modes(cfg)
 
-    # Subjects
     subjects = cfg.get("subjects")
     if subjects is None:
         range_cfg = cfg.get("subject_range")
@@ -268,7 +294,6 @@ def main() -> None:
     else:
         subjects = [int(x) for x in subjects]
 
-    # Paths and runtime args
     data_path = _resolve_path(cfg_path.parent, cfg.get("data_path"), DEFAULT_DATA_PATH)
     output_dir = _resolve_path(cfg_path.parent, cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
     n_jobs_subjects = int(cfg.get("n_jobs_subjects", 2))
@@ -285,7 +310,6 @@ def main() -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Window size (scalar or per-subject list + per-subject overrides)
     if isinstance(raw_window_size, (list, tuple)):
         window_size_list = [int(x) for x in raw_window_size]
         if len(window_size_list) != len(subjects):
@@ -315,6 +339,8 @@ def main() -> None:
             max_trials=max_trials,
             n_jobs_inner=n_jobs_inner,
             keep_logs=keep_logs,
+            prediction_mode=prediction_mode,
+            selection_prediction_mode=selection_prediction_mode,
         )
         for sid in subjects
     )
