@@ -69,10 +69,21 @@ class ModelEval:
         """
         Compare smoothed posterior of true k and smoothed oral hits, filtering out empty trials.
         """
+        def _get_post_max(hypo_details, k_special):
+            """Support both int and str hypothesis keys after JSON round-trip."""
+            if not isinstance(hypo_details, dict):
+                return 0.0
+            entry = hypo_details.get(k_special)
+            if entry is None:
+                entry = hypo_details.get(str(k_special))
+            if not isinstance(entry, dict):
+                return 0.0
+            return entry.get('post_max', 0.0)
+
         def extract_model_ma(step_results, k_special, win):
             posts = []
             for sr in step_results:
-                p = sr['hypo_details'].get(k_special, {}).get('post_max', 0.0)
+                p = _get_post_max(sr.get('hypo_details', {}), k_special)
                 try:
                     p = float(p)
                 except (TypeError, ValueError):

@@ -139,10 +139,16 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
     refit_mean_error = float(getattr(best, "refit_mean_error", best.mean_error))
     refit_std_error = float(getattr(best, "refit_std_error", best.std_error))
     sample_errors = list(getattr(best, "sample_errors", []) or [])
-    raw_step_ref = _dump_stream(getattr(best, "raw_step_results", None), output_dir, subject_id, "raw_step_results")
+    raw_runs = getattr(best, "raw_runs", None)
+    if not raw_runs:
+        raise ValueError(
+            f"No run-level records available for subject {subject_id}. "
+            "Enable keep_logs to store per-run objects."
+        )
+    raw_runs_ref = _dump_stream(raw_runs, output_dir, subject_id, "raw_runs")
 
     data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "subject_id": subject_id,
         "condition": condition,
         "best_params": best.params,
@@ -162,7 +168,7 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         "prior_log": getattr(best, "prior_log", None),
         "representative_run_index": getattr(best, "representative_run_index", 0),
         "selection_meta": result.get("selection_meta", {}),
-        "raw_step_results_ref": raw_step_ref,
+        "raw_runs_ref": raw_runs_ref,
         "grid_errors": _build_grid_errors(result),
         # grid summary (compact)
         "grid_summary": [

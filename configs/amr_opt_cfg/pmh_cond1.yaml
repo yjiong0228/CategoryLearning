@@ -9,6 +9,11 @@ subjects: [1, 4, 7, 10, 13, 16, 19, 22]
 # Paths (relative to this YAML)
 data_path: ../../data/processed/Task2_processed.csv
 output_dir: ../../results/state-based-AMR-result/pmh/cond1
+oral:
+  mode: center # region
+  center_data_path: ../../data/processed/Task2_processed.csv
+  region_data_path: ../../data/processed/Task2_processed_new.csv
+  # region_n_samples: 100
 
 # Parallelism
 # Run all 8 subjects in parallel and give each 12 inner workers (≈96 cores total)

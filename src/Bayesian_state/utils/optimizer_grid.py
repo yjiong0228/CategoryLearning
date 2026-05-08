@@ -18,6 +18,30 @@ from .optimizer_common import (
 )
 
 
+def _build_run_record(
+    run: SingleRunResult,
+    run_index: int,
+    subject_id: int,
+    condition: int,
+    window_size: int,
+    phase: str,
+) -> Dict[str, Any]:
+    return {
+        "run_index": int(run_index),
+        "subject_id": int(subject_id),
+        "condition": int(condition),
+        "phase": str(phase),
+        "window_size": int(window_size),
+        "params": dict(run.params),
+        "mean_error": float(run.mean_error),
+        "metrics": run.metrics,
+        "step_log": run.step_log,
+        "posterior_log": run.posterior_log,
+        "prior_log": run.prior_log,
+        "strategy_counts_log": run.strategy_counts_log,
+    }
+
+
 class StateModelGridOptimizer(BaseStateOptimizer):
     """
     Grid-search helper for StateModel parameters with parallel execution support.
@@ -102,6 +126,17 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             errors = [r.mean_error for r in runs]
             mean_error = float(np.mean(errors))
             std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
+            run_records = [
+                _build_run_record(
+                    run=r,
+                    run_index=i,
+                    subject_id=subject_id,
+                    condition=condition,
+                    window_size=window_size,
+                    phase="grid",
+                )
+                for i, r in enumerate(runs)
+            ]
             
             # Keep parameter selection by mean error, but keep run outputs from the minimum-error run.
             best_run_idx = int(np.argmin(errors))
@@ -120,6 +155,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 best_prior = None
                 best_strategy_log = None
                 best_step_log = None
+                run_records = None
                 raw_step_results = None
 
             final_grid_results.append(GridPointResult(
@@ -130,6 +166,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 prior_log=best_prior,
                 step_results=best_step_log,
                 strategy_counts_log=best_strategy_log,
+                raw_runs=run_records,
                 raw_step_results=raw_step_results,
                 sample_errors=sample_errors,
                 best_error=float(errors[best_run_idx]),
@@ -182,6 +219,17 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_refit_strategy = best_refit.strategy_counts_log
             best_refit_step = best_refit.step_log
             refit_sample_errors = [float(e) for e in refit_errors]
+            refit_run_records = [
+                _build_run_record(
+                    run=r,
+                    run_index=i,
+                    subject_id=subject_id,
+                    condition=condition,
+                    window_size=window_size,
+                    phase="refit",
+                )
+                for i, r in enumerate(refit_results)
+            ]
             refit_raw_steps = [r.step_log for r in refit_results if r.step_log is not None]
 
             if not keep_logs:
@@ -189,6 +237,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 best_refit_prior = None
                 best_refit_strategy = None
                 best_refit_step = None
+                refit_run_records = None
                 refit_raw_steps = None
             
             # Update best_result
@@ -199,6 +248,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_result.prior_log = best_refit_prior
             best_result.step_results = best_refit_step
             best_result.strategy_counts_log = best_refit_strategy
+            best_result.raw_runs = refit_run_records
             best_result.raw_step_results = refit_raw_steps
             best_result.sample_errors = refit_sample_errors
             best_result.best_error = float(refit_errors[best_refit_idx])
@@ -216,6 +266,8 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 best_result.refit_std_error = float(best_result.std_error)
             if best_result.sample_errors is None:
                 best_result.sample_errors = [float(best_result.mean_error)]
+            if best_result.raw_runs is None:
+                best_result.raw_runs = []
             if best_result.representative_run_index is None:
                 best_result.representative_run_index = 0
 

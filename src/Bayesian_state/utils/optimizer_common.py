@@ -22,6 +22,7 @@ class GridPointResult:
     prior_log: Optional[Sequence[np.ndarray]] = None
     step_results: Optional[Sequence[Dict[str, Any]]] = None
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
+    raw_runs: Optional[Sequence[Dict[str, Any]]] = None
     raw_step_results: Optional[Sequence[Sequence[Dict[str, Any]]]] = None
     sample_errors: Optional[Sequence[float]] = None
     best_error: Optional[float] = None
@@ -122,6 +123,7 @@ def prepare_trial_sequence(
 def compute_prediction_metrics(
     model,
     post_log: Sequence[np.ndarray],
+    step_log: Sequence[Dict[str, Any]],
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
@@ -144,20 +146,44 @@ def compute_prediction_metrics(
         post_arr = post_arr.reshape(1, -1)
 
     n_trials = len(feedback)
+    if window_size <= 0:
+        raise ValueError(f"window_size must be positive, got {window_size}")
+    min_trials_for_window = window_size + 1
+    if n_trials < min_trials_for_window:
+        raise ValueError(
+            "Not enough trials for sliding-window metrics with t-1 posterior alignment: "
+            f"need at least {min_trials_for_window} trials, got {n_trials}"
+        )
     if post_arr.shape[0] != n_trials:
         raise ValueError(
             "Post log length does not match number of trials: "
             f"{post_arr.shape[0]} vs {n_trials}"
         )
+    if len(step_log) != n_trials:
+        raise ValueError(
+            "Step log length does not match number of trials: "
+            f"{len(step_log)} vs {n_trials}"
+        )
 
     true_acc = (feedback == 1.0).astype(float)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
 
-    for trial_idx in range(n_trials):
-        current_post = post_arr[trial_idx]
+    n_features = int(stimulus.shape[1])
+    for trial_idx in range(1, n_trials):
+        current_post = post_arr[trial_idx - 1]
+        step_item = step_log[trial_idx]
+        if "perceived_stimulus" not in step_item:
+            raise ValueError(f"Missing perceived_stimulus in step log at trial index {trial_idx}")
+        perceived_stimulus = np.asarray(step_item["perceived_stimulus"], dtype=float)
+        if perceived_stimulus.ndim != 1 or perceived_stimulus.shape[0] != n_features:
+            raise ValueError(
+                "Invalid perceived_stimulus shape at trial index "
+                f"{trial_idx}: expected ({n_features},), got {perceived_stimulus.shape}"
+            )
+
         weighted_prob = 0.0
         trial_slice = (
-            [stimulus[trial_idx]],
+            [perceived_stimulus],
             [choices[trial_idx]],
             [feedback[trial_idx]],
             [categories[trial_idx]],
@@ -179,7 +205,7 @@ def compute_prediction_metrics(
     sliding_pred_acc: List[float] = []
     sliding_pred_std: List[float] = []
 
-    for start in range(0, n_trials - window_size + 1):
+    for start in range(1, n_trials - window_size + 1):
         end = start + window_size
         true_window = true_acc[start:end]
         pred_window = pred_acc[start:end]
@@ -253,7 +279,10 @@ def evaluate_state_model_run(
 
     model.precompute_distances(stimulus)
     posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
-    step_log = getattr(model, "step_log", None) if include_step_log else None
+    all_step_log = getattr(model, "step_log", None)
+    if all_step_log is None:
+        raise ValueError("StateModel.step_log is missing after fit_step_by_step")
+    step_log = all_step_log if include_step_log else None
 
     strategy_log = None
     hypo_mod = getattr(model.engine, "modules", {}).get("hypo_transitions_mod") if hasattr(model, "engine") else None
@@ -263,6 +292,7 @@ def evaluate_state_model_run(
     metrics = compute_prediction_metrics(
         model,
         posterior_log,
+        all_step_log,
         stimulus,
         choices,
         feedback,

@@ -8,6 +8,11 @@ subjects: [3, 6, 9, 12, 15, 18, 21, 24]
 # Paths (relative to this YAML)
 data_path: ../../data/processed/Task2_processed.csv
 output_dir: ../../results/state-based-AMR-result/pmh/cond3
+oral:
+  mode: center # region
+  center_data_path: ../../data/processed/Task2_processed.csv
+  region_data_path: ../../data/processed/Task2_processed_new.csv
+  # region_n_samples: 100
 
 # Parallelism
 n_jobs_subjects: 8
