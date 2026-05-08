@@ -33,6 +33,13 @@ class LikelihoodModule(BaseModule):
         # Get the list of hypothesis indices from the engine's hypothesis set
         self.h_indices = list(self.engine.hypotheses_set)
         self.kwargs = kwargs
+        self.distance_mode = str(kwargs.get("distance_mode", "prototype"))
+        if self.distance_mode not in ("prototype", "boundary"):
+            raise ValueError(
+                f"Unsupported distance_mode '{self.distance_mode}'. "
+                "Expected 'prototype' or 'boundary'."
+            )
+        self.engine.distance_mode = self.distance_mode
         
         # Default global beta (used as fallback if no BetaModule is present)
         self.default_beta = float(kwargs.get('beta', 10.0))
@@ -84,8 +91,13 @@ class LikelihoodModule(BaseModule):
             data=single_trial_data,
             beta=beta,
             use_cached_dist=kwargs.get('use_cached_dist', False),
+            distance_mode=self.distance_mode,
             normalized=True,
-            **{k: v for k, v in self.kwargs.items() if k != 'beta'}
+            **{
+                k: v
+                for k, v in self.kwargs.items()
+                if k not in ("beta", "distance_mode")
+            }
         )
 
         # Squeeze the result to a 1D array of shape (n_hypos,)

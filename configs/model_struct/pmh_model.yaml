@@ -20,7 +20,7 @@ modules:
     } 
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {use_boundary: false}
+    kwargs: {distance_mode: prototype}
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs: {

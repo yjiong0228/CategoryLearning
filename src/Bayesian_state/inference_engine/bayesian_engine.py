@@ -146,6 +146,7 @@ class BaseEngine:
         self.state = None
         self.observation = None  # 记录当前观测
         self.partition = kwargs.get('partition', None) # FIXME: partition 这样写吗？
+        self.distance_mode = "prototype"
         
         # Per-hypothesis beta array (inverse temperature for likelihood softmax)
         # Initialized as None; will be set by BetaModule if present
@@ -248,6 +249,9 @@ class BaseEngine:
             LOGGER.info(f"  - Module '{name}' registered as 'self.{name}'.")
             # 添加到模块列表
             self.modules[name] = module_instance
+        likelihood_mod = self.modules.get("likelihood_mod")
+        if likelihood_mod is not None and hasattr(likelihood_mod, "distance_mode"):
+            self.distance_mode = likelihood_mod.distance_mode
         # DEBUG
         #print("All modules built successfully.")
         #print("modules", self.modules, s=7)

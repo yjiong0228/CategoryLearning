@@ -82,28 +82,19 @@ class BetaModule(BaseModule):
         """
         Determine which category a stimulus belongs to under a given hypothesis.
         
-        Uses the partition model's **prototype-based** method (aligned with the
-        likelihood calculation) to compute which category is closest to the
-        stimulus.
+        Uses partition's unified assignment entry so the behavior is aligned
+        with the configured likelihood distance mode.
         """
         partition = getattr(self.engine, "partition", None)
-        if partition is None or not hasattr(partition, "prototypes_np"):
+        if partition is None or not hasattr(partition, "get_category_assignment"):
             return 0
-
-        protos = partition.prototypes_np
-        if hypo >= len(protos):
-            return 0
-
-        stimulus_vec = np.asarray(stimulus, dtype=float).flatten()
-        proto_block = protos[hypo]
-        if proto_block.ndim == 2:
-            proto_block = proto_block[np.newaxis, ...]
-        elif proto_block.ndim != 3:
-            return 0
-
-        distances = np.linalg.norm(proto_block - stimulus_vec, axis=-1)  # [n_protos, n_cats]
-        typical = np.min(distances, axis=0)  # [n_cats]
-        return int(np.argmin(typical))
+        distance_mode = getattr(self.engine, "distance_mode", "prototype")
+        return partition.get_category_assignment(
+            hypo=hypo,
+            stimulus=np.asarray(stimulus, dtype=float),
+            distance_mode=distance_mode,
+            beta=1.0,
+        )
     
     def initialize_beta_for_hypotheses(self, 
                                        indices: np.ndarray,

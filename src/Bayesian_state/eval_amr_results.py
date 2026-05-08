@@ -1,17 +1,4 @@
-"""Aggregate per-subject AMR results and generate evaluation plots.
-
-Usage example:
-
-    conda activate cate_learn
-    python -m src.Bayesian_state.eval_amr_results \
-        --input-dir results/state-based-AMR-result/pmh/cond1 \
-        --aggregate-output results/state-based-AMR-result/pmh/cond1_agg.json \
-        --plot-accuracy results/state-based-AMR-result/pmh/cond1_accuracy.png
-
-- Aggregates subject_*.json in the input directory (same format as run_amr_optimization outputs).
-- Saves aggregated JSON.
-- Runs ModelEval.plot_accuracy_comparison to produce accuracy figure.
-"""
+"""Aggregate per-subject AMR results and generate evaluation plots."""
 
 from __future__ import annotations
 
@@ -24,7 +11,6 @@ import matplotlib
 import pandas as pd
 import yaml
 
-# Use non-interactive backend for batch plotting
 matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.model_evaluation import ModelEval
@@ -36,6 +22,7 @@ COMMON_REQUIRED_COLS = ("iSub", "condition", "choice")
 CENTER_REQUIRED_COLS = ("feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue")
 REGION_REQUIRED_COLS = ("A", "b")
 DEFAULT_REGION_N_SAMPLES = 1000
+DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
 
 
 def load_json(path: Path) -> dict:
@@ -48,6 +35,27 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _resolve_eval_metrics(payload: Dict[str, Any], eval_prediction_mode: str) -> Dict[str, Any]:
+    metrics_by_mode = payload.get("metrics_by_mode")
+    if not isinstance(metrics_by_mode, dict) or not metrics_by_mode:
+        raise ValueError(
+            f"subject_{payload.get('subject_id')} missing metrics_by_mode. "
+            "Please regenerate results with schema v4."
+        )
+    if eval_prediction_mode not in metrics_by_mode:
+        available = sorted(metrics_by_mode.keys())
+        raise ValueError(
+            f"subject_{payload.get('subject_id')} does not include eval mode '{eval_prediction_mode}'. "
+            f"Available: {available}"
+        )
+    metrics = metrics_by_mode[eval_prediction_mode]
+    if not isinstance(metrics, dict):
+        raise ValueError(
+            f"Invalid metrics_by_mode['{eval_prediction_mode}'] for subject_{payload.get('subject_id')}"
+        )
+    return metrics
 
 
 def _strategy_to_best_step_amount(strategy_step: Dict[str, Any]) -> Dict[str, List[float]]:
@@ -95,20 +103,19 @@ def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return step_results
 
 
-def aggregate(input_dir: Path) -> dict:
-    """Aggregate subject_*.json files into ModelEval-friendly structure."""
+def aggregate(input_dir: Path, eval_prediction_mode: str) -> dict:
     results = {}
     for file in sorted(input_dir.glob("subject_*.json")):
         payload = load_json(file)
         sid = int(payload["subject_id"])
-        metrics = payload.get("best_metrics") or payload.get("metrics", {}) or {}
+        metrics = _resolve_eval_metrics(payload, eval_prediction_mode)
         step_results = _build_step_results(payload)
         results[sid] = {
             "condition": payload.get("condition"),
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
-            "mean_error": payload.get("best_error", payload.get("mean_error")),
+            "mean_error": metrics.get("mean_error", payload.get("best_error", payload.get("mean_error"))),
             "std_error": payload.get("refit_std_error", payload.get("std_error")),
             "best_params": payload.get("best_params"),
             "best_step_results": step_results,
@@ -118,6 +125,8 @@ def aggregate(input_dir: Path) -> dict:
             "prior_log": payload.get("prior_log"),
             "sample_errors": payload.get("sample_errors"),
             "selection_meta": payload.get("selection_meta"),
+            "eval_prediction_mode": eval_prediction_mode,
+            "available_prediction_modes": payload.get("available_prediction_modes", []),
         }
     if not results:
         raise RuntimeError(f"No subject_*.json found in {input_dir}")
@@ -127,55 +136,15 @@ def aggregate(input_dir: Path) -> dict:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Aggregate AMR results and plot evaluation charts")
     p.add_argument("--input-dir", type=Path, required=True, help="Directory containing subject_*.json")
-    p.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Optional optimization YAML to resolve oral config defaults",
-    )
-    p.add_argument(
-        "--aggregate-output",
-        type=Path,
-        default=None,
-        help="Where to save aggregated JSON (default: <input-dir>/all_subjects.json)",
-    )
-    p.add_argument(
-        "--plot-accuracy",
-        type=Path,
-        default=None,
-        help="Where to save accuracy comparison plot (default: <input-dir>/accuracy.png)",
-    )
-    p.add_argument(
-        "--plot-oral",
-        type=Path,
-        default=None,
-        help="Optional: save oral vs model k comparison (requires best_step_results)",
-    )
-    p.add_argument(
-        "--plot-cluster",
-        type=Path,
-        default=None,
-        help="Optional: save cluster amount comparison (requires best_step_results)",
-    )
-    p.add_argument(
-        "--oral-mode",
-        type=str,
-        choices=ORAL_MODE_CHOICES,
-        default=None,
-        help="Oral encoding mode. Overrides config oral.mode when provided.",
-    )
-    p.add_argument(
-        "--oral-data",
-        type=Path,
-        default=None,
-        help="Path to Task2 processed CSV with oral fields. Overrides config oral.*_data_path.",
-    )
-    p.add_argument(
-        "--oral-region-n-samples",
-        type=int,
-        default=None,
-        help="Monte Carlo samples per overlap estimate for region mode. Overrides config oral.region_n_samples.",
-    )
+    p.add_argument("--eval-prediction-mode", type=str, default=DEFAULT_EVAL_PREDICTION_MODE)
+    p.add_argument("--config", type=Path, default=None, help="Optional optimization YAML to resolve oral config defaults")
+    p.add_argument("--aggregate-output", type=Path, default=None)
+    p.add_argument("--plot-accuracy", type=Path, default=None)
+    p.add_argument("--plot-oral", type=Path, default=None)
+    p.add_argument("--plot-cluster", type=Path, default=None)
+    p.add_argument("--oral-mode", type=str, choices=ORAL_MODE_CHOICES, default=None)
+    p.add_argument("--oral-data", type=Path, default=None)
+    p.add_argument("--oral-region-n-samples", type=int, default=None)
     return p.parse_args()
 
 
@@ -207,10 +176,7 @@ def _resolve_oral_settings(args: argparse.Namespace) -> tuple[str, Path, int]:
                 if raw_mode in ORAL_MODE_CHOICES:
                     config_mode = raw_mode
                 else:
-                    raise ValueError(
-                        f"Invalid oral.mode '{raw_mode}' in {config_path}. "
-                        f"Supported values: {ORAL_MODE_CHOICES}"
-                    )
+                    raise ValueError(f"Invalid oral.mode '{raw_mode}' in {config_path}.")
             if config_mode is not None:
                 data_key = f"{config_mode}_data_path"
                 raw_data_path = oral_cfg.get(data_key)
@@ -222,13 +188,9 @@ def _resolve_oral_settings(args: argparse.Namespace) -> tuple[str, Path, int]:
 
     final_mode = args.oral_mode or config_mode
     if final_mode is None:
-        raise ValueError(
-            "Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML."
-        )
+        raise ValueError("Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML.")
 
-    final_data_path = args.oral_data
-    if final_data_path is None:
-        final_data_path = config_data_path
+    final_data_path = args.oral_data or config_data_path
     if final_data_path is None:
         raise ValueError(
             f"Oral data path is required for mode='{final_mode}'. "
@@ -256,25 +218,17 @@ def _build_oral_hits(
         required_cols = COMMON_REQUIRED_COLS + CENTER_REQUIRED_COLS
         missing = [col for col in required_cols if col not in oral_df.columns]
         if missing:
-            raise ValueError(
-                f"Oral center evaluation failed for {oral_data_path}: "
-                f"missing columns {missing}."
-            )
+            raise ValueError(f"Oral center evaluation failed for {oral_data_path}: missing columns {missing}.")
         oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
     else:
         required_cols = COMMON_REQUIRED_COLS + REGION_REQUIRED_COLS
         missing = [col for col in required_cols if col not in oral_df.columns]
         if missing:
-            raise ValueError(
-                f"Oral region evaluation failed for {oral_data_path}: "
-                f"missing columns {missing}."
-            )
+            raise ValueError(f"Oral region evaluation failed for {oral_data_path}: missing columns {missing}.")
         oral_hits = Oral_region_analysis().get_oral_hypo_hits(oral_df, n_samples=region_n_samples)
 
     if not oral_hits:
-        raise RuntimeError(
-            f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}."
-        )
+        raise RuntimeError(f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}.")
     return oral_hits
 
 
@@ -284,29 +238,21 @@ def main() -> None:
     if not input_dir.is_dir():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
 
-    # Defaults based on input_dir
     agg_out = args.aggregate_output or (input_dir / "all_subjects.json")
     plot_out = args.plot_accuracy or (input_dir / "accuracy.png")
     plot_oral = args.plot_oral or (input_dir / "oral_vs_model.png")
     plot_cluster = args.plot_cluster or (input_dir / "cluster_amount.png")
     oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
-    print(
-        f"Oral evaluation mode={oral_mode}, oral_data={oral_data_path}, "
-        f"region_n_samples={oral_region_n_samples}"
-    )
 
-    # Aggregate per-subject results
-    aggregated = aggregate(input_dir)
+    aggregated = aggregate(input_dir, eval_prediction_mode=args.eval_prediction_mode)
     agg_out.parent.mkdir(parents=True, exist_ok=True)
     agg_out.write_text(json.dumps(aggregated, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Aggregated {len(aggregated)} subjects -> {agg_out}")
 
-    # Plot accuracy comparison
     me = ModelEval()
     me.plot_accuracy_comparison(aggregated, save_path=str(plot_out))
     print(f"Saved accuracy plot -> {plot_out}")
 
-    # Optional plots when step logs exist
     has_steps = any(v.get("best_step_results") for v in aggregated.values())
     if not has_steps:
         raise RuntimeError("No best_step_results found; cannot generate cluster/oral plots.")

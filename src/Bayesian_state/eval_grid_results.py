@@ -1,16 +1,4 @@
-"""Aggregate per-subject GRID results and generate evaluation plots.
-
-Usage example:
-
-    conda activate cate_learn
-    python -m src.Bayesian_state.eval_grid_results \
-        --input-dir results/state-based-grid-result/pmh/cond3
-
-This script reads subject_*.json produced by run_grid_optimization.py,
-adapts them to ModelEval's expected schema, saves an aggregated JSON,
-and outputs plots (accuracy, grid, posterior, cluster dynamics, oral alignment)
-when required fields are available.
-"""
+"""Aggregate per-subject GRID results and generate evaluation plots."""
 
 from __future__ import annotations
 
@@ -23,7 +11,6 @@ import matplotlib
 import pandas as pd
 import yaml
 
-# Use non-interactive backend for batch plotting
 matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.model_evaluation import ModelEval
@@ -35,6 +22,7 @@ COMMON_REQUIRED_COLS = ("iSub", "condition", "choice")
 CENTER_REQUIRED_COLS = ("feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue")
 REGION_REQUIRED_COLS = ("A", "b")
 DEFAULT_REGION_N_SAMPLES = 1000
+DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -49,13 +37,28 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _build_grid_errors(payload: Dict[str, Any]) -> Dict[Tuple[float, float], List[float]]:
-    """Adapt result JSON to ModelEval grid_errors format.
+def _resolve_eval_metrics(payload: Dict[str, Any], eval_prediction_mode: str) -> Dict[str, Any]:
+    metrics_by_mode = payload.get("metrics_by_mode")
+    if not isinstance(metrics_by_mode, dict) or not metrics_by_mode:
+        raise ValueError(
+            f"subject_{payload.get('subject_id')} missing metrics_by_mode. "
+            "Please regenerate results with schema v4."
+        )
+    if eval_prediction_mode not in metrics_by_mode:
+        available = sorted(metrics_by_mode.keys())
+        raise ValueError(
+            f"subject_{payload.get('subject_id')} does not include eval mode '{eval_prediction_mode}'. "
+            f"Available: {available}"
+        )
+    metrics = metrics_by_mode[eval_prediction_mode]
+    if not isinstance(metrics, dict):
+        raise ValueError(
+            f"Invalid metrics_by_mode['{eval_prediction_mode}'] for subject_{payload.get('subject_id')}"
+        )
+    return metrics
 
-    Priority:
-    1) schema v2 grid_errors entries with explicit error samples
-    2) legacy grid_summary mean-only entries
-    """
+
+def _build_grid_errors(payload: Dict[str, Any]) -> Dict[Tuple[float, float], List[float]]:
     grid_errors: Dict[Tuple[float, float], List[float]] = {}
 
     raw_grid_errors = payload.get("grid_errors")
@@ -86,11 +89,6 @@ def _build_grid_errors(payload: Dict[str, Any]) -> Dict[Tuple[float, float], Lis
 
 
 def _strategy_to_best_step_amount(strategy_step: Dict[str, Any]) -> Dict[str, List[float]]:
-    """Convert strategy_counts_log format into best_step_amount-like format.
-
-    plot_cluster_amount expects values as lists and relies on key names containing
-    'posterior' plus a 'random' channel.
-    """
     converted: Dict[str, List[float]] = {}
     for key, value in (strategy_step or {}).items():
         if key == "active_total":
@@ -104,12 +102,6 @@ def _strategy_to_best_step_amount(strategy_step: Dict[str, Any]) -> Dict[str, Li
 
 
 def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Build/normalize step_results for ModelEval.
-
-    Priority:
-    1) best_step_results directly from payload
-    2) fallback from posterior_log (+ optional strategy_counts_log)
-    """
     existing = payload.get("best_step_results") or payload.get("step_results")
     if isinstance(existing, list) and existing:
         return existing
@@ -141,15 +133,15 @@ def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return step_results
 
 
-def aggregate_grid_results(input_dir: Path) -> Dict[int, Dict[str, Any]]:
+def aggregate_grid_results(input_dir: Path, eval_prediction_mode: str) -> Dict[int, Dict[str, Any]]:
     results: Dict[int, Dict[str, Any]] = {}
 
     for file in sorted(input_dir.glob("subject_*.json")):
         payload = load_json(file)
         sid = int(payload["subject_id"])
-        metrics = payload.get("best_metrics") or payload.get("metrics", {}) or {}
+        metrics = _resolve_eval_metrics(payload, eval_prediction_mode)
         step_results = _build_step_results(payload)
-        mean_error = payload.get("best_error", payload.get("mean_error"))
+        mean_error = metrics.get("mean_error", payload.get("best_error", payload.get("mean_error")))
         std_error = payload.get("refit_std_error", payload.get("std_error"))
 
         results[sid] = {
@@ -167,6 +159,8 @@ def aggregate_grid_results(input_dir: Path) -> Dict[int, Dict[str, Any]]:
             "prior_log": payload.get("prior_log"),
             "sample_errors": payload.get("sample_errors"),
             "selection_meta": payload.get("selection_meta"),
+            "eval_prediction_mode": eval_prediction_mode,
+            "available_prediction_modes": payload.get("available_prediction_modes", []),
             "grid_errors": _build_grid_errors(payload),
             "grid_summary": payload.get("grid_summary", []),
         }
@@ -179,48 +173,18 @@ def aggregate_grid_results(input_dir: Path) -> Dict[int, Dict[str, Any]]:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Aggregate GRID results and plot evaluation charts")
     p.add_argument("--input-dir", type=Path, required=True, help="Directory containing subject_*.json")
-    p.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Optional optimization YAML to resolve oral config defaults",
-    )
-    p.add_argument(
-        "--aggregate-output",
-        type=Path,
-        default=None,
-        help="Where to save aggregated JSON (default: <input-dir>/all_subjects.json)",
-    )
-    p.add_argument(
-        "--plots-dir",
-        type=Path,
-        default=None,
-        help="Directory to save generated plots (default: <input-dir>/plots)",
-    )
-    p.add_argument("--plot-accuracy", type=Path, default=None, help="Accuracy plot path")
-    p.add_argument("--plot-grid", type=Path, default=None, help="Error grid plot path")
-    p.add_argument("--plot-posterior", type=Path, default=None, help="Posterior plot path")
-    p.add_argument("--plot-cluster", type=Path, default=None, help="Cluster dynamics plot path")
-    p.add_argument("--plot-oral", type=Path, default=None, help="Oral-vs-model plot path")
-    p.add_argument(
-        "--oral-mode",
-        type=str,
-        choices=ORAL_MODE_CHOICES,
-        default=None,
-        help="Oral encoding mode. Overrides config oral.mode when provided.",
-    )
-    p.add_argument(
-        "--oral-data",
-        type=Path,
-        default=None,
-        help="Path to Task2 processed CSV with oral fields. Overrides config oral.*_data_path.",
-    )
-    p.add_argument(
-        "--oral-region-n-samples",
-        type=int,
-        default=None,
-        help="Monte Carlo samples per overlap estimate for region mode. Overrides config oral.region_n_samples.",
-    )
+    p.add_argument("--eval-prediction-mode", type=str, default=DEFAULT_EVAL_PREDICTION_MODE)
+    p.add_argument("--config", type=Path, default=None, help="Optional optimization YAML to resolve oral config defaults")
+    p.add_argument("--aggregate-output", type=Path, default=None)
+    p.add_argument("--plots-dir", type=Path, default=None)
+    p.add_argument("--plot-accuracy", type=Path, default=None)
+    p.add_argument("--plot-grid", type=Path, default=None)
+    p.add_argument("--plot-posterior", type=Path, default=None)
+    p.add_argument("--plot-cluster", type=Path, default=None)
+    p.add_argument("--plot-oral", type=Path, default=None)
+    p.add_argument("--oral-mode", type=str, choices=ORAL_MODE_CHOICES, default=None)
+    p.add_argument("--oral-data", type=Path, default=None)
+    p.add_argument("--oral-region-n-samples", type=int, default=None)
     return p.parse_args()
 
 
@@ -233,7 +197,6 @@ def _has_steps(aggregated: Dict[int, Dict[str, Any]]) -> bool:
 
 
 def _serialize_grid_errors(grid_errors: Dict[Tuple[float, float], List[float]]) -> Dict[str, List[float]]:
-    """Make grid_errors JSON friendly by stringifying tuple keys."""
     return {f"gamma={g},w0={w0}": errs for (g, w0), errs in grid_errors.items()}
 
 
@@ -265,10 +228,7 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
                 if raw_mode in ORAL_MODE_CHOICES:
                     config_mode = raw_mode
                 else:
-                    raise ValueError(
-                        f"Invalid oral.mode '{raw_mode}' in {config_path}. "
-                        f"Supported values: {ORAL_MODE_CHOICES}"
-                    )
+                    raise ValueError(f"Invalid oral.mode '{raw_mode}' in {config_path}.")
             if config_mode is not None:
                 data_key = f"{config_mode}_data_path"
                 raw_data_path = oral_cfg.get(data_key)
@@ -280,13 +240,9 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
 
     final_mode = args.oral_mode or config_mode
     if final_mode is None:
-        raise ValueError(
-            "Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML."
-        )
+        raise ValueError("Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML.")
 
-    final_data_path = args.oral_data
-    if final_data_path is None:
-        final_data_path = config_data_path
+    final_data_path = args.oral_data or config_data_path
     if final_data_path is None:
         raise ValueError(
             f"Oral data path is required for mode='{final_mode}'. "
@@ -314,25 +270,17 @@ def _build_oral_hits(
         required_cols = COMMON_REQUIRED_COLS + CENTER_REQUIRED_COLS
         missing = [col for col in required_cols if col not in oral_df.columns]
         if missing:
-            raise ValueError(
-                f"Oral center evaluation failed for {oral_data_path}: "
-                f"missing columns {missing}."
-            )
+            raise ValueError(f"Oral center evaluation failed for {oral_data_path}: missing columns {missing}.")
         oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
     else:
         required_cols = COMMON_REQUIRED_COLS + REGION_REQUIRED_COLS
         missing = [col for col in required_cols if col not in oral_df.columns]
         if missing:
-            raise ValueError(
-                f"Oral region evaluation failed for {oral_data_path}: "
-                f"missing columns {missing}."
-            )
+            raise ValueError(f"Oral region evaluation failed for {oral_data_path}: missing columns {missing}.")
         oral_hits = Oral_region_analysis().get_oral_hypo_hits(oral_df, n_samples=region_n_samples)
 
     if not oral_hits:
-        raise RuntimeError(
-            f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}."
-        )
+        raise RuntimeError(f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}.")
     return oral_hits
 
 
@@ -352,12 +300,8 @@ def main() -> None:
     plot_cluster = args.plot_cluster or (plots_dir / "cluster_amount.png")
     plot_oral = args.plot_oral or (plots_dir / "oral_vs_model.png")
     oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
-    print(
-        f"Oral evaluation mode={oral_mode}, oral_data={oral_data_path}, "
-        f"region_n_samples={oral_region_n_samples}"
-    )
 
-    aggregated = aggregate_grid_results(input_dir)
+    aggregated = aggregate_grid_results(input_dir, eval_prediction_mode=args.eval_prediction_mode)
     aggregated_serializable = {
         sid: {**info, "grid_errors": _serialize_grid_errors(info.get("grid_errors", {}))}
         for sid, info in aggregated.items()
@@ -379,9 +323,7 @@ def main() -> None:
         print("No grid data found; skipping error grid plot.")
 
     if not _has_steps(aggregated):
-        raise RuntimeError(
-            "No step-level logs found in aggregated results; cannot generate posterior/cluster/oral plots."
-        )
+        raise RuntimeError("No step-level logs found in aggregated results; cannot generate posterior/cluster/oral plots.")
 
     me.plot_posterior_probabilities(aggregated, save_path=str(plot_posterior))
     print(f"Saved posterior plot -> {plot_posterior}")

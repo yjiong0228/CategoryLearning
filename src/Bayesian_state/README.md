@@ -197,3 +197,78 @@ Error policy:
 - Missing oral file raises `FileNotFoundError`.
 - Empty oral hit results raise `RuntimeError`.
 - Grid/AMR evaluation no longer silently skips oral plotting when oral is requested.
+
+## Prediction Mode (Dual Path)
+
+`Bayesian_state` now supports configurable prediction paths for accuracy metrics:
+
+- `prediction_mode: posterior_t_minus_1`
+- `prediction_mode: prior_t`
+- `prediction_mode: both`
+
+Optional selector for optimization target:
+
+- `selection_prediction_mode: posterior_t_minus_1 | prior_t`
+
+Rules:
+
+- If `prediction_mode` is `posterior_t_minus_1` or `prior_t`, `selection_prediction_mode` must be the same mode.
+- If `prediction_mode` is `both`, both metric paths are computed in one run and stored side-by-side.
+
+Evaluation scripts can choose which path to read:
+
+- `python -m src.Bayesian_state.eval_grid_results --input-dir <dir> --eval-prediction-mode prior_t`
+- `python -m src.Bayesian_state.eval_amr_results --input-dir <dir> --eval-prediction-mode posterior_t_minus_1`
+
+### Result Schema Notes (`subject_<id>.json`)
+
+Important fields:
+
+- `prediction_mode`
+- `selection_prediction_mode`
+- `available_prediction_modes`
+- `metrics_by_mode`
+
+Example shape:
+
+```json
+{
+  "prediction_mode": "both",
+  "selection_prediction_mode": "posterior_t_minus_1",
+  "available_prediction_modes": ["posterior_t_minus_1", "prior_t"],
+  "metrics_by_mode": {
+    "posterior_t_minus_1": {
+      "mean_error": 0.123,
+      "sliding_true_acc": [...],
+      "sliding_pred_acc": [...],
+      "sliding_pred_acc_std": [...],
+      "pred_acc": [...],
+      "true_acc": [...]
+    },
+    "prior_t": {
+      "mean_error": 0.118,
+      "sliding_true_acc": [...],
+      "sliding_pred_acc": [...],
+      "sliding_pred_acc_std": [...],
+      "pred_acc": [...],
+      "true_acc": [...]
+    }
+  }
+}
+```
+
+`metrics` / `best_metrics` are no longer emitted in the new schema.
+
+## Likelihood Distance Mode
+
+`LikelihoodModule` supports a single explicit config key:
+
+- `modules.likelihood_mod.kwargs.distance_mode: prototype | boundary`
+
+This mode is used consistently across:
+
+- trial likelihood updates in inference
+- prediction metric computation in optimization/evaluation
+- category assignment logic inside `BetaModule`
+
+Note: `oral_process` center/region analyses are standalone analysis paths and are not controlled by `distance_mode`.

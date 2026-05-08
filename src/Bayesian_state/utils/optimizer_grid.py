@@ -15,6 +15,7 @@ from .optimizer_common import (
     GridPointResult,
     SingleRunResult,
     evaluate_state_model_run,
+    PREDICTION_MODE_POSTERIOR_T_MINUS_1,
 )
 
 
@@ -34,7 +35,8 @@ def _build_run_record(
         "window_size": int(window_size),
         "params": dict(run.params),
         "mean_error": float(run.mean_error),
-        "metrics": run.metrics,
+        "selection_prediction_mode": str(run.selection_prediction_mode),
+        "metrics_by_mode": run.metrics_by_mode,
         "step_log": run.step_log,
         "posterior_log": run.posterior_log,
         "prior_log": run.prior_log,
@@ -43,10 +45,7 @@ def _build_run_record(
 
 
 class StateModelGridOptimizer(BaseStateOptimizer):
-    """
-    Grid-search helper for StateModel parameters with parallel execution support.
-    """
-
+    """Grid-search helper for StateModel parameters with parallel execution support."""
 
     def optimize_subject(
         self,
@@ -58,31 +57,17 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         stop_at: float = 1.0,
         max_trials: Optional[int] = None,
         keep_logs: bool = False,
+        prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+        selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     ) -> Dict[str, object]:
-        """
-        Optimize parameters for a single subject using parallel grid search.
-        
-        Args:
-            subject_id: The subject ID to optimize for.
-            param_grid: Dictionary mapping parameter names to lists of values.
-            n_repeats: Number of times to repeat each parameter combination (grid search).
-            refit_repeats: Number of times to repeat the best parameter combination (refinement).
-            window_size: Sliding window size for error calculation.
-            stop_at: Fraction of data to use (0.0 to 1.0).
-            max_trials: Maximum number of trials to use (overrides stop_at if set).
-            keep_logs: Whether to keep posterior/prior logs for all grid points. 
-                       If False, only the best result's logs are kept.
-        """
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = int(subject_frame["condition"].iloc[0])
         arrays = self._extract_arrays(subject_frame, max_trials)
 
-        # Generate all parameter combinations
         param_names = list(param_grid.keys())
         param_values = list(param_grid.values())
         combinations = list(product(*param_values))
-        
-        # Create tasks: (params, repeat_idx)
+
         tasks = []
         for combo in combinations:
             params = dict(zip(param_names, combo))
@@ -93,7 +78,6 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             f"Optimizing subject {subject_id}: {len(combinations)} combos * {n_repeats} repeats = {len(tasks)} tasks"
         )
 
-        # Run parallel execution
         raw_results = list(Parallel(n_jobs=self.n_jobs)(
             delayed(evaluate_state_model_run)(
                 subject_id,
@@ -105,6 +89,8 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 window_size,
                 True,
                 True,
+                prediction_mode,
+                selection_prediction_mode,
             )
             for params in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
         ))
@@ -112,15 +98,13 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         if len(results) != len(tasks):
             raise RuntimeError("Grid search produced empty runs unexpectedly.")
 
-        # Aggregate results
         grouped_results = defaultdict(list)
         for run in results:
-            # Create a hashable key for the parameters
             param_key = tuple(sorted(run.params.items()))
             grouped_results[param_key].append(run)
 
         final_grid_results: List[GridPointResult] = []
-        
+
         for param_key, runs in grouped_results.items():
             params = dict(param_key)
             errors = [r.mean_error for r in runs]
@@ -137,19 +121,17 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 )
                 for i, r in enumerate(runs)
             ]
-            
-            # Keep parameter selection by mean error, but keep run outputs from the minimum-error run.
+
             best_run_idx = int(np.argmin(errors))
             best_run = runs[best_run_idx]
-            best_metrics = best_run.metrics
+            best_metrics_by_mode = best_run.metrics_by_mode
             best_posterior = best_run.posterior_log
             best_prior = best_run.prior_log
             best_strategy_log = best_run.strategy_counts_log
             best_step_log = best_run.step_log
             sample_errors = [float(e) for e in errors]
             raw_step_results = [r.step_log for r in runs if r.step_log is not None]
-            
-            # Memory optimization: discard logs if not requested
+
             if not keep_logs:
                 best_posterior = None
                 best_prior = None
@@ -161,7 +143,8 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             final_grid_results.append(GridPointResult(
                 params=params,
                 mean_error=mean_error,
-                metrics=best_metrics,
+                metrics_by_mode=best_metrics_by_mode,
+                selection_prediction_mode=selection_prediction_mode,
                 posterior_log=best_posterior,
                 prior_log=best_prior,
                 step_results=best_step_log,
@@ -174,7 +157,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 refit_std_error=std_error,
                 representative_run_index=best_run_idx,
                 n_repeats=n_repeats,
-                std_error=std_error
+                std_error=std_error,
             ))
 
         if not final_grid_results:
@@ -182,11 +165,10 @@ class StateModelGridOptimizer(BaseStateOptimizer):
 
         best_result = min(final_grid_results, key=lambda item: item.mean_error)
 
-        # --- Refit Stage ---
         if refit_repeats > 0:
             LOGGER.info(f"Refitting best params for subject {subject_id} with {refit_repeats} repeats.")
             refit_tasks = [best_result.params] * refit_repeats
-            
+
             raw_refit_results = list(Parallel(n_jobs=self.n_jobs)(
                 delayed(evaluate_state_model_run)(
                     subject_id,
@@ -198,22 +180,22 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                     window_size,
                     True,
                     True,
+                    prediction_mode,
+                    selection_prediction_mode,
                 )
                 for params in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
             ))
             refit_results: List[SingleRunResult] = [r for r in raw_refit_results if r is not None]
             if len(refit_results) != len(refit_tasks):
                 raise RuntimeError("Refit stage produced empty runs unexpectedly.")
-            
-            # Aggregate refit results
+
             refit_errors = [r.mean_error for r in refit_results]
             refit_mean_error = float(np.mean(refit_errors))
             refit_std_error = float(np.std(refit_errors))
-            
-            # Save the true best-fit run under the selected parameters.
+
             best_refit_idx = int(np.argmin(refit_errors))
             best_refit = refit_results[best_refit_idx]
-            best_refit_metrics = best_refit.metrics
+            best_refit_metrics_by_mode = best_refit.metrics_by_mode
             best_refit_posterior = best_refit.posterior_log
             best_refit_prior = best_refit.prior_log
             best_refit_strategy = best_refit.strategy_counts_log
@@ -239,11 +221,10 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 best_refit_step = None
                 refit_run_records = None
                 refit_raw_steps = None
-            
-            # Update best_result
+
             best_result.mean_error = refit_mean_error
             best_result.std_error = refit_std_error
-            best_result.metrics = best_refit_metrics
+            best_result.metrics_by_mode = best_refit_metrics_by_mode
             best_result.posterior_log = best_refit_posterior
             best_result.prior_log = best_refit_prior
             best_result.step_results = best_refit_step
@@ -257,7 +238,6 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_result.representative_run_index = best_refit_idx
             best_result.n_repeats = refit_repeats
         else:
-            # Preserve explicit best/summary metadata even without refit.
             if best_result.best_error is None:
                 best_result.best_error = float(best_result.mean_error)
             if best_result.refit_mean_error is None:
@@ -280,12 +260,10 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             "selection_meta": {
                 "param_selection": "min_mean_error",
                 "run_selection": "min_error",
+                "prediction_mode": prediction_mode,
+                "selection_prediction_mode": selection_prediction_mode,
             },
         }
-
-    # -------------------------------------------------------------------------
-    # Deprecated / Backward Compatibility Methods
-    # -------------------------------------------------------------------------
 
     def grid_search_subject(
         self,
@@ -296,32 +274,26 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         stop_at: float = 1.0,
         max_trials: Optional[int] = None,
     ) -> Dict[str, object]:
-        """
-        Legacy wrapper for backward compatibility.
-        Translates gamma_grid/w0_grid to generic param_grid.
-        """
-        # Resolve default grids if None
         if gamma_grid is None or w0_grid is None:
             d_gamma, d_w0 = self._default_grids()
             gamma_grid = list(map(float, d_gamma)) if gamma_grid is None else gamma_grid
             w0_grid = list(map(float, d_w0)) if w0_grid is None else w0_grid
-            
+
         param_grid: Dict[str, Sequence[Any]] = {
             "gamma": list(gamma_grid) if gamma_grid is not None else [],
             "w0": list(w0_grid) if w0_grid is not None else []
         }
-        
+
         return self.optimize_subject(
             subject_id=subject_id,
             param_grid=param_grid,
             n_repeats=1,
             window_size=window_size,
             stop_at=stop_at,
-            max_trials=max_trials
+            max_trials=max_trials,
         )
 
     def _default_grids(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Legacy helper to get default grids from config."""
         mod_cfg = self._engine_config_template.get("modules", {}).get("memory_mod", {})
         kwargs = mod_cfg.get("kwargs", {})
 
@@ -356,9 +328,6 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         w0: float,
         window_size: int,
     ) -> GridPointResult:
-        """
-        Legacy helper for single evaluation.
-        """
         params = {"gamma": gamma, "w0": w0}
         run = evaluate_state_model_run(
             subject_id,
@@ -370,10 +339,13 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             window_size,
             True,
             False,
+            PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+            PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         )
         return GridPointResult(
             params=params,
             mean_error=run.mean_error,
-            metrics=run.metrics,
-            posterior_log=run.posterior_log
+            metrics_by_mode=run.metrics_by_mode,
+            selection_prediction_mode=run.selection_prediction_mode,
+            posterior_log=run.posterior_log,
         )

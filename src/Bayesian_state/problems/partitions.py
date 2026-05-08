@@ -14,6 +14,9 @@ from .base_problem import softmax, euc_dist
 
 class BasePartition(ABC):
     EPS = 1e-12
+    DISTANCE_MODE_PROTOTYPE = "prototype"
+    DISTANCE_MODE_BOUNDARY = "boundary"
+    VALID_DISTANCE_MODES = (DISTANCE_MODE_PROTOTYPE, DISTANCE_MODE_BOUNDARY)
     """
     Base Partition
     """
@@ -103,6 +106,7 @@ class BasePartition(ABC):
                         data: list | tuple,
                         beta: list | tuple | float | np.ndarray = 1.,
                         use_cached_dist: bool = False,
+                        distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                         normalized: bool = True,
                         **kwargs) -> np.ndarray:  # BaseLikelihood:
         """
@@ -142,14 +146,65 @@ class BasePartition(ABC):
             default_beta = beta[0] if len(beta) > 0 else 1.0
             beta = [default_beta] * len(hypos)
 
+        resolved_mode = self._resolve_distance_mode(distance_mode)
         ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
 
         for j, h in enumerate(hypos):
             ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
-                                                   use_cached_dist, **kwargs)
+                                                   use_cached_dist,
+                                                   distance_mode=resolved_mode,
+                                                   **kwargs)
         if normalized:
             return ret / np.sum(ret, axis=1, keepdims=True)
         return ret
+
+    @classmethod
+    def _resolve_distance_mode(cls, distance_mode: str) -> str:
+        if distance_mode not in cls.VALID_DISTANCE_MODES:
+            raise ValueError(
+                f"Unsupported distance_mode '{distance_mode}'. "
+                f"Expected one of: {cls.VALID_DISTANCE_MODES}."
+            )
+        return distance_mode
+
+    def get_category_probabilities(self,
+                                   hypo: int,
+                                   data: list | tuple,
+                                   beta: float,
+                                   distance_mode: str = DISTANCE_MODE_PROTOTYPE,
+                                   use_cached_dist: bool = False,
+                                   **kwargs) -> np.ndarray:
+        mode = self._resolve_distance_mode(distance_mode)
+        if mode != self.DISTANCE_MODE_PROTOTYPE:
+            raise ValueError(
+                "BasePartition only supports prototype distance. "
+                "Boundary distance requires Partition."
+            )
+        return self.calc_likelihood_base(
+            hypo=hypo,
+            data=data,
+            beta=beta,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )
+
+    def get_category_assignment(self,
+                                hypo: int,
+                                stimulus: np.ndarray,
+                                distance_mode: str = DISTANCE_MODE_PROTOTYPE,
+                                beta: float = 1.0,
+                                use_cached_dist: bool = False,
+                                **kwargs) -> int:
+        trial_data = ([np.asarray(stimulus, dtype=float)], [1], [1.0])
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=trial_data,
+            beta=beta,
+            distance_mode=distance_mode,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )
+        return int(np.argmax(prob[:, 0]))
 
     def calc_likelihood_base(self,
                              hypo: int,
@@ -201,6 +256,7 @@ class BasePartition(ABC):
                               data: list | tuple,
                               beta: float,
                               use_cached_dist: bool = False,
+                              distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                               **kwargs) -> np.ndarray:
         """
         先用 calc_likelihood_base 得到 prob (shape=[n_trials]),
@@ -216,8 +272,14 @@ class BasePartition(ABC):
             enables a more flexible way to implement the decay-forgetting
             mechanism.
         """
-        prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                         **kwargs)  # shape = [n_cats, n_trials]
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=data,
+            beta=beta,
+            distance_mode=distance_mode,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )  # shape = [n_cats, n_trials]
         # Convert to numpy array to ensure correct operations
         choices = np.array(data[1])
         responses = np.array(data[2]) # shape = [n_trials]
@@ -256,13 +318,27 @@ class BasePartition(ABC):
                             data: list | tuple,
                             beta: float | list | tuple | np.ndarray,
                             use_cached_dist: bool = False,
+                            distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                             **kwargs) -> np.ndarray:
         """
         计算true category被选中的概率
         """
 
-        prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                         **kwargs) # shape: (n_cats, nTrial)
+        if isinstance(beta, np.ndarray):
+            beta_value = float(beta.flatten()[0])
+        elif isinstance(beta, (list, tuple)):
+            beta_value = float(beta[0])
+        else:
+            beta_value = float(beta)
+
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=data,
+            beta=beta_value,
+            distance_mode=distance_mode,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        ) # shape: (n_cats, nTrial)
 
         category = np.asarray(data[3], dtype=int) - 1 # shape: (nTrial,)
         if prob.ndim == 1:
@@ -480,6 +556,7 @@ class Partition(BasePartition):
                                  hypo: int,
                                  data: list | tuple,
                                  beta: float = 5.0,
+                                 use_cached_dist: bool = False,
                                  **kwargs):
         """
         基于边界距离的likelihood计算：
@@ -506,6 +583,48 @@ class Partition(BasePartition):
 
         return prob.T
 
+    def get_category_probabilities(self,
+                                   hypo: int,
+                                   data: list | tuple,
+                                   beta: float,
+                                   distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
+                                   use_cached_dist: bool = False,
+                                   **kwargs) -> np.ndarray:
+        mode = self._resolve_distance_mode(distance_mode)
+        if mode == self.DISTANCE_MODE_BOUNDARY:
+            return self.calc_likelihood_boundary(
+                hypo=hypo,
+                data=data,
+                beta=beta,
+                use_cached_dist=use_cached_dist,
+                **kwargs,
+            )
+        return self.calc_likelihood_base(
+            hypo=hypo,
+            data=data,
+            beta=beta,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )
+
+    def get_category_assignment(self,
+                                hypo: int,
+                                stimulus: np.ndarray,
+                                distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
+                                beta: float = 1.0,
+                                use_cached_dist: bool = False,
+                                **kwargs) -> int:
+        trial_data = ([np.asarray(stimulus, dtype=float)], [1], [1.0])
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=trial_data,
+            beta=beta,
+            distance_mode=distance_mode,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )
+        return int(np.argmax(prob[:, 0]))
+
     # ======================================================================
     # ========== 四、对接主接口 calc_likelihood_entry ======================
     # ======================================================================
@@ -514,16 +633,20 @@ class Partition(BasePartition):
                               data: list | tuple,
                               beta: float,
                               use_cached_dist: bool = False,
+                              distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
                               **kwargs) -> np.ndarray:
         """
-        当 use_boundary=True 时，使用基于边界距离的概率计算。
+        根据 distance_mode 选择 prototype 或 boundary 概率计算，
         其余部分（反馈映射）与原逻辑一致。
         """
-        if kwargs.get("use_boundary", False):
-            prob = self.calc_likelihood_boundary(hypo, data, beta, **kwargs)
-        else:
-            prob = self.calc_likelihood_base(hypo, data, beta, use_cached_dist,
-                                             **kwargs)
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=data,
+            beta=beta,
+            distance_mode=distance_mode,
+            use_cached_dist=use_cached_dist,
+            **kwargs,
+        )
 
         choices, responses = np.array(data[1].copy()), np.array(data[2])
         choices -= 1

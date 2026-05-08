@@ -14,6 +14,10 @@ from typing import Any, Dict, Sequence
 import yaml
 
 from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer  # noqa: E402
+from src.Bayesian_state.utils.optimizer_common import (
+    PREDICTION_MODE_CHOICES,
+    PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+)
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
     ROOT_DIR,
@@ -25,9 +29,6 @@ DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = GRID_RESULTS_DIR
 
 
-# ---------------------------------------------------------------------------
-# YAML helpers
-# ---------------------------------------------------------------------------
 def load_yaml(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -83,11 +84,26 @@ def resolve_param_grid(cfg: Dict[str, Any]) -> Dict[str, Sequence[Any]]:
     return {k: list(v) for k, v in pg.items()}
 
 
-# ---------------------------------------------------------------------------
-# Serialization
-# ---------------------------------------------------------------------------
+def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
+    prediction_mode = str(cfg.get("prediction_mode", PREDICTION_MODE_POSTERIOR_T_MINUS_1))
+    selection_prediction_mode = str(cfg.get("selection_prediction_mode", PREDICTION_MODE_POSTERIOR_T_MINUS_1))
+    if prediction_mode not in PREDICTION_MODE_CHOICES:
+        raise ValueError(f"Unsupported prediction_mode '{prediction_mode}'. Valid: {PREDICTION_MODE_CHOICES}")
+    if selection_prediction_mode not in (
+        PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+        "prior_t",
+    ):
+        raise ValueError("selection_prediction_mode must be 'posterior_t_minus_1' or 'prior_t'")
+    if prediction_mode != "both" and selection_prediction_mode != prediction_mode:
+        raise ValueError(
+            "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
+        )
+    return prediction_mode, selection_prediction_mode
+
+
 def _recursive_to_builtin(obj: Any) -> Any:
     import numpy as np
+
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, np.integer):
@@ -119,6 +135,7 @@ def _dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int,
 
 def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
     records: list[Dict[str, Any]] = []
+    selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
     for gp in result.get("grid", []) or []:
         records.append(
             {
@@ -127,13 +144,13 @@ def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
                 "mean_error": gp.mean_error,
                 "std_error": gp.std_error,
                 "best_error": getattr(gp, "best_error", gp.mean_error),
+                "selection_prediction_mode": selection_mode,
             }
         )
     return records
 
 
 def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], output_dir: Path) -> Dict[str, Any]:
-    """Convert optimizer output to JSON-serializable dict."""
     best = result["best"]
     best_error = float(getattr(best, "best_error", best.mean_error))
     refit_mean_error = float(getattr(best, "refit_mean_error", best.mean_error))
@@ -147,8 +164,12 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         )
     raw_runs_ref = _dump_stream(raw_runs, output_dir, subject_id, "raw_runs")
 
+    metrics_by_mode = getattr(best, "metrics_by_mode", None) or {}
+    selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
+    available_modes = sorted(metrics_by_mode.keys())
+
     data = {
-        "schema_version": 3,
+        "schema_version": 4,
         "subject_id": subject_id,
         "condition": condition,
         "best_params": best.params,
@@ -159,8 +180,10 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         "refit_std_error": refit_std_error,
         "n_repeats": getattr(best, "n_repeats", 1),
         "sample_errors": sample_errors,
-        "metrics": best.metrics,
-        "best_metrics": best.metrics,
+        "prediction_mode": result.get("selection_meta", {}).get("prediction_mode"),
+        "selection_prediction_mode": selection_mode,
+        "available_prediction_modes": available_modes,
+        "metrics_by_mode": metrics_by_mode,
         "param_grid": result.get("param_grid", {}),
         "best_step_results": getattr(best, "step_results", None),
         "strategy_counts_log": getattr(best, "strategy_counts_log", None),
@@ -170,7 +193,6 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         "selection_meta": result.get("selection_meta", {}),
         "raw_runs_ref": raw_runs_ref,
         "grid_errors": _build_grid_errors(result),
-        # grid summary (compact)
         "grid_summary": [
             {
                 "params": gp.params,
@@ -190,9 +212,6 @@ def save_json(obj: Dict[str, Any], path: Path) -> None:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Batch grid-search optimization (single YAML config)")
     p.add_argument("--config", required=True, type=Path, help="Grid optimization YAML config")
@@ -208,8 +227,8 @@ def main() -> None:
 
     engine_config = resolve_engine_config(cfg, cfg_path.parent)
     param_grid = resolve_param_grid(cfg)
+    prediction_mode, selection_prediction_mode = resolve_prediction_modes(cfg)
 
-    # Subjects
     subjects = cfg.get("subjects")
     if subjects is None:
         sr = cfg.get("subject_range")
@@ -219,12 +238,10 @@ def main() -> None:
     else:
         subjects = [int(x) for x in subjects]
 
-    # Paths
     data_path = _resolve_path(cfg_path.parent, cfg.get("data_path"), DEFAULT_DATA_PATH)
     output_dir = _resolve_path(cfg_path.parent, cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Optimizer settings
     n_jobs = int(cfg.get("n_jobs", 4))
     n_repeats = int(cfg.get("n_repeats", 4))
     refit_repeats = int(cfg.get("refit_repeats", 64))
@@ -233,7 +250,6 @@ def main() -> None:
     max_trials = int(max_trials_val) if max_trials_val is not None else None
     keep_logs = bool(cfg.get("keep_logs", False))
 
-    # Window size: scalar or per-subject list
     raw_ws = cfg.get("window_size", 16)
     overrides = {int(k): int(v) for k, v in (cfg.get("window_size_overrides") or {}).items()}
 
@@ -248,7 +264,6 @@ def main() -> None:
     def get_ws(sid: int) -> int:
         return overrides.get(sid, ws_map.get(sid, 16))
 
-    # ---- Run grid search for each subject sequentially (inner parallelism) ----
     optimizer = StateModelGridOptimizer(
         engine_config=engine_config,
         processed_data_dir=data_path.parent,
@@ -270,6 +285,8 @@ def main() -> None:
             stop_at=stop_at,
             max_trials=max_trials,
             keep_logs=keep_logs,
+            prediction_mode=prediction_mode,
+            selection_prediction_mode=selection_prediction_mode,
         )
 
         best: Any = result["best"]
@@ -277,13 +294,13 @@ def main() -> None:
         best_error = float(getattr(best, "best_error", best.mean_error))
         refit_mean = float(getattr(best, "refit_mean_error", best.mean_error))
         refit_std = float(getattr(best, "refit_std_error", best.std_error))
-        print(f"  Best run error: {best_error:.6f}")
-        print(f"  Refit mean:     {refit_mean:.6f} ± {refit_std:.6f}")
+        print(f"  Best run error ({selection_prediction_mode}): {best_error:.6f}")
+        print(f"  Refit mean ({selection_prediction_mode}):     {refit_mean:.6f} +/- {refit_std:.6f}")
 
         payload = serialize_result(sid, int(result["condition"]), result, output_dir)
         save_path = output_dir / f"subject_{sid}.json"
         save_json(payload, save_path)
-        print(f"  Saved → {save_path}")
+        print(f"  Saved -> {save_path}")
 
     print(f"\nAll subjects done. Results in {output_dir}")
 

@@ -16,7 +16,7 @@ oral:
   # region_n_samples: 100
 
 # Parallelism
-# Run all 8 subjects in parallel and give each 12 inner workers (â‰ˆ96 cores total)
+# Run all 8 subjects in parallel and give each 12 inner workers (â‰?6 cores total)
 n_jobs_subjects: 8
 n_jobs_inner: 12
 
@@ -31,6 +31,11 @@ stop_at: 1.0
 max_trials: null
 keep_logs: true
 
+# Prediction path config
+prediction_mode: posterior_t_minus_1   # posterior_t_minus_1 | prior_t | both
+selection_prediction_mode: posterior_t_minus_1   # posterior_t_minus_1 | prior_t
+
+
 param_grid:
   gamma: [0.05, 0.999]
   w0: [0.01, 1.0]
@@ -41,3 +46,4 @@ amr_kwargs:
   coarse_grid_per_dim: 3
   split_factor: 2
   refine_top_k: 3
+
