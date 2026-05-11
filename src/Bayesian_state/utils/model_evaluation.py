@@ -39,31 +39,100 @@ class ModelEval:
             logger.info(f"{title} saved to {save_path}")
 
     def plot_posterior_probabilities(self, results, subjects=None, save_path=None, limit=True, **kwargs):
+        def _get_post_max(hypo_details, k):
+            """Support both int keys and string keys after JSON round-trip."""
+            if not isinstance(hypo_details, dict):
+                return None
+
+            entry = hypo_details.get(k)
+            if entry is None:
+                entry = hypo_details.get(str(k))
+
+            if not isinstance(entry, dict):
+                return None
+
+            value = entry.get("post_max")
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
         def body(ax, condition, iSub, info):
-            step_results = info.get('step_results', info.get('best_step_results', []))
+            step_results = info.get("step_results") or info.get("best_step_results") or []
+
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition})",
+                xlabel="Trial",
+                ylabel="Posterior Probability",
+            )
+
             if not step_results:
-                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
-                ax.text(0.5, 0.5, 'No posterior data', ha='center', va='center', transform=ax.transAxes)
+                ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
                 return
-            max_k = (19 if condition == 1 else 116) if limit else \
-                    max(k for sr in step_results for k in sr['hypo_details'])
+
+            if limit:
+                max_k = 19 if condition == 1 else 116
+            else:
+                all_keys = []
+                for sr in step_results:
+                    hypo_details = sr.get("hypo_details", {})
+                    if isinstance(hypo_details, dict):
+                        for key in hypo_details.keys():
+                            try:
+                                all_keys.append(int(key))
+                            except (TypeError, ValueError):
+                                pass
+                max_k = max(all_keys) + 1 if all_keys else 0
+
             data = []
             for step, res in enumerate(step_results):
+                hypo_details = res.get("hypo_details", {})
                 for k in range(max_k):
-                    if k in res['hypo_details']:
-                        data.append({'Step': step + 1, 'k': k, 'Posterior': res['hypo_details'][k]['post_max']})
-            df = pd.DataFrame(data)
-            if df.empty or ('Step' not in df.columns):
-                ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
-                ax.text(0.5, 0.5, 'No posterior data', ha='center', va='center', transform=ax.transAxes)
-                return
-            sns.scatterplot(data=df, x='Step', y='Posterior', hue='k', palette='tab10', alpha=0.5, legend=False, ax=ax)
-            hk = 0 if condition == 1 else 42
-            sns.scatterplot(data=df[df['k'] == hk], x='Step', y='Posterior', color='red', s=50, ax=ax)
-            ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Posterior Probability')
+                    post_max = _get_post_max(hypo_details, k)
+                    if post_max is not None:
+                        data.append({
+                            "Step": step + 1,
+                            "k": k,
+                            "Posterior": post_max,
+                        })
 
-        self._plot_by_condition(results, subjects, save_path,
-                                'Posterior Probabilities for k by Subject', body, **kwargs)
+            df = pd.DataFrame(data)
+            if df.empty or "Step" not in df.columns:
+                ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
+                return
+
+            sns.scatterplot(
+                data=df,
+                x="Step",
+                y="Posterior",
+                hue="k",
+                palette="tab10",
+                alpha=0.5,
+                legend=False,
+                ax=ax,
+            )
+
+            hk = 0 if condition == 1 else 42
+            hk_df = df[df["k"] == hk]
+            if not hk_df.empty:
+                sns.scatterplot(
+                    data=hk_df,
+                    x="Step",
+                    y="Posterior",
+                    color="red",
+                    s=50,
+                    ax=ax,
+                )
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Posterior Probabilities for k by Subject",
+            body,
+            **kwargs,
+        )
+
 
     def plot_k_oral_comparison(self, model_results, oral_results, subjects=None, save_path=None, window_size=16, **kwargs):
         """
@@ -92,16 +161,17 @@ class ModelEval:
             return pd.Series(posts, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
 
         def extract_oral_ma(hits, win):
-            # compute rolling average ignoring empty entries
             rolling = []
             n = len(hits)
             for i in range(n):
                 if i + 1 < win:
                     rolling.append(np.nan)
                 else:
-                    window = hits[i-win+1 : i+1]
-                    vals = [(h if isinstance(h, (int, float)) else 0) for h in window]
-                    rolling.append(float(np.mean(vals)))
+                    window = np.asarray(hits[i-win+1 : i+1], dtype=float)
+                    if np.all(np.isnan(window)):
+                        rolling.append(np.nan)
+                    else:
+                        rolling.append(float(np.nanmean(window)))
             return np.array(rolling)
 
         # Filter both dicts
@@ -149,16 +219,25 @@ class ModelEval:
             logger.info(f"Filtered comparison saved to {save_path}")
 
             
-    def plot_accuracy_comparison(self, results, subjects=None, save_path=None, **kwargs):
+    def plot_accuracy_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
         def body(ax, condition, iSub, info):
             t = info['sliding_true_acc']
             p = info['sliding_pred_acc']
             std = info['sliding_pred_acc_std']
-            df = pd.DataFrame({'Trial': range(len(p)), 'Pred': p, 'True': t,
+            win = info.get('window_size') or window_size
+            try:
+                win = int(win)
+            except (TypeError, ValueError):
+                win = 1
+            trial = np.arange(win + 1, win + 1 + len(p))
+            df = pd.DataFrame({'Trial': trial, 'Pred': p, 'True': t,
                                'Low': np.array(p) - std, 'High': np.array(p) + std})
             sns.lineplot(data=df, x='Trial', y='Pred', label='Predicted', ax=ax)
             sns.lineplot(data=df, x='Trial', y='True', label='True', ax=ax)
             ax.fill_between(df['Trial'], df['Low'], df['High'], alpha=0.2)
+            n_trials = info.get('n_trials')
+            if n_trials:
+                ax.set_xlim(1, n_trials)
             ax.set_ylim(0, 1)
             ax.set(title=f'Subject {iSub} (Condition {condition})', xlabel='Trial', ylabel='Accuracy')
             ax.legend()

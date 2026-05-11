@@ -143,12 +143,19 @@ def aggregate_grid_results(input_dir: Path, eval_prediction_mode: str) -> Dict[i
         step_results = _build_step_results(payload)
         mean_error = metrics.get("mean_error", payload.get("best_error", payload.get("mean_error")))
         std_error = payload.get("refit_std_error", payload.get("std_error"))
+        true_acc = metrics.get("true_acc") or []
+        sliding_pred_acc = metrics.get("sliding_pred_acc") or []
+        n_trials = len(true_acc) if isinstance(true_acc, list) else 0
+        n_sliding = len(sliding_pred_acc) if isinstance(sliding_pred_acc, list) else 0
+        window_size = n_trials - n_sliding if n_trials and n_sliding else None
 
         results[sid] = {
             "condition": payload.get("condition"),
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
+            "n_trials": n_trials,
+            "window_size": window_size,
             "mean_error": mean_error,
             "std_error": std_error,
             "best_params": payload.get("best_params"),

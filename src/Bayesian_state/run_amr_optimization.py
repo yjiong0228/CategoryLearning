@@ -21,6 +21,13 @@ from src.Bayesian_state.utils.paths import (
     TASK2_PROCESSED_PATH,
     AMR_RESULTS_DIR,
 )
+from src.Bayesian_state.utils.datasets import resolve_dataset_paths
+from src.Bayesian_state.utils.config_subjects import (
+    deep_update,
+    resolve_subject_config,
+    subject_override_for,
+    without_subject_overrides,
+)
 
 DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = AMR_RESULTS_DIR
@@ -45,16 +52,14 @@ def _resolve_path(base: Path, maybe_path: Any, default: Path | None = None) -> P
 
 
 def _deep_update(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_update(out[key], value)
-        else:
-            out[key] = value
-    return out
+    return deep_update(base, override)
 
 
-def resolve_engine_config(opt_cfg: Dict[str, Any], yaml_dir: Path) -> Dict[str, Any]:
+def resolve_engine_config(
+    opt_cfg: Dict[str, Any],
+    yaml_dir: Path,
+    subject_id: int | None = None,
+) -> Dict[str, Any]:
     inline_cfg = opt_cfg.get("engine_config")
     path_cfg = opt_cfg.get("engine_config_path")
 
@@ -71,9 +76,12 @@ def resolve_engine_config(opt_cfg: Dict[str, Any], yaml_dir: Path) -> Dict[str, 
 
     if inline_cfg is None and not path_cfg:
         raise ValueError("opt-config must provide engine_config or engine_config_path")
-    if inline_cfg is None:
-        return base_cfg
-    return _deep_update(base_cfg, inline_cfg)
+    resolved = base_cfg if inline_cfg is None else _deep_update(base_cfg, inline_cfg)
+    if subject_id is None:
+        return without_subject_overrides(resolved)
+
+    subject_override = subject_override_for(resolved, subject_id)
+    return _deep_update(without_subject_overrides(resolved), subject_override)
 
 
 def resolve_param_grid(opt_cfg: Dict[str, Any]) -> Dict[str, Sequence[Any]]:
@@ -108,6 +116,19 @@ def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
             "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
         )
     return prediction_mode, selection_prediction_mode
+
+
+def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
+    raw_ws = cfg.get("window_size", 16)
+    overrides = {int(k): int(v) for k, v in (cfg.get("window_size_overrides") or {}).items()}
+    if subject_id in overrides:
+        return overrides[subject_id]
+    if isinstance(raw_ws, (list, tuple)):
+        ws_list = [int(x) for x in raw_ws]
+        if len(ws_list) != len(subjects):
+            raise ValueError("window_size list length must match number of subjects")
+        return dict(zip(subjects, ws_list))[subject_id]
+    return int(raw_ws)
 
 
 def _recursive_to_builtin(obj: Any) -> Any:
@@ -228,6 +249,7 @@ def run_single_subject(
     param_grid: Dict[str, Sequence[Any]],
     amr_kwargs: Dict[str, Any],
     data_path: Path,
+    dataset_paths: Dict[str, Path],
     output_dir: Path,
     n_repeats: int,
     refit_repeats: int,
@@ -241,7 +263,8 @@ def run_single_subject(
 ) -> None:
     opt = StateModelAMROptimizer(
         engine_config=engine_config,
-        processed_data_dir=str(data_path.parent),
+        processed_data_dir=str(dataset_paths["processed_dir"]),
+        dataset_paths=dataset_paths,
         amr_kwargs=amr_kwargs,
         n_jobs=n_jobs_inner,
     )
@@ -266,9 +289,30 @@ def run_single_subject(
     print(f"Saved subject {subject_id} result to {save_path}")
 
 
+def resolve_subjects(args: argparse.Namespace, cfg: Dict[str, Any]) -> list[int]:
+    if args.subjects is not None:
+        return [int(x) for x in args.subjects]
+
+    if args.subject_range is not None:
+        start, end = map(int, args.subject_range)
+        return list(range(start, end + 1))
+
+    subjects = cfg.get("subjects")
+    if subjects is None:
+        range_cfg = cfg.get("subject_range")
+        if not (isinstance(range_cfg, (list, tuple)) and len(range_cfg) == 2):
+            raise ValueError("opt-config must provide subjects/subject_range, or pass --subjects/--subject-range")
+        start, end = map(int, range_cfg)
+        return list(range(start, end + 1))
+
+    return [int(x) for x in subjects]
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Batch AMR optimization (single YAML config)")
     p.add_argument("--config", "--opt-config", dest="config", required=True, type=Path, help="Optimization YAML config")
+    p.add_argument("--subjects", nargs="+", type=int, help="Subject IDs; overrides subjects/subject_range in YAML")
+    p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Inclusive subject range; overrides YAML when --subjects is not provided")
     return p.parse_args()
 
 
@@ -279,70 +323,46 @@ def main() -> None:
         cfg_path = (ROOT_DIR / cfg_path).resolve()
     cfg = load_yaml(cfg_path)
 
-    engine_config = resolve_engine_config(cfg, cfg_path.parent)
-    param_grid = resolve_param_grid(cfg)
-    amr_kwargs = resolve_amr_kwargs(cfg)
-    prediction_mode, selection_prediction_mode = resolve_prediction_modes(cfg)
+    subjects = resolve_subjects(args, cfg)
 
-    subjects = cfg.get("subjects")
-    if subjects is None:
-        range_cfg = cfg.get("subject_range")
-        if not (isinstance(range_cfg, (list, tuple)) and len(range_cfg) == 2):
-            raise ValueError("opt-config must provide subjects: [...] or subject_range: [start, end]")
-        start, end = map(int, range_cfg)
-        subjects = list(range(start, end + 1))
-    else:
-        subjects = [int(x) for x in subjects]
+    base_n_jobs_subjects = int(cfg.get("n_jobs_subjects", 2))
 
-    data_path = _resolve_path(cfg_path.parent, cfg.get("data_path"), DEFAULT_DATA_PATH)
-    output_dir = _resolve_path(cfg_path.parent, cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
-    n_jobs_subjects = int(cfg.get("n_jobs_subjects", 2))
-    n_jobs_inner = int(cfg.get("n_jobs_inner", 4))
-    n_repeats = int(cfg.get("n_repeats", 4))
-    refit_repeats = int(cfg.get("refit_repeats", 8))
-    raw_window_size = cfg.get("window_size", 16)
-    overrides_raw = cfg.get("window_size_overrides") or {}
-    window_size_overrides = {int(k): int(v) for k, v in overrides_raw.items()}
-    stop_at = float(cfg.get("stop_at", 1.0))
-    max_trials_val = cfg.get("max_trials")
-    max_trials = int(max_trials_val) if max_trials_val is not None else None
-    keep_logs = bool(cfg.get("keep_logs", False))
+    jobs = []
+    for sid in subjects:
+        subject_cfg = resolve_subject_config(cfg, sid)
+        engine_config = resolve_engine_config(subject_cfg, cfg_path.parent, subject_id=sid)
+        param_grid = resolve_param_grid(subject_cfg)
+        amr_kwargs = resolve_amr_kwargs(subject_cfg)
+        prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+        dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
+        data_path = dataset_paths["learning_data"]
+        output_dir = _resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    if isinstance(raw_window_size, (list, tuple)):
-        window_size_list = [int(x) for x in raw_window_size]
-        if len(window_size_list) != len(subjects):
-            raise ValueError("window_size list length must match number of subjects")
-        window_size_map = {sid: window_size_list[idx] for idx, sid in enumerate(subjects)}
-
-        def resolve_window_size(sid: int) -> int:
-            return window_size_overrides.get(sid, window_size_map[sid])
-    else:
-        default_window_size = int(raw_window_size)
-
-        def resolve_window_size(sid: int) -> int:
-            return window_size_overrides.get(sid, default_window_size)
-
-    Parallel(n_jobs=n_jobs_subjects)(
-        delayed(run_single_subject)(
+        max_trials_val = subject_cfg.get("max_trials")
+        jobs.append(dict(
             subject_id=sid,
             engine_config=engine_config,
             param_grid=param_grid,
             amr_kwargs=amr_kwargs,
             data_path=data_path,
+            dataset_paths=dataset_paths,
             output_dir=output_dir,
-            n_repeats=n_repeats,
-            refit_repeats=refit_repeats,
-            window_size=resolve_window_size(sid),
-            stop_at=stop_at,
-            max_trials=max_trials,
-            n_jobs_inner=n_jobs_inner,
-            keep_logs=keep_logs,
+            n_repeats=int(subject_cfg.get("n_repeats", 4)),
+            refit_repeats=int(subject_cfg.get("refit_repeats", 8)),
+            window_size=resolve_window_size(subject_cfg, sid, subjects),
+            stop_at=float(subject_cfg.get("stop_at", 1.0)),
+            max_trials=int(max_trials_val) if max_trials_val is not None else None,
+            n_jobs_inner=int(subject_cfg.get("n_jobs_inner", 4)),
+            keep_logs=bool(subject_cfg.get("keep_logs", False)),
             prediction_mode=prediction_mode,
             selection_prediction_mode=selection_prediction_mode,
-        )
-        for sid in subjects
+        ))
+
+    Parallel(n_jobs=base_n_jobs_subjects)(
+        delayed(run_single_subject)(**job)
+        for job in jobs
     )
 
 

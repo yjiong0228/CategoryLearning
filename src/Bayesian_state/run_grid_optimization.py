@@ -24,6 +24,13 @@ from src.Bayesian_state.utils.paths import (
     TASK2_PROCESSED_PATH,
     GRID_RESULTS_DIR,
 )
+from src.Bayesian_state.utils.datasets import resolve_dataset_paths
+from src.Bayesian_state.utils.config_subjects import (
+    deep_update,
+    resolve_subject_config,
+    subject_override_for,
+    without_subject_overrides,
+)
 
 DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = GRID_RESULTS_DIR
@@ -44,16 +51,14 @@ def _resolve_path(base: Path, maybe_path: Any, default: Path) -> Path:
 
 
 def _deep_update(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_update(out[key], value)
-        else:
-            out[key] = value
-    return out
+    return deep_update(base, override)
 
 
-def resolve_engine_config(cfg: Dict[str, Any], yaml_dir: Path) -> Dict[str, Any]:
+def resolve_engine_config(
+    cfg: Dict[str, Any],
+    yaml_dir: Path,
+    subject_id: int | None = None,
+) -> Dict[str, Any]:
     inline_cfg = cfg.get("engine_config")
     path_cfg = cfg.get("engine_config_path")
 
@@ -72,9 +77,12 @@ def resolve_engine_config(cfg: Dict[str, Any], yaml_dir: Path) -> Dict[str, Any]
 
     if inline_cfg is None and not path_cfg:
         raise ValueError("Config must provide engine_config or engine_config_path")
-    if inline_cfg is None:
-        return base_cfg
-    return _deep_update(base_cfg, inline_cfg)
+    resolved = base_cfg if inline_cfg is None else _deep_update(base_cfg, inline_cfg)
+    if subject_id is None:
+        return without_subject_overrides(resolved)
+
+    subject_override = subject_override_for(resolved, subject_id)
+    return _deep_update(without_subject_overrides(resolved), subject_override)
 
 
 def resolve_param_grid(cfg: Dict[str, Any]) -> Dict[str, Sequence[Any]]:
@@ -99,6 +107,19 @@ def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
             "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
         )
     return prediction_mode, selection_prediction_mode
+
+
+def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
+    raw_ws = cfg.get("window_size", 16)
+    overrides = {int(k): int(v) for k, v in (cfg.get("window_size_overrides") or {}).items()}
+    if subject_id in overrides:
+        return overrides[subject_id]
+    if isinstance(raw_ws, (list, tuple)):
+        ws_list = [int(x) for x in raw_ws]
+        if len(ws_list) != len(subjects):
+            raise ValueError("window_size list length must match subjects list length")
+        return dict(zip(subjects, ws_list))[subject_id]
+    return int(raw_ws)
 
 
 def _recursive_to_builtin(obj: Any) -> Any:
@@ -212,9 +233,30 @@ def save_json(obj: Dict[str, Any], path: Path) -> None:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 
+def resolve_subjects(args: argparse.Namespace, cfg: Dict[str, Any]) -> list[int]:
+    if args.subjects is not None:
+        return [int(x) for x in args.subjects]
+
+    if args.subject_range is not None:
+        start, end = map(int, args.subject_range)
+        return list(range(start, end + 1))
+
+    subjects = cfg.get("subjects")
+    if subjects is None:
+        range_cfg = cfg.get("subject_range")
+        if not (isinstance(range_cfg, (list, tuple)) and len(range_cfg) == 2):
+            raise ValueError("Config must provide subjects/subject_range, or pass --subjects/--subject-range")
+        start, end = map(int, range_cfg)
+        return list(range(start, end + 1))
+
+    return [int(x) for x in subjects]
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Batch grid-search optimization (single YAML config)")
     p.add_argument("--config", required=True, type=Path, help="Grid optimization YAML config")
+    p.add_argument("--subjects", nargs="+", type=int, help="Subject IDs; overrides subjects/subject_range in YAML")
+    p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Inclusive subject range; overrides YAML when --subjects is not provided")
     return p.parse_args()
 
 
@@ -225,53 +267,36 @@ def main() -> None:
         cfg_path = (ROOT_DIR / cfg_path).resolve()
     cfg = load_yaml(cfg_path)
 
-    engine_config = resolve_engine_config(cfg, cfg_path.parent)
-    param_grid = resolve_param_grid(cfg)
-    prediction_mode, selection_prediction_mode = resolve_prediction_modes(cfg)
-
-    subjects = cfg.get("subjects")
-    if subjects is None:
-        sr = cfg.get("subject_range")
-        if not (isinstance(sr, (list, tuple)) and len(sr) == 2):
-            raise ValueError("Config needs subjects: [...] or subject_range: [start, end]")
-        subjects = list(range(int(sr[0]), int(sr[1]) + 1))
-    else:
-        subjects = [int(x) for x in subjects]
-
-    data_path = _resolve_path(cfg_path.parent, cfg.get("data_path"), DEFAULT_DATA_PATH)
-    output_dir = _resolve_path(cfg_path.parent, cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    n_jobs = int(cfg.get("n_jobs", 4))
-    n_repeats = int(cfg.get("n_repeats", 4))
-    refit_repeats = int(cfg.get("refit_repeats", 64))
-    stop_at = float(cfg.get("stop_at", 1.0))
-    max_trials_val = cfg.get("max_trials")
-    max_trials = int(max_trials_val) if max_trials_val is not None else None
-    keep_logs = bool(cfg.get("keep_logs", False))
-
-    raw_ws = cfg.get("window_size", 16)
-    overrides = {int(k): int(v) for k, v in (cfg.get("window_size_overrides") or {}).items()}
-
-    if isinstance(raw_ws, (list, tuple)):
-        ws_list = [int(x) for x in raw_ws]
-        if len(ws_list) != len(subjects):
-            raise ValueError("window_size list length must match subjects list length")
-        ws_map = dict(zip(subjects, ws_list))
-    else:
-        ws_map = {sid: int(raw_ws) for sid in subjects}
-
-    def get_ws(sid: int) -> int:
-        return overrides.get(sid, ws_map.get(sid, 16))
-
-    optimizer = StateModelGridOptimizer(
-        engine_config=engine_config,
-        processed_data_dir=data_path.parent,
-        n_jobs=n_jobs,
-    )
-    optimizer.prepare_data(data_path)
+    subjects = resolve_subjects(args, cfg)
 
     for sid in subjects:
+        subject_cfg = resolve_subject_config(cfg, sid)
+        engine_config = resolve_engine_config(subject_cfg, cfg_path.parent, subject_id=sid)
+        param_grid = resolve_param_grid(subject_cfg)
+        prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+
+        dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
+        data_path = dataset_paths["learning_data"]
+        output_dir = _resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        n_jobs = int(subject_cfg.get("n_jobs", 4))
+        n_repeats = int(subject_cfg.get("n_repeats", 4))
+        refit_repeats = int(subject_cfg.get("refit_repeats", 64))
+        stop_at = float(subject_cfg.get("stop_at", 1.0))
+        max_trials_val = subject_cfg.get("max_trials")
+        max_trials = int(max_trials_val) if max_trials_val is not None else None
+        keep_logs = bool(subject_cfg.get("keep_logs", False))
+        window_size = resolve_window_size(subject_cfg, sid, subjects)
+
+        optimizer = StateModelGridOptimizer(
+            engine_config=engine_config,
+            processed_data_dir=dataset_paths["processed_dir"],
+            dataset_paths=dataset_paths,
+            n_jobs=n_jobs,
+        )
+        optimizer.prepare_data(data_path)
+
         print(f"\n{'='*60}")
         print(f"Subject {sid}")
         print(f"{'='*60}")
@@ -281,7 +306,7 @@ def main() -> None:
             param_grid=param_grid,
             n_repeats=n_repeats,
             refit_repeats=refit_repeats,
-            window_size=get_ws(sid),
+            window_size=window_size,
             stop_at=stop_at,
             max_trials=max_trials,
             keep_logs=keep_logs,
@@ -302,7 +327,7 @@ def main() -> None:
         save_json(payload, save_path)
         print(f"  Saved -> {save_path}")
 
-    print(f"\nAll subjects done. Results in {output_dir}")
+    print("\nAll subjects done.")
 
 
 if __name__ == "__main__":

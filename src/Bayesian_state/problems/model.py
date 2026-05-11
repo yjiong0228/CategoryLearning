@@ -239,6 +239,7 @@ class StateModel:
         self.condition = kwargs.get("condition", 1)
         self.subject_id = kwargs.pop("subject_id", None)
         processed_data_dir = kwargs.pop("processed_data_dir", None)
+        self.dataset_paths = kwargs.pop("dataset_paths", None)
         if processed_data_dir is None:
             self.processed_data_dir = PROCESSED_DATA_DIR.resolve()
         else:
@@ -268,6 +269,7 @@ class StateModel:
         # expose shared context for modules (e.g., PerceptionModule auto loading)
         self.engine.subject_id = self.subject_id
         self.engine.processed_data_dir = self.processed_data_dir
+        self.engine.dataset_paths = self.dataset_paths
         # build modules for the engine
         self.engine.build_modules(self.engine_config["modules"])
 

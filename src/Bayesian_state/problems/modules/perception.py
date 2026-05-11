@@ -4,7 +4,7 @@ Module: Perception Mechanism
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Tuple, Iterable
+from typing import Any, Dict, Tuple, Iterable, Mapping
 import numpy as np
 import pandas as pd
 from .base_module import BaseModule
@@ -15,14 +15,19 @@ from ...utils.paths import (
     TASK2_PROCESSED_PATH,
 )
 
-FEATURE_NAMES = ["neck", "head", "leg", "tail"]
+FEATURE_NAME_OPTIONS = (
+    ["neck", "head", "leg", "tail"],
+    ["green", "yellow", "pink", "blue"],
+)
+FEATURE_NAMES = FEATURE_NAME_OPTIONS[0]
 SUMMARY_REQUIRED_COLUMNS = {"iSub", "feature_name", "feature_value", "error_mean", "error_std"}
 SUMMARY72_REQUIRED_COLUMNS = {"iSub", "feature_name", "threshold_mean_mean"}
 
 DEFAULT_NORMAL_SUBJECT_IDS = (
-    list(range(125, 133))
-    + list(range(225, 233))
-    + list(range(325, 333))
+    list(range(125, 132))
+    + list(range(225, 232))
+    + list(range(325, 335))
+    + list(range(401, 425))
 )
 DEFAULT_UNIFORM_SUBJECT_IDS = (
     list(range(101, 125))
@@ -39,8 +44,43 @@ def _load_csv_cached(summary_path: str) -> pd.DataFrame:
     return pd.read_csv(csv_path)
 
 
+def _collect_feature_names(df: pd.DataFrame) -> set[str]:
+    names: set[str] = set()
+    if "feature_name" in df.columns:
+        names.update(df["feature_name"].dropna().astype(str).str.strip().str.lower())
+
+    feature_order_cols = [
+        "feature1_name",
+        "feature2_name",
+        "feature3_name",
+        "feature4_name",
+    ]
+    existing_cols = [col for col in feature_order_cols if col in df.columns]
+    if existing_cols:
+        stacked = df[existing_cols].stack().dropna().astype(str).str.strip().str.lower()
+        names.update(stacked)
+
+    return {name for name in names if name}
+
+
+def _resolve_feature_names(*dfs: pd.DataFrame) -> list[str]:
+    observed = set().union(*(_collect_feature_names(df) for df in dfs))
+    if not observed:
+        return FEATURE_NAMES
+
+    matches = [names for names in FEATURE_NAME_OPTIONS if observed <= set(names)]
+    if not matches:
+        valid_names = sorted(set().union(*(set(names) for names in FEATURE_NAME_OPTIONS)))
+        raise ValueError(
+            "Unknown feature_name values: "
+            f"{sorted(observed - set(valid_names))}; expected one of {FEATURE_NAME_OPTIONS}"
+        )
+    return matches[0]
+
+
 def _compute_subject_stats_from_summary(
     summary_df: pd.DataFrame,
+    feature_names: list[str],
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     missing_cols = [col for col in SUMMARY_REQUIRED_COLUMNS if col not in summary_df.columns]
     if missing_cols:
@@ -51,7 +91,7 @@ def _compute_subject_stats_from_summary(
 
     data = summary_df.copy()
     data["feature_name"] = data["feature_name"].astype(str).str.strip().str.lower()
-    invalid_names = sorted(set(data["feature_name"]) - set(FEATURE_NAMES))
+    invalid_names = sorted(set(data["feature_name"]) - set(feature_names))
     if invalid_names:
         raise ValueError(f"Task1b error summary has unknown feature_name values: {invalid_names}")
 
@@ -61,7 +101,7 @@ def _compute_subject_stats_from_summary(
     )
 
     for sub_id, sub_df in grouped.groupby("iSub"):
-        missing_features = sorted(set(FEATURE_NAMES) - set(sub_df["feature_name"]))
+        missing_features = sorted(set(feature_names) - set(sub_df["feature_name"]))
         if missing_features:
             raise ValueError(
                 f"Subject {int(sub_id)} is missing features in Task1b summary: {missing_features}"
@@ -69,11 +109,11 @@ def _compute_subject_stats_from_summary(
 
     mean_df = (
         grouped.pivot(index="iSub", columns="feature_name", values="error_mean")
-        .reindex(columns=FEATURE_NAMES)
+        .reindex(columns=feature_names)
     )
     std_df = (
         grouped.pivot(index="iSub", columns="feature_name", values="error_std")
-        .reindex(columns=FEATURE_NAMES)
+        .reindex(columns=feature_names)
     )
 
     mean_df = mean_df.replace([np.inf, -np.inf], np.nan).fillna(0.0)
@@ -87,7 +127,10 @@ def _compute_subject_stats_from_summary(
     return mean_df, std_df
 
 
-def _extract_feature_orders(task2_df: pd.DataFrame) -> Dict[int, list[str]]:
+def _extract_feature_orders(
+    task2_df: pd.DataFrame,
+    feature_names: list[str],
+) -> Dict[int, list[str]]:
     required_cols = [
         "iSub",
         "feature1_name",
@@ -115,7 +158,7 @@ def _extract_feature_orders(task2_df: pd.DataFrame) -> Dict[int, list[str]]:
             )
 
         names = [str(v).strip().lower() for v in rows.iloc[0].tolist()]
-        invalid = [name for name in names if name not in FEATURE_NAMES]
+        invalid = [name for name in names if name not in feature_names]
         if invalid:
             raise ValueError(
                 f"Subject {sub_id} has unknown feature names: {invalid}"
@@ -127,7 +170,28 @@ def _extract_feature_orders(task2_df: pd.DataFrame) -> Dict[int, list[str]]:
     return feature_orders
 
 
-def _resolve_data_paths(processed_data_dir: Path | str | None) -> tuple[Path, Path, Path]:
+def _resolve_data_paths(
+    processed_data_dir: Path | str | None,
+    dataset_paths: Mapping[str, Any] | None = None,
+) -> tuple[Path, Path, Path]:
+    if dataset_paths:
+        processed_dir = Path(dataset_paths.get("processed_dir", processed_data_dir or PROCESSED_DATA_DIR)).resolve()
+
+        def resolve_key(key: str, default_path: Path) -> Path:
+            value = dataset_paths.get(key)
+            if value is None:
+                return (processed_dir / default_path.name).resolve()
+            path = Path(value)
+            if not path.is_absolute():
+                path = (processed_dir / path).resolve()
+            return path
+
+        return (
+            resolve_key("perception_summary", TASK1B_ERRORSUMMARY_PATH),
+            resolve_key("perception_summary_72", TASK1B_ERRORSUMMARY_72_PATH),
+            resolve_key("feature_order_data", TASK2_PROCESSED_PATH),
+        )
+
     if processed_data_dir is None:
         return (
             TASK1B_ERRORSUMMARY_PATH.resolve(),
@@ -144,13 +208,15 @@ def _resolve_data_paths(processed_data_dir: Path | str | None) -> tuple[Path, Pa
 
 def _get_perception_noise_stats(
     processed_data_dir: Path | str | None,
+    dataset_paths: Mapping[str, Any] | None = None,
 ) -> Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray]]:
-    summary_path, _, task2_path = _resolve_data_paths(processed_data_dir)
+    summary_path, _, task2_path = _resolve_data_paths(processed_data_dir, dataset_paths)
 
     summary_df = _load_csv_cached(str(summary_path))
     task2_df = _load_csv_cached(str(task2_path))
-    mean_df, std_df = _compute_subject_stats_from_summary(summary_df)
-    feature_orders = _extract_feature_orders(task2_df)
+    feature_names = _resolve_feature_names(summary_df, task2_df)
+    mean_df, std_df = _compute_subject_stats_from_summary(summary_df, feature_names)
+    feature_orders = _extract_feature_orders(task2_df, feature_names)
 
     mean_map: Dict[int, np.ndarray] = {}
     std_map: Dict[int, np.ndarray] = {}
@@ -161,8 +227,8 @@ def _get_perception_noise_stats(
             raise ValueError(f"Subject {i_sub} not found in Task2 feature order data")
 
         order = feature_orders[i_sub]
-        mean_dict = mean_df.loc[sub_id, FEATURE_NAMES].to_dict()
-        std_dict = std_df.loc[sub_id, FEATURE_NAMES].to_dict()
+        mean_dict = mean_df.loc[sub_id, feature_names].to_dict()
+        std_dict = std_df.loc[sub_id, feature_names].to_dict()
 
         subject_mean = np.array([mean_dict[name] for name in order], dtype=float)
         subject_std = np.array([std_dict[name] for name in order], dtype=float)
@@ -179,12 +245,14 @@ def _get_perception_noise_stats(
 
 def _get_uniform_threshold_stats(
     processed_data_dir: Path | str | None,
+    dataset_paths: Mapping[str, Any] | None = None,
 ) -> Dict[int, np.ndarray]:
-    _, summary72_path, task2_path = _resolve_data_paths(processed_data_dir)
+    _, summary72_path, task2_path = _resolve_data_paths(processed_data_dir, dataset_paths)
 
     summary72_df = _load_csv_cached(str(summary72_path))
     task2_df = _load_csv_cached(str(task2_path))
-    feature_orders = _extract_feature_orders(task2_df)
+    feature_names = _resolve_feature_names(summary72_df, task2_df)
+    feature_orders = _extract_feature_orders(task2_df, feature_names)
 
     missing_cols = [c for c in SUMMARY72_REQUIRED_COLUMNS if c not in summary72_df.columns]
     if missing_cols:
@@ -195,7 +263,7 @@ def _get_uniform_threshold_stats(
 
     data = summary72_df.copy()
     data["feature_name"] = data["feature_name"].astype(str).str.strip().str.lower()
-    invalid_names = sorted(set(data["feature_name"]) - set(FEATURE_NAMES))
+    invalid_names = sorted(set(data["feature_name"]) - set(feature_names))
     if invalid_names:
         raise ValueError(f"Task1b 72-subject summary has unknown feature_name values: {invalid_names}")
 
@@ -206,7 +274,7 @@ def _get_uniform_threshold_stats(
 
     threshold_df = (
         grouped.pivot(index="iSub", columns="feature_name", values="threshold_mean_mean")
-        .reindex(columns=FEATURE_NAMES)
+        .reindex(columns=feature_names)
         .replace([np.inf, -np.inf], np.nan)
         .fillna(0.0)
     )
@@ -217,7 +285,7 @@ def _get_uniform_threshold_stats(
         if i_sub not in feature_orders:
             raise ValueError(f"Subject {i_sub} not found in Task2 feature order data")
         order = feature_orders[i_sub]
-        values = threshold_df.loc[sub_id, FEATURE_NAMES].to_dict()
+        values = threshold_df.loc[sub_id, feature_names].to_dict()
         vec = np.array([values[name] for name in order], dtype=float)
         threshold_map[i_sub] = np.abs(np.nan_to_num(vec, nan=0.0))
 
@@ -256,6 +324,7 @@ class PerceptionModule(BaseModule):
         processed_data_dir = kwargs.pop(
             "processed_data_dir", getattr(engine, "processed_data_dir", PROCESSED_DATA_DIR)
         )
+        dataset_paths = kwargs.pop("dataset_paths", getattr(engine, "dataset_paths", None))
         normal_subject_ids = self._normalize_subject_ids(
             kwargs.pop("normal_subject_ids", DEFAULT_NORMAL_SUBJECT_IDS)
         )
@@ -280,7 +349,7 @@ class PerceptionModule(BaseModule):
                 uniform_subject_ids=uniform_subject_ids,
             )
             if noise_mode == "uniform":
-                half_range = self._load_uniform_half_range(sid, processed_data_dir)
+                half_range = self._load_uniform_half_range(sid, processed_data_dir, dataset_paths)
                 self.noise_mode = "uniform"
                 self.uniform_half_range = np.abs(
                     self._coerce_vector(half_range, "uniform_half_range")
@@ -290,7 +359,7 @@ class PerceptionModule(BaseModule):
                 if std_value is None:
                     std_value = np.zeros(self.features, dtype=float)
             else:
-                auto_mean, auto_std = self._load_subject_stats(sid, processed_data_dir)
+                auto_mean, auto_std = self._load_subject_stats(sid, processed_data_dir, dataset_paths)
                 if mean_value is None:
                     mean_value = auto_mean
                 if std_value is None:
@@ -318,9 +387,13 @@ class PerceptionModule(BaseModule):
         return "normal"
 
     @staticmethod
-    def _load_subject_stats(subject_id: int, processed_data_dir: Path | str | None):
+    def _load_subject_stats(
+        subject_id: int,
+        processed_data_dir: Path | str | None,
+        dataset_paths: Mapping[str, Any] | None = None,
+    ):
         try:
-            mean_map, std_map = _get_perception_noise_stats(processed_data_dir)
+            mean_map, std_map = _get_perception_noise_stats(processed_data_dir, dataset_paths)
         except ValueError as exc:
             raise ValueError(
                 f"Failed to load perception statistics from {processed_data_dir}"
@@ -333,9 +406,13 @@ class PerceptionModule(BaseModule):
         return mean_map[subject_id], std_map[subject_id]
 
     @staticmethod
-    def _load_uniform_half_range(subject_id: int, processed_data_dir: Path | str | None):
+    def _load_uniform_half_range(
+        subject_id: int,
+        processed_data_dir: Path | str | None,
+        dataset_paths: Mapping[str, Any] | None = None,
+    ):
         try:
-            threshold_map = _get_uniform_threshold_stats(processed_data_dir)
+            threshold_map = _get_uniform_threshold_stats(processed_data_dir, dataset_paths)
         except ValueError as exc:
             raise ValueError(
                 f"Failed to load uniform-threshold statistics from {processed_data_dir}"

@@ -1,0 +1,46 @@
+# Grid optimization config for MEG Condition 3 subjects.
+engine_config_path: ../model_struct/pmh_grid_cond3.yaml
+
+# MEG subjects in data_meg/processed/Task3b_processed.csv
+subject_range: [333, 335]
+
+# MEG dataset paths (relative to this YAML)
+dataset:
+  processed_dir: ../../data_meg/processed
+  learning_data: Task3b_processed.csv
+  perception_summary: Task1b_errorsummary.csv
+  perception_summary_72: Task1b_errorsummary.csv
+  feature_order_data: Task3b_processed.csv
+
+output_dir: ../../results/state-based-grid-result/pmh/cond3_meg
+oral:
+  mode: center
+  center_data_path: ../../data_meg/processed/Task3b_processed.csv
+  region_data_path: ../../data_meg/processed/Task3b_processed.csv
+  # region_n_samples: 100
+
+# Force all MEG subjects to use uniform-threshold perception.
+engine_config:
+  modules:
+    perception_mod:
+      kwargs:
+        normal_subject_ids: []
+        uniform_subject_ids: [333, 334, 335]
+
+# Parallelism (inner jobs for repeats within one subject)
+n_jobs: 128
+
+# Repeats
+n_repeats: 64
+refit_repeats: 4096
+
+# Evaluation
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+# Non-linear grid: gamma dense near 1, w0 dense near 0
+param_grid:
+  gamma: [0.1, 0.3, 0.5, 0.6, 0.7, 0.85, 0.8, 0.85, 0.9, 0.93, 0.97, 0.99]
+  w0:    [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0]

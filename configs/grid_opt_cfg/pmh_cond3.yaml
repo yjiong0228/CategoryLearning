@@ -1,11 +1,17 @@
 # Grid optimization config for Condition 3 subjects
-# Uses shared cond2/3 model structure.
-engine_config_path: ../model_struct/pmh_grid_cond23.yaml
+# Uses condition-specific model structure.
+engine_config_path: ../model_struct/pmh_grid_cond3.yaml
 
-subjects: [325, 326, 327, 328, 329, 330, 331, 332]
+subject_range: [301, 332]
 
-# Paths (relative to this YAML)
-data_path: ../../data/processed/Task2_processed_new.csv
+# Dataset paths (relative to this YAML)
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed_new.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed_new.csv
+
 output_dir: ../../results/state-based-grid-result/pmh/cond3
 oral:
   mode: center # region
@@ -30,3 +36,10 @@ keep_logs: true
 param_grid:
   gamma: [0.1, 0.3, 0.5, 0.6, 0.7, 0.85, 0.8, 0.85, 0.9, 0.93, 0.97, 0.99]
   w0:    [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0]
+
+
+# Optional per-subject overrides. Keys can be a subject id, a comma-separated list,
+# or a range like "330-331". Values deep-merge into this cond config.
+# subject_overrides:
+#   "330,331":
+#     refit_repeats: 1024

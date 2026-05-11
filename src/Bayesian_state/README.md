@@ -47,8 +47,26 @@
 - `engine_config_path`: 指向某个 `configs/model_struct/*.yaml`（推荐）
 - `engine_config`: 可选的局部覆盖（会与 `engine_config_path` 深合并）
 - `param_grid`: 要搜索的参数空间
-- `subjects` 或 `subject_range`
+- `subjects` 或 `subject_range`: 默认被试；`subject_range: [125, 132]` 是闭区间
+- `dataset`: 数据文件映射；推荐用它切换 `data` / `data_meg` / `data_exp4`
 - `keep_logs`: 是否保存 step 级日志（画 cluster/oral 图通常需要）
+
+运行时也可以用 terminal 参数覆盖 YAML 默认被试：`--subjects 125 126` 或 `--subject-range 125 132`。如果同时提供，`--subjects` 优先。
+
+`dataset` 示例：
+
+```yaml
+dataset:
+  processed_dir: ../../data_meg/processed
+  learning_data: Task3b_processed.csv
+  perception_summary: Task1b_errorsummary.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task3b_processed.csv
+```
+
+其中 `learning_data` 是拟合用行为/刺激主表；`perception_summary` 和 `perception_summary_72` 给 `PerceptionModule` 自动加载噪声参数；`feature_order_data` 用来读取 `feature1_name` 到 `feature4_name` 的顺序。
+
+旧的 `data_path` 仍然兼容，但新配置建议使用 `dataset`。
 
 ## 5. 运行流程
 
@@ -59,12 +77,26 @@ python -m src.Bayesian_state.run_grid_optimization \
   --config configs/grid_opt_cfg/pmh_cond1.yaml
 ```
 
+覆盖默认被试：
+
+```bash
+python -m src.Bayesian_state.run_grid_optimization \
+  --config configs/grid_opt_cfg/pmh_cond1.yaml \
+  --subject-range 125 132
+
+python -m src.Bayesian_state.run_grid_optimization \
+  --config configs/grid_opt_cfg/pmh_cond1.yaml \
+  --subjects 125 126 127
+```
+
 ### 5.2 AMR 优化
 
 ```bash
 python -m src.Bayesian_state.run_amr_optimization \
   --config configs/amr_opt_cfg/pmh_cond1.yaml
 ```
+
+AMR 同样支持 `--subjects` 和 `--subject-range` 覆盖 YAML 默认被试。
 
 `run_amr_optimization` 兼容旧参数名 `--opt-config`，但建议统一用 `--config`。
 

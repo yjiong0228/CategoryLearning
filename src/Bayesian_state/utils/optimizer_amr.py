@@ -214,8 +214,9 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         processed_data_dir: Optional[str] = None,
         n_jobs: int = 1,
         amr_kwargs: Optional[Dict[str, Any]] = None,
+        dataset_paths: Optional[Mapping[str, Any]] = None,
     ) -> None:
-        super().__init__(engine_config, processed_data_dir=processed_data_dir, n_jobs=n_jobs)
+        super().__init__(engine_config, processed_data_dir=processed_data_dir, n_jobs=n_jobs, dataset_paths=dataset_paths)
         self._amr_kwargs = amr_kwargs or {}
 
     def _evaluate_params(
@@ -241,6 +242,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     self._engine_config_template,
                     self._processed_data_dir,
                     window_size,
+                    self._dataset_paths,
                     keep_logs,
                     True,
                     prediction_mode,
@@ -257,6 +259,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     self._engine_config_template,
                     self._processed_data_dir,
                     window_size,
+                    self._dataset_paths,
                     keep_logs,
                     True,
                     prediction_mode,

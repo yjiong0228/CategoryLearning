@@ -15,8 +15,10 @@ modules:
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs:
-      strategies: "original_strategies_a"
-      init_num: 3
+      strategies: 
+        - {amount: "random_4", method: "random_posterior"}
+        - {amount: "opp_random_4", method: "random"}
+      init_num: 2
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs: {}
@@ -32,3 +34,26 @@ agenda:
   - likelihood_mod
   - memory_mod
   - beta_mod
+
+
+# Model-structure overrides belong here. Use this for subject-specific
+# beta_mod / hypo_transitions_mod / other module kwargs within condition 3.
+# Example:
+subject_overrides:
+  130:
+    modules:
+      beta_mod:
+        kwargs:
+          beta_init: 2.0
+          decrease_rate: 0.2
+      hypo_transitions_mod:
+        kwargs:
+          init_num: 20
+  131:
+    modules:
+      hypo_transitions_mod:
+        kwargs:
+          strategies:
+            - {amount: "entropy_7", method: "random_posterior"}
+            - {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+            - {amount: "opp_entropy_7", method: "random"}

@@ -4,7 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
 import numpy as np
 import pandas as pd
@@ -71,6 +71,7 @@ class BaseStateOptimizer:
         engine_config: Dict[str, Any],
         processed_data_dir: Optional[Path | str] = None,
         n_jobs: int = 1,
+        dataset_paths: Optional[Mapping[str, Path | str]] = None,
     ) -> None:
         self._engine_config_template = deepcopy(engine_config)
         self._processed_data_dir = (
@@ -78,6 +79,7 @@ class BaseStateOptimizer:
             if processed_data_dir is not None
             else PROCESSED_DATA_DIR
         )
+        self._dataset_paths = dict(dataset_paths or {})
         self.learning_data: Optional[pd.DataFrame] = None
         self.n_jobs = n_jobs
 
@@ -350,6 +352,7 @@ def evaluate_state_model_run(
     engine_config_template: Dict[str, Any],
     processed_data_dir: Path,
     window_size: int,
+    dataset_paths: Optional[Mapping[str, Path | str]] = None,
     keep_logs: bool = True,
     include_step_log: bool = False,
     prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
@@ -368,6 +371,7 @@ def evaluate_state_model_run(
         condition=condition,
         subject_id=subject_id,
         processed_data_dir=processed_data_dir,
+        dataset_paths=dataset_paths,
     )
 
     model.precompute_distances(stimulus)
