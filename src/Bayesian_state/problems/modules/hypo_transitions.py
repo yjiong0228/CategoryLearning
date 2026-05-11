@@ -349,12 +349,12 @@ class DynamicHypothesisModule(BaseModule):
         ref_hypos_beta = np.array([beta_val] * proto_hypo_amount)
 
         # ref_full_centers: shape (proto_hypo_amount, n_cats, n_dims)
-        # self.engine.partition.centers[k] is (split_type, {cat_idx: center_tuple})
+        # self.engine.partition.prototypes[k, 0] has shape [n_cats, n_dims]
         try:
-            ref_full_centers = np.array([
-                list(self.engine.partition.centers[k][1].values())
-                for k in ref_hypos_index
-            ])
+            ref_full_centers = np.asarray(
+                self.engine.partition.prototypes[ref_hypos_index, 0],
+                dtype=float,
+            )
         except Exception as e:
             if self.debug: print(f"Error getting centers: {e}")
             return self._sample_from_pool(available_hypos, amount).tolist()
@@ -390,10 +390,10 @@ class DynamicHypothesisModule(BaseModule):
         candidate_hypos_index = available_hypos # already excluded
         
         # candidate_full_center: (n_candidates, n_cats, n_dims)
-        candidate_full_center = np.array([
-            list(self.engine.partition.centers[k][1].values())
-            for k in candidate_hypos_index
-        ])
+        candidate_full_center = np.asarray(
+            self.engine.partition.prototypes[candidate_hypos_index, 0],
+            dtype=float,
+        )
         
         # Calculate similarity score
         # For each candidate, calculate distance of its center (for the SAME choice as ref) to ref center
@@ -451,12 +451,12 @@ class DynamicHypothesisModule(BaseModule):
             # If partition is not ready, skip
             return
 
-        # Check if centers are available
-        if not hasattr(self.engine.partition, "centers"):
+        # Check if prototypes are available.
+        if not hasattr(self.engine.partition, "prototypes"):
              return
 
         self.cached_dist = {}
-        # self.engine.partition.centers is a list of (split_type, {cat_idx: center_tuple})
+        # self.engine.partition.prototypes has shape [n_hypo, n_proto, n_cat, n_dim].
         # We iterate over all pairs of hypotheses
         # This might be expensive if total_hypo is large. 
         # But usually it is done once or lazily.

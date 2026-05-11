@@ -9,6 +9,7 @@ This module provides two analysis paths:
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -280,7 +281,7 @@ class Oral_region_analysis:
             n_cats = 2 if cond == 1 else 4
             partition = Partition(n_dims=4, n_cats=n_cats)
 
-            oral_region = [(row["A"], row["b"]) for _, row in subj_df.iterrows()]
+            oral_region = [(row["oral_A"], row["oral_b"]) for _, row in subj_df.iterrows()]
             region_valid_mask = []
             for A_val, b_val in oral_region:
                 parsed_A = A_val
@@ -350,6 +351,40 @@ class Oral_center_analysis:
     """Center-based oral analysis with nearest-hypothesis matching."""
 
     @staticmethod
+    def _parse_center(value: Any, n_dims: int = 4) -> np.ndarray:
+        """Parse one oral_center value into a numeric vector.
+
+        Invalid or empty values become an all-NaN vector so callers can keep
+        trial alignment while marking the oral report as unusable.
+        """
+        if value is None:
+            return np.full(n_dims, np.nan, dtype=float)
+        if isinstance(value, float) and np.isnan(value):
+            return np.full(n_dims, np.nan, dtype=float)
+
+        parsed = value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text or text.lower() in {"nan", "none"}:
+                return np.full(n_dims, np.nan, dtype=float)
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(text)
+                except (SyntaxError, ValueError):
+                    return np.full(n_dims, np.nan, dtype=float)
+
+        try:
+            arr = np.asarray(parsed, dtype=float).reshape(-1)
+        except (TypeError, ValueError):
+            return np.full(n_dims, np.nan, dtype=float)
+
+        if arr.size != n_dims or np.isnan(arr).any():
+            return np.full(n_dims, np.nan, dtype=float)
+        return arr
+
+    @staticmethod
     def get_oral_hypos_list(
         condition: int,
         data: Tuple[np.ndarray, np.ndarray],
@@ -369,7 +404,7 @@ class Oral_center_analysis:
                 center_valid_mask[idx] = bool(center_arr.size > 0 and not np.all(np.isnan(center_arr)))
 
         resolved_top_k = _resolve_top_k(condition, top_k)
-        n_hypos = partition.prototypes_np.shape[0]
+        n_hypos = partition.prototypes.shape[0]
         out: List[List[int]] = []
 
         for trial_idx in range(n_trials):
@@ -382,7 +417,7 @@ class Oral_center_analysis:
             distance_map = []
             for hypo_idx in range(n_hypos):
                 # Compare oral center with each hypothesis prototype center.
-                true_center = partition.prototypes_np[hypo_idx, 0, cat_idx, :]
+                true_center = partition.prototypes[hypo_idx, 0, cat_idx, :]
                 distance_val = float(np.linalg.norm(reported_center - true_center))
                 distance_map.append((distance_val, hypo_idx))
 
@@ -400,13 +435,8 @@ class Oral_center_analysis:
         """Compute hit trajectories per subject for center-based oral reports."""
         learning_data = data.copy()
         results: Dict[int, Dict[str, Any]] = {}
-        oral_value_cols = ["feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue"]
-        missing_cols = [col for col in oral_value_cols if col not in learning_data.columns]
-        if missing_cols:
-            logger.warning(
-                "Skipping oral center analysis; missing oral value columns: %s",
-                ", ".join(missing_cols),
-            )
+        if "oral_center" not in learning_data.columns:
+            logger.warning("Skipping oral center analysis; missing oral_center column.")
             return results
 
         for _, subj_df in learning_data.groupby("iSub"):
@@ -416,7 +446,7 @@ class Oral_center_analysis:
             n_cats = 2 if cond == 1 else 4
             partition = Partition(n_dims=4, n_cats=n_cats)
 
-            centers = subj_df[oral_value_cols].to_numpy(dtype=float)
+            centers = np.asarray([self._parse_center(value) for value in subj_df["oral_center"]], dtype=float)
             center_valid_mask = np.array(
                 [bool(np.asarray(center, dtype=float).size > 0 and not np.all(np.isnan(center))) for center in centers],
                 dtype=bool,

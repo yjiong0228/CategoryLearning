@@ -90,7 +90,6 @@ class LikelihoodModule(BaseModule):
             hypos=self.h_indices,
             data=single_trial_data,
             beta=beta,
-            use_cached_dist=kwargs.get('use_cached_dist', False),
             distance_mode=self.distance_mode,
             normalized=True,
             **{

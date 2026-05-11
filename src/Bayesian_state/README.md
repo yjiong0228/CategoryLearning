@@ -178,22 +178,22 @@ python -m src.Bayesian_state.eval_amr_results \
 
 ## 11. Oral mode configuration and error policy
 
-Both `eval_grid_results.py` and `eval_amr_results.py` now support dual oral encodings:
+Both `eval_grid_results.py` and `eval_amr_results.py` support dual oral encodings from the learning-data CSV by default:
 
-- `center`: uses `Oral_center_analysis` and `Task2_processed.csv` style columns (`feature*_oralvalue`)
-- `region`: uses `Oral_region_analysis` and `Task2_processed_new.csv` style columns (`A`, `b`)
+- `center`: uses `Oral_center_analysis` and center columns (`oral_center`)
+- `region`: uses `Oral_region_analysis` and region columns (`oral_A`, `oral_b`)
 
 CLI arguments:
 
-- `--config`: optimization yaml (reads `oral.mode` and `oral.{mode}_data_path`)
+- `--config`: optimization yaml (reads `oral.mode`; oral data defaults to `dataset.learning_data`)
 - `--oral-mode {center,region}`: overrides yaml `oral.mode`
-- `--oral-data`: overrides final oral csv path (highest priority)
+- `--oral-data`: optionally overrides the default oral csv path (highest priority)
 - `--oral-region-n-samples`: region mode overlap sampling count (overrides `oral.region_n_samples`)
 
 Priority order:
 
 1. CLI (`--oral-mode`, `--oral-data`)
-2. YAML (`oral.mode`, `oral.center_data_path`, `oral.region_data_path`)
+2. YAML (`oral.mode`) plus `dataset.learning_data`
 3. Missing required values -> raise error
 
 Region speed tip:

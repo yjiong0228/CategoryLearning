@@ -15,17 +15,13 @@ dataset:
 output_dir: ../../results/state-based-grid-result/pmh/cond3_meg
 oral:
   mode: center
-  center_data_path: ../../data_meg/processed/Task3b_processed.csv
-  region_data_path: ../../data_meg/processed/Task3b_processed.csv
   # region_n_samples: 100
 
-# Force all MEG subjects to use uniform-threshold perception.
 engine_config:
   modules:
     perception_mod:
       kwargs:
-        normal_subject_ids: []
-        uniform_subject_ids: [333, 334, 335]
+        noise_mode: uniform
 
 # Parallelism (inner jobs for repeats within one subject)
 n_jobs: 128

@@ -21,7 +21,8 @@ modules:
       init_num: 10
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {}
+    kwargs:
+      distance_mode: prototype   # prototype | boundary
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs:

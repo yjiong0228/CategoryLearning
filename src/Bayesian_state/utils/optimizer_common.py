@@ -220,7 +220,6 @@ def _compute_single_mode_metrics(
                 hypo,
                 trial_slice,
                 beta_for_hypo,
-                use_cached_dist=False,
                 distance_mode=distance_mode,
             )
             weighted_prob += weight * float(np.ravel(lik)[0])
@@ -374,7 +373,6 @@ def evaluate_state_model_run(
         dataset_paths=dataset_paths,
     )
 
-    model.precompute_distances(stimulus)
     posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
     all_step_log = getattr(model, "step_log", None)
     if all_step_log is None:

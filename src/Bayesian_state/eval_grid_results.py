@@ -13,14 +13,15 @@ import yaml
 
 matplotlib.use("Agg")
 
+from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.model_evaluation import ModelEval
 from src.Bayesian_state.utils.oral_process import Oral_center_analysis, Oral_region_analysis
 
 
 ORAL_MODE_CHOICES = ("center", "region")
 COMMON_REQUIRED_COLS = ("iSub", "condition", "choice")
-CENTER_REQUIRED_COLS = ("feature1_oralvalue", "feature2_oralvalue", "feature3_oralvalue", "feature4_oralvalue")
-REGION_REQUIRED_COLS = ("A", "b")
+CENTER_REQUIRED_COLS = ("oral_center",)
+REGION_REQUIRED_COLS = ("oral_A", "oral_b")
 DEFAULT_REGION_N_SAMPLES = 1000
 DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
 
@@ -164,6 +165,7 @@ def aggregate_grid_results(input_dir: Path, eval_prediction_mode: str) -> Dict[i
             "strategy_counts_log": payload.get("strategy_counts_log"),
             "posterior_log": payload.get("posterior_log"),
             "prior_log": payload.get("prior_log"),
+            "raw_runs_ref": payload.get("raw_runs_ref"),
             "sample_errors": payload.get("sample_errors"),
             "selection_meta": payload.get("selection_meta"),
             "eval_prediction_mode": eval_prediction_mode,
@@ -227,6 +229,8 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
         if not config_path.is_file():
             raise FileNotFoundError(f"Config file not found: {config_path}")
         config = _load_yaml(config_path)
+        dataset_paths = resolve_dataset_paths(config, config_path.parent)
+        config_data_path = dataset_paths["learning_data"]
         oral_cfg = config.get("oral")
         if isinstance(oral_cfg, dict):
             raw_mode = oral_cfg.get("mode")
@@ -236,11 +240,6 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
                     config_mode = raw_mode
                 else:
                     raise ValueError(f"Invalid oral.mode '{raw_mode}' in {config_path}.")
-            if config_mode is not None:
-                data_key = f"{config_mode}_data_path"
-                raw_data_path = oral_cfg.get(data_key)
-                if raw_data_path is not None:
-                    config_data_path = (config_path.parent / str(raw_data_path)).resolve()
             raw_region_n_samples = oral_cfg.get("region_n_samples")
             if raw_region_n_samples is not None:
                 config_region_n_samples = int(raw_region_n_samples)
@@ -253,7 +252,7 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
     if final_data_path is None:
         raise ValueError(
             f"Oral data path is required for mode='{final_mode}'. "
-            f"Provide --oral-data or set oral.{final_mode}_data_path in --config YAML."
+            "Provide --oral-data or set dataset.learning_data in --config YAML."
         )
 
     region_n_samples = args.oral_region_n_samples

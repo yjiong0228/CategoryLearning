@@ -7,18 +7,15 @@ subject_range: [301, 332]
 # Dataset paths (relative to this YAML)
 dataset:
   processed_dir: ../../data/processed
-  learning_data: Task2_processed_new.csv
+  learning_data: Task2_processed.csv
   perception_summary: Task1b_errorsummary_24.csv
   perception_summary_72: Task1b_errorsummary_72.csv
-  feature_order_data: Task2_processed_new.csv
+  feature_order_data: Task2_processed.csv
 
 output_dir: ../../results/state-based-grid-result/pmh/cond3
 oral:
   mode: center # region
-  center_data_path: ../../data/processed/Task2_processed.csv
-  region_data_path: ../../data/processed/Task2_processed_new.csv
   # region_n_samples: 100
-
 # Parallelism (inner jobs for repeats within one subject)
 n_jobs: 128
 

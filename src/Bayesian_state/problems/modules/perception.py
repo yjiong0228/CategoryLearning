@@ -24,9 +24,9 @@ SUMMARY_REQUIRED_COLUMNS = {"iSub", "feature_name", "feature_value", "error_mean
 SUMMARY72_REQUIRED_COLUMNS = {"iSub", "feature_name", "threshold_mean_mean"}
 
 DEFAULT_NORMAL_SUBJECT_IDS = (
-    list(range(125, 132))
-    + list(range(225, 232))
-    + list(range(325, 335))
+    list(range(125, 133))
+    + list(range(225, 233))
+    + list(range(325, 336))
     + list(range(401, 425))
 )
 DEFAULT_UNIFORM_SUBJECT_IDS = (
@@ -41,13 +41,20 @@ def _load_csv_cached(summary_path: str) -> pd.DataFrame:
     csv_path = Path(summary_path)
     if not csv_path.exists():
         raise ValueError(f"Required dataset is missing: {csv_path}")
-    return pd.read_csv(csv_path)
+    return pd.read_csv(csv_path, low_memory=False)
 
 
 def _collect_feature_names(df: pd.DataFrame) -> set[str]:
     names: set[str] = set()
-    if "feature_name" in df.columns:
-        names.update(df["feature_name"].dropna().astype(str).str.strip().str.lower())
+
+    valid_rows = df
+    if "iSub" in valid_rows.columns:
+        valid_rows = valid_rows[valid_rows["iSub"].notna()]
+
+    if "feature_name" in valid_rows.columns:
+        names.update(
+            valid_rows["feature_name"].dropna().astype(str).str.strip().str.lower()
+        )
 
     feature_order_cols = [
         "feature1_name",
@@ -55,9 +62,10 @@ def _collect_feature_names(df: pd.DataFrame) -> set[str]:
         "feature3_name",
         "feature4_name",
     ]
-    existing_cols = [col for col in feature_order_cols if col in df.columns]
+    existing_cols = [col for col in feature_order_cols if col in valid_rows.columns]
     if existing_cols:
-        stacked = df[existing_cols].stack().dropna().astype(str).str.strip().str.lower()
+        complete_rows = valid_rows.dropna(subset=existing_cols)
+        stacked = complete_rows[existing_cols].stack().astype(str).str.strip().str.lower()
         names.update(stacked)
 
     return {name for name in names if name}
@@ -331,6 +339,11 @@ class PerceptionModule(BaseModule):
         uniform_subject_ids = self._normalize_subject_ids(
             kwargs.pop("uniform_subject_ids", DEFAULT_UNIFORM_SUBJECT_IDS)
         )
+        configured_noise_mode = str(kwargs.pop("noise_mode", "auto")).strip().lower()
+        if configured_noise_mode in {"uniform_threshold", "threshold"}:
+            configured_noise_mode = "uniform"
+        if configured_noise_mode not in {"auto", "normal", "uniform"}:
+            raise ValueError("noise_mode must be 'auto', 'normal', or 'uniform'")
 
         mean_value = kwargs.pop("mean", None)
         std_value = kwargs.pop("std", None)
@@ -343,11 +356,14 @@ class PerceptionModule(BaseModule):
                     "PerceptionModule requires 'subject_id' when mean/std are not provided."
                 )
             sid = int(self.subject_id)
-            noise_mode = self._resolve_subject_noise_mode(
-                sid,
-                normal_subject_ids=normal_subject_ids,
-                uniform_subject_ids=uniform_subject_ids,
-            )
+            if configured_noise_mode == "auto":
+                noise_mode = self._resolve_subject_noise_mode(
+                    sid,
+                    normal_subject_ids=normal_subject_ids,
+                    uniform_subject_ids=uniform_subject_ids,
+                )
+            else:
+                noise_mode = configured_noise_mode
             if noise_mode == "uniform":
                 half_range = self._load_uniform_half_range(sid, processed_data_dir, dataset_paths)
                 self.noise_mode = "uniform"

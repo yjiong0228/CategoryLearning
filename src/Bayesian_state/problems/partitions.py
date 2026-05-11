@@ -1,111 +1,83 @@
-"""
-基于原型的类别中心点生成
+"""Partition hypotheses and category-likelihood geometry.
+
+The likelihood flow in this file has three layers:
+
+1. Public likelihood API
+   ``calc_likelihood`` and ``calc_likelihood_entry`` handle hypothesis loops,
+   beta values, normalization, and feedback-code likelihoods.
+2. Category-probability geometry
+   ``prototype`` and ``boundary`` are parallel distance modes. Both produce a
+   ``[n_cats, n_trials]`` probability matrix.
+3. Partition construction
+   Concrete split definitions, prototype centers, boundary regions, and
+   hypothesis similarity live in ``Partition``.
 """
 from abc import ABC
-from typing import List, Tuple, Dict
+from dataclasses import dataclass
+from typing import List, Tuple
 import itertools
 from itertools import product
-# import pandas as pd
+
 import numpy as np
 from pathlib import Path
 from .base_problem import softmax, euc_dist
 
 
-
+# =============================================================================
+# BasePartition: public API, distance modes, and shared helpers
+# =============================================================================
 class BasePartition(ABC):
+    """Shared likelihood API for partition hypothesis spaces."""
+
     EPS = 1e-12
     DISTANCE_MODE_PROTOTYPE = "prototype"
     DISTANCE_MODE_BOUNDARY = "boundary"
     VALID_DISTANCE_MODES = (DISTANCE_MODE_PROTOTYPE, DISTANCE_MODE_BOUNDARY)
-    """
-    Base Partition
-    """
+
+    # Class layout:
+    # 1. core construction methods
+    # 2. public likelihood API
+    # 3. distance-mode dispatch
+    # 4. category-probability implementations
+    # 5. internal helpers
 
     def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
-        """Initialize"""
+        """Build split definitions, prototype centers, and region cache."""
         self.n_dims = n_dims
         self.n_cats = n_cats
         self.n_protos = n_protos
-        coeffs = [tuple(x.tolist()) for x in np.eye(self.n_dims, dtype=int)]
-        # the lower and upper boundaries of the cube, such as `x_0=0`, `x_2=1`.
-        self.base_spaces = [[(x, 0) for x in coeffs], [(x, 1) for x in coeffs]]
         self.splits = self.get_all_splits()
-        self.centers = self.get_centers()
         self.prototypes = self.get_prototypes()
-        self.prototypes_np = np.array([[[t for i, t in sorted(x.items())]
-                                        for x in p[1:]]
-                                       for p in self.prototypes])
-
         self.regions = list(self.get_regions())
-
-        self.cached_dist: Dict[int, np.ndarray] = {}
-        # self.labels = [p[0] for p in self.prototypes]
-        # self.inv_labels = dict((l, i) for i, l in enumerate(self.labels))
 
     @property
     def length(self):
-        """
-        Property: length
-        """
-
-        return len(self.prototypes)
+        """Number of hypotheses in this partition space."""
+        return self.prototypes.shape[0]
 
     def get_all_splits(self):
-        """
-        Abstract
-        """
-        raise NotImplementedError
-
-    def get_centers(self):
-        """
-        Abstract
-        """
+        """Return all split definitions for the concrete partition space."""
         raise NotImplementedError
 
     def get_prototypes(self):
-        """
-        Parameters
-        ----------
-        n_protos: int, number of prototypes per category. Could be calculated
-                  via Wasserstein Discretization. When `n_protos == 1`, it is
-                  just the barycenter of each category.
-        """
-        if self.n_protos == 1:
-            return self.get_centers()
-        raise NotImplementedError(
-            "get_prototypes: Method case not implemented.")
+        """Return numeric prototypes with shape [n_hypo, n_proto, n_cat, n_dim]."""
+        raise NotImplementedError
 
     def get_regions(self):
-        """
-        
-        """
-        return [
-            self.generate_category_inequalities(split_type, hyperplanes)
-            for split_type, hyperplanes in self.splits
-        ]
+        """Return boundary-region constraints for every split definition."""
+        return [self.build_regions(split) for split in self.splits]
 
-    def precompute_all_distances(self, stimuli: np.ndarray):
-        """
-        提前把所有 trial 的距离缓存到 self.cached_dist[hypo] 中，
-        这样后面做正序或倒序都不再重复算距离。
+    def build_regions(self, split):
+        """Build category-region constraints for one split definition."""
+        raise NotImplementedError
 
-        stimuli: shape = [n_trials, n_dims]
-        """
-        n_trials = stimuli.shape[0]
-        for hypo in range(self.length):
-            partition = self.prototypes_np[
-                hypo]  # shape = [n_protos, n_cats, n_dims]
-            distances = euc_dist(
-                partition, stimuli)  # shape = [n_protos, n_cats, n_trials]
-            typical_distances = np.min(distances,
-                                       axis=0)  # shape = [n_cats, n_trials]
-            self.cached_dist[hypo] = typical_distances
-
+    # ------------------------------------------------------------------
+    # Public likelihood API
+    # ------------------------------------------------------------------
     def calc_likelihood(self,
                         hypos: List[int] | Tuple[int],
                         data: list | tuple,
                         beta: list | tuple | float | np.ndarray = 1.,
-                        use_cached_dist: bool = False,
                         distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                         normalized: bool = True,
                         **kwargs) -> np.ndarray:  # BaseLikelihood:
@@ -122,8 +94,6 @@ class BasePartition(ABC):
             Softmax inverse temperature. Can be:
             - A scalar (applied to all hypotheses)
             - A list/tuple/array of per-hypothesis beta values
-        use_cached_dist : bool
-            Whether to use cached distances for speed-up.
         normalized : bool
             Whether to normalize the result.
 
@@ -132,197 +102,50 @@ class BasePartition(ABC):
         np.ndarray
             Likelihood matrix of shape [n_trials, n_hypos].
         """
-        # Convert beta to list if needed
-        if isinstance(beta, np.ndarray):
-            beta = beta.tolist()
-        elif isinstance(beta, (int, float)):
-            beta = [float(beta)] * len(hypos)
-        elif not isinstance(beta, (list, tuple)):
-            beta = [float(beta)] * len(hypos)
-        
-        # Ensure beta length matches hypos length
-        if len(beta) != len(hypos):
-            # If mismatch, use first value as default
-            default_beta = beta[0] if len(beta) > 0 else 1.0
-            beta = [default_beta] * len(hypos)
-
+        beta_values = self._resolve_beta_vector(beta, len(hypos))
         resolved_mode = self._resolve_distance_mode(distance_mode)
         ret = np.zeros([len(data[2]), len(hypos)], dtype=float)
 
         for j, h in enumerate(hypos):
-            ret[:, j] = self.calc_likelihood_entry(h, data, beta[j],
-                                                   use_cached_dist,
+            ret[:, j] = self.calc_likelihood_entry(h, data, beta_values[j],
                                                    distance_mode=resolved_mode,
                                                    **kwargs)
         if normalized:
             return ret / np.sum(ret, axis=1, keepdims=True)
         return ret
 
-    @classmethod
-    def _resolve_distance_mode(cls, distance_mode: str) -> str:
-        if distance_mode not in cls.VALID_DISTANCE_MODES:
-            raise ValueError(
-                f"Unsupported distance_mode '{distance_mode}'. "
-                f"Expected one of: {cls.VALID_DISTANCE_MODES}."
-            )
-        return distance_mode
-
-    def get_category_probabilities(self,
-                                   hypo: int,
-                                   data: list | tuple,
-                                   beta: float,
-                                   distance_mode: str = DISTANCE_MODE_PROTOTYPE,
-                                   use_cached_dist: bool = False,
-                                   **kwargs) -> np.ndarray:
-        mode = self._resolve_distance_mode(distance_mode)
-        if mode != self.DISTANCE_MODE_PROTOTYPE:
-            raise ValueError(
-                "BasePartition only supports prototype distance. "
-                "Boundary distance requires Partition."
-            )
-        return self.calc_likelihood_base(
-            hypo=hypo,
-            data=data,
-            beta=beta,
-            use_cached_dist=use_cached_dist,
-            **kwargs,
-        )
-
-    def get_category_assignment(self,
-                                hypo: int,
-                                stimulus: np.ndarray,
-                                distance_mode: str = DISTANCE_MODE_PROTOTYPE,
-                                beta: float = 1.0,
-                                use_cached_dist: bool = False,
-                                **kwargs) -> int:
-        trial_data = ([np.asarray(stimulus, dtype=float)], [1], [1.0])
-        prob = self.get_category_probabilities(
-            hypo=hypo,
-            data=trial_data,
-            beta=beta,
-            distance_mode=distance_mode,
-            use_cached_dist=use_cached_dist,
-            **kwargs,
-        )
-        return int(np.argmax(prob[:, 0]))
-
-    def calc_likelihood_base(self,
-                             hypo: int,
-                             data: list | tuple,
-                             beta: float,
-                             use_cached_dist: bool = False,
-                             **kwargs) -> np.ndarray:
-        """
-        计算给定 hypo 的 "raw" prob(选到该类别) (shape=[n_cats, n_trials])。
-
-        Parameters
-        ----------
-        data: stimulus, choices, responses
-
-        read partition (hypo) first, then calculate class probabilities
-        over each classes.
-
-        USE minimal distances between `data.stimulus` and `prototypes`
-        (if there are more than one prototypes else just barycenter)
-
-        "indices": None | list | np.ndarray.
-                   retrieving distances cache on indices
-        """
-        stimulus, _ = data[:2]  # shape = [n_trials, n_dims]
-        n_trials = len(stimulus)
-        indices = kwargs.get("indices", None)
-
-        if use_cached_dist and (hypo in self.cached_dist):
-            typical_distances = (self.cached_dist[hypo][:, :n_trials]
-                                 if indices is None else
-                                 self.cached_dist[hypo][:, indices])
-        else:
-            partition = self.prototypes_np[
-                hypo]  # shape = [n_protos, n_cats, n_dims]
-            distances = euc_dist(
-                partition,
-                np.array(stimulus))  # shape = [n_protos, n_cats, n_trials]
-            typical_distances = np.min(distances,
-                                       axis=0)  # shape = [n_cats, n_trials]
-            self.cached_dist[hypo] = typical_distances
-
-        prob = softmax(typical_distances, -beta,
-                       axis=0)  # shape = [n_cats, n_trials]
-
-        return prob
-
     def calc_likelihood_entry(self,
                               hypo: int,
                               data: list | tuple,
                               beta: float,
-                              use_cached_dist: bool = False,
                               distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                               **kwargs) -> np.ndarray:
-        """
-        先用 calc_likelihood_base 得到 prob (shape=[n_trials]),
-        然后在 wrapper 中根据kwargs进行遗忘衰减/试次个性化处理.
+        """Likelihood for one hypothesis and the observed feedback sequence.
 
-        Parameters
-        ----------
-        data: stimulus, choices, responses
-
-        kwargs: dict
-        "gamma" and "w0" activates a two-factor-decay on memory
-        "amnesia":callable(data, **kwargs) and "amnesia_kwargs":dict
-            enables a more flexible way to implement the decay-forgetting
-            mechanism.
+        This method deliberately has two stages:
+        1. compute category probabilities via the selected distance mode;
+        2. map those category probabilities to feedback likelihood.
         """
         prob = self.get_category_probabilities(
             hypo=hypo,
             data=data,
             beta=beta,
             distance_mode=distance_mode,
-            use_cached_dist=use_cached_dist,
             **kwargs,
-        )  # shape = [n_cats, n_trials]
-        # Convert to numpy array to ensure correct operations
-        choices = np.array(data[1])
-        responses = np.array(data[2]) # shape = [n_trials]
-        choices -= 1
-        n_trials = len(choices)
+        )
+        return self._feedback_likelihood_from_category_probabilities(
+            hypo=hypo,
+            prob=prob,
+            data=data,
+        )
 
-        # (a) species-level 正确
-        p_species = prob[choices, np.arange(n_trials)]
-
-        # (b) family-level 正确（species 错）
-        fam_sum = np.zeros(n_trials)
-        conn_map = getattr(self, "connectivity_map", {})
-        if conn_map:
-            mask = np.zeros_like(prob, dtype=bool)  # shape = [n_cats, n_trials]
-            for t in range(n_trials):
-                alt_cats = conn_map[hypo][choices[t]]   # 不含自身
-                mask[alt_cats, t] = True
-            fam_sum = (prob * mask).sum(axis=0)
-        else:
-            fam_sum = np.zeros(n_trials)
-
-        # (c) 完全错误
-        p_wrong = 1.0 - p_species
-
-        # (d) 根据 feedback 取对应概率
-        likelihood = np.where(responses == 1,      p_species,
-                      np.where(responses == 0.5,   fam_sum,
-                               p_wrong))
-
-        likelihood = np.clip(likelihood, self.EPS, 1. - self.EPS)
-
-        return likelihood      # shape = (n_trials,)
-    
     def calc_trueprob_entry(self,
                             hypo: int,
                             data: list | tuple,
                             beta: float | list | tuple | np.ndarray,
-                            use_cached_dist: bool = False,
                             distance_mode: str = DISTANCE_MODE_PROTOTYPE,
                             **kwargs) -> np.ndarray:
-        """
-        计算true category被选中的概率
-        """
+        """Return the probability assigned to the true category per trial."""
 
         if isinstance(beta, np.ndarray):
             beta_value = float(beta.flatten()[0])
@@ -336,109 +159,121 @@ class BasePartition(ABC):
             data=data,
             beta=beta_value,
             distance_mode=distance_mode,
-            use_cached_dist=use_cached_dist,
             **kwargs,
-        ) # shape: (n_cats, nTrial)
-
-        category = np.asarray(data[3], dtype=int) - 1 # shape: (nTrial,)
-        if prob.ndim == 1:
-            prob = prob.reshape(-1, 1)
-        return prob[category.flatten(), np.arange(prob.shape[1])] # shape: (nTrial,)
-        # return prob[category]
-
-
-
-
-
-def signed_distance_to_category(x, cat_ineqs):
-    """
-    计算点x到类别区域的带符号距离:
-      >0 在区域内部
-       0 在边界上
-      <0 在区域外
-    """
-    dists = []
-    for (a, b, sign) in cat_ineqs:
-        a = np.asarray(a)
-        norm = np.linalg.norm(a) + 1e-9
-        signed = (np.dot(a, x) - b) / norm
-        inward = -sign * signed
-        dists.append(inward)
-    return np.min(dists)
-
-
-
-# define partition rules
-class Partition(BasePartition):
-    """
-    Partition类:
-    1. 使用 get_all_splits(n_dims, n_cats) 生成各种分割方式对应的超平面组合。
-    2. 使用 get_centers(n_dims, n_cats) 计算在这些分割方式下, 各个区域(类别)的代表中心点(重心)。
-    """
-    EPS = 1e-7
-
-    # === 类级缓存：用于在当前运行的程序中存储已加载的矩阵 ===
-    # 格式: { (n_dims, n_cats): matrix_array }
-    _loaded_matrices_cache = {}
-
-    # === 默认存储路径 ===
-    # 默认存在当前文件同级目录下的 'cache' 文件夹中
-    DEFAULT_CACHE_DIR = Path(__file__).parent / "cache"
-
-    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
-        """Initialize"""
-        super().__init__(n_dims, n_cats, n_protos, **kwargs)
-        self.vertices: List[Tuple[float, float, float, float]] = []
-
-        self.connectivity_map = self._compute_connectivity_map()
-
-        self.n_samples_used = kwargs.get("similarity_n_samples", 100000)
-
-        # ========== (新) 加载或计算相似性矩阵 ==========
-        # 1. 确定缓存目录和文件名
-        cache_dir = kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR)
-        cache_dir = Path(cache_dir)
-        
-        # 确保目录存在
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # 文件名必须包含维度信息，防止混用
-        # 例如: similarity_matrix_d4_c4.npy
-        filename = f"similarity_matrix_d{n_dims}_c{n_cats}.npy"
-        file_path = cache_dir / filename
-        
-        # 2. 调用加载逻辑
-        self.similarity_matrix = self._load_or_compute_similarity(
-            n_dims, n_cats, file_path, self.n_samples_used
         )
 
-    def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
-        conn = {}
-        n_cats, n_dims = self.n_cats, self.n_dims
-        # 原型坐标：shape = [n_hypos, n_cats, n_dims]
-        centers_all = self.prototypes_np.squeeze(
-            axis=1)  # n_protos=1 → squeeze
+        category = np.asarray(data[3], dtype=int) - 1
+        if prob.ndim == 1:
+            prob = prob.reshape(-1, 1)
+        return prob[category.flatten(), np.arange(prob.shape[1])]
 
-        for h in range(self.length):
-            centers = centers_all[h]  # shape (n_cats, n_dims)
-            conn[h] = {c: [] for c in range(n_cats)}
+    # ------------------------------------------------------------------
+    # Distance-mode dispatch
+    # ------------------------------------------------------------------
+    def get_category_probabilities(self,
+                                   hypo: int,
+                                   data: list | tuple,
+                                   beta: float,
+                                   distance_mode: str = DISTANCE_MODE_PROTOTYPE,
+                                   **kwargs) -> np.ndarray:
+        """Return category probabilities for the requested geometry.
 
-            # 枚举所有类别对 (a,b)
-            for a in range(n_cats):
-                for b in range(a + 1, n_cats):
-                    # 统计有多少维“明显不同”
-                    diff_cnt = np.sum(
-                        np.abs(centers[a] - centers[b]) > self.EPS)
-                    if diff_cnt == 1:  # 仅 1 维不同 → 认为 family 相连
-                        conn[h][a].append(b)
-                        conn[h][b].append(a)
-        return conn
+        This is the single dispatch point for distance-mode selection. Both
+        branches return the same shape: ``[n_cats, n_trials]``.
+        """
+        mode = self._resolve_distance_mode(distance_mode)
+        if mode == self.DISTANCE_MODE_PROTOTYPE:
+            return self.calc_category_probabilities_prototype(
+                hypo=hypo,
+                data=data,
+                beta=beta,
+                **kwargs,
+            )
+        if mode == self.DISTANCE_MODE_BOUNDARY:
+            return self.calc_category_probabilities_boundary(
+                hypo=hypo,
+                data=data,
+                beta=beta,
+                **kwargs,
+            )
+        raise AssertionError(f"Unhandled distance_mode: {mode}")
 
-    # ======================================================================
-    # ========== 一、辅助几何函数 ===========================================
-    # ======================================================================
+    def get_category_assignment(self,
+                                hypo: int,
+                                stimulus: np.ndarray,
+                                distance_mode: str = DISTANCE_MODE_PROTOTYPE,
+                                beta: float = 1.0,
+                                **kwargs) -> int:
+        """Assign a single stimulus to the most probable category."""
+        trial_data = ([np.asarray(stimulus, dtype=float)], [1], [1.0])
+        prob = self.get_category_probabilities(
+            hypo=hypo,
+            data=trial_data,
+            beta=beta,
+            distance_mode=distance_mode,
+            **kwargs,
+        )
+        return int(np.argmax(prob[:, 0]))
+
+    # ------------------------------------------------------------------
+    # Category-probability implementation: prototype distance
+    # ------------------------------------------------------------------
+    def calc_category_probabilities_prototype(self,
+                                              hypo: int,
+                                              data: list | tuple,
+                                              beta: float,
+                                              **kwargs) -> np.ndarray:
+        """Category probabilities from distance to prototype centers.
+
+        For each category, the stimulus distance is the minimum distance to that
+        category's prototype(s). Softmax over ``-beta * distance`` converts the
+        distance matrix to probabilities. Returns ``[n_cats, n_trials]``.
+
+        """
+        stimulus, _ = data[:2]
+        partition = self.prototypes[hypo]
+        distances = euc_dist(partition, np.array(stimulus))
+        typical_distances = np.min(distances, axis=0)
+
+        prob = softmax(typical_distances, -beta, axis=0)
+
+        return prob
+
+    # ------------------------------------------------------------------
+    # Category-probability implementation: boundary distance
+    # ------------------------------------------------------------------
+    def calc_category_probabilities_boundary(self,
+                                             hypo: int,
+                                             data: list | tuple,
+                                             beta: float,
+                                             **kwargs) -> np.ndarray:
+        """Category probabilities from distance to boundary regions.
+
+        Subclasses provide regions as dictionaries with A and b arrays, where
+        each category region is defined by A @ x <= b. This method only turns
+        distances to those regions into category probabilities.
+        """
+        stimuli, _ = data[:2]
+        categories = self.regions[hypo]
+        n_cats = len(categories)
+        n_trials = len(stimuli)
+        dmat = np.zeros((n_trials, n_cats))
+
+        for c, cat in enumerate(categories):
+            A, b = cat["A"], cat["b"]
+            for t, x in enumerate(stimuli):
+                dmat[t, c] = self._distance_to_region(np.array(x), A, b)
+
+        scores = np.exp(-beta * dmat)
+        prob = scores / np.sum(scores, axis=1, keepdims=True)
+        return prob.T
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
     @staticmethod
     def _project_to_halfspace(y, a, b):
+        """Project a point onto the halfspace a @ x <= b."""
         a = np.asarray(a, dtype=float)
         diff = np.dot(a, y) - b
         if diff <= 0:
@@ -447,48 +282,192 @@ class Partition(BasePartition):
 
     @staticmethod
     def _project_to_box01(y):
+        """Clip a point to the unit cube."""
         return np.clip(y, 0.0, 1.0)
 
     @classmethod
     def _project_to_polytope(cls, y, A, b, n_iter=100):
-        """
-        Dykstra投影到多面体 {x | A x <= b, 0<=x<=1}
-        """
+        """Project a point onto A @ x <= b with unit-cube bounds."""
         yk = y.copy()
-        p = [np.zeros_like(y) for _ in range(len(A))]
+        p_aux = [np.zeros_like(y) for _ in range(len(A))]
         for _ in range(n_iter):
             for i in range(len(A)):
-                y_hat = yk + p[i]
+                y_hat = yk + p_aux[i]
                 y_new = cls._project_to_halfspace(y_hat, A[i], b[i])
-                p[i] = y_hat - y_new
+                p_aux[i] = y_hat - y_new
                 yk = y_new
             yk = cls._project_to_box01(yk)
         return yk
 
     @classmethod
     def _distance_to_region(cls, x, A, b):
-        """
-        点到区域的距离：区域内=0，区域外=到多面体最近点距离
-        """
+        """Return distance from a point to a boundary region."""
         vals = A @ x - b
         if np.all(vals <= 0 + 1e-9):
             return 0.0
         proj = cls._project_to_polytope(x, A, b)
         return np.linalg.norm(x - proj)
 
-    # ======================================================================
-    # ========== 二、生成类别区域的不等式定义 ===============================
-    # ======================================================================
-    def generate_category_inequalities(self, split_type, hyperplanes):
+    @classmethod
+    def _resolve_distance_mode(cls, distance_mode: str) -> str:
+        """Validate and return a configured distance mode."""
+        if distance_mode not in cls.VALID_DISTANCE_MODES:
+            raise ValueError(
+                f"Unsupported distance_mode '{distance_mode}'. "
+                f"Expected one of: {cls.VALID_DISTANCE_MODES}."
+            )
+        return distance_mode
+
+    @staticmethod
+    def _resolve_beta_vector(beta, n_hypos: int) -> list[float]:
+        """Return one beta value per hypothesis.
+
+        A scalar beta is broadcast to all hypotheses. If a sequence has the
+        wrong length, its first value is used as a conservative fallback; this
+        preserves the previous behavior while keeping the entry point compact.
         """
-        根据分割方式生成每个类别区域对应的线性约束 (A,b)
+        if isinstance(beta, np.ndarray):
+            beta_values = beta.flatten().tolist()
+        elif isinstance(beta, (int, float)):
+            beta_values = [float(beta)] * n_hypos
+        elif isinstance(beta, (list, tuple)):
+            beta_values = list(beta)
+        else:
+            beta_values = [float(beta)] * n_hypos
+
+        if len(beta_values) != n_hypos:
+            default_beta = beta_values[0] if beta_values else 1.0
+            beta_values = [default_beta] * n_hypos
+
+        return [float(x) for x in beta_values]
+
+    def _feedback_likelihood_from_category_probabilities(
+        self,
+        hypo: int,
+        prob: np.ndarray,
+        data: list | tuple,
+    ) -> np.ndarray:
+        """Map category probabilities to observed feedback likelihood.
+
+        ``prob`` has shape ``[n_cats, n_trials]``. Feedback is encoded as:
+        ``1`` for exact species/category feedback, ``0.5`` for family-level
+        feedback, and any other value for wrong feedback.
         """
+        choices = np.asarray(data[1], dtype=int).copy() - 1
+        responses = np.asarray(data[2])
+        n_trials = len(choices)
+
+        p_species = prob[choices, np.arange(n_trials)]
+
+        fam_sum = np.zeros(n_trials)
+        conn_map = getattr(self, "connectivity_map", {})
+        if conn_map:
+            mask = np.zeros_like(prob, dtype=bool)
+            for t in range(n_trials):
+                alt_cats = conn_map[hypo][choices[t]]
+                mask[alt_cats, t] = True
+            fam_sum = (prob * mask).sum(axis=0)
+
+        p_wrong = 1.0 - p_species
+        likelihood = np.where(
+            responses == 1,
+            p_species,
+            np.where(responses == 0.5, fam_sum, p_wrong),
+        )
+        return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
+
+# =============================================================================
+# Partition: concrete split space and boundary geometry
+# =============================================================================
+@dataclass(frozen=True)
+class _SplitSpec:
+    """Internal definition of one concrete split hypothesis."""
+
+    type: str
+    hyperplanes: list
+
+
+class Partition(BasePartition):
+    """Concrete partition space with prototype and boundary geometry."""
+    EPS = 1e-7
+
+    # In-process cache for loaded similarity matrices:
+    # {(n_dims, n_cats): matrix_array}.
+    _loaded_matrices_cache = {}
+
+    # On-disk cache directory for similarity matrices.
+    DEFAULT_CACHE_DIR = Path(__file__).parent / "cache"
+
+    # Class layout:
+    # 1. concrete split and region construction
+    # 2. similarity helpers
+    # 3. prototype-center construction
+
+    def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
+        """Build split definitions, prototype centers, and region cache."""
+        super().__init__(n_dims, n_cats, n_protos, **kwargs)
+        self.connectivity_map = self._compute_connectivity_map()
+
+        # Similarity can be expensive, so only remember how to build/load it.
+        # The matrix itself is loaded or computed on first access.
+        cache_dir = Path(kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR))
+        filename = f"similarity_matrix_d{n_dims}_c{n_cats}.npy"
+        self._similarity_matrix_path = cache_dir / filename
+        self._similarity_n_samples = kwargs.get("similarity_n_samples", 100000)
+        self._similarity_matrix = None
+
+    @property
+    def similarity_matrix(self):
+        """Load or compute the hypothesis similarity matrix on first access."""
+        if self._similarity_matrix is None:
+            self._similarity_matrix = self._load_or_compute_similarity(
+                self.n_dims,
+                self.n_cats,
+                self._similarity_matrix_path,
+                self._similarity_n_samples,
+            )
+        return self._similarity_matrix
+
+    # ------------------------------------------------------------------
+    # Internal helpers: connectivity and boundary geometry
+    # ------------------------------------------------------------------
+    def _compute_connectivity_map(self) -> dict[int, dict[int, list[int]]]:
+        """Return family-feedback neighbors for each hypothesis/category."""
+        conn = {}
+        n_cats, n_dims = self.n_cats, self.n_dims
+        centers_all = self.prototypes.squeeze(axis=1)
+
+        for h in range(self.length):
+            centers = centers_all[h]
+            conn[h] = {c: [] for c in range(n_cats)}
+
+            # Family feedback links categories that differ on exactly one axis.
+            for a in range(n_cats):
+                for b in range(a + 1, n_cats):
+                    diff_cnt = np.sum(
+                        np.abs(centers[a] - centers[b]) > self.EPS)
+                    if diff_cnt == 1:
+                        conn[h][a].append(b)
+                        conn[h][b].append(a)
+        return conn
+
+    # ------------------------------------------------------------------
+    # Construction helper: split definitions -> boundary regions
+    # ------------------------------------------------------------------
+    def build_regions(self, split):
+        """Build linear region constraints for each category.
+
+        Each returned category is represented as ``{"A": A, "b": b}``, meaning
+        the category region is ``A @ x <= b``.
+        """
+        split_type = split.type
+        hyperplanes = split.hyperplanes
         three_plane_types = {
             "3d_axis_triple", "3d_axis_equality_sum", "4d_equality_axis_pair",
             "4d_sum_axis_pair"
         }
 
-        # ---------- 一般情况 ----------
+        # Generic split types: all sign combinations of the hyperplanes.
         if split_type not in three_plane_types and split_type not in (
                 "dimension_max", "dimension_min"):
             categories = []
@@ -500,7 +479,7 @@ class Partition(BasePartition):
                 categories.append({'A': np.vstack(A), 'b': np.array(b)})
             return categories
 
-        # ---------- 三平面类型 ----------
+        # Three-plane split types have an explicit four-category layout.
         if split_type in three_plane_types:
             (a1, b1), (a2, b2), (a3, b3) = hyperplanes
             a1, a2, a3 = map(np.asarray, (a1, a2, a3))
@@ -508,23 +487,23 @@ class Partition(BasePartition):
                 {
                     'A': np.vstack([a1, a2]),
                     'b': np.array([b1, b2])
-                },  # 左下
+                },
                 {
                     'A': np.vstack([a1, -a2]),
                     'b': np.array([b1, -b2])
-                },  # 左上
+                },
                 {
                     'A': np.vstack([-a1, a3]),
                     'b': np.array([-b1, b3])
-                },  # 右下
+                },
                 {
                     'A': np.vstack([-a1, -a3]),
                     'b': np.array([-b1, -b3])
-                }  # 右上
+                }
             ]
             return cats
 
-        # ---------- 维度极值类型 ----------
+        # Dimension-extreme split types select the max/min feature dimension.
         if split_type in ("dimension_max", "dimension_min"):
             n_dims = self.n_dims
             cats = []
@@ -535,11 +514,11 @@ class Partition(BasePartition):
                         continue
                     a = np.zeros(n_dims, dtype=float)
                     if split_type == "dimension_max":
-                        # x_i >= x_j   <=>   -x_i + x_j <= 0
+                        # x_i >= x_j  <=>  -x_i + x_j <= 0
                         a[i], a[j] = -1., 1.
                         bi = 0.0
                     else:
-                        # x_i <= x_j   <=>    x_i - x_j <= 0
+                        # x_i <= x_j  <=>   x_i - x_j <= 0
                         a[i], a[j] = 1., -1.
                         bi = 0.0
                     As.append(a)
@@ -549,150 +528,26 @@ class Partition(BasePartition):
                 cats.append({'A': A, 'b': b})
             return cats
 
-    # ======================================================================
-    # ========== 三、基于边界距离的Likelihood计算 ==========================
-    # ======================================================================
-    def calc_likelihood_boundary(self,
-                                 hypo: int,
-                                 data: list | tuple,
-                                 beta: float = 5.0,
-                                 use_cached_dist: bool = False,
-                                 **kwargs):
-        """
-        基于边界距离的likelihood计算：
-          - 区域内: 距离=0
-          - 区域外: 距离=点到该多面体的最短欧式距离
-        """
-        stimuli, _ = data[:2]
-        split_type, hyperplanes = self.splits[hypo]
-        categories = self.generate_category_inequalities(
-            split_type, hyperplanes)
-
-        n_cats = len(categories)
-        n_trials = len(stimuli)
-        dmat = np.zeros((n_trials, n_cats))
-
-        for c, cat in enumerate(categories):
-            A, b = cat['A'], cat['b']
-            for t, x in enumerate(stimuli):
-                dmat[t, c] = self._distance_to_region(np.array(x), A, b)
-
-        # softmax(-β * 距离)
-        scores = np.exp(-beta * dmat)
-        prob = scores / np.sum(scores, axis=1, keepdims=True)
-
-        return prob.T
-
-    def get_category_probabilities(self,
-                                   hypo: int,
-                                   data: list | tuple,
-                                   beta: float,
-                                   distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
-                                   use_cached_dist: bool = False,
-                                   **kwargs) -> np.ndarray:
-        mode = self._resolve_distance_mode(distance_mode)
-        if mode == self.DISTANCE_MODE_BOUNDARY:
-            return self.calc_likelihood_boundary(
-                hypo=hypo,
-                data=data,
-                beta=beta,
-                use_cached_dist=use_cached_dist,
-                **kwargs,
-            )
-        return self.calc_likelihood_base(
-            hypo=hypo,
-            data=data,
-            beta=beta,
-            use_cached_dist=use_cached_dist,
-            **kwargs,
-        )
-
-    def get_category_assignment(self,
-                                hypo: int,
-                                stimulus: np.ndarray,
-                                distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
-                                beta: float = 1.0,
-                                use_cached_dist: bool = False,
-                                **kwargs) -> int:
-        trial_data = ([np.asarray(stimulus, dtype=float)], [1], [1.0])
-        prob = self.get_category_probabilities(
-            hypo=hypo,
-            data=trial_data,
-            beta=beta,
-            distance_mode=distance_mode,
-            use_cached_dist=use_cached_dist,
-            **kwargs,
-        )
-        return int(np.argmax(prob[:, 0]))
-
-    # ======================================================================
-    # ========== 四、对接主接口 calc_likelihood_entry ======================
-    # ======================================================================
-    def calc_likelihood_entry(self,
-                              hypo: int,
-                              data: list | tuple,
-                              beta: float,
-                              use_cached_dist: bool = False,
-                              distance_mode: str = BasePartition.DISTANCE_MODE_PROTOTYPE,
-                              **kwargs) -> np.ndarray:
-        """
-        根据 distance_mode 选择 prototype 或 boundary 概率计算，
-        其余部分（反馈映射）与原逻辑一致。
-        """
-        prob = self.get_category_probabilities(
-            hypo=hypo,
-            data=data,
-            beta=beta,
-            distance_mode=distance_mode,
-            use_cached_dist=use_cached_dist,
-            **kwargs,
-        )
-
-        choices, responses = np.array(data[1].copy()), np.array(data[2])
-        choices -= 1
-        n_trials = len(choices)
-        p_species = prob[choices, np.arange(n_trials)]
-
-        fam_sum = np.zeros(n_trials)
-        conn_map = getattr(self, "connectivity_map", {})
-        if conn_map:
-            mask = np.zeros_like(prob, dtype=bool)
-            for t in range(n_trials):
-                alt = conn_map[hypo][choices[t]]
-                mask[alt, t] = True
-            fam_sum = (prob * mask).sum(axis=0)
-        p_wrong = 1. - p_species
-
-        likelihood = np.where(responses == 1, p_species,
-                              np.where(responses == 0.5, fam_sum, p_wrong))
-        return np.clip(likelihood, self.EPS, 1. - self.EPS)
-
-
-
-    # ======================================================================
-    # ========== 相似性计算 =============================
-    # ======================================================================
+    # ------------------------------------------------------------------
+    # Internal helpers: similarity cache and category assignment
+    # ------------------------------------------------------------------
 
     def _load_or_compute_similarity(self, n_dims, n_cats, file_path, n_samples):
-        """
-        核心逻辑：内存缓存 -> 磁盘文件 -> 重新计算
-        """
+        """Load a similarity matrix from memory/disk or compute it."""
         cache_key = (n_dims, n_cats)
 
-        # --- A. 检查内存缓存 (Class Level) ---
+        # 1. Check in-process cache.
         if cache_key in Partition._loaded_matrices_cache:
-            # print(f"Loading similarity matrix from RAM cache for d={n_dims}, c={n_cats}")
             return Partition._loaded_matrices_cache[cache_key]
 
-        # --- B. 检查磁盘文件 (Disk Level) ---
+        # 2. Check on-disk cache.
         if file_path.exists():
             print(f"Loading similarity matrix from disk: {file_path}")
             try:
                 matrix = np.load(file_path)
-                # 校验加载的矩阵形状是否正确
+                # Recompute if the cached matrix was built for another space.
                 expected_len = self.length
                 if matrix.shape[0] == expected_len and matrix.shape[1] == expected_len:
-                    # 存入内存缓存并返回
                     Partition._loaded_matrices_cache[cache_key] = matrix
                     return matrix
                 else:
@@ -700,87 +555,36 @@ class Partition(BasePartition):
             except Exception as e:
                 print(f"Error loading cache file: {e}. Recomputing...")
 
-        # --- C. 都不存在，重新计算 (Compute) ---
+        # 3. Compute and persist when no valid cache exists.
         print(f"Computing similarity matrix for d={n_dims}, c={n_cats} (will save to {file_path.name})...")
         matrix = self._compute_hypothesis_similarity_matrix(n_samples)
-        
-        # 1. 存入磁盘 (使用 numpy 二进制格式，速度快体积小)
+
+        # Store both on disk and in memory.
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(file_path, matrix)
-        
-        # 2. 存入内存缓存
+
         Partition._loaded_matrices_cache[cache_key] = matrix
-        
+
         return matrix
     
-    def _get_category_assignments(self,
-                                  hypo: int,
-                                  stimuli: np.ndarray) -> np.ndarray:
-        """
-        为给定的刺激点, 找出在某个假设下, 它们各自归属的类别 (基于最近原型)。
-        
-        Parameters:
-        ----------
-        hypo: int
-            假设的索引。
-        stimuli: np.ndarray
-            形状为 [n_samples, n_dims] 的刺激点。
-
-        Returns:
-        -------
-        np.ndarray:
-            形状为 [n_samples] 的数组, 每个元素是该点所属的类别索引 (0 to n_cats-1)。
-        """
-        if hypo >= len(self.prototypes_np):
-            raise IndexError(f"Hypothesis index {hypo} out of bounds for prototypes_np with length {len(self.prototypes_np)}.")
-        
-        # partition shape = [n_protos, n_cats, n_dims]
-        partition = self.prototypes_np[hypo]  
-        
-        # euc_dist(partition, stimuli) -> shape [n_protos, n_cats, n_samples]
-        distances = euc_dist(partition, stimuli)
-        
-        # 找到每个点到每个类别的"最小"原型距离
-        # shape = [n_cats, n_samples]
-        typical_distances = np.min(distances, axis=0)
-        
-        # 找到每个点距离最近的类别
-        # shape = [n_samples]
-        assignments = np.argmin(typical_distances, axis=0)
-        
-        return assignments
-
-
     def _get_category_assignments_region(
         self,
         hypo: int,
         stimuli: np.ndarray,
         tol: float = 1e-9
     ) -> np.ndarray:
-        """
-        基于 regions (A x <= b) 的硬判类。
-        对每个 stimulus，优先按“是否落在某个类别区域内”决定类别；
-        若由于数值误差出现多重命中或零命中，则回退到 violation / distance 规则。
+        """Assign stimuli to categories by boundary-region membership.
 
-        Parameters
-        ----------
-        hypo : int
-            hypothesis index
-        stimuli : np.ndarray
-            shape = [n_samples, n_dims]
-        tol : float
-            判断 A @ x <= b + tol 的容忍度
-
-        Returns
-        -------
-        assignments : np.ndarray
-            shape = [n_samples], 每个元素是类别索引 0..n_cats-1
+        A point inside exactly one region gets that category. Boundary ties use
+        the smallest violation score; outside points use nearest-region distance.
+        Returns an integer array with shape ``[n_samples]``.
         """
         if hypo >= len(self.regions):
             raise IndexError(
                 f"Hypothesis index {hypo} out of bounds for regions with length {len(self.regions)}."
             )
 
-        categories = self.regions[hypo]   # list of {'A': ..., 'b': ...}
+        categories = self.regions[hypo]
         n_samples = stimuli.shape[0]
         assignments = np.full(n_samples, -1, dtype=int)
 
@@ -792,7 +596,7 @@ class Partition(BasePartition):
                 A = np.asarray(cat['A'], dtype=float)
                 b = np.asarray(cat['b'], dtype=float)
 
-                vals = A @ x - b   # <= 0 表示满足该约束
+                vals = A @ x - b
                 pos_violation = np.clip(vals, 0.0, None)
                 violation_sum = np.sum(pos_violation)
 
@@ -805,13 +609,12 @@ class Partition(BasePartition):
                 assignments[i] = inside_cats[0]
 
             elif len(inside_cats) > 1:
-                # 多个 region 同时满足：选 violation 最小的
-                # 通常边界点会出现这种情况
+                # Boundary points can satisfy multiple regions.
                 best_cat = min(inside_cats, key=lambda c: violation_scores[c])
                 assignments[i] = best_cat
 
             else:
-                # 一个 region 都不满足：选距离最近的 region
+                # Outside all regions: use nearest-region distance.
                 distances = []
                 for cat in categories:
                     A = np.asarray(cat['A'], dtype=float)
@@ -829,24 +632,11 @@ class Partition(BasePartition):
         tol: float = 1e-9,
         random_state: int | None = None
     ) -> np.ndarray:
-        """
-        使用 Monte Carlo 积分计算所有 hypothesis 之间的相似性矩阵。
-        相似性定义为：在 [0,1]^n_dims 上均匀采样的点中，
-        两个 hypothesis 给出相同类别标签的比例。
+        """Estimate pairwise hypothesis similarity by Monte Carlo sampling.
 
-        Parameters
-        ----------
-        n_samples : int
-            Monte Carlo 采样点数量。
-        tol : float
-            region 判类时的不等式容忍度。
-        random_state : int | None
-            随机种子，便于复现。
-
-        Returns
-        -------
-        np.ndarray
-            shape = [n_hypos, n_hypos] 的相似性矩阵。
+        Similarity is the fraction of uniformly sampled points in the unit cube
+        that receive the same region-based category assignment under two
+        hypotheses. Returns a ``[n_hypos, n_hypos]`` matrix.
         """
         n_hypos = self.length
         if n_hypos == 0:
@@ -854,10 +644,10 @@ class Partition(BasePartition):
 
         rng = np.random.default_rng(random_state)
 
-        # 1. 在 [0,1]^n_dims 中均匀采样
+        # Sample uniformly from the unit cube.
         X_samples = rng.random((n_samples, self.n_dims))
 
-        # 2. 缓存所有 hypo 对这些点的 region-based 分类结果
+        # Cache region-based assignments for every hypothesis.
         all_assignments = np.zeros((n_hypos, n_samples), dtype=int)
 
         for h in range(n_hypos):
@@ -867,7 +657,7 @@ class Partition(BasePartition):
                 tol=tol
             )
 
-        # 3. 计算相似性矩阵
+        # Convert assignment agreement rates to a similarity matrix.
         sim_matrix = np.zeros((n_hypos, n_hypos), dtype=float)
 
         for i in range(n_hypos):
@@ -880,57 +670,40 @@ class Partition(BasePartition):
         print("Region-based similarity matrix calculation complete.")
         return sim_matrix
 
-
-
-
-    # ======================================================================
-    # ========== 原版分割 ======================
-    # ======================================================================
+    # ------------------------------------------------------------------
+    # Partition construction: split enumeration
+    # ------------------------------------------------------------------
     def get_all_splits(self):
-        """
-        根据维度数 n_dims 和分类数 n_cats, 生成所有可用的分割方式 (split_type)
-        及对应的超平面列表 hyperplanes.
-
-        返回值:
-          List[ (split_type: str, hyperplanes: List[(coef_list, threshold)]) ]
-
-        其中:
-          - split_type: 字符串, 标识某种分割方式.
-          - hyperplanes: 若干个超平面, 每个超平面用 (coefs, threshold) 表示:
-                coefs: [float]*n_dims, 各维度对应的系数
-                threshold: float, 表示 coefs·x = threshold
-
-        比如 "x_i = 0.5" 可表示为 ([0, ..., 1, ..., 0], 0.5) 其中第 i 个位置系数=1, 其余=0.
-        """
+        """Enumerate split families and their concrete hyperplanes."""
         splits = []
         n_dims = self.n_dims
         n_cats = self.n_cats
 
-        # --------------- 两分类情况 ---------------
+        # Two-category split family.
         if n_cats == 2:
-            # 1. 单维轴对齐超平面 (Axis-aligned): x_i = 0.5
+            # Axis-aligned hyperplanes: x_i = 0.5.
             for i in range(n_dims):
                 coeff = [0] * n_dims
                 coeff[i] = 1
-                splits.append(('axis', [(tuple(coeff), 0.5)]))
+                splits.append(_SplitSpec('axis', [(tuple(coeff), 0.5)]))
 
-            # 2a. 二维相等超平面 (Equality): x_i = x_j
+            # Equality hyperplanes: x_i = x_j.
             for i in range(n_dims):
                 for j in range(i + 1, n_dims):
                     coeff = [0] * n_dims
                     coeff[i] = 1
                     coeff[j] = -1
-                    splits.append(('equality', [(tuple(coeff), 0)]))
+                    splits.append(_SplitSpec('equality', [(tuple(coeff), 0)]))
 
-            # 2b. 二维和式超平面 (Sum): x_i + x_j = 1
+            # Sum hyperplanes: x_i + x_j = 1.
             for i in range(n_dims):
                 for j in range(i + 1, n_dims):
                     coeff = [0] * n_dims
                     coeff[i] = 1
                     coeff[j] = 1
-                    splits.append(('sum', [(tuple(coeff), 1)]))
+                    splits.append(_SplitSpec('sum', [(tuple(coeff), 1)]))
 
-            # 3. 四维混合超平面 (Mixed): x_i + x_j = x_k + x_l
+            # Mixed 4D hyperplanes: x_i + x_j = x_k + x_l.
             if n_dims >= 4:
                 dim_pairs = [
                     ((0, 1, 2, 3)),  # x1 + x2 = x3 + x4
@@ -941,31 +714,31 @@ class Partition(BasePartition):
                     coeff = [0] * n_dims
                     coeff[i] = coeff[j] = 1
                     coeff[k] = coeff[l] = -1
-                    splits.append(('mixed', [(tuple(coeff), 0)]))
+                    splits.append(_SplitSpec('mixed', [(tuple(coeff), 0)]))
 
-        # --------------- 四分类情况 ---------------
+        # Four-category split family.
         elif n_cats == 4:
-            # 1. 两个超平面
-            # 1.1 涉及两个维度
-            # 1.1a 两个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5)
+            # Split families with two hyperplanes.
+            # Two-plane splits using two dimensions.
+            # Two axis-aligned planes: x_i = 0.5, x_j = 0.5.
             for i in range(n_dims):
                 for j in range(i + 1, n_dims):
                     plane1 = ([0] * n_dims, 0.5)
                     plane2 = ([0] * n_dims, 0.5)
                     plane1[0][i] = 1
                     plane2[0][j] = 1
-                    splits.append(('2d_axis_pair', [plane1, plane2]))
+                    splits.append(_SplitSpec('2d_axis_pair', [plane1, plane2]))
 
-            # 1.1b 二维相等 + 二维和式: (x_i = x_j, x_i + x_j = 1)
+            # Equality plus sum plane: x_i = x_j, x_i + x_j = 1.
             for i, j in itertools.combinations(range(n_dims), 2):
                 plane1 = ([0] * n_dims, 0)
                 plane2 = ([0] * n_dims, 1)
                 plane1[0][i], plane1[0][j] = 1, -1
                 plane2[0][i] = plane2[0][j] = 1
-                splits.append(('2d_equality_sum', [plane1, plane2]))
+                splits.append(_SplitSpec('2d_equality_sum', [plane1, plane2]))
 
-            # 1.2 涉及三个维度
-            # 1.2a 单维轴对齐 + 二维相等: (x_i = 0.5, x_j = x_k)
+            # Two-plane splits using three dimensions.
+            # Axis plus equality plane: x_i = 0.5, x_j = x_k.
             if n_dims >= 3:
                 for i in range(n_dims):
                     remaining = [j for j in range(n_dims) if j != i]
@@ -974,9 +747,9 @@ class Partition(BasePartition):
                         plane2 = ([0] * n_dims, 0)
                         plane1[0][i] = 1
                         plane2[0][j], plane2[0][k] = 1, -1
-                        splits.append(('3d_axis_equality', [plane1, plane2]))
+                        splits.append(_SplitSpec('3d_axis_equality', [plane1, plane2]))
 
-            # 1.2b 单维轴对齐 + 二维和式: (x_i = 0.5, x_j + x_k = 1)
+            # Axis plus sum plane: x_i = 0.5, x_j + x_k = 1.
             if n_dims >= 3:
                 for i in range(n_dims):
                     remaining = [j for j in range(n_dims) if j != i]
@@ -985,10 +758,10 @@ class Partition(BasePartition):
                         plane2 = ([0] * n_dims, 1)
                         plane1[0][i] = 1
                         plane2[0][j] = plane2[0][k] = 1
-                        splits.append(('3d_axis_sum', [plane1, plane2]))
+                        splits.append(_SplitSpec('3d_axis_sum', [plane1, plane2]))
 
-            # 1.3 涉及四个维度
-            # 1.3a 两个二维相等超平面: (x_i = x_j, x_k = x_l)
+            # Two-plane splits using four dimensions.
+            # Two equality planes: x_i = x_j, x_k = x_l.
             if n_dims >= 4:
                 dim_pairs = [
                     ((0, 1, 2, 3)),  # x1 = x2, x3 = x4
@@ -1000,9 +773,9 @@ class Partition(BasePartition):
                     plane2 = ([0] * n_dims, 0)
                     plane1[0][i], plane1[0][j] = 1, -1
                     plane2[0][k], plane2[0][l] = 1, -1
-                    splits.append(('4d_equality_pair', [plane1, plane2]))
+                    splits.append(_SplitSpec('4d_equality_pair', [plane1, plane2]))
 
-            # 1.3b 两个二维和式超平面: (x_i + x_j = 1, x_k + x_l = 1)
+            # Two sum planes: x_i + x_j = 1, x_k + x_l = 1.
             if n_dims >= 4:
                 dim_pairs = [
                     ((0, 1, 2, 3)),  # x1 + x2 = 1, x3 + x4 = 1
@@ -1014,14 +787,14 @@ class Partition(BasePartition):
                     plane2 = ([0] * n_dims, 1)
                     plane1[0][i] = plane1[0][j] = 1
                     plane2[0][k] = plane2[0][l] = 1
-                    splits.append(('4d_sum_pair', [plane1, plane2]))
+                    splits.append(_SplitSpec('4d_sum_pair', [plane1, plane2]))
 
-            # 2. 三个超平面
-            # 2.1 涉及三个维度
-            # 2.1a 三个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5, x_k = 0.5)
+            # Split families with three hyperplanes.
+            # Three-plane splits using three dimensions.
+            # Three axis-aligned planes: x_i = x_j = x_k = 0.5.
             if n_dims >= 3:
                 for i, j, k in itertools.combinations(range(n_dims), 3):
-                    # 考虑所有可能的排列顺序
+                    # Keep all plane orderings because region labels depend on order.
                     for m, n1, n2 in itertools.permutations([i, j, k]):
                         plane_m = ([0] * n_dims, 0.5)
                         plane_n1 = ([0] * n_dims, 0.5)
@@ -1030,67 +803,67 @@ class Partition(BasePartition):
                         plane_n1[0][n1] = 1
                         plane_n2[0][n2] = 1
                         splits.append(
-                            ('3d_axis_triple', [plane_m, plane_n1, plane_n2]))
+                            _SplitSpec('3d_axis_triple', [plane_m, plane_n1, plane_n2]))
 
-            # 2.1b 单维轴对齐 + 二维相等 + 二维和式: (x_i = 0.5, x_j = x_k, x_j + x_k = 1)
+            # Axis, equality, and sum planes.
             if n_dims >= 3:
                 for m in range(n_dims):
                     remaining = [i for i in range(n_dims) if i != m]
                     for i, j in itertools.combinations(remaining, 2):
-                        plane_m = ([0] * n_dims, 0.5)  # 轴对齐
-                        plane_eq = ([0] * n_dims, 0)  # 相等
-                        plane_sum = ([0] * n_dims, 1)  # 和式
+                        plane_m = ([0] * n_dims, 0.5)  # axis
+                        plane_eq = ([0] * n_dims, 0)  # equality
+                        plane_sum = ([0] * n_dims, 1)  # sum
 
                         plane_m[0][m] = 1
                         plane_eq[0][i], plane_eq[0][j] = 1, -1
                         plane_sum[0][i] = plane_sum[0][j] = 1
 
-                        splits.append(('3d_axis_equality_sum',
+                        splits.append(_SplitSpec('3d_axis_equality_sum',
                                        [plane_m, plane_eq, plane_sum]))
-                        splits.append(('3d_axis_equality_sum',
+                        splits.append(_SplitSpec('3d_axis_equality_sum',
                                        [plane_m, plane_sum, plane_eq]))
 
-            # 2.2 涉及四个维度
-            # 2.2a 二维相等 + 两个单维轴对齐: (x_i = x_j, x_k = 0.5, x_l = 0.5)
+            # Three-plane splits using four dimensions.
+            # Equality plus two axis-aligned planes.
             if n_dims >= 4:
                 for i, j in itertools.combinations(range(n_dims), 2):
                     remaining = [k for k in range(n_dims) if k not in (i, j)]
                     for k, l in itertools.combinations(remaining, 2):
-                        plane_eq = ([0] * n_dims, 0)  # 二维相等
-                        plane_axis1 = ([0] * n_dims, 0.5)  # 单维轴对齐
-                        plane_axis2 = ([0] * n_dims, 0.5)  # 单维轴对齐
+                        plane_eq = ([0] * n_dims, 0)  # equality
+                        plane_axis1 = ([0] * n_dims, 0.5)  # axis
+                        plane_axis2 = ([0] * n_dims, 0.5)  # axis
 
                         plane_eq[0][i], plane_eq[0][j] = 1, -1
                         plane_axis1[0][k] = 1
                         plane_axis2[0][l] = 1
 
-                        # 固定二维相等在第一个位置，后两个单维轴对齐排列组合
-                        splits.append(('4d_equality_axis_pair',
+                        # Keep equality first; permute the two axis planes.
+                        splits.append(_SplitSpec('4d_equality_axis_pair',
                                        [plane_eq, plane_axis1, plane_axis2]))
-                        splits.append(('4d_equality_axis_pair',
+                        splits.append(_SplitSpec('4d_equality_axis_pair',
                                        [plane_eq, plane_axis2, plane_axis1]))
 
-            # 2.2b 二维和式 + 两个单维轴对齐: (x_i + x_j = 1, x_k = 0.5, x_l = 0.5)
+            # Sum plus two axis-aligned planes.
             if n_dims >= 4:
                 for i, j in itertools.combinations(range(n_dims), 2):
                     remaining = [k for k in range(n_dims) if k not in (i, j)]
                     for k, l in itertools.combinations(remaining, 2):
-                        plane_sum = ([0] * n_dims, 1)  # 二维和式
-                        plane_axis1 = ([0] * n_dims, 0.5)  # 单维轴对齐
-                        plane_axis2 = ([0] * n_dims, 0.5)  # 单维轴对齐
+                        plane_sum = ([0] * n_dims, 1)  # sum
+                        plane_axis1 = ([0] * n_dims, 0.5)  # axis
+                        plane_axis2 = ([0] * n_dims, 0.5)  # axis
 
                         plane_sum[0][i], plane_sum[0][j] = 1, 1
                         plane_axis1[0][k] = 1
                         plane_axis2[0][l] = 1
 
-                        # 固定二维和式在第一个位置，后两个单维轴对齐排列组合
-                        splits.append(('4d_sum_axis_pair',
+                        # Keep sum first; permute the two axis planes.
+                        splits.append(_SplitSpec('4d_sum_axis_pair',
                                        [plane_sum, plane_axis1, plane_axis2]))
-                        splits.append(('4d_sum_axis_pair',
+                        splits.append(_SplitSpec('4d_sum_axis_pair',
                                        [plane_sum, plane_axis2, plane_axis1]))
 
-            # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
-            # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
+            # All pairwise equality planes: x_i = x_j.
+            # When n_dims == n_cats == 4, these define dimension-extreme splits.
             if n_dims == n_cats:
                 eq_planes = []
                 for i, j in itertools.combinations(range(n_dims), 2):
@@ -1098,29 +871,35 @@ class Partition(BasePartition):
                     plane[0][i], plane[0][j] = 1, -1  # x_i - x_j = 0
                     eq_planes.append(plane)
 
-                splits.append(('dimension_max', eq_planes))
-                splits.append(('dimension_min', eq_planes))
+                splits.append(_SplitSpec('dimension_max', eq_planes))
+                splits.append(_SplitSpec('dimension_min', eq_planes))
 
         return splits
 
-    # generate centers
-    def get_centers(self):
-        """
-        计算每种分割方法下各个区域的中心点(重心).
+    # ------------------------------------------------------------------
+    # Partition construction: prototypes
+    # ------------------------------------------------------------------
+    def get_prototypes(self):
+        """Return numeric prototypes for every split and category.
 
-        返回: List[ (split_type, {cat_idx: (center_x1, center_x2, ...)}) ]
+        For now ``n_protos`` must be 1, so the returned shape is
+        ``[n_hypo, 1, n_cat, n_dim]``.
         """
+        if self.n_protos != 1:
+            raise NotImplementedError("Only n_protos == 1 is currently supported.")
         n_cats = self.n_cats
         n_dims = self.n_dims
         splits = self.get_all_splits()
         results = []
 
-        for split_type, hyperplanes in splits:
+        for split in splits:
+            split_type = split.type
+            hyperplanes = split.hyperplanes
             centers = {cat_idx: [] for cat_idx in range(n_cats)}
 
-            # --------------- 两分类情况 ---------------
+            # Two-category split family.
             if n_cats == 2:
-                # 1. 单维轴对齐超平面: x_i = 0.5
+                # Axis-aligned hyperplane: x_i = 0.5.
                 if split_type == 'axis':
                     split_dim = next(
                         dim_idx
@@ -1129,13 +908,13 @@ class Partition(BasePartition):
 
                     for dim in range(n_dims):
                         if dim == split_dim:
-                            centers[0].append(0.25)  # x < 0.5 的区域
-                            centers[1].append(0.75)  # x > 0.5 的区域
+                            centers[0].append(0.25)  # x < 0.5
+                            centers[1].append(0.75)  # x > 0.5
                         else:
                             centers[0].append(0.5)
                             centers[1].append(0.5)
 
-                # 2a. 二维相等超平面: x_i = x_j
+                # Equality hyperplane: x_i = x_j.
                 elif split_type == 'equality':
                     split_dims = [
                         dim_idx
@@ -1144,7 +923,7 @@ class Partition(BasePartition):
                     ]
                     dim1, dim2 = split_dims[0], split_dims[1]
 
-                    # 对于涉及的两个维度，一个区域是(1/3, 2/3)，另一个是(2/3, 1/3)
+                    # The two involved dimensions use mirrored centers.
                     for dim in range(n_dims):
                         if dim == dim1:
                             centers[0].append(1 / 3)
@@ -1156,7 +935,7 @@ class Partition(BasePartition):
                             centers[0].append(0.5)
                             centers[1].append(0.5)
 
-                # 2b. 二维和式超平面: x_i + x_j = 1
+                # Sum hyperplane: x_i + x_j = 1.
                 elif split_type == 'sum':
                     split_dims = [
                         dim_idx
@@ -1165,7 +944,7 @@ class Partition(BasePartition):
                     ]
                     dim1, dim2 = split_dims[0], split_dims[1]
 
-                    # 对于涉及的两个维度，一个区域是(1/3, 1/3)，另一个是(2/3, 2/3)
+                    # The two involved dimensions move together.
                     for dim in range(n_dims):
                         if dim in [dim1, dim2]:
                             centers[0].append(1 / 3)
@@ -1174,7 +953,7 @@ class Partition(BasePartition):
                             centers[0].append(0.5)
                             centers[1].append(0.5)
 
-                # 3. 四维混合超平面: x_i + x_j = x_k + x_l
+                # Mixed 4D hyperplane: x_i + x_j = x_k + x_l.
                 elif split_type == 'mixed':
                     pos_dims = [
                         dim_idx
@@ -1198,10 +977,10 @@ class Partition(BasePartition):
                             centers[0].append(0.5)
                             centers[1].append(0.5)
 
-            # --------------- 四分类情况 ---------------
+            # Four-category split family.
             elif n_cats == 4:
-                # 1. 两个超平面
-                # 1.1a 两个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5)
+                # Split families with two hyperplanes.
+                # Two axis-aligned planes: x_i = 0.5, x_j = 0.5.
                 if split_type == '2d_axis_pair':
                     split_dims = []
                     for hyperplane in hyperplanes:
@@ -1226,7 +1005,7 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 1.1b 二维相等 + 二维和式: (x_i = x_j, x_i + x_j = 1)
+                # Equality plus sum plane: x_i = x_j, x_i + x_j = 1.
                 elif split_type == '2d_equality_sum':
                     split_dims = [
                         dim_idx
@@ -1250,8 +1029,8 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 1.2a 单维轴对齐 + 二维相等: (x_i = 0.5, x_j = x_k)
-                # 1.2b 单维轴对齐 + 二维和式: (x_i = 0.5, x_j + x_k = 1)
+                # Axis plus equality plane: x_i = 0.5, x_j = x_k.
+                # Axis plus sum plane: x_i = 0.5, x_j + x_k = 1.
                 elif split_type in ['3d_axis_equality', '3d_axis_sum']:
                     axis_hyperplane = next(plane for plane in hyperplanes
                                            if sum(1 for c in plane[0]
@@ -1296,7 +1075,7 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 1.3a 两个二维相等超平面: (x_i = x_j, x_k = x_l)
+                # Two equality planes: x_i = x_j, x_k = x_l.
                 elif split_type == '4d_equality_pair':
                     split_dim_pairs = []
                     for hyperplane in hyperplanes:
@@ -1334,7 +1113,7 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 1.3b 两个二维和式超平面: (x_i + x_j = 1, x_k + x_l = 1)
+                # Two sum planes: x_i + x_j = 1, x_k + x_l = 1.
                 elif split_type == '4d_sum_pair':
                     split_dim_pairs = []
                     for hyperplane in hyperplanes:
@@ -1360,8 +1139,8 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 2. 三个超平面
-                # 2.1a 三个单维轴对齐超平面: (x_i = 0.5, x_j = 0.5, x_k = 0.5)
+                # Split families with three hyperplanes.
+                # Three axis-aligned planes: x_i = x_j = x_k = 0.5.
                 elif split_type == '3d_axis_triple':
                     split_dims = []
                     for hyperplane in hyperplanes:
@@ -1372,17 +1151,17 @@ class Partition(BasePartition):
                         split_dims.append(dim_idx)
 
                     for dim in range(n_dims):
-                        if dim == split_dims[0]:  # 第一个切割
+                        if dim == split_dims[0]:  # first split
                             centers[0].append(0.25)
                             centers[1].append(0.25)
                             centers[2].append(0.75)
                             centers[3].append(0.75)
-                        elif dim == split_dims[1]:  # 第二个切割 (x1 < 0.5 部分)
+                        elif dim == split_dims[1]:  # second split, low side
                             centers[0].append(0.25)
                             centers[1].append(0.75)
                             centers[2].append(0.5)
                             centers[3].append(0.5)
-                        elif dim == split_dims[2]:  # 第三个切割 (x1 > 0.5 部分)
+                        elif dim == split_dims[2]:  # third split, high side
                             centers[0].append(0.5)
                             centers[1].append(0.5)
                             centers[2].append(0.25)
@@ -1391,8 +1170,7 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 2.1b 单维轴对齐 + 二维相等 + 二维和式:
-                #      (x_i = 0.5, x_j = x_k, x_j + x_k = 1)
+                # Axis, equality, and sum planes.
                 elif split_type == '3d_axis_equality_sum':
                     axis_dim = next(
                         dim_idx
@@ -1406,7 +1184,7 @@ class Partition(BasePartition):
                             if coef != 0)
                     other_dims = list(other_dims)
 
-                    # 检查第二个超平面是否为二维相等
+                    # The second plane determines which side uses equality.
                     is_second_equality = sum(
                         1 for c in hyperplanes[1][0]
                         if c != 0) == 2 and hyperplanes[1][1] == 0
@@ -1418,9 +1196,8 @@ class Partition(BasePartition):
                             centers[2].append(0.75)
                             centers[3].append(0.75)
                         elif dim in other_dims:
-                            if is_second_equality:  # 第二个超平面是二维相等
-                                # x1 < 0.5 部分用 x2 = x3,
-                                # x1 > 0.5 部分用 x2 + x3 = 1
+                            if is_second_equality:
+                                # Low side uses equality; high side uses sum.
                                 if dim == other_dims[0]:  # x2
                                     centers[0].append(1 / 3)
                                     centers[1].append(2 / 3)
@@ -1431,9 +1208,8 @@ class Partition(BasePartition):
                                     centers[1].append(1 / 3)
                                     centers[2].append(1 / 3)
                                     centers[3].append(2 / 3)
-                            else:  # 第二个超平面是二维和式
-                                # x1 < 0.5 部分用 x2 + x3 = 1,
-                                # x1 > 0.5 部分用 x2 = x3
+                            else:
+                                # Low side uses sum; high side uses equality.
                                 if dim == other_dims[0]:  # x2
                                     centers[0].append(1 / 3)
                                     centers[1].append(2 / 3)
@@ -1448,8 +1224,8 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 2.2a 二维相等 + 两个单维轴对齐: (x_i = x_j, x_k = 0.5, x_l = 0.5)
-                # 2.2b 二维和式 + 两个单维轴对齐: (x_i + x_j = 1, x_k = 0.5, x_l = 0.5)
+                # Equality plus two axis-aligned planes.
+                # Sum plus two axis-aligned planes.
                 elif split_type in [
                         '4d_equality_axis_pair', '4d_sum_axis_pair'
                 ]:
@@ -1498,9 +1274,9 @@ class Partition(BasePartition):
                             for cat_idx in range(4):
                                 centers[cat_idx].append(0.5)
 
-                # 3. C(n_dims,2)个超平面（所有二维相等超平面：x_i = x_j）
-                # 当 n_dims == n_cats = 4 时, 这些超平面可组合成"哪一维最..."的划分(dimension_max)
-                # 最高级情况: 第 cat_idx 维取 0.8，其余维度取 0.4
+                # All pairwise equality planes: x_i = x_j.
+                # When n_dims == n_cats == 4, these define dimension-extreme splits.
+                # Dimension-max case: category dimension high, others low.
                 elif split_type == 'dimension_max':
                     centers_high = {}
                     for cat_idx in range(n_cats):
@@ -1510,7 +1286,7 @@ class Partition(BasePartition):
                     results.append((split_type, centers_high))
                     continue
 
-                # 最低级情况: 第 cat_idx 维取 0.4，其余维度取 0.8
+                # Dimension-min case: category dimension low, others high.
                 elif split_type == 'dimension_min':
                     centers_low = {}
                     for cat_idx in range(n_cats):
@@ -1520,8 +1296,12 @@ class Partition(BasePartition):
                     results.append((split_type, centers_low))
                     continue
 
-            # 将列表转换为元组
+            # Convert mutable lists to tuples for downstream use.
             centers = {k: tuple(v) for k, v in centers.items()}
             results.append((split_type, centers))
 
-        return results
+        prototype_rows = [
+            [[center for _, center in sorted(center_map.items())]]
+            for _, center_map in results
+        ]
+        return np.asarray(prototype_rows, dtype=float)

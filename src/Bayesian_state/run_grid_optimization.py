@@ -145,6 +145,11 @@ def _dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int,
     abs_path = output_dir / rel_path
     abs_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # StreamList appends to existing files, so truncate first when rewriting a
+    # subject result. Otherwise reruns silently mix old and new fit logs.
+    if abs_path.exists():
+        abs_path.unlink()
+
     stream = StreamList(str(abs_path), 0)
     stream.extend(items)
     return {

@@ -7,99 +7,7 @@ import pandas as pd
 import numpy as np
 
 class Preprocessor_B:
-    def process(self, stimulus_data, behavior_data, recording_data = None):
-
-        joint_data = pd.merge(behavior_data, stimulus_data, on=['iSession', 'stiID'], suffixes=('', '_y'))
-        if 'category_y' in joint_data.columns:
-            joint_data = joint_data.drop('category_y', axis=1)
-
-        feature1_name = joint_data['feature1_name'][0]
-        feature2_name = joint_data['feature2_name'][0]
-        feature3_name = joint_data['feature3_name'][0]
-        feature4_name = joint_data['feature4_name'][0]
-
-        base_columns = ['condition', 'feature1_name', 'feature2_name', 'feature3_name', 'feature4_name', 
-                        'iSession', 'iBlock', 'iTrial', 'feature1', 'feature2', 'feature3', 'feature4', 
-                        'category', 'choice', 'feedback', 'ambiguous', 'choRT']
-
-        combined_data = joint_data[base_columns].copy()
-        
-        combined_data = combined_data.sort_values(by=['iSession', 'iBlock', 'iTrial'])
-
-        # 这些是 recording_data 存在时会额外产生的列
-        extra_columns = [
-            'text', 'feature1_oraluse', 'feature2_oraluse', 'feature3_oraluse', 'feature4_oraluse',
-            'feature1_oralvalue', 'feature2_oralvalue', 'feature3_oralvalue', 'feature4_oralvalue'
-        ]
-
-        if recording_data is not None:
-            rec_processor = Recording_Processor()
-            
-            # process value
-            result_df = rec_processor.process(recording_data)
-            result_df[['neck_oralvalue', 'head_oralvalue', 'leg_oralvalue', 'tail_oralvalue']] = pd.DataFrame(result_df['all'].tolist(), index=result_df.index)
-
-            recording_coded = result_df[['iSession', 'iTrial', 'text', 'neck_oralvalue', 'head_oralvalue', 'leg_oralvalue', 'tail_oralvalue']].copy()
-            
-            feature1_oralvalue_col = f"{feature1_name}_oralvalue"
-            feature2_oralvalue_col = f"{feature2_name}_oralvalue"
-            feature3_oralvalue_col = f"{feature3_name}_oralvalue"
-            feature4_oralvalue_col = f"{feature4_name}_oralvalue"
-
-            recording_coded['feature1_oralvalue'] = recording_coded[feature1_oralvalue_col]
-            recording_coded['feature2_oralvalue'] = recording_coded[feature2_oralvalue_col]
-            recording_coded['feature3_oralvalue'] = recording_coded[feature3_oralvalue_col]
-            recording_coded['feature4_oralvalue'] = recording_coded[feature4_oralvalue_col]
-
-            keep_cols = [
-                'iSession', 'iTrial', 'text', 
-                'feature1_oralvalue', 'feature2_oralvalue',
-                'feature3_oralvalue', 'feature4_oralvalue'
-            ]
-
-            combined_data = pd.merge(
-                combined_data, recording_coded[keep_cols], 
-                on=['iSession', 'iTrial'], 
-                how='left')
-            
-            # process_use
-            result_use = rec_processor.process_use(recording_data).copy()
-            
-            feature1_oraluse_col = f"{feature1_name}_oraluse"
-            feature2_oraluse_col = f"{feature2_name}_oraluse"
-            feature3_oraluse_col = f"{feature3_name}_oraluse"
-            feature4_oraluse_col = f"{feature4_name}_oraluse"
-
-            result_use['feature1_oraluse'] = result_use[feature1_oraluse_col]
-            result_use['feature2_oraluse'] = result_use[feature2_oraluse_col]
-            result_use['feature3_oraluse'] = result_use[feature3_oraluse_col]
-            result_use['feature4_oraluse'] = result_use[feature4_oraluse_col]
-
-            keep_cols = [
-                'iSession', 'iTrial',
-                'feature1_oraluse', 'feature2_oraluse',
-                'feature3_oraluse', 'feature4_oraluse'
-            ]
-            combined_data = pd.merge(
-                combined_data, result_use[keep_cols],
-                on=['iSession', 'iTrial'],
-                how='left'
-            )
-        else:
-            # recording_data 缺失时，补齐这些列，值为空
-            for col in extra_columns:
-                combined_data[col] = pd.NA
-                
-        final_columns = base_columns + [
-            'text','feature1_oraluse', 'feature2_oraluse', 'feature3_oraluse', 'feature4_oraluse',
-            'feature1_oralvalue', 'feature2_oralvalue', 'feature3_oralvalue', 'feature4_oralvalue'
-        ]
-        combined_data = combined_data[final_columns]                
-
-        return combined_data
-
-
-    def process_new(self, task_type, feature_map, stimulus_data, behavior_data, recording_data = None):
+    def process(self, task_type, feature_map, stimulus_data, behavior_data, recording_data = None):
 
         # Check if 'iSession' exists in stimulus_data
         if 'iSession' in stimulus_data.columns:
@@ -140,23 +48,48 @@ class Preprocessor_B:
         combined_data = combined_data.sort_values(by=['iSession', 'iTrial'])
 
         # 这些是 recording_data 存在时会额外产生的列
-        extra_columns = [
-            'text', 'A', 'b', 'n_constraints', 'matched_rules', 'un_pro',
-        ]
+        extra_columns = ['text', 'oral_center', 'oral_A', 'oral_b']
 
         if recording_data is not None:
-            rec_processor = Recording_Processor_new()
-            
-            # process value
-            recording_coded = rec_processor.process(recording_data)
+            center_processor = Recording_Processor()
+            center_df = center_processor.process(recording_data)
+            center_coded = center_df[['iSession', 'iTrial', 'text', 'all']].copy()
+
+            def reorder_center(values, feature_order):
+                if not isinstance(values, list):
+                    return values
+                return [None if pd.isna(values[i]) else float(values[i]) for i in feature_order]
+
+            center_coded['oral_center'] = center_coded['all'].apply(
+                lambda values: reorder_center(values, feature_order)
+            )
+
+            region_processor = Recording_Processor_new()
+            region_coded = region_processor.process(recording_data)
             
             # 对A的每一行，按照feature_order重新排列每个向量的顺序
             def reorder_A(A, feature_order):
                 if not isinstance(A, list):
                     return A
-                return [[row[i] for i in feature_order] for row in A]
+                return [
+                    [None if pd.isna(row[i]) else float(row[i]) for i in feature_order]
+                    for row in A
+                ]
 
-            recording_coded['A'] = recording_coded['A'].apply(lambda A: reorder_A(A, feature_order))
+            def clean_vector(values):
+                if not isinstance(values, list):
+                    return values
+                return [None if pd.isna(value) else float(value) for value in values]
+
+            region_coded['oral_A'] = region_coded['A'].apply(lambda A: reorder_A(A, feature_order))
+            region_coded['oral_b'] = region_coded['b'].apply(clean_vector)
+
+            recording_coded = pd.merge(
+                center_coded[['iSession', 'iTrial', 'text', 'oral_center']],
+                region_coded[['iSession', 'iTrial', 'oral_A', 'oral_b']],
+                on=['iSession', 'iTrial'],
+                how='left',
+            )
 
             combined_data = pd.merge(
                 combined_data, recording_coded, 
@@ -167,9 +100,7 @@ class Preprocessor_B:
             for col in extra_columns:
                 combined_data[col] = pd.NA
                 
-        final_columns = base_columns + [
-            'text','A', 'b', 'n_constraints', 'matched_rules', 'un_pro'
-        ]
+        final_columns = base_columns + extra_columns
         combined_data = combined_data[final_columns]                
 
         return combined_data
@@ -812,14 +743,19 @@ class Recording_Processor:
         i = 0
         while i < len(items):
             # 处理排除逻辑
-            if '除' in items[i] or (i + 1 < len(items) and
-                                   ('其他' in items[i + 1] or '其余'
-                                    in items[i + 1] or '另外' in items[i + 1])):
-                res, is_pro = self._handle_exclusion(items[i], items[i + 1])
-                if is_pro:
-                    results['exclusion'] = merge(results['exclusion'], res)
-                    i += 2
-                    continue
+            if ('除' in items[i]) or (
+                i + 1 < len(items) and (
+                    '其他' in items[i + 1] or
+                    '其余' in items[i + 1] or
+                    '另外' in items[i + 1]
+                )
+            ):
+                if i + 1 < len(items):
+                    res, is_pro = self._handle_exclusion(items[i], items[i + 1])
+                    if is_pro:
+                        results['exclusion'] = merge(results['exclusion'], res)
+                        i += 2
+                        continue
 
             # 处理最高级
             res, is_pro = self._handle_superlative(items[i])
