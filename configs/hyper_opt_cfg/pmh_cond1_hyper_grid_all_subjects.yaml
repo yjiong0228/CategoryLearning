@@ -9,6 +9,7 @@ subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-opt/pmh/cond1_all_subjects
 selection_metric: min_inner_mean_error
+hyperparam_selection_mode: per_subject   # per_subject|group_mean
 save_level: compact   # compact|full
 random_seed: 42
 

@@ -56,6 +56,11 @@ class HyperOptimizer:
         self.selection_metric = str(self.config.get("selection_metric", "min_inner_mean_error"))
         if self.selection_metric != "min_inner_mean_error":
             raise ValueError("Only selection_metric='min_inner_mean_error' is supported in v1")
+        self.hyperparam_selection_mode = str(
+            self.config.get("hyperparam_selection_mode", "per_subject")
+        ).strip().lower()
+        if self.hyperparam_selection_mode not in {"per_subject", "group_mean"}:
+            raise ValueError("hyperparam_selection_mode must be 'per_subject' or 'group_mean'")
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
         if self.save_level not in {"compact", "full"}:
             raise ValueError("save_level must be 'compact' or 'full'")
@@ -316,12 +321,11 @@ class HyperOptimizer:
             data["subject_metrics"] = tr.subject_metrics
         return data
 
-    def run(self, subjects: Sequence[int], stage: str = "all") -> Dict[str, Any]:
-        if stage not in {"coarse", "fine", "all"}:
-            raise ValueError("stage must be one of: coarse, fine, all")
-
+    def _run_subject_pipeline(self, subject_id: int, stage: str, output_base: Path) -> Dict[str, Any]:
         stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
-        all_trials_path = self.output_dir / "all_trials.jsonl"
+        subject_dir = output_base / f"subject_{int(subject_id)}"
+        subject_dir.mkdir(parents=True, exist_ok=True)
+        all_trials_path = subject_dir / "all_trials.jsonl"
         if all_trials_path.exists():
             all_trials_path.unlink()
 
@@ -346,13 +350,12 @@ class HyperOptimizer:
 
             trial_results: List[TrialResult] = []
             for idx, params in enumerate(stage_trials):
-                tr = self._evaluate_trial(stage_name, idx, params, stage_inner_cfg, subjects)
+                tr = self._evaluate_trial(stage_name, idx, params, stage_inner_cfg, [int(subject_id)])
                 trial_results.append(tr)
                 self._append_jsonl(all_trials_path, self._serialize_trial_record(tr))
-
             all_stage_trials[stage_name] = trial_results
 
-        stage_summary = {}
+        stage_summary: Dict[str, Any] = {}
         for stage_name, trials in all_stage_trials.items():
             ranked = sorted(trials, key=lambda x: x.aggregated_error)
             top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
@@ -370,36 +373,146 @@ class HyperOptimizer:
             }
 
         final_stage = "fine" if "fine" in all_stage_trials else "coarse"
-        best_trial = min(all_stage_trials[final_stage], key=lambda x: x.aggregated_error)
+        final_trials = all_stage_trials[final_stage]
+        best_trial = min(final_trials, key=lambda t: float(t.subject_metrics[int(subject_id)]["mean_error"]))
 
-        stage_summary_path = self.output_dir / "stage_summary.json"
+        stage_summary_path = subject_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
 
-        best_payload = {
-            "selection_metric": self.selection_metric,
-            "save_level": self.save_level,
+        subject_best = {
             "best_stage": final_stage,
             "best_trial_index": best_trial.trial_index,
             "best_hyperparams": best_trial.hyperparams,
-            "aggregated_error": best_trial.aggregated_error,
+            "mean_error": float(best_trial.subject_metrics[int(subject_id)]["mean_error"]),
+            "best_error": float(best_trial.subject_metrics[int(subject_id)]["best_error"]),
             "random_seed": best_trial.random_seed,
-            "inner_base_config_path": str(self.inner_base_config_path),
-            "hyper_config_path": str(self.config_path),
         }
         if self.save_level == "full":
-            best_payload["subject_metrics"] = best_trial.subject_metrics
-        best_path = self.output_dir / "best_hyperparams.json"
+            subject_best["subject_metrics"] = {str(int(subject_id)): best_trial.subject_metrics[int(subject_id)]}
+
+        best_path = subject_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(subject_best), f, ensure_ascii=False, indent=2)
 
         return {
-            "output_dir": str(self.output_dir),
+            "subject_id": int(subject_id),
+            "output_dir": str(subject_dir),
             "all_trials": str(all_trials_path),
             "stage_summary": str(stage_summary_path),
             "best_hyperparams": str(best_path),
-            "best": best_payload,
+            "best": subject_best,
         }
+
+    def run(self, subjects: Sequence[int], stage: str = "all") -> Dict[str, Any]:
+        if stage not in {"coarse", "fine", "all"}:
+            raise ValueError("stage must be one of: coarse, fine, all")
+
+        best_payload: Dict[str, Any] = {
+            "selection_metric": self.selection_metric,
+            "hyperparam_selection_mode": self.hyperparam_selection_mode,
+            "save_level": self.save_level,
+            "inner_base_config_path": str(self.inner_base_config_path),
+            "hyper_config_path": str(self.config_path),
+        }
+
+        if self.hyperparam_selection_mode == "group_mean":
+            stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
+            all_trials_path = self.output_dir / "all_trials.jsonl"
+            if all_trials_path.exists():
+                all_trials_path.unlink()
+
+            all_stage_trials: Dict[str, List[TrialResult]] = {}
+            for stage_name in stages_to_run:
+                stage_inner_cfg = self._prepare_stage_config(stage_name)
+                if stage_name == "fine":
+                    fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
+                    if "hyperparam_space" in fine_stage_cfg:
+                        specs = self._param_specs_for_stage(stage_name)
+                        stage_trials = self._expand_trials(specs)
+                    else:
+                        prior = all_stage_trials.get("coarse")
+                        if prior is None:
+                            raise ValueError(
+                                "fine stage without stages.fine.hyperparam_space requires coarse stage results in this run"
+                            )
+                        stage_trials = self._top_k_trials_from_coarse(prior)
+                else:
+                    specs = self._param_specs_for_stage(stage_name)
+                    stage_trials = self._expand_trials(specs)
+
+                trial_results: List[TrialResult] = []
+                for idx, params in enumerate(stage_trials):
+                    tr = self._evaluate_trial(stage_name, idx, params, stage_inner_cfg, subjects)
+                    trial_results.append(tr)
+                    self._append_jsonl(all_trials_path, self._serialize_trial_record(tr))
+                all_stage_trials[stage_name] = trial_results
+
+            stage_summary = {}
+            for stage_name, trials in all_stage_trials.items():
+                ranked = sorted(trials, key=lambda x: x.aggregated_error)
+                top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
+                stage_summary[stage_name] = {
+                    "num_trials": len(trials),
+                    "top_trials": [
+                        {
+                            "trial_index": t.trial_index,
+                            "aggregated_error": t.aggregated_error,
+                            "hyperparams": t.hyperparams,
+                            "random_seed": t.random_seed,
+                        }
+                        for t in ranked[:max(1, top_k)]
+                    ],
+                }
+
+            final_stage = "fine" if "fine" in all_stage_trials else "coarse"
+            final_trials = all_stage_trials[final_stage]
+            stage_summary_path = self.output_dir / "stage_summary.json"
+            with stage_summary_path.open("w", encoding="utf-8") as f:
+                json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
+
+            best_payload["best_stage"] = final_stage
+            best_trial = min(final_trials, key=lambda x: x.aggregated_error)
+            best_payload.update({
+                "best_trial_index": best_trial.trial_index,
+                "best_hyperparams": best_trial.hyperparams,
+                "aggregated_error": best_trial.aggregated_error,
+                "random_seed": best_trial.random_seed,
+            })
+            if self.save_level == "full":
+                best_payload["subject_metrics"] = best_trial.subject_metrics
+            best_path = self.output_dir / "best_hyperparams.json"
+            with best_path.open("w", encoding="utf-8") as f:
+                json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            return {
+                "output_dir": str(self.output_dir),
+                "all_trials": str(all_trials_path),
+                "stage_summary": str(stage_summary_path),
+                "best_hyperparams": str(best_path),
+                "best": best_payload,
+            }
+        else:
+            per_subject_best: Dict[str, Any] = {}
+            per_subject_outputs: Dict[str, Any] = {}
+            for sid in subjects:
+                out = self._run_subject_pipeline(int(sid), stage, self.output_dir)
+                per_subject_outputs[str(int(sid))] = {
+                    "output_dir": out["output_dir"],
+                    "all_trials": out["all_trials"],
+                    "stage_summary": out["stage_summary"],
+                    "best_hyperparams": out["best_hyperparams"],
+                }
+                per_subject_best[str(int(sid))] = out["best"]
+            best_payload["per_subject_best"] = per_subject_best
+            best_path = self.output_dir / "best_hyperparams.json"
+            with best_path.open("w", encoding="utf-8") as f:
+                json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            return {
+                "output_dir": str(self.output_dir),
+                "per_subject_outputs": per_subject_outputs,
+                "best_hyperparams": str(best_path),
+                "best": best_payload,
+            }
 
 
 def _deep_update(base: Dict[str, Any], override: Mapping[str, Any]) -> Dict[str, Any]:
