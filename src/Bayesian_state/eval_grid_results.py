@@ -191,6 +191,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plot-posterior", type=Path, default=None)
     p.add_argument("--plot-cluster", type=Path, default=None)
     p.add_argument("--plot-oral", type=Path, default=None)
+    p.add_argument("--plot-oral-alignment", type=Path, default=None)
+    p.add_argument("--plot-choice-conditioned-oral", type=Path, default=None)
     p.add_argument("--oral-mode", type=str, choices=ORAL_MODE_CHOICES, default=None)
     p.add_argument("--oral-data", type=Path, default=None)
     p.add_argument("--oral-region-n-samples", type=int, default=None)
@@ -305,17 +307,11 @@ def main() -> None:
     plot_posterior = args.plot_posterior or (plots_dir / "posterior.png")
     plot_cluster = args.plot_cluster or (plots_dir / "cluster_amount.png")
     plot_oral = args.plot_oral or (plots_dir / "oral_vs_model.png")
+    plot_oral_alignment = args.plot_oral_alignment or (plots_dir / "oral_model_alignment.png")
+    plot_choice_conditioned_oral = args.plot_choice_conditioned_oral or (plots_dir / "oral_choice_conditioned_alignment.png")
     oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
 
     aggregated = aggregate_grid_results(input_dir, eval_prediction_mode=args.eval_prediction_mode)
-    aggregated_serializable = {
-        sid: {**info, "grid_errors": _serialize_grid_errors(info.get("grid_errors", {}))}
-        for sid, info in aggregated.items()
-    }
-
-    agg_out.parent.mkdir(parents=True, exist_ok=True)
-    agg_out.write_text(json.dumps(aggregated_serializable, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Aggregated {len(aggregated)} subjects -> {agg_out}")
 
     me = ModelEval()
 
@@ -344,6 +340,41 @@ def main() -> None:
     oral_hits = _build_oral_hits(oral_mode, oral_df, oral_data_path, oral_region_n_samples)
     me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
     print(f"Saved oral vs model plot -> {plot_oral}")
+
+    oral_alignment = me.compute_oral_model_alignment(
+        aggregated,
+        oral_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+    )
+    me.plot_oral_model_alignment(oral_alignment, save_path=str(plot_oral_alignment))
+    print(f"Saved oral-model alignment plot -> {plot_oral_alignment}")
+
+    choice_conditioned_alignment = me.compute_choice_conditioned_oral_alignment(
+        aggregated,
+        oral_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+    )
+    me.plot_choice_conditioned_oral_alignment(
+        choice_conditioned_alignment,
+        save_path=str(plot_choice_conditioned_oral),
+    )
+    print(f"Saved choice-conditioned oral alignment plot -> {plot_choice_conditioned_oral}")
+
+    aggregated_serializable = {
+        sid: {
+            **info,
+            "grid_errors": _serialize_grid_errors(info.get("grid_errors", {})),
+            "oral_model_alignment": oral_alignment.get(sid),
+            "choice_conditioned_oral_alignment": choice_conditioned_alignment.get(sid),
+        }
+        for sid, info in aggregated.items()
+    }
+
+    agg_out.parent.mkdir(parents=True, exist_ok=True)
+    agg_out.write_text(json.dumps(aggregated_serializable, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Aggregated {len(aggregated)} subjects -> {agg_out}")
 
 
 if __name__ == "__main__":

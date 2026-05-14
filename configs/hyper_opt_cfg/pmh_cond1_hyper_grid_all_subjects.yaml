@@ -7,7 +7,7 @@ inner_base_config_path: ../grid_opt_cfg/pmh_cond1.yaml
 # cond1 subjects (same range used by current cond1 grid config)
 subject_range: [101, 132]
 
-output_dir: ../../results/state-based-hyper-opt/pmh/cond1_all_subjects
+output_dir: ../../results/state-based-hyper-opt/pmh/cond1
 selection_metric: min_inner_mean_error
 save_level: compact   # compact|full
 random_seed: 42
@@ -17,7 +17,7 @@ random_seed: 42
 hyperparam_space:
   # IMPORTANT: window size
   inner.window_size:
-    values: [32, 16, 8]
+    values: [16, 8]
 
   # Hypothesis transition (cond1 baseline: original_strategies_a)
   # Include strategy templates as candidates (8 templates).
@@ -84,7 +84,7 @@ stages:
       n_repeats: 8
       refit_repeats: 32
       keep_logs: false
-      n_jobs: 64
+      n_jobs: 128
       param_grid:
         gamma: [0.2, 0.6, 0.9]
         w0: [0.02, 0.1, 0.3]
@@ -92,9 +92,9 @@ stages:
   fine:
     inner_overrides:
       n_repeats: 32
-      refit_repeats: 128
+      refit_repeats: 1024
       keep_logs: false
-      n_jobs: 64
+      n_jobs: 128
       param_grid:
         gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
         w0: [0.01, 0.03, 0.08, 0.15, 0.3]
