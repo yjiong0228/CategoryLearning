@@ -41,6 +41,7 @@ python -m src.Bayesian_state.run_hyper_optimization \
 - `stages.coarse.inner_overrides`：coarse 阶段内层预算（如 `n_repeats`、`refit_repeats`、`param_grid`）
 - `stages.fine.inner_overrides`：fine 阶段内层预算
 - `refine_policy.top_k`：coarse 阶段选前 `k` 个组合进入 fine
+- `hyperparam_selection_mode`：`per_subject` 或 `group_mean`（默认 `per_subject`）
 - `save_level`：`compact` 或 `full`（默认 `compact`）
 
 ## 超参数路径写法
@@ -79,8 +80,9 @@ hyperparam_space:
   - `full`：额外保存 `subject_metrics` 明细
 - `stage_summary.json`：每阶段摘要与 top trials
 - `best_hyperparams.json`：
-  - `compact`：保存最终最佳超参数与聚合指标
-  - `full`：额外保存最佳 trial 的 `subject_metrics`
+  - `hyperparam_selection_mode=per_subject`：保存每个被试各自最优超参数（默认）
+  - `hyperparam_selection_mode=group_mean`：保存整个被试组共享的一套最优超参数
+  - `full`：在上述任一模式下额外保存更详细的 `subject_metrics`
 
 ## 建议
 

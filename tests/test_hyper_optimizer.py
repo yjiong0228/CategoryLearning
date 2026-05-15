@@ -94,19 +94,40 @@ def test_run_outputs_files_with_mocked_trials(tmp_path: Path, monkeypatch) -> No
     monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
 
     result = opt.run(subjects=[1], stage="all")
-    assert Path(result["all_trials"]).exists()
-    assert Path(result["stage_summary"]).exists()
+    assert "per_subject_outputs" in result
+    assert Path(result["per_subject_outputs"]["1"]["all_trials"]).exists()
+    assert Path(result["per_subject_outputs"]["1"]["stage_summary"]).exists()
     assert Path(result["best_hyperparams"]).exists()
 
     best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
-    assert "best_hyperparams" in best
-    assert "aggregated_error" in best
+    assert best["hyperparam_selection_mode"] == "per_subject"
+    assert "per_subject_best" in best
+    assert "1" in best["per_subject_best"]
     assert best["save_level"] == "compact"
     assert "subject_metrics" not in best
 
-    first_line = Path(result["all_trials"]).read_text(encoding="utf-8").splitlines()[0]
+    first_line = Path(result["per_subject_outputs"]["1"]["all_trials"]).read_text(encoding="utf-8").splitlines()[0]
     first_payload = json.loads(first_line)
     assert "subject_metrics" not in first_payload
+
+
+def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkeypatch) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["hyperparam_selection_mode"] = "group_mean"
+    opt = HyperOptimizer(cfg, hyper_path)
+
+    def _fake_eval(stage_name, trial_index, trial_params, stage_inner_cfg, subjects):
+        err = float(trial_index + (0 if stage_name == "coarse" else 0.1))
+        return TrialResult(stage_name, trial_index, dict(trial_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + trial_index)
+
+    monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
+    result = opt.run(subjects=[1], stage="all")
+    best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
+    assert best["hyperparam_selection_mode"] == "group_mean"
+    assert "best_hyperparams" in best
+    assert "aggregated_error" in best
+    assert "per_subject_best" not in best
 
 
 def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch) -> None:
@@ -170,7 +191,7 @@ def test_fine_stage_runs_without_coarse_when_fine_hyperparam_space_exists(tmp_pa
     monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
 
     result = opt.run(subjects=[1], stage="fine")
-    assert Path(result["all_trials"]).exists()
+    assert Path(result["per_subject_outputs"]["1"]["all_trials"]).exists()
     assert Path(result["best_hyperparams"]).exists()
 
 
