@@ -1,0 +1,31 @@
+{
+  "selection_metric": "min_inner_mean_error",
+  "save_level": "compact",
+  "best_stage": "fine",
+  "best_trial_index": 1,
+  "best_hyperparams": {
+    "inner.window_size": 16,
+    "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+      {
+        "amount": "fixed",
+        "method": "top_posterior",
+        "top_p": 0.7,
+        "value": 2
+      },
+      {
+        "amount": "fixed",
+        "method": "random",
+        "value": 1
+      }
+    ],
+    "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+    "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+    "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+    "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+    "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+  },
+  "aggregated_error": 0.0774168930968358,
+  "random_seed": 3306789894,
+  "inner_base_config_path": "/home/yangjiong/CategoryLearning_gitcode/configs/grid_opt_cfg/pmh_cond1.yaml",
+  "hyper_config_path": "/home/yangjiong/CategoryLearning_gitcode/configs/hyper_opt_cfg/pmh_cond1_hyper_grid_all_subjects.yaml"
+}

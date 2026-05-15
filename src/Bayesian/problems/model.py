@@ -895,14 +895,14 @@ class StandardModel(BaseModel):
         return predict_probs_results
     
     def compute_error_for_params_new(
-                                    self,
-                                    data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-                                    window_size=16,
-                                    repeat=1,
-                                    multiprocess=False,
-                                    objective='focal',
-                                    **kwargs
-                                ) -> Tuple[List[Dict], float]:
+        self,
+        data: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        window_size=16,
+        repeat=1,
+        multiprocess=False,
+        objective='focal',
+        **kwargs
+    ) -> Tuple[List[Dict], float]:
         """
         Perform repeated model fitting and compute a configurable choice objective.
 
@@ -911,8 +911,6 @@ class StandardModel(BaseModel):
         'focal'
         'nll'
         'lapse_nll'
-        'brier'
-        'linear'
         """
 
         # ===== fixed internal objective hyperparameters =====
@@ -925,72 +923,31 @@ class StandardModel(BaseModel):
             predict_results,
             objective='focal'
         ):
-            true_choice = np.asarray(predict_results['true_choice'], dtype=float)
-            pred_probs = np.asarray(predict_results['pred_probs'], dtype=float)
             p_true = np.asarray(predict_results['true_choice_prob'], dtype=float)
+            valid_mask = np.isfinite(p_true)
+            p_true = np.clip(p_true[valid_mask], eps, 1.0)
 
-            # ---------- focal / nll / lapse_nll / linear ----------
-            if objective in ['focal', 'nll', 'lapse_nll', 'linear']:
-                valid_mask = np.isfinite(p_true)
-                p_true_valid = np.clip(p_true[valid_mask], eps, 1.0)
+            if len(p_true) == 0:
+                return np.nan
 
-                if len(p_true_valid) == 0:
-                    return np.nan
+            if objective == 'focal':
+                per_trial_loss = -((1.0 - p_true) ** focal_gamma) * np.log(p_true)
 
-                if objective == 'focal':
-                    per_trial_loss = -((1.0 - p_true_valid) ** focal_gamma) * np.log(p_true_valid)
+            elif objective == 'nll':
+                per_trial_loss = -np.log(p_true)
 
-                elif objective == 'nll':
-                    per_trial_loss = -np.log(p_true_valid)
-
-                elif objective == 'lapse_nll':
-                    p_mix = (1.0 - lapse) * p_true_valid + lapse / self.n_cats
-                    p_mix = np.clip(p_mix, eps, 1.0)
-                    per_trial_loss = -np.log(p_mix)
-
-                elif objective == 'linear':
-                    per_trial_loss = 1.0 - p_true_valid
-
-                return float(np.mean(per_trial_loss))
-
-            # ---------- brier ----------
-            elif objective == 'brier':
-                if pred_probs.ndim != 2:
-                    return np.nan
-
-                n_trials, n_cats = pred_probs.shape
-
-                valid_mask = (
-                    np.isfinite(true_choice) &
-                    np.all(np.isfinite(pred_probs), axis=1)
-                )
-
-                if not np.any(valid_mask):
-                    return np.nan
-
-                true_choice_valid = true_choice[valid_mask].astype(int)
-                pred_probs_valid = pred_probs[valid_mask]
-
-                # 你的 true_choice 是 1-based 编码
-                true_idx = true_choice_valid - 1
-                idx_valid_mask = (true_idx >= 0) & (true_idx < n_cats)
-
-                if not np.any(idx_valid_mask):
-                    return np.nan
-
-                true_idx = true_idx[idx_valid_mask]
-                pred_probs_valid = pred_probs_valid[idx_valid_mask]
-
-                y_onehot = np.eye(n_cats, dtype=float)[true_idx]
-                per_trial_loss = np.sum((pred_probs_valid - y_onehot) ** 2, axis=1)
-
-                return float(np.mean(per_trial_loss))
+            elif objective == 'lapse_nll':
+                p_mix = (1.0 - lapse) * p_true + lapse / self.n_cats
+                p_mix = np.clip(p_mix, eps, 1.0)
+                per_trial_loss = -np.log(p_mix)
 
             else:
                 raise ValueError(
                     f"Unsupported objective: {objective}. "
-                    f"Choose from ['focal', 'nll', 'lapse_nll', 'brier', 'linear']"
+                    f"Choose from ['focal', 'nll', 'lapse_nll']"
                 )
+
+            return float(np.mean(per_trial_loss))
 
         if multiprocess:
 

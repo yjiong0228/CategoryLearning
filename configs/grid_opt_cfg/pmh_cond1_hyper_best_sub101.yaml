@@ -1,0 +1,49 @@
+# Grid optimization config for subject 101 using the best cond1 hyper-opt result.
+engine_config_path: ../model_struct/pmh_grid_cond1.yaml
+
+subjects: [101]
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/state-based-grid-result/pmh/cond1_hyper_best_sub101
+
+oral:
+  mode: center
+
+n_jobs: 128
+
+# Match the hyper-opt fine-stage budget while preserving logs for plotting.
+n_repeats: 32
+refit_repeats: 1024
+
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+prediction_mode: posterior_t_minus_1
+selection_prediction_mode: posterior_t_minus_1
+
+param_grid:
+  gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
+  w0: [0.01, 0.03, 0.08, 0.15, 0.3]
+
+engine_config:
+  modules:
+    hypo_transitions_mod:
+      kwargs:
+        strategies:
+          - {amount: "fixed", method: "top_posterior", top_p: 0.7, value: 2}
+          - {amount: "fixed", method: "random", value: 1}
+        max_active_hypotheses: 4
+        init_num: 2
+    beta_mod:
+      kwargs:
+        beta_init: 1.5
+        decrease_rate: 0.3
+        prior_beta_scale: 15.0
