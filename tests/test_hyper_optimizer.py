@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from src.Bayesian_state.hyper_opt.optimizer import HyperOptimizer, TrialResult
+from src.Bayesian_state.hyper_opt.optimizer import CombinationResult, HyperOptimizer
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -55,47 +55,47 @@ def test_apply_hyperparams_injection(tmp_path: Path) -> None:
 
     inner = {"window_size": 8}
     engine = {"modules": {"beta_mod": {"kwargs": {"beta_init": 1.0}}}}
-    trial = {
+    combination = {
         "inner.window_size": 12,
         "engine.modules.beta_mod.kwargs.beta_init": 2.5,
     }
-    out_inner, out_engine = opt._apply_hyperparams(trial, inner, engine)
+    out_inner, out_engine = opt._apply_hyperparams(combination, inner, engine)
 
     assert out_inner["window_size"] == 12
     assert out_engine["modules"]["beta_mod"]["kwargs"]["beta_init"] == 2.5
 
 
-def test_top_k_trials_from_coarse(tmp_path: Path) -> None:
+def test_top_k_combinations_from_coarse(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     opt = HyperOptimizer(cfg, hyper_path)
 
-    coarse_trials = [
-        TrialResult("coarse", 0, {"inner.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0}, 0.2, {1: {"mean_error": 0.2}}, 1),
-        TrialResult("coarse", 1, {"inner.window_size": 10, "engine.modules.beta_mod.kwargs.beta_init": 2.0}, 0.3, {1: {"mean_error": 0.3}}, 2),
-        TrialResult("coarse", 2, {"inner.window_size": 12, "engine.modules.beta_mod.kwargs.beta_init": 3.0}, 0.4, {1: {"mean_error": 0.4}}, 3),
+    coarse_combinations = [
+        CombinationResult("coarse", 0, {"inner.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0}, 0.2, {1: {"mean_error": 0.2}}, 1),
+        CombinationResult("coarse", 1, {"inner.window_size": 10, "engine.modules.beta_mod.kwargs.beta_init": 2.0}, 0.3, {1: {"mean_error": 0.3}}, 2),
+        CombinationResult("coarse", 2, {"inner.window_size": 12, "engine.modules.beta_mod.kwargs.beta_init": 3.0}, 0.4, {1: {"mean_error": 0.4}}, 3),
     ]
 
-    selected = opt._top_k_trials_from_coarse(coarse_trials)
+    selected = opt._top_k_combinations_from_coarse(coarse_combinations)
     assert len(selected) == 2
     assert selected[0]["inner.window_size"] == 8
     assert selected[1]["inner.window_size"] == 10
 
 
-def test_run_outputs_files_with_mocked_trials(tmp_path: Path, monkeypatch) -> None:
+def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     opt = HyperOptimizer(cfg, hyper_path)
 
-    def _fake_eval(stage_name, trial_index, trial_params, stage_inner_cfg, subjects):
-        err = float(trial_index + (0 if stage_name == "coarse" else 0.1))
-        return TrialResult(stage_name, trial_index, dict(trial_params), err, {1: {"mean_error": err}}, 42 + trial_index)
+    def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
+        err = float(combination_index + (0 if stage_name == "coarse" else 0.1))
+        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + combination_index)
 
-    monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
 
     result = opt.run(subjects=[1], stage="all")
     assert "per_subject_outputs" in result
-    assert Path(result["per_subject_outputs"]["1"]["all_trials"]).exists()
+    assert Path(result["per_subject_outputs"]["1"]["all_combinations"]).exists()
     assert Path(result["per_subject_outputs"]["1"]["stage_summary"]).exists()
     assert Path(result["best_hyperparams"]).exists()
 
@@ -106,9 +106,10 @@ def test_run_outputs_files_with_mocked_trials(tmp_path: Path, monkeypatch) -> No
     assert best["save_level"] == "compact"
     assert "subject_metrics" not in best
 
-    first_line = Path(result["per_subject_outputs"]["1"]["all_trials"]).read_text(encoding="utf-8").splitlines()[0]
+    first_line = Path(result["per_subject_outputs"]["1"]["all_combinations"]).read_text(encoding="utf-8").splitlines()[0]
     first_payload = json.loads(first_line)
     assert "subject_metrics" not in first_payload
+    assert "combination_index" in first_payload
 
 
 def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkeypatch) -> None:
@@ -117,11 +118,11 @@ def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkey
     cfg["hyperparam_selection_mode"] = "group_mean"
     opt = HyperOptimizer(cfg, hyper_path)
 
-    def _fake_eval(stage_name, trial_index, trial_params, stage_inner_cfg, subjects):
-        err = float(trial_index + (0 if stage_name == "coarse" else 0.1))
-        return TrialResult(stage_name, trial_index, dict(trial_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + trial_index)
+    def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
+        err = float(combination_index + (0 if stage_name == "coarse" else 0.1))
+        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + combination_index)
 
-    monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
     result = opt.run(subjects=[1], stage="all")
     best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
     assert best["hyperparam_selection_mode"] == "group_mean"
@@ -161,14 +162,14 @@ def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(opt, "_resolve_inner_components", _fake_resolve)
     monkeypatch.setattr(opt, "_build_optimizer", _fake_build)
 
-    trial = {
+    combination = {
         "inner.param_grid.gamma": [0.2, 0.8],
         "inner.param_grid.w0": [0.03, 0.15],
         "inner.window_size": 12,
         "inner.prediction_mode": "prior_t",
         "inner.selection_prediction_mode": "prior_t",
     }
-    _ = opt._evaluate_trial("coarse", 0, trial, opt.inner_base_config, [1])
+    _ = opt._evaluate_combination("coarse", 0, combination, opt.inner_base_config, [1])
 
     assert captured["param_grid"]["gamma"] == [0.2, 0.8]
     assert captured["param_grid"]["w0"] == [0.03, 0.15]
@@ -185,13 +186,13 @@ def test_fine_stage_runs_without_coarse_when_fine_hyperparam_space_exists(tmp_pa
     }
     opt = HyperOptimizer(cfg, hyper_path)
 
-    def _fake_eval(stage_name, trial_index, trial_params, stage_inner_cfg, subjects):
-        return TrialResult(stage_name, trial_index, dict(trial_params), 0.2, {1: {"mean_error": 0.2}}, 999)
+    def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
+        return CombinationResult(stage_name, combination_index, dict(combination_params), 0.2, {1: {"mean_error": 0.2, "best_error": 0.2}}, 999)
 
-    monkeypatch.setattr(opt, "_evaluate_trial", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
 
     result = opt.run(subjects=[1], stage="fine")
-    assert Path(result["per_subject_outputs"]["1"]["all_trials"]).exists()
+    assert Path(result["per_subject_outputs"]["1"]["all_combinations"]).exists()
     assert Path(result["best_hyperparams"]).exists()
 
 

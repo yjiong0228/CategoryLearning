@@ -17,24 +17,47 @@ class ModelEval:
             return {iSub: results[iSub] for iSub in subjects if iSub in results}
         return results
 
-    def _plot_by_condition(self, results, subjects, save_path, title, plot_body, **kwargs):
-        # Filter and group
-        results = self._filter_results(results, subjects)
+    @staticmethod
+    def _group_by_condition(results):
         grouped = defaultdict(list)
         for iSub, info in results.items():
             grouped[info['condition']].append((iSub, info))
+        return grouped
+
+    @staticmethod
+    def _layout_by_condition(grouped, kwargs):
+        max_group = max(len(lst) for lst in grouped.values())
+        if 'n_cols' in kwargs and kwargs.get('n_cols') is not None:
+            n_cols = int(kwargs.get('n_cols'))
+        else:
+            n_cols = min(int(kwargs.get('max_subjects_per_row', 8)), max_group)
+        n_cols = max(1, n_cols)
+        rows_by_condition = {
+            condition: int(np.ceil(len(subs) / n_cols))
+            for condition, subs in grouped.items()
+        }
+        n_rows = max(1, sum(rows_by_condition.values()))
+        return n_rows, n_cols, rows_by_condition
+
+    def _plot_by_condition(self, results, subjects, save_path, title, plot_body, **kwargs):
+        # Filter and group
+        results = self._filter_results(results, subjects)
+        grouped = self._group_by_condition(results)
 
         # Layout
-        n_rows = len(grouped)
-        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle(title, fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
         # Subplots
+        row_offset = 0
         for row, (condition, subs) in enumerate(sorted(grouped.items())):
-            for col, (iSub, info) in enumerate(subs):
-                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            for idx, (iSub, info) in enumerate(subs):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
                 plot_body(ax, condition, iSub, info)
+            row_offset += rows_by_condition[condition]
 
         plt.tight_layout()
         if save_path:
@@ -334,17 +357,19 @@ class ModelEval:
         if not grouped:
             raise RuntimeError('No oral-model alignment results to plot.')
 
-        n_rows = len(grouped)
-        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle('Oral-Model Alignment (oral_t vs prior_t)', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
         def rolling(values):
             return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
 
+        row_offset = 0
         for row, (condition, subs) in enumerate(sorted(grouped.items())):
-            for col, (iSub, info) in enumerate(subs):
-                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            for idx, (iSub, info) in enumerate(subs):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
                 n = len(info.get('model_oral_similarity', []))
                 x = np.arange(1, n + 1)
                 ax.plot(x, rolling(info.get('model_oral_similarity', [])), lw=2, label='1 - JS(prior, oral)')
@@ -354,6 +379,7 @@ class ModelEval:
                 ax.set_ylim(0, 1)
                 ax.set(title=f'Subject {iSub} (Cond {condition})', xlabel='Trial', ylabel='Alignment')
                 ax.legend()
+            row_offset += rows_by_condition[condition]
 
         plt.tight_layout()
         if save_path:
@@ -513,17 +539,19 @@ class ModelEval:
         if not grouped:
             raise RuntimeError('No choice-conditioned oral alignment results to plot.')
 
-        n_rows = len(grouped)
-        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle('Oral Alignment with Choice-Conditioned Prior', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
         def rolling(values):
             return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
 
+        row_offset = 0
         for row, (condition, subs) in enumerate(sorted(grouped.items())):
-            for col, (iSub, info) in enumerate(subs):
-                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            for idx, (iSub, info) in enumerate(subs):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
                 n = len(info.get('choice_conditioned_similarity', []))
                 x = np.arange(1, n + 1)
                 ax.plot(x, rolling(info.get('choice_conditioned_similarity', [])), lw=2, label='1 - JS(choice-conditioned, oral)')
@@ -536,6 +564,7 @@ class ModelEval:
                 ax.set_ylim(0, 1)
                 ax.set(title=f'Subject {iSub} (Cond {condition})', xlabel='Trial', ylabel='Alignment')
                 ax.legend()
+            row_offset += rows_by_condition[condition]
 
         plt.tight_layout()
         if save_path:
@@ -591,14 +620,16 @@ class ModelEval:
         for iSub, info in model_res.items():
             grouped[info['condition']].append(iSub)
 
-        n_rows = len(grouped)
-        n_cols = kwargs.get('n_cols', max(len(lst) for lst in grouped.values()))
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle('Model k vs Oral k (Filtered & Smoothed)', fontsize=kwargs.get('fontsize', 16), y=kwargs.get('y', 0.99))
 
+        row_offset = 0
         for row, (condition, subs) in enumerate(sorted(grouped.items())):
-            for col, iSub in enumerate(subs):
-                ax = fig.add_subplot(n_rows, n_cols, row * n_cols + col + 1)
+            for idx, iSub in enumerate(subs):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
 
                 # true model posterior
                 info = model_res[iSub]
@@ -620,6 +651,7 @@ class ModelEval:
                 ax.set_ylim(0, 1)
                 ax.set(title=f'Subject {iSub} (Cond {condition})', xlabel='Trial', ylabel='Probability')
                 ax.legend()
+            row_offset += rows_by_condition[condition]
 
         plt.tight_layout()
         if save_path:

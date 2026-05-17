@@ -1,0 +1,27 @@
+{
+  "best_stage": "fine",
+  "best_combination_index": 0,
+  "best_hyperparams": {
+    "inner.window_size": 16,
+    "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+      {
+        "amount": "fixed",
+        "method": "top_posterior",
+        "value": 1
+      },
+      {
+        "amount": "fixed",
+        "method": "random",
+        "value": 2
+      }
+    ],
+    "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+    "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+    "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+    "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+    "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+  },
+  "mean_error": 0.09850745969063066,
+  "best_error": 0.08475220955250687,
+  "random_seed": 2483058516
+}

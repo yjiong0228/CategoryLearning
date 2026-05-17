@@ -33,6 +33,34 @@ python -m src.Bayesian_state.run_hyper_optimization \
 --stage coarse|fine|all
 ```
 
+## 一键生成最终 GRID 结果
+
+如果 `hyperparam_selection_mode: per_subject`，推荐使用完整流程入口：
+
+```bash
+python -m src.Bayesian_state.run_hyper_then_grid \
+  --hyper-config configs/hyper_opt_cfg/pmh_cond1_hyper.yaml \
+  --execution-mode per-subject
+```
+
+该流程会依次执行：
+
+1. 对每个 subject 跑 hyper-opt
+2. 读取/更新 `results/state-based-hyper-opt/.../best_hyperparams.json`
+3. 生成/更新统一的 subjectwise GRID 配置：
+   `configs/grid_opt_cfg/pmh_cond1_subjectwise_hyper_best.yaml`
+4. 立即对该 subject 运行普通 `run_grid_optimization`
+5. 所有 subjects 完成后运行 `eval_grid_results` 生成 `all_subjects.json` 和 plots
+
+如果只想先生成 GRID 配置、不跑 GRID：
+
+```bash
+python -m src.Bayesian_state.run_hyper_then_grid \
+  --hyper-config configs/hyper_opt_cfg/pmh_cond1_hyper.yaml \
+  --execution-mode per-subject \
+  --skip-grid
+```
+
 ## 配置说明
 
 - `inner_optimizer`：`grid` 或 `amr`
@@ -40,6 +68,7 @@ python -m src.Bayesian_state.run_hyper_optimization \
 - `hyperparam_space`：外层搜索空间（必须用户显式定义）
 - `stages.coarse.inner_overrides`：coarse 阶段内层预算（如 `n_repeats`、`refit_repeats`、`param_grid`）
 - `stages.fine.inner_overrides`：fine 阶段内层预算
+- `stages.<stage>.n_jobs_combinations`：该阶段同时评估多少个外层超参数组合。coarse 的 inner 任务较少时，可用较大的 combination 并行搭配较小的 inner `n_jobs`。
 - `refine_policy.top_k`：coarse 阶段选前 `k` 个组合进入 fine
 - `hyperparam_selection_mode`：`per_subject` 或 `group_mean`（默认 `per_subject`）
 - `save_level`：`compact` 或 `full`（默认 `compact`）
@@ -75,10 +104,10 @@ hyperparam_space:
 
 每次运行会在 `output_dir` 生成：
 
-- `all_trials.jsonl`：
+- `all_combinations.jsonl`：
   - `compact`：仅保存阶段、超参数、聚合误差、seed（推荐日常运行）
   - `full`：额外保存 `subject_metrics` 明细
-- `stage_summary.json`：每阶段摘要与 top trials
+- `stage_summary.json`：每阶段摘要与 top combinations
 - `best_hyperparams.json`：
   - `hyperparam_selection_mode=per_subject`：保存每个被试各自最优超参数（默认）
   - `hyperparam_selection_mode=group_mean`：保存整个被试组共享的一套最优超参数

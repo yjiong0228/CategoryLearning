@@ -1,3 +1,3 @@
-from .optimizer import HyperOptimizer, TrialResult
+from .optimizer import CombinationResult, HyperOptimizer
 
-__all__ = ["HyperOptimizer", "TrialResult"]
+__all__ = ["HyperOptimizer", "CombinationResult"]

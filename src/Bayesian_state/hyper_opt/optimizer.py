@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
 import yaml
+from joblib import Parallel, delayed
 
 from src.Bayesian_state.run_amr_optimization import (
     resolve_engine_config as resolve_engine_config_amr,
@@ -32,9 +33,9 @@ from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
 @dataclass
-class TrialResult:
+class CombinationResult:
     stage: str
-    trial_index: int
+    combination_index: int
     hyperparams: Dict[str, Any]
     aggregated_error: float
     subject_metrics: Dict[int, Dict[str, Any]]
@@ -149,7 +150,7 @@ class HyperOptimizer:
             raise ValueError("hyperparam_space must be a mapping")
         return {k: dict(v) for k, v in raw.items()}
 
-    def _expand_trials(self, param_specs: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _expand_combinations(self, param_specs: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
         names = list(param_specs.keys())
         value_lists = [self._hyperparam_values(param_specs[n]) for n in names]
         combos = []
@@ -157,19 +158,19 @@ class HyperOptimizer:
             combos.append(dict(zip(names, combo)))
         return combos
 
-    def _top_k_trials_from_coarse(self, coarse_trials: Sequence[TrialResult]) -> List[Dict[str, Any]]:
+    def _top_k_combinations_from_coarse(self, coarse_combinations: Sequence[CombinationResult]) -> List[Dict[str, Any]]:
         policy = self.config.get("refine_policy") or {}
         top_k = max(1, int(policy.get("top_k", 3)))
-        ranked = sorted(coarse_trials, key=lambda x: x.aggregated_error)
+        ranked = sorted(coarse_combinations, key=lambda x: x.aggregated_error)
 
         selected: List[Dict[str, Any]] = []
         seen = set()
-        for trial in ranked:
-            key = json.dumps(_to_builtin(trial.hyperparams), sort_keys=True)
+        for combination in ranked:
+            key = json.dumps(_to_builtin(combination.hyperparams), sort_keys=True)
             if key in seen:
                 continue
             seen.add(key)
-            selected.append(deepcopy(trial.hyperparams))
+            selected.append(deepcopy(combination.hyperparams))
             if len(selected) >= top_k:
                 break
         return selected
@@ -181,11 +182,11 @@ class HyperOptimizer:
             curr = curr.setdefault(part, {})
         curr[parts[-1]] = value
 
-    def _apply_hyperparams(self, trial: Dict[str, Any], inner_cfg: Dict[str, Any], engine_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    def _apply_hyperparams(self, combination: Dict[str, Any], inner_cfg: Dict[str, Any], engine_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
         next_inner = deepcopy(inner_cfg)
         next_engine = deepcopy(engine_cfg)
 
-        for key, val in trial.items():
+        for key, val in combination.items():
             if key.startswith("engine."):
                 self._set_by_path(next_engine, key[len("engine."):], val)
             elif key.startswith("inner."):
@@ -195,8 +196,8 @@ class HyperOptimizer:
 
         return next_inner, next_engine
 
-    def _trial_seed(self, stage_name: str, trial_index: int, trial_params: Mapping[str, Any]) -> int:
-        payload = json.dumps({"stage": stage_name, "idx": trial_index, "params": trial_params, "base_seed": self.base_seed}, sort_keys=True)
+    def _combination_seed(self, stage_name: str, combination_index: int, combination_params: Mapping[str, Any]) -> int:
+        payload = json.dumps({"stage": stage_name, "idx": combination_index, "params": combination_params, "base_seed": self.base_seed}, sort_keys=True)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return int(digest[:8], 16)
 
@@ -246,8 +247,8 @@ class HyperOptimizer:
 
         return subject_cfg, engine_cfg, prediction_mode, selection_prediction_mode, window_size, n_jobs
 
-    def _evaluate_trial(self, stage_name: str, trial_index: int, trial_params: Dict[str, Any], stage_inner_cfg: Dict[str, Any], subjects: Sequence[int]) -> TrialResult:
-        seed = self._trial_seed(stage_name, trial_index, trial_params)
+    def _evaluate_combination(self, stage_name: str, combination_index: int, combination_params: Dict[str, Any], stage_inner_cfg: Dict[str, Any], subjects: Sequence[int]) -> CombinationResult:
+        seed = self._combination_seed(stage_name, combination_index, combination_params)
         np.random.seed(seed)
 
         subject_metrics: Dict[int, Dict[str, Any]] = {}
@@ -257,30 +258,30 @@ class HyperOptimizer:
             subject_cfg, base_engine_cfg, pred_mode, sel_mode, window_size, n_jobs = self._resolve_inner_components(
                 stage_inner_cfg, sid, subjects, self.inner_base_config_path
             )
-            trial_inner_cfg, trial_engine_cfg = self._apply_hyperparams(trial_params, subject_cfg, base_engine_cfg)
+            combination_inner_cfg, combination_engine_cfg = self._apply_hyperparams(combination_params, subject_cfg, base_engine_cfg)
             if self.inner_optimizer == "grid":
-                param_grid = resolve_param_grid_grid(trial_inner_cfg)
+                param_grid = resolve_param_grid_grid(combination_inner_cfg)
             else:
-                param_grid = resolve_param_grid_amr(trial_inner_cfg)
+                param_grid = resolve_param_grid_amr(combination_inner_cfg)
 
-            mod = trial_engine_cfg.get("modules", {}).get("hypo_transitions_mod", {}).get("kwargs", {})
+            mod = combination_engine_cfg.get("modules", {}).get("hypo_transitions_mod", {}).get("kwargs", {})
             if isinstance(mod, dict) and "random_seed" not in mod:
                 mod["random_seed"] = int(seed)
 
-            optimizer, dataset_paths = self._build_optimizer(trial_inner_cfg, trial_engine_cfg, self.inner_base_config_path)
+            optimizer, dataset_paths = self._build_optimizer(combination_inner_cfg, combination_engine_cfg, self.inner_base_config_path)
             optimizer.n_jobs = n_jobs
 
             result = optimizer.optimize_subject(
                 subject_id=sid,
                 param_grid=param_grid,
-                n_repeats=int(trial_inner_cfg.get("n_repeats", 1)),
-                refit_repeats=int(trial_inner_cfg.get("refit_repeats", 0)),
-                window_size=int(trial_inner_cfg.get("window_size", window_size)),
-                stop_at=float(trial_inner_cfg.get("stop_at", 1.0)),
-                max_trials=trial_inner_cfg.get("max_trials"),
-                keep_logs=bool(trial_inner_cfg.get("keep_logs", False)),
-                prediction_mode=str(trial_inner_cfg.get("prediction_mode", pred_mode)),
-                selection_prediction_mode=str(trial_inner_cfg.get("selection_prediction_mode", sel_mode)),
+                n_repeats=int(combination_inner_cfg.get("n_repeats", 1)),
+                refit_repeats=int(combination_inner_cfg.get("refit_repeats", 0)),
+                window_size=int(combination_inner_cfg.get("window_size", window_size)),
+                stop_at=float(combination_inner_cfg.get("stop_at", 1.0)),
+                max_trials=combination_inner_cfg.get("max_trials"),
+                keep_logs=bool(combination_inner_cfg.get("keep_logs", False)),
+                prediction_mode=str(combination_inner_cfg.get("prediction_mode", pred_mode)),
+                selection_prediction_mode=str(combination_inner_cfg.get("selection_prediction_mode", sel_mode)),
             )
 
             best = result["best"]
@@ -295,10 +296,10 @@ class HyperOptimizer:
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
-        return TrialResult(
+        return CombinationResult(
             stage=stage_name,
-            trial_index=trial_index,
-            hyperparams=deepcopy(trial_params),
+            combination_index=combination_index,
+            hyperparams=deepcopy(combination_params),
             aggregated_error=agg_error,
             subject_metrics=subject_metrics,
             random_seed=seed,
@@ -309,61 +310,85 @@ class HyperOptimizer:
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(_to_builtin(payload), ensure_ascii=False) + "\n")
 
-    def _serialize_trial_record(self, tr: TrialResult) -> Dict[str, Any]:
+    def _serialize_combination_record(self, combination: CombinationResult) -> Dict[str, Any]:
         data = {
-            "stage": tr.stage,
-            "trial_index": tr.trial_index,
-            "hyperparams": tr.hyperparams,
-            "aggregated_error": tr.aggregated_error,
-            "random_seed": tr.random_seed,
+            "stage": combination.stage,
+            "combination_index": combination.combination_index,
+            "hyperparams": combination.hyperparams,
+            "aggregated_error": combination.aggregated_error,
+            "random_seed": combination.random_seed,
         }
         if self.save_level == "full":
-            data["subject_metrics"] = tr.subject_metrics
+            data["subject_metrics"] = combination.subject_metrics
         return data
+
+    def _evaluate_stage_combinations(
+        self,
+        stage_name: str,
+        stage_inner_cfg: Dict[str, Any],
+        stage_combinations: Sequence[Dict[str, Any]],
+        subjects: Sequence[int],
+    ) -> List[CombinationResult]:
+        stage_cfg = (self.config.get("stages") or {}).get(stage_name) or {}
+        n_jobs_combinations = max(1, int(stage_cfg.get("n_jobs_combinations", 1)))
+        if n_jobs_combinations == 1:
+            return [
+                self._evaluate_combination(stage_name, idx, params, stage_inner_cfg, subjects)
+                for idx, params in enumerate(stage_combinations)
+            ]
+        return list(
+            Parallel(n_jobs=n_jobs_combinations)(
+                delayed(self._evaluate_combination)(stage_name, idx, params, stage_inner_cfg, subjects)
+                for idx, params in enumerate(stage_combinations)
+            )
+        )
 
     def _run_subject_pipeline(self, subject_id: int, stage: str, output_base: Path) -> Dict[str, Any]:
         stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
         subject_dir = output_base / f"subject_{int(subject_id)}"
         subject_dir.mkdir(parents=True, exist_ok=True)
-        all_trials_path = subject_dir / "all_trials.jsonl"
-        if all_trials_path.exists():
-            all_trials_path.unlink()
+        all_combinations_path = subject_dir / "all_combinations.jsonl"
+        if all_combinations_path.exists():
+            all_combinations_path.unlink()
 
-        all_stage_trials: Dict[str, List[TrialResult]] = {}
+        all_stage_combinations: Dict[str, List[CombinationResult]] = {}
         for stage_name in stages_to_run:
             stage_inner_cfg = self._prepare_stage_config(stage_name)
             if stage_name == "fine":
                 fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
                 if "hyperparam_space" in fine_stage_cfg:
                     specs = self._param_specs_for_stage(stage_name)
-                    stage_trials = self._expand_trials(specs)
+                    stage_combinations = self._expand_combinations(specs)
                 else:
-                    prior = all_stage_trials.get("coarse")
+                    prior = all_stage_combinations.get("coarse")
                     if prior is None:
                         raise ValueError(
                             "fine stage without stages.fine.hyperparam_space requires coarse stage results in this run"
                         )
-                    stage_trials = self._top_k_trials_from_coarse(prior)
+                    stage_combinations = self._top_k_combinations_from_coarse(prior)
             else:
                 specs = self._param_specs_for_stage(stage_name)
-                stage_trials = self._expand_trials(specs)
+                stage_combinations = self._expand_combinations(specs)
 
-            trial_results: List[TrialResult] = []
-            for idx, params in enumerate(stage_trials):
-                tr = self._evaluate_trial(stage_name, idx, params, stage_inner_cfg, [int(subject_id)])
-                trial_results.append(tr)
-                self._append_jsonl(all_trials_path, self._serialize_trial_record(tr))
-            all_stage_trials[stage_name] = trial_results
+            combination_results = self._evaluate_stage_combinations(
+                stage_name,
+                stage_inner_cfg,
+                stage_combinations,
+                [int(subject_id)],
+            )
+            for result in combination_results:
+                self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
+            all_stage_combinations[stage_name] = combination_results
 
         stage_summary: Dict[str, Any] = {}
-        for stage_name, trials in all_stage_trials.items():
-            ranked = sorted(trials, key=lambda x: x.aggregated_error)
+        for stage_name, combinations in all_stage_combinations.items():
+            ranked = sorted(combinations, key=lambda x: x.aggregated_error)
             top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
             stage_summary[stage_name] = {
-                "num_trials": len(trials),
-                "top_trials": [
+                "num_combinations": len(combinations),
+                "top_combinations": [
                     {
-                        "trial_index": t.trial_index,
+                        "combination_index": t.combination_index,
                         "aggregated_error": t.aggregated_error,
                         "hyperparams": t.hyperparams,
                         "random_seed": t.random_seed,
@@ -372,9 +397,9 @@ class HyperOptimizer:
                 ],
             }
 
-        final_stage = "fine" if "fine" in all_stage_trials else "coarse"
-        final_trials = all_stage_trials[final_stage]
-        best_trial = min(final_trials, key=lambda t: float(t.subject_metrics[int(subject_id)]["mean_error"]))
+        final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
+        final_combinations = all_stage_combinations[final_stage]
+        best_combination = min(final_combinations, key=lambda t: float(t.subject_metrics[int(subject_id)]["mean_error"]))
 
         stage_summary_path = subject_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
@@ -382,14 +407,14 @@ class HyperOptimizer:
 
         subject_best = {
             "best_stage": final_stage,
-            "best_trial_index": best_trial.trial_index,
-            "best_hyperparams": best_trial.hyperparams,
-            "mean_error": float(best_trial.subject_metrics[int(subject_id)]["mean_error"]),
-            "best_error": float(best_trial.subject_metrics[int(subject_id)]["best_error"]),
-            "random_seed": best_trial.random_seed,
+            "best_combination_index": best_combination.combination_index,
+            "best_hyperparams": best_combination.hyperparams,
+            "mean_error": float(best_combination.subject_metrics[int(subject_id)]["mean_error"]),
+            "best_error": float(best_combination.subject_metrics[int(subject_id)]["best_error"]),
+            "random_seed": best_combination.random_seed,
         }
         if self.save_level == "full":
-            subject_best["subject_metrics"] = {str(int(subject_id)): best_trial.subject_metrics[int(subject_id)]}
+            subject_best["subject_metrics"] = {str(int(subject_id)): best_combination.subject_metrics[int(subject_id)]}
 
         best_path = subject_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
@@ -398,7 +423,7 @@ class HyperOptimizer:
         return {
             "subject_id": int(subject_id),
             "output_dir": str(subject_dir),
-            "all_trials": str(all_trials_path),
+            "all_combinations": str(all_combinations_path),
             "stage_summary": str(stage_summary_path),
             "best_hyperparams": str(best_path),
             "best": subject_best,
@@ -418,45 +443,48 @@ class HyperOptimizer:
 
         if self.hyperparam_selection_mode == "group_mean":
             stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
-            all_trials_path = self.output_dir / "all_trials.jsonl"
-            if all_trials_path.exists():
-                all_trials_path.unlink()
+            all_combinations_path = self.output_dir / "all_combinations.jsonl"
+            if all_combinations_path.exists():
+                all_combinations_path.unlink()
 
-            all_stage_trials: Dict[str, List[TrialResult]] = {}
+            all_stage_combinations: Dict[str, List[CombinationResult]] = {}
             for stage_name in stages_to_run:
                 stage_inner_cfg = self._prepare_stage_config(stage_name)
                 if stage_name == "fine":
                     fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
                     if "hyperparam_space" in fine_stage_cfg:
                         specs = self._param_specs_for_stage(stage_name)
-                        stage_trials = self._expand_trials(specs)
+                        stage_combinations = self._expand_combinations(specs)
                     else:
-                        prior = all_stage_trials.get("coarse")
+                        prior = all_stage_combinations.get("coarse")
                         if prior is None:
                             raise ValueError(
                                 "fine stage without stages.fine.hyperparam_space requires coarse stage results in this run"
                             )
-                        stage_trials = self._top_k_trials_from_coarse(prior)
+                        stage_combinations = self._top_k_combinations_from_coarse(prior)
                 else:
                     specs = self._param_specs_for_stage(stage_name)
-                    stage_trials = self._expand_trials(specs)
+                    stage_combinations = self._expand_combinations(specs)
 
-                trial_results: List[TrialResult] = []
-                for idx, params in enumerate(stage_trials):
-                    tr = self._evaluate_trial(stage_name, idx, params, stage_inner_cfg, subjects)
-                    trial_results.append(tr)
-                    self._append_jsonl(all_trials_path, self._serialize_trial_record(tr))
-                all_stage_trials[stage_name] = trial_results
+                combination_results = self._evaluate_stage_combinations(
+                    stage_name,
+                    stage_inner_cfg,
+                    stage_combinations,
+                    subjects,
+                )
+                for result in combination_results:
+                    self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
+                all_stage_combinations[stage_name] = combination_results
 
             stage_summary = {}
-            for stage_name, trials in all_stage_trials.items():
-                ranked = sorted(trials, key=lambda x: x.aggregated_error)
+            for stage_name, combinations in all_stage_combinations.items():
+                ranked = sorted(combinations, key=lambda x: x.aggregated_error)
                 top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
                 stage_summary[stage_name] = {
-                    "num_trials": len(trials),
-                    "top_trials": [
+                    "num_combinations": len(combinations),
+                    "top_combinations": [
                         {
-                            "trial_index": t.trial_index,
+                            "combination_index": t.combination_index,
                             "aggregated_error": t.aggregated_error,
                             "hyperparams": t.hyperparams,
                             "random_seed": t.random_seed,
@@ -465,28 +493,28 @@ class HyperOptimizer:
                     ],
                 }
 
-            final_stage = "fine" if "fine" in all_stage_trials else "coarse"
-            final_trials = all_stage_trials[final_stage]
+            final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
+            final_combinations = all_stage_combinations[final_stage]
             stage_summary_path = self.output_dir / "stage_summary.json"
             with stage_summary_path.open("w", encoding="utf-8") as f:
                 json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
 
             best_payload["best_stage"] = final_stage
-            best_trial = min(final_trials, key=lambda x: x.aggregated_error)
+            best_combination = min(final_combinations, key=lambda x: x.aggregated_error)
             best_payload.update({
-                "best_trial_index": best_trial.trial_index,
-                "best_hyperparams": best_trial.hyperparams,
-                "aggregated_error": best_trial.aggregated_error,
-                "random_seed": best_trial.random_seed,
+                "best_combination_index": best_combination.combination_index,
+                "best_hyperparams": best_combination.hyperparams,
+                "aggregated_error": best_combination.aggregated_error,
+                "random_seed": best_combination.random_seed,
             })
             if self.save_level == "full":
-                best_payload["subject_metrics"] = best_trial.subject_metrics
+                best_payload["subject_metrics"] = best_combination.subject_metrics
             best_path = self.output_dir / "best_hyperparams.json"
             with best_path.open("w", encoding="utf-8") as f:
                 json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
             return {
                 "output_dir": str(self.output_dir),
-                "all_trials": str(all_trials_path),
+                "all_combinations": str(all_combinations_path),
                 "stage_summary": str(stage_summary_path),
                 "best_hyperparams": str(best_path),
                 "best": best_payload,
@@ -498,7 +526,7 @@ class HyperOptimizer:
                 out = self._run_subject_pipeline(int(sid), stage, self.output_dir)
                 per_subject_outputs[str(int(sid))] = {
                     "output_dir": out["output_dir"],
-                    "all_trials": out["all_trials"],
+                    "all_combinations": out["all_combinations"],
                     "stage_summary": out["stage_summary"],
                     "best_hyperparams": out["best_hyperparams"],
                 }
@@ -539,4 +567,4 @@ def _to_builtin(obj: Any) -> Any:
     return obj
 
 
-__all__ = ["HyperOptimizer"]
+__all__ = ["HyperOptimizer", "CombinationResult"]

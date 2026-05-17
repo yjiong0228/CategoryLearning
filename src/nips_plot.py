@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from math import ceil
@@ -20,8 +21,8 @@ from typing import Dict, Tuple, List, Any, Union, Optional
 
 
 
-# 1. 注册本地字体（把路径换成你机器上 Arial.ttf 的实际路径）
-font_path = '/home/yangjiong/CategoryLearning_gitcode/src/Arial.ttf'
+# 1. 注册本地字体
+font_path = Path(__file__).resolve().with_name('Arial.ttf')
 font_manager.fontManager.addfont(font_path)
 prop = font_manager.FontProperties(fname=font_path)
 
