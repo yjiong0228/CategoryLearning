@@ -3,6 +3,7 @@
 !results/Model_results/*.png
 
 data/processed/oral_hypo_hits.pkl
+results/state-based-grid-result/pmh/cond3_subjectwise_hyper_cd_best/all_subjects.json
 
 # *.csv
 *data/不用
