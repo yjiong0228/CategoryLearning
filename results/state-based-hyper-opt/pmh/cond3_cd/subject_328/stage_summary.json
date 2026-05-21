@@ -1,0 +1,574 @@
+{
+  "coarse": {
+    "num_combinations": 190,
+    "top_combinations": [
+      {
+        "combination_index": 6728,
+        "aggregated_error": 0.14932688383654014,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 7,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 2,
+        "iter_id": 3,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
+        "random_seed": 1017296242
+      },
+      {
+        "combination_index": 6745,
+        "aggregated_error": 0.1516797283121298,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 7,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 2,
+        "iter_id": 3,
+        "coordinate": "engine.modules.beta_mod.kwargs.beta_init",
+        "random_seed": 134861130
+      },
+      {
+        "combination_index": 6720,
+        "aggregated_error": 0.15526732662970408,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 10,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 2,
+        "iter_id": 2,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.init_num",
+        "random_seed": 3081682667
+      },
+      {
+        "combination_index": 6668,
+        "aggregated_error": 0.15550694644396934,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 1,
+        "iter_id": 1,
+        "coordinate": "engine.modules.beta_mod.kwargs.decrease_rate",
+        "random_seed": 1281488805
+      },
+      {
+        "combination_index": 6667,
+        "aggregated_error": 0.15571923035876442,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 1,
+        "iter_id": 1,
+        "coordinate": "engine.modules.beta_mod.kwargs.decrease_rate",
+        "random_seed": 3334650112
+      },
+      {
+        "combination_index": 6707,
+        "aggregated_error": 0.15638332408049876,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 10,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 7,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 2,
+        "iter_id": 1,
+        "coordinate": "engine.modules.beta_mod.kwargs.beta_init",
+        "random_seed": 1315685191
+      },
+      {
+        "combination_index": 6725,
+        "aggregated_error": 0.15728356538567473,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 10,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+        },
+        "restart_id": 2,
+        "iter_id": 2,
+        "coordinate": "engine.modules.beta_mod.kwargs.prior_beta_scale",
+        "random_seed": 340379762
+      },
+      {
+        "combination_index": 6729,
+        "aggregated_error": 0.16442928080491548,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 2,
+        "iter_id": 3,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
+        "random_seed": 3024770986
+      }
+    ]
+  },
+  "fine": {
+    "num_combinations": 57,
+    "top_combinations": [
+      {
+        "combination_index": 6852,
+        "aggregated_error": 0.15225047921782214,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 7,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+        },
+        "restart_id": 3,
+        "iter_id": 1,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
+        "random_seed": 1220008727
+      },
+      {
+        "combination_index": 6848,
+        "aggregated_error": 0.1565136299869042,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 7,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 7,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+        },
+        "restart_id": 3,
+        "iter_id": 1,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.init_num",
+        "random_seed": 818521956
+      },
+      {
+        "combination_index": 6868,
+        "aggregated_error": 0.15740681433751685,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 4,
+        "iter_id": 2,
+        "coordinate": "engine.modules.beta_mod.kwargs.beta_init",
+        "random_seed": 3182942356
+      },
+      {
+        "combination_index": 6851,
+        "aggregated_error": 0.15776766341533438,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 10,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 7,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+        },
+        "restart_id": 3,
+        "iter_id": 1,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
+        "random_seed": 3353452150
+      },
+      {
+        "combination_index": 6831,
+        "aggregated_error": 0.16143093272040188,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "fixed",
+              "method": "top_posterior",
+              "top_p": 0.7,
+              "value": 3
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "fixed",
+              "method": "random",
+              "value": 2
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 10,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 0,
+        "iter_id": 3,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.init_num",
+        "random_seed": 872003379
+      },
+      {
+        "combination_index": 6864,
+        "aggregated_error": 0.16240327904395951,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+        },
+        "restart_id": 4,
+        "iter_id": 1,
+        "coordinate": "engine.modules.beta_mod.kwargs.prior_beta_scale",
+        "random_seed": 2251975148
+      },
+      {
+        "combination_index": 6863,
+        "aggregated_error": 0.16275971522390814,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 10,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 4,
+        "iter_id": 1,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.init_num",
+        "random_seed": 3291469095
+      },
+      {
+        "combination_index": 6860,
+        "aggregated_error": 0.1657416202155616,
+        "hyperparams": {
+          "inner.window_size": 32,
+          "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+            {
+              "amount": "random_7",
+              "method": "random_posterior"
+            },
+            {
+              "amount": "fixed",
+              "method": "ksimilar_centers",
+              "value": 1,
+              "proto_hypo_amount": 1,
+              "proto_hypo_method": "top",
+              "cluster_hypo_method": "top"
+            },
+            {
+              "amount": "opp_random_7",
+              "method": "random"
+            }
+          ],
+          "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 12,
+          "engine.modules.hypo_transitions_mod.kwargs.init_num": 7,
+          "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+          "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+          "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+        },
+        "restart_id": 4,
+        "iter_id": 1,
+        "coordinate": "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
+        "random_seed": 2210479153
+      }
+    ]
+  }
+}

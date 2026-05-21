@@ -1,0 +1,912 @@
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+output_dir: ../../results/state-based-grid-result/pmh/cond3_subjectwise_hyper_cd_best
+oral:
+  mode: center
+n_jobs: 128
+n_repeats: 64
+refit_repeats: 4096
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+param_grid:
+  gamma:
+  - 0.1
+  - 0.3
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.85
+  - 0.8
+  - 0.85
+  - 0.9
+  - 0.93
+  - 0.97
+  - 0.99
+  w0:
+  - 0.005
+  - 0.01
+  - 0.015
+  - 0.02
+  - 0.03
+  - 0.05
+  - 0.075
+  - 0.1
+  - 0.15
+  - 0.2
+  - 0.3
+  - 0.5
+  - 0.7
+  - 1.0
+engine_config:
+  modules:
+    perception_mod:
+      class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+    beta_mod:
+      class: src.Bayesian_state.problems.modules.beta.BetaModule
+      kwargs:
+        beta_init: 1.0
+        beta_min: 0.1
+        beta_max: 100.0
+        decrease_rate: 0.2
+        correct_additive: 0.8
+        use_prior_scaling: true
+        prior_beta_scale: 5.0
+    hypo_transitions_mod:
+      class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
+      kwargs:
+        strategies:
+        - amount: entropy_7
+          method: random_posterior
+        - amount: fixed
+          method: ksimilar_centers
+          value: 1
+          proto_hypo_amount: 1
+          proto_hypo_method: top
+          cluster_hypo_method: top
+        - amount: opp_entropy_7
+          method: random
+        init_num: 10
+    likelihood_mod:
+      class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+      kwargs:
+        distance_mode: prototype
+    memory_mod:
+      class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+      kwargs:
+        w0: null
+        gamma: null
+  agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod
+subjects:
+- 301
+- 302
+- 303
+- 304
+- 305
+- 306
+- 307
+- 308
+- 309
+- 310
+- 311
+- 312
+- 313
+- 314
+- 315
+- 316
+- 317
+- 318
+- 319
+- 320
+- 321
+- 322
+- 323
+- 324
+- 325
+- 326
+- 327
+- 328
+- 329
+- 330
+- 331
+- 332
+subject_overrides:
+  '301':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 15.0
+  '302':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.2
+            prior_beta_scale: 10.0
+  '303':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.1
+            prior_beta_scale: 5.0
+  '304':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.1
+            prior_beta_scale: 10.0
+  '305':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 12
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.2
+            prior_beta_scale: 15.0
+  '306':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 12
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '307':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.3
+            prior_beta_scale: 15.0
+  '308':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: random_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_random_7
+              method: random
+            max_active_hypotheses: 12
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '309':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 15.0
+  '310':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_7
+              method: random
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '311':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 15.0
+  '312':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '313':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: random_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_random_7
+              method: random
+            max_active_hypotheses: 10
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '314':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '315':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '316':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '317':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.1
+            prior_beta_scale: 5.0
+  '318':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '319':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: random_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_random_7
+              method: random
+            max_active_hypotheses: 12
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '320':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '321':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.2
+            prior_beta_scale: 10.0
+  '322':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_7
+              method: random
+            max_active_hypotheses: 12
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '323':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.1
+            prior_beta_scale: 10.0
+  '324':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.1
+            prior_beta_scale: 5.0
+  '325':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 10
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '326':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 7
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.2
+            prior_beta_scale: 15.0
+  '327':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 2
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.1
+            prior_beta_scale: 15.0
+  '328':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.2
+            prior_beta_scale: 15.0
+  '329':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: confidence_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_confidence_7
+              method: random
+            max_active_hypotheses: 12
+            init_num: 7
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '330':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              top_p: 0.7
+              value: 3
+            - amount: fixed
+              method: ksimilar_centers
+              value: 1
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.2
+            prior_beta_scale: 15.0
+  '331':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 10
+            init_num: 15
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '332':
+    window_size: 32
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_7
+              method: random_posterior
+            - amount: fixed
+              method: ksimilar_centers
+              value: 2
+              proto_hypo_amount: 1
+              proto_hypo_method: top
+              cluster_hypo_method: top
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 12
+            init_num: 10
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.1
+            prior_beta_scale: 10.0
