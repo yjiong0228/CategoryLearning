@@ -59,6 +59,24 @@ def parse_args() -> argparse.Namespace:
         help="Explicit number of low-frequency bins to keep",
     )
     parser.add_argument(
+        "--fft-lowfreq-weighting",
+        action="store_true",
+        default=True,
+        help="Enable low-frequency emphasis weighting on retained FFT bins (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-fft-lowfreq-weighting",
+        action="store_false",
+        dest="fft_lowfreq_weighting",
+        help="Disable low-frequency emphasis weighting",
+    )
+    parser.add_argument(
+        "--fft-lowfreq-weight-power",
+        type=float,
+        default=0.5,
+        help="Power for low-frequency weighting curve when enabled (0 means flat weights)",
+    )
+    parser.add_argument(
         "--method",
         type=str,
         choices=("kmeans", "agglomerative", "dbscan", "gmm", "dpmm"),
@@ -85,6 +103,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dp-max-iter", type=int, default=1000, help="Max iterations for DPMM variational fit")
     parser.add_argument("--dp-n-init", type=int, default=3, help="Init count for DPMM variational fit")
+    parser.add_argument(
+        "--dp-active-weight-threshold",
+        type=float,
+        default=1e-3,
+        help="Weight threshold to define active DPMM components",
+    )
     return parser.parse_args()
 
 
@@ -188,16 +212,28 @@ def build_feature_matrix(
     samples: list[RunSample],
     fft_keep_ratio: float,
     fft_keep_bins: int | None,
+    fft_lowfreq_weighting: bool,
+    fft_lowfreq_weight_power: float,
 ) -> tuple[np.ndarray, int, int]:
-    min_len = min(len(s.trajectory) for s in samples)
-    if min_len < 2:
-        raise ValueError(f"Trajectory too short for FFT: min_len={min_len}")
+    lengths = [len(s.trajectory) for s in samples]
+    unique_lengths = sorted(set(lengths))
+    if len(unique_lengths) != 1:
+        length_to_runs: dict[int, list[int]] = {}
+        for sample in samples:
+            length_to_runs.setdefault(len(sample.trajectory), []).append(sample.run_index)
+        detail = ", ".join(
+            f"len={length}:runs={runs[:8]}{'...' if len(runs) > 8 else ''}"
+            for length, runs in sorted(length_to_runs.items())
+        )
+        raise ValueError(
+            "Inconsistent trajectory lengths within subject. "
+            f"Lengths found: {unique_lengths}. Details: {detail}"
+        )
+    series_len = unique_lengths[0]
+    if series_len < 2:
+        raise ValueError(f"Trajectory too short for FFT: length={series_len}")
 
-    clipped_items = []
-    for sample in samples:
-        sample.trajectory = sample.trajectory[:min_len]
-        clipped_items.append(sample.trajectory)
-    clipped = np.stack(clipped_items, axis=0)
+    clipped = np.stack([s.trajectory for s in samples], axis=0)
     fft_mag = np.abs(np.fft.rfft(clipped, axis=1))
     total_bins = int(fft_mag.shape[1])
 
@@ -210,11 +246,15 @@ def build_feature_matrix(
     keep_bins = max(1, min(keep_bins, total_bins))
 
     X = fft_mag[:, :keep_bins].astype(float)
+    if fft_lowfreq_weighting:
+        rank = np.arange(keep_bins, dtype=float)
+        weights = 1.0 / np.power(1.0 + rank, fft_lowfreq_weight_power)
+        X = X * weights.reshape(1, -1)
     mean = X.mean(axis=0, keepdims=True)
     std = X.std(axis=0, keepdims=True)
     std = np.where(std == 0.0, 1.0, std)
     X = (X - mean) / std
-    return X, min_len, keep_bins
+    return X, series_len, keep_bins
 
 
 def cluster_features(
@@ -229,35 +269,37 @@ def cluster_features(
     dp_covariance_type: str,
     dp_max_iter: int,
     dp_n_init: int,
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    cluster_probabilities: np.ndarray
+    dp_active_weight_threshold: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    raw_cluster_probabilities: np.ndarray
+    active_cluster_probabilities: np.ndarray
     model_info: dict[str, Any] = {"method": method}
     if method == "kmeans":
         model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=20)
-        labels = model.fit_predict(X)
-        cluster_probabilities = np.eye(n_clusters, dtype=float)[labels]
-        return labels, cluster_probabilities, model_info
+        raw_labels = model.fit_predict(X)
+        raw_cluster_probabilities = np.eye(n_clusters, dtype=float)[raw_labels]
+        return raw_labels, raw_labels, raw_cluster_probabilities, raw_cluster_probabilities, model_info
     elif method == "agglomerative":
         model = AgglomerativeClustering(n_clusters=n_clusters)
-        labels = model.fit_predict(X)
-        cluster_probabilities = np.eye(n_clusters, dtype=float)[labels]
-        return labels, cluster_probabilities, model_info
+        raw_labels = model.fit_predict(X)
+        raw_cluster_probabilities = np.eye(n_clusters, dtype=float)[raw_labels]
+        return raw_labels, raw_labels, raw_cluster_probabilities, raw_cluster_probabilities, model_info
     elif method == "dbscan":
         model = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples)
-        labels = model.fit_predict(X)
-        unique_labels = sorted(set(int(x) for x in labels))
+        raw_labels = model.fit_predict(X)
+        unique_labels = sorted(set(int(x) for x in raw_labels))
         label_to_col = {label: i for i, label in enumerate(unique_labels)}
-        cluster_probabilities = np.zeros((len(labels), len(unique_labels)), dtype=float)
-        for i, label in enumerate(labels):
-            cluster_probabilities[i, label_to_col[int(label)]] = 1.0
+        raw_cluster_probabilities = np.zeros((len(raw_labels), len(unique_labels)), dtype=float)
+        for i, label in enumerate(raw_labels):
+            raw_cluster_probabilities[i, label_to_col[int(label)]] = 1.0
         model_info["label_space"] = unique_labels
-        return labels, cluster_probabilities, model_info
+        return raw_labels, raw_labels, raw_cluster_probabilities, raw_cluster_probabilities, model_info
     elif method == "gmm":
         model = GaussianMixture(n_components=n_clusters, random_state=random_state)
         model.fit(X)
-        cluster_probabilities = model.predict_proba(X)
-        labels = cluster_probabilities.argmax(axis=1).astype(int)
-        return labels, cluster_probabilities, model_info
+        raw_cluster_probabilities = model.predict_proba(X)
+        raw_labels = raw_cluster_probabilities.argmax(axis=1).astype(int)
+        return raw_labels, raw_labels, raw_cluster_probabilities, raw_cluster_probabilities, model_info
     elif method == "dpmm":
         model = BayesianGaussianMixture(
             n_components=dp_max_components,
@@ -269,18 +311,30 @@ def cluster_features(
             random_state=random_state,
         )
         model.fit(X)
-        cluster_probabilities = model.predict_proba(X)
-        labels = cluster_probabilities.argmax(axis=1).astype(int)
+        raw_cluster_probabilities = model.predict_proba(X)
+        raw_labels = raw_cluster_probabilities.argmax(axis=1).astype(int)
+        active_threshold = dp_active_weight_threshold
+        active_mask = model.weights_ > active_threshold
+        if not np.any(active_mask):
+            active_idx = np.array([int(np.argmax(model.weights_))], dtype=int)
+        else:
+            active_idx = np.where(active_mask)[0]
+        active_cluster_probabilities = raw_cluster_probabilities[:, active_idx]
+        denom = active_cluster_probabilities.sum(axis=1, keepdims=True)
+        denom = np.where(denom <= 0.0, 1.0, denom)
+        active_cluster_probabilities = active_cluster_probabilities / denom
+        active_labels = active_cluster_probabilities.argmax(axis=1).astype(int)
         model_info.update(
             {
-                "active_weight_threshold": 1e-3,
+                "active_weight_threshold": active_threshold,
                 "component_weights": model.weights_.astype(float).tolist(),
-                "active_components": int(np.sum(model.weights_ > 1e-3)),
+                "active_components": int(np.sum(model.weights_ > active_threshold)),
+                "active_component_indices": active_idx.astype(int).tolist(),
                 "converged": bool(model.converged_),
                 "n_iter": int(model.n_iter_),
             }
         )
-        return labels, cluster_probabilities, model_info
+        return raw_labels, active_labels, raw_cluster_probabilities, active_cluster_probabilities, model_info
     else:
         raise ValueError(f"Unsupported method: {method}")
 
@@ -289,15 +343,26 @@ def save_outputs(
     output_dir: Path,
     samples: list[RunSample],
     X: np.ndarray,
-    labels: np.ndarray,
+    raw_labels: np.ndarray,
+    active_labels: np.ndarray,
     pca_2d: np.ndarray,
-    cluster_probabilities: np.ndarray,
+    raw_cluster_probabilities: np.ndarray,
+    active_cluster_probabilities: np.ndarray,
+    model_info: dict[str, Any],
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     np.save(output_dir / "fft_features.npy", X)
+    component_weights = model_info.get("component_weights")
+    active_indices = model_info.get("active_component_indices")
 
     assignment_rows = []
     for i, sample in enumerate(samples):
+        component_weight_of_label = np.nan
+        if component_weights is not None and active_indices is not None:
+            active_label = int(active_labels[i])
+            if 0 <= active_label < len(active_indices):
+                original_component = int(active_indices[active_label])
+                component_weight_of_label = float(component_weights[original_component])
         assignment_rows.append(
             {
                 "sample_id": i,
@@ -305,9 +370,13 @@ def save_outputs(
                 "condition": sample.condition,
                 "run_index": sample.run_index,
                 "mean_error": sample.mean_error,
-                "cluster_label": int(labels[i]),
-                "cluster_confidence": float(np.max(cluster_probabilities[i])),
-                "cluster_prob_json": json.dumps(cluster_probabilities[i].astype(float).tolist(), ensure_ascii=False),
+                "cluster_label": int(active_labels[i]),
+                "raw_cluster_label": int(raw_labels[i]),
+                "active_cluster_label": int(active_labels[i]),
+                "cluster_confidence": float(np.max(active_cluster_probabilities[i])),
+                "cluster_confidence_active": float(np.max(active_cluster_probabilities[i])),
+                "cluster_prob_json": json.dumps(active_cluster_probabilities[i].astype(float).tolist(), ensure_ascii=False),
+                "component_weight_of_label": component_weight_of_label,
                 "params_json": json.dumps(sample.params, ensure_ascii=False, sort_keys=True),
             }
         )
@@ -321,7 +390,7 @@ def save_outputs(
                 "subject_id": sample.subject_id,
                 "condition": sample.condition,
                 "run_index": sample.run_index,
-                "cluster_label": int(labels[i]),
+                "cluster_label": int(active_labels[i]),
                 "pca_x": float(pca_2d[i, 0]),
                 "pca_y": float(pca_2d[i, 1]),
             }
@@ -416,12 +485,14 @@ def main() -> None:
     for sid in subject_ids:
         subject_samples = [s for s in samples if s.subject_id == sid]
         subject_output_dir = output_dir / f"subject_{sid}"
-        X, min_len, keep_bins = build_feature_matrix(
+        X, series_len, keep_bins = build_feature_matrix(
             subject_samples,
             args.fft_keep_ratio,
             args.fft_keep_bins,
+            args.fft_lowfreq_weighting,
+            args.fft_lowfreq_weight_power,
         )
-        labels, cluster_probabilities, model_info = cluster_features(
+        raw_labels, active_labels, raw_cluster_probabilities, active_cluster_probabilities, model_info = cluster_features(
             X=X,
             method=args.method,
             n_clusters=args.n_clusters,
@@ -433,15 +504,28 @@ def main() -> None:
             dp_covariance_type=args.dp_covariance_type,
             dp_max_iter=args.dp_max_iter,
             dp_n_init=args.dp_n_init,
+            dp_active_weight_threshold=args.dp_active_weight_threshold,
         )
         pca_2d = PCA(n_components=2).fit_transform(X)
 
-        save_outputs(subject_output_dir, subject_samples, X, labels, pca_2d, cluster_probabilities)
-        plot_cluster_scatter(subject_output_dir, pca_2d, labels)
-        plot_cluster_mean_trajectories(subject_output_dir, subject_samples, labels)
-        plot_cluster_representatives(subject_output_dir, subject_samples, labels, X)
+        save_outputs(
+            subject_output_dir,
+            subject_samples,
+            X,
+            raw_labels,
+            active_labels,
+            pca_2d,
+            raw_cluster_probabilities,
+            active_cluster_probabilities,
+            model_info,
+        )
+        plot_cluster_scatter(subject_output_dir, pca_2d, active_labels)
+        plot_cluster_mean_trajectories(subject_output_dir, subject_samples, active_labels)
+        plot_cluster_representatives(subject_output_dir, subject_samples, active_labels, X)
 
         with (subject_output_dir / "clustering_report.json").open("w", encoding="utf-8") as f:
+            raw_num_clusters_found = int(len(set(int(x) for x in raw_labels)))
+            active_num_clusters_found = int(len(set(int(x) for x in active_labels)))
             json.dump(
                 {
                     "method": args.method,
@@ -455,9 +539,14 @@ def main() -> None:
                         "dp_covariance_type": args.dp_covariance_type,
                         "dp_max_iter": args.dp_max_iter,
                         "dp_n_init": args.dp_n_init,
+                        "dp_active_weight_threshold": args.dp_active_weight_threshold,
+                        "fft_lowfreq_weighting": args.fft_lowfreq_weighting,
+                        "fft_lowfreq_weight_power": args.fft_lowfreq_weight_power,
                     },
                     "num_samples": len(subject_samples),
-                    "num_clusters_found": int(len(set(int(x) for x in labels))),
+                    "num_clusters_found": active_num_clusters_found,
+                    "raw_num_clusters_found": raw_num_clusters_found,
+                    "active_num_clusters_found": active_num_clusters_found,
                     "model_info": model_info,
                 },
                 f,
@@ -473,9 +562,11 @@ def main() -> None:
             {
                 "subject_id": int(sid),
                 "num_samples": int(len(subject_samples)),
-                "trajectory_min_length": int(min_len),
+                "trajectory_length": int(series_len),
                 "fft_keep_bins": int(keep_bins),
-                "num_clusters_found": int(len(set(int(x) for x in labels))),
+                "num_clusters_found": int(len(set(int(x) for x in active_labels))),
+                "raw_num_clusters_found": int(len(set(int(x) for x in raw_labels))),
+                "active_num_clusters_found": int(len(set(int(x) for x in active_labels))),
             }
         )
 

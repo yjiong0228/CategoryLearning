@@ -12,7 +12,7 @@ Each run record is expected to include:
 
 - `subject_id`, `condition`, `run_index`
 - `mean_error`, `params`
-- `metrics` with trajectory key (default: `sliding_pred_acc`)
+- `metrics_by_mode` with trajectory key (default mode: `prior_t`)
 
 ## Usage
 
@@ -41,9 +41,12 @@ Each subject gets an independent subfolder:
 
 `cluster_assignments.csv` includes:
 
-- `cluster_label`
-- `cluster_confidence` (max posterior probability for that sample)
-- `cluster_prob_json` (full posterior probability vector)
+- `cluster_label` (same as `active_cluster_label`)
+- `raw_cluster_label` (argmax over all components)
+- `active_cluster_label` (argmax over active components only)
+- `cluster_confidence_active` (max posterior over active components)
+- `cluster_prob_json` (posterior vector on active components)
+- `component_weight_of_label` (global mixture weight of selected active component)
 
 Top-level summary files:
 
@@ -68,3 +71,14 @@ For `dpmm`, additional CLI options are available:
 - `--dp-covariance-type {full,diag}`
 - `--dp-max-iter`
 - `--dp-n-init`
+- `--dp-active-weight-threshold`
+
+FFT feature options:
+
+- `--fft-lowfreq-weighting` / `--no-fft-lowfreq-weighting`
+- `--fft-lowfreq-weight-power`
+
+Length policy:
+
+- trajectories must have identical length within each subject
+- mixed lengths are treated as data quality errors and the script stops with explicit run indices
