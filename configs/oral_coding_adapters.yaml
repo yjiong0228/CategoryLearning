@@ -1,0 +1,53 @@
+# Subject-level oral-report coding adapters for Task2.
+#
+# Keep data/subject-specific interpretation here. Parser code should live under
+# src/oral_coding/ or src/preprocess_b.py, while generated diagnostics should
+# live under results/oral_analysis/.
+
+defaults:
+  equality_epsilon: 0.10
+  strict_equality_epsilon: 0.06
+  body_reference_value: 0.50
+  half_reference_value: 0.50
+  count_abstract_policy: mark_only
+  null_phrases:
+    - 选错了
+    - 不确定
+    - 不知道
+    - 随便选
+
+subjects:
+  317:
+    note: "Uses chained greater/less/equal statements, e.g. 头等于脖子、小于腿、小于尾巴。"
+    enable:
+      - chained_comparison
+      - explicit_gt_lt_eq
+    strict_equality_epsilon: 0.06
+
+  210:
+    note: "Often uses equality/near-equality and count-level descriptions."
+    enable:
+      - near_equal
+      - equality_range
+    count_abstract_policy: mark_only
+
+  220:
+    note: "Frequently mixes direct length, near-equality, and detailed comparative clauses."
+    enable:
+      - near_equal
+      - mixed_clause_partial_parse
+    equality_epsilon: 0.10
+
+  214:
+    note: "Contains many meta reports such as 选错了; keep those null unless followed by an interpretable correction."
+    null_phrases:
+      - 选错了
+      - 不确定
+
+  102:
+    note: "Contains ranking, group comparison, and maximum/minimum pair language; count abstractions remain mark-only."
+    enable:
+      - ranking
+      - group_sum
+      - explicit_gt_lt_eq
+    count_abstract_policy: mark_only
