@@ -20,7 +20,7 @@
 - `problems/modules/`：各功能模块（perception / likelihood / memory / beta / hypo transition）
 - `utils/optimizer_grid.py`：网格搜索优化器
 - `utils/optimizer_amr.py`：AMR 优化器
-- `utils/oral_process.py`：口头报告分析（region/center 两种）
+- `utils/oral_model_alignment.py`：口头报告分析与 oral/model 对齐（region/center 两种）
 
 ## 3. 模型如何在一步 trial 中运行
 
@@ -148,9 +148,9 @@ python -m src.Bayesian_state.eval_amr_results \
 
 评估脚本（`eval_grid_results.py` / `eval_amr_results.py`）已兼容旧 schema 与新 schema。
 
-## 8. 口头报告分析（oral_process）
+## 8. 口头报告分析（oral_model_alignment）
 
-`utils/oral_process.py` 提供两条路径：
+`utils/oral_model_alignment.py` 提供两条路径：
 
 - `Oral_region_analysis`：基于口头报告区域 `(A, b)` 与假设区域的重叠分数比较
 - `Oral_center_analysis`：基于口头报告中心点与假设原型中心的距离比较
@@ -303,4 +303,4 @@ This mode is used consistently across:
 - prediction metric computation in optimization/evaluation
 - category assignment logic inside `BetaModule`
 
-Note: `oral_process` center/region analyses are standalone analysis paths and are not controlled by `distance_mode`.
+Note: `oral_model_alignment` center/region analyses are standalone analysis paths and are not controlled by `distance_mode`.

@@ -4,7 +4,7 @@
 
 - 运行优化所需的核心工具（`optimizer_grid.py`, `optimizer_amr.py`）
 - 运行优化所需的核心工具（`optimizer_grid.py`, `optimizer_amr.py`, `optimizer_common.py`）
-- 结果评估与口头报告对齐工具（`model_evaluation.py`, `oral_process.py`）
+- 结果评估与口头报告对齐工具（`model_evaluation.py`, `oral_model_alignment.py`）
 - 基础通用工具（路径/日志、统计函数、配置加载、流式缓存）
 
 下面按“是否是当前主链路”来梳理。
@@ -36,9 +36,9 @@
 - 典型图：accuracy、posterior、cluster 动态、oral 对齐等。
 - 被谁调用：`eval_grid_results.py`, `eval_amr_results.py`。
 
-### `oral_process.py`
+### `oral_model_alignment.py`
 - 作用：把口头报告信息映射到 hypothesis 命中/对齐指标。
-- 主要类：`Oral_region_analysis`, `Oral_center_analysis`。
+- 主要类：`Oral_region_analysis`, `Oral_center_analysis`, `OralModelAlignmentMixin`。
 - 说明：区域重叠法与坐标映射法分别封装为两个分析类。
 - 被谁调用：`eval_grid_results.py`, `eval_amr_results.py`（主要用 `Oral_center_analysis`）。
 
@@ -57,7 +57,7 @@
 ### `load_config.py`
 - 作用：加载 `configs/` 下 YAML，构建 `MODEL_STRUCT`。
 - 特点：导入时会扫描并加载配置（有导入副作用）。
-- 被谁调用：`oral_process.py`，并通过 `utils/__init__.py` 间接暴露给其它模块。
+- 被谁调用：历史口头报告处理代码，并通过 `utils/__init__.py` 间接暴露给其它模块。
 
 ### `basic_stat.py`
 - 作用：基础数学工具：`softmax`, `euc_dist`, `entropy`。
@@ -88,7 +88,7 @@
 - 跑参数搜索：看 `optimizer_grid.py` / `optimizer_amr.py`
 - 改搜索算法：看 `optimizer_amr.py` 里的 `AMRGridSearch`
 - 改模型评估图：看 `model_evaluation.py`
-- 改口头报告对齐：看 `oral_process.py`
+- 改口头报告对齐：看 `oral_model_alignment.py`
 - 改 perception 噪声注入：看 `perception_stats.py` + `problems/model.py`
 - 改路径/日志/配置加载：看 `base.py`, `load_config.py`
 
@@ -97,6 +97,4 @@
 - 保留主链路：`optimizer_grid.py`, `optimizer_amr.py`
 - 保留主链路：`optimizer_grid.py`, `optimizer_amr.py`, `optimizer_common.py`
 - 逐步降级旧链路：`optimizer.py`, `stream.py`（先标注 legacy，再决定是否迁移）
-- 拆分 `oral_process.py` 为两个文件会更清晰：
-  - `oral_region_analysis.py`（区域重叠）
-  - `oral_coordinate_mapping.py`（坐标映射）
+- 口头报告对齐主体已集中到 `oral_model_alignment.py`；`oral_process.py` 仅保留兼容导入。

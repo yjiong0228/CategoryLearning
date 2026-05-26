@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.model_evaluation import ModelEval
-from src.Bayesian_state.utils.oral_process import Oral_center_analysis, Oral_region_analysis
+from src.Bayesian_state.utils.oral_model_alignment import Oral_center_analysis, Oral_region_analysis
 
 
 ORAL_MODE_CHOICES = ("center", "region")

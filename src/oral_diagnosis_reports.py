@@ -19,12 +19,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.preprocess_b import Recording_Processor_Center, Recording_Processor_Region
 from src.oral_coding import (
     FEATURE_NAME_TO_PART,
     PARTS,
     PART_TO_DIM,
     FidelityAnalyzer,
+    Recording_Processor_Center,
+    Recording_Processor_Region,
     normalize_text,
     parse_literal,
 )
