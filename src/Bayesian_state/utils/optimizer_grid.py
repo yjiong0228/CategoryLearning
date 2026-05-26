@@ -128,6 +128,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_metrics_by_mode = best_run.metrics_by_mode
             best_posterior = best_run.posterior_log
             best_prior = best_run.prior_log
+            best_beta_log = best_run.beta_log
             best_strategy_log = best_run.strategy_counts_log
             best_step_log = best_run.step_log
             sample_errors = [float(e) for e in errors]
@@ -136,6 +137,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             if not keep_logs:
                 best_posterior = None
                 best_prior = None
+                best_beta_log = None
                 best_strategy_log = None
                 best_step_log = None
                 run_records = None
@@ -148,6 +150,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 selection_prediction_mode=selection_prediction_mode,
                 posterior_log=best_posterior,
                 prior_log=best_prior,
+                beta_log=best_beta_log,
                 step_results=best_step_log,
                 strategy_counts_log=best_strategy_log,
                 raw_runs=run_records,
@@ -200,6 +203,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_refit_metrics_by_mode = best_refit.metrics_by_mode
             best_refit_posterior = best_refit.posterior_log
             best_refit_prior = best_refit.prior_log
+            best_refit_beta_log = best_refit.beta_log
             best_refit_strategy = best_refit.strategy_counts_log
             best_refit_step = best_refit.step_log
             refit_sample_errors = [float(e) for e in refit_errors]
@@ -219,6 +223,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             if not keep_logs:
                 best_refit_posterior = None
                 best_refit_prior = None
+                best_refit_beta_log = None
                 best_refit_strategy = None
                 best_refit_step = None
                 refit_run_records = None
@@ -229,6 +234,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             best_result.metrics_by_mode = best_refit_metrics_by_mode
             best_result.posterior_log = best_refit_posterior
             best_result.prior_log = best_refit_prior
+            best_result.beta_log = best_refit_beta_log
             best_result.step_results = best_refit_step
             best_result.strategy_counts_log = best_refit_strategy
             best_result.raw_runs = refit_run_records
@@ -351,4 +357,6 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             metrics_by_mode=run.metrics_by_mode,
             selection_prediction_mode=run.selection_prediction_mode,
             posterior_log=run.posterior_log,
+            prior_log=run.prior_log,
+            beta_log=run.beta_log,
         )

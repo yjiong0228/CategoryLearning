@@ -5,7 +5,7 @@ Clustering is done **within each subject** (`subject_id`) independently.
 
 ## Input
 
-- `subject_*.json` under a result directory (for example `results/state-based-grid-result/pmh/cond1`)
+- `subjects/subject_*.json` under a result directory (for example `results/state-based-grid-result/pmh/cond1/subjects`)
 - `cache/subject_*_raw_runs.gz` referenced by each subject json
 
 Each run record is expected to include:

@@ -30,6 +30,7 @@ class GridPointResult:
     selection_prediction_mode: str
     posterior_log: Optional[Sequence[np.ndarray]] = None
     prior_log: Optional[Sequence[np.ndarray]] = None
+    beta_log: Optional[Sequence[np.ndarray]] = None
     step_results: Optional[Sequence[Dict[str, Any]]] = None
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
     raw_runs: Optional[Sequence[Dict[str, Any]]] = None
@@ -59,6 +60,7 @@ class SingleRunResult:
     selection_prediction_mode: str
     posterior_log: Optional[Sequence[np.ndarray]]
     prior_log: Optional[Sequence[np.ndarray]]
+    beta_log: Optional[Sequence[np.ndarray]]
     step_log: Optional[Sequence[Dict[str, Any]]]
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]]
 
@@ -161,6 +163,23 @@ def _extract_distribution_from_step(
     return dist
 
 
+def _family_correct(categories: np.ndarray, choices: np.ndarray, n_cats: int) -> np.ndarray:
+    if n_cats >= 4:
+        category_family = np.where(np.isin(categories, [1, 2]), 0, 1)
+        choice_family = np.where(np.isin(choices, [1, 2]), 0, 1)
+        return (category_family == choice_family).astype(float)
+    return (categories == choices).astype(float)
+
+
+def _family_indices(category: int, n_cats: int) -> np.ndarray:
+    category_idx = int(category) - 1
+    if n_cats >= 4:
+        if category_idx in (0, 1):
+            return np.array([0, 1], dtype=int)
+        return np.array([2, 3], dtype=int)
+    return np.array([category_idx], dtype=int)
+
+
 def _compute_single_mode_metrics(
     mode: str,
     model,
@@ -178,9 +197,12 @@ def _compute_single_mode_metrics(
     distance_mode = getattr(model.engine, "distance_mode", "prototype")
     n_trials = len(feedback)
     n_features = int(stimulus.shape[1])
+    n_cats = int(getattr(partition, "n_cats", int(np.nanmax(categories)) if len(categories) else 2))
 
     true_acc = (feedback == 1.0).astype(float)
+    true_family_acc = _family_correct(categories, choices, n_cats)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
+    pred_family_acc = np.full(n_trials, np.nan, dtype=float)
 
     for trial_idx in range(1, n_trials):
         step_item = step_log[trial_idx]
@@ -206,33 +228,47 @@ def _compute_single_mode_metrics(
             raise ValueError(f"Unexpected mode: {mode}")
 
         weighted_prob = 0.0
+        weighted_family_prob = 0.0
         trial_slice = (
             [perceived_stimulus],
             [choices[trial_idx]],
             [feedback[trial_idx]],
             [categories[trial_idx]],
         )
+        category_idx = int(categories[trial_idx]) - 1
+        family_idx = _family_indices(int(categories[trial_idx]), n_cats)
         for weight, hypo in zip(current_dist, hypotheses):
             if weight <= 0:
                 continue
             beta_for_hypo = float(engine_beta[hypo]) if hypo < len(engine_beta) else 10.0
-            lik = partition.calc_trueprob_entry(
+            prob = partition.get_category_probabilities(
                 hypo,
                 trial_slice,
                 beta_for_hypo,
                 distance_mode=distance_mode,
             )
-            weighted_prob += weight * float(np.ravel(lik)[0])
+            if prob.ndim == 1:
+                prob = prob.reshape(-1, 1)
+            weighted_prob += weight * float(prob[category_idx, 0])
+            family_idx = family_idx[family_idx < prob.shape[0]]
+            if family_idx.size:
+                weighted_family_prob += weight * float(np.sum(prob[family_idx, 0]))
         pred_acc[trial_idx] = weighted_prob
+        pred_family_acc[trial_idx] = weighted_family_prob
 
     sliding_true_acc: List[float] = []
     sliding_pred_acc: List[float] = []
     sliding_pred_std: List[float] = []
+    sliding_true_family_acc: List[float] = []
+    sliding_pred_family_acc: List[float] = []
+    sliding_pred_family_std: List[float] = []
 
     for start in range(1, n_trials - window_size + 1):
         end = start + window_size
         true_window = true_acc[start:end]
         pred_window = pred_acc[start:end]
+        true_family_window = true_family_acc[start:end]
+        pred_family_window = pred_family_acc[start:end]
         sliding_true_acc.append(float(np.mean(true_window)))
         sliding_pred_acc.append(float(np.nanmean(pred_window)))
         valid = pred_window[~np.isnan(pred_window)]
@@ -240,17 +276,34 @@ def _compute_single_mode_metrics(
             sliding_pred_std.append(np.nan)
         else:
             sliding_pred_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / window_size))
+        sliding_true_family_acc.append(float(np.mean(true_family_window)))
+        sliding_pred_family_acc.append(float(np.nanmean(pred_family_window)))
+        valid_family = pred_family_window[~np.isnan(pred_family_window)]
+        if valid_family.size == 0:
+            sliding_pred_family_std.append(np.nan)
+        else:
+            sliding_pred_family_std.append(
+                float(np.sqrt(np.sum(valid_family * (1 - valid_family))) / window_size)
+            )
 
     error = np.abs(np.array(sliding_true_acc) - np.array(sliding_pred_acc))
     mean_error = float(np.nanmean(error)) if error.size else float("nan")
+    family_error = np.abs(np.array(sliding_true_family_acc) - np.array(sliding_pred_family_acc))
+    family_mean_error = float(np.nanmean(family_error)) if family_error.size else float("nan")
 
     return {
         "true_acc": true_acc,
         "pred_acc": pred_acc,
+        "true_family_acc": true_family_acc,
+        "pred_family_acc": pred_family_acc,
         "sliding_true_acc": np.asarray(sliding_true_acc, dtype=float),
         "sliding_pred_acc": np.asarray(sliding_pred_acc, dtype=float),
         "sliding_pred_acc_std": np.asarray(sliding_pred_std, dtype=float),
+        "sliding_true_family_acc": np.asarray(sliding_true_family_acc, dtype=float),
+        "sliding_pred_family_acc": np.asarray(sliding_pred_family_acc, dtype=float),
+        "sliding_pred_family_acc_std": np.asarray(sliding_pred_family_std, dtype=float),
         "mean_error": mean_error,
+        "family_mean_error": family_mean_error,
     }
 
 
@@ -384,6 +437,11 @@ def evaluate_state_model_run(
     if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
         strategy_log = getattr(hypo_mod, "strategy_counts_log")
 
+    beta_log = None
+    beta_mod = getattr(model.engine, "modules", {}).get("beta_mod") if hasattr(model, "engine") else None
+    if beta_mod is not None and hasattr(beta_mod, "beta_log"):
+        beta_log = getattr(beta_mod, "beta_log")
+
     metrics_by_mode = compute_prediction_metrics(
         model,
         posterior_log,
@@ -405,6 +463,7 @@ def evaluate_state_model_run(
     if not keep_logs:
         posterior_log = None
         prior_log = None
+        beta_log = None
         step_log = None
         strategy_log = None
 
@@ -417,6 +476,7 @@ def evaluate_state_model_run(
         selection_prediction_mode=selection_prediction_mode,
         posterior_log=posterior_log,
         prior_log=prior_log,
+        beta_log=beta_log,
         step_log=step_log,
         strategy_counts_log=strategy_log,
     )

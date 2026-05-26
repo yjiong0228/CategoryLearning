@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
@@ -163,6 +164,15 @@ def _dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int,
     }
 
 
+def _stream_ref_relative_to(ref: Dict[str, Any] | None, output_dir: Path, ref_base_dir: Path) -> Dict[str, Any] | None:
+    if not ref or "path" not in ref:
+        return ref
+    adjusted = dict(ref)
+    abs_path = (output_dir / str(ref["path"])).resolve()
+    adjusted["path"] = os.path.relpath(abs_path, ref_base_dir.resolve())
+    return adjusted
+
+
 def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
     records: list[Dict[str, Any]] = []
     selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
@@ -180,13 +190,21 @@ def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
     return records
 
 
-def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], output_dir: Path) -> Dict[str, Any]:
+def serialize_result(
+    subject_id: int,
+    condition: int,
+    result: Dict[str, Any],
+    output_dir: Path,
+    subject_json_dir: Path | None = None,
+) -> Dict[str, Any]:
     best = result["best"]
     best_error = float(getattr(best, "best_error", best.mean_error))
     refit_mean_error = float(getattr(best, "refit_mean_error", best.mean_error))
     refit_std_error = float(getattr(best, "refit_std_error", best.std_error))
     sample_errors = list(getattr(best, "sample_errors", []) or [])
     raw_step_ref = _dump_stream(getattr(best, "raw_step_results", None), output_dir, subject_id, "raw_step_results")
+    subject_json_dir = subject_json_dir or (output_dir / "subjects")
+    raw_step_ref = _stream_ref_relative_to(raw_step_ref, output_dir, subject_json_dir)
 
     metrics_by_mode = getattr(best, "metrics_by_mode", None) or {}
     selection_mode = str(result.get("selection_meta", {}).get("selection_prediction_mode", "posterior_t_minus_1"))
@@ -213,6 +231,7 @@ def serialize_result(subject_id: int, condition: int, result: Dict[str, Any], ou
         "strategy_counts_log": getattr(best, "strategy_counts_log", None),
         "posterior_log": getattr(best, "posterior_log", None),
         "prior_log": getattr(best, "prior_log", None),
+        "beta_log": getattr(best, "beta_log", None),
         "representative_run_index": getattr(best, "representative_run_index", 0),
         "selection_meta": result.get("selection_meta", {}),
         "raw_step_results_ref": raw_step_ref,
@@ -283,8 +302,15 @@ def run_single_subject(
         selection_prediction_mode=selection_prediction_mode,
     )
 
-    payload = serialize_result(subject_id, int(res["condition"]), res, output_dir)
-    save_path = output_dir / f"subject_{subject_id}.json"
+    subjects_dir = output_dir / "subjects"
+    payload = serialize_result(
+        subject_id,
+        int(res["condition"]),
+        res,
+        output_dir,
+        subject_json_dir=subjects_dir,
+    )
+    save_path = subjects_dir / f"subject_{subject_id}.json"
     save_json(payload, save_path)
     print(f"Saved subject {subject_id} result to {save_path}")
 

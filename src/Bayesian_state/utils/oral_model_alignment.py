@@ -1,14 +1,22 @@
 """Oral report and model-alignment utilities.
 
-This module provides two analysis paths:
-1) ``Oral_region_analysis``: compare reported regions (A, b) against each
-   hypothesis region using Monte Carlo overlap metrics.
-2) ``Oral_center_analysis``: compare reported feature centers against each
-   hypothesis prototype using Euclidean distance.
+The module has two layers.
 
-It also contains ``OralModelAlignmentMixin``, the oral/model alignment surface
-mixed into ``ModelEval``. Keeping these methods here makes the main model
-evaluation facade easier to scan.
+1. Oral report -> hypothesis mappings:
+   - ``Oral_region_analysis`` maps reported regions (A, b) to candidate
+     hypotheses using Monte Carlo overlap metrics.
+   - ``Oral_center_analysis`` maps reported feature centers to candidate
+     hypotheses using prototype distance.
+
+2. Oral/model alignment methods mixed into ``ModelEval``:
+   - Top-k hit alignment: compare true-hypothesis model probability with
+     whether the oral top-k candidate set contains the true hypothesis.
+   - ``oral_t`` vs ``prior_t`` distribution alignment: compare a full oral
+     hypothesis distribution with the model prior on the same trial.
+   - Choice-conditioned prior alignment: condition ``prior_t`` on the current
+     choice before comparing it with ``oral_t``.
+   - Active top-N capture alignment: use the model active-set size N and test
+     how much oral top-N mass the active set captures.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ import ast
 import json
 import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
@@ -41,6 +50,11 @@ def _resolve_top_k(condition: int, top_k: Optional[int]) -> int:
     if top_k is not None and top_k > 0:
         return int(top_k)
     return 4 if int(condition) == 1 else 10
+
+
+# ---------------------------------------------------------------------------
+# Oral report -> hypothesis mappings used by Top-k hit alignment
+# ---------------------------------------------------------------------------
 
 
 class Oral_region_analysis:
@@ -495,9 +509,28 @@ class Oral_center_analysis:
 class OralModelAlignmentMixin:
     """Oral/model alignment methods mixed into ``ModelEval``.
 
+    Public methods are organized as four parallel analysis blocks:
+
+    1. Top-k hit alignment:
+       ``plot_k_oral_comparison``.
+    2. ``oral_t`` vs ``prior_t`` distribution alignment:
+       ``compute_oral_model_alignment`` and ``plot_oral_model_alignment``.
+    3. Choice-conditioned prior alignment:
+       ``compute_choice_conditioned_oral_alignment`` and
+       ``plot_choice_conditioned_oral_alignment``.
+    4. Active top-N capture alignment:
+       ``compute_oral_active_topn_capture``,
+       ``plot_oral_active_topn_capture``,
+       ``plot_oral_active_topn_capture_subjectwise``, and
+       ``save_oral_active_topn_capture_outputs``.
+
     The host class is expected to provide ``_filter_results`` and
     ``_layout_by_condition``. ``ModelEval`` supplies both.
     """
+
+    # -----------------------------------------------------------------------
+    # Shared distribution and plotting helpers
+    # -----------------------------------------------------------------------
 
     @staticmethod
     def _normalize_distribution(values):
@@ -646,6 +679,109 @@ class OralModelAlignmentMixin:
             return np.nan
         return float(np.clip(1.0 - dist / max_dist, 0.0, 1.0))
 
+    # -----------------------------------------------------------------------
+    # Analysis 1: Top-k hit alignment
+    # -----------------------------------------------------------------------
+
+    def plot_k_oral_comparison(
+        self,
+        model_results,
+        oral_results,
+        subjects=None,
+        save_path=None,
+        window_size=16,
+        **kwargs,
+    ):
+        """Compare true-hypothesis posterior with oral hit trajectories."""
+
+        def _get_post_max(hypo_details, k_special):
+            if not isinstance(hypo_details, dict):
+                return 0.0
+            entry = hypo_details.get(k_special)
+            if entry is None:
+                entry = hypo_details.get(str(k_special))
+            if not isinstance(entry, dict):
+                return 0.0
+            return entry.get("post_max", 0.0)
+
+        def extract_model_ma(step_results, k_special, win):
+            posts = []
+            for sr in step_results:
+                p = _get_post_max(sr.get("hypo_details", {}), k_special)
+                try:
+                    p = float(p)
+                except (TypeError, ValueError):
+                    p = 0.0
+                posts.append(p)
+            return pd.Series(posts, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
+
+        def extract_oral_ma(hits, win):
+            rolling = []
+            n = len(hits)
+            for i in range(n):
+                if i + 1 < win:
+                    rolling.append(np.nan)
+                    continue
+                window = np.asarray(hits[i - win + 1 : i + 1], dtype=float)
+                if np.all(np.isnan(window)):
+                    rolling.append(np.nan)
+                else:
+                    rolling.append(float(np.nanmean(window)))
+            return np.array(rolling)
+
+        model_res = self._filter_results(model_results, subjects)
+        oral_res = self._filter_results(oral_results, subjects)
+
+        grouped = defaultdict(list)
+        for iSub, info in model_res.items():
+            grouped[info["condition"]].append(iSub)
+
+        if not grouped:
+            raise RuntimeError("No model/oral comparison results to plot.")
+
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
+        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        fig.suptitle(
+            "Model k vs Oral k (Filtered & Smoothed)",
+            fontsize=kwargs.get("fontsize", 16),
+            y=kwargs.get("y", 0.99),
+        )
+
+        row_offset = 0
+        for condition, subs in sorted(grouped.items()):
+            for idx, iSub in enumerate(subs):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
+
+                info = model_res[iSub]
+                step_results = info.get("step_results", info.get("best_step_results", []))
+                target_hypo = 0 if condition == 1 else 42
+                oral_hits = oral_res[iSub]["hits"]
+
+                rolling_model = extract_model_ma(step_results, target_hypo, window_size)
+                valid_idx = np.arange(len(rolling_model))
+                x_model = np.array(valid_idx)[window_size - 1 :] + 1
+                ax.plot(x_model, rolling_model[window_size - 1 :], lw=2, label="Model k")
+
+                rolling_oral = extract_oral_ma(oral_hits, window_size)
+                x_oral = np.arange(1, len(rolling_oral) + 1)
+                ax.plot(x_oral, rolling_oral, lw=2, label="Oral k")
+
+                ax.set_ylim(0, 1)
+                ax.set(title=f"Subject {iSub} (Cond {condition})", xlabel="Trial", ylabel="Probability")
+                ax.legend()
+            row_offset += rows_by_condition[condition]
+
+        plt.tight_layout()
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Filtered comparison saved to %s", save_path)
+
+    # -----------------------------------------------------------------------
+    # Analysis 2: oral_t vs prior_t distribution alignment
+    # -----------------------------------------------------------------------
+
     def compute_oral_model_alignment(
         self,
         model_results,
@@ -777,6 +913,10 @@ class OralModelAlignmentMixin:
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
             logger.info("Oral-model alignment saved to %s", save_path)
+
+    # -----------------------------------------------------------------------
+    # Analysis 3: choice-conditioned prior alignment
+    # -----------------------------------------------------------------------
 
     def compute_choice_conditioned_oral_alignment(
         self,
@@ -957,97 +1097,415 @@ class OralModelAlignmentMixin:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
             logger.info("Choice-conditioned oral alignment saved to %s", save_path)
 
-    def plot_k_oral_comparison(
+    # -----------------------------------------------------------------------
+    # Analysis 4: active top-N capture alignment
+    # -----------------------------------------------------------------------
+
+    def compute_oral_active_topn_capture(
         self,
         model_results,
-        oral_results,
+        oral_df,
+        oral_mode="center",
         subjects=None,
-        save_path=None,
-        window_size=16,
-        **kwargs,
+        region_n_samples=1000,
+        active_threshold=1e-12,
     ):
-        """Compare true-hypothesis posterior with oral hit trajectories."""
+        """Compute how much oral top-N mass is captured by model active sets.
 
-        def _get_post_max(hypo_details, k_special):
-            if not isinstance(hypo_details, dict):
-                return 0.0
-            entry = hypo_details.get(k_special)
-            if entry is None:
-                entry = hypo_details.get(str(k_special))
-            if not isinstance(entry, dict):
-                return 0.0
-            return entry.get("post_max", 0.0)
-
-        def extract_model_ma(step_results, k_special, win):
-            posts = []
-            for sr in step_results:
-                p = _get_post_max(sr.get("hypo_details", {}), k_special)
-                try:
-                    p = float(p)
-                except (TypeError, ValueError):
-                    p = 0.0
-                posts.append(p)
-            return pd.Series(posts, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
-
-        def extract_oral_ma(hits, win):
-            rolling = []
-            n = len(hits)
-            for i in range(n):
-                if i + 1 < win:
-                    rolling.append(np.nan)
-                    continue
-                window = np.asarray(hits[i - win + 1 : i + 1], dtype=float)
-                if np.all(np.isnan(window)):
-                    rolling.append(np.nan)
-                else:
-                    rolling.append(float(np.nanmean(window)))
-            return np.array(rolling)
-
+        Per trial, ``N`` is the number of hypotheses with non-zero model prior.
+        The metric compares oral mass in the model active set against the oral
+        top-N oracle under the same hypothesis-count budget.
+        """
         model_res = self._filter_results(model_results, subjects)
-        oral_res = self._filter_results(oral_results, subjects)
+        oral_df = oral_df.copy()
+        rows = []
 
-        grouped = defaultdict(list)
         for iSub, info in model_res.items():
-            grouped[info["condition"]].append(iSub)
+            subj_df = oral_df[oral_df["iSub"] == iSub].reset_index(drop=True)
+            if subj_df.empty:
+                continue
 
-        if not grouped:
-            raise RuntimeError("No model/oral comparison results to plot.")
+            condition = int(info.get("condition", subj_df["condition"].iloc[0]))
+            n_cats = 2 if condition == 1 else 4
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            prior_log = self._extract_prior_log(info)
+            n_trials = min(len(subj_df), len(prior_log))
 
-        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
-        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        fig.suptitle(
-            "Model k vs Oral k (Filtered & Smoothed)",
-            fontsize=kwargs.get("fontsize", 16),
-            y=kwargs.get("y", 0.99),
+            for trial_idx in range(n_trials):
+                raw_prior = np.asarray(prior_log[trial_idx], dtype=float).reshape(-1)
+                if raw_prior.size == 0 or np.isnan(raw_prior).all():
+                    continue
+
+                active_idx = np.flatnonzero(np.nan_to_num(raw_prior, nan=0.0) > float(active_threshold))
+                n_active = int(len(active_idx))
+                if n_active <= 0:
+                    continue
+
+                choice = int(subj_df.loc[trial_idx, "choice"])
+                if oral_mode == "center":
+                    center = Oral_center_analysis._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    oral_dist = self._center_oral_distribution(center, choice, partition)
+                elif oral_mode == "region":
+                    region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
+                    oral_dist = self._region_oral_distribution(
+                        region,
+                        choice,
+                        partition,
+                        n_samples=region_n_samples,
+                        random_state=5252 + trial_idx * 100000,
+                    )
+                else:
+                    raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+                if np.isnan(oral_dist).any():
+                    continue
+
+                n_hypo = int(len(oral_dist))
+                top_n = min(n_active, n_hypo)
+                oral_top_idx = np.argsort(oral_dist)[::-1][:top_n]
+                active_idx = active_idx[active_idx < n_hypo]
+                if active_idx.size == 0:
+                    continue
+
+                active_oral_mass = float(np.sum(oral_dist[active_idx]))
+                oracle_topn_oral_mass = float(np.sum(oral_dist[oral_top_idx]))
+                random_expected_mass = float(top_n / n_hypo) if n_hypo else np.nan
+                overlap_count = len(set(active_idx.tolist()) & set(oral_top_idx.tolist()))
+                active_capture_ratio = (
+                    active_oral_mass / oracle_topn_oral_mass
+                    if oracle_topn_oral_mass > 0
+                    else np.nan
+                )
+
+                rows.append(
+                    {
+                        "iSub": int(iSub),
+                        "subject": int(iSub),
+                        "condition": condition,
+                        "trial": trial_idx + 1,
+                        "trial_pct": (trial_idx + 1) / float(n_trials),
+                        "oral_mode": oral_mode,
+                        "n_hypo": n_hypo,
+                        "n_active": n_active,
+                        "active_fraction": n_active / float(n_hypo) if n_hypo else np.nan,
+                        "active_oral_mass": active_oral_mass,
+                        "oracle_topn_oral_mass": oracle_topn_oral_mass,
+                        "random_expected_mass": random_expected_mass,
+                        "active_capture_ratio": active_capture_ratio,
+                        "active_topn_overlap": overlap_count / float(top_n) if top_n else np.nan,
+                        "active_topn_overlap_count": int(overlap_count),
+                        "oral_topn_mean_mass": oracle_topn_oral_mass / float(top_n) if top_n else np.nan,
+                        "active_mean_oral_mass": active_oral_mass / float(n_active) if n_active else np.nan,
+                    }
+                )
+
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def summarize_oral_active_topn_capture_by_bin(active_topn_results, bins=20):
+        """Return subject-balanced binned means and SEMs for active top-N capture."""
+        df = active_topn_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        df["trial_bin"] = pd.cut(
+            df["trial_pct"],
+            bins=np.linspace(0, 1, int(bins) + 1),
+            labels=np.arange(1, int(bins) + 1),
+            include_lowest=True,
+        ).astype(int)
+        metrics = [
+            "active_capture_ratio",
+            "active_topn_overlap",
+            "active_oral_mass",
+            "oracle_topn_oral_mass",
+            "random_expected_mass",
+            "n_active",
+            "active_fraction",
+        ]
+        subject_bin = df.groupby(["subject", "trial_bin"], observed=True)[metrics].mean().reset_index()
+
+        rows = []
+        for trial_bin, group in subject_bin.groupby("trial_bin", observed=True):
+            item = {"trial_bin": int(trial_bin), "trial_pct": (int(trial_bin) - 0.5) / int(bins)}
+            for metric in metrics:
+                vals = group[metric].to_numpy(dtype=float)
+                valid = vals[~np.isnan(vals)]
+                item[f"{metric}_mean"] = float(np.mean(valid)) if valid.size else np.nan
+                item[f"{metric}_sem"] = (
+                    float(np.std(valid, ddof=1) / np.sqrt(valid.size))
+                    if valid.size > 1
+                    else np.nan
+                )
+            rows.append(item)
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def _line_with_sem(ax, x, mean, sem, label, color):
+        ax.plot(x, mean, lw=2.2, label=label, color=color)
+        ax.fill_between(x, mean - sem, mean + sem, color=color, alpha=0.18, linewidth=0)
+
+    def plot_oral_active_topn_capture(
+        self,
+        active_topn_results,
+        save_path=None,
+        bins=20,
+        title=None,
+    ):
+        """Plot group-level active-set capture of oral top-N mass."""
+        df = active_topn_results.copy()
+        if df.empty:
+            raise RuntimeError("No oral active top-N capture results to plot.")
+
+        binned = self.summarize_oral_active_topn_capture_by_bin(df, bins=bins)
+        subject_means = (
+            df.groupby("subject")[
+                ["active_capture_ratio", "active_topn_overlap", "active_oral_mass", "oracle_topn_oral_mass"]
+            ]
+            .mean()
+            .reset_index()
         )
 
-        row_offset = 0
-        for condition, subs in sorted(grouped.items()):
-            for idx, iSub in enumerate(subs):
-                local_row = idx // n_cols
-                col = idx % n_cols
-                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        fig_title = title or f"Condition {condition_label}: model active-set capture of oral top-N"
+        fig, axes = plt.subplots(2, 2, figsize=(14, 9), dpi=150)
+        fig.suptitle(fig_title, fontsize=15, y=0.98)
 
-                info = model_res[iSub]
-                step_results = info.get("step_results", info.get("best_step_results", []))
-                target_hypo = 0 if condition == 1 else 42
-                oral_hits = oral_res[iSub]["hits"]
+        x = binned["trial_pct"].to_numpy(dtype=float)
 
-                rolling_model = extract_model_ma(step_results, target_hypo, window_size)
-                valid_idx = np.arange(len(rolling_model))
-                x_model = np.array(valid_idx)[window_size - 1 :] + 1
-                ax.plot(x_model, rolling_model[window_size - 1 :], lw=2, label="Model k")
+        ax = axes[0, 0]
+        self._line_with_sem(
+            ax,
+            x,
+            binned["active_capture_ratio_mean"].to_numpy(dtype=float),
+            binned["active_capture_ratio_sem"].to_numpy(dtype=float),
+            "active oral mass / oral top-N mass",
+            "#1f77b4",
+        )
+        self._line_with_sem(
+            ax,
+            x,
+            binned["active_topn_overlap_mean"].to_numpy(dtype=float),
+            binned["active_topn_overlap_sem"].to_numpy(dtype=float),
+            "active set overlap with oral top-N",
+            "#ff7f0e",
+        )
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Normalized trial")
+        ax.set_ylabel("Proportion")
+        ax.set_title("Coverage efficiency under same N")
+        ax.legend(frameon=False)
 
-                rolling_oral = extract_oral_ma(oral_hits, window_size)
-                x_oral = np.arange(1, len(rolling_oral) + 1)
-                ax.plot(x_oral, rolling_oral, lw=2, label="Oral k")
+        ax = axes[0, 1]
+        self._line_with_sem(
+            ax,
+            x,
+            binned["active_oral_mass_mean"].to_numpy(dtype=float),
+            binned["active_oral_mass_sem"].to_numpy(dtype=float),
+            "oral mass in model active set",
+            "#2ca02c",
+        )
+        self._line_with_sem(
+            ax,
+            x,
+            binned["oracle_topn_oral_mass_mean"].to_numpy(dtype=float),
+            binned["oracle_topn_oral_mass_sem"].to_numpy(dtype=float),
+            "oral top-N mass (oracle)",
+            "#d62728",
+        )
+        self._line_with_sem(
+            ax,
+            x,
+            binned["random_expected_mass_mean"].to_numpy(dtype=float),
+            binned["random_expected_mass_sem"].to_numpy(dtype=float),
+            "random N baseline",
+            "#7f7f7f",
+        )
+        y_max = float(np.nanmax(binned["oracle_topn_oral_mass_mean"].to_numpy(dtype=float)))
+        ax.set_ylim(0, min(1.0, max(0.05, y_max * 1.35)))
+        ax.set_xlabel("Normalized trial")
+        ax.set_ylabel("Oral probability mass")
+        ax.set_title("How much oral mass is captured")
+        ax.legend(frameon=False)
 
-                ax.set_ylim(0, 1)
-                ax.set(title=f"Subject {iSub} (Cond {condition})", xlabel="Trial", ylabel="Probability")
-                ax.legend()
-            row_offset += rows_by_condition[condition]
+        ax = axes[1, 0]
+        box_data = [
+            subject_means["active_capture_ratio"].to_numpy(dtype=float),
+            subject_means["active_topn_overlap"].to_numpy(dtype=float),
+            subject_means["active_oral_mass"].to_numpy(dtype=float),
+            subject_means["oracle_topn_oral_mass"].to_numpy(dtype=float),
+        ]
+        labels = ["capture\nratio", "top-N\noverlap", "active\nmass", "oracle\nmass"]
+        ax.boxplot(box_data, tick_labels=labels, showmeans=True)
+        rng = np.random.default_rng(123)
+        for idx, vals in enumerate(box_data, start=1):
+            ax.scatter(rng.normal(idx, 0.035, size=len(vals)), vals, s=14, alpha=0.65, color="#444444")
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Subject mean")
+        ax.set_title("Between-subject summary")
 
-        plt.tight_layout()
+        ax = axes[1, 1]
+        self._line_with_sem(
+            ax,
+            x,
+            binned["n_active_mean"].to_numpy(dtype=float),
+            binned["n_active_sem"].to_numpy(dtype=float),
+            "N active hypotheses",
+            "#9467bd",
+        )
+        ax.set_xlabel("Normalized trial")
+        ax.set_ylabel("N")
+        ax2 = ax.twinx()
+        self._line_with_sem(
+            ax2,
+            x,
+            binned["active_fraction_mean"].to_numpy(dtype=float),
+            binned["active_fraction_sem"].to_numpy(dtype=float),
+            "active fraction",
+            "#8c564b",
+        )
+        ax2.set_ylabel("N / total hypotheses")
+        ax.set_title("Model hypothesis-set size")
+        lines, labels_left = ax.get_legend_handles_labels()
+        lines2, labels_right = ax2.get_legend_handles_labels()
+        ax.legend(lines + lines2, labels_left + labels_right, frameon=False, loc="upper right")
+
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
         if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("Filtered comparison saved to %s", save_path)
+            fig.savefig(save_path, bbox_inches="tight")
+            logger.info("Oral active top-N capture plot saved to %s", save_path)
+        return fig
+
+    def plot_oral_active_topn_capture_subjectwise(
+        self,
+        active_topn_results,
+        save_path=None,
+        window_size=16,
+        n_cols=8,
+        title=None,
+    ):
+        """Plot active top-N capture traces for each subject."""
+        df = active_topn_results.copy()
+        if df.empty:
+            raise RuntimeError("No oral active top-N capture results to plot.")
+
+        def rolling(values):
+            return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
+
+        subjects = sorted(df["subject"].unique())
+        n_cols = max(1, int(n_cols))
+        n_rows = int(np.ceil(len(subjects) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.4),
+            dpi=170,
+            sharey=True,
+        )
+        axes = np.asarray(axes).reshape(n_rows, n_cols)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        fig_title = title or f"Condition {condition_label}: subject-wise active-set capture of oral top-N"
+        fig.suptitle(fig_title, fontsize=16, y=0.995)
+
+        for ax, sid in zip(axes.flat, subjects):
+            sub = df[df["subject"] == sid].sort_values("trial")
+            x = sub["trial"].to_numpy(dtype=float)
+            ax.plot(x, rolling(sub["active_capture_ratio"]), lw=1.8, color="#1f77b4", label="capture ratio")
+            ax.plot(x, rolling(sub["active_topn_overlap"]), lw=1.5, color="#ff7f0e", label="top-N overlap")
+            ax.plot(x, rolling(sub["active_oral_mass"]), lw=1.0, color="#2ca02c", alpha=0.75, label="active oral mass")
+            ax.plot(x, rolling(sub["random_expected_mass"]), lw=1.0, color="#7f7f7f", alpha=0.65, label="random N")
+            ax.set_title(
+                (
+                    f"S{int(sid)}  "
+                    f"cap={np.nanmean(sub['active_capture_ratio']):.2f}, "
+                    f"ov={np.nanmean(sub['active_topn_overlap']):.2f}, "
+                    f"N={np.nanmean(sub['n_active']):.1f}"
+                ),
+                fontsize=8,
+            )
+            ax.set_ylim(0, 1)
+            ax.set_xlim(1, max(x))
+            ax.grid(alpha=0.18, linewidth=0.6)
+
+        for ax in list(axes.flat)[len(subjects):]:
+            ax.axis("off")
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel("Proportion / mass")
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel("Trial")
+
+        handles, labels = axes.flat[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        if save_path:
+            fig.savefig(save_path, bbox_inches="tight")
+            logger.info("Subject-wise oral active top-N capture plot saved to %s", save_path)
+        return fig
+
+    def save_oral_active_topn_capture_outputs(
+        self,
+        active_topn_results,
+        output_dir,
+        prefix="oral_active_topn_capture",
+        group_plot_path=None,
+        subjectwise_plot_path=None,
+        window_size=16,
+        bins=20,
+        title_prefix=None,
+    ):
+        """Write active top-N capture CSVs and plots to an output directory."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        df = active_topn_results.copy()
+        if df.empty:
+            raise RuntimeError("No oral active top-N capture results to save.")
+
+        trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
+        subject_csv = output_dir / f"{prefix}_subject_means.csv"
+        binned_csv = output_dir / f"{prefix}_binned.csv"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}.png"
+        subjectwise_plot = (
+            Path(subjectwise_plot_path)
+            if subjectwise_plot_path
+            else output_dir / f"{prefix}_subjectwise.png"
+        )
+        group_plot.parent.mkdir(parents=True, exist_ok=True)
+        subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
+
+        subject_means = (
+            df.groupby("subject")[
+                ["active_capture_ratio", "active_topn_overlap", "active_oral_mass", "oracle_topn_oral_mass"]
+            ]
+            .mean()
+            .reset_index()
+        )
+        binned = self.summarize_oral_active_topn_capture_by_bin(df, bins=bins)
+
+        df.to_csv(trial_csv, index=False)
+        subject_means.to_csv(subject_csv, index=False)
+        binned.to_csv(binned_csv, index=False)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        prefix_title = title_prefix or f"Condition {condition_label}"
+        fig = self.plot_oral_active_topn_capture(
+            df,
+            save_path=str(group_plot),
+            bins=bins,
+            title=f"{prefix_title}: model active-set capture of oral top-N",
+        )
+        plt.close(fig)
+        fig = self.plot_oral_active_topn_capture_subjectwise(
+            df,
+            save_path=str(subjectwise_plot),
+            window_size=window_size,
+            title=f"{prefix_title}: subject-wise active-set capture of oral top-N",
+        )
+        plt.close(fig)
+
+        return {
+            "trial_metrics": trial_csv,
+            "subject_means": subject_csv,
+            "binned": binned_csv,
+            "group_plot": group_plot,
+            "subjectwise_plot": subjectwise_plot,
+        }

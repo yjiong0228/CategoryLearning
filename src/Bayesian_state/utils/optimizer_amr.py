@@ -282,6 +282,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         metrics_by_mode = best_run.metrics_by_mode
         posterior_log = best_run.posterior_log
         prior_log = best_run.prior_log
+        beta_log = best_run.beta_log
         step_log = best_run.step_log
         strategy_log = best_run.strategy_counts_log
         sample_errors = [float(e) for e in errors]
@@ -290,6 +291,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         if not keep_logs:
             posterior_log = None
             prior_log = None
+            beta_log = None
             step_log = None
             strategy_log = None
             raw_step_results = None
@@ -301,6 +303,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
             selection_prediction_mode=selection_prediction_mode,
             posterior_log=posterior_log,
             prior_log=prior_log,
+            beta_log=beta_log,
             step_results=step_log,
             strategy_counts_log=strategy_log,
             raw_step_results=raw_step_results,

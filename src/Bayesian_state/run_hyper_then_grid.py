@@ -404,7 +404,7 @@ def run_per_subject_workflow(
         if skip_grid:
             continue
 
-        grid_subject_path = grid_output_dir / f"subject_{sid}.json"
+        grid_subject_path = grid_output_dir / "subjects" / f"subject_{sid}.json"
         if skip_completed_grid and grid_subject_path.is_file():
             print(f"Skipping subject {sid} GRID; found {grid_subject_path}")
             continue
@@ -427,7 +427,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-hyper", action="store_true", help="Reuse existing hyper best_hyperparams.json")
     p.add_argument("--skip-completed-hyper", action="store_true", help="In per-subject mode, reuse existing subject_<id>/best_hyperparams.json files")
     p.add_argument("--skip-grid", action="store_true", help="Only generate the subjectwise GRID config")
-    p.add_argument("--skip-completed-grid", action="store_true", help="In per-subject mode, reuse existing subject_<id>.json GRID files")
+    p.add_argument(
+        "--skip-completed-grid",
+        action="store_true",
+        help="In per-subject mode, reuse existing subjects/subject_<id>.json GRID files",
+    )
     p.add_argument("--skip-eval", action="store_true", help="Skip eval_grid_results after GRID finishes")
     p.add_argument("--keep-logs", action=argparse.BooleanOptionalAction, default=True)
     return p.parse_args()

@@ -31,6 +31,10 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _subject_json_files(input_dir: Path) -> List[Path]:
+    return sorted((input_dir / "subjects").glob("subject_*.json"))
+
+
 def _to_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -106,7 +110,7 @@ def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def aggregate(input_dir: Path, eval_prediction_mode: str) -> dict:
     results = {}
-    for file in sorted(input_dir.glob("subject_*.json")):
+    for file in _subject_json_files(input_dir):
         payload = load_json(file)
         sid = int(payload["subject_id"])
         metrics = _resolve_eval_metrics(payload, eval_prediction_mode)
@@ -116,6 +120,9 @@ def aggregate(input_dir: Path, eval_prediction_mode: str) -> dict:
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
+            "sliding_true_family_acc": metrics.get("sliding_true_family_acc"),
+            "sliding_pred_family_acc": metrics.get("sliding_pred_family_acc"),
+            "sliding_pred_family_acc_std": metrics.get("sliding_pred_family_acc_std"),
             "mean_error": metrics.get("mean_error", payload.get("best_error", payload.get("mean_error"))),
             "std_error": payload.get("refit_std_error", payload.get("std_error")),
             "best_params": payload.get("best_params"),
@@ -124,19 +131,25 @@ def aggregate(input_dir: Path, eval_prediction_mode: str) -> dict:
             "strategy_counts_log": payload.get("strategy_counts_log"),
             "posterior_log": payload.get("posterior_log"),
             "prior_log": payload.get("prior_log"),
+            "beta_log": payload.get("beta_log"),
             "sample_errors": payload.get("sample_errors"),
             "selection_meta": payload.get("selection_meta"),
             "eval_prediction_mode": eval_prediction_mode,
             "available_prediction_modes": payload.get("available_prediction_modes", []),
         }
     if not results:
-        raise RuntimeError(f"No subject_*.json found in {input_dir}")
+        raise RuntimeError(f"No subject_*.json found in {input_dir / 'subjects'}")
     return results
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Aggregate AMR results and plot evaluation charts")
-    p.add_argument("--input-dir", type=Path, required=True, help="Directory containing subject_*.json")
+    p.add_argument(
+        "--input-dir",
+        type=Path,
+        required=True,
+        help="Directory containing subjects/subject_*.json",
+    )
     p.add_argument("--eval-prediction-mode", type=str, default=DEFAULT_EVAL_PREDICTION_MODE)
     p.add_argument("--config", type=Path, default=None, help="Optional optimization YAML to resolve oral config defaults")
     p.add_argument("--aggregate-output", type=Path, default=None)

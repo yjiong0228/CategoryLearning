@@ -9,7 +9,7 @@
 2. 配置分两层：  
    - `configs/model_struct/*.yaml` 定义模型结构（有哪些模块、执行顺序、模块默认参数）。  
    - `configs/grid_opt_cfg/*.yaml` / `configs/amr_opt_cfg/*.yaml` 定义优化任务（被试、参数搜索范围、输出路径等）。  
-3. 每个被试优化后会生成 `subject_<id>.json`，评估脚本再聚合并出图。
+3. 每个被试优化后会在输出目录的 `subjects/` 下生成 `subject_<id>.json`，评估脚本再聚合并出图。
 
 ## 2. 模块结构总览
 
@@ -122,14 +122,14 @@ python -m src.Bayesian_state.eval_amr_results \
 
 优化输出目录下通常有：
 
-- `subject_<id>.json`：单被试结果摘要（schema v2，含 best run 与 refit 统计）
+- `subjects/subject_<id>.json`：单被试结果摘要（schema v4，含 best run 与 refit 统计）
 - `cache/subject_<id>_raw_step_results.gz`：可选的 refit 全部 step 轨迹流式缓存（当 `keep_logs: true`）
 - `all_subjects.json`：聚合结果
 - `accuracy.png`：准确率对比图
 - `cluster_amount.png`：策略/簇变化图（需要 step 日志）
 - `oral_vs_model.png`：口头报告与模型假设对比图
 
-### 7.1 `subject_<id>.json`（schema v2）核心字段
+### 7.1 `subjects/subject_<id>.json`（schema v4）核心字段
 
 - `best_error`：最佳参数下 refit 多次中的最小误差（best run）
 - `mean_error`：与 `best_error` 对齐的兼容字段（用于旧脚本兼容）
@@ -139,7 +139,7 @@ python -m src.Bayesian_state.eval_amr_results \
 - `grid_errors`：每个参数组合的误差样本列表
 - `grid_summary`：每个参数组合的均值/方差摘要
 - `selection_meta`：参数选择与 run 选择规则
-- `raw_step_results_ref`：若存在，指向 `cache/*.gz` 的流式轨迹引用
+- `raw_runs_ref` / `raw_step_results_ref`：若存在，指向 `cache/*.gz` 的流式轨迹引用；在 `subjects/` 布局中通常保存为 `../cache/*.gz`
 
 说明：
 
@@ -252,7 +252,7 @@ Evaluation scripts can choose which path to read:
 - `python -m src.Bayesian_state.eval_grid_results --input-dir <dir> --eval-prediction-mode prior_t`
 - `python -m src.Bayesian_state.eval_amr_results --input-dir <dir> --eval-prediction-mode posterior_t_minus_1`
 
-### Result Schema Notes (`subject_<id>.json`)
+### Result Schema Notes (`subjects/subject_<id>.json`)
 
 Important fields:
 

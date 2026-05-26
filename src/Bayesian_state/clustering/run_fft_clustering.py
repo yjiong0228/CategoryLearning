@@ -31,7 +31,12 @@ class RunSample:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="FFT-based clustering for run-level accuracy trajectories")
-    parser.add_argument("--input-dir", type=Path, required=True, help="Directory with subject_*.json and cache/")
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        required=True,
+        help="Directory with subjects/subject_*.json and cache/",
+    )
     parser.add_argument("--output-dir", type=Path, default=None, help="Output directory (default: <input-dir>/analysis)")
     parser.add_argument(
         "--trajectory-key",
@@ -129,6 +134,10 @@ def _load_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def _subject_json_files(input_dir: Path) -> list[Path]:
+    return sorted((input_dir / "subjects").glob("subject_*.json"))
+
+
 def _to_float_array(values: Any, context: str) -> np.ndarray:
     arr = np.asarray(values, dtype=float)
     if arr.ndim != 1:
@@ -145,9 +154,9 @@ def _to_float_array(values: Any, context: str) -> np.ndarray:
 
 def load_run_samples(input_dir: Path, trajectory_key: str, prediction_mode: str) -> list[RunSample]:
     samples: list[RunSample] = []
-    subject_files = sorted(input_dir.glob("subject_*.json"))
+    subject_files = _subject_json_files(input_dir)
     if not subject_files:
-        raise RuntimeError(f"No subject_*.json found in {input_dir}")
+        raise RuntimeError(f"No subject_*.json found in {input_dir / 'subjects'}")
 
     for file in subject_files:
         payload = _load_json(file)
@@ -158,7 +167,7 @@ def load_run_samples(input_dir: Path, trajectory_key: str, prediction_mode: str)
         if not isinstance(raw_runs_ref, dict) or "path" not in raw_runs_ref:
             raise ValueError(f"{file} missing raw_runs_ref")
 
-        cache_path = (input_dir / str(raw_runs_ref["path"])).resolve()
+        cache_path = (file.parent / str(raw_runs_ref["path"])).resolve()
         if not cache_path.is_file():
             raise FileNotFoundError(f"Missing cache file: {cache_path}")
 
