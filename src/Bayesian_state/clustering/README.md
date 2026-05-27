@@ -39,6 +39,11 @@ Each subject gets an independent subfolder:
 - `subject_<id>/cluster_representative_trajectories.png`
 - `subject_<id>/clustering_report.json`
 
+`cluster_mean_trajectories.png` now overlays two highlighted trajectories:
+
+- model best-fit trajectory (`best fit`, solid black) with its assigned cluster label
+- subject true trajectory (`subject true`, dashed red) with its assigned cluster label
+
 `cluster_assignments.csv` includes:
 
 - `cluster_label` (same as `active_cluster_label`)

@@ -29,6 +29,15 @@ class RunSample:
     trajectory: np.ndarray
 
 
+@dataclass
+class FFTFeatureTransform:
+    keep_bins: int
+    trajectory_length: int
+    weights: np.ndarray
+    mean: np.ndarray
+    std: np.ndarray
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="FFT-based clustering for run-level accuracy trajectories")
     parser.add_argument(
@@ -138,6 +147,13 @@ def _subject_json_files(input_dir: Path) -> list[Path]:
     return sorted((input_dir / "subjects").glob("subject_*.json"))
 
 
+def _subject_json_path(input_dir: Path, subject_id: int) -> Path:
+    path = input_dir / "subjects" / f"subject_{subject_id}.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing subject json for subject_id={subject_id}: {path}")
+    return path
+
+
 def _to_float_array(values: Any, context: str) -> np.ndarray:
     arr = np.asarray(values, dtype=float)
     if arr.ndim != 1:
@@ -223,7 +239,7 @@ def build_feature_matrix(
     fft_keep_bins: int | None,
     fft_lowfreq_weighting: bool,
     fft_lowfreq_weight_power: float,
-) -> tuple[np.ndarray, int, int]:
+) -> tuple[np.ndarray, int, int, FFTFeatureTransform]:
     lengths = [len(s.trajectory) for s in samples]
     unique_lengths = sorted(set(lengths))
     if len(unique_lengths) != 1:
@@ -255,6 +271,7 @@ def build_feature_matrix(
     keep_bins = max(1, min(keep_bins, total_bins))
 
     X = fft_mag[:, :keep_bins].astype(float)
+    weights = np.ones(keep_bins, dtype=float)
     if fft_lowfreq_weighting:
         rank = np.arange(keep_bins, dtype=float)
         weights = 1.0 / np.power(1.0 + rank, fft_lowfreq_weight_power)
@@ -263,7 +280,100 @@ def build_feature_matrix(
     std = X.std(axis=0, keepdims=True)
     std = np.where(std == 0.0, 1.0, std)
     X = (X - mean) / std
-    return X, series_len, keep_bins
+    transform = FFTFeatureTransform(
+        keep_bins=keep_bins,
+        trajectory_length=series_len,
+        weights=weights.astype(float),
+        mean=mean.reshape(-1).astype(float),
+        std=std.reshape(-1).astype(float),
+    )
+    return X, series_len, keep_bins, transform
+
+
+def _trajectory_to_fft_feature(trajectory: np.ndarray, transform: FFTFeatureTransform) -> np.ndarray:
+    arr = _to_float_array(trajectory, context="overlay trajectory")
+    if arr.shape[0] != transform.trajectory_length:
+        raise ValueError(
+            f"Overlay trajectory length mismatch: expected {transform.trajectory_length}, got {arr.shape[0]}"
+        )
+    fft_mag = np.abs(np.fft.rfft(arr))
+    feat = fft_mag[: transform.keep_bins].astype(float)
+    feat = feat * transform.weights
+    feat = (feat - transform.mean) / transform.std
+    return feat
+
+
+def _cluster_centers(X: np.ndarray, labels: np.ndarray) -> dict[int, np.ndarray]:
+    centers: dict[int, np.ndarray] = {}
+    for label in sorted(set(int(x) for x in labels)):
+        mask = labels == label
+        centers[int(label)] = X[mask].mean(axis=0)
+    return centers
+
+
+def _nearest_cluster_label(feature: np.ndarray, centers: dict[int, np.ndarray]) -> int:
+    best_label = None
+    best_dist = None
+    for label, center in centers.items():
+        dist = float(np.linalg.norm(feature - center))
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best_label = label
+    if best_label is None:
+        raise ValueError("No cluster centers available for nearest-cluster assignment")
+    return int(best_label)
+
+
+def _params_equal(lhs: dict[str, Any], rhs: dict[str, Any], atol: float = 1e-12) -> bool:
+    if lhs.keys() != rhs.keys():
+        return False
+    for key in lhs.keys():
+        lv = lhs[key]
+        rv = rhs[key]
+        if isinstance(lv, (int, float)) and isinstance(rv, (int, float)):
+            if not bool(np.isclose(float(lv), float(rv), atol=atol, rtol=0.0)):
+                return False
+            continue
+        if lv != rv:
+            return False
+    return True
+
+
+def _load_subject_overlay_trajectories(
+    input_dir: Path,
+    subject_id: int,
+    prediction_mode: str,
+) -> tuple[np.ndarray, np.ndarray, int | None, dict[str, Any] | None]:
+    subject_path = _subject_json_path(input_dir, subject_id)
+    payload = _load_json(subject_path)
+    metrics_by_mode = payload.get("metrics_by_mode")
+    if not isinstance(metrics_by_mode, dict):
+        raise ValueError(f"Invalid metrics_by_mode in {subject_path}")
+
+    selection_mode = str(payload.get("selection_prediction_mode") or prediction_mode)
+    if selection_mode not in metrics_by_mode:
+        available_modes = sorted(metrics_by_mode.keys())
+        raise ValueError(
+            f"{subject_path} missing metrics_by_mode['{selection_mode}'] for overlay. Available: {available_modes}"
+        )
+    metrics = metrics_by_mode[selection_mode]
+    if not isinstance(metrics, dict):
+        raise ValueError(f"Invalid metrics_by_mode['{selection_mode}'] in {subject_path}")
+
+    if "sliding_pred_acc" not in metrics or "sliding_true_acc" not in metrics:
+        available_keys = sorted(metrics.keys())
+        raise ValueError(
+            f"{subject_path} missing sliding_pred_acc/sliding_true_acc in mode '{selection_mode}'. "
+            f"Available: {available_keys}"
+        )
+    best_curve = _to_float_array(metrics["sliding_pred_acc"], context=f"{subject_path} best-fit trajectory")
+    true_curve = _to_float_array(metrics["sliding_true_acc"], context=f"{subject_path} true trajectory")
+    rep_idx_raw = payload.get("representative_run_index")
+    representative_run_index = int(rep_idx_raw) if rep_idx_raw is not None else None
+    best_params = payload.get("best_params")
+    if best_params is not None and not isinstance(best_params, dict):
+        raise ValueError(f"Invalid best_params in {subject_path}: expected dict, got {type(best_params)}")
+    return best_curve, true_curve, representative_run_index, best_params
 
 
 def cluster_features(
@@ -434,7 +544,15 @@ def _cluster_center_representative(
     return int(idx[int(np.argmin(dist))])
 
 
-def plot_cluster_mean_trajectories(output_dir: Path, samples: list[RunSample], labels: np.ndarray) -> None:
+def plot_cluster_mean_trajectories(
+    output_dir: Path,
+    samples: list[RunSample],
+    labels: np.ndarray,
+    best_curve: np.ndarray | None = None,
+    best_cluster_label: int | None = None,
+    true_curve: np.ndarray | None = None,
+    true_cluster_label: int | None = None,
+) -> None:
     unique_labels = sorted(set(int(x) for x in labels))
     plt.figure(figsize=(12, 7))
     for label in unique_labels:
@@ -445,6 +563,14 @@ def plot_cluster_mean_trajectories(output_dir: Path, samples: list[RunSample], l
         x = np.arange(mean.shape[0])
         plt.plot(x, mean, label=f"cluster {label} (n={traj.shape[0]})")
         plt.fill_between(x, mean - std, mean + std, alpha=0.15)
+    if best_curve is not None:
+        x = np.arange(best_curve.shape[0])
+        legend = "best fit" if best_cluster_label is None else f"best fit (cluster {best_cluster_label})"
+        plt.plot(x, best_curve, color="black", linestyle="-", linewidth=3.0, label=legend, zorder=6)
+    if true_curve is not None:
+        x = np.arange(true_curve.shape[0])
+        legend = "subject true" if true_cluster_label is None else f"subject true (cluster {true_cluster_label})"
+        plt.plot(x, true_curve, color="#d62728", linestyle="--", linewidth=3.0, label=legend, zorder=6)
     plt.title("Cluster Mean Accuracy Trajectories")
     plt.xlabel("Step")
     plt.ylabel("Accuracy")
@@ -494,7 +620,7 @@ def main() -> None:
     for sid in subject_ids:
         subject_samples = [s for s in samples if s.subject_id == sid]
         subject_output_dir = output_dir / f"subject_{sid}"
-        X, series_len, keep_bins = build_feature_matrix(
+        X, series_len, keep_bins, feature_transform = build_feature_matrix(
             subject_samples,
             args.fft_keep_ratio,
             args.fft_keep_bins,
@@ -529,7 +655,37 @@ def main() -> None:
             model_info,
         )
         plot_cluster_scatter(subject_output_dir, pca_2d, active_labels)
-        plot_cluster_mean_trajectories(subject_output_dir, subject_samples, active_labels)
+        centers = _cluster_centers(X, active_labels)
+        best_curve, true_curve, representative_run_index, best_params = _load_subject_overlay_trajectories(
+            input_dir=input_dir,
+            subject_id=int(sid),
+            prediction_mode=args.prediction_mode,
+        )
+        best_cluster_label = None
+        if representative_run_index is not None and isinstance(best_params, dict):
+            matched_labels: list[int] = []
+            for i, sample in enumerate(subject_samples):
+                if int(sample.run_index) != representative_run_index:
+                    continue
+                if not _params_equal(sample.params, best_params):
+                    continue
+                matched_labels.append(int(active_labels[i]))
+            if len(matched_labels) == 1:
+                best_cluster_label = matched_labels[0]
+        if best_cluster_label is None:
+            best_feat = _trajectory_to_fft_feature(best_curve, feature_transform)
+            best_cluster_label = _nearest_cluster_label(best_feat, centers)
+        true_feat = _trajectory_to_fft_feature(true_curve, feature_transform)
+        true_cluster_label = _nearest_cluster_label(true_feat, centers)
+        plot_cluster_mean_trajectories(
+            subject_output_dir,
+            subject_samples,
+            active_labels,
+            best_curve=best_curve,
+            best_cluster_label=best_cluster_label,
+            true_curve=true_curve,
+            true_cluster_label=true_cluster_label,
+        )
         plot_cluster_representatives(subject_output_dir, subject_samples, active_labels, X)
 
         with (subject_output_dir / "clustering_report.json").open("w", encoding="utf-8") as f:
