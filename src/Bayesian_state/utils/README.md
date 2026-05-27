@@ -37,10 +37,10 @@
 - 被谁调用：`eval_grid_results.py`, `eval_amr_results.py`。
 
 ### `oral_model_alignment.py`
-- 作用：把口头报告信息映射到 hypothesis 命中/对齐指标。
-- 主要类：`Oral_region_analysis`, `Oral_center_analysis`, `OralModelAlignmentMixin`。
-- 说明：区域重叠法与坐标映射法分别封装为两个分析类。
-- 被谁调用：`eval_grid_results.py`, `eval_amr_results.py`（主要用 `Oral_center_analysis`）。
+- 作用：把口头报告信息映射到 hypothesis mass，并计算 oral/model 对齐指标。
+- 主要类：`Oral_region_mapping`, `Oral_center_mapping`, `OralModelAlignmentMixin`。
+- 说明：区域重叠法与坐标映射法分别封装为两个 mapping 类。
+- 被谁调用：`ModelEval` / `eval_grid_results.py`。
 
 ### `perception_stats.py`
 - 作用：计算被试级 perception 噪声统计（mean/std），供模型注入。

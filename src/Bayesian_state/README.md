@@ -106,17 +106,15 @@ AMR 同样支持 `--subjects` 和 `--subject-range` 覆盖 YAML 默认被试。
 
 ```bash
 python -m src.Bayesian_state.eval_amr_results \
-  --input-dir results/state-based-AMR-result/pmh/cond1 \
-  --aggregate-output results/state-based-AMR-result/pmh/cond1/all_subjects.json \
-  --plot-accuracy results/state-based-AMR-result/pmh/cond1/accuracy.png \
-  --plot-cluster results/state-based-AMR-result/pmh/cond1/cluster_amount.png \
-  --plot-oral results/state-based-AMR-result/pmh/cond1/oral_vs_model.png \
-  --oral-data data/processed/Task2_processed.csv
+	  --input-dir results/state-based-AMR-result/pmh/cond1 \
+	  --aggregate-output results/state-based-AMR-result/pmh/cond1/all_subjects.json \
+	  --plot-accuracy results/state-based-AMR-result/pmh/cond1/accuracy.png \
+	  --plot-cluster results/state-based-AMR-result/pmh/cond1/cluster_amount.png
 ```
 
 ### 6.2 Grid 结果评估
 
-`eval_grid_results.py` 的参数风格与 AMR 评估基本一致（同样支持 `--input-dir`、`--plot-accuracy`、`--plot-cluster`、`--plot-oral` 等）。
+`eval_grid_results.py` 的参数风格与 AMR 评估基本一致（同样支持 `--input-dir`、`--plot-accuracy`、`--plot-cluster` 等）。
 
 ## 7. 结果文件约定
 
@@ -127,7 +125,7 @@ python -m src.Bayesian_state.eval_amr_results \
 - `all_subjects.json`：聚合结果
 - `accuracy.png`：准确率对比图
 - `cluster_amount.png`：策略/簇变化图（需要 step 日志）
-- `oral_vs_model.png`：口头报告与模型假设对比图
+- `plots/oral_<mode>_mode/*_based_alignment_*.png`：五类 oral/model alignment 图
 
 ### 7.1 `subjects/subject_<id>.json`（schema v4）核心字段
 
@@ -150,12 +148,12 @@ python -m src.Bayesian_state.eval_amr_results \
 
 ## 8. 口头报告分析（oral_model_alignment）
 
-`utils/oral_model_alignment.py` 提供两条路径：
+`utils/oral_model_alignment.py` 提供两个基础 oral -> hypothesis 映射类：
 
-- `Oral_region_analysis`：基于口头报告区域 `(A, b)` 与假设区域的重叠分数比较
-- `Oral_center_analysis`：基于口头报告中心点与假设原型中心的距离比较
+- `Oral_region_mapping`：基于口头报告区域 `(A, b)` 与假设区域的重叠分数比较
+- `Oral_center_mapping`：基于口头报告中心点与假设原型中心的距离比较
 
-两条路径都输出被试级 `hits` 和 `rolling_hits`，用于和模型过程对比。
+这两个映射类供 `oral_mass` 计算和五类 oral/model alignment 方法复用。
 
 ## 9. 常见问题
 
@@ -180,8 +178,8 @@ python -m src.Bayesian_state.eval_amr_results \
 
 Both `eval_grid_results.py` and `eval_amr_results.py` support dual oral encodings from the learning-data CSV by default:
 
-- `center`: uses `Oral_center_analysis` and center columns (`oral_center`)
-- `region`: uses `Oral_region_analysis` and region columns (`oral_A`, `oral_b`)
+- `center`: uses `Oral_center_mapping` and center columns (`oral_center`)
+- `region`: uses `Oral_region_mapping` and region columns (`oral_A`, `oral_b`)
 
 CLI arguments:
 

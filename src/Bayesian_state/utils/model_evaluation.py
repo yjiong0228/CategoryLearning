@@ -1,18 +1,22 @@
 """Model evaluation facade.
 
-The public surface is organized around five evaluation layers:
-- posterior
-- accuracy_model_alignment
+The public surface is organized around these evaluation layers:
+- accuracy_model_alignment(full level/ family level)
+- posterior_distribution
+- oral_mass_distribution
 - oral_model_alignment
-- cluster_amount
-- error_grid
-Additional result-audit plots include:
+  - distribution_based_alignment: oral reports -> hypothesis distribution
+  - oral_based_alignment: model belief -> oral center/region representation
+  - target_based_alignment: target prior probability vs oral target mass
+  - hit_based_alignment: target hit in model active/top-k set vs oral top-N/top-k set
+  - coverage_based_alignment: model active-set coverage of oral top-N set
+- cluster_amount_dynamics
 - beta_dynamics
-- accuracy_family_alignment
+- error_grid
 - trajectory_accuracy
 - trajectory_posterior
 
-Oral/model alignment is implemented in ``oral_model_alignment.py`` and mixed
+Oral mass and Oral/model alignment is implemented in ``oral_model_alignment.py`` and mixed
 in here so existing ``ModelEval`` call sites keep working.
 """
 
@@ -557,19 +561,34 @@ class ModelEval(OralModelAlignmentMixin):
 
     # oral_model_alignment ----------------------------------------------------
     # Implemented by OralModelAlignmentMixin:
-    # Analysis 1: Top-k hit alignment
-    # - plot_k_oral_comparison
-    # Analysis 2: oral_t vs prior_t distribution alignment
-    # - compute_oral_model_alignment
-    # - plot_oral_model_alignment
-    # Analysis 3: choice-conditioned prior alignment
-    # - compute_choice_conditioned_oral_alignment
-    # - plot_choice_conditioned_oral_alignment
-    # Analysis 4: active top-N capture alignment
-    # - compute_oral_active_topn_capture
-    # - plot_oral_active_topn_capture
-    # - plot_oral_active_topn_capture_subjectwise
-    # - save_oral_active_topn_capture_outputs
+    # Supporting utility: full oral mass display
+    # - compute_oral_mass_probabilities
+    # - plot_oral_mass_probabilities
+    # Main family 1: distribution-based alignment
+    # - compute_distribution_based_alignment
+    # - plot_distribution_based_alignment_group
+    # - plot_distribution_based_alignment_subjectwise
+    # - save_distribution_based_alignment_outputs
+    # Main family 2: oral-based alignment
+    # - compute_oral_based_alignment
+    # - plot_oral_based_alignment_group
+    # - plot_oral_based_alignment_subjectwise
+    # - save_oral_based_alignment_outputs
+    # Main family 3: target-based alignment
+    # - compute_target_based_alignment
+    # - plot_target_based_alignment_group
+    # - plot_target_based_alignment_subjectwise
+    # - save_target_based_alignment_outputs
+    # Main family 4: hit-based alignment
+    # - compute_hit_based_alignment
+    # - plot_hit_based_alignment_group
+    # - plot_hit_based_alignment_subjectwise
+    # - save_hit_based_alignment_outputs
+    # Main family 5: coverage-based alignment
+    # - compute_coverage_based_alignment
+    # - plot_coverage_based_alignment_group
+    # - plot_coverage_based_alignment_subjectwise
+    # - save_coverage_based_alignment_outputs
 
     # trajectory_accuracy / trajectory_posterior -----------------------------
 

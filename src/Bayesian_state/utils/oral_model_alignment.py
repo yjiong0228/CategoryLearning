@@ -3,20 +3,25 @@
 The module has two layers.
 
 1. Oral report -> hypothesis mappings:
-   - ``Oral_region_analysis`` maps reported regions (A, b) to candidate
+   - ``Oral_region_mapping`` maps reported regions (A, b) to candidate
      hypotheses using Monte Carlo overlap metrics.
-   - ``Oral_center_analysis`` maps reported feature centers to candidate
+   - ``Oral_center_mapping`` maps reported feature centers to candidate
      hypotheses using prototype distance.
 
 2. Oral/model alignment methods mixed into ``ModelEval``:
-   - Top-k hit alignment: compare true-hypothesis model probability with
-     whether the oral top-k candidate set contains the true hypothesis.
-   - ``oral_t`` vs ``prior_t`` distribution alignment: compare a full oral
-     hypothesis distribution with the model prior on the same trial.
-   - Choice-conditioned prior alignment: condition ``prior_t`` on the current
-     choice before comparing it with ``oral_t``.
-   - Active top-N capture alignment: use the model active-set size N and test
-     how much oral top-N mass the active set captures.
+   - Distribution-based alignment: project oral reports into hypothesis-space
+     distributions and compare them with model belief distributions.
+   - Oral-based alignment: project model belief distributions into the same
+     representation as the oral report itself: centers for center reports and
+     fuzzy regions for region reports.
+   - Target-based alignment: compare target-hypothesis prior probability with
+     target-hypothesis oral mass.
+   - Hit-based alignment: compare binary target hits in the model active set
+     and the oral top-N set, where N is the model active-set size.
+   - Coverage-based alignment: compare how well the model active set covers
+     the oral top-N set as a whole.
+
+The five blocks above are the intended analysis spine.
 """
 
 from __future__ import annotations
@@ -26,11 +31,17 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import stats
+
+try:
+    from statsmodels.stats.anova import AnovaRM
+except ImportError:  # pragma: no cover - optional dependency in some environments.
+    AnovaRM = None
 
 from ..problems.partitions import Partition
 
@@ -38,26 +49,23 @@ from ..problems.partitions import Partition
 logger = logging.getLogger(__name__)
 
 
+_REGION_SCORER_CACHE: Dict[Tuple[Any, ...], "RegionOverlapScorer"] = {}
+_REGION_DISTRIBUTION_CACHE: Dict[Tuple[Any, ...], np.ndarray] = {}
+
+
 __all__ = [
     "OralModelAlignmentMixin",
-    "Oral_center_analysis",
-    "Oral_region_analysis",
+    "Oral_center_mapping",
+    "Oral_region_mapping",
 ]
 
 
-def _resolve_top_k(condition: int, top_k: Optional[int]) -> int:
-    """Resolve default top-k per condition when user does not provide one."""
-    if top_k is not None and top_k > 0:
-        return int(top_k)
-    return 4 if int(condition) == 1 else 10
-
-
 # ---------------------------------------------------------------------------
-# Oral report -> hypothesis mappings used by Top-k hit alignment
+# Oral report -> hypothesis mappings used by oral mass and alignment methods
 # ---------------------------------------------------------------------------
 
 
-class Oral_region_analysis:
+class Oral_region_mapping:
     """Region-based oral analysis with overlap scoring."""
 
     VALID_OVERLAP_METRICS = {"iou", "intersection", "precision_like", "recall_like"}
@@ -177,204 +185,107 @@ class Oral_region_analysis:
             return regions[hypo_idx][cat_idx]
         raise TypeError(f"Unsupported partition_model.regions type: {type(regions)}")
 
-    def get_oral_hypos_list(
+class RegionOverlapScorer:
+    """Fast Monte Carlo scorer for oral regions against all hypothesis regions.
+
+    It fixes one point cloud per partition/category and precomputes the
+    hypothesis-region inclusion masks. Per oral trial, the only expensive work
+    left is computing the oral mask once, then vectorized boolean overlap
+    against all hypothesis masks.
+    """
+
+    def __init__(
         self,
-        condition: int,
-        oral_region: Sequence[Any],
-        choices: np.ndarray,
         partition: Partition,
-        region_valid_mask: Optional[np.ndarray] = None,
+        n_samples: int = 1000,
+        bounds: Tuple[float, float] = (0.0, 1.0),
+        random_state: Optional[int] = 42,
         dist_tol: float = 1e-9,
-        top_k: Optional[int] = None,
-        n_samples: int = 100,
-        bounds: Tuple[float, float] = (0.0, 1.0),
-        random_state: Optional[int] = 42,
-        overlap_metric: str = "iou",
-    ) -> List[Dict[str, Any]]:
-        """Return per-trial top hypotheses and overlap scores.
+    ):
+        self.partition = partition
+        self.n_samples = int(n_samples)
+        self.bounds = tuple(float(x) for x in bounds)
+        self.random_state = random_state
+        self.dist_tol = float(dist_tol)
+        self.n_hypos = int(len(partition.regions))
+        self.n_cats = int(partition.n_cats)
+        self.n_dims = int(partition.n_dims)
+        low, high = self.bounds
+        rng = np.random.default_rng(random_state)
+        self.points = rng.uniform(low, high, size=(self.n_samples, self.n_dims))
+        self.box_volume = float((high - low) ** self.n_dims)
+        self.hypothesis_masks = self._precompute_hypothesis_masks()
 
-        Output per trial includes:
-        - ``top_hypos``: ranked hypothesis indices.
-        - ``top_scores``: corresponding overlap scores for those hypotheses.
-        """
-        if overlap_metric not in self.VALID_OVERLAP_METRICS:
+    def _precompute_hypothesis_masks(self) -> List[np.ndarray]:
+        masks_by_cat: List[np.ndarray] = []
+        for cat_idx in range(self.n_cats):
+            cat_masks = np.zeros((self.n_hypos, self.n_samples), dtype=bool)
+            for hypo_idx in range(self.n_hypos):
+                region = Oral_region_mapping._true_region(self.partition.regions, hypo_idx, cat_idx)
+                A, b = Oral_region_mapping._parse_region(region)
+                cat_masks[hypo_idx] = Oral_region_mapping._points_in_region(
+                    self.points,
+                    A,
+                    b,
+                    dist_tol=self.dist_tol,
+                )
+            masks_by_cat.append(cat_masks)
+        return masks_by_cat
+
+    def score_all(self, oral_region: Any, cat_idx: int, metric: str = "iou") -> np.ndarray:
+        """Score one oral region against every hypothesis for one category."""
+        if metric not in Oral_region_mapping.VALID_OVERLAP_METRICS:
             raise ValueError(
-                f"Unsupported overlap_metric={overlap_metric}. "
-                f"Choose from {sorted(self.VALID_OVERLAP_METRICS)}."
+                f"Unsupported overlap_metric={metric}. "
+                f"Choose from {sorted(Oral_region_mapping.VALID_OVERLAP_METRICS)}."
             )
+        if cat_idx < 0 or cat_idx >= self.n_cats:
+            return np.full(self.n_hypos, np.nan, dtype=float)
 
-        n_trials = len(choices)
-        if region_valid_mask is None:
-            # Default validity rule: both A and b must be non-empty.
-            region_valid_list: List[bool] = []
-            for region in oral_region:
-                valid = False
-                if isinstance(region, (list, tuple)) and len(region) == 2:
-                    raw_A, raw_b = region
-                    if isinstance(raw_A, str):
-                        try:
-                            raw_A = json.loads(raw_A)
-                        except json.JSONDecodeError:
-                            raw_A = None
-                    if isinstance(raw_b, str):
-                        try:
-                            raw_b = json.loads(raw_b)
-                        except json.JSONDecodeError:
-                            raw_b = None
-                    try:
-                        A_size = np.asarray(raw_A, dtype=float).size if raw_A is not None else 0
-                        b_size = np.asarray(raw_b, dtype=float).size if raw_b is not None else 0
-                        valid = A_size > 0 and b_size > 0
-                    except (TypeError, ValueError):
-                        valid = False
-                region_valid_list.append(valid)
-            region_valid_mask = np.asarray(region_valid_list, dtype=bool)
+        A, b = Oral_region_mapping._parse_region(oral_region)
+        if A is None or b is None:
+            return np.full(self.n_hypos, np.nan, dtype=float)
 
-        resolved_top_k = _resolve_top_k(condition, top_k)
-        n_hypos = len(partition.regions)
-        regions = partition.regions
-        out: List[Dict[str, Any]] = []
+        oral_mask = Oral_region_mapping._points_in_region(
+            self.points,
+            A,
+            b,
+            dist_tol=self.dist_tol,
+        )
+        hypo_masks = self.hypothesis_masks[int(cat_idx)]
 
-        for trial_idx in range(n_trials):
-            # Invalid oral report -> keep empty result for this trial.
-            if not bool(region_valid_mask[trial_idx]):
-                out.append(
-                    {
-                        "trial_idx": trial_idx,
-                        "choice": int(choices[trial_idx]),
-                        "reported_region": None,
-                        "top_hypos": [],
-                        "top_scores": [],
-                    }
-                )
-                continue
+        intersection_count = np.sum(hypo_masks & oral_mask[None, :], axis=1).astype(float)
+        oral_count = float(np.sum(oral_mask))
+        hypo_count = np.sum(hypo_masks, axis=1).astype(float)
+        union_count = hypo_count + oral_count - intersection_count
 
-            cat_idx = int(choices[trial_idx]) - 1
-            reported_region = oral_region[trial_idx]
-            overlap_map: List[Dict[str, Any]] = []
-
-            for hypo_idx in range(n_hypos):
-                # Seed design keeps run-level reproducibility while separating
-                # trials/hypotheses.
-                score = self._estimate_overlap_score(
-                    reported_region,
-                    self._true_region(regions, hypo_idx, cat_idx),
-                    metric=overlap_metric,
-                    n_samples=n_samples,
-                    bounds=bounds,
-                    random_state=None if random_state is None else random_state + trial_idx * 100000 + hypo_idx,
-                    dist_tol=dist_tol,
-                )
-                overlap_map.append(
-                    {
-                        "hypo_idx": hypo_idx,
-                        "overlap_score": score,
-                    }
-                )
-
-            overlap_map.sort(key=lambda x: x["overlap_score"], reverse=True)
-            top_results = overlap_map[:resolved_top_k]
-            out.append(
-                {
-                    "trial_idx": trial_idx,
-                    "choice": int(choices[trial_idx]),
-                    "reported_region": reported_region,
-                    "top_hypos": [item["hypo_idx"] for item in top_results],
-                    "top_scores": [item["overlap_score"] for item in top_results],
-                }
+        if metric == "iou":
+            return np.divide(
+                intersection_count,
+                union_count,
+                out=np.zeros_like(intersection_count, dtype=float),
+                where=union_count > 0,
             )
-
-        return out
-
-    def get_oral_hypo_hits(
-        self,
-        data: pd.DataFrame,
-        top_k: Optional[int] = None,
-        window_size: int = 16,
-        n_samples: int = 50000,
-        bounds: Tuple[float, float] = (0.0, 1.0),
-        random_state: Optional[int] = 42,
-        overlap_metric: str = "iou",
-    ) -> Dict[int, Dict[str, Any]]:
-        """Compute hit trajectories per subject for region-based oral reports."""
-        
-        learning_data = data.copy()
-        results: Dict[int, Dict[str, Any]] = {}
-
-        for _, subj_df in learning_data.groupby("iSub"):
-            subj_df = subj_df.reset_index(drop=True)
-            sid = int(subj_df["iSub"].iloc[0])
-            cond = int(subj_df["condition"].iloc[0])
-            n_cats = 2 if cond == 1 else 4
-            partition = Partition(n_dims=4, n_cats=n_cats)
-
-            oral_region = [(row["oral_A"], row["oral_b"]) for _, row in subj_df.iterrows()]
-            region_valid_mask = []
-            for A_val, b_val in oral_region:
-                parsed_A = A_val
-                parsed_b = b_val
-                if isinstance(parsed_A, str):
-                    try:
-                        parsed_A = json.loads(parsed_A)
-                    except json.JSONDecodeError:
-                        parsed_A = None
-                if isinstance(parsed_b, str):
-                    try:
-                        parsed_b = json.loads(parsed_b)
-                    except json.JSONDecodeError:
-                        parsed_b = None
-                try:
-                    a_size = np.asarray(parsed_A, dtype=float).size if parsed_A is not None else 0
-                    b_size = np.asarray(parsed_b, dtype=float).size if parsed_b is not None else 0
-                    region_valid_mask.append(bool(a_size > 0 and b_size > 0))
-                except (TypeError, ValueError):
-                    region_valid_mask.append(False)
-
-            choices = subj_df["choice"].to_numpy()
-            trial_results = self.get_oral_hypos_list(
-                condition=cond,
-                oral_region=oral_region,
-                choices=choices,
-                partition=partition,
-                region_valid_mask=np.asarray(region_valid_mask, dtype=bool),
-                top_k=top_k,
-                n_samples=n_samples,
-                bounds=bounds,
-                random_state=random_state,
-                overlap_metric=overlap_metric,
+        if metric == "intersection":
+            return (intersection_count / float(self.n_samples)) * self.box_volume
+        if metric == "precision_like":
+            return np.divide(
+                intersection_count,
+                oral_count,
+                out=np.zeros_like(intersection_count, dtype=float),
+                where=oral_count > 0,
             )
-
-            target_value = 0 if cond == 1 else 42
-            top_hypos_per_trial: List[List[int]] = []
-            top_scores_per_trial: List[List[float]] = []
-            hits: List[float] = []
-
-            for idx, tr in enumerate(trial_results):
-                # top_hypos/top_scores are aligned by position.
-                hypos = tr["top_hypos"]
-                scores = tr["top_scores"]
-                top_hypos_per_trial.append(hypos)
-                top_scores_per_trial.append(scores)
-                if len(hypos) == 0:
-                    hits.append(np.nan)
-                else:
-                    hits.append(1.0 if target_value in hypos else 0.0)
-
-            rolling_hits = pd.Series(hits).rolling(window=window_size, min_periods=window_size).mean().tolist()
-            results[sid] = {
-                "iSub": sid,
-                "condition": cond,
-                "target_hypo": target_value,
-                "hits": hits,
-                "rolling_hits": rolling_hits,
-                "top_hypos_per_trial": top_hypos_per_trial,
-                "top_scores_per_trial": top_scores_per_trial,
-            }
-
-        return results
+        if metric == "recall_like":
+            return np.divide(
+                intersection_count,
+                hypo_count,
+                out=np.zeros_like(intersection_count, dtype=float),
+                where=hypo_count > 0,
+            )
+        raise ValueError(f"Unsupported overlap metric: {metric}")
 
 
-class Oral_center_analysis:
+class Oral_center_mapping:
     """Center-based oral analysis with nearest-hypothesis matching."""
 
     @staticmethod
@@ -411,122 +322,122 @@ class Oral_center_analysis:
             return np.full(n_dims, np.nan, dtype=float)
         return arr
 
-    @staticmethod
-    def get_oral_hypos_list(
-        condition: int,
-        data: Tuple[np.ndarray, np.ndarray],
-        partition: Partition,
-        center_valid_mask: Optional[np.ndarray] = None,
-        dist_tol: float = 1e-9,
-        top_k: Optional[int] = None,
-    ) -> List[List[int]]:
-        """Return candidate hypotheses per trial from oral center reports."""
-        oral_centers, choices = data
-        n_trials = len(choices)
-        if center_valid_mask is None:
-            # Default validity rule: center vector is non-empty and not all-NaN.
-            center_valid_mask = np.ones(n_trials, dtype=bool)
-            for idx in range(n_trials):
-                center_arr = np.asarray(oral_centers[idx], dtype=float)
-                center_valid_mask[idx] = bool(center_arr.size > 0 and not np.all(np.isnan(center_arr)))
-
-        resolved_top_k = _resolve_top_k(condition, top_k)
-        n_hypos = partition.prototypes.shape[0]
-        out: List[List[int]] = []
-
-        for trial_idx in range(n_trials):
-            if not bool(center_valid_mask[trial_idx]):
-                out.append([])
-                continue
-
-            reported_center = oral_centers[trial_idx]
-            cat_idx = int(choices[trial_idx]) - 1
-            distance_map = []
-            for hypo_idx in range(n_hypos):
-                # Compare oral center with each hypothesis prototype center.
-                true_center = partition.prototypes[hypo_idx, 0, cat_idx, :]
-                distance_val = float(np.linalg.norm(reported_center - true_center))
-                distance_map.append((distance_val, hypo_idx))
-
-            # Keep exact matches if present; otherwise take nearest top-k.
-            exact_matches = [h for (d, h) in distance_map if d <= dist_tol]
-            if exact_matches:
-                out.append(exact_matches)
-            else:
-                distance_map.sort(key=lambda x: x[0])
-                out.append([h for (_, h) in distance_map[:resolved_top_k]])
-
-        return out
-
-    def get_oral_hypo_hits(self, data: pd.DataFrame, window_size: int = 16) -> Dict[int, Dict[str, Any]]:
-        """Compute hit trajectories per subject for center-based oral reports."""
-        learning_data = data.copy()
-        results: Dict[int, Dict[str, Any]] = {}
-        if "oral_center" not in learning_data.columns:
-            logger.warning("Skipping oral center analysis; missing oral_center column.")
-            return results
-
-        for _, subj_df in learning_data.groupby("iSub"):
-            sid = int(subj_df["iSub"].iloc[0])
-            cond = int(subj_df["condition"].iloc[0])
-
-            n_cats = 2 if cond == 1 else 4
-            partition = Partition(n_dims=4, n_cats=n_cats)
-
-            centers = np.asarray([self._parse_center(value) for value in subj_df["oral_center"]], dtype=float)
-            center_valid_mask = np.array(
-                [bool(np.asarray(center, dtype=float).size > 0 and not np.all(np.isnan(center))) for center in centers],
-                dtype=bool,
-            )
-
-            choices = subj_df["choice"].to_numpy()
-            hypos = self.get_oral_hypos_list(
-                condition=cond,
-                data=(centers, choices),
-                partition=partition,
-                center_valid_mask=center_valid_mask,
-            )
-
-            target_value = 0 if cond == 1 else 42
-            hits: List[float] = []
-            for trial_hypos in hypos:
-                if len(trial_hypos) == 0:
-                    hits.append(np.nan)
-                else:
-                    hits.append(1.0 if target_value in trial_hypos else 0.0)
-
-            rolling_hits = pd.Series(hits).rolling(window=window_size, min_periods=window_size).mean().tolist()
-            results[sid] = {
-                "iSub": sid,
-                "condition": cond,
-                "hits": hits,
-                "rolling_hits": rolling_hits,
-            }
-
-        return results
-
-
 class OralModelAlignmentMixin:
     """Oral/model alignment methods mixed into ``ModelEval``.
 
-    Public methods are organized as four parallel analysis blocks:
+    Public methods are organized around five intended analysis families:
 
-    1. Top-k hit alignment:
-       ``plot_k_oral_comparison``.
-    2. ``oral_t`` vs ``prior_t`` distribution alignment:
-       ``compute_oral_model_alignment`` and ``plot_oral_model_alignment``.
-    3. Choice-conditioned prior alignment:
-       ``compute_choice_conditioned_oral_alignment`` and
-       ``plot_choice_conditioned_oral_alignment``.
-    4. Active top-N capture alignment:
-       ``compute_oral_active_topn_capture``,
-       ``plot_oral_active_topn_capture``,
-       ``plot_oral_active_topn_capture_subjectwise``, and
-       ``save_oral_active_topn_capture_outputs``.
+    1. Distribution-based alignment:
+       ``compute_distribution_based_alignment`` and its group/subject plots.
+       Oral reports are first mapped into hypothesis-space distributions.
+    2. Oral-based alignment:
+       ``compute_oral_based_alignment`` and its group/subject plots. Model
+       belief is mapped into the native oral representation: an expected center
+       for center mode, or a fuzzy region field for region mode.
+    3. Target-based alignment:
+       ``compute_target_based_alignment`` and its group/subject plots. These
+       compare ``prior_t[target]`` with ``oral_t[target]`` directly.
+    4. Hit-based alignment:
+       ``compute_hit_based_alignment`` and its group/subject plots. These
+       binarize the target signal: model hit = target in active set; oral hit =
+       target in oral top-N, where N is the active-set size.
+    5. Coverage-based alignment:
+       ``compute_coverage_based_alignment`` and its group/subject plots. These
+       compare model active-set coverage of the whole oral top-N set.
+
+    Full oral mass display is kept as a shared utility for the main alignment
+    blocks.
 
     The host class is expected to provide ``_filter_results`` and
     ``_layout_by_condition``. ``ModelEval`` supplies both.
     """
+
+    DISTRIBUTION_ALIGNMENT_SPACES = ("full", "active", "union_topn")
+    DISTRIBUTION_ALIGNMENT_LABELS = {
+        "full": "Full hypothesis space",
+        "active": "Model active set",
+        "union_topn": "Active + oral top-N union",
+    }
+    DISTRIBUTION_ALIGNMENT_SHORT_LABELS = {
+        "full": "Full",
+        "active": "Active",
+        "union_topn": "Union",
+    }
+    DISTRIBUTION_ALIGNMENT_COLORS = {
+        "full": "#4c78a8",
+        "active": "#f58518",
+        "union_topn": "#54a24b",
+    }
+    ORAL_BASED_PRIMARY_METRIC = {
+        "center": "expected_center_similarity",
+        "region": "fuzzy_iou_similarity",
+    }
+    ORAL_BASED_METRIC_LABELS = {
+        "expected_center_similarity": "Expected center similarity",
+        "fuzzy_iou_similarity": "Fuzzy region IoU",
+        "fuzzy_cosine_similarity": "Fuzzy region cosine",
+        "model_mass_inside_oral": "Model mass inside oral region",
+        "oral_region_covered_by_model": "Oral region covered by model",
+    }
+    ORAL_BASED_METRIC_COLORS = {
+        "expected_center_similarity": "#4c78a8",
+        "fuzzy_iou_similarity": "#54a24b",
+        "fuzzy_cosine_similarity": "#f58518",
+        "model_mass_inside_oral": "#b279a2",
+        "oral_region_covered_by_model": "#e45756",
+    }
+    TARGET_BASED_METRICS = ("pearson_r", "spearman_rho", "cosine_similarity")
+    TARGET_BASED_METRIC_LABELS = {
+        "pearson_r": "Pearson r",
+        "spearman_rho": "Spearman rho",
+        "cosine_similarity": "Cosine similarity",
+    }
+    TARGET_BASED_METRIC_COLORS = {
+        "pearson_r": "#8e44ad",
+        "spearman_rho": "#c0392b",
+        "cosine_similarity": "#7f8c8d",
+    }
+    TARGET_BASED_LINE_COLORS = {
+        "model": "#8e44ad",
+        "oral": "#c0392b",
+    }
+    TARGET_ALIGNMENT_SPACES = ("full", "active", "union_topn")
+    TARGET_ALIGNMENT_LABELS = {
+        "full": "Full hypothesis space",
+        "active": "Model active set",
+        "union_topn": "Active + oral top-N union",
+    }
+    TARGET_ALIGNMENT_SUFFIXES = {
+        "full": "full",
+        "active": "active",
+        "union_topn": "union",
+    }
+    HIT_BASED_METRICS = ("phi_correlation", "cohen_kappa", "hit_agreement_rate", "positive_hit_jaccard")
+    HIT_BASED_METRIC_LABELS = {
+        "phi_correlation": "Phi correlation",
+        "cohen_kappa": "Cohen kappa",
+        "hit_agreement_rate": "Agreement rate",
+        "positive_hit_jaccard": "Positive-hit Jaccard",
+    }
+    HIT_BASED_METRIC_COLORS = {
+        "phi_correlation": "#2d3436",
+        "cohen_kappa": "#6c5ce7",
+        "hit_agreement_rate": "#e17055",
+        "positive_hit_jaccard": "#00cec9",
+    }
+    HIT_BASED_LINE_COLORS = {
+        "model": "#2d3436",
+        "oral": "#d35400",
+    }
+    COVERAGE_BASED_METRICS = ("active_capture_ratio", "active_topn_overlap")
+    COVERAGE_BASED_LABELS = {
+        "active_capture_ratio": "Active/oral top-N mass ratio",
+        "active_topn_overlap": "Active/oral top-N overlap",
+    }
+    COVERAGE_BASED_COLORS = {
+        "active_capture_ratio": "#1f77b4",
+        "active_topn_overlap": "#ff7f0e",
+    }
 
     # -----------------------------------------------------------------------
     # Shared distribution and plotting helpers
@@ -594,6 +505,114 @@ class OralModelAlignmentMixin:
         return float(1.0 / np.sum(p ** 2))
 
     @staticmethod
+    def _active_hypothesis_indices(values, active_threshold=1e-12):
+        """Return indices that form the current model hypothesis set."""
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        if arr.size == 0:
+            return np.asarray([], dtype=int)
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        return np.flatnonzero(arr > float(active_threshold)).astype(int)
+
+    @staticmethod
+    def _oral_topn_indices(oral_dist, n_top):
+        """Return oral top-N hypothesis indices."""
+        oral = np.asarray(oral_dist, dtype=float).reshape(-1)
+        if oral.size == 0 or int(n_top) <= 0 or np.isnan(oral).any():
+            return np.asarray([], dtype=int)
+        n_top = min(int(n_top), oral.size)
+        return np.argsort(oral)[::-1][:n_top].astype(int)
+
+    @staticmethod
+    def _target_rank(values, target_hypo, min_value=0.0):
+        """Return the 1-based descending rank of target_hypo, or NaN if absent."""
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        target = int(target_hypo)
+        if target < 0 or target >= arr.size or np.isnan(arr).all():
+            return np.nan
+        arr = np.nan_to_num(arr, nan=-np.inf, posinf=np.inf, neginf=-np.inf)
+        target_value = float(arr[target])
+        if not np.isfinite(target_value) or target_value <= float(min_value):
+            return np.nan
+        return float(1 + np.sum(arr > target_value))
+
+    @staticmethod
+    def _resolve_rank_top_k(rank_top_k, condition):
+        """Resolve fixed or condition-specific rank-hit K."""
+        if rank_top_k is None:
+            return None
+        if isinstance(rank_top_k, dict):
+            value = rank_top_k.get(int(condition))
+        else:
+            value = rank_top_k
+        if value is None:
+            return None
+        value = int(value)
+        if value <= 0:
+            raise ValueError(f"rank_top_k must be positive, got {value}")
+        return value
+
+    @staticmethod
+    def _comparison_space_distributions(
+        model_dist,
+        oral_dist,
+        alignment_space="active",
+        active_idx=None,
+    ):
+        """Project model/oral distributions onto the requested comparison space."""
+        model_arr = np.asarray(model_dist, dtype=float).reshape(-1)
+        oral_arr = np.asarray(oral_dist, dtype=float).reshape(-1)
+        n_hypos = min(model_arr.size, oral_arr.size)
+        if n_hypos <= 0:
+            return (
+                np.asarray([np.nan], dtype=float),
+                np.asarray([np.nan], dtype=float),
+                np.asarray([], dtype=int),
+            )
+
+        if alignment_space == "full":
+            compare_idx = np.arange(n_hypos, dtype=int)
+        elif alignment_space == "active":
+            if active_idx is None:
+                active_idx = OralModelAlignmentMixin._active_hypothesis_indices(model_arr)
+            compare_idx = np.asarray(active_idx, dtype=int).reshape(-1)
+            compare_idx = compare_idx[(compare_idx >= 0) & (compare_idx < n_hypos)]
+        elif alignment_space == "union_topn":
+            if active_idx is None:
+                active_idx = OralModelAlignmentMixin._active_hypothesis_indices(model_arr)
+            active_idx = np.asarray(active_idx, dtype=int).reshape(-1)
+            active_idx = active_idx[(active_idx >= 0) & (active_idx < n_hypos)]
+            oral_topn_idx = OralModelAlignmentMixin._oral_topn_indices(oral_arr, len(active_idx))
+            oral_topn_idx = oral_topn_idx[(oral_topn_idx >= 0) & (oral_topn_idx < n_hypos)]
+            compare_idx = np.union1d(active_idx, oral_topn_idx).astype(int)
+        else:
+            raise ValueError(f"Unsupported alignment_space: {alignment_space}")
+
+        if compare_idx.size == 0:
+            return (
+                np.asarray([np.nan], dtype=float),
+                np.asarray([np.nan], dtype=float),
+                compare_idx,
+            )
+
+        return (
+            OralModelAlignmentMixin._normalize_distribution(model_arr[compare_idx]),
+            OralModelAlignmentMixin._normalize_distribution(oral_arr[compare_idx]),
+            compare_idx,
+        )
+
+    @staticmethod
+    def _target_probability_in_space(prob, compare_idx, target_hypo):
+        """Return target probability after projection; absent target is zero."""
+        p = np.asarray(prob, dtype=float).reshape(-1)
+        idx = np.asarray(compare_idx, dtype=int).reshape(-1)
+        if p.size == 0 or np.isnan(p).any() or idx.size == 0:
+            return np.nan
+        loc = np.flatnonzero(idx == int(target_hypo))
+        if loc.size == 0:
+            return 0.0
+        return float(p[int(loc[0])])
+
+    @staticmethod
     def _extract_prior_log(info):
         """Use prior_t as the model state aligned with oral_t."""
         prior_log = info.get("prior_log") or []
@@ -609,6 +628,253 @@ class OralModelAlignmentMixin:
         return priors
 
     @staticmethod
+    def _extract_model_distribution_log(info, model_distribution="prior"):
+        """Return the model distribution time series used by distribution alignment."""
+        state = str(model_distribution).strip().lower()
+        if state == "prior":
+            return OralModelAlignmentMixin._extract_prior_log(info)
+        if state != "posterior":
+            raise ValueError("model_distribution must be 'posterior' or 'prior'.")
+
+        posterior_log = info.get("posterior_log") or []
+        if posterior_log:
+            return [np.asarray(x, dtype=float) for x in posterior_log]
+
+        posteriors = []
+        for step in info.get("best_step_results", []) or []:
+            posterior = step.get("posterior")
+            if posterior is None:
+                posterior = step.get("post")
+            if posterior is None:
+                return []
+            posteriors.append(np.asarray(posterior, dtype=float))
+        return posteriors
+
+    @staticmethod
+    def _sem(values):
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        arr = arr[np.isfinite(arr)]
+        if arr.size <= 1:
+            return np.nan
+        return float(np.std(arr, ddof=1) / np.sqrt(arr.size))
+
+    @staticmethod
+    def _rolling_mean(values, window_size=16):
+        """Rolling mean for subject plots with a tolerant valid-sample rule."""
+        window = max(1, int(window_size))
+        min_periods = max(1, window // 4)
+        return pd.Series(values, dtype=float).rolling(window=window, min_periods=min_periods).mean().to_numpy()
+
+    @staticmethod
+    def _format_p_value(p_value):
+        try:
+            p = float(p_value)
+        except (TypeError, ValueError):
+            return "n/a"
+        if not np.isfinite(p):
+            return "n/a"
+        if p < 0.001:
+            return "<.001"
+        return f"={p:.3f}"
+
+    @staticmethod
+    def _safe_pearson(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if np.sum(mask) < 2:
+            return np.nan
+        x = x[mask]
+        y = y[mask]
+        if np.nanstd(x) <= 1e-12 or np.nanstd(y) <= 1e-12:
+            return np.nan
+        return float(stats.pearsonr(x, y).statistic)
+
+    @staticmethod
+    def _safe_spearman(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if np.sum(mask) < 2:
+            return np.nan
+        x = x[mask]
+        y = y[mask]
+        if np.nanstd(x) <= 1e-12 or np.nanstd(y) <= 1e-12:
+            return np.nan
+        return float(stats.spearmanr(x, y).statistic)
+
+    @staticmethod
+    def _safe_cosine_similarity(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if np.sum(mask) < 1:
+            return np.nan
+        x = x[mask]
+        y = y[mask]
+        denom = float(np.linalg.norm(x) * np.linalg.norm(y))
+        if denom <= 1e-12:
+            return np.nan
+        return float(np.clip(np.dot(x, y) / denom, -1.0, 1.0))
+
+    @staticmethod
+    def _safe_cohen_kappa(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if np.sum(mask) < 1:
+            return np.nan
+        xb = x[mask] > 0.5
+        yb = y[mask] > 0.5
+        observed = float(np.mean(xb == yb))
+        px = float(np.mean(xb))
+        py = float(np.mean(yb))
+        expected = px * py + (1.0 - px) * (1.0 - py)
+        denom = 1.0 - expected
+        if denom <= 1e-12:
+            return np.nan
+        return float((observed - expected) / denom)
+
+    @staticmethod
+    def _safe_binary_jaccard(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if np.sum(mask) < 1:
+            return np.nan
+        xb = x[mask] > 0.5
+        yb = y[mask] > 0.5
+        union = int(np.sum(xb | yb))
+        if union <= 0:
+            return np.nan
+        return float(np.sum(xb & yb) / union)
+
+    @staticmethod
+    def _holm_adjust_pvalues(p_values):
+        """Holm-adjust a sequence of p-values while preserving NaNs."""
+        p = np.asarray(p_values, dtype=float)
+        adjusted = np.full(p.shape, np.nan, dtype=float)
+        finite_idx = np.flatnonzero(np.isfinite(p))
+        if finite_idx.size == 0:
+            return adjusted
+
+        ordered = finite_idx[np.argsort(p[finite_idx])]
+        m = int(ordered.size)
+        running_max = 0.0
+        for rank, idx in enumerate(ordered):
+            candidate = min(1.0, float(p[idx]) * float(m - rank))
+            running_max = max(running_max, candidate)
+            adjusted[idx] = running_max
+        return adjusted
+
+    @classmethod
+    def _paired_distribution_space_stats(cls, subject_space_means, spaces):
+        """Return compact paired statistics for the group-level bar panel."""
+        pivot = subject_space_means.reindex(columns=list(spaces))
+        complete = pivot.dropna()
+        n_complete = int(len(complete))
+
+        friedman_p = np.nan
+        if n_complete >= 3 and len(spaces) >= 3:
+            try:
+                samples = [complete[space].to_numpy(dtype=float) for space in spaces]
+                friedman_p = float(stats.friedmanchisquare(*samples).pvalue)
+            except ValueError:
+                friedman_p = np.nan
+
+        pairs = []
+        p_values = []
+        for left_idx in range(len(spaces)):
+            for right_idx in range(left_idx + 1, len(spaces)):
+                left = spaces[left_idx]
+                right = spaces[right_idx]
+                pair = pivot[[left, right]].dropna()
+                p_val = np.nan
+                if len(pair) >= 2:
+                    try:
+                        p_val = float(stats.wilcoxon(pair[left], pair[right], zero_method="wilcox").pvalue)
+                    except ValueError:
+                        diff = pair[left].to_numpy(dtype=float) - pair[right].to_numpy(dtype=float)
+                        p_val = 1.0 if np.allclose(diff, 0.0, equal_nan=False) else np.nan
+                pairs.append((left, right))
+                p_values.append(p_val)
+
+        adjusted = cls._holm_adjust_pvalues(p_values)
+        pair_text = []
+        for (left, right), p_adj in zip(pairs, adjusted):
+            left_label = cls.DISTRIBUTION_ALIGNMENT_SHORT_LABELS.get(left, left)
+            right_label = cls.DISTRIBUTION_ALIGNMENT_SHORT_LABELS.get(right, right)
+            pair_text.append(f"{left_label}-{right_label} p{cls._format_p_value(p_adj)}")
+
+        return {
+            "n": n_complete,
+            "friedman_p": friedman_p,
+            "pair_text": "; ".join(pair_text),
+        }
+
+    @classmethod
+    def _distribution_space_time_stats(cls, distribution_results, spaces, bins=20):
+        """Run a two-way repeated-measures ANOVA over space and normalized time bins."""
+        if AnovaRM is None:
+            return {"n": 0, "space_p": np.nan, "time_p": np.nan, "interaction_p": np.nan}
+
+        df = distribution_results.copy()
+        df = df[df["alignment_space"].isin(spaces)]
+        df = df[np.isfinite(df["js_similarity"])]
+        if df.empty:
+            return {"n": 0, "space_p": np.nan, "time_p": np.nan, "interaction_p": np.nan}
+
+        df["trial_bin"] = pd.cut(
+            df["trial_pct"],
+            bins=np.linspace(0, 1, int(bins) + 1),
+            labels=np.arange(1, int(bins) + 1),
+            include_lowest=True,
+        ).astype(int)
+        subject_bin = (
+            df.groupby(["subject", "alignment_space", "trial_bin"], observed=True)["js_similarity"]
+            .mean()
+            .reset_index()
+        )
+
+        expected_cells = int(len(spaces) * int(bins))
+        counts = subject_bin.groupby("subject").size()
+        complete_subjects = counts[counts == expected_cells].index
+        complete = subject_bin[subject_bin["subject"].isin(complete_subjects)].copy()
+        if complete["subject"].nunique() < 3:
+            return {"n": int(complete["subject"].nunique()), "space_p": np.nan, "time_p": np.nan, "interaction_p": np.nan}
+
+        complete["alignment_space"] = complete["alignment_space"].astype(str)
+        complete["trial_bin"] = complete["trial_bin"].astype(str)
+
+        try:
+            fit = AnovaRM(
+                complete,
+                depvar="js_similarity",
+                subject="subject",
+                within=["alignment_space", "trial_bin"],
+            ).fit()
+        except Exception:
+            return {"n": int(complete["subject"].nunique()), "space_p": np.nan, "time_p": np.nan, "interaction_p": np.nan}
+
+        table = fit.anova_table
+        out = {
+            "n": int(complete["subject"].nunique()),
+            "space_p": np.nan,
+            "time_p": np.nan,
+            "interaction_p": np.nan,
+        }
+        for idx, row in table.iterrows():
+            idx_str = str(idx)
+            p_val = float(row.get("Pr > F", np.nan))
+            if idx_str == "alignment_space":
+                out["space_p"] = p_val
+            elif idx_str == "trial_bin":
+                out["time_p"] = p_val
+            elif "alignment_space" in idx_str and "trial_bin" in idx_str:
+                out["interaction_p"] = p_val
+        return out
+
+    @staticmethod
     def _center_oral_distribution(center, choice, partition):
         """Map one oral center report to a full hypothesis distribution."""
         center = np.asarray(center, dtype=float).reshape(-1)
@@ -620,22 +886,108 @@ class OralModelAlignmentMixin:
         return OralModelAlignmentMixin._adaptive_softmax_from_distances(distances)
 
     @staticmethod
+    def _get_region_overlap_scorer(
+        partition,
+        n_samples=1000,
+        bounds=(0.0, 1.0),
+        random_state=42,
+        dist_tol=1e-9,
+    ):
+        """Return cached region scorer for fixed Monte Carlo points."""
+        if random_state is None:
+            return RegionOverlapScorer(
+                partition=partition,
+                n_samples=n_samples,
+                bounds=bounds,
+                random_state=random_state,
+                dist_tol=dist_tol,
+            )
+
+        key = (
+            partition.__class__.__name__,
+            int(partition.n_dims),
+            int(partition.n_cats),
+            int(n_samples),
+            float(bounds[0]),
+            float(bounds[1]),
+            int(random_state),
+            float(dist_tol),
+        )
+        scorer = _REGION_SCORER_CACHE.get(key)
+        if scorer is None:
+            scorer = RegionOverlapScorer(
+                partition=partition,
+                n_samples=n_samples,
+                bounds=bounds,
+                random_state=random_state,
+                dist_tol=dist_tol,
+            )
+            _REGION_SCORER_CACHE[key] = scorer
+        return scorer
+
+    @staticmethod
+    def _region_distribution_cache_key(
+        region,
+        choice,
+        partition,
+        n_samples=1000,
+        bounds=(0.0, 1.0),
+        random_state=42,
+        dist_tol=1e-9,
+    ):
+        """Build a stable cache key for one oral region distribution."""
+        if random_state is None:
+            return None
+        A, b = Oral_region_mapping._parse_region(region)
+        if A is None or b is None:
+            return None
+        A = np.ascontiguousarray(A, dtype=float)
+        b = np.ascontiguousarray(b, dtype=float)
+        return (
+            partition.__class__.__name__,
+            int(partition.n_dims),
+            int(partition.n_cats),
+            int(n_samples),
+            float(bounds[0]),
+            float(bounds[1]),
+            int(random_state),
+            float(dist_tol),
+            int(choice),
+            A.shape,
+            A.tobytes(),
+            b.shape,
+            b.tobytes(),
+        )
+
+    @staticmethod
     def _region_oral_distribution(region, choice, partition, n_samples=1000, random_state=42):
         """Map one oral region report to a full hypothesis distribution."""
+        cache_key = OralModelAlignmentMixin._region_distribution_cache_key(
+            region,
+            choice,
+            partition,
+            n_samples=int(n_samples),
+            bounds=(0.0, 1.0),
+            random_state=random_state,
+            dist_tol=1e-9,
+        )
+        if cache_key is not None and cache_key in _REGION_DISTRIBUTION_CACHE:
+            return _REGION_DISTRIBUTION_CACHE[cache_key].copy()
+
         cat_idx = int(choice) - 1
-        scores = []
-        for hypo_idx in range(len(partition.regions)):
-            score = Oral_region_analysis._estimate_overlap_score(
-                region,
-                partition.regions[hypo_idx][cat_idx],
-                metric="iou",
-                n_samples=int(n_samples),
-                bounds=(0.0, 1.0),
-                random_state=None if random_state is None else int(random_state) + hypo_idx,
-                dist_tol=1e-9,
-            )
-            scores.append(0.0 if np.isnan(score) else float(score))
-        return OralModelAlignmentMixin._normalize_distribution(scores)
+        scorer = OralModelAlignmentMixin._get_region_overlap_scorer(
+            partition=partition,
+            n_samples=int(n_samples),
+            bounds=(0.0, 1.0),
+            random_state=random_state,
+            dist_tol=1e-9,
+        )
+        scores = scorer.score_all(region, cat_idx=cat_idx, metric="iou")
+        scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
+        dist = OralModelAlignmentMixin._normalize_distribution(scores)
+        if cache_key is not None and not np.isnan(dist).any():
+            _REGION_DISTRIBUTION_CACHE[cache_key] = dist.copy()
+        return dist
 
     @staticmethod
     def _choice_conditioned_prior(partition, prior, stimulus, choice, beta=10.0):
@@ -663,7 +1015,50 @@ class OralModelAlignmentMixin:
         return OralModelAlignmentMixin._normalize_distribution(conditioned)
 
     @staticmethod
-    def _expected_center_similarity(partition, model_dist, oral_center, choice):
+    def _stimulus_for_trial(info, subj_df, trial_idx):
+        """Return perceived stimulus if logged, otherwise observed feature columns."""
+        steps = info.get("best_step_results") or info.get("step_results") or []
+        if trial_idx < len(steps):
+            stimulus = steps[trial_idx].get("perceived_stimulus")
+            if stimulus is not None:
+                return np.asarray(stimulus, dtype=float)
+        feature_cols = ["feature1", "feature2", "feature3", "feature4"]
+        if all(col in subj_df.columns for col in feature_cols):
+            return subj_df.loc[trial_idx, feature_cols].to_numpy(dtype=float)
+        return np.full(4, np.nan, dtype=float)
+
+    @staticmethod
+    def _model_distribution_for_oral_alignment(
+        info,
+        subj_df,
+        trial_idx,
+        partition,
+        choice,
+        model_distribution="choice_conditioned_prior",
+        beta=10.0,
+    ):
+        """Return the model belief state aligned to oral-report timing."""
+        state = str(model_distribution).strip().lower().replace("-", "_")
+        if state in {"choice_conditioned", "choice_conditioned_prior", "choice_conditional_prior"}:
+            prior_log = OralModelAlignmentMixin._extract_prior_log(info)
+            if trial_idx >= len(prior_log):
+                return np.asarray([], dtype=float)
+            stimulus = OralModelAlignmentMixin._stimulus_for_trial(info, subj_df, trial_idx)
+            return OralModelAlignmentMixin._choice_conditioned_prior(
+                partition=partition,
+                prior=prior_log[trial_idx],
+                stimulus=stimulus,
+                choice=choice,
+                beta=beta,
+            )
+
+        model_log = OralModelAlignmentMixin._extract_model_distribution_log(info, model_distribution=state)
+        if trial_idx >= len(model_log):
+            return np.asarray([], dtype=float)
+        return OralModelAlignmentMixin._normalize_distribution(model_log[trial_idx])
+
+    @staticmethod
+    def _expected_center_similarity(partition, model_dist, oral_center, choice, hypo_indices=None):
         """Compare oral center with the model's choice-conditioned expected center."""
         model_dist = OralModelAlignmentMixin._normalize_distribution(model_dist)
         center = np.asarray(oral_center, dtype=float).reshape(-1)
@@ -672,6 +1067,12 @@ class OralModelAlignmentMixin:
 
         cat_idx = int(choice) - 1
         centers = partition.prototypes[:, 0, cat_idx, :]
+        if hypo_indices is not None:
+            idx = np.asarray(hypo_indices, dtype=int).reshape(-1)
+            idx = idx[(idx >= 0) & (idx < centers.shape[0])]
+            if idx.size == 0 or idx.size != model_dist.size:
+                return np.nan
+            centers = centers[idx]
         expected_center = np.sum(model_dist[:, None] * centers, axis=0)
         dist = float(np.linalg.norm(center - expected_center))
         max_dist = float(np.sqrt(partition.n_dims))
@@ -679,124 +1080,1328 @@ class OralModelAlignmentMixin:
             return np.nan
         return float(np.clip(1.0 - dist / max_dist, 0.0, 1.0))
 
+    @staticmethod
+    def _expected_center(partition, model_dist, choice, hypo_indices=None):
+        """Return model belief projected into the oral-center representation."""
+        model_dist = OralModelAlignmentMixin._normalize_distribution(model_dist)
+        if np.isnan(model_dist).any():
+            return np.full(partition.n_dims, np.nan, dtype=float)
+
+        cat_idx = int(choice) - 1
+        centers = partition.prototypes[:, 0, cat_idx, :]
+        if hypo_indices is not None:
+            idx = np.asarray(hypo_indices, dtype=int).reshape(-1)
+            idx = idx[(idx >= 0) & (idx < centers.shape[0])]
+            if idx.size == 0 or idx.size != model_dist.size:
+                return np.full(partition.n_dims, np.nan, dtype=float)
+            centers = centers[idx]
+        return np.sum(model_dist[:, None] * centers, axis=0)
+
+    @staticmethod
+    def _fuzzy_region_alignment_metrics(
+        partition,
+        model_dist,
+        oral_region,
+        choice,
+        n_samples=1000,
+        random_state=42,
+    ):
+        """Compare a model fuzzy region with a reported oral region.
+
+        For each Monte Carlo point x, the model fuzzy field is
+        ``sum_h p(h) * 1[x in region_h(choice)]``. The oral report is a binary
+        mask over the same points. This compares both in the native region
+        representation without first converting oral regions into hypothesis
+        distributions.
+        """
+        model_dist = OralModelAlignmentMixin._normalize_distribution(model_dist)
+        if np.isnan(model_dist).any():
+            return {
+                "fuzzy_iou_similarity": np.nan,
+                "fuzzy_cosine_similarity": np.nan,
+                "model_mass_inside_oral": np.nan,
+                "oral_region_covered_by_model": np.nan,
+                "model_expected_volume": np.nan,
+                "oral_volume": np.nan,
+            }
+
+        cat_idx = int(choice) - 1
+        scorer = OralModelAlignmentMixin._get_region_overlap_scorer(
+            partition=partition,
+            n_samples=int(n_samples),
+            bounds=(0.0, 1.0),
+            random_state=random_state,
+            dist_tol=1e-9,
+        )
+        if cat_idx < 0 or cat_idx >= len(scorer.hypothesis_masks):
+            return {
+                "fuzzy_iou_similarity": np.nan,
+                "fuzzy_cosine_similarity": np.nan,
+                "model_mass_inside_oral": np.nan,
+                "oral_region_covered_by_model": np.nan,
+                "model_expected_volume": np.nan,
+                "oral_volume": np.nan,
+            }
+
+        A, b = Oral_region_mapping._parse_region(oral_region)
+        if A is None or b is None:
+            return {
+                "fuzzy_iou_similarity": np.nan,
+                "fuzzy_cosine_similarity": np.nan,
+                "model_mass_inside_oral": np.nan,
+                "oral_region_covered_by_model": np.nan,
+                "model_expected_volume": np.nan,
+                "oral_volume": np.nan,
+            }
+
+        n_hypos = min(model_dist.size, scorer.hypothesis_masks[cat_idx].shape[0])
+        if n_hypos <= 0:
+            return {
+                "fuzzy_iou_similarity": np.nan,
+                "fuzzy_cosine_similarity": np.nan,
+                "model_mass_inside_oral": np.nan,
+                "oral_region_covered_by_model": np.nan,
+                "model_expected_volume": np.nan,
+                "oral_volume": np.nan,
+            }
+
+        model_dist = OralModelAlignmentMixin._normalize_distribution(model_dist[:n_hypos])
+        active_idx = np.flatnonzero(np.nan_to_num(model_dist, nan=0.0) > 1e-12)
+        if active_idx.size == 0:
+            return {
+                "fuzzy_iou_similarity": np.nan,
+                "fuzzy_cosine_similarity": np.nan,
+                "model_mass_inside_oral": np.nan,
+                "oral_region_covered_by_model": np.nan,
+                "model_expected_volume": np.nan,
+                "oral_volume": np.nan,
+            }
+        hypo_masks = scorer.hypothesis_masks[cat_idx][active_idx].astype(float)
+        model_field = model_dist[active_idx] @ hypo_masks
+        oral_field = Oral_region_mapping._points_in_region(
+            scorer.points,
+            A,
+            b,
+            dist_tol=1e-9,
+        ).astype(float)
+
+        fuzzy_intersection = float(np.sum(np.minimum(model_field, oral_field)))
+        fuzzy_union = float(np.sum(np.maximum(model_field, oral_field)))
+        fuzzy_iou = fuzzy_intersection / fuzzy_union if fuzzy_union > 0 else np.nan
+
+        dot = float(np.dot(model_field, oral_field))
+        model_norm = float(np.linalg.norm(model_field))
+        oral_norm = float(np.linalg.norm(oral_field))
+        fuzzy_cosine = dot / (model_norm * oral_norm) if model_norm > 0 and oral_norm > 0 else np.nan
+
+        model_mass = float(np.sum(model_field))
+        oral_mass = float(np.sum(oral_field))
+        model_inside_oral = dot / model_mass if model_mass > 0 else np.nan
+        oral_covered_by_model = dot / oral_mass if oral_mass > 0 else np.nan
+
+        return {
+            "fuzzy_iou_similarity": float(np.clip(fuzzy_iou, 0.0, 1.0)) if np.isfinite(fuzzy_iou) else np.nan,
+            "fuzzy_cosine_similarity": (
+                float(np.clip(fuzzy_cosine, 0.0, 1.0)) if np.isfinite(fuzzy_cosine) else np.nan
+            ),
+            "model_mass_inside_oral": (
+                float(np.clip(model_inside_oral, 0.0, 1.0)) if np.isfinite(model_inside_oral) else np.nan
+            ),
+            "oral_region_covered_by_model": (
+                float(np.clip(oral_covered_by_model, 0.0, 1.0)) if np.isfinite(oral_covered_by_model) else np.nan
+            ),
+            "model_expected_volume": float(np.mean(model_field)),
+            "oral_volume": float(np.mean(oral_field)),
+        }
+
     # -----------------------------------------------------------------------
-    # Analysis 1: Top-k hit alignment
+    # Supporting utility: full oral mass display
     # -----------------------------------------------------------------------
 
-    def plot_k_oral_comparison(
+    def compute_oral_mass_probabilities(
         self,
-        model_results,
-        oral_results,
+        oral_df,
+        oral_mode="center",
+        subjects=None,
+        region_n_samples=1000,
+    ):
+        """Compute full oral_t hypothesis distributions per subject."""
+        df = oral_df.copy()
+        if subjects is not None:
+            subject_set = set(subjects)
+            df = df[df["iSub"].isin(subject_set)]
+
+        out = {}
+        for iSub, subj_df in df.groupby("iSub"):
+            subj_df = subj_df.reset_index(drop=True)
+            if subj_df.empty:
+                continue
+
+            condition = int(subj_df["condition"].iloc[0])
+            n_cats = 2 if condition == 1 else 4
+            target_hypo = 0 if condition == 1 else 42
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            n_trials = len(subj_df)
+            oral_mass = np.full((n_trials, partition.length), np.nan, dtype=float)
+            valid_oral = []
+
+            for trial_idx in range(n_trials):
+                choice = int(subj_df.loc[trial_idx, "choice"])
+                if oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    oral_dist = self._center_oral_distribution(center, choice, partition)
+                elif oral_mode == "region":
+                    region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
+                    oral_dist = self._region_oral_distribution(
+                        region,
+                        choice,
+                        partition,
+                        n_samples=region_n_samples,
+                        random_state=42,
+                    )
+                else:
+                    raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+                valid = not np.isnan(oral_dist).any()
+                valid_oral.append(bool(valid))
+                if valid:
+                    oral_mass[trial_idx, : len(oral_dist)] = oral_dist
+
+            out[int(iSub)] = {
+                "iSub": int(iSub),
+                "condition": condition,
+                "target_hypo": target_hypo,
+                "oral_mode": oral_mode,
+                "oral_mass": oral_mass,
+                "valid_oral": valid_oral,
+            }
+
+        return out
+
+    @staticmethod
+    def save_oral_mass_probabilities(oral_mass_results, save_path):
+        """Save full oral_t hypothesis distributions to a compressed npz file."""
+        results = {int(k): v for k, v in oral_mass_results.items()}
+        if not results:
+            raise RuntimeError("No oral mass results to save.")
+
+        subjects = np.asarray(sorted(results), dtype=int)
+        max_trials = max(np.asarray(results[sid]["oral_mass"]).shape[0] for sid in subjects)
+        max_hypos = max(np.asarray(results[sid]["oral_mass"]).shape[1] for sid in subjects)
+        oral_mass = np.full((len(subjects), max_trials, max_hypos), np.nan, dtype=float)
+        valid_oral = np.zeros((len(subjects), max_trials), dtype=bool)
+        n_trials = np.zeros(len(subjects), dtype=int)
+        n_hypos = np.zeros(len(subjects), dtype=int)
+        conditions = np.zeros(len(subjects), dtype=int)
+        target_hypos = np.zeros(len(subjects), dtype=int)
+        oral_modes = []
+
+        for row_idx, sid in enumerate(subjects):
+            info = results[int(sid)]
+            arr = np.asarray(info["oral_mass"], dtype=float)
+            trials, hypos = arr.shape
+            oral_mass[row_idx, :trials, :hypos] = arr
+            valid = np.asarray(info.get("valid_oral", []), dtype=bool).reshape(-1)
+            valid_oral[row_idx, : min(trials, valid.size)] = valid[:trials]
+            n_trials[row_idx] = trials
+            n_hypos[row_idx] = hypos
+            conditions[row_idx] = int(info.get("condition"))
+            target_hypos[row_idx] = int(info.get("target_hypo"))
+            oral_modes.append(str(info.get("oral_mode", "")))
+
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            save_path,
+            subjects=subjects,
+            conditions=conditions,
+            target_hypos=target_hypos,
+            n_trials=n_trials,
+            n_hypos=n_hypos,
+            valid_oral=valid_oral,
+            oral_mass=oral_mass,
+            oral_modes=np.asarray(oral_modes, dtype=str),
+        )
+        logger.info("Oral mass probabilities saved to %s", save_path)
+        return save_path
+
+    @staticmethod
+    def load_oral_mass_probabilities(path):
+        """Load oral_t hypothesis distributions saved by ``save_oral_mass_probabilities``."""
+        path = Path(path)
+        with np.load(path, allow_pickle=False) as data:
+            subjects = data["subjects"].astype(int)
+            conditions = data["conditions"].astype(int)
+            target_hypos = data["target_hypos"].astype(int)
+            n_trials = data["n_trials"].astype(int)
+            n_hypos = data["n_hypos"].astype(int)
+            valid_oral = data["valid_oral"].astype(bool)
+            oral_mass = data["oral_mass"].astype(float)
+            oral_modes = data["oral_modes"].astype(str) if "oral_modes" in data.files else np.asarray([""] * len(subjects))
+
+            out = {}
+            for row_idx, sid in enumerate(subjects):
+                trials = int(n_trials[row_idx])
+                hypos = int(n_hypos[row_idx])
+                out[int(sid)] = {
+                    "iSub": int(sid),
+                    "condition": int(conditions[row_idx]),
+                    "target_hypo": int(target_hypos[row_idx]),
+                    "oral_mode": str(oral_modes[row_idx]),
+                    "oral_mass": oral_mass[row_idx, :trials, :hypos].copy(),
+                    "valid_oral": valid_oral[row_idx, :trials].tolist(),
+                }
+        return out
+
+    @staticmethod
+    def _oral_distribution_from_precomputed(oral_mass_results, iSub, trial_idx):
+        """Fetch one precomputed oral_t distribution by subject and trial."""
+        if oral_mass_results is None:
+            return None
+        info = oral_mass_results.get(iSub)
+        if info is None:
+            info = oral_mass_results.get(int(iSub))
+        if info is None:
+            info = oral_mass_results.get(str(iSub))
+        if info is None:
+            return None
+
+        arr = np.asarray(info.get("oral_mass"), dtype=float)
+        if arr.ndim != 2 or trial_idx < 0 or trial_idx >= arr.shape[0]:
+            return None
+        dist = arr[trial_idx].reshape(-1)
+        if dist.size == 0 or np.isnan(dist).all():
+            return None
+        return dist.copy()
+
+    def plot_oral_mass_probabilities(
+        self,
+        oral_mass_results,
         subjects=None,
         save_path=None,
-        window_size=16,
+        limit=True,
         **kwargs,
     ):
-        """Compare true-hypothesis posterior with oral hit trajectories."""
-
-        def _get_post_max(hypo_details, k_special):
-            if not isinstance(hypo_details, dict):
-                return 0.0
-            entry = hypo_details.get(k_special)
-            if entry is None:
-                entry = hypo_details.get(str(k_special))
-            if not isinstance(entry, dict):
-                return 0.0
-            return entry.get("post_max", 0.0)
-
-        def extract_model_ma(step_results, k_special, win):
-            posts = []
-            for sr in step_results:
-                p = _get_post_max(sr.get("hypo_details", {}), k_special)
-                try:
-                    p = float(p)
-                except (TypeError, ValueError):
-                    p = 0.0
-                posts.append(p)
-            return pd.Series(posts, dtype=float).rolling(window=win, min_periods=win).mean().to_numpy()
-
-        def extract_oral_ma(hits, win):
-            rolling = []
-            n = len(hits)
-            for i in range(n):
-                if i + 1 < win:
-                    rolling.append(np.nan)
-                    continue
-                window = np.asarray(hits[i - win + 1 : i + 1], dtype=float)
-                if np.all(np.isnan(window)):
-                    rolling.append(np.nan)
-                else:
-                    rolling.append(float(np.nanmean(window)))
-            return np.array(rolling)
-
-        model_res = self._filter_results(model_results, subjects)
-        oral_res = self._filter_results(oral_results, subjects)
-
+        """Plot full oral_t mass by hypothesis, matching posterior.png layout."""
+        results = self._filter_results(oral_mass_results, subjects)
         grouped = defaultdict(list)
-        for iSub, info in model_res.items():
-            grouped[info["condition"]].append(iSub)
+        for iSub, info in results.items():
+            grouped[info["condition"]].append((iSub, info))
 
         if not grouped:
-            raise RuntimeError("No model/oral comparison results to plot.")
+            raise RuntimeError("No oral mass results to plot.")
 
         n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle(
-            "Model k vs Oral k (Filtered & Smoothed)",
+            "Oral Mass for k by Subject",
             fontsize=kwargs.get("fontsize", 16),
             y=kwargs.get("y", 0.99),
         )
 
+        scatter_size = kwargs.get("scatter_size", 3)
+        alpha = kwargs.get("alpha", 0.28)
+        cmap = kwargs.get("cmap", "viridis")
+
         row_offset = 0
         for condition, subs in sorted(grouped.items()):
-            for idx, iSub in enumerate(subs):
+            for idx, (iSub, info) in enumerate(subs):
                 local_row = idx // n_cols
                 col = idx % n_cols
                 ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
 
-                info = model_res[iSub]
-                step_results = info.get("step_results", info.get("best_step_results", []))
-                target_hypo = 0 if condition == 1 else 42
-                oral_hits = oral_res[iSub]["hits"]
+                oral_mass = np.asarray(info.get("oral_mass"), dtype=float)
+                if oral_mass.ndim != 2 or oral_mass.size == 0:
+                    ax.text(0.5, 0.5, "No oral mass data", ha="center", va="center", transform=ax.transAxes)
+                    continue
 
-                rolling_model = extract_model_ma(step_results, target_hypo, window_size)
-                valid_idx = np.arange(len(rolling_model))
-                x_model = np.array(valid_idx)[window_size - 1 :] + 1
-                ax.plot(x_model, rolling_model[window_size - 1 :], lw=2, label="Model k")
+                if limit:
+                    max_k = 19 if int(condition) == 1 else 116
+                    max_k = min(max_k, oral_mass.shape[1])
+                else:
+                    max_k = oral_mass.shape[1]
 
-                rolling_oral = extract_oral_ma(oral_hits, window_size)
-                x_oral = np.arange(1, len(rolling_oral) + 1)
-                ax.plot(x_oral, rolling_oral, lw=2, label="Oral k")
+                mass = oral_mass[:, :max_k]
+                n_trials, n_hypos = mass.shape
+                x = np.repeat(np.arange(1, n_trials + 1), n_hypos)
+                k = np.tile(np.arange(n_hypos), n_trials)
+                y = mass.reshape(-1)
+                finite = np.isfinite(y)
 
-                ax.set_ylim(0, 1)
-                ax.set(title=f"Subject {iSub} (Cond {condition})", xlabel="Trial", ylabel="Probability")
-                ax.legend()
+                if np.any(finite):
+                    ax.scatter(
+                        x[finite],
+                        y[finite],
+                        c=k[finite],
+                        cmap=cmap,
+                        vmin=0,
+                        vmax=max(1, n_hypos - 1),
+                        s=scatter_size,
+                        alpha=alpha,
+                        linewidths=0,
+                        rasterized=True,
+                    )
+
+                    target_hypo = int(info.get("target_hypo", 0 if int(condition) == 1 else 42))
+                    if 0 <= target_hypo < n_hypos:
+                        target_y = mass[:, target_hypo]
+                        target_x = np.arange(1, n_trials + 1)
+                        target_mask = np.isfinite(target_y)
+                        ax.scatter(
+                            target_x[target_mask],
+                            target_y[target_mask],
+                            color="red",
+                            s=max(12, scatter_size * 4),
+                            alpha=0.85,
+                            linewidths=0,
+                            label=f"target k={target_hypo}",
+                        )
+
+                    y_max = float(np.nanmax(y[finite]))
+                    ax.set_ylim(0, min(1.0, max(0.02, y_max * 1.12)))
+                else:
+                    ax.text(0.5, 0.5, "No valid oral mass", ha="center", va="center", transform=ax.transAxes)
+
+                ax.set(
+                    title=f"Subject {iSub} (Condition {condition})",
+                    xlabel="Trial",
+                    ylabel="Oral Mass",
+                )
+                if ax.get_legend_handles_labels()[0]:
+                    ax.legend()
+
             row_offset += rows_by_condition[condition]
 
         plt.tight_layout()
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("Filtered comparison saved to %s", save_path)
+            logger.info("Oral mass probabilities saved to %s", save_path)
+        return fig
 
     # -----------------------------------------------------------------------
-    # Analysis 2: oral_t vs prior_t distribution alignment
+    # Main family 1: distribution-based alignment
     # -----------------------------------------------------------------------
 
-    def compute_oral_model_alignment(
+    def compute_distribution_alignment(
         self,
         model_results,
         oral_df,
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
+        model_distribution="prior",
+        alignment_spaces=None,
+        active_threshold=1e-12,
+        oral_mass_results=None,
     ):
-        """Compute prior_t vs oral_t alignment metrics per subject."""
+        """Compute JS similarity for oral/model distributions in three spaces.
+
+        By default this uses ``prior_t`` because oral reports are collected
+        before feedback updates the model posterior for the current trial.
+        ``model_distribution='posterior'`` is still available as a deliberately
+        post-feedback diagnostic.
+
+        The returned table is trial-level and long-format. Each trial appears
+        once per comparison space:
+        - ``full``: complete hypothesis space.
+        - ``active``: model active hypothesis set.
+        - ``union_topn``: union of the model active set and oral top-N set,
+          where N is the active-set size.
+        """
+        spaces = tuple(alignment_spaces or self.DISTRIBUTION_ALIGNMENT_SPACES)
+        unsupported = set(spaces) - set(self.DISTRIBUTION_ALIGNMENT_SPACES)
+        if unsupported:
+            raise ValueError(f"Unsupported distribution alignment spaces: {sorted(unsupported)}")
+
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
-        out = {}
+        rows = []
 
         for iSub, info in model_res.items():
-            subj_df = oral_df[oral_df["iSub"] == iSub].reset_index(drop=True)
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
+            if subj_df.empty:
+                continue
+
+            condition = int(info.get("condition", subj_df["condition"].iloc[0]))
+            n_cats = 2 if condition == 1 else 4
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            model_log = self._extract_model_distribution_log(info, model_distribution=model_distribution)
+            n_trials = min(len(subj_df), len(model_log))
+
+            for trial_idx in range(n_trials):
+                choice = int(subj_df.loc[trial_idx, "choice"])
+                raw_model = np.asarray(model_log[trial_idx], dtype=float).reshape(-1)
+                model_dist = self._normalize_distribution(raw_model)
+                active_idx = self._active_hypothesis_indices(raw_model, active_threshold=active_threshold)
+
+                precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
+                if precomputed_oral is not None:
+                    oral_dist = precomputed_oral
+                elif oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    oral_dist = self._center_oral_distribution(center, choice, partition)
+                elif oral_mode == "region":
+                    region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
+                    oral_dist = self._region_oral_distribution(
+                        region,
+                        choice,
+                        partition,
+                        n_samples=region_n_samples,
+                        random_state=42,
+                    )
+                else:
+                    raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+                for space in spaces:
+                    compare_model, compare_oral, compare_idx = self._comparison_space_distributions(
+                        model_dist,
+                        oral_dist,
+                        alignment_space=space,
+                        active_idx=active_idx,
+                    )
+                    valid = not (np.isnan(compare_model).any() or np.isnan(compare_oral).any())
+                    js_similarity = self._js_similarity(compare_model, compare_oral) if valid else np.nan
+                    if len(compare_idx) and not np.isnan(oral_dist).any():
+                        oral_mass_in_space = float(np.sum(oral_dist[compare_idx]))
+                    else:
+                        oral_mass_in_space = np.nan
+
+                    rows.append(
+                        {
+                            "iSub": sid,
+                            "subject": sid,
+                            "condition": condition,
+                            "trial": trial_idx + 1,
+                            "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
+                            "oral_mode": oral_mode,
+                            "model_distribution": str(model_distribution).strip().lower(),
+                            "alignment_space": space,
+                            "alignment_label": self.DISTRIBUTION_ALIGNMENT_LABELS.get(space, space),
+                            "js_similarity": js_similarity,
+                            "valid": bool(valid),
+                            "n_hypo": int(min(len(model_dist), len(oral_dist))),
+                            "active_set_size": int(len(active_idx)),
+                            "comparison_set_size": int(len(compare_idx)),
+                            "oral_mass_in_comparison_set": oral_mass_in_space,
+                        }
+                    )
+
+        return pd.DataFrame(rows)
+
+    def compute_distribution_based_alignment(self, *args, **kwargs):
+        """Alias for the distribution-based alignment family."""
+        return self.compute_distribution_alignment(*args, **kwargs)
+
+    @staticmethod
+    def summarize_distribution_alignment_by_bin(distribution_results, bins=20):
+        """Return subject-balanced binned means and SEMs for JS similarity."""
+        df = distribution_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        df = df[np.isfinite(df["js_similarity"])]
+        if df.empty:
+            return pd.DataFrame()
+
+        df["trial_bin"] = pd.cut(
+            df["trial_pct"],
+            bins=np.linspace(0, 1, int(bins) + 1),
+            labels=np.arange(1, int(bins) + 1),
+            include_lowest=True,
+        ).astype(int)
+        subject_bin = (
+            df.groupby(["subject", "alignment_space", "alignment_label", "trial_bin"], observed=True)[
+                "js_similarity"
+            ]
+            .mean()
+            .reset_index()
+        )
+
+        rows = []
+        for (space, label, trial_bin), group in subject_bin.groupby(
+            ["alignment_space", "alignment_label", "trial_bin"],
+            observed=True,
+        ):
+            values = group["js_similarity"].to_numpy(dtype=float)
+            values = values[np.isfinite(values)]
+            rows.append(
+                {
+                    "alignment_space": str(space),
+                    "alignment_label": str(label),
+                    "trial_bin": int(trial_bin),
+                    "trial_pct": (int(trial_bin) - 0.5) / float(bins),
+                    "js_similarity_mean": float(np.mean(values)) if values.size else np.nan,
+                    "js_similarity_sem": OralModelAlignmentMixin._sem(values),
+                    "n_subjects": int(values.size),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def plot_distribution_alignment_group(
+        self,
+        distribution_results,
+        save_path=None,
+        bins=20,
+        title=None,
+    ):
+        """Plot group-level distribution alignment summary and time course."""
+        df = distribution_results.copy()
+        if df.empty:
+            raise RuntimeError("No distribution alignment results to plot.")
+
+        spaces = [space for space in self.DISTRIBUTION_ALIGNMENT_SPACES if space in set(df["alignment_space"])]
+        if not spaces:
+            raise RuntimeError("No supported distribution alignment spaces to plot.")
+
+        subject_space_means = (
+            df.groupby(["subject", "alignment_space"], observed=True)["js_similarity"]
+            .mean()
+            .unstack("alignment_space")
+            .reindex(columns=spaces)
+        )
+        binned = self.summarize_distribution_alignment_by_bin(df, bins=bins)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        model_state = str(df["model_distribution"].dropna().iloc[0]) if "model_distribution" in df else "model"
+        fig_title = title or f"Condition {condition_label}: oral vs model {model_state} distribution alignment"
+        fig, axes = plt.subplots(1, 2, figsize=(15, 5.4), dpi=170)
+        fig.suptitle(fig_title, fontsize=15, y=0.99)
+
+        ax = axes[0]
+        x = np.arange(len(spaces), dtype=float)
+        means = [float(np.nanmean(subject_space_means[space].to_numpy(dtype=float))) for space in spaces]
+        sems = [self._sem(subject_space_means[space].to_numpy(dtype=float)) for space in spaces]
+        colors = [self.DISTRIBUTION_ALIGNMENT_COLORS.get(space, "#555555") for space in spaces]
+        ax.bar(x, means, yerr=sems, color=colors, alpha=0.82, capsize=4, edgecolor="white", linewidth=0.8)
+
+        rng = np.random.default_rng(123)
+        for subject, row in subject_space_means.iterrows():
+            vals = row.to_numpy(dtype=float)
+            finite = np.isfinite(vals)
+            if np.sum(finite) >= 2:
+                ax.plot(x[finite], vals[finite], color="#888888", alpha=0.22, lw=0.8, zorder=1)
+            jitter = rng.normal(0.0, 0.035, size=len(spaces))
+            ax.scatter(
+                x[finite] + jitter[finite],
+                vals[finite],
+                s=18,
+                color="#222222",
+                alpha=0.65,
+                linewidths=0,
+                zorder=3,
+            )
+
+        labels = [
+            "Full\nhypothesis\nspace" if space == "full" else
+            "Model\nactive set" if space == "active" else
+            "Active +\noral top-N\nunion"
+            for space in spaces
+        ]
+        ax.set_xticks(x, labels)
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("JS similarity")
+        ax.set_title("Subject means")
+        ax.grid(axis="y", alpha=0.18, linewidth=0.7)
+
+        stats_bar = self._paired_distribution_space_stats(subject_space_means, spaces)
+        ax.text(
+            0.02,
+            0.98,
+            (
+                f"Friedman p{self._format_p_value(stats_bar['friedman_p'])}, "
+                f"n={stats_bar['n']}\n{stats_bar['pair_text']}"
+            ),
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+        )
+
+        ax = axes[1]
+        for space in spaces:
+            sub = binned[binned["alignment_space"] == space].sort_values("trial_bin")
+            if sub.empty:
+                continue
+            line_x = sub["trial_pct"].to_numpy(dtype=float)
+            mean = sub["js_similarity_mean"].to_numpy(dtype=float)
+            sem = sub["js_similarity_sem"].to_numpy(dtype=float)
+            self._line_with_sem(
+                ax,
+                line_x,
+                mean,
+                sem,
+                self.DISTRIBUTION_ALIGNMENT_LABELS.get(space, space),
+                self.DISTRIBUTION_ALIGNMENT_COLORS.get(space, "#555555"),
+            )
+
+        ax.set_ylim(0, 1)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel("Normalized trial")
+        ax.set_ylabel("JS similarity")
+        ax.set_title("Group time course")
+        ax.grid(alpha=0.18, linewidth=0.7)
+        ax.legend(frameon=False, loc="best")
+
+        stats_time = self._distribution_space_time_stats(df, spaces, bins=bins)
+        ax.text(
+            0.02,
+            0.02,
+            (
+                f"RM-ANOVA n={stats_time['n']}\n"
+                f"space p{self._format_p_value(stats_time['space_p'])}; "
+                f"time p{self._format_p_value(stats_time['time_p'])}; "
+                f"space x time p{self._format_p_value(stats_time['interaction_p'])}"
+            ),
+            transform=ax.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=8,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+        )
+
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Distribution alignment group plot saved to %s", save_path)
+        return fig
+
+    def plot_distribution_based_alignment_group(self, *args, **kwargs):
+        """Alias for the distribution-based group plot."""
+        return self.plot_distribution_alignment_group(*args, **kwargs)
+
+    def plot_distribution_alignment_subjectwise(
+        self,
+        distribution_results,
+        subjects=None,
+        save_path=None,
+        window_size=16,
+        n_cols=8,
+        title=None,
+    ):
+        """Plot rolling distribution-alignment traces in each subject panel."""
+        df = distribution_results.copy()
+        if subjects is not None:
+            subject_set = {int(s) for s in subjects}
+            df = df[df["subject"].isin(subject_set)]
+        if df.empty:
+            raise RuntimeError("No subject-level distribution alignment results to plot.")
+
+        spaces = [space for space in self.DISTRIBUTION_ALIGNMENT_SPACES if space in set(df["alignment_space"])]
+        subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
+        n_cols = max(1, int(n_cols))
+        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.35),
+            dpi=170,
+            sharex=True,
+            sharey=True,
+        )
+        axes = np.asarray(axes).reshape(n_rows, n_cols)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        model_state = str(df["model_distribution"].dropna().iloc[0]) if "model_distribution" in df else "model"
+        fig_title = (
+            title
+            or f"Condition {condition_label}: subject-wise oral vs model {model_state} distribution alignment"
+        )
+        fig.suptitle(fig_title, fontsize=16, y=0.995)
+
+        for ax, sid in zip(axes.flat, subjects_sorted):
+            sub = df[df["subject"] == sid]
+            title_bits = []
+            for space in spaces:
+                one = sub[sub["alignment_space"] == space].sort_values("trial")
+                if one.empty:
+                    continue
+                x = one["trial_pct"].to_numpy(dtype=float)
+                y = self._rolling_mean(one["js_similarity"].to_numpy(dtype=float), window_size=window_size)
+                ax.plot(
+                    x,
+                    y,
+                    lw=0.9,
+                    alpha=0.82,
+                    color=self.DISTRIBUTION_ALIGNMENT_COLORS.get(space, "#555555"),
+                    label=self.DISTRIBUTION_ALIGNMENT_SHORT_LABELS.get(space, space),
+                )
+                title_bits.append(
+                    f"{self.DISTRIBUTION_ALIGNMENT_SHORT_LABELS.get(space, space)}={np.nanmean(one['js_similarity']):.2f}"
+                )
+            ax.set_title(f"S{int(sid)}  " + ", ".join(title_bits), fontsize=7.5)
+            ax.set_ylim(0, 1)
+            ax.set_xlim(0, 1)
+            ax.grid(alpha=0.18, linewidth=0.6)
+
+        for ax in list(axes.flat)[len(subjects_sorted):]:
+            ax.axis("off")
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel("JS similarity")
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel("Normalized trial")
+
+        handles, labels = axes.flat[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=len(spaces), frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Distribution alignment subject-wise plot saved to %s", save_path)
+        return fig
+
+    def plot_distribution_based_alignment_subjectwise(self, *args, **kwargs):
+        """Alias for the distribution-based subject-wise plot."""
+        return self.plot_distribution_alignment_subjectwise(*args, **kwargs)
+
+    def save_distribution_alignment_outputs(
+        self,
+        distribution_results,
+        output_dir,
+        prefix="distribution_based_alignment",
+        group_plot_path=None,
+        subjectwise_plot_path=None,
+        window_size=16,
+        bins=20,
+        title_prefix=None,
+    ):
+        """Write distribution-alignment CSVs and the group/subject plots."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        df = distribution_results.copy()
+        if df.empty:
+            raise RuntimeError("No distribution alignment results to save.")
+
+        trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
+        subject_csv = output_dir / f"{prefix}_subject_means.csv"
+        binned_csv = output_dir / f"{prefix}_binned.csv"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}_group.png"
+        subjectwise_plot = (
+            Path(subjectwise_plot_path)
+            if subjectwise_plot_path
+            else output_dir / f"{prefix}_subject.png"
+        )
+        group_plot.parent.mkdir(parents=True, exist_ok=True)
+        subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
+
+        subject_means = (
+            df.groupby(["subject", "alignment_space", "alignment_label"], observed=True)["js_similarity"]
+            .mean()
+            .reset_index()
+        )
+        binned = self.summarize_distribution_alignment_by_bin(df, bins=bins)
+        df.to_csv(trial_csv, index=False)
+        subject_means.to_csv(subject_csv, index=False)
+        binned.to_csv(binned_csv, index=False)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        model_state = str(df["model_distribution"].dropna().iloc[0]) if "model_distribution" in df else "model"
+        prefix_title = title_prefix or f"Condition {condition_label}"
+        fig = self.plot_distribution_alignment_group(
+            df,
+            save_path=str(group_plot),
+            bins=bins,
+            title=f"{prefix_title}: oral vs model {model_state} distribution alignment",
+        )
+        plt.close(fig)
+        fig = self.plot_distribution_alignment_subjectwise(
+            df,
+            save_path=str(subjectwise_plot),
+            window_size=window_size,
+            title=f"{prefix_title}: subject-wise oral vs model {model_state} distribution alignment",
+        )
+        plt.close(fig)
+
+        return {
+            "trial_metrics": trial_csv,
+            "subject_means": subject_csv,
+            "binned": binned_csv,
+            "group_plot": group_plot,
+            "subjectwise_plot": subjectwise_plot,
+        }
+
+    def save_distribution_based_alignment_outputs(self, *args, **kwargs):
+        """Alias for writing distribution-based alignment outputs."""
+        kwargs.setdefault("prefix", "distribution_based_alignment")
+        return self.save_distribution_alignment_outputs(*args, **kwargs)
+
+    # -----------------------------------------------------------------------
+    # Main family 2: oral-based alignment
+    # -----------------------------------------------------------------------
+
+    def compute_oral_based_alignment(
+        self,
+        model_results,
+        oral_df,
+        oral_mode="center",
+        subjects=None,
+        region_n_samples=1000,
+        model_distribution="choice_conditioned_prior",
+        beta=10.0,
+    ):
+        """Compute alignment after projecting model belief into oral space.
+
+        Center mode compares the reported oral center with the model's expected
+        center under the current model belief. Region mode compares the reported
+        oral region with the model's fuzzy region field over Monte Carlo points.
+        """
+        if oral_mode not in {"center", "region"}:
+            raise ValueError("oral_mode must be 'center' or 'region'.")
+
+        model_res = self._filter_results(model_results, subjects)
+        oral_df = oral_df.copy()
+        rows = []
+
+        for iSub, info in model_res.items():
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
+            if subj_df.empty:
+                continue
+
+            condition = int(info.get("condition", subj_df["condition"].iloc[0]))
+            n_cats = 2 if condition == 1 else 4
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            model_state = str(model_distribution).strip().lower().replace("-", "_")
+            if model_state in {"choice_conditioned", "choice_conditioned_prior", "choice_conditional_prior"}:
+                model_len = len(self._extract_prior_log(info))
+            else:
+                model_len = len(self._extract_model_distribution_log(info, model_distribution=model_state))
+            n_trials = min(len(subj_df), model_len)
+
+            for trial_idx in range(n_trials):
+                choice = int(subj_df.loc[trial_idx, "choice"])
+                model_dist = self._model_distribution_for_oral_alignment(
+                    info=info,
+                    subj_df=subj_df,
+                    trial_idx=trial_idx,
+                    partition=partition,
+                    choice=choice,
+                    model_distribution=model_distribution,
+                    beta=beta,
+                )
+                valid_model = model_dist.size > 0 and not np.isnan(model_dist).any()
+
+                base = {
+                    "iSub": sid,
+                    "subject": sid,
+                    "condition": condition,
+                    "trial": trial_idx + 1,
+                    "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
+                    "oral_mode": oral_mode,
+                    "model_distribution": str(model_distribution).strip().lower(),
+                    "primary_metric": self.ORAL_BASED_PRIMARY_METRIC[oral_mode],
+                    "oral_based_similarity": np.nan,
+                    "expected_center_similarity": np.nan,
+                    "expected_center_distance": np.nan,
+                    "fuzzy_iou_similarity": np.nan,
+                    "fuzzy_cosine_similarity": np.nan,
+                    "model_mass_inside_oral": np.nan,
+                    "oral_region_covered_by_model": np.nan,
+                    "model_expected_volume": np.nan,
+                    "oral_volume": np.nan,
+                    "valid": False,
+                }
+
+                if not valid_model:
+                    rows.append(base)
+                    continue
+
+                if oral_mode == "center":
+                    oral_center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    expected_center = self._expected_center(partition, model_dist, choice)
+                    if oral_center.size == partition.n_dims and not np.isnan(oral_center).any():
+                        distance = float(np.linalg.norm(oral_center - expected_center))
+                        similarity = self._expected_center_similarity(
+                            partition=partition,
+                            model_dist=model_dist,
+                            oral_center=oral_center,
+                            choice=choice,
+                        )
+                        base.update(
+                            {
+                                "oral_based_similarity": similarity,
+                                "expected_center_similarity": similarity,
+                                "expected_center_distance": distance,
+                                "valid": bool(np.isfinite(similarity)),
+                            }
+                        )
+                else:
+                    region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
+                    metrics = self._fuzzy_region_alignment_metrics(
+                        partition=partition,
+                        model_dist=model_dist,
+                        oral_region=region,
+                        choice=choice,
+                        n_samples=region_n_samples,
+                        random_state=42,
+                    )
+                    primary = metrics["fuzzy_iou_similarity"]
+                    base.update(metrics)
+                    base.update(
+                        {
+                            "oral_based_similarity": primary,
+                            "valid": bool(np.isfinite(primary)),
+                        }
+                    )
+
+                rows.append(base)
+
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def summarize_oral_based_alignment_by_bin(oral_based_results, bins=20):
+        """Return subject-balanced binned means and SEMs for oral-based similarity."""
+        df = oral_based_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        df = df[np.isfinite(df["oral_based_similarity"])]
+        if df.empty:
+            return pd.DataFrame()
+
+        df["trial_bin"] = pd.cut(
+            df["trial_pct"],
+            bins=np.linspace(0, 1, int(bins) + 1),
+            labels=np.arange(1, int(bins) + 1),
+            include_lowest=True,
+        ).astype(int)
+        subject_bin = (
+            df.groupby(["subject", "trial_bin"], observed=True)["oral_based_similarity"]
+            .mean()
+            .reset_index()
+        )
+
+        rows = []
+        for trial_bin, group in subject_bin.groupby("trial_bin", observed=True):
+            values = group["oral_based_similarity"].to_numpy(dtype=float)
+            values = values[np.isfinite(values)]
+            rows.append(
+                {
+                    "trial_bin": int(trial_bin),
+                    "trial_pct": (int(trial_bin) - 0.5) / float(bins),
+                    "oral_based_similarity_mean": float(np.mean(values)) if values.size else np.nan,
+                    "oral_based_similarity_sem": OralModelAlignmentMixin._sem(values),
+                    "n_subjects": int(values.size),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    @classmethod
+    def _oral_based_time_stats(cls, oral_based_results, bins=20):
+        """Run one-way repeated-measures ANOVA for time bins."""
+        if AnovaRM is None:
+            return {"n": 0, "time_p": np.nan}
+
+        df = oral_based_results.copy()
+        df = df[np.isfinite(df["oral_based_similarity"])]
+        if df.empty:
+            return {"n": 0, "time_p": np.nan}
+
+        df["trial_bin"] = pd.cut(
+            df["trial_pct"],
+            bins=np.linspace(0, 1, int(bins) + 1),
+            labels=np.arange(1, int(bins) + 1),
+            include_lowest=True,
+        ).astype(int)
+        subject_bin = (
+            df.groupby(["subject", "trial_bin"], observed=True)["oral_based_similarity"]
+            .mean()
+            .reset_index()
+        )
+
+        counts = subject_bin.groupby("subject").size()
+        complete_subjects = counts[counts == int(bins)].index
+        complete = subject_bin[subject_bin["subject"].isin(complete_subjects)].copy()
+        if complete["subject"].nunique() < 3:
+            return {"n": int(complete["subject"].nunique()), "time_p": np.nan}
+
+        complete["trial_bin"] = complete["trial_bin"].astype(str)
+        try:
+            fit = AnovaRM(
+                complete,
+                depvar="oral_based_similarity",
+                subject="subject",
+                within=["trial_bin"],
+            ).fit()
+        except Exception:
+            return {"n": int(complete["subject"].nunique()), "time_p": np.nan}
+
+        table = fit.anova_table
+        p_val = float(table.loc["trial_bin", "Pr > F"]) if "trial_bin" in table.index else np.nan
+        return {"n": int(complete["subject"].nunique()), "time_p": p_val}
+
+    def plot_oral_based_alignment_group(
+        self,
+        oral_based_results,
+        save_path=None,
+        bins=20,
+        title=None,
+    ):
+        """Plot group-level oral-based alignment summary and time course."""
+        df = oral_based_results.copy()
+        if df.empty:
+            raise RuntimeError("No oral-based alignment results to plot.")
+
+        primary_metric = str(df["primary_metric"].dropna().iloc[0])
+        metric_label = self.ORAL_BASED_METRIC_LABELS.get(primary_metric, primary_metric)
+        color = self.ORAL_BASED_METRIC_COLORS.get(primary_metric, "#4c78a8")
+        subject_means = (
+            df.groupby("subject", observed=True)["oral_based_similarity"]
+            .mean()
+            .reset_index()
+        )
+        binned = self.summarize_oral_based_alignment_by_bin(df, bins=bins)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        model_state = str(df["model_distribution"].dropna().iloc[0])
+        fig_title = title or f"Condition {condition_label}: {oral_mode} oral-based alignment ({model_state})"
+        fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2), dpi=170)
+        fig.suptitle(fig_title, fontsize=15, y=0.99)
+
+        ax = axes[0]
+        values = subject_means["oral_based_similarity"].to_numpy(dtype=float)
+        mean = float(np.nanmean(values)) if values.size else np.nan
+        sem = self._sem(values)
+        ax.bar([0], [mean], yerr=[sem], color=color, alpha=0.82, capsize=5, edgecolor="white", linewidth=0.8)
+        rng = np.random.default_rng(123)
+        finite = np.isfinite(values)
+        ax.scatter(
+            rng.normal(0.0, 0.035, size=int(np.sum(finite))),
+            values[finite],
+            s=20,
+            color="#222222",
+            alpha=0.68,
+            linewidths=0,
+            zorder=3,
+        )
+        ax.set_xticks([0], [metric_label])
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Similarity")
+        ax.set_title("Subject means")
+        ax.grid(axis="y", alpha=0.18, linewidth=0.7)
+        ax.text(
+            0.02,
+            0.98,
+            f"mean={mean:.3f}\nSEM={sem:.3f}\nn={int(np.sum(finite))}",
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+        )
+
+        ax = axes[1]
+        if not binned.empty:
+            x = binned["trial_pct"].to_numpy(dtype=float)
+            self._line_with_sem(
+                ax,
+                x,
+                binned["oral_based_similarity_mean"].to_numpy(dtype=float),
+                binned["oral_based_similarity_sem"].to_numpy(dtype=float),
+                metric_label,
+                color,
+            )
+        ax.set_ylim(0, 1)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel("Normalized trial")
+        ax.set_ylabel("Similarity")
+        ax.set_title("Group time course")
+        ax.grid(alpha=0.18, linewidth=0.7)
+        ax.legend(frameon=False, loc="best")
+
+        time_stats = self._oral_based_time_stats(df, bins=bins)
+        ax.text(
+            0.02,
+            0.02,
+            f"RM-ANOVA n={time_stats['n']}\ntime p{self._format_p_value(time_stats['time_p'])}",
+            transform=ax.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=8,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+        )
+
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Oral-based alignment group plot saved to %s", save_path)
+        return fig
+
+    def plot_oral_based_alignment_subjectwise(
+        self,
+        oral_based_results,
+        subjects=None,
+        save_path=None,
+        window_size=16,
+        n_cols=8,
+        title=None,
+    ):
+        """Plot rolling oral-based alignment in each subject panel."""
+        df = oral_based_results.copy()
+        if subjects is not None:
+            subject_set = {int(s) for s in subjects}
+            df = df[df["subject"].isin(subject_set)]
+        if df.empty:
+            raise RuntimeError("No oral-based subject-level alignment results to plot.")
+
+        primary_metric = str(df["primary_metric"].dropna().iloc[0])
+        metric_label = self.ORAL_BASED_METRIC_LABELS.get(primary_metric, primary_metric)
+        color = self.ORAL_BASED_METRIC_COLORS.get(primary_metric, "#4c78a8")
+        subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
+        n_cols = max(1, int(n_cols))
+        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.35),
+            dpi=170,
+            sharex=True,
+            sharey=True,
+        )
+        axes = np.asarray(axes).reshape(n_rows, n_cols)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        model_state = str(df["model_distribution"].dropna().iloc[0])
+        fig_title = title or f"Condition {condition_label}: subject-wise {oral_mode} oral-based alignment"
+        fig.suptitle(f"{fig_title} ({model_state})", fontsize=16, y=0.995)
+
+        for ax, sid in zip(axes.flat, subjects_sorted):
+            sub = df[df["subject"] == sid].sort_values("trial")
+            x = sub["trial_pct"].to_numpy(dtype=float)
+            y = self._rolling_mean(sub["oral_based_similarity"].to_numpy(dtype=float), window_size=window_size)
+            ax.plot(x, y, lw=0.95, alpha=0.84, color=color, label=metric_label)
+            ax.set_title(f"S{int(sid)}  mean={np.nanmean(y):.2f}", fontsize=8)
+            ax.set_ylim(0, 1)
+            ax.set_xlim(0, 1)
+            ax.grid(alpha=0.18, linewidth=0.6)
+
+        for ax in list(axes.flat)[len(subjects_sorted):]:
+            ax.axis("off")
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel("Similarity")
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel("Normalized trial")
+
+        handles, labels = axes.flat[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=1, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Oral-based alignment subject-wise plot saved to %s", save_path)
+        return fig
+
+    def save_oral_based_alignment_outputs(
+        self,
+        oral_based_results,
+        output_dir,
+        prefix="oral_based_alignment",
+        group_plot_path=None,
+        subjectwise_plot_path=None,
+        window_size=16,
+        bins=20,
+        title_prefix=None,
+    ):
+        """Write oral-based alignment CSVs and group/subject plots."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        df = oral_based_results.copy()
+        if df.empty:
+            raise RuntimeError("No oral-based alignment results to save.")
+
+        trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
+        subject_csv = output_dir / f"{prefix}_subject_means.csv"
+        binned_csv = output_dir / f"{prefix}_binned.csv"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}_group.png"
+        subjectwise_plot = (
+            Path(subjectwise_plot_path)
+            if subjectwise_plot_path
+            else output_dir / f"{prefix}_subject.png"
+        )
+        group_plot.parent.mkdir(parents=True, exist_ok=True)
+        subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
+
+        subject_means = (
+            df.groupby("subject", observed=True)[
+                [
+                    "oral_based_similarity",
+                    "expected_center_similarity",
+                    "fuzzy_iou_similarity",
+                    "fuzzy_cosine_similarity",
+                    "model_mass_inside_oral",
+                    "oral_region_covered_by_model",
+                    "model_expected_volume",
+                    "oral_volume",
+                ]
+            ]
+            .mean()
+            .reset_index()
+        )
+        binned = self.summarize_oral_based_alignment_by_bin(df, bins=bins)
+        df.to_csv(trial_csv, index=False)
+        subject_means.to_csv(subject_csv, index=False)
+        binned.to_csv(binned_csv, index=False)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        model_state = str(df["model_distribution"].dropna().iloc[0])
+        prefix_title = title_prefix or f"Condition {condition_label}"
+        fig = self.plot_oral_based_alignment_group(
+            df,
+            save_path=str(group_plot),
+            bins=bins,
+            title=f"{prefix_title}: {oral_mode} oral-based alignment ({model_state})",
+        )
+        plt.close(fig)
+        fig = self.plot_oral_based_alignment_subjectwise(
+            df,
+            save_path=str(subjectwise_plot),
+            window_size=window_size,
+            title=f"{prefix_title}: subject-wise {oral_mode} oral-based alignment",
+        )
+        plt.close(fig)
+
+        return {
+            "trial_metrics": trial_csv,
+            "subject_means": subject_csv,
+            "binned": binned_csv,
+            "group_plot": group_plot,
+            "subjectwise_plot": subjectwise_plot,
+        }
+
+    # -----------------------------------------------------------------------
+    # Main family 3: target-based alignment
+    # -----------------------------------------------------------------------
+
+    def compute_target_based_alignment(
+        self,
+        model_results,
+        oral_df,
+        oral_mode="center",
+        subjects=None,
+        region_n_samples=1000,
+        oral_mass_results=None,
+        alignment_spaces=None,
+        active_threshold=1e-12,
+    ):
+        """Extract target-hypothesis mass on full, active, and union spaces.
+
+        ``full`` uses the complete hypothesis space. ``active`` renormalizes
+        model prior and oral mass inside the current model active set.
+        ``union_topn`` renormalizes inside the union of the model active set and
+        the oral top-N set, where N is the active-set size.
+        """
+        model_res = self._filter_results(model_results, subjects)
+        oral_df = oral_df.copy()
+        rows = []
+        spaces = tuple(alignment_spaces or self.TARGET_ALIGNMENT_SPACES)
+        unsupported = set(spaces) - set(self.TARGET_ALIGNMENT_SPACES)
+        if unsupported:
+            raise ValueError(f"Unsupported target alignment spaces: {sorted(unsupported)}")
+
+        for iSub, info in model_res.items():
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
             if subj_df.empty:
                 continue
 
@@ -807,19 +2412,17 @@ class OralModelAlignmentMixin:
             prior_log = self._extract_prior_log(info)
             n_trials = min(len(subj_df), len(prior_log))
 
-            target_model_prior = []
-            target_oral_score = []
-            model_mass_on_oral = []
-            model_oral_similarity = []
-            oral_ess = []
-            valid_oral = []
-
             for trial_idx in range(n_trials):
-                prior = self._normalize_distribution(prior_log[trial_idx])
                 choice = int(subj_df.loc[trial_idx, "choice"])
+                raw_prior = np.asarray(prior_log[trial_idx], dtype=float).reshape(-1)
+                prior = self._normalize_distribution(raw_prior)
+                active_idx = self._active_hypothesis_indices(raw_prior, active_threshold=active_threshold)
 
-                if oral_mode == "center":
-                    center = Oral_center_analysis._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
+                if precomputed_oral is not None:
+                    oral_dist = precomputed_oral
+                elif oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
@@ -828,117 +2431,383 @@ class OralModelAlignmentMixin:
                         choice,
                         partition,
                         n_samples=region_n_samples,
-                        random_state=42 + trial_idx * 100000,
+                        random_state=42,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
 
-                valid = not (np.isnan(prior).any() or np.isnan(oral_dist).any())
-                valid_oral.append(bool(valid))
-                if not valid:
-                    target_model_prior.append(np.nan)
-                    target_oral_score.append(np.nan)
-                    model_mass_on_oral.append(np.nan)
-                    model_oral_similarity.append(np.nan)
-                    oral_ess.append(np.nan)
-                    continue
+                for space in spaces:
+                    compare_prior, compare_oral, compare_idx = self._comparison_space_distributions(
+                        prior,
+                        oral_dist,
+                        alignment_space=space,
+                        active_idx=active_idx,
+                    )
+                    model_target_prior = self._target_probability_in_space(compare_prior, compare_idx, target_hypo)
+                    oral_target_mass = self._target_probability_in_space(compare_oral, compare_idx, target_hypo)
+                    if len(compare_idx) and not np.isnan(oral_dist).any():
+                        oral_mass_in_comparison = float(np.sum(np.asarray(oral_dist, dtype=float)[compare_idx]))
+                    else:
+                        oral_mass_in_comparison = np.nan
 
-                target_model_prior.append(float(prior[target_hypo]) if target_hypo < len(prior) else np.nan)
-                target_oral_score.append(float(oral_dist[target_hypo]) if target_hypo < len(oral_dist) else np.nan)
-                model_mass_on_oral.append(float(np.dot(prior, oral_dist)))
-                model_oral_similarity.append(self._js_similarity(prior, oral_dist))
-                oral_ess.append(self._effective_sample_size(oral_dist))
+                    rows.append(
+                        {
+                            "iSub": sid,
+                            "subject": sid,
+                            "condition": condition,
+                            "trial": trial_idx + 1,
+                            "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
+                            "oral_mode": oral_mode,
+                            "model_distribution": "prior",
+                            "alignment_space": space,
+                            "alignment_label": self.TARGET_ALIGNMENT_LABELS.get(space, space),
+                            "target_hypo": target_hypo,
+                            "active_set_size": int(len(active_idx)),
+                            "comparison_set_size": int(len(compare_idx)),
+                            "oral_mass_in_comparison_set": oral_mass_in_comparison,
+                            "model_target_prior": model_target_prior,
+                            "oral_target_mass": oral_target_mass,
+                            "valid": bool(np.isfinite(model_target_prior) and np.isfinite(oral_target_mass)),
+                        }
+                    )
 
-            out[iSub] = {
-                "iSub": int(iSub),
-                "condition": condition,
-                "target_hypo": target_hypo,
-                "alignment_mode": "oral_t_vs_prior_t",
-                "oral_mode": oral_mode,
-                "target_model_prior": target_model_prior,
-                "target_oral_score": target_oral_score,
-                "model_mass_on_oral": model_mass_on_oral,
-                "model_oral_similarity": model_oral_similarity,
-                "oral_ess": oral_ess,
-                "valid_oral": valid_oral,
-            }
-        return out
+        return pd.DataFrame(rows)
 
-    def plot_oral_model_alignment(
+    def summarize_target_based_alignment(self, target_based_results):
+        """Compute subject-level metrics between model/oral target trajectories."""
+        df = target_based_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+        if "alignment_space" not in df.columns:
+            df["alignment_space"] = "full"
+        if "alignment_label" not in df.columns:
+            df["alignment_label"] = df["alignment_space"].map(self.TARGET_ALIGNMENT_LABELS).fillna(df["alignment_space"])
+
+        rows = []
+        for (sid, space), sub in df.groupby(["subject", "alignment_space"], observed=True):
+            model_vals = sub["model_target_prior"].to_numpy(dtype=float)
+            oral_vals = sub["oral_target_mass"].to_numpy(dtype=float)
+            valid = np.isfinite(model_vals) & np.isfinite(oral_vals)
+            rows.append(
+                {
+                    "subject": int(sid),
+                    "iSub": int(sid),
+                    "condition": int(sub["condition"].dropna().iloc[0]),
+                    "oral_mode": str(sub["oral_mode"].dropna().iloc[0]),
+                    "alignment_space": str(space),
+                    "alignment_label": str(sub["alignment_label"].dropna().iloc[0]),
+                    "target_hypo": int(sub["target_hypo"].dropna().iloc[0]),
+                    "n_trials": int(len(sub)),
+                    "n_valid": int(np.sum(valid)),
+                    "valid_rate": float(np.mean(valid)) if len(valid) else np.nan,
+                    "active_set_size_mean": (
+                        float(np.nanmean(sub["active_set_size"].to_numpy(dtype=float)))
+                        if "active_set_size" in sub
+                        else np.nan
+                    ),
+                    "comparison_set_size_mean": (
+                        float(np.nanmean(sub["comparison_set_size"].to_numpy(dtype=float)))
+                        if "comparison_set_size" in sub
+                        else np.nan
+                    ),
+                    "oral_mass_in_comparison_set_mean": (
+                        float(np.nanmean(sub["oral_mass_in_comparison_set"].to_numpy(dtype=float)))
+                        if "oral_mass_in_comparison_set" in sub
+                        else np.nan
+                    ),
+                    "model_target_prior_mean": (
+                        float(np.nanmean(model_vals)) if np.any(np.isfinite(model_vals)) else np.nan
+                    ),
+                    "oral_target_mass_mean": (
+                        float(np.nanmean(oral_vals)) if np.any(np.isfinite(oral_vals)) else np.nan
+                    ),
+                    "pearson_r": self._safe_pearson(model_vals, oral_vals),
+                    "spearman_rho": self._safe_spearman(model_vals, oral_vals),
+                    "cosine_similarity": self._safe_cosine_similarity(model_vals, oral_vals),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def plot_target_based_alignment_group(
         self,
-        alignment_results,
+        target_subject_metrics,
+        save_path=None,
+        title=None,
+    ):
+        """Plot group-level target trajectory metrics for each comparison space."""
+        df = target_subject_metrics.copy()
+        if df.empty:
+            raise RuntimeError("No target-based subject metrics to plot.")
+        if "alignment_space" not in df.columns:
+            df["alignment_space"] = "full"
+        if "alignment_label" not in df.columns:
+            df["alignment_label"] = df["alignment_space"].map(self.TARGET_ALIGNMENT_LABELS).fillna(df["alignment_space"])
+
+        metrics = list(self.TARGET_BASED_METRICS)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        fig_title = title or f"Condition {condition_label}: target-based alignment ({oral_mode})"
+        spaces = [space for space in self.TARGET_ALIGNMENT_SPACES if space in set(df["alignment_space"])]
+        if not spaces:
+            spaces = sorted(df["alignment_space"].dropna().unique())
+        fig, axes = plt.subplots(1, len(spaces), figsize=(5.1 * len(spaces), 5.2), dpi=170, sharey=True)
+        axes = np.asarray(axes).reshape(-1)
+        fig.suptitle(fig_title, fontsize=15, y=0.98)
+
+        rng = np.random.default_rng(123)
+        for ax, space in zip(axes, spaces):
+            sub = df[df["alignment_space"] == space]
+            x = np.arange(len(metrics), dtype=float)
+            means = []
+            sems = []
+            for metric in metrics:
+                vals = sub[metric].to_numpy(dtype=float)
+                finite = np.isfinite(vals)
+                means.append(float(np.nanmean(vals)) if np.any(finite) else np.nan)
+                sems.append(self._sem(vals))
+            colors = [self.TARGET_BASED_METRIC_COLORS.get(metric, "#555555") for metric in metrics]
+            ax.bar(x, means, yerr=sems, color=colors, alpha=0.82, capsize=4, edgecolor="white", linewidth=0.8)
+
+            for idx, metric in enumerate(metrics):
+                vals = sub[metric].to_numpy(dtype=float)
+                finite = np.isfinite(vals)
+                ax.scatter(
+                    rng.normal(float(idx), 0.035, size=int(np.sum(finite))),
+                    vals[finite],
+                    s=18,
+                    color="#222222",
+                    alpha=0.62,
+                    linewidths=0,
+                    zorder=3,
+                )
+
+            ax.axhline(0, color="#333333", lw=0.8, alpha=0.5)
+            ax.set_xticks(x, [self.TARGET_BASED_METRIC_LABELS.get(metric, metric) for metric in metrics])
+            ax.tick_params(axis="x", labelrotation=12)
+            ax.set_ylim(-1.0, 1.0)
+            ax.set_title(self.TARGET_ALIGNMENT_LABELS.get(space, space))
+            ax.grid(axis="y", alpha=0.18, linewidth=0.7)
+            ax.text(
+                0.02,
+                0.02,
+                f"n={sub['subject'].nunique()}\nvalid={np.nanmean(sub['valid_rate']):.2f}",
+                transform=ax.transAxes,
+                ha="left",
+                va="bottom",
+                fontsize=8,
+                bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+            )
+        axes[0].set_ylabel("Subject-level metric")
+
+        fig.tight_layout(rect=[0, 0, 1, 0.93])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Target-based alignment group plot saved to %s", save_path)
+        return fig
+
+    def plot_target_based_alignment_subjectwise(
+        self,
+        target_based_results,
+        target_subject_metrics=None,
         subjects=None,
         save_path=None,
         window_size=16,
-        **kwargs,
+        n_cols=8,
+        title=None,
+        alignment_space="full",
     ):
-        """Plot rolling model-oral alignment metrics by subject."""
-        results = self._filter_results(alignment_results, subjects)
-        grouped = defaultdict(list)
-        for iSub, info in results.items():
-            grouped[info["condition"]].append((iSub, info))
+        """Plot model target prior and oral target mass in each subject panel."""
+        df = target_based_results.copy()
+        if "alignment_space" not in df.columns:
+            df["alignment_space"] = "full"
+        if alignment_space is not None:
+            df = df[df["alignment_space"] == alignment_space]
+        if subjects is not None:
+            subject_set = {int(s) for s in subjects}
+            df = df[df["subject"].isin(subject_set)]
+        if df.empty:
+            raise RuntimeError("No target-based trial metrics to plot.")
 
-        if not grouped:
-            raise RuntimeError("No oral-model alignment results to plot.")
+        if target_subject_metrics is None:
+            target_subject_metrics = self.summarize_target_based_alignment(df)
+        else:
+            target_subject_metrics = target_subject_metrics.copy()
+            if "alignment_space" not in target_subject_metrics.columns:
+                target_subject_metrics["alignment_space"] = "full"
+            if alignment_space is not None:
+                target_subject_metrics = target_subject_metrics[
+                    target_subject_metrics["alignment_space"] == alignment_space
+                ]
+        metric_lookup = {
+            int(row["subject"]): row
+            for _, row in target_subject_metrics.iterrows()
+        }
 
-        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
-        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        fig.suptitle(
-            "Oral-Model Alignment (oral_t vs prior_t)",
-            fontsize=kwargs.get("fontsize", 16),
-            y=kwargs.get("y", 0.99),
+        subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
+        n_cols = max(1, int(n_cols))
+        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.35),
+            dpi=170,
+            sharex=True,
+            sharey=True,
         )
+        axes = np.asarray(axes).reshape(n_rows, n_cols)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        space = str(df["alignment_space"].dropna().iloc[0])
+        space_label = self.TARGET_ALIGNMENT_LABELS.get(space, space)
+        fig_title = title or f"Condition {condition_label}: target-based alignment ({oral_mode})"
+        fig.suptitle(f"{fig_title} - {space_label}", fontsize=16, y=0.995)
 
-        def rolling(values):
-            return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
+        for ax, sid in zip(axes.flat, subjects_sorted):
+            sub = df[df["subject"] == sid].sort_values("trial")
+            x = sub["trial_pct"].to_numpy(dtype=float)
+            ax.plot(
+                x,
+                self._rolling_mean(sub["model_target_prior"].to_numpy(dtype=float), window_size=window_size),
+                lw=1.0,
+                alpha=0.86,
+                color=self.TARGET_BASED_LINE_COLORS["model"],
+                label="Model target prior",
+            )
+            ax.plot(
+                x,
+                self._rolling_mean(sub["oral_target_mass"].to_numpy(dtype=float), window_size=window_size),
+                lw=1.0,
+                alpha=0.86,
+                color=self.TARGET_BASED_LINE_COLORS["oral"],
+                label="Oral target mass",
+            )
+            metrics = metric_lookup.get(int(sid))
+            if metrics is not None:
+                ax.set_title(
+                    f"S{int(sid)}  r={metrics.get('pearson_r', np.nan):.2f}, "
+                    f"cos={metrics.get('cosine_similarity', np.nan):.2f}",
+                    fontsize=8,
+                )
+            else:
+                ax.set_title(f"S{int(sid)}", fontsize=8)
+            ax.set_ylim(0, 1)
+            ax.set_xlim(0, 1)
+            ax.grid(alpha=0.18, linewidth=0.6)
 
-        row_offset = 0
-        for condition, subs in sorted(grouped.items()):
-            for idx, (iSub, info) in enumerate(subs):
-                local_row = idx // n_cols
-                col = idx % n_cols
-                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
-                n = len(info.get("model_oral_similarity", []))
-                x = np.arange(1, n + 1)
-                ax.plot(x, rolling(info.get("model_oral_similarity", [])), lw=2, label="1 - JS(prior, oral)")
-                ax.plot(x, rolling(info.get("model_mass_on_oral", [])), lw=2, label="Prior mass on oral")
-                ax.plot(x, rolling(info.get("target_model_prior", [])), lw=1.5, alpha=0.8, label="Target prior")
-                ax.plot(x, rolling(info.get("target_oral_score", [])), lw=1.5, alpha=0.8, label="Target oral score")
-                ax.set_ylim(0, 1)
-                ax.set(title=f"Subject {iSub} (Cond {condition})", xlabel="Trial", ylabel="Alignment")
-                ax.legend()
-            row_offset += rows_by_condition[condition]
+        for ax in list(axes.flat)[len(subjects_sorted):]:
+            ax.axis("off")
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel("Target probability/mass")
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel("Normalized trial")
 
-        plt.tight_layout()
+        handles, labels = axes.flat[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("Oral-model alignment saved to %s", save_path)
+            logger.info("Target-based alignment subject-wise plot saved to %s", save_path)
+        return fig
+
+    def save_target_based_alignment_outputs(
+        self,
+        target_based_results,
+        output_dir,
+        prefix="target_based_alignment",
+        group_plot_path=None,
+        subjectwise_plot_path=None,
+        window_size=16,
+        title_prefix=None,
+    ):
+        """Write target-based alignment CSVs and group/subject plots."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        df = target_based_results.copy()
+        if df.empty:
+            raise RuntimeError("No target-based alignment results to save.")
+
+        trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
+        subject_csv = output_dir / f"{prefix}_subject_metrics.csv"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}_group.png"
+        group_plot.parent.mkdir(parents=True, exist_ok=True)
+
+        subject_metrics = self.summarize_target_based_alignment(df)
+        df.to_csv(trial_csv, index=False)
+        subject_metrics.to_csv(subject_csv, index=False)
+        if "alignment_space" not in df.columns:
+            df["alignment_space"] = "full"
+        spaces = [space for space in self.TARGET_ALIGNMENT_SPACES if space in set(df["alignment_space"])]
+        if not spaces:
+            spaces = sorted(df["alignment_space"].dropna().unique())
+
+        subjectwise_plots = {}
+        for space in spaces:
+            suffix = self.TARGET_ALIGNMENT_SUFFIXES.get(space, str(space))
+            subjectwise_plot = output_dir / f"{prefix}_{suffix}_subject.png"
+            if len(spaces) == 1 and subjectwise_plot_path:
+                subjectwise_plot = Path(subjectwise_plot_path)
+            subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
+            subjectwise_plots[space] = subjectwise_plot
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        prefix_title = title_prefix or f"Condition {condition_label}"
+        fig = self.plot_target_based_alignment_group(
+            subject_metrics,
+            save_path=str(group_plot),
+            title=f"{prefix_title}: target-based alignment ({oral_mode})",
+        )
+        plt.close(fig)
+        for space, subjectwise_plot in subjectwise_plots.items():
+            fig = self.plot_target_based_alignment_subjectwise(
+                df,
+                target_subject_metrics=subject_metrics,
+                save_path=str(subjectwise_plot),
+                window_size=window_size,
+                title=f"{prefix_title}: target-based alignment ({oral_mode})",
+                alignment_space=space,
+            )
+            plt.close(fig)
+
+        return {
+            "trial_metrics": trial_csv,
+            "subject_metrics": subject_csv,
+            "group_plot": group_plot,
+            "subjectwise_plot": subjectwise_plots.get("full") or next(iter(subjectwise_plots.values()), None),
+            "subjectwise_plots": subjectwise_plots,
+        }
 
     # -----------------------------------------------------------------------
-    # Analysis 3: choice-conditioned prior alignment
+    # Main family 4: hit-based alignment
     # -----------------------------------------------------------------------
 
-    def compute_choice_conditioned_oral_alignment(
+    def compute_hit_based_alignment(
         self,
         model_results,
         oral_df,
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        beta=10.0,
+        oral_mass_results=None,
+        active_threshold=1e-12,
+        rank_top_k=None,
     ):
-        """Compute oral_t alignment with prior_t conditioned on current choice.
+        """Binarize target alignment for model active sets and oral top-N sets.
 
-        Task timing is stimulus -> choice -> oral report -> feedback, so this
-        model state is prior_t after observing stimulus and choice but before
-        the feedback-driven posterior update.
+        For each trial:
+        - default rule: model hit = target in active set; oral hit = target in
+          oral top-N, where N is the model active-set size.
+        - rank_top_k rule: model/oral hit = target is ranked in the top K for
+          that condition. Use {1: 2, 2: 4, 3: 4} for cond1 top2 and cond2/3
+          top4.
         """
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
-        out = {}
+        rows = []
 
         for iSub, info in model_res.items():
-            subj_df = oral_df[oral_df["iSub"] == iSub].reset_index(drop=True)
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
             if subj_df.empty:
                 continue
 
@@ -947,37 +2816,39 @@ class OralModelAlignmentMixin:
             target_hypo = 0 if condition == 1 else 42
             partition = Partition(n_dims=4, n_cats=n_cats)
             prior_log = self._extract_prior_log(info)
-            steps = info.get("best_step_results") or info.get("step_results") or []
-            n_trials = min(len(subj_df), len(prior_log), len(steps) if steps else len(subj_df))
-
-            choice_conditioned_similarity = []
-            choice_conditioned_mass_on_oral = []
-            choice_conditioned_target_prior = []
-            target_oral_score = []
-            expected_center_similarity = []
-            valid_oral = []
+            n_trials = min(len(subj_df), len(prior_log))
+            resolved_rank_top_k = self._resolve_rank_top_k(rank_top_k, condition)
+            hit_rule = "rank_topk" if resolved_rank_top_k is not None else "active_set_topn"
+            hit_rule_label = (
+                f"top{resolved_rank_top_k}"
+                if resolved_rank_top_k is not None
+                else "active_set_topN"
+            )
 
             for trial_idx in range(n_trials):
                 choice = int(subj_df.loc[trial_idx, "choice"])
-                step = steps[trial_idx] if trial_idx < len(steps) else {}
-                stimulus = step.get("perceived_stimulus")
-                if stimulus is None:
-                    stimulus = subj_df.loc[trial_idx, ["feature1", "feature2", "feature3", "feature4"]].to_numpy(
-                        dtype=float
+                raw_prior = np.asarray(prior_log[trial_idx], dtype=float).reshape(-1)
+                active_idx = self._active_hypothesis_indices(raw_prior, active_threshold=active_threshold)
+                model_valid = raw_prior.size > 0 and not np.isnan(raw_prior).all() and len(active_idx) > 0
+                active_set = set(active_idx.tolist())
+                model_target_rank = self._target_rank(raw_prior, target_hypo, min_value=active_threshold)
+                if model_valid and resolved_rank_top_k is None:
+                    model_target_hit = float(target_hypo in active_set)
+                elif model_valid:
+                    model_target_hit = float(
+                        target_hypo in active_set
+                        and np.isfinite(model_target_rank)
+                        and model_target_rank <= resolved_rank_top_k
                     )
+                else:
+                    model_target_hit = np.nan
 
-                conditioned = self._choice_conditioned_prior(
-                    partition=partition,
-                    prior=prior_log[trial_idx],
-                    stimulus=stimulus,
-                    choice=choice,
-                    beta=beta,
-                )
-
-                oral_center = None
-                if oral_mode == "center":
-                    oral_center = Oral_center_analysis._parse_center(subj_df.loc[trial_idx, "oral_center"])
-                    oral_dist = self._center_oral_distribution(oral_center, choice, partition)
+                precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
+                if precomputed_oral is not None:
+                    oral_dist = precomputed_oral
+                elif oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
                     oral_dist = self._region_oral_distribution(
@@ -985,123 +2856,383 @@ class OralModelAlignmentMixin:
                         choice,
                         partition,
                         n_samples=region_n_samples,
-                        random_state=4242 + trial_idx * 100000,
+                        random_state=42,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
 
-                valid = not (np.isnan(conditioned).any() or np.isnan(oral_dist).any())
-                valid_oral.append(bool(valid))
-                if not valid:
-                    choice_conditioned_similarity.append(np.nan)
-                    choice_conditioned_mass_on_oral.append(np.nan)
-                    choice_conditioned_target_prior.append(np.nan)
-                    target_oral_score.append(np.nan)
-                    expected_center_similarity.append(np.nan)
-                    continue
-
-                choice_conditioned_similarity.append(self._js_similarity(conditioned, oral_dist))
-                choice_conditioned_mass_on_oral.append(float(np.dot(conditioned, oral_dist)))
-                choice_conditioned_target_prior.append(
-                    float(conditioned[target_hypo]) if target_hypo < len(conditioned) else np.nan
-                )
-                target_oral_score.append(float(oral_dist[target_hypo]) if target_hypo < len(oral_dist) else np.nan)
-                if oral_mode == "center":
-                    expected_center_similarity.append(
-                        self._expected_center_similarity(partition, conditioned, oral_center, choice)
+                oral_valid = np.asarray(oral_dist, dtype=float).size > 0 and not np.isnan(oral_dist).any()
+                if oral_valid and model_valid:
+                    comparison_top_n = resolved_rank_top_k if resolved_rank_top_k is not None else len(active_idx)
+                    oral_topn_idx = self._oral_topn_indices(oral_dist, comparison_top_n)
+                    oral_topn_set = set(oral_topn_idx.tolist())
+                    oral_target_rank = self._target_rank(oral_dist, target_hypo, min_value=0.0)
+                    if resolved_rank_top_k is None:
+                        oral_target_hit = float(target_hypo in oral_topn_set)
+                    else:
+                        oral_target_hit = float(
+                            np.isfinite(oral_target_rank)
+                            and oral_target_rank <= resolved_rank_top_k
+                        )
+                    oral_topn_mass = float(np.sum(np.asarray(oral_dist, dtype=float)[oral_topn_idx]))
+                    active_oral_mass = float(
+                        np.sum(np.asarray(oral_dist, dtype=float)[active_idx[active_idx < len(oral_dist)]])
                     )
                 else:
-                    expected_center_similarity.append(np.nan)
+                    oral_topn_idx = np.asarray([], dtype=int)
+                    oral_target_hit = np.nan
+                    oral_target_rank = np.nan
+                    oral_topn_mass = np.nan
+                    active_oral_mass = np.nan
 
-            out[iSub] = {
-                "iSub": int(iSub),
-                "condition": condition,
-                "target_hypo": target_hypo,
-                "alignment_mode": "oral_t_vs_choice_conditioned_prior_t",
-                "oral_mode": oral_mode,
-                "choice_conditioned_similarity": choice_conditioned_similarity,
-                "choice_conditioned_mass_on_oral": choice_conditioned_mass_on_oral,
-                "choice_conditioned_target_prior": choice_conditioned_target_prior,
-                "target_oral_score": target_oral_score,
-                "expected_center_similarity": expected_center_similarity,
-                "valid_oral": valid_oral,
-            }
-        return out
+                rows.append(
+                    {
+                        "iSub": sid,
+                        "subject": sid,
+                        "condition": condition,
+                        "trial": trial_idx + 1,
+                        "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
+                        "oral_mode": oral_mode,
+                        "model_distribution": "prior",
+                        "hit_rule": hit_rule,
+                        "hit_rule_label": hit_rule_label,
+                        "rank_top_k": int(resolved_rank_top_k) if resolved_rank_top_k is not None else np.nan,
+                        "target_hypo": target_hypo,
+                        "active_set_size": int(len(active_idx)) if model_valid else 0,
+                        "oral_topn_size": int(len(oral_topn_idx)),
+                        "active_fraction": (
+                            float(len(active_idx) / raw_prior.size) if model_valid and raw_prior.size else np.nan
+                        ),
+                        "model_target_rank": model_target_rank,
+                        "oral_target_rank": oral_target_rank,
+                        "model_target_hit": model_target_hit,
+                        "oral_target_hit": oral_target_hit,
+                        "hit_agreement": (
+                            float(model_target_hit == oral_target_hit)
+                            if np.isfinite(model_target_hit) and np.isfinite(oral_target_hit)
+                            else np.nan
+                        ),
+                        "both_target_hit": (
+                            float(model_target_hit == 1.0 and oral_target_hit == 1.0)
+                            if np.isfinite(model_target_hit) and np.isfinite(oral_target_hit)
+                            else np.nan
+                        ),
+                        "oral_topn_mass": oral_topn_mass,
+                        "active_oral_mass": active_oral_mass,
+                        "valid": bool(np.isfinite(model_target_hit) and np.isfinite(oral_target_hit)),
+                    }
+                )
 
-    def plot_choice_conditioned_oral_alignment(
+        return pd.DataFrame(rows)
+
+    def summarize_hit_based_alignment(self, hit_based_results):
+        """Compute subject-level association metrics between binary hit traces."""
+        df = hit_based_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        def finite_mean(values):
+            arr = np.asarray(values, dtype=float).reshape(-1)
+            arr = arr[np.isfinite(arr)]
+            if arr.size == 0:
+                return np.nan
+            return float(np.mean(arr))
+
+        rows = []
+        for sid, sub in df.groupby("subject", observed=True):
+            model_hits = sub["model_target_hit"].to_numpy(dtype=float)
+            oral_hits = sub["oral_target_hit"].to_numpy(dtype=float)
+            valid = np.isfinite(model_hits) & np.isfinite(oral_hits)
+            if np.any(valid):
+                mh = model_hits[valid]
+                oh = oral_hits[valid]
+                agreement = float(np.mean(mh == oh))
+                joint_hit = float(np.mean((mh > 0.5) & (oh > 0.5)))
+                model_hit_rate = float(np.mean(mh > 0.5))
+                oral_hit_rate = float(np.mean(oh > 0.5))
+            else:
+                agreement = np.nan
+                joint_hit = np.nan
+                model_hit_rate = np.nan
+                oral_hit_rate = np.nan
+
+            rows.append(
+                {
+                    "subject": int(sid),
+                    "iSub": int(sid),
+                    "condition": int(sub["condition"].dropna().iloc[0]),
+                    "oral_mode": str(sub["oral_mode"].dropna().iloc[0]),
+                    "hit_rule": str(sub["hit_rule"].dropna().iloc[0]) if "hit_rule" in sub else "active_set_topn",
+                    "hit_rule_label": (
+                        str(sub["hit_rule_label"].dropna().iloc[0])
+                        if "hit_rule_label" in sub
+                        else "active_set_topN"
+                    ),
+                    "rank_top_k": (
+                        float(sub["rank_top_k"].dropna().iloc[0])
+                        if "rank_top_k" in sub and not sub["rank_top_k"].dropna().empty
+                        else np.nan
+                    ),
+                    "target_hypo": int(sub["target_hypo"].dropna().iloc[0]),
+                    "n_trials": int(len(sub)),
+                    "n_valid": int(np.sum(valid)),
+                    "valid_rate": float(np.mean(valid)) if len(valid) else np.nan,
+                    "model_hit_rate": model_hit_rate,
+                    "oral_hit_rate": oral_hit_rate,
+                    "joint_hit_rate": joint_hit,
+                    "active_set_size_mean": finite_mean(sub["active_set_size"]),
+                    "oral_topn_mass_mean": finite_mean(sub["oral_topn_mass"]),
+                    "active_oral_mass_mean": finite_mean(sub["active_oral_mass"]),
+                    "model_target_rank_mean": finite_mean(sub["model_target_rank"]),
+                    "oral_target_rank_mean": finite_mean(sub["oral_target_rank"]),
+                    "phi_correlation": self._safe_pearson(model_hits, oral_hits),
+                    "cohen_kappa": self._safe_cohen_kappa(model_hits, oral_hits),
+                    "hit_agreement_rate": agreement,
+                    "positive_hit_jaccard": self._safe_binary_jaccard(model_hits, oral_hits),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def plot_hit_based_alignment_group(
         self,
-        alignment_results,
+        hit_subject_metrics,
+        save_path=None,
+        title=None,
+    ):
+        """Plot group-level metrics for binary hit-based alignment."""
+        df = hit_subject_metrics.copy()
+        if df.empty:
+            raise RuntimeError("No hit-based subject metrics to plot.")
+
+        metrics = list(self.HIT_BASED_METRICS)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        hit_rule_label = (
+            str(df["hit_rule_label"].dropna().iloc[0])
+            if "hit_rule_label" in df and not df["hit_rule_label"].dropna().empty
+            else "active_set_topN"
+        )
+        fig_title = title or f"Condition {condition_label}: hit-based alignment ({oral_mode})"
+        fig, ax = plt.subplots(1, 1, figsize=(8.8, 5.3), dpi=170)
+        fig.suptitle(fig_title, fontsize=15, y=0.98)
+
+        x = np.arange(len(metrics), dtype=float)
+        means = []
+        sems = []
+        for metric in metrics:
+            vals = df[metric].to_numpy(dtype=float)
+            finite = np.isfinite(vals)
+            means.append(float(np.nanmean(vals)) if np.any(finite) else np.nan)
+            sems.append(self._sem(vals))
+        colors = [self.HIT_BASED_METRIC_COLORS.get(metric, "#555555") for metric in metrics]
+        ax.bar(x, means, yerr=sems, color=colors, alpha=0.84, capsize=4, edgecolor="white", linewidth=0.8)
+
+        rng = np.random.default_rng(123)
+        for idx, metric in enumerate(metrics):
+            vals = df[metric].to_numpy(dtype=float)
+            finite = np.isfinite(vals)
+            ax.scatter(
+                rng.normal(float(idx), 0.035, size=int(np.sum(finite))),
+                vals[finite],
+                s=20,
+                color="#222222",
+                alpha=0.65,
+                linewidths=0,
+                zorder=3,
+            )
+
+        ax.axhline(0, color="#333333", lw=0.8, alpha=0.5)
+        ax.set_xticks(x, [self.HIT_BASED_METRIC_LABELS.get(metric, metric) for metric in metrics])
+        ax.set_ylim(-1.0, 1.0)
+        ax.set_ylabel("Subject-level metric")
+        if hit_rule_label.startswith("top"):
+            ax.set_title(f"Model {hit_rule_label} target hit vs oral {hit_rule_label} target hit")
+        else:
+            ax.set_title("Model active-set target hit vs oral top-N target hit")
+        ax.grid(axis="y", alpha=0.18, linewidth=0.7)
+        ax.text(
+            0.02,
+            0.02,
+            (
+                f"n={df['subject'].nunique()}\n"
+                f"valid rate={np.nanmean(df['valid_rate']):.2f}\n"
+                f"model hit={np.nanmean(df['model_hit_rate']):.2f}, oral hit={np.nanmean(df['oral_hit_rate']):.2f}"
+            ),
+            transform=ax.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=8,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.82, "edgecolor": "#cccccc"},
+        )
+
+        fig.tight_layout(rect=[0, 0, 1, 0.93])
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info("Hit-based alignment group plot saved to %s", save_path)
+        return fig
+
+    def plot_hit_based_alignment_subjectwise(
+        self,
+        hit_based_results,
+        hit_subject_metrics=None,
         subjects=None,
         save_path=None,
         window_size=16,
-        **kwargs,
+        n_cols=8,
+        title=None,
     ):
-        """Plot oral alignment with choice-conditioned prior_t."""
-        results = self._filter_results(alignment_results, subjects)
-        grouped = defaultdict(list)
-        for iSub, info in results.items():
-            grouped[info["condition"]].append((iSub, info))
+        """Plot rolling binary target-hit rates in each subject panel."""
+        df = hit_based_results.copy()
+        if subjects is not None:
+            subject_set = {int(s) for s in subjects}
+            df = df[df["subject"].isin(subject_set)]
+        if df.empty:
+            raise RuntimeError("No hit-based trial metrics to plot.")
 
-        if not grouped:
-            raise RuntimeError("No choice-conditioned oral alignment results to plot.")
+        if hit_subject_metrics is None:
+            hit_subject_metrics = self.summarize_hit_based_alignment(df)
+        metric_lookup = {
+            int(row["subject"]): row
+            for _, row in hit_subject_metrics.iterrows()
+        }
 
-        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
-        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
-        fig.suptitle(
-            "Oral Alignment with Choice-Conditioned Prior",
-            fontsize=kwargs.get("fontsize", 16),
-            y=kwargs.get("y", 0.99),
+        subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
+        n_cols = max(1, int(n_cols))
+        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.35),
+            dpi=170,
+            sharex=True,
+            sharey=True,
         )
+        axes = np.asarray(axes).reshape(n_rows, n_cols)
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        hit_rule_label = (
+            str(df["hit_rule_label"].dropna().iloc[0])
+            if "hit_rule_label" in df and not df["hit_rule_label"].dropna().empty
+            else "active_set_topN"
+        )
+        if hit_rule_label.startswith("top"):
+            model_line_label = f"Model {hit_rule_label} target hit"
+            oral_line_label = f"Oral {hit_rule_label} target hit"
+        else:
+            model_line_label = "Model active-set target hit"
+            oral_line_label = "Oral top-N target hit"
+        fig_title = title or f"Condition {condition_label}: hit-based alignment ({oral_mode})"
+        fig.suptitle(fig_title, fontsize=16, y=0.995)
 
-        def rolling(values):
-            return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
+        for ax, sid in zip(axes.flat, subjects_sorted):
+            sub = df[df["subject"] == sid].sort_values("trial")
+            x = sub["trial_pct"].to_numpy(dtype=float)
+            ax.plot(
+                x,
+                self._rolling_mean(sub["model_target_hit"].to_numpy(dtype=float), window_size=window_size),
+                lw=1.05,
+                alpha=0.88,
+                color=self.HIT_BASED_LINE_COLORS["model"],
+                label=model_line_label,
+            )
+            ax.plot(
+                x,
+                self._rolling_mean(sub["oral_target_hit"].to_numpy(dtype=float), window_size=window_size),
+                lw=1.05,
+                alpha=0.88,
+                color=self.HIT_BASED_LINE_COLORS["oral"],
+                label=oral_line_label,
+            )
+            metrics = metric_lookup.get(int(sid))
+            if metrics is not None:
+                ax.set_title(
+                    f"S{int(sid)}  phi={metrics.get('phi_correlation', np.nan):.2f}, "
+                    f"agr={metrics.get('hit_agreement_rate', np.nan):.2f}",
+                    fontsize=8,
+                )
+            else:
+                ax.set_title(f"S{int(sid)}", fontsize=8)
+            ax.set_ylim(0, 1)
+            ax.set_xlim(0, 1)
+            ax.grid(alpha=0.18, linewidth=0.6)
 
-        row_offset = 0
-        for condition, subs in sorted(grouped.items()):
-            for idx, (iSub, info) in enumerate(subs):
-                local_row = idx // n_cols
-                col = idx % n_cols
-                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
-                n = len(info.get("choice_conditioned_similarity", []))
-                x = np.arange(1, n + 1)
-                ax.plot(
-                    x,
-                    rolling(info.get("choice_conditioned_similarity", [])),
-                    lw=2,
-                    label="1 - JS(choice-conditioned, oral)",
-                )
-                ax.plot(
-                    x,
-                    rolling(info.get("choice_conditioned_mass_on_oral", [])),
-                    lw=2,
-                    label="Choice-cond. mass on oral",
-                )
-                center_vals = info.get("expected_center_similarity", [])
-                if center_vals and not np.all(np.isnan(np.asarray(center_vals, dtype=float))):
-                    ax.plot(x, rolling(center_vals), lw=2, label="Expected center similarity")
-                ax.plot(
-                    x,
-                    rolling(info.get("choice_conditioned_target_prior", [])),
-                    lw=1.5,
-                    alpha=0.8,
-                    label="Target choice-cond. prior",
-                )
-                ax.plot(x, rolling(info.get("target_oral_score", [])), lw=1.5, alpha=0.8, label="Target oral score")
-                ax.set_ylim(0, 1)
-                ax.set(title=f"Subject {iSub} (Cond {condition})", xlabel="Trial", ylabel="Alignment")
-                ax.legend()
-            row_offset += rows_by_condition[condition]
+        for ax in list(axes.flat)[len(subjects_sorted):]:
+            ax.axis("off")
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel("Rolling hit rate")
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel("Normalized trial")
 
-        plt.tight_layout()
+        handles, labels = axes.flat[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("Choice-conditioned oral alignment saved to %s", save_path)
+            logger.info("Hit-based alignment subject-wise plot saved to %s", save_path)
+        return fig
+
+    def save_hit_based_alignment_outputs(
+        self,
+        hit_based_results,
+        output_dir,
+        prefix="hit_based_alignment",
+        group_plot_path=None,
+        subjectwise_plot_path=None,
+        window_size=16,
+        title_prefix=None,
+    ):
+        """Write hit-based alignment CSVs and group/subject plots."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        df = hit_based_results.copy()
+        if df.empty:
+            raise RuntimeError("No hit-based alignment results to save.")
+
+        trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
+        subject_csv = output_dir / f"{prefix}_subject_metrics.csv"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}_group.png"
+        subjectwise_plot = (
+            Path(subjectwise_plot_path)
+            if subjectwise_plot_path
+            else output_dir / f"{prefix}_subject.png"
+        )
+        group_plot.parent.mkdir(parents=True, exist_ok=True)
+        subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
+
+        subject_metrics = self.summarize_hit_based_alignment(df)
+        df.to_csv(trial_csv, index=False)
+        subject_metrics.to_csv(subject_csv, index=False)
+
+        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        prefix_title = title_prefix or f"Condition {condition_label}"
+        fig = self.plot_hit_based_alignment_group(
+            subject_metrics,
+            save_path=str(group_plot),
+            title=f"{prefix_title}: hit-based alignment ({oral_mode})",
+        )
+        plt.close(fig)
+        fig = self.plot_hit_based_alignment_subjectwise(
+            df,
+            hit_subject_metrics=subject_metrics,
+            save_path=str(subjectwise_plot),
+            window_size=window_size,
+            title=f"{prefix_title}: hit-based alignment ({oral_mode})",
+        )
+        plt.close(fig)
+
+        return {
+            "trial_metrics": trial_csv,
+            "subject_metrics": subject_csv,
+            "group_plot": group_plot,
+            "subjectwise_plot": subjectwise_plot,
+        }
 
     # -----------------------------------------------------------------------
-    # Analysis 4: active top-N capture alignment
+    # Main family 5: coverage-based alignment
     # -----------------------------------------------------------------------
 
-    def compute_oral_active_topn_capture(
+    def compute_coverage_based_alignment(
         self,
         model_results,
         oral_df,
@@ -1109,6 +3240,7 @@ class OralModelAlignmentMixin:
         subjects=None,
         region_n_samples=1000,
         active_threshold=1e-12,
+        oral_mass_results=None,
     ):
         """Compute how much oral top-N mass is captured by model active sets.
 
@@ -1121,7 +3253,8 @@ class OralModelAlignmentMixin:
         rows = []
 
         for iSub, info in model_res.items():
-            subj_df = oral_df[oral_df["iSub"] == iSub].reset_index(drop=True)
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
             if subj_df.empty:
                 continue
 
@@ -1142,8 +3275,11 @@ class OralModelAlignmentMixin:
                     continue
 
                 choice = int(subj_df.loc[trial_idx, "choice"])
-                if oral_mode == "center":
-                    center = Oral_center_analysis._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
+                if precomputed_oral is not None:
+                    oral_dist = precomputed_oral
+                elif oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
@@ -1152,7 +3288,7 @@ class OralModelAlignmentMixin:
                         choice,
                         partition,
                         n_samples=region_n_samples,
-                        random_state=5252 + trial_idx * 100000,
+                        random_state=42,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -1179,8 +3315,8 @@ class OralModelAlignmentMixin:
 
                 rows.append(
                     {
-                        "iSub": int(iSub),
-                        "subject": int(iSub),
+                        "iSub": sid,
+                        "subject": sid,
                         "condition": condition,
                         "trial": trial_idx + 1,
                         "trial_pct": (trial_idx + 1) / float(n_trials),
@@ -1201,10 +3337,36 @@ class OralModelAlignmentMixin:
 
         return pd.DataFrame(rows)
 
+    def summarize_coverage_based_alignment(self, coverage_results):
+        """Return subject means for the two coverage-based alignment metrics."""
+        df = coverage_results.copy()
+        if df.empty:
+            return pd.DataFrame()
+
+        metrics = list(self.COVERAGE_BASED_METRICS) + [
+            "active_oral_mass",
+            "oracle_topn_oral_mass",
+            "random_expected_mass",
+            "n_active",
+            "active_fraction",
+        ]
+        present_metrics = [metric for metric in metrics if metric in df.columns]
+        subject_means = (
+            df.groupby("subject", observed=True)[present_metrics]
+            .mean()
+            .reset_index()
+        )
+        meta = (
+            df.groupby("subject", observed=True)[["iSub", "condition", "oral_mode"]]
+            .first()
+            .reset_index()
+        )
+        return meta.merge(subject_means, on="subject", how="left")
+
     @staticmethod
-    def summarize_oral_active_topn_capture_by_bin(active_topn_results, bins=20):
-        """Return subject-balanced binned means and SEMs for active top-N capture."""
-        df = active_topn_results.copy()
+    def summarize_coverage_based_alignment_by_bin(coverage_results, bins=20):
+        """Return subject-balanced binned means and SEMs for coverage alignment."""
+        df = coverage_results.copy()
         if df.empty:
             return pd.DataFrame()
 
@@ -1245,152 +3407,96 @@ class OralModelAlignmentMixin:
         ax.plot(x, mean, lw=2.2, label=label, color=color)
         ax.fill_between(x, mean - sem, mean + sem, color=color, alpha=0.18, linewidth=0)
 
-    def plot_oral_active_topn_capture(
+    def plot_coverage_based_alignment_group(
         self,
-        active_topn_results,
+        coverage_results,
         save_path=None,
         bins=20,
         title=None,
     ):
-        """Plot group-level active-set capture of oral top-N mass."""
-        df = active_topn_results.copy()
+        """Plot group-level coverage alignment: subject bars and time course."""
+        df = coverage_results.copy()
         if df.empty:
-            raise RuntimeError("No oral active top-N capture results to plot.")
+            raise RuntimeError("No coverage-based alignment results to plot.")
 
-        binned = self.summarize_oral_active_topn_capture_by_bin(df, bins=bins)
-        subject_means = (
-            df.groupby("subject")[
-                ["active_capture_ratio", "active_topn_overlap", "active_oral_mass", "oracle_topn_oral_mass"]
-            ]
-            .mean()
-            .reset_index()
-        )
+        binned = self.summarize_coverage_based_alignment_by_bin(df, bins=bins)
+        subject_means = self.summarize_coverage_based_alignment(df)
 
         condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
-        fig_title = title or f"Condition {condition_label}: model active-set capture of oral top-N"
-        fig, axes = plt.subplots(2, 2, figsize=(14, 9), dpi=150)
-        fig.suptitle(fig_title, fontsize=15, y=0.98)
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        fig_title = title or f"Condition {condition_label}: coverage-based alignment ({oral_mode})"
+        fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2), dpi=170)
+        fig.suptitle(fig_title, fontsize=15, y=0.99)
 
-        x = binned["trial_pct"].to_numpy(dtype=float)
-
-        ax = axes[0, 0]
-        self._line_with_sem(
-            ax,
-            x,
-            binned["active_capture_ratio_mean"].to_numpy(dtype=float),
-            binned["active_capture_ratio_sem"].to_numpy(dtype=float),
-            "active oral mass / oral top-N mass",
-            "#1f77b4",
-        )
-        self._line_with_sem(
-            ax,
-            x,
-            binned["active_topn_overlap_mean"].to_numpy(dtype=float),
-            binned["active_topn_overlap_sem"].to_numpy(dtype=float),
-            "active set overlap with oral top-N",
-            "#ff7f0e",
-        )
-        ax.set_ylim(0, 1)
-        ax.set_xlabel("Normalized trial")
-        ax.set_ylabel("Proportion")
-        ax.set_title("Coverage efficiency under same N")
-        ax.legend(frameon=False)
-
-        ax = axes[0, 1]
-        self._line_with_sem(
-            ax,
-            x,
-            binned["active_oral_mass_mean"].to_numpy(dtype=float),
-            binned["active_oral_mass_sem"].to_numpy(dtype=float),
-            "oral mass in model active set",
-            "#2ca02c",
-        )
-        self._line_with_sem(
-            ax,
-            x,
-            binned["oracle_topn_oral_mass_mean"].to_numpy(dtype=float),
-            binned["oracle_topn_oral_mass_sem"].to_numpy(dtype=float),
-            "oral top-N mass (oracle)",
-            "#d62728",
-        )
-        self._line_with_sem(
-            ax,
-            x,
-            binned["random_expected_mass_mean"].to_numpy(dtype=float),
-            binned["random_expected_mass_sem"].to_numpy(dtype=float),
-            "random N baseline",
-            "#7f7f7f",
-        )
-        y_max = float(np.nanmax(binned["oracle_topn_oral_mass_mean"].to_numpy(dtype=float)))
-        ax.set_ylim(0, min(1.0, max(0.05, y_max * 1.35)))
-        ax.set_xlabel("Normalized trial")
-        ax.set_ylabel("Oral probability mass")
-        ax.set_title("How much oral mass is captured")
-        ax.legend(frameon=False)
-
-        ax = axes[1, 0]
-        box_data = [
-            subject_means["active_capture_ratio"].to_numpy(dtype=float),
-            subject_means["active_topn_overlap"].to_numpy(dtype=float),
-            subject_means["active_oral_mass"].to_numpy(dtype=float),
-            subject_means["oracle_topn_oral_mass"].to_numpy(dtype=float),
-        ]
-        labels = ["capture\nratio", "top-N\noverlap", "active\nmass", "oracle\nmass"]
-        ax.boxplot(box_data, tick_labels=labels, showmeans=True)
+        ax = axes[0]
+        metric_names = list(self.COVERAGE_BASED_METRICS)
+        x_bar = np.arange(len(metric_names), dtype=float)
+        means = []
+        sems = []
+        for metric in metric_names:
+            vals = subject_means[metric].to_numpy(dtype=float)
+            finite = np.isfinite(vals)
+            means.append(float(np.nanmean(vals)) if np.any(finite) else np.nan)
+            sems.append(self._sem(vals))
+        colors = [self.COVERAGE_BASED_COLORS[metric] for metric in metric_names]
+        ax.bar(x_bar, means, yerr=sems, color=colors, alpha=0.84, capsize=4, edgecolor="white", linewidth=0.8)
         rng = np.random.default_rng(123)
-        for idx, vals in enumerate(box_data, start=1):
-            ax.scatter(rng.normal(idx, 0.035, size=len(vals)), vals, s=14, alpha=0.65, color="#444444")
+        for idx, metric in enumerate(metric_names):
+            vals = subject_means[metric].to_numpy(dtype=float)
+            finite = np.isfinite(vals)
+            ax.scatter(
+                rng.normal(float(idx), 0.035, size=int(np.sum(finite))),
+                vals[finite],
+                s=20,
+                color="#222222",
+                alpha=0.65,
+                linewidths=0,
+                zorder=3,
+            )
+        ax.set_xticks(x_bar, [self.COVERAGE_BASED_LABELS[metric] for metric in metric_names])
+        ax.tick_params(axis="x", labelrotation=10)
         ax.set_ylim(0, 1)
         ax.set_ylabel("Subject mean")
-        ax.set_title("Between-subject summary")
+        ax.set_title("Group mean")
+        ax.grid(axis="y", alpha=0.18, linewidth=0.7)
 
-        ax = axes[1, 1]
-        self._line_with_sem(
-            ax,
-            x,
-            binned["n_active_mean"].to_numpy(dtype=float),
-            binned["n_active_sem"].to_numpy(dtype=float),
-            "N active hypotheses",
-            "#9467bd",
-        )
+        ax = axes[1]
+        x = binned["trial_pct"].to_numpy(dtype=float)
+        for metric in metric_names:
+            self._line_with_sem(
+                ax,
+                x,
+                binned[f"{metric}_mean"].to_numpy(dtype=float),
+                binned[f"{metric}_sem"].to_numpy(dtype=float),
+                self.COVERAGE_BASED_LABELS[metric],
+                self.COVERAGE_BASED_COLORS[metric],
+            )
+        ax.set_ylim(0, 1)
+        ax.set_xlim(0, 1)
         ax.set_xlabel("Normalized trial")
-        ax.set_ylabel("N")
-        ax2 = ax.twinx()
-        self._line_with_sem(
-            ax2,
-            x,
-            binned["active_fraction_mean"].to_numpy(dtype=float),
-            binned["active_fraction_sem"].to_numpy(dtype=float),
-            "active fraction",
-            "#8c564b",
-        )
-        ax2.set_ylabel("N / total hypotheses")
-        ax.set_title("Model hypothesis-set size")
-        lines, labels_left = ax.get_legend_handles_labels()
-        lines2, labels_right = ax2.get_legend_handles_labels()
-        ax.legend(lines + lines2, labels_left + labels_right, frameon=False, loc="upper right")
+        ax.set_ylabel("Coverage")
+        ax.set_title("Group time course")
+        ax.grid(alpha=0.18, linewidth=0.7)
+        ax.legend(frameon=False, loc="best")
 
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
+        fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, bbox_inches="tight")
-            logger.info("Oral active top-N capture plot saved to %s", save_path)
+            logger.info("Coverage-based alignment group plot saved to %s", save_path)
         return fig
 
-    def plot_oral_active_topn_capture_subjectwise(
+    def plot_coverage_based_alignment_subjectwise(
         self,
-        active_topn_results,
+        coverage_results,
         save_path=None,
         window_size=16,
         n_cols=8,
         title=None,
     ):
-        """Plot active top-N capture traces for each subject."""
-        df = active_topn_results.copy()
+        """Plot rolling coverage-based alignment traces in each subject panel."""
+        df = coverage_results.copy()
         if df.empty:
-            raise RuntimeError("No oral active top-N capture results to plot.")
-
-        def rolling(values):
-            return pd.Series(values, dtype=float).rolling(window=window_size, min_periods=window_size).mean().to_numpy()
+            raise RuntimeError("No coverage-based alignment results to plot.")
 
         subjects = sorted(df["subject"].unique())
         n_cols = max(1, int(n_cols))
@@ -1404,101 +3510,101 @@ class OralModelAlignmentMixin:
         )
         axes = np.asarray(axes).reshape(n_rows, n_cols)
         condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
-        fig_title = title or f"Condition {condition_label}: subject-wise active-set capture of oral top-N"
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
+        fig_title = title or f"Condition {condition_label}: subject-wise coverage-based alignment ({oral_mode})"
         fig.suptitle(fig_title, fontsize=16, y=0.995)
 
         for ax, sid in zip(axes.flat, subjects):
             sub = df[df["subject"] == sid].sort_values("trial")
-            x = sub["trial"].to_numpy(dtype=float)
-            ax.plot(x, rolling(sub["active_capture_ratio"]), lw=1.8, color="#1f77b4", label="capture ratio")
-            ax.plot(x, rolling(sub["active_topn_overlap"]), lw=1.5, color="#ff7f0e", label="top-N overlap")
-            ax.plot(x, rolling(sub["active_oral_mass"]), lw=1.0, color="#2ca02c", alpha=0.75, label="active oral mass")
-            ax.plot(x, rolling(sub["random_expected_mass"]), lw=1.0, color="#7f7f7f", alpha=0.65, label="random N")
+            x = sub["trial_pct"].to_numpy(dtype=float)
+            for metric in self.COVERAGE_BASED_METRICS:
+                ax.plot(
+                    x,
+                    self._rolling_mean(sub[metric], window_size),
+                    lw=1.05,
+                    alpha=0.88,
+                    color=self.COVERAGE_BASED_COLORS[metric],
+                    label=self.COVERAGE_BASED_LABELS[metric],
+                )
             ax.set_title(
                 (
                     f"S{int(sid)}  "
                     f"cap={np.nanmean(sub['active_capture_ratio']):.2f}, "
-                    f"ov={np.nanmean(sub['active_topn_overlap']):.2f}, "
-                    f"N={np.nanmean(sub['n_active']):.1f}"
+                    f"ov={np.nanmean(sub['active_topn_overlap']):.2f}"
                 ),
                 fontsize=8,
             )
             ax.set_ylim(0, 1)
-            ax.set_xlim(1, max(x))
+            ax.set_xlim(0, 1)
             ax.grid(alpha=0.18, linewidth=0.6)
 
         for ax in list(axes.flat)[len(subjects):]:
             ax.axis("off")
         for row in range(n_rows):
-            axes[row, 0].set_ylabel("Proportion / mass")
+            axes[row, 0].set_ylabel("Coverage")
         for col in range(n_cols):
-            axes[-1, col].set_xlabel("Trial")
+            axes[-1, col].set_xlabel("Normalized trial")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, bbox_inches="tight")
-            logger.info("Subject-wise oral active top-N capture plot saved to %s", save_path)
+            logger.info("Coverage-based alignment subject-wise plot saved to %s", save_path)
         return fig
 
-    def save_oral_active_topn_capture_outputs(
+    def save_coverage_based_alignment_outputs(
         self,
-        active_topn_results,
+        coverage_results,
         output_dir,
-        prefix="oral_active_topn_capture",
+        prefix="coverage_based_alignment",
         group_plot_path=None,
         subjectwise_plot_path=None,
         window_size=16,
         bins=20,
         title_prefix=None,
     ):
-        """Write active top-N capture CSVs and plots to an output directory."""
+        """Write coverage-based alignment CSVs and group/subject plots."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        df = active_topn_results.copy()
+        df = coverage_results.copy()
         if df.empty:
-            raise RuntimeError("No oral active top-N capture results to save.")
+            raise RuntimeError("No coverage-based alignment results to save.")
 
         trial_csv = output_dir / f"{prefix}_trial_metrics.csv"
         subject_csv = output_dir / f"{prefix}_subject_means.csv"
         binned_csv = output_dir / f"{prefix}_binned.csv"
-        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}.png"
+        group_plot = Path(group_plot_path) if group_plot_path else output_dir / f"{prefix}_group.png"
         subjectwise_plot = (
             Path(subjectwise_plot_path)
             if subjectwise_plot_path
-            else output_dir / f"{prefix}_subjectwise.png"
+            else output_dir / f"{prefix}_subject.png"
         )
         group_plot.parent.mkdir(parents=True, exist_ok=True)
         subjectwise_plot.parent.mkdir(parents=True, exist_ok=True)
 
-        subject_means = (
-            df.groupby("subject")[
-                ["active_capture_ratio", "active_topn_overlap", "active_oral_mass", "oracle_topn_oral_mass"]
-            ]
-            .mean()
-            .reset_index()
-        )
-        binned = self.summarize_oral_active_topn_capture_by_bin(df, bins=bins)
+        subject_means = self.summarize_coverage_based_alignment(df)
+        binned = self.summarize_coverage_based_alignment_by_bin(df, bins=bins)
 
         df.to_csv(trial_csv, index=False)
         subject_means.to_csv(subject_csv, index=False)
         binned.to_csv(binned_csv, index=False)
 
         condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
+        oral_mode = str(df["oral_mode"].dropna().iloc[0])
         prefix_title = title_prefix or f"Condition {condition_label}"
-        fig = self.plot_oral_active_topn_capture(
+        fig = self.plot_coverage_based_alignment_group(
             df,
             save_path=str(group_plot),
             bins=bins,
-            title=f"{prefix_title}: model active-set capture of oral top-N",
+            title=f"{prefix_title}: coverage-based alignment ({oral_mode})",
         )
         plt.close(fig)
-        fig = self.plot_oral_active_topn_capture_subjectwise(
+        fig = self.plot_coverage_based_alignment_subjectwise(
             df,
             save_path=str(subjectwise_plot),
             window_size=window_size,
-            title=f"{prefix_title}: subject-wise active-set capture of oral top-N",
+            title=f"{prefix_title}: subject-wise coverage-based alignment ({oral_mode})",
         )
         plt.close(fig)
 

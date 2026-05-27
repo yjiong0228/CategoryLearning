@@ -16,13 +16,11 @@ matplotlib.use("Agg")
 
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.model_evaluation import ModelEval
-from src.Bayesian_state.utils.oral_model_alignment import Oral_center_analysis, Oral_region_analysis
 
 
 ORAL_MODE_CHOICES = ("center", "region")
-COMMON_REQUIRED_COLS = ("iSub", "condition", "choice")
-CENTER_REQUIRED_COLS = ("oral_center",)
-REGION_REQUIRED_COLS = ("oral_A", "oral_b")
+MODEL_DISTRIBUTION_CHOICES = ("posterior", "prior")
+ORAL_BASED_MODEL_STATE_CHOICES = ("choice_conditioned_prior", "prior", "posterior")
 DEFAULT_REGION_N_SAMPLES = 1000
 DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
 TRIAL_DATA_COLS = ("feature1", "feature2", "feature3", "feature4", "category", "choice", "feedback")
@@ -243,12 +241,38 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plot-accuracy-family", type=Path, default=None)
     p.add_argument("--trajectory-dir", type=Path, default=None)
     p.add_argument("--trajectory-posterior-dir", type=Path, default=None)
-    p.add_argument("--plot-oral", type=Path, default=None)
-    p.add_argument("--plot-oral-alignment", type=Path, default=None)
-    p.add_argument("--plot-choice-conditioned-oral", type=Path, default=None)
-    p.add_argument("--plot-active-topn-capture", type=Path, default=None)
-    p.add_argument("--plot-active-topn-subjectwise", type=Path, default=None)
+    p.add_argument("--plot-oral-mass", type=Path, default=None)
+    p.add_argument("--plot-distribution-alignment-group", type=Path, default=None)
+    p.add_argument("--plot-distribution-alignment-subject", type=Path, default=None)
+    p.add_argument("--plot-oral-based-alignment-group", type=Path, default=None)
+    p.add_argument("--plot-oral-based-alignment-subject", type=Path, default=None)
+    p.add_argument("--plot-target-based-alignment-group", type=Path, default=None)
+    p.add_argument("--plot-target-based-alignment-subject", type=Path, default=None)
+    p.add_argument("--plot-hit-based-alignment-group", type=Path, default=None)
+    p.add_argument("--plot-hit-based-alignment-subject", type=Path, default=None)
+    p.add_argument("--plot-coverage-based-alignment-group", type=Path, default=None)
+    p.add_argument("--plot-coverage-based-alignment-subject", type=Path, default=None)
     p.add_argument("--oral-mode", type=str, choices=ORAL_MODE_CHOICES, default=None)
+    p.add_argument(
+        "--distribution-alignment-model-state",
+        type=str,
+        choices=MODEL_DISTRIBUTION_CHOICES,
+        default="prior",
+        help=(
+            "Model distribution state used in distribution_alignment_group/subject plots. "
+            "Defaults to prior_t to match the pre-feedback timing of oral reports."
+        ),
+    )
+    p.add_argument(
+        "--oral-based-alignment-model-state",
+        type=str,
+        choices=ORAL_BASED_MODEL_STATE_CHOICES,
+        default="choice_conditioned_prior",
+        help=(
+            "Model belief state projected into oral center/region space. "
+            "Defaults to choice-conditioned prior_t, matching oral-report timing."
+        ),
+    )
     p.add_argument("--oral-data", type=Path, default=None)
     p.add_argument("--oral-region-n-samples", type=int, default=None)
     return p.parse_args()
@@ -279,6 +303,20 @@ def _resolve_plot_window_size(results: Dict[int, Dict[str, Any]], default: int =
         return int(default)
     values = sorted(values)
     return int(values[len(values) // 2])
+
+
+def _resolve_hit_rank_topk(results: Dict[int, Dict[str, Any]]) -> Tuple[Dict[int, int], str]:
+    """Use cond1 top2 and cond2/cond3 top4 for rank-threshold hit alignment."""
+    mapping = {1: 2, 2: 4, 3: 4}
+    conditions = sorted({int(info.get("condition")) for info in results.values() if info.get("condition") is not None})
+    if not conditions:
+        return mapping, "top_by_condition"
+
+    topk_by_condition = {condition: mapping.get(condition, 4) for condition in conditions}
+    unique_topk = sorted(set(topk_by_condition.values()))
+    if len(unique_topk) == 1:
+        return topk_by_condition, f"top{unique_topk[0]}"
+    return topk_by_condition, "top_by_condition"
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -338,30 +376,6 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
     return final_mode, final_data_path.resolve(), int(region_n_samples)
 
 
-def _build_oral_hits(
-    mode: str,
-    oral_df: pd.DataFrame,
-    oral_data_path: Path,
-    region_n_samples: int,
-) -> Dict[int, Dict[str, Any]]:
-    if mode == "center":
-        required_cols = COMMON_REQUIRED_COLS + CENTER_REQUIRED_COLS
-        missing = [col for col in required_cols if col not in oral_df.columns]
-        if missing:
-            raise ValueError(f"Oral center evaluation failed for {oral_data_path}: missing columns {missing}.")
-        oral_hits = Oral_center_analysis().get_oral_hypo_hits(oral_df)
-    else:
-        required_cols = COMMON_REQUIRED_COLS + REGION_REQUIRED_COLS
-        missing = [col for col in required_cols if col not in oral_df.columns]
-        if missing:
-            raise ValueError(f"Oral region evaluation failed for {oral_data_path}: missing columns {missing}.")
-        oral_hits = Oral_region_analysis().get_oral_hypo_hits(oral_df, n_samples=region_n_samples)
-
-    if not oral_hits:
-        raise RuntimeError(f"Oral {mode} evaluation produced no subject-level hits for {oral_data_path}.")
-    return oral_hits
-
-
 def main() -> None:
     args = parse_args()
     input_dir = args.input_dir.resolve()
@@ -371,6 +385,9 @@ def main() -> None:
     agg_out = args.aggregate_output or (input_dir / "all_subjects.json")
     plots_dir = args.plots_dir or (input_dir / "plots")
     plots_dir.mkdir(parents=True, exist_ok=True)
+    oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
+    oral_plots_dir = plots_dir / f"oral_{oral_mode}_mode"
+    oral_plots_dir.mkdir(parents=True, exist_ok=True)
 
     plot_accuracy = args.plot_accuracy or (plots_dir / "accuracy.png")
     plot_grid = args.plot_grid or (plots_dir / "error_grid.png")
@@ -380,20 +397,46 @@ def main() -> None:
     plot_accuracy_family = args.plot_accuracy_family or (plots_dir / "accuracy_family.png")
     trajectory_dir = args.trajectory_dir or (plots_dir / "trajectory_accuracy")
     trajectory_posterior_dir = args.trajectory_posterior_dir or (plots_dir / "trajectory_posterior")
-    plot_oral = args.plot_oral or (plots_dir / "oral_vs_model.png")
-    plot_oral_alignment = args.plot_oral_alignment or (plots_dir / "oral_model_alignment.png")
-    plot_choice_conditioned_oral = args.plot_choice_conditioned_oral or (plots_dir / "oral_choice_conditioned_alignment.png")
-    plot_active_topn = args.plot_active_topn_capture or (plots_dir / "oral_active_topn_capture.png")
-    plot_active_topn_subjectwise = (
-        args.plot_active_topn_subjectwise or (plots_dir / "oral_active_topn_capture_subjectwise.png")
+    plot_oral_mass = args.plot_oral_mass or (oral_plots_dir / "oral_mass.png")
+    plot_distribution_alignment_group = (
+        args.plot_distribution_alignment_group or (oral_plots_dir / "distribution_based_alignment_group.png")
     )
-    oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
+    plot_distribution_alignment_subject = (
+        args.plot_distribution_alignment_subject or (oral_plots_dir / "distribution_based_alignment_subject.png")
+    )
+    plot_oral_based_alignment_group = (
+        args.plot_oral_based_alignment_group or (oral_plots_dir / "oral_based_alignment_group.png")
+    )
+    plot_oral_based_alignment_subject = (
+        args.plot_oral_based_alignment_subject or (oral_plots_dir / "oral_based_alignment_subject.png")
+    )
+    plot_target_based_alignment_group = (
+        args.plot_target_based_alignment_group or (oral_plots_dir / "target_based_alignment_group.png")
+    )
+    plot_target_based_alignment_subject = (
+        args.plot_target_based_alignment_subject or (oral_plots_dir / "target_based_alignment_subject.png")
+    )
+    plot_hit_based_alignment_group = (
+        args.plot_hit_based_alignment_group or (oral_plots_dir / "hit_based_alignment_group.png")
+    )
+    plot_hit_based_alignment_subject = (
+        args.plot_hit_based_alignment_subject or (oral_plots_dir / "hit_based_alignment_subject.png")
+    )
+    plot_coverage_based_alignment_group = (
+        args.plot_coverage_based_alignment_group
+        or (oral_plots_dir / "coverage_based_alignment_group.png")
+    )
+    plot_coverage_based_alignment_subject = (
+        args.plot_coverage_based_alignment_subject
+        or (oral_plots_dir / "coverage_based_alignment_subject.png")
+    )
 
     if not oral_data_path.is_file():
         raise FileNotFoundError(f"Oral data file not found: {oral_data_path}")
 
     oral_df = pd.read_csv(oral_data_path)
     aggregated = aggregate_grid_results(input_dir, eval_prediction_mode=args.eval_prediction_mode, trial_df=oral_df)
+    oral_eval_df = oral_df[oral_df["iSub"].isin(aggregated.keys())].copy()
 
     me = ModelEval()
 
@@ -444,53 +487,135 @@ def main() -> None:
     me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
     print(f"Saved cluster dynamics plot -> {plot_cluster}")
 
-    oral_hits = _build_oral_hits(oral_mode, oral_df, oral_data_path, oral_region_n_samples)
-    me.plot_k_oral_comparison(aggregated, oral_hits, save_path=str(plot_oral))
-    print(f"Saved oral vs model plot -> {plot_oral}")
+    oral_mass_cache = oral_plots_dir / "oral_mass_probabilities.npz"
+    if oral_mass_cache.is_file():
+        oral_mass = me.load_oral_mass_probabilities(oral_mass_cache)
+        print(f"Loaded oral mass probabilities -> {oral_mass_cache}")
+    else:
+        oral_mass = me.compute_oral_mass_probabilities(
+            oral_eval_df,
+            oral_mode=oral_mode,
+            region_n_samples=oral_region_n_samples,
+        )
+        me.save_oral_mass_probabilities(oral_mass, oral_mass_cache)
+        print(f"Saved oral mass probabilities -> {oral_mass_cache}")
+    me.plot_oral_mass_probabilities(oral_mass, save_path=str(plot_oral_mass))
+    print(f"Saved oral mass plot -> {plot_oral_mass}")
 
-    oral_alignment = me.compute_oral_model_alignment(
+    distribution_alignment = me.compute_distribution_based_alignment(
         aggregated,
-        oral_df,
+        oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        model_distribution=args.distribution_alignment_model_state,
+        oral_mass_results=oral_mass,
     )
-    me.plot_oral_model_alignment(oral_alignment, save_path=str(plot_oral_alignment))
-    print(f"Saved oral-model alignment plot -> {plot_oral_alignment}")
-
-    choice_conditioned_alignment = me.compute_choice_conditioned_oral_alignment(
-        aggregated,
-        oral_df,
-        oral_mode=oral_mode,
-        region_n_samples=oral_region_n_samples,
-    )
-    me.plot_choice_conditioned_oral_alignment(
-        choice_conditioned_alignment,
-        save_path=str(plot_choice_conditioned_oral),
-    )
-    print(f"Saved choice-conditioned oral alignment plot -> {plot_choice_conditioned_oral}")
-
-    active_topn_capture = me.compute_oral_active_topn_capture(
-        aggregated,
-        oral_df,
-        oral_mode=oral_mode,
-        region_n_samples=oral_region_n_samples,
-    )
-    active_topn_outputs = me.save_oral_active_topn_capture_outputs(
-        active_topn_capture,
-        plots_dir,
-        group_plot_path=str(plot_active_topn),
-        subjectwise_plot_path=str(plot_active_topn_subjectwise),
+    distribution_alignment_outputs = me.save_distribution_based_alignment_outputs(
+        distribution_alignment,
+        oral_plots_dir,
+        prefix="distribution_based_alignment",
+        group_plot_path=str(plot_distribution_alignment_group),
+        subjectwise_plot_path=str(plot_distribution_alignment_subject),
         window_size=_resolve_plot_window_size(aggregated),
     )
-    print(f"Saved oral active top-N capture plot -> {active_topn_outputs['group_plot']}")
-    print(f"Saved oral active top-N subject-wise plot -> {active_topn_outputs['subjectwise_plot']}")
+    print(f"Saved distribution alignment group plot -> {distribution_alignment_outputs['group_plot']}")
+    print(f"Saved distribution alignment subject-wise plot -> {distribution_alignment_outputs['subjectwise_plot']}")
+
+    oral_based_alignment = me.compute_oral_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        model_distribution=args.oral_based_alignment_model_state,
+    )
+    oral_based_alignment_outputs = me.save_oral_based_alignment_outputs(
+        oral_based_alignment,
+        oral_plots_dir,
+        group_plot_path=str(plot_oral_based_alignment_group),
+        subjectwise_plot_path=str(plot_oral_based_alignment_subject),
+        window_size=_resolve_plot_window_size(aggregated),
+    )
+    print(f"Saved oral-based alignment group plot -> {oral_based_alignment_outputs['group_plot']}")
+    print(f"Saved oral-based alignment subject-wise plot -> {oral_based_alignment_outputs['subjectwise_plot']}")
+
+    target_based_alignment = me.compute_target_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        oral_mass_results=oral_mass,
+    )
+    target_based_alignment_outputs = me.save_target_based_alignment_outputs(
+        target_based_alignment,
+        oral_plots_dir,
+        group_plot_path=str(plot_target_based_alignment_group),
+        subjectwise_plot_path=str(plot_target_based_alignment_subject),
+        window_size=_resolve_plot_window_size(aggregated),
+    )
+    print(f"Saved target-based alignment group plot -> {target_based_alignment_outputs['group_plot']}")
+    for space, path in target_based_alignment_outputs.get("subjectwise_plots", {}).items():
+        print(f"Saved target-based alignment {space} subject-wise plot -> {path}")
+
+    hit_based_alignment = me.compute_hit_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        oral_mass_results=oral_mass,
+    )
+    hit_based_alignment_outputs = me.save_hit_based_alignment_outputs(
+        hit_based_alignment,
+        oral_plots_dir,
+        group_plot_path=str(plot_hit_based_alignment_group),
+        subjectwise_plot_path=str(plot_hit_based_alignment_subject),
+        window_size=_resolve_plot_window_size(aggregated),
+    )
+    print(f"Saved hit-based alignment group plot -> {hit_based_alignment_outputs['group_plot']}")
+    print(f"Saved hit-based alignment subject-wise plot -> {hit_based_alignment_outputs['subjectwise_plot']}")
+
+    hit_rank_topk, hit_rank_label = _resolve_hit_rank_topk(aggregated)
+    hit_rank_based_alignment = me.compute_hit_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        oral_mass_results=oral_mass,
+        rank_top_k=hit_rank_topk,
+    )
+    hit_rank_based_alignment_outputs = me.save_hit_based_alignment_outputs(
+        hit_rank_based_alignment,
+        oral_plots_dir,
+        prefix=f"hit_based_alignment_{hit_rank_label}",
+        window_size=_resolve_plot_window_size(aggregated),
+        title_prefix=f"Condition-specific {hit_rank_label}",
+    )
+    print(f"Saved {hit_rank_label} hit-based alignment group plot -> {hit_rank_based_alignment_outputs['group_plot']}")
+    print(
+        f"Saved {hit_rank_label} hit-based alignment subject-wise plot -> "
+        f"{hit_rank_based_alignment_outputs['subjectwise_plot']}"
+    )
+
+    coverage_based_alignment = me.compute_coverage_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        oral_mass_results=oral_mass,
+    )
+    coverage_based_alignment_outputs = me.save_coverage_based_alignment_outputs(
+        coverage_based_alignment,
+        oral_plots_dir,
+        group_plot_path=str(plot_coverage_based_alignment_group),
+        subjectwise_plot_path=str(plot_coverage_based_alignment_subject),
+        window_size=_resolve_plot_window_size(aggregated),
+    )
+    print(f"Saved coverage-based alignment group plot -> {coverage_based_alignment_outputs['group_plot']}")
+    print(f"Saved coverage-based alignment subject-wise plot -> {coverage_based_alignment_outputs['subjectwise_plot']}")
 
     aggregated_serializable = {
         sid: {
             **info,
             "grid_errors": _serialize_grid_errors(info.get("grid_errors", {})),
-            "oral_model_alignment": oral_alignment.get(sid),
-            "choice_conditioned_oral_alignment": choice_conditioned_alignment.get(sid),
         }
         for sid, info in aggregated.items()
     }
