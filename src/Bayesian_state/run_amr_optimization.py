@@ -15,6 +15,7 @@ from src.Bayesian_state.utils.optimizer_amr import StateModelAMROptimizer  # noq
 from src.Bayesian_state.utils.optimizer_common import (
     PREDICTION_MODE_CHOICES,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    LOSS_METRIC_CHOICES,
 )
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
@@ -117,6 +118,16 @@ def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
             "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
         )
     return prediction_mode, selection_prediction_mode
+
+
+def resolve_loss_metric(cfg: Dict[str, Any]) -> str:
+    raw = cfg.get("loss_metric")
+    if raw is None:
+        raise ValueError(f"Config must include loss_metric. Valid: {LOSS_METRIC_CHOICES}")
+    metric = str(raw).strip().lower()
+    if metric not in LOSS_METRIC_CHOICES:
+        raise ValueError(f"Unsupported loss_metric '{metric}'. Valid: {LOSS_METRIC_CHOICES}")
+    return metric
 
 
 def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
@@ -234,6 +245,7 @@ def serialize_result(
         "beta_log": getattr(best, "beta_log", None),
         "representative_run_index": getattr(best, "representative_run_index", 0),
         "selection_meta": result.get("selection_meta", {}),
+        "loss_metric": result.get("selection_meta", {}).get("loss_metric"),
         "raw_step_results_ref": raw_step_ref,
         "grid_errors": _build_grid_errors(result),
         "grid_summary": [
@@ -279,6 +291,7 @@ def run_single_subject(
     keep_logs: bool,
     prediction_mode: str,
     selection_prediction_mode: str,
+    loss_metric: str,
 ) -> None:
     opt = StateModelAMROptimizer(
         engine_config=engine_config,
@@ -300,6 +313,7 @@ def run_single_subject(
         keep_logs=keep_logs,
         prediction_mode=prediction_mode,
         selection_prediction_mode=selection_prediction_mode,
+        loss_metric=loss_metric,
     )
 
     subjects_dir = output_dir / "subjects"
@@ -360,6 +374,7 @@ def main() -> None:
         param_grid = resolve_param_grid(subject_cfg)
         amr_kwargs = resolve_amr_kwargs(subject_cfg)
         prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+        loss_metric = resolve_loss_metric(subject_cfg)
 
         dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
         data_path = dataset_paths["learning_data"]
@@ -384,6 +399,7 @@ def main() -> None:
             keep_logs=bool(subject_cfg.get("keep_logs", False)),
             prediction_mode=prediction_mode,
             selection_prediction_mode=selection_prediction_mode,
+            loss_metric=loss_metric,
         ))
 
     Parallel(n_jobs=base_n_jobs_subjects)(

@@ -1,4 +1,4 @@
-# AMR optimization config for Condition 1 subjects
+﻿# AMR optimization config for Condition 1 subjects
 engine_config_path: ../model_struct/pmh_amr_cond1.yaml
 
 # Set subjects after running list_conditions.py; example:
@@ -13,7 +13,7 @@ oral:
   mode: center # region
   # region_n_samples: 100
 # Parallelism
-# Run all 8 subjects in parallel and give each 12 inner workers (�?6 cores total)
+# Run all 8 subjects in parallel and give each 12 inner workers (锟?6 cores total)
 n_jobs_subjects: 8
 n_jobs_inner: 12
 
@@ -43,4 +43,6 @@ amr_kwargs:
   coarse_grid_per_dim: 3
   split_factor: 2
   refine_top_k: 3
+
+loss_metric: mse
 

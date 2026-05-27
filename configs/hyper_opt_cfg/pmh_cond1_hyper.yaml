@@ -1,4 +1,4 @@
-# Two-layer hyper-optimization for all cond1 subjects
+﻿# Two-layer hyper-optimization for all cond1 subjects
 # Outer optimizer: grid-first hyperparameter search
 # Inner optimizer: existing grid optimizer over memory params (gamma/w0)
 inner_optimizer: grid
@@ -111,3 +111,5 @@ stages:
 
 refine_policy:
   top_k: 8
+loss_metric: mse
+

@@ -21,6 +21,7 @@ from .optimizer_common import (
     SingleRunResult,
     evaluate_state_model_run,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    LOSS_METRIC_MAE,
 )
 from ..utils.base import LOGGER
 
@@ -230,6 +231,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         keep_logs: bool,
         prediction_mode: str,
         selection_prediction_mode: str,
+        loss_metric: str,
     ) -> GridPointResult:
         runs: List[SingleRunResult]
         if n_repeats <= 1:
@@ -247,6 +249,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     True,
                     prediction_mode,
                     selection_prediction_mode,
+                    loss_metric,
                 )
             ]
         else:
@@ -264,6 +267,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     True,
                     prediction_mode,
                     selection_prediction_mode,
+                    loss_metric,
                 )
                 for _ in range(n_repeats)
             ))
@@ -328,6 +332,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         keep_logs: bool = False,
         prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+        loss_metric: str = LOSS_METRIC_MAE,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = int(subject_frame["condition"].iloc[0])
@@ -369,6 +374,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 keep_logs,
                 prediction_mode,
                 selection_prediction_mode,
+                loss_metric,
             )
             cache[k] = gp
             grid_results.append(gp)
@@ -405,6 +411,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 keep_logs,
                 prediction_mode,
                 selection_prediction_mode,
+                loss_metric,
             )
             best_result = refit_gp
         else:
@@ -430,6 +437,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 "run_selection": "min_error",
                 "prediction_mode": prediction_mode,
                 "selection_prediction_mode": selection_prediction_mode,
+                "loss_metric": loss_metric,
             },
         }
 

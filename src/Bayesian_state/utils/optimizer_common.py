@@ -1,6 +1,7 @@
-"""Shared utilities for StateModel optimizers (grid / AMR)."""
+﻿"""Shared utilities for StateModel optimizers (grid / AMR)."""
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,94 @@ PREDICTION_MODE_CHOICES = (
     PREDICTION_MODE_PRIOR_T,
     PREDICTION_MODE_BOTH,
 )
+
+LOSS_METRIC_MAE = "mae"
+LOSS_METRIC_MSE = "mse"
+LOSS_METRIC_BRIER = "brier"
+LOSS_METRIC_NLL = "nll"
+LOSS_METRIC_CHOICES = (
+    LOSS_METRIC_MAE,
+    LOSS_METRIC_MSE,
+    LOSS_METRIC_BRIER,
+    LOSS_METRIC_NLL,
+)
+
+
+class LossStrategy(ABC):
+    name: str
+
+    @abstractmethod
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        raise NotImplementedError
+
+
+class MAELoss(LossStrategy):
+    name = LOSS_METRIC_MAE
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
+        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
+        err = np.abs(true_acc - pred_acc)
+        return float(np.nanmean(err)) if err.size else float("nan")
+
+
+class MSELoss(LossStrategy):
+    name = LOSS_METRIC_MSE
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
+        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
+        err = np.square(true_acc - pred_acc)
+        return float(np.nanmean(err)) if err.size else float("nan")
+
+
+class MulticlassBrierLoss(LossStrategy):
+    name = LOSS_METRIC_BRIER
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
+        true_idx = np.asarray(metrics["true_category_index"], dtype=int)
+        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+        probs = probs[valid_mask]
+        true_idx = true_idx[valid_mask]
+        if probs.size == 0:
+            return float("nan")
+        n_trials, n_cats = probs.shape
+        one_hot = np.zeros((n_trials, n_cats), dtype=float)
+        one_hot[np.arange(n_trials), true_idx] = 1.0
+        return float(np.mean(np.sum(np.square(probs - one_hot), axis=1)))
+
+
+class NLLLoss(LossStrategy):
+    name = LOSS_METRIC_NLL
+
+    def __init__(self, eps: float = 1e-12):
+        self.eps = float(eps)
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
+        true_idx = np.asarray(metrics["true_category_index"], dtype=int)
+        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+        probs = probs[valid_mask]
+        true_idx = true_idx[valid_mask]
+        if probs.size == 0:
+            return float("nan")
+        p_true = probs[np.arange(probs.shape[0]), true_idx]
+        p_true = np.clip(p_true, self.eps, 1.0)
+        return float(np.mean(-np.log(p_true)))
+
+
+def build_loss_strategy(loss_metric: str) -> LossStrategy:
+    metric = str(loss_metric).strip().lower()
+    if metric == LOSS_METRIC_MAE:
+        return MAELoss()
+    if metric == LOSS_METRIC_MSE:
+        return MSELoss()
+    if metric == LOSS_METRIC_BRIER:
+        return MulticlassBrierLoss()
+    if metric == LOSS_METRIC_NLL:
+        return NLLLoss()
+    raise ValueError(f"Unsupported loss_metric '{loss_metric}'. Valid: {LOSS_METRIC_CHOICES}")
 
 
 @dataclass
@@ -58,6 +147,7 @@ class SingleRunResult:
     mean_error: float
     metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]]
     selection_prediction_mode: str
+    loss_metric: str
     posterior_log: Optional[Sequence[np.ndarray]]
     prior_log: Optional[Sequence[np.ndarray]]
     beta_log: Optional[Sequence[np.ndarray]]
@@ -203,6 +293,9 @@ def _compute_single_mode_metrics(
     true_family_acc = _family_correct(categories, choices, n_cats)
     pred_acc = np.full(n_trials, np.nan, dtype=float)
     pred_family_acc = np.full(n_trials, np.nan, dtype=float)
+    pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
+    true_category_index = np.asarray(categories, dtype=int) - 1
+    valid_trial_mask = np.zeros(n_trials, dtype=bool)
 
     for trial_idx in range(1, n_trials):
         step_item = step_log[trial_idx]
@@ -229,6 +322,7 @@ def _compute_single_mode_metrics(
 
         weighted_prob = 0.0
         weighted_family_prob = 0.0
+        weighted_cat_prob = np.zeros(n_cats, dtype=float)
         trial_slice = (
             [perceived_stimulus],
             [choices[trial_idx]],
@@ -249,12 +343,21 @@ def _compute_single_mode_metrics(
             )
             if prob.ndim == 1:
                 prob = prob.reshape(-1, 1)
-            weighted_prob += weight * float(prob[category_idx, 0])
-            family_idx = family_idx[family_idx < prob.shape[0]]
+            prob_vec = np.asarray(prob[:, 0], dtype=float)
+            if prob_vec.shape[0] != n_cats:
+                raise ValueError(
+                    f"Category probability shape mismatch at trial {trial_idx}: expected {n_cats}, got {prob_vec.shape[0]}"
+                )
+            weighted_cat_prob += weight * prob_vec
+            weighted_prob += weight * float(prob_vec[category_idx])
+            family_idx = family_idx[family_idx < prob_vec.shape[0]]
             if family_idx.size:
-                weighted_family_prob += weight * float(np.sum(prob[family_idx, 0]))
+                weighted_family_prob += weight * float(np.sum(prob_vec[family_idx]))
+
         pred_acc[trial_idx] = weighted_prob
         pred_family_acc[trial_idx] = weighted_family_prob
+        pred_category_probs[trial_idx, :] = weighted_cat_prob
+        valid_trial_mask[trial_idx] = True
 
     sliding_true_acc: List[float] = []
     sliding_pred_acc: List[float] = []
@@ -286,8 +389,6 @@ def _compute_single_mode_metrics(
                 float(np.sqrt(np.sum(valid_family * (1 - valid_family))) / window_size)
             )
 
-    error = np.abs(np.array(sliding_true_acc) - np.array(sliding_pred_acc))
-    mean_error = float(np.nanmean(error)) if error.size else float("nan")
     family_error = np.abs(np.array(sliding_true_family_acc) - np.array(sliding_pred_family_acc))
     family_mean_error = float(np.nanmean(family_error)) if family_error.size else float("nan")
 
@@ -302,8 +403,10 @@ def _compute_single_mode_metrics(
         "sliding_true_family_acc": np.asarray(sliding_true_family_acc, dtype=float),
         "sliding_pred_family_acc": np.asarray(sliding_pred_family_acc, dtype=float),
         "sliding_pred_family_acc_std": np.asarray(sliding_pred_family_std, dtype=float),
-        "mean_error": mean_error,
         "family_mean_error": family_mean_error,
+        "pred_category_probs": pred_category_probs,
+        "true_category_index": true_category_index,
+        "valid_trial_mask": valid_trial_mask,
     }
 
 
@@ -317,8 +420,10 @@ def compute_prediction_metrics(
     categories: np.ndarray,
     window_size: int,
     prediction_mode: str,
+    loss_metric: str,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
+    loss_strategy = build_loss_strategy(loss_metric)
 
     engine_beta = getattr(model.engine, "beta", None)
     if engine_beta is None:
@@ -359,7 +464,7 @@ def compute_prediction_metrics(
 
     metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]] = {}
     for mode in _get_prediction_modes(prediction_mode):
-        metrics_by_mode[mode] = _compute_single_mode_metrics(
+        metrics = _compute_single_mode_metrics(
             mode=mode,
             model=model,
             post_arr=post_arr,
@@ -372,6 +477,11 @@ def compute_prediction_metrics(
             engine_beta=np.asarray(engine_beta, dtype=float),
             hypotheses=hypotheses,
         )
+        objective_error = float(loss_strategy.compute(metrics))
+        metrics["mean_error"] = objective_error
+        metrics["objective_error"] = objective_error
+        metrics["loss_metric"] = loss_strategy.name
+        metrics_by_mode[mode] = metrics
     return metrics_by_mode
 
 
@@ -409,6 +519,7 @@ def evaluate_state_model_run(
     include_step_log: bool = False,
     prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    loss_metric: str = LOSS_METRIC_MAE,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     stimulus, choices, feedback, categories = arrays
@@ -452,6 +563,7 @@ def evaluate_state_model_run(
         categories,
         window_size,
         prediction_mode=prediction_mode,
+        loss_metric=loss_metric,
     )
 
     if selection_prediction_mode not in metrics_by_mode:
@@ -474,6 +586,7 @@ def evaluate_state_model_run(
         mean_error=selected_mean_error,
         metrics_by_mode=metrics_by_mode,
         selection_prediction_mode=selection_prediction_mode,
+        loss_metric=str(loss_metric).lower(),
         posterior_log=posterior_log,
         prior_log=prior_log,
         beta_log=beta_log,

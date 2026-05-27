@@ -1,4 +1,4 @@
-# AMR optimization config for Condition 2/3 subjects
+﻿# AMR optimization config for Condition 2/3 subjects
 engine_config_path: ../model_struct/pmh_amr_cond23.yaml
 
 # Subjects: conditions 2 
@@ -36,3 +36,5 @@ amr_kwargs:
   coarse_grid_per_dim: 3
   split_factor: 2
   refine_top_k: 3
+loss_metric: mse
+

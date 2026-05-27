@@ -18,6 +18,7 @@ from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer  # n
 from src.Bayesian_state.utils.optimizer_common import (
     PREDICTION_MODE_CHOICES,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    LOSS_METRIC_CHOICES,
 )
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
@@ -108,6 +109,16 @@ def resolve_prediction_modes(cfg: Dict[str, Any]) -> tuple[str, str]:
             "When prediction_mode is not 'both', selection_prediction_mode must equal prediction_mode."
         )
     return prediction_mode, selection_prediction_mode
+
+
+def resolve_loss_metric(cfg: Dict[str, Any]) -> str:
+    raw = cfg.get("loss_metric")
+    if raw is None:
+        raise ValueError(f"Config must include loss_metric. Valid: {LOSS_METRIC_CHOICES}")
+    metric = str(raw).strip().lower()
+    if metric not in LOSS_METRIC_CHOICES:
+        raise ValueError(f"Unsupported loss_metric '{metric}'. Valid: {LOSS_METRIC_CHOICES}")
+    return metric
 
 
 def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
@@ -236,6 +247,7 @@ def serialize_result(
         "beta_log": getattr(best, "beta_log", None),
         "representative_run_index": getattr(best, "representative_run_index", 0),
         "selection_meta": result.get("selection_meta", {}),
+        "loss_metric": result.get("selection_meta", {}).get("loss_metric"),
         "raw_runs_ref": raw_runs_ref,
         "grid_errors": _build_grid_errors(result),
         "grid_summary": [
@@ -298,6 +310,7 @@ def main() -> None:
         engine_config = resolve_engine_config(subject_cfg, cfg_path.parent, subject_id=sid)
         param_grid = resolve_param_grid(subject_cfg)
         prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+        loss_metric = resolve_loss_metric(subject_cfg)
 
         dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
         data_path = dataset_paths["learning_data"]
@@ -336,6 +349,7 @@ def main() -> None:
             keep_logs=keep_logs,
             prediction_mode=prediction_mode,
             selection_prediction_mode=selection_prediction_mode,
+            loss_metric=loss_metric,
         )
 
         best: Any = result["best"]
@@ -345,6 +359,7 @@ def main() -> None:
         refit_std = float(getattr(best, "refit_std_error", best.std_error))
         print(f"  Best run error ({selection_prediction_mode}): {best_error:.6f}")
         print(f"  Refit mean ({selection_prediction_mode}):     {refit_mean:.6f} +/- {refit_std:.6f}")
+        print(f"  Loss metric: {loss_metric}")
 
         subjects_dir = output_dir / "subjects"
         payload = serialize_result(sid, int(result["condition"]), result, output_dir, subject_json_dir=subjects_dir)

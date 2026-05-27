@@ -1,4 +1,4 @@
-# Grid optimization config for Condition 1 subjects
+﻿# Grid optimization config for Condition 1 subjects
 # Uses condition-specific model structure.
 engine_config_path: ../model_struct/pmh_grid_cond1.yaml
 
@@ -47,3 +47,5 @@ param_grid:
 #     param_grid:
 #       gamma: [0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
 #       w0:    [0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3]
+loss_metric: mse
+

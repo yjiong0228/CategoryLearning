@@ -1,4 +1,4 @@
-# Grid optimization config for Condition 2 subjects
+﻿# Grid optimization config for Condition 2 subjects
 # Uses condition-specific model structure.
 engine_config_path: ../model_struct/pmh_grid_cond2.yaml
 
@@ -40,3 +40,5 @@ param_grid:
 # subject_overrides:
 #   "230,232":
 #     refit_repeats: 1024
+loss_metric: mse
+

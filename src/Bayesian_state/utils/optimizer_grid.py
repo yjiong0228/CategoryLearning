@@ -16,6 +16,7 @@ from .optimizer_common import (
     SingleRunResult,
     evaluate_state_model_run,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    LOSS_METRIC_MAE,
 )
 
 
@@ -36,6 +37,7 @@ def _build_run_record(
         "params": dict(run.params),
         "mean_error": float(run.mean_error),
         "selection_prediction_mode": str(run.selection_prediction_mode),
+        "loss_metric": str(run.loss_metric),
         "metrics_by_mode": run.metrics_by_mode,
         "step_log": run.step_log,
         "posterior_log": run.posterior_log,
@@ -59,6 +61,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         keep_logs: bool = False,
         prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+        loss_metric: str = LOSS_METRIC_MAE,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = int(subject_frame["condition"].iloc[0])
@@ -92,6 +95,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 True,
                 prediction_mode,
                 selection_prediction_mode,
+                loss_metric,
             )
             for params in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
         ))
@@ -187,6 +191,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                     True,
                     prediction_mode,
                     selection_prediction_mode,
+                    loss_metric,
                 )
                 for params in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
             ))
@@ -270,6 +275,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 "run_selection": "min_error",
                 "prediction_mode": prediction_mode,
                 "selection_prediction_mode": selection_prediction_mode,
+                "loss_metric": loss_metric,
             },
         }
 
@@ -350,6 +356,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             False,
             PREDICTION_MODE_POSTERIOR_T_MINUS_1,
             PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+            LOSS_METRIC_MAE,
         )
         return GridPointResult(
             params=params,

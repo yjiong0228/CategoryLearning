@@ -302,3 +302,24 @@ This mode is used consistently across:
 - category assignment logic inside `BetaModule`
 
 Note: `oral_model_alignment` center/region analyses are standalone analysis paths and are not controlled by `distance_mode`.
+
+## Optimization Loss Metric (Required)
+
+`run_grid_optimization.py` and `run_amr_optimization.py` now require a config key:
+
+- `loss_metric: mae | mse | brier | nll`
+
+No backward-compatible fallback is applied. Missing or unsupported `loss_metric`
+raises an explicit error.
+
+Definitions:
+
+- `mae`: sliding-window mean absolute error on accuracy curves.
+- `mse`: sliding-window mean squared error on accuracy curves.
+- `brier`: **multiclass trial-level** Brier score, i.e. mean over trials of
+  `sum_k (p_t(k) - y_t(k))^2`, where `y_t` is one-hot true category.
+- `nll`: trial-level negative log-likelihood, i.e. mean over trials of
+  `-log p_t(y_true)`.
+
+`selection_prediction_mode` is still respected and controls whether hypothesis
+weights come from `posterior_t_minus_1` or `prior_t`.
