@@ -389,7 +389,10 @@ class ModelEval(OralModelAlignmentMixin):
                 ax=ax,
             )
 
-            target_hypo = 0 if condition == 1 else 42
+            target_hypo = info.get("target_hypothesis")
+            if target_hypo is None:
+                target_hypo = 0 if condition == 1 else 42
+            target_hypo = int(target_hypo)
             target_df = df[df["k"] == target_hypo]
             if not target_df.empty:
                 sns.scatterplot(data=target_df, x="Step", y="Posterior", color="red", s=50, ax=ax)
@@ -739,7 +742,17 @@ class ModelEval(OralModelAlignmentMixin):
             rebuilt.append({"hypo_details": hypo_details})
         return rebuilt
 
-    def _plot_run_posterior_body(self, ax, run_obj, condition, rank, run_idx, err, limit=True):
+    def _plot_run_posterior_body(
+        self,
+        ax,
+        run_obj,
+        condition,
+        rank,
+        run_idx,
+        err,
+        limit=True,
+        target_hypothesis=None,
+    ):
         step_results = self._extract_step_results_from_run(run_obj)
         ax.set(xlabel="Trial", ylabel="Posterior Probability")
 
@@ -788,7 +801,10 @@ class ModelEval(OralModelAlignmentMixin):
             s=16,
         )
 
-        target_hypo = 0 if int(condition) == 1 else 42
+        target_hypo = target_hypothesis
+        if target_hypo is None:
+            target_hypo = 0 if int(condition) == 1 else 42
+        target_hypo = int(target_hypo)
         target_df = df[df["k"] == target_hypo]
         if not target_df.empty:
             sns.scatterplot(data=target_df, x="Step", y="Posterior", color="red", s=28, legend=False, ax=ax)
@@ -928,6 +944,7 @@ class ModelEval(OralModelAlignmentMixin):
         n_cols=4,
         save_path=None,
         limit=True,
+        target_hypothesis=None,
     ):
         subject_json_path = Path(subject_json_path)
         payload = self.load_subject_payload(subject_json_path)
@@ -951,6 +968,7 @@ class ModelEval(OralModelAlignmentMixin):
         n_rows = int(math.ceil(n / n_cols))
         sid = int(payload.get("subject_id", -1))
         cond = int(payload.get("condition", -1))
+        target_hypothesis = payload.get("target_hypothesis", target_hypothesis)
 
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), squeeze=False)
         axes_flat = axes.ravel()
@@ -971,6 +989,7 @@ class ModelEval(OralModelAlignmentMixin):
                 run_idx=run_idx,
                 err=err,
                 limit=limit,
+                target_hypothesis=target_hypothesis,
             )
 
         for j in range(n, len(axes_flat)):
@@ -997,6 +1016,7 @@ class ModelEval(OralModelAlignmentMixin):
         ranks=None,
         n_cols=4,
         limit=True,
+        target_hypotheses_by_condition=None,
     ):
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
@@ -1008,6 +1028,10 @@ class ModelEval(OralModelAlignmentMixin):
             try:
                 payload = self.load_subject_payload(subject_json)
                 sid = int(payload.get("subject_id", subject_json.stem.replace("subject_", "-1")))
+                condition = int(payload.get("condition", -1))
+                target_hypothesis = None
+                if isinstance(target_hypotheses_by_condition, dict):
+                    target_hypothesis = target_hypotheses_by_condition.get(condition)
                 out_path = output_dir / f"subject_{sid}_top16_posterior.png"
                 selected = self.plot_run_posteriors_by_rank(
                     subject_json,
@@ -1015,6 +1039,7 @@ class ModelEval(OralModelAlignmentMixin):
                     n_cols=n_cols,
                     save_path=out_path,
                     limit=limit,
+                    target_hypothesis=target_hypothesis,
                 )
                 selected = selected.copy()
                 selected["subject_id"] = sid

@@ -3,5 +3,6 @@ Problems
 """
 from .base_problem import *
 from .partitions import *
+from .discrete_partitions import *
 from .modules import *
 from .model import StateModel

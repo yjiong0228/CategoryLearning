@@ -64,7 +64,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         loss_metric: str = LOSS_METRIC_MAE,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
-        condition = int(subject_frame["condition"].iloc[0])
+        condition = self._get_condition_value(subject_frame)
         arrays = self._extract_arrays(subject_frame, max_trials)
 
         param_names = list(param_grid.keys())

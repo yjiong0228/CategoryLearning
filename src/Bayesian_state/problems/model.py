@@ -1,6 +1,7 @@
 """
 Base Model
 """
+import importlib
 from typing import List
 from copy import deepcopy
 from pathlib import Path
@@ -9,6 +10,31 @@ from .base_problem import BaseSet, BaseEngine
 from .partitions import Partition
 from ..utils import MODEL_STRUCT
 from ..utils.paths import PROCESSED_DATA_DIR
+
+
+def _get_class_from_string(class_path: str):
+    module_path, class_name = class_path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, class_name)
+
+
+def _build_partition_from_config(engine_config: dict, condition: int):
+    partition_cfg = engine_config.get("partition")
+    if partition_cfg is None:
+        n_dims = int(engine_config.get("n_dims", 4))
+        n_cats = int(engine_config.get("n_cats", 2 if condition == 1 else 4))
+        return Partition(n_dims, n_cats)
+
+    if not isinstance(partition_cfg, dict):
+        raise ValueError("engine_config.partition must be a mapping when provided.")
+
+    class_path = partition_cfg.get("class")
+    if class_path is None:
+        raise ValueError("engine_config.partition must include a class path.")
+
+    partition_class = _get_class_from_string(class_path) if isinstance(class_path, str) else class_path
+    kwargs = dict(partition_cfg.get("kwargs", {}) or {})
+    return partition_class(**kwargs)
 
 
 
@@ -42,12 +68,10 @@ class StateModel:
         else:
             self.processed_data_dir = Path(processed_data_dir).resolve()
 
-        n_dims = 4
-        self.n_cats = 2 if self.condition == 1 else 4
-
         # Initialize partition
         self.partition_model = kwargs.get(
-            "partition", Partition(n_dims, self.n_cats))
+            "partition", _build_partition_from_config(self.engine_config, self.condition))
+        self.n_cats = int(getattr(self.partition_model, "n_cats", 2 if self.condition == 1 else 4))
         # Initialize hypotheses set (length = partition_model.length)
         self.hypotheses_set = kwargs.get(
             "space", BaseSet(list(range(self.partition_model.length))))
@@ -100,6 +124,5 @@ class StateModel:
 
         self.save(posterior_log, step_log)
         return posterior_log, prior_log
-
 
 

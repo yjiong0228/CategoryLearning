@@ -33,11 +33,13 @@ class LikelihoodModule(BaseModule):
         # Get the list of hypothesis indices from the engine's hypothesis set
         self.h_indices = list(self.engine.hypotheses_set)
         self.kwargs = kwargs
-        self.distance_mode = str(kwargs.get("distance_mode", "prototype"))
-        if self.distance_mode not in ("prototype", "boundary"):
+        valid_modes = tuple(getattr(self.partition, "VALID_DISTANCE_MODES", ("prototype", "boundary")))
+        default_mode = valid_modes[0] if valid_modes else "prototype"
+        self.distance_mode = str(kwargs.get("distance_mode", default_mode))
+        if self.distance_mode not in valid_modes:
             raise ValueError(
                 f"Unsupported distance_mode '{self.distance_mode}'. "
-                "Expected 'prototype' or 'boundary'."
+                f"Expected one of: {valid_modes}."
             )
         self.engine.distance_mode = self.distance_mode
         

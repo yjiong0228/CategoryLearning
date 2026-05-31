@@ -174,19 +174,28 @@ class BaseStateOptimizer:
         self._dataset_paths = dict(dataset_paths or {})
         self.learning_data: Optional[pd.DataFrame] = None
         self.n_jobs = n_jobs
+        data_cfg = self._engine_config_template.get("data", {}) or {}
+        self._feature_columns = list(
+            data_cfg.get("feature_columns", ["feature1", "feature2", "feature3", "feature4"])
+        )
+        self._condition_column = str(data_cfg.get("condition_column", "condition"))
+        self._subject_column = str(data_cfg.get("subject_column", "iSub"))
 
     def prepare_data(self, data_path: Path | str = TASK2_PROCESSED_PATH) -> None:
         data_path = Path(data_path).resolve()
         if not data_path.exists():
             raise FileNotFoundError(f"Dataset not found: {data_path}")
-        self.learning_data = pd.read_csv(data_path)
+        self.learning_data = pd.read_csv(data_path, encoding="utf-8-sig")
 
     def _get_subject_frame(self, subject_id: int, stop_at: float) -> pd.DataFrame:
         if self.learning_data is None:
             self.prepare_data()
         assert self.learning_data is not None
 
-        subject_frame = self.learning_data[self.learning_data["iSub"] == subject_id]
+        if self._subject_column not in self.learning_data.columns:
+            raise ValueError(f"Subject column '{self._subject_column}' not found in dataset")
+
+        subject_frame = self.learning_data[self.learning_data[self._subject_column] == subject_id]
         if subject_frame.empty:
             raise ValueError(f"Subject {subject_id} not found in dataset")
 
@@ -198,7 +207,13 @@ class BaseStateOptimizer:
         subject_frame: pd.DataFrame,
         max_trials: Optional[int],
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        stimulus = subject_frame[["feature1", "feature2", "feature3", "feature4"]].to_numpy(dtype=float)
+        missing_features = [col for col in self._feature_columns if col not in subject_frame.columns]
+        if missing_features:
+            raise ValueError(
+                "Dataset is missing configured feature columns: "
+                + ", ".join(missing_features)
+            )
+        stimulus = subject_frame[self._feature_columns].to_numpy(dtype=float)
         choices = subject_frame["choice"].to_numpy(dtype=int)
         feedback = subject_frame["feedback"].to_numpy(dtype=float)
         categories = subject_frame["category"].to_numpy(dtype=int)
@@ -211,6 +226,13 @@ class BaseStateOptimizer:
             categories = categories[:usable]
 
         return stimulus, choices, feedback, categories
+
+    def _get_condition_value(self, subject_frame: pd.DataFrame) -> int:
+        if self._condition_column in subject_frame.columns:
+            return int(subject_frame[self._condition_column].iloc[0])
+        if "ruleID" in subject_frame.columns:
+            return int(subject_frame["ruleID"].iloc[0])
+        return 1
 
 
 def prepare_trial_sequence(

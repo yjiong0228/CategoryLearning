@@ -1,0 +1,103 @@
+{
+  "source_csv": "data_exp5/processed/Rule1_processed.csv",
+  "fit_subjects": [
+    "501",
+    "503"
+  ],
+  "n_subjects": 2,
+  "n_bits": 5,
+  "max_order": 5,
+  "optimizer_config": {
+    "fit": true,
+    "population_size": 40,
+    "generations": 40,
+    "anneal_steps": 120,
+    "fit_first_n": null,
+    "seed": 20260430
+  },
+  "runs": [
+    {
+      "iSub": "501",
+      "source_csv": "data_exp5/processed/Rule1_processed.csv",
+      "n_trials": 128,
+      "n_unique_stimuli": 32,
+      "n_bits": 5,
+      "max_order": 5,
+      "gamma0_fixed_to_zero": true,
+      "memory_window": 1,
+      "alpha_update": "normalize(beta * alpha + eta * gradient)",
+      "observed_accuracy": 0.859375,
+      "model_negative_log_likelihood": 3.6208701948847875,
+      "chance_negative_log_likelihood": 88.722839111673,
+      "model_choice_agreement": 0.9921875,
+      "mean_model_p_correct": 0.8609422691897883,
+      "mean_model_p_observed_choice": 0.9758705995350077,
+      "task_relevant_feature": "x24",
+      "task_relevant_feature_rank_by_abs_separation": 1,
+      "rule_match_x2x4": 1.0,
+      "fit_info": {
+        "negative_log_likelihood": 3.6208701948847875,
+        "optimizer": "genetic_algorithm_plus_simulated_annealing",
+        "gamma0_fixed_to_zero": true,
+        "alpha_update": "normalize(beta * alpha + eta * gradient)",
+        "beta": 4.903766912835924,
+        "eta": 0.17325158219274553,
+        "n_features": 31,
+        "memory_window": 1,
+        "fit_first_n": null,
+        "note": "Model equations follow the public paper and SI; exact unpublished GA/SA hyperparameters cannot be guaranteed."
+      },
+      "future_prediction_metrics": {}
+    },
+    {
+      "iSub": "503",
+      "source_csv": "data_exp5/processed/Rule1_processed.csv",
+      "n_trials": 128,
+      "n_unique_stimuli": 28,
+      "n_bits": 5,
+      "max_order": 5,
+      "gamma0_fixed_to_zero": true,
+      "memory_window": 1,
+      "alpha_update": "normalize(beta * alpha + eta * gradient)",
+      "observed_accuracy": 0.9375,
+      "model_negative_log_likelihood": 0.8439056670257162,
+      "chance_negative_log_likelihood": 88.722839111673,
+      "model_choice_agreement": 1.0,
+      "mean_model_p_correct": 0.9336650716277777,
+      "mean_model_p_observed_choice": 0.9935094928533064,
+      "task_relevant_feature": "x24",
+      "task_relevant_feature_rank_by_abs_separation": 1,
+      "rule_match_x2x4": 1.0,
+      "fit_info": {
+        "negative_log_likelihood": 0.8439056670257162,
+        "optimizer": "genetic_algorithm_plus_simulated_annealing",
+        "gamma0_fixed_to_zero": true,
+        "alpha_update": "normalize(beta * alpha + eta * gradient)",
+        "beta": 3.804363668006892,
+        "eta": 0.19956956243946228,
+        "n_features": 31,
+        "memory_window": 1,
+        "fit_first_n": null,
+        "note": "Model equations follow the public paper and SI; exact unpublished GA/SA hyperparameters cannot be guaranteed."
+      },
+      "future_prediction_metrics": {}
+    }
+  ],
+  "outputs": {
+    "trial_predictions_csv": "results/Cohen_model/Exp5/trial_predictions.csv",
+    "final_feature_weights_csv": "results/Cohen_model/Exp5/final_feature_weights.csv",
+    "formula_steps_csv": "results/Cohen_model/Exp5/formula_steps.csv",
+    "alpha_pos_trajectory_wide_csv": "results/Cohen_model/Exp5/alpha_pos_trajectory_wide.csv",
+    "alpha_neg_trajectory_wide_csv": "results/Cohen_model/Exp5/alpha_neg_trajectory_wide.csv",
+    "alpha_diff_trajectory_wide_csv": "results/Cohen_model/Exp5/alpha_diff_trajectory_wide.csv",
+    "alpha_trajectory_long_csv": "results/Cohen_model/Exp5/alpha_trajectory_long.csv",
+    "oral_feature_weights_wide_csv": "results/Cohen_model/Exp5/oral_feature_weights_wide.csv",
+    "oral_feature_weights_long_csv": "results/Cohen_model/Exp5/oral_feature_weights_long.csv",
+    "model_oral_similarity_csv": "results/Cohen_model/Exp5/model_oral_similarity.csv",
+    "learning_curve_png": "results/Cohen_model/Exp5/learning_curve.png",
+    "model_alpha_diff_over_trials_png": "results/Cohen_model/Exp5/model_alpha_diff_over_trials.png",
+    "oral_feature_weights_over_trials_png": "results/Cohen_model/Exp5/oral_feature_weights_over_trials.png",
+    "model_oral_similarity_png": "results/Cohen_model/Exp5/model_oral_similarity.png",
+    "target_x24_model_vs_oral_png": "results/Cohen_model/Exp5/target_x24_model_vs_oral.png"
+  }
+}

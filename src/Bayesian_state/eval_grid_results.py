@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import matplotlib
 import pandas as pd
@@ -23,7 +23,8 @@ MODEL_DISTRIBUTION_CHOICES = ("posterior", "prior")
 ORAL_BASED_MODEL_STATE_CHOICES = ("choice_conditioned_prior", "prior", "posterior")
 DEFAULT_REGION_N_SAMPLES = 1000
 DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
-TRIAL_DATA_COLS = ("feature1", "feature2", "feature3", "feature4", "category", "choice", "feedback")
+DEFAULT_FEATURE_COLS = ("feature1", "feature2", "feature3", "feature4")
+TRIAL_OUTCOME_COLS = ("category", "choice", "feedback")
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -151,10 +152,15 @@ def _build_step_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return step_results
 
 
-def _build_subject_trials(trial_df: pd.DataFrame | None, subject_id: int, n_trials: int) -> Dict[str, List[Any]] | None:
+def _build_subject_trials(
+    trial_df: pd.DataFrame | None,
+    subject_id: int,
+    n_trials: int,
+    trial_data_cols: Sequence[str],
+) -> Dict[str, List[Any]] | None:
     if trial_df is None:
         return None
-    missing = [col for col in TRIAL_DATA_COLS if col not in trial_df.columns]
+    missing = [col for col in trial_data_cols if col not in trial_df.columns]
     if missing:
         return None
     subj_df = trial_df[trial_df["iSub"] == subject_id].reset_index(drop=True)
@@ -162,15 +168,19 @@ def _build_subject_trials(trial_df: pd.DataFrame | None, subject_id: int, n_tria
         return None
     if n_trials:
         subj_df = subj_df.iloc[:n_trials]
-    return {col: subj_df[col].tolist() for col in TRIAL_DATA_COLS}
+    return {col: subj_df[col].tolist() for col in trial_data_cols}
 
 
 def aggregate_grid_results(
     input_dir: Path,
     eval_prediction_mode: str,
     trial_df: pd.DataFrame | None = None,
+    trial_data_cols: Sequence[str] | None = None,
+    target_hypotheses: Dict[int, int] | None = None,
 ) -> Dict[int, Dict[str, Any]]:
     results: Dict[int, Dict[str, Any]] = {}
+    resolved_trial_cols = tuple(trial_data_cols or (*DEFAULT_FEATURE_COLS, *TRIAL_OUTCOME_COLS))
+    target_hypotheses = target_hypotheses or {}
 
     for file in _subject_json_files(input_dir):
         payload = load_json(file)
@@ -184,10 +194,22 @@ def aggregate_grid_results(
         n_trials = len(true_acc) if isinstance(true_acc, list) else 0
         n_sliding = len(sliding_pred_acc) if isinstance(sliding_pred_acc, list) else 0
         window_size = n_trials - n_sliding if n_trials and n_sliding else None
-        subject_trials = _build_subject_trials(trial_df, sid, n_trials)
+        subject_trials = _build_subject_trials(trial_df, sid, n_trials, resolved_trial_cols)
+        pred_category_probs = metrics.get("pred_category_probs")
+        n_cats = None
+        if isinstance(pred_category_probs, list) and pred_category_probs:
+            first_row = pred_category_probs[0]
+            if isinstance(first_row, list):
+                n_cats = len(first_row)
+        condition = payload.get("condition")
+        target_hypothesis = None
+        if condition is not None:
+            target_hypothesis = target_hypotheses.get(int(condition))
 
         results[sid] = {
-            "condition": payload.get("condition"),
+            "condition": condition,
+            "n_cats": n_cats,
+            "target_hypothesis": target_hypothesis,
             "sliding_true_acc": metrics.get("sliding_true_acc"),
             "sliding_pred_acc": metrics.get("sliding_pred_acc"),
             "sliding_pred_acc_std": metrics.get("sliding_pred_acc_std"),
@@ -329,16 +351,53 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
     return loaded
 
 
-def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
+def _load_optional_config(config_path: Path | None) -> tuple[Dict[str, Any], Path | None]:
+    if config_path is None:
+        return {}, None
+    resolved = config_path.resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Config file not found: {resolved}")
+    return _load_yaml(resolved), resolved
+
+
+def _resolve_engine_config_for_eval(config: Dict[str, Any], config_path: Path | None) -> Dict[str, Any]:
+    engine_config = config.get("engine_config") if isinstance(config.get("engine_config"), dict) else {}
+    path_cfg = config.get("engine_config_path")
+    if path_cfg and config_path is not None:
+        engine_path = Path(path_cfg)
+        if not engine_path.is_absolute():
+            engine_path = (config_path.parent / engine_path).resolve()
+        loaded = _load_yaml(engine_path)
+        if isinstance(engine_config, dict) and engine_config:
+            loaded.update(engine_config)
+        return loaded
+    return engine_config or {}
+
+
+def _resolve_trial_data_columns(engine_config: Dict[str, Any]) -> tuple[str, ...]:
+    data_cfg = engine_config.get("data", {}) if isinstance(engine_config, dict) else {}
+    feature_cols = data_cfg.get("feature_columns", DEFAULT_FEATURE_COLS)
+    return tuple(feature_cols) + TRIAL_OUTCOME_COLS
+
+
+def _resolve_target_hypotheses(config: Dict[str, Any], engine_config: Dict[str, Any]) -> Dict[int, int]:
+    target_cfg = {}
+    for source in (engine_config.get("eval"), config.get("eval")):
+        if isinstance(source, dict) and isinstance(source.get("target_hypotheses"), dict):
+            target_cfg.update(source["target_hypotheses"])
+    return {int(condition): int(hypo) for condition, hypo in target_cfg.items()}
+
+
+def _resolve_oral_settings(
+    args: argparse.Namespace,
+    config: Dict[str, Any],
+    config_path: Path | None,
+) -> Tuple[str, Path, int] | None:
     config_mode = None
     config_data_path = None
     config_region_n_samples = None
 
-    if args.config is not None:
-        config_path = args.config.resolve()
-        if not config_path.is_file():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-        config = _load_yaml(config_path)
+    if config_path is not None:
         dataset_paths = resolve_dataset_paths(config, config_path.parent)
         config_data_path = dataset_paths["learning_data"]
         oral_cfg = config.get("oral")
@@ -356,7 +415,7 @@ def _resolve_oral_settings(args: argparse.Namespace) -> Tuple[str, Path, int]:
 
     final_mode = args.oral_mode or config_mode
     if final_mode is None:
-        raise ValueError("Oral mode is required. Provide --oral-mode or set oral.mode in --config YAML.")
+        return None
 
     final_data_path = args.oral_data or config_data_path
     if final_data_path is None:
@@ -382,12 +441,22 @@ def main() -> None:
     if not input_dir.is_dir():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
 
+    config, config_path = _load_optional_config(args.config)
+    engine_config = _resolve_engine_config_for_eval(config, config_path)
+    target_hypotheses = _resolve_target_hypotheses(config, engine_config)
     agg_out = args.aggregate_output or (input_dir / "all_subjects.json")
     plots_dir = args.plots_dir or (input_dir / "plots")
     plots_dir.mkdir(parents=True, exist_ok=True)
-    oral_mode, oral_data_path, oral_region_n_samples = _resolve_oral_settings(args)
-    oral_plots_dir = plots_dir / f"oral_{oral_mode}_mode"
-    oral_plots_dir.mkdir(parents=True, exist_ok=True)
+    oral_settings = _resolve_oral_settings(args, config, config_path)
+    if oral_settings is None:
+        oral_mode = None
+        oral_data_path = None
+        oral_region_n_samples = None
+        oral_plots_dir = None
+    else:
+        oral_mode, oral_data_path, oral_region_n_samples = oral_settings
+        oral_plots_dir = plots_dir / f"oral_{oral_mode}_mode"
+        oral_plots_dir.mkdir(parents=True, exist_ok=True)
 
     plot_accuracy = args.plot_accuracy or (plots_dir / "accuracy.png")
     plot_grid = args.plot_grid or (plots_dir / "error_grid.png")
@@ -397,54 +466,78 @@ def main() -> None:
     plot_accuracy_family = args.plot_accuracy_family or (plots_dir / "accuracy_family.png")
     trajectory_dir = args.trajectory_dir or (plots_dir / "trajectory_accuracy")
     trajectory_posterior_dir = args.trajectory_posterior_dir or (plots_dir / "trajectory_posterior")
-    plot_oral_mass = args.plot_oral_mass or (oral_plots_dir / "oral_mass.png")
-    plot_distribution_alignment_group = (
-        args.plot_distribution_alignment_group or (oral_plots_dir / "distribution_based_alignment_group.png")
+    plot_oral_mass = args.plot_oral_mass or (oral_plots_dir / "oral_mass.png" if oral_plots_dir else None)
+    plot_distribution_alignment_group = args.plot_distribution_alignment_group or (
+        oral_plots_dir / "distribution_based_alignment_group.png" if oral_plots_dir else None
     )
-    plot_distribution_alignment_subject = (
-        args.plot_distribution_alignment_subject or (oral_plots_dir / "distribution_based_alignment_subject.png")
+    plot_distribution_alignment_subject = args.plot_distribution_alignment_subject or (
+        oral_plots_dir / "distribution_based_alignment_subject.png" if oral_plots_dir else None
     )
-    plot_oral_based_alignment_group = (
-        args.plot_oral_based_alignment_group or (oral_plots_dir / "oral_based_alignment_group.png")
+    plot_oral_based_alignment_group = args.plot_oral_based_alignment_group or (
+        oral_plots_dir / "oral_based_alignment_group.png" if oral_plots_dir else None
     )
-    plot_oral_based_alignment_subject = (
-        args.plot_oral_based_alignment_subject or (oral_plots_dir / "oral_based_alignment_subject.png")
+    plot_oral_based_alignment_subject = args.plot_oral_based_alignment_subject or (
+        oral_plots_dir / "oral_based_alignment_subject.png" if oral_plots_dir else None
     )
-    plot_target_based_alignment_group = (
-        args.plot_target_based_alignment_group or (oral_plots_dir / "target_based_alignment_group.png")
+    plot_target_based_alignment_group = args.plot_target_based_alignment_group or (
+        oral_plots_dir / "target_based_alignment_group.png" if oral_plots_dir else None
     )
-    plot_target_based_alignment_subject = (
-        args.plot_target_based_alignment_subject or (oral_plots_dir / "target_based_alignment_subject.png")
+    plot_target_based_alignment_subject = args.plot_target_based_alignment_subject or (
+        oral_plots_dir / "target_based_alignment_subject.png" if oral_plots_dir else None
     )
-    plot_hit_based_alignment_group = (
-        args.plot_hit_based_alignment_group or (oral_plots_dir / "hit_based_alignment_group.png")
+    plot_hit_based_alignment_group = args.plot_hit_based_alignment_group or (
+        oral_plots_dir / "hit_based_alignment_group.png" if oral_plots_dir else None
     )
-    plot_hit_based_alignment_subject = (
-        args.plot_hit_based_alignment_subject or (oral_plots_dir / "hit_based_alignment_subject.png")
+    plot_hit_based_alignment_subject = args.plot_hit_based_alignment_subject or (
+        oral_plots_dir / "hit_based_alignment_subject.png" if oral_plots_dir else None
     )
-    plot_coverage_based_alignment_group = (
-        args.plot_coverage_based_alignment_group
-        or (oral_plots_dir / "coverage_based_alignment_group.png")
+    plot_coverage_based_alignment_group = args.plot_coverage_based_alignment_group or (
+        oral_plots_dir / "coverage_based_alignment_group.png" if oral_plots_dir else None
     )
-    plot_coverage_based_alignment_subject = (
-        args.plot_coverage_based_alignment_subject
-        or (oral_plots_dir / "coverage_based_alignment_subject.png")
+    plot_coverage_based_alignment_subject = args.plot_coverage_based_alignment_subject or (
+        oral_plots_dir / "coverage_based_alignment_subject.png" if oral_plots_dir else None
     )
 
-    if not oral_data_path.is_file():
-        raise FileNotFoundError(f"Oral data file not found: {oral_data_path}")
+    trial_df = None
+    if config_path is not None:
+        dataset_paths = resolve_dataset_paths(config, config_path.parent)
+        trial_df = pd.read_csv(dataset_paths["learning_data"], encoding="utf-8-sig")
 
-    oral_df = pd.read_csv(oral_data_path)
-    aggregated = aggregate_grid_results(input_dir, eval_prediction_mode=args.eval_prediction_mode, trial_df=oral_df)
-    oral_eval_df = oral_df[oral_df["iSub"].isin(aggregated.keys())].copy()
+    if oral_data_path is not None:
+        if not oral_data_path.is_file():
+            raise FileNotFoundError(f"Oral data file not found: {oral_data_path}")
+        oral_df = pd.read_csv(oral_data_path, encoding="utf-8-sig")
+    else:
+        oral_df = trial_df
+
+    aggregated = aggregate_grid_results(
+        input_dir,
+        eval_prediction_mode=args.eval_prediction_mode,
+        trial_df=trial_df,
+        trial_data_cols=_resolve_trial_data_columns(engine_config),
+        target_hypotheses=target_hypotheses,
+    )
+    oral_eval_df = (
+        oral_df[oral_df["iSub"].isin(aggregated.keys())].copy()
+        if oral_df is not None and "iSub" in oral_df.columns
+        else None
+    )
 
     me = ModelEval()
 
     me.plot_accuracy_comparison(aggregated, save_path=str(plot_accuracy))
     print(f"Saved accuracy plot -> {plot_accuracy}")
 
-    me.plot_accuracy_family_comparison(aggregated, save_path=str(plot_accuracy_family))
-    print(f"Saved family accuracy plot -> {plot_accuracy_family}")
+    family_results = {
+        sid: info
+        for sid, info in aggregated.items()
+        if int(info.get("n_cats") or 0) > 2
+    }
+    if family_results:
+        me.plot_accuracy_family_comparison(family_results, save_path=str(plot_accuracy_family))
+        print(f"Saved family accuracy plot -> {plot_accuracy_family}")
+    else:
+        print("All subjects are binary-category (n_cats=2); skipped family accuracy plot.")
 
     me.plot_beta_dynamics(aggregated, save_path=str(plot_beta))
     print(f"Saved beta dynamics plot -> {plot_beta}")
@@ -466,6 +559,7 @@ def main() -> None:
         trajectory_posterior_dir,
         ranks=ModelEval.DEFAULT_TOP16_RANKS,
         n_cols=4,
+        target_hypotheses_by_condition=target_hypotheses,
     )
     if posterior_trajectory_summary.empty:
         print("No run-level posterior trajectories found; skipping trajectory posterior plots.")
@@ -481,11 +575,42 @@ def main() -> None:
     if not _has_steps(aggregated):
         raise RuntimeError("No step-level logs found in aggregated results; cannot generate posterior/cluster/oral plots.")
 
-    me.plot_posterior_probabilities(aggregated, save_path=str(plot_posterior))
+    me.plot_posterior_probabilities(aggregated, save_path=str(plot_posterior), limit=False)
     print(f"Saved posterior plot -> {plot_posterior}")
 
     me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
     print(f"Saved cluster dynamics plot -> {plot_cluster}")
+
+    if oral_settings is None:
+        print("No oral config provided; skipped oral alignment plots.")
+        aggregated_serializable = {
+            sid: {
+                **info,
+                "grid_errors": _serialize_grid_errors(info.get("grid_errors", {})),
+            }
+            for sid, info in aggregated.items()
+        }
+
+        agg_out.parent.mkdir(parents=True, exist_ok=True)
+        agg_out.write_text(json.dumps(aggregated_serializable, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Aggregated {len(aggregated)} subjects -> {agg_out}")
+        return
+
+    assert oral_plots_dir is not None
+    assert oral_eval_df is not None
+    assert oral_mode is not None
+    assert oral_region_n_samples is not None
+    assert plot_oral_mass is not None
+    assert plot_distribution_alignment_group is not None
+    assert plot_distribution_alignment_subject is not None
+    assert plot_oral_based_alignment_group is not None
+    assert plot_oral_based_alignment_subject is not None
+    assert plot_target_based_alignment_group is not None
+    assert plot_target_based_alignment_subject is not None
+    assert plot_hit_based_alignment_group is not None
+    assert plot_hit_based_alignment_subject is not None
+    assert plot_coverage_based_alignment_group is not None
+    assert plot_coverage_based_alignment_subject is not None
 
     oral_mass_cache = oral_plots_dir / "oral_mass_probabilities.npz"
     if oral_mass_cache.is_file():
