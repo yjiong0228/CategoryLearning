@@ -15,6 +15,7 @@ from joblib import Parallel, delayed
 
 from src.Bayesian_state.run_amr_optimization import (
     resolve_engine_config as resolve_engine_config_amr,
+    resolve_loss_delta as resolve_loss_delta_amr,
     resolve_loss_metric as resolve_loss_metric_amr,
     resolve_param_grid as resolve_param_grid_amr,
     resolve_prediction_modes as resolve_prediction_modes_amr,
@@ -22,6 +23,7 @@ from src.Bayesian_state.run_amr_optimization import (
 )
 from src.Bayesian_state.run_grid_optimization import (
     resolve_engine_config as resolve_engine_config_grid,
+    resolve_loss_delta as resolve_loss_delta_grid,
     resolve_loss_metric as resolve_loss_metric_grid,
     resolve_param_grid as resolve_param_grid_grid,
     resolve_prediction_modes as resolve_prediction_modes_grid,
@@ -240,16 +242,18 @@ class HyperOptimizer:
             engine_cfg = resolve_engine_config_grid(subject_cfg, cfg_path.parent, subject_id=subject_id)
             prediction_mode, selection_prediction_mode = resolve_prediction_modes_grid(subject_cfg)
             loss_metric = resolve_loss_metric_grid(subject_cfg)
+            loss_delta = resolve_loss_delta_grid(subject_cfg, loss_metric)
             window_size = resolve_window_size_grid(subject_cfg, subject_id, subjects)
             n_jobs = int(subject_cfg.get("n_jobs", 1))
         else:
             engine_cfg = resolve_engine_config_amr(subject_cfg, cfg_path.parent, subject_id=subject_id)
             prediction_mode, selection_prediction_mode = resolve_prediction_modes_amr(subject_cfg)
             loss_metric = resolve_loss_metric_amr(subject_cfg)
+            loss_delta = resolve_loss_delta_amr(subject_cfg, loss_metric)
             window_size = resolve_window_size_amr(subject_cfg, subject_id, subjects)
             n_jobs = int(subject_cfg.get("n_jobs_inner", 1))
 
-        return subject_cfg, engine_cfg, prediction_mode, selection_prediction_mode, loss_metric, window_size, n_jobs
+        return subject_cfg, engine_cfg, prediction_mode, selection_prediction_mode, loss_metric, loss_delta, window_size, n_jobs
 
     def _evaluate_combination(self, stage_name: str, combination_index: int, combination_params: Dict[str, Any], stage_inner_cfg: Dict[str, Any], subjects: Sequence[int]) -> CombinationResult:
         seed = self._combination_seed(stage_name, combination_index, combination_params)
@@ -259,7 +263,7 @@ class HyperOptimizer:
         errors: List[float] = []
 
         for sid in subjects:
-            subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, window_size, n_jobs = self._resolve_inner_components(
+            subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, n_jobs = self._resolve_inner_components(
                 stage_inner_cfg, sid, subjects, self.inner_base_config_path
             )
             combination_inner_cfg, combination_engine_cfg = self._apply_hyperparams(combination_params, subject_cfg, base_engine_cfg)
@@ -275,6 +279,11 @@ class HyperOptimizer:
             optimizer, dataset_paths = self._build_optimizer(combination_inner_cfg, combination_engine_cfg, self.inner_base_config_path)
             optimizer.n_jobs = n_jobs
 
+            effective_loss_metric = str(combination_inner_cfg["loss_metric"])
+            if self.inner_optimizer == "grid":
+                effective_loss_delta = resolve_loss_delta_grid(combination_inner_cfg, effective_loss_metric)
+            else:
+                effective_loss_delta = resolve_loss_delta_amr(combination_inner_cfg, effective_loss_metric)
             result = optimizer.optimize_subject(
                 subject_id=sid,
                 param_grid=param_grid,
@@ -286,7 +295,8 @@ class HyperOptimizer:
                 keep_logs=bool(combination_inner_cfg.get("keep_logs", False)),
                 prediction_mode=str(combination_inner_cfg.get("prediction_mode", pred_mode)),
                 selection_prediction_mode=str(combination_inner_cfg.get("selection_prediction_mode", sel_mode)),
-                loss_metric=str(combination_inner_cfg["loss_metric"]),
+                loss_metric=effective_loss_metric,
+                loss_delta=effective_loss_delta,
             )
 
             best = result["best"]
