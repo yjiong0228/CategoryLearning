@@ -147,3 +147,18 @@ def test_cd_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
         assert False, "Expected ValueError for missing loss_metric"
     except ValueError as e:
         assert "loss_metric" in str(e)
+
+
+def test_cd_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    cfg["loss_metric"] = "berhu"
+    opt = HyperOptimizerCD(cfg, cd_path)
+    bad_inner = dict(opt.inner_base_config)
+    bad_inner["loss_metric"] = "berhu"
+    bad_inner.pop("loss_delta", None)
+    try:
+        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        assert False, "Expected ValueError for missing loss_delta with berhu"
+    except ValueError as e:
+        assert "loss_delta" in str(e)

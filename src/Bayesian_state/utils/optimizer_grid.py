@@ -38,6 +38,7 @@ def _build_run_record(
         "mean_error": float(run.mean_error),
         "selection_prediction_mode": str(run.selection_prediction_mode),
         "loss_metric": str(run.loss_metric),
+        "loss_delta": run.loss_delta,
         "metrics_by_mode": run.metrics_by_mode,
         "step_log": run.step_log,
         "posterior_log": run.posterior_log,
@@ -62,6 +63,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         loss_metric: str = LOSS_METRIC_MAE,
+        loss_delta: float | None = None,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = self._get_condition_value(subject_frame)
@@ -96,6 +98,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 prediction_mode,
                 selection_prediction_mode,
                 loss_metric,
+                loss_delta,
             )
             for params in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
         ))
@@ -192,6 +195,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                     prediction_mode,
                     selection_prediction_mode,
                     loss_metric,
+                    loss_delta,
                 )
                 for params in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
             ))
@@ -276,6 +280,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 "prediction_mode": prediction_mode,
                 "selection_prediction_mode": selection_prediction_mode,
                 "loss_metric": loss_metric,
+                "loss_delta": loss_delta,
             },
         }
 
@@ -357,6 +362,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             PREDICTION_MODE_POSTERIOR_T_MINUS_1,
             PREDICTION_MODE_POSTERIOR_T_MINUS_1,
             LOSS_METRIC_MAE,
+            None,
         )
         return GridPointResult(
             params=params,

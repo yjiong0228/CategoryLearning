@@ -232,6 +232,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         prediction_mode: str,
         selection_prediction_mode: str,
         loss_metric: str,
+        loss_delta: float | None,
     ) -> GridPointResult:
         runs: List[SingleRunResult]
         if n_repeats <= 1:
@@ -250,6 +251,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     prediction_mode,
                     selection_prediction_mode,
                     loss_metric,
+                    loss_delta,
                 )
             ]
         else:
@@ -268,6 +270,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     prediction_mode,
                     selection_prediction_mode,
                     loss_metric,
+                    loss_delta,
                 )
                 for _ in range(n_repeats)
             ))
@@ -333,6 +336,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         loss_metric: str = LOSS_METRIC_MAE,
+        loss_delta: float | None = None,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = self._get_condition_value(subject_frame)
@@ -375,6 +379,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 prediction_mode,
                 selection_prediction_mode,
                 loss_metric,
+                loss_delta,
             )
             cache[k] = gp
             grid_results.append(gp)
@@ -412,6 +417,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 prediction_mode,
                 selection_prediction_mode,
                 loss_metric,
+                loss_delta,
             )
             best_result = refit_gp
         else:
@@ -438,6 +444,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 "prediction_mode": prediction_mode,
                 "selection_prediction_mode": selection_prediction_mode,
                 "loss_metric": loss_metric,
+                "loss_delta": loss_delta,
             },
         }
 

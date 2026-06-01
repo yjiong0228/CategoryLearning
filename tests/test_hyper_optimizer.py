@@ -140,7 +140,7 @@ def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch)
     captured: dict = {}
 
     def _fake_resolve(inner_cfg, subject_id, subjects, cfg_path):
-        return inner_cfg, {"modules": {}}, "posterior_t_minus_1", "posterior_t_minus_1", "mse", 8, 1
+        return inner_cfg, {"modules": {}}, "posterior_t_minus_1", "posterior_t_minus_1", "mse", None, 8, 1
 
     class _FakeOptimizer:
         def __init__(self):
@@ -152,6 +152,7 @@ def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch)
             captured["prediction_mode"] = kwargs["prediction_mode"]
             captured["selection_prediction_mode"] = kwargs["selection_prediction_mode"]
             captured["loss_metric"] = kwargs["loss_metric"]
+            captured["loss_delta"] = kwargs["loss_delta"]
             class _Best:
                 mean_error = 0.1
                 best_error = 0.1
@@ -179,6 +180,7 @@ def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch)
     assert captured["prediction_mode"] == "prior_t"
     assert captured["selection_prediction_mode"] == "prior_t"
     assert captured["loss_metric"] == "mse"
+    assert captured["loss_delta"] is None
 
 
 def test_fine_stage_runs_without_coarse_when_fine_hyperparam_space_exists(tmp_path: Path, monkeypatch) -> None:
@@ -223,3 +225,18 @@ def test_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
         assert False, "Expected ValueError for missing loss_metric"
     except ValueError as e:
         assert "loss_metric" in str(e)
+
+
+def test_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["loss_metric"] = "berhu"
+    opt = HyperOptimizer(cfg, hyper_path)
+    bad_inner = dict(opt.inner_base_config)
+    bad_inner["loss_metric"] = "berhu"
+    bad_inner.pop("loss_delta", None)
+    try:
+        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        assert False, "Expected ValueError for missing loss_delta with berhu"
+    except ValueError as e:
+        assert "loss_delta" in str(e)

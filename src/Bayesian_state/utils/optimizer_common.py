@@ -22,11 +22,13 @@ PREDICTION_MODE_CHOICES = (
 
 LOSS_METRIC_MAE = "mae"
 LOSS_METRIC_MSE = "mse"
+LOSS_METRIC_BERHU = "berhu"
 LOSS_METRIC_BRIER = "brier"
 LOSS_METRIC_NLL = "nll"
 LOSS_METRIC_CHOICES = (
     LOSS_METRIC_MAE,
     LOSS_METRIC_MSE,
+    LOSS_METRIC_BERHU,
     LOSS_METRIC_BRIER,
     LOSS_METRIC_NLL,
 )
@@ -58,6 +60,26 @@ class MSELoss(LossStrategy):
         pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
         err = np.square(true_acc - pred_acc)
         return float(np.nanmean(err)) if err.size else float("nan")
+
+
+class BerHuLoss(LossStrategy):
+    name = LOSS_METRIC_BERHU
+
+    def __init__(self, delta: float):
+        if delta <= 0:
+            raise ValueError(f"loss_delta must be > 0 for berhu, got {delta}")
+        self.delta = float(delta)
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
+        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
+        abs_err = np.abs(true_acc - pred_acc)
+        piecewise = np.where(
+            abs_err <= self.delta,
+            abs_err,
+            (np.square(abs_err) + self.delta ** 2) / (2.0 * self.delta),
+        )
+        return float(np.nanmean(piecewise)) if piecewise.size else float("nan")
 
 
 class MulticlassBrierLoss(LossStrategy):
@@ -96,12 +118,16 @@ class NLLLoss(LossStrategy):
         return float(np.mean(-np.log(p_true)))
 
 
-def build_loss_strategy(loss_metric: str) -> LossStrategy:
+def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
     metric = str(loss_metric).strip().lower()
     if metric == LOSS_METRIC_MAE:
         return MAELoss()
     if metric == LOSS_METRIC_MSE:
         return MSELoss()
+    if metric == LOSS_METRIC_BERHU:
+        if loss_delta is None:
+            raise ValueError("loss_delta is required when loss_metric='berhu'")
+        return BerHuLoss(float(loss_delta))
     if metric == LOSS_METRIC_BRIER:
         return MulticlassBrierLoss()
     if metric == LOSS_METRIC_NLL:
@@ -148,6 +174,7 @@ class SingleRunResult:
     metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]]
     selection_prediction_mode: str
     loss_metric: str
+    loss_delta: Optional[float]
     posterior_log: Optional[Sequence[np.ndarray]]
     prior_log: Optional[Sequence[np.ndarray]]
     beta_log: Optional[Sequence[np.ndarray]]
@@ -443,9 +470,10 @@ def compute_prediction_metrics(
     window_size: int,
     prediction_mode: str,
     loss_metric: str,
+    loss_delta: float | None = None,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
-    loss_strategy = build_loss_strategy(loss_metric)
+    loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
 
     engine_beta = getattr(model.engine, "beta", None)
     if engine_beta is None:
@@ -503,6 +531,8 @@ def compute_prediction_metrics(
         metrics["mean_error"] = objective_error
         metrics["objective_error"] = objective_error
         metrics["loss_metric"] = loss_strategy.name
+        if loss_delta is not None:
+            metrics["loss_delta"] = float(loss_delta)
         metrics_by_mode[mode] = metrics
     return metrics_by_mode
 
@@ -542,6 +572,7 @@ def evaluate_state_model_run(
     prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     loss_metric: str = LOSS_METRIC_MAE,
+    loss_delta: float | None = None,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     stimulus, choices, feedback, categories = arrays
@@ -586,6 +617,7 @@ def evaluate_state_model_run(
         window_size,
         prediction_mode=prediction_mode,
         loss_metric=loss_metric,
+        loss_delta=loss_delta,
     )
 
     if selection_prediction_mode not in metrics_by_mode:
@@ -609,6 +641,7 @@ def evaluate_state_model_run(
         metrics_by_mode=metrics_by_mode,
         selection_prediction_mode=selection_prediction_mode,
         loss_metric=str(loss_metric).lower(),
+        loss_delta=float(loss_delta) if loss_delta is not None else None,
         posterior_log=posterior_log,
         prior_log=prior_log,
         beta_log=beta_log,

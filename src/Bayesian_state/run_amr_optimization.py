@@ -15,6 +15,7 @@ from src.Bayesian_state.utils.optimizer_amr import StateModelAMROptimizer  # noq
 from src.Bayesian_state.utils.optimizer_common import (
     PREDICTION_MODE_CHOICES,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    LOSS_METRIC_BERHU,
     LOSS_METRIC_CHOICES,
 )
 from src.Bayesian_state.utils.stream import StreamList
@@ -128,6 +129,18 @@ def resolve_loss_metric(cfg: Dict[str, Any]) -> str:
     if metric not in LOSS_METRIC_CHOICES:
         raise ValueError(f"Unsupported loss_metric '{metric}'. Valid: {LOSS_METRIC_CHOICES}")
     return metric
+
+
+def resolve_loss_delta(cfg: Dict[str, Any], loss_metric: str) -> float | None:
+    raw = cfg.get("loss_delta")
+    if loss_metric == LOSS_METRIC_BERHU:
+        if raw is None:
+            raise ValueError("Config must include loss_delta when loss_metric='berhu'")
+        delta = float(raw)
+        if delta <= 0:
+            raise ValueError(f"loss_delta must be > 0 when loss_metric='berhu', got {delta}")
+        return delta
+    return None
 
 
 def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
@@ -246,6 +259,7 @@ def serialize_result(
         "representative_run_index": getattr(best, "representative_run_index", 0),
         "selection_meta": result.get("selection_meta", {}),
         "loss_metric": result.get("selection_meta", {}).get("loss_metric"),
+        "loss_delta": result.get("selection_meta", {}).get("loss_delta"),
         "raw_step_results_ref": raw_step_ref,
         "grid_errors": _build_grid_errors(result),
         "grid_summary": [
@@ -292,6 +306,7 @@ def run_single_subject(
     prediction_mode: str,
     selection_prediction_mode: str,
     loss_metric: str,
+    loss_delta: float | None,
 ) -> None:
     opt = StateModelAMROptimizer(
         engine_config=engine_config,
@@ -314,6 +329,7 @@ def run_single_subject(
         prediction_mode=prediction_mode,
         selection_prediction_mode=selection_prediction_mode,
         loss_metric=loss_metric,
+        loss_delta=loss_delta,
     )
 
     subjects_dir = output_dir / "subjects"
@@ -375,6 +391,7 @@ def main() -> None:
         amr_kwargs = resolve_amr_kwargs(subject_cfg)
         prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
         loss_metric = resolve_loss_metric(subject_cfg)
+        loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
 
         dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
         data_path = dataset_paths["learning_data"]
@@ -400,6 +417,7 @@ def main() -> None:
             prediction_mode=prediction_mode,
             selection_prediction_mode=selection_prediction_mode,
             loss_metric=loss_metric,
+            loss_delta=loss_delta,
         ))
 
     Parallel(n_jobs=base_n_jobs_subjects)(
