@@ -44,5 +44,5 @@ amr_kwargs:
   split_factor: 2
   refine_top_k: 3
 
-loss_metric: accuracy_mse
+loss_metric: accuracy_curve_mse
 

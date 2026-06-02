@@ -990,5 +990,5 @@ subject_overrides:
             beta_init: 3.0
             decrease_rate: 0.2
             prior_beta_scale: 5.0
-loss_metric: accuracy_mse
+loss_metric: accuracy_curve_mse
 

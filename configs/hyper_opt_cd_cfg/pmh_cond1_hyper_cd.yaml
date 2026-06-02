@@ -97,4 +97,4 @@ stages:
 
 refine_policy:
   top_k: 8
-loss_metric: accuracy_mse
+loss_metric: accuracy_curve_mse

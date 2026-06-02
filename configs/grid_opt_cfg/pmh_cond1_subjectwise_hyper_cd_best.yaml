@@ -29,7 +29,7 @@ param_grid:
   - 0.08
   - 0.15
   - 0.3
-loss_metric: accuracy_mse
+loss_metric: accuracy_curve_mse
 engine_config:
   modules:
     perception_mod:

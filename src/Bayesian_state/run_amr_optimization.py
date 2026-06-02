@@ -135,10 +135,10 @@ def resolve_loss_delta(cfg: Dict[str, Any], loss_metric: str) -> float | None:
     raw = cfg.get("loss_delta")
     if loss_metric == LOSS_METRIC_BERHU:
         if raw is None:
-            raise ValueError("Config must include loss_delta when loss_metric='accuracy_berhu'")
+            raise ValueError("Config must include loss_delta when loss_metric='accuracy_curve_berhu'")
         delta = float(raw)
         if delta <= 0:
-            raise ValueError(f"loss_delta must be > 0 when loss_metric='accuracy_berhu', got {delta}")
+            raise ValueError(f"loss_delta must be > 0 when loss_metric='accuracy_curve_berhu', got {delta}")
         return delta
     return None
 
