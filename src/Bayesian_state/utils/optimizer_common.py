@@ -20,18 +20,31 @@ PREDICTION_MODE_CHOICES = (
     PREDICTION_MODE_BOTH,
 )
 
-LOSS_METRIC_MAE = "mae"
-LOSS_METRIC_MSE = "mse"
-LOSS_METRIC_BERHU = "berhu"
-LOSS_METRIC_BRIER = "brier"
-LOSS_METRIC_NLL = "nll"
-LOSS_METRIC_CHOICES = (
-    LOSS_METRIC_MAE,
-    LOSS_METRIC_MSE,
-    LOSS_METRIC_BERHU,
-    LOSS_METRIC_BRIER,
-    LOSS_METRIC_NLL,
+LOSS_METRIC_ACCURACY_MAE = "accuracy_mae"
+LOSS_METRIC_ACCURACY_MSE = "accuracy_mse"
+LOSS_METRIC_ACCURACY_BERHU = "accuracy_berhu"
+LOSS_METRIC_CHOICE_BRIER = "choice_brier"
+LOSS_METRIC_CHOICE_NLL = "choice_nll"
+LOSS_METRIC_WRONG_CHOICE_NLL = "wrong_choice_nll"
+LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL = "conditional_wrong_choice_nll"
+
+# Backward-compatible constant names for call sites that import the old symbols.
+# The accepted config strings are the explicit names above.
+LOSS_METRIC_MAE = LOSS_METRIC_ACCURACY_MAE
+LOSS_METRIC_MSE = LOSS_METRIC_ACCURACY_MSE
+LOSS_METRIC_BERHU = LOSS_METRIC_ACCURACY_BERHU
+ACCURACY_LOSS_METRIC_CHOICES = (
+    LOSS_METRIC_ACCURACY_MAE,
+    LOSS_METRIC_ACCURACY_MSE,
+    LOSS_METRIC_ACCURACY_BERHU,
 )
+CHOICE_LOSS_METRIC_CHOICES = (
+    LOSS_METRIC_CHOICE_BRIER,
+    LOSS_METRIC_CHOICE_NLL,
+    LOSS_METRIC_WRONG_CHOICE_NLL,
+    LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
+)
+LOSS_METRIC_CHOICES = ACCURACY_LOSS_METRIC_CHOICES + CHOICE_LOSS_METRIC_CHOICES
 
 
 class LossStrategy(ABC):
@@ -42,8 +55,9 @@ class LossStrategy(ABC):
         raise NotImplementedError
 
 
-class MAELoss(LossStrategy):
-    name = LOSS_METRIC_MAE
+# Accuracy-based losses compare predicted and observed correctness curves.
+class AccuracyMAELoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_MAE
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
         true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
@@ -52,8 +66,8 @@ class MAELoss(LossStrategy):
         return float(np.nanmean(err)) if err.size else float("nan")
 
 
-class MSELoss(LossStrategy):
-    name = LOSS_METRIC_MSE
+class AccuracyMSELoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_MSE
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
         true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
@@ -62,12 +76,12 @@ class MSELoss(LossStrategy):
         return float(np.nanmean(err)) if err.size else float("nan")
 
 
-class BerHuLoss(LossStrategy):
-    name = LOSS_METRIC_BERHU
+class AccuracyBerHuLoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_BERHU
 
     def __init__(self, delta: float):
         if delta <= 0:
-            raise ValueError(f"loss_delta must be > 0 for berhu, got {delta}")
+            raise ValueError(f"loss_delta must be > 0 for accuracy_berhu, got {delta}")
         self.delta = float(delta)
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
@@ -82,56 +96,162 @@ class BerHuLoss(LossStrategy):
         return float(np.nanmean(piecewise)) if piecewise.size else float("nan")
 
 
-class MulticlassBrierLoss(LossStrategy):
-    name = LOSS_METRIC_BRIER
+# Choice-based losses compare predicted category probabilities with observed choices.
+def _valid_trial_classification_data(
+    metrics: Dict[str, np.ndarray | float],
+    target_key: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    probs, target_idx, _ = _valid_trial_two_target_data(
+        metrics,
+        target_key,
+        target_key,
+    )
+    return probs, target_idx
+
+
+def _valid_trial_two_target_data(
+    metrics: Dict[str, np.ndarray | float],
+    first_target_key: str,
+    second_target_key: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    probs = np.asarray(metrics["pred_category_probs"], dtype=float)
+    first_idx = np.asarray(metrics[first_target_key], dtype=int)
+    second_idx = np.asarray(metrics[second_target_key], dtype=int)
+    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+    if probs.ndim != 2:
+        raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
+    if valid_mask.shape[0] != probs.shape[0]:
+        raise ValueError(
+            "valid_trial_mask length does not match pred_category_probs rows: "
+            f"{valid_mask.shape[0]} vs {probs.shape[0]}"
+        )
+    if first_idx.shape[0] != probs.shape[0]:
+        raise ValueError(
+            f"{first_target_key} length does not match pred_category_probs rows: "
+            f"{first_idx.shape[0]} vs {probs.shape[0]}"
+        )
+    if second_idx.shape[0] != probs.shape[0]:
+        raise ValueError(
+            f"{second_target_key} length does not match pred_category_probs rows: "
+            f"{second_idx.shape[0]} vs {probs.shape[0]}"
+        )
+
+    probs = probs[valid_mask]
+    first_idx = first_idx[valid_mask]
+    second_idx = second_idx[valid_mask]
+    if probs.size == 0:
+        return probs, first_idx, second_idx
+
+    n_cats = probs.shape[1]
+    valid_first = (first_idx >= 0) & (first_idx < n_cats)
+    valid_second = (second_idx >= 0) & (second_idx < n_cats)
+    finite_probs = np.all(np.isfinite(probs), axis=1)
+    keep = valid_first & valid_second & finite_probs
+    return probs[keep], first_idx[keep], second_idx[keep]
+
+
+class ChoiceBrierLoss(LossStrategy):
+    name = LOSS_METRIC_CHOICE_BRIER
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
-        true_idx = np.asarray(metrics["true_category_index"], dtype=int)
-        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-        probs = probs[valid_mask]
-        true_idx = true_idx[valid_mask]
+        probs, choice_idx = _valid_trial_classification_data(
+            metrics, "observed_choice_index"
+        )
         if probs.size == 0:
             return float("nan")
         n_trials, n_cats = probs.shape
         one_hot = np.zeros((n_trials, n_cats), dtype=float)
-        one_hot[np.arange(n_trials), true_idx] = 1.0
+        one_hot[np.arange(n_trials), choice_idx] = 1.0
         return float(np.mean(np.sum(np.square(probs - one_hot), axis=1)))
 
 
-class NLLLoss(LossStrategy):
-    name = LOSS_METRIC_NLL
+class ChoiceNLLLoss(LossStrategy):
+    name = LOSS_METRIC_CHOICE_NLL
 
     def __init__(self, eps: float = 1e-12):
         self.eps = float(eps)
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
-        true_idx = np.asarray(metrics["true_category_index"], dtype=int)
-        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-        probs = probs[valid_mask]
-        true_idx = true_idx[valid_mask]
+        probs, choice_idx = _valid_trial_classification_data(
+            metrics, "observed_choice_index"
+        )
         if probs.size == 0:
             return float("nan")
-        p_true = probs[np.arange(probs.shape[0]), true_idx]
-        p_true = np.clip(p_true, self.eps, 1.0)
-        return float(np.mean(-np.log(p_true)))
+        p_choice = probs[np.arange(probs.shape[0]), choice_idx]
+        p_choice = np.clip(p_choice, self.eps, 1.0)
+        return float(np.mean(-np.log(p_choice)))
+
+
+class WrongChoiceNLLLoss(LossStrategy):
+    name = LOSS_METRIC_WRONG_CHOICE_NLL
+
+    def __init__(self, eps: float = 1e-12):
+        self.eps = float(eps)
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        probs, choice_idx, true_idx = _valid_trial_two_target_data(
+            metrics,
+            "observed_choice_index",
+            "true_category_index",
+        )
+        if probs.size == 0:
+            return float("nan")
+        wrong_mask = choice_idx != true_idx
+        if not np.any(wrong_mask):
+            return float("nan")
+        wrong_probs = probs[wrong_mask]
+        wrong_choice_idx = choice_idx[wrong_mask]
+        p_choice = wrong_probs[np.arange(wrong_probs.shape[0]), wrong_choice_idx]
+        p_choice = np.clip(p_choice, self.eps, 1.0)
+        return float(np.mean(-np.log(p_choice)))
+
+
+class ConditionalWrongChoiceNLLLoss(LossStrategy):
+    name = LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL
+
+    def __init__(self, eps: float = 1e-12):
+        self.eps = float(eps)
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        probs, choice_idx, true_idx = _valid_trial_two_target_data(
+            metrics,
+            "observed_choice_index",
+            "true_category_index",
+        )
+        if probs.size == 0:
+            return float("nan")
+        wrong_mask = choice_idx != true_idx
+        if not np.any(wrong_mask):
+            return float("nan")
+        wrong_probs = probs[wrong_mask]
+        wrong_choice_idx = choice_idx[wrong_mask]
+        wrong_true_idx = true_idx[wrong_mask]
+        row = np.arange(wrong_probs.shape[0])
+        p_choice = wrong_probs[row, wrong_choice_idx]
+        p_true = wrong_probs[row, wrong_true_idx]
+        wrong_mass = np.clip(1.0 - p_true, self.eps, 1.0)
+        conditional_p_choice = np.clip(p_choice / wrong_mass, self.eps, 1.0)
+        return float(np.mean(-np.log(conditional_p_choice)))
 
 
 def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
     metric = str(loss_metric).strip().lower()
-    if metric == LOSS_METRIC_MAE:
-        return MAELoss()
-    if metric == LOSS_METRIC_MSE:
-        return MSELoss()
-    if metric == LOSS_METRIC_BERHU:
+    if metric == LOSS_METRIC_ACCURACY_MAE:
+        return AccuracyMAELoss()
+    if metric == LOSS_METRIC_ACCURACY_MSE:
+        return AccuracyMSELoss()
+    if metric == LOSS_METRIC_ACCURACY_BERHU:
         if loss_delta is None:
-            raise ValueError("loss_delta is required when loss_metric='berhu'")
-        return BerHuLoss(float(loss_delta))
-    if metric == LOSS_METRIC_BRIER:
-        return MulticlassBrierLoss()
-    if metric == LOSS_METRIC_NLL:
-        return NLLLoss()
+            raise ValueError("loss_delta is required when loss_metric='accuracy_berhu'")
+        return AccuracyBerHuLoss(float(loss_delta))
+    if metric == LOSS_METRIC_CHOICE_BRIER:
+        return ChoiceBrierLoss()
+    if metric == LOSS_METRIC_CHOICE_NLL:
+        return ChoiceNLLLoss()
+    if metric == LOSS_METRIC_WRONG_CHOICE_NLL:
+        return WrongChoiceNLLLoss()
+    if metric == LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL:
+        return ConditionalWrongChoiceNLLLoss()
     raise ValueError(f"Unsupported loss_metric '{loss_metric}'. Valid: {LOSS_METRIC_CHOICES}")
 
 
@@ -344,6 +464,7 @@ def _compute_single_mode_metrics(
     pred_family_acc = np.full(n_trials, np.nan, dtype=float)
     pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
     true_category_index = np.asarray(categories, dtype=int) - 1
+    observed_choice_index = np.asarray(choices, dtype=int) - 1
     valid_trial_mask = np.zeros(n_trials, dtype=bool)
 
     for trial_idx in range(1, n_trials):
@@ -455,6 +576,7 @@ def _compute_single_mode_metrics(
         "family_mean_error": family_mean_error,
         "pred_category_probs": pred_category_probs,
         "true_category_index": true_category_index,
+        "observed_choice_index": observed_choice_index,
         "valid_trial_mask": valid_trial_mask,
     }
 

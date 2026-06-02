@@ -1,0 +1,100 @@
+# Two-layer hyper-optimization (Coordinate Descent) for cond1
+# Outer optimizer: coordinate descent over model hyperparameters
+# Inner optimizer: existing grid optimizer over memory params (gamma/w0)
+inner_optimizer: grid
+inner_base_config_path: ../grid_opt_cfg/pmh_cond1.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-opt/pmh/cond1_cd
+selection_metric: min_inner_mean_error
+hyperparam_selection_mode: per_subject
+save_level: compact
+random_seed: 42
+
+# CD controls. The inner optimizer uses 128 cores; CD itself stays sequential
+# so that restart order, cache reuse, and random seeds remain reproducible.
+cd:
+  n_restarts: 5
+  max_outer_iters: 8
+  init_strategy: random
+  coordinate_order: shuffle_each_iter
+  patience: 2
+  min_delta: 0.001
+
+hyperparam_space:
+  inner.window_size:
+    values: [8]
+
+  # Cond1 strategy templates centered on a small hypothesis pool.
+  # Restricted from the previous cond1 subjectwise hyper result:
+  # window_size=8 and strategy templates T1/T2/T9 never won.
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      # T3: retain top 1 posterior hypothesis + explore 2 random hypotheses
+      - [
+          {amount: "fixed", method: "top_posterior", value: 1},
+          {amount: "fixed", method: "random", value: 2}
+        ]
+      # T4: retain top 2 posterior hypotheses + explore 1 random hypothesis
+      - [
+          {amount: "fixed", method: "top_posterior", value: 2},
+          {amount: "fixed", method: "random", value: 1}
+        ]
+      # T5: retain top 3 posterior hypotheses + explore 1 random hypothesis
+      - [
+          {amount: "fixed", method: "top_posterior", value: 3},
+          {amount: "fixed", method: "random", value: 1}
+        ]
+      # T6: top-p posterior retention + random exploration
+      - [
+          {amount: "fixed", method: "top_posterior", top_p: 0.70, value: 2},
+          {amount: "fixed", method: "random", value: 1}
+        ]
+      # T7: entropy-like active retention + conservative random exploration
+      - [
+          {amount: "entropy_4", method: "random_posterior"},
+          {amount: "opp_random_2", method: "random"}
+        ]
+      # T8: retain top 2 + structured exploration near retained hypotheses
+      - [
+          {amount: "fixed", method: "top_posterior", value: 2},
+          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [3, 4]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [2, 3]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.1, 0.2, 0.3]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [5.0, 10.0, 15.0]
+
+stages:
+  coarse:
+    inner_overrides:
+      n_repeats: 64
+      refit_repeats: 128
+      keep_logs: false
+      n_jobs: 128
+      param_grid:
+        gamma: [0.2, 0.6, 0.9]
+        w0: [0.02, 0.1, 0.3]
+
+  fine:
+    inner_overrides:
+      n_repeats: 64
+      refit_repeats: 512
+      keep_logs: false
+      n_jobs: 128
+      param_grid:
+        gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
+        w0: [0.01, 0.03, 0.08, 0.15, 0.3]
+
+refine_policy:
+  top_k: 8
+loss_metric: accuracy_mse

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 _REGION_SCORER_CACHE: Dict[Tuple[Any, ...], "RegionOverlapScorer"] = {}
 _REGION_DISTRIBUTION_CACHE: Dict[Tuple[Any, ...], np.ndarray] = {}
+_ORAL_EQUIVALENCE_GROUP_CACHE: Dict[Tuple[Any, ...], Tuple[np.ndarray, Tuple[str, ...]]] = {}
 
 
 __all__ = [
@@ -550,6 +551,107 @@ class OralModelAlignmentMixin:
         if value <= 0:
             raise ValueError(f"rank_top_k must be positive, got {value}")
         return value
+
+    @staticmethod
+    def _rounded_signature(values, decimals=12):
+        """Return a stable signature for numeric oral-representation values."""
+        arr = np.asarray(values, dtype=float)
+        arr = np.round(arr, int(decimals))
+        return tuple(arr.reshape(-1).tolist())
+
+    @staticmethod
+    def _region_signature(region, decimals=12):
+        """Return a stable signature for one hypothesis region."""
+        A, b = Oral_region_mapping._parse_region(region)
+        if A is None or b is None:
+            return ("invalid",)
+        A = np.round(np.asarray(A, dtype=float), int(decimals))
+        b = np.round(np.asarray(b, dtype=float), int(decimals))
+        return (
+            A.shape,
+            tuple(A.reshape(-1).tolist()),
+            b.shape,
+            tuple(b.reshape(-1).tolist()),
+        )
+
+    @staticmethod
+    def _oral_equivalence_groups(partition, choice, oral_mode="center", decimals=12):
+        """Group hypotheses that are indistinguishable in the oral representation.
+
+        The grouping is trial-specific through ``choice``: hypotheses are
+        grouped by the category representation that the participant is
+        reporting about. For center mode the key is the prototype center; for
+        region mode the key is the boundary region ``(A, b)``. Both oral mass
+        and model prior can then be summed over the same groups.
+        """
+        mode = str(oral_mode).strip().lower()
+        cat_idx = int(choice) - 1
+        key = (
+            partition.__class__.__name__,
+            int(partition.n_dims),
+            int(partition.n_cats),
+            int(cat_idx),
+            mode,
+            int(decimals),
+        )
+        cached = _ORAL_EQUIVALENCE_GROUP_CACHE.get(key)
+        if cached is not None:
+            group_ids, labels = cached
+            return group_ids.copy(), tuple(labels)
+
+        if cat_idx < 0 or cat_idx >= int(partition.n_cats):
+            return np.full(int(partition.length), -1, dtype=int), tuple()
+
+        signature_to_group: Dict[Any, int] = {}
+        labels: List[str] = []
+        group_ids = np.full(int(partition.length), -1, dtype=int)
+
+        for hypo_idx in range(int(partition.length)):
+            if mode == "center":
+                signature = OralModelAlignmentMixin._rounded_signature(
+                    partition.prototypes[hypo_idx, 0, cat_idx, :],
+                    decimals=decimals,
+                )
+            elif mode == "region":
+                region = Oral_region_mapping._true_region(partition.regions, hypo_idx, cat_idx)
+                signature = OralModelAlignmentMixin._region_signature(region, decimals=decimals)
+            else:
+                raise ValueError(f"Unsupported oral_mode for equivalence groups: {oral_mode}")
+
+            if signature not in signature_to_group:
+                signature_to_group[signature] = len(signature_to_group)
+                labels.append(str(signature))
+            group_ids[hypo_idx] = signature_to_group[signature]
+
+        out_labels = tuple(labels)
+        _ORAL_EQUIVALENCE_GROUP_CACHE[key] = (group_ids.copy(), out_labels)
+        return group_ids, out_labels
+
+    @staticmethod
+    def _project_distribution_to_groups(values, group_ids, normalize=True):
+        """Sum a hypothesis distribution over oral-equivalence groups."""
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        groups = np.asarray(group_ids, dtype=int).reshape(-1)
+        n = min(arr.size, groups.size)
+        if n <= 0 or np.isnan(arr[:n]).all():
+            return np.asarray([np.nan], dtype=float)
+
+        arr = arr[:n]
+        groups = groups[:n]
+        valid_group = groups >= 0
+        if not np.any(valid_group):
+            return np.asarray([np.nan], dtype=float)
+
+        n_groups = int(np.max(groups[valid_group])) + 1
+        out = np.zeros(n_groups, dtype=float)
+        clean = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        for value, group in zip(clean[valid_group], groups[valid_group]):
+            if value > 0:
+                out[int(group)] += float(value)
+
+        if not normalize:
+            return out
+        return OralModelAlignmentMixin._normalize_distribution(out)
 
     @staticmethod
     def _comparison_space_distributions(
@@ -1353,6 +1455,386 @@ class OralModelAlignmentMixin:
                 }
         return out
 
+    def compute_model_distribution_probabilities(
+        self,
+        model_results,
+        subjects=None,
+        model_distribution="prior",
+        mass_key=None,
+    ):
+        """Collect model belief distributions in the same dict shape as oral mass."""
+        model_res = self._filter_results(model_results, subjects)
+        state = str(model_distribution).strip().lower()
+        mass_key = mass_key or f"{state}_mass"
+        out = {}
+
+        for iSub, info in model_res.items():
+            sid = int(iSub)
+            condition = int(info.get("condition", 1))
+            target_hypo = int(info.get("target_hypothesis", 0 if condition == 1 else 42))
+            model_log = self._extract_model_distribution_log(info, model_distribution=state)
+            if not model_log:
+                continue
+
+            n_trials = len(model_log)
+            max_hypos = max(np.asarray(x, dtype=float).reshape(-1).size for x in model_log)
+            mass = np.full((n_trials, max_hypos), np.nan, dtype=float)
+            valid = []
+            for trial_idx, raw in enumerate(model_log):
+                dist = self._normalize_distribution(np.asarray(raw, dtype=float).reshape(-1))
+                is_valid = dist.size > 0 and not np.isnan(dist).any()
+                valid.append(bool(is_valid))
+                if is_valid:
+                    mass[trial_idx, : dist.size] = dist
+
+            out[sid] = {
+                "iSub": sid,
+                "condition": condition,
+                "target_hypo": target_hypo,
+                "model_distribution": state,
+                mass_key: mass,
+                "valid_model": valid,
+            }
+
+        return out
+
+    def compute_combined_oral_model_probabilities(
+        self,
+        model_results,
+        oral_df,
+        oral_mode="center",
+        subjects=None,
+        region_n_samples=1000,
+        model_distribution="prior",
+        oral_mass_results=None,
+        active_threshold=1e-12,
+    ):
+        """Project oral mass and model belief into oral-equivalence groups.
+
+        For each trial, hypotheses with the same current-choice oral
+        representation are summed together. The first returned dict stores the
+        combined oral mass under ``oral_mass``; the second stores the combined
+        model distribution under ``prior_mass`` or ``posterior_mass``.
+        """
+        model_res = self._filter_results(model_results, subjects)
+        oral_df = oral_df.copy()
+        state = str(model_distribution).strip().lower()
+        model_mass_key = f"{state}_mass"
+        oral_out = {}
+        model_out = {}
+
+        for iSub, info in model_res.items():
+            sid = int(iSub)
+            subj_df = oral_df[oral_df["iSub"] == sid].reset_index(drop=True)
+            if subj_df.empty:
+                continue
+
+            condition = int(info.get("condition", subj_df["condition"].iloc[0]))
+            n_cats = 2 if condition == 1 else 4
+            target_hypo = int(info.get("target_hypothesis", 0 if condition == 1 else 42))
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            model_log = self._extract_model_distribution_log(info, model_distribution=state)
+            n_trials = min(len(subj_df), len(model_log))
+            if n_trials <= 0:
+                continue
+
+            oral_rows: List[np.ndarray] = []
+            model_rows: List[np.ndarray] = []
+            valid_oral: List[bool] = []
+            valid_model: List[bool] = []
+            n_groups_per_trial: List[int] = []
+            target_group_per_trial: List[int] = []
+            active_group_count: List[int] = []
+
+            for trial_idx in range(n_trials):
+                choice = int(subj_df.loc[trial_idx, "choice"])
+                raw_model = np.asarray(model_log[trial_idx], dtype=float).reshape(-1)
+                model_dist = self._normalize_distribution(raw_model)
+
+                precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
+                if precomputed_oral is not None:
+                    oral_dist = precomputed_oral
+                elif oral_mode == "center":
+                    center = Oral_center_mapping._parse_center(subj_df.loc[trial_idx, "oral_center"])
+                    oral_dist = self._center_oral_distribution(center, choice, partition)
+                elif oral_mode == "region":
+                    region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
+                    oral_dist = self._region_oral_distribution(
+                        region,
+                        choice,
+                        partition,
+                        n_samples=region_n_samples,
+                        random_state=42,
+                    )
+                else:
+                    raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+                group_ids, _ = self._oral_equivalence_groups(partition, choice, oral_mode=oral_mode)
+                combined_oral = self._project_distribution_to_groups(oral_dist, group_ids, normalize=True)
+                combined_model = self._project_distribution_to_groups(model_dist, group_ids, normalize=True)
+                raw_group_mass = self._project_distribution_to_groups(raw_model, group_ids, normalize=False)
+
+                n_groups = int(combined_oral.size) if combined_oral.size else 0
+                oral_rows.append(combined_oral)
+                model_rows.append(combined_model)
+                valid_oral.append(bool(combined_oral.size > 0 and not np.isnan(combined_oral).any()))
+                valid_model.append(bool(combined_model.size > 0 and not np.isnan(combined_model).any()))
+                n_groups_per_trial.append(n_groups)
+                if 0 <= target_hypo < len(group_ids):
+                    target_group_per_trial.append(int(group_ids[target_hypo]))
+                else:
+                    target_group_per_trial.append(-1)
+                if raw_group_mass.size > 0 and not np.isnan(raw_group_mass).all():
+                    active_group_count.append(int(np.sum(raw_group_mass > float(active_threshold))))
+                else:
+                    active_group_count.append(0)
+
+            max_groups = max((row.size for row in oral_rows + model_rows), default=0)
+            oral_arr = np.full((n_trials, max_groups), np.nan, dtype=float)
+            model_arr = np.full((n_trials, max_groups), np.nan, dtype=float)
+            for trial_idx, (oral_row, model_row) in enumerate(zip(oral_rows, model_rows)):
+                if oral_row.size and not np.isnan(oral_row).all():
+                    oral_arr[trial_idx, : oral_row.size] = oral_row
+                if model_row.size and not np.isnan(model_row).all():
+                    model_arr[trial_idx, : model_row.size] = model_row
+
+            common = {
+                "iSub": sid,
+                "condition": condition,
+                "target_hypo": target_hypo,
+                "oral_mode": oral_mode,
+                "model_distribution": state,
+                "distribution_projection": "oral_equivalence",
+                "n_groups_per_trial": n_groups_per_trial,
+                "target_group_per_trial": target_group_per_trial,
+                "active_group_count": active_group_count,
+            }
+            oral_out[sid] = {
+                **common,
+                "oral_mass": oral_arr,
+                "valid_oral": valid_oral,
+            }
+            model_out[sid] = {
+                **common,
+                model_mass_key: model_arr,
+                "valid_model": valid_model,
+            }
+
+        return oral_out, model_out
+
+    @staticmethod
+    def _oral_equivalence_representation_json(partition, oral_mode, choice, hypo_idx, decimals=6):
+        """Return a compact JSON representation of one oral-equivalence key."""
+        cat_idx = int(choice) - 1
+        if oral_mode == "center":
+            center = np.round(partition.prototypes[int(hypo_idx), 0, cat_idx, :], int(decimals))
+            return json.dumps({"center": center.tolist()}, ensure_ascii=False)
+        if oral_mode == "region":
+            region = Oral_region_mapping._true_region(partition.regions, int(hypo_idx), cat_idx)
+            A, b = Oral_region_mapping._parse_region(region)
+            if A is None or b is None:
+                return json.dumps({"region": None}, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "A": np.round(A, int(decimals)).tolist(),
+                    "b": np.round(b, int(decimals)).tolist(),
+                },
+                ensure_ascii=False,
+            )
+        raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+    def compute_oral_equivalence_group_tables(
+        self,
+        oral_df,
+        oral_mode="center",
+        subjects=None,
+        target_hypotheses_by_condition=None,
+    ):
+        """Return lookup and trial tables describing oral-equivalence groups.
+
+        The lookup table lists all hypothesis groups for each
+        ``condition x oral_mode x choice``. The trial table is compact: each
+        trial points to the relevant lookup key, because the full grouping only
+        depends on the current choice and oral mode.
+        """
+        mode = str(oral_mode).strip().lower()
+        if mode not in {"center", "region"}:
+            raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+        df = oral_df.copy()
+        if subjects is not None:
+            subject_set = {int(s) for s in subjects}
+            df = df[df["iSub"].astype(int).isin(subject_set)]
+        if df.empty:
+            return pd.DataFrame(), pd.DataFrame()
+
+        target_map = {int(k): int(v) for k, v in (target_hypotheses_by_condition or {}).items()}
+        lookup_rows = []
+        trial_rows = []
+        lookup_cache: Dict[Tuple[int, str, int], Dict[str, Any]] = {}
+
+        for condition in sorted(df["condition"].dropna().astype(int).unique()):
+            n_cats = 2 if int(condition) == 1 else 4
+            partition = Partition(n_dims=4, n_cats=n_cats)
+            target_hypo = int(target_map.get(int(condition), 0 if int(condition) == 1 else 42))
+            condition_df = df[df["condition"].astype(int) == int(condition)]
+            choices = sorted(condition_df["choice"].dropna().astype(int).unique())
+
+            for choice in choices:
+                group_ids, _ = self._oral_equivalence_groups(partition, int(choice), oral_mode=mode)
+                valid_groups = sorted(int(g) for g in np.unique(group_ids[group_ids >= 0]))
+                key_prefix = f"cond{int(condition)}_{mode}_choice{int(choice)}"
+                group_lookup: Dict[int, List[int]] = {}
+
+                for group_id in valid_groups:
+                    hypos = np.flatnonzero(group_ids == int(group_id)).astype(int).tolist()
+                    group_lookup[int(group_id)] = hypos
+                    rep_hypo = hypos[0] if hypos else -1
+                    lookup_rows.append(
+                        {
+                            "condition": int(condition),
+                            "oral_mode": mode,
+                            "choice": int(choice),
+                            "lookup_key": key_prefix,
+                            "group_id": int(group_id),
+                            "group_key": f"{key_prefix}_g{int(group_id):03d}",
+                            "n_hypotheses": int(len(hypos)),
+                            "hypotheses": json.dumps(hypos, ensure_ascii=False),
+                            "representative_hypothesis": int(rep_hypo),
+                            "target_hypo": int(target_hypo),
+                            "target_in_group": bool(target_hypo in hypos),
+                            "representation": self._oral_equivalence_representation_json(
+                                partition,
+                                mode,
+                                int(choice),
+                                int(rep_hypo),
+                            ) if rep_hypo >= 0 else "{}",
+                        }
+                    )
+
+                target_group_id = int(group_ids[target_hypo]) if 0 <= target_hypo < len(group_ids) else -1
+                lookup_cache[(int(condition), mode, int(choice))] = {
+                    "lookup_key": key_prefix,
+                    "n_groups": int(len(valid_groups)),
+                    "n_multi_hypothesis_groups": int(sum(len(v) > 1 for v in group_lookup.values())),
+                    "max_group_size": int(max((len(v) for v in group_lookup.values()), default=0)),
+                    "target_group_id": target_group_id,
+                    "target_group_hypotheses": group_lookup.get(target_group_id, []),
+                }
+
+        for iSub, subj_df in df.groupby("iSub"):
+            subj_df = subj_df.reset_index(drop=True)
+            if subj_df.empty:
+                continue
+            condition = int(subj_df["condition"].iloc[0])
+            target_hypo = int(target_map.get(condition, 0 if condition == 1 else 42))
+            for trial_idx, row in subj_df.iterrows():
+                choice = int(row["choice"])
+                cached = lookup_cache.get((condition, mode, choice), {})
+                target_group_hypos = cached.get("target_group_hypotheses", [])
+                trial_rows.append(
+                    {
+                        "iSub": int(iSub),
+                        "subject": int(iSub),
+                        "condition": condition,
+                        "trial": int(trial_idx + 1),
+                        "choice": choice,
+                        "oral_mode": mode,
+                        "lookup_key": cached.get("lookup_key", f"cond{condition}_{mode}_choice{choice}"),
+                        "target_hypo": target_hypo,
+                        "target_group_id": int(cached.get("target_group_id", -1)),
+                        "target_group_hypotheses": json.dumps(target_group_hypos, ensure_ascii=False),
+                        "target_group_size": int(len(target_group_hypos)),
+                        "n_groups": int(cached.get("n_groups", 0)),
+                        "n_multi_hypothesis_groups": int(cached.get("n_multi_hypothesis_groups", 0)),
+                        "max_group_size": int(cached.get("max_group_size", 0)),
+                    }
+                )
+
+        lookup_df = pd.DataFrame(lookup_rows)
+        trial_df = pd.DataFrame(trial_rows)
+        if not lookup_df.empty:
+            lookup_df = lookup_df.sort_values(["condition", "oral_mode", "choice", "group_id"]).reset_index(drop=True)
+        if not trial_df.empty:
+            trial_df = trial_df.sort_values(["condition", "iSub", "trial"]).reset_index(drop=True)
+        return lookup_df, trial_df
+
+    @staticmethod
+    def save_oral_equivalence_group_outputs(
+        lookup_df,
+        trial_df,
+        output_dir,
+        prefix="oral_equivalence",
+    ):
+        """Save oral-equivalence lookup/trial tables and a readable report."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        lookup_path = output_dir / f"{prefix}_group_lookup.csv"
+        multi_path = output_dir / f"{prefix}_multi_hypothesis_groups.csv"
+        trial_path = output_dir / f"{prefix}_trial_groups.csv"
+        report_path = output_dir / f"{prefix}_group_report.md"
+
+        lookup = lookup_df.copy()
+        trial = trial_df.copy()
+        multi = lookup[lookup["n_hypotheses"].astype(int) > 1].copy() if not lookup.empty else pd.DataFrame()
+
+        lookup.to_csv(lookup_path, index=False)
+        multi.to_csv(multi_path, index=False)
+        trial.to_csv(trial_path, index=False)
+
+        lines = [
+            "# Oral-Equivalence Hypothesis Groups",
+            "",
+            "Hypotheses are grouped when they have the same oral representation for the current choice.",
+            "Use `oral_equivalence_trial_groups.csv` to map each trial to a choice-level lookup key,",
+            "and `oral_equivalence_group_lookup.csv` to inspect every group under that key.",
+            "",
+        ]
+        if lookup.empty:
+            lines.append("No grouping rows were generated.")
+        else:
+            for (condition, oral_mode, choice), sub in lookup.groupby(
+                ["condition", "oral_mode", "choice"],
+                observed=True,
+            ):
+                n_groups = int(len(sub))
+                n_multi = int(np.sum(sub["n_hypotheses"].astype(int) > 1))
+                max_size = int(sub["n_hypotheses"].astype(int).max())
+                lines.extend(
+                    [
+                        f"## Condition {int(condition)}, {oral_mode}, choice {int(choice)}",
+                        "",
+                        f"- groups: {n_groups}",
+                        f"- multi-hypothesis groups: {n_multi}",
+                        f"- max group size: {max_size}",
+                        "",
+                    ]
+                )
+                multi_sub = sub[sub["n_hypotheses"].astype(int) > 1]
+                if multi_sub.empty:
+                    lines.extend(["No multi-hypothesis groups for this choice.", ""])
+                    continue
+                lines.append("| group_id | n | hypotheses | target_in_group |")
+                lines.append("| --- | ---: | --- | --- |")
+                for _, row in multi_sub.iterrows():
+                    lines.append(
+                        "| "
+                        f"{int(row['group_id'])} | "
+                        f"{int(row['n_hypotheses'])} | "
+                        f"`{row['hypotheses']}` | "
+                        f"{bool(row['target_in_group'])} |"
+                    )
+                lines.append("")
+
+        report_path.write_text("\n".join(lines), encoding="utf-8")
+        return {
+            "lookup": lookup_path,
+            "multi_hypothesis_groups": multi_path,
+            "trial_groups": trial_path,
+            "report": report_path,
+        }
+
     @staticmethod
     def _oral_distribution_from_precomputed(oral_mass_results, iSub, trial_idx):
         """Fetch one precomputed oral_t distribution by subject and trial."""
@@ -1380,9 +1862,13 @@ class OralModelAlignmentMixin:
         subjects=None,
         save_path=None,
         limit=True,
+        mass_key="oral_mass",
+        title="Oral Mass for k by Subject",
+        ylabel="Oral Mass",
+        target_label="target",
         **kwargs,
     ):
-        """Plot full oral_t mass by hypothesis, matching posterior.png layout."""
+        """Plot trial-by-hypothesis or trial-by-group mass, matching posterior.png layout."""
         results = self._filter_results(oral_mass_results, subjects)
         grouped = defaultdict(list)
         for iSub, info in results.items():
@@ -1394,7 +1880,7 @@ class OralModelAlignmentMixin:
         n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
         fig.suptitle(
-            "Oral Mass for k by Subject",
+            title,
             fontsize=kwargs.get("fontsize", 16),
             y=kwargs.get("y", 0.99),
         )
@@ -1410,9 +1896,9 @@ class OralModelAlignmentMixin:
                 col = idx % n_cols
                 ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
 
-                oral_mass = np.asarray(info.get("oral_mass"), dtype=float)
+                oral_mass = np.asarray(info.get(mass_key), dtype=float)
                 if oral_mass.ndim != 2 or oral_mass.size == 0:
-                    ax.text(0.5, 0.5, "No oral mass data", ha="center", va="center", transform=ax.transAxes)
+                    ax.text(0.5, 0.5, f"No {ylabel.lower()} data", ha="center", va="center", transform=ax.transAxes)
                     continue
 
                 if limit:
@@ -1443,7 +1929,26 @@ class OralModelAlignmentMixin:
                     )
 
                     target_hypo = int(info.get("target_hypo", 0 if int(condition) == 1 else 42))
-                    if 0 <= target_hypo < n_hypos:
+                    target_group = np.asarray(info.get("target_group_per_trial", []), dtype=float).reshape(-1)
+                    if target_group.size >= n_trials:
+                        target_x = []
+                        target_y = []
+                        for trial_idx in range(n_trials):
+                            group_idx = int(target_group[trial_idx])
+                            if 0 <= group_idx < n_hypos and np.isfinite(mass[trial_idx, group_idx]):
+                                target_x.append(trial_idx + 1)
+                                target_y.append(float(mass[trial_idx, group_idx]))
+                        if target_x:
+                            ax.scatter(
+                                target_x,
+                                target_y,
+                                color="red",
+                                s=max(12, scatter_size * 4),
+                                alpha=0.85,
+                                linewidths=0,
+                                label=f"{target_label} group",
+                            )
+                    elif 0 <= target_hypo < n_hypos:
                         target_y = mass[:, target_hypo]
                         target_x = np.arange(1, n_trials + 1)
                         target_mask = np.isfinite(target_y)
@@ -1454,7 +1959,7 @@ class OralModelAlignmentMixin:
                             s=max(12, scatter_size * 4),
                             alpha=0.85,
                             linewidths=0,
-                            label=f"target k={target_hypo}",
+                            label=f"{target_label} k={target_hypo}",
                         )
 
                     y_max = float(np.nanmax(y[finite]))
@@ -1465,7 +1970,7 @@ class OralModelAlignmentMixin:
                 ax.set(
                     title=f"Subject {iSub} (Condition {condition})",
                     xlabel="Trial",
-                    ylabel="Oral Mass",
+                    ylabel=ylabel,
                 )
                 if ax.get_legend_handles_labels()[0]:
                     ax.legend()
@@ -1475,8 +1980,34 @@ class OralModelAlignmentMixin:
         plt.tight_layout()
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            logger.info("Oral mass probabilities saved to %s", save_path)
+            logger.info("%s plot saved to %s", title, save_path)
         return fig
+
+    def plot_model_distribution_probabilities(
+        self,
+        model_mass_results,
+        model_distribution="prior",
+        subjects=None,
+        save_path=None,
+        limit=True,
+        **kwargs,
+    ):
+        """Plot model belief distributions with the oral-mass plot style."""
+        state = str(model_distribution).strip().lower()
+        mass_key = f"{state}_mass"
+        title = kwargs.pop("title", f"Model {state.capitalize()} for k by Subject")
+        ylabel = kwargs.pop("ylabel", f"{state.capitalize()} Probability")
+        return self.plot_oral_mass_probabilities(
+            model_mass_results,
+            subjects=subjects,
+            save_path=save_path,
+            limit=limit,
+            mass_key=mass_key,
+            title=title,
+            ylabel=ylabel,
+            target_label="target",
+            **kwargs,
+        )
 
     # -----------------------------------------------------------------------
     # Main family 1: distribution-based alignment
@@ -1493,6 +2024,7 @@ class OralModelAlignmentMixin:
         alignment_spaces=None,
         active_threshold=1e-12,
         oral_mass_results=None,
+        combine_oral_equivalent=False,
     ):
         """Compute JS similarity for oral/model distributions in three spaces.
 
@@ -1507,6 +2039,11 @@ class OralModelAlignmentMixin:
         - ``active``: model active hypothesis set.
         - ``union_topn``: union of the model active set and oral top-N set,
           where N is the active-set size.
+
+        If ``combine_oral_equivalent`` is true, both distributions are first
+        summed over trial-specific oral-equivalence classes. This makes the
+        model comparison fairer when multiple hypotheses produce the same oral
+        center or region for the current choice.
         """
         spaces = tuple(alignment_spaces or self.DISTRIBUTION_ALIGNMENT_SPACES)
         unsupported = set(spaces) - set(self.DISTRIBUTION_ALIGNMENT_SPACES)
@@ -1533,7 +2070,6 @@ class OralModelAlignmentMixin:
                 choice = int(subj_df.loc[trial_idx, "choice"])
                 raw_model = np.asarray(model_log[trial_idx], dtype=float).reshape(-1)
                 model_dist = self._normalize_distribution(raw_model)
-                active_idx = self._active_hypothesis_indices(raw_model, active_threshold=active_threshold)
 
                 precomputed_oral = self._oral_distribution_from_precomputed(oral_mass_results, sid, trial_idx)
                 if precomputed_oral is not None:
@@ -1553,17 +2089,33 @@ class OralModelAlignmentMixin:
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
 
+                if combine_oral_equivalent:
+                    group_ids, _ = self._oral_equivalence_groups(partition, choice, oral_mode=oral_mode)
+                    model_for_compare = self._project_distribution_to_groups(model_dist, group_ids, normalize=True)
+                    oral_for_compare = self._project_distribution_to_groups(oral_dist, group_ids, normalize=True)
+                    raw_for_active = self._project_distribution_to_groups(raw_model, group_ids, normalize=False)
+                    active_idx = self._active_hypothesis_indices(raw_for_active, active_threshold=active_threshold)
+                    projection = "oral_equivalence"
+                    n_projection_groups = int(model_for_compare.size) if model_for_compare.size else 0
+                else:
+                    model_for_compare = model_dist
+                    oral_for_compare = oral_dist
+                    raw_for_active = raw_model
+                    active_idx = self._active_hypothesis_indices(raw_for_active, active_threshold=active_threshold)
+                    projection = "hypothesis"
+                    n_projection_groups = int(min(len(model_dist), len(oral_dist)))
+
                 for space in spaces:
                     compare_model, compare_oral, compare_idx = self._comparison_space_distributions(
-                        model_dist,
-                        oral_dist,
+                        model_for_compare,
+                        oral_for_compare,
                         alignment_space=space,
                         active_idx=active_idx,
                     )
                     valid = not (np.isnan(compare_model).any() or np.isnan(compare_oral).any())
                     js_similarity = self._js_similarity(compare_model, compare_oral) if valid else np.nan
-                    if len(compare_idx) and not np.isnan(oral_dist).any():
-                        oral_mass_in_space = float(np.sum(oral_dist[compare_idx]))
+                    if len(compare_idx) and not np.isnan(oral_for_compare).any():
+                        oral_mass_in_space = float(np.sum(oral_for_compare[compare_idx]))
                     else:
                         oral_mass_in_space = np.nan
 
@@ -1576,11 +2128,13 @@ class OralModelAlignmentMixin:
                             "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
                             "oral_mode": oral_mode,
                             "model_distribution": str(model_distribution).strip().lower(),
+                            "distribution_projection": projection,
                             "alignment_space": space,
                             "alignment_label": self.DISTRIBUTION_ALIGNMENT_LABELS.get(space, space),
                             "js_similarity": js_similarity,
                             "valid": bool(valid),
                             "n_hypo": int(min(len(model_dist), len(oral_dist))),
+                            "n_projection_groups": n_projection_groups,
                             "active_set_size": int(len(active_idx)),
                             "comparison_set_size": int(len(compare_idx)),
                             "oral_mass_in_comparison_set": oral_mass_in_space,

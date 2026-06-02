@@ -6,6 +6,7 @@ The public surface is organized around these evaluation layers:
 - oral_mass_distribution
 - oral_model_alignment
   - distribution_based_alignment: oral reports -> hypothesis distribution
+    (optionally projected into oral-equivalence groups)
   - oral_based_alignment: model belief -> oral center/region representation
   - target_based_alignment: target prior probability vs oral target mass
   - hit_based_alignment: target hit in model active/top-k set vs oral top-N/top-k set

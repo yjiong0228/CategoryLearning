@@ -36,5 +36,5 @@ amr_kwargs:
   coarse_grid_per_dim: 3
   split_factor: 2
   refine_top_k: 3
-loss_metric: mse
+loss_metric: accuracy_mse
 

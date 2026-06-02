@@ -467,11 +467,20 @@ def main() -> None:
     trajectory_dir = args.trajectory_dir or (plots_dir / "trajectory_accuracy")
     trajectory_posterior_dir = args.trajectory_posterior_dir or (plots_dir / "trajectory_posterior")
     plot_oral_mass = args.plot_oral_mass or (oral_plots_dir / "oral_mass.png" if oral_plots_dir else None)
+    plot_oral_mass_combined = oral_plots_dir / "oral_mass_combined.png" if oral_plots_dir else None
+    plot_prior = oral_plots_dir / "prior.png" if oral_plots_dir else None
+    plot_prior_combined = oral_plots_dir / "prior_combined.png" if oral_plots_dir else None
     plot_distribution_alignment_group = args.plot_distribution_alignment_group or (
         oral_plots_dir / "distribution_based_alignment_group.png" if oral_plots_dir else None
     )
     plot_distribution_alignment_subject = args.plot_distribution_alignment_subject or (
         oral_plots_dir / "distribution_based_alignment_subject.png" if oral_plots_dir else None
+    )
+    plot_distribution_alignment_combined_group = (
+        oral_plots_dir / "distribution_based_alignment_combined_group.png" if oral_plots_dir else None
+    )
+    plot_distribution_alignment_combined_subject = (
+        oral_plots_dir / "distribution_based_alignment_combined_subject.png" if oral_plots_dir else None
     )
     plot_oral_based_alignment_group = args.plot_oral_based_alignment_group or (
         oral_plots_dir / "oral_based_alignment_group.png" if oral_plots_dir else None
@@ -601,8 +610,13 @@ def main() -> None:
     assert oral_mode is not None
     assert oral_region_n_samples is not None
     assert plot_oral_mass is not None
+    assert plot_oral_mass_combined is not None
+    assert plot_prior is not None
+    assert plot_prior_combined is not None
     assert plot_distribution_alignment_group is not None
     assert plot_distribution_alignment_subject is not None
+    assert plot_distribution_alignment_combined_group is not None
+    assert plot_distribution_alignment_combined_subject is not None
     assert plot_oral_based_alignment_group is not None
     assert plot_oral_based_alignment_subject is not None
     assert plot_target_based_alignment_group is not None
@@ -627,6 +641,46 @@ def main() -> None:
     me.plot_oral_mass_probabilities(oral_mass, save_path=str(plot_oral_mass))
     print(f"Saved oral mass plot -> {plot_oral_mass}")
 
+    prior_mass = me.compute_model_distribution_probabilities(
+        aggregated,
+        model_distribution="prior",
+    )
+    me.plot_model_distribution_probabilities(
+        prior_mass,
+        model_distribution="prior",
+        save_path=str(plot_prior),
+        limit=False,
+        title="Model Prior for k by Subject",
+        ylabel="Prior Probability",
+    )
+    print(f"Saved prior plot -> {plot_prior}")
+
+    oral_mass_combined, prior_mass_combined = me.compute_combined_oral_model_probabilities(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        model_distribution="prior",
+        oral_mass_results=oral_mass,
+    )
+    me.plot_oral_mass_probabilities(
+        oral_mass_combined,
+        save_path=str(plot_oral_mass_combined),
+        limit=False,
+        title="Combined Oral Mass by Oral-Equivalence Group",
+        ylabel="Combined Oral Mass",
+    )
+    print(f"Saved combined oral mass plot -> {plot_oral_mass_combined}")
+    me.plot_model_distribution_probabilities(
+        prior_mass_combined,
+        model_distribution="prior",
+        save_path=str(plot_prior_combined),
+        limit=False,
+        title="Combined Model Prior by Oral-Equivalence Group",
+        ylabel="Combined Prior Probability",
+    )
+    print(f"Saved combined prior plot -> {plot_prior_combined}")
+
     distribution_alignment = me.compute_distribution_based_alignment(
         aggregated,
         oral_eval_df,
@@ -645,6 +699,33 @@ def main() -> None:
     )
     print(f"Saved distribution alignment group plot -> {distribution_alignment_outputs['group_plot']}")
     print(f"Saved distribution alignment subject-wise plot -> {distribution_alignment_outputs['subjectwise_plot']}")
+
+    distribution_alignment_combined = me.compute_distribution_based_alignment(
+        aggregated,
+        oral_eval_df,
+        oral_mode=oral_mode,
+        region_n_samples=oral_region_n_samples,
+        model_distribution=args.distribution_alignment_model_state,
+        oral_mass_results=oral_mass,
+        combine_oral_equivalent=True,
+    )
+    distribution_alignment_combined_outputs = me.save_distribution_based_alignment_outputs(
+        distribution_alignment_combined,
+        oral_plots_dir,
+        prefix="distribution_based_alignment_combined",
+        group_plot_path=str(plot_distribution_alignment_combined_group),
+        subjectwise_plot_path=str(plot_distribution_alignment_combined_subject),
+        window_size=_resolve_plot_window_size(aggregated),
+        title_prefix="Oral-equivalence combined",
+    )
+    print(
+        "Saved combined distribution alignment group plot -> "
+        f"{distribution_alignment_combined_outputs['group_plot']}"
+    )
+    print(
+        "Saved combined distribution alignment subject-wise plot -> "
+        f"{distribution_alignment_combined_outputs['subjectwise_plot']}"
+    )
 
     oral_based_alignment = me.compute_oral_based_alignment(
         aggregated,

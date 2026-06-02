@@ -307,31 +307,42 @@ Note: `oral_model_alignment` center/region analyses are standalone analysis path
 
 `run_grid_optimization.py` and `run_amr_optimization.py` now require a config key:
 
-- `loss_metric: mae | mse | berhu | brier | nll`
+- `loss_metric: accuracy_mae | accuracy_mse | accuracy_berhu | choice_brier | choice_nll | wrong_choice_nll | conditional_wrong_choice_nll`
 
 No backward-compatible fallback is applied. Missing or unsupported `loss_metric`
 raises an explicit error.
 
 Definitions:
 
-- `mae`: sliding-window mean absolute error on accuracy curves.
-- `mse`: sliding-window mean squared error on accuracy curves.
-- `berhu`: reverse Huber on sliding-window residuals \(r = \hat{a} - a\):
+Accuracy-based losses:
+
+- `accuracy_mae`: sliding-window mean absolute error on accuracy curves.
+- `accuracy_mse`: sliding-window mean squared error on accuracy curves.
+- `accuracy_berhu`: reverse Huber on sliding-window residuals \(r = \hat{a} - a\):
   - `|r|` when `|r| <= loss_delta`
   - `(r^2 + loss_delta^2) / (2 * loss_delta)` when `|r| > loss_delta`
-- `brier`: **multiclass trial-level** Brier score, i.e. mean over trials of
-  `sum_k (p_t(k) - y_t(k))^2`, where `y_t` is one-hot true category.
-- `nll`: trial-level negative log-likelihood, i.e. mean over trials of
-  `-log p_t(y_true)`.
 
-When `loss_metric: berhu`, config must also include:
+Choice-based losses:
+
+- `choice_brier`: trial-level Brier score against the observed subject choice,
+  i.e. `mean_t sum_k (p_t(k) - 1[k = choice_t])^2`.
+- `choice_nll`: trial-level negative log-likelihood against the observed subject
+  choice, i.e. `mean_t -log p_t(choice_t)`.
+- `wrong_choice_nll`: `choice_nll` restricted to incorrect trials
+  (`choice_t != category_t`).
+- `conditional_wrong_choice_nll`: on incorrect trials, the negative log
+  likelihood of the observed wrong choice conditioned on the model not choosing
+  the true category, i.e.
+  `mean_t -log (p_t(choice_t) / (1 - p_t(category_t)))`.
+
+When `loss_metric: accuracy_berhu`, config must also include:
 
 - `loss_delta` (float, `> 0`)
 
 Example:
 
 ```yaml
-loss_metric: berhu
+loss_metric: accuracy_berhu
 loss_delta: 0.05
 window_size: 16
 ```
