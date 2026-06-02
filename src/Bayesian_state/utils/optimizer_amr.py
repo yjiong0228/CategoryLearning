@@ -19,7 +19,9 @@ from .optimizer_common import (
     BaseStateOptimizer,
     GridPointResult,
     SingleRunResult,
+    derive_run_seed,
     evaluate_state_model_run,
+    get_hypothesis_transition_seed,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     LOSS_METRIC_MAE,
 )
@@ -233,6 +235,8 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         selection_prediction_mode: str,
         loss_metric: str,
         loss_delta: float | None,
+        base_seed: int | None = None,
+        phase: str = "amr",
     ) -> GridPointResult:
         runs: List[SingleRunResult]
         if n_repeats <= 1:
@@ -252,6 +256,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     selection_prediction_mode,
                     loss_metric,
                     loss_delta,
+                    run_seed=derive_run_seed(base_seed, subject_id, params, phase, 0),
                 )
             ]
         else:
@@ -271,8 +276,9 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     selection_prediction_mode,
                     loss_metric,
                     loss_delta,
+                    run_seed=derive_run_seed(base_seed, subject_id, params, phase, repeat_index),
                 )
-                for _ in range(n_repeats)
+                for repeat_index in range(n_repeats)
             ))
             runs = [r for r in raw_runs if r is not None]
 
@@ -337,10 +343,14 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         loss_metric: str = LOSS_METRIC_MAE,
         loss_delta: float | None = None,
+        random_seed: int | None = None,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = self._get_condition_value(subject_frame)
         arrays = self._extract_arrays(subject_frame, max_trials)
+        base_seed = random_seed
+        if base_seed is None:
+            base_seed = get_hypothesis_transition_seed(self._engine_config_template)
 
         param_values = list(param_grid.values())
         combinations = list(product(*param_values)) if param_values else []
@@ -380,6 +390,8 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 selection_prediction_mode,
                 loss_metric,
                 loss_delta,
+                base_seed,
+                "amr",
             )
             cache[k] = gp
             grid_results.append(gp)
@@ -418,6 +430,8 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 selection_prediction_mode,
                 loss_metric,
                 loss_delta,
+                base_seed,
+                "refit",
             )
             best_result = refit_gp
         else:

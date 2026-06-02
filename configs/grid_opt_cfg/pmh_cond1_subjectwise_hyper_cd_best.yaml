@@ -50,8 +50,10 @@ engine_config:
         strategies:
         - amount: random_4
           method: random_posterior
+          pool: active
         - amount: opp_random_4
           method: random
+          pool: all_unselected
         init_num: 2
     likelihood_mod:
       class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
@@ -94,9 +96,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 2
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 3
@@ -114,9 +118,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 4
             init_num: 3
@@ -134,9 +140,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 2
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 2
@@ -154,9 +162,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 4
             init_num: 3
@@ -174,10 +184,12 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 2
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 3
             init_num: 2
@@ -195,9 +207,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 3
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 3
@@ -215,9 +229,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 2
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 3
             init_num: 3
@@ -235,9 +251,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 3
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 3
             init_num: 3
@@ -255,9 +273,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 3
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 3
@@ -275,9 +295,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 3
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 2
@@ -295,9 +317,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 4
             init_num: 3
@@ -315,9 +339,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 3
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 1
             max_active_hypotheses: 4
             init_num: 2
@@ -335,9 +361,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 3
             init_num: 2
@@ -355,9 +383,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 4
             init_num: 2
@@ -375,9 +405,11 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               value: 1
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 4
             init_num: 2

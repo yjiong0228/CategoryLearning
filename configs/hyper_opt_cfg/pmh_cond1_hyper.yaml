@@ -28,49 +28,49 @@ hyperparam_space:
     values:
       # T1: cond1 baseline
       - [
-          {amount: "random_4", method: "random_posterior"},
-          {amount: "opp_random_4", method: "random"}
+          {amount: "random_4", method: "random_posterior", pool: "active"},
+          {amount: "opp_random_4", method: "random", pool: "all_unselected"}
         ]
       # T2: conservative random policy
       - [
-          {amount: "random_2", method: "random_posterior"},
-          {amount: "opp_random_2", method: "random"}
+          {amount: "random_2", method: "random_posterior", pool: "active"},
+          {amount: "opp_random_2", method: "random", pool: "all_unselected"}
         ]
       # T3: retain top 1 posterior hypothesis + explore 2 random hypotheses
       - [
-          {amount: "fixed", method: "top_posterior", value: 1},
-          {amount: "fixed", method: "random", value: 2}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 1},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 2}
         ]
       # T4: retain top 2 posterior hypotheses + explore 1 random hypothesis
       - [
-          {amount: "fixed", method: "top_posterior", value: 2},
-          {amount: "fixed", method: "random", value: 1}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 2},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
         ]
       # T5: retain top 3 posterior hypotheses + explore 1 random hypothesis
       - [
-          {amount: "fixed", method: "top_posterior", value: 3},
-          {amount: "fixed", method: "random", value: 1}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 3},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
         ]
       # T6: top-p posterior retention + random exploration
       - [
-          {amount: "fixed", method: "top_posterior", top_p: 0.70, value: 2},
-          {amount: "fixed", method: "random", value: 1}
+          {amount: "fixed", method: "top_posterior", pool: "active", top_p: 0.70, value: 2},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
         ]
       # T7: entropy-like active retention + conservative random exploration
       - [
-          {amount: "entropy_4", method: "random_posterior"},
-          {amount: "opp_random_2", method: "random"}
+          {amount: "entropy_4", method: "random_posterior", pool: "active"},
+          {amount: "opp_random_2", method: "random", pool: "all_unselected"}
         ]
       # T8: retain top 2 + structured exploration near retained hypotheses
       - [
-          {amount: "fixed", method: "top_posterior", value: 2},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 2},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
         ]
       # T9: retain top 1 + structured exploration + random exploration
       - [
-          {amount: "fixed", method: "top_posterior", value: 1},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "random"},
-          {amount: "fixed", method: "random", value: 1}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 1},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "random"},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
         ]
   engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
     values: [3, 4]

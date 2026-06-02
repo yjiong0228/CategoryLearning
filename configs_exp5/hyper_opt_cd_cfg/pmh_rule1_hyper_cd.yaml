@@ -29,28 +29,28 @@ hyperparam_space:
   engine.modules.hypo_transitions_mod.kwargs.strategies:
     values:
       - [
-          {amount: "fixed", method: "top_posterior", value: 8},
-          {amount: "fixed", method: "random", value: 8}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 8},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 8}
         ]
       - [
-          {amount: "fixed", method: "top_posterior", value: 12},
-          {amount: "fixed", method: "random", value: 4}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 12},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 4}
         ]
       - [
-          {amount: "fixed", method: "top_posterior", value: 4},
-          {amount: "fixed", method: "random", value: 12}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 4},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 12}
         ]
       - [
-          {amount: "entropy_7", method: "random_posterior"},
-          {amount: "opp_entropy_7", method: "random"}
+          {amount: "entropy_7", method: "random_posterior", pool: "active"},
+          {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
         ]
       - [
-          {amount: "confidence_7", method: "random_posterior"},
-          {amount: "opp_confidence_7", method: "random"}
+          {amount: "confidence_7", method: "random_posterior", pool: "active"},
+          {amount: "opp_confidence_7", method: "random", pool: "all_unselected"}
         ]
       - [
-          {amount: "fixed", method: "top_posterior", value: 62},
-          {amount: "fixed", method: "random", value: 62}
+          {amount: "fixed", method: "top_posterior", pool: "active", value: 62},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 62}
         ]
 
   engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:

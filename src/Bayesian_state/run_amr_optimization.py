@@ -17,6 +17,7 @@ from src.Bayesian_state.utils.optimizer_common import (
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     LOSS_METRIC_BERHU,
     LOSS_METRIC_CHOICES,
+    normalize_loss_metric,
 )
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
@@ -125,7 +126,7 @@ def resolve_loss_metric(cfg: Dict[str, Any]) -> str:
     raw = cfg.get("loss_metric")
     if raw is None:
         raise ValueError(f"Config must include loss_metric. Valid: {LOSS_METRIC_CHOICES}")
-    metric = str(raw).strip().lower()
+    metric = normalize_loss_metric(str(raw))
     if metric not in LOSS_METRIC_CHOICES:
         raise ValueError(f"Unsupported loss_metric '{metric}'. Valid: {LOSS_METRIC_CHOICES}")
     return metric
@@ -133,7 +134,7 @@ def resolve_loss_metric(cfg: Dict[str, Any]) -> str:
 
 def resolve_loss_delta(cfg: Dict[str, Any], loss_metric: str) -> float | None:
     raw = cfg.get("loss_delta")
-    if loss_metric == LOSS_METRIC_BERHU:
+    if normalize_loss_metric(loss_metric) == LOSS_METRIC_BERHU:
         if raw is None:
             raise ValueError("Config must include loss_delta when loss_metric='accuracy_berhu'")
         delta = float(raw)
@@ -307,6 +308,7 @@ def run_single_subject(
     selection_prediction_mode: str,
     loss_metric: str,
     loss_delta: float | None,
+    random_seed: int | None,
 ) -> None:
     opt = StateModelAMROptimizer(
         engine_config=engine_config,
@@ -330,6 +332,7 @@ def run_single_subject(
         selection_prediction_mode=selection_prediction_mode,
         loss_metric=loss_metric,
         loss_delta=loss_delta,
+        random_seed=random_seed,
     )
 
     subjects_dir = output_dir / "subjects"
@@ -418,6 +421,7 @@ def main() -> None:
             selection_prediction_mode=selection_prediction_mode,
             loss_metric=loss_metric,
             loss_delta=loss_delta,
+            random_seed=subject_cfg.get("random_seed"),
         ))
 
     Parallel(n_jobs=base_n_jobs_subjects)(

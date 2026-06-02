@@ -16,9 +16,9 @@ modules:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs:
       strategies:
-        - {amount: "random_7", method: "random_posterior"}
-        - {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
-        - {amount: "random_7", method: "random"}
+        - {amount: "random_7", method: "random_posterior", pool: "active"}
+        - {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+        - {amount: "random_7", method: "random", pool: "all_unselected"}
       init_num: 10
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'

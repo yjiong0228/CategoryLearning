@@ -29,14 +29,17 @@ engine_config:
         strategies:
         - amount: entropy_7
           method: random_posterior
+          pool: active
         - amount: fixed
           method: ksimilar_centers
+          pool: all_unselected
           value: 1
           proto_hypo_amount: 1
           proto_hypo_method: top
           cluster_hypo_method: top
         - amount: opp_entropy_7
           method: random
+          pool: all_unselected
         init_num: 10
     likelihood_mod:
       class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
@@ -135,14 +138,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 10
         beta_mod:
@@ -159,14 +165,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 10
         beta_mod:
@@ -183,14 +192,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 7
         beta_mod:
@@ -207,16 +219,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 10
             init_num: 7
@@ -234,16 +249,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 12
             init_num: 10
@@ -261,16 +279,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 12
             init_num: 10
@@ -288,14 +309,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 15
         beta_mod:
@@ -312,14 +336,17 @@ subject_overrides:
             strategies:
             - amount: random_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_random_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 15
         beta_mod:
@@ -336,14 +363,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 15
         beta_mod:
@@ -360,14 +390,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 7
         beta_mod:
@@ -384,14 +417,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 10
         beta_mod:
@@ -408,14 +444,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 15
         beta_mod:
@@ -432,14 +471,17 @@ subject_overrides:
             strategies:
             - amount: random_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_random_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 10
         beta_mod:
@@ -456,14 +498,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 7
         beta_mod:
@@ -480,14 +525,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 7
         beta_mod:
@@ -504,14 +552,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 7
         beta_mod:
@@ -528,14 +579,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 7
         beta_mod:
@@ -552,14 +606,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 10
         beta_mod:
@@ -576,14 +633,17 @@ subject_overrides:
             strategies:
             - amount: random_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_random_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 15
         beta_mod:
@@ -600,14 +660,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 15
         beta_mod:
@@ -624,16 +687,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 10
             init_num: 15
@@ -651,14 +717,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 10
         beta_mod:
@@ -675,14 +744,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 7
         beta_mod:
@@ -699,14 +771,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 7
         beta_mod:
@@ -723,16 +798,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 10
             init_num: 7
@@ -750,14 +828,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 7
             init_num: 15
         beta_mod:
@@ -774,14 +855,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 15
         beta_mod:
@@ -798,16 +882,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 12
             init_num: 7
@@ -825,14 +912,17 @@ subject_overrides:
             strategies:
             - amount: confidence_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_confidence_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 7
         beta_mod:
@@ -849,16 +939,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 10
             init_num: 15
@@ -876,14 +969,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 10
             init_num: 15
         beta_mod:
@@ -900,14 +996,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 10
         beta_mod:
@@ -924,16 +1023,19 @@ subject_overrides:
             strategies:
             - amount: fixed
               method: top_posterior
+              pool: active
               top_p: 0.7
               value: 3
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: fixed
               method: random
+              pool: all_unselected
               value: 2
             max_active_hypotheses: 12
             init_num: 10
@@ -951,14 +1053,17 @@ subject_overrides:
             strategies:
             - amount: entropy_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 2
               proto_hypo_amount: 2
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_entropy_4
               method: random
+              pool: all_unselected
             max_active_hypotheses: 7
             init_num: 10
         beta_mod:
@@ -975,14 +1080,17 @@ subject_overrides:
             strategies:
             - amount: confidence_7
               method: random_posterior
+              pool: active
             - amount: fixed
               method: ksimilar_centers
+              pool: all_unselected
               value: 1
               proto_hypo_amount: 1
               proto_hypo_method: top
               cluster_hypo_method: top
             - amount: opp_confidence_7
               method: random
+              pool: all_unselected
             max_active_hypotheses: 12
             init_num: 15
         beta_mod:

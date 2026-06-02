@@ -297,6 +297,7 @@ class HyperOptimizer:
                 selection_prediction_mode=str(combination_inner_cfg.get("selection_prediction_mode", sel_mode)),
                 loss_metric=effective_loss_metric,
                 loss_delta=effective_loss_delta,
+                random_seed=seed,
             )
 
             best = result["best"]

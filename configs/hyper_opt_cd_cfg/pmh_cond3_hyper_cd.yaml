@@ -31,56 +31,56 @@ hyperparam_space:
     values:
       # T1: cond2/3 baseline
       - [
-          {amount: "entropy_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_entropy_7", method: "random"}
+          {amount: "entropy_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
         ]
       # T2: no explicit associative expansion
       - [
-          {amount: "entropy_7", method: "random_posterior"},
-          {amount: "opp_entropy_7", method: "random"}
+          {amount: "entropy_7", method: "random_posterior", pool: "active"},
+          {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
         ]
       # T3: conservative entropy + conservative opposite exploration
       - [
-          {amount: "entropy_5", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_entropy_4", method: "random"}
+          {amount: "entropy_5", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_entropy_4", method: "random", pool: "all_unselected"}
         ]
       # T4: association-heavy, one top prototype to two similar centers
       - [
-          {amount: "entropy_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 2, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_entropy_4", method: "random"}
+          {amount: "entropy_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 2, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_entropy_4", method: "random", pool: "all_unselected"}
         ]
       # T5: association-heavy, two prototypes to two similar centers
       - [
-          {amount: "entropy_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 2, proto_hypo_amount: 2, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_entropy_4", method: "random"}
+          {amount: "entropy_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 2, proto_hypo_amount: 2, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_entropy_4", method: "random", pool: "all_unselected"}
         ]
       # T6: confidence-gated retention and exploration
       - [
-          {amount: "confidence_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_confidence_7", method: "random"}
+          {amount: "confidence_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_confidence_7", method: "random", pool: "all_unselected"}
         ]
       # T7: confidence/top-posterior leaning
       - [
-          {amount: "max_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_entropy_7", method: "random"}
+          {amount: "max_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
         ]
       # T8: stochastic retention plus associative expansion
       - [
-          {amount: "random_7", method: "random_posterior"},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "opp_random_7", method: "random"}
+          {amount: "random_7", method: "random_posterior", pool: "active"},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "opp_random_7", method: "random", pool: "all_unselected"}
         ]
       # T9: fixed posterior retention plus light random exploration
       - [
-          {amount: "fixed", method: "top_posterior", top_p: 0.70, value: 3},
-          {amount: "fixed", method: "ksimilar_centers", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
-          {amount: "fixed", method: "random", value: 2}
+          {amount: "fixed", method: "top_posterior", pool: "active", top_p: 0.70, value: 3},
+          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"},
+          {amount: "fixed", method: "random", pool: "all_unselected", value: 2}
         ]
 
   engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:

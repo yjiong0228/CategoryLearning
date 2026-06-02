@@ -4,6 +4,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
@@ -45,6 +47,16 @@ CHOICE_LOSS_METRIC_CHOICES = (
     LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
 )
 LOSS_METRIC_CHOICES = ACCURACY_LOSS_METRIC_CHOICES + CHOICE_LOSS_METRIC_CHOICES
+LOSS_METRIC_ALIASES = {
+    "mae": LOSS_METRIC_ACCURACY_MAE,
+    "mse": LOSS_METRIC_ACCURACY_MSE,
+    "berhu": LOSS_METRIC_ACCURACY_BERHU,
+}
+
+
+def normalize_loss_metric(loss_metric: str) -> str:
+    metric = str(loss_metric).strip().lower()
+    return LOSS_METRIC_ALIASES.get(metric, metric)
 
 
 class LossStrategy(ABC):
@@ -235,7 +247,7 @@ class ConditionalWrongChoiceNLLLoss(LossStrategy):
 
 
 def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
-    metric = str(loss_metric).strip().lower()
+    metric = normalize_loss_metric(loss_metric)
     if metric == LOSS_METRIC_ACCURACY_MAE:
         return AccuracyMAELoss()
     if metric == LOSS_METRIC_ACCURACY_MSE:
@@ -680,6 +692,58 @@ def inject_params(config: Dict[str, Any], params: Dict[str, Any]) -> None:
         set_by_path(config, path, value)
 
 
+def derive_run_seed(
+    base_seed: int | None,
+    subject_id: int,
+    params: Mapping[str, Any],
+    phase: str,
+    repeat_index: int,
+) -> int | None:
+    """Derive a deterministic per-run seed from stable optimizer inputs."""
+    if base_seed is None:
+        return None
+    payload = {
+        "base_seed": int(base_seed),
+        "subject_id": int(subject_id),
+        "params": dict(params),
+        "phase": str(phase),
+        "repeat_index": int(repeat_index),
+    }
+    encoded = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    digest = hashlib.sha256(encoded).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=False) % (2**32)
+
+
+def set_hypothesis_transition_seed(engine_config: Dict[str, Any], seed: int | None) -> None:
+    """Set the transition RNG seed only when the module is present."""
+    if seed is None:
+        return
+    modules = engine_config.get("modules", {})
+    if not isinstance(modules, dict) or "hypo_transitions_mod" not in modules:
+        return
+    hypo_cfg = modules.get("hypo_transitions_mod")
+    if not isinstance(hypo_cfg, dict):
+        return
+    kwargs = hypo_cfg.setdefault("kwargs", {})
+    if not isinstance(kwargs, dict):
+        raise ValueError("hypo_transitions_mod.kwargs must be a dictionary to set random_seed.")
+    kwargs["random_seed"] = int(seed)
+
+
+def get_hypothesis_transition_seed(engine_config: Mapping[str, Any]) -> int | None:
+    modules = engine_config.get("modules", {})
+    if not isinstance(modules, Mapping):
+        return None
+    hypo_cfg = modules.get("hypo_transitions_mod", {})
+    if not isinstance(hypo_cfg, Mapping):
+        return None
+    kwargs = hypo_cfg.get("kwargs", {})
+    if not isinstance(kwargs, Mapping) or "random_seed" not in kwargs:
+        return None
+    seed = kwargs.get("random_seed")
+    return None if seed is None else int(seed)
+
+
 def evaluate_state_model_run(
     subject_id: int,
     condition: int,
@@ -695,6 +759,7 @@ def evaluate_state_model_run(
     selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     loss_metric: str = LOSS_METRIC_MAE,
     loss_delta: float | None = None,
+    run_seed: int | None = None,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     stimulus, choices, feedback, categories = arrays
@@ -704,6 +769,7 @@ def evaluate_state_model_run(
 
     engine_config = deepcopy(engine_config_template)
     inject_params(engine_config, params)
+    set_hypothesis_transition_seed(engine_config, run_seed)
     model = StateModel(
         engine_config,
         condition=condition,

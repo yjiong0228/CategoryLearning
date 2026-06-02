@@ -25,8 +25,8 @@ modules:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs:
       strategies:
-        - {amount: "fixed", method: "top_posterior", value: 8}
-        - {amount: "fixed", method: "random", value: 8}
+        - {amount: "fixed", method: "top_posterior", pool: "active", value: 8}
+        - {amount: "fixed", method: "random", pool: "all_unselected", value: 8}
       init_num: 12
       max_active_hypotheses: 16
       random_seed: 0

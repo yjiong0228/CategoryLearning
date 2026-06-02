@@ -14,7 +14,9 @@ from .optimizer_common import (
     BaseStateOptimizer,
     GridPointResult,
     SingleRunResult,
+    derive_run_seed,
     evaluate_state_model_run,
+    get_hypothesis_transition_seed,
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     LOSS_METRIC_MAE,
 )
@@ -64,6 +66,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         selection_prediction_mode: str = PREDICTION_MODE_POSTERIOR_T_MINUS_1,
         loss_metric: str = LOSS_METRIC_MAE,
         loss_delta: float | None = None,
+        random_seed: int | None = None,
     ) -> Dict[str, object]:
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = self._get_condition_value(subject_frame)
@@ -73,11 +76,15 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         param_values = list(param_grid.values())
         combinations = list(product(*param_values))
 
+        base_seed = random_seed
+        if base_seed is None:
+            base_seed = get_hypothesis_transition_seed(self._engine_config_template)
+
         tasks = []
         for combo in combinations:
             params = dict(zip(param_names, combo))
-            for _ in range(n_repeats):
-                tasks.append(params)
+            for repeat_index in range(n_repeats):
+                tasks.append((params, repeat_index))
 
         LOGGER.info(
             f"Optimizing subject {subject_id}: {len(combinations)} combos * {n_repeats} repeats = {len(tasks)} tasks"
@@ -99,8 +106,9 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                 selection_prediction_mode,
                 loss_metric,
                 loss_delta,
+                run_seed=derive_run_seed(base_seed, subject_id, params, "grid", repeat_index),
             )
-            for params in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
+            for params, repeat_index in tqdm(tasks, desc=f"Sub {subject_id} Grid Search")
         ))
         results: List[SingleRunResult] = [r for r in raw_results if r is not None]
         if len(results) != len(tasks):
@@ -178,7 +186,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
 
         if refit_repeats > 0:
             LOGGER.info(f"Refitting best params for subject {subject_id} with {refit_repeats} repeats.")
-            refit_tasks = [best_result.params] * refit_repeats
+            refit_tasks = [(best_result.params, repeat_index) for repeat_index in range(refit_repeats)]
 
             raw_refit_results = list(Parallel(n_jobs=self.n_jobs)(
                 delayed(evaluate_state_model_run)(
@@ -196,8 +204,9 @@ class StateModelGridOptimizer(BaseStateOptimizer):
                     selection_prediction_mode,
                     loss_metric,
                     loss_delta,
+                    run_seed=derive_run_seed(base_seed, subject_id, params, "refit", repeat_index),
                 )
-                for params in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
+                for params, repeat_index in tqdm(refit_tasks, desc=f"Sub {subject_id} Refit")
             ))
             refit_results: List[SingleRunResult] = [r for r in raw_refit_results if r is not None]
             if len(refit_results) != len(refit_tasks):
@@ -348,6 +357,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
         window_size: int,
     ) -> GridPointResult:
         params = {"gamma": gamma, "w0": w0}
+        base_seed = get_hypothesis_transition_seed(self._engine_config_template)
         run = evaluate_state_model_run(
             subject_id,
             condition,
@@ -363,6 +373,7 @@ class StateModelGridOptimizer(BaseStateOptimizer):
             PREDICTION_MODE_POSTERIOR_T_MINUS_1,
             LOSS_METRIC_MAE,
             None,
+            run_seed=derive_run_seed(base_seed, subject_id, params, "grid_legacy", 0),
         )
         return GridPointResult(
             params=params,

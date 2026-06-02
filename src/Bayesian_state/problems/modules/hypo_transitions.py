@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence, List, Dict, Set, Tuple, Callable
+from typing import Sequence, List, Dict, Set, Tuple, Callable, Any
 from scipy.spatial.distance import cdist
 from ...utils import print, entropy, softmax
 
@@ -19,6 +19,11 @@ class DynamicHypothesisModule(BaseModule):
     determined by strategies such as posterior entropy.
     """
     
+    POOL_ACTIVE = "active"
+    POOL_INACTIVE = "inactive"
+    POOL_ALL_UNSELECTED = "all_unselected"
+    VALID_POOLS = (POOL_ACTIVE, POOL_INACTIVE, POOL_ALL_UNSELECTED)
+    VALID_METHODS = ("top_posterior", "random_posterior", "random", "ksimilar_centers")
     amount_evaluators = {}
 
     def __init__(self, engine, **kwargs):
@@ -60,16 +65,14 @@ class DynamicHypothesisModule(BaseModule):
         }
         self.init_num = int(kwargs.get("init_num", 5))
         
-        self.active: np.ndarray | None = None
-        self.old_active: np.ndarray | None = None
-        self._init_mask()
         self.debug = kwargs.get("hypothesis_debug", False)
         # Track how many hypotheses each strategy selects per transition step (for plotting)
         self.strategy_counts_log: List[Dict[str, int]] = []
 
         self.cached_dist: Dict[Tuple, float] = {}
 
-        # Register amount evaluators
+        # Register amount evaluators. The strategy runner treats this as the
+        # single supported amount registry; unknown strings fail fast.
         self.amount_evaluators = {
             "entropy": self._amount_entropy_gen(3),
             "entropy_1": self._amount_entropy_gen(1),
@@ -103,6 +106,17 @@ class DynamicHypothesisModule(BaseModule):
             "confidence_7": self._amount_confidence_gen(7),
             "opp_confidence_7": self._amount_opposite_confidence_gen(7),
         }
+        self.method_selectors = {
+            "top_posterior": self._select_top_posterior,
+            "random_posterior": self._select_random_posterior,
+            "random": self._select_random,
+            "ksimilar_centers": self._cluster_strategy_ksimilar_centers,
+        }
+        self.strategies = self._validate_strategies(self.strategies)
+        
+        self.active: np.ndarray | None = None
+        self.old_active: np.ndarray | None = None
+        self._init_mask()
 
     @classmethod
     def get_original_strategy_config_a(cls) -> List[Dict]:
@@ -118,9 +132,9 @@ class DynamicHypothesisModule(BaseModule):
         return [
             # 1. Exploitation: entropy-based retention (Low Entropy -> Retain more)
             # using top_posterior as per old M7 Cond 1
-            {"amount": "random_4", "method": "random_posterior", "top_p": 0.0},
+            {"amount": "random_4", "method": "random_posterior", "pool": "active", "top_p": 0.0},
             # 2. Exploration: entropy complement (High Entropy -> Explore more)
-            {"amount": "opp_random_4", "method": "random"},
+            {"amount": "opp_random_4", "method": "random", "pool": "all_unselected"},
         ]
 
     @classmethod
@@ -136,11 +150,11 @@ class DynamicHypothesisModule(BaseModule):
         """
         return [
             # 1. Exploitation: entropy-based retention (higher entropy -> more)
-            {"amount": "entropy_7", "method": "random_posterior"},
+            {"amount": "entropy_7", "method": "random_posterior", "pool": "active"},
             # 2. Exploration: entropy complement (entropy low -> fewer random)
-            {"amount": "opp_entropy_7", "method": "random"},
+            {"amount": "opp_entropy_7", "method": "random", "pool": "all_unselected"},
             # 3. Association: Add similar hypotheses
-            {"amount": "fixed", "method": "ksimilar_centers", "value": 1, 
+            {"amount": "fixed", "method": "ksimilar_centers", "pool": "all_unselected", "value": 1, 
              "proto_hypo_amount": 1, "proto_hypo_method": "top", "cluster_hypo_method": "top"}
         ]
     
@@ -151,19 +165,104 @@ class DynamicHypothesisModule(BaseModule):
         """
         return cls.get_original_strategy_config_b()
 
+    def _validate_strategies(self, strategies: Any) -> List[Dict[str, Any]]:
+        if not isinstance(strategies, list) or not strategies:
+            raise ValueError("strategies must be a non-empty list of strategy dictionaries.")
+
+        validated: List[Dict[str, Any]] = []
+        for idx, raw in enumerate(strategies):
+            if not isinstance(raw, dict):
+                raise ValueError(f"Strategy #{idx} must be a dict, got {type(raw).__name__}.")
+            missing = [key for key in ("amount", "method", "pool") if key not in raw]
+            if missing:
+                raise ValueError(
+                    f"Strategy #{idx} is missing required key(s): {', '.join(missing)}. "
+                    "Each strategy must explicitly set amount, method, and pool."
+                )
+
+            strat = dict(raw)
+            method = str(strat["method"])
+            pool = str(strat["pool"])
+            if method not in self.method_selectors:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported method '{method}'. "
+                    f"Supported methods: {', '.join(self.VALID_METHODS)}."
+                )
+            if pool not in self.VALID_POOLS:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported pool '{pool}'. "
+                    f"Supported pools: {', '.join(self.VALID_POOLS)}."
+                )
+            if method == "ksimilar_centers":
+                self._validate_ksimilar_partition()
+            # Validate amount names up front when possible.
+            amount = strat["amount"]
+            if isinstance(amount, str) and amount != "fixed" and amount not in self.amount_evaluators:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported amount '{amount}'. "
+                    "Use 'fixed' or a registered amount evaluator."
+                )
+            if amount == "fixed" and "value" not in strat:
+                raise ValueError(f"Strategy #{idx} uses fixed amount but does not define value.")
+            if amount == "fixed":
+                self._validate_count(strat["value"], context=f"Strategy #{idx} fixed amount")
+            validated.append(strat)
+        return validated
+
+    def _validate_ksimilar_partition(self) -> None:
+        partition = getattr(self.engine, "partition", None)
+        missing = [
+            name for name in ("prototypes", "n_dims", "n_cats")
+            if partition is None or not hasattr(partition, name)
+        ]
+        if missing:
+            raise ValueError(
+                "ksimilar_centers requires a prototype-backed partition with "
+                f"attributes prototypes, n_dims, and n_cats. Missing: {', '.join(missing)}."
+            )
+
+    @staticmethod
+    def _validate_count(count: Any, *, context: str) -> int:
+        if isinstance(count, bool):
+            raise ValueError(f"{context} produced a boolean amount, expected a non-negative integer.")
+        if not np.isfinite(count):
+            raise ValueError(f"{context} produced a non-finite amount: {count!r}.")
+        int_count = int(count)
+        if int_count != count:
+            raise ValueError(f"{context} produced a non-integer amount: {count!r}.")
+        if int_count < 0:
+            raise ValueError(f"{context} produced a negative amount: {int_count}.")
+        return int_count
+
+    @staticmethod
+    def _validate_probability_vector(prob: np.ndarray, *, context: str) -> np.ndarray:
+        prob = np.asarray(prob, dtype=float)
+        if prob.ndim != 1:
+            raise ValueError(f"{context} probabilities must be 1-D, got shape {prob.shape}.")
+        if not np.all(np.isfinite(prob)):
+            raise ValueError(f"{context} probabilities contain non-finite values.")
+        if np.any(prob < 0):
+            raise ValueError(f"{context} probabilities contain negative values.")
+        total = float(prob.sum())
+        if total <= 0:
+            raise ValueError(f"{context} probabilities sum to zero.")
+        return prob / total
+
     def adaptive_amount_evaluator(self, amount: float | str | Callable, **kwargs) -> int:
         """
         Adaptively deal with evaluator / number format of amount.
         """
         if isinstance(amount, int):
-            return amount
+            return self._validate_count(amount, context="integer amount")
         elif callable(amount):
-            return amount(**kwargs)
+            return self._validate_count(amount(**kwargs), context="callable amount")
         elif isinstance(amount, str):
             if amount in self.amount_evaluators:
-                return self.amount_evaluators[amount](**kwargs)
-            else:
-                return 1
+                return self._validate_count(
+                    self.amount_evaluators[amount](**kwargs),
+                    context=f"amount evaluator '{amount}'",
+                )
+            raise ValueError(f"Unsupported amount evaluator '{amount}'.")
         else:
             raise TypeError(f"Unexpected amount type. {amount}")
 
@@ -198,12 +297,17 @@ class DynamicHypothesisModule(BaseModule):
     def _amount_random_gen(cls, max_amount=3):
         def _amount_random_based(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
             max_post = np.max(posterior)
+            if not np.isfinite(max_post) or max_post < 0.0 or max_post > 1.0:
+                raise ValueError(f"random amount requires max posterior in [0, 1], got {max_post!r}.")
+            rng = kwargs.get("rng")
+            if rng is None:
+                raise ValueError("random amount evaluator requires an rng.")
             # p=[1 - max_post] + [max_post / max_amount] * max_amount
             # This assumes max_post <= 1.
             # And sum is (1-max) + max = 1.
-            return np.random.choice(max_amount + 1,
-                                    p=[1 - max_post] +
-                                    [max_post / max_amount] * max_amount)
+            probs = np.array([1 - max_post] + [max_post / max_amount] * max_amount, dtype=float)
+            probs = probs / probs.sum()
+            return rng.choice(max_amount + 1, p=probs)
         return _amount_random_based
 
     @classmethod
@@ -280,38 +384,32 @@ class DynamicHypothesisModule(BaseModule):
     
     def _cluster_strategy_ksimilar_centers(self,
                                            amount: int,
-                                           exclude: Set[int],
+                                           candidates: Sequence[int] | np.ndarray,
                                            posterior: np.ndarray,
                                            strategy_config: Dict,
                                            **kwargs):
         """
         Cluster strategy: ksimilar distance version
         """
-        # 0. Check prerequisites
-        if not hasattr(self.engine, "partition") or self.engine.partition is None:
+        self._validate_ksimilar_partition()
+        amount = self._validate_count(amount, context="ksimilar amount")
+        if amount <= 0:
             return []
-        
+
         # 1. Prepare available hypotheses
-        available_hypos = self._exclude(self.full_indices, np.array(list(exclude)))
-        if len(available_hypos) == 0:
+        candidate_hypos_index = np.asarray(candidates, dtype=int)
+        if len(candidate_hypos_index) == 0:
             return []
         
         # 2. Get stimulus
-        stimulus = None
-        if self.engine.observation is not None:
-             # Assuming observation[0] is stimulus
-             try:
-                stimulus = np.array(self.engine.observation[0])
-             except:
-                pass
-        
-        if stimulus is None:
-             return self._sample_from_pool(available_hypos, amount).tolist()
+        if self.engine.observation is None:
+            raise ValueError("ksimilar_centers requires engine.observation to be set.")
+        stimulus = np.asarray(self.engine.observation[0], dtype=float)
 
         # 3. Prepare reference hypotheses
         # Use currently active hypotheses as reference
         if self.active is None or len(self.active) == 0:
-             return self._sample_from_pool(available_hypos, amount).tolist()
+            raise ValueError("ksimilar_centers requires a non-empty active hypothesis set.")
         
         active_indices = self.active
         active_probs = posterior[active_indices]
@@ -321,24 +419,27 @@ class DynamicHypothesisModule(BaseModule):
         
         proto_hypo_amount = strategy_config.get("proto_hypo_amount", 1)
         proto_hypo_method = strategy_config.get("proto_hypo_method", "top")
+        proto_hypo_amount = self._validate_count(proto_hypo_amount, context="proto_hypo_amount")
         
         if proto_hypo_method == "top":
             ref_hypos = ref_hypos[:proto_hypo_amount]
         elif proto_hypo_method == "random":
             # Weighted sample
             probs = np.array([x[1] for x in ref_hypos])
-            if probs.sum() > 0:
-                probs /= probs.sum()
-                indices = np.random.choice(len(ref_hypos), size=min(len(ref_hypos), proto_hypo_amount), p=probs, replace=False)
-                ref_hypos = [ref_hypos[i] for i in indices]
-            else:
-                ref_hypos = ref_hypos[:proto_hypo_amount]
+            probs = self._validate_probability_vector(probs, context="ksimilar reference")
+            indices = self.rng.choice(
+                len(ref_hypos),
+                size=min(len(ref_hypos), proto_hypo_amount),
+                p=probs,
+                replace=False,
+            )
+            ref_hypos = [ref_hypos[i] for i in indices]
         else:
-            ref_hypos = ref_hypos[:proto_hypo_amount]
+            raise ValueError(f"Unsupported proto_hypo_method '{proto_hypo_method}'.")
 
         proto_hypo_amount = len(ref_hypos)
         if proto_hypo_amount == 0:
-             return self._sample_from_pool(available_hypos, amount).tolist()
+            return []
 
         ref_hypos_index = np.array([x[0] for x in ref_hypos])
         ref_hypos_post = np.array([x[1] for x in ref_hypos])
@@ -350,14 +451,10 @@ class DynamicHypothesisModule(BaseModule):
 
         # ref_full_centers: shape (proto_hypo_amount, n_cats, n_dims)
         # self.engine.partition.prototypes[k, 0] has shape [n_cats, n_dims]
-        try:
-            ref_full_centers = np.asarray(
-                self.engine.partition.prototypes[ref_hypos_index, 0],
-                dtype=float,
-            )
-        except Exception as e:
-            if self.debug: print(f"Error getting centers: {e}")
-            return self._sample_from_pool(available_hypos, amount).tolist()
+        ref_full_centers = np.asarray(
+            self.engine.partition.prototypes[ref_hypos_index, 0],
+            dtype=float,
+        )
 
         n_dims = self.engine.partition.n_dims
         n_cats = self.engine.partition.n_cats
@@ -378,7 +475,7 @@ class DynamicHypothesisModule(BaseModule):
         
         # Sample choice for each reference hypo
         ref_choices = [
-            np.random.choice(n_cats, p=prob)
+            self.rng.choice(n_cats, p=self._validate_probability_vector(prob, context="ksimilar category"))
             for prob in ref_probs
         ]
         
@@ -387,8 +484,6 @@ class DynamicHypothesisModule(BaseModule):
         ref_hypos_center = ref_full_centers[range(proto_hypo_amount), ref_choices]
 
         # Prepare candidate hypos
-        candidate_hypos_index = available_hypos # already excluded
-        
         # candidate_full_center: (n_candidates, n_cats, n_dims)
         candidate_full_center = np.asarray(
             self.engine.partition.prototypes[candidate_hypos_index, 0],
@@ -433,13 +528,17 @@ class DynamicHypothesisModule(BaseModule):
             ret_val = candidate_hypos_index[argscore]
         elif cluster_hypo_method == "random":
             if scores.sum() > 0:
-                probs = scores / scores.sum()
-                ret_val = np.random.choice(candidate_hypos_index, size=min(amount, len(candidate_hypos_index)), p=probs, replace=False)
+                probs = self._validate_probability_vector(scores, context="ksimilar candidate")
+                ret_val = self.rng.choice(
+                    candidate_hypos_index,
+                    size=min(amount, len(candidate_hypos_index)),
+                    p=probs,
+                    replace=False,
+                )
             else:
-                ret_val = self._sample_from_pool(candidate_hypos_index, amount)
+                raise ValueError("ksimilar_centers candidate scores sum to zero.")
         else:
-            argscore = np.argsort(scores)[-amount:]
-            ret_val = candidate_hypos_index[argscore]
+            raise ValueError(f"Unsupported cluster_hypo_method '{cluster_hypo_method}'.")
             
         return ret_val.tolist()
 
@@ -502,6 +601,7 @@ class DynamicHypothesisModule(BaseModule):
         if posterior is None:
             posterior = np.ones(self.total_hypo, dtype=float)
             posterior /= posterior.sum()
+        posterior = self._validate_probability_vector(posterior, context="transition posterior")
         
         if self.debug:
             max_post = np.max(posterior)
@@ -514,21 +614,20 @@ class DynamicHypothesisModule(BaseModule):
         step_counts: Dict[str, int] = {}
         
         for strat in self.strategies:
-            amount_type = strat.get("amount", "fixed")
-            method_type = strat.get("method", "random")
+            amount_type = strat["amount"]
+            method_type = strat["method"]
+            pool_type = strat["pool"]
             
             # 1. Calculate Amount
-            count = 0
             if amount_type == "fixed":
-                count = int(strat.get("value", 1))
+                count = self._validate_count(strat["value"], context="fixed amount")
             else:
-                # Use adaptive evaluator
-                # Pass posterior and kwargs (feedbacks etc)
-                try:
-                    count = self.adaptive_amount_evaluator(amount_type, posterior=posterior, **kwargs)
-                except Exception as e:
-                    if self.debug: print(f"Error in amount evaluator {amount_type}: {e}")
-                    count = 1 # Fallback
+                count = self.adaptive_amount_evaluator(
+                    amount_type,
+                    posterior=posterior,
+                    rng=self.rng,
+                    **kwargs,
+                )
 
             # Enforce a global budget for active hypotheses.
             remaining_budget = None
@@ -537,27 +636,28 @@ class DynamicHypothesisModule(BaseModule):
                 if remaining_budget <= 0:
                     break
                 count = min(count, remaining_budget)
-            
-            # 2. Select
-            # If top_p is specified in strat, we might ignore count or use it as limit
-            if "top_p" in strat and method_type == "top_posterior":
-                 # Special handling for top_p
-                 pass 
 
             top_p_val = 0.0
             if method_type == "top_posterior":
-                try:
-                    top_p_val = float(strat.get("top_p", 0.0))
-                except (TypeError, ValueError):
-                    top_p_val = 0.0
+                top_p_val = float(strat.get("top_p", 0.0))
+                if not np.isfinite(top_p_val) or top_p_val < 0.0 or top_p_val > 1.0:
+                    raise ValueError(f"top_p must be in [0, 1], got {top_p_val!r}.")
             has_positive_top_p = method_type == "top_posterior" and top_p_val > 0.0
 
             if self.debug:
-                print(f"  Strategy {method_type}: amount={count}")
+                print(f"  Strategy {method_type}: pool={pool_type}, amount={count}")
 
             selected: List[int] = []
             if count > 0 or has_positive_top_p:
-                selected = self._select_hypotheses(method_type, count, posterior, exclude=new_active_set, strategy_config=strat, **kwargs)
+                candidates = self._resolve_pool(pool_type, new_active_set)
+                selected = self._select_hypotheses(
+                    method_type,
+                    count,
+                    candidates,
+                    posterior,
+                    strategy_config=strat,
+                    **kwargs,
+                )
                 if remaining_budget is not None and len(selected) > remaining_budget:
                     selected_arr = np.array(selected, dtype=int)
                     keep_args = np.argsort(posterior[selected_arr])[-remaining_budget:]
@@ -569,10 +669,7 @@ class DynamicHypothesisModule(BaseModule):
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
-            # Fallback if empty
-            if self.debug:
-                print("  No hypotheses selected! Fallback to 1 random.")
-            new_active_set.update(self._sample_from_pool(self.full_indices, 1))
+            raise ValueError("No hypotheses were selected by the configured transition strategies.")
 
         self.active = np.sort(list(new_active_set))
         if self.max_active_hypotheses is not None and len(self.active) > self.max_active_hypotheses:
@@ -591,30 +688,37 @@ class DynamicHypothesisModule(BaseModule):
             else:
                 print(f"  Hypothesis 42 is INACTIVE. Post: {posterior[42]:.4f}")
 
-    def _cluster_strategy_random_post(self, amount: int, exclude: Set[int], posterior: np.ndarray, **kwargs) -> List[int]:
+    def _resolve_pool(self, pool: str, selected: Set[int]) -> np.ndarray:
+        selected_arr = np.array(list(selected), dtype=int)
+        if pool == self.POOL_ALL_UNSELECTED:
+            return self._exclude(self.full_indices, selected_arr)
+        if self.old_active is None:
+            active = np.empty(0, dtype=int)
+        else:
+            active = np.asarray(self.old_active, dtype=int)
+        if pool == self.POOL_ACTIVE:
+            return self._exclude(active, selected_arr)
+        if pool == self.POOL_INACTIVE:
+            inactive = self._exclude(self.full_indices, active)
+            return self._exclude(inactive, selected_arr)
+        raise ValueError(f"Unsupported pool '{pool}'.")
+
+    def _select_random_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, **kwargs) -> List[int]:
         """
         Cluster strategy: random n from posterior (Weighted Sampling from Active set)
         """
-        if self.active is None:
+        if amount <= 0:
             return []
             
-        # Candidates: Active hypotheses that are not in the exclude set
-        candidates = [x for x in self.active if x not in exclude]
-        if not candidates:
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
             return []
-            
-        cand_indices = np.array(candidates)
         # Get weights (probabilities)
         # posterior is expected to be an array of size total_hypo
         raw_w = posterior[cand_indices]
-        
-        # Safety check for zero probabilities
-        if raw_w.sum() == 0:
-             # Fallback to uniform
-             return self._sample_from_pool(cand_indices, min(amount, len(cand_indices))).tolist()
 
         # Normalize
-        prob = raw_w / raw_w.sum()
+        prob = self._validate_probability_vector(raw_w, context="random_posterior")
         
         # Weighted Sample
         actual_amount = min(amount, len(cand_indices))
@@ -635,62 +739,47 @@ class DynamicHypothesisModule(BaseModule):
         chosen = self.rng.choice(cand_indices, size=actual_amount, replace=False, p=prob)
         return chosen.tolist()
 
-    def _select_hypotheses(self, method: str, count: int, posterior: np.ndarray, exclude: Set[int], strategy_config: Dict | None = None, **kwargs) -> List[int]:
+    def _select_hypotheses(self, method: str, count: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
         strategy_config = strategy_config or {}
-        
-        if method == "ksimilar_centers":
-            return self._cluster_strategy_ksimilar_centers(count, exclude, posterior, strategy_config, **kwargs)
-        
-        if method == "random_posterior":
-            return self._cluster_strategy_random_post(count, exclude, posterior, **kwargs)
+        selector = self.method_selectors.get(method)
+        if selector is None:
+            raise ValueError(f"Unsupported selection method '{method}'.")
+        return selector(count, candidates, posterior, strategy_config=strategy_config, **kwargs)
 
-        if count <= 0 and "top_p" not in strategy_config:
+    def _select_top_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
+        strategy_config = strategy_config or {}
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
             return []
-            
-        if method == "top_posterior":
-            # Select from currently active ones based on posterior
-            if self.active is None:
-                return []
-            
-            # Filter out already selected
-            candidates = [x for x in self.active if x not in exclude]
-            if not candidates:
-                return []
-                
-            cand_indices = np.array(candidates)
-            scores = posterior[cand_indices]
-            
-            # Top P
-            if (prob := strategy_config.get("top_p", 0.)) > 0:
-                # Sort by score descending
-                sorted_indices = np.argsort(scores)[::-1]
-                sorted_scores = scores[sorted_indices]
-                
-                cum_prob = 0.0
-                selected_indices = []
-                for idx, score in zip(sorted_indices, sorted_scores):
-                    selected_indices.append(cand_indices[idx])
-                    cum_prob += score
-                    if cum_prob > prob:
-                        break
-                return selected_indices
+        scores = posterior[cand_indices]
 
-            # Top K
-            if count <= 0:
-                return []
-            if len(scores) <= count:
-                return candidates
+        if (prob := float(strategy_config.get("top_p", 0.0))) > 0:
+            if not np.isfinite(prob) or prob < 0.0 or prob > 1.0:
+                raise ValueError(f"top_p must be in [0, 1], got {prob!r}.")
+            sorted_indices = np.argsort(scores)[::-1]
+            sorted_scores = scores[sorted_indices]
             
-            top_args = np.argsort(scores)[-count:]
-            return cand_indices[top_args].tolist()
+            cum_prob = 0.0
+            selected_indices = []
+            for idx, score in zip(sorted_indices, sorted_scores):
+                selected_indices.append(cand_indices[idx])
+                cum_prob += score
+                if cum_prob > prob:
+                    break
+            return [int(x) for x in selected_indices]
 
-        elif method == "random":
-            # Select from ALL available (exploration)
-            # Exclude 'exclude' set
-            pool = self._exclude(self.full_indices, np.array(list(exclude)))
-            return self._sample_from_pool(pool, count).tolist()
-            
-        return []
+        if amount <= 0:
+            return []
+        if len(scores) <= amount:
+            return cand_indices.tolist()
+        
+        top_args = np.argsort(scores)[-amount:]
+        return cand_indices[top_args].tolist()
+
+    def _select_random(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, **kwargs) -> List[int]:
+        if amount <= 0:
+            return []
+        return self._sample_from_pool(candidates, amount).tolist()
 
     def _apply_mask(self) -> None:
         if self.active is None:
