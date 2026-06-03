@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
+import inspect
 from typing import Sequence, List, Dict, Set, Tuple, Callable, Any
 from scipy.spatial.distance import cdist
 from ...utils import print, entropy, softmax
@@ -23,7 +25,19 @@ class DynamicHypothesisModule(BaseModule):
     POOL_INACTIVE = "inactive"
     POOL_ALL_UNSELECTED = "all_unselected"
     VALID_POOLS = (POOL_ACTIVE, POOL_INACTIVE, POOL_ALL_UNSELECTED)
-    VALID_METHODS = ("top_posterior", "random_posterior", "random", "ksimilar_centers")
+    VALID_METHODS = (
+        "top_posterior",
+        "random_posterior",
+        "random",
+        "ksimilar_centers",
+        "epsilon_posterior",
+        "temperature_posterior",
+        "diverse_posterior",
+    )
+    VALID_TOP_P_SCOPES = ("global", "pool")
+    VALID_FEEDBACK_MODES = ("graded", "exact")
+    VALID_PADDING_MODES = ("chance", "zero", "one")
+    VALID_SIMILARITY_SOURCES = ("partition",)
     amount_evaluators = {}
 
     def __init__(self, engine, **kwargs):
@@ -67,7 +81,8 @@ class DynamicHypothesisModule(BaseModule):
         
         self.debug = kwargs.get("hypothesis_debug", False)
         # Track how many hypotheses each strategy selects per transition step (for plotting)
-        self.strategy_counts_log: List[Dict[str, int]] = []
+        self.strategy_counts_log: List[Dict[str, Any]] = []
+        self.feedback_history = deque(maxlen=max(1, int(kwargs.get("history_maxlen", 50))))
 
         self.cached_dist: Dict[Tuple, float] = {}
 
@@ -75,44 +90,42 @@ class DynamicHypothesisModule(BaseModule):
         # single supported amount registry; unknown strings fail fast.
         self.amount_evaluators = {
             "entropy": self._amount_entropy_gen(3),
-            "entropy_1": self._amount_entropy_gen(1),
-            "entropy_2": self._amount_entropy_gen(2),
-            "entropy_3": self._amount_entropy_gen(3),
-            "entropy_4": self._amount_entropy_gen(4),
-            "entropy_5": self._amount_entropy_gen(5),
-            "entropy_6": self._amount_entropy_gen(6),
-            "entropy_7": self._amount_entropy_gen(7),
-            "opp_entropy_2": self._amount_opposite_entropy_gen(2),
-            "opp_entropy_4": self._amount_opposite_entropy_gen(4),
-            "opp_entropy_7": self._amount_opposite_entropy_gen(7),
-            "max_1": self._amount_max_gen(1),
-            "max_2": self._amount_max_gen(2),
-            "max_3": self._amount_max_gen(3),
-            "max_4": self._amount_max_gen(4),
-            "max_5": self._amount_max_gen(5),
-            "max_6": self._amount_max_gen(6),
-            "max_7": self._amount_max_gen(7),
-            "random_1": self._amount_random_gen(1),
-            "random_2": self._amount_random_gen(2),
-            "random_3": self._amount_random_gen(3),
-            "random_4": self._amount_random_gen(4),
-            "random_5": self._amount_random_gen(5),
-            "random_6": self._amount_random_gen(6),
-            "random_7": self._amount_random_gen(7),
-            "random_9": self._amount_random_gen(9),
-            "opp_random_2": self._amount_opposite_random_gen(2),
-            "opp_random_4": self._amount_opposite_random_gen(4),
-            "opp_random_7": self._amount_opposite_random_gen(7),
-            "confidence_7": self._amount_confidence_gen(7),
-            "opp_confidence_7": self._amount_opposite_confidence_gen(7),
         }
+        for amount in range(1, 10):
+            self.amount_evaluators[f"entropy_{amount}"] = self._amount_entropy_gen(amount)
+            self.amount_evaluators[f"opp_entropy_{amount}"] = self._amount_opposite_entropy_gen(amount)
+            self.amount_evaluators[f"entropy_norm_{amount}"] = self._amount_entropy_norm_gen(amount)
+            self.amount_evaluators[f"opp_entropy_norm_{amount}"] = self._amount_opposite_entropy_norm_gen(amount)
+            self.amount_evaluators[f"max_{amount}"] = self._amount_max_gen(amount)
+            self.amount_evaluators[f"random_{amount}"] = self._amount_random_gen(amount)
+            self.amount_evaluators[f"opp_random_{amount}"] = self._amount_opposite_random_gen(amount)
+            self.amount_evaluators[f"confidence_{amount}"] = self._amount_confidence_gen(amount)
+            self.amount_evaluators[f"opp_confidence_{amount}"] = self._amount_opposite_confidence_gen(amount)
+            self.amount_evaluators[f"recent_accuracy_inverse_{amount}"] = self._amount_recent_accuracy_inverse_gen(amount)
         self.method_selectors = {
             "top_posterior": self._select_top_posterior,
             "random_posterior": self._select_random_posterior,
             "random": self._select_random,
             "ksimilar_centers": self._cluster_strategy_ksimilar_centers,
+            "epsilon_posterior": self._select_epsilon_posterior,
+            "temperature_posterior": self._select_temperature_posterior,
+            "diverse_posterior": self._select_diverse_posterior,
         }
         self.strategies = self._validate_strategies(self.strategies)
+        history_maxlen = kwargs.get("history_maxlen", None)
+        required_history = self._required_history_maxlen(self.strategies)
+        self.uses_feedback_history = required_history > 0
+        if history_maxlen is None:
+            history_maxlen = max(required_history, 1)
+        history_maxlen = self._validate_count(history_maxlen, context="history_maxlen")
+        if history_maxlen <= 0:
+            raise ValueError("history_maxlen must be positive.")
+        if required_history > history_maxlen:
+            raise ValueError(
+                f"history_maxlen={history_maxlen} is smaller than required history window {required_history}."
+            )
+        self.feedback_history = deque(maxlen=history_maxlen)
+        self._validate_history_feedback_modes()
         
         self.active: np.ndarray | None = None
         self.old_active: np.ndarray | None = None
@@ -206,8 +219,120 @@ class DynamicHypothesisModule(BaseModule):
                 raise ValueError(f"Strategy #{idx} uses fixed amount but does not define value.")
             if amount == "fixed":
                 self._validate_count(strat["value"], context=f"Strategy #{idx} fixed amount")
+            self._validate_strategy_parameters(idx, strat)
             validated.append(strat)
         return validated
+
+    def _validate_strategy_parameters(self, idx: int, strat: Dict[str, Any]) -> None:
+        method = str(strat["method"])
+        amount = strat["amount"]
+
+        if "label" in strat and not str(strat["label"]).strip():
+            raise ValueError(f"Strategy #{idx} label must be non-empty when provided.")
+
+        if method == "top_posterior":
+            self._validate_float_range(strat.get("top_p", 0.0), "top_p", 0.0, 1.0)
+            top_p_scope = str(strat.get("top_p_scope", "global"))
+            if top_p_scope not in self.VALID_TOP_P_SCOPES:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported top_p_scope '{top_p_scope}'. "
+                    f"Supported values: {', '.join(self.VALID_TOP_P_SCOPES)}."
+                )
+
+        if method == "epsilon_posterior":
+            self._validate_float_range(strat.get("epsilon", 0.25), "epsilon", 0.0, 1.0)
+
+        if method == "temperature_posterior":
+            self._validate_positive_float(strat.get("temperature", 1.0), "temperature")
+            self._validate_positive_float(strat.get("weight_floor", 1e-12), "weight_floor")
+
+        if method == "diverse_posterior":
+            self._validate_float_range(strat.get("diversity_lambda", 0.6), "diversity_lambda", 0.0, 1.0)
+            similarity_source = str(strat.get("similarity_source", "partition"))
+            if similarity_source not in self.VALID_SIMILARITY_SOURCES:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported similarity_source '{similarity_source}'. "
+                    f"Supported values: {', '.join(self.VALID_SIMILARITY_SOURCES)}."
+                )
+            self._validate_similarity_interface()
+
+        if method == "ksimilar_centers":
+            proto_method = str(strat.get("proto_hypo_method", "top"))
+            cluster_method = str(strat.get("cluster_hypo_method", "top"))
+            if proto_method not in ("top", "random"):
+                raise ValueError(f"Strategy #{idx} has unsupported proto_hypo_method '{proto_method}'.")
+            if cluster_method not in ("top", "random"):
+                raise ValueError(f"Strategy #{idx} has unsupported cluster_hypo_method '{cluster_method}'.")
+            self._validate_count(strat.get("proto_hypo_amount", 1), context=f"Strategy #{idx} proto_hypo_amount")
+
+        if isinstance(amount, str) and amount.startswith(("confidence_", "opp_confidence_")):
+            self._validate_float_range(strat.get("threshold_min", 0.2), "threshold_min", 0.0, 1.0)
+            self._validate_positive_float(strat.get("scale", 10.0), "scale")
+            self._validate_count(strat.get("min_count", 1), context=f"Strategy #{idx} min_count")
+
+        if isinstance(amount, str) and amount.startswith("max_"):
+            self._validate_positive_float(strat.get("reference_mass", 3.0), "reference_mass")
+
+        if isinstance(amount, str) and amount.startswith(("entropy_norm_", "opp_entropy_norm_")):
+            self._validate_count(strat.get("min_count", 0), context=f"Strategy #{idx} min_count")
+
+        if isinstance(amount, str) and amount.startswith("recent_accuracy_inverse_"):
+            self._validate_history_strategy(idx, strat)
+
+    def _validate_history_strategy(self, idx: int, strat: Dict[str, Any]) -> None:
+        window = self._validate_count(strat.get("window", 10), context=f"Strategy #{idx} window")
+        if window <= 0:
+            raise ValueError(f"Strategy #{idx} window must be positive.")
+        min_count = self._validate_count(strat.get("min_count", 1), context=f"Strategy #{idx} min_count")
+        if min_count < 0:
+            raise ValueError(f"Strategy #{idx} min_count must be non-negative.")
+        self._validate_positive_float(strat.get("gamma", 1.0), "gamma")
+        feedback_mode = str(strat.get("feedback_mode", "graded"))
+        if feedback_mode not in self.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                f"Strategy #{idx} has unsupported feedback_mode '{feedback_mode}'. "
+                f"Supported values: {', '.join(self.VALID_FEEDBACK_MODES)}."
+            )
+        padding = strat.get("padding", "chance")
+        if isinstance(padding, str):
+            if padding not in self.VALID_PADDING_MODES:
+                raise ValueError(
+                    f"Strategy #{idx} has unsupported padding '{padding}'. "
+                    f"Supported values: {', '.join(self.VALID_PADDING_MODES)} or a numeric value."
+                )
+            if padding == "chance":
+                self._chance_padding_value(require=True)
+        else:
+            self._validate_float_range(padding, "padding", 0.0, 1.0)
+
+    @staticmethod
+    def _validate_float_range(value: Any, name: str, low: float, high: float) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a finite number in [{low}, {high}], got boolean.")
+        val = float(value)
+        if not np.isfinite(val) or val < low or val > high:
+            raise ValueError(f"{name} must be in [{low}, {high}], got {value!r}.")
+        return val
+
+    @staticmethod
+    def _validate_positive_float(value: Any, name: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a positive finite number, got boolean.")
+        val = float(value)
+        if not np.isfinite(val) or val <= 0.0:
+            raise ValueError(f"{name} must be a positive finite number, got {value!r}.")
+        return val
+
+    def _required_history_maxlen(self, strategies: Sequence[Dict[str, Any]]) -> int:
+        required = 0
+        for strat in strategies:
+            amount = strat.get("amount")
+            if isinstance(amount, str) and amount.startswith("recent_accuracy_inverse_"):
+                required = max(required, self._validate_count(strat.get("window", 10), context="history window"))
+        return required
+
+    def _validate_history_feedback_modes(self) -> None:
+        self._history_feedback_mode()
 
     def _validate_ksimilar_partition(self) -> None:
         partition = getattr(self.engine, "partition", None)
@@ -248,6 +373,21 @@ class DynamicHypothesisModule(BaseModule):
             raise ValueError(f"{context} probabilities sum to zero.")
         return prob / total
 
+    def _candidate_relevance_scores(self, scores: np.ndarray, *, context: str) -> np.ndarray:
+        scores = np.asarray(scores, dtype=float)
+        if scores.ndim != 1:
+            raise ValueError(f"{context} scores must be 1-D, got shape {scores.shape}.")
+        if not np.all(np.isfinite(scores)):
+            raise ValueError(f"{context} scores contain non-finite values.")
+        if np.any(scores < 0):
+            raise ValueError(f"{context} scores contain negative values.")
+        total = float(scores.sum())
+        if total > 0.0:
+            return scores / total
+        if scores.size == 0:
+            return scores
+        return np.full(scores.shape, 1.0 / scores.size, dtype=float)
+
     def adaptive_amount_evaluator(self, amount: float | str | Callable, **kwargs) -> int:
         """
         Adaptively deal with evaluator / number format of amount.
@@ -286,11 +426,37 @@ class DynamicHypothesisModule(BaseModule):
         return _amount_opposite_entropy_based
 
     @classmethod
+    def _amount_entropy_norm_gen(cls, max_amount=3):
+        def _amount_entropy_norm(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            min_count = int(strategy_config.get("min_count", 0))
+            p_entropy = entropy(posterior)
+            n_hypos = len(posterior)
+            max_possible_entropy = np.log(n_hypos) if n_hypos > 1 else 1.0
+            normalized_entropy = np.clip(p_entropy / max_possible_entropy, 0.0, 1.0)
+            return int(min(max_amount, max(min_count, round(max_amount * (1.0 - normalized_entropy)))))
+        return _amount_entropy_norm
+
+    @classmethod
+    def _amount_opposite_entropy_norm_gen(cls, max_amount=3):
+        def _amount_opposite_entropy_norm(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            min_count = int(strategy_config.get("min_count", 0))
+            p_entropy = entropy(posterior)
+            n_hypos = len(posterior)
+            max_possible_entropy = np.log(n_hypos) if n_hypos > 1 else 1.0
+            normalized_entropy = np.clip(p_entropy / max_possible_entropy, 0.0, 1.0)
+            return int(min(max_amount, max(min_count, round(max_amount * normalized_entropy))))
+        return _amount_opposite_entropy_norm
+
+    @classmethod
     def _amount_max_gen(cls, max_amount=3):
         def _amount_max_based(posterior: np.ndarray, max_amount=max_amount, **kwargs):
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            reference_mass = float(strategy_config.get("reference_mass", 3.0))
             max_post = np.max(posterior)
             if max_post <= 0: return max_amount # Avoid div by zero
-            return 0 if 3. / max_post > max_amount else int(3. / max_post)
+            return 0 if reference_mass / max_post > max_amount else int(reference_mass / max_post)
         return _amount_max_based
 
     @classmethod
@@ -362,24 +528,116 @@ class DynamicHypothesisModule(BaseModule):
         MODIFIED: Returns at least 1 to prevent total memory loss in large hypothesis spaces.
         """
         def _amount_confidence(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            threshold = float(strategy_config.get("threshold_min", threshold_min))
+            scale = float(strategy_config.get("scale", 10.0))
+            min_count = int(strategy_config.get("min_count", 1))
             max_post = np.max(posterior)
-            if max_post <= threshold_min:
+            if max_post <= threshold:
                 # Return 1 instead of 0 to ensure we keep at least one hypothesis
                 # (the best one or a lucky weighted one) even when confidence is low.
-                return 1
+                return min(min_count, max_amount)
             
             # Step function: (max_post - 0.2) * 10 + 1
-            val = int((max_post - threshold_min) * 10) + 1
-            return max(1, min(val, max_amount))
+            val = int((max_post - threshold) * scale) + min_count
+            return min(max_amount, max(min_count, min(val, max_amount)))
         return _amount_confidence
 
     @classmethod
     def _amount_opposite_confidence_gen(cls, max_amount=7, threshold_min=0.2):
         base_func = cls._amount_confidence_gen(max_amount, threshold_min)
         def _amount_opp_confidence(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
-            conf_amount = base_func(posterior, max_amount, **kwargs)
+            conf_amount = base_func(posterior, max_amount=max_amount, **kwargs)
             return max(0, max_amount - conf_amount)
         return _amount_opp_confidence
+
+    def _amount_recent_accuracy_inverse_gen(self, max_amount=7):
+        def _amount_recent_accuracy_inverse(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            window = self._validate_count(strategy_config.get("window", 10), context="recent accuracy window")
+            min_count = self._validate_count(strategy_config.get("min_count", 1), context="recent accuracy min_count")
+            gamma = float(strategy_config.get("gamma", 1.0))
+            if window <= 0:
+                raise ValueError("recent_accuracy_inverse window must be positive.")
+            if gamma <= 0 or not np.isfinite(gamma):
+                raise ValueError(f"recent_accuracy_inverse gamma must be positive, got {gamma!r}.")
+            if min_count > max_amount:
+                return max_amount
+            acc = self._recent_accuracy(window, strategy_config)
+            amount = min_count + round(((1.0 - acc) ** gamma) * (max_amount - min_count))
+            return int(max(min_count, min(amount, max_amount)))
+        return _amount_recent_accuracy_inverse
+
+    def _recent_accuracy(self, window: int, strategy_config: Dict[str, Any]) -> float:
+        recent = list(self.feedback_history)[-window:]
+        padding = strategy_config.get("padding", "chance")
+        if len(recent) >= window:
+            values = recent
+        else:
+            missing = window - len(recent)
+            pad_value = self._resolve_padding_value(padding)
+            values = recent + [pad_value] * missing
+        if not values:
+            return self._resolve_padding_value(padding)
+        accuracy = float(np.mean(values))
+        if not np.isfinite(accuracy):
+            raise ValueError("recent accuracy is non-finite.")
+        return float(np.clip(accuracy, 0.0, 1.0))
+
+    def _resolve_padding_value(self, padding: Any) -> float:
+        if isinstance(padding, str):
+            if padding == "chance":
+                return self._chance_padding_value(require=True)
+            if padding == "zero":
+                return 0.0
+            if padding == "one":
+                return 1.0
+            raise ValueError(f"Unsupported padding '{padding}'.")
+        return self._validate_float_range(padding, "padding", 0.0, 1.0)
+
+    def _chance_padding_value(self, *, require: bool) -> float:
+        partition = getattr(self.engine, "partition", None)
+        n_cats = getattr(partition, "n_cats", None)
+        if n_cats is None:
+            if require:
+                raise ValueError("padding='chance' requires engine.partition.n_cats; use numeric padding otherwise.")
+            return 0.0
+        n_cats = self._validate_count(n_cats, context="partition.n_cats")
+        if n_cats <= 0:
+            raise ValueError(f"partition.n_cats must be positive for chance padding, got {n_cats}.")
+        return 1.0 / float(n_cats)
+
+    def _record_feedback_from_observation(self) -> None:
+        if not self.uses_feedback_history:
+            return
+        observation = getattr(self.engine, "observation", None)
+        if observation is None or len(observation) < 3:
+            return
+        feedback = observation[2]
+        try:
+            value = float(feedback)
+        except (TypeError, ValueError):
+            raise ValueError(f"Feedback must be numeric to record transition history, got {feedback!r}.")
+        if not np.isfinite(value):
+            raise ValueError(f"Feedback must be finite to record transition history, got {feedback!r}.")
+        mode = self._history_feedback_mode()
+        if mode == "exact":
+            value = 1.0 if value == 1.0 else 0.0
+        else:
+            value = float(np.clip(value, 0.0, 1.0))
+        self.feedback_history.append(value)
+
+    def _history_feedback_mode(self) -> str:
+        modes = {
+            str(strat.get("feedback_mode", "graded"))
+            for strat in self.strategies
+            if isinstance(strat.get("amount"), str) and str(strat.get("amount")).startswith("recent_accuracy_inverse_")
+        }
+        if not modes:
+            return "graded"
+        if len(modes) > 1:
+            raise ValueError("History-based strategies must use a single feedback_mode within one module.")
+        return next(iter(modes))
 
     
     def _cluster_strategy_ksimilar_centers(self,
@@ -587,6 +845,7 @@ class DynamicHypothesisModule(BaseModule):
         self._transition(**kwargs)
         self._apply_mask()
         self._posterior_to_prior_transition()
+        self._record_feedback_from_observation()
 
     def _init_mask(self) -> None:
         # Simple random init
@@ -610,8 +869,9 @@ class DynamicHypothesisModule(BaseModule):
             print(f"Transition Debug: Beta = {beta_debug}")
 
         new_active_set = set()
-        # Track counts for this step
-        step_counts: Dict[str, int] = {}
+        # Track counts for this step. Keep method-level aggregate keys for old
+        # plotting code and add structured details for strategy-level debugging.
+        step_counts: Dict[str, Any] = {"strategies": []}
         
         for strat in self.strategies:
             amount_type = strat["amount"]
@@ -626,8 +886,10 @@ class DynamicHypothesisModule(BaseModule):
                     amount_type,
                     posterior=posterior,
                     rng=self.rng,
+                    strategy_config=strat,
                     **kwargs,
                 )
+            requested_count = count
 
             # Enforce a global budget for active hypotheses.
             remaining_budget = None
@@ -665,7 +927,18 @@ class DynamicHypothesisModule(BaseModule):
                 if self.debug:
                     print(f"    Selected: {selected}")
                 new_active_set.update(selected)
-            # Record per-strategy count
+            selected = [int(x) for x in selected]
+            label = str(strat.get("label", f"strategy_{len(step_counts['strategies'])}"))
+            step_counts["strategies"].append({
+                "label": label,
+                "amount": amount_type,
+                "method": method_type,
+                "pool": pool_type,
+                "requested_count": int(requested_count),
+                "selected_count": len(selected),
+                "selected": selected,
+            })
+            # Backward-compatible aggregate count by method for plotting.
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
@@ -756,8 +1029,15 @@ class DynamicHypothesisModule(BaseModule):
         if (prob := float(strategy_config.get("top_p", 0.0))) > 0:
             if not np.isfinite(prob) or prob < 0.0 or prob > 1.0:
                 raise ValueError(f"top_p must be in [0, 1], got {prob!r}.")
+            top_p_scope = str(strategy_config.get("top_p_scope", "global"))
+            if top_p_scope == "pool":
+                sorted_scores = self._validate_probability_vector(scores, context="top_posterior pool")
+            elif top_p_scope == "global":
+                sorted_scores = scores
+            else:
+                raise ValueError(f"Unsupported top_p_scope '{top_p_scope}'.")
             sorted_indices = np.argsort(scores)[::-1]
-            sorted_scores = scores[sorted_indices]
+            sorted_scores = sorted_scores[sorted_indices]
             
             cum_prob = 0.0
             selected_indices = []
@@ -780,6 +1060,113 @@ class DynamicHypothesisModule(BaseModule):
         if amount <= 0:
             return []
         return self._sample_from_pool(candidates, amount).tolist()
+
+    def _select_epsilon_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
+        strategy_config = strategy_config or {}
+        if amount <= 0:
+            return []
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
+            return []
+        actual_amount = min(amount, len(cand_indices))
+        epsilon = float(strategy_config.get("epsilon", 0.25))
+        if not np.isfinite(epsilon) or epsilon < 0.0 or epsilon > 1.0:
+            raise ValueError(f"epsilon must be in [0, 1], got {epsilon!r}.")
+        raw = np.asarray(posterior[cand_indices], dtype=float)
+        if not np.all(np.isfinite(raw)) or np.any(raw < 0):
+            raise ValueError("epsilon_posterior candidate posterior contains invalid values.")
+        posterior_mass = float(raw.sum())
+        posterior_part = raw / posterior_mass if posterior_mass > 0.0 else np.zeros_like(raw)
+        uniform_part = np.full_like(raw, 1.0 / len(raw), dtype=float)
+        prob = (1.0 - epsilon) * posterior_part + epsilon * uniform_part
+        prob = self._validate_probability_vector(prob, context="epsilon_posterior")
+        chosen = self.rng.choice(cand_indices, size=actual_amount, replace=False, p=prob)
+        return chosen.tolist()
+
+    def _select_temperature_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
+        strategy_config = strategy_config or {}
+        if amount <= 0:
+            return []
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
+            return []
+        actual_amount = min(amount, len(cand_indices))
+        temperature = float(strategy_config.get("temperature", 1.0))
+        weight_floor = float(strategy_config.get("weight_floor", 1e-12))
+        if not np.isfinite(temperature) or temperature <= 0.0:
+            raise ValueError(f"temperature must be positive, got {temperature!r}.")
+        if not np.isfinite(weight_floor) or weight_floor <= 0.0:
+            raise ValueError(f"weight_floor must be positive, got {weight_floor!r}.")
+        raw = np.asarray(posterior[cand_indices], dtype=float)
+        if not np.all(np.isfinite(raw)) or np.any(raw < 0):
+            raise ValueError("temperature_posterior candidate posterior contains invalid values.")
+        weights = np.power(raw + weight_floor, 1.0 / temperature)
+        prob = self._validate_probability_vector(weights, context="temperature_posterior")
+        chosen = self.rng.choice(cand_indices, size=actual_amount, replace=False, p=prob)
+        return chosen.tolist()
+
+    def _select_diverse_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
+        strategy_config = strategy_config or {}
+        if amount <= 0:
+            return []
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
+            return []
+        actual_amount = min(amount, len(cand_indices))
+        lambda_val = float(strategy_config.get("diversity_lambda", 0.6))
+        if not np.isfinite(lambda_val) or lambda_val < 0.0 or lambda_val > 1.0:
+            raise ValueError(f"diversity_lambda must be in [0, 1], got {lambda_val!r}.")
+        sim = self._get_similarity_matrix(require=True)
+        posterior_scores = posterior[cand_indices]
+        posterior_scores = self._candidate_relevance_scores(posterior_scores, context="diverse_posterior")
+
+        selected: List[int] = []
+        remaining = cand_indices.tolist()
+        score_lookup = {int(idx): float(score) for idx, score in zip(cand_indices, posterior_scores)}
+        while remaining and len(selected) < actual_amount:
+            best_idx = None
+            best_score = -np.inf
+            for idx in remaining:
+                if selected:
+                    similarity_penalty = float(np.max(sim[int(idx), selected]))
+                else:
+                    similarity_penalty = 0.0
+                score = lambda_val * score_lookup[int(idx)] - (1.0 - lambda_val) * similarity_penalty
+                if score > best_score:
+                    best_score = score
+                    best_idx = int(idx)
+            if best_idx is None:
+                break
+            selected.append(best_idx)
+            remaining.remove(best_idx)
+        return selected
+
+    def _get_similarity_matrix(self, *, require: bool) -> np.ndarray | None:
+        partition = getattr(self.engine, "partition", None)
+        matrix = getattr(partition, "similarity_matrix", None)
+        if matrix is None and partition is not None and hasattr(partition, "get_similarity_matrix"):
+            matrix = partition.get_similarity_matrix()
+        if matrix is None:
+            if require:
+                raise ValueError("diverse_posterior requires partition.similarity_matrix or get_similarity_matrix().")
+            return None
+        matrix = np.asarray(matrix, dtype=float)
+        if matrix.shape != (self.total_hypo, self.total_hypo):
+            raise ValueError(
+                f"similarity matrix must have shape {(self.total_hypo, self.total_hypo)}, got {matrix.shape}."
+            )
+        if not np.all(np.isfinite(matrix)):
+            raise ValueError("similarity matrix contains non-finite values.")
+        return matrix
+
+    def _validate_similarity_interface(self) -> None:
+        partition = getattr(self.engine, "partition", None)
+        if partition is None:
+            raise ValueError("diverse_posterior requires engine.partition.")
+        has_matrix = inspect.getattr_static(partition, "similarity_matrix", None) is not None
+        has_getter = inspect.getattr_static(partition, "get_similarity_matrix", None) is not None
+        if not has_matrix and not has_getter:
+            raise ValueError("diverse_posterior requires partition.similarity_matrix or get_similarity_matrix().")
 
     def _apply_mask(self) -> None:
         if self.active is None:

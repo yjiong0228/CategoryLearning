@@ -110,7 +110,9 @@ def _build_grid_errors(payload: Dict[str, Any]) -> Dict[Tuple[float, float], Lis
 def _strategy_to_best_step_amount(strategy_step: Dict[str, Any]) -> Dict[str, List[float]]:
     converted: Dict[str, List[float]] = {}
     for key, value in (strategy_step or {}).items():
-        if key == "active_total":
+        if key in {"active_total", "strategies"}:
+            continue
+        if not isinstance(value, (int, float)):
             continue
         if key == "random":
             converted["random"] = [_to_float(value)]
