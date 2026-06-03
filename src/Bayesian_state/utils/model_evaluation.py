@@ -1104,6 +1104,170 @@ class ModelEval(OralModelAlignmentMixin):
             **kwargs,
         )
 
+    @staticmethod
+    def _strategy_amount_rows(info, count_field="selected_count"):
+        def _as_count(value, default=0.0):
+            if isinstance(value, (list, tuple)):
+                if not value:
+                    return float(default)
+                value = value[0]
+            if value is None:
+                return float(default)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return float(default)
+
+        logs = info.get("strategy_counts_log")
+        if logs is None:
+            steps = info.get("best_step_results") or info.get("step_results") or []
+            logs = [
+                step.get("best_step_amount")
+                for step in steps
+                if isinstance(step, dict) and isinstance(step.get("best_step_amount"), dict)
+            ]
+
+        rows = []
+        for trial_idx, step in enumerate(logs or [], start=1):
+            if not isinstance(step, dict):
+                continue
+
+            strategies = step.get("strategies")
+            if isinstance(strategies, list):
+                for strategy_idx, strategy in enumerate(strategies):
+                    if not isinstance(strategy, dict):
+                        continue
+                    label = str(strategy.get("label", f"strategy_{strategy_idx}"))
+                    amount = str(strategy.get("amount", ""))
+                    method = str(strategy.get("method", ""))
+                    pool = str(strategy.get("pool", ""))
+                    value = _as_count(strategy.get(count_field, strategy.get("selected_count", 0)))
+                    rows.append({
+                        "trial": int(trial_idx),
+                        "strategy_index": int(strategy_idx),
+                        "label": label,
+                        "amount": amount,
+                        "method": method,
+                        "pool": pool,
+                        "strategy_key": f"{label} | {amount} | {method} | {pool}",
+                        "count": value,
+                    })
+                continue
+
+            # Backward-compatible path for older aggregate-only logs.
+            for key, value in step.items():
+                if key in {"active_total", "strategies"}:
+                    continue
+                count = _as_count(value, default=np.nan)
+                if np.isnan(count):
+                    continue
+                method = str(key)
+                rows.append({
+                    "trial": int(trial_idx),
+                    "strategy_index": -1,
+                    "label": method,
+                    "amount": "",
+                    "method": method,
+                    "pool": "",
+                    "strategy_key": f"{method} |  | {method} | ",
+                    "count": count,
+                })
+
+        return pd.DataFrame(rows)
+
+    def plot_strategy_amount_details(
+        self,
+        results,
+        window_size=1,
+        subjects=None,
+        save_path=None,
+        count_field="selected_count",
+        include_active_total=True,
+        **kwargs,
+    ):
+        """Plot per-strategy transition counts from detailed strategy logs.
+
+        Each line corresponds to one configured strategy identity, shown as
+        ``label | amount | method | pool``. Use ``count_field="requested_count"``
+        to inspect requested amounts instead of selected counts.
+        """
+        rolling_window = max(1, int(window_size))
+        min_periods = int(kwargs.pop("min_periods", 1))
+        high_contrast_colors = kwargs.pop("colors", None) or (
+            "#E69F00",  # orange
+            "#3969AC",  # deep blue
+            "#009E73",  # bluish green
+            "#7F3C8D",  # purple
+            "#E73F74",  # pink red
+        )
+
+        def body(ax, condition, iSub, info):
+            df = self._strategy_amount_rows(info, count_field=count_field)
+            if df.empty:
+                ax.text(0.5, 0.5, "No strategy count log", ha="center", va="center")
+                ax.set(title=f"Subject {iSub} (Condition {condition})")
+                return
+
+            x_max = int(df["trial"].max())
+            x_index = pd.Index(np.arange(1, x_max + 1), name="trial")
+            keys = list(dict.fromkeys(df["strategy_key"].tolist()))
+
+            for line_idx, key in enumerate(keys):
+                sub = df[df["strategy_key"] == key]
+                series = sub.groupby("trial")["count"].sum().reindex(x_index, fill_value=0.0)
+                if rolling_window > 1:
+                    series = series.rolling(window=rolling_window, min_periods=min_periods).mean()
+                ax.plot(
+                    x_index.to_numpy(),
+                    series.to_numpy(),
+                    label=key,
+                    lw=kwargs.get("lw", 1.8),
+                    alpha=kwargs.get("alpha", 0.7),
+                    color=high_contrast_colors[line_idx % len(high_contrast_colors)],
+                )
+
+            if include_active_total:
+                logs = info.get("strategy_counts_log")
+                if logs is None:
+                    steps = info.get("best_step_results") or info.get("step_results") or []
+                    logs = [
+                        step.get("best_step_amount")
+                        for step in steps
+                        if isinstance(step, dict) and isinstance(step.get("best_step_amount"), dict)
+                    ]
+                active_total = [
+                    float(step.get("active_total", np.nan)) if isinstance(step, dict) else np.nan
+                    for step in logs or []
+                ]
+                if active_total:
+                    active_series = pd.Series(active_total, index=np.arange(1, len(active_total) + 1))
+                    if rolling_window > 1:
+                        active_series = active_series.rolling(window=rolling_window, min_periods=min_periods).mean()
+                    ax.plot(
+                        active_series.index.to_numpy(),
+                        active_series.to_numpy(),
+                        label="active_total",
+                        color="black",
+                        lw=kwargs.get("active_lw", 2.4),
+                        linestyle="--",
+                    )
+
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition})",
+                xlabel="Trial",
+                ylabel=count_field,
+            )
+            ax.legend(fontsize=kwargs.get("legend_fontsize", 8), loc=kwargs.get("legend_loc", "best"))
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Detailed Strategy Amount by Subject",
+            body,
+            **kwargs,
+        )
+
     # error_grid --------------------------------------------------------------
 
     def plot_error_grids(self, results, subjects=None, fname=None, save_path=None, **kwargs):

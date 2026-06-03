@@ -147,6 +147,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--aggregate-output", type=Path, default=None)
     p.add_argument("--plot-accuracy", type=Path, default=None)
     p.add_argument("--plot-cluster", type=Path, default=None)
+    p.add_argument("--plot-strategy-amount-details", type=Path, default=None)
+    p.add_argument(
+        "--strategy-amount-window-size",
+        type=int,
+        default=1,
+        help="Rolling window for detailed per-strategy amount plots. Defaults to raw per-trial counts.",
+    )
     return p.parse_args()
 
 
@@ -159,6 +166,9 @@ def main() -> None:
     agg_out = args.aggregate_output or (input_dir / "all_subjects.json")
     plot_out = args.plot_accuracy or (input_dir / "accuracy.png")
     plot_cluster = args.plot_cluster or (input_dir / "cluster_amount.png")
+    plot_strategy_amount_details = args.plot_strategy_amount_details or (
+        input_dir / "strategy_amount_details.png"
+    )
 
     aggregated = aggregate(input_dir, eval_prediction_mode=args.eval_prediction_mode)
     agg_out.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +185,14 @@ def main() -> None:
 
     me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
     print(f"Saved cluster amount plot -> {plot_cluster}")
+
+    me.plot_strategy_amount_details(
+        aggregated,
+        window_size=int(args.strategy_amount_window_size),
+        save_path=str(plot_strategy_amount_details),
+        min_periods=1,
+    )
+    print(f"Saved detailed strategy amount plot -> {plot_strategy_amount_details}")
 
 
 if __name__ == "__main__":

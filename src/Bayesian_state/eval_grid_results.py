@@ -348,6 +348,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plot-grid", type=Path, default=None)
     p.add_argument("--plot-posterior", type=Path, default=None)
     p.add_argument("--plot-cluster", type=Path, default=None)
+    p.add_argument("--plot-strategy-amount-details", type=Path, default=None)
+    p.add_argument(
+        "--strategy-amount-window-size",
+        type=int,
+        default=None,
+        help=(
+            "Rolling window for detailed per-strategy amount plots. "
+            "Defaults to --plot-window-size when provided, otherwise raw per-trial counts."
+        ),
+    )
     p.add_argument("--plot-beta", type=Path, default=None)
     p.add_argument("--plot-accuracy-family", type=Path, default=None)
     p.add_argument("--trajectory-dir", type=Path, default=None)
@@ -577,6 +587,14 @@ def main() -> None:
     plot_grid = args.plot_grid or (plots_dir / "error_grid.png")
     plot_posterior = args.plot_posterior or (plots_dir / "posterior.png")
     plot_cluster = args.plot_cluster or (plots_dir / "cluster_amount.png")
+    plot_strategy_amount_details = args.plot_strategy_amount_details or (
+        plots_dir / "strategy_amount_details.png"
+    )
+    strategy_amount_window_size = (
+        int(args.strategy_amount_window_size)
+        if args.strategy_amount_window_size is not None
+        else (int(args.plot_window_size) if args.plot_window_size is not None else 1)
+    )
     plot_beta = args.plot_beta or (plots_dir / "beta.png")
     plot_accuracy_family = args.plot_accuracy_family or (plots_dir / "accuracy_family.png")
     trajectory_dir = args.trajectory_dir or (plots_dir / "trajectory_accuracy")
@@ -711,6 +729,14 @@ def main() -> None:
 
     me.plot_cluster_amount(aggregated, save_path=str(plot_cluster))
     print(f"Saved cluster dynamics plot -> {plot_cluster}")
+
+    me.plot_strategy_amount_details(
+        aggregated,
+        window_size=strategy_amount_window_size,
+        save_path=str(plot_strategy_amount_details),
+        min_periods=1,
+    )
+    print(f"Saved detailed strategy amount plot -> {plot_strategy_amount_details}")
 
     if oral_settings is None:
         print("No oral config provided; skipped oral alignment plots.")
