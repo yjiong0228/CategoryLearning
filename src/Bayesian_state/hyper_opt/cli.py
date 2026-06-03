@@ -26,6 +26,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--subjects", nargs="+", type=int, help="Override subject list")
     p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Override subject range")
     p.add_argument("--stage", choices=("coarse", "fine", "all"), default="all", help="Run only selected stage or all")
+    p.add_argument(
+        "--resume-from-coarse",
+        action="store_true",
+        help=(
+            "With --stage fine, load existing coarse all_combinations.jsonl, "
+            "trim stale fine rows, then run only fine."
+        ),
+    )
     return p.parse_args()
 
 
@@ -38,7 +46,11 @@ def main() -> None:
     cfg = load_yaml(cfg_path)
     optimizer = HyperOptimizer(cfg, cfg_path)
     subjects = optimizer.resolve_subjects(args.subjects, args.subject_range)
-    result = optimizer.run(subjects=subjects, stage=args.stage)
+    result = optimizer.run(
+        subjects=subjects,
+        stage=args.stage,
+        resume_from_coarse=bool(args.resume_from_coarse),
+    )
 
     print("Hyper optimization done.")
     print(json.dumps(result, ensure_ascii=False, indent=2))

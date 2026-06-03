@@ -307,7 +307,6 @@ class HyperOptimizer:
                 selection_prediction_mode=str(combination_inner_cfg.get("selection_prediction_mode", sel_mode)),
                 loss_metric=effective_loss_metric,
                 loss_delta=effective_loss_delta,
-                random_seed=seed,
             )
             if self.inner_optimizer == "grid":
                 result = optimizer.optimize_subject(
@@ -319,6 +318,7 @@ class HyperOptimizer:
                 result = optimizer.optimize_subject(
                     **common_kwargs,
                     grid_repeats=repeat_count,
+                    random_seed=hyper_candidate_seed,
                 )
 
             best = result["best"]
