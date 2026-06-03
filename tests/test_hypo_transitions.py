@@ -24,6 +24,14 @@ class FakePrototypePartition(FakePartition):
         self.prototypes = base[:, None, :, :] / float(set_size * n_cats * n_dims)
 
 
+class FarPrototypePartition(FakePartition):
+    def __init__(self, set_size: int = 4):
+        super().__init__(n_cats=1, similarity_matrix=np.eye(set_size))
+        self.n_dims = 1
+        self.prototypes = np.zeros((set_size, 1, 1, 1), dtype=float)
+        self.prototypes[1:, 0, 0, 0] = 1000.0
+
+
 class LazySimilarityPartition:
     def __init__(self, matrix: np.ndarray):
         self.n_cats = 2
@@ -169,6 +177,17 @@ def test_strategy_counts_log_keeps_labels_and_method_aggregates() -> None:
     assert all("selected" in item for item in log["strategies"])
 
 
+def test_empty_transition_falls_back_to_one_random_hypothesis() -> None:
+    strategies = [{"amount": "fixed", "method": "random", "pool": "active", "value": 0}]
+    mod = _module(strategies, random_seed=10)
+
+    mod._transition()
+
+    assert len(mod.active) == 1
+    assert mod.strategy_counts_log[-1]["active_total"] == 1
+    assert mod.strategy_counts_log[-1]["strategies"][0]["selected_count"] == 0
+
+
 def test_same_seed_reproducible_and_derived_repeats_differ() -> None:
     strategies = [{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 4}]
     first = _module(strategies, random_seed=123)
@@ -212,6 +231,27 @@ def test_nonfinite_posterior_raises() -> None:
 
     with pytest.raises(ValueError, match="non-finite"):
         mod._transition()
+
+
+def test_random_posterior_zero_mass_pool_falls_back_to_uniform() -> None:
+    posterior = np.array([0.0, 0.0, 0.7, 0.3])
+    strategy = {"amount": "fixed", "method": "random_posterior", "pool": "active", "value": 1}
+    mod = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, random_seed=4)
+    mod.active = np.array([0, 1], dtype=int)
+
+    mod._transition()
+
+    assert len(mod.active) == 1
+    assert mod.active[0] in (0, 1)
+
+
+def test_random_posterior_still_rejects_invalid_candidate_weights() -> None:
+    strategy = {"amount": "fixed", "method": "random_posterior", "pool": "active", "value": 1}
+    mod = _module([strategy], engine_kwargs={"set_size": 4}, random_seed=4)
+    posterior = np.array([0.5, -0.1, 0.4, 0.2])
+
+    with pytest.raises(ValueError, match="invalid values"):
+        mod._select_random_posterior(1, np.array([0, 1]), posterior)
 
 
 def test_top_p_scope_global_vs_pool() -> None:
@@ -405,6 +445,28 @@ def test_diverse_posterior_still_rejects_nonfinite_candidate_scores() -> None:
 
     with pytest.raises(ValueError, match="non-finite"):
         mod._transition()
+
+
+def test_ksimilar_random_zero_scores_falls_back_to_uniform() -> None:
+    posterior = np.array([0.7, 0.1, 0.1, 0.1])
+    strategy = {
+        "amount": "fixed",
+        "method": "ksimilar_centers",
+        "pool": "inactive",
+        "value": 1,
+        "proto_hypo_amount": 1,
+        "proto_hypo_method": "top",
+        "cluster_hypo_method": "random",
+    }
+    engine = _engine(set_size=4, posterior=posterior, partition=FarPrototypePartition(set_size=4))
+    engine.observation = (np.array([0.0]), 0, 1.0)
+    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=1, max_active_hypotheses=4, random_seed=5)
+    mod.active = np.array([0], dtype=int)
+
+    mod._transition()
+
+    assert len(mod.active) == 1
+    assert mod.active[0] in (1, 2, 3)
 
 
 @pytest.mark.parametrize(

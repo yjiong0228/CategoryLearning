@@ -794,7 +794,7 @@ class DynamicHypothesisModule(BaseModule):
                     replace=False,
                 )
             else:
-                raise ValueError("ksimilar_centers candidate scores sum to zero.")
+                ret_val = self._sample_from_pool(candidate_hypos_index, amount)
         else:
             raise ValueError(f"Unsupported cluster_hypo_method '{cluster_hypo_method}'.")
             
@@ -942,7 +942,9 @@ class DynamicHypothesisModule(BaseModule):
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
-            raise ValueError("No hypotheses were selected by the configured transition strategies.")
+            if self.debug:
+                print("  No hypotheses selected! Fallback to 1 random.")
+            new_active_set.update(self._sample_from_pool(self.full_indices, 1))
 
         self.active = np.sort(list(new_active_set))
         if self.max_active_hypotheses is not None and len(self.active) > self.max_active_hypotheses:
@@ -989,12 +991,15 @@ class DynamicHypothesisModule(BaseModule):
         # Get weights (probabilities)
         # posterior is expected to be an array of size total_hypo
         raw_w = posterior[cand_indices]
+        if not np.all(np.isfinite(raw_w)) or np.any(raw_w < 0):
+            raise ValueError("random_posterior probabilities contain invalid values.")
 
         # Normalize
-        prob = self._validate_probability_vector(raw_w, context="random_posterior")
-        
-        # Weighted Sample
         actual_amount = min(amount, len(cand_indices))
+        if float(raw_w.sum()) == 0.0:
+            return self._sample_from_pool(cand_indices, actual_amount).tolist()
+
+        prob = self._validate_probability_vector(raw_w, context="random_posterior")
         
         # Handle case where non-zero probs are fewer than amount
         n_nonzero = (prob > 0).sum()
