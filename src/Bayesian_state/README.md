@@ -307,7 +307,7 @@ Note: `oral_model_alignment` center/region analyses are standalone analysis path
 
 `run_grid_optimization.py` and `run_amr_optimization.py` now require a config key:
 
-- `loss_metric: accuracy_mae | accuracy_mse | accuracy_berhu | choice_brier | choice_nll | wrong_choice_nll | conditional_wrong_choice_nll`
+- `loss_metric: accuracy_curve_mae | accuracy_curve_mse | accuracy_curve_family_mse | accuracy_curve_berhu | accuracy_brier | accuracy_family_brier | accuracy_nll | choice_brier | choice_nll | wrong_choice_nll | conditional_wrong_choice_nll`
 
 No backward-compatible fallback is applied. Missing or unsupported `loss_metric`
 raises an explicit error.
@@ -316,11 +316,21 @@ Definitions:
 
 Accuracy-based losses:
 
-- `accuracy_mae`: sliding-window mean absolute error on accuracy curves.
-- `accuracy_mse`: sliding-window mean squared error on accuracy curves.
-- `accuracy_berhu`: reverse Huber on sliding-window residuals \(r = \hat{a} - a\):
+- `accuracy_curve_mae`: sliding-window mean absolute error on accuracy curves.
+- `accuracy_curve_mse`: sliding-window mean squared error on accuracy curves.
+- `accuracy_curve_family_mse`: sliding-window mean squared error on
+  family-level accuracy curves. For 4-category tasks, categories `1/2` and
+  `3/4` are grouped into two families.
+- `accuracy_curve_berhu`: reverse Huber on sliding-window residuals \(r = \hat{a} - a\):
   - `|r|` when `|r| <= loss_delta`
   - `(r^2 + loss_delta^2) / (2 * loss_delta)` when `|r| > loss_delta`
+- `accuracy_brier`: trial-level correctness Brier score, i.e.
+  `mean_t (p_t(category_t) - 1[feedback_t = 1])^2`.
+- `accuracy_family_brier`: trial-level family-correctness Brier score, i.e.
+  `mean_t (sum_{k in family(category_t)} p_t(k) - 1[choice_t in family(category_t)])^2`.
+- `accuracy_nll`: trial-level binary log loss for correctness, i.e.
+  `mean_t -y_t log p_t(category_t) - (1-y_t) log (1-p_t(category_t))`,
+  where `y_t = 1[feedback_t = 1]`.
 
 Choice-based losses:
 
@@ -335,14 +345,14 @@ Choice-based losses:
   the true category, i.e.
   `mean_t -log (p_t(choice_t) / (1 - p_t(category_t)))`.
 
-When `loss_metric: accuracy_berhu`, config must also include:
+When `loss_metric: accuracy_curve_berhu`, config must also include:
 
 - `loss_delta` (float, `> 0`)
 
 Example:
 
 ```yaml
-loss_metric: accuracy_berhu
+loss_metric: accuracy_curve_berhu
 loss_delta: 0.05
 window_size: 16
 ```

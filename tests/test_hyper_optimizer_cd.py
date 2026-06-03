@@ -60,7 +60,7 @@ def _build_min_cd_config(tmp_path: Path) -> Path:
         "subjects": [1],
         "param_grid": {"gamma": [0.5], "w0": [0.1]},
         "window_size": 8,
-        "loss_metric": "mse",
+        "loss_metric": "accuracy_curve_mse",
     }
     _write_yaml(tmp_path / "inner.yaml", inner_cfg)
 
@@ -224,7 +224,7 @@ def test_cd_backend_auto_defaults_do_not_overlap_standard_hyper(tmp_path: Path) 
 def test_cd_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
-    cfg["loss_metric"] = "mse"
+    cfg["loss_metric"] = "accuracy_curve_mse"
     opt = HyperOptimizerCD(cfg, cd_path)
     bad_inner = dict(opt.inner_base_config)
     bad_inner.pop("loss_metric", None)
@@ -238,13 +238,13 @@ def test_cd_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
 def test_cd_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
-    cfg["loss_metric"] = "berhu"
+    cfg["loss_metric"] = "accuracy_curve_berhu"
     opt = HyperOptimizerCD(cfg, cd_path)
     bad_inner = dict(opt.inner_base_config)
-    bad_inner["loss_metric"] = "berhu"
+    bad_inner["loss_metric"] = "accuracy_curve_berhu"
     bad_inner.pop("loss_delta", None)
     try:
         _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
-        assert False, "Expected ValueError for missing loss_delta with berhu"
+        assert False, "Expected ValueError for missing loss_delta with accuracy_curve_berhu"
     except ValueError as e:
         assert "loss_delta" in str(e)

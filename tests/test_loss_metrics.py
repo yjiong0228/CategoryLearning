@@ -8,7 +8,7 @@ from src.Bayesian_state.utils.optimizer_common import build_loss_strategy
 
 
 def test_berhu_numeric_piecewise() -> None:
-    strategy = build_loss_strategy("berhu", loss_delta=0.1)
+    strategy = build_loss_strategy("accuracy_curve_berhu", loss_delta=0.1)
     metrics = {
         "sliding_true_acc": np.asarray([0.0, 0.0], dtype=float),
         "sliding_pred_acc": np.asarray([0.05, 0.2], dtype=float),
@@ -19,7 +19,7 @@ def test_berhu_numeric_piecewise() -> None:
 
 
 def test_berhu_boundary_is_continuous() -> None:
-    strategy = build_loss_strategy("berhu", loss_delta=0.1)
+    strategy = build_loss_strategy("accuracy_curve_berhu", loss_delta=0.1)
     metrics = {
         "sliding_true_acc": np.asarray([0.0], dtype=float),
         "sliding_pred_acc": np.asarray([0.1], dtype=float),
@@ -30,7 +30,7 @@ def test_berhu_boundary_is_continuous() -> None:
 
 def test_berhu_missing_delta_raises() -> None:
     try:
-        _ = build_loss_strategy("berhu")
+        _ = build_loss_strategy("accuracy_curve_berhu")
         assert False, "Expected ValueError for missing loss_delta with berhu"
     except ValueError as e:
         assert "loss_delta" in str(e)
@@ -38,14 +38,14 @@ def test_berhu_missing_delta_raises() -> None:
 
 def test_resolve_loss_delta_requires_positive_for_berhu() -> None:
     for resolver in (resolve_loss_delta_grid, resolve_loss_delta_amr):
-        assert resolver({"loss_delta": 0.05}, "berhu") == 0.05
+        assert resolver({"loss_delta": 0.05}, "accuracy_curve_berhu") == 0.05
         try:
-            _ = resolver({}, "berhu")
+            _ = resolver({}, "accuracy_curve_berhu")
             assert False, "Expected ValueError for missing loss_delta"
         except ValueError as e:
             assert "loss_delta" in str(e)
         try:
-            _ = resolver({"loss_delta": 0.0}, "berhu")
+            _ = resolver({"loss_delta": 0.0}, "accuracy_curve_berhu")
             assert False, "Expected ValueError for non-positive loss_delta"
         except ValueError as e:
             assert "loss_delta" in str(e)
@@ -53,5 +53,5 @@ def test_resolve_loss_delta_requires_positive_for_berhu() -> None:
 
 def test_resolve_loss_delta_ignored_for_other_losses() -> None:
     for resolver in (resolve_loss_delta_grid, resolve_loss_delta_amr):
-        assert resolver({}, "mse") is None
-        assert resolver({"loss_delta": 0.5}, "nll") is None
+        assert resolver({}, "accuracy_curve_mse") is None
+        assert resolver({"loss_delta": 0.5}, "accuracy_nll") is None

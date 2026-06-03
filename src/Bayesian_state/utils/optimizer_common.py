@@ -22,9 +22,13 @@ PREDICTION_MODE_CHOICES = (
     PREDICTION_MODE_BOTH,
 )
 
-LOSS_METRIC_ACCURACY_MAE = "accuracy_mae"
-LOSS_METRIC_ACCURACY_MSE = "accuracy_mse"
-LOSS_METRIC_ACCURACY_BERHU = "accuracy_berhu"
+LOSS_METRIC_ACCURACY_CURVE_MAE = "accuracy_curve_mae"
+LOSS_METRIC_ACCURACY_CURVE_MSE = "accuracy_curve_mse"
+LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE = "accuracy_curve_family_mse"
+LOSS_METRIC_ACCURACY_CURVE_BERHU = "accuracy_curve_berhu"
+LOSS_METRIC_ACCURACY_BRIER = "accuracy_brier"
+LOSS_METRIC_ACCURACY_FAMILY_BRIER = "accuracy_family_brier"
+LOSS_METRIC_ACCURACY_NLL = "accuracy_nll"
 LOSS_METRIC_CHOICE_BRIER = "choice_brier"
 LOSS_METRIC_CHOICE_NLL = "choice_nll"
 LOSS_METRIC_WRONG_CHOICE_NLL = "wrong_choice_nll"
@@ -32,13 +36,20 @@ LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL = "conditional_wrong_choice_nll"
 
 # Backward-compatible constant names for call sites that import the old symbols.
 # The accepted config strings are the explicit names above.
-LOSS_METRIC_MAE = LOSS_METRIC_ACCURACY_MAE
-LOSS_METRIC_MSE = LOSS_METRIC_ACCURACY_MSE
-LOSS_METRIC_BERHU = LOSS_METRIC_ACCURACY_BERHU
+LOSS_METRIC_ACCURACY_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
+LOSS_METRIC_ACCURACY_MSE = LOSS_METRIC_ACCURACY_CURVE_MSE
+LOSS_METRIC_ACCURACY_BERHU = LOSS_METRIC_ACCURACY_CURVE_BERHU
+LOSS_METRIC_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
+LOSS_METRIC_MSE = LOSS_METRIC_ACCURACY_CURVE_MSE
+LOSS_METRIC_BERHU = LOSS_METRIC_ACCURACY_CURVE_BERHU
 ACCURACY_LOSS_METRIC_CHOICES = (
-    LOSS_METRIC_ACCURACY_MAE,
-    LOSS_METRIC_ACCURACY_MSE,
-    LOSS_METRIC_ACCURACY_BERHU,
+    LOSS_METRIC_ACCURACY_CURVE_MAE,
+    LOSS_METRIC_ACCURACY_CURVE_MSE,
+    LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE,
+    LOSS_METRIC_ACCURACY_CURVE_BERHU,
+    LOSS_METRIC_ACCURACY_BRIER,
+    LOSS_METRIC_ACCURACY_FAMILY_BRIER,
+    LOSS_METRIC_ACCURACY_NLL,
 )
 CHOICE_LOSS_METRIC_CHOICES = (
     LOSS_METRIC_CHOICE_BRIER,
@@ -47,16 +58,6 @@ CHOICE_LOSS_METRIC_CHOICES = (
     LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
 )
 LOSS_METRIC_CHOICES = ACCURACY_LOSS_METRIC_CHOICES + CHOICE_LOSS_METRIC_CHOICES
-LOSS_METRIC_ALIASES = {
-    "mae": LOSS_METRIC_ACCURACY_MAE,
-    "mse": LOSS_METRIC_ACCURACY_MSE,
-    "berhu": LOSS_METRIC_ACCURACY_BERHU,
-}
-
-
-def normalize_loss_metric(loss_metric: str) -> str:
-    metric = str(loss_metric).strip().lower()
-    return LOSS_METRIC_ALIASES.get(metric, metric)
 
 
 class LossStrategy(ABC):
@@ -67,9 +68,9 @@ class LossStrategy(ABC):
         raise NotImplementedError
 
 
-# Accuracy-based losses compare predicted and observed correctness curves.
-class AccuracyMAELoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_MAE
+# Accuracy-based losses compare predicted and observed correctness.
+class AccuracyCurveMAELoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_CURVE_MAE
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
         true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
@@ -78,8 +79,8 @@ class AccuracyMAELoss(LossStrategy):
         return float(np.nanmean(err)) if err.size else float("nan")
 
 
-class AccuracyMSELoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_MSE
+class AccuracyCurveMSELoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_CURVE_MSE
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
         true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
@@ -88,12 +89,22 @@ class AccuracyMSELoss(LossStrategy):
         return float(np.nanmean(err)) if err.size else float("nan")
 
 
-class AccuracyBerHuLoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_BERHU
+class AccuracyCurveFamilyMSELoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        true_acc = np.asarray(metrics["sliding_true_family_acc"], dtype=float)
+        pred_acc = np.asarray(metrics["sliding_pred_family_acc"], dtype=float)
+        err = np.square(true_acc - pred_acc)
+        return float(np.nanmean(err)) if err.size else float("nan")
+
+
+class AccuracyCurveBerHuLoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_CURVE_BERHU
 
     def __init__(self, delta: float):
         if delta <= 0:
-            raise ValueError(f"loss_delta must be > 0 for accuracy_berhu, got {delta}")
+            raise ValueError(f"loss_delta must be > 0 for accuracy_curve_berhu, got {delta}")
         self.delta = float(delta)
 
     def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
@@ -106,6 +117,115 @@ class AccuracyBerHuLoss(LossStrategy):
             (np.square(abs_err) + self.delta ** 2) / (2.0 * self.delta),
         )
         return float(np.nanmean(piecewise)) if piecewise.size else float("nan")
+
+
+def _valid_trial_accuracy_data(
+    metrics: Dict[str, np.ndarray | float],
+) -> Tuple[np.ndarray, np.ndarray]:
+    probs = np.asarray(metrics["pred_category_probs"], dtype=float)
+    true_idx = np.asarray(metrics["true_category_index"], dtype=int)
+    true_acc = np.asarray(metrics["true_acc"], dtype=float)
+    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+    if probs.ndim != 2:
+        raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
+    if valid_mask.shape[0] != probs.shape[0]:
+        raise ValueError(
+            "valid_trial_mask length does not match pred_category_probs rows: "
+            f"{valid_mask.shape[0]} vs {probs.shape[0]}"
+        )
+    if true_idx.shape[0] != probs.shape[0]:
+        raise ValueError(
+            "true_category_index length does not match pred_category_probs rows: "
+            f"{true_idx.shape[0]} vs {probs.shape[0]}"
+        )
+    if true_acc.shape[0] != probs.shape[0]:
+        raise ValueError(
+            "true_acc length does not match pred_category_probs rows: "
+            f"{true_acc.shape[0]} vs {probs.shape[0]}"
+        )
+
+    probs = probs[valid_mask]
+    true_idx = true_idx[valid_mask]
+    true_acc = true_acc[valid_mask]
+    if probs.size == 0:
+        return np.asarray([], dtype=float), np.asarray([], dtype=float)
+
+    n_cats = probs.shape[1]
+    valid_true = (true_idx >= 0) & (true_idx < n_cats)
+    finite_probs = np.all(np.isfinite(probs), axis=1)
+    finite_acc = np.isfinite(true_acc)
+    keep = valid_true & finite_probs & finite_acc
+    if not np.any(keep):
+        return np.asarray([], dtype=float), np.asarray([], dtype=float)
+
+    probs = probs[keep]
+    true_idx = true_idx[keep]
+    true_acc = np.clip(true_acc[keep], 0.0, 1.0)
+    p_true = probs[np.arange(probs.shape[0]), true_idx]
+    return p_true, true_acc
+
+
+class AccuracyBrierLoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_BRIER
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        p_true, true_acc = _valid_trial_accuracy_data(metrics)
+        if p_true.size == 0:
+            return float("nan")
+        return float(np.mean(np.square(p_true - true_acc)))
+
+
+def _valid_trial_family_accuracy_data(
+    metrics: Dict[str, np.ndarray | float],
+) -> Tuple[np.ndarray, np.ndarray]:
+    pred_family_acc = np.asarray(metrics["pred_family_acc"], dtype=float)
+    true_family_acc = np.asarray(metrics["true_family_acc"], dtype=float)
+    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+    if valid_mask.shape[0] != pred_family_acc.shape[0]:
+        raise ValueError(
+            "valid_trial_mask length does not match pred_family_acc length: "
+            f"{valid_mask.shape[0]} vs {pred_family_acc.shape[0]}"
+        )
+    if true_family_acc.shape[0] != pred_family_acc.shape[0]:
+        raise ValueError(
+            "true_family_acc length does not match pred_family_acc length: "
+            f"{true_family_acc.shape[0]} vs {pred_family_acc.shape[0]}"
+        )
+
+    pred_family_acc = pred_family_acc[valid_mask]
+    true_family_acc = true_family_acc[valid_mask]
+    keep = np.isfinite(pred_family_acc) & np.isfinite(true_family_acc)
+    if not np.any(keep):
+        return np.asarray([], dtype=float), np.asarray([], dtype=float)
+    return pred_family_acc[keep], np.clip(true_family_acc[keep], 0.0, 1.0)
+
+
+class AccuracyFamilyBrierLoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_FAMILY_BRIER
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        pred_family_acc, true_family_acc = _valid_trial_family_accuracy_data(metrics)
+        if pred_family_acc.size == 0:
+            return float("nan")
+        return float(np.mean(np.square(pred_family_acc - true_family_acc)))
+
+
+class AccuracyNLLLoss(LossStrategy):
+    name = LOSS_METRIC_ACCURACY_NLL
+
+    def __init__(self, eps: float = 1e-12):
+        self.eps = float(eps)
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        p_true, true_acc = _valid_trial_accuracy_data(metrics)
+        if p_true.size == 0:
+            return float("nan")
+        p_true = np.clip(p_true, self.eps, 1.0 - self.eps)
+        return float(
+            np.mean(
+                -(true_acc * np.log(p_true) + (1.0 - true_acc) * np.log(1.0 - p_true))
+            )
+        )
 
 
 # Choice-based losses compare predicted category probabilities with observed choices.
@@ -247,15 +367,23 @@ class ConditionalWrongChoiceNLLLoss(LossStrategy):
 
 
 def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
-    metric = normalize_loss_metric(loss_metric)
-    if metric == LOSS_METRIC_ACCURACY_MAE:
-        return AccuracyMAELoss()
-    if metric == LOSS_METRIC_ACCURACY_MSE:
-        return AccuracyMSELoss()
-    if metric == LOSS_METRIC_ACCURACY_BERHU:
+    metric = str(loss_metric).strip().lower()
+    if metric == LOSS_METRIC_ACCURACY_CURVE_MAE:
+        return AccuracyCurveMAELoss()
+    if metric == LOSS_METRIC_ACCURACY_CURVE_MSE:
+        return AccuracyCurveMSELoss()
+    if metric == LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE:
+        return AccuracyCurveFamilyMSELoss()
+    if metric == LOSS_METRIC_ACCURACY_CURVE_BERHU:
         if loss_delta is None:
-            raise ValueError("loss_delta is required when loss_metric='accuracy_berhu'")
-        return AccuracyBerHuLoss(float(loss_delta))
+            raise ValueError("loss_delta is required when loss_metric='accuracy_curve_berhu'")
+        return AccuracyCurveBerHuLoss(float(loss_delta))
+    if metric == LOSS_METRIC_ACCURACY_BRIER:
+        return AccuracyBrierLoss()
+    if metric == LOSS_METRIC_ACCURACY_FAMILY_BRIER:
+        return AccuracyFamilyBrierLoss()
+    if metric == LOSS_METRIC_ACCURACY_NLL:
+        return AccuracyNLLLoss()
     if metric == LOSS_METRIC_CHOICE_BRIER:
         return ChoiceBrierLoss()
     if metric == LOSS_METRIC_CHOICE_NLL:

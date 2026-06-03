@@ -40,5 +40,5 @@ param_grid:
 # subject_overrides:
 #   "330,331":
 #     refit_repeats: 1024
-loss_metric: accuracy_mse
+loss_metric: accuracy_curve_mse
 
