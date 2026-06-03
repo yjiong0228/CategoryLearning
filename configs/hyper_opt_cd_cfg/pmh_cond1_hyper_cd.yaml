@@ -26,46 +26,13 @@ hyperparam_space:
   inner.window_size:
     values: [8]
 
-  # Cond1 strategy templates centered on a small hypothesis pool.
-  # Restricted from the previous cond1 subjectwise hyper result:
-  # window_size=8 and strategy templates T1/T2/T9 never won.
-  engine.modules.hypo_transitions_mod.kwargs.strategies:
-    values:
-      # T3: retain top 1 posterior hypothesis + explore 2 random hypotheses
-      - [
-          {amount: "fixed", method: "top_posterior", pool: "active", value: 1},
-          {amount: "fixed", method: "random", pool: "all_unselected", value: 2}
-        ]
-      # T4: retain top 2 posterior hypotheses + explore 1 random hypothesis
-      - [
-          {amount: "fixed", method: "top_posterior", pool: "active", value: 2},
-          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
-        ]
-      # T5: retain top 3 posterior hypotheses + explore 1 random hypothesis
-      - [
-          {amount: "fixed", method: "top_posterior", pool: "active", value: 3},
-          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
-        ]
-      # T6: top-p posterior retention + random exploration
-      - [
-          {amount: "fixed", method: "top_posterior", pool: "active", top_p: 0.70, value: 2},
-          {amount: "fixed", method: "random", pool: "all_unselected", value: 1}
-        ]
-      # T7: entropy-like active retention + conservative random exploration
-      - [
-          {amount: "entropy_4", method: "random_posterior", pool: "active"},
-          {amount: "opp_random_2", method: "random", pool: "all_unselected"}
-        ]
-      # T8: retain top 2 + structured exploration near retained hypotheses
-      - [
-          {amount: "fixed", method: "top_posterior", pool: "active", value: 2},
-          {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
-        ]
-
-  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
-    values: [3, 4]
-  engine.modules.hypo_transitions_mod.kwargs.init_num:
-    values: [2, 3]
+  # Cond1 hypothesis transition candidates are maintained in JSON so strategy,
+  # init size, and active-set capacity stay coupled.
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_strategy_candidates.json
+      key: cond1
+      value_key: hypo_transitions_kwargs
 
   engine.modules.beta_mod.kwargs.beta_init:
     values: [0.8, 1.5, 3.0]

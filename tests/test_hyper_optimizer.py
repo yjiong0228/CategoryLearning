@@ -14,6 +14,41 @@ def _write_yaml(path: Path, payload: dict) -> None:
         yaml.safe_dump(payload, f, sort_keys=False)
 
 
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _strategy_candidates_payload() -> dict:
+    return {
+        "cond1": [
+            {
+                "id": "small",
+                "description": "small memory",
+                "hypo_transitions_kwargs": {
+                    "init_num": 2,
+                    "max_active_hypotheses": 3,
+                    "strategies": [
+                        {"label": "retain", "amount": "confidence_2", "method": "top_posterior", "pool": "active"}
+                    ],
+                },
+            },
+            {
+                "id": "broad",
+                "description": "broad memory",
+                "hypo_transitions_kwargs": {
+                    "init_num": 4,
+                    "max_active_hypotheses": 5,
+                    "history_maxlen": 8,
+                    "strategies": [
+                        {"label": "retain", "amount": "entropy_norm_4", "method": "epsilon_posterior", "pool": "active"}
+                    ],
+                },
+            },
+        ]
+    }
+
+
 def _build_min_configs(tmp_path: Path) -> tuple[Path, Path]:
     inner_cfg = {
         "engine_config": {
@@ -64,6 +99,66 @@ def test_apply_hyperparams_injection(tmp_path: Path) -> None:
 
     assert out_inner["window_size"] == 12
     assert out_engine["modules"]["beta_mod"]["kwargs"]["beta_init"] == 2.5
+
+
+def test_values_from_json_expands_kwargs_and_applies_to_engine(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    candidates_path = tmp_path / "strategy_candidates.json"
+    _write_json(candidates_path, _strategy_candidates_payload())
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["hyperparam_space"] = {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+            "values_from_json": {
+                "path": "strategy_candidates.json",
+                "key": "cond1",
+                "value_key": "hypo_transitions_kwargs",
+            }
+        },
+        "inner.window_size": {"values": [8]},
+    }
+    opt = HyperOptimizer(cfg, hyper_path)
+
+    specs = opt._param_specs_for_stage("coarse")
+    combos = opt._expand_combinations(specs)
+
+    assert len(combos) == 2
+    first_kwargs = combos[0]["engine.modules.hypo_transitions_mod.kwargs"]
+    assert first_kwargs["init_num"] == 2
+    assert first_kwargs["max_active_hypotheses"] == 3
+    assert first_kwargs["strategies"][0]["label"] == "retain"
+
+    _, out_engine = opt._apply_hyperparams(
+        combos[1],
+        {"window_size": 8},
+        {"modules": {"hypo_transitions_mod": {"kwargs": {}}}},
+    )
+    injected = out_engine["modules"]["hypo_transitions_mod"]["kwargs"]
+    assert injected["init_num"] == 4
+    assert injected["max_active_hypotheses"] == 5
+    assert injected["history_maxlen"] == 8
+
+
+def test_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    opt = HyperOptimizer(cfg, hyper_path)
+    kwargs_value = {
+        "init_num": 2,
+        "max_active_hypotheses": 3,
+        "strategies": [{"label": "retain", "amount": "fixed", "value": 1, "method": "random", "pool": "active"}],
+    }
+    combination = {"engine.modules.hypo_transitions_mod.kwargs": kwargs_value}
+
+    _, out_engine = opt._apply_hyperparams(
+        combination,
+        {"window_size": 8},
+        {"modules": {"hypo_transitions_mod": {"kwargs": {}}}},
+    )
+    out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["random_seed"] = 123
+    out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["strategies"][0]["label"] = "mutated"
+
+    assert "random_seed" not in kwargs_value
+    assert kwargs_value["strategies"][0]["label"] == "retain"
 
 
 def test_top_k_combinations_from_coarse(tmp_path: Path) -> None:
@@ -240,3 +335,68 @@ def test_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) ->
         assert False, "Expected ValueError for missing loss_delta with berhu"
     except ValueError as e:
         assert "loss_delta" in str(e)
+
+
+def test_values_from_json_errors_are_clear(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    candidates_path = tmp_path / "strategy_candidates.json"
+    _write_json(candidates_path, _strategy_candidates_payload())
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    opt = HyperOptimizer(cfg, hyper_path)
+
+    bad_specs = [
+        (
+            {"values_from_json": {"path": "missing.json", "key": "cond1", "value_key": "hypo_transitions_kwargs"}},
+            "does not exist",
+        ),
+        (
+            {"values_from_json": {"path": "strategy_candidates.json", "key": "condX", "value_key": "hypo_transitions_kwargs"}},
+            "not found",
+        ),
+        (
+            {"values_from_json": {"path": "strategy_candidates.json", "key": "cond1", "value_key": "missing"}},
+            "missing value_key",
+        ),
+    ]
+    for spec, expected in bad_specs:
+        try:
+            _ = opt._hyperparam_values(spec)
+            assert False, f"Expected ValueError containing {expected!r}"
+        except ValueError as e:
+            assert expected in str(e)
+
+    empty_path = tmp_path / "empty_candidates.json"
+    _write_json(empty_path, {"cond1": []})
+    try:
+        _ = opt._hyperparam_values(
+            {"values_from_json": {"path": "empty_candidates.json", "key": "cond1", "value_key": "hypo_transitions_kwargs"}}
+        )
+        assert False, "Expected ValueError for empty JSON candidate list"
+    except ValueError as e:
+        assert "empty list" in str(e)
+
+    scalar_path = tmp_path / "scalar_candidates.json"
+    _write_json(scalar_path, {"cond1": {"not": "a list"}})
+    try:
+        _ = opt._hyperparam_values(
+            {"values_from_json": {"path": "scalar_candidates.json", "key": "cond1", "value_key": "hypo_transitions_kwargs"}}
+        )
+        assert False, "Expected ValueError for non-list JSON key"
+    except ValueError as e:
+        assert "must contain a list" in str(e)
+
+
+def test_parent_and_child_hyperparam_paths_are_rejected(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["hyperparam_space"] = {
+        "engine.modules.hypo_transitions_mod.kwargs": {"values": [{"init_num": 2}]},
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": {"values": [[]]},
+    }
+    opt = HyperOptimizer(cfg, hyper_path)
+
+    try:
+        _ = opt._param_specs_for_stage("coarse")
+        assert False, "Expected ValueError for parent/child hyperparam paths"
+    except ValueError as e:
+        assert "parent path and its child path" in str(e)

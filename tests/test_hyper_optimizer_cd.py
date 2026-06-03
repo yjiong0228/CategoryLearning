@@ -19,6 +19,38 @@ def _write_yaml(path: Path, payload: dict) -> None:
         yaml.safe_dump(payload, f, sort_keys=False)
 
 
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _strategy_candidates_payload() -> dict:
+    return {
+        "cond23": [
+            {
+                "id": "small",
+                "hypo_transitions_kwargs": {
+                    "init_num": 6,
+                    "max_active_hypotheses": 6,
+                    "strategies": [
+                        {"label": "retain", "amount": "confidence_4", "method": "epsilon_posterior", "pool": "active"}
+                    ],
+                },
+            },
+            {
+                "id": "large",
+                "hypo_transitions_kwargs": {
+                    "init_num": 12,
+                    "max_active_hypotheses": 10,
+                    "strategies": [
+                        {"label": "retain", "amount": "entropy_norm_8", "method": "temperature_posterior", "pool": "active"}
+                    ],
+                },
+            },
+        ]
+    }
+
+
 def _build_min_cd_config(tmp_path: Path) -> Path:
     inner_cfg = {
         "engine_config": {
@@ -122,6 +154,60 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
     assert subject_best["hyper_backend"] == "cd"
     assert root_best["hyper_backend"] == "cd"
     assert "per_subject_best" in root_best
+
+
+def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    _write_json(tmp_path / "strategy_candidates.json", _strategy_candidates_payload())
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    cfg["hyperparam_space"] = {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+            "values_from_json": {
+                "path": "strategy_candidates.json",
+                "key": "cond23",
+                "value_key": "hypo_transitions_kwargs",
+            }
+        },
+        "inner.window_size": {"values": [8]},
+    }
+    opt = HyperOptimizerCD(cfg, cd_path)
+
+    specs = opt._param_specs_for_stage("coarse")
+    space = {k: opt._hyperparam_values(v) for k, v in specs.items()}
+
+    assert len(space["engine.modules.hypo_transitions_mod.kwargs"]) == 2
+    first = space["engine.modules.hypo_transitions_mod.kwargs"][0]
+    assert first["init_num"] == 6
+    assert first["max_active_hypotheses"] == 6
+
+    _, out_engine = opt._apply_hyperparams(
+        {"engine.modules.hypo_transitions_mod.kwargs": space["engine.modules.hypo_transitions_mod.kwargs"][1]},
+        {"window_size": 8},
+        {"modules": {"hypo_transitions_mod": {"kwargs": {}}}},
+    )
+    assert out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["init_num"] == 12
+
+
+def test_cd_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    opt = HyperOptimizerCD(cfg, cd_path)
+    kwargs_value = {
+        "init_num": 6,
+        "max_active_hypotheses": 6,
+        "strategies": [{"label": "retain", "amount": "fixed", "value": 1, "method": "random", "pool": "active"}],
+    }
+
+    _, out_engine = opt._apply_hyperparams(
+        {"engine.modules.hypo_transitions_mod.kwargs": kwargs_value},
+        {"window_size": 8},
+        {"modules": {"hypo_transitions_mod": {"kwargs": {}}}},
+    )
+    out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["random_seed"] = 456
+    out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["strategies"][0]["label"] = "mutated"
+
+    assert "random_seed" not in kwargs_value
+    assert kwargs_value["strategies"][0]["label"] == "retain"
 
 
 def test_cd_backend_auto_defaults_do_not_overlap_standard_hyper(tmp_path: Path) -> None:

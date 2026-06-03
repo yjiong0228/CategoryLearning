@@ -34,6 +34,10 @@ from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.optimizer_amr import StateModelAMROptimizer
 from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer
 from src.Bayesian_state.utils.paths import ROOT_DIR
+from src.Bayesian_state.hyper_opt.value_sources import (
+    validate_no_nested_hyperparam_paths,
+    values_from_json,
+)
 
 
 @dataclass
@@ -133,9 +137,11 @@ class HyperOptimizer:
             if not vals:
                 raise ValueError("hyperparameter values cannot be empty")
             return vals
+        if "values_from_json" in spec:
+            return values_from_json(spec, self.config_dir)
         if all(k in spec for k in ("start", "stop", "num")):
             return self._linspace_values(spec)
-        raise ValueError("Each hyperparameter spec must provide either values or (start, stop, num)")
+        raise ValueError("Each hyperparameter spec must provide values, values_from_json, or (start, stop, num)")
 
     def _param_specs_for_stage(self, stage_name: str) -> Dict[str, Dict[str, Any]]:
         stages = self.config.get("stages") or {}
@@ -147,11 +153,13 @@ class HyperOptimizer:
             raw = stage_cfg["hyperparam_space"]
             if not isinstance(raw, Mapping):
                 raise ValueError(f"stages.{stage_name}.hyperparam_space must be a mapping")
+            validate_no_nested_hyperparam_paths(raw)
             return {k: dict(v) for k, v in raw.items()}
 
         raw = self.config.get("hyperparam_space")
         if not isinstance(raw, Mapping):
             raise ValueError("hyperparam_space must be a mapping")
+        validate_no_nested_hyperparam_paths(raw)
         return {k: dict(v) for k, v in raw.items()}
 
     def _expand_combinations(self, param_specs: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -184,7 +192,7 @@ class HyperOptimizer:
         parts = path.split(".")
         for part in parts[:-1]:
             curr = curr.setdefault(part, {})
-        curr[parts[-1]] = value
+        curr[parts[-1]] = deepcopy(value)
 
     def _apply_hyperparams(self, combination: Dict[str, Any], inner_cfg: Dict[str, Any], engine_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
         next_inner = deepcopy(inner_cfg)
