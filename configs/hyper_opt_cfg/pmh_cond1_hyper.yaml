@@ -11,14 +11,11 @@ output_dir: ../../results/state-based-hyper-opt/pmh/cond1
 selection_metric: min_inner_mean_error
 hyperparam_selection_mode: per_subject   # per_subject|group_mean
 save_level: compact   # compact|full
-random_seed: 42
+hyper_base_seed: 42
 
 # Hyperparameters to optimize (explicitly user-defined; no implicit defaults)
 # Keep each dimension at 3~4 candidates, while limiting total dimensions.
 hyperparam_space:
-  # IMPORTANT: window size
-  inner.window_size:
-    values: [16, 8]
 
   # Hypothesis transition (cond1 baseline: original_strategies_a)
   # Include strategy templates as candidates (9 templates).
@@ -90,26 +87,24 @@ stages:
   coarse:
     n_jobs_combinations: 128
     inner_overrides:
-      n_repeats: 8
-      refit_repeats: 32
+      grid_repeats: 16
+      refit_repeats: 64
       keep_logs: false
       n_jobs: 1
       param_grid:
-        gamma: [0.2, 0.6, 0.9]
-        w0: [0.02, 0.1, 0.3]
+        gamma: [0.2, 0.4, 0.7, 0.9]
+        w0: [0.02, 0.06, 0.2, 0.8]
 
   fine:
     n_jobs_combinations: 1
     inner_overrides:
-      n_repeats: 32
+      grid_repeats: 32
       refit_repeats: 1024
       keep_logs: false
       n_jobs: 128
       param_grid:
-        gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
-        w0: [0.01, 0.03, 0.08, 0.15, 0.3]
+        gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        w0: [0.005, 0.01, 0.03, 0.06, 0.1, 0.15, 0.2, 0.5, 0.8]
 
 refine_policy:
-  top_k: 8
-loss_metric: accuracy_curve_mse
-
+  top_k: 32

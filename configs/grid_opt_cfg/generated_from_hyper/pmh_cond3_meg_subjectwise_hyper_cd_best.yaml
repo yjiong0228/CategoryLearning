@@ -1,5 +1,6 @@
-﻿dataset:
-  processed_dir: ../../data_meg/processed
+hyper_base_seed: 42
+dataset:
+  processed_dir: ../../../data_meg/processed
   learning_data: Task3b_processed.csv
   perception_summary: Task1b_errorsummary.csv
   perception_summary_72: Task1b_errorsummary.csv
@@ -57,7 +58,7 @@ engine_config:
   - memory_mod
   - beta_mod
 n_jobs: 128
-n_repeats: 64
+grid_repeats: 64
 refit_repeats: 4096
 window_size: 16
 stop_at: 1.0

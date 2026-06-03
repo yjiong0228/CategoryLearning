@@ -38,6 +38,15 @@ class DynamicHypothesisModule(BaseModule):
     VALID_FEEDBACK_MODES = ("graded", "exact")
     VALID_PADDING_MODES = ("chance", "zero", "one")
     VALID_SIMILARITY_SOURCES = ("partition",)
+    DEFAULT_POOL_BY_METHOD = {
+        "top_posterior": POOL_ACTIVE,
+        "random_posterior": POOL_ACTIVE,
+        "epsilon_posterior": POOL_ACTIVE,
+        "temperature_posterior": POOL_ACTIVE,
+        "diverse_posterior": POOL_ACTIVE,
+        "random": POOL_ALL_UNSELECTED,
+        "ksimilar_centers": POOL_ALL_UNSELECTED,
+    }
     amount_evaluators = {}
 
     def __init__(self, engine, **kwargs):
@@ -46,7 +55,8 @@ class DynamicHypothesisModule(BaseModule):
 
         self.total_hypo = self.engine.set_size
         self.full_indices = np.arange(self.total_hypo, dtype=int)
-        self.rng = np.random.default_rng(kwargs.get("random_seed", None))
+        self.module_seed = kwargs.get("module_seed", None)
+        self.rng = np.random.default_rng(self.module_seed)
         
         # Config: strategies is a list of dicts
         # Example: [{"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7}, ...]
@@ -186,21 +196,23 @@ class DynamicHypothesisModule(BaseModule):
         for idx, raw in enumerate(strategies):
             if not isinstance(raw, dict):
                 raise ValueError(f"Strategy #{idx} must be a dict, got {type(raw).__name__}.")
-            missing = [key for key in ("amount", "method", "pool") if key not in raw]
+            missing = [key for key in ("amount", "method") if key not in raw]
             if missing:
                 raise ValueError(
                     f"Strategy #{idx} is missing required key(s): {', '.join(missing)}. "
-                    "Each strategy must explicitly set amount, method, and pool."
+                    "Each strategy must set amount and method."
                 )
 
             strat = dict(raw)
             method = str(strat["method"])
-            pool = str(strat["pool"])
             if method not in self.method_selectors:
                 raise ValueError(
                     f"Strategy #{idx} has unsupported method '{method}'. "
                     f"Supported methods: {', '.join(self.VALID_METHODS)}."
                 )
+            if "pool" not in strat:
+                strat["pool"] = self.DEFAULT_POOL_BY_METHOD.get(method)
+            pool = str(strat["pool"])
             if pool not in self.VALID_POOLS:
                 raise ValueError(
                     f"Strategy #{idx} has unsupported pool '{pool}'. "
@@ -395,9 +407,11 @@ class DynamicHypothesisModule(BaseModule):
         if isinstance(amount, int):
             return self._validate_count(amount, context="integer amount")
         elif callable(amount):
+            kwargs.setdefault("rng", self.rng)
             return self._validate_count(amount(**kwargs), context="callable amount")
         elif isinstance(amount, str):
             if amount in self.amount_evaluators:
+                kwargs.setdefault("rng", self.rng)
                 return self._validate_count(
                     self.amount_evaluators[amount](**kwargs),
                     context=f"amount evaluator '{amount}'",

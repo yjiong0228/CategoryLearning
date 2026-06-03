@@ -4,6 +4,8 @@ engine_config_path: ../model_struct/pmh_grid_cond1.yaml
 
 subject_range: [101, 132]
 
+hyper_base_seed: 42
+
 # Dataset paths (relative to this YAML)
 dataset:
   processed_dir: ../../data/processed
@@ -20,8 +22,8 @@ oral:
 n_jobs: 128
 
 # Repeats
-n_repeats: 64
-refit_repeats: 8192
+grid_repeats: 16
+refit_repeats: 1024
 
 # Evaluation
 window_size: 8
@@ -30,14 +32,15 @@ max_trials: null
 keep_logs: true
 
 # Prediction path config
-prediction_mode: posterior_t_minus_1   # posterior_t_minus_1 | prior_t | both
-selection_prediction_mode: posterior_t_minus_1   # posterior_t_minus_1 | prior_t
+prediction_mode: prior_t   # posterior_t_minus_1 | prior_t | both
+selection_prediction_mode: prior_t   # posterior_t_minus_1 | prior_t
 
+loss_metric: choice_brier
 
 # Non-linear grid: gamma dense near 1, w0 dense near 0
 param_grid:
-  gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
-  w0: [0.01, 0.03, 0.08, 0.15, 0.3]
+    gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    w0: [0.005, 0.01, 0.03, 0.06, 0.1, 0.15, 0.2, 0.5, 0.8]
 
 # Optional per-subject overrides. Keys can be a subject id, a comma-separated list,
 # or a range like "125-126". Values deep-merge into this cond config.
@@ -47,5 +50,4 @@ param_grid:
 #     param_grid:
 #       gamma: [0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
 #       w0:    [0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3]
-loss_metric: accuracy_curve_mse
 

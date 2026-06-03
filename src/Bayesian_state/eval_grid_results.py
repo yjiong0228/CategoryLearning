@@ -22,6 +22,7 @@ ORAL_MODE_CHOICES = ("center", "region")
 MODEL_DISTRIBUTION_CHOICES = ("posterior", "prior")
 ORAL_BASED_MODEL_STATE_CHOICES = ("choice_conditioned_prior", "prior", "posterior")
 DEFAULT_REGION_N_SAMPLES = 1000
+DEFAULT_REGION_STIMULUS_SIGMA = 0.2
 DEFAULT_EVAL_PREDICTION_MODE = "posterior_t_minus_1"
 DEFAULT_FEATURE_COLS = ("feature1", "feature2", "feature3", "feature4")
 TRIAL_OUTCOME_COLS = ("category", "choice", "feedback")
@@ -173,12 +174,88 @@ def _build_subject_trials(
     return {col: subj_df[col].tolist() for col in trial_data_cols}
 
 
+def _as_float_list(value: Any) -> List[float]:
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        try:
+            out.append(float(item))
+        except (TypeError, ValueError):
+            out.append(float("nan"))
+    return out
+
+
+def _recompute_sliding_accuracy(metrics: Dict[str, Any], window_size: int) -> Dict[str, Any]:
+    if window_size <= 0:
+        raise ValueError(f"plot window size must be > 0, got {window_size}")
+
+    true_acc = _as_float_list(metrics.get("true_acc"))
+    pred_acc = _as_float_list(metrics.get("pred_acc"))
+    n_trials = min(len(true_acc), len(pred_acc))
+    if n_trials <= window_size:
+        raise ValueError(
+            f"Cannot use plot window size {window_size}: only {n_trials} trial-level accuracy values available."
+        )
+
+    true_family_acc = _as_float_list(metrics.get("true_family_acc"))
+    pred_family_acc = _as_float_list(metrics.get("pred_family_acc"))
+    has_family = len(true_family_acc) >= n_trials and len(pred_family_acc) >= n_trials
+
+    next_metrics = dict(metrics)
+    sliding_true_acc: List[float] = []
+    sliding_pred_acc: List[float] = []
+    sliding_pred_std: List[float] = []
+    sliding_true_family_acc: List[float] = []
+    sliding_pred_family_acc: List[float] = []
+    sliding_pred_family_std: List[float] = []
+
+    # Match optimizer_common's saved curve convention: trial positions start
+    # after the first trial and produce n_trials - window_size windows.
+    for start in range(1, n_trials - window_size + 1):
+        end = start + window_size
+        true_window = pd.Series(true_acc[start:end], dtype=float)
+        pred_window = pd.Series(pred_acc[start:end], dtype=float)
+        valid_pred = pred_window.dropna().to_numpy(dtype=float)
+
+        sliding_true_acc.append(float(true_window.mean()))
+        sliding_pred_acc.append(float(pred_window.mean()))
+        if valid_pred.size == 0:
+            sliding_pred_std.append(float("nan"))
+        else:
+            sliding_pred_std.append(float((valid_pred * (1.0 - valid_pred)).sum() ** 0.5 / window_size))
+
+        if has_family:
+            true_family_window = pd.Series(true_family_acc[start:end], dtype=float)
+            pred_family_window = pd.Series(pred_family_acc[start:end], dtype=float)
+            valid_family = pred_family_window.dropna().to_numpy(dtype=float)
+            sliding_true_family_acc.append(float(true_family_window.mean()))
+            sliding_pred_family_acc.append(float(pred_family_window.mean()))
+            if valid_family.size == 0:
+                sliding_pred_family_std.append(float("nan"))
+            else:
+                sliding_pred_family_std.append(
+                    float((valid_family * (1.0 - valid_family)).sum() ** 0.5 / window_size)
+                )
+
+    next_metrics["sliding_true_acc"] = sliding_true_acc
+    next_metrics["sliding_pred_acc"] = sliding_pred_acc
+    next_metrics["sliding_pred_acc_std"] = sliding_pred_std
+    if has_family:
+        next_metrics["sliding_true_family_acc"] = sliding_true_family_acc
+        next_metrics["sliding_pred_family_acc"] = sliding_pred_family_acc
+        next_metrics["sliding_pred_family_acc_std"] = sliding_pred_family_std
+    next_metrics["plot_window_size"] = int(window_size)
+    return next_metrics
+
+
 def aggregate_grid_results(
     input_dir: Path,
     eval_prediction_mode: str,
     trial_df: pd.DataFrame | None = None,
     trial_data_cols: Sequence[str] | None = None,
     target_hypotheses: Dict[int, int] | None = None,
+    plot_window_size: int | None = None,
 ) -> Dict[int, Dict[str, Any]]:
     results: Dict[int, Dict[str, Any]] = {}
     resolved_trial_cols = tuple(trial_data_cols or (*DEFAULT_FEATURE_COLS, *TRIAL_OUTCOME_COLS))
@@ -188,6 +265,8 @@ def aggregate_grid_results(
         payload = load_json(file)
         sid = int(payload["subject_id"])
         metrics = _resolve_eval_metrics(payload, eval_prediction_mode)
+        if plot_window_size is not None:
+            metrics = _recompute_sliding_accuracy(metrics, int(plot_window_size))
         step_results = _build_step_results(payload)
         mean_error = metrics.get("mean_error", payload.get("best_error", payload.get("mean_error")))
         std_error = payload.get("refit_std_error", payload.get("std_error"))
@@ -195,7 +274,9 @@ def aggregate_grid_results(
         sliding_pred_acc = metrics.get("sliding_pred_acc") or []
         n_trials = len(true_acc) if isinstance(true_acc, list) else 0
         n_sliding = len(sliding_pred_acc) if isinstance(sliding_pred_acc, list) else 0
-        window_size = n_trials - n_sliding if n_trials and n_sliding else None
+        window_size = int(plot_window_size) if plot_window_size is not None else (
+            n_trials - n_sliding if n_trials and n_sliding else None
+        )
         subject_trials = _build_subject_trials(trial_df, sid, n_trials, resolved_trial_cols)
         pred_category_probs = metrics.get("pred_category_probs")
         n_cats = None
@@ -257,6 +338,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", type=Path, default=None, help="Optional optimization YAML to resolve oral config defaults")
     p.add_argument("--aggregate-output", type=Path, default=None)
     p.add_argument("--plots-dir", type=Path, default=None)
+    p.add_argument(
+        "--plot-window-size",
+        type=int,
+        default=None,
+        help="Recompute plotted sliding accuracy curves from trial-level accuracy with this window size.",
+    )
     p.add_argument("--plot-accuracy", type=Path, default=None)
     p.add_argument("--plot-grid", type=Path, default=None)
     p.add_argument("--plot-posterior", type=Path, default=None)
@@ -265,6 +352,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plot-accuracy-family", type=Path, default=None)
     p.add_argument("--trajectory-dir", type=Path, default=None)
     p.add_argument("--trajectory-posterior-dir", type=Path, default=None)
+    p.add_argument("--skip-trajectory", action="store_true", help="Skip both trajectory accuracy and posterior plots")
+    p.add_argument("--skip-trajectory-accuracy", action="store_true", help="Skip run-level trajectory accuracy plots")
+    p.add_argument("--skip-trajectory-posterior", action="store_true", help="Skip run-level posterior trajectory plots")
     p.add_argument("--plot-oral-mass", type=Path, default=None)
     p.add_argument("--plot-distribution-alignment-group", type=Path, default=None)
     p.add_argument("--plot-distribution-alignment-subject", type=Path, default=None)
@@ -299,6 +389,15 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--oral-data", type=Path, default=None)
     p.add_argument("--oral-region-n-samples", type=int, default=None)
+    p.add_argument(
+        "--oral-region-stimulus-sigma",
+        type=float,
+        default=None,
+        help=(
+            "Gaussian kernel width for stimulus-conditioned oral region overlap. "
+            "Set <=0 to recover unweighted region overlap."
+        ),
+    )
     return p.parse_args()
 
 
@@ -394,10 +493,11 @@ def _resolve_oral_settings(
     args: argparse.Namespace,
     config: Dict[str, Any],
     config_path: Path | None,
-) -> Tuple[str, Path, int] | None:
+) -> Tuple[str, Path, int, float | None] | None:
     config_mode = None
     config_data_path = None
     config_region_n_samples = None
+    config_region_stimulus_sigma = None
 
     if config_path is not None:
         dataset_paths = resolve_dataset_paths(config, config_path.parent)
@@ -414,6 +514,9 @@ def _resolve_oral_settings(
             raw_region_n_samples = oral_cfg.get("region_n_samples")
             if raw_region_n_samples is not None:
                 config_region_n_samples = int(raw_region_n_samples)
+            raw_region_stimulus_sigma = oral_cfg.get("region_stimulus_sigma")
+            if raw_region_stimulus_sigma is not None:
+                config_region_stimulus_sigma = float(raw_region_stimulus_sigma)
 
     final_mode = args.oral_mode or config_mode
     if final_mode is None:
@@ -434,7 +537,16 @@ def _resolve_oral_settings(
     if int(region_n_samples) <= 0:
         raise ValueError(f"oral region n_samples must be > 0, got {region_n_samples}")
 
-    return final_mode, final_data_path.resolve(), int(region_n_samples)
+    region_stimulus_sigma = args.oral_region_stimulus_sigma
+    if region_stimulus_sigma is None:
+        region_stimulus_sigma = config_region_stimulus_sigma
+    if region_stimulus_sigma is None:
+        region_stimulus_sigma = DEFAULT_REGION_STIMULUS_SIGMA
+    region_stimulus_sigma = float(region_stimulus_sigma)
+    if region_stimulus_sigma <= 0:
+        region_stimulus_sigma = None
+
+    return final_mode, final_data_path.resolve(), int(region_n_samples), region_stimulus_sigma
 
 
 def main() -> None:
@@ -454,9 +566,10 @@ def main() -> None:
         oral_mode = None
         oral_data_path = None
         oral_region_n_samples = None
+        oral_region_stimulus_sigma = None
         oral_plots_dir = None
     else:
-        oral_mode, oral_data_path, oral_region_n_samples = oral_settings
+        oral_mode, oral_data_path, oral_region_n_samples, oral_region_stimulus_sigma = oral_settings
         oral_plots_dir = plots_dir / f"oral_{oral_mode}_mode"
         oral_plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -527,6 +640,7 @@ def main() -> None:
         trial_df=trial_df,
         trial_data_cols=_resolve_trial_data_columns(engine_config),
         target_hypotheses=target_hypotheses,
+        plot_window_size=args.plot_window_size,
     )
     oral_eval_df = (
         oral_df[oral_df["iSub"].isin(aggregated.keys())].copy()
@@ -553,29 +667,35 @@ def main() -> None:
     me.plot_beta_dynamics(aggregated, save_path=str(plot_beta))
     print(f"Saved beta dynamics plot -> {plot_beta}")
 
-    trajectory_summary = me.plot_trajectory_analysis(
-        input_dir,
-        trajectory_dir,
-        ranks=ModelEval.DEFAULT_TRAJECTORY_RANKS,
-        n_cols=4,
-        eval_prediction_mode=args.eval_prediction_mode,
-    )
-    if trajectory_summary.empty:
-        print("No run-level trajectories found; skipping trajectory accuracy plots.")
+    if args.skip_trajectory or args.skip_trajectory_accuracy:
+        print("Skipped trajectory accuracy plots.")
     else:
-        print(f"Saved trajectory accuracy plots -> {trajectory_dir}")
+        trajectory_summary = me.plot_trajectory_analysis(
+            input_dir,
+            trajectory_dir,
+            ranks=ModelEval.DEFAULT_TRAJECTORY_RANKS,
+            n_cols=4,
+            eval_prediction_mode=args.eval_prediction_mode,
+        )
+        if trajectory_summary.empty:
+            print("No run-level trajectories found; skipping trajectory accuracy plots.")
+        else:
+            print(f"Saved trajectory accuracy plots -> {trajectory_dir}")
 
-    posterior_trajectory_summary = me.plot_trajectory_posteriors(
-        input_dir,
-        trajectory_posterior_dir,
-        ranks=ModelEval.DEFAULT_TOP16_RANKS,
-        n_cols=4,
-        target_hypotheses_by_condition=target_hypotheses,
-    )
-    if posterior_trajectory_summary.empty:
-        print("No run-level posterior trajectories found; skipping trajectory posterior plots.")
+    if args.skip_trajectory or args.skip_trajectory_posterior:
+        print("Skipped trajectory posterior plots.")
     else:
-        print(f"Saved trajectory posterior plots -> {trajectory_posterior_dir}")
+        posterior_trajectory_summary = me.plot_trajectory_posteriors(
+            input_dir,
+            trajectory_posterior_dir,
+            ranks=ModelEval.DEFAULT_TOP16_RANKS,
+            n_cols=4,
+            target_hypotheses_by_condition=target_hypotheses,
+        )
+        if posterior_trajectory_summary.empty:
+            print("No run-level posterior trajectories found; skipping trajectory posterior plots.")
+        else:
+            print(f"Saved trajectory posterior plots -> {trajectory_posterior_dir}")
 
     if _has_grid(aggregated):
         me.plot_error_grids(aggregated, fname=["gamma", "w0"], save_path=str(plot_grid))
@@ -611,6 +731,7 @@ def main() -> None:
     assert oral_eval_df is not None
     assert oral_mode is not None
     assert oral_region_n_samples is not None
+    assert oral_region_stimulus_sigma is None or oral_region_stimulus_sigma > 0
     assert plot_oral_mass is not None
     assert plot_oral_mass_combined is not None
     assert plot_prior is not None
@@ -628,7 +749,11 @@ def main() -> None:
     assert plot_coverage_based_alignment_group is not None
     assert plot_coverage_based_alignment_subject is not None
 
-    oral_mass_cache = oral_plots_dir / "oral_mass_probabilities.npz"
+    if oral_mode == "region" and oral_region_stimulus_sigma is not None:
+        sigma_label = f"{oral_region_stimulus_sigma:g}".replace(".", "p")
+        oral_mass_cache = oral_plots_dir / f"oral_mass_probabilities_stimulus_sigma{sigma_label}.npz"
+    else:
+        oral_mass_cache = oral_plots_dir / "oral_mass_probabilities.npz"
     if oral_mass_cache.is_file():
         oral_mass = me.load_oral_mass_probabilities(oral_mass_cache)
         print(f"Loaded oral mass probabilities -> {oral_mass_cache}")
@@ -637,6 +762,7 @@ def main() -> None:
             oral_eval_df,
             oral_mode=oral_mode,
             region_n_samples=oral_region_n_samples,
+            region_stimulus_sigma=oral_region_stimulus_sigma,
         )
         me.save_oral_mass_probabilities(oral_mass, oral_mass_cache)
         print(f"Saved oral mass probabilities -> {oral_mass_cache}")
@@ -662,6 +788,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         model_distribution="prior",
         oral_mass_results=oral_mass,
     )
@@ -688,6 +815,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         model_distribution=args.distribution_alignment_model_state,
         oral_mass_results=oral_mass,
     )
@@ -707,6 +835,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         model_distribution=args.distribution_alignment_model_state,
         oral_mass_results=oral_mass,
         combine_oral_equivalent=True,
@@ -734,6 +863,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         model_distribution=args.oral_based_alignment_model_state,
     )
     oral_based_alignment_outputs = me.save_oral_based_alignment_outputs(
@@ -751,6 +881,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         oral_mass_results=oral_mass,
     )
     target_based_alignment_outputs = me.save_target_based_alignment_outputs(
@@ -769,6 +900,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         oral_mass_results=oral_mass,
     )
     hit_based_alignment_outputs = me.save_hit_based_alignment_outputs(
@@ -787,6 +919,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         oral_mass_results=oral_mass,
         rank_top_k=hit_rank_topk,
     )
@@ -808,6 +941,7 @@ def main() -> None:
         oral_eval_df,
         oral_mode=oral_mode,
         region_n_samples=oral_region_n_samples,
+        region_stimulus_sigma=oral_region_stimulus_sigma,
         oral_mass_results=oral_mass,
     )
     coverage_based_alignment_outputs = me.save_coverage_based_alignment_outputs(

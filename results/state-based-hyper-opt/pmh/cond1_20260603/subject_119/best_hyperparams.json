@@ -1,0 +1,24 @@
+{
+  "best_stage": "fine",
+  "best_combination_index": 0,
+  "best_hyperparams": {
+    "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+      {
+        "amount": "entropy_4",
+        "method": "random_posterior"
+      },
+      {
+        "amount": "opp_random_2",
+        "method": "random"
+      }
+    ],
+    "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+    "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+    "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+    "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+    "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+  },
+  "mean_error": 0.38021242543609235,
+  "best_error": 0.31817010611742996,
+  "random_seed": 2579609059
+}

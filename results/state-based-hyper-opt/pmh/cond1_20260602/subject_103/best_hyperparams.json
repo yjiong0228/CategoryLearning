@@ -1,0 +1,26 @@
+{
+  "best_stage": "fine",
+  "best_combination_index": 2,
+  "best_hyperparams": {
+    "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+      {
+        "amount": "fixed",
+        "method": "top_posterior",
+        "value": 1
+      },
+      {
+        "amount": "fixed",
+        "method": "random",
+        "value": 2
+      }
+    ],
+    "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+    "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+    "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+    "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+    "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+  },
+  "mean_error": 0.1925090068289759,
+  "best_error": 0.18900676414272857,
+  "random_seed": 3216902407
+}

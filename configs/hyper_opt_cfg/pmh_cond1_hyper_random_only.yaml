@@ -1,0 +1,90 @@
+# Two-layer hyper-optimization for all cond1 subjects
+# Random/uncertainty-driven hypothesis transition templates only.
+inner_optimizer: grid
+inner_base_config_path: ../grid_opt_cfg/pmh_cond1.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-opt/pmh/cond1_random_only
+selection_metric: min_inner_mean_error
+hyperparam_selection_mode: per_subject
+save_level: compact
+hyper_base_seed: 42
+
+hyperparam_space:
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      # R1: cond1 random baseline
+      - [
+          {amount: "random_4", method: "random_posterior"},
+          {amount: "opp_random_4", method: "random"}
+        ]
+      # R2: slightly lower posterior-retention randomness, broad exploration
+      - [
+          {amount: "random_3", method: "random_posterior"},
+          {amount: "opp_random_4", method: "random"}
+        ]
+      # R3: broad posterior-retention randomness, lower exploration
+      - [
+          {amount: "random_4", method: "random_posterior"},
+          {amount: "opp_random_2", method: "random"}
+        ]
+      # R4: conservative posterior-retention randomness, broad exploration
+      - [
+          {amount: "random_2", method: "random_posterior"},
+          {amount: "opp_random_4", method: "random"}
+        ]
+      # R5: entropy-scaled posterior retention and entropy-complement exploration
+      - [
+          {amount: "entropy_4", method: "random_posterior"},
+          {amount: "opp_entropy_4", method: "random"}
+        ]
+      # R6: slightly lower entropy-scaled posterior retention
+      - [
+          {amount: "entropy_3", method: "random_posterior"},
+          {amount: "opp_entropy_4", method: "random"}
+        ]
+      # R7: confidence/max-posterior amount with broad random exploration
+      - [
+          {amount: "max_4", method: "random_posterior"},
+          {amount: "opp_random_4", method: "random"}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [3, 4]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [2, 3]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.1, 0.2, 0.3]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [5.0, 10.0, 15.0]
+
+
+stages:
+  coarse:
+    n_jobs_combinations: 128
+    inner_overrides:
+      grid_repeats: 16
+      refit_repeats: 64
+      keep_logs: false
+      n_jobs: 1
+      param_grid:
+        gamma: [0.2, 0.4, 0.7, 0.9]
+        w0: [0.02, 0.06, 0.2, 0.8]
+
+  fine:
+    n_jobs_combinations: 1
+    inner_overrides:
+      grid_repeats: 16
+      refit_repeats: 512
+      keep_logs: false
+      n_jobs: 128
+      param_grid:
+        gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        w0: [0.005, 0.01, 0.03, 0.06, 0.1, 0.15, 0.2, 0.5, 0.8]
+
+refine_policy:
+  top_k: 24

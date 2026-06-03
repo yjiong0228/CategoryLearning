@@ -20,6 +20,7 @@ from src.Bayesian_state.utils.optimizer_common import (
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
     LOSS_METRIC_BERHU,
     LOSS_METRIC_CHOICES,
+    derive_hyper_candidate_seed,
 )
 from src.Bayesian_state.utils.stream import StreamList
 from src.Bayesian_state.utils.paths import (
@@ -134,6 +135,36 @@ def resolve_loss_delta(cfg: Dict[str, Any], loss_metric: str) -> float | None:
     return None
 
 
+def resolve_grid_repeats(cfg: Dict[str, Any], default: int = 4) -> int:
+    if "grid_repeats" not in cfg:
+        raise ValueError("Config must include grid_repeats. The old n_repeats field is no longer supported.")
+    return int(cfg["grid_repeats"])
+
+
+def resolve_hyper_base_seed(cfg: Dict[str, Any]) -> int:
+    if "hyper_base_seed" not in cfg:
+        raise ValueError("Config must include hyper_base_seed. The old random_seed field is no longer supported.")
+    return int(cfg["hyper_base_seed"])
+
+
+def resolve_hyper_candidate_seed(
+    cfg: Dict[str, Any],
+    hyper_base_seed: int,
+    subject_id: int,
+    param_grid: Dict[str, Sequence[Any]],
+) -> int:
+    raw = cfg.get("hyper_candidate_seed")
+    if raw is not None:
+        return int(raw)
+    return derive_hyper_candidate_seed(
+        hyper_base_seed=hyper_base_seed,
+        stage="grid_direct",
+        combination_index=0,
+        hyperparams={"param_grid": param_grid},
+        extra_context={"subject_id": int(subject_id)},
+    )
+
+
 def resolve_window_size(cfg: Dict[str, Any], subject_id: int, subjects: Sequence[int]) -> int:
     raw_ws = cfg.get("window_size", 16)
     overrides = {int(k): int(v) for k, v in (cfg.get("window_size_overrides") or {}).items()}
@@ -204,6 +235,7 @@ def _build_grid_errors(result: Dict[str, Any]) -> list[Dict[str, Any]]:
                 "mean_error": gp.mean_error,
                 "std_error": gp.std_error,
                 "best_error": getattr(gp, "best_error", gp.mean_error),
+                "grid_point_seed": getattr(gp, "grid_point_seed", None),
                 "selection_prediction_mode": selection_mode,
             }
         )
@@ -246,7 +278,8 @@ def serialize_result(
         "refit_mean_error": refit_mean_error,
         "std_error": refit_std_error,
         "refit_std_error": refit_std_error,
-        "n_repeats": getattr(best, "n_repeats", 1),
+        "grid_repeats": getattr(best, "grid_repeats", 1),
+        "refit_repeats": getattr(best, "refit_repeats", 0),
         "sample_errors": sample_errors,
         "prediction_mode": result.get("selection_meta", {}).get("prediction_mode"),
         "selection_prediction_mode": selection_mode,
@@ -262,6 +295,9 @@ def serialize_result(
         "selection_meta": result.get("selection_meta", {}),
         "loss_metric": result.get("selection_meta", {}).get("loss_metric"),
         "loss_delta": result.get("selection_meta", {}).get("loss_delta"),
+        "hyper_base_seed": result.get("selection_meta", {}).get("hyper_base_seed"),
+        "hyper_candidate_seed": result.get("selection_meta", {}).get("hyper_candidate_seed"),
+        "grid_point_seed": getattr(best, "grid_point_seed", None),
         "raw_runs_ref": raw_runs_ref,
         "grid_errors": _build_grid_errors(result),
         "grid_summary": [
@@ -270,6 +306,7 @@ def serialize_result(
                 "mean_error": gp.mean_error,
                 "std_error": gp.std_error,
                 "best_error": getattr(gp, "best_error", gp.mean_error),
+                "grid_point_seed": getattr(gp, "grid_point_seed", None),
             }
             for gp in result.get("grid", [])
         ],
@@ -333,8 +370,15 @@ def main() -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         n_jobs = int(subject_cfg.get("n_jobs", 4))
-        n_repeats = int(subject_cfg.get("n_repeats", 4))
+        grid_repeats = resolve_grid_repeats(subject_cfg, default=4)
         refit_repeats = int(subject_cfg.get("refit_repeats", 64))
+        hyper_base_seed = resolve_hyper_base_seed(subject_cfg)
+        hyper_candidate_seed = resolve_hyper_candidate_seed(
+            subject_cfg,
+            hyper_base_seed,
+            sid,
+            param_grid,
+        )
         stop_at = float(subject_cfg.get("stop_at", 1.0))
         max_trials_val = subject_cfg.get("max_trials")
         max_trials = int(max_trials_val) if max_trials_val is not None else None
@@ -356,7 +400,7 @@ def main() -> None:
         result: Dict[str, Any] = optimizer.optimize_subject(
             subject_id=sid,
             param_grid=param_grid,
-            n_repeats=n_repeats,
+            grid_repeats=grid_repeats,
             refit_repeats=refit_repeats,
             window_size=window_size,
             stop_at=stop_at,
@@ -366,8 +410,9 @@ def main() -> None:
             selection_prediction_mode=selection_prediction_mode,
             loss_metric=loss_metric,
             loss_delta=loss_delta,
-            random_seed=subject_cfg.get("random_seed"),
+            hyper_candidate_seed=hyper_candidate_seed,
         )
+        result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
 
         best: Any = result["best"]
         print(f"  Best params: {best.params}")
@@ -377,6 +422,7 @@ def main() -> None:
         print(f"  Best run error ({selection_prediction_mode}): {best_error:.6f}")
         print(f"  Refit mean ({selection_prediction_mode}):     {refit_mean:.6f} +/- {refit_std:.6f}")
         print(f"  Loss metric: {loss_metric}")
+        print(f"  Seeds: hyper_base_seed={hyper_base_seed}, hyper_candidate_seed={hyper_candidate_seed}")
 
         subjects_dir = output_dir / "subjects"
         payload = serialize_result(sid, int(result["condition"]), result, output_dir, subject_json_dir=subjects_dir)

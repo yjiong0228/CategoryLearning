@@ -1,5 +1,6 @@
-﻿dataset:
-  processed_dir: ../../data/processed
+hyper_base_seed: 42
+dataset:
+  processed_dir: ../../../data/processed
   learning_data: Task2_processed.csv
   perception_summary: Task1b_errorsummary_24.csv
   perception_summary_72: Task1b_errorsummary_72.csv
@@ -8,7 +9,7 @@ output_dir: ../../results/state-based-grid-result/pmh/cond1_subjectwise_hyper_be
 oral:
   mode: center
 n_jobs: 128
-n_repeats: 64
+grid_repeats: 64
 refit_repeats: 8192
 window_size: 8
 stop_at: 1.0
