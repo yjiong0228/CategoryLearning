@@ -1,0 +1,79 @@
+# Two-layer hyper-optimization for all cond3 subjects
+# Random/uncertainty-driven hypothesis transition templates only.
+inner_optimizer: grid
+inner_base_config_path: ../grid_opt_cfg/pmh_cond3.yaml
+
+subject_range: [301, 332]
+
+output_dir: ../../results/state-based-hyper-opt/pmh/cond3_random_only
+selection_metric: min_inner_mean_error
+hyperparam_selection_mode: per_subject
+save_level: compact
+hyper_base_seed: 42
+
+hyperparam_space:
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      # R1: cond2/3 random-entropy baseline without associative expansion
+      - [
+          {amount: "entropy_7", method: "random_posterior"},
+          {amount: "opp_entropy_7", method: "random"}
+        ]
+      # R2: conservative posterior retention with broad entropy-complement exploration
+      - [
+          {amount: "entropy_5", method: "random_posterior"},
+          {amount: "opp_entropy_7", method: "random"}
+        ]
+      # R3: fully stochastic retention and exploration
+      - [
+          {amount: "random_7", method: "random_posterior"},
+          {amount: "opp_random_7", method: "random"}
+        ]
+      # R4: confidence-gated random retention and exploration
+      - [
+          {amount: "confidence_7", method: "random_posterior"},
+          {amount: "opp_confidence_7", method: "random"}
+        ]
+      # R5: max-posterior amount rule with broad stochastic exploration
+      - [
+          {amount: "max_7", method: "random_posterior"},
+          {amount: "opp_random_7", method: "random"}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [7, 10, 12]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [7, 10, 15]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.1, 0.2, 0.3]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [5.0, 10.0, 15.0]
+
+stages:
+  coarse:
+    n_jobs_combinations: 128
+    inner_overrides:
+      grid_repeats: 16
+      refit_repeats: 32
+      keep_logs: false
+      n_jobs: 1
+      param_grid:
+        gamma: [0.2, 0.6, 0.9]
+        w0: [0.02, 0.1, 0.3]
+
+  fine:
+    n_jobs_combinations: 1
+    inner_overrides:
+      grid_repeats: 32
+      refit_repeats: 256
+      keep_logs: false
+      n_jobs: 128
+      param_grid:
+        gamma: [0.2, 0.4, 0.6, 0.8, 0.95]
+        w0: [0.01, 0.03, 0.08, 0.15, 0.3]
+
+refine_policy:
+  top_k: 8

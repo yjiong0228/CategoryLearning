@@ -1,0 +1,233 @@
+hyper_base_seed: 42
+dataset:
+  processed_dir: ../../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+output_dir: ../../results/state-based-grid-result/pmh/cond1_20260602
+oral:
+  mode: center
+n_jobs: 128
+grid_repeats: 64
+refit_repeats: 8192
+window_size: 8
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: accuracy_brier
+param_grid:
+  gamma:
+  - 0.2
+  - 0.4
+  - 0.6
+  - 0.8
+  - 0.95
+  w0:
+  - 0.01
+  - 0.03
+  - 0.08
+  - 0.15
+  - 0.3
+engine_config:
+  modules:
+    perception_mod:
+      class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+    beta_mod:
+      class: src.Bayesian_state.problems.modules.beta.BetaModule
+      kwargs:
+        beta_init: 1.0
+        beta_min: 0.1
+        beta_max: 50.0
+        decrease_rate: 0.2
+        correct_additive: 1
+        use_prior_scaling: true
+        prior_beta_scale: 10.0
+    hypo_transitions_mod:
+      class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
+      kwargs:
+        strategies:
+        - amount: random_4
+          method: random_posterior
+        - amount: opp_random_4
+          method: random
+        init_num: 2
+    likelihood_mod:
+      class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+      kwargs:
+        distance_mode: prototype
+    memory_mod:
+      class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+      kwargs:
+        w0: null
+        gamma: null
+  agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod
+subjects:
+- 101
+- 102
+- 103
+- 104
+- 105
+- 106
+- 107
+- 108
+subject_overrides:
+  '101':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 2
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 4
+            init_num: 3
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+  '102':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 3
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 3
+            init_num: 3
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.2
+            prior_beta_scale: 15.0
+  '103':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 1
+            - amount: fixed
+              method: random
+              value: 2
+            max_active_hypotheses: 4
+            init_num: 3
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.3
+            prior_beta_scale: 5.0
+  '104':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 2
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 3
+            init_num: 2
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.1
+            prior_beta_scale: 5.0
+  '105':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 2
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 3
+            init_num: 3
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.2
+            prior_beta_scale: 5.0
+  '106':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 2
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 4
+            init_num: 2
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.1
+            prior_beta_scale: 5.0
+  '107':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 3
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 4
+            init_num: 2
+        beta_mod:
+          kwargs:
+            beta_init: 3.0
+            decrease_rate: 0.1
+            prior_beta_scale: 10.0
+  '108':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: fixed
+              method: top_posterior
+              value: 3
+            - amount: fixed
+              method: random
+              value: 1
+            max_active_hypotheses: 3
+            init_num: 2
+        beta_mod:
+          kwargs:
+            beta_init: 0.8
+            decrease_rate: 0.2
+            prior_beta_scale: 10.0

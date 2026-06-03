@@ -43,7 +43,7 @@ python -m src.Bayesian_state.run_hyper_then_grid \
 With `--hyper-backend cd`, the workflow runner uses CD-specific defaults so it
 does not overwrite standard hyper-opt GRID outputs:
 
-- generated GRID config: `configs/grid_opt_cfg/pmh_cond1_subjectwise_hyper_cd_best.yaml`
+- generated GRID config: `configs/grid_opt_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml`
 - GRID results: `results/state-based-grid-result/pmh/cond1_subjectwise_hyper_cd_best`
 
 ## Key Config Fields

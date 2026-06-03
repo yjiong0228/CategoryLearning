@@ -1,8 +1,10 @@
-﻿# Grid optimization config for Condition 2 subjects
+# Grid optimization config for Condition 2 subjects
 # Uses condition-specific model structure.
 engine_config_path: ../model_struct/pmh_grid_cond2.yaml
 
 subject_range: [201, 232]
+
+hyper_base_seed: 42
 
 # Dataset paths (relative to this YAML)
 dataset:
@@ -20,7 +22,7 @@ oral:
 n_jobs: 128
 
 # Repeats
-n_repeats: 64
+grid_repeats: 64
 refit_repeats: 4096
 
 # Evaluation
@@ -41,4 +43,3 @@ param_grid:
 #   "230,232":
 #     refit_repeats: 1024
 loss_metric: accuracy_curve_mse
-

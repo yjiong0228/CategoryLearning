@@ -19,9 +19,9 @@ from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
 DEFAULT_HYPER_CONFIG = Path("configs/hyper_opt_cfg/pmh_cond1_hyper.yaml")
-DEFAULT_GENERATED_GRID_CONFIG = Path("configs/grid_opt_cfg/pmh_cond1_subjectwise_hyper_best.yaml")
+DEFAULT_GENERATED_GRID_CONFIG = Path("configs/grid_opt_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_best.yaml")
 DEFAULT_GRID_OUTPUT_DIR = Path("results/state-based-grid-result/pmh/cond1_subjectwise_hyper_best")
-DEFAULT_CD_GENERATED_GRID_CONFIG = Path("configs/grid_opt_cfg/pmh_cond1_subjectwise_hyper_cd_best.yaml")
+DEFAULT_CD_GENERATED_GRID_CONFIG = Path("configs/grid_opt_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml")
 DEFAULT_CD_GRID_OUTPUT_DIR = Path("results/state-based-grid-result/pmh/cond1_subjectwise_hyper_cd_best")
 HYPER_BACKENDS = ("auto", "hyper", "cd")
 
@@ -58,6 +58,14 @@ def relative_path_for_yaml(target: Path, yaml_dir: Path) -> str:
     return Path(os.path.relpath(target.resolve(), yaml_dir.resolve())).as_posix()
 
 
+def rebase_config_relative_path(value: Any, source_yaml_dir: Path, target_yaml_dir: Path) -> str:
+    path = Path(str(value))
+    if path.is_absolute():
+        return path.as_posix()
+    absolute = (source_yaml_dir / path).resolve()
+    return relative_path_for_yaml(absolute, target_yaml_dir)
+
+
 def command_path(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(ROOT_DIR.resolve()))
@@ -73,8 +81,15 @@ def resolve_hyper_backend(config_path: Path, cfg: Mapping[str, Any], backend: st
     return "hyper"
 
 
-def build_hyper_optimizer(config_path: Path, backend: str = "auto") -> HyperOptimizer | HyperOptimizerCD:
+def build_hyper_optimizer(
+    config_path: Path,
+    backend: str = "auto",
+    output_dir: Path | None = None,
+) -> HyperOptimizer | HyperOptimizerCD:
     cfg = load_yaml(config_path)
+    if output_dir is not None:
+        cfg = dict(cfg)
+        cfg["output_dir"] = str(resolve_project_path(output_dir))
     resolved_backend = resolve_hyper_backend(config_path, cfg, backend)
     if resolved_backend == "cd":
         return HyperOptimizerCD(cfg, config_path)
@@ -126,6 +141,26 @@ def _load_base_engine_config(base_grid_cfg: Mapping[str, Any], base_grid_dir: Pa
     return _strip_subject_override_blocks(base_engine)
 
 
+def _rebase_generated_grid_paths(
+    generated_cfg: dict[str, Any],
+    base_grid_dir: Path,
+    generated_dir: Path,
+) -> None:
+    dataset = generated_cfg.get("dataset")
+    if isinstance(dataset, dict) and dataset.get("processed_dir") is not None:
+        dataset["processed_dir"] = rebase_config_relative_path(
+            dataset["processed_dir"],
+            base_grid_dir,
+            generated_dir,
+        )
+    if generated_cfg.get("data_path") is not None:
+        generated_cfg["data_path"] = rebase_config_relative_path(
+            generated_cfg["data_path"],
+            base_grid_dir,
+            generated_dir,
+        )
+
+
 def _split_hyperparams_for_grid_override(best_hyperparams: Mapping[str, Any]) -> dict[str, Any]:
     override: dict[str, Any] = {}
     engine_override: dict[str, Any] = {}
@@ -168,11 +203,14 @@ def build_subjectwise_grid_config(
 
     generated_cfg = _strip_subject_override_blocks(base_grid_cfg)
     generated_cfg.pop("engine_config_path", None)
+    _rebase_generated_grid_paths(generated_cfg, base_grid_path.parent, generated_dir)
     generated_cfg["engine_config"] = base_engine_cfg
     generated_cfg["subjects"] = sorted(int(sid) for sid in per_subject_best.keys())
     generated_cfg.pop("subject_range", None)
     generated_cfg["output_dir"] = relative_path_for_yaml(grid_output_dir, generated_dir)
     generated_cfg["keep_logs"] = bool(keep_logs)
+    if "hyper_base_seed" in hyper_best_payload:
+        generated_cfg["hyper_base_seed"] = hyper_best_payload["hyper_base_seed"]
 
     subject_overrides: dict[int, Any] = {}
     for sid_text, subject_payload in sorted(per_subject_best.items(), key=lambda item: int(item[0])):
@@ -181,7 +219,10 @@ def build_subjectwise_grid_config(
         best_hyperparams = subject_payload.get("best_hyperparams")
         if not isinstance(best_hyperparams, Mapping):
             raise ValueError(f"per_subject_best[{sid_text}] is missing best_hyperparams")
-        subject_overrides[int(sid_text)] = _split_hyperparams_for_grid_override(best_hyperparams)
+        override = _split_hyperparams_for_grid_override(best_hyperparams)
+        if "hyper_candidate_seed" in subject_payload:
+            override["hyper_candidate_seed"] = int(subject_payload["hyper_candidate_seed"])
+        subject_overrides[int(sid_text)] = override
 
     generated_cfg["subject_overrides"] = subject_overrides
     return generated_cfg
@@ -193,10 +234,16 @@ def run_hyper(
     subject_range: Sequence[int] | None,
     stage: str,
     backend: str = "auto",
+    hyper_output_dir: Path | None = None,
+    resume_from_coarse: bool = False,
 ) -> dict[str, Any]:
-    optimizer = build_hyper_optimizer(config_path, backend)
+    optimizer = build_hyper_optimizer(config_path, backend, output_dir=hyper_output_dir)
     resolved_subjects = optimizer.resolve_subjects(subjects, subject_range)
-    result = optimizer.run(subjects=resolved_subjects, stage=stage)
+    result = optimizer.run(
+        subjects=resolved_subjects,
+        stage=stage,
+        resume_from_coarse=resume_from_coarse,
+    )
     print("Hyper optimization done.")
     print(json.dumps(_to_builtin(result), ensure_ascii=False, indent=2))
     return result
@@ -238,7 +285,9 @@ def aggregate_per_subject_best(output_dir: Path, optimizer: HyperOptimizer | Hyp
         "save_level": optimizer.save_level,
         "inner_base_config_path": str(optimizer.inner_base_config_path),
         "hyper_config_path": str(config_path),
+        "hyper_output_dir": str(output_dir),
         "hyper_backend": "cd" if isinstance(optimizer, HyperOptimizerCD) else "hyper",
+        "hyper_base_seed": getattr(optimizer, "hyper_base_seed", None),
         "per_subject_best": dict(sorted(per_subject_best.items(), key=lambda item: int(item[0]))),
     }
     best_path = output_dir / "best_hyperparams.json"
@@ -258,14 +307,23 @@ def run_hyper_resumable(
     stage: str,
     skip_completed: bool,
     backend: str = "auto",
+    hyper_output_dir: Path | None = None,
+    resume_from_coarse: bool = False,
 ) -> dict[str, Any]:
-    optimizer = build_hyper_optimizer(config_path, backend)
+    if resume_from_coarse and stage != "fine":
+        raise ValueError("--resume-from-coarse requires --stage fine")
+
+    optimizer = build_hyper_optimizer(config_path, backend, output_dir=hyper_output_dir)
     resolved_subjects = optimizer.resolve_subjects(subjects, subject_range)
 
     if optimizer.hyperparam_selection_mode != "per_subject":
         if skip_completed:
             raise ValueError("--skip-completed-hyper is only supported for hyperparam_selection_mode='per_subject'.")
-        return optimizer.run(subjects=resolved_subjects, stage=stage)
+        return optimizer.run(
+            subjects=resolved_subjects,
+            stage=stage,
+            resume_from_coarse=resume_from_coarse,
+        )
 
     optimizer.output_dir.mkdir(parents=True, exist_ok=True)
     for sid in resolved_subjects:
@@ -274,7 +332,12 @@ def run_hyper_resumable(
             print(f"Skipping subject {int(sid)}; found {best_path}")
             continue
         print(f"Running hyper optimization for subject {int(sid)}")
-        optimizer._run_subject_pipeline(int(sid), stage, optimizer.output_dir)
+        optimizer._run_subject_pipeline(
+            int(sid),
+            stage,
+            optimizer.output_dir,
+            resume_from_coarse=resume_from_coarse,
+        )
         aggregate_per_subject_best(optimizer.output_dir, optimizer, config_path)
 
     result = aggregate_per_subject_best(optimizer.output_dir, optimizer, config_path)
@@ -359,6 +422,7 @@ def run_per_subject_workflow(
     hyper_config_path: Path,
     generated_grid_config_path: Path,
     grid_output_dir: Path,
+    hyper_output_dir: Path | None,
     subjects: Sequence[int] | None,
     subject_range: Sequence[int] | None,
     stage: str,
@@ -369,8 +433,12 @@ def run_per_subject_workflow(
     skip_completed_grid: bool,
     skip_eval: bool,
     keep_logs: bool,
+    resume_from_coarse: bool,
 ) -> None:
-    optimizer = build_hyper_optimizer(hyper_config_path, hyper_backend)
+    if resume_from_coarse and stage != "fine":
+        raise ValueError("--resume-from-coarse requires --stage fine")
+
+    optimizer = build_hyper_optimizer(hyper_config_path, hyper_backend, output_dir=hyper_output_dir)
     if optimizer.hyperparam_selection_mode != "per_subject":
         raise ValueError("--execution-mode per-subject requires hyperparam_selection_mode='per_subject'.")
 
@@ -391,7 +459,12 @@ def run_per_subject_workflow(
         elif skip_completed_hyper and subject_best_path.is_file():
             print(f"Skipping subject {sid} hyper; found {subject_best_path}")
         else:
-            optimizer._run_subject_pipeline(sid, stage, optimizer.output_dir)
+            optimizer._run_subject_pipeline(
+                sid,
+                stage,
+                optimizer.output_dir,
+                resume_from_coarse=resume_from_coarse,
+            )
 
         aggregate = aggregate_per_subject_best(optimizer.output_dir, optimizer, hyper_config_path)
         materialize_grid_config_from_hyper_best(
@@ -422,6 +495,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Inclusive subject range")
     p.add_argument("--stage", choices=("coarse", "fine", "all"), default="all")
     p.add_argument("--execution-mode", choices=("batch", "per-subject"), default="batch")
+    p.add_argument("--hyper-output-dir", type=Path, help="Override hyper optimization output directory")
     p.add_argument("--generated-grid-config", type=Path, help="Generated subjectwise GRID config path")
     p.add_argument("--grid-output-dir", type=Path, help="GRID output directory")
     p.add_argument("--skip-hyper", action="store_true", help="Reuse existing hyper best_hyperparams.json")
@@ -434,6 +508,14 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--skip-eval", action="store_true", help="Skip eval_grid_results after GRID finishes")
     p.add_argument("--keep-logs", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument(
+        "--resume-from-coarse",
+        action="store_true",
+        help=(
+            "With --stage fine, load existing coarse all_combinations.jsonl, "
+            "trim stale fine rows, then run only fine."
+        ),
+    )
     return p.parse_args()
 
 
@@ -445,6 +527,7 @@ def main() -> None:
     generated_grid_config_path = resolve_project_path(
         args.generated_grid_config or default_generated_grid_config_for_backend(hyper_backend)
     )
+    hyper_output_dir = resolve_project_path(args.hyper_output_dir) if args.hyper_output_dir else None
     grid_output_dir = resolve_project_path(args.grid_output_dir or default_grid_output_dir_for_backend(hyper_backend))
 
     if args.execution_mode == "per-subject":
@@ -452,6 +535,7 @@ def main() -> None:
             hyper_config_path=hyper_config_path,
             generated_grid_config_path=generated_grid_config_path,
             grid_output_dir=grid_output_dir,
+            hyper_output_dir=hyper_output_dir,
             subjects=args.subjects,
             subject_range=args.subject_range,
             stage=args.stage,
@@ -462,6 +546,7 @@ def main() -> None:
             skip_completed_grid=bool(args.skip_completed_grid),
             skip_eval=bool(args.skip_eval),
             keep_logs=bool(args.keep_logs),
+            resume_from_coarse=bool(args.resume_from_coarse),
         )
         return
 
@@ -473,10 +558,12 @@ def main() -> None:
             stage=args.stage,
             skip_completed=bool(args.skip_completed_hyper),
             backend=hyper_backend,
+            hyper_output_dir=hyper_output_dir,
+            resume_from_coarse=bool(args.resume_from_coarse),
         )
 
-    hyper_output_dir = resolve_relative_to(hyper_config_path.parent, hyper_cfg.get("output_dir"))
-    hyper_best_path = hyper_output_dir / "best_hyperparams.json"
+    effective_hyper_output_dir = hyper_output_dir or resolve_relative_to(hyper_config_path.parent, hyper_cfg.get("output_dir"))
+    hyper_best_path = effective_hyper_output_dir / "best_hyperparams.json"
     materialize_grid_config_from_hyper_best(
         hyper_best_path=hyper_best_path,
         generated_grid_config_path=generated_grid_config_path,

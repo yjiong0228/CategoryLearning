@@ -1,0 +1,94 @@
+{
+  "cd_dir": "/home/yangjiong/CategoryLearning_gitcode/results/state-based-grid-result/pmh/cond1_subjectwise_hyper_cd_best",
+  "hyper_dir": "/home/yangjiong/CategoryLearning_gitcode/results/state-based-grid-result/pmh/cond1_subjectwise_hyper_best",
+  "eval_prediction_mode": "posterior_t_minus_1",
+  "n_cd_subjects": 15,
+  "n_hyper_subjects": 32,
+  "n_overlap": 15,
+  "overlap_subjects": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115
+  ],
+  "metrics": {
+    "mean_error": {
+      "cd_mean": 0.01692259152546925,
+      "hyper_mean": 0.06993982160178876,
+      "mean_diff_cd_minus_hyper": -0.05301723007631951,
+      "median_diff_cd_minus_hyper": -0.05062547747933348,
+      "n_cd_lower": 15,
+      "n_equal": 0,
+      "n_hyper_lower": 0
+    },
+    "best_error": {
+      "cd_mean": 0.01692259152546925,
+      "hyper_mean": 0.06993982160178876,
+      "mean_diff_cd_minus_hyper": -0.05301723007631951,
+      "median_diff_cd_minus_hyper": -0.05062547747933348,
+      "n_cd_lower": 15,
+      "n_equal": 0,
+      "n_hyper_lower": 0
+    },
+    "refit_mean_error": {
+      "cd_mean": 0.03817323688888594,
+      "hyper_mean": 0.12876241055245027,
+      "mean_diff_cd_minus_hyper": -0.09058917366356435,
+      "median_diff_cd_minus_hyper": -0.09915655176932539,
+      "n_cd_lower": 15,
+      "n_equal": 0,
+      "n_hyper_lower": 0
+    },
+    "accuracy_curve_mse": {
+      "cd_mean": 0.01692259152546925,
+      "hyper_mean": 0.008409252492378175,
+      "mean_diff_cd_minus_hyper": 0.008513339033091072,
+      "median_diff_cd_minus_hyper": 0.008323288325283399,
+      "n_cd_lower": 0,
+      "n_equal": 0,
+      "n_hyper_lower": 15
+    },
+    "accuracy_curve_mae": {
+      "cd_mean": 0.1032958843851848,
+      "hyper_mean": 0.06993982160178876,
+      "mean_diff_cd_minus_hyper": 0.03335606278339607,
+      "median_diff_cd_minus_hyper": 0.03134820325661026,
+      "n_cd_lower": 0,
+      "n_equal": 0,
+      "n_hyper_lower": 15
+    },
+    "accuracy_brier": {
+      "cd_mean": 0.14914859007139977,
+      "hyper_mean": 0.1487282223282652,
+      "mean_diff_cd_minus_hyper": 0.00042036774313457953,
+      "median_diff_cd_minus_hyper": -0.002567491299192176,
+      "n_cd_lower": 12,
+      "n_equal": 0,
+      "n_hyper_lower": 3
+    },
+    "mean_pred_true_prob": {
+      "cd_mean": 0.7589708332085532,
+      "hyper_mean": 0.7662277954300915,
+      "mean_diff_cd_minus_hyper": -0.007256962221538429,
+      "median_diff_cd_minus_hyper": -0.010935971464961058,
+      "n_cd_lower": 10,
+      "n_equal": 0,
+      "n_hyper_lower": 5
+    }
+  },
+  "best_param_changes": {
+    "n_gamma_changed": 7,
+    "n_w0_changed": 7
+  }
+}

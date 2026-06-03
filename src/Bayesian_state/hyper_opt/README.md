@@ -48,7 +48,7 @@ python -m src.Bayesian_state.run_hyper_then_grid \
 1. 对每个 subject 跑 hyper-opt
 2. 读取/更新 `results/state-based-hyper-opt/.../best_hyperparams.json`
 3. 生成/更新统一的 subjectwise GRID 配置：
-   `configs/grid_opt_cfg/pmh_cond1_subjectwise_hyper_best.yaml`
+   `configs/grid_opt_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_best.yaml`
 4. 立即对该 subject 运行普通 `run_grid_optimization`
 5. 所有 subjects 完成后运行 `eval_grid_results` 生成 `all_subjects.json` 和 plots
 
@@ -66,7 +66,7 @@ python -m src.Bayesian_state.run_hyper_then_grid \
 - `inner_optimizer`：`grid` 或 `amr`
 - `inner_base_config_path`：内层优化基础 YAML（现有 grid/amr 配置）
 - `hyperparam_space`：外层搜索空间（必须用户显式定义）
-- `stages.coarse.inner_overrides`：coarse 阶段内层预算（如 `n_repeats`、`refit_repeats`、`param_grid`）
+- `stages.coarse.inner_overrides`：coarse 阶段内层预算（如 `grid_repeats`、`refit_repeats`、`param_grid`）
 - `stages.fine.inner_overrides`：fine 阶段内层预算
 - `stages.<stage>.n_jobs_combinations`：该阶段同时评估多少个外层超参数组合。coarse 的 inner 任务较少时，可用较大的 combination 并行搭配较小的 inner `n_jobs`。
 - `refine_policy.top_k`：coarse 阶段选前 `k` 个组合进入 fine

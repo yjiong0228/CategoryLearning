@@ -244,7 +244,8 @@ def serialize_result(
         "refit_mean_error": refit_mean_error,
         "std_error": refit_std_error,
         "refit_std_error": refit_std_error,
-        "n_repeats": getattr(best, "n_repeats", 1),
+        "grid_repeats": getattr(best, "grid_repeats", 1),
+        "refit_repeats": getattr(best, "refit_repeats", 0),
         "sample_errors": sample_errors,
         "prediction_mode": result.get("selection_meta", {}).get("prediction_mode"),
         "selection_prediction_mode": selection_mode,
@@ -296,7 +297,7 @@ def run_single_subject(
     data_path: Path,
     dataset_paths: Dict[str, Path],
     output_dir: Path,
-    n_repeats: int,
+    grid_repeats: int,
     refit_repeats: int,
     window_size: int,
     stop_at: float,
@@ -321,7 +322,7 @@ def run_single_subject(
     res: Dict[str, Any] = opt.optimize_subject(
         subject_id=subject_id,
         param_grid=param_grid,
-        n_repeats=n_repeats,
+        grid_repeats=grid_repeats,
         refit_repeats=refit_repeats,
         window_size=window_size,
         stop_at=stop_at,
@@ -401,6 +402,8 @@ def main() -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         max_trials_val = subject_cfg.get("max_trials")
+        if "grid_repeats" not in subject_cfg:
+            raise ValueError("Config must include grid_repeats. The old n_repeats field is no longer supported.")
         jobs.append(dict(
             subject_id=sid,
             engine_config=engine_config,
@@ -409,7 +412,7 @@ def main() -> None:
             data_path=data_path,
             dataset_paths=dataset_paths,
             output_dir=output_dir,
-            n_repeats=int(subject_cfg.get("n_repeats", 4)),
+            grid_repeats=int(subject_cfg["grid_repeats"]),
             refit_repeats=int(subject_cfg.get("refit_repeats", 8)),
             window_size=resolve_window_size(subject_cfg, sid, subjects),
             stop_at=float(subject_cfg.get("stop_at", 1.0)),

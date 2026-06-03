@@ -1,0 +1,689 @@
+{
+  "selection_metric": "min_inner_mean_error",
+  "hyperparam_selection_mode": "per_subject",
+  "save_level": "compact",
+  "inner_base_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/grid_opt_cfg/pmh_cond1.yaml",
+  "hyper_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/hyper_opt_cfg/pmh_cond1_hyper.yaml",
+  "hyper_output_dir": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-hyper-opt/pmh/cond1_20260603",
+  "hyper_backend": "hyper",
+  "per_subject_best": {
+    "101": {
+      "best_stage": "fine",
+      "best_combination_index": 0,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.24826167180444714,
+      "best_error": 0.22931409948880982,
+      "random_seed": 885248524
+    },
+    "102": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.2395007707294426,
+      "best_error": 0.23466433603997724,
+      "random_seed": 3697644467
+    },
+    "103": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 1
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 2
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.38500486493835506,
+      "best_error": 0.37801352828545726,
+      "random_seed": 3216902407
+    },
+    "104": {
+      "best_stage": "fine",
+      "best_combination_index": 1,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.2880124637665402,
+      "best_error": 0.27316062456125506,
+      "random_seed": 389941282
+    },
+    "105": {
+      "best_stage": "fine",
+      "best_combination_index": 7,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.11741805617229017,
+      "best_error": 0.09717073709798181,
+      "random_seed": 1613724166
+    },
+    "106": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.2911664463565751,
+      "best_error": 0.27082083404285595,
+      "random_seed": 904201289
+    },
+    "107": {
+      "best_stage": "fine",
+      "best_combination_index": 5,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.3013267747644024,
+      "best_error": 0.2863939245526316,
+      "random_seed": 3963420858
+    },
+    "108": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.2920720557419953,
+      "best_error": 0.2874541987069918,
+      "random_seed": 3824071648
+    },
+    "109": {
+      "best_stage": "fine",
+      "best_combination_index": 4,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "top_p": 0.7,
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.3789748643221674,
+      "best_error": 0.36395872823081077,
+      "random_seed": 2863538625
+    },
+    "110": {
+      "best_stage": "fine",
+      "best_combination_index": 3,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.275480875668842,
+      "best_error": 0.2639094426442499,
+      "random_seed": 2439271815
+    },
+    "111": {
+      "best_stage": "fine",
+      "best_combination_index": 0,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.1,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.3771307096693034,
+      "best_error": 0.3601644175213592,
+      "random_seed": 2854955769
+    },
+    "112": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 1
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 2
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.323526970894119,
+      "best_error": 0.31309257657928724,
+      "random_seed": 1579854897
+    },
+    "113": {
+      "best_stage": "fine",
+      "best_combination_index": 4,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.41668037686957576,
+      "best_error": 0.3975163483907224,
+      "random_seed": 548687081
+    },
+    "114": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 1
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 2
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.34693675911863786,
+      "best_error": 0.29110776316840453,
+      "random_seed": 2565792554
+    },
+    "115": {
+      "best_stage": "fine",
+      "best_combination_index": 3,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.2854117385885734,
+      "best_error": 0.26874858405364765,
+      "random_seed": 1577981676
+    },
+    "116": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.2551167804859239,
+      "best_error": 0.2383686383770562,
+      "random_seed": 699130088
+    },
+    "117": {
+      "best_stage": "fine",
+      "best_combination_index": 0,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.07689273919428627,
+      "best_error": 0.06810447862319874,
+      "random_seed": 3799481561
+    },
+    "118": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.34935939814977823,
+      "best_error": 0.3351782315141899,
+      "random_seed": 2139422995
+    },
+    "119": {
+      "best_stage": "fine",
+      "best_combination_index": 0,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "entropy_4",
+            "method": "random_posterior"
+          },
+          {
+            "amount": "opp_random_2",
+            "method": "random"
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.38021242543609235,
+      "best_error": 0.31817010611742996,
+      "random_seed": 2579609059
+    },
+    "120": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.32067122082336297,
+      "best_error": 0.3063894517821128,
+      "random_seed": 2300883981
+    },
+    "121": {
+      "best_stage": "fine",
+      "best_combination_index": 7,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.365209543105617,
+      "best_error": 0.35804096726052465,
+      "random_seed": 4109832920
+    },
+    "122": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.2551207656916036,
+      "best_error": 0.2358736370445589,
+      "random_seed": 658250473
+    },
+    "123": {
+      "best_stage": "fine",
+      "best_combination_index": 5,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.3518223207255156,
+      "best_error": 0.3474921418788696,
+      "random_seed": 4155265488
+    },
+    "124": {
+      "best_stage": "fine",
+      "best_combination_index": 6,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 1
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 2
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 1.5,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "mean_error": 0.3115121806074152,
+      "best_error": 0.2972015441671142,
+      "random_seed": 2546377443
+    },
+    "125": {
+      "best_stage": "fine",
+      "best_combination_index": 5,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 3
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.2,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 10.0
+      },
+      "mean_error": 0.14348530610377574,
+      "best_error": 0.12325046928121844,
+      "random_seed": 2168657724
+    },
+    "126": {
+      "best_stage": "fine",
+      "best_combination_index": 2,
+      "best_hyperparams": {
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "amount": "fixed",
+            "method": "top_posterior",
+            "value": 2
+          },
+          {
+            "amount": "fixed",
+            "method": "random",
+            "value": 1
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 2,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+      },
+      "mean_error": 0.13597537262013723,
+      "best_error": 0.10706571512405373,
+      "random_seed": 3091282150
+    }
+  },
+  "hyper_best_path": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-hyper-opt/pmh/cond1_20260603/best_hyperparams.json",
+  "generated_grid_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/grid_opt_cfg/pmh_cond1_best_260603.yaml",
+  "grid_output_dir": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-grid-result/pmh/cond1_260603"
+}

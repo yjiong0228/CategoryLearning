@@ -38,6 +38,15 @@ class DynamicHypothesisModule(BaseModule):
     VALID_FEEDBACK_MODES = ("graded", "exact")
     VALID_PADDING_MODES = ("chance", "zero", "one")
     VALID_SIMILARITY_SOURCES = ("partition",)
+    DEFAULT_POOL_BY_METHOD = {
+        "top_posterior": POOL_ACTIVE,
+        "random_posterior": POOL_ACTIVE,
+        "epsilon_posterior": POOL_ACTIVE,
+        "temperature_posterior": POOL_ACTIVE,
+        "diverse_posterior": POOL_ACTIVE,
+        "random": POOL_ALL_UNSELECTED,
+        "ksimilar_centers": POOL_ALL_UNSELECTED,
+    }
     amount_evaluators = {}
 
     def __init__(self, engine, **kwargs):
@@ -46,7 +55,8 @@ class DynamicHypothesisModule(BaseModule):
 
         self.total_hypo = self.engine.set_size
         self.full_indices = np.arange(self.total_hypo, dtype=int)
-        self.rng = np.random.default_rng(kwargs.get("random_seed", None))
+        self.module_seed = kwargs.get("module_seed", None)
+        self.rng = np.random.default_rng(self.module_seed)
         
         # Config: strategies is a list of dicts
         # Example: [{"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7}, ...]
@@ -186,21 +196,23 @@ class DynamicHypothesisModule(BaseModule):
         for idx, raw in enumerate(strategies):
             if not isinstance(raw, dict):
                 raise ValueError(f"Strategy #{idx} must be a dict, got {type(raw).__name__}.")
-            missing = [key for key in ("amount", "method", "pool") if key not in raw]
+            missing = [key for key in ("amount", "method") if key not in raw]
             if missing:
                 raise ValueError(
                     f"Strategy #{idx} is missing required key(s): {', '.join(missing)}. "
-                    "Each strategy must explicitly set amount, method, and pool."
+                    "Each strategy must set amount and method."
                 )
 
             strat = dict(raw)
             method = str(strat["method"])
-            pool = str(strat["pool"])
             if method not in self.method_selectors:
                 raise ValueError(
                     f"Strategy #{idx} has unsupported method '{method}'. "
                     f"Supported methods: {', '.join(self.VALID_METHODS)}."
                 )
+            if "pool" not in strat:
+                strat["pool"] = self.DEFAULT_POOL_BY_METHOD.get(method)
+            pool = str(strat["pool"])
             if pool not in self.VALID_POOLS:
                 raise ValueError(
                     f"Strategy #{idx} has unsupported pool '{pool}'. "
@@ -395,9 +407,11 @@ class DynamicHypothesisModule(BaseModule):
         if isinstance(amount, int):
             return self._validate_count(amount, context="integer amount")
         elif callable(amount):
+            kwargs.setdefault("rng", self.rng)
             return self._validate_count(amount(**kwargs), context="callable amount")
         elif isinstance(amount, str):
             if amount in self.amount_evaluators:
+                kwargs.setdefault("rng", self.rng)
                 return self._validate_count(
                     self.amount_evaluators[amount](**kwargs),
                     context=f"amount evaluator '{amount}'",
@@ -942,9 +956,18 @@ class DynamicHypothesisModule(BaseModule):
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
-            if self.debug:
-                print("  No hypotheses selected! Fallback to 1 random.")
-            new_active_set.update(self._sample_from_pool(self.full_indices, 1))
+            fallback_idx, fallback_pool = self._fallback_best_posterior(posterior)
+            new_active_set.add(fallback_idx)
+            step_counts["strategies"].append({
+                "label": "fallback_best_posterior",
+                "amount": "fallback",
+                "method": "top_posterior",
+                "pool": fallback_pool,
+                "requested_count": 1,
+                "selected_count": 1,
+                "selected": [fallback_idx],
+            })
+            step_counts["fallback"] = step_counts.get("fallback", 0) + 1
 
         self.active = np.sort(list(new_active_set))
         if self.max_active_hypotheses is not None and len(self.active) > self.max_active_hypotheses:
@@ -977,6 +1000,22 @@ class DynamicHypothesisModule(BaseModule):
             inactive = self._exclude(self.full_indices, active)
             return self._exclude(inactive, selected_arr)
         raise ValueError(f"Unsupported pool '{pool}'.")
+
+    def _fallback_best_posterior(self, posterior: np.ndarray) -> Tuple[int, str]:
+        if self.old_active is not None and len(self.old_active) > 0:
+            candidates = np.asarray(self.old_active, dtype=int)
+            pool_label = self.POOL_ACTIVE
+        else:
+            candidates = self.full_indices
+            pool_label = "full"
+
+        candidates = candidates[(candidates >= 0) & (candidates < self.total_hypo)]
+        if candidates.size == 0:
+            candidates = self.full_indices
+            pool_label = "full"
+
+        best_arg = int(np.argmax(posterior[candidates]))
+        return int(candidates[best_arg]), pool_label
 
     def _select_random_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, **kwargs) -> List[int]:
         """

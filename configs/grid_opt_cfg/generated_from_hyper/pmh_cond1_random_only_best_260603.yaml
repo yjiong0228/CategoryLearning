@@ -1,0 +1,102 @@
+hyper_base_seed: 42
+dataset:
+  processed_dir: ../../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+output_dir: ../../../results/state-based-grid-result/pmh/cond1_random_only_260603
+oral:
+  mode: center
+n_jobs: 128
+grid_repeats: 16
+refit_repeats: 1024
+window_size: 8
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_brier
+param_grid:
+  gamma:
+  - 0.1
+  - 0.2
+  - 0.3
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+  w0:
+  - 0.005
+  - 0.01
+  - 0.03
+  - 0.06
+  - 0.1
+  - 0.15
+  - 0.2
+  - 0.5
+  - 0.8
+engine_config:
+  modules:
+    perception_mod:
+      class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+    beta_mod:
+      class: src.Bayesian_state.problems.modules.beta.BetaModule
+      kwargs:
+        beta_init: 1.0
+        beta_min: 0.1
+        beta_max: 50.0
+        decrease_rate: 0.2
+        correct_additive: 1
+        use_prior_scaling: true
+        prior_beta_scale: 10.0
+    hypo_transitions_mod:
+      class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
+      kwargs:
+        strategies:
+        - amount: random_4
+          method: random_posterior
+          pool: active
+        - amount: opp_random_4
+          method: random
+          pool: all_unselected
+        init_num: 2
+    likelihood_mod:
+      class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+      kwargs:
+        distance_mode: prototype
+    memory_mod:
+      class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+      kwargs:
+        w0: null
+        gamma: null
+  agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod
+subjects:
+- 102
+subject_overrides:
+  '102':
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            strategies:
+            - amount: entropy_4
+              method: random_posterior
+            - amount: opp_entropy_4
+              method: random
+            max_active_hypotheses: 4
+            init_num: 2
+        beta_mod:
+          kwargs:
+            beta_init: 1.5
+            decrease_rate: 0.3
+            prior_beta_scale: 10.0
+    hyper_candidate_seed: 3147945738

@@ -1,7 +1,6 @@
 """Coordinate-descent two-layer hyper optimizer for Bayesian_state."""
 from __future__ import annotations
 
-import hashlib
 import json
 import random
 from copy import deepcopy
@@ -31,6 +30,7 @@ from src.Bayesian_state.run_grid_optimization import (
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.optimizer_amr import StateModelAMROptimizer
+from src.Bayesian_state.utils.optimizer_common import derive_hyper_candidate_seed
 from src.Bayesian_state.utils.optimizer_grid import StateModelGridOptimizer
 from src.Bayesian_state.hyper_opt.value_sources import (
     validate_no_nested_hyperparam_paths,
@@ -45,7 +45,7 @@ class CombinationResult:
     hyperparams: Dict[str, Any]
     aggregated_error: float
     subject_metrics: Dict[int, Dict[str, Any]]
-    random_seed: int
+    hyper_candidate_seed: int
     restart_id: int
     iter_id: int
     coordinate: str
@@ -77,8 +77,10 @@ class HyperOptimizerCD:
         if self.save_level not in {"compact", "full"}:
             raise ValueError("save_level must be 'compact' or 'full'")
 
-        self.base_seed = int(self.config.get("random_seed", 1234))
-        self.rng = random.Random(self.base_seed)
+        if "hyper_base_seed" not in self.config:
+            raise ValueError("Hyper config must include hyper_base_seed. The old random_seed field is no longer supported.")
+        self.hyper_base_seed = int(self.config["hyper_base_seed"])
+        self.rng = random.Random(self.hyper_base_seed)
 
         inner_base = self.config.get("inner_base_config_path")
         if not inner_base:
@@ -241,13 +243,26 @@ class HyperOptimizerCD:
                 )
         return next_inner, next_engine
 
-    def _combination_seed(self, stage_name: str, combination_index: int, combination_params: Mapping[str, Any]) -> int:
-        payload = json.dumps(
-            {"stage": stage_name, "idx": combination_index, "params": combination_params, "base_seed": self.base_seed},
-            sort_keys=True,
+    def _hyper_candidate_seed(
+        self,
+        stage_name: str,
+        combination_index: int,
+        combination_params: Mapping[str, Any],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+    ) -> int:
+        return derive_hyper_candidate_seed(
+            hyper_base_seed=self.hyper_base_seed,
+            stage=stage_name,
+            combination_index=combination_index,
+            hyperparams=combination_params,
+            extra_context={
+                "restart_id": int(restart_id),
+                "iter_id": int(iter_id),
+                "coordinate": str(coordinate),
+            },
         )
-        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        return int(digest[:8], 16)
 
     def _prepare_stage_config(self, stage_name: str) -> Dict[str, Any]:
         stage_cfg = (self.config.get("stages") or {}).get(stage_name)
@@ -310,8 +325,14 @@ class HyperOptimizerCD:
     ) -> CombinationResult:
         combination_index = self._combination_counter
         self._combination_counter += 1
-        seed = self._combination_seed(stage_name, combination_index, point)
-        np.random.seed(seed)
+        hyper_candidate_seed = self._hyper_candidate_seed(
+            stage_name,
+            combination_index,
+            point,
+            restart_id,
+            iter_id,
+            coordinate,
+        )
 
         subject_metrics: Dict[int, Dict[str, Any]] = {}
         errors: List[float] = []
@@ -325,10 +346,6 @@ class HyperOptimizerCD:
             else:
                 param_grid = resolve_param_grid_amr(combination_inner_cfg)
 
-            mod = combination_engine_cfg.get("modules", {}).get("hypo_transitions_mod", {}).get("kwargs", {})
-            if isinstance(mod, dict) and "random_seed" not in mod:
-                mod["random_seed"] = int(seed)
-
             optimizer, dataset_paths = self._build_optimizer(combination_inner_cfg, combination_engine_cfg, self.inner_base_config_path)
             optimizer.n_jobs = n_jobs
             effective_loss_metric = str(combination_inner_cfg["loss_metric"])
@@ -336,10 +353,12 @@ class HyperOptimizerCD:
                 effective_loss_delta = resolve_loss_delta_grid(combination_inner_cfg, effective_loss_metric)
             else:
                 effective_loss_delta = resolve_loss_delta_amr(combination_inner_cfg, effective_loss_metric)
-            result = optimizer.optimize_subject(
+            if "grid_repeats" not in combination_inner_cfg:
+                raise ValueError("Inner config must include grid_repeats. The old n_repeats field is no longer supported.")
+            repeat_count = int(combination_inner_cfg["grid_repeats"])
+            common_kwargs = dict(
                 subject_id=sid,
                 param_grid=param_grid,
-                n_repeats=int(combination_inner_cfg.get("n_repeats", 1)),
                 refit_repeats=int(combination_inner_cfg.get("refit_repeats", 0)),
                 window_size=int(combination_inner_cfg.get("window_size", window_size)),
                 stop_at=float(combination_inner_cfg.get("stop_at", 1.0)),
@@ -349,8 +368,19 @@ class HyperOptimizerCD:
                 selection_prediction_mode=str(combination_inner_cfg.get("selection_prediction_mode", sel_mode)),
                 loss_metric=effective_loss_metric,
                 loss_delta=effective_loss_delta,
-                random_seed=seed,
             )
+            if self.inner_optimizer == "grid":
+                result = optimizer.optimize_subject(
+                    **common_kwargs,
+                    grid_repeats=repeat_count,
+                    hyper_candidate_seed=hyper_candidate_seed,
+                )
+            else:
+                result = optimizer.optimize_subject(
+                    **common_kwargs,
+                    grid_repeats=repeat_count,
+                    random_seed=hyper_candidate_seed,
+                )
             best = result["best"]
             mean_error = float(getattr(best, "mean_error"))
             errors.append(mean_error)
@@ -360,6 +390,7 @@ class HyperOptimizerCD:
                 "best_params": dict(getattr(best, "params", {})),
                 "condition": int(result.get("condition", -1)),
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
+                "hyper_candidate_seed": int(hyper_candidate_seed),
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
@@ -369,7 +400,7 @@ class HyperOptimizerCD:
             hyperparams=deepcopy(point),
             aggregated_error=agg_error,
             subject_metrics=subject_metrics,
-            random_seed=seed,
+            hyper_candidate_seed=hyper_candidate_seed,
             restart_id=restart_id,
             iter_id=iter_id,
             coordinate=coordinate,
@@ -389,11 +420,89 @@ class HyperOptimizerCD:
             "coordinate": tr.coordinate,
             "hyperparams": tr.hyperparams,
             "aggregated_error": tr.aggregated_error,
-            "random_seed": tr.random_seed,
+            "hyper_candidate_seed": tr.hyper_candidate_seed,
         }
         if self.save_level == "full":
             data["subject_metrics"] = tr.subject_metrics
         return data
+
+    def _load_jsonl_records(self, path: Path) -> List[Dict[str, Any]]:
+        if not path.is_file():
+            raise FileNotFoundError(f"Cannot resume fine stage; missing coarse combinations file: {path}")
+
+        records: List[Dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as f:
+            for line_no, line in enumerate(f, start=1):
+                text = line.strip()
+                if not text:
+                    continue
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSONL at {path}:{line_no}") from exc
+                if not isinstance(payload, Mapping):
+                    raise ValueError(f"JSONL record must be a mapping at {path}:{line_no}")
+                records.append(dict(payload))
+        return records
+
+    def _write_jsonl_records(self, path: Path, records: Sequence[Mapping[str, Any]]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(_to_builtin(record), ensure_ascii=False) + "\n")
+
+    def _trim_jsonl_to_stage(self, path: Path, stage: str) -> None:
+        if not path.is_file():
+            return
+        records = self._load_jsonl_records(path)
+        kept = [record for record in records if record.get("stage") == stage]
+        if len(kept) != len(records):
+            self._write_jsonl_records(path, kept)
+
+    def _combination_from_record(self, record: Mapping[str, Any], path: Path) -> CombinationResult:
+        stage = str(record.get("stage", "")).strip()
+        if not stage:
+            raise ValueError(f"Combination record is missing stage in {path}")
+
+        hyperparams = record.get("hyperparams")
+        if not isinstance(hyperparams, Mapping):
+            raise ValueError(f"Combination record is missing hyperparams in {path}")
+
+        raw_subject_metrics = record.get("subject_metrics")
+        subject_metrics: Dict[int, Dict[str, Any]] = {}
+        if isinstance(raw_subject_metrics, Mapping):
+            subject_metrics = {
+                int(sid): dict(metrics)
+                for sid, metrics in raw_subject_metrics.items()
+                if isinstance(metrics, Mapping)
+            }
+
+        return CombinationResult(
+            stage=stage,
+            combination_index=int(record["combination_index"]),
+            hyperparams=deepcopy(dict(hyperparams)),
+            aggregated_error=float(record["aggregated_error"]),
+            subject_metrics=subject_metrics,
+            hyper_candidate_seed=int(record["hyper_candidate_seed"]),
+            restart_id=int(record.get("restart_id", -1)),
+            iter_id=int(record.get("iter_id", -1)),
+            coordinate=str(record.get("coordinate", "loaded_coarse")),
+        )
+
+    def _load_coarse_for_fine_resume(self, path: Path) -> List[CombinationResult]:
+        records = self._load_jsonl_records(path)
+        coarse_records = [record for record in records if record.get("stage") == "coarse"]
+        if not coarse_records:
+            raise ValueError(f"Cannot resume fine stage; no coarse records found in {path}")
+
+        # Drop stale or partial fine rows before appending the new fine stage.
+        if len(coarse_records) != len(records):
+            self._write_jsonl_records(path, coarse_records)
+
+        combinations = [self._combination_from_record(record, path) for record in coarse_records]
+        max_existing_index = max(int(record["combination_index"]) for record in coarse_records)
+        self._combination_counter = max(self._combination_counter, max_existing_index + 1)
+        return combinations
 
     def _init_point(self, space: Dict[str, List[Any]]) -> Dict[str, Any]:
         if self.init_strategy == "anchor":
@@ -554,21 +663,50 @@ class HyperOptimizerCD:
             raise RuntimeError("CD optimizer produced no combination")
         return all_combinations, restart_best, global_best
 
-    def _run_subject_pipeline(self, subject_id: int, stage: str, output_base: Path) -> Dict[str, Any]:
+    def _run_subject_pipeline(
+        self,
+        subject_id: int,
+        stage: str,
+        output_base: Path,
+        resume_from_coarse: bool = False,
+    ) -> Dict[str, Any]:
         subject_dir = output_base / f"subject_{int(subject_id)}"
         subject_dir.mkdir(parents=True, exist_ok=True)
-        return self._run_pipeline(subjects=[int(subject_id)], stage=stage, output_dir=subject_dir)
+        return self._run_pipeline(
+            subjects=[int(subject_id)],
+            stage=stage,
+            output_dir=subject_dir,
+            resume_from_coarse=resume_from_coarse,
+        )
 
-    def _run_pipeline(self, subjects: Sequence[int], stage: str, output_dir: Path) -> Dict[str, Any]:
+    def _run_pipeline(
+        self,
+        subjects: Sequence[int],
+        stage: str,
+        output_dir: Path,
+        resume_from_coarse: bool = False,
+    ) -> Dict[str, Any]:
+        if resume_from_coarse and stage != "fine":
+            raise ValueError("resume_from_coarse requires stage='fine'")
+
         stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
         all_combinations_path = output_dir / "all_combinations.jsonl"
-        if all_combinations_path.exists():
+        if resume_from_coarse:
+            stage_combinations: Dict[str, List[CombinationResult]] = {
+                "coarse": self._load_coarse_for_fine_resume(all_combinations_path)
+            }
+        elif all_combinations_path.exists():
             all_combinations_path.unlink()
+            stage_combinations = {}
+        else:
+            stage_combinations = {}
+
         coordinate_trace_path = output_dir / "coordinate_trace.jsonl"
-        if coordinate_trace_path.exists():
+        if resume_from_coarse:
+            self._trim_jsonl_to_stage(coordinate_trace_path, "coarse")
+        elif coordinate_trace_path.exists():
             coordinate_trace_path.unlink()
 
-        stage_combinations: Dict[str, List[CombinationResult]] = {}
         stage_restarts: Dict[str, Any] = {}
         for stage_name in stages_to_run:
             stage_inner_cfg = self._prepare_stage_config(stage_name)
@@ -615,7 +753,7 @@ class HyperOptimizerCD:
                         "restart_id": t.restart_id,
                         "iter_id": t.iter_id,
                         "coordinate": t.coordinate,
-                        "random_seed": t.random_seed,
+                        "hyper_candidate_seed": t.hyper_candidate_seed,
                     }
                     for t in ranked[:max(1, top_k)]
                 ],
@@ -638,7 +776,8 @@ class HyperOptimizerCD:
             "best_combination_index": best_combination.combination_index,
             "best_hyperparams": best_combination.hyperparams,
             "aggregated_error": best_combination.aggregated_error,
-            "random_seed": best_combination.random_seed,
+            "hyper_candidate_seed": best_combination.hyper_candidate_seed,
+            "hyper_base_seed": self.hyper_base_seed,
             "hyper_backend": "cd",
         }
         if len(subjects) == 1:
@@ -662,17 +801,29 @@ class HyperOptimizerCD:
             "best": best_payload,
         }
 
-    def run(self, subjects: Sequence[int], stage: str = "all") -> Dict[str, Any]:
+    def run(self, subjects: Sequence[int], stage: str = "all", resume_from_coarse: bool = False) -> Dict[str, Any]:
         if stage not in {"coarse", "fine", "all"}:
             raise ValueError("stage must be one of: coarse, fine, all")
+        if resume_from_coarse and stage != "fine":
+            raise ValueError("resume_from_coarse requires stage='fine'")
 
         if self.hyperparam_selection_mode == "group_mean":
-            return self._run_pipeline(subjects=subjects, stage=stage, output_dir=self.output_dir)
+            return self._run_pipeline(
+                subjects=subjects,
+                stage=stage,
+                output_dir=self.output_dir,
+                resume_from_coarse=resume_from_coarse,
+            )
 
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
         for sid in subjects:
-            out = self._run_subject_pipeline(int(sid), stage, self.output_dir)
+            out = self._run_subject_pipeline(
+                int(sid),
+                stage,
+                self.output_dir,
+                resume_from_coarse=resume_from_coarse,
+            )
             per_subject_outputs[str(int(sid))] = {
                 "output_dir": out["output_dir"],
                 "all_combinations": out["all_combinations"],
@@ -690,6 +841,7 @@ class HyperOptimizerCD:
             "inner_base_config_path": str(self.inner_base_config_path),
             "hyper_config_path": str(self.config_path),
             "hyper_backend": "cd",
+            "hyper_base_seed": self.hyper_base_seed,
             "per_subject_best": per_subject_best,
         }
         best_path = self.output_dir / "best_hyperparams.json"

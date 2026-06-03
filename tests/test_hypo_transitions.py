@@ -67,9 +67,10 @@ def _module(strategies, **kwargs) -> DynamicHypothesisModule:
     )
 
 
-def test_strategy_requires_explicit_pool() -> None:
-    with pytest.raises(ValueError, match="missing required key.*pool"):
-        _module([{"amount": "fixed", "method": "random", "value": 1}])
+def test_strategy_without_pool_uses_method_default() -> None:
+    mod = _module([{"amount": "fixed", "method": "random", "value": 1}])
+
+    assert mod.strategies[0]["pool"] == DynamicHypothesisModule.POOL_ALL_UNSELECTED
 
 
 @pytest.mark.parametrize(
@@ -166,7 +167,7 @@ def test_strategy_counts_log_keeps_labels_and_method_aggregates() -> None:
         {"label": "first_random", "amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1},
         {"label": "second_random", "amount": "fixed", "method": "random", "pool": "all_unselected", "value": 2},
     ]
-    mod = _module(strategies, random_seed=3)
+    mod = _module(strategies, module_seed=3)
 
     mod._transition()
 
@@ -177,21 +178,24 @@ def test_strategy_counts_log_keeps_labels_and_method_aggregates() -> None:
     assert all("selected" in item for item in log["strategies"])
 
 
-def test_empty_transition_falls_back_to_one_random_hypothesis() -> None:
+def test_empty_transition_falls_back_to_best_posterior_hypothesis() -> None:
+    posterior = np.array([0.1, 0.2, 0.5, 0.2])
     strategies = [{"amount": "fixed", "method": "random", "pool": "active", "value": 0}]
-    mod = _module(strategies, random_seed=10)
+    mod = _module(strategies, engine_kwargs={"set_size": 4, "posterior": posterior}, module_seed=10)
+    mod.active = np.array([0, 2], dtype=int)
 
     mod._transition()
 
-    assert len(mod.active) == 1
+    assert mod.active.tolist() == [2]
     assert mod.strategy_counts_log[-1]["active_total"] == 1
     assert mod.strategy_counts_log[-1]["strategies"][0]["selected_count"] == 0
+    assert mod.strategy_counts_log[-1]["strategies"][-1]["label"] == "fallback_best_posterior"
 
 
 def test_same_seed_reproducible_and_derived_repeats_differ() -> None:
     strategies = [{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 4}]
-    first = _module(strategies, random_seed=123)
-    second = _module(strategies, random_seed=123)
+    first = _module(strategies, module_seed=123)
+    second = _module(strategies, module_seed=123)
 
     assert first._sample_from_pool(np.arange(20), 6).tolist() == second._sample_from_pool(np.arange(20), 6).tolist()
     assert derive_run_seed(123, 7, {"gamma": 0.1, "w0": 0.2}, "grid", 0) == derive_run_seed(
@@ -236,7 +240,7 @@ def test_nonfinite_posterior_raises() -> None:
 def test_random_posterior_zero_mass_pool_falls_back_to_uniform() -> None:
     posterior = np.array([0.0, 0.0, 0.7, 0.3])
     strategy = {"amount": "fixed", "method": "random_posterior", "pool": "active", "value": 1}
-    mod = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, random_seed=4)
+    mod = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, module_seed=4)
     mod.active = np.array([0, 1], dtype=int)
 
     mod._transition()
@@ -247,7 +251,7 @@ def test_random_posterior_zero_mass_pool_falls_back_to_uniform() -> None:
 
 def test_random_posterior_still_rejects_invalid_candidate_weights() -> None:
     strategy = {"amount": "fixed", "method": "random_posterior", "pool": "active", "value": 1}
-    mod = _module([strategy], engine_kwargs={"set_size": 4}, random_seed=4)
+    mod = _module([strategy], engine_kwargs={"set_size": 4}, module_seed=4)
     posterior = np.array([0.5, -0.1, 0.4, 0.2])
 
     with pytest.raises(ValueError, match="invalid values"):
@@ -279,7 +283,7 @@ def test_top_p_scope_global_vs_pool() -> None:
 def test_epsilon_posterior_can_drop_high_posterior_hypothesis() -> None:
     posterior = np.array([0.99, 0.01])
     strategy = {"amount": "fixed", "method": "epsilon_posterior", "pool": "all_unselected", "value": 1, "epsilon": 1.0}
-    mod = _module([strategy], engine_kwargs={"set_size": 2, "posterior": posterior}, random_seed=0)
+    mod = _module([strategy], engine_kwargs={"set_size": 2, "posterior": posterior}, module_seed=0)
 
     mod._transition()
 
@@ -295,8 +299,8 @@ def test_temperature_posterior_is_seed_reproducible() -> None:
         "value": 2,
         "temperature": 2.0,
     }
-    first = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, random_seed=44)
-    second = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, random_seed=44)
+    first = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, module_seed=44)
+    second = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior}, module_seed=44)
 
     first._transition()
     second._transition()
@@ -346,7 +350,7 @@ def test_recent_accuracy_history_is_recorded_after_transition() -> None:
     }
     engine = _engine(set_size=8, posterior=posterior, partition=FakePartition(n_cats=2))
     engine.observation = (np.array([0.1, 0.2]), 1, 1.0)
-    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=6, max_active_hypotheses=7, random_seed=2)
+    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=6, max_active_hypotheses=7, module_seed=2)
 
     mod.process()
 
@@ -460,7 +464,7 @@ def test_ksimilar_random_zero_scores_falls_back_to_uniform() -> None:
     }
     engine = _engine(set_size=4, posterior=posterior, partition=FarPrototypePartition(set_size=4))
     engine.observation = (np.array([0.0]), 0, 1.0)
-    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=1, max_active_hypotheses=4, random_seed=5)
+    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=1, max_active_hypotheses=4, module_seed=5)
     mod.active = np.array([0], dtype=int)
 
     mod._transition()
@@ -493,7 +497,7 @@ def test_amount_strategy_smoke_runs(amount, posterior, partition) -> None:
         tested,
         {"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1},
     ]
-    mod = _module(strategies, engine_kwargs={"set_size": 8, "posterior": posterior, "partition": partition}, random_seed=11)
+    mod = _module(strategies, engine_kwargs={"set_size": 8, "posterior": posterior, "partition": partition}, module_seed=11)
 
     mod._transition()
 
@@ -521,7 +525,7 @@ def test_method_strategy_smoke_runs(method, partition) -> None:
         strategy.update({"proto_hypo_amount": 1, "proto_hypo_method": "top", "cluster_hypo_method": "top"})
     engine = _engine(set_size=8, posterior=posterior, partition=partition)
     engine.observation = (np.array([0.2, 0.3]), 1, 1.0)
-    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=3, max_active_hypotheses=7, random_seed=17)
+    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=3, max_active_hypotheses=7, module_seed=17)
 
     mod.process()
     mod.process()

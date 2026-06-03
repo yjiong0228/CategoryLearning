@@ -1,6 +1,8 @@
 ﻿"""Shared utilities for StateModel optimizers (grid / AMR)."""
 from __future__ import annotations
 
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
@@ -58,6 +60,114 @@ CHOICE_LOSS_METRIC_CHOICES = (
     LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
 )
 LOSS_METRIC_CHOICES = ACCURACY_LOSS_METRIC_CHOICES + CHOICE_LOSS_METRIC_CHOICES
+SEED_MODULUS = 2 ** 32
+
+
+def _seedable(obj: Any) -> Any:
+    """Convert common Python/numpy/path values to stable JSON seed payloads."""
+    if isinstance(obj, np.ndarray):
+        return [_seedable(x) for x in obj.tolist()]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, Path):
+        return obj.as_posix()
+    if isinstance(obj, Mapping):
+        return {str(k): _seedable(v) for k, v in sorted(obj.items(), key=lambda item: str(item[0]))}
+    if isinstance(obj, (list, tuple)):
+        return [_seedable(x) for x in obj]
+    return obj
+
+
+def stable_seed(payload: Any) -> int:
+    """Derive a deterministic uint32 seed from a JSON-serializable payload."""
+    encoded = json.dumps(_seedable(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % SEED_MODULUS
+
+
+def derive_hyper_candidate_seed(
+    hyper_base_seed: int,
+    stage: str,
+    combination_index: int,
+    hyperparams: Mapping[str, Any],
+    extra_context: Mapping[str, Any] | None = None,
+) -> int:
+    payload: Dict[str, Any] = {
+        "seed_role": "hyper_candidate_seed",
+        "hyper_base_seed": int(hyper_base_seed),
+        "stage": str(stage),
+        "combination_index": int(combination_index),
+        "hyperparams": dict(hyperparams),
+    }
+    if extra_context:
+        payload["extra_context"] = dict(extra_context)
+    return stable_seed(payload)
+
+
+def derive_grid_point_seed(
+    hyper_candidate_seed: int,
+    subject_id: int,
+    params: Mapping[str, Any],
+) -> int:
+    return stable_seed(
+        {
+            "seed_role": "grid_point_seed",
+            "hyper_candidate_seed": int(hyper_candidate_seed),
+            "subject_id": int(subject_id),
+            "params": dict(params),
+        }
+    )
+
+
+def derive_trajectory_seed(
+    grid_point_seed: int,
+    phase: str,
+    repeat_index: int,
+) -> int:
+    return stable_seed(
+        {
+            "seed_role": "trajectory_seed",
+            "grid_point_seed": int(grid_point_seed),
+            "phase": str(phase),
+            "repeat_index": int(repeat_index),
+        }
+    )
+
+
+def derive_module_seed(
+    trajectory_seed: int,
+    module_name: str = "hypo_transitions_mod",
+) -> int:
+    return stable_seed(
+        {
+            "seed_role": "module_seed",
+            "trajectory_seed": int(trajectory_seed),
+            "module_name": str(module_name),
+        }
+    )
+
+
+def inject_module_seed_from_trajectory(
+    engine_config: Dict[str, Any],
+    trajectory_seed: int | None,
+    module_name: str = "hypo_transitions_mod",
+) -> int | None:
+    if trajectory_seed is None:
+        return None
+    module_seed = derive_module_seed(int(trajectory_seed), module_name=module_name)
+    modules = engine_config.get("modules")
+    if not isinstance(modules, dict) or module_name not in modules:
+        return None
+    module_cfg = modules[module_name]
+    if not isinstance(module_cfg, dict):
+        return None
+    kwargs = module_cfg.setdefault("kwargs", {})
+    if not isinstance(kwargs, dict):
+        return None
+    kwargs["module_seed"] = int(module_seed)
+    return int(module_seed)
 
 
 class LossStrategy(ABC):
@@ -415,7 +525,9 @@ class GridPointResult:
     refit_mean_error: Optional[float] = None
     refit_std_error: Optional[float] = None
     representative_run_index: Optional[int] = None
-    n_repeats: int = 1
+    grid_repeats: int = 1
+    refit_repeats: int = 0
+    grid_point_seed: Optional[int] = None
     std_error: float = 0.0
 
     @property
@@ -440,6 +552,10 @@ class SingleRunResult:
     beta_log: Optional[Sequence[np.ndarray]]
     step_log: Optional[Sequence[Dict[str, Any]]]
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]]
+    grid_point_seed: Optional[int] = None
+    trajectory_seed: Optional[int] = None
+    module_seed: Optional[int] = None
+    seed_context: Optional[Dict[str, Any]] = None
 
 
 class BaseStateOptimizer:
@@ -888,6 +1004,9 @@ def evaluate_state_model_run(
     loss_metric: str = LOSS_METRIC_MAE,
     loss_delta: float | None = None,
     run_seed: int | None = None,
+    grid_point_seed: int | None = None,
+    trajectory_seed: int | None = None,
+    seed_context: Optional[Mapping[str, Any]] = None,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     stimulus, choices, feedback, categories = arrays
@@ -897,7 +1016,11 @@ def evaluate_state_model_run(
 
     engine_config = deepcopy(engine_config_template)
     inject_params(engine_config, params)
-    set_hypothesis_transition_seed(engine_config, run_seed)
+    effective_trajectory_seed = trajectory_seed if trajectory_seed is not None else run_seed
+    module_seed = inject_module_seed_from_trajectory(engine_config, effective_trajectory_seed)
+    if effective_trajectory_seed is not None:
+        # Keep legacy modules that still call global np.random reproducible per trajectory.
+        np.random.seed(int(effective_trajectory_seed))
     model = StateModel(
         engine_config,
         condition=condition,
@@ -963,4 +1086,8 @@ def evaluate_state_model_run(
         beta_log=beta_log,
         step_log=step_log,
         strategy_counts_log=strategy_log,
+        grid_point_seed=int(grid_point_seed) if grid_point_seed is not None else None,
+        trajectory_seed=int(effective_trajectory_seed) if effective_trajectory_seed is not None else None,
+        module_seed=module_seed,
+        seed_context=dict(seed_context) if seed_context is not None else None,
     )

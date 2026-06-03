@@ -1,4 +1,5 @@
-﻿# Grid optimization config for MEG Condition 3 subjects.
+hyper_base_seed: 42
+# Grid optimization config for MEG Condition 3 subjects.
 engine_config_path: ../model_struct/pmh_grid_cond3.yaml
 
 # MEG subjects in data_meg/processed/Task3b_processed.csv
@@ -27,7 +28,7 @@ engine_config:
 n_jobs: 128
 
 # Repeats
-n_repeats: 64
+grid_repeats: 64
 refit_repeats: 4096
 
 # Evaluation

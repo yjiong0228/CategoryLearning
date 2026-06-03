@@ -229,7 +229,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         arrays: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         params: Dict[str, Any],
         window_size: int,
-        n_repeats: int,
+        grid_repeats: int,
         keep_logs: bool,
         prediction_mode: str,
         selection_prediction_mode: str,
@@ -239,7 +239,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         phase: str = "amr",
     ) -> GridPointResult:
         runs: List[SingleRunResult]
-        if n_repeats <= 1:
+        if grid_repeats <= 1:
             runs = [
                 evaluate_state_model_run(
                     subject_id,
@@ -278,7 +278,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                     loss_delta,
                     run_seed=derive_run_seed(base_seed, subject_id, params, phase, repeat_index),
                 )
-                for repeat_index in range(n_repeats)
+                for repeat_index in range(grid_repeats)
             ))
             runs = [r for r in raw_runs if r is not None]
 
@@ -325,7 +325,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
             refit_mean_error=mean_error,
             refit_std_error=std_error,
             representative_run_index=best_idx,
-            n_repeats=n_repeats,
+            grid_repeats=grid_repeats,
             std_error=std_error,
         )
 
@@ -333,7 +333,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
         self,
         subject_id: int,
         param_grid: Dict[str, Sequence[Any]],
-        n_repeats: int = 1,
+        grid_repeats: int = 1,
         refit_repeats: int = 0,
         window_size: int = 16,
         stop_at: float = 1.0,
@@ -384,7 +384,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 arrays,
                 params,
                 window_size,
-                n_repeats,
+                grid_repeats,
                 keep_logs,
                 prediction_mode,
                 selection_prediction_mode,
@@ -401,7 +401,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
             return gp.mean_error
 
         amr_options = dict(self._amr_kwargs)
-        approx_budget = max(50, len(combinations) * n_repeats) if combinations else 200
+        approx_budget = max(50, len(combinations) * grid_repeats) if combinations else 200
         amr_options.setdefault("max_evals", approx_budget)
         amr_options.setdefault("refine_top_k", 2)
         amr_options.setdefault("split_factor", 2)
@@ -433,6 +433,8 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 base_seed,
                 "refit",
             )
+            refit_gp.grid_repeats = grid_repeats
+            refit_gp.refit_repeats = refit_repeats
             best_result = refit_gp
         else:
             if best_result.best_error is None:
@@ -443,6 +445,7 @@ class StateModelAMROptimizer(BaseStateOptimizer):
                 best_result.refit_std_error = float(best_result.std_error)
             if best_result.sample_errors is None:
                 best_result.sample_errors = [float(best_result.mean_error)]
+            best_result.refit_repeats = 0
             if best_result.representative_run_index is None:
                 best_result.representative_run_index = 0
 
