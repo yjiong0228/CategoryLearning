@@ -956,7 +956,18 @@ class DynamicHypothesisModule(BaseModule):
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         
         if not new_active_set:
-            raise ValueError("No hypotheses were selected by the configured transition strategies.")
+            fallback_idx, fallback_pool = self._fallback_best_posterior(posterior)
+            new_active_set.add(fallback_idx)
+            step_counts["strategies"].append({
+                "label": "fallback_best_posterior",
+                "amount": "fallback",
+                "method": "top_posterior",
+                "pool": fallback_pool,
+                "requested_count": 1,
+                "selected_count": 1,
+                "selected": [fallback_idx],
+            })
+            step_counts["fallback"] = step_counts.get("fallback", 0) + 1
 
         self.active = np.sort(list(new_active_set))
         if self.max_active_hypotheses is not None and len(self.active) > self.max_active_hypotheses:
@@ -989,6 +1000,22 @@ class DynamicHypothesisModule(BaseModule):
             inactive = self._exclude(self.full_indices, active)
             return self._exclude(inactive, selected_arr)
         raise ValueError(f"Unsupported pool '{pool}'.")
+
+    def _fallback_best_posterior(self, posterior: np.ndarray) -> Tuple[int, str]:
+        if self.old_active is not None and len(self.old_active) > 0:
+            candidates = np.asarray(self.old_active, dtype=int)
+            pool_label = self.POOL_ACTIVE
+        else:
+            candidates = self.full_indices
+            pool_label = "full"
+
+        candidates = candidates[(candidates >= 0) & (candidates < self.total_hypo)]
+        if candidates.size == 0:
+            candidates = self.full_indices
+            pool_label = "full"
+
+        best_arg = int(np.argmax(posterior[candidates]))
+        return int(candidates[best_arg]), pool_label
 
     def _select_random_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, **kwargs) -> List[int]:
         """

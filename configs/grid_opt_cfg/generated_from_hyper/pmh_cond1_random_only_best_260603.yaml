@@ -59,8 +59,10 @@ engine_config:
         strategies:
         - amount: random_4
           method: random_posterior
+          pool: active
         - amount: opp_random_4
           method: random
+          pool: all_unselected
         init_num: 2
     likelihood_mod:
       class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
@@ -79,7 +81,6 @@ engine_config:
   - beta_mod
 subjects:
 - 102
-- 108
 subject_overrides:
   '102':
     engine_config:
@@ -99,21 +100,3 @@ subject_overrides:
             decrease_rate: 0.3
             prior_beta_scale: 10.0
     hyper_candidate_seed: 3147945738
-  '108':
-    engine_config:
-      modules:
-        hypo_transitions_mod:
-          kwargs:
-            strategies:
-            - amount: entropy_3
-              method: random_posterior
-            - amount: opp_entropy_4
-              method: random
-            max_active_hypotheses: 4
-            init_num: 3
-        beta_mod:
-          kwargs:
-            beta_init: 1.5
-            decrease_rate: 0.3
-            prior_beta_scale: 15.0
-    hyper_candidate_seed: 1211059039
