@@ -157,17 +157,19 @@ Most runs start from config files outside this package:
 
 ```text
 configs/model_struct/*.yaml
-configs/grid_opt_cfg/*.yaml
-configs/amr_opt_cfg/*.yaml
+configs/hyper_grid_cfg/*.yaml
+configs/hyper_cd_cfg/*.yaml
+configs/simulation_cfg/*.yaml
 ```
 
 Typical flow:
 
-1. A runner loads an optimization config.
-2. The config points to a model-structure config.
-3. `StateModel` receives the resolved `engine_config`.
-4. `BaseEngine.build_modules()` instantiates module classes listed in `engine_config["modules"]`.
-5. Per-trial inference follows `engine_config["agenda"]`.
+1. A hyper selector loads a `hyper_grid` or `hyper_cd` config.
+2. The hyper config points to a base simulation config.
+3. The simulation config points to a model-structure config.
+4. `StateModel` receives the resolved `engine_config`.
+5. `BaseEngine.build_modules()` instantiates module classes listed in `engine_config["modules"]`.
+6. Per-trial inference follows `engine_config["agenda"]`.
 
 ## Reader Notes
 

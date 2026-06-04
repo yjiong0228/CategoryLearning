@@ -1267,35 +1267,3 @@ class ModelEval(OralModelAlignmentMixin):
             body,
             **kwargs,
         )
-
-    # error_grid --------------------------------------------------------------
-
-    def plot_error_grids(self, results, subjects=None, fname=None, save_path=None, **kwargs):
-        labels = fname if isinstance(fname, (list, tuple)) and len(fname) >= 2 else ("gamma", "w0")
-
-        def body(ax, condition, iSub, info):
-            data = []
-            for (gamma, w0), errs in info["grid_errors"].items():
-                data.append({"gamma": gamma, "w0": w0, "Error": float(np.mean(errs))})
-
-            df = pd.DataFrame(data)
-            error_matrix = df.pivot(index="gamma", columns="w0", values="Error")
-            sns.heatmap(error_matrix, cbar_kws={"label": "Error"}, ax=ax, cmap="viridis_r")
-            ax.set(
-                title=f"Subject {iSub} (Condition {condition})",
-                xlabel=labels[1],
-                ylabel=labels[0],
-            )
-            ax.set_xticks(np.arange(len(error_matrix.columns)) + 0.5)
-            ax.set_xticklabels([f"{v:.4f}" for v in error_matrix.columns], rotation=45, ha="right")
-            ax.set_yticks(np.arange(len(error_matrix.index)) + 0.5)
-            ax.set_yticklabels([f"{v:.2f}" for v in error_matrix.index], rotation=0)
-
-        self._plot_by_condition(
-            results,
-            subjects,
-            save_path,
-            "Grid Search Error by Subject",
-            body,
-            **kwargs,
-        )

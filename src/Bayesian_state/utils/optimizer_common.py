@@ -1,8 +1,6 @@
-﻿"""Shared utilities for StateModel optimizers (grid / AMR)."""
+﻿"""Shared utilities for StateModel hyperparameter selection and simulations."""
 from __future__ import annotations
 
-import hashlib
-import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
@@ -36,8 +34,7 @@ LOSS_METRIC_CHOICE_NLL = "choice_nll"
 LOSS_METRIC_WRONG_CHOICE_NLL = "wrong_choice_nll"
 LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL = "conditional_wrong_choice_nll"
 
-# Backward-compatible constant names for call sites that import the old symbols.
-# The accepted config strings are the explicit names above.
+# Short aliases for internal call sites. Configs should use the explicit names above.
 LOSS_METRIC_ACCURACY_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
 LOSS_METRIC_ACCURACY_MSE = LOSS_METRIC_ACCURACY_CURVE_MSE
 LOSS_METRIC_ACCURACY_BERHU = LOSS_METRIC_ACCURACY_CURVE_BERHU
@@ -106,14 +103,14 @@ def derive_hyper_candidate_seed(
     return stable_seed(payload)
 
 
-def derive_grid_point_seed(
+def derive_simulation_point_seed(
     hyper_candidate_seed: int,
     subject_id: int,
     params: Mapping[str, Any],
 ) -> int:
     return stable_seed(
         {
-            "seed_role": "grid_point_seed",
+            "seed_role": "simulation_point_seed",
             "hyper_candidate_seed": int(hyper_candidate_seed),
             "subject_id": int(subject_id),
             "params": dict(params),
@@ -122,14 +119,14 @@ def derive_grid_point_seed(
 
 
 def derive_trajectory_seed(
-    grid_point_seed: int,
+    simulation_point_seed: int,
     phase: str,
     repeat_index: int,
 ) -> int:
     return stable_seed(
         {
             "seed_role": "trajectory_seed",
-            "grid_point_seed": int(grid_point_seed),
+            "simulation_point_seed": int(simulation_point_seed),
             "phase": str(phase),
             "repeat_index": int(repeat_index),
         }
@@ -506,8 +503,8 @@ def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> Lo
 
 
 @dataclass
-class GridPointResult:
-    """Container for a single parameter combination evaluation."""
+class SimulationResult:
+    """Container for repeated simulations under one fixed parameter setting."""
 
     params: Dict[str, Any]
     mean_error: float
@@ -522,21 +519,24 @@ class GridPointResult:
     raw_step_results: Optional[Sequence[Sequence[Dict[str, Any]]]] = None
     sample_errors: Optional[Sequence[float]] = None
     best_error: Optional[float] = None
-    refit_mean_error: Optional[float] = None
-    refit_std_error: Optional[float] = None
     representative_run_index: Optional[int] = None
-    grid_repeats: int = 1
-    refit_repeats: int = 0
-    grid_point_seed: Optional[int] = None
+    simulation_repeats: int = 0
+    simulation_point_seed: Optional[int] = None
     std_error: float = 0.0
 
     @property
     def gamma(self) -> float:
-        return self.params.get("gamma", float("nan"))
+        return self.params.get(
+            "gamma",
+            self.params.get("engine.modules.memory_mod.kwargs.gamma", float("nan")),
+        )
 
     @property
     def w0(self) -> float:
-        return self.params.get("w0", float("nan"))
+        return self.params.get(
+            "w0",
+            self.params.get("engine.modules.memory_mod.kwargs.w0", float("nan")),
+        )
 
 
 @dataclass
@@ -552,7 +552,7 @@ class SingleRunResult:
     beta_log: Optional[Sequence[np.ndarray]]
     step_log: Optional[Sequence[Dict[str, Any]]]
     strategy_counts_log: Optional[Sequence[Dict[str, Any]]]
-    grid_point_seed: Optional[int] = None
+    simulation_point_seed: Optional[int] = None
     trajectory_seed: Optional[int] = None
     module_seed: Optional[int] = None
     seed_context: Optional[Dict[str, Any]] = None
@@ -1004,7 +1004,7 @@ def evaluate_state_model_run(
     loss_metric: str = LOSS_METRIC_MAE,
     loss_delta: float | None = None,
     run_seed: int | None = None,
-    grid_point_seed: int | None = None,
+    simulation_point_seed: int | None = None,
     trajectory_seed: int | None = None,
     seed_context: Optional[Mapping[str, Any]] = None,
 ) -> SingleRunResult:
@@ -1086,7 +1086,7 @@ def evaluate_state_model_run(
         beta_log=beta_log,
         step_log=step_log,
         strategy_counts_log=strategy_log,
-        grid_point_seed=int(grid_point_seed) if grid_point_seed is not None else None,
+        simulation_point_seed=int(simulation_point_seed) if simulation_point_seed is not None else None,
         trajectory_seed=int(effective_trajectory_seed) if effective_trajectory_seed is not None else None,
         module_seed=module_seed,
         seed_context=dict(seed_context) if seed_context is not None else None,

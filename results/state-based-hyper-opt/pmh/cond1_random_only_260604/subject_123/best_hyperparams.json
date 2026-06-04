@@ -1,0 +1,37 @@
+{
+  "best_stage": "fine",
+  "best_combination_index": 21,
+  "best_hyperparams": {
+    "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+      {
+        "label": "retain_temp",
+        "amount": "entropy_norm_3",
+        "method": "temperature_posterior",
+        "pool": "active",
+        "min_count": 1,
+        "temperature": 2.2
+      },
+      {
+        "label": "explore_entropy",
+        "amount": "opp_entropy_norm_2",
+        "method": "random",
+        "pool": "inactive"
+      },
+      {
+        "label": "forced_explore",
+        "amount": "fixed",
+        "value": 1,
+        "method": "random",
+        "pool": "inactive"
+      }
+    ],
+    "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 4,
+    "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+    "engine.modules.beta_mod.kwargs.beta_init": 3.0,
+    "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+    "engine.modules.beta_mod.kwargs.prior_beta_scale": 5.0
+  },
+  "mean_error": 0.43606554346652926,
+  "best_error": 0.32613913843810566,
+  "hyper_candidate_seed": 469304054
+}

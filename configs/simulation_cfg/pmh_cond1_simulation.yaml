@@ -1,0 +1,37 @@
+# Fixed-parameter simulation config for Condition 1 subjects.
+# This replaces the old grid-search role for final repeated simulations.
+engine_config_path: ../model_struct/pmh_model_cond1.yaml
+
+subject_range: [101, 132]
+
+hyper_base_seed: 42
+
+# Dataset paths (relative to this YAML)
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/state-based-simulation/pmh/cond1
+oral:
+  mode: center
+
+# Parallelism for repeats within one subject
+n_jobs: 128
+
+# Repeated simulations under fixed hyperparameters
+simulation_repeats: 1024
+
+# Evaluation
+window_size: 8
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+# Prediction path config
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+
+loss_metric: choice_brier
