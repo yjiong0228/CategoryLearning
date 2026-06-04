@@ -177,6 +177,7 @@ def serialize_result(
         "best_error": best_error,
         "std_error": std_error,
         "simulation_repeats": int(selection_meta.get("simulation_repeats", getattr(best, "simulation_repeats", 0))),
+        "window_size": selection_meta.get("window_size"),
         "sample_errors": sample_errors,
         "prediction_mode": selection_meta.get("prediction_mode"),
         "selection_prediction_mode": selection_mode,

@@ -18,9 +18,13 @@ The current optimization utilities support the new hyper-selection plus fixed-si
   Resolves processed-data inputs.
 - `stream.py`
   Stores large optional logs out of the compact JSON payload.
+- `model_evaluation.py`
+  Plotting and analysis facade for post-simulation evaluation, including accuracy alignment, posterior trajectories, beta/strategy dynamics, trajectory-rank plots, and oral/model alignment.
 
 ## Expected Flow
 
 Hyper selectors in `hyper_grid/` and `hyper_cd/` score candidate hyperparameters by repeated simulation. `run_simulation.py` then repeats the final fixed model many times using the selected subjectwise hyperparameters.
+
+After final simulation, `run_model_evaluation.py` loads `subjects/subject_*.json`, expands the selected `metrics_by_mode`, and calls `ModelEval` to write plots under `model_evaluation/`. Plots that depend on run-level streams require `keep_logs: true` during simulation.
 
 `optimization_config.py` is intentionally separate from `optimizer_common.py`: config parsing is runner-facing plumbing, while `optimizer_common.py` is model-facing evaluation logic. Keeping them separate avoids making the common evaluator responsible for CLI/YAML concerns.

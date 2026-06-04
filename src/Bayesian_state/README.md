@@ -4,6 +4,7 @@ This package now uses a two-step workflow:
 
 1. Select all hyperparameters jointly, including `gamma` and `w0`.
 2. Run repeated fixed-parameter simulations under the selected hyperparameters.
+3. Run model evaluation on the simulation outputs to produce diagnostic plots.
 
 `gamma` and `w0` are no longer treated as an inner-layer exception. They live in the same `hyperparam_space` as strategy, active-set, and beta parameters.
 
@@ -19,6 +20,8 @@ This package now uses a two-step workflow:
   Runs hyper-CD selection, materializes a subjectwise simulation config, then runs fixed simulations.
 - `python -m src.Bayesian_state.run_simulation --config <yaml>`
   Runs repeated simulations under fixed hyperparameters.
+- `python -m src.Bayesian_state.run_model_evaluation --input-dir <simulation-result-dir>`
+  Runs post-simulation model evaluation plots. The input directory should contain `subjects/subject_*.json`.
 
 ## Configs
 
@@ -49,3 +52,13 @@ Simulation configs use:
 Hyper selection writes per-subject `best_hyperparams.json`, `stage_summary.json`, and `all_combinations.jsonl`. Hyper-CD also writes `restart_summary.json` and `coordinate_trace.jsonl`.
 
 The workflow runner writes a generated subjectwise simulation config and then writes simulation results under `results/state-based-simulation/...`.
+
+Model evaluation writes plots and CSV summaries under `<simulation-result-dir>/model_evaluation/` by default. It produces the core metric/log plots from simulation JSONs and, when oral data are available, the oral/model alignment plots as well. Trajectory-rank plots require final simulations to run with `keep_logs: true` so `raw_runs_ref` streams are present.
+
+Example:
+
+```bash
+python -m src.Bayesian_state.run_model_evaluation \
+  --input-dir results/state-based-simulation/pmh/cond1 \
+  --window-size 8
+```

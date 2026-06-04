@@ -200,6 +200,7 @@ class StateModelSimulationRunner(BaseStateOptimizer):
                 "simulation_point_seed": simulation_point_seed,
                 "seed_hyperparams": seed_params,
                 "simulation_repeats": simulation_repeats,
+                "window_size": int(window_size),
             },
         }
 
