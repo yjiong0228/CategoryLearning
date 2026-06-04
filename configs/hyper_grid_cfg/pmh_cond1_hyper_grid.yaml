@@ -4,7 +4,7 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 
 subject_range: [101, 132]
 
-output_dir: ../../results/state-based-hyper-grid/pmh/cond1_random_only
+output_dir: ../../results/state-based-hyper-grid/pmh/cond1
 selection_metric: mean_simulation_error
 hyperparam_selection_mode: per_subject
 save_level: compact

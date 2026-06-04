@@ -40,21 +40,21 @@ agenda:
 
 # Model-structure overrides belong here. Use this for subject-specific
 # beta_mod / hypo_transitions_mod / other module kwargs within condition 1.
-subject_overrides:
-  130:
-    modules:
-      beta_mod:
-        kwargs:
-          beta_init: 2.0
-          decrease_rate: 0.2
-      hypo_transitions_mod:
-        kwargs:
-          init_num: 20
-  131:
-    modules:
-      hypo_transitions_mod:
-        kwargs:
-          strategies:
-            - {amount: "entropy_7", method: "random_posterior", pool: "active"}
-            - {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
-            - {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
+# subject_overrides:
+#   130:
+#     modules:
+#       beta_mod:
+#         kwargs:
+#           beta_init: 2.0
+#           decrease_rate: 0.2
+#       hypo_transitions_mod:
+#         kwargs:
+#           init_num: 20
+#   131:
+#     modules:
+#       hypo_transitions_mod:
+#         kwargs:
+#           strategies:
+#             - {amount: "entropy_7", method: "random_posterior", pool: "active"}
+#             - {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+#             - {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
