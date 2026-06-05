@@ -1,0 +1,81 @@
+{
+  "selection_metric": "mean_simulation_error",
+  "hyperparam_selection_mode": "per_subject",
+  "save_level": "compact",
+  "base_sim_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/simulation_cfg/pmh_cond1_simulation.yaml",
+  "hyper_grid_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/hyper_grid_cfg/pmh_cond1_hyper_grid.yaml",
+  "hyper_output_dir": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-hyper-grid/pmh/cond1_subject108_hyper_grid",
+  "hyper_backend": "hyper_grid",
+  "hyper_base_seed": 42,
+  "per_subject_best": {
+    "108": {
+      "best_stage": "fine",
+      "best_combination_index": 781,
+      "best_hyperparams": {
+        "engine.modules.memory_mod.kwargs.gamma": 0.6,
+        "engine.modules.memory_mod.kwargs.w0": 0.5,
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.35
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_3",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0
+      },
+      "best_params": {
+        "engine.modules.memory_mod.kwargs.gamma": 0.6,
+        "engine.modules.memory_mod.kwargs.w0": 0.5,
+        "engine.modules.hypo_transitions_mod.kwargs.strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.35
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_3",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ],
+        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": 3,
+        "engine.modules.hypo_transitions_mod.kwargs.init_num": 3,
+        "engine.modules.beta_mod.kwargs.beta_init": 0.8,
+        "engine.modules.beta_mod.kwargs.decrease_rate": 0.3,
+        "engine.modules.beta_mod.kwargs.prior_beta_scale": 15.0,
+        "gamma": 0.6,
+        "w0": 0.5,
+        "beta_init": 0.8,
+        "decrease_rate": 0.3,
+        "prior_beta_scale": 15.0,
+        "init_num": 3,
+        "max_active_hypotheses": 3
+      },
+      "mean_error": 0.3805470411850226,
+      "best_error": 0.29588611637121404,
+      "std_error": 0.05389910183983038,
+      "hyper_candidate_seed": 2313375588,
+      "simulation_repeats": 32
+    }
+  },
+  "hyper_best_path": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-hyper-grid/pmh/cond1_subject108_hyper_grid/best_hyperparams.json",
+  "generated_sim_config_path": "/data2/yangjiong/CategoryLearning_gitcode/configs/simulation_cfg/generated_from_hyper/pmh_cond1_subject108_hyper_grid_best.yaml",
+  "sim_output_dir": "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation/pmh/cond1_subject108_hyper_grid_best"
+}
