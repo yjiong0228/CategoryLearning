@@ -60,6 +60,21 @@ class BetaModule(BaseModule):
         # Evolution parameters (nonlinear dynamics)
         self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))   # Multiplicative (sharp drop)
         self.correct_additive = float(kwargs.get("correct_additive", 0.5))  # Small additive bonus
+        self.beta_update_mode = self._resolve_beta_update_mode(
+            kwargs.get("beta_update_mode", "inferred_correct_category")
+        )
+        self.probabilistic_feedback_lapse = float(
+            kwargs.get("probabilistic_feedback_lapse", kwargs.get("feedback_lapse", 0.0))
+        )
+        if (
+            not np.isfinite(self.probabilistic_feedback_lapse)
+            or self.probabilistic_feedback_lapse < 0.0
+            or self.probabilistic_feedback_lapse >= 1.0
+        ):
+            raise ValueError(
+                "probabilistic_feedback_lapse must be in [0, 1), "
+                f"got {self.probabilistic_feedback_lapse!r}."
+            )
         
         # Prior-based initialization
         self.use_prior_scaling = bool(kwargs.get("use_prior_scaling", True))
@@ -77,6 +92,25 @@ class BetaModule(BaseModule):
         
         # Track beta history for visualization
         self.beta_log: List[np.ndarray] = []
+
+    @staticmethod
+    def _resolve_beta_update_mode(mode: str) -> str:
+        mode = str(mode).strip().lower()
+        aliases = {
+            "legacy": "inferred_correct_category",
+            "inferred": "inferred_correct_category",
+            "hard": "inferred_correct_category",
+            "category": "inferred_correct_category",
+            "probabilistic": "probabilistic_feedback",
+            "probability": "probabilistic_feedback",
+            "soft": "probabilistic_feedback",
+            "bernoulli": "probabilistic_feedback",
+        }
+        resolved = aliases.get(mode, mode)
+        valid = {"inferred_correct_category", "probabilistic_feedback"}
+        if resolved not in valid:
+            raise ValueError(f"Unsupported beta_update_mode '{mode}'. Expected one of: {sorted(valid)}.")
+        return resolved
         
     def _get_stimulus_category(self, stimulus: np.ndarray, hypo: int) -> int:
         """
@@ -126,6 +160,69 @@ class BetaModule(BaseModule):
             init_vals = np.full(len(indices), self.beta_init)
         
         self.beta[indices] = np.clip(init_vals, self.beta_min, self.beta_max)
+
+    def _zero_inactive_beta(self, active_indices: np.ndarray) -> None:
+        active_mask = np.zeros(len(self.beta), dtype=bool)
+        active_mask[np.asarray(active_indices, dtype=int)] = True
+        self.beta[~active_mask] = 0.0
+
+    def _choice_probability_under_hypothesis(
+        self,
+        stimulus: np.ndarray,
+        choice: int,
+        hypo: int,
+        beta: float,
+    ) -> float:
+        partition = getattr(self.engine, "partition", None)
+        if partition is None or not hasattr(partition, "get_category_probabilities"):
+            return 0.5
+        distance_mode = getattr(self.engine, "distance_mode", "prototype")
+        trial_data = ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0])
+        prob = partition.get_category_probabilities(
+            hypo=int(hypo),
+            data=trial_data,
+            beta=float(max(beta, self.beta_min)),
+            distance_mode=distance_mode,
+        )
+        if prob.ndim == 1:
+            prob = prob.reshape(-1, 1)
+        choice_idx = int(choice) - 1
+        if choice_idx < 0 or choice_idx >= prob.shape[0]:
+            return 0.0
+        p_choice = float(prob[choice_idx, 0])
+        n_cats = max(1, int(getattr(partition, "n_cats", prob.shape[0])))
+        chance = 1.0 / float(n_cats)
+        lapse = self.probabilistic_feedback_lapse
+        return float(np.clip((1.0 - lapse) * p_choice + lapse * chance, 1e-12, 1.0 - 1e-12))
+
+    def _update_beta_probabilistic_feedback(
+        self,
+        stimulus: np.ndarray,
+        choice: int,
+        feedback: float,
+        active_indices: np.ndarray,
+    ) -> None:
+        feedback_value = float(np.clip(feedback, 0.0, 1.0))
+        for hypo_idx in active_indices:
+            current_beta = self.beta[hypo_idx]
+            p_choice = self._choice_probability_under_hypothesis(
+                stimulus=stimulus,
+                choice=choice,
+                hypo=int(hypo_idx),
+                beta=current_beta,
+            )
+            evidence = feedback_value * p_choice + (1.0 - feedback_value) * (1.0 - p_choice)
+            centered = 2.0 * (evidence - 0.5)
+            if centered >= 0:
+                headroom = self.beta_max - current_beta
+                increment = self.correct_additive * centered * (headroom / self.beta_max)
+                self.beta[hypo_idx] = min(current_beta + increment, self.beta_max)
+            else:
+                penalty = self.decrease_rate * current_beta * min(1.0, -centered)
+                self.beta[hypo_idx] = max(current_beta - penalty, self.beta_min)
+
+        self._zero_inactive_beta(active_indices)
+        self.engine.beta = self.beta
     
     def update_beta(self, 
                     stimulus: np.ndarray,
@@ -162,6 +259,10 @@ class BetaModule(BaseModule):
             active_mask = np.ones(len(self.beta), dtype=float)
         
         active_indices = np.where(active_mask > 0)[0]
+        if self.beta_update_mode == "probabilistic_feedback":
+            self._update_beta_probabilistic_feedback(stimulus, choice, feedback, active_indices)
+            return
+
         choice_0idx = int(choice) - 1  # Convert to 0-indexed
         
         partition = getattr(self.engine, "partition", None)
@@ -218,9 +319,7 @@ class BetaModule(BaseModule):
                         self.beta_min
                     )
         # for other hypos, set beta to zero
-        for hypo_idx in range(len(self.beta)):
-            if hypo_idx not in active_indices:
-                self.beta[hypo_idx] = 0.
+        self._zero_inactive_beta(active_indices)
         
         # Ensure engine.beta reference is updated
         self.engine.beta = self.beta

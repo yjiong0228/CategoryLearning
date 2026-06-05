@@ -33,6 +33,7 @@ LOSS_METRIC_CHOICE_BRIER = "choice_brier"
 LOSS_METRIC_CHOICE_NLL = "choice_nll"
 LOSS_METRIC_WRONG_CHOICE_NLL = "wrong_choice_nll"
 LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL = "conditional_wrong_choice_nll"
+LOSS_METRIC_TARGET_PROB_BRIER = "target_prob_brier"
 
 # Short aliases for internal call sites. Configs should use the explicit names above.
 LOSS_METRIC_ACCURACY_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
@@ -56,7 +57,14 @@ CHOICE_LOSS_METRIC_CHOICES = (
     LOSS_METRIC_WRONG_CHOICE_NLL,
     LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
 )
-LOSS_METRIC_CHOICES = ACCURACY_LOSS_METRIC_CHOICES + CHOICE_LOSS_METRIC_CHOICES
+PROBABILISTIC_LOSS_METRIC_CHOICES = (
+    LOSS_METRIC_TARGET_PROB_BRIER,
+)
+LOSS_METRIC_CHOICES = (
+    ACCURACY_LOSS_METRIC_CHOICES
+    + CHOICE_LOSS_METRIC_CHOICES
+    + PROBABILISTIC_LOSS_METRIC_CHOICES
+)
 SEED_MODULUS = 2 ** 32
 
 
@@ -473,6 +481,34 @@ class ConditionalWrongChoiceNLLLoss(LossStrategy):
         return float(np.mean(-np.log(conditional_p_choice)))
 
 
+class TargetProbBrierLoss(LossStrategy):
+    name = LOSS_METRIC_TARGET_PROB_BRIER
+
+    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
+        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
+        target_probs = np.asarray(metrics.get("target_probs"), dtype=float)
+        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
+        if probs.ndim != 2:
+            raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
+        if target_probs.ndim != 2:
+            raise ValueError(f"target_probs must be 2-D, got shape {target_probs.shape}")
+        if probs.shape != target_probs.shape:
+            raise ValueError(
+                "target_probs shape does not match pred_category_probs: "
+                f"{target_probs.shape} vs {probs.shape}"
+            )
+        if valid_mask.shape[0] != probs.shape[0]:
+            raise ValueError(
+                "valid_trial_mask length does not match pred_category_probs rows: "
+                f"{valid_mask.shape[0]} vs {probs.shape[0]}"
+            )
+        finite = np.all(np.isfinite(probs), axis=1) & np.all(np.isfinite(target_probs), axis=1)
+        keep = valid_mask & finite
+        if not np.any(keep):
+            return float("nan")
+        return float(np.mean(np.sum(np.square(probs[keep] - target_probs[keep]), axis=1)))
+
+
 def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
     metric = str(loss_metric).strip().lower()
     if metric == LOSS_METRIC_ACCURACY_CURVE_MAE:
@@ -499,6 +535,8 @@ def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> Lo
         return WrongChoiceNLLLoss()
     if metric == LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL:
         return ConditionalWrongChoiceNLLLoss()
+    if metric == LOSS_METRIC_TARGET_PROB_BRIER:
+        return TargetProbBrierLoss()
     raise ValueError(f"Unsupported loss_metric '{loss_metric}'. Valid: {LOSS_METRIC_CHOICES}")
 
 
@@ -558,6 +596,59 @@ class SingleRunResult:
     seed_context: Optional[Dict[str, Any]] = None
 
 
+@dataclass
+class TrialArrays:
+    """Subject trial arrays with optional hard and probabilistic targets."""
+
+    stimulus: np.ndarray
+    choices: np.ndarray
+    feedback: np.ndarray
+    categories: Optional[np.ndarray] = None
+    target_probs: Optional[np.ndarray] = None
+
+
+def _coerce_trial_arrays(arrays: TrialArrays | tuple | list) -> TrialArrays:
+    if isinstance(arrays, TrialArrays):
+        return arrays
+    if not isinstance(arrays, (tuple, list)) or len(arrays) < 3:
+        raise ValueError("arrays must be a TrialArrays instance or a tuple/list with at least 3 entries")
+    categories = arrays[3] if len(arrays) >= 4 else None
+    target_probs = arrays[4] if len(arrays) >= 5 else None
+    return TrialArrays(
+        stimulus=np.asarray(arrays[0], dtype=float),
+        choices=np.asarray(arrays[1], dtype=int),
+        feedback=np.asarray(arrays[2], dtype=float),
+        categories=None if categories is None else np.asarray(categories, dtype=int),
+        target_probs=None if target_probs is None else np.asarray(target_probs, dtype=float),
+    )
+
+
+def _normalize_probability_rows(values: np.ndarray, *, context: str) -> np.ndarray:
+    probs = np.asarray(values, dtype=float)
+    if probs.ndim != 2:
+        raise ValueError(f"{context} must be a 2-D matrix, got shape {probs.shape}")
+    if not np.all(np.isfinite(probs)):
+        raise ValueError(f"{context} contains non-finite values")
+    if np.any(probs < 0):
+        raise ValueError(f"{context} contains negative values")
+    denom = probs.sum(axis=1, keepdims=True)
+    if np.any(denom <= 0):
+        raise ValueError(f"{context} has rows that sum to zero")
+    return probs / denom
+
+
+def _probability_columns_from_frame(subject_frame: pd.DataFrame) -> list[str]:
+    cols: list[tuple[int, str]] = []
+    for col in subject_frame.columns:
+        name = str(col)
+        if not name.startswith("probCat"):
+            continue
+        suffix = name[len("probCat"):]
+        if suffix.isdigit():
+            cols.append((int(suffix), name))
+    return [name for _, name in sorted(cols)]
+
+
 class BaseStateOptimizer:
     """Common data preparation and subject slicing logic."""
 
@@ -583,6 +674,9 @@ class BaseStateOptimizer:
         )
         self._condition_column = str(data_cfg.get("condition_column", "condition"))
         self._subject_column = str(data_cfg.get("subject_column", "iSub"))
+        self._category_column = str(data_cfg.get("category_column", "category"))
+        self._target_type = str(data_cfg.get("target_type", "auto")).strip().lower()
+        self._probability_columns = list(data_cfg.get("probability_columns", []))
 
     def prepare_data(self, data_path: Path | str = TASK2_PROCESSED_PATH) -> None:
         data_path = Path(data_path).resolve()
@@ -609,7 +703,7 @@ class BaseStateOptimizer:
         self,
         subject_frame: pd.DataFrame,
         max_trials: Optional[int],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> TrialArrays:
         missing_features = [col for col in self._feature_columns if col not in subject_frame.columns]
         if missing_features:
             raise ValueError(
@@ -619,16 +713,60 @@ class BaseStateOptimizer:
         stimulus = subject_frame[self._feature_columns].to_numpy(dtype=float)
         choices = subject_frame["choice"].to_numpy(dtype=int)
         feedback = subject_frame["feedback"].to_numpy(dtype=float)
-        categories = subject_frame["category"].to_numpy(dtype=int)
+
+        probabilistic_target_types = {"probabilistic", "probability", "soft", "soft_category"}
+        categories: Optional[np.ndarray] = None
+        target_probs: Optional[np.ndarray] = None
+
+        prob_cols = list(self._probability_columns)
+        if not prob_cols:
+            prob_cols = _probability_columns_from_frame(subject_frame)
+
+        if self._target_type in probabilistic_target_types:
+            if not prob_cols:
+                raise ValueError(
+                    "data.target_type is probabilistic, but no probability columns were configured "
+                    "and no probCat* columns were found."
+                )
+        elif self._target_type not in {"auto", "hard", "category", "categorical"}:
+            raise ValueError(
+                "data.target_type must be auto, hard/category/categorical, or probabilistic/probability/soft"
+            )
+
+        if prob_cols:
+            missing_probs = [col for col in prob_cols if col not in subject_frame.columns]
+            if missing_probs:
+                raise ValueError(
+                    "Dataset is missing configured probability columns: "
+                    + ", ".join(missing_probs)
+                )
+            target_probs = _normalize_probability_rows(
+                subject_frame[prob_cols].to_numpy(dtype=float),
+                context="target probability columns",
+            )
+
+        if self._target_type not in probabilistic_target_types and self._category_column in subject_frame.columns:
+            categories = subject_frame[self._category_column].to_numpy(dtype=int)
+        elif self._target_type in {"hard", "category", "categorical"}:
+            raise ValueError(f"Dataset is missing configured category column: {self._category_column}")
 
         if max_trials is not None:
             usable = min(max_trials, stimulus.shape[0])
             stimulus = stimulus[:usable]
             choices = choices[:usable]
             feedback = feedback[:usable]
-            categories = categories[:usable]
+            if categories is not None:
+                categories = categories[:usable]
+            if target_probs is not None:
+                target_probs = target_probs[:usable]
 
-        return stimulus, choices, feedback, categories
+        return TrialArrays(
+            stimulus=stimulus,
+            choices=choices,
+            feedback=feedback,
+            categories=categories,
+            target_probs=target_probs,
+        )
 
     def _get_condition_value(self, subject_frame: pd.DataFrame) -> int:
         if self._condition_column in subject_frame.columns:
@@ -695,6 +833,42 @@ def _family_indices(category: int, n_cats: int) -> np.ndarray:
     return np.array([category_idx], dtype=int)
 
 
+def _target_majority_indices(target_probs: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    """Return the unique highest-probability category for each trial, or -1 for ties/missing."""
+    if target_probs is None:
+        return None
+    probs = np.asarray(target_probs, dtype=float)
+    if probs.ndim != 2 or probs.shape[0] == 0:
+        return None
+    finite = np.all(np.isfinite(probs), axis=1)
+    max_prob = np.full(probs.shape[0], np.nan, dtype=float)
+    max_prob[finite] = np.max(probs[finite], axis=1)
+    is_max = np.isclose(probs, max_prob[:, None], rtol=0.0, atol=1e-12)
+    unique = finite & (np.sum(is_max, axis=1) == 1)
+    majority = np.full(probs.shape[0], -1, dtype=int)
+    majority[unique] = np.argmax(probs[unique], axis=1)
+    return majority
+
+
+def _safe_nanmean(values: np.ndarray) -> float:
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    return float(np.mean(finite)) if finite.size else float("nan")
+
+
+def _safe_pearson(x: np.ndarray, y: np.ndarray) -> float:
+    x = np.asarray(x, dtype=float).reshape(-1)
+    y = np.asarray(y, dtype=float).reshape(-1)
+    keep = np.isfinite(x) & np.isfinite(y)
+    if int(np.sum(keep)) < 2:
+        return float("nan")
+    x = x[keep]
+    y = y[keep]
+    if float(np.std(x)) <= 0.0 or float(np.std(y)) <= 0.0:
+        return float("nan")
+    return float(np.corrcoef(x, y)[0, 1])
+
+
 def _compute_single_mode_metrics(
     mode: str,
     model,
@@ -703,7 +877,8 @@ def _compute_single_mode_metrics(
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
-    categories: np.ndarray,
+    categories: Optional[np.ndarray],
+    target_probs: Optional[np.ndarray],
     window_size: int,
     engine_beta: np.ndarray,
     hypotheses: Sequence[int],
@@ -712,15 +887,63 @@ def _compute_single_mode_metrics(
     distance_mode = getattr(model.engine, "distance_mode", "prototype")
     n_trials = len(feedback)
     n_features = int(stimulus.shape[1])
-    n_cats = int(getattr(partition, "n_cats", int(np.nanmax(categories)) if len(categories) else 2))
+    partition_n_cats = getattr(partition, "n_cats", None)
+    if partition_n_cats is not None:
+        n_cats = int(partition_n_cats)
+    elif categories is not None and len(categories):
+        n_cats = int(np.nanmax(categories))
+    elif target_probs is not None:
+        n_cats = int(target_probs.shape[1])
+    else:
+        n_cats = int(np.nanmax(choices)) if len(choices) else 2
+
+    if target_probs is not None:
+        target_probs = _normalize_probability_rows(target_probs, context="target_probs")
+        if target_probs.shape[0] != n_trials:
+            raise ValueError(
+                "target_probs length does not match number of trials: "
+                f"{target_probs.shape[0]} vs {n_trials}"
+            )
+        if target_probs.shape[1] != n_cats:
+            raise ValueError(
+                "target_probs category width does not match partition.n_cats: "
+                f"{target_probs.shape[1]} vs {n_cats}"
+            )
 
     true_acc = (feedback == 1.0).astype(float)
-    true_family_acc = _family_correct(categories, choices, n_cats)
+    has_categories = categories is not None
+    true_family_acc = (
+        _family_correct(categories, choices, n_cats)
+        if has_categories
+        else np.full(n_trials, np.nan, dtype=float)
+    )
     pred_acc = np.full(n_trials, np.nan, dtype=float)
     pred_family_acc = np.full(n_trials, np.nan, dtype=float)
     pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
-    true_category_index = np.asarray(categories, dtype=int) - 1
+    true_category_index = (
+        np.asarray(categories, dtype=int) - 1
+        if has_categories
+        else np.full(n_trials, -1, dtype=int)
+    )
+    target_prob_matrix = (
+        np.asarray(target_probs, dtype=float)
+        if target_probs is not None
+        else np.full((n_trials, n_cats), np.nan, dtype=float)
+    )
     observed_choice_index = np.asarray(choices, dtype=int) - 1
+    target_majority_index = _target_majority_indices(target_prob_matrix)
+    if target_majority_index is None:
+        target_majority_index = np.full(n_trials, -1, dtype=int)
+    target_majority_acc = np.full(n_trials, np.nan, dtype=float)
+    pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
+    target_choice_valid = (
+        (target_majority_index >= 0)
+        & (observed_choice_index >= 0)
+        & (observed_choice_index < n_cats)
+    )
+    target_majority_acc[target_choice_valid] = (
+        observed_choice_index[target_choice_valid] == target_majority_index[target_choice_valid]
+    ).astype(float)
     valid_trial_mask = np.zeros(n_trials, dtype=bool)
 
     for trial_idx in range(1, n_trials):
@@ -753,10 +976,9 @@ def _compute_single_mode_metrics(
             [perceived_stimulus],
             [choices[trial_idx]],
             [feedback[trial_idx]],
-            [categories[trial_idx]],
         )
-        category_idx = int(categories[trial_idx]) - 1
-        family_idx = _family_indices(int(categories[trial_idx]), n_cats)
+        category_idx = int(categories[trial_idx]) - 1 if has_categories else -1
+        family_idx = _family_indices(int(categories[trial_idx]), n_cats) if has_categories else np.asarray([], dtype=int)
         for weight, hypo in zip(current_dist, hypotheses):
             if weight <= 0:
                 continue
@@ -775,13 +997,22 @@ def _compute_single_mode_metrics(
                     f"Category probability shape mismatch at trial {trial_idx}: expected {n_cats}, got {prob_vec.shape[0]}"
                 )
             weighted_cat_prob += weight * prob_vec
-            weighted_prob += weight * float(prob_vec[category_idx])
-            family_idx = family_idx[family_idx < prob_vec.shape[0]]
-            if family_idx.size:
-                weighted_family_prob += weight * float(np.sum(prob_vec[family_idx]))
+            if has_categories and 0 <= category_idx < prob_vec.shape[0]:
+                weighted_prob += weight * float(prob_vec[category_idx])
+                valid_family_idx = family_idx[family_idx < prob_vec.shape[0]]
+                if valid_family_idx.size:
+                    weighted_family_prob += weight * float(np.sum(prob_vec[valid_family_idx]))
 
-        pred_acc[trial_idx] = weighted_prob
-        pred_family_acc[trial_idx] = weighted_family_prob
+        if has_categories:
+            pred_acc[trial_idx] = weighted_prob
+            pred_family_acc[trial_idx] = weighted_family_prob
+        else:
+            choice_idx = int(choices[trial_idx]) - 1
+            if 0 <= choice_idx < weighted_cat_prob.shape[0]:
+                pred_acc[trial_idx] = float(weighted_cat_prob[choice_idx])
+        majority_idx = int(target_majority_index[trial_idx])
+        if 0 <= majority_idx < weighted_cat_prob.shape[0]:
+            pred_target_majority_acc[trial_idx] = float(weighted_cat_prob[majority_idx])
         pred_category_probs[trial_idx, :] = weighted_cat_prob
         valid_trial_mask[trial_idx] = True
 
@@ -791,6 +1022,9 @@ def _compute_single_mode_metrics(
     sliding_true_family_acc: List[float] = []
     sliding_pred_family_acc: List[float] = []
     sliding_pred_family_std: List[float] = []
+    sliding_target_majority_acc: List[float] = []
+    sliding_pred_target_majority_acc: List[float] = []
+    sliding_pred_target_majority_std: List[float] = []
 
     for start in range(1, n_trials - window_size + 1):
         end = start + window_size
@@ -798,6 +1032,8 @@ def _compute_single_mode_metrics(
         pred_window = pred_acc[start:end]
         true_family_window = true_family_acc[start:end]
         pred_family_window = pred_family_acc[start:end]
+        target_majority_window = target_majority_acc[start:end]
+        pred_target_majority_window = pred_target_majority_acc[start:end]
         sliding_true_acc.append(float(np.mean(true_window)))
         sliding_pred_acc.append(float(np.nanmean(pred_window)))
         valid = pred_window[~np.isnan(pred_window)]
@@ -805,8 +1041,16 @@ def _compute_single_mode_metrics(
             sliding_pred_std.append(np.nan)
         else:
             sliding_pred_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / window_size))
-        sliding_true_family_acc.append(float(np.mean(true_family_window)))
-        sliding_pred_family_acc.append(float(np.nanmean(pred_family_window)))
+        sliding_true_family_acc.append(
+            float(np.nanmean(true_family_window))
+            if np.any(np.isfinite(true_family_window))
+            else np.nan
+        )
+        sliding_pred_family_acc.append(
+            float(np.nanmean(pred_family_window))
+            if np.any(np.isfinite(pred_family_window))
+            else np.nan
+        )
         valid_family = pred_family_window[~np.isnan(pred_family_window)]
         if valid_family.size == 0:
             sliding_pred_family_std.append(np.nan)
@@ -814,9 +1058,42 @@ def _compute_single_mode_metrics(
             sliding_pred_family_std.append(
                 float(np.sqrt(np.sum(valid_family * (1 - valid_family))) / window_size)
             )
+        sliding_target_majority_acc.append(_safe_nanmean(target_majority_window))
+        sliding_pred_target_majority_acc.append(_safe_nanmean(pred_target_majority_window))
+        valid_target_majority = pred_target_majority_window[np.isfinite(pred_target_majority_window)]
+        if valid_target_majority.size == 0:
+            sliding_pred_target_majority_std.append(np.nan)
+        else:
+            denom = max(1, int(valid_target_majority.size))
+            sliding_pred_target_majority_std.append(
+                float(np.sqrt(np.sum(valid_target_majority * (1 - valid_target_majority))) / denom)
+            )
 
     family_error = np.abs(np.array(sliding_true_family_acc) - np.array(sliding_pred_family_acc))
-    family_mean_error = float(np.nanmean(family_error)) if family_error.size else float("nan")
+    finite_family_error = family_error[np.isfinite(family_error)]
+    family_mean_error = float(np.mean(finite_family_error)) if finite_family_error.size else float("nan")
+    target_prob_finite = (
+        valid_trial_mask
+        & np.all(np.isfinite(pred_category_probs), axis=1)
+        & np.all(np.isfinite(target_prob_matrix), axis=1)
+    )
+    if np.any(target_prob_finite):
+        target_prob_brier = float(
+            np.mean(np.sum(np.square(pred_category_probs[target_prob_finite] - target_prob_matrix[target_prob_finite]), axis=1))
+        )
+        target_prob_corr_by_cat = np.asarray(
+            [
+                _safe_pearson(
+                    pred_category_probs[target_prob_finite, cat_idx],
+                    target_prob_matrix[target_prob_finite, cat_idx],
+                )
+                for cat_idx in range(n_cats)
+            ],
+            dtype=float,
+        )
+    else:
+        target_prob_brier = float("nan")
+        target_prob_corr_by_cat = np.full(n_cats, np.nan, dtype=float)
 
     return {
         "true_acc": true_acc,
@@ -829,10 +1106,20 @@ def _compute_single_mode_metrics(
         "sliding_true_family_acc": np.asarray(sliding_true_family_acc, dtype=float),
         "sliding_pred_family_acc": np.asarray(sliding_pred_family_acc, dtype=float),
         "sliding_pred_family_acc_std": np.asarray(sliding_pred_family_std, dtype=float),
+        "target_majority_acc": target_majority_acc,
+        "pred_target_majority_acc": pred_target_majority_acc,
+        "sliding_target_majority_acc": np.asarray(sliding_target_majority_acc, dtype=float),
+        "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
+        "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
         "family_mean_error": family_mean_error,
         "pred_category_probs": pred_category_probs,
+        "target_probs": target_prob_matrix,
+        "target_prob_brier": target_prob_brier,
+        "target_prob_corr_by_cat": target_prob_corr_by_cat,
+        "target_prob_corr_cat1": float(target_prob_corr_by_cat[0]) if target_prob_corr_by_cat.size else float("nan"),
         "true_category_index": true_category_index,
         "observed_choice_index": observed_choice_index,
+        "target_majority_index": target_majority_index,
         "valid_trial_mask": valid_trial_mask,
     }
 
@@ -844,7 +1131,8 @@ def compute_prediction_metrics(
     stimulus: np.ndarray,
     choices: np.ndarray,
     feedback: np.ndarray,
-    categories: np.ndarray,
+    categories: Optional[np.ndarray],
+    target_probs: Optional[np.ndarray],
     window_size: int,
     prediction_mode: str,
     loss_metric: str,
@@ -901,6 +1189,7 @@ def compute_prediction_metrics(
             choices=choices,
             feedback=feedback,
             categories=categories,
+            target_probs=target_probs,
             window_size=window_size,
             engine_beta=np.asarray(engine_beta, dtype=float),
             hypotheses=hypotheses,
@@ -991,7 +1280,7 @@ def get_hypothesis_transition_seed(engine_config: Mapping[str, Any]) -> int | No
 def evaluate_state_model_run(
     subject_id: int,
     condition: int,
-    arrays: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    arrays: TrialArrays | Tuple[np.ndarray, ...],
     params: Dict[str, Any],
     engine_config_template: Dict[str, Any],
     processed_data_dir: Path,
@@ -1009,7 +1298,12 @@ def evaluate_state_model_run(
     seed_context: Optional[Mapping[str, Any]] = None,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
-    stimulus, choices, feedback, categories = arrays
+    trial_arrays = _coerce_trial_arrays(arrays)
+    stimulus = trial_arrays.stimulus
+    choices = trial_arrays.choices
+    feedback = trial_arrays.feedback
+    categories = trial_arrays.categories
+    target_probs = trial_arrays.target_probs
     trial_sequence = prepare_trial_sequence(stimulus, choices, feedback)
 
     from ..problems import StateModel
@@ -1053,6 +1347,7 @@ def evaluate_state_model_run(
         choices,
         feedback,
         categories,
+        target_probs,
         window_size,
         prediction_mode=prediction_mode,
         loss_metric=loss_metric,

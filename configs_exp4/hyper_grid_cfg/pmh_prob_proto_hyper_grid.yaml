@@ -1,0 +1,69 @@
+# Hyper-grid optimization for Exp4 probabilistic prototype learning.
+base_sim_config_path: ../simulation_cfg/pmh_prob_proto_simulation.yaml
+
+subject_range: [401, 403]
+
+output_dir: ../../results/state-based-hyper-grid-exp4/pmh/prob_proto
+selection_metric: mean_simulation_error
+hyperparam_selection_mode: per_subject
+save_level: compact
+hyper_base_seed: 42
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs.gamma:
+    values: [0.2, 0.4, 0.7, 0.9]
+  engine.modules.memory_mod.kwargs.w0:
+    values: [0.02, 0.06, 0.2, 0.8]
+
+  engine.modules.likelihood_mod.kwargs.feedback_lapse:
+    values: [0.0, 0.03, 0.05, 0.1]
+  engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse:
+    values: [0.0, 0.03, 0.05, 0.1]
+
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      - [
+          {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"},
+          {label: "explore_random", amount: "opp_random_4", method: "random", pool: "all_unselected"}
+        ]
+      - [
+          {label: "retain_entropy", amount: "entropy_norm_3", method: "epsilon_posterior", pool: "active", min_count: 1, epsilon: 0.35},
+          {label: "explore_entropy", amount: "opp_entropy_norm_3", method: "random", pool: "inactive"}
+        ]
+      - [
+          {label: "retain_conf", amount: "confidence_3", method: "epsilon_posterior", pool: "active", min_count: 1, threshold_min: 0.2, scale: 8, epsilon: 0.30},
+          {label: "explore_uncertain", amount: "opp_confidence_3", method: "random", pool: "inactive"}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [3, 4]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [2, 3]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.1, 0.2, 0.3]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [5.0, 10.0, 15.0]
+
+stages:
+  coarse:
+    n_jobs_combinations: 128
+    simulation_overrides:
+      simulation_repeats: 8
+      keep_logs: false
+      n_jobs: 1
+
+  fine:
+    n_jobs_combinations: 1
+    simulation_overrides:
+      simulation_repeats: 32
+      keep_logs: false
+      n_jobs: 128
+
+refine_policy:
+  top_k: 12
+  expand:
+    engine.modules.memory_mod.kwargs.gamma: [0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 0.9]
+    engine.modules.memory_mod.kwargs.w0: [0.01, 0.02, 0.06, 0.1, 0.2, 0.5, 0.8]

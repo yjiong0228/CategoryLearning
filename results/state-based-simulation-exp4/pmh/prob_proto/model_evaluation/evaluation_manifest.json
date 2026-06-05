@@ -1,0 +1,51 @@
+[
+  {
+    "name": "accuracy_comparison",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/accuracy_comparison.png"
+    ]
+  },
+  {
+    "name": "accuracy_family_comparison",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/accuracy_family_comparison.png"
+    ]
+  },
+  {
+    "name": "target_majority_accuracy_comparison",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/target_majority_accuracy_comparison.png"
+    ]
+  },
+  {
+    "name": "posterior_probabilities",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/posterior_probabilities.png"
+    ]
+  },
+  {
+    "name": "beta_dynamics",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/beta_dynamics.png"
+    ]
+  },
+  {
+    "name": "cluster_amount",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/cluster_amount.png"
+    ]
+  },
+  {
+    "name": "strategy_amount_details",
+    "status": "ok",
+    "outputs": [
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/strategy_amount_details.png"
+    ]
+  }
+]

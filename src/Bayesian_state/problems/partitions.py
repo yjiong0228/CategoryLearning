@@ -33,6 +33,12 @@ class BasePartition(ABC):
     DISTANCE_MODE_PROTOTYPE = "prototype"
     DISTANCE_MODE_BOUNDARY = "boundary"
     VALID_DISTANCE_MODES = (DISTANCE_MODE_PROTOTYPE, DISTANCE_MODE_BOUNDARY)
+    FEEDBACK_MODE_CATEGORY = "category_feedback"
+    FEEDBACK_MODE_BERNOULLI_CHOICE = "bernoulli_choice"
+    VALID_FEEDBACK_MODES = (
+        FEEDBACK_MODE_CATEGORY,
+        FEEDBACK_MODE_BERNOULLI_CHOICE,
+    )
 
     # Class layout:
     # 1. core construction methods
@@ -137,6 +143,11 @@ class BasePartition(ABC):
             hypo=hypo,
             prob=prob,
             data=data,
+            feedback_likelihood_mode=kwargs.get(
+                "feedback_likelihood_mode",
+                self.FEEDBACK_MODE_CATEGORY,
+            ),
+            feedback_lapse=kwargs.get("feedback_lapse", 0.0),
         )
 
     def calc_trueprob_entry(self,
@@ -346,6 +357,8 @@ class BasePartition(ABC):
         hypo: int,
         prob: np.ndarray,
         data: list | tuple,
+        feedback_likelihood_mode: str = FEEDBACK_MODE_CATEGORY,
+        feedback_lapse: float = 0.0,
     ) -> np.ndarray:
         """Map category probabilities to observed feedback likelihood.
 
@@ -356,8 +369,19 @@ class BasePartition(ABC):
         choices = np.asarray(data[1], dtype=int).copy() - 1
         responses = np.asarray(data[2])
         n_trials = len(choices)
+        mode = self._resolve_feedback_likelihood_mode(feedback_likelihood_mode)
+        lapse = self._resolve_feedback_lapse(feedback_lapse)
 
         p_species = prob[choices, np.arange(n_trials)]
+        if mode == self.FEEDBACK_MODE_BERNOULLI_CHOICE:
+            chance = 1.0 / float(max(1, prob.shape[0]))
+            p_choice = (1.0 - lapse) * p_species + lapse * chance
+            responses_float = np.clip(np.asarray(responses, dtype=float), 0.0, 1.0)
+            likelihood = np.power(p_choice, responses_float) * np.power(
+                1.0 - p_choice,
+                1.0 - responses_float,
+            )
+            return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
 
         fam_sum = np.zeros(n_trials)
         conn_map = getattr(self, "connectivity_map", {})
@@ -375,6 +399,34 @@ class BasePartition(ABC):
             np.where(responses == 0.5, fam_sum, p_wrong),
         )
         return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
+
+    @classmethod
+    def _resolve_feedback_likelihood_mode(cls, mode: str) -> str:
+        mode = str(mode).strip().lower()
+        aliases = {
+            "category": cls.FEEDBACK_MODE_CATEGORY,
+            "categorical": cls.FEEDBACK_MODE_CATEGORY,
+            "legacy": cls.FEEDBACK_MODE_CATEGORY,
+            "deterministic": cls.FEEDBACK_MODE_CATEGORY,
+            "deterministic_feedback": cls.FEEDBACK_MODE_CATEGORY,
+            "probabilistic": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+            "probabilistic_feedback": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+            "bernoulli": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+        }
+        resolved = aliases.get(mode, mode)
+        if resolved not in cls.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                f"Unsupported feedback_likelihood_mode '{mode}'. "
+                f"Expected one of: {cls.VALID_FEEDBACK_MODES}."
+            )
+        return resolved
+
+    @staticmethod
+    def _resolve_feedback_lapse(value: float) -> float:
+        lapse = float(value)
+        if not np.isfinite(lapse) or lapse < 0.0 or lapse >= 1.0:
+            raise ValueError(f"feedback_lapse must be in [0, 1), got {value!r}.")
+        return lapse
 
 # =============================================================================
 # Partition: concrete split space and boundary geometry

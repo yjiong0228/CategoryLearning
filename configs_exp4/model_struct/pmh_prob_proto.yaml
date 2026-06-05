@@ -1,0 +1,55 @@
+data:
+  subject_column: iSub
+  condition_column: condition
+  feature_columns: [feature1, feature2, feature3, feature4]
+  target_type: probabilistic
+  probability_columns: [probCat1, probCat2]
+
+partition:
+  class: 'src.Bayesian_state.problems.partitions.Partition'
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+
+modules:
+  perception_mod:
+    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    kwargs:
+      noise_mode: uniform
+  beta_mod:
+    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    kwargs:
+      beta_init: 10.0
+      beta_min: 0.1
+      beta_max: 20.0
+      decrease_rate: 0.0
+      correct_additive: 0.0
+      use_prior_scaling: true
+      prior_beta_scale: 0.0
+      beta_update_mode: probabilistic_feedback
+      probabilistic_feedback_lapse: 0.0
+  hypo_transitions_mod:
+    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    kwargs:
+      strategies:
+        - {label: "keep_all", amount: "fixed", method: "top_posterior", pool: "active", value: 19}
+      init_num: 19
+      max_active_hypotheses: 19
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs:
+      distance_mode: prototype
+      feedback_likelihood_mode: bernoulli_choice
+      feedback_lapse: 0.0
+  memory_mod:
+    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    kwargs:
+      w0: 1.0
+      gamma: 0.99
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod

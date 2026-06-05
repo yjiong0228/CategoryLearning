@@ -190,6 +190,105 @@ class ModelEval(OralModelAlignmentMixin):
         return np.array([category_idx], dtype=int)
 
     @staticmethod
+    def _safe_nanmean(values):
+        arr = np.asarray(values, dtype=float)
+        finite = arr[np.isfinite(arr)]
+        return float(np.mean(finite)) if finite.size else float("nan")
+
+    @staticmethod
+    def _target_majority_indices(target_probs):
+        probs = np.asarray(target_probs, dtype=float)
+        if probs.ndim != 2 or probs.shape[0] == 0:
+            return None
+        finite = np.all(np.isfinite(probs), axis=1)
+        max_prob = np.full(probs.shape[0], np.nan, dtype=float)
+        max_prob[finite] = np.max(probs[finite], axis=1)
+        is_max = np.isclose(probs, max_prob[:, None], rtol=0.0, atol=1e-12)
+        unique = finite & (np.sum(is_max, axis=1) == 1)
+        majority = np.full(probs.shape[0], -1, dtype=int)
+        majority[unique] = np.argmax(probs[unique], axis=1)
+        return majority
+
+    def compute_target_majority_accuracy_metrics(self, info, window_size=None):
+        """Compute Exp4 choice accuracy against the higher-probability target option."""
+        target_probs = info.get("target_probs")
+        pred_category_probs = info.get("pred_category_probs")
+        observed_choice_index = info.get("observed_choice_index")
+        if target_probs is None or pred_category_probs is None or observed_choice_index is None:
+            return {}
+
+        target_probs = np.asarray(target_probs, dtype=float)
+        pred_category_probs = np.asarray(pred_category_probs, dtype=float)
+        observed_choice_index = np.asarray(observed_choice_index, dtype=int).reshape(-1)
+        if target_probs.ndim != 2 or pred_category_probs.ndim != 2:
+            return {}
+
+        n_trials = min(target_probs.shape[0], pred_category_probs.shape[0], observed_choice_index.size)
+        if n_trials <= 1:
+            return {}
+        n_cats = min(target_probs.shape[1], pred_category_probs.shape[1])
+        if n_cats <= 0:
+            return {}
+        target_probs = target_probs[:n_trials, :n_cats]
+        pred_category_probs = pred_category_probs[:n_trials, :n_cats]
+        observed_choice_index = observed_choice_index[:n_trials]
+
+        win = window_size if window_size is not None else info.get("window_size")
+        try:
+            win = int(win)
+        except (TypeError, ValueError):
+            win = 16
+        if win <= 0 or n_trials < win + 1:
+            return {}
+
+        majority_index = self._target_majority_indices(target_probs)
+        if majority_index is None:
+            return {}
+
+        target_majority_acc = np.full(n_trials, np.nan, dtype=float)
+        pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
+        valid_choice = (
+            (majority_index >= 0)
+            & (observed_choice_index >= 0)
+            & (observed_choice_index < n_cats)
+        )
+        target_majority_acc[valid_choice] = (
+            observed_choice_index[valid_choice] == majority_index[valid_choice]
+        ).astype(float)
+
+        for idx in range(n_trials):
+            majority = int(majority_index[idx])
+            if 0 <= majority < n_cats and np.all(np.isfinite(pred_category_probs[idx])):
+                pred_target_majority_acc[idx] = float(pred_category_probs[idx, majority])
+
+        sliding_target_majority_acc = []
+        sliding_pred_target_majority_acc = []
+        sliding_pred_target_majority_std = []
+        for start in range(1, n_trials - win + 1):
+            end = start + win
+            target_window = target_majority_acc[start:end]
+            pred_window = pred_target_majority_acc[start:end]
+            sliding_target_majority_acc.append(self._safe_nanmean(target_window))
+            sliding_pred_target_majority_acc.append(self._safe_nanmean(pred_window))
+            valid_pred = pred_window[np.isfinite(pred_window)]
+            if valid_pred.size:
+                denom = max(1, int(valid_pred.size))
+                sliding_pred_target_majority_std.append(
+                    float(np.sqrt(np.sum(valid_pred * (1 - valid_pred))) / denom)
+                )
+            else:
+                sliding_pred_target_majority_std.append(float("nan"))
+
+        return {
+            "target_majority_acc": target_majority_acc,
+            "pred_target_majority_acc": pred_target_majority_acc,
+            "target_majority_index": majority_index,
+            "sliding_target_majority_acc": np.asarray(sliding_target_majority_acc, dtype=float),
+            "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
+            "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
+        }
+
+    @staticmethod
     def _resolve_beta_for_hypo(beta_vec, hypo, default_beta):
         if beta_vec is None:
             return float(default_beta)
@@ -513,6 +612,78 @@ class ModelEval(OralModelAlignmentMixin):
             subjects,
             save_path,
             "Predicted vs True Family Accuracy by Subject",
+            body,
+            **kwargs,
+        )
+
+    def plot_target_majority_accuracy_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            true_acc = info.get("sliding_target_majority_acc")
+            pred_acc = info.get("sliding_pred_target_majority_acc")
+            pred_std = info.get("sliding_pred_target_majority_acc_std")
+            if true_acc is None or pred_acc is None or pred_std is None:
+                computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size)
+                true_acc = computed.get("sliding_target_majority_acc")
+                pred_acc = computed.get("sliding_pred_target_majority_acc")
+                pred_std = computed.get("sliding_pred_target_majority_acc_std")
+
+            if true_acc is None or pred_acc is None or pred_std is None:
+                ax.text(0.5, 0.5, "No target probability data", ha="center", va="center", transform=ax.transAxes)
+                ax.set(
+                    title=f"Subject {iSub} (Condition {condition})",
+                    xlabel="Trial",
+                    ylabel="Target-majority accuracy",
+                )
+                return
+
+            true_acc = np.asarray(true_acc, dtype=float)
+            pred_acc = np.asarray(pred_acc, dtype=float)
+            pred_std = np.asarray(pred_std, dtype=float)
+            if not (len(true_acc) == len(pred_acc) == len(pred_std)) or len(pred_acc) == 0:
+                ax.text(0.5, 0.5, "No target probability data", ha="center", va="center", transform=ax.transAxes)
+                ax.set(
+                    title=f"Subject {iSub} (Condition {condition})",
+                    xlabel="Trial",
+                    ylabel="Target-majority accuracy",
+                )
+                return
+
+            win = info.get("window_size") or window_size
+            try:
+                win = int(win)
+            except (TypeError, ValueError):
+                win = 1
+
+            trial = np.arange(win + 1, win + 1 + len(pred_acc))
+            df = pd.DataFrame(
+                {
+                    "Trial": trial,
+                    "Pred": pred_acc,
+                    "Observed": true_acc,
+                    "Low": pred_acc - pred_std,
+                    "High": pred_acc + pred_std,
+                }
+            )
+            sns.lineplot(data=df, x="Trial", y="Pred", label="Model", ax=ax)
+            sns.lineplot(data=df, x="Trial", y="Observed", label="Participant", ax=ax)
+            ax.fill_between(df["Trial"], df["Low"], df["High"], alpha=0.2)
+
+            n_trials = info.get("n_trials")
+            if n_trials:
+                ax.set_xlim(1, n_trials)
+            ax.set_ylim(0, 1)
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition})",
+                xlabel="Trial",
+                ylabel="Higher-probability option",
+            )
+            ax.legend()
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Model vs Participant Higher-Probability Choice by Subject",
             body,
             **kwargs,
         )

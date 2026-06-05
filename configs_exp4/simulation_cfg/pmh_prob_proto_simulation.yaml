@@ -1,0 +1,30 @@
+# Fixed-parameter simulation config for Exp4 probabilistic prototype learning.
+engine_config_path: ../model_struct/pmh_prob_proto.yaml
+
+subject_range: [401, 403]
+
+hyper_base_seed: 42
+
+dataset:
+  processed_dir: ../../data_exp4/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary.csv
+  perception_summary_72: Task1b_errorsummary.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/state-based-simulation-exp4/pmh/prob_proto
+oral:
+  mode: center
+
+n_jobs: 128
+simulation_repeats: 512
+
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+
+loss_metric: choice_nll

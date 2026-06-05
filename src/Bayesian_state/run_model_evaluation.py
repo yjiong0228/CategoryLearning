@@ -199,6 +199,17 @@ def run_basic_plots(
     )
     run_step(
         records,
+        "target_majority_accuracy_comparison",
+        lambda: evaluator.plot_target_majority_accuracy_comparison(
+            results,
+            subjects=subjects,
+            save_path=basic_dir / "target_majority_accuracy_comparison.png",
+            window_size=window_size,
+        ),
+        [basic_dir / "target_majority_accuracy_comparison.png"],
+    )
+    run_step(
+        records,
         "posterior_probabilities",
         lambda: evaluator.plot_posterior_probabilities(
             results,

@@ -43,6 +43,12 @@ class DiscreteRulePartition:
     EPS = 1e-12
     DISTANCE_MODE_RULE = "rule"
     VALID_DISTANCE_MODES = (DISTANCE_MODE_RULE,)
+    FEEDBACK_MODE_CATEGORY = "category_feedback"
+    FEEDBACK_MODE_BERNOULLI_CHOICE = "bernoulli_choice"
+    VALID_FEEDBACK_MODES = (
+        FEEDBACK_MODE_CATEGORY,
+        FEEDBACK_MODE_BERNOULLI_CHOICE,
+    )
 
     def __init__(
         self,
@@ -153,7 +159,15 @@ class DiscreteRulePartition:
             distance_mode=distance_mode,
             **kwargs,
         )
-        return self._feedback_likelihood_from_category_probabilities(prob, data)
+        return self._feedback_likelihood_from_category_probabilities(
+            prob,
+            data,
+            feedback_likelihood_mode=kwargs.get(
+                "feedback_likelihood_mode",
+                self.FEEDBACK_MODE_CATEGORY,
+            ),
+            feedback_lapse=kwargs.get("feedback_lapse", 0.0),
+        )
 
     def calc_trueprob_entry(
         self,
@@ -206,11 +220,21 @@ class DiscreteRulePartition:
         self,
         prob: np.ndarray,
         data: list | tuple,
+        feedback_likelihood_mode: str = FEEDBACK_MODE_CATEGORY,
+        feedback_lapse: float = 0.0,
     ) -> np.ndarray:
         choices = np.asarray(data[1], dtype=int).copy() - 1
         responses = np.asarray(data[2], dtype=float)
         n_trials = len(choices)
+        mode = self._resolve_feedback_likelihood_mode(feedback_likelihood_mode)
+        lapse = self._resolve_feedback_lapse(feedback_lapse)
         p_choice = prob[choices, np.arange(n_trials)]
+        if mode == self.FEEDBACK_MODE_BERNOULLI_CHOICE:
+            chance = 1.0 / float(max(1, prob.shape[0]))
+            p_choice = (1.0 - lapse) * p_choice + lapse * chance
+            responses = np.clip(responses, 0.0, 1.0)
+            likelihood = np.power(p_choice, responses) * np.power(1.0 - p_choice, 1.0 - responses)
+            return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
         likelihood = np.where(responses == 1, p_choice, 1.0 - p_choice)
         return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
 
@@ -222,6 +246,34 @@ class DiscreteRulePartition:
                 f"Expected one of: {cls.VALID_DISTANCE_MODES}."
             )
         return distance_mode
+
+    @classmethod
+    def _resolve_feedback_likelihood_mode(cls, mode: str) -> str:
+        mode = str(mode).strip().lower()
+        aliases = {
+            "category": cls.FEEDBACK_MODE_CATEGORY,
+            "categorical": cls.FEEDBACK_MODE_CATEGORY,
+            "legacy": cls.FEEDBACK_MODE_CATEGORY,
+            "deterministic": cls.FEEDBACK_MODE_CATEGORY,
+            "deterministic_feedback": cls.FEEDBACK_MODE_CATEGORY,
+            "probabilistic": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+            "probabilistic_feedback": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+            "bernoulli": cls.FEEDBACK_MODE_BERNOULLI_CHOICE,
+        }
+        resolved = aliases.get(mode, mode)
+        if resolved not in cls.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                f"Unsupported feedback_likelihood_mode '{mode}'. "
+                f"Expected one of: {cls.VALID_FEEDBACK_MODES}."
+            )
+        return resolved
+
+    @staticmethod
+    def _resolve_feedback_lapse(value: float) -> float:
+        lapse = float(value)
+        if not np.isfinite(lapse) or lapse < 0.0 or lapse >= 1.0:
+            raise ValueError(f"feedback_lapse must be in [0, 1), got {value!r}.")
+        return lapse
 
     @staticmethod
     def _resolve_beta_vector(beta, n_hypos: int) -> list[float]:
