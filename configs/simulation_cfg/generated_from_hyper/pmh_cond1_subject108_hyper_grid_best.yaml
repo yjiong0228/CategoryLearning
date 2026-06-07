@@ -42,7 +42,7 @@ engine_config:
         - label: explore_random
           amount: opp_random_4
           method: random
-          pool: all_unselected
+          pool: inactive
         init_num: 2
         max_active_hypotheses: 3
     likelihood_mod:

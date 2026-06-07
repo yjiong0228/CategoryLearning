@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.Bayesian_state.run_amr_optimization import resolve_loss_delta as resolve_loss_delta_amr
-from src.Bayesian_state.run_grid_optimization import resolve_loss_delta as resolve_loss_delta_grid
 from src.Bayesian_state.utils.optimizer_common import build_loss_strategy
+from src.Bayesian_state.utils.optimization_config import resolve_loss_delta
 
 
 def test_berhu_numeric_piecewise() -> None:
@@ -37,21 +36,19 @@ def test_berhu_missing_delta_raises() -> None:
 
 
 def test_resolve_loss_delta_requires_positive_for_berhu() -> None:
-    for resolver in (resolve_loss_delta_grid, resolve_loss_delta_amr):
-        assert resolver({"loss_delta": 0.05}, "accuracy_curve_berhu") == 0.05
-        try:
-            _ = resolver({}, "accuracy_curve_berhu")
-            assert False, "Expected ValueError for missing loss_delta"
-        except ValueError as e:
-            assert "loss_delta" in str(e)
-        try:
-            _ = resolver({"loss_delta": 0.0}, "accuracy_curve_berhu")
-            assert False, "Expected ValueError for non-positive loss_delta"
-        except ValueError as e:
-            assert "loss_delta" in str(e)
+    assert resolve_loss_delta({"loss_delta": 0.05}, "accuracy_curve_berhu") == 0.05
+    try:
+        _ = resolve_loss_delta({}, "accuracy_curve_berhu")
+        assert False, "Expected ValueError for missing loss_delta"
+    except ValueError as e:
+        assert "loss_delta" in str(e)
+    try:
+        _ = resolve_loss_delta({"loss_delta": 0.0}, "accuracy_curve_berhu")
+        assert False, "Expected ValueError for non-positive loss_delta"
+    except ValueError as e:
+        assert "loss_delta" in str(e)
 
 
 def test_resolve_loss_delta_ignored_for_other_losses() -> None:
-    for resolver in (resolve_loss_delta_grid, resolve_loss_delta_amr):
-        assert resolver({}, "accuracy_curve_mse") is None
-        assert resolver({"loss_delta": 0.5}, "accuracy_nll") is None
+    assert resolve_loss_delta({}, "accuracy_curve_mse") is None
+    assert resolve_loss_delta({"loss_delta": 0.5}, "accuracy_nll") is None

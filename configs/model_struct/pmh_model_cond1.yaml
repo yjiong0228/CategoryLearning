@@ -17,7 +17,7 @@ modules:
     kwargs:
       strategies:
         - {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"}
-        - {label: "explore_random", amount: "opp_random_4", method: "random", pool: "all_unselected"}
+        - {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
       init_num: 2
       max_active_hypotheses: 3
   likelihood_mod:
@@ -56,5 +56,5 @@ agenda:
 #         kwargs:
 #           strategies:
 #             - {amount: "entropy_7", method: "random_posterior", pool: "active"}
-#             - {amount: "fixed", method: "ksimilar_centers", pool: "all_unselected", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
-#             - {amount: "opp_entropy_7", method: "random", pool: "all_unselected"}
+#             - {amount: "fixed", method: "ksimilar_centers", pool: "inactive", value: 1, proto_hypo_amount: 1, proto_hypo_method: "top", cluster_hypo_method: "top"}
+#             - {amount: "opp_entropy_7", method: "random", pool: "inactive"}

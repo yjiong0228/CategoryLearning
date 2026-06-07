@@ -1,11 +1,27 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+import uuid
 from pathlib import Path
 
+import pytest
 import yaml
 
-from src.Bayesian_state.hyper_opt.optimizer import CombinationResult, HyperOptimizer
+from src.Bayesian_state.hyper_grid.optimizer import CombinationResult, HyperGridOptimizer
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    root = Path(tempfile.gettempdir()) / "catelearn_test_tmp"
+    root.mkdir(exist_ok=True)
+    path = root / f"hyper_grid_{uuid.uuid4().hex}"
+    path.mkdir()
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -39,7 +55,6 @@ def _strategy_candidates_payload() -> dict:
                 "hypo_transitions_kwargs": {
                     "init_num": 4,
                     "max_active_hypotheses": 5,
-                    "history_maxlen": 8,
                     "strategies": [
                         {"label": "retain", "amount": "entropy_norm_4", "method": "epsilon_posterior", "pool": "active"}
                     ],
@@ -50,49 +65,49 @@ def _strategy_candidates_payload() -> dict:
 
 
 def _build_min_configs(tmp_path: Path) -> tuple[Path, Path]:
-    inner_cfg = {
+    sim_cfg = {
         "engine_config": {
             "agenda": ["memory_mod"],
             "modules": {"memory_mod": {"class": "x", "kwargs": {"gamma": 0.5, "w0": 0.1}}},
         },
         "subjects": [1],
-        "param_grid": {"gamma": [0.5], "w0": [0.1]},
         "window_size": 8,
         "loss_metric": "accuracy_curve_mse",
+        "simulation_repeats": 1,
     }
-    inner_path = tmp_path / "inner.yaml"
-    _write_yaml(inner_path, inner_cfg)
+    sim_path = tmp_path / "sim.yaml"
+    _write_yaml(sim_path, sim_cfg)
 
     hyper_cfg = {
-        "inner_optimizer": "grid",
-        "inner_base_config_path": "inner.yaml",
+        "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out",
-        "selection_metric": "min_inner_mean_error",
+        "selection_metric": "mean_simulation_error",
+        "hyper_base_seed": 100,
         "hyperparam_space": {
             "engine.modules.beta_mod.kwargs.beta_init": {"values": [0.5, 1.0, 2.0]},
-            "inner.window_size": {"values": [6, 8, 10]},
+            "simulation.window_size": {"values": [6, 8, 10]},
         },
         "stages": {
-            "coarse": {"inner_overrides": {"n_repeats": 1, "refit_repeats": 0}},
-            "fine": {"inner_overrides": {"n_repeats": 1, "refit_repeats": 0}},
+            "coarse": {"simulation_overrides": {"simulation_repeats": 1}},
+            "fine": {"simulation_overrides": {"simulation_repeats": 1}},
         },
         "refine_policy": {"top_k": 2},
     }
     hyper_path = tmp_path / "hyper.yaml"
     _write_yaml(hyper_path, hyper_cfg)
-    return inner_path, hyper_path
+    return sim_path, hyper_path
 
 
 def test_apply_hyperparams_injection(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     inner = {"window_size": 8}
     engine = {"modules": {"beta_mod": {"kwargs": {"beta_init": 1.0}}}}
     combination = {
-        "inner.window_size": 12,
+        "simulation.window_size": 12,
         "engine.modules.beta_mod.kwargs.beta_init": 2.5,
     }
     out_inner, out_engine = opt._apply_hyperparams(combination, inner, engine)
@@ -114,9 +129,9 @@ def test_values_from_json_expands_kwargs_and_applies_to_engine(tmp_path: Path) -
                 "value_key": "hypo_transitions_kwargs",
             }
         },
-        "inner.window_size": {"values": [8]},
+        "simulation.window_size": {"values": [8]},
     }
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     specs = opt._param_specs_for_stage("coarse")
     combos = opt._expand_combinations(specs)
@@ -135,13 +150,12 @@ def test_values_from_json_expands_kwargs_and_applies_to_engine(tmp_path: Path) -
     injected = out_engine["modules"]["hypo_transitions_mod"]["kwargs"]
     assert injected["init_num"] == 4
     assert injected["max_active_hypotheses"] == 5
-    assert injected["history_maxlen"] == 8
 
 
 def test_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
     kwargs_value = {
         "init_num": 2,
         "max_active_hypotheses": 3,
@@ -164,28 +178,28 @@ def test_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
 def test_top_k_combinations_from_coarse(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     coarse_combinations = [
-        CombinationResult("coarse", 0, {"inner.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0}, 0.2, {1: {"mean_error": 0.2}}, 1),
-        CombinationResult("coarse", 1, {"inner.window_size": 10, "engine.modules.beta_mod.kwargs.beta_init": 2.0}, 0.3, {1: {"mean_error": 0.3}}, 2),
-        CombinationResult("coarse", 2, {"inner.window_size": 12, "engine.modules.beta_mod.kwargs.beta_init": 3.0}, 0.4, {1: {"mean_error": 0.4}}, 3),
+        CombinationResult("coarse", 0, {"simulation.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0}, 0.2, {1: {"mean_error": 0.2, "std_error": 0.0}}, 1),
+        CombinationResult("coarse", 1, {"simulation.window_size": 10, "engine.modules.beta_mod.kwargs.beta_init": 2.0}, 0.3, {1: {"mean_error": 0.3, "std_error": 0.0}}, 2),
+        CombinationResult("coarse", 2, {"simulation.window_size": 12, "engine.modules.beta_mod.kwargs.beta_init": 3.0}, 0.4, {1: {"mean_error": 0.4, "std_error": 0.0}}, 3),
     ]
 
     selected = opt._top_k_combinations_from_coarse(coarse_combinations)
     assert len(selected) == 2
-    assert selected[0]["inner.window_size"] == 8
-    assert selected[1]["inner.window_size"] == 10
+    assert selected[0]["simulation.window_size"] == 8
+    assert selected[1]["simulation.window_size"] == 10
 
 
 def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
         err = float(combination_index + (0 if stage_name == "coarse" else 0.1))
-        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + combination_index)
+        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err, "std_error": 0.0, "simulation_repeats": 1}}, 42 + combination_index)
 
     monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
 
@@ -212,11 +226,11 @@ def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkey
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     cfg["hyperparam_selection_mode"] = "group_mean"
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
         err = float(combination_index + (0 if stage_name == "coarse" else 0.1))
-        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err}}, 42 + combination_index)
+        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err, "std_error": 0.0, "simulation_repeats": 1}}, 42 + combination_index)
 
     monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
     result = opt.run(subjects=[1], stage="all")
@@ -227,22 +241,21 @@ def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkey
     assert "per_subject_best" not in best
 
 
-def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch) -> None:
+def test_simulation_overrides_are_used_for_runner_call(tmp_path: Path, monkeypatch) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     captured: dict = {}
 
-    def _fake_resolve(inner_cfg, subject_id, subjects, cfg_path):
-        return inner_cfg, {"modules": {}}, "posterior_t_minus_1", "posterior_t_minus_1", "accuracy_curve_mse", None, 8, 1
+    def _fake_resolve(sim_cfg, subject_id, subjects):
+        return sim_cfg, {"modules": {}}, "posterior_t_minus_1", "posterior_t_minus_1", "accuracy_curve_mse", None, 8, 1
 
-    class _FakeOptimizer:
+    class _FakeRunner:
         def __init__(self):
             self.n_jobs = 1
 
-        def optimize_subject(self, **kwargs):
-            captured["param_grid"] = kwargs["param_grid"]
+        def simulate_subject(self, **kwargs):
             captured["window_size"] = kwargs["window_size"]
             captured["prediction_mode"] = kwargs["prediction_mode"]
             captured["selection_prediction_mode"] = kwargs["selection_prediction_mode"]
@@ -254,23 +267,19 @@ def test_param_grid_override_is_used_for_inner_call(tmp_path: Path, monkeypatch)
                 params = {"gamma": 0.9, "w0": 0.2}
             return {"best": _Best(), "condition": 1}
 
-    def _fake_build(inner_cfg, engine_cfg, cfg_path):
-        return _FakeOptimizer(), {"learning_data": "x", "processed_dir": "y"}
+    def _fake_build(sim_cfg, engine_cfg):
+        return _FakeRunner(), {"learning_data": "x", "processed_dir": "y"}
 
-    monkeypatch.setattr(opt, "_resolve_inner_components", _fake_resolve)
-    monkeypatch.setattr(opt, "_build_optimizer", _fake_build)
+    monkeypatch.setattr(opt, "_resolve_sim_components", _fake_resolve)
+    monkeypatch.setattr(opt, "_build_runner", _fake_build)
 
     combination = {
-        "inner.param_grid.gamma": [0.2, 0.8],
-        "inner.param_grid.w0": [0.03, 0.15],
-        "inner.window_size": 12,
-        "inner.prediction_mode": "prior_t",
-        "inner.selection_prediction_mode": "prior_t",
+        "simulation.window_size": 12,
+        "simulation.prediction_mode": "prior_t",
+        "simulation.selection_prediction_mode": "prior_t",
     }
-    _ = opt._evaluate_combination("coarse", 0, combination, opt.inner_base_config, [1])
+    _ = opt._evaluate_combination("coarse", 0, combination, opt.base_sim_config, [1])
 
-    assert captured["param_grid"]["gamma"] == [0.2, 0.8]
-    assert captured["param_grid"]["w0"] == [0.03, 0.15]
     assert captured["window_size"] == 12
     assert captured["prediction_mode"] == "prior_t"
     assert captured["selection_prediction_mode"] == "prior_t"
@@ -282,12 +291,12 @@ def test_fine_stage_runs_without_coarse_when_fine_hyperparam_space_exists(tmp_pa
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     cfg["stages"]["fine"]["hyperparam_space"] = {
-        "inner.window_size": {"values": [8]},
+        "simulation.window_size": {"values": [8]},
     }
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
-        return CombinationResult(stage_name, combination_index, dict(combination_params), 0.2, {1: {"mean_error": 0.2, "best_error": 0.2}}, 999)
+        return CombinationResult(stage_name, combination_index, dict(combination_params), 0.2, {1: {"mean_error": 0.2, "best_error": 0.2, "std_error": 0.0, "simulation_repeats": 1}}, 999)
 
     monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
 
@@ -299,7 +308,7 @@ def test_fine_stage_runs_without_coarse_when_fine_hyperparam_space_exists(tmp_pa
 def test_fine_stage_without_hyperparam_space_requires_coarse_results(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     try:
         _ = opt.run(subjects=[1], stage="fine")
@@ -308,30 +317,30 @@ def test_fine_stage_without_hyperparam_space_requires_coarse_results(tmp_path: P
         assert "requires coarse stage results" in str(e)
 
 
-def test_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
+def test_missing_loss_metric_in_sim_config_raises(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     cfg["loss_metric"] = "accuracy_curve_mse"
-    opt = HyperOptimizer(cfg, hyper_path)
-    bad_inner = dict(opt.inner_base_config)
-    bad_inner.pop("loss_metric", None)
+    opt = HyperGridOptimizer(cfg, hyper_path)
+    bad_sim = dict(opt.base_sim_config)
+    bad_sim.pop("loss_metric", None)
     try:
-        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        _ = opt._resolve_sim_components(bad_sim, 1, [1])
         assert False, "Expected ValueError for missing loss_metric"
     except ValueError as e:
         assert "loss_metric" in str(e)
 
 
-def test_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) -> None:
+def test_missing_loss_delta_with_berhu_in_sim_config_raises(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     cfg["loss_metric"] = "accuracy_curve_berhu"
-    opt = HyperOptimizer(cfg, hyper_path)
-    bad_inner = dict(opt.inner_base_config)
-    bad_inner["loss_metric"] = "accuracy_curve_berhu"
-    bad_inner.pop("loss_delta", None)
+    opt = HyperGridOptimizer(cfg, hyper_path)
+    bad_sim = dict(opt.base_sim_config)
+    bad_sim["loss_metric"] = "accuracy_curve_berhu"
+    bad_sim.pop("loss_delta", None)
     try:
-        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        _ = opt._resolve_sim_components(bad_sim, 1, [1])
         assert False, "Expected ValueError for missing loss_delta with accuracy_curve_berhu"
     except ValueError as e:
         assert "loss_delta" in str(e)
@@ -342,7 +351,7 @@ def test_values_from_json_errors_are_clear(tmp_path: Path) -> None:
     candidates_path = tmp_path / "strategy_candidates.json"
     _write_json(candidates_path, _strategy_candidates_payload())
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     bad_specs = [
         (
@@ -393,7 +402,7 @@ def test_parent_and_child_hyperparam_paths_are_rejected(tmp_path: Path) -> None:
         "engine.modules.hypo_transitions_mod.kwargs": {"values": [{"init_num": 2}]},
         "engine.modules.hypo_transitions_mod.kwargs.strategies": {"values": [[]]},
     }
-    opt = HyperOptimizer(cfg, hyper_path)
+    opt = HyperGridOptimizer(cfg, hyper_path)
 
     try:
         _ = opt._param_specs_for_stage("coarse")

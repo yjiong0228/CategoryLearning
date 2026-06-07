@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+import uuid
 from pathlib import Path
 
+import pytest
 import yaml
 
-from src.Bayesian_state.hyper_opt_cd.optimizer import CombinationResult, HyperOptimizerCD
-from src.Bayesian_state.run_hyper_then_grid import (
-    default_generated_grid_config_for_backend,
-    default_grid_output_dir_for_backend,
-    resolve_hyper_backend,
-)
+from src.Bayesian_state.hyper_cd.optimizer import CombinationResult, HyperCDOptimizer
+from src.Bayesian_state.run_hyper_then_simulation import build_hyper_selector
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    root = Path(tempfile.gettempdir()) / "catelearn_test_tmp"
+    root.mkdir(exist_ok=True)
+    path = root / f"hyper_cd_{uuid.uuid4().hex}"
+    path.mkdir()
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _write_yaml(path: Path, payload: dict) -> None:
@@ -52,43 +64,42 @@ def _strategy_candidates_payload() -> dict:
 
 
 def _build_min_cd_config(tmp_path: Path) -> Path:
-    inner_cfg = {
+    sim_cfg = {
         "engine_config": {
             "agenda": ["memory_mod"],
             "modules": {"memory_mod": {"class": "x", "kwargs": {"gamma": 0.5, "w0": 0.1}}},
         },
         "subjects": [1],
-        "param_grid": {"gamma": [0.5], "w0": [0.1]},
         "window_size": 8,
         "loss_metric": "accuracy_curve_mse",
+        "simulation_repeats": 1,
     }
-    _write_yaml(tmp_path / "inner.yaml", inner_cfg)
+    _write_yaml(tmp_path / "sim.yaml", sim_cfg)
 
     cd_cfg = {
-        "inner_optimizer": "grid",
-        "inner_base_config_path": "inner.yaml",
+        "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out_cd",
-        "selection_metric": "min_inner_mean_error",
+        "selection_metric": "mean_simulation_error",
         "hyperparam_selection_mode": "per_subject",
         "save_level": "compact",
-        "random_seed": 42,
+        "hyper_base_seed": 42,
         "cd": {
             "n_restarts": 2,
             "max_outer_iters": 2,
             "init_strategy": "anchor",
-            "anchor": {"inner.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0},
+            "anchor": {"simulation.window_size": 8, "engine.modules.beta_mod.kwargs.beta_init": 1.0},
             "coordinate_order": "fixed",
             "patience": 1,
             "min_delta": 0.0,
         },
         "hyperparam_space": {
-            "inner.window_size": {"values": [6, 8]},
+            "simulation.window_size": {"values": [6, 8]},
             "engine.modules.beta_mod.kwargs.beta_init": {"values": [1.0, 2.0]},
         },
         "stages": {
-            "coarse": {"inner_overrides": {"n_repeats": 1, "refit_repeats": 0}},
-            "fine": {"inner_overrides": {"n_repeats": 1, "refit_repeats": 0}},
+            "coarse": {"simulation_overrides": {"simulation_repeats": 1}},
+            "fine": {"simulation_overrides": {"simulation_repeats": 1}},
         },
         "refine_policy": {"top_k": 2},
     }
@@ -100,10 +111,10 @@ def _build_min_cd_config(tmp_path: Path) -> Path:
 def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizerCD(cfg, cd_path)
+    opt = HyperCDOptimizer(cfg, cd_path)
 
-    def _fake_eval(stage_name, point, stage_inner_cfg, subjects, restart_id, iter_id, coordinate):
-        score = float(point.get("inner.window_size", 0)) + float(
+    def _fake_eval(stage_name, point, stage_sim_cfg, subjects, restart_id, iter_id, coordinate):
+        score = float(point.get("simulation.window_size", 0)) + float(
             point.get("engine.modules.beta_mod.kwargs.beta_init", 0)
         )
         return CombinationResult(
@@ -111,8 +122,8 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
             combination_index=opt._combination_counter,
             hyperparams=dict(point),
             aggregated_error=score,
-            subject_metrics={1: {"mean_error": score, "best_error": score}},
-            random_seed=100 + opt._combination_counter,
+            subject_metrics={1: {"mean_error": score, "best_error": score, "std_error": 0.0, "simulation_repeats": 1}},
+            hyper_candidate_seed=100 + opt._combination_counter,
             restart_id=restart_id,
             iter_id=iter_id,
             coordinate=coordinate,
@@ -151,8 +162,8 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
     assert "num_improvements" in restart_summary["coarse"][0]
     assert "num_new_evaluations" in restart_summary["coarse"][0]
     assert "best_combination_index" in subject_best
-    assert subject_best["hyper_backend"] == "cd"
-    assert root_best["hyper_backend"] == "cd"
+    assert subject_best["hyper_backend"] == "hyper_cd"
+    assert root_best["hyper_backend"] == "hyper_cd"
     assert "per_subject_best" in root_best
 
 
@@ -168,9 +179,9 @@ def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:
                 "value_key": "hypo_transitions_kwargs",
             }
         },
-        "inner.window_size": {"values": [8]},
+        "simulation.window_size": {"values": [8]},
     }
-    opt = HyperOptimizerCD(cfg, cd_path)
+    opt = HyperCDOptimizer(cfg, cd_path)
 
     specs = opt._param_specs_for_stage("coarse")
     space = {k: opt._hyperparam_values(v) for k, v in specs.items()}
@@ -191,7 +202,7 @@ def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:
 def test_cd_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
-    opt = HyperOptimizerCD(cfg, cd_path)
+    opt = HyperCDOptimizer(cfg, cd_path)
     kwargs_value = {
         "init_num": 6,
         "max_active_hypotheses": 6,
@@ -210,41 +221,43 @@ def test_cd_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> Non
     assert kwargs_value["strategies"][0]["label"] == "retain"
 
 
-def test_cd_backend_auto_defaults_do_not_overlap_standard_hyper(tmp_path: Path) -> None:
+def test_build_hyper_selector_supports_grid_and_cd_backends(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    grid_cfg = dict(cfg)
+    grid_cfg["output_dir"] = "./out_grid"
+    grid_path = tmp_path / "hyper_grid.yaml"
+    _write_yaml(grid_path, grid_cfg)
 
-    assert resolve_hyper_backend(cd_path, cfg, "auto") == "cd"
-    assert default_generated_grid_config_for_backend("cd").name.endswith("hyper_cd_best.yaml")
-    assert default_grid_output_dir_for_backend("cd").name.endswith("hyper_cd_best")
-    assert default_generated_grid_config_for_backend("hyper").name.endswith("hyper_best.yaml")
-    assert default_grid_output_dir_for_backend("hyper").name.endswith("hyper_best")
+    assert isinstance(build_hyper_selector("hyper_cd", cd_path), HyperCDOptimizer)
+    assert build_hyper_selector("hyper_cd", cd_path).hyper_base_seed == 42
+    assert build_hyper_selector("hyper_grid", grid_path).hyper_base_seed == 42
 
 
-def test_cd_missing_loss_metric_in_inner_config_raises(tmp_path: Path) -> None:
+def test_cd_missing_loss_metric_in_sim_config_raises(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
     cfg["loss_metric"] = "accuracy_curve_mse"
-    opt = HyperOptimizerCD(cfg, cd_path)
-    bad_inner = dict(opt.inner_base_config)
-    bad_inner.pop("loss_metric", None)
+    opt = HyperCDOptimizer(cfg, cd_path)
+    bad_sim = dict(opt.base_sim_config)
+    bad_sim.pop("loss_metric", None)
     try:
-        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        _ = opt._resolve_sim_components(bad_sim, 1, [1])
         assert False, "Expected ValueError for missing loss_metric"
     except ValueError as e:
         assert "loss_metric" in str(e)
 
 
-def test_cd_missing_loss_delta_with_berhu_in_inner_config_raises(tmp_path: Path) -> None:
+def test_cd_missing_loss_delta_with_berhu_in_sim_config_raises(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
     cfg["loss_metric"] = "accuracy_curve_berhu"
-    opt = HyperOptimizerCD(cfg, cd_path)
-    bad_inner = dict(opt.inner_base_config)
-    bad_inner["loss_metric"] = "accuracy_curve_berhu"
-    bad_inner.pop("loss_delta", None)
+    opt = HyperCDOptimizer(cfg, cd_path)
+    bad_sim = dict(opt.base_sim_config)
+    bad_sim["loss_metric"] = "accuracy_curve_berhu"
+    bad_sim.pop("loss_delta", None)
     try:
-        _ = opt._resolve_inner_components(bad_inner, 1, [1], opt.inner_base_config_path)
+        _ = opt._resolve_sim_components(bad_sim, 1, [1])
         assert False, "Expected ValueError for missing loss_delta with accuracy_curve_berhu"
     except ValueError as e:
         assert "loss_delta" in str(e)

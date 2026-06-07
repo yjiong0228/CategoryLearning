@@ -21,7 +21,7 @@ hyperparam_space:
       # R1: legacy cond1 random baseline with explicit pools
       - [
           {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"},
-          {label: "explore_random", amount: "opp_random_4", method: "random", pool: "all_unselected"}
+          {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
         ]
       # R2: conservative random baseline; lower active-set churn
       - [

@@ -13,7 +13,9 @@ of strategies. Each strategy must set:
 `amount` decides how many hypotheses to request, `pool` decides which candidates
 are eligible, and `method` decides how candidates are selected. Strategies run
 in YAML order, and hypotheses selected by earlier strategies are removed from
-later pools. `max_active_hypotheses` caps the total set by this order.
+later pools. `max_active_hypotheses` can still be set as an external hard cap,
+but strategy candidates should normally control active-set size through their
+amount choices.
 
 Pools:
 
@@ -21,7 +23,6 @@ Pools:
 |---|---|---|
 | `active` | Previous active hypotheses not yet selected this step | Retention / exploitation |
 | `inactive` | Previous inactive hypotheses not yet selected this step | Explicit exploration |
-| `all_unselected` | Full hypothesis space except hypotheses already selected this step | Legacy mixed behavior |
 
 ## Amount Strategies
 
@@ -42,12 +43,18 @@ number in names such as `entropy_7`.
 | `opp_confidence_M` | Reverse of `confidence_M` | same as `confidence_M` | \(n=\max(0,M-n_{confidence})\) |
 | `max_M` | Hard threshold based on posterior peak | `reference_mass=3.0` | if \(reference\_mass/p_{max}>M\), \(n=0\); else \(n=\lfloor reference\_mass/p_{max}\rfloor\) |
 | `recent_accuracy_inverse_M` | High recent accuracy requests fewer hypotheses | `window=10`, `padding=chance`, `feedback_mode=graded`, `min_count=1`, `gamma=1.0` | \(acc=(\sum recent+(window-m)pad)/window\); \(n=min\_count+round((1-acc)^\gamma(M-min\_count))\) |
+| `acc_M`, `accuracy_static_M` | Legacy Bayesian-style accuracy step; higher recent accuracy requests more | `window=16`, `padding=chance`, `feedback_mode=exact`, `threshold_min=0.2`, `scale=10` | if \(acc\le threshold\_min\), \(n=0\); else \(n=\min(M,\lfloor scale(acc-threshold\_min)\rfloor+1)\) |
+| `opp_acc_M`, `opp_accuracy_static_M` | Complement of the legacy accuracy step | same as `acc_M` | \(n=M-n_{acc}\) |
+| `accuracy_delta_M` | Improvement-driven amount | `window=8`, `padding=chance`, `feedback_mode=exact`, `threshold=0`, `scale=0.5` | \(\Delta acc=acc_{new}-acc_{old}\); \(n=round(M\cdot clip((\Delta acc-threshold)/scale,0,1))\) |
+| `opp_accuracy_delta_M` | Decline-driven amount, useful for exploration after performance drops | same as `accuracy_delta_M` | \(n=round(M\cdot clip((-\Delta acc-threshold)/scale,0,1))\) |
 
-`recent_accuracy_inverse_M` stores feedback inside the transition module. The
-current trial's feedback is appended after transition, so transition at trial
-`t` uses feedback through trial `t-1`. `padding: chance` uses `1 / n_cats`;
-numeric padding such as `0.5` or `0.25` is also allowed. `feedback_mode: graded`
-clips feedback into `[0,1]`; `exact` records only `feedback == 1.0` as correct.
+History-based amount strategies store feedback inside the transition module.
+The current trial's feedback is appended after transition, so transition at
+trial `t` uses feedback through trial `t-1`. `padding: chance` uses
+`1 / n_cats`; numeric padding such as `0.5` or `0.25` is also allowed.
+`feedback_mode: graded` clips feedback into `[0,1]`; `exact` records only
+`feedback == 1.0` as correct. Delta strategies need `2 * window` history and
+left-pad missing early trials before splitting into old/new windows.
 
 ## Selection Methods
 
@@ -58,7 +65,6 @@ clips feedback into `[0,1]`; `exact` records only `feedback == 1.0` as correct.
 | `random` | Uniform random selection | none | Sample without replacement uniformly from the pool. |
 | `epsilon_posterior` | Posterior sampling mixed with uniform noise | `epsilon=0.25` | \(w_i=(1-\epsilon)p_i/\sum p+\epsilon/|pool|\). |
 | `temperature_posterior` | Flatten or sharpen posterior weights | `temperature=1.0`, `weight_floor=1e-12` | \(w_i\propto(p_i+weight\_floor)^{1/T}\). Larger \(T\) is more random. |
-| `diverse_posterior` | Greedy posterior-diversity tradeoff | `diversity_lambda=0.6`, `similarity_source=partition` | \(score(i)=\lambda posterior\_score(i)-(1-\lambda)\max_{j\in selected}sim(i,j)\). Requires a finite partition similarity matrix. |
 | `ksimilar_centers` | Prototype-center association around active hypotheses | `proto_hypo_amount=1`, `proto_hypo_method=top|random`, `cluster_hypo_method=top|random` | Samples reference categories from active prototype centers, scores candidates by center similarity, then selects by top score or score-weighted random. Requires prototype-backed partitions. |
 
 ## Example Configurations

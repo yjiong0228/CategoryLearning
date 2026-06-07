@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -32,18 +34,6 @@ class FarPrototypePartition(FakePartition):
         self.prototypes[1:, 0, 0, 0] = 1000.0
 
 
-class LazySimilarityPartition:
-    def __init__(self, matrix: np.ndarray):
-        self.n_cats = 2
-        self._matrix = matrix
-        self.access_count = 0
-
-    @property
-    def similarity_matrix(self) -> np.ndarray:
-        self.access_count += 1
-        return self._matrix
-
-
 def _engine(set_size: int = 8, posterior: np.ndarray | None = None, partition=None) -> SimpleNamespace:
     if posterior is None:
         posterior = np.full(set_size, 1.0 / set_size)
@@ -67,23 +57,24 @@ def _module(strategies, **kwargs) -> DynamicHypothesisModule:
     )
 
 
-def test_strategy_without_pool_uses_method_default() -> None:
-    mod = _module([{"amount": "fixed", "method": "random", "value": 1}])
-
-    assert mod.strategies[0]["pool"] == DynamicHypothesisModule.POOL_ALL_UNSELECTED
+def test_strategy_without_pool_raises() -> None:
+    with pytest.raises(ValueError, match="pool"):
+        _module([{"amount": "fixed", "method": "random", "value": 1}])
 
 
 @pytest.mark.parametrize(
     "strategy, match",
     [
         ({"amount": "fixed", "method": "random", "pool": "bad", "value": 1}, "unsupported pool"),
+        ({"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1}, "unsupported pool"),
+        ({"amount": "fixed", "method": "random", "pool": "unselected", "value": 1}, "unsupported pool"),
         ({"amount": "fixed", "method": "bad", "pool": "active", "value": 1}, "unsupported method"),
         ({"amount": "bad", "method": "random", "pool": "active"}, "unsupported amount"),
         ({"amount": "fixed", "method": "random", "pool": "active", "value": 1.5}, "non-integer"),
         ({"amount": "fixed", "method": "top_posterior", "pool": "active", "value": 1, "top_p_scope": "bad"}, "top_p_scope"),
         ({"amount": "fixed", "method": "epsilon_posterior", "pool": "active", "value": 1, "epsilon": 1.5}, "epsilon"),
         ({"amount": "fixed", "method": "temperature_posterior", "pool": "active", "value": 1, "temperature": 0}, "temperature"),
-        ({"amount": "fixed", "method": "diverse_posterior", "pool": "active", "value": 1, "diversity_lambda": -0.1}, "diversity_lambda"),
+        ({"amount": "fixed", "method": "diverse_posterior", "pool": "active", "value": 1}, "unsupported method"),
     ],
 )
 def test_invalid_strategy_config_raises(strategy, match) -> None:
@@ -113,13 +104,14 @@ def test_recent_accuracy_chance_padding_requires_n_cats() -> None:
 
 
 def test_pool_resolution_uses_previous_active_and_current_selected() -> None:
-    mod = _module([{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1}])
+    mod = _module([{"amount": "fixed", "method": "random", "pool": "inactive", "value": 1}])
     mod.old_active = np.array([1, 2, 3], dtype=int)
     selected = {2, 5}
 
     assert mod._resolve_pool("active", selected).tolist() == [1, 3]
     assert mod._resolve_pool("inactive", selected).tolist() == [0, 4, 6, 7]
-    assert mod._resolve_pool("all_unselected", selected).tolist() == [0, 1, 3, 4, 6, 7]
+    with pytest.raises(ValueError, match="Unsupported pool"):
+        mod._resolve_pool("all_unselected", selected)
 
 
 def test_transition_uses_pool_for_retention_and_exploration() -> None:
@@ -164,8 +156,8 @@ def test_max_active_hypotheses_budget_follows_strategy_order() -> None:
 
 def test_strategy_counts_log_keeps_labels_and_method_aggregates() -> None:
     strategies = [
-        {"label": "first_random", "amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1},
-        {"label": "second_random", "amount": "fixed", "method": "random", "pool": "all_unselected", "value": 2},
+        {"label": "first_random", "amount": "fixed", "method": "random", "pool": "inactive", "value": 1},
+        {"label": "second_random", "amount": "fixed", "method": "random", "pool": "inactive", "value": 2},
     ]
     mod = _module(strategies, module_seed=3)
 
@@ -193,7 +185,7 @@ def test_empty_transition_falls_back_to_best_posterior_hypothesis() -> None:
 
 
 def test_same_seed_reproducible_and_derived_repeats_differ() -> None:
-    strategies = [{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 4}]
+    strategies = [{"amount": "fixed", "method": "random", "pool": "inactive", "value": 4}]
     first = _module(strategies, module_seed=123)
     second = _module(strategies, module_seed=123)
 
@@ -212,7 +204,7 @@ def test_ksimilar_centers_rejects_discrete_rule_partition() -> None:
         {
             "amount": "fixed",
             "method": "ksimilar_centers",
-            "pool": "all_unselected",
+            "pool": "inactive",
             "value": 1,
         }
     ]
@@ -226,7 +218,7 @@ def test_ksimilar_centers_rejects_discrete_rule_partition() -> None:
 
 
 def test_nonfinite_posterior_raises() -> None:
-    strategies = [{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1}]
+    strategies = [{"amount": "fixed", "method": "random", "pool": "inactive", "value": 1}]
     mod = DynamicHypothesisModule(
         _engine(set_size=3, posterior=np.array([0.5, np.nan, 0.5])),
         strategies=strategies,
@@ -260,7 +252,7 @@ def test_random_posterior_still_rejects_invalid_candidate_weights() -> None:
 
 def test_top_p_scope_global_vs_pool() -> None:
     posterior = np.array([0.70, 0.10, 0.15, 0.05])
-    mod = _module([{"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1}], engine_kwargs={"set_size": 4, "posterior": posterior})
+    mod = _module([{"amount": "fixed", "method": "random", "pool": "inactive", "value": 1}], engine_kwargs={"set_size": 4, "posterior": posterior})
     candidates = np.array([2, 3])
 
     global_selected = mod._select_top_posterior(
@@ -282,7 +274,7 @@ def test_top_p_scope_global_vs_pool() -> None:
 
 def test_epsilon_posterior_can_drop_high_posterior_hypothesis() -> None:
     posterior = np.array([0.99, 0.01])
-    strategy = {"amount": "fixed", "method": "epsilon_posterior", "pool": "all_unselected", "value": 1, "epsilon": 1.0}
+    strategy = {"amount": "fixed", "method": "epsilon_posterior", "pool": "inactive", "value": 1, "epsilon": 1.0}
     mod = _module([strategy], engine_kwargs={"set_size": 2, "posterior": posterior}, module_seed=0)
 
     mod._transition()
@@ -295,7 +287,7 @@ def test_temperature_posterior_is_seed_reproducible() -> None:
     strategy = {
         "amount": "fixed",
         "method": "temperature_posterior",
-        "pool": "all_unselected",
+        "pool": "inactive",
         "value": 2,
         "temperature": 2.0,
     }
@@ -309,7 +301,7 @@ def test_temperature_posterior_is_seed_reproducible() -> None:
 
 
 def test_entropy_norm_amounts_move_in_opposite_directions() -> None:
-    strategy = {"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1}
+    strategy = {"amount": "fixed", "method": "random", "pool": "inactive", "value": 1}
     mod = _module([strategy])
     low_entropy = np.array([0.97, 0.01, 0.01, 0.01])
     high_entropy = np.full(4, 0.25)
@@ -375,80 +367,80 @@ def test_exact_feedback_mode_records_half_feedback_as_zero() -> None:
     assert list(mod.feedback_history) == [0.0]
 
 
-def test_diverse_posterior_prefers_dissimilar_second_choice() -> None:
-    posterior = np.array([0.60, 0.20, 0.19, 0.01])
-    sim = np.array(
-        [
-            [1.00, 0.99, 0.00, 0.00],
-            [0.99, 1.00, 0.20, 0.20],
-            [0.00, 0.20, 1.00, 0.20],
-            [0.00, 0.20, 0.20, 1.00],
-        ]
-    )
+def test_accuracy_static_amounts_match_legacy_step_direction() -> None:
     strategy = {
-        "amount": "fixed",
-        "method": "diverse_posterior",
-        "pool": "all_unselected",
-        "value": 2,
-        "diversity_lambda": 0.5,
+        "amount": "acc_7",
+        "method": "top_posterior",
+        "pool": "active",
+        "window": 4,
+        "padding": "chance",
+        "feedback_mode": "exact",
     }
-    mod = _module([strategy], engine_kwargs={"set_size": 4, "posterior": posterior, "partition": FakePartition(similarity_matrix=sim)})
+    mod = _module([strategy], engine_kwargs={"partition": FakePartition(n_cats=2)})
+    mod.feedback_history.extend([1.0, 1.0, 1.0, 1.0])
 
-    mod._transition()
+    assert mod.adaptive_amount_evaluator("acc_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 7
+    assert mod.adaptive_amount_evaluator("accuracy_static_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 7
+    assert mod.adaptive_amount_evaluator("opp_acc_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
+    assert mod.adaptive_amount_evaluator("opp_accuracy_static_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
 
-    assert mod.active.tolist() == [0, 2]
+    mod.feedback_history.clear()
+    mod.feedback_history.extend([0.0, 0.0, 0.0, 0.0])
 
-
-def test_diverse_posterior_requires_similarity_matrix() -> None:
-    strategy = {"amount": "fixed", "method": "diverse_posterior", "pool": "all_unselected", "value": 1}
-
-    with pytest.raises(ValueError, match="similarity_matrix"):
-        _module([strategy], engine_kwargs={"partition": FakePartition(n_cats=2)})
-
-
-def test_diverse_posterior_defers_lazy_similarity_matrix_access_until_selection() -> None:
-    posterior = np.array([0.60, 0.20, 0.19, 0.01])
-    partition = LazySimilarityPartition(np.eye(4))
-    strategy = {"amount": "fixed", "method": "diverse_posterior", "pool": "all_unselected", "value": 2}
-
-    mod = _module(
-        [strategy],
-        engine_kwargs={"set_size": 4, "posterior": posterior, "partition": partition},
-    )
-
-    assert partition.access_count == 0
-
-    mod._transition()
-
-    assert partition.access_count == 1
-    assert len(mod.active) == 2
+    assert mod.adaptive_amount_evaluator("acc_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
+    assert mod.adaptive_amount_evaluator("opp_acc_7", posterior=np.full(8, 0.125), strategy_config=strategy) == 7
 
 
-def test_diverse_posterior_uses_uniform_relevance_for_zero_mass_inactive_pool() -> None:
-    posterior = np.array([0.70, 0.30, 0.0, 0.0])
-    strategy = {"amount": "fixed", "method": "diverse_posterior", "pool": "inactive", "value": 2}
-    mod = _module(
-        [strategy],
-        engine_kwargs={"set_size": 4, "posterior": posterior, "partition": FakePartition(similarity_matrix=np.eye(4))},
-    )
-    mod.active = np.array([0, 1], dtype=int)
+def test_accuracy_delta_amounts_use_left_padding_and_opposite_directions() -> None:
+    strategy = {
+        "amount": "accuracy_delta_6",
+        "method": "top_posterior",
+        "pool": "active",
+        "window": 4,
+        "padding": 0.5,
+        "feedback_mode": "exact",
+        "scale": 0.5,
+    }
+    mod = _module([strategy], engine_kwargs={"partition": FakePartition(n_cats=2)})
+    assert mod.feedback_history.maxlen == 8
+    assert mod.adaptive_amount_evaluator("accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
+    assert mod.adaptive_amount_evaluator("opp_accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
 
-    mod._transition()
+    mod.feedback_history.extend([0.0, 0.0, 1.0, 1.0])
+    assert mod.adaptive_amount_evaluator("accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
 
-    assert mod.active.tolist() == [2, 3]
+    mod.feedback_history.clear()
+    mod.feedback_history.extend([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+    assert mod.adaptive_amount_evaluator("accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 6
+    assert mod.adaptive_amount_evaluator("opp_accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
+
+    mod.feedback_history.clear()
+    mod.feedback_history.extend([1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+    assert mod.adaptive_amount_evaluator("accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 0
+    assert mod.adaptive_amount_evaluator("opp_accuracy_delta_6", posterior=np.full(8, 0.125), strategy_config=strategy) == 6
 
 
-def test_diverse_posterior_still_rejects_nonfinite_candidate_scores() -> None:
-    posterior = np.array([0.70, 0.30, np.nan, 0.0])
-    strategy = {"amount": "fixed", "method": "diverse_posterior", "pool": "inactive", "value": 2}
-    mod = _module(
-        [strategy],
-        engine_kwargs={"set_size": 4, "posterior": posterior, "partition": FakePartition(similarity_matrix=np.eye(4))},
-    )
-    mod.active = np.array([0, 1], dtype=int)
+def test_mixed_history_strategies_must_share_feedback_mode() -> None:
+    strategies = [
+        {"amount": "recent_accuracy_inverse_7", "method": "top_posterior", "pool": "active"},
+        {"amount": "acc_7", "method": "random", "pool": "inactive"},
+    ]
 
-    with pytest.raises(ValueError, match="non-finite"):
-        mod._transition()
+    with pytest.raises(ValueError, match="feedback_mode"):
+        _module(strategies, engine_kwargs={"partition": FakePartition(n_cats=2)})
+
+
+def test_history_maxlen_config_is_no_longer_supported() -> None:
+    strategy = {
+        "amount": "recent_accuracy_inverse_7",
+        "method": "top_posterior",
+        "pool": "active",
+        "window": 4,
+        "padding": "chance",
+    }
+
+    with pytest.raises(ValueError, match="history_maxlen"):
+        _module([strategy], history_maxlen=4, engine_kwargs={"partition": FakePartition(n_cats=2)})
 
 
 def test_ksimilar_random_zero_scores_falls_back_to_uniform() -> None:
@@ -487,15 +479,21 @@ def test_ksimilar_random_zero_scores_falls_back_to_uniform() -> None:
         ("entropy_norm_7", np.array([0.80, 0.05, 0.04, 0.03, 0.03, 0.02, 0.02, 0.01]), FakePartition(n_cats=2)),
         ("opp_entropy_norm_7", np.full(8, 0.125), FakePartition(n_cats=2)),
         ("recent_accuracy_inverse_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("acc_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("accuracy_static_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("opp_acc_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("opp_accuracy_static_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("accuracy_delta_7", np.full(8, 0.125), FakePartition(n_cats=2)),
+        ("opp_accuracy_delta_7", np.full(8, 0.125), FakePartition(n_cats=2)),
     ],
 )
 def test_amount_strategy_smoke_runs(amount, posterior, partition) -> None:
-    tested = {"amount": amount, "method": "top_posterior", "pool": "all_unselected"}
+    tested = {"amount": amount, "method": "top_posterior", "pool": "inactive"}
     if amount == "fixed":
         tested["value"] = 1
     strategies = [
         tested,
-        {"amount": "fixed", "method": "random", "pool": "all_unselected", "value": 1},
+        {"amount": "fixed", "method": "random", "pool": "inactive", "value": 1},
     ]
     mod = _module(strategies, engine_kwargs={"set_size": 8, "posterior": posterior, "partition": partition}, module_seed=11)
 
@@ -514,13 +512,12 @@ def test_amount_strategy_smoke_runs(amount, posterior, partition) -> None:
         ("random", FakePartition(n_cats=2)),
         ("epsilon_posterior", FakePartition(n_cats=2)),
         ("temperature_posterior", FakePartition(n_cats=2)),
-        ("diverse_posterior", FakePartition(n_cats=2, similarity_matrix=np.eye(8))),
         ("ksimilar_centers", FakePrototypePartition(set_size=8)),
     ],
 )
 def test_method_strategy_smoke_runs(method, partition) -> None:
     posterior = np.array([0.40, 0.20, 0.15, 0.10, 0.08, 0.04, 0.02, 0.01])
-    strategy = {"amount": "fixed", "method": method, "pool": "all_unselected", "value": 2}
+    strategy = {"amount": "fixed", "method": method, "pool": "inactive", "value": 2}
     if method == "ksimilar_centers":
         strategy.update({"proto_hypo_amount": 1, "proto_hypo_method": "top", "cluster_hypo_method": "top"})
     engine = _engine(set_size=8, posterior=posterior, partition=partition)
@@ -535,3 +532,83 @@ def test_method_strategy_smoke_runs(method, partition) -> None:
     assert len(mod.active) <= 7
     assert np.all(np.isfinite(mod.engine.prior))
     assert len(mod.strategy_counts_log) == 3
+
+
+def test_strategy_candidate_json_uses_explicit_active_or_inactive_pools() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "Bayesian_state"
+        / "problems"
+        / "modules"
+        / "hypo_transition_strategy_candidates.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert len(payload["cond1"]) >= 16
+    assert len(payload["cond23"]) >= 24
+
+    for condition, candidates in payload.items():
+        expected_window = 8 if condition == "cond1" else 16
+        assert candidates, condition
+        for candidate in candidates:
+            kwargs = candidate["hypo_transitions_kwargs"]
+            assert "max_active_hypotheses" not in kwargs
+            assert "history_maxlen" not in kwargs
+            strategies = kwargs["strategies"]
+            assert strategies
+            for strategy in strategies:
+                assert strategy["pool"] in {"active", "inactive"}
+                assert strategy["method"] != "diverse_posterior"
+                amount = str(strategy["amount"])
+                if amount.startswith(
+                    (
+                        "recent_accuracy_inverse_",
+                        "acc_",
+                        "accuracy_static_",
+                        "opp_acc_",
+                        "opp_accuracy_static_",
+                        "accuracy_delta_",
+                        "opp_accuracy_delta_",
+                    )
+                ):
+                    assert strategy["window"] == expected_window
+            DynamicHypothesisModule(
+                _engine(
+                    set_size=16,
+                    posterior=np.full(16, 1.0 / 16.0),
+                    partition=FakePrototypePartition(set_size=16),
+                ),
+                module_seed=23,
+                **kwargs,
+            )
+
+
+def test_bayesian_m7_candidate_styles_validate() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "Bayesian_state"
+        / "problems"
+        / "modules"
+        / "hypo_transition_strategy_candidates.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    candidates = {
+        candidate["id"]: candidate["hypo_transitions_kwargs"]
+        for condition in ("cond1", "cond23")
+        for candidate in payload[condition]
+        if candidate["id"] in {"c1_bayesian_m7_legacy", "c23_bayesian_m7_legacy"}
+    }
+
+    assert set(candidates) == {"c1_bayesian_m7_legacy", "c23_bayesian_m7_legacy"}
+
+    posterior = np.full(16, 1.0 / 16.0)
+    partition = FakePrototypePartition(set_size=16)
+    for kwargs in candidates.values():
+        mod = DynamicHypothesisModule(
+            _engine(set_size=16, posterior=posterior, partition=partition),
+            module_seed=19,
+            **kwargs,
+        )
+        assert len(mod.active) > 0

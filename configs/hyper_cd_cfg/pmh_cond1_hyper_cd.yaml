@@ -28,7 +28,7 @@ hyperparam_space:
     values:
       - [
           {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"},
-          {label: "explore_random", amount: "opp_random_4", method: "random", pool: "all_unselected"}
+          {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
         ]
       - [
           {label: "retain_random", amount: "random_2", method: "random_posterior", pool: "active"},

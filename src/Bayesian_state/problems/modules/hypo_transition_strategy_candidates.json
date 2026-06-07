@@ -5,7 +5,6 @@
       "description": "低容量，confidence 高时保留，低时探索。",
       "hypo_transitions_kwargs": {
         "init_num": 2,
-        "max_active_hypotheses": 3,
         "strategies": [
           {
             "label": "retain_conf",
@@ -29,11 +28,10 @@
       "description": "低容量，熵低时保留更多，熵高时探索。",
       "hypo_transitions_kwargs": {
         "init_num": 2,
-        "max_active_hypotheses": 3,
         "strategies": [
           {
             "label": "retain_entropy",
-            "amount": "entropy_norm_2",
+            "amount": "entropy_norm_3",
             "method": "top_posterior",
             "pool": "active",
             "min_count": 1
@@ -52,11 +50,10 @@
       "description": "低容量，但每步保底探索 1 个新 hypo。",
       "hypo_transitions_kwargs": {
         "init_num": 2,
-        "max_active_hypotheses": 3,
         "strategies": [
           {
             "label": "retain_conf",
-            "amount": "confidence_2",
+            "amount": "confidence_3",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -76,12 +73,11 @@
       "id": "c1_mid_entropy_balanced",
       "description": "中容量，典型 entropy exploitation-exploration 平衡。",
       "hypo_transitions_kwargs": {
-        "init_num": 3,
-        "max_active_hypotheses": 4,
+        "init_num": 4,
         "strategies": [
           {
             "label": "retain_entropy",
-            "amount": "entropy_norm_3",
+            "amount": "entropy_norm_4",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -101,11 +97,10 @@
       "description": "中容量，posterior peak 决定保留和探索比例。",
       "hypo_transitions_kwargs": {
         "init_num": 3,
-        "max_active_hypotheses": 4,
         "strategies": [
           {
             "label": "retain_conf",
-            "amount": "confidence_3",
+            "amount": "confidence_4",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -127,11 +122,10 @@
       "description": "中容量，温度采样让高 posterior hypo 也可能被替换。",
       "hypo_transitions_kwargs": {
         "init_num": 3,
-        "max_active_hypotheses": 4,
         "strategies": [
           {
             "label": "retain_temp",
-            "amount": "entropy_norm_3",
+            "amount": "entropy_norm_4",
             "method": "temperature_posterior",
             "pool": "active",
             "min_count": 1,
@@ -154,19 +148,44 @@
       }
     },
     {
+      "id": "c1_mid_ent-history",
+      "description": "中容量正确率高减少探索。",
+      "hypo_transitions_kwargs": {
+        "init_num": 3,
+        "strategies": [
+          {
+            "label": "entropy_retain",
+            "amount": "opp_entropy_norm_4",
+            "method": "epsilon_posterior",
+            "min_count": 1,
+            "pool": "active",
+            "epsilon": 0.3
+          },
+          {
+            "label": "history_explore",
+            "amount": "recent_accuracy_inverse_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "min_count": 1,
+            "gamma": 1.5
+          }
+        ]
+      }
+    },
+    {
       "id": "c1_mid_history_prune",
       "description": "近期正确率高时减少保留，错误多时保留更多可能性。",
       "hypo_transitions_kwargs": {
-        "init_num": 4,
-        "max_active_hypotheses": 4,
-        "history_maxlen": 8,
+        "init_num": 3,
         "strategies": [
           {
             "label": "history_retain",
-            "amount": "recent_accuracy_inverse_3",
+            "amount": "recent_accuracy_inverse_4",
             "method": "epsilon_posterior",
             "pool": "active",
-            "window": 6,
+            "window": 8,
             "padding": "chance",
             "min_count": 1,
             "gamma": 1.3,
@@ -186,15 +205,13 @@
       "description": "表现驱动收缩，但始终保底探索一个新 hypo。",
       "hypo_transitions_kwargs": {
         "init_num": 4,
-        "max_active_hypotheses": 4,
-        "history_maxlen": 8,
         "strategies": [
           {
             "label": "history_retain",
-            "amount": "recent_accuracy_inverse_3",
+            "amount": "recent_accuracy_inverse_4",
             "method": "temperature_posterior",
             "pool": "active",
-            "window": 6,
+            "window": 8,
             "padding": "chance",
             "min_count": 1,
             "gamma": 1.5,
@@ -215,7 +232,6 @@
       "description": "较高容量，允许同时维护更多 hypos，仍由 entropy 控制。",
       "hypo_transitions_kwargs": {
         "init_num": 4,
-        "max_active_hypotheses": 5,
         "strategies": [
           {
             "label": "retain_entropy",
@@ -227,7 +243,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_3",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -239,11 +255,10 @@
       "description": "较高容量，confidence 高时保留较多 active hypos。",
       "hypo_transitions_kwargs": {
         "init_num": 4,
-        "max_active_hypotheses": 5,
         "strategies": [
           {
             "label": "retain_conf",
-            "amount": "confidence_4",
+            "amount": "confidence_5",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -263,7 +278,6 @@
       "description": "较高随机性，保留数量动态但保留对象更随机。",
       "hypo_transitions_kwargs": {
         "init_num": 4,
-        "max_active_hypotheses": 5,
         "strategies": [
           {
             "label": "retain_randomized",
@@ -275,7 +289,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_2",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -287,7 +301,6 @@
       "description": "保留一个核心，其余根据不确定性从全空间混合重采样。",
       "hypo_transitions_kwargs": {
         "init_num": 3,
-        "max_active_hypotheses": 4,
         "strategies": [
           {
             "label": "core_retain",
@@ -300,32 +313,7 @@
             "label": "mixed_explore",
             "amount": "opp_entropy_norm_3",
             "method": "random",
-            "pool": "all_unselected"
-          }
-        ]
-      }
-    },
-    {
-      "id": "c1_diverse_entropy",
-      "description": "entropy 动态保留，加 diverse 探索以避免候选过于相似。",
-      "hypo_transitions_kwargs": {
-        "init_num": 4,
-        "max_active_hypotheses": 5,
-        "strategies": [
-          {
-            "label": "retain_entropy",
-            "amount": "entropy_norm_3",
-            "method": "epsilon_posterior",
-            "pool": "active",
-            "min_count": 1,
-            "epsilon": 0.25
-          },
-          {
-            "label": "diverse_explore",
-            "amount": "opp_entropy_norm_3",
-            "method": "diverse_posterior",
-            "pool": "inactive",
-            "diversity_lambda": 0.55
+            "pool": "inactive"
           }
         ]
       }
@@ -335,7 +323,6 @@
       "description": "三策略：固定核心保留 1 个，动态保留，再动态探索。",
       "hypo_transitions_kwargs": {
         "init_num": 3,
-        "max_active_hypotheses": 4,
         "strategies": [
           {
             "label": "core_retain",
@@ -346,7 +333,7 @@
           },
           {
             "label": "soft_retain",
-            "amount": "confidence_2",
+            "amount": "confidence_3",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -354,9 +341,56 @@
           },
           {
             "label": "explore_uncertain",
-            "amount": "opp_confidence_2",
+            "amount": "opp_confidence_3",
             "method": "random",
             "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_bayesian_m7_legacy",
+      "description": "旧 Bayesian M7 cond1 风格：随机数量保留 top posterior，并用互补随机量探索 inactive。",
+      "hypo_transitions_kwargs": {
+        "init_num": 3,
+        "strategies": [
+          {
+            "label": "legacy_retain_top",
+            "amount": "random_4",
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "legacy_explore_random",
+            "amount": "opp_random_4",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_delta_recovery_explore",
+      "description": "表现下降时增加探索，表现稳定或提升时主要保留少量高 posterior hypos。",
+      "hypo_transitions_kwargs": {
+        "init_num": 4,
+        "strategies": [
+          {
+            "label": "retain_confident_core",
+            "amount": "confidence_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "epsilon": 0.25
+          },
+          {
+            "label": "explore_after_drop",
+            "amount": "opp_accuracy_delta_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.5
           }
         ]
       }
@@ -368,7 +402,6 @@
       "description": "极低容量，主要保留少数高 confidence hypos。",
       "hypo_transitions_kwargs": {
         "init_num": 5,
-        "max_active_hypotheses": 5,
         "strategies": [
           {
             "label": "retain_conf",
@@ -380,7 +413,7 @@
           },
           {
             "label": "explore_uncertain",
-            "amount": "opp_confidence_2",
+            "amount": "opp_confidence_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -392,7 +425,6 @@
       "description": "极低容量，用 entropy 控制保留和探索。",
       "hypo_transitions_kwargs": {
         "init_num": 5,
-        "max_active_hypotheses": 5,
         "strategies": [
           {
             "label": "retain_entropy",
@@ -403,7 +435,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_2",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -415,7 +447,6 @@
       "description": "低容量，每步保底探索 1 个新 hypo。",
       "hypo_transitions_kwargs": {
         "init_num": 6,
-        "max_active_hypotheses": 6,
         "strategies": [
           {
             "label": "retain_conf",
@@ -440,15 +471,13 @@
       "description": "低容量，近期正确率高时强力收缩 active set。",
       "hypo_transitions_kwargs": {
         "init_num": 6,
-        "max_active_hypotheses": 6,
-        "history_maxlen": 10,
         "strategies": [
           {
             "label": "history_retain",
             "amount": "recent_accuracy_inverse_5",
             "method": "epsilon_posterior",
             "pool": "active",
-            "window": 8,
+            "window": 16,
             "padding": "chance",
             "min_count": 1,
             "gamma": 1.7,
@@ -456,7 +485,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_2",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -468,7 +497,6 @@
       "description": "中容量，标准 entropy 动态平衡。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 8,
         "strategies": [
           {
             "label": "retain_entropy",
@@ -480,7 +508,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_3",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -492,7 +520,6 @@
       "description": "中容量，confidence 高时偏利用，低时偏探索。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 8,
         "strategies": [
           {
             "label": "retain_conf",
@@ -506,7 +533,7 @@
           },
           {
             "label": "explore_uncertain",
-            "amount": "opp_confidence_3",
+            "amount": "opp_confidence_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -518,7 +545,6 @@
       "description": "中容量，温度采样提供 soft exploitation。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 8,
         "strategies": [
           {
             "label": "retain_temp",
@@ -530,7 +556,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_3",
+            "amount": "opp_entropy_norm_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -542,7 +568,6 @@
       "description": "中容量，动态保留和探索外加固定探索保底。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 9,
         "strategies": [
           {
             "label": "retain_entropy",
@@ -573,15 +598,13 @@
       "description": "中容量，近期表现决定 active set 收缩程度。",
       "hypo_transitions_kwargs": {
         "init_num": 9,
-        "max_active_hypotheses": 8,
-        "history_maxlen": 12,
         "strategies": [
           {
             "label": "history_retain",
             "amount": "recent_accuracy_inverse_7",
             "method": "epsilon_posterior",
             "pool": "active",
-            "window": 10,
+            "window": 16,
             "padding": "chance",
             "min_count": 2,
             "gamma": 1.3,
@@ -589,9 +612,35 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_3",
+            "amount": "opp_entropy_norm_6",
             "method": "random",
             "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_mid_ent-history",
+      "description": "中容量正确率高减少探索。",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "strategies": [
+          {
+            "label": "entropy_retain",
+            "amount": "opp_entropy_norm_7",
+            "method": "epsilon_posterior",
+            "min_count": 1,
+            "pool": "active",
+            "epsilon": 0.3
+          },
+          {
+            "label": "history_explore",
+            "amount": "recent_accuracy_inverse_5",
+            "method": "random",
+            "pool": "inactive",
+            "window": 16,
+            "padding": "chance",
+            "gamma": 1.4
           }
         ]
       }
@@ -601,19 +650,23 @@
       "description": "表现驱动保留，另有固定探索防止完全停探索。",
       "hypo_transitions_kwargs": {
         "init_num": 9,
-        "max_active_hypotheses": 9,
-        "history_maxlen": 12,
         "strategies": [
           {
             "label": "history_retain",
             "amount": "recent_accuracy_inverse_7",
             "method": "temperature_posterior",
             "pool": "active",
-            "window": 10,
+            "window": 16,
             "padding": "chance",
             "min_count": 2,
             "gamma": 1.5,
             "temperature": 2.0
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_5",
+            "method": "random",
+            "pool": "inactive"
           },
           {
             "label": "forced_explore",
@@ -629,8 +682,7 @@
       "id": "c23_high_entropy",
       "description": "高容量，允许较宽 active set，但仍随 entropy 收缩。",
       "hypo_transitions_kwargs": {
-        "init_num": 12,
-        "max_active_hypotheses": 10,
+        "init_num": 10,
         "strategies": [
           {
             "label": "retain_entropy",
@@ -642,7 +694,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_4",
+            "amount": "opp_entropy_norm_7",
             "method": "random",
             "pool": "inactive"
           }
@@ -653,8 +705,7 @@
       "id": "c23_high_conf",
       "description": "高容量，confidence 高时保留更多候选规则。",
       "hypo_transitions_kwargs": {
-        "init_num": 12,
-        "max_active_hypotheses": 10,
+        "init_num": 10,
         "strategies": [
           {
             "label": "retain_conf",
@@ -666,7 +717,7 @@
           },
           {
             "label": "explore_uncertain",
-            "amount": "opp_confidence_4",
+            "amount": "opp_confidence_7",
             "method": "random",
             "pool": "inactive"
           }
@@ -677,8 +728,7 @@
       "id": "c23_high_random_retention",
       "description": "高容量但随机性强，高 posterior hypo 也可能被丢弃。",
       "hypo_transitions_kwargs": {
-        "init_num": 12,
-        "max_active_hypotheses": 10,
+        "init_num": 10,
         "strategies": [
           {
             "label": "retain_randomized",
@@ -690,34 +740,9 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_4",
+            "amount": "opp_entropy_norm_7",
             "method": "random",
             "pool": "inactive"
-          }
-        ]
-      }
-    },
-    {
-      "id": "c23_high_diverse",
-      "description": "高容量，动态保留加结构化 diverse 探索。",
-      "hypo_transitions_kwargs": {
-        "init_num": 12,
-        "max_active_hypotheses": 10,
-        "strategies": [
-          {
-            "label": "retain_entropy",
-            "amount": "entropy_norm_7",
-            "method": "epsilon_posterior",
-            "pool": "active",
-            "min_count": 2,
-            "epsilon": 0.25
-          },
-          {
-            "label": "diverse_explore",
-            "amount": "opp_entropy_norm_4",
-            "method": "diverse_posterior",
-            "pool": "inactive",
-            "diversity_lambda": 0.55
           }
         ]
       }
@@ -726,8 +751,7 @@
       "id": "c23_high_ksimilar",
       "description": "高容量，动态保留后在 prototype 邻域中探索。",
       "hypo_transitions_kwargs": {
-        "init_num": 12,
-        "max_active_hypotheses": 10,
+        "init_num": 10,
         "strategies": [
           {
             "label": "retain_conf",
@@ -739,7 +763,7 @@
           },
           {
             "label": "prototype_explore",
-            "amount": "opp_confidence_4",
+            "amount": "opp_confidence_5",
             "method": "ksimilar_centers",
             "pool": "inactive",
             "proto_hypo_amount": 2,
@@ -754,7 +778,6 @@
       "description": "低到中容量重置型，保留核心 1 个，其余根据 uncertainty 混合重采样。",
       "hypo_transitions_kwargs": {
         "init_num": 7,
-        "max_active_hypotheses": 7,
         "strategies": [
           {
             "label": "core_retain",
@@ -767,7 +790,7 @@
             "label": "mixed_explore",
             "amount": "opp_entropy_norm_6",
             "method": "random",
-            "pool": "all_unselected"
+            "pool": "inactive"
           }
         ]
       }
@@ -777,7 +800,6 @@
       "description": "高容量重置型，保留核心 1 个，并允许较宽全空间替换。",
       "hypo_transitions_kwargs": {
         "init_num": 10,
-        "max_active_hypotheses": 10,
         "strategies": [
           {
             "label": "core_retain",
@@ -791,7 +813,7 @@
             "label": "mixed_explore",
             "amount": "opp_entropy_norm_8",
             "method": "random",
-            "pool": "all_unselected"
+            "pool": "inactive"
           }
         ]
       }
@@ -801,11 +823,10 @@
       "description": "用 pool 内 top-p 控制核心利用，同时保留 entropy 探索。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 8,
         "strategies": [
           {
             "label": "retain_pool_mass",
-            "amount": "entropy_norm_6",
+            "amount": "entropy_norm_7",
             "method": "top_posterior",
             "pool": "active",
             "min_count": 2,
@@ -814,7 +835,7 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_3",
+            "amount": "opp_entropy_norm_5",
             "method": "random",
             "pool": "inactive"
           }
@@ -826,7 +847,6 @@
       "description": "三段式：核心保留 1 个、confidence 动态保留、uncertainty 动态探索。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 8,
         "strategies": [
           {
             "label": "core_retain",
@@ -837,7 +857,7 @@
           },
           {
             "label": "soft_retain",
-            "amount": "confidence_5",
+            "amount": "confidence_7",
             "method": "epsilon_posterior",
             "pool": "active",
             "min_count": 1,
@@ -845,7 +865,7 @@
           },
           {
             "label": "explore_uncertain",
-            "amount": "opp_confidence_3",
+            "amount": "opp_confidence_4",
             "method": "random",
             "pool": "inactive"
           }
@@ -857,7 +877,6 @@
       "description": "三段式：核心保留 1 个、entropy 动态保留、entropy 动态探索。",
       "hypo_transitions_kwargs": {
         "init_num": 8,
-        "max_active_hypotheses": 9,
         "strategies": [
           {
             "label": "core_retain",
@@ -887,8 +906,7 @@
       "id": "c23_very_high_capacity",
       "description": "极高容量监控型，适合能同时追踪很多候选规则的被试。",
       "hypo_transitions_kwargs": {
-        "init_num": 14,
-        "max_active_hypotheses": 12,
+        "init_num": 12,
         "strategies": [
           {
             "label": "retain_many",
@@ -900,7 +918,7 @@
           },
           {
             "label": "explore_many",
-            "amount": "opp_entropy_norm_5",
+            "amount": "opp_entropy_norm_7",
             "method": "random",
             "pool": "inactive"
           }
@@ -911,16 +929,14 @@
       "id": "c23_very_high_history",
       "description": "极高容量但表现驱动，学会后从宽 active set 收缩。",
       "hypo_transitions_kwargs": {
-        "init_num": 14,
-        "max_active_hypotheses": 12,
-        "history_maxlen": 12,
+        "init_num": 10,
         "strategies": [
           {
             "label": "history_retain",
             "amount": "recent_accuracy_inverse_9",
             "method": "epsilon_posterior",
             "pool": "active",
-            "window": 10,
+            "window": 16,
             "padding": "chance",
             "min_count": 3,
             "gamma": 1.4,
@@ -928,9 +944,107 @@
           },
           {
             "label": "explore_entropy",
-            "amount": "opp_entropy_norm_5",
+            "amount": "opp_entropy_norm_7",
             "method": "random",
             "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_high_ent-history",
+      "description": "高容量正确率高减少探索。",
+      "hypo_transitions_kwargs": {
+        "init_num": 10,
+        "strategies": [
+          {
+            "label": "entropy_retain",
+            "amount": "opp_entropy_norm_9",
+            "method": "epsilon_posterior",
+            "min_count": 1,
+            "pool": "active",
+            "epsilon": 0.3
+          },
+          {
+            "label": "history_explore",
+            "amount": "recent_accuracy_inverse_7",
+            "method": "random",
+            "pool": "inactive",
+            "window": 16,
+            "padding": "chance",
+            "gamma": 1.4
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_bayesian_m7_legacy",
+      "description": "旧 Bayesian M7 cond2/3 风格：posterior 加权保留、一个 ksimilar 关联探索、低准确率时随机探索。",
+      "hypo_transitions_kwargs": {
+        "init_num": 10,
+        "strategies": [
+          {
+            "label": "legacy_retain_weighted",
+            "amount": "random_7",
+            "method": "random_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "legacy_associate_ksimilar",
+            "amount": "fixed",
+            "method": "ksimilar_centers",
+            "pool": "inactive",
+            "value": 1,
+            "proto_hypo_amount": 1,
+            "proto_hypo_method": "top",
+            "cluster_hypo_method": "top"
+          },
+          {
+            "label": "legacy_explore_low_acc",
+            "amount": "opp_acc_7",
+            "method": "random",
+            "pool": "inactive",
+            "window": 16,
+            "padding": "chance",
+            "feedback_mode": "exact"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_delta_recovery_explore",
+      "description": "近期准确率下降时提高 inactive 探索，准确率提升时用较多 active posterior exploitation。",
+      "hypo_transitions_kwargs": {
+        "init_num": 10,
+        "strategies": [
+          {
+            "label": "retain_on_improvement",
+            "amount": "accuracy_delta_8",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "window": 16,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "temperature": 1.4,
+            "scale": 0.5
+          },
+          {
+            "label": "retain_baseline",
+            "amount": "fixed",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "value": 2,
+            "epsilon": 0.35
+          },
+          {
+            "label": "explore_on_drop",
+            "amount": "opp_accuracy_delta_7",
+            "method": "random",
+            "pool": "inactive",
+            "window": 16,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.5
           }
         ]
       }
