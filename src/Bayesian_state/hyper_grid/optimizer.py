@@ -55,11 +55,10 @@ class HyperGridOptimizer:
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
 
-        self.hyperparam_selection_mode = str(
-            self.config.get("hyperparam_selection_mode", "per_subject")
-        ).strip().lower()
-        if self.hyperparam_selection_mode not in {"per_subject", "group_mean"}:
-            raise ValueError("hyperparam_selection_mode must be 'per_subject' or 'group_mean'")
+        selection_mode = self.config.get("hyperparam_selection_mode")
+        if selection_mode is not None and str(selection_mode).strip().lower() != "per_subject":
+            raise ValueError("Only per_subject hyperparameter selection is supported.")
+        self.hyperparam_selection_mode = "per_subject"
 
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
         if self.save_level not in {"compact", "full"}:
@@ -550,16 +549,12 @@ class HyperGridOptimizer:
 
         best_payload: Dict[str, Any] = {
             "selection_metric": self.selection_metric,
-            "hyperparam_selection_mode": self.hyperparam_selection_mode,
             "save_level": self.save_level,
             "base_sim_config_path": str(self.base_sim_config_path),
             "hyper_grid_config_path": str(self.config_path),
             "hyper_base_seed": self.hyper_base_seed,
             "hyper_backend": "hyper_grid",
         }
-
-        if self.hyperparam_selection_mode == "group_mean":
-            return self._run_group_pipeline(subjects, stage, resume_from_coarse, best_payload)
 
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
@@ -585,84 +580,6 @@ class HyperGridOptimizer:
         return {
             "output_dir": str(self.output_dir),
             "per_subject_outputs": per_subject_outputs,
-            "best_hyperparams": str(best_path),
-            "best": best_payload,
-        }
-
-    def _run_group_pipeline(
-        self,
-        subjects: Sequence[int],
-        stage: str,
-        resume_from_coarse: bool,
-        best_payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
-        all_combinations_path = self.output_dir / "all_combinations.jsonl"
-        if resume_from_coarse:
-            all_stage_combinations: Dict[str, List[CombinationResult]] = {
-                "coarse": self._load_coarse_for_fine_resume(all_combinations_path)
-            }
-        elif all_combinations_path.exists():
-            all_combinations_path.unlink()
-            all_stage_combinations = {}
-        else:
-            all_stage_combinations = {}
-
-        for stage_name in stages_to_run:
-            stage_sim_cfg = self._prepare_stage_config(stage_name)
-            if stage_name == "fine":
-                fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
-                if "hyperparam_space" in fine_stage_cfg:
-                    specs = self._param_specs_for_stage(stage_name)
-                    stage_combinations = self._expand_combinations(specs)
-                else:
-                    prior = all_stage_combinations.get("coarse")
-                    if prior is None:
-                        raise ValueError("fine stage without hyperparam_space requires coarse stage results")
-                    stage_combinations = self._refine_combinations_from_coarse(prior)
-            else:
-                specs = self._param_specs_for_stage(stage_name)
-                stage_combinations = self._expand_combinations(specs)
-
-            combination_results = self._evaluate_stage_combinations(
-                stage_name,
-                stage_sim_cfg,
-                stage_combinations,
-                subjects,
-            )
-            for result in combination_results:
-                self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
-            all_stage_combinations[stage_name] = combination_results
-
-        stage_summary = self._build_stage_summary(all_stage_combinations)
-        final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
-        final_combinations = all_stage_combinations[final_stage]
-        best_combination = min(final_combinations, key=lambda x: x.aggregated_error)
-
-        stage_summary_path = self.output_dir / "stage_summary.json"
-        with stage_summary_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
-
-        best_payload.update(
-            {
-                "best_stage": final_stage,
-                "best_combination_index": best_combination.combination_index,
-                "best_hyperparams": best_combination.hyperparams,
-                "best_params": _compact_hyperparams(best_combination.hyperparams),
-                "aggregated_error": best_combination.aggregated_error,
-                "hyper_candidate_seed": best_combination.hyper_candidate_seed,
-            }
-        )
-        if self.save_level == "full":
-            best_payload["subject_metrics"] = best_combination.subject_metrics
-
-        best_path = self.output_dir / "best_hyperparams.json"
-        with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
-        return {
-            "output_dir": str(self.output_dir),
-            "all_combinations": str(all_combinations_path),
-            "stage_summary": str(stage_summary_path),
             "best_hyperparams": str(best_path),
             "best": best_payload,
         }

@@ -57,11 +57,10 @@ class HyperCDOptimizer:
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
 
-        self.hyperparam_selection_mode = str(
-            self.config.get("hyperparam_selection_mode", "per_subject")
-        ).strip().lower()
-        if self.hyperparam_selection_mode not in {"per_subject", "group_mean"}:
-            raise ValueError("hyperparam_selection_mode must be 'per_subject' or 'group_mean'")
+        selection_mode = self.config.get("hyperparam_selection_mode")
+        if selection_mode is not None and str(selection_mode).strip().lower() != "per_subject":
+            raise ValueError("Only per_subject hyperparameter selection is supported.")
+        self.hyperparam_selection_mode = "per_subject"
 
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
         if self.save_level not in {"compact", "full"}:
@@ -793,14 +792,6 @@ class HyperCDOptimizer:
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
 
-        if self.hyperparam_selection_mode == "group_mean":
-            return self._run_pipeline(
-                subjects=subjects,
-                stage=stage,
-                output_dir=self.output_dir,
-                resume_from_coarse=resume_from_coarse,
-            )
-
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
         for sid in subjects:
@@ -822,7 +813,6 @@ class HyperCDOptimizer:
 
         best_payload = {
             "selection_metric": self.selection_metric,
-            "hyperparam_selection_mode": self.hyperparam_selection_mode,
             "save_level": self.save_level,
             "base_sim_config_path": str(self.base_sim_config_path),
             "hyper_cd_config_path": str(self.config_path),

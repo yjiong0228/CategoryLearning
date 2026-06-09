@@ -5,7 +5,6 @@ subject_range: [401, 403]
 
 output_dir: ../../results/state-based-hyper-grid-exp4/pmh/prob_proto
 selection_metric: mean_simulation_error
-hyperparam_selection_mode: per_subject
 save_level: compact
 hyper_base_seed: 42
 

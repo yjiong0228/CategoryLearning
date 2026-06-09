@@ -14,7 +14,25 @@ import yaml
 
 from src.Bayesian_state.hyper_cd.optimizer import HyperCDOptimizer
 from src.Bayesian_state.hyper_grid.optimizer import HyperGridOptimizer
-from src.Bayesian_state.utils.config_subjects import SUBJECT_OVERRIDE_KEYS
+from src.Bayesian_state.run_simulation import (
+    apply_fixed_hyperparams_to_subject_config,
+    infer_fixed_hyperparams_from_engine_config,
+    resolve_hyper_base_seed,
+    resolve_hyper_candidate_seed as resolve_direct_hyper_candidate_seed,
+    resolve_simulation_repeats,
+)
+from src.Bayesian_state.utils.config_subjects import (
+    SUBJECT_OVERRIDE_KEYS,
+    resolve_subject_config,
+    subject_override_for,
+)
+from src.Bayesian_state.utils.optimization_config import (
+    resolve_engine_config,
+    resolve_loss_delta,
+    resolve_loss_metric,
+    resolve_prediction_modes,
+    resolve_window_size,
+)
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -92,7 +110,7 @@ def _set_by_path(root: dict[str, Any], path: str, value: Any) -> None:
     curr[parts[-1]] = deepcopy(value)
 
 
-def _load_base_engine_config(base_sim_cfg: Mapping[str, Any], base_sim_dir: Path) -> dict[str, Any]:
+def _load_raw_base_engine_config(base_sim_cfg: Mapping[str, Any], base_sim_dir: Path) -> dict[str, Any]:
     inline_cfg = base_sim_cfg.get("engine_config")
     path_cfg = base_sim_cfg.get("engine_config_path")
     if inline_cfg is not None and not isinstance(inline_cfg, dict):
@@ -106,7 +124,7 @@ def _load_base_engine_config(base_sim_cfg: Mapping[str, Any], base_sim_dir: Path
         raise ValueError("Base simulation config must provide engine_config or engine_config_path")
     if inline_cfg is not None:
         base_engine = _deep_update(base_engine, inline_cfg)
-    return _strip_subject_override_blocks(base_engine)
+    return base_engine
 
 
 def _rebase_generated_sim_paths(
@@ -114,6 +132,12 @@ def _rebase_generated_sim_paths(
     base_sim_dir: Path,
     generated_dir: Path,
 ) -> None:
+    if generated_cfg.get("engine_config_path") is not None:
+        generated_cfg["engine_config_path"] = rebase_config_relative_path(
+            generated_cfg["engine_config_path"],
+            base_sim_dir,
+            generated_dir,
+        )
     dataset = generated_cfg.get("dataset")
     if isinstance(dataset, dict) and dataset.get("processed_dir") is not None:
         dataset["processed_dir"] = rebase_config_relative_path(
@@ -145,15 +169,76 @@ def _split_hyperparams_for_simulation_override(best_hyperparams: Mapping[str, An
     return override
 
 
+def _sorted_unique_subjects(subjects: Sequence[int]) -> list[int]:
+    return sorted({int(sid) for sid in subjects})
+
+
+def _subject_payload_for_sid(per_subject_best: Mapping[str, Any], sid: int) -> Mapping[str, Any] | None:
+    for key in (str(int(sid)), int(sid)):
+        payload = per_subject_best.get(key)  # type: ignore[arg-type]
+        if isinstance(payload, Mapping):
+            return payload
+    return None
+
+
+def _filter_hyper_best_payload(
+    hyper_best_payload: Mapping[str, Any],
+    subjects: Sequence[int] | None,
+) -> dict[str, Any]:
+    payload = deepcopy(dict(hyper_best_payload))
+    per_subject_best = payload.get("per_subject_best")
+    if not isinstance(per_subject_best, Mapping) or not per_subject_best:
+        raise ValueError("Hyper best payload is missing non-empty per_subject_best.")
+    if subjects is None:
+        payload["per_subject_best"] = dict(
+            sorted(((str(k), v) for k, v in per_subject_best.items()), key=lambda item: int(item[0]))
+        )
+        payload["subjects"] = sorted(int(sid) for sid in payload["per_subject_best"].keys())
+        return payload
+
+    filtered: dict[str, Any] = {}
+    missing: list[int] = []
+    for sid in _sorted_unique_subjects(subjects):
+        subject_payload = _subject_payload_for_sid(per_subject_best, sid)
+        if subject_payload is None:
+            missing.append(sid)
+            continue
+        filtered[str(sid)] = deepcopy(dict(subject_payload))
+    if missing:
+        raise FileNotFoundError(f"Hyper best payload is missing subjects: {missing}")
+    payload["per_subject_best"] = filtered
+    payload["subjects"] = _sorted_unique_subjects(subjects)
+    return payload
+
+
+def _base_subject_override_for_generated_config(
+    base_sim_cfg: Mapping[str, Any],
+    raw_engine_cfg: Mapping[str, Any],
+    subject_id: int,
+    base_sim_dir: Path,
+    generated_dir: Path,
+) -> dict[str, Any]:
+    override = deepcopy(subject_override_for(base_sim_cfg, subject_id))
+    _rebase_generated_sim_paths(override, base_sim_dir, generated_dir)
+
+    engine_subject_override = subject_override_for(raw_engine_cfg, subject_id)
+    if engine_subject_override:
+        existing_engine = override.get("engine_config")
+        if existing_engine is not None and not isinstance(existing_engine, Mapping):
+            raise ValueError(f"subject {subject_id} engine_config override must be a mapping")
+        override["engine_config"] = _deep_update(
+            dict(existing_engine or {}),
+            engine_subject_override,
+        )
+    return override
+
+
 def build_subjectwise_simulation_config(
     hyper_best_payload: Mapping[str, Any],
     generated_sim_config_path: Path,
     sim_output_dir: Path,
     keep_logs: bool,
 ) -> dict[str, Any]:
-    if hyper_best_payload.get("hyperparam_selection_mode") != "per_subject":
-        raise ValueError("This workflow expects hyperparam_selection_mode='per_subject'.")
-
     per_subject_best = hyper_best_payload.get("per_subject_best")
     if not isinstance(per_subject_best, Mapping) or not per_subject_best:
         raise ValueError("Hyper best payload is missing non-empty per_subject_best.")
@@ -163,7 +248,8 @@ def build_subjectwise_simulation_config(
         raise ValueError("Hyper best payload is missing base_sim_config_path.")
     base_sim_path = resolve_project_path(Path(str(base_sim_path_raw)))
     base_sim_cfg = load_yaml(base_sim_path)
-    base_engine_cfg = _load_base_engine_config(base_sim_cfg, base_sim_path.parent)
+    raw_engine_cfg = _load_raw_base_engine_config(base_sim_cfg, base_sim_path.parent)
+    base_engine_cfg = _strip_subject_override_blocks(raw_engine_cfg)
 
     generated_dir = generated_sim_config_path.parent
     sim_output_dir = sim_output_dir.resolve()
@@ -186,10 +272,18 @@ def build_subjectwise_simulation_config(
         best_hyperparams = subject_payload.get("best_hyperparams")
         if not isinstance(best_hyperparams, Mapping):
             raise ValueError(f"per_subject_best[{sid_text}] is missing best_hyperparams")
-        override = _split_hyperparams_for_simulation_override(best_hyperparams)
+        sid = int(sid_text)
+        base_override = _base_subject_override_for_generated_config(
+            base_sim_cfg=base_sim_cfg,
+            raw_engine_cfg=raw_engine_cfg,
+            subject_id=sid,
+            base_sim_dir=base_sim_path.parent,
+            generated_dir=generated_dir,
+        )
+        override = _deep_update(base_override, _split_hyperparams_for_simulation_override(best_hyperparams))
         if "hyper_candidate_seed" in subject_payload:
             override["hyper_candidate_seed"] = int(subject_payload["hyper_candidate_seed"])
-        subject_overrides[int(sid_text)] = override
+        subject_overrides[sid] = override
 
     generated_cfg["subject_overrides"] = subject_overrides
     return generated_cfg
@@ -220,15 +314,19 @@ def aggregate_per_subject_best(
     optimizer: HyperGridOptimizer | HyperCDOptimizer,
     config_path: Path,
     backend: str,
+    subjects: Sequence[int],
+    require_all: bool = False,
 ) -> dict[str, Any]:
     per_subject_best: dict[str, Any] = {}
     per_subject_outputs: dict[str, Any] = {}
-    for best_path in sorted(output_dir.glob("subject_*/best_hyperparams.json")):
-        subject_dir = best_path.parent
-        try:
-            sid = int(subject_dir.name.split("_", 1)[1])
-        except (IndexError, ValueError):
+
+    missing: list[int] = []
+    for sid in _sorted_unique_subjects(subjects):
+        best_path = _subject_best_path(output_dir, sid)
+        if not best_path.is_file():
+            missing.append(sid)
             continue
+        subject_dir = best_path.parent
         subject_best = json.loads(best_path.read_text(encoding="utf-8"))
         per_subject_best[str(sid)] = subject_best
         outputs = {
@@ -247,15 +345,17 @@ def aggregate_per_subject_best(
 
     payload = {
         "selection_metric": optimizer.selection_metric,
-        "hyperparam_selection_mode": optimizer.hyperparam_selection_mode,
         "save_level": optimizer.save_level,
         "base_sim_config_path": str(optimizer.base_sim_config_path),
         f"{backend}_config_path": str(config_path),
         "hyper_output_dir": str(output_dir),
         "hyper_backend": backend,
         "hyper_base_seed": optimizer.hyper_base_seed,
+        "subjects": _sorted_unique_subjects(subjects),
         "per_subject_best": dict(sorted(per_subject_best.items(), key=lambda item: int(item[0]))),
     }
+    if require_all and missing:
+        raise FileNotFoundError(f"Missing completed hyper results for subjects: {missing}")
     best_path = output_dir / "best_hyperparams.json"
     save_json(best_path, payload)
     return {
@@ -276,10 +376,12 @@ def materialize_simulation_config_from_hyper_best(
     generated_sim_config_path: Path,
     sim_output_dir: Path,
     keep_logs: bool,
+    subjects: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     if not hyper_best_path.is_file():
         raise FileNotFoundError(f"Hyper best file not found: {hyper_best_path}")
     hyper_best_payload = json.loads(hyper_best_path.read_text(encoding="utf-8"))
+    hyper_best_payload = _filter_hyper_best_payload(hyper_best_payload, subjects)
     generated_cfg = build_subjectwise_simulation_config(
         hyper_best_payload=hyper_best_payload,
         generated_sim_config_path=generated_sim_config_path,
@@ -325,6 +427,113 @@ def run_simulation_for_all(generated_sim_config_path: Path) -> None:
     run_command(sim_cmd)
 
 
+def _hyper_stage_satisfies_request(best_stage: Any, requested_stage: str) -> bool:
+    stage = str(best_stage or "").strip().lower()
+    if requested_stage == "coarse":
+        return stage in {"coarse", "fine"}
+    if requested_stage in {"fine", "all"}:
+        return stage == "fine"
+    raise ValueError(f"Unsupported stage: {requested_stage}")
+
+
+def _subject_hyper_result_satisfies_stage(best_path: Path, requested_stage: str) -> tuple[bool, str]:
+    if not best_path.is_file():
+        return False, f"missing {best_path}"
+    try:
+        payload = json.loads(best_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return False, f"invalid JSON in {best_path}: {exc}"
+    best_stage = payload.get("best_stage")
+    if not _hyper_stage_satisfies_request(best_stage, requested_stage):
+        return False, f"best_stage={best_stage!r} does not satisfy requested stage={requested_stage!r}"
+    if not isinstance(payload.get("best_hyperparams"), Mapping):
+        return False, "missing best_hyperparams"
+    if payload.get("hyper_candidate_seed") is None:
+        return False, "missing hyper_candidate_seed"
+    return True, "ok"
+
+
+def _require_subject_hyper_result(best_path: Path, requested_stage: str) -> None:
+    ok, reason = _subject_hyper_result_satisfies_stage(best_path, requested_stage)
+    if not ok:
+        raise FileNotFoundError(f"Existing hyper result is not usable for --skip-hyper: {reason}")
+
+
+def _expected_simulation_signature(
+    generated_cfg: Mapping[str, Any],
+    generated_sim_config_path: Path,
+    subject_id: int,
+    subjects: Sequence[int],
+) -> dict[str, Any]:
+    sid = int(subject_id)
+    subject_cfg = resolve_subject_config(generated_cfg, sid)
+    explicit_fixed_hyperparams = dict(subject_cfg.get("fixed_hyperparams") or {})
+    subject_cfg = apply_fixed_hyperparams_to_subject_config(subject_cfg, explicit_fixed_hyperparams)
+    engine_config = resolve_engine_config(subject_cfg, generated_sim_config_path.parent, subject_id=sid)
+    fixed_hyperparams = {
+        **infer_fixed_hyperparams_from_engine_config(engine_config),
+        **explicit_fixed_hyperparams,
+    }
+    seed_hyperparams = explicit_fixed_hyperparams or fixed_hyperparams
+    hyper_base_seed = resolve_hyper_base_seed(subject_cfg)
+    hyper_candidate_seed = resolve_direct_hyper_candidate_seed(
+        subject_cfg,
+        hyper_base_seed,
+        sid,
+        seed_hyperparams,
+    )
+    prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+    loss_metric = resolve_loss_metric(subject_cfg)
+    loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
+    return {
+        "subject_id": sid,
+        "fixed_hyperparams": fixed_hyperparams,
+        "seed_hyperparams": seed_hyperparams,
+        "hyper_base_seed": hyper_base_seed,
+        "hyper_candidate_seed": hyper_candidate_seed,
+        "simulation_repeats": resolve_simulation_repeats(subject_cfg),
+        "window_size": resolve_window_size(subject_cfg, sid, subjects),
+        "prediction_mode": prediction_mode,
+        "selection_prediction_mode": selection_prediction_mode,
+        "loss_metric": loss_metric,
+        "loss_delta": loss_delta,
+    }
+
+
+def _values_equal(left: Any, right: Any) -> bool:
+    return _to_builtin(left) == _to_builtin(right)
+
+
+def _simulation_result_satisfies_signature(
+    subject_json_path: Path,
+    expected: Mapping[str, Any],
+) -> tuple[bool, str]:
+    if not subject_json_path.is_file():
+        return False, f"missing {subject_json_path}"
+    try:
+        payload = json.loads(subject_json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return False, f"invalid JSON in {subject_json_path}: {exc}"
+    selection_meta = payload.get("selection_meta") or {}
+    checks = {
+        "subject_id": payload.get("subject_id"),
+        "fixed_hyperparams": payload.get("fixed_hyperparams"),
+        "seed_hyperparams": selection_meta.get("seed_hyperparams"),
+        "hyper_base_seed": payload.get("hyper_base_seed"),
+        "hyper_candidate_seed": payload.get("hyper_candidate_seed"),
+        "simulation_repeats": payload.get("simulation_repeats"),
+        "window_size": payload.get("window_size"),
+        "prediction_mode": payload.get("prediction_mode"),
+        "selection_prediction_mode": payload.get("selection_prediction_mode"),
+        "loss_metric": payload.get("loss_metric"),
+        "loss_delta": payload.get("loss_delta"),
+    }
+    for key, observed in checks.items():
+        if not _values_equal(observed, expected.get(key)):
+            return False, f"{key} differs"
+    return True, "ok"
+
+
 def run_hyper_resumable(
     backend: str,
     config_path: Path,
@@ -340,17 +549,16 @@ def run_hyper_resumable(
     optimizer = build_hyper_selector(backend, config_path, output_dir=hyper_output_dir)
     resolved_subjects = optimizer.resolve_subjects(subjects, subject_range)
 
-    if optimizer.hyperparam_selection_mode != "per_subject":
-        if skip_completed:
-            raise ValueError("--skip-completed-hyper is only supported for per_subject mode.")
-        return optimizer.run(resolved_subjects, stage=stage, resume_from_coarse=resume_from_coarse)
-
     optimizer.output_dir.mkdir(parents=True, exist_ok=True)
     for sid in resolved_subjects:
         best_path = _subject_best_path(optimizer.output_dir, int(sid))
-        if skip_completed and best_path.is_file():
-            print(f"Skipping subject {int(sid)}; found {best_path}")
-            continue
+        if skip_completed:
+            complete, reason = _subject_hyper_result_satisfies_stage(best_path, stage)
+            if complete:
+                print(f"Skipping subject {int(sid)} {backend}; found completed {stage} result: {best_path}")
+                continue
+            if best_path.is_file():
+                print(f"Existing {backend} result for subject {int(sid)} is not complete for {stage}: {reason}")
         print(f"Running {backend} optimization for subject {int(sid)}")
         optimizer._run_subject_pipeline(
             int(sid),
@@ -358,9 +566,23 @@ def run_hyper_resumable(
             optimizer.output_dir,
             resume_from_coarse=resume_from_coarse,
         )
-        aggregate_per_subject_best(optimizer.output_dir, optimizer, config_path, backend)
+        aggregate_per_subject_best(
+            optimizer.output_dir,
+            optimizer,
+            config_path,
+            backend,
+            subjects=resolved_subjects,
+            require_all=False,
+        )
 
-    result = aggregate_per_subject_best(optimizer.output_dir, optimizer, config_path, backend)
+    result = aggregate_per_subject_best(
+        optimizer.output_dir,
+        optimizer,
+        config_path,
+        backend,
+        subjects=resolved_subjects,
+        require_all=True,
+    )
     print(f"{backend} optimization done.")
     print(json.dumps(_to_builtin(result), ensure_ascii=False, indent=2))
     return result
@@ -383,8 +605,6 @@ def run_per_subject_workflow(
     resume_from_coarse: bool,
 ) -> None:
     optimizer = build_hyper_selector(backend, hyper_config_path, output_dir=hyper_output_dir)
-    if optimizer.hyperparam_selection_mode != "per_subject":
-        raise ValueError("--execution-mode per-subject requires hyperparam_selection_mode='per_subject'.")
     resolved_subjects = optimizer.resolve_subjects(subjects, subject_range)
     optimizer.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -395,11 +615,21 @@ def run_per_subject_workflow(
         print(f"{'=' * 72}")
         subject_best_path = _subject_best_path(optimizer.output_dir, sid)
         if skip_hyper:
-            if not subject_best_path.is_file():
-                raise FileNotFoundError(f"--skip-hyper requested but subject best is missing: {subject_best_path}")
+            _require_subject_hyper_result(subject_best_path, stage)
             print(f"Using existing {backend} result for subject {sid}: {subject_best_path}")
-        elif skip_completed_hyper and subject_best_path.is_file():
-            print(f"Skipping subject {sid} {backend}; found {subject_best_path}")
+        elif skip_completed_hyper:
+            complete, reason = _subject_hyper_result_satisfies_stage(subject_best_path, stage)
+            if complete:
+                print(f"Skipping subject {sid} {backend}; found completed {stage} result: {subject_best_path}")
+            else:
+                if subject_best_path.is_file():
+                    print(f"Existing {backend} result for subject {sid} is not complete for {stage}: {reason}")
+                optimizer._run_subject_pipeline(
+                    sid,
+                    stage,
+                    optimizer.output_dir,
+                    resume_from_coarse=resume_from_coarse,
+                )
         else:
             optimizer._run_subject_pipeline(
                 sid,
@@ -408,21 +638,43 @@ def run_per_subject_workflow(
                 resume_from_coarse=resume_from_coarse,
             )
 
-        aggregate = aggregate_per_subject_best(optimizer.output_dir, optimizer, hyper_config_path, backend)
-        materialize_simulation_config_from_hyper_best(
+        aggregate = aggregate_per_subject_best(
+            optimizer.output_dir,
+            optimizer,
+            hyper_config_path,
+            backend,
+            subjects=resolved_subjects,
+            require_all=False,
+        )
+        completed_subjects = [
+            int(sid_text)
+            for sid_text in (aggregate["best"].get("per_subject_best") or {}).keys()
+        ]
+        generated_cfg = materialize_simulation_config_from_hyper_best(
             hyper_best_path=Path(aggregate["best_hyperparams"]),
             generated_sim_config_path=generated_sim_config_path,
             sim_output_dir=sim_output_dir,
             keep_logs=keep_logs,
+            subjects=completed_subjects,
         )
 
         if skip_simulation:
             continue
 
         sim_subject_path = sim_output_dir / "subjects" / f"subject_{sid}.json"
-        if skip_completed_simulation and sim_subject_path.is_file():
-            print(f"Skipping subject {sid} simulation; found {sim_subject_path}")
-            continue
+        if skip_completed_simulation:
+            expected = _expected_simulation_signature(
+                generated_cfg,
+                generated_sim_config_path,
+                sid,
+                subjects=[sid],
+            )
+            complete, reason = _simulation_result_satisfies_signature(sim_subject_path, expected)
+            if complete:
+                print(f"Skipping subject {sid} simulation; existing result matches current config: {sim_subject_path}")
+                continue
+            if sim_subject_path.is_file():
+                print(f"Existing simulation for subject {sid} is stale: {reason}")
         run_simulation_for_subject(generated_sim_config_path, sid)
 
 
@@ -469,6 +721,8 @@ def main() -> None:
     )
     sim_output_dir = resolve_project_path(args.sim_output_dir or DEFAULT_SIM_OUTPUT_DIRS[backend])
     hyper_output_dir = resolve_project_path(args.hyper_output_dir) if args.hyper_output_dir else None
+    subject_resolver = build_hyper_selector(backend, hyper_config_path, output_dir=hyper_output_dir)
+    resolved_subjects = subject_resolver.resolve_subjects(args.subjects, args.subject_range)
 
     if args.execution_mode == "per-subject":
         run_per_subject_workflow(
@@ -507,14 +761,33 @@ def main() -> None:
         hyper_cfg.get("output_dir"),
     )
     hyper_best_path = effective_hyper_output_dir / "best_hyperparams.json"
-    materialize_simulation_config_from_hyper_best(
+    generated_cfg = materialize_simulation_config_from_hyper_best(
         hyper_best_path=hyper_best_path,
         generated_sim_config_path=generated_sim_config_path,
         sim_output_dir=sim_output_dir,
         keep_logs=bool(args.keep_logs),
+        subjects=resolved_subjects,
     )
 
     if args.skip_simulation:
+        return
+    if args.skip_completed_simulation:
+        for sid in resolved_subjects:
+            sid = int(sid)
+            sim_subject_path = sim_output_dir / "subjects" / f"subject_{sid}.json"
+            expected = _expected_simulation_signature(
+                generated_cfg,
+                generated_sim_config_path,
+                sid,
+                subjects=[sid],
+            )
+            complete, reason = _simulation_result_satisfies_signature(sim_subject_path, expected)
+            if complete:
+                print(f"Skipping subject {sid} simulation; existing result matches current config: {sim_subject_path}")
+                continue
+            if sim_subject_path.is_file():
+                print(f"Existing simulation for subject {sid} is stale: {reason}")
+            run_simulation_for_subject(generated_sim_config_path, sid)
         return
     run_simulation_for_all(generated_sim_config_path)
 

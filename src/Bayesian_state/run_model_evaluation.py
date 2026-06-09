@@ -186,28 +186,19 @@ def run_basic_plots(
         ),
         [basic_dir / "accuracy_comparison.png"],
     )
-    run_step(
-        records,
-        "accuracy_family_comparison",
-        lambda: evaluator.plot_accuracy_family_comparison(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "accuracy_family_comparison.png",
-            window_size=window_size,
-        ),
-        [basic_dir / "accuracy_family_comparison.png"],
-    )
-    run_step(
-        records,
-        "target_majority_accuracy_comparison",
-        lambda: evaluator.plot_target_majority_accuracy_comparison(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "target_majority_accuracy_comparison.png",
-            window_size=window_size,
-        ),
-        [basic_dir / "target_majority_accuracy_comparison.png"],
-    )
+    visible_results = evaluator._filter_results(results, subjects)
+    if any(int(info.get("condition", -1)) in (2, 3) for info in visible_results.values()):
+        run_step(
+            records,
+            "accuracy_family_comparison",
+            lambda: evaluator.plot_accuracy_family_comparison(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "accuracy_family_comparison.png",
+                window_size=window_size,
+            ),
+            [basic_dir / "accuracy_family_comparison.png"],
+        )
     run_step(
         records,
         "posterior_probabilities",

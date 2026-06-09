@@ -210,7 +210,6 @@ def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch)
     assert Path(result["best_hyperparams"]).exists()
 
     best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
-    assert best["hyperparam_selection_mode"] == "per_subject"
     assert "per_subject_best" in best
     assert "1" in best["per_subject_best"]
     assert best["save_level"] == "compact"
@@ -222,23 +221,12 @@ def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch)
     assert "combination_index" in first_payload
 
 
-def test_group_mean_mode_keeps_single_global_best_payload(tmp_path: Path, monkeypatch) -> None:
+def test_group_mean_mode_is_rejected(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
     cfg["hyperparam_selection_mode"] = "group_mean"
-    opt = HyperGridOptimizer(cfg, hyper_path)
-
-    def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
-        err = float(combination_index + (0 if stage_name == "coarse" else 0.1))
-        return CombinationResult(stage_name, combination_index, dict(combination_params), err, {1: {"mean_error": err, "best_error": err, "std_error": 0.0, "simulation_repeats": 1}}, 42 + combination_index)
-
-    monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
-    result = opt.run(subjects=[1], stage="all")
-    best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
-    assert best["hyperparam_selection_mode"] == "group_mean"
-    assert "best_hyperparams" in best
-    assert "aggregated_error" in best
-    assert "per_subject_best" not in best
+    with pytest.raises(ValueError, match="Only per_subject"):
+        HyperGridOptimizer(cfg, hyper_path)
 
 
 def test_simulation_overrides_are_used_for_runner_call(tmp_path: Path, monkeypatch) -> None:

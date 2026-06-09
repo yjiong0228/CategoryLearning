@@ -19,33 +19,34 @@ modules:
   beta_mod:
     class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
     kwargs:
-      beta_init: 10.0
+      beta_init: 3.0
       beta_min: 0.1
-      beta_max: 20.0
-      decrease_rate: 0.0
-      correct_additive: 0.0
+      beta_max: 30.0
+      decrease_rate: 0.15
+      correct_additive: 0.8
       use_prior_scaling: true
-      prior_beta_scale: 0.0
+      prior_beta_scale: 6.0
       beta_update_mode: probabilistic_feedback
-      probabilistic_feedback_lapse: 0.0
+      probabilistic_feedback_lapse: 0.05
   hypo_transitions_mod:
     class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
     kwargs:
       strategies:
-        - {label: "keep_all", amount: "fixed", method: "top_posterior", pool: "active", value: 19}
-      init_num: 19
-      max_active_hypotheses: 19
+        - {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"}
+        - {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
+      init_num: 4
+      max_active_hypotheses: 8
   likelihood_mod:
     class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
     kwargs:
       distance_mode: prototype
       feedback_likelihood_mode: bernoulli_choice
-      feedback_lapse: 0.0
+      feedback_lapse: 0.05
   memory_mod:
     class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
     kwargs:
-      w0: 1.0
-      gamma: 0.99
+      w0: 0.45
+      gamma: 0.96
 
 agenda:
   - perception_mod
