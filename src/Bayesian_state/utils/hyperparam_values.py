@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import itertools
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, List, Mapping
@@ -53,6 +54,31 @@ def values_from_json(spec: Mapping[str, Any], config_dir: Path) -> List[Any]:
                 f"values_from_json candidate #{idx} under '{key}' is missing value_key '{value_key}'."
             )
         values.append(deepcopy(candidate[value_key]))
+    return values
+
+
+def values_product(spec: Mapping[str, Any]) -> List[Any]:
+    source = spec.get("values_product")
+    if not isinstance(source, Mapping):
+        raise ValueError("values_product must be a non-empty mapping.")
+    if not source:
+        raise ValueError("values_product must contain at least one factor.")
+
+    names: List[str] = []
+    value_lists: List[List[Any]] = []
+    for name, raw_values in source.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("values_product factor names must be non-empty strings.")
+        if not isinstance(raw_values, list):
+            raise ValueError(f"values_product.{name} must be a non-empty list.")
+        if not raw_values:
+            raise ValueError(f"values_product.{name} cannot be empty.")
+        names.append(name)
+        value_lists.append([deepcopy(value) for value in raw_values])
+
+    values = [dict(zip(names, combo)) for combo in itertools.product(*value_lists)]
+    if not values:
+        raise ValueError("values_product produced no values.")
     return values
 
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
+from joblib import Parallel, delayed
 
 from src.Bayesian_state.run_simulation import resolve_simulation_repeats
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
@@ -16,6 +17,7 @@ from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.hyperparam_values import (
     validate_no_nested_hyperparam_paths,
     values_from_json,
+    values_product,
 )
 from src.Bayesian_state.utils.optimization_config import (
     load_yaml,
@@ -93,12 +95,30 @@ class HyperCDOptimizer:
         self.min_delta = float(cd_cfg.get("min_delta", 0.0))
         self.init_strategy = str(cd_cfg.get("init_strategy", "random"))
         self.anchor = dict(cd_cfg.get("anchor") or {})
-        if self.coordinate_order not in {"shuffle_each_iter", "fixed"}:
-            raise ValueError("cd.coordinate_order must be 'shuffle_each_iter' or 'fixed'")
+        self.parallel_budget = self._positive_int(
+            cd_cfg.get("parallel_budget", 1),
+            "cd.parallel_budget",
+        )
+        if self.coordinate_order not in {"shuffle_each_iter", "shuffle_per_restart", "fixed"}:
+            raise ValueError("cd.coordinate_order must be 'shuffle_each_iter', 'shuffle_per_restart', or 'fixed'")
         if self.init_strategy not in {"random", "anchor"}:
             raise ValueError("cd.init_strategy must be 'random' or 'anchor'")
 
         self._combination_counter = 0
+
+    @staticmethod
+    def _positive_int(value: Any, name: str) -> int:
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        try:
+            out = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.") from exc
+        if out != value and not (isinstance(value, str) and str(out) == value):
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        if out <= 0:
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        return out
 
     def _resolve_path(self, maybe_path: Any) -> Path:
         p = Path(maybe_path)
@@ -146,9 +166,13 @@ class HyperCDOptimizer:
             return vals
         if "values_from_json" in spec:
             return values_from_json(spec, self.config_dir)
+        if "values_product" in spec:
+            return values_product(spec)
         if all(k in spec for k in ("start", "stop", "num")):
             return self._linspace_values(spec)
-        raise ValueError("Each hyperparameter spec must provide values, values_from_json, or (start, stop, num)")
+        raise ValueError(
+            "Each hyperparameter spec must provide values, values_from_json, values_product, or (start, stop, num)"
+        )
 
     def _param_specs_for_stage(self, stage_name: str) -> Dict[str, Dict[str, Any]]:
         stages = self.config.get("stages") or {}
@@ -324,6 +348,28 @@ class HyperCDOptimizer:
     ) -> CombinationResult:
         combination_index = self._combination_counter
         self._combination_counter += 1
+        return self._evaluate_point_with_index(
+            stage_name=stage_name,
+            point=point,
+            stage_sim_cfg=stage_sim_cfg,
+            subjects=subjects,
+            restart_id=restart_id,
+            iter_id=iter_id,
+            coordinate=coordinate,
+            combination_index=combination_index,
+        )
+
+    def _evaluate_point_with_index(
+        self,
+        stage_name: str,
+        point: Dict[str, Any],
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+        combination_index: int,
+    ) -> CombinationResult:
         hyper_candidate_seed = self._hyper_candidate_seed(
             stage_name,
             combination_index,
@@ -390,6 +436,48 @@ class HyperCDOptimizer:
             iter_id=iter_id,
             coordinate=coordinate,
         )
+
+    def _next_combination_index(self) -> int:
+        out = self._combination_counter
+        self._combination_counter += 1
+        return out
+
+    def _stage_cd_parallel_config(self, stage_name: str) -> Dict[str, int]:
+        stages = self.config.get("stages") or {}
+        stage_cfg = stages.get(stage_name)
+        if not isinstance(stage_cfg, Mapping):
+            raise ValueError(f"Missing stages.{stage_name}")
+        cd_parallel = stage_cfg.get("cd_parallel")
+        if not isinstance(cd_parallel, Mapping):
+            raise ValueError(f"stages.{stage_name}.cd_parallel.max_repeat_jobs is required for hyper-CD.")
+        if "max_repeat_jobs" not in cd_parallel:
+            raise ValueError(f"stages.{stage_name}.cd_parallel.max_repeat_jobs is required for hyper-CD.")
+        return {
+            "max_repeat_jobs": self._positive_int(
+                cd_parallel["max_repeat_jobs"],
+                f"stages.{stage_name}.cd_parallel.max_repeat_jobs",
+            )
+        }
+
+    def _coordinate_parallel_plan(
+        self,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        num_values: int,
+    ) -> tuple[int, int]:
+        if num_values <= 0:
+            return 1, 1
+        cd_parallel = self._stage_cd_parallel_config(stage_name)
+        simulation_repeats = resolve_simulation_repeats(stage_sim_cfg)
+        repeat_jobs = min(cd_parallel["max_repeat_jobs"], simulation_repeats, self.parallel_budget)
+        value_jobs = min(int(num_values), max(1, self.parallel_budget // repeat_jobs))
+        return max(1, int(value_jobs)), max(1, int(repeat_jobs))
+
+    @staticmethod
+    def _stage_sim_cfg_with_n_jobs(stage_sim_cfg: Dict[str, Any], repeat_jobs: int) -> Dict[str, Any]:
+        out = deepcopy(stage_sim_cfg)
+        out["n_jobs"] = int(repeat_jobs)
+        return out
 
     def _append_jsonl(self, path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -512,18 +600,20 @@ class HyperCDOptimizer:
             restart_id: int,
             iter_id: int,
             coordinate: str,
+            repeat_jobs: int,
         ) -> tuple[CombinationResult, bool]:
             key = json.dumps(_to_builtin(point), sort_keys=True)
             if key in cache:
                 return cache[key], False
-            result = self._evaluate_point(
+            result = self._evaluate_point_with_index(
                 stage_name=stage_name,
                 point=point,
-                stage_sim_cfg=stage_sim_cfg,
+                stage_sim_cfg=self._stage_sim_cfg_with_n_jobs(stage_sim_cfg, repeat_jobs),
                 subjects=subjects,
                 restart_id=restart_id,
                 iter_id=iter_id,
                 coordinate=coordinate,
+                combination_index=self._next_combination_index(),
             )
             cache[key] = result
             self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
@@ -531,7 +621,17 @@ class HyperCDOptimizer:
 
         for restart_id in range(self.n_restarts):
             current = self._init_point(space, rng)
-            current_result, current_is_new = eval_with_cache(current, restart_id, 0, "init")
+            restart_coords = list(coords_base)
+            if self.coordinate_order == "shuffle_per_restart":
+                rng.shuffle(restart_coords)
+            _, init_repeat_jobs = self._coordinate_parallel_plan(stage_name, stage_sim_cfg, 1)
+            current_result, current_is_new = eval_with_cache(
+                current,
+                restart_id,
+                0,
+                "init",
+                init_repeat_jobs,
+            )
             restart_new_evaluations = int(current_is_new)
             restart_cache_hits = int(not current_is_new)
             if current_is_new:
@@ -545,28 +645,97 @@ class HyperCDOptimizer:
 
             for iter_id in range(1, self.max_outer_iters + 1):
                 outer_iters_completed = iter_id
-                coords = list(coords_base)
                 if self.coordinate_order == "shuffle_each_iter":
+                    coords = list(coords_base)
                     rng.shuffle(coords)
+                elif self.coordinate_order == "shuffle_per_restart":
+                    coords = list(restart_coords)
+                else:
+                    coords = list(coords_base)
                 improved_this_round = False
 
-                for coord in coords:
+                for coord_index, coord in enumerate(coords):
                     start_best = best_local
                     candidate_best = best_local
                     base_point = deepcopy(current)
                     candidate_count = 0
                     coord_new_evaluations = 0
                     coord_cache_hits = 0
+                    value_jobs, repeat_jobs = self._coordinate_parallel_plan(
+                        stage_name,
+                        stage_sim_cfg,
+                        len(space[coord]),
+                    )
+                    point_stage_sim_cfg = self._stage_sim_cfg_with_n_jobs(stage_sim_cfg, repeat_jobs)
+                    candidate_entries: List[Dict[str, Any]] = []
+                    missing_entries: List[Dict[str, Any]] = []
                     for value in space[coord]:
                         candidate_count += 1
                         candidate = deepcopy(base_point)
                         candidate[coord] = value
-                        candidate_result, candidate_is_new = eval_with_cache(candidate, restart_id, iter_id, coord)
-                        if candidate_is_new:
+                        key = json.dumps(_to_builtin(candidate), sort_keys=True)
+                        entry = {
+                            "position": candidate_count - 1,
+                            "key": key,
+                            "point": candidate,
+                        }
+                        if key in cache:
+                            entry["result"] = cache[key]
+                            entry["is_new"] = False
+                            coord_cache_hits += 1
+                        else:
+                            entry["is_new"] = True
+                            entry["combination_index"] = self._next_combination_index()
+                            missing_entries.append(entry)
+                        candidate_entries.append(entry)
+
+                    if missing_entries:
+                        if value_jobs == 1:
+                            evaluated_missing = [
+                                self._evaluate_point_with_index(
+                                    stage_name=stage_name,
+                                    point=entry["point"],
+                                    stage_sim_cfg=point_stage_sim_cfg,
+                                    subjects=subjects,
+                                    restart_id=restart_id,
+                                    iter_id=iter_id,
+                                    coordinate=coord,
+                                    combination_index=int(entry["combination_index"]),
+                                )
+                                for entry in missing_entries
+                            ]
+                        else:
+                            evaluated_missing = list(
+                                Parallel(n_jobs=value_jobs)(
+                                    delayed(self._evaluate_point_with_index)(
+                                        stage_name=stage_name,
+                                        point=entry["point"],
+                                        stage_sim_cfg=point_stage_sim_cfg,
+                                        subjects=subjects,
+                                        restart_id=restart_id,
+                                        iter_id=iter_id,
+                                        coordinate=coord,
+                                        combination_index=int(entry["combination_index"]),
+                                    )
+                                    for entry in missing_entries
+                                )
+                            )
+                        by_position = {
+                            int(entry["position"]): result
+                            for entry, result in zip(missing_entries, evaluated_missing)
+                        }
+                    else:
+                        by_position = {}
+
+                    for entry in candidate_entries:
+                        if entry["is_new"]:
+                            candidate_result = by_position[int(entry["position"])]
+                            cache[str(entry["key"])] = candidate_result
+                            self._append_jsonl(all_combinations_path, self._serialize_combination_record(candidate_result))
                             all_combinations.append(candidate_result)
                             coord_new_evaluations += 1
                         else:
-                            coord_cache_hits += 1
+                            candidate_result = entry["result"]
                         if candidate_result.aggregated_error + self.min_delta < candidate_best.aggregated_error:
                             candidate_best = candidate_result
 
@@ -598,9 +767,13 @@ class HyperCDOptimizer:
                                 "restart_id": restart_id,
                                 "iter_id": iter_id,
                                 "coordinate": coord,
+                                "coordinate_index": coord_index,
+                                "coordinate_order": coords,
                                 "candidate_count": candidate_count,
                                 "new_evaluations": coord_new_evaluations,
                                 "cache_hits": coord_cache_hits,
+                                "value_jobs": value_jobs,
+                                "repeat_jobs": repeat_jobs,
                                 "start_best_combination_index": start_best.combination_index,
                                 "start_best_error": start_best.aggregated_error,
                                 "end_best_combination_index": best_local.combination_index,
@@ -632,6 +805,7 @@ class HyperCDOptimizer:
                     "num_improvements": len(improvements),
                     "num_new_evaluations": restart_new_evaluations,
                     "num_cache_hits": restart_cache_hits,
+                    "coordinate_order": restart_coords,
                     "improvements": improvements,
                 }
             )
@@ -880,6 +1054,12 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
     for source, target in shortcuts.items():
         if source in hyperparams:
             summary[target] = hyperparams[source]
+    memory_kwargs = hyperparams.get("engine.modules.memory_mod.kwargs")
+    if isinstance(memory_kwargs, Mapping):
+        if "gamma" in memory_kwargs:
+            summary["gamma"] = memory_kwargs["gamma"]
+        if "w0" in memory_kwargs:
+            summary["w0"] = memory_kwargs["w0"]
     return summary
 
 

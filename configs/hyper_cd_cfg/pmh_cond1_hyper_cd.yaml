@@ -17,6 +17,7 @@ cd:
   coordinate_order: shuffle_each_iter
   patience: 2
   min_delta: 0.001
+  parallel_budget: 64
 
 hyperparam_space:
   engine.modules.memory_mod.kwargs.gamma:
@@ -74,16 +75,18 @@ hyperparam_space:
 
 stages:
   coarse:
+    cd_parallel:
+      max_repeat_jobs: 16
     simulation_overrides:
       simulation_repeats: 16
       keep_logs: false
-      n_jobs: 128
 
   fine:
+    cd_parallel:
+      max_repeat_jobs: 16
     simulation_overrides:
       simulation_repeats: 32
       keep_logs: false
-      n_jobs: 128
 
 refine_policy:
   top_k: 8

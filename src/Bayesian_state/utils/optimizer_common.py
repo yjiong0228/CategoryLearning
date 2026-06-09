@@ -564,6 +564,9 @@ class SimulationResult:
 
     @property
     def gamma(self) -> float:
+        memory_kwargs = self.params.get("engine.modules.memory_mod.kwargs")
+        if isinstance(memory_kwargs, Mapping) and "gamma" in memory_kwargs:
+            return memory_kwargs["gamma"]
         return self.params.get(
             "gamma",
             self.params.get("engine.modules.memory_mod.kwargs.gamma", float("nan")),
@@ -571,6 +574,9 @@ class SimulationResult:
 
     @property
     def w0(self) -> float:
+        memory_kwargs = self.params.get("engine.modules.memory_mod.kwargs")
+        if isinstance(memory_kwargs, Mapping) and "w0" in memory_kwargs:
+            return memory_kwargs["w0"]
         return self.params.get(
             "w0",
             self.params.get("engine.modules.memory_mod.kwargs.w0", float("nan")),

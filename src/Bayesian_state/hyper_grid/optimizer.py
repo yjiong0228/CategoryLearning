@@ -27,6 +27,7 @@ from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRu
 from src.Bayesian_state.utils.hyperparam_values import (
     validate_no_nested_hyperparam_paths,
     values_from_json,
+    values_product,
 )
 
 
@@ -129,9 +130,13 @@ class HyperGridOptimizer:
             return vals
         if "values_from_json" in spec:
             return values_from_json(spec, self.config_dir)
+        if "values_product" in spec:
+            return values_product(spec)
         if all(k in spec for k in ("start", "stop", "num")):
             return self._linspace_values(spec)
-        raise ValueError("Each hyperparameter spec must provide values, values_from_json, or (start, stop, num)")
+        raise ValueError(
+            "Each hyperparameter spec must provide values, values_from_json, values_product, or (start, stop, num)"
+        )
 
     def _param_specs_for_stage(self, stage_name: str) -> Dict[str, Dict[str, Any]]:
         stages = self.config.get("stages") or {}
@@ -707,6 +712,12 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
     for source, target in shortcuts.items():
         if source in hyperparams:
             summary[target] = hyperparams[source]
+    memory_kwargs = hyperparams.get("engine.modules.memory_mod.kwargs")
+    if isinstance(memory_kwargs, Mapping):
+        if "gamma" in memory_kwargs:
+            summary["gamma"] = memory_kwargs["gamma"]
+        if "w0" in memory_kwargs:
+            summary["w0"] = memory_kwargs["w0"]
     return summary
 
 

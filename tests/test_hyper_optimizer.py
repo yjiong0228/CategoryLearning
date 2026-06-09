@@ -175,6 +175,66 @@ def test_apply_hyperparams_deepcopies_composite_values(tmp_path: Path) -> None:
     assert kwargs_value["strategies"][0]["label"] == "retain"
 
 
+def test_values_product_expands_memory_kwargs_and_applies_to_engine(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    opt = HyperGridOptimizer(cfg, hyper_path)
+
+    values = opt._hyperparam_values(
+        {
+            "values_product": {
+                "gamma": [0.10, 0.25, 0.40, 0.55, 0.70, 0.90],
+                "w0": [0.005, 0.02, 0.06, 0.15, 0.35, 0.80],
+            }
+        }
+    )
+
+    assert len(values) == 36
+    assert values[0] == {"gamma": 0.10, "w0": 0.005}
+    assert values[-1] == {"gamma": 0.90, "w0": 0.80}
+
+    _, out_engine = opt._apply_hyperparams(
+        {"engine.modules.memory_mod.kwargs": values[3]},
+        {"window_size": 8},
+        {"modules": {"memory_mod": {"kwargs": {"gamma": 0.5, "w0": 0.1}}}},
+    )
+    assert out_engine["modules"]["memory_mod"]["kwargs"] == {"gamma": 0.10, "w0": 0.15}
+
+
+def test_refine_expand_accepts_values_product(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["refine_policy"] = {
+        "top_k": 1,
+        "expand": {
+            "engine.modules.memory_mod.kwargs": {
+                "values_product": {"gamma": [0.1, 0.2], "w0": [0.01, 0.02]}
+            }
+        },
+    }
+    opt = HyperGridOptimizer(cfg, hyper_path)
+    coarse_combinations = [
+        CombinationResult(
+            "coarse",
+            0,
+            {
+                "engine.modules.memory_mod.kwargs": {"gamma": 0.5, "w0": 0.1},
+                "engine.modules.beta_mod.kwargs.beta_init": 1.0,
+            },
+            0.1,
+            {1: {"mean_error": 0.1, "std_error": 0.0}},
+            1,
+        )
+    ]
+
+    refined = opt._refine_combinations_from_coarse(coarse_combinations)
+
+    assert len(refined) == 4
+    assert refined[0]["engine.modules.memory_mod.kwargs"] == {"gamma": 0.1, "w0": 0.01}
+    assert refined[-1]["engine.modules.memory_mod.kwargs"] == {"gamma": 0.2, "w0": 0.02}
+    assert {point["engine.modules.beta_mod.kwargs.beta_init"] for point in refined} == {1.0}
+
+
 def test_top_k_combinations_from_coarse(tmp_path: Path) -> None:
     _, hyper_path = _build_min_configs(tmp_path)
     cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
@@ -393,6 +453,22 @@ def test_values_from_json_errors_are_clear(tmp_path: Path) -> None:
         assert False, "Expected ValueError for non-list JSON key"
     except ValueError as e:
         assert "must contain a list" in str(e)
+
+
+def test_values_product_errors_are_clear(tmp_path: Path) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    opt = HyperGridOptimizer(cfg, hyper_path)
+
+    bad_specs = [
+        ({"values_product": {}}, "at least one factor"),
+        ({"values_product": {"gamma": "not-a-list"}}, "non-empty list"),
+        ({"values_product": {"gamma": []}}, "cannot be empty"),
+        ({"values_product": {"": [1]}}, "non-empty strings"),
+    ]
+    for spec, expected in bad_specs:
+        with pytest.raises(ValueError, match=expected):
+            opt._hyperparam_values(spec)
 
 
 def test_parent_and_child_hyperparam_paths_are_rejected(tmp_path: Path) -> None:
