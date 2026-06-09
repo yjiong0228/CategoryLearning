@@ -196,6 +196,22 @@ class ModelEval(OralModelAlignmentMixin):
         return float(np.mean(finite)) if finite.size else float("nan")
 
     @staticmethod
+    def _has_finite_values(values):
+        if values is None:
+            return False
+        try:
+            arr = np.asarray(values, dtype=float)
+        except (TypeError, ValueError):
+            return False
+        return bool(arr.size and np.any(np.isfinite(arr)))
+
+    @classmethod
+    def _has_target_probability_data(cls, info):
+        return cls._has_finite_values(info.get("target_probs")) or cls._has_finite_values(
+            info.get("sliding_target_majority_acc")
+        )
+
+    @staticmethod
     def _target_majority_indices(target_probs):
         probs = np.asarray(target_probs, dtype=float)
         if probs.ndim != 2 or probs.shape[0] == 0:
@@ -509,10 +525,48 @@ class ModelEval(OralModelAlignmentMixin):
     # accuracy_model_alignment ------------------------------------------------
 
     def plot_accuracy_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
+        visible_results = self._filter_results(results, subjects)
+        use_target_majority_plot = any(
+            self._has_target_probability_data(info) for info in visible_results.values()
+        )
+
         def body(ax, condition, iSub, info):
-            true_acc = info["sliding_true_acc"]
-            pred_acc = info["sliding_pred_acc"]
-            pred_std = info["sliding_pred_acc_std"]
+            use_target_majority = self._has_target_probability_data(info)
+            if use_target_majority:
+                true_acc = info.get("sliding_target_majority_acc")
+                pred_acc = info.get("sliding_pred_target_majority_acc")
+                pred_std = info.get("sliding_pred_target_majority_acc_std")
+                if true_acc is None or pred_acc is None or pred_std is None:
+                    computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size)
+                    true_acc = computed.get("sliding_target_majority_acc")
+                    pred_acc = computed.get("sliding_pred_target_majority_acc")
+                    pred_std = computed.get("sliding_pred_target_majority_acc_std")
+                pred_label = "Model"
+                true_label = "Participant"
+                ylabel = "Higher-probability option"
+                empty_text = "No target probability data"
+            else:
+                true_acc = info.get("sliding_true_acc")
+                pred_acc = info.get("sliding_pred_acc")
+                pred_std = info.get("sliding_pred_acc_std")
+                pred_label = "Predicted"
+                true_label = "True"
+                ylabel = "Accuracy"
+                empty_text = "No accuracy data"
+
+            if true_acc is None or pred_acc is None or pred_std is None:
+                ax.text(0.5, 0.5, empty_text, ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
+                return
+
+            true_acc = np.asarray(true_acc, dtype=float)
+            pred_acc = np.asarray(pred_acc, dtype=float)
+            pred_std = np.asarray(pred_std, dtype=float)
+            if not (len(true_acc) == len(pred_acc) == len(pred_std)) or len(pred_acc) == 0:
+                ax.text(0.5, 0.5, empty_text, ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
+                return
+
             win = info.get("window_size") or window_size
             try:
                 win = int(win)
@@ -525,31 +579,45 @@ class ModelEval(OralModelAlignmentMixin):
                     "Trial": trial,
                     "Pred": pred_acc,
                     "True": true_acc,
-                    "Low": np.array(pred_acc) - pred_std,
-                    "High": np.array(pred_acc) + pred_std,
+                    "Low": pred_acc - pred_std,
+                    "High": pred_acc + pred_std,
                 }
             )
-            sns.lineplot(data=df, x="Trial", y="Pred", label="Predicted", ax=ax)
-            sns.lineplot(data=df, x="Trial", y="True", label="True", ax=ax)
+            sns.lineplot(data=df, x="Trial", y="Pred", label=pred_label, ax=ax)
+            sns.lineplot(data=df, x="Trial", y="True", label=true_label, ax=ax)
             ax.fill_between(df["Trial"], df["Low"], df["High"], alpha=0.2)
 
             n_trials = info.get("n_trials")
             if n_trials:
                 ax.set_xlim(1, n_trials)
             ax.set_ylim(0, 1)
-            ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel="Accuracy")
+            ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
             ax.legend()
 
+        title = (
+            "Model vs Participant Higher-Probability Choice by Subject"
+            if use_target_majority_plot
+            else "Predicted vs True Accuracy by Subject"
+        )
         self._plot_by_condition(
             results,
             subjects,
             save_path,
-            "Predicted vs True Accuracy by Subject",
+            title,
             body,
             **kwargs,
         )
 
     def plot_accuracy_family_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
+        filtered_results = self._filter_results(results, subjects)
+        family_results = {
+            sid: info
+            for sid, info in filtered_results.items()
+            if int(info.get("condition", -1)) in (2, 3)
+        }
+        if not family_results:
+            raise RuntimeError("No condition 2/3 results available for family accuracy comparison")
+
         def body(ax, condition, iSub, info):
             true_acc = info.get("sliding_true_family_acc")
             pred_acc = info.get("sliding_pred_family_acc")
@@ -608,8 +676,8 @@ class ModelEval(OralModelAlignmentMixin):
             ax.legend()
 
         self._plot_by_condition(
-            results,
-            subjects,
+            family_results,
+            None,
             save_path,
             "Predicted vs True Family Accuracy by Subject",
             body,

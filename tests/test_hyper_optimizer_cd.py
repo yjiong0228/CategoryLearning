@@ -82,7 +82,6 @@ def _build_min_cd_config(tmp_path: Path) -> Path:
         "subjects": [1],
         "output_dir": "./out_cd",
         "selection_metric": "mean_simulation_error",
-        "hyperparam_selection_mode": "per_subject",
         "save_level": "compact",
         "hyper_base_seed": 42,
         "cd": {

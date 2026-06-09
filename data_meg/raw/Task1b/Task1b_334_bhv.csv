@@ -1,4 +1,4 @@
-subID,condition,level,iTrial,standard_real,compare_real,diff_real,standard_norm,compare_norm,diff_norm,truth,choice,feedback,cho_RT,threshold_mean,threshold_sd
+subID,feature,level,iTrial,standard_real,compare_real,diff_real,standard_norm,compare_norm,diff_norm,truth,choice,feedback,cho_RT,threshold_mean,threshold_sd
 334,3,5,1,4.000,3.930,-0.070,1.000,0.977,-0.023,2,2,1,1.343,0.022,0.017
 334,3,5,2,4.000,3.934,-0.066,1.000,0.978,-0.022,1,1,1,0.491,0.021,0.017
 334,3,5,3,4.000,3.938,-0.062,1.000,0.979,-0.021,1,1,1,0.100,0.020,0.017

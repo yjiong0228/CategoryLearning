@@ -6,7 +6,6 @@ subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1
 selection_metric: mean_simulation_error
-hyperparam_selection_mode: per_subject
 save_level: compact
 hyper_base_seed: 42
 

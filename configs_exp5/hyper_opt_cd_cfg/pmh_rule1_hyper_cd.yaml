@@ -8,7 +8,6 @@ subjects: [501, 503]
 
 output_dir: ../../results/state-based-hyper-opt-exp5/pmh/rule1_cd
 selection_metric: min_inner_mean_error
-hyperparam_selection_mode: per_subject
 save_level: compact
 random_seed: 42
 
