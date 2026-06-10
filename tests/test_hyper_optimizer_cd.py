@@ -12,6 +12,7 @@ import yaml
 import src.Bayesian_state.hyper_cd.optimizer as cd_optimizer
 from src.Bayesian_state.hyper_cd.optimizer import CombinationResult, HyperCDOptimizer
 from src.Bayesian_state.run_hyper_then_simulation import build_hyper_selector
+from src.Bayesian_state.utils.optimizer_common import SingleRunResult
 
 
 @pytest.fixture
@@ -135,7 +136,29 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
             coordinate=coordinate,
         )
 
+    def _fake_flat(**kwargs):
+        results = [
+            _fake_eval(
+                kwargs["stage_name"],
+                entry["point"],
+                {**kwargs["stage_sim_cfg"], "n_jobs": kwargs["repeat_jobs"]},
+                kwargs["subjects"],
+                kwargs["restart_id"],
+                kwargs["iter_id"],
+                kwargs["coordinate"],
+                int(entry["combination_index"]),
+            )
+            for entry in kwargs["missing_entries"]
+        ]
+        return results, {
+            "flat_task_count": len(kwargs["missing_entries"]),
+            "flat_jobs": len(kwargs["missing_entries"]),
+            "parallel_backend": "flat_value_repeat_processes",
+            "planned_total_jobs": kwargs["value_jobs"] * kwargs["repeat_jobs"],
+        }
+
     monkeypatch.setattr(opt, "_evaluate_point_with_index", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_missing_entries_flat", _fake_flat)
 
     result = opt.run(subjects=[1], stage="all")
     subject_out = result["per_subject_outputs"]["1"]
@@ -203,23 +226,23 @@ def test_cd_coarse_and_fine_max_repeat_jobs_are_stage_specific(tmp_path: Path) -
     assert opt._coordinate_parallel_plan("fine", {"simulation_repeats": 8}, 10) == (2, 4)
 
 
-def test_cd_coordinate_values_parallelize_with_runtime_repeat_jobs(tmp_path: Path, monkeypatch) -> None:
+def test_cd_coordinate_values_flatten_value_repeat_jobs(tmp_path: Path, monkeypatch) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
     cfg["cd"].update(
         {
-            "parallel_budget": 4,
+            "parallel_budget": 12,
             "n_restarts": 1,
             "max_outer_iters": 1,
             "init_strategy": "anchor",
-            "anchor": {"x": 1},
+            "anchor": {"x": 0},
             "patience": 1,
         }
     )
-    cfg["stages"]["coarse"]["cd_parallel"]["max_repeat_jobs"] = 2
+    cfg["stages"]["coarse"]["cd_parallel"]["max_repeat_jobs"] = 3
     opt = HyperCDOptimizer(cfg, cd_path)
     seen: list[tuple[int, int, int]] = []
-    threadpool_workers: list[int] = []
+    flat_calls: list[dict] = []
 
     def _fake_eval(stage_name, point, stage_sim_cfg, subjects, restart_id, iter_id, coordinate, combination_index):
         seen.append((int(combination_index), int(stage_sim_cfg["n_jobs"]), int(point["x"])))
@@ -236,43 +259,176 @@ def test_cd_coordinate_values_parallelize_with_runtime_repeat_jobs(tmp_path: Pat
             coordinate=coordinate,
         )
 
-    class _FakeThreadPoolExecutor:
-        def __init__(self, max_workers):
-            threadpool_workers.append(int(max_workers))
+    def _fake_flat(**kwargs):
+        flat_calls.append(
+            {
+                "missing": len(kwargs["missing_entries"]),
+                "value_jobs": kwargs["value_jobs"],
+                "repeat_jobs": kwargs["repeat_jobs"],
+            }
+        )
+        results = [
+            _fake_eval(
+                kwargs["stage_name"],
+                entry["point"],
+                {**kwargs["stage_sim_cfg"], "n_jobs": kwargs["repeat_jobs"]},
+                kwargs["subjects"],
+                kwargs["restart_id"],
+                kwargs["iter_id"],
+                kwargs["coordinate"],
+                int(entry["combination_index"]),
+            )
+            for entry in kwargs["missing_entries"]
+        ]
+        return results, {
+            "flat_task_count": len(kwargs["missing_entries"]) * 3,
+            "flat_jobs": min(12, len(kwargs["missing_entries"]) * 3),
+            "parallel_backend": "flat_value_repeat_processes",
+            "planned_total_jobs": kwargs["value_jobs"] * kwargs["repeat_jobs"],
+        }
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def map(self, fn, iterable):
-            return [fn(item) for item in iterable]
-
-    monkeypatch.setattr(cd_optimizer, "ThreadPoolExecutor", _FakeThreadPoolExecutor)
     monkeypatch.setattr(opt, "_evaluate_point_with_index", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_missing_entries_flat", _fake_flat)
     combinations, _, _ = opt._coordinate_descent(
         stage_name="coarse",
-        stage_sim_cfg={"simulation_repeats": 4},
+        stage_sim_cfg={"simulation_repeats": 3},
         subjects=[1],
-        space={"x": [1, 2, 3]},
+        space={"x": [1, 2, 3, 4]},
         all_combinations_path=tmp_path / "all_combinations.jsonl",
         coordinate_trace_path=tmp_path / "coordinate_trace.jsonl",
     )
 
-    assert [idx for idx, _, _ in seen] == [0, 1, 2]
-    assert {n_jobs for _, n_jobs, _ in seen} == {2}
-    assert threadpool_workers == [2]
-    assert [combo.combination_index for combo in combinations] == [0, 1, 2]
+    assert [idx for idx, _, _ in seen] == [0, 1, 2, 3, 4]
+    assert {n_jobs for _, n_jobs, _ in seen} == {3}
+    assert flat_calls == [{"missing": 4, "value_jobs": 4, "repeat_jobs": 3}]
+    assert [combo.combination_index for combo in combinations] == [0, 1, 2, 3, 4]
     trace = [json.loads(line) for line in (tmp_path / "coordinate_trace.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert trace[0]["value_jobs"] == 2
-    assert trace[0]["repeat_jobs"] == 2
-    assert trace[0]["missing_value_count"] == 2
-    assert trace[0]["planned_total_jobs"] == 4
-    assert trace[0]["parallel_backend"] == "threads_outer_process_repeats"
-    assert trace[0]["candidate_count"] == 3
-    assert trace[0]["new_evaluations"] == 2
-    assert trace[0]["cache_hits"] == 1
+    assert trace[0]["value_jobs"] == 4
+    assert trace[0]["repeat_jobs"] == 3
+    assert trace[0]["missing_value_count"] == 4
+    assert trace[0]["flat_task_count"] == 12
+    assert trace[0]["flat_jobs"] == 12
+    assert trace[0]["planned_total_jobs"] == 12
+    assert trace[0]["parallel_backend"] == "flat_value_repeat_processes"
+    assert trace[0]["candidate_count"] == 4
+    assert trace[0]["new_evaluations"] == 4
+    assert trace[0]["cache_hits"] == 0
+
+
+def test_cd_flat_evaluator_groups_repeats_by_candidate_order(tmp_path: Path, monkeypatch) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    cfg["cd"]["parallel_budget"] = 12
+    opt = HyperCDOptimizer(cfg, cd_path)
+    parallel_jobs: list[int] = []
+    task_order: list[tuple[int, int]] = []
+
+    class _FakeRunner:
+        _engine_config_template = {"modules": {}}
+        _processed_data_dir = tmp_path
+        _dataset_paths = {"processed_dir": tmp_path, "learning_data": tmp_path / "learning.csv"}
+
+        def _get_subject_frame(self, subject_id, stop_at):
+            return {"subject_id": subject_id, "stop_at": stop_at}
+
+        def _get_condition_value(self, subject_frame):
+            return 1
+
+        def _extract_arrays(self, subject_frame, max_trials):
+            return ("arrays", subject_frame, max_trials)
+
+    def _fake_resolve(stage_sim_cfg, subject_id, subjects):
+        return (
+            {"simulation_repeats": 3, "loss_metric": "accuracy_curve_mse", "window_size": 8},
+            {"modules": {}},
+            "prior_t",
+            "prior_t",
+            "accuracy_curve_mse",
+            None,
+            8,
+            1,
+        )
+
+    def _fake_apply(point, subject_cfg, engine_cfg):
+        return dict(subject_cfg), dict(engine_cfg)
+
+    def _fake_build(point_sim_cfg, point_engine_cfg):
+        return _FakeRunner(), {"processed_dir": tmp_path, "learning_data": tmp_path / "learning.csv"}
+
+    def _fake_task(task):
+        position = int(task["position"])
+        repeat_index = int(task["repeat_index"])
+        task_order.append((position, repeat_index))
+        x_val = float(task["params"]["x"])
+        err = x_val + repeat_index / 10.0
+        return {
+            "position": position,
+            "repeat_index": repeat_index,
+            "run": SingleRunResult(
+                params=dict(task["params"]),
+                mean_error=err,
+                metrics_by_mode={"prior_t": {"mean_error": err}},
+                selection_prediction_mode="prior_t",
+                loss_metric="accuracy_curve_mse",
+                loss_delta=None,
+                posterior_log=None,
+                prior_log=None,
+                beta_log=None,
+                step_log=None,
+                strategy_counts_log=None,
+                simulation_point_seed=task["simulation_point_seed"],
+                trajectory_seed=task["trajectory_seed"],
+                seed_context=task["seed_context"],
+            ),
+        }
+
+    def _fake_delayed(fn):
+        return lambda *args, **kwargs: lambda: fn(*args, **kwargs)
+
+    def _fake_parallel(n_jobs):
+        parallel_jobs.append(int(n_jobs))
+
+        def _run(tasks):
+            task_list = list(tasks)
+            return [task() for task in reversed(task_list)]
+
+        return _run
+
+    monkeypatch.setattr(opt, "_resolve_sim_components", _fake_resolve)
+    monkeypatch.setattr(opt, "_apply_hyperparams", _fake_apply)
+    monkeypatch.setattr(opt, "_build_runner", _fake_build)
+    monkeypatch.setattr(cd_optimizer, "_evaluate_cd_flat_repeat_task", _fake_task)
+    monkeypatch.setattr(cd_optimizer, "delayed", _fake_delayed)
+    monkeypatch.setattr(cd_optimizer, "Parallel", _fake_parallel)
+
+    entries = [
+        {"position": 0, "point": {"x": 2}, "combination_index": 10},
+        {"position": 1, "point": {"x": 3}, "combination_index": 11},
+    ]
+    results, diag = opt._evaluate_missing_entries_flat(
+        stage_name="coarse",
+        stage_sim_cfg={"simulation_repeats": 3},
+        subjects=[1],
+        restart_id=0,
+        iter_id=1,
+        coordinate="x",
+        missing_entries=entries,
+        value_jobs=4,
+        repeat_jobs=3,
+    )
+
+    assert parallel_jobs == [6]
+    assert diag["flat_task_count"] == 6
+    assert diag["flat_jobs"] == 6
+    assert diag["planned_total_jobs"] == 12
+    assert diag["parallel_backend"] == "flat_value_repeat_processes"
+    assert task_order == [(1, 2), (1, 1), (1, 0), (0, 2), (0, 1), (0, 0)]
+    assert [result.combination_index for result in results] == [10, 11]
+    assert [result.hyperparams["x"] for result in results] == [2, 3]
+    assert results[0].aggregated_error == pytest.approx(2.1)
+    assert results[1].aggregated_error == pytest.approx(3.1)
+    assert results[0].subject_metrics[1]["sample_errors"] == [2.0, 2.1, 2.2]
+    assert results[1].subject_metrics[1]["sample_errors"] == [3.0, 3.1, 3.2]
 
 
 def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:
@@ -402,7 +558,29 @@ def test_cd_shuffle_per_restart_reuses_coordinate_order_within_restart(tmp_path:
             coordinate=coordinate,
         )
 
+    def _fake_flat(**kwargs):
+        results = [
+            _fake_eval(
+                kwargs["stage_name"],
+                entry["point"],
+                {**kwargs["stage_sim_cfg"], "n_jobs": kwargs["repeat_jobs"]},
+                kwargs["subjects"],
+                kwargs["restart_id"],
+                kwargs["iter_id"],
+                kwargs["coordinate"],
+                int(entry["combination_index"]),
+            )
+            for entry in kwargs["missing_entries"]
+        ]
+        return results, {
+            "flat_task_count": len(kwargs["missing_entries"]),
+            "flat_jobs": len(kwargs["missing_entries"]),
+            "parallel_backend": "flat_value_repeat_processes",
+            "planned_total_jobs": kwargs["value_jobs"] * kwargs["repeat_jobs"],
+        }
+
     monkeypatch.setattr(opt, "_evaluate_point_with_index", _fake_eval)
+    monkeypatch.setattr(opt, "_evaluate_missing_entries_flat", _fake_flat)
     opt._coordinate_descent(
         stage_name="coarse",
         stage_sim_cfg={"simulation_repeats": 1},

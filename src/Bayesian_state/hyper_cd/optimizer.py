@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 import random
-from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
+from joblib import Parallel, delayed
 
 from src.Bayesian_state.run_simulation import resolve_simulation_repeats
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
@@ -27,8 +27,17 @@ from src.Bayesian_state.utils.optimization_config import (
     resolve_prediction_modes,
     resolve_window_size,
 )
-from src.Bayesian_state.utils.optimizer_common import derive_hyper_candidate_seed, stable_seed
-from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRunner
+from src.Bayesian_state.utils.optimizer_common import (
+    derive_hyper_candidate_seed,
+    derive_simulation_point_seed,
+    derive_trajectory_seed,
+    evaluate_state_model_run,
+    stable_seed,
+)
+from src.Bayesian_state.utils.optimizer_simulation import (
+    StateModelSimulationRunner,
+    aggregate_simulation_runs,
+)
 
 
 SELECTION_METRICS = {"mean_simulation_error"}
@@ -45,6 +54,33 @@ class CombinationResult:
     restart_id: int
     iter_id: int
     coordinate: str
+
+
+def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
+    run = evaluate_state_model_run(
+        task["subject_id"],
+        task["condition"],
+        task["arrays"],
+        task["params"],
+        task["engine_config_template"],
+        task["processed_data_dir"],
+        task["window_size"],
+        task["dataset_paths"],
+        task["keep_logs"],
+        task["keep_logs"],
+        task["prediction_mode"],
+        task["selection_prediction_mode"],
+        task["loss_metric"],
+        task["loss_delta"],
+        simulation_point_seed=task["simulation_point_seed"],
+        trajectory_seed=task["trajectory_seed"],
+        seed_context=task["seed_context"],
+    )
+    return {
+        "position": int(task["position"]),
+        "repeat_index": int(task["repeat_index"]),
+        "run": run,
+    }
 
 
 class HyperCDOptimizer:
@@ -436,6 +472,190 @@ class HyperCDOptimizer:
             coordinate=coordinate,
         )
 
+    def _evaluate_missing_entries_flat(
+        self,
+        *,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+        missing_entries: Sequence[Dict[str, Any]],
+        value_jobs: int,
+        repeat_jobs: int,
+    ) -> tuple[List[CombinationResult], Dict[str, Any]]:
+        if not missing_entries:
+            return [], {
+                "flat_task_count": 0,
+                "flat_jobs": 0,
+                "parallel_backend": "flat_value_repeat_processes",
+            }
+        if len(subjects) != 1:
+            raise ValueError("Flat CD coordinate evaluation expects exactly one subject.")
+
+        sid = int(subjects[0])
+        flat_tasks: List[Dict[str, Any]] = []
+        candidate_meta: Dict[int, Dict[str, Any]] = {}
+
+        for entry in missing_entries:
+            position = int(entry["position"])
+            point = dict(entry["point"])
+            combination_index = int(entry["combination_index"])
+            hyper_candidate_seed = self._hyper_candidate_seed(
+                stage_name,
+                combination_index,
+                point,
+                restart_id,
+                iter_id,
+                coordinate,
+            )
+
+            subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, _ = self._resolve_sim_components(
+                stage_sim_cfg,
+                sid,
+                subjects,
+            )
+            point_sim_cfg, point_engine_cfg = self._apply_hyperparams(point, subject_cfg, base_engine_cfg)
+            runner, dataset_paths = self._build_runner(point_sim_cfg, point_engine_cfg)
+            simulation_repeats = resolve_simulation_repeats(point_sim_cfg)
+            effective_loss_metric = str(point_sim_cfg["loss_metric"])
+            effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
+            effective_window_size = int(point_sim_cfg.get("window_size", window_size))
+            keep_logs = bool(point_sim_cfg.get("keep_logs", False))
+
+            subject_frame = runner._get_subject_frame(sid, float(point_sim_cfg.get("stop_at", 1.0)))
+            condition = runner._get_condition_value(subject_frame)
+            arrays = runner._extract_arrays(subject_frame, point_sim_cfg.get("max_trials"))
+            simulation_point_seed = derive_simulation_point_seed(
+                int(hyper_candidate_seed),
+                sid,
+                point,
+            )
+
+            candidate_meta[position] = {
+                "point": point,
+                "combination_index": combination_index,
+                "hyper_candidate_seed": int(hyper_candidate_seed),
+                "simulation_point_seed": int(simulation_point_seed),
+                "subject_id": sid,
+                "condition": int(condition),
+                "window_size": effective_window_size,
+                "selection_prediction_mode": str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+                "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                "loss_metric": effective_loss_metric,
+                "loss_delta": effective_loss_delta,
+                "simulation_repeats": simulation_repeats,
+                "keep_logs": keep_logs,
+                "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
+                "engine_config_template": deepcopy(runner._engine_config_template),
+                "processed_data_dir": runner._processed_data_dir,
+                "arrays": arrays,
+            }
+
+            for repeat_index in range(simulation_repeats):
+                trajectory_seed = derive_trajectory_seed(
+                    int(simulation_point_seed),
+                    "simulation",
+                    repeat_index,
+                )
+                flat_tasks.append(
+                    {
+                        "position": position,
+                        "repeat_index": int(repeat_index),
+                        "subject_id": sid,
+                        "condition": int(condition),
+                        "arrays": arrays,
+                        "params": point,
+                        "engine_config_template": runner._engine_config_template,
+                        "processed_data_dir": runner._processed_data_dir,
+                        "window_size": effective_window_size,
+                        "dataset_paths": dataset_paths,
+                        "keep_logs": keep_logs,
+                        "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                        "selection_prediction_mode": str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+                        "loss_metric": effective_loss_metric,
+                        "loss_delta": effective_loss_delta,
+                        "simulation_point_seed": int(simulation_point_seed),
+                        "trajectory_seed": trajectory_seed,
+                        "seed_context": {
+                            "hyper_candidate_seed": int(hyper_candidate_seed),
+                            "simulation_point_seed": int(simulation_point_seed),
+                            "trajectory_seed": trajectory_seed,
+                            "phase": "simulation",
+                            "repeat_index": int(repeat_index),
+                        },
+                    }
+                )
+
+        flat_task_count = len(flat_tasks)
+        flat_jobs = min(self.parallel_budget, flat_task_count)
+        flat_results = list(
+            Parallel(n_jobs=flat_jobs)(
+                delayed(_evaluate_cd_flat_repeat_task)(task)
+                for task in flat_tasks
+            )
+        )
+
+        runs_by_position: Dict[int, Dict[int, Any]] = {
+            position: {} for position in candidate_meta
+        }
+        for result in flat_results:
+            runs_by_position[int(result["position"])][int(result["repeat_index"])] = result["run"]
+
+        out: List[CombinationResult] = []
+        for entry in missing_entries:
+            position = int(entry["position"])
+            meta = candidate_meta[position]
+            simulation_repeats = int(meta["simulation_repeats"])
+            runs_by_repeat = runs_by_position[position]
+            runs = [runs_by_repeat[idx] for idx in range(simulation_repeats)]
+            best = aggregate_simulation_runs(
+                runs,
+                params=meta["point"],
+                subject_id=sid,
+                condition=int(meta["condition"]),
+                window_size=int(meta["window_size"]),
+                selection_prediction_mode=str(meta["selection_prediction_mode"]),
+                simulation_repeats=simulation_repeats,
+                simulation_point_seed=int(meta["simulation_point_seed"]),
+                keep_logs=bool(meta["keep_logs"]),
+            )
+            mean_error = float(best.mean_error)
+            subject_metrics = {
+                sid: {
+                    "mean_error": mean_error,
+                    "best_error": float(best.best_error if best.best_error is not None else mean_error),
+                    "std_error": float(best.std_error),
+                    "sample_errors": list(best.sample_errors or []),
+                    "fixed_hyperparams": deepcopy(meta["point"]),
+                    "condition": int(meta["condition"]),
+                    "dataset_paths": dict(meta["dataset_paths"]),
+                    "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
+                    "simulation_repeats": simulation_repeats,
+                }
+            }
+            out.append(
+                CombinationResult(
+                    stage=stage_name,
+                    combination_index=int(meta["combination_index"]),
+                    hyperparams=deepcopy(meta["point"]),
+                    aggregated_error=mean_error,
+                    subject_metrics=subject_metrics,
+                    hyper_candidate_seed=int(meta["hyper_candidate_seed"]),
+                    restart_id=restart_id,
+                    iter_id=iter_id,
+                    coordinate=coordinate,
+                )
+            )
+
+        return out, {
+            "flat_task_count": flat_task_count,
+            "flat_jobs": flat_jobs,
+            "parallel_backend": "flat_value_repeat_processes",
+            "planned_total_jobs": value_jobs * repeat_jobs,
+        }
+
     def _next_combination_index(self) -> int:
         out = self._combination_counter
         self._combination_counter += 1
@@ -665,7 +885,6 @@ class HyperCDOptimizer:
                         stage_sim_cfg,
                         len(space[coord]),
                     )
-                    point_stage_sim_cfg = self._stage_sim_cfg_with_n_jobs(stage_sim_cfg, repeat_jobs)
                     candidate_entries: List[Dict[str, Any]] = []
                     missing_entries: List[Dict[str, Any]] = []
                     for value in space[coord]:
@@ -689,43 +908,28 @@ class HyperCDOptimizer:
                         candidate_entries.append(entry)
 
                     if missing_entries:
-                        if value_jobs == 1:
-                            evaluated_missing = [
-                                self._evaluate_point_with_index(
-                                    stage_name=stage_name,
-                                    point=entry["point"],
-                                    stage_sim_cfg=point_stage_sim_cfg,
-                                    subjects=subjects,
-                                    restart_id=restart_id,
-                                    iter_id=iter_id,
-                                    coordinate=coord,
-                                    combination_index=int(entry["combination_index"]),
-                                )
-                                for entry in missing_entries
-                            ]
-                        else:
-                            def _evaluate_missing_entry(entry: Dict[str, Any]) -> CombinationResult:
-                                return self._evaluate_point_with_index(
-                                    stage_name=stage_name,
-                                    point=entry["point"],
-                                    stage_sim_cfg=point_stage_sim_cfg,
-                                    subjects=subjects,
-                                    restart_id=restart_id,
-                                    iter_id=iter_id,
-                                    coordinate=coord,
-                                    combination_index=int(entry["combination_index"]),
-                                )
-
-                            with ThreadPoolExecutor(max_workers=value_jobs) as executor:
-                                evaluated_missing = list(executor.map(
-                                    _evaluate_missing_entry,
-                                    missing_entries,
-                                ))
+                        evaluated_missing, flat_diag = self._evaluate_missing_entries_flat(
+                            stage_name=stage_name,
+                            stage_sim_cfg=stage_sim_cfg,
+                            subjects=subjects,
+                            restart_id=restart_id,
+                            iter_id=iter_id,
+                            coordinate=coord,
+                            missing_entries=missing_entries,
+                            value_jobs=value_jobs,
+                            repeat_jobs=repeat_jobs,
+                        )
                         by_position = {
                             int(entry["position"]): result
                             for entry, result in zip(missing_entries, evaluated_missing)
                         }
                     else:
+                        flat_diag = {
+                            "flat_task_count": 0,
+                            "flat_jobs": 0,
+                            "parallel_backend": "flat_value_repeat_processes",
+                            "planned_total_jobs": value_jobs * repeat_jobs,
+                        }
                         by_position = {}
 
                     for entry in candidate_entries:
@@ -776,8 +980,10 @@ class HyperCDOptimizer:
                                 "cache_hits": coord_cache_hits,
                                 "value_jobs": value_jobs,
                                 "repeat_jobs": repeat_jobs,
-                                "planned_total_jobs": value_jobs * repeat_jobs,
-                                "parallel_backend": "threads_outer_process_repeats",
+                                "planned_total_jobs": flat_diag["planned_total_jobs"],
+                                "flat_task_count": flat_diag["flat_task_count"],
+                                "flat_jobs": flat_diag["flat_jobs"],
+                                "parallel_backend": flat_diag["parallel_backend"],
                                 "start_best_combination_index": start_best.combination_index,
                                 "start_best_error": start_best.aggregated_error,
                                 "end_best_combination_index": best_local.combination_index,

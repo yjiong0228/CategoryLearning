@@ -50,6 +50,67 @@ def _build_run_record(
     }
 
 
+def aggregate_simulation_runs(
+    runs: Sequence[SingleRunResult],
+    *,
+    params: Mapping[str, Any],
+    subject_id: int,
+    condition: int,
+    window_size: int,
+    selection_prediction_mode: str,
+    simulation_repeats: int,
+    simulation_point_seed: int | None,
+    keep_logs: bool,
+) -> SimulationResult:
+    """Aggregate repeated state-model runs using the standard simulation summary semantics."""
+    runs = list(runs)
+    if len(runs) != int(simulation_repeats):
+        raise RuntimeError(
+            f"Simulation produced {len(runs)} runs for {simulation_repeats} requested repeats."
+        )
+    if not runs:
+        raise RuntimeError("Simulation produced no runs.")
+
+    errors = [float(r.mean_error) for r in runs]
+    mean_error = float(np.mean(errors))
+    std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
+    best_run_idx = int(np.argmin(errors))
+    best_run = runs[best_run_idx]
+
+    raw_runs = [
+        _build_run_record(
+            run=run,
+            run_index=i,
+            subject_id=subject_id,
+            condition=condition,
+            window_size=window_size,
+        )
+        for i, run in enumerate(runs)
+    ]
+    if not keep_logs:
+        raw_runs = []
+
+    return SimulationResult(
+        params=dict(params),
+        mean_error=mean_error,
+        metrics_by_mode=best_run.metrics_by_mode,
+        selection_prediction_mode=selection_prediction_mode,
+        posterior_log=best_run.posterior_log,
+        prior_log=best_run.prior_log,
+        beta_log=best_run.beta_log,
+        step_results=best_run.step_log,
+        strategy_counts_log=best_run.strategy_counts_log,
+        raw_runs=raw_runs,
+        raw_step_results=[r.step_log for r in runs if r.step_log is not None] if keep_logs else [],
+        sample_errors=[float(e) for e in errors],
+        best_error=float(errors[best_run_idx]),
+        representative_run_index=best_run_idx,
+        simulation_repeats=int(simulation_repeats),
+        simulation_point_seed=simulation_point_seed,
+        std_error=std_error,
+    )
+
+
 class StateModelSimulationRunner(BaseStateOptimizer):
     """Run repeated simulations for one fixed hyperparameter setting."""
 
@@ -141,46 +202,17 @@ class StateModelSimulationRunner(BaseStateOptimizer):
             )
         )
         runs: List[SingleRunResult] = [r for r in raw_results if r is not None]
-        if len(runs) != len(tasks):
-            raise RuntimeError("Simulation produced empty runs unexpectedly.")
 
-        errors = [float(r.mean_error) for r in runs]
-        mean_error = float(np.mean(errors))
-        std_error = float(np.std(errors)) if len(errors) > 1 else 0.0
-        best_run_idx = int(np.argmin(errors))
-        best_run = runs[best_run_idx]
-
-        raw_runs = [
-            _build_run_record(
-                run=run,
-                run_index=i,
-                subject_id=subject_id,
-                condition=condition,
-                window_size=window_size,
-            )
-            for i, run in enumerate(runs)
-        ]
-        if not keep_logs:
-            raw_runs = []
-
-        best_result = SimulationResult(
+        best_result = aggregate_simulation_runs(
+            runs,
             params=fixed_payload or eval_params,
-            mean_error=mean_error,
-            metrics_by_mode=best_run.metrics_by_mode,
+            subject_id=subject_id,
+            condition=condition,
+            window_size=window_size,
             selection_prediction_mode=selection_prediction_mode,
-            posterior_log=best_run.posterior_log,
-            prior_log=best_run.prior_log,
-            beta_log=best_run.beta_log,
-            step_results=best_run.step_log,
-            strategy_counts_log=best_run.strategy_counts_log,
-            raw_runs=raw_runs,
-            raw_step_results=[r.step_log for r in runs if r.step_log is not None] if keep_logs else [],
-            sample_errors=[float(e) for e in errors],
-            best_error=float(errors[best_run_idx]),
-            representative_run_index=best_run_idx,
             simulation_repeats=simulation_repeats,
             simulation_point_seed=simulation_point_seed,
-            std_error=std_error,
+            keep_logs=keep_logs,
         )
 
         return {
@@ -205,4 +237,4 @@ class StateModelSimulationRunner(BaseStateOptimizer):
         }
 
 
-__all__ = ["StateModelSimulationRunner"]
+__all__ = ["StateModelSimulationRunner", "aggregate_simulation_runs"]
