@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 import random
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
-from joblib import Parallel, delayed
 
 from src.Bayesian_state.run_simulation import resolve_simulation_repeats
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
@@ -704,21 +704,23 @@ class HyperCDOptimizer:
                                 for entry in missing_entries
                             ]
                         else:
-                            evaluated_missing = list(
-                                Parallel(n_jobs=value_jobs)(
-                                    delayed(self._evaluate_point_with_index)(
-                                        stage_name=stage_name,
-                                        point=entry["point"],
-                                        stage_sim_cfg=point_stage_sim_cfg,
-                                        subjects=subjects,
-                                        restart_id=restart_id,
-                                        iter_id=iter_id,
-                                        coordinate=coord,
-                                        combination_index=int(entry["combination_index"]),
-                                    )
-                                    for entry in missing_entries
+                            def _evaluate_missing_entry(entry: Dict[str, Any]) -> CombinationResult:
+                                return self._evaluate_point_with_index(
+                                    stage_name=stage_name,
+                                    point=entry["point"],
+                                    stage_sim_cfg=point_stage_sim_cfg,
+                                    subjects=subjects,
+                                    restart_id=restart_id,
+                                    iter_id=iter_id,
+                                    coordinate=coord,
+                                    combination_index=int(entry["combination_index"]),
                                 )
-                            )
+
+                            with ThreadPoolExecutor(max_workers=value_jobs) as executor:
+                                evaluated_missing = list(executor.map(
+                                    _evaluate_missing_entry,
+                                    missing_entries,
+                                ))
                         by_position = {
                             int(entry["position"]): result
                             for entry, result in zip(missing_entries, evaluated_missing)
@@ -769,10 +771,13 @@ class HyperCDOptimizer:
                                 "coordinate_index": coord_index,
                                 "coordinate_order": coords,
                                 "candidate_count": candidate_count,
+                                "missing_value_count": len(missing_entries),
                                 "new_evaluations": coord_new_evaluations,
                                 "cache_hits": coord_cache_hits,
                                 "value_jobs": value_jobs,
                                 "repeat_jobs": repeat_jobs,
+                                "planned_total_jobs": value_jobs * repeat_jobs,
+                                "parallel_backend": "threads_outer_process_repeats",
                                 "start_best_combination_index": start_best.combination_index,
                                 "start_best_error": start_best.aggregated_error,
                                 "end_best_combination_index": best_local.combination_index,

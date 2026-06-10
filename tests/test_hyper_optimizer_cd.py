@@ -219,6 +219,7 @@ def test_cd_coordinate_values_parallelize_with_runtime_repeat_jobs(tmp_path: Pat
     cfg["stages"]["coarse"]["cd_parallel"]["max_repeat_jobs"] = 2
     opt = HyperCDOptimizer(cfg, cd_path)
     seen: list[tuple[int, int, int]] = []
+    threadpool_workers: list[int] = []
 
     def _fake_eval(stage_name, point, stage_sim_cfg, subjects, restart_id, iter_id, coordinate, combination_index):
         seen.append((int(combination_index), int(stage_sim_cfg["n_jobs"]), int(point["x"])))
@@ -235,8 +236,20 @@ def test_cd_coordinate_values_parallelize_with_runtime_repeat_jobs(tmp_path: Pat
             coordinate=coordinate,
         )
 
-    monkeypatch.setattr(cd_optimizer, "delayed", lambda fn: lambda *args, **kwargs: lambda: fn(*args, **kwargs))
-    monkeypatch.setattr(cd_optimizer, "Parallel", lambda n_jobs: lambda tasks: [task() for task in tasks])
+    class _FakeThreadPoolExecutor:
+        def __init__(self, max_workers):
+            threadpool_workers.append(int(max_workers))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def map(self, fn, iterable):
+            return [fn(item) for item in iterable]
+
+    monkeypatch.setattr(cd_optimizer, "ThreadPoolExecutor", _FakeThreadPoolExecutor)
     monkeypatch.setattr(opt, "_evaluate_point_with_index", _fake_eval)
     combinations, _, _ = opt._coordinate_descent(
         stage_name="coarse",
@@ -249,10 +262,14 @@ def test_cd_coordinate_values_parallelize_with_runtime_repeat_jobs(tmp_path: Pat
 
     assert [idx for idx, _, _ in seen] == [0, 1, 2]
     assert {n_jobs for _, n_jobs, _ in seen} == {2}
+    assert threadpool_workers == [2]
     assert [combo.combination_index for combo in combinations] == [0, 1, 2]
     trace = [json.loads(line) for line in (tmp_path / "coordinate_trace.jsonl").read_text(encoding="utf-8").splitlines()]
     assert trace[0]["value_jobs"] == 2
     assert trace[0]["repeat_jobs"] == 2
+    assert trace[0]["missing_value_count"] == 2
+    assert trace[0]["planned_total_jobs"] == 4
+    assert trace[0]["parallel_backend"] == "threads_outer_process_repeats"
     assert trace[0]["candidate_count"] == 3
     assert trace[0]["new_evaluations"] == 2
     assert trace[0]["cache_hits"] == 1
