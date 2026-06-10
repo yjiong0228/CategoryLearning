@@ -292,12 +292,56 @@ def run_oral_plots(
     oral_mode: str,
     window_size: int | None,
     region_n_samples: int,
-    region_stimulus_sigma: float,
+    region_stimulus_sigma: float | None,
     distribution_model_distribution: str,
     oral_model_distribution: str,
     combine_oral_equivalent: bool,
 ) -> None:
-    oral_dir = output_dir / "oral_alignment"
+    oral_mode = str(oral_mode).strip().lower()
+    oral_subjects = (
+        [int(s) for s in subjects]
+        if subjects is not None
+        else sorted(int(s) for s in results.keys())
+    )
+    combine_requested = bool(combine_oral_equivalent)
+    if combine_requested:
+        eligible_subjects = [
+            sid
+            for sid in oral_subjects
+            if int(results.get(int(sid), {}).get("condition", -1)) in (2, 3)
+        ]
+        skipped_subjects = sorted(set(oral_subjects) - set(eligible_subjects))
+        if not eligible_subjects:
+            reason = "combined oral-equivalence alignment is only generated for condition 2/3."
+            LOGGER.info("Skipping %s oral combined alignment: %s", oral_mode, reason)
+            records.append(
+                {
+                    "name": f"oral_alignment_{oral_mode}_mode_combined",
+                    "status": "skipped",
+                    "reason": reason,
+                    "subjects": oral_subjects,
+                }
+            )
+            return
+        if skipped_subjects:
+            LOGGER.info(
+                "Excluding condition-1 subject(s) from %s oral combined alignment: %s",
+                oral_mode,
+                skipped_subjects,
+            )
+            records.append(
+                {
+                    "name": f"oral_alignment_{oral_mode}_mode_combined_subject_filter",
+                    "status": "ok",
+                    "reason": "combined oral-equivalence alignment is only generated for condition 2/3.",
+                    "included_subjects": eligible_subjects,
+                    "excluded_subjects": skipped_subjects,
+                }
+            )
+        oral_subjects = eligible_subjects
+
+    combine_suffix = "_combined" if combine_requested else ""
+    oral_dir = output_dir / f"oral_alignment_{oral_mode}_mode{combine_suffix}"
     oral_dir.mkdir(parents=True, exist_ok=True)
     oral_df = pd.read_csv(oral_data_path)
 
@@ -307,7 +351,7 @@ def run_oral_plots(
         lambda: evaluator.compute_oral_mass_probabilities(
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
         ),
@@ -324,7 +368,7 @@ def run_oral_plots(
                 ),
                 evaluator.plot_oral_mass_probabilities(
                     oral_mass,
-                    subjects=subjects,
+                    subjects=oral_subjects,
                     save_path=oral_dir / "oral_mass_probabilities.png",
                 ),
             ),
@@ -338,7 +382,7 @@ def run_oral_plots(
             results,
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             model_distribution=distribution_model_distribution,
@@ -365,7 +409,7 @@ def run_oral_plots(
             results,
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             model_distribution=oral_model_distribution,
@@ -390,7 +434,7 @@ def run_oral_plots(
             results,
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -415,7 +459,7 @@ def run_oral_plots(
             results,
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -440,7 +484,7 @@ def run_oral_plots(
             results,
             oral_df,
             oral_mode=oral_mode,
-            subjects=subjects,
+            subjects=oral_subjects,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -473,7 +517,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
     p.add_argument("--oral-mode", choices=("center", "region"), default="center")
     p.add_argument("--region-n-samples", type=int, default=1000)
-    p.add_argument("--region-stimulus-sigma", type=float, default=0.2)
+    p.add_argument(
+        "--region-stimulus-sigma",
+        type=float,
+        default=None,
+        help="Deprecated no-op kept for compatibility; region mode now uses unweighted overlap.",
+    )
     p.add_argument(
         "--distribution-model-distribution",
         default="prior",
@@ -549,7 +598,7 @@ def main() -> None:
                 oral_mode=str(args.oral_mode),
                 window_size=args.window_size,
                 region_n_samples=int(args.region_n_samples),
-                region_stimulus_sigma=float(args.region_stimulus_sigma),
+                region_stimulus_sigma=args.region_stimulus_sigma,
                 distribution_model_distribution=str(args.distribution_model_distribution),
                 oral_model_distribution=str(args.oral_model_distribution),
                 combine_oral_equivalent=bool(args.combine_oral_equivalent),

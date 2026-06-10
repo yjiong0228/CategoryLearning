@@ -444,8 +444,9 @@ class Partition(BasePartition):
     EPS = 1e-7
 
     # In-process cache for loaded similarity matrices:
-    # {(n_dims, n_cats): matrix_array}.
+    # {(n_dims, n_cats, n_samples, region_label_version): matrix_array}.
     _loaded_matrices_cache = {}
+    REGION_LABEL_VERSION = "prototype_labels_v2"
 
     # On-disk cache directory for similarity matrices.
     DEFAULT_CACHE_DIR = Path(__file__).parent / "cache"
@@ -463,9 +464,12 @@ class Partition(BasePartition):
         # Similarity can be expensive, so only remember how to build/load it.
         # The matrix itself is loaded or computed on first access.
         cache_dir = Path(kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR))
-        filename = f"similarity_matrix_d{n_dims}_c{n_cats}.npy"
+        self._similarity_n_samples = int(kwargs.get("similarity_n_samples", 100000))
+        filename = (
+            f"similarity_matrix_{self.REGION_LABEL_VERSION}"
+            f"_d{n_dims}_c{n_cats}_n{self._similarity_n_samples}.npy"
+        )
         self._similarity_matrix_path = cache_dir / filename
-        self._similarity_n_samples = kwargs.get("similarity_n_samples", 100000)
         self._similarity_matrix = None
 
     @property
@@ -519,11 +523,31 @@ class Partition(BasePartition):
             "4d_sum_axis_pair"
         }
 
-        # Generic split types: all sign combinations of the hyperplanes.
+        # Generic split types: category-specific sign combinations. The order
+        # must match get_prototypes(), so category c's prototype lies inside
+        # category c's boundary region.
         if split_type not in three_plane_types and split_type not in (
                 "dimension_max", "dimension_min"):
+            sign_orders = {
+                # One-plane, two-category splits: low side, then high side.
+                "axis": [(1, ), (-1, )],
+                "equality": [(1, ), (-1, )],
+                "sum": [(1, ), (-1, )],
+                "mixed": [(1, ), (-1, )],
+                # Two-plane, four-category splits.
+                "2d_axis_pair": [(1, 1), (-1, 1), (1, -1), (-1, -1)],
+                "2d_equality_sum": [(-1, 1), (1, -1), (-1, -1), (1, 1)],
+                "3d_axis_equality": [(1, 1), (1, -1), (-1, 1), (-1, -1)],
+                "3d_axis_sum": [(1, 1), (1, -1), (-1, 1), (-1, -1)],
+                "4d_equality_pair": [(1, 1), (-1, 1), (1, -1), (-1, -1)],
+                "4d_sum_pair": [(1, 1), (-1, 1), (1, -1), (-1, -1)],
+            }
+            signs_iter = sign_orders.get(split_type)
+            if signs_iter is None:
+                signs_iter = list(product([1, -1], repeat=len(hyperplanes)))
+
             categories = []
-            for signs in product([-1, 1], repeat=len(hyperplanes)):
+            for signs in signs_iter:
                 A, b = [], []
                 for (a, bi), s in zip(hyperplanes, signs):
                     A.append(s * np.array(a))
@@ -586,7 +610,7 @@ class Partition(BasePartition):
 
     def _load_or_compute_similarity(self, n_dims, n_cats, file_path, n_samples):
         """Load a similarity matrix from memory/disk or compute it."""
-        cache_key = (n_dims, n_cats)
+        cache_key = (n_dims, n_cats, int(n_samples), self.REGION_LABEL_VERSION)
 
         # 1. Check in-process cache.
         if cache_key in Partition._loaded_matrices_cache:

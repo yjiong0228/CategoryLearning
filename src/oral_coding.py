@@ -958,6 +958,8 @@ class SemanticParser:
 
 
 class RegionEncoder:
+    """Encode semantic claims as model-form region constraints ``A @ x <= b``."""
+
     def __init__(
         self,
         long_threshold: float = 0.5,
@@ -1022,12 +1024,12 @@ class RegionEncoder:
             return out
         for part in parts:
             if desc == "long":
-                out.append((self._row({part: 1.0}), self.long_threshold))
+                out.append((self._row({part: -1.0}), -self.long_threshold))
             elif desc == "short":
-                out.append((self._row({part: -1.0}), -self.short_threshold))
+                out.append((self._row({part: 1.0}), self.short_threshold))
             elif desc == "middle":
-                out.append((self._row({part: 1.0}), self.middle_lower))
-                out.append((self._row({part: -1.0}), -self.middle_upper))
+                out.append((self._row({part: -1.0}), -self.middle_lower))
+                out.append((self._row({part: 1.0}), self.middle_upper))
         return out
 
     def _threshold_constraints(self, parts: list[str], op: str | None, threshold: float | None) -> list[tuple[np.ndarray, float]]:
@@ -1036,13 +1038,13 @@ class RegionEncoder:
         out: list[tuple[np.ndarray, float]] = []
         for part in parts:
             if op == ">":
-                out.append((self._row({part: 1.0}), float(threshold)))
-            elif op == "<":
                 out.append((self._row({part: -1.0}), -float(threshold)))
+            elif op == "<":
+                out.append((self._row({part: 1.0}), float(threshold)))
             elif op == "==":
                 eps = self.equality_epsilon
-                out.append((self._row({part: 1.0}), float(threshold) - eps))
-                out.append((self._row({part: -1.0}), -float(threshold) - eps))
+                out.append((self._row({part: -1.0}), -float(threshold) + eps))
+                out.append((self._row({part: 1.0}), float(threshold) + eps))
         return out
 
     def _comparison_constraints(self, left_parts: list[str], op: str | None, right_parts: list[str]) -> list[tuple[np.ndarray, float]]:
@@ -1054,9 +1056,9 @@ class RegionEncoder:
         for left in left_parts:
             for right in right_parts:
                 if op == ">":
-                    out.append((self._row({left: 1.0, right: -1.0}), self.comparison_margin))
+                    out.append((self._row({right: 1.0, left: -1.0}), -self.comparison_margin))
                 elif op == "<":
-                    out.append((self._row({right: 1.0, left: -1.0}), self.comparison_margin))
+                    out.append((self._row({left: 1.0, right: -1.0}), -self.comparison_margin))
         return out
 
     def _equality_constraints(self, parts: list[str]) -> list[tuple[np.ndarray, float]]:
@@ -1065,8 +1067,8 @@ class RegionEncoder:
             return []
         out: list[tuple[np.ndarray, float]] = []
         for left, right in itertools.combinations(unique_parts, 2):
-            out.append((self._row({left: 1.0, right: -1.0}), -self.equality_epsilon))
-            out.append((self._row({right: 1.0, left: -1.0}), -self.equality_epsilon))
+            out.append((self._row({left: 1.0, right: -1.0}), self.equality_epsilon))
+            out.append((self._row({right: 1.0, left: -1.0}), self.equality_epsilon))
         return out
 
     def _ranking_constraints(self, order: list[str], direction: str | None) -> list[tuple[np.ndarray, float]]:
@@ -1075,9 +1077,9 @@ class RegionEncoder:
         out: list[tuple[np.ndarray, float]] = []
         for first, second in zip(order[:-1], order[1:]):
             if direction == "asc":
-                out.append((self._row({second: 1.0, first: -1.0}), self.comparison_margin))
+                out.append((self._row({first: 1.0, second: -1.0}), -self.comparison_margin))
             else:
-                out.append((self._row({first: 1.0, second: -1.0}), self.comparison_margin))
+                out.append((self._row({second: 1.0, first: -1.0}), -self.comparison_margin))
         return out
 
     def _group_sum_constraints(self, left_parts: list[str], op: str | None, right_parts: list[str]) -> list[tuple[np.ndarray, float]]:
@@ -1090,10 +1092,10 @@ class RegionEncoder:
             weights[part] -= 1.0
         row = self._row(weights)
         if op == ">":
-            return [(row, self.comparison_margin)]
+            return [(-row, -self.comparison_margin)]
         if op == "<":
-            return [(-row, self.comparison_margin)]
-        return [(row, -self.equality_epsilon), (-row, -self.equality_epsilon)]
+            return [(row, -self.comparison_margin)]
+        return [(row, self.equality_epsilon), (-row, self.equality_epsilon)]
 
     def _merge_constraints(self, constraints: list[tuple[np.ndarray, float]]) -> tuple[list[list[float]], list[float]]:
         if not constraints:
@@ -1301,7 +1303,7 @@ class CenterEncoder:
 
 class Recording_Processor_Region:
     """
-    Encode oral reports as region constraints Ax > b.
+    Encode oral reports as region constraints A @ x <= b.
 
     The canonical dimension order is fixed as: neck, head, leg, tail.
     """
@@ -1628,7 +1630,7 @@ class FidelityAnalyzer:
             return float("nan")
         if A_arr.ndim != 2 or b_arr.ndim != 1 or A_arr.shape[0] != b_arr.shape[0]:
             return float("nan")
-        return float(np.mean((A_arr @ x) > (b_arr - self.tol)))
+        return float(np.mean((A_arr @ x) <= (b_arr + self.tol)))
 
     def is_meta_only(self, text: str) -> bool:
         if not text:

@@ -67,7 +67,11 @@ __all__ = [
 
 
 class Oral_region_mapping:
-    """Region-based oral analysis with overlap scoring."""
+    """Region-based oral analysis with overlap scoring.
+
+    Oral reports and model partition regions use the same canonical constraint
+    form: ``A @ x <= b``.
+    """
 
     VALID_OVERLAP_METRICS = {"iou", "intersection", "precision_like", "recall_like"}
 
@@ -127,13 +131,13 @@ class Oral_region_mapping:
         b: Optional[np.ndarray],
         dist_tol: float,
     ) -> np.ndarray:
-        """Return mask of points satisfying A x > b - tol."""
+        """Return mask of points satisfying canonical ``A @ x <= b + tol``."""
         if A is None or b is None:
             return np.zeros(points.shape[0], dtype=bool)
         if A.size == 0:
             return np.ones(points.shape[0], dtype=bool)
         lhs = points @ A.T
-        return np.all(lhs > (b - dist_tol), axis=1)
+        return np.all(lhs <= (b + dist_tol), axis=1)
 
     @classmethod
     def _estimate_overlap_score(
@@ -181,7 +185,23 @@ class Oral_region_mapping:
     def _true_region(regions: Any, hypo_idx: int, cat_idx: int) -> Any:
         """Fetch one hypothesis region for one category from partition storage."""
         if isinstance(regions, np.ndarray):
-            return regions[hypo_idx, 1, cat_idx, :]
+            candidates = (
+                (hypo_idx, cat_idx),
+                (hypo_idx, 0, cat_idx),
+                (hypo_idx, 1, cat_idx),
+                (hypo_idx, 1, cat_idx, slice(None)),
+            )
+            for index in candidates:
+                try:
+                    candidate = regions[index]
+                except (IndexError, TypeError):
+                    continue
+                A, _ = Oral_region_mapping._parse_region(candidate)
+                if A is not None:
+                    return candidate
+            raise TypeError(
+                f"Could not locate parseable region in ndarray with shape {regions.shape}."
+            )
         if isinstance(regions, (list, tuple)):
             return regions[hypo_idx][cat_idx]
         raise TypeError(f"Unsupported partition_model.regions type: {type(regions)}")
@@ -233,44 +253,13 @@ class RegionOverlapScorer:
             masks_by_cat.append(cat_masks)
         return masks_by_cat
 
-    def stimulus_weights(self, stimulus: Any = None, stimulus_sigma: Optional[float] = None) -> Optional[np.ndarray]:
-        """Return Gaussian weights centered on the current stimulus, or None."""
-        if stimulus is None or stimulus_sigma is None:
-            return None
-        try:
-            sigma = float(stimulus_sigma)
-        except (TypeError, ValueError):
-            return None
-        if sigma <= 0:
-            return None
-
-        try:
-            center = np.asarray(stimulus, dtype=float).reshape(-1)
-        except (TypeError, ValueError):
-            return None
-        if center.size != self.n_dims or np.isnan(center).any():
-            return None
-
-        sq_dist = np.sum((self.points - center[None, :]) ** 2, axis=1)
-        weights = np.exp(-0.5 * sq_dist / (sigma ** 2))
-        if not np.isfinite(weights).any() or float(np.sum(weights)) <= 0:
-            return None
-        return weights.astype(float)
-
     def score_all(
         self,
         oral_region: Any,
         cat_idx: int,
         metric: str = "iou",
-        stimulus: Any = None,
-        stimulus_sigma: Optional[float] = None,
     ) -> np.ndarray:
-        """Score one oral region against every hypothesis for one category.
-
-        If ``stimulus`` and ``stimulus_sigma`` are provided, region overlap is
-        estimated with a Gaussian density centered on the current stimulus.
-        This down-weights oral/hypothesis overlap far away from the stimulus.
-        """
+        """Score one oral region against every hypothesis for one category."""
         if metric not in Oral_region_mapping.VALID_OVERLAP_METRICS:
             raise ValueError(
                 f"Unsupported overlap_metric={metric}. "
@@ -290,20 +279,11 @@ class RegionOverlapScorer:
             dist_tol=self.dist_tol,
         )
         hypo_masks = self.hypothesis_masks[int(cat_idx)]
-        weights = self.stimulus_weights(stimulus=stimulus, stimulus_sigma=stimulus_sigma)
-
-        if weights is not None:
-            intersection_count = (hypo_masks & oral_mask[None, :]).astype(float) @ weights
-            oral_count = float(np.dot(oral_mask.astype(float), weights))
-            hypo_count = hypo_masks.astype(float) @ weights
-            union_count = hypo_count + oral_count - intersection_count
-            total_weight = float(np.sum(weights))
-        else:
-            intersection_count = np.sum(hypo_masks & oral_mask[None, :], axis=1).astype(float)
-            oral_count = float(np.sum(oral_mask))
-            hypo_count = np.sum(hypo_masks, axis=1).astype(float)
-            union_count = hypo_count + oral_count - intersection_count
-            total_weight = float(self.n_samples)
+        intersection_count = np.sum(hypo_masks & oral_mask[None, :], axis=1).astype(float)
+        oral_count = float(np.sum(oral_mask))
+        hypo_count = np.sum(hypo_masks, axis=1).astype(float)
+        union_count = hypo_count + oral_count - intersection_count
+        total_weight = float(self.n_samples)
 
         if metric == "iou":
             return np.divide(
@@ -1029,22 +1009,10 @@ class OralModelAlignmentMixin:
             return np.full(partition.length, np.nan, dtype=float)
 
         cat_idx = int(choice) - 1
+        if cat_idx < 0 or cat_idx >= int(partition.n_cats):
+            return np.full(partition.length, np.nan, dtype=float)
         distances = np.linalg.norm(partition.prototypes[:, 0, cat_idx, :] - center, axis=1)
         return OralModelAlignmentMixin._adaptive_softmax_from_distances(distances)
-
-    @staticmethod
-    def _stimulus_from_trial_row(row, n_dims=4):
-        """Extract the current trial stimulus from feature columns if available."""
-        feature_cols = [f"feature{i}" for i in range(1, int(n_dims) + 1)]
-        try:
-            if not all(col in row.index for col in feature_cols):
-                return np.full(int(n_dims), np.nan, dtype=float)
-            stimulus = row[feature_cols].to_numpy(dtype=float).reshape(-1)
-        except (AttributeError, TypeError, ValueError):
-            return np.full(int(n_dims), np.nan, dtype=float)
-        if stimulus.size != int(n_dims) or np.isnan(stimulus).any():
-            return np.full(int(n_dims), np.nan, dtype=float)
-        return stimulus
 
     @staticmethod
     def _get_region_overlap_scorer(
@@ -1091,8 +1059,6 @@ class OralModelAlignmentMixin:
         region,
         choice,
         partition,
-        stimulus=None,
-        stimulus_sigma=None,
         n_samples=1000,
         bounds=(0.0, 1.0),
         random_state=42,
@@ -1106,23 +1072,6 @@ class OralModelAlignmentMixin:
             return None
         A = np.ascontiguousarray(A, dtype=float)
         b = np.ascontiguousarray(b, dtype=float)
-        stimulus_key = None
-        sigma_key = None
-        if stimulus is not None and stimulus_sigma is not None:
-            try:
-                stimulus_arr = np.asarray(stimulus, dtype=float).reshape(-1)
-                sigma_value = float(stimulus_sigma)
-            except (TypeError, ValueError):
-                stimulus_arr = np.asarray([], dtype=float)
-                sigma_value = np.nan
-            if (
-                stimulus_arr.size == int(partition.n_dims)
-                and not np.isnan(stimulus_arr).any()
-                and np.isfinite(sigma_value)
-                and sigma_value > 0
-            ):
-                stimulus_key = tuple(np.round(stimulus_arr, 12).tolist())
-                sigma_key = float(sigma_value)
         return (
             partition.__class__.__name__,
             int(partition.n_dims),
@@ -1133,8 +1082,6 @@ class OralModelAlignmentMixin:
             int(random_state),
             float(dist_tol),
             int(choice),
-            sigma_key,
-            stimulus_key,
             A.shape,
             A.tobytes(),
             b.shape,
@@ -1148,16 +1095,12 @@ class OralModelAlignmentMixin:
         partition,
         n_samples=1000,
         random_state=42,
-        stimulus=None,
-        stimulus_sigma=0.2,
     ):
-        """Map one oral region report to a stimulus-conditioned hypothesis distribution."""
+        """Map one oral region report to a hypothesis distribution."""
         cache_key = OralModelAlignmentMixin._region_distribution_cache_key(
             region,
             choice,
             partition,
-            stimulus=stimulus,
-            stimulus_sigma=stimulus_sigma,
             n_samples=int(n_samples),
             bounds=(0.0, 1.0),
             random_state=random_state,
@@ -1178,8 +1121,6 @@ class OralModelAlignmentMixin:
             region,
             cat_idx=cat_idx,
             metric="iou",
-            stimulus=stimulus,
-            stimulus_sigma=stimulus_sigma,
         )
         scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
         dist = OralModelAlignmentMixin._normalize_distribution(scores)
@@ -1264,6 +1205,8 @@ class OralModelAlignmentMixin:
             return np.nan
 
         cat_idx = int(choice) - 1
+        if cat_idx < 0 or cat_idx >= int(partition.n_cats):
+            return np.nan
         centers = partition.prototypes[:, 0, cat_idx, :]
         if hypo_indices is not None:
             idx = np.asarray(hypo_indices, dtype=int).reshape(-1)
@@ -1286,6 +1229,8 @@ class OralModelAlignmentMixin:
             return np.full(partition.n_dims, np.nan, dtype=float)
 
         cat_idx = int(choice) - 1
+        if cat_idx < 0 or cat_idx >= int(partition.n_cats):
+            return np.full(partition.n_dims, np.nan, dtype=float)
         centers = partition.prototypes[:, 0, cat_idx, :]
         if hypo_indices is not None:
             idx = np.asarray(hypo_indices, dtype=int).reshape(-1)
@@ -1303,16 +1248,12 @@ class OralModelAlignmentMixin:
         choice,
         n_samples=1000,
         random_state=42,
-        stimulus=None,
-        stimulus_sigma=0.2,
     ):
         """Compare a model fuzzy region with a reported oral region.
 
         For each Monte Carlo point x, the model fuzzy field is
         ``sum_h p(h) * 1[x in region_h(choice)]``. The oral report is a binary
-        mask over the same points. Points are optionally weighted by a Gaussian
-        density centered on the current stimulus, so overlap far from the
-        stimulus contributes less.
+        mask over the same points.
         """
         model_dist = OralModelAlignmentMixin._normalize_distribution(model_dist)
         if np.isnan(model_dist).any():
@@ -1384,24 +1325,21 @@ class OralModelAlignmentMixin:
             b,
             dist_tol=1e-9,
         ).astype(float)
-        weights = scorer.stimulus_weights(stimulus=stimulus, stimulus_sigma=stimulus_sigma)
-        if weights is None:
-            weights = np.ones_like(oral_field, dtype=float)
 
-        fuzzy_intersection = float(np.sum(weights * np.minimum(model_field, oral_field)))
-        fuzzy_union = float(np.sum(weights * np.maximum(model_field, oral_field)))
+        fuzzy_intersection = float(np.sum(np.minimum(model_field, oral_field)))
+        fuzzy_union = float(np.sum(np.maximum(model_field, oral_field)))
         fuzzy_iou = fuzzy_intersection / fuzzy_union if fuzzy_union > 0 else np.nan
 
-        dot = float(np.sum(weights * model_field * oral_field))
-        model_norm = float(np.sqrt(np.sum(weights * model_field ** 2)))
-        oral_norm = float(np.sqrt(np.sum(weights * oral_field ** 2)))
+        dot = float(np.sum(model_field * oral_field))
+        model_norm = float(np.sqrt(np.sum(model_field ** 2)))
+        oral_norm = float(np.sqrt(np.sum(oral_field ** 2)))
         fuzzy_cosine = dot / (model_norm * oral_norm) if model_norm > 0 and oral_norm > 0 else np.nan
 
-        model_mass = float(np.sum(weights * model_field))
-        oral_mass = float(np.sum(weights * oral_field))
+        model_mass = float(np.sum(model_field))
+        oral_mass = float(np.sum(oral_field))
         model_inside_oral = dot / model_mass if model_mass > 0 else np.nan
         oral_covered_by_model = dot / oral_mass if oral_mass > 0 else np.nan
-        total_weight = float(np.sum(weights))
+        total_weight = float(scorer.n_samples)
 
         return {
             "fuzzy_iou_similarity": float(np.clip(fuzzy_iou, 0.0, 1.0)) if np.isfinite(fuzzy_iou) else np.nan,
@@ -1428,7 +1366,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
     ):
         """Compute full oral_t hypothesis distributions per subject."""
         df = oral_df.copy()
@@ -1457,15 +1395,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -1480,7 +1415,7 @@ class OralModelAlignmentMixin:
                 "condition": condition,
                 "target_hypo": target_hypo,
                 "oral_mode": oral_mode,
-                "region_stimulus_sigma": region_stimulus_sigma if oral_mode == "region" else np.nan,
+                "region_stimulus_sigma": np.nan,
                 "oral_mass": oral_mass,
                 "valid_oral": valid_oral,
             }
@@ -1625,7 +1560,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         model_distribution="prior",
         oral_mass_results=None,
         active_threshold=1e-12,
@@ -1681,15 +1616,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -1730,7 +1662,7 @@ class OralModelAlignmentMixin:
                 "oral_mode": oral_mode,
                 "model_distribution": state,
                 "distribution_projection": "oral_equivalence",
-                "region_stimulus_sigma": region_stimulus_sigma if oral_mode == "region" else np.nan,
+                "region_stimulus_sigma": np.nan,
                 "n_groups_per_trial": n_groups_per_trial,
                 "target_group_per_trial": target_group_per_trial,
                 "active_group_count": active_group_count,
@@ -1752,6 +1684,10 @@ class OralModelAlignmentMixin:
     def _oral_equivalence_representation_json(partition, oral_mode, choice, hypo_idx, decimals=6):
         """Return a compact JSON representation of one oral-equivalence key."""
         cat_idx = int(choice) - 1
+        if cat_idx < 0 or cat_idx >= int(partition.n_cats):
+            if oral_mode == "center":
+                return json.dumps({"center": None}, ensure_ascii=False)
+            return json.dumps({"region": None}, ensure_ascii=False)
         if oral_mode == "center":
             center = np.round(partition.prototypes[int(hypo_idx), 0, cat_idx, :], int(decimals))
             return json.dumps({"center": center.tolist()}, ensure_ascii=False)
@@ -1762,6 +1698,7 @@ class OralModelAlignmentMixin:
                 return json.dumps({"region": None}, ensure_ascii=False)
             return json.dumps(
                 {
+                    "constraint": "A @ x <= b",
                     "A": np.round(A, int(decimals)).tolist(),
                     "b": np.round(b, int(decimals)).tolist(),
                 },
@@ -2146,7 +2083,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         model_distribution="prior",
         alignment_spaces=None,
         active_threshold=1e-12,
@@ -2206,15 +2143,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -2259,7 +2193,7 @@ class OralModelAlignmentMixin:
                             "oral_mode": oral_mode,
                             "model_distribution": str(model_distribution).strip().lower(),
                             "distribution_projection": projection,
-                            "region_stimulus_sigma": region_stimulus_sigma if oral_mode == "region" else np.nan,
+                            "region_stimulus_sigma": np.nan,
                             "alignment_space": space,
                             "alignment_label": self.DISTRIBUTION_ALIGNMENT_LABELS.get(space, space),
                             "js_similarity": js_similarity,
@@ -2620,7 +2554,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         model_distribution="choice_conditioned_prior",
         beta=10.0,
     ):
@@ -2674,7 +2608,7 @@ class OralModelAlignmentMixin:
                     "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
                     "oral_mode": oral_mode,
                     "model_distribution": str(model_distribution).strip().lower(),
-                    "region_stimulus_sigma": region_stimulus_sigma if oral_mode == "region" else np.nan,
+                    "region_stimulus_sigma": np.nan,
                     "primary_metric": self.ORAL_BASED_PRIMARY_METRIC[oral_mode],
                     "oral_based_similarity": np.nan,
                     "expected_center_similarity": np.nan,
@@ -2713,7 +2647,6 @@ class OralModelAlignmentMixin:
                         )
                 else:
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     metrics = self._fuzzy_region_alignment_metrics(
                         partition=partition,
                         model_dist=model_dist,
@@ -2721,8 +2654,6 @@ class OralModelAlignmentMixin:
                         choice=choice,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                     primary = metrics["fuzzy_iou_similarity"]
                     base.update(metrics)
@@ -3070,7 +3001,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         oral_mass_results=None,
         alignment_spaces=None,
         active_threshold=1e-12,
@@ -3117,15 +3048,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -3482,7 +3410,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         oral_mass_results=None,
         active_threshold=1e-12,
         rank_top_k=None,
@@ -3546,15 +3474,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
@@ -3937,7 +3862,7 @@ class OralModelAlignmentMixin:
         oral_mode="center",
         subjects=None,
         region_n_samples=1000,
-        region_stimulus_sigma=0.2,
+        region_stimulus_sigma=None,
         active_threshold=1e-12,
         oral_mass_results=None,
     ):
@@ -3982,15 +3907,12 @@ class OralModelAlignmentMixin:
                     oral_dist = self._center_oral_distribution(center, choice, partition)
                 elif oral_mode == "region":
                     region = (subj_df.loc[trial_idx, "oral_A"], subj_df.loc[trial_idx, "oral_b"])
-                    stimulus = self._stimulus_from_trial_row(subj_df.loc[trial_idx], n_dims=partition.n_dims)
                     oral_dist = self._region_oral_distribution(
                         region,
                         choice,
                         partition,
                         n_samples=region_n_samples,
                         random_state=42,
-                        stimulus=stimulus,
-                        stimulus_sigma=region_stimulus_sigma,
                     )
                 else:
                     raise ValueError(f"Unsupported oral_mode: {oral_mode}")
