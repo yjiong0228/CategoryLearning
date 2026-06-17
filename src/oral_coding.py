@@ -1,7 +1,7 @@
 """Shared parser and encoders for Task2 oral reports.
 
-The coding space uses a fixed canonical feature order:
-0 neck, 1 head, 2 leg, 3 tail.
+The coding space is four-dimensional. Each experiment can provide its own
+parallel feature vocabulary, such as body parts or colors.
 """
 
 from __future__ import annotations
@@ -24,6 +24,22 @@ FEATURE_NAME_TO_PART = {
     "head": "头",
     "leg": "腿",
     "tail": "尾巴",
+    "green": "绿色",
+    "yellow": "黄色",
+    "pink": "粉色",
+    "blue": "蓝色",
+    "绿色": "绿色",
+    "黄色": "黄色",
+    "粉色": "粉色",
+    "蓝色": "蓝色",
+}
+PART_ALIASES = {
+    "脖子": ((r"脖(?!子)", "脖子"),),
+    "尾巴": ((r"尾(?!巴)", "尾巴"),),
+    "绿色": ((r"绿(?!色)", "绿色"),),
+    "黄色": ((r"黄(?!色)", "黄色"),),
+    "粉色": ((r"粉(?!色)", "粉色"),),
+    "蓝色": ((r"蓝(?!色)", "蓝色"),),
 }
 PART_RE = r"(?:脖子|头|腿|尾巴)"
 PART_GROUP_RE = r"(?:脖子|头|腿|尾巴)(?:[、和与及]*(?:脖子|头|腿|尾巴))*"
@@ -72,12 +88,41 @@ class FidelityClaim:
     passed: bool
 
 
-def normalize_text(text: Any) -> str:
+def part_regex(parts: tuple[str, ...] = PARTS) -> str:
+    escaped = [re.escape(part) for part in sorted(parts, key=len, reverse=True)]
+    return "(?:" + "|".join(escaped) + ")"
+
+
+def part_group_regex(parts: tuple[str, ...] = PARTS) -> str:
+    item_re = part_regex(parts)
+    return rf"{item_re}(?:[、和与及]*{item_re})*"
+
+
+def part_to_dim(parts: tuple[str, ...] = PARTS) -> dict[str, int]:
+    return {part: idx for idx, part in enumerate(parts)}
+
+
+def parts_from_feature_map(feature_map: dict[str, int] | None) -> tuple[str, ...]:
+    if not feature_map:
+        return PARTS
+    ordered: list[str | None] = [None] * len(feature_map)
+    for feature_name, dim in feature_map.items():
+        idx = int(dim)
+        if idx < 0 or idx >= len(ordered):
+            return PARTS
+        ordered[idx] = FEATURE_NAME_TO_PART.get(str(feature_name).strip(), str(feature_name).strip())
+    if any(part is None for part in ordered):
+        return PARTS
+    return tuple(str(part) for part in ordered)
+
+
+def normalize_text(text: Any, parts: tuple[str, ...] = PARTS) -> str:
     if pd.isna(text):
         return ""
     text = str(text).strip()
-    text = re.sub(r"脖(?!子)", "脖子", text)
-    text = re.sub(r"尾(?!巴)", "尾巴", text)
+    for part in parts:
+        for pattern, replacement in PART_ALIASES.get(part, ()):
+            text = re.sub(pattern, replacement, text)
     text = text.replace("身子", "身体")
     text = text.replace("其它", "其他")
     return text
@@ -87,9 +132,9 @@ def split_items(text: str) -> list[str]:
     return [item.strip(" 、\t\r\n") for item in SPLIT_RE.split(text) if item.strip(" 、\t\r\n")]
 
 
-def parts_in_text(text: str) -> list[str]:
+def parts_in_text(text: str, parts: tuple[str, ...] = PARTS) -> list[str]:
     found = []
-    for part in PARTS:
+    for part in parts:
         pos = text.find(part)
         if pos >= 0:
             found.append((pos, part))
@@ -250,7 +295,7 @@ def reference_relation_op(text: str) -> str:
     return ""
 
 
-def ordinal_sequence_groups(items: list[str]) -> list[list[str]]:
+def ordinal_sequence_groups(items: list[str], schema_parts: tuple[str, ...] = PARTS) -> list[list[str]]:
     """Parse cross-clause long-to-short descriptions into ordered part groups."""
     if not items:
         return []
@@ -269,7 +314,7 @@ def ordinal_sequence_groups(items: list[str]) -> list[list[str]]:
     has_sequence_continue = False
 
     for idx, item in enumerate(items):
-        item_parts = parts_in_text(item)
+        item_parts = parts_in_text(item, schema_parts)
         has_entity = bool(item_parts or has_reference_threshold(item))
         if not has_entity:
             continue
@@ -347,8 +392,8 @@ def ordinal_sequence_groups(items: list[str]) -> list[list[str]]:
         last_rank = rank
         last_direction = direction or last_direction
 
-    seen_parts = {part for _, parts in entries for part in parts}
-    if seen_parts != set(PARTS):
+    seen_parts = {part for _, group_parts in entries for part in group_parts}
+    if seen_parts != set(schema_parts):
         return []
     if not (has_top or has_bottom):
         return []
@@ -356,9 +401,9 @@ def ordinal_sequence_groups(items: list[str]) -> list[list[str]]:
         return []
 
     grouped: dict[int, list[str]] = {}
-    for rank, parts in entries:
+    for rank, group_parts in entries:
         grouped.setdefault(rank, [])
-        for part in parts:
+        for part in group_parts:
             if part not in grouped[rank]:
                 grouped[rank].append(part)
 
@@ -369,7 +414,7 @@ def ordinal_sequence_groups(items: list[str]) -> list[list[str]]:
         if group:
             ordered_groups.append(group)
             used.update(group)
-    return ordered_groups if used == set(PARTS) and len(ordered_groups) >= 2 else []
+    return ordered_groups if used == set(schema_parts) and len(ordered_groups) >= 2 else []
 
 
 def _has_later_bottom(items: list[str], idx: int) -> bool:
@@ -387,31 +432,32 @@ def _has_later_secondary(items: list[str], idx: int) -> bool:
     return any(re.search(r"第二|第2|其次|次之|二长|第二长|第二个", item) for item in items[idx + 1 :])
 
 
-def parse_superlative_relation(item: str) -> tuple[str, str, list[str]] | None:
+def parse_superlative_relation(item: str, parts: tuple[str, ...] = PARTS) -> tuple[str, str, list[str]] | None:
     if is_negated_superlative(item):
         return None
     if "最" not in item:
         return None
+    part_re = part_regex(parts)
 
     scoped_is_match = re.search(
-        rf"(?P<target>{PART_RE}).{{0,4}}(?:是|为)(?P<scope>.+?)(?:中|里|当中|之中|之间).{{0,4}}最.{{0,2}}(?P<desc>长|短|大|小|高|低)",
+        rf"(?P<target>{part_re}).{{0,4}}(?:是|为)(?P<scope>.+?)(?:中|里|当中|之中|之间).{{0,4}}最.{{0,2}}(?P<desc>长|短|大|小|高|低)",
         item,
     )
     if scoped_is_match:
         target = scoped_is_match.group("target")
         desc = scoped_is_match.group("desc")
-        right_parts = [part for part in parts_in_text(scoped_is_match.group("scope")) if part != target]
+        right_parts = [part for part in parts_in_text(scoped_is_match.group("scope"), parts) if part != target]
         if right_parts:
             return target, desc, right_parts
 
     scoped_match = re.search(
-        rf"(?P<target>{PART_RE}).{{0,4}}(?:在|于)(?P<scope>.+?)(?:中|里|当中|之中|之间).{{0,4}}最.{{0,2}}(?P<desc>长|短|大|小|高|低)",
+        rf"(?P<target>{part_re}).{{0,4}}(?:在|于)(?P<scope>.+?)(?:中|里|当中|之中|之间).{{0,4}}最.{{0,2}}(?P<desc>长|短|大|小|高|低)",
         item,
     )
     if scoped_match:
         target = scoped_match.group("target")
         desc = scoped_match.group("desc")
-        right_parts = [part for part in parts_in_text(scoped_match.group("scope")) if part != target]
+        right_parts = [part for part in parts_in_text(scoped_match.group("scope"), parts) if part != target]
         if right_parts:
             return target, desc, right_parts
 
@@ -419,7 +465,7 @@ def parse_superlative_relation(item: str) -> tuple[str, str, list[str]] | None:
     if not super_match:
         return None
     prefix = item[: super_match.start()]
-    prefix_parts = parts_in_text(prefix)
+    prefix_parts = parts_in_text(prefix, parts)
     if not prefix_parts:
         return None
     target = prefix_parts[-1]
@@ -427,21 +473,31 @@ def parse_superlative_relation(item: str) -> tuple[str, str, list[str]] | None:
 
     scope_match = re.search(r"(?P<scope>.+?)(?:中|里|当中|之中|之间)\s*$", prefix)
     if scope_match:
-        scope_parts = parts_in_text(scope_match.group("scope"))
+        scope_parts = parts_in_text(scope_match.group("scope"), parts)
         right_parts = [part for part in scope_parts if part != target]
         if right_parts:
             return target, desc, right_parts
 
-    return target, desc, [part for part in PARTS if part != target]
+    return target, desc, [part for part in parts if part != target]
 
 
 class SemanticParser:
-    def __init__(self, body_value: float = 0.5):
+    def __init__(self, body_value: float = 0.5, parts: tuple[str, ...] | None = None):
         self.body_value = float(body_value)
+        self.parts = tuple(parts or PARTS)
+        self.part_to_dim = part_to_dim(self.parts)
+        self.part_re = part_regex(self.parts)
+        self.part_group_re = part_group_regex(self.parts)
         self.meta_patterns = ("选错了", "不确定", "不知道", "随便选", "没什么区别", "看不出")
 
+    def normalize_text(self, text: Any) -> str:
+        return normalize_text(text, self.parts)
+
+    def parts_in_text(self, text: str) -> list[str]:
+        return parts_in_text(text, self.parts)
+
     def parse(self, text: Any) -> SemanticResult:
-        normalized = normalize_text(text)
+        normalized = self.normalize_text(text)
         if not normalized:
             return SemanticResult(text=text, items=[], claims=[], unparsed=[])
 
@@ -470,7 +526,7 @@ class SemanticParser:
             if same_item_exclusion:
                 claims.extend(same_item_exclusion)
                 context_parts = self._update_context_parts(context_parts, item)
-                last_parts = parts_in_text(item)
+                last_parts = self.parts_in_text(item)
                 last_desc = desc_label(item, allow_middle=True)
                 last_was_superlative = False
                 i += 1
@@ -481,7 +537,7 @@ class SemanticParser:
                 if exclusion:
                     claims.extend(exclusion)
                     context_parts = self._update_context_parts(context_parts, item)
-                    last_parts = parts_in_text(item)
+                    last_parts = self.parts_in_text(item)
                     last_desc = desc_label(items[i + 1], allow_middle=True)
                     last_was_superlative = False
                     i += 2
@@ -497,7 +553,7 @@ class SemanticParser:
             if secondary_relation is not None:
                 claims.extend(secondary_relation)
                 context_parts = self._update_context_parts(context_parts, item)
-                item_parts = parts_in_text(item)
+                item_parts = self.parts_in_text(item)
                 if item_parts:
                     last_parts = item_parts
                 last_desc = None
@@ -509,7 +565,7 @@ class SemanticParser:
             if other_comparison:
                 claims.extend(other_comparison)
                 context_parts = self._update_context_parts(context_parts, item)
-                item_parts = parts_in_text(item)
+                item_parts = self.parts_in_text(item)
                 if item_parts:
                     last_parts = item_parts
                 last_desc = desc_label(item, allow_middle=True)
@@ -517,12 +573,12 @@ class SemanticParser:
                 i += 1
                 continue
 
-            lookahead_parts = parts_in_text(items[i + 1]) if i + 1 < len(items) else []
+            lookahead_parts = self.parts_in_text(items[i + 1]) if i + 1 < len(items) else []
             complement = self._parse_complement(item, context_parts, last_parts, lookahead_parts)
             if complement:
                 claims.extend(complement)
                 context_parts = self._update_context_parts(context_parts, item)
-                item_parts = parts_in_text(item)
+                item_parts = self.parts_in_text(item)
                 if item_parts:
                     last_parts = item_parts
                 last_desc = desc_label(item, allow_middle=True)
@@ -534,7 +590,7 @@ class SemanticParser:
             if parsed:
                 claims.extend(parsed)
                 context_parts = self._update_context_parts(context_parts, item)
-                item_parts = parts_in_text(item) or self._parts_from_claims(parsed)
+                item_parts = self.parts_in_text(item) or self._parts_from_claims(parsed)
                 if item_parts:
                     last_parts = item_parts
                 last_desc = desc_label(item, allow_middle=True)
@@ -557,7 +613,7 @@ class SemanticParser:
     ) -> list[SemanticClaim] | None:
         if not re.search(r"第二|第2|其次|次之|二长|第二长|第二个", item):
             return None
-        parts = parts_in_text(item)
+        parts = self.parts_in_text(item)
         if not parts:
             return None
         if last_was_superlative or not last_parts or last_desc is None:
@@ -567,7 +623,7 @@ class SemanticParser:
         return [SemanticClaim(kind="comparison", item=item, parts=last_parts, op=">", right_parts=parts)]
 
     def _parse_ordinal_sequence(self, items: list[str], normalized: str) -> list[SemanticClaim]:
-        groups = ordinal_sequence_groups(items)
+        groups = ordinal_sequence_groups(items, self.parts)
         if not groups:
             return []
         if all(len(group) == 1 for group in groups):
@@ -602,7 +658,7 @@ class SemanticParser:
 
     def _update_context_parts(self, context_parts: list[str], item: str) -> list[str]:
         out = list(context_parts)
-        for part in parts_in_text(item):
+        for part in self.parts_in_text(item):
             if part not in out:
                 out.append(part)
         return out
@@ -611,7 +667,7 @@ class SemanticParser:
         out: list[str] = []
         for claim in claims:
             for part in [*claim.parts, *claim.right_parts, *claim.order]:
-                if part in PART_TO_DIM and part not in out:
+                if part in self.part_to_dim and part not in out:
                     out.append(part)
         return out
 
@@ -644,14 +700,14 @@ class SemanticParser:
     def _parse_exclusion(self, item: str, next_item: str) -> list[SemanticClaim]:
         if is_negated_superlative(item) or is_negated_superlative(next_item):
             return []
-        excluded = parts_in_text(item)
+        excluded = self.parts_in_text(item)
         if not excluded:
             return []
         desc = desc_label(next_item, allow_middle=True)
         is_equality = bool(re.search(EQUALITY_WORD_RE, next_item))
         if desc is None and not is_equality:
             return []
-        remain = [part for part in PARTS if part not in excluded]
+        remain = [part for part in self.parts if part not in excluded]
         if is_equality and desc is None:
             return [SemanticClaim(kind="equality", item=f"{item}，{next_item}", parts=remain, op="==")]
         claims = [
@@ -667,14 +723,14 @@ class SemanticParser:
         match = re.search(COMPLEMENT_RE, item)
         if "除" not in item or not match:
             return []
-        excluded = parts_in_text(item)
+        excluded = self.parts_in_text(item)
         if not excluded:
             return []
         desc = desc_label(item[match.start() :], allow_middle=True)
         is_equality = bool(re.search(EQUALITY_WORD_RE, item[match.start() :]))
         if desc is None and not is_equality:
             return []
-        remain = [part for part in PARTS if part not in excluded]
+        remain = [part for part in self.parts if part not in excluded]
         if is_equality and desc is None:
             return [SemanticClaim(kind="equality", item=item, parts=remain, op="==")]
         claims = [SemanticClaim(kind="exclusion", item=item, parts=remain, desc=desc)]
@@ -683,7 +739,7 @@ class SemanticParser:
         return claims
 
     def _parse_contextual_endpoint(self, item: str, last_parts: list[str]) -> list[SemanticClaim]:
-        if not last_parts or parts_in_text(item):
+        if not last_parts or self.parts_in_text(item):
             return []
         if re.search(COMPLEMENT_RE, item):
             return []
@@ -711,19 +767,19 @@ class SemanticParser:
         left_parts: list[str] = []
         op = ""
 
-        match = re.search(rf"(?P<left>{PART_GROUP_RE})?(?P<op>长于|短于|大于|小于|高于|低于|超过)(?:{COMPLEMENT_RE})(?:三个|部位)?", item)
+        match = re.search(rf"(?P<left>{self.part_group_re})?(?P<op>长于|短于|大于|小于|高于|低于|超过)(?:{COMPLEMENT_RE})(?:三个|部位)?", item)
         if match:
-            left_parts = parts_in_text(match.group("left") or "") or last_parts
+            left_parts = self.parts_in_text(match.group("left") or "") or last_parts
             op = relation_op(match.group("op"))
         else:
-            match = re.search(rf"(?P<left>{PART_GROUP_RE})?比(?:{COMPLEMENT_RE})(?:三个|部位)?.{{0,6}}?(?P<desc>长|短|高|低|大|小)", item)
+            match = re.search(rf"(?P<left>{self.part_group_re})?比(?:{COMPLEMENT_RE})(?:三个|部位)?.{{0,6}}?(?P<desc>长|短|高|低|大|小)", item)
             if match:
-                left_parts = parts_in_text(match.group("left") or "") or last_parts
+                left_parts = self.parts_in_text(match.group("left") or "") or last_parts
                 op = relation_op("比", match.group("desc"))
 
         if not left_parts or op not in {">", "<"}:
             return []
-        right_parts = [part for part in PARTS if part not in left_parts]
+        right_parts = [part for part in self.parts if part not in left_parts]
         if not right_parts:
             return []
         return [SemanticClaim(kind="comparison", item=item, parts=left_parts, op=op, right_parts=right_parts)]
@@ -748,15 +804,15 @@ class SemanticParser:
         if desc is None and not is_equality and not has_reference:
             return []
 
-        explicit_parts = parts_in_text(item[: match.start()])
+        explicit_parts = self.parts_in_text(item[: match.start()])
         excluded_options = [explicit_parts, context_parts, last_parts, lookahead_parts]
         excluded = next(
-            (parts for parts in excluded_options if parts and [part for part in PARTS if part not in parts]),
+            (parts for parts in excluded_options if parts and [part for part in self.parts if part not in parts]),
             [],
         )
         if not excluded:
             return []
-        complement_parts = [part for part in PARTS if part not in excluded]
+        complement_parts = [part for part in self.parts if part not in excluded]
         if not complement_parts:
             return []
         prefix_claims = self._parse_item(item[: match.start()].strip()) if explicit_parts else []
@@ -784,7 +840,7 @@ class SemanticParser:
     def _parse_superlative(self, item: str) -> list[SemanticClaim]:
         if self._is_absolute_endpoint(item):
             return []
-        parsed = parse_superlative_relation(item)
+        parsed = parse_superlative_relation(item, self.parts)
         if parsed is None:
             return []
         target, desc, right_parts = parsed
@@ -809,11 +865,11 @@ class SemanticParser:
             return []
         if "只有" not in item:
             return []
-        parts = parts_in_text(item)
+        parts = self.parts_in_text(item)
         desc = desc_label(item, allow_middle=False)
         if not parts or desc is None:
             return []
-        others = [part for part in PARTS if part not in parts]
+        others = [part for part in self.parts if part not in parts]
         return [
             SemanticClaim(kind="exclusive_case", item=item, parts=parts, desc=desc),
             SemanticClaim(kind="exclusive_case", item=item, parts=others, desc=opposite_desc(desc)),
@@ -843,8 +899,8 @@ class SemanticParser:
         return self._group_claim_from_text(item, match.group("left"), op, match.group("right"))
 
     def _group_claim_from_text(self, item: str, left_text: str, op: str, right_text: str) -> list[SemanticClaim]:
-        left = parts_in_text(left_text)
-        right = parts_in_text(right_text)
+        left = self.parts_in_text(left_text)
+        right = self.parts_in_text(right_text)
         if not left or not right:
             return []
         return [SemanticClaim(kind="group_sum", item=item, parts=left, op=op, right_parts=right)]
@@ -852,7 +908,7 @@ class SemanticParser:
     def _parse_ranking(self, item: str) -> list[SemanticClaim]:
         if not re.search(r"从小到大|从大到小|从短到长|从长到短|排序|长短顺序", item):
             return []
-        parts = parts_in_text(item)
+        parts = self.parts_in_text(item)
         if len(parts) < 2:
             return []
         if re.search(r"从小到大|从短到长", item):
@@ -867,7 +923,7 @@ class SemanticParser:
     def _parse_body_reference(self, item: str) -> list[SemanticClaim]:
         if not has_reference_threshold(item):
             return []
-        parts = list(PARTS) if all_parts_phrase(item) else parts_in_text(item)
+        parts = list(self.parts) if all_parts_phrase(item) else self.parts_in_text(item)
         if not parts:
             return []
         threshold = body_reference_threshold(item, self.body_value)
@@ -883,7 +939,7 @@ class SemanticParser:
         claims: list[SemanticClaim] = []
 
         for match in re.finditer(
-            rf"(?P<left>{PART_GROUP_RE})比(?P<right>{PART_GROUP_RE}|{BODY_RE}).{{0,8}}?(?P<desc>长|短|高|低|大|小)",
+            rf"(?P<left>{self.part_group_re})比(?P<right>{self.part_group_re}|{BODY_RE}).{{0,8}}?(?P<desc>长|短|高|低|大|小)",
             item,
         ):
             if re.search(BODY_RE, match.group("right")):
@@ -894,14 +950,14 @@ class SemanticParser:
                     SemanticClaim(
                         kind="comparison",
                         item=item,
-                        parts=parts_in_text(match.group("left")),
+                        parts=self.parts_in_text(match.group("left")),
                         op=op,
-                        right_parts=parts_in_text(match.group("right")),
+                        right_parts=self.parts_in_text(match.group("right")),
                     )
                 )
 
         relation_pattern = re.compile(
-            rf"(?P<left>{PART_GROUP_RE})(?:{COMPARISON_MODIFIER_RE})?(?P<op>大于等于|小于等于|大于|小于|长于|短于|高于|低于|超过|等于|不等于|约等于|相等|持平)(?P<right>{PART_GROUP_RE}|{BODY_RE})"
+            rf"(?P<left>{self.part_group_re})(?:{COMPARISON_MODIFIER_RE})?(?P<op>大于等于|小于等于|大于|小于|长于|短于|高于|低于|超过|等于|不等于|约等于|相等|持平)(?P<right>{self.part_group_re}|{BODY_RE})"
         )
         first_left: list[str] | None = None
         for match in relation_pattern.finditer(item):
@@ -910,14 +966,14 @@ class SemanticParser:
             op = relation_op(match.group("op"))
             if not op:
                 continue
-            left = parts_in_text(match.group("left"))
-            right = parts_in_text(match.group("right"))
+            left = self.parts_in_text(match.group("left"))
+            right = self.parts_in_text(match.group("right"))
             first_left = first_left or left
             claims.append(SemanticClaim(kind="comparison", item=item, parts=left, op=op, right_parts=right))
 
         if first_left:
             chain_pattern = re.compile(
-                rf"[、，,](?P<op>大于等于|小于等于|大于|小于|长于|短于|高于|低于|超过|等于|不等于|约等于)(?P<right>{PART_GROUP_RE})"
+                rf"[、，,](?P<op>大于等于|小于等于|大于|小于|长于|短于|高于|低于|超过|等于|不等于|约等于)(?P<right>{self.part_group_re})"
             )
             for match in chain_pattern.finditer(item):
                 op = relation_op(match.group("op"))
@@ -928,9 +984,27 @@ class SemanticParser:
                             item=item,
                             parts=first_left,
                             op=op,
-                            right_parts=parts_in_text(match.group("right")),
+                            right_parts=self.parts_in_text(match.group("right")),
                         )
                     )
+
+        omitted_left_pattern = re.compile(
+            rf"(?:[、，,]|^)(?:{COMPARISON_MODIFIER_RE})?(?P<op>大于等于|小于等于|大于|小于|长于|短于|高于|低于|超过|等于|不等于|约等于|相等|持平)(?P<right>{self.part_group_re}|{BODY_RE})"
+        )
+        for match in omitted_left_pattern.finditer(item):
+            if re.search(BODY_RE, match.group("right")):
+                continue
+            left = self.parts_in_text(item[: match.start()])
+            right = self.parts_in_text(match.group("right"))
+            if not left or not right:
+                continue
+            op = relation_op(match.group("op"))
+            if not op:
+                continue
+            prefix_desc = desc_label(item[: match.start()], allow_middle=True)
+            if prefix_desc is not None:
+                claims.append(SemanticClaim(kind="general_case", item=item[: match.start()], parts=left, desc=prefix_desc))
+            claims.append(SemanticClaim(kind="comparison", item=item, parts=left, op=op, right_parts=right))
 
         return claims
 
@@ -939,7 +1013,7 @@ class SemanticParser:
             return []
         if re.search(INEQUALITY_WORD_RE, item):
             return [SemanticClaim(kind="inequality_disjoint", item=item, supported=False, note="disjoint region")]
-        parts = list(PARTS) if all_parts_phrase(item) else parts_in_text(item)
+        parts = list(self.parts) if all_parts_phrase(item) else self.parts_in_text(item)
         if len(parts) < 2:
             return []
         return [SemanticClaim(kind="equality", item=item, parts=parts, op="==")]
@@ -950,7 +1024,7 @@ class SemanticParser:
         desc = desc_label(item, allow_middle=True)
         if desc is None:
             return []
-        parts = list(PARTS) if all_parts_phrase(item) else parts_in_text(item)
+        parts = list(self.parts) if all_parts_phrase(item) else self.parts_in_text(item)
         if not parts:
             return []
         kind = "universal_quantifier" if all_parts_phrase(item) else "general_case"
@@ -968,7 +1042,11 @@ class RegionEncoder:
         middle_upper: float = 0.75,
         comparison_margin: float = 0.0,
         equality_epsilon: float = 0.10,
+        parts: tuple[str, ...] | None = None,
     ):
+        self.parts = tuple(parts or PARTS)
+        self.part_to_dim = part_to_dim(self.parts)
+        self.n_dims = len(self.parts)
         self.long_threshold = float(long_threshold)
         self.short_threshold = float(short_threshold)
         self.middle_lower = float(middle_lower)
@@ -977,7 +1055,7 @@ class RegionEncoder:
         self.equality_epsilon = float(equality_epsilon)
 
     def encode_text(self, text: Any, parser: SemanticParser | None = None) -> tuple[list[list[float]], list[float], list[str], list[str]]:
-        parser = parser or SemanticParser()
+        parser = parser or SemanticParser(parts=self.parts)
         return self.encode(parser.parse(text))
 
     def encode(self, parsed: SemanticResult) -> tuple[list[list[float]], list[float], list[str], list[str]]:
@@ -1013,9 +1091,9 @@ class RegionEncoder:
         return []
 
     def _row(self, weights: dict[str, float]) -> np.ndarray:
-        row = np.zeros(4, dtype=float)
+        row = np.zeros(self.n_dims, dtype=float)
         for part, weight in weights.items():
-            row[PART_TO_DIM[part]] += float(weight)
+            row[self.part_to_dim[part]] += float(weight)
         return row
 
     def _desc_constraints(self, parts: list[str], desc: str | None) -> list[tuple[np.ndarray, float]]:
@@ -1085,7 +1163,7 @@ class RegionEncoder:
     def _group_sum_constraints(self, left_parts: list[str], op: str | None, right_parts: list[str]) -> list[tuple[np.ndarray, float]]:
         if op not in {">", "<", "=="} or not left_parts or not right_parts:
             return []
-        weights = {part: 0.0 for part in PARTS}
+        weights = {part: 0.0 for part in self.parts}
         for part in left_parts:
             weights[part] += 1.0
         for part in right_parts:
@@ -1128,15 +1206,18 @@ class CenterEncoder:
         "unsupported",
     ]
 
-    def __init__(self, body_value: float = 0.5):
+    def __init__(self, body_value: float = 0.5, parts: tuple[str, ...] | None = None):
         self.body_value = float(body_value)
+        self.parts = tuple(parts or PARTS)
+        self.part_to_dim = part_to_dim(self.parts)
+        self.n_dims = len(self.parts)
 
     def encode_text(self, text: Any, parser: SemanticParser | None = None) -> tuple[dict[str, list[float | None]], list[str], list[str]]:
-        parser = parser or SemanticParser(body_value=self.body_value)
+        parser = parser or SemanticParser(body_value=self.body_value, parts=self.parts)
         return self.encode(parser.parse(text))
 
     def encode(self, parsed: SemanticResult) -> tuple[dict[str, list[float | None]], list[str], list[str]]:
-        per_rule = {rule: [None] * 4 for rule in self.rule_names}
+        per_rule = {rule: [None] * self.n_dims for rule in self.rule_names}
         anchors: list[list[float | None]] = []
         equality_groups: list[list[str]] = []
         unparsed = list(parsed.unparsed)
@@ -1159,14 +1240,14 @@ class CenterEncoder:
                 matched_rules.append(claim.kind)
             elif not claim.supported and claim.item not in unparsed:
                 unparsed.append(claim.item)
-                per_rule["unsupported"] = self._merge_vectors(per_rule["unsupported"], [None] * 4)
+                per_rule["unsupported"] = self._merge_vectors(per_rule["unsupported"], [None] * self.n_dims)
 
         for group in equality_groups:
             group_vector = self._equality_group_vector(group, anchors)
             per_rule["equality"] = self._merge_vectors(per_rule["equality"], group_vector)
             anchors.append(group_vector)
 
-        all_vector = self._merge_vectors(*anchors) if anchors else [None] * 4
+        all_vector = self._merge_vectors(*anchors) if anchors else [None] * self.n_dims
         if any(value is not None for value in all_vector):
             all_vector = [0.5 if value is None else value for value in all_vector]
         per_rule["all"] = all_vector
@@ -1199,7 +1280,7 @@ class CenterEncoder:
         return None
 
     def _empty(self) -> list[float | None]:
-        return [None] * 4
+        return [None] * self.n_dims
 
     def _desc_vector(self, parts: list[str], desc: str | None) -> list[float | None] | None:
         if desc is None:
@@ -1209,7 +1290,7 @@ class CenterEncoder:
             return None
         vec = self._empty()
         for part in parts:
-            vec[PART_TO_DIM[part]] = value
+            vec[self.part_to_dim[part]] = value
         return vec
 
     def _comparison_vector(self, left_parts: list[str], op: str | None, right_parts: list[str]) -> list[float | None] | None:
@@ -1220,9 +1301,9 @@ class CenterEncoder:
         vec = self._empty()
         left_value, right_value = (2 / 3, 1 / 3) if op == ">" else (1 / 3, 2 / 3)
         for part in left_parts:
-            vec[PART_TO_DIM[part]] = left_value
+            vec[self.part_to_dim[part]] = left_value
         for part in right_parts:
-            vec[PART_TO_DIM[part]] = right_value
+            vec[self.part_to_dim[part]] = right_value
         return vec
 
     def _superlative_vector(self, parts: list[str], op: str | None, right_parts: list[str]) -> list[float | None] | None:
@@ -1231,9 +1312,9 @@ class CenterEncoder:
         vec = self._empty()
         target_value, other_value = (0.8, 0.4) if op == ">" else (0.4, 0.8)
         for part in parts:
-            vec[PART_TO_DIM[part]] = target_value
+            vec[self.part_to_dim[part]] = target_value
         for part in right_parts:
-            vec[PART_TO_DIM[part]] = other_value
+            vec[self.part_to_dim[part]] = other_value
         return vec
 
     def _equality_group_vector(self, parts: list[str], anchors: list[list[float | None]]) -> list[float | None]:
@@ -1241,12 +1322,12 @@ class CenterEncoder:
         values = []
         for anchor in anchors:
             for part in parts:
-                value = anchor[PART_TO_DIM[part]]
+                value = anchor[self.part_to_dim[part]]
                 if value is not None:
                     values.append(float(value))
         group_value = float(np.mean(values)) if values else 0.5
         for part in parts:
-            vec[PART_TO_DIM[part]] = group_value
+            vec[self.part_to_dim[part]] = group_value
         return vec
 
     def _ranking_vector(self, order: list[str], direction: str | None) -> list[float | None] | None:
@@ -1257,7 +1338,7 @@ class CenterEncoder:
             values = list(reversed(values))
         vec = self._empty()
         for part, value in zip(order, values):
-            vec[PART_TO_DIM[part]] = float(value)
+            vec[self.part_to_dim[part]] = float(value)
         return vec
 
     def _body_ref_vector(self, parts: list[str], op: str | None, threshold: float | None) -> list[float | None] | None:
@@ -1272,7 +1353,7 @@ class CenterEncoder:
             value = threshold
         vec = self._empty()
         for part in parts:
-            vec[PART_TO_DIM[part]] = float(value)
+            vec[self.part_to_dim[part]] = float(value)
         return vec
 
     def _group_sum_vector(self, left_parts: list[str], op: str | None, right_parts: list[str]) -> list[float | None] | None:
@@ -1281,20 +1362,20 @@ class CenterEncoder:
         vec = self._empty()
         if op == "==":
             for part in left_parts + right_parts:
-                vec[PART_TO_DIM[part]] = 0.5
+                vec[self.part_to_dim[part]] = 0.5
             return vec
         left_value, right_value = (2 / 3, 1 / 3) if op == ">" else (1 / 3, 2 / 3)
         for part in left_parts:
-            vec[PART_TO_DIM[part]] = left_value
+            vec[self.part_to_dim[part]] = left_value
         for part in right_parts:
-            vec[PART_TO_DIM[part]] = right_value
+            vec[self.part_to_dim[part]] = right_value
         return vec
 
     def _merge_vectors(self, *vectors: list[float | None]) -> list[float | None]:
         if not vectors:
-            return [None] * 4
-        out: list[float | None] = [None] * 4
-        for dim in range(4):
+            return [None] * self.n_dims
+        out: list[float | None] = [None] * self.n_dims
+        for dim in range(self.n_dims):
             values = [float(vec[dim]) for vec in vectors if vec is not None and vec[dim] is not None]
             if values:
                 out[dim] = float(np.mean(values))
@@ -1305,7 +1386,7 @@ class Recording_Processor_Region:
     """
     Encode oral reports as region constraints A @ x <= b.
 
-    The canonical dimension order is fixed as: neck, head, leg, tail.
+    The dimension order follows ``parts``. Default: neck, head, leg, tail.
     """
 
     def __init__(
@@ -1316,15 +1397,17 @@ class Recording_Processor_Region:
         middle_upper: float = 0.75,
         comparison_margin: float = 0.0,
         use_average_in_addition: bool = False,
+        parts: tuple[str, ...] | None = None,
     ):
-        self.body_parts = dict(PART_TO_DIM)
+        self.parts = tuple(parts or PARTS)
+        self.body_parts = part_to_dim(self.parts)
         self.long_threshold = float(long_threshold)
         self.short_threshold = float(short_threshold)
         self.middle_lower = float(middle_lower)
         self.middle_upper = float(middle_upper)
         self.comparison_margin = float(comparison_margin)
         self.use_average_in_addition = use_average_in_addition
-        self.semantic_parser = SemanticParser(body_value=0.5)
+        self.semantic_parser = SemanticParser(body_value=0.5, parts=self.parts)
         self.region_encoder = RegionEncoder(
             long_threshold=self.long_threshold,
             short_threshold=self.short_threshold,
@@ -1332,6 +1415,7 @@ class Recording_Processor_Region:
             middle_upper=self.middle_upper,
             comparison_margin=self.comparison_margin,
             equality_epsilon=0.10,
+            parts=self.parts,
         )
 
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -1364,32 +1448,26 @@ class Recording_Processor_Region:
 
 
 class Recording_Processor_Center:
-    """Encode oral reports as four-dimensional centers in canonical neck, head, leg, tail order."""
+    """Encode oral reports as four-dimensional centers. The dimension order follows ``parts``."""
 
-    def __init__(self):
-        self.body_parts = dict(PART_TO_DIM)
-        self.semantic_parser = SemanticParser(body_value=0.5)
-        self.center_encoder = CenterEncoder(body_value=0.5)
+    def __init__(self, parts: tuple[str, ...] | None = None):
+        self.parts = tuple(parts or PARTS)
+        self.body_parts = part_to_dim(self.parts)
+        self.semantic_parser = SemanticParser(body_value=0.5, parts=self.parts)
+        self.center_encoder = CenterEncoder(body_value=0.5, parts=self.parts)
 
     def process_use(self, df: pd.DataFrame) -> pd.DataFrame:
         results = {
             "iSession": df["iSession"],
             "iTrial": df["iTrial"],
-            "neck_oraluse": [0] * len(df),
-            "head_oraluse": [0] * len(df),
-            "leg_oraluse": [0] * len(df),
-            "tail_oraluse": [0] * len(df),
         }
-        use_columns = {
-            "脖子": "neck_oraluse",
-            "头": "head_oraluse",
-            "腿": "leg_oraluse",
-            "尾巴": "tail_oraluse",
-        }
+        use_columns = {part: f"feature{idx + 1}_oraluse" for idx, part in enumerate(self.parts)}
+        for col in use_columns.values():
+            results[col] = [0] * len(df)
         for idx, text in enumerate(df["text"]):
             if pd.isna(text) or not str(text).strip():
                 continue
-            text = str(text)
+            text = self.semantic_parser.normalize_text(text)
             for part, col in use_columns.items():
                 if part in text:
                     results[col][idx] = 1
@@ -1403,7 +1481,7 @@ class Recording_Processor_Center:
         for text in df["text"]:
             encoded, un_pro = self.extract_values(text)
             for col in rule_columns:
-                results[col].append(encoded.get(col, [None] * len(PARTS)))
+                results[col].append(encoded.get(col, [None] * len(self.parts)))
             results["un_pro"].append(un_pro)
             results["text"].append(text)
 

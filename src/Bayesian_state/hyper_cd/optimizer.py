@@ -40,7 +40,13 @@ from src.Bayesian_state.utils.optimizer_simulation import (
 )
 
 
-SELECTION_METRICS = {"mean_simulation_error"}
+LOWER_TAIL_FRACTION = 0.10
+SELECTION_METRICS = {
+    "mean_simulation_error",
+    "best_simulation_error",
+    "best10_mean_simulation_error",
+    "q10_simulation_error",
+}
 
 
 @dataclass
@@ -54,6 +60,38 @@ class CombinationResult:
     restart_id: int
     iter_id: int
     coordinate: str
+
+
+def _lower_tail_error_metrics(sample_errors: Sequence[float], fallback_error: float) -> Dict[str, Any]:
+    values = np.asarray(list(sample_errors or []), dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        values = np.asarray([float(fallback_error)], dtype=float)
+    ordered = np.sort(values)
+    tail_count = max(1, int(np.ceil(ordered.size * LOWER_TAIL_FRACTION)))
+    return {
+        "best10_mean_error": float(np.mean(ordered[:tail_count])),
+        "q10_error": float(np.quantile(ordered, LOWER_TAIL_FRACTION)),
+        "lower_tail_fraction": float(LOWER_TAIL_FRACTION),
+        "lower_tail_count": int(tail_count),
+    }
+
+
+def _selection_error_value(
+    selection_metric: str,
+    mean_error: float,
+    best_error: float,
+    tail_metrics: Mapping[str, Any],
+) -> float:
+    if selection_metric == "mean_simulation_error":
+        return float(mean_error)
+    if selection_metric == "best_simulation_error":
+        return float(best_error)
+    if selection_metric == "best10_mean_simulation_error":
+        return float(tail_metrics["best10_mean_error"])
+    if selection_metric == "q10_simulation_error":
+        return float(tail_metrics["q10_error"])
+    raise ValueError(f"Unsupported selection_metric '{selection_metric}'")
 
 
 def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
@@ -95,9 +133,8 @@ class HyperCDOptimizer:
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
 
-        selection_mode = self.config.get("hyperparam_selection_mode")
-        if selection_mode is not None and str(selection_mode).strip().lower() != "per_subject":
-            raise ValueError("Only per_subject hyperparameter selection is supported.")
+        # `hyperparam_selection_mode` config key is optional now; keep internal
+        # default as per-subject selection (only mode currently implemented).
         self.hyperparam_selection_mode = "per_subject"
 
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
@@ -445,13 +482,19 @@ class HyperCDOptimizer:
             )
 
             best = result["best"]
-            mean_error = float(getattr(best, "mean_error"))
-            errors.append(mean_error)
+            mean_err = float(getattr(best, "mean_error"))
+            best_err = float(getattr(best, "best_error", mean_err))
+            sample_errors = list(getattr(best, "sample_errors", []) or [])
+            tail_metrics = _lower_tail_error_metrics(sample_errors, mean_err)
+            value = _selection_error_value(self.selection_metric, mean_err, best_err, tail_metrics)
+            errors.append(value)
             subject_metrics[int(sid)] = {
-                "mean_error": mean_error,
-                "best_error": float(getattr(best, "best_error", mean_error)),
+                "mean_error": mean_err,
+                "best_error": best_err,
+                **tail_metrics,
+                "selection_error": value,
                 "std_error": float(getattr(best, "std_error", 0.0)),
-                "sample_errors": list(getattr(best, "sample_errors", []) or []),
+                "sample_errors": sample_errors,
                 "fixed_hyperparams": deepcopy(point),
                 "condition": int(result.get("condition", -1)),
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
@@ -622,12 +665,23 @@ class HyperCDOptimizer:
                 keep_logs=bool(meta["keep_logs"]),
             )
             mean_error = float(best.mean_error)
+            best_error = float(best.best_error if best.best_error is not None else mean_error)
+            sample_errors = list(best.sample_errors or [])
+            tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
+            selection_error = _selection_error_value(
+                self.selection_metric,
+                mean_error,
+                best_error,
+                tail_metrics,
+            )
             subject_metrics = {
                 sid: {
                     "mean_error": mean_error,
-                    "best_error": float(best.best_error if best.best_error is not None else mean_error),
+                    "best_error": best_error,
+                    **tail_metrics,
+                    "selection_error": selection_error,
                     "std_error": float(best.std_error),
-                    "sample_errors": list(best.sample_errors or []),
+                    "sample_errors": sample_errors,
                     "fixed_hyperparams": deepcopy(meta["point"]),
                     "condition": int(meta["condition"]),
                     "dataset_paths": dict(meta["dataset_paths"]),
@@ -640,7 +694,7 @@ class HyperCDOptimizer:
                     stage=stage_name,
                     combination_index=int(meta["combination_index"]),
                     hyperparams=deepcopy(meta["point"]),
-                    aggregated_error=mean_error,
+                    aggregated_error=selection_error,
                     subject_metrics=subject_metrics,
                     hyper_candidate_seed=int(meta["hyper_candidate_seed"]),
                     restart_id=restart_id,
@@ -1053,7 +1107,13 @@ class HyperCDOptimizer:
             raise ValueError("resume_from_coarse requires stage='fine'")
 
         self._combination_counter = 0
-        stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
+        if stage == "all":
+            configured_stages = self.config.get("stages") or {}
+            stages_to_run = [name for name in ("coarse", "fine") if name in configured_stages]
+            if not stages_to_run:
+                raise ValueError("stage='all' requires at least one configured stage under stages.coarse or stages.fine")
+        else:
+            stages_to_run = [stage]
         all_combinations_path = output_dir / "all_combinations.jsonl"
         if resume_from_coarse:
             stage_combinations: Dict[str, List[CombinationResult]] = {
@@ -1127,10 +1187,16 @@ class HyperCDOptimizer:
         }
         if len(subjects) == 1:
             sid = int(subjects[0])
-            best_payload["mean_error"] = float(best_combination.subject_metrics[sid]["mean_error"])
-            best_payload["best_error"] = float(best_combination.subject_metrics[sid]["best_error"])
-            best_payload["std_error"] = float(best_combination.subject_metrics[sid]["std_error"])
-            best_payload["simulation_repeats"] = int(best_combination.subject_metrics[sid]["simulation_repeats"])
+            metrics = best_combination.subject_metrics[sid]
+            best_payload["mean_error"] = float(metrics["mean_error"])
+            best_payload["best_error"] = float(metrics["best_error"])
+            best_payload["best10_mean_error"] = float(metrics["best10_mean_error"])
+            best_payload["q10_error"] = float(metrics["q10_error"])
+            best_payload["selection_error"] = float(metrics["selection_error"])
+            best_payload["lower_tail_fraction"] = float(metrics["lower_tail_fraction"])
+            best_payload["lower_tail_count"] = int(metrics["lower_tail_count"])
+            best_payload["std_error"] = float(metrics["std_error"])
+            best_payload["simulation_repeats"] = int(metrics["simulation_repeats"])
         if self.save_level == "full":
             best_payload["subject_metrics"] = best_combination.subject_metrics
 

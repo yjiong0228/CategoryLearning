@@ -31,7 +31,7 @@ from src.Bayesian_state.utils.hyperparam_values import (
 )
 
 
-SELECTION_METRICS = {"mean_simulation_error"}
+SELECTION_METRICS = {"mean_simulation_error", "best_simulation_error"}
 
 
 @dataclass
@@ -56,9 +56,9 @@ class HyperGridOptimizer:
         if self.selection_metric not in SELECTION_METRICS:
             raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
 
-        selection_mode = self.config.get("hyperparam_selection_mode")
-        if selection_mode is not None and str(selection_mode).strip().lower() != "per_subject":
-            raise ValueError("Only per_subject hyperparameter selection is supported.")
+        # Historically users could set `hyperparam_selection_mode` in the config.
+        # This option is no longer required; the optimizer currently only
+        # supports per-subject selection internally.
         self.hyperparam_selection_mode = "per_subject"
 
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
@@ -299,6 +299,7 @@ class HyperGridOptimizer:
         subject_metrics: Dict[int, Dict[str, Any]] = {}
         errors: List[float] = []
 
+        metric_field = "mean_error" if self.selection_metric == "mean_simulation_error" else "best_error"
         for sid in subjects:
             subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, n_jobs = self._resolve_sim_components(
                 stage_sim_cfg,
@@ -332,11 +333,13 @@ class HyperGridOptimizer:
             )
 
             best = result["best"]
-            mean_error = float(getattr(best, "mean_error"))
-            errors.append(mean_error)
+            mean_err = float(getattr(best, "mean_error"))
+            best_err = float(getattr(best, "best_error", mean_err))
+            value = float(getattr(best, metric_field, mean_err))
+            errors.append(value)
             subject_metrics[int(sid)] = {
-                "mean_error": mean_error,
-                "best_error": float(getattr(best, "best_error", mean_error)),
+                "mean_error": mean_err,
+                "best_error": best_err,
                 "std_error": float(getattr(best, "std_error", 0.0)),
                 "sample_errors": list(getattr(best, "sample_errors", []) or []),
                 "fixed_hyperparams": deepcopy(combination_params),
@@ -493,7 +496,8 @@ class HyperGridOptimizer:
         stage_summary = self._build_stage_summary(all_stage_combinations)
         final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
         final_combinations = all_stage_combinations[final_stage]
-        best_combination = min(final_combinations, key=lambda t: float(t.subject_metrics[int(subject_id)]["mean_error"]))
+        metric_field = "mean_error" if self.selection_metric == "mean_simulation_error" else "best_error"
+        best_combination = min(final_combinations, key=lambda t: float(t.subject_metrics[int(subject_id)][metric_field]))
 
         stage_summary_path = subject_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:

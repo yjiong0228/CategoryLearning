@@ -1,67 +1,18 @@
 [
   {
-    "name": "accuracy_comparison",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/accuracy_comparison.png"
-    ]
-  },
-  {
-    "name": "posterior_probabilities",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/posterior_probabilities.png"
-    ]
-  },
-  {
-    "name": "beta_dynamics",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/beta_dynamics.png"
-    ]
-  },
-  {
-    "name": "cluster_amount",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/cluster_amount.png"
-    ]
-  },
-  {
-    "name": "strategy_amount_details",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/basic/strategy_amount_details.png"
-    ]
-  },
-  {
-    "name": "trajectory_accuracy",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/trajectory_accuracy"
-    ]
-  },
-  {
-    "name": "trajectory_posterior",
-    "status": "ok",
-    "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/trajectory_posterior"
-    ]
-  },
-  {
     "name": "oral_mass_probabilities",
     "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/oral_mass_probabilities.npz",
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/oral_mass_probabilities.png"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/oral_mass_probabilities.npz",
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/oral_mass_probabilities.png"
     ]
   },
   {
     "name": "save_oral_mass_probabilities",
     "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/oral_mass_probabilities.npz",
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/oral_mass_probabilities.png"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/oral_mass_probabilities.npz",
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/oral_mass_probabilities.png"
     ]
   },
   {
@@ -71,10 +22,9 @@
   },
   {
     "name": "save_distribution_based_alignment",
-    "status": "skipped",
-    "reason": "'alignment_space'",
+    "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/distribution_based_alignment"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/distribution_based_alignment"
     ]
   },
   {
@@ -86,7 +36,7 @@
     "name": "save_oral_based_alignment",
     "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/oral_based_alignment"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/oral_based_alignment"
     ]
   },
   {
@@ -98,7 +48,7 @@
     "name": "save_target_based_alignment",
     "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/target_based_alignment"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/target_based_alignment"
     ]
   },
   {
@@ -110,7 +60,7 @@
     "name": "save_hit_based_alignment",
     "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/hit_based_alignment"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/hit_based_alignment"
     ]
   },
   {
@@ -120,10 +70,9 @@
   },
   {
     "name": "save_coverage_based_alignment",
-    "status": "skipped",
-    "reason": "No coverage-based alignment results to save.",
+    "status": "ok",
     "outputs": [
-      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment/coverage_based_alignment"
+      "/data2/yangjiong/CategoryLearning_gitcode/results/state-based-simulation-exp4/pmh/prob_proto/model_evaluation/oral_alignment_center_mode/coverage_based_alignment"
     ]
   }
 ]

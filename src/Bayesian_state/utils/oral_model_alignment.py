@@ -378,6 +378,39 @@ class OralModelAlignmentMixin:
     ``_layout_by_condition``. ``ModelEval`` supplies both.
     """
 
+    @staticmethod
+    def _subjectwise_grid_layout(
+        subjects,
+        n_cols,
+        *,
+        panel_width=8.0,
+        panel_height=5.0,
+    ):
+        """Return a subject-wise grid using the oral-mass plot layout scale."""
+        n_subjects = len(subjects)
+        if n_subjects <= 0:
+            raise RuntimeError("No subjects available for subject-wise plot.")
+
+        requested_cols = max(1, int(n_cols))
+        actual_cols = max(1, min(requested_cols, n_subjects))
+        n_rows = int(np.ceil(n_subjects / actual_cols))
+        return n_rows, actual_cols, (actual_cols * float(panel_width), n_rows * float(panel_height))
+
+    SUBJECTWISE_SUPTITLE_FONTSIZE = 16
+    SUBJECTWISE_TITLE_FONTSIZE = 12
+    SUBJECTWISE_LABEL_FONTSIZE = 10
+    SUBJECTWISE_TICK_FONTSIZE = 10
+    SUBJECTWISE_LEGEND_FONTSIZE = 10
+
+    def _style_subjectwise_grid_axes(self, axes, n_rows, n_cols, ylabel, xlabel="Normalized trial"):
+        axes = np.asarray(axes)
+        for ax in axes.flat:
+            ax.tick_params(axis="both", labelsize=self.SUBJECTWISE_TICK_FONTSIZE)
+        for row in range(n_rows):
+            axes[row, 0].set_ylabel(ylabel, fontsize=self.SUBJECTWISE_LABEL_FONTSIZE)
+        for col in range(n_cols):
+            axes[-1, col].set_xlabel(xlabel, fontsize=self.SUBJECTWISE_LABEL_FONTSIZE)
+
     DISTRIBUTION_ALIGNMENT_SPACES = ("full", "active", "union_topn")
     DISTRIBUTION_ALIGNMENT_LABELS = {
         "full": "Full hypothesis space",
@@ -2409,12 +2442,11 @@ class OralModelAlignmentMixin:
 
         spaces = [space for space in self.DISTRIBUTION_ALIGNMENT_SPACES if space in set(df["alignment_space"])]
         subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
-        n_cols = max(1, int(n_cols))
-        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects_sorted, n_cols)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.35),
+            figsize=figsize,
             dpi=170,
             sharex=True,
             sharey=True,
@@ -2426,7 +2458,7 @@ class OralModelAlignmentMixin:
             title
             or f"Condition {condition_label}: subject-wise oral vs model {model_state} distribution alignment"
         )
-        fig.suptitle(fig_title, fontsize=16, y=0.995)
+        fig.suptitle(fig_title, fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE, y=0.995)
 
         for ax, sid in zip(axes.flat, subjects_sorted):
             sub = df[df["subject"] == sid]
@@ -2448,20 +2480,28 @@ class OralModelAlignmentMixin:
                 title_bits.append(
                     f"{self.DISTRIBUTION_ALIGNMENT_SHORT_LABELS.get(space, space)}={np.nanmean(one['js_similarity']):.2f}"
                 )
-            ax.set_title(f"S{int(sid)}  " + ", ".join(title_bits), fontsize=7.5)
+            ax.set_title(
+                f"S{int(sid)}  " + ", ".join(title_bits),
+                fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
+            )
             ax.set_ylim(0, 1)
             ax.set_xlim(0, 1)
             ax.grid(alpha=0.18, linewidth=0.6)
 
         for ax in list(axes.flat)[len(subjects_sorted):]:
             ax.axis("off")
-        for row in range(n_rows):
-            axes[row, 0].set_ylabel("JS similarity")
-        for col in range(n_cols):
-            axes[-1, col].set_xlabel("Normalized trial")
+        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "JS similarity")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=len(spaces), frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=len(spaces),
+            frameon=False,
+            bbox_to_anchor=(0.5, 0.965),
+            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -2869,12 +2909,11 @@ class OralModelAlignmentMixin:
         metric_label = self.ORAL_BASED_METRIC_LABELS.get(primary_metric, primary_metric)
         color = self.ORAL_BASED_METRIC_COLORS.get(primary_metric, "#4c78a8")
         subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
-        n_cols = max(1, int(n_cols))
-        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects_sorted, n_cols)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.35),
+            figsize=figsize,
             dpi=170,
             sharex=True,
             sharey=True,
@@ -2885,27 +2924,39 @@ class OralModelAlignmentMixin:
         oral_mode = str(df["oral_mode"].dropna().iloc[0])
         model_state = str(df["model_distribution"].dropna().iloc[0])
         fig_title = title or f"Condition {condition_label}: subject-wise {oral_mode} oral-based alignment"
-        fig.suptitle(f"{fig_title} ({model_state})", fontsize=16, y=0.995)
+        fig.suptitle(
+            f"{fig_title} ({model_state})",
+            fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE,
+            y=0.995,
+        )
 
         for ax, sid in zip(axes.flat, subjects_sorted):
             sub = df[df["subject"] == sid].sort_values("trial")
             x = sub["trial_pct"].to_numpy(dtype=float)
             y = self._rolling_mean(sub["oral_based_similarity"].to_numpy(dtype=float), window_size=window_size)
             ax.plot(x, y, lw=0.95, alpha=0.84, color=color, label=metric_label)
-            ax.set_title(f"S{int(sid)}  mean={np.nanmean(y):.2f}", fontsize=8)
+            ax.set_title(
+                f"S{int(sid)}  mean={np.nanmean(y):.2f}",
+                fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
+            )
             ax.set_ylim(0, 1)
             ax.set_xlim(0, 1)
             ax.grid(alpha=0.18, linewidth=0.6)
 
         for ax in list(axes.flat)[len(subjects_sorted):]:
             ax.axis("off")
-        for row in range(n_rows):
-            axes[row, 0].set_ylabel("Similarity")
-        for col in range(n_cols):
-            axes[-1, col].set_xlabel("Normalized trial")
+        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "Similarity")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=1, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=1,
+            frameon=False,
+            bbox_to_anchor=(0.5, 0.965),
+            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -3266,12 +3317,11 @@ class OralModelAlignmentMixin:
         }
 
         subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
-        n_cols = max(1, int(n_cols))
-        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects_sorted, n_cols)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.35),
+            figsize=figsize,
             dpi=170,
             sharex=True,
             sharey=True,
@@ -3282,7 +3332,11 @@ class OralModelAlignmentMixin:
         space = str(df["alignment_space"].dropna().iloc[0])
         space_label = self.TARGET_ALIGNMENT_LABELS.get(space, space)
         fig_title = title or f"Condition {condition_label}: target-based alignment ({oral_mode})"
-        fig.suptitle(f"{fig_title} - {space_label}", fontsize=16, y=0.995)
+        fig.suptitle(
+            f"{fig_title} - {space_label}",
+            fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE,
+            y=0.995,
+        )
 
         for ax, sid in zip(axes.flat, subjects_sorted):
             sub = df[df["subject"] == sid].sort_values("trial")
@@ -3308,23 +3362,28 @@ class OralModelAlignmentMixin:
                 ax.set_title(
                     f"S{int(sid)}  r={metrics.get('pearson_r', np.nan):.2f}, "
                     f"cos={metrics.get('cosine_similarity', np.nan):.2f}",
-                    fontsize=8,
+                    fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
                 )
             else:
-                ax.set_title(f"S{int(sid)}", fontsize=8)
+                ax.set_title(f"S{int(sid)}", fontsize=self.SUBJECTWISE_TITLE_FONTSIZE)
             ax.set_ylim(0, 1)
             ax.set_xlim(0, 1)
             ax.grid(alpha=0.18, linewidth=0.6)
 
         for ax in list(axes.flat)[len(subjects_sorted):]:
             ax.axis("off")
-        for row in range(n_rows):
-            axes[row, 0].set_ylabel("Target probability/mass")
-        for col in range(n_cols):
-            axes[-1, col].set_xlabel("Normalized trial")
+        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "Target probability/mass")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=2,
+            frameon=False,
+            bbox_to_anchor=(0.5, 0.965),
+            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -3720,12 +3779,11 @@ class OralModelAlignmentMixin:
         }
 
         subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
-        n_cols = max(1, int(n_cols))
-        n_rows = int(np.ceil(len(subjects_sorted) / n_cols))
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects_sorted, n_cols)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.35),
+            figsize=figsize,
             dpi=170,
             sharex=True,
             sharey=True,
@@ -3745,7 +3803,7 @@ class OralModelAlignmentMixin:
             model_line_label = "Model active-set target hit"
             oral_line_label = "Oral top-N target hit"
         fig_title = title or f"Condition {condition_label}: hit-based alignment ({oral_mode})"
-        fig.suptitle(fig_title, fontsize=16, y=0.995)
+        fig.suptitle(fig_title, fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE, y=0.995)
 
         for ax, sid in zip(axes.flat, subjects_sorted):
             sub = df[df["subject"] == sid].sort_values("trial")
@@ -3771,23 +3829,28 @@ class OralModelAlignmentMixin:
                 ax.set_title(
                     f"S{int(sid)}  phi={metrics.get('phi_correlation', np.nan):.2f}, "
                     f"agr={metrics.get('hit_agreement_rate', np.nan):.2f}",
-                    fontsize=8,
+                    fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
                 )
             else:
-                ax.set_title(f"S{int(sid)}", fontsize=8)
+                ax.set_title(f"S{int(sid)}", fontsize=self.SUBJECTWISE_TITLE_FONTSIZE)
             ax.set_ylim(0, 1)
             ax.set_xlim(0, 1)
             ax.grid(alpha=0.18, linewidth=0.6)
 
         for ax in list(axes.flat)[len(subjects_sorted):]:
             ax.axis("off")
-        for row in range(n_rows):
-            axes[row, 0].set_ylabel("Rolling hit rate")
-        for col in range(n_cols):
-            axes[-1, col].set_xlabel("Normalized trial")
+        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "Rolling hit rate")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=2,
+            frameon=False,
+            bbox_to_anchor=(0.5, 0.965),
+            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -4123,12 +4186,11 @@ class OralModelAlignmentMixin:
             raise RuntimeError("No coverage-based alignment results to plot.")
 
         subjects = sorted(df["subject"].unique())
-        n_cols = max(1, int(n_cols))
-        n_rows = int(np.ceil(len(subjects) / n_cols))
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects, n_cols)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.4),
+            figsize=figsize,
             dpi=170,
             sharey=True,
         )
@@ -4136,7 +4198,7 @@ class OralModelAlignmentMixin:
         condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
         oral_mode = str(df["oral_mode"].dropna().iloc[0])
         fig_title = title or f"Condition {condition_label}: subject-wise coverage-based alignment ({oral_mode})"
-        fig.suptitle(fig_title, fontsize=16, y=0.995)
+        fig.suptitle(fig_title, fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE, y=0.995)
 
         for ax, sid in zip(axes.flat, subjects):
             sub = df[df["subject"] == sid].sort_values("trial")
@@ -4156,7 +4218,7 @@ class OralModelAlignmentMixin:
                     f"cap={np.nanmean(sub['active_capture_ratio']):.2f}, "
                     f"ov={np.nanmean(sub['active_topn_overlap']):.2f}"
                 ),
-                fontsize=8,
+                fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
             )
             ax.set_ylim(0, 1)
             ax.set_xlim(0, 1)
@@ -4164,16 +4226,21 @@ class OralModelAlignmentMixin:
 
         for ax in list(axes.flat)[len(subjects):]:
             ax.axis("off")
-        for row in range(n_rows):
-            axes[row, 0].set_ylabel("Coverage")
-        for col in range(n_cols):
-            axes[-1, col].set_xlabel("Normalized trial")
+        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "Coverage")
 
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.965))
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=2,
+            frameon=False,
+            bbox_to_anchor=(0.5, 0.965),
+            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         if save_path:
-            fig.savefig(save_path, bbox_inches="tight")
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
             logger.info("Coverage-based alignment subject-wise plot saved to %s", save_path)
         return fig
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.oral_coding import Recording_Processor_Center, Recording_Processor_Region
+from src.oral_coding import Recording_Processor_Center, Recording_Processor_Region, parts_from_feature_map
 
 
 class Preprocessor_B:
@@ -65,7 +65,8 @@ class Preprocessor_B:
 
         extra_columns = ["text", "oral_center", "oral_A", "oral_b"]
         if recording_data is not None:
-            center_processor = Recording_Processor_Center()
+            oral_parts = parts_from_feature_map(feature_map)
+            center_processor = Recording_Processor_Center(parts=oral_parts)
             center_df = center_processor.process(recording_data)
             center_coded = center_df[["iSession", "iTrial", "text", "all"]].copy()
 
@@ -76,7 +77,7 @@ class Preprocessor_B:
 
             center_coded["oral_center"] = center_coded["all"].apply(lambda values: reorder_center(values, feature_order))
 
-            region_processor = Recording_Processor_Region()
+            region_processor = Recording_Processor_Region(parts=oral_parts)
             region_coded = region_processor.process(recording_data)
 
             def reorder_A(A, order):

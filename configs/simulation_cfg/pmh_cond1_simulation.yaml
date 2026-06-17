@@ -22,7 +22,7 @@ oral:
 n_jobs: 128
 
 # Repeated simulations under fixed hyperparameters
-simulation_repeats: 1024
+simulation_repeats: 8192
 
 # Evaluation
 window_size: 16
