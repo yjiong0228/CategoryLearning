@@ -1,0 +1,26 @@
+# Fixed-parameter simulation config for Exp5 Rule1.
+engine_config_path: ../model_struct/pmh_rule1.yaml
+
+subjects: [501, 503]
+
+hyper_base_seed: 42
+
+dataset:
+  processed_dir: ../../data_exp5/processed
+  learning_data: Rule1_processed.csv
+  feature_order_data: Rule1_processed.csv
+
+output_dir: ../../results/state-based-simulation-exp5/pmh/rule1
+
+n_jobs: 128
+simulation_repeats: 4096
+
+window_size: 4
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+
+loss_metric: choice_brier

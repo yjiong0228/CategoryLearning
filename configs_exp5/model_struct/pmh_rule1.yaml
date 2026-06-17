@@ -2,9 +2,11 @@ data:
   subject_column: iSub
   condition_column: ruleID
   feature_columns: [feature1, feature2, feature3, feature4, feature5]
+  category_column: category
+  target_type: hard
 
 partition:
-  class: 'src.Bayesian_state.problems.discrete_partitions.DiscreteRulePartition'
+  class: src.Bayesian_state.problems.discrete_partitions.DiscreteRulePartition
   kwargs:
     n_dims: 5
     n_cats: 2
@@ -12,7 +14,7 @@ partition:
 
 modules:
   beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    class: src.Bayesian_state.problems.modules.beta.BetaModule
     kwargs:
       beta_init: 2.0
       beta_min: 0.1
@@ -21,24 +23,26 @@ modules:
       correct_additive: 1.0
       use_prior_scaling: true
       prior_beta_scale: 8.0
+
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
     kwargs:
       strategies:
-        - {amount: "fixed", method: "top_posterior", pool: "active", value: 8}
-        - {amount: "fixed", method: "random", pool: "all_unselected", value: 8}
+        - {label: retain_top, amount: fixed, method: top_posterior, pool: active, value: 8}
+        - {label: explore_random, amount: fixed, method: random, pool: inactive, value: 8}
       init_num: 12
       max_active_hypotheses: 16
-      random_seed: 0
+
   likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
     kwargs:
       distance_mode: rule
+
   memory_mod:
-    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
     kwargs:
-      w0: null
-      gamma: null
+      gamma: 0.7
+      w0: 0.05
 
 agenda:
   - hypo_transitions_mod

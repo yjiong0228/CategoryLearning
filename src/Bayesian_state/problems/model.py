@@ -95,11 +95,12 @@ class StateModel:
         self.engine.build_modules(self.engine_config["modules"])
 
 
-    def save(self, posterior_log, step_log):
+    def save(self, posterior_log, prior_log, step_log):
         """
         保存结果
         """
         self.posterior_log = posterior_log
+        self.prior_log = prior_log
         self.step_log = step_log
         
 
@@ -115,14 +116,12 @@ class StateModel:
         posterior_log = []
         prior_log = []
         for datum in data:
-            posterior, log = self.engine.infer_single(datum, mod_kwargs)
+            posterior, prior, log = self.engine.infer_single(datum, mod_kwargs)
             # DEBUG
             #print("Current observation:", self.engine.observation, s=2)
             step_log += [log]
             posterior_log += [posterior]
-            prior_log += [log.get('prior')]
+            prior_log += [prior]
 
-        self.save(posterior_log, step_log)
+        self.save(posterior_log, prior_log, step_log)
         return posterior_log, prior_log
-
-

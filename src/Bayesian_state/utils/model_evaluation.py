@@ -1,24 +1,29 @@
 """Model evaluation facade.
 
-The public surface is organized around these evaluation layers:
-- accuracy_model_alignment(full level/ family level)
-- posterior_distribution
-- oral_mass_distribution
-- oral_model_alignment
+The public surface follows the output layout used by
+``run_model_evaluation.py``:
+
+- basic:
+  - accuracy_comparison and accuracy_family_comparison
+  - choice_brier
+  - posterior_probabilities and prior_probabilities
+  - beta_dynamics
+  - strategy_amount and strategy_amount_details
+- oral_alignment:
+  - oral_mass_distribution
   - distribution_based_alignment: oral reports -> hypothesis distribution
     (optionally projected into oral-equivalence groups)
   - oral_based_alignment: model belief -> oral center/region representation
   - target_based_alignment: target prior probability vs oral target mass
   - hit_based_alignment: target hit in model active/top-k set vs oral top-N/top-k set
   - coverage_based_alignment: model active-set coverage of oral top-N set
-- cluster_amount_dynamics
-- beta_dynamics
-- error_grid
-- trajectory_accuracy
-- trajectory_posterior
+- trajectory:
+  - trajectory_accuracy
+  - trajectory_posterior
 
-Oral mass and Oral/model alignment is implemented in ``oral_model_alignment.py`` and mixed
-in here so existing ``ModelEval`` call sites keep working.
+Oral mass and Oral/model alignment are implemented in
+``oral_model_alignment.py`` and mixed in here so existing ``ModelEval`` call
+sites keep working.
 """
 
 from collections import defaultdict
@@ -435,71 +440,60 @@ class ModelEval(OralModelAlignmentMixin):
             "sliding_pred_family_acc_std": np.asarray(sliding_std, dtype=float),
         }
 
-    # posterior ---------------------------------------------------------------
+    # posterior/prior ---------------------------------------------------------
+
+    @staticmethod
+    def _hypothesis_color_map(max_k, palette_name="husl"):
+        max_k = max(0, int(max_k))
+        if max_k == 0:
+            return {}
+        colors = sns.color_palette(palette_name, n_colors=max_k)
+        return {k: colors[k] for k in range(max_k)}
 
     def plot_posterior_probabilities(self, results, subjects=None, save_path=None, limit=True, **kwargs):
-        def _get_post_max(hypo_details, k):
-            if not isinstance(hypo_details, dict):
-                return None
-
-            entry = hypo_details.get(k)
-            if entry is None:
-                entry = hypo_details.get(str(k))
-            if not isinstance(entry, dict):
-                return None
-
-            try:
-                return float(entry.get("post_max"))
-            except (TypeError, ValueError):
-                return None
-
         def body(ax, condition, iSub, info):
-            step_results = info.get("step_results") or info.get("best_step_results") or []
+            posterior_log = info.get("posterior_log") or []
             ax.set(
                 title=f"Subject {iSub} (Condition {condition})",
                 xlabel="Trial",
                 ylabel="Posterior Probability",
             )
 
-            if not step_results:
+            if not posterior_log:
                 ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
                 return
 
+            probability_threshold = float(kwargs.get("probability_threshold", 1e-12))
             if limit:
                 max_k = 19 if condition == 1 else 116
             else:
-                all_keys = []
-                for step in step_results:
-                    hypo_details = step.get("hypo_details", {})
-                    if not isinstance(hypo_details, dict):
-                        continue
-                    for key in hypo_details.keys():
-                        try:
-                            all_keys.append(int(key))
-                        except (TypeError, ValueError):
-                            pass
-                max_k = max(all_keys) + 1 if all_keys else 0
+                max_k = max((len(posterior) for posterior in posterior_log), default=0)
 
             data = []
-            for step, step_info in enumerate(step_results):
-                hypo_details = step_info.get("hypo_details", {})
-                for k in range(max_k):
-                    post_max = _get_post_max(hypo_details, k)
-                    if post_max is None:
+            for step, posterior in enumerate(posterior_log):
+                try:
+                    posterior = np.asarray(posterior, dtype=float).reshape(-1)
+                except (TypeError, ValueError):
+                    continue
+                for k in range(min(max_k, posterior.size)):
+                    value = posterior[k]
+                    if not np.isfinite(value) or value <= probability_threshold:
                         continue
-                    data.append({"Step": step + 1, "k": k, "Posterior": post_max})
+                    data.append({"Step": step + 1, "k": k, "Posterior": float(value)})
 
             df = pd.DataFrame(data)
             if df.empty or "Step" not in df.columns:
                 ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
                 return
 
+            color_map = self._hypothesis_color_map(max_k, kwargs.get("hypothesis_palette", "husl"))
             sns.scatterplot(
                 data=df,
                 x="Step",
                 y="Posterior",
                 hue="k",
-                palette="tab10",
+                hue_order=list(range(max_k)),
+                palette=color_map,
                 alpha=0.5,
                 legend=False,
                 ax=ax,
@@ -518,6 +512,93 @@ class ModelEval(OralModelAlignmentMixin):
             subjects,
             save_path,
             "Posterior Probabilities for k by Subject",
+            body,
+            **kwargs,
+        )
+
+    @staticmethod
+    def _extract_prior_probability_log(info):
+        prior_log = info.get("prior_log") or []
+        if prior_log:
+            out = []
+            for prior in prior_log:
+                try:
+                    out.append(np.asarray(prior, dtype=float).reshape(-1))
+                except (TypeError, ValueError):
+                    out.append(np.asarray([], dtype=float))
+            return out
+
+        steps = info.get("step_results") or info.get("best_step_results") or []
+        out = []
+        for step in steps:
+            if not isinstance(step, dict) or step.get("prior") is None:
+                continue
+            try:
+                out.append(np.asarray(step.get("prior"), dtype=float).reshape(-1))
+            except (TypeError, ValueError):
+                out.append(np.asarray([], dtype=float))
+        return out
+
+    def plot_prior_probabilities(self, results, subjects=None, save_path=None, limit=True, **kwargs):
+        def body(ax, condition, iSub, info):
+            prior_log = self._extract_prior_probability_log(info)
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition})",
+                xlabel="Trial",
+                ylabel="Prior Probability",
+            )
+
+            if not prior_log:
+                ax.text(0.5, 0.5, "No prior data", ha="center", va="center", transform=ax.transAxes)
+                return
+
+            probability_threshold = float(kwargs.get("probability_threshold", 1e-12))
+            if limit:
+                max_k = 19 if condition == 1 else 116
+            else:
+                max_k = max((prior.size for prior in prior_log), default=0)
+
+            data = []
+            for step, prior in enumerate(prior_log):
+                if prior.size == 0:
+                    continue
+                for k in range(min(max_k, prior.size)):
+                    value = prior[k]
+                    if not np.isfinite(value) or value <= probability_threshold:
+                        continue
+                    data.append({"Step": step + 1, "k": k, "Prior": float(value)})
+
+            df = pd.DataFrame(data)
+            if df.empty or "Step" not in df.columns:
+                ax.text(0.5, 0.5, "No prior data", ha="center", va="center", transform=ax.transAxes)
+                return
+
+            color_map = self._hypothesis_color_map(max_k, kwargs.get("hypothesis_palette", "husl"))
+            sns.scatterplot(
+                data=df,
+                x="Step",
+                y="Prior",
+                hue="k",
+                hue_order=list(range(max_k)),
+                palette=color_map,
+                alpha=0.5,
+                legend=False,
+                ax=ax,
+            )
+
+            target_hypo = info.get("target_hypothesis")
+            if target_hypo is None:
+                target_hypo = 0 if condition == 1 else 42
+            target_hypo = int(target_hypo)
+            target_df = df[df["k"] == target_hypo]
+            if not target_df.empty:
+                sns.scatterplot(data=target_df, x="Step", y="Prior", color="red", s=50, ax=ax)
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Prior Probabilities for k by Subject",
             body,
             **kwargs,
         )
@@ -756,6 +837,127 @@ class ModelEval(OralModelAlignmentMixin):
             **kwargs,
         )
 
+    # choice_model_alignment --------------------------------------------------
+
+    def compute_choice_brier_metrics(self, info, window_size=None):
+        """Compute trial-level and sliding-window Brier loss for observed choices."""
+        probs = info.get("pred_category_probs")
+        observed_choice_index = info.get("observed_choice_index")
+        if probs is None or observed_choice_index is None:
+            return {}
+
+        try:
+            probs = np.asarray(probs, dtype=float)
+            observed_choice_index = np.asarray(observed_choice_index, dtype=int).reshape(-1)
+        except (TypeError, ValueError):
+            return {}
+        if probs.ndim != 2 or probs.shape[0] == 0 or probs.shape[1] == 0:
+            return {}
+
+        n_trials = min(probs.shape[0], observed_choice_index.size)
+        if n_trials == 0:
+            return {}
+        probs = probs[:n_trials]
+        observed_choice_index = observed_choice_index[:n_trials]
+        n_cats = int(probs.shape[1])
+
+        valid_mask = info.get("valid_trial_mask")
+        if valid_mask is None:
+            valid_mask = np.ones(n_trials, dtype=bool)
+        else:
+            try:
+                valid_mask = np.asarray(valid_mask, dtype=bool).reshape(-1)
+            except (TypeError, ValueError):
+                valid_mask = np.ones(n_trials, dtype=bool)
+            if valid_mask.size < n_trials:
+                padded = np.zeros(n_trials, dtype=bool)
+                padded[: valid_mask.size] = valid_mask
+                valid_mask = padded
+            else:
+                valid_mask = valid_mask[:n_trials]
+
+        choice_brier = np.full(n_trials, np.nan, dtype=float)
+        keep = (
+            valid_mask
+            & np.all(np.isfinite(probs), axis=1)
+            & (observed_choice_index >= 0)
+            & (observed_choice_index < n_cats)
+        )
+        rows = np.where(keep)[0]
+        if rows.size:
+            one_hot = np.zeros((rows.size, n_cats), dtype=float)
+            one_hot[np.arange(rows.size), observed_choice_index[rows]] = 1.0
+            choice_brier[rows] = np.sum(np.square(probs[rows] - one_hot), axis=1)
+
+        win = window_size if window_size is not None else info.get("window_size")
+        try:
+            win = int(win)
+        except (TypeError, ValueError):
+            win = 16
+
+        sliding_choice_brier = []
+        if win > 0 and n_trials >= win + 1:
+            for start in range(1, n_trials - win + 1):
+                end = start + win
+                sliding_choice_brier.append(self._safe_nanmean(choice_brier[start:end]))
+
+        return {
+            "choice_brier": choice_brier,
+            "sliding_choice_brier": np.asarray(sliding_choice_brier, dtype=float),
+            "choice_brier_window_size": int(win),
+            "choice_brier_chance": float(1.0 - 1.0 / n_cats),
+        }
+
+    def plot_choice_brier(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
+        def body(ax, condition, iSub, info):
+            metrics = self.compute_choice_brier_metrics(info, window_size=window_size)
+            sliding = metrics.get("sliding_choice_brier")
+            chance = metrics.get("choice_brier_chance")
+
+            if sliding is None:
+                ax.text(0.5, 0.5, "No choice Brier data", ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel="Choice Brier")
+                return
+
+            sliding = np.asarray(sliding, dtype=float)
+            finite = np.isfinite(sliding)
+            if sliding.size == 0 or not np.any(finite):
+                ax.text(0.5, 0.5, "No choice Brier data", ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel="Choice Brier")
+                return
+
+            win = metrics.get("choice_brier_window_size")
+            try:
+                win = int(win)
+            except (TypeError, ValueError):
+                win = 1
+
+            trial = np.arange(win + 1, win + 1 + len(sliding))
+            df = pd.DataFrame({"Trial": trial, "Choice Brier": sliding})
+            sns.lineplot(data=df, x="Trial", y="Choice Brier", label="Model", ax=ax)
+
+            y_top_values = [float(np.nanmax(sliding[finite]))]
+            if chance is not None and np.isfinite(chance):
+                ax.axhline(float(chance), color="gray", linestyle="--", linewidth=1.0, label="Chance")
+                y_top_values.append(float(chance))
+
+            n_trials = info.get("n_trials")
+            if n_trials:
+                ax.set_xlim(1, n_trials)
+            y_top = max(y_top_values)
+            ax.set_ylim(0, min(2.05, max(0.05, y_top * 1.15)))
+            ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel="Choice Brier")
+            ax.legend()
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Choice Brier by Subject",
+            body,
+            **kwargs,
+        )
+
     # beta_dynamics -----------------------------------------------------------
 
     def plot_beta_dynamics(self, results, subjects=None, save_path=None, max_hypotheses=20, **kwargs):
@@ -771,7 +973,14 @@ class ModelEval(OralModelAlignmentMixin):
             trials = np.arange(1, beta.shape[0] + 1)
             beta = np.asarray(beta, dtype=float)
             active_beta = np.where(beta > 0, beta, np.nan)
-            max_by_hypo = np.nanmax(active_beta, axis=0)
+            finite_by_hypo = np.isfinite(active_beta)
+            max_by_hypo = np.full(active_beta.shape[1], np.nan, dtype=float)
+            has_hypo = np.any(finite_by_hypo, axis=0)
+            if np.any(has_hypo):
+                max_by_hypo[has_hypo] = np.max(
+                    np.where(finite_by_hypo[:, has_hypo], active_beta[:, has_hypo], -np.inf),
+                    axis=0,
+                )
             valid_hypo = np.where(np.isfinite(max_by_hypo))[0]
             if valid_hypo.size == 0:
                 ax.text(0.5, 0.5, "No active beta data", ha="center", va="center", transform=ax.transAxes)
@@ -783,12 +992,25 @@ class ModelEval(OralModelAlignmentMixin):
             for hypo in order:
                 ax.plot(trials, beta[:, hypo], lw=0.8, alpha=0.35)
 
-            mean_active = np.nanmean(active_beta, axis=1)
-            max_active = np.nanmax(active_beta, axis=1)
+            finite_by_trial = np.isfinite(active_beta)
+            counts_by_trial = np.sum(finite_by_trial, axis=1)
+            mean_active = np.full(active_beta.shape[0], np.nan, dtype=float)
+            valid_trials = counts_by_trial > 0
+            if np.any(valid_trials):
+                mean_active[valid_trials] = (
+                    np.nansum(active_beta[valid_trials], axis=1) / counts_by_trial[valid_trials]
+                )
+            max_active = np.full(active_beta.shape[0], np.nan, dtype=float)
+            if np.any(valid_trials):
+                max_active[valid_trials] = np.max(
+                    np.where(finite_by_trial[valid_trials], active_beta[valid_trials], -np.inf),
+                    axis=1,
+                )
             ax.plot(trials, mean_active, color="black", lw=2.0, label="Active mean")
             ax.plot(trials, max_active, color="red", lw=1.5, alpha=0.75, label="Active max")
             ax.set_xlim(1, beta.shape[0])
-            y_max = np.nanmax(max_active)
+            finite_max = max_active[np.isfinite(max_active)]
+            y_max = float(np.max(finite_max)) if finite_max.size else np.nan
             if np.isfinite(y_max) and y_max > 0:
                 ax.set_ylim(0, y_max * 1.08)
             ax.legend()
@@ -865,7 +1087,8 @@ class ModelEval(OralModelAlignmentMixin):
         ref = payload.get("raw_runs_ref") or {}
         stream_count = int(ref.get("count", 0) or 0)
 
-        sample_errors = payload.get("sample_errors")
+        summary = payload.get("simulation_summary") or {}
+        sample_errors = summary.get("sample_errors")
         if isinstance(sample_errors, list) and sample_errors:
             rows = [
                 {
@@ -948,39 +1171,12 @@ class ModelEval(OralModelAlignmentMixin):
         return found
 
     @staticmethod
-    def _get_post_max(hypo_details, k):
-        if not isinstance(hypo_details, dict):
-            return None
-        entry = hypo_details.get(k)
-        if entry is None:
-            entry = hypo_details.get(str(k))
-        if not isinstance(entry, dict):
-            return None
-        try:
-            return float(entry.get("post_max"))
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _extract_step_results_from_run(run_obj):
-        step_results = run_obj.get("step_log") or run_obj.get("step_results") or []
-        if isinstance(step_results, list) and step_results:
-            return step_results
-
-        posterior_log = run_obj.get("posterior_log") or []
-        rebuilt = []
-        for posterior in posterior_log:
-            try:
-                posterior = np.asarray(posterior, dtype=float).reshape(-1)
-            except (TypeError, ValueError):
-                continue
-            hypo_details = {
-                int(k): {"post_max": float(p)}
-                for k, p in enumerate(posterior)
-                if float(p) > 1e-9
-            }
-            rebuilt.append({"hypo_details": hypo_details})
-        return rebuilt
+    def _extract_run_state_log(run_obj, key):
+        state_log = run_obj.get("state_log") or {}
+        values = state_log.get(key)
+        if values is None:
+            return []
+        return values
 
     def _plot_run_posterior_body(
         self,
@@ -993,36 +1189,29 @@ class ModelEval(OralModelAlignmentMixin):
         limit=True,
         target_hypothesis=None,
     ):
-        step_results = self._extract_step_results_from_run(run_obj)
+        posterior_log = self._extract_run_state_log(run_obj, "posterior")
         ax.set(xlabel="Trial", ylabel="Posterior Probability")
 
-        if not step_results:
+        if not posterior_log:
             ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
             return
 
         if limit:
             max_k = 19 if int(condition) == 1 else 116
         else:
-            all_keys = []
-            for step in step_results:
-                hypo_details = step.get("hypo_details", {}) if isinstance(step, dict) else {}
-                for key in hypo_details.keys():
-                    try:
-                        all_keys.append(int(key))
-                    except (TypeError, ValueError):
-                        pass
-            max_k = max(all_keys) + 1 if all_keys else 0
+            max_k = max((len(posterior) for posterior in posterior_log), default=0)
 
         data = []
-        for step, step_info in enumerate(step_results):
-            if not isinstance(step_info, dict):
+        for step, posterior in enumerate(posterior_log):
+            try:
+                posterior = np.asarray(posterior, dtype=float).reshape(-1)
+            except (TypeError, ValueError):
                 continue
-            hypo_details = step_info.get("hypo_details", {})
-            for k in range(max_k):
-                post_max = self._get_post_max(hypo_details, k)
-                if post_max is None:
+            for k in range(min(max_k, posterior.size)):
+                value = posterior[k]
+                if not np.isfinite(value) or value <= 1e-12:
                     continue
-                data.append({"Step": step + 1, "k": k, "Posterior": post_max})
+                data.append({"Step": step + 1, "k": k, "Posterior": float(value)})
 
         df = pd.DataFrame(data)
         if df.empty:
@@ -1034,7 +1223,8 @@ class ModelEval(OralModelAlignmentMixin):
             x="Step",
             y="Posterior",
             hue="k",
-            palette="tab10",
+            hue_order=list(range(max_k)),
+            palette=self._hypothesis_color_map(max_k),
             alpha=0.5,
             legend=False,
             ax=ax,
@@ -1295,9 +1485,9 @@ class ModelEval(OralModelAlignmentMixin):
         summary.to_csv(summary_path, index=False)
         return summary
 
-    # cluster_amount ----------------------------------------------------------
+    # strategy_amount ---------------------------------------------------------
 
-    def plot_cluster_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
+    def plot_strategy_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
         def _first_numeric(value, default=0.0):
             if isinstance(value, (list, tuple)):
                 if not value:
@@ -1311,12 +1501,12 @@ class ModelEval(OralModelAlignmentMixin):
                 return float(default)
 
         def body(ax, condition, iSub, info):
-            steps = info.get("best_step_results", [])
+            steps = info.get("strategy_counts_log") or []
             exploitation = []
             exploration = []
 
             for step in steps:
-                best_step_amount = step.get("best_step_amount", {})
+                best_step_amount = step if isinstance(step, dict) else {}
                 posterior_vals = [
                     _first_numeric(value)
                     for key, value in best_step_amount.items()

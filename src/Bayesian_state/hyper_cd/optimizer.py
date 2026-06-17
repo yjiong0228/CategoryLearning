@@ -19,6 +19,13 @@ from src.Bayesian_state.utils.hyperparam_values import (
     values_from_json,
     values_product,
 )
+from src.Bayesian_state.utils.hyper_results import (
+    build_root_best_payload,
+    build_subject_artifacts,
+    build_subject_best_payload,
+    combination_metrics_summary,
+    compact_hyperparams,
+)
 from src.Bayesian_state.utils.optimization_config import (
     load_yaml,
     resolve_engine_config,
@@ -46,6 +53,18 @@ SELECTION_METRICS = {
     "best_simulation_error",
     "best10_mean_simulation_error",
     "q10_simulation_error",
+}
+
+SHAPE_DEFAULTS = {
+    "enabled": False,
+    "primary_tolerance_abs": 0.02,
+    "primary_tolerance_rel": 0.08,
+    "run_choice_fraction": 0.10,
+    "accuracy_weight": 1.0,
+    "volatility_weight": 0.03,
+    "slope_weight": 0.02,
+    "target_volatility_ratio": 1.0,
+    "min_volatility_ratio": 1e-6,
 }
 
 
@@ -92,6 +111,67 @@ def _selection_error_value(
     if selection_metric == "q10_simulation_error":
         return float(tail_metrics["q10_error"])
     raise ValueError(f"Unsupported selection_metric '{selection_metric}'")
+
+
+def _safe_float(value: Any, default: float = float("nan")) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if np.isfinite(out) else default
+
+
+def _accuracy_curve_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
+    true = np.asarray(metrics.get("sliding_true_acc"), dtype=float)
+    pred = np.asarray(metrics.get("sliding_pred_acc"), dtype=float)
+    empty = {
+        "acc_mae": float("nan"),
+        "acc_rmse": float("nan"),
+        "acc_corr": float("nan"),
+        "true_vol": float("nan"),
+        "pred_vol": float("nan"),
+        "vol_ratio": float("nan"),
+        "true_range": float("nan"),
+        "pred_range": float("nan"),
+        "range_ratio": float("nan"),
+        "slope_agree": float("nan"),
+    }
+    if true.shape != pred.shape or true.size == 0:
+        return empty
+    mask = np.isfinite(true) & np.isfinite(pred)
+    if not mask.any():
+        return empty
+    true = true[mask]
+    pred = pred[mask]
+    diff = pred - true
+    true_vol = float(np.mean(np.abs(np.diff(true)))) if true.size > 1 else float("nan")
+    pred_vol = float(np.mean(np.abs(np.diff(pred)))) if pred.size > 1 else float("nan")
+    true_range = float(np.nanmax(true) - np.nanmin(true))
+    pred_range = float(np.nanmax(pred) - np.nanmin(pred))
+    if np.nanstd(true) > 1e-12 and np.nanstd(pred) > 1e-12:
+        acc_corr = float(np.corrcoef(true, pred)[0, 1])
+    else:
+        acc_corr = float("nan")
+    d_true = np.diff(true)
+    d_pred = np.diff(pred)
+    slope_mask = (np.abs(d_true) > 1e-12) & (np.abs(d_pred) > 1e-12)
+    slope_agree = (
+        float(np.mean(np.sign(d_true[slope_mask]) == np.sign(d_pred[slope_mask])))
+        if slope_mask.any()
+        else float("nan")
+    )
+    return {
+        "acc_mae": float(np.mean(np.abs(diff))),
+        "acc_rmse": float(np.sqrt(np.mean(diff * diff))),
+        "acc_corr": acc_corr,
+        "true_vol": true_vol,
+        "pred_vol": pred_vol,
+        "vol_ratio": float(pred_vol / true_vol) if true_vol > 0 else float("nan"),
+        "true_range": true_range,
+        "pred_range": pred_range,
+        "range_ratio": float(pred_range / true_range) if true_range > 0 else float("nan"),
+        "slope_agree": slope_agree,
+    }
 
 
 def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
@@ -171,12 +251,42 @@ class HyperCDOptimizer:
             cd_cfg.get("parallel_budget", 1),
             "cd.parallel_budget",
         )
+        self.secondary_selection = self._resolve_secondary_selection(
+            self.config.get("secondary_selection")
+        )
         if self.coordinate_order not in {"shuffle_each_iter", "shuffle_per_restart", "fixed"}:
             raise ValueError("cd.coordinate_order must be 'shuffle_each_iter', 'shuffle_per_restart', or 'fixed'")
         if self.init_strategy not in {"random", "anchor"}:
             raise ValueError("cd.init_strategy must be 'random' or 'anchor'")
 
         self._combination_counter = 0
+
+    def _resolve_secondary_selection(self, raw: Any) -> Dict[str, Any]:
+        cfg = dict(SHAPE_DEFAULTS)
+        if raw is None:
+            return cfg
+        if not isinstance(raw, Mapping):
+            raise ValueError("secondary_selection must be a mapping when provided")
+        cfg.update(dict(raw))
+        cfg["enabled"] = bool(cfg.get("enabled", False))
+        for key in (
+            "primary_tolerance_abs",
+            "primary_tolerance_rel",
+            "run_choice_fraction",
+            "accuracy_weight",
+            "volatility_weight",
+            "slope_weight",
+            "target_volatility_ratio",
+            "min_volatility_ratio",
+        ):
+            cfg[key] = float(cfg[key])
+        if cfg["run_choice_fraction"] <= 0 or cfg["run_choice_fraction"] > 1:
+            raise ValueError("secondary_selection.run_choice_fraction must be in (0, 1]")
+        if cfg["target_volatility_ratio"] <= 0:
+            raise ValueError("secondary_selection.target_volatility_ratio must be > 0")
+        if cfg["min_volatility_ratio"] <= 0:
+            raise ValueError("secondary_selection.min_volatility_ratio must be > 0")
+        return cfg
 
     @staticmethod
     def _positive_int(value: Any, name: str) -> int:
@@ -408,6 +518,235 @@ class HyperCDOptimizer:
         runner.prepare_data(dataset_paths["learning_data"])
         return runner, dataset_paths
 
+    def _simulate_runs_for_point(
+        self,
+        *,
+        runner: StateModelSimulationRunner,
+        dataset_paths: Mapping[str, Path | str],
+        subject_id: int,
+        point: Mapping[str, Any],
+        simulation_repeats: int,
+        window_size: int,
+        stop_at: float,
+        max_trials: Any,
+        keep_logs: bool,
+        prediction_mode: str,
+        selection_prediction_mode: str,
+        loss_metric: str,
+        loss_delta: float | None,
+        hyper_candidate_seed: int,
+        n_jobs: int,
+    ):
+        subject_frame = runner._get_subject_frame(int(subject_id), float(stop_at))
+        condition = runner._get_condition_value(subject_frame)
+        max_trials_int = int(max_trials) if max_trials is not None else None
+        arrays = runner._extract_arrays(subject_frame, max_trials_int)
+        simulation_point_seed = derive_simulation_point_seed(
+            int(hyper_candidate_seed),
+            int(subject_id),
+            dict(point),
+        )
+
+        tasks = []
+        for repeat_index in range(int(simulation_repeats)):
+            trajectory_seed = derive_trajectory_seed(
+                int(simulation_point_seed),
+                "simulation",
+                int(repeat_index),
+            )
+            tasks.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "trajectory_seed": trajectory_seed,
+                }
+            )
+
+        runs = list(
+            Parallel(n_jobs=max(1, int(n_jobs)))(
+                delayed(evaluate_state_model_run)(
+                    int(subject_id),
+                    int(condition),
+                    arrays,
+                    dict(point),
+                    runner._engine_config_template,
+                    runner._processed_data_dir,
+                    int(window_size),
+                    dataset_paths,
+                    bool(keep_logs),
+                    bool(keep_logs),
+                    str(prediction_mode),
+                    str(selection_prediction_mode),
+                    str(loss_metric),
+                    loss_delta,
+                    simulation_point_seed=int(simulation_point_seed),
+                    trajectory_seed=task["trajectory_seed"],
+                    seed_context={
+                        "hyper_candidate_seed": int(hyper_candidate_seed),
+                        "simulation_point_seed": int(simulation_point_seed),
+                        "trajectory_seed": task["trajectory_seed"],
+                        "phase": "hyper_cd",
+                        "repeat_index": task["repeat_index"],
+                    },
+                )
+                for task in tasks
+            )
+        )
+        return [run for run in runs if run is not None], int(condition), int(simulation_point_seed)
+
+    def _shape_score(self, curve: Mapping[str, Any]) -> float:
+        cfg = self.secondary_selection
+        acc_mae = _safe_float(curve.get("acc_mae"))
+        if not np.isfinite(acc_mae):
+            return float("inf")
+        vol_ratio = _safe_float(curve.get("vol_ratio"), cfg["min_volatility_ratio"])
+        vol_ratio = max(float(vol_ratio), float(cfg["min_volatility_ratio"]))
+        target_vol = float(cfg["target_volatility_ratio"])
+        vol_penalty = abs(np.log(vol_ratio / target_vol))
+        slope = _safe_float(curve.get("slope_agree"), 0.0)
+        slope = min(1.0, max(0.0, slope))
+        return float(
+            cfg["accuracy_weight"] * acc_mae
+            + cfg["volatility_weight"] * vol_penalty
+            + cfg["slope_weight"] * (1.0 - slope)
+        )
+
+    def _accuracy_shape_metrics_from_runs(
+        self,
+        runs: Sequence[Any],
+        *,
+        selection_prediction_mode: str,
+    ) -> Dict[str, Any]:
+        rows: List[Dict[str, Any]] = []
+        for repeat_index, run in enumerate(runs):
+            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
+            metrics = metrics_by_mode.get(selection_prediction_mode)
+            if not isinstance(metrics, Mapping):
+                continue
+            curve = _accuracy_curve_metrics(metrics)
+            score = self._shape_score(curve)
+            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
+            rows.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "choice_error": choice_error,
+                    "accuracy_shape_score": score,
+                    **curve,
+                }
+            )
+        if not rows:
+            return {}
+
+        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
+        finite_choice = finite_choice[np.isfinite(finite_choice)]
+        if finite_choice.size == 0:
+            return {}
+        ordered_choice = np.sort(finite_choice)
+        gate_count = max(1, int(np.ceil(len(rows) * float(self.secondary_selection["run_choice_fraction"]))))
+        gate_count = min(gate_count, ordered_choice.size)
+        run_choice_cutoff = float(ordered_choice[gate_count - 1])
+        eligible = [
+            row for row in rows
+            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
+        ]
+        if not eligible:
+            eligible = rows
+        best = min(
+            eligible,
+            key=lambda row: (
+                _safe_float(row.get("accuracy_shape_score"), float("inf")),
+                _safe_float(row.get("choice_error"), float("inf")),
+            ),
+        )
+        all_scores = np.asarray([row["accuracy_shape_score"] for row in rows], dtype=float)
+        eligible_scores = np.asarray([row["accuracy_shape_score"] for row in eligible], dtype=float)
+        return {
+            "accuracy_shape_score": _safe_float(best.get("accuracy_shape_score"), float("inf")),
+            "accuracy_shape_choice_error": _safe_float(best.get("choice_error")),
+            "accuracy_shape_repeat_index": int(best.get("repeat_index", -1)),
+            "accuracy_shape_acc_mae": _safe_float(best.get("acc_mae")),
+            "accuracy_shape_acc_rmse": _safe_float(best.get("acc_rmse")),
+            "accuracy_shape_acc_corr": _safe_float(best.get("acc_corr")),
+            "accuracy_shape_vol_ratio": _safe_float(best.get("vol_ratio")),
+            "accuracy_shape_range_ratio": _safe_float(best.get("range_ratio")),
+            "accuracy_shape_slope_agree": _safe_float(best.get("slope_agree")),
+            "accuracy_shape_run_choice_cutoff": run_choice_cutoff,
+            "accuracy_shape_eligible_run_count": int(len(eligible)),
+            "accuracy_shape_all_run_count": int(len(rows)),
+            "accuracy_shape_score_mean": float(np.nanmean(all_scores)),
+            "accuracy_shape_score_q10": float(np.nanquantile(all_scores, 0.1)),
+            "accuracy_shape_eligible_score_mean": float(np.nanmean(eligible_scores)),
+        }
+
+    def _select_final_combination(
+        self,
+        combinations: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        if not combinations:
+            raise RuntimeError("No combinations available for final selection")
+        primary_best = min(combinations, key=lambda result: result.aggregated_error)
+        if not self.secondary_selection.get("enabled", False):
+            return primary_best, {
+                "enabled": False,
+                "selected_by": "primary_selection_metric",
+                "primary_best_combination_index": primary_best.combination_index,
+            }
+
+        best_primary_error = float(primary_best.aggregated_error)
+        abs_threshold = best_primary_error + float(self.secondary_selection["primary_tolerance_abs"])
+        rel_threshold = best_primary_error * (1.0 + float(self.secondary_selection["primary_tolerance_rel"]))
+        gate_threshold = max(abs_threshold, rel_threshold)
+
+        eligible = [
+            result for result in combinations
+            if float(result.aggregated_error) <= gate_threshold
+        ]
+        eligible_with_shape = [
+            result for result in eligible
+            if self._combination_shape_score(result) < float("inf")
+        ]
+        if not eligible_with_shape:
+            return primary_best, {
+                "enabled": True,
+                "selected_by": "primary_fallback_no_shape_metrics",
+                "primary_best_combination_index": primary_best.combination_index,
+                "primary_best_error": best_primary_error,
+                "gate_threshold": gate_threshold,
+                "eligible_count": len(eligible),
+            }
+
+        selected = min(
+            eligible_with_shape,
+            key=lambda result: (
+                self._combination_shape_score(result),
+                float(result.aggregated_error),
+                int(result.combination_index),
+            ),
+        )
+        return selected, {
+            "enabled": True,
+            "selected_by": "choice_gated_accuracy_shape",
+            "primary_best_combination_index": primary_best.combination_index,
+            "primary_best_error": best_primary_error,
+            "gate_threshold": gate_threshold,
+            "eligible_count": len(eligible),
+            "eligible_with_shape_count": len(eligible_with_shape),
+            "selected_combination_index": selected.combination_index,
+            "selected_primary_error": float(selected.aggregated_error),
+            "selected_accuracy_shape_score": self._combination_shape_score(selected),
+            "config": dict(self.secondary_selection),
+        }
+
+    @staticmethod
+    def _combination_shape_score(result: CombinationResult) -> float:
+        values = []
+        for metrics in (result.subject_metrics or {}).values():
+            if isinstance(metrics, Mapping):
+                values.append(_safe_float(metrics.get("accuracy_shape_score"), float("inf")))
+        finite = [value for value in values if np.isfinite(value)]
+        if not finite:
+            return float("inf")
+        return float(np.mean(finite))
+
     def _evaluate_point(
         self,
         stage_name: str,
@@ -466,10 +805,12 @@ class HyperCDOptimizer:
             effective_loss_metric = str(point_sim_cfg["loss_metric"])
             effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
 
-            result = runner.simulate_subject(
+            runs, condition, simulation_point_seed = self._simulate_runs_for_point(
+                runner=runner,
+                dataset_paths=dataset_paths,
                 subject_id=sid,
                 simulation_repeats=simulation_repeats,
-                fixed_hyperparams=point,
+                point=point,
                 window_size=int(point_sim_cfg.get("window_size", window_size)),
                 stop_at=float(point_sim_cfg.get("stop_at", 1.0)),
                 max_trials=point_sim_cfg.get("max_trials"),
@@ -479,13 +820,28 @@ class HyperCDOptimizer:
                 loss_metric=effective_loss_metric,
                 loss_delta=effective_loss_delta,
                 hyper_candidate_seed=hyper_candidate_seed,
+                n_jobs=n_jobs,
+            )
+            best = aggregate_simulation_runs(
+                runs,
+                params=point,
+                subject_id=sid,
+                condition=condition,
+                window_size=int(point_sim_cfg.get("window_size", window_size)),
+                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+                simulation_repeats=simulation_repeats,
+                simulation_point_seed=simulation_point_seed,
+                keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
             )
 
-            best = result["best"]
             mean_err = float(getattr(best, "mean_error"))
             best_err = float(getattr(best, "best_error", mean_err))
             sample_errors = list(getattr(best, "sample_errors", []) or [])
             tail_metrics = _lower_tail_error_metrics(sample_errors, mean_err)
+            shape_metrics = self._accuracy_shape_metrics_from_runs(
+                runs,
+                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+            )
             value = _selection_error_value(self.selection_metric, mean_err, best_err, tail_metrics)
             errors.append(value)
             subject_metrics[int(sid)] = {
@@ -496,10 +852,12 @@ class HyperCDOptimizer:
                 "std_error": float(getattr(best, "std_error", 0.0)),
                 "sample_errors": sample_errors,
                 "fixed_hyperparams": deepcopy(point),
-                "condition": int(result.get("condition", -1)),
+                "condition": int(condition),
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
                 "hyper_candidate_seed": int(hyper_candidate_seed),
+                "simulation_point_seed": int(simulation_point_seed),
                 "simulation_repeats": simulation_repeats,
+                **shape_metrics,
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
@@ -668,6 +1026,10 @@ class HyperCDOptimizer:
             best_error = float(best.best_error if best.best_error is not None else mean_error)
             sample_errors = list(best.sample_errors or [])
             tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
+            shape_metrics = self._accuracy_shape_metrics_from_runs(
+                runs,
+                selection_prediction_mode=str(meta["selection_prediction_mode"]),
+            )
             selection_error = _selection_error_value(
                 self.selection_metric,
                 mean_error,
@@ -686,7 +1048,9 @@ class HyperCDOptimizer:
                     "condition": int(meta["condition"]),
                     "dataset_paths": dict(meta["dataset_paths"]),
                     "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
+                    "simulation_point_seed": int(meta["simulation_point_seed"]),
                     "simulation_repeats": simulation_repeats,
+                    **shape_metrics,
                 }
             }
             out.append(
@@ -768,6 +1132,9 @@ class HyperCDOptimizer:
             "aggregated_error": result.aggregated_error,
             "hyper_candidate_seed": result.hyper_candidate_seed,
         }
+        metrics_summary = combination_metrics_summary(result.subject_metrics)
+        if metrics_summary:
+            data["metrics_summary"] = metrics_summary
         if self.save_level == "full":
             data["subject_metrics"] = result.subject_metrics
         return data
@@ -1062,7 +1429,7 @@ class HyperCDOptimizer:
                     "best_combination_index": best_local.combination_index,
                     "best_error": best_local.aggregated_error,
                     "best_hyperparams": best_local.hyperparams,
-                    "best_params": _compact_hyperparams(best_local.hyperparams),
+                    "best_params": compact_hyperparams(best_local.hyperparams),
                     "outer_iters_completed": outer_iters_completed,
                     "stopped_by": stopped_by,
                     "no_improve_rounds": no_improve_rounds,
@@ -1165,7 +1532,7 @@ class HyperCDOptimizer:
         stage_summary = self._build_stage_summary(stage_combinations)
         final_stage = "fine" if "fine" in stage_combinations else "coarse"
         final_combinations = stage_combinations[final_stage]
-        best_combination = min(final_combinations, key=lambda x: x.aggregated_error)
+        best_combination, final_selection_context = self._select_final_combination(final_combinations)
 
         stage_summary_path = output_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
@@ -1175,30 +1542,34 @@ class HyperCDOptimizer:
         with restart_summary_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(stage_restarts), f, ensure_ascii=False, indent=2)
 
-        best_payload: Dict[str, Any] = {
-            "best_stage": final_stage,
-            "best_combination_index": best_combination.combination_index,
-            "best_hyperparams": best_combination.hyperparams,
-            "best_params": _compact_hyperparams(best_combination.hyperparams),
-            "aggregated_error": best_combination.aggregated_error,
-            "hyper_candidate_seed": best_combination.hyper_candidate_seed,
-            "hyper_base_seed": self.hyper_base_seed,
-            "hyper_backend": "hyper_cd",
-        }
+        metrics = None
         if len(subjects) == 1:
             sid = int(subjects[0])
             metrics = best_combination.subject_metrics[sid]
-            best_payload["mean_error"] = float(metrics["mean_error"])
-            best_payload["best_error"] = float(metrics["best_error"])
-            best_payload["best10_mean_error"] = float(metrics["best10_mean_error"])
-            best_payload["q10_error"] = float(metrics["q10_error"])
-            best_payload["selection_error"] = float(metrics["selection_error"])
-            best_payload["lower_tail_fraction"] = float(metrics["lower_tail_fraction"])
-            best_payload["lower_tail_count"] = int(metrics["lower_tail_count"])
-            best_payload["std_error"] = float(metrics["std_error"])
-            best_payload["simulation_repeats"] = int(metrics["simulation_repeats"])
-        if self.save_level == "full":
-            best_payload["subject_metrics"] = best_combination.subject_metrics
+        best_payload = build_subject_best_payload(
+            subject_id=int(subjects[0]) if len(subjects) == 1 else -1,
+            backend="hyper_cd",
+            hyper_base_seed=self.hyper_base_seed,
+            selection_metric=self.selection_metric,
+            best_stage=final_stage,
+            best_combination_index=best_combination.combination_index,
+            best_hyperparams=best_combination.hyperparams,
+            aggregated_error=best_combination.aggregated_error,
+            hyper_candidate_seed=best_combination.hyper_candidate_seed,
+            metrics=metrics,
+            search_context={
+                "restart_id": best_combination.restart_id,
+                "iter_id": best_combination.iter_id,
+                "coordinate": best_combination.coordinate,
+                "final_selection": final_selection_context,
+            },
+            artifacts=build_subject_artifacts(output_dir, include_cd=True),
+            full_subject_metrics=(
+                best_combination.subject_metrics
+                if self.save_level == "full"
+                else None
+            ),
+        )
 
         best_path = output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
@@ -1226,7 +1597,7 @@ class HyperCDOptimizer:
                         "combination_index": result.combination_index,
                         "aggregated_error": result.aggregated_error,
                         "hyperparams": result.hyperparams,
-                        "best_params": _compact_hyperparams(result.hyperparams),
+                        "best_params": compact_hyperparams(result.hyperparams),
                         "restart_id": result.restart_id,
                         "iter_id": result.iter_id,
                         "coordinate": result.coordinate,
@@ -1262,15 +1633,18 @@ class HyperCDOptimizer:
             }
             per_subject_best[str(int(sid))] = out["best"]
 
-        best_payload = {
-            "selection_metric": self.selection_metric,
-            "save_level": self.save_level,
-            "base_sim_config_path": str(self.base_sim_config_path),
-            "hyper_cd_config_path": str(self.config_path),
-            "hyper_backend": "hyper_cd",
-            "hyper_base_seed": self.hyper_base_seed,
-            "per_subject_best": per_subject_best,
-        }
+        best_payload = build_root_best_payload(
+            backend="hyper_cd",
+            config_path=self.config_path,
+            output_dir=self.output_dir,
+            base_sim_config_path=self.base_sim_config_path,
+            hyper_base_seed=self.hyper_base_seed,
+            selection_metric=self.selection_metric,
+            save_level=self.save_level,
+            subjects=subjects,
+            per_subject_best=per_subject_best,
+            per_subject_outputs=per_subject_outputs,
+        )
         best_path = self.output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
@@ -1304,30 +1678,6 @@ def _to_builtin(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_to_builtin(value) for value in obj]
     return obj
-
-
-def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
-    summary = dict(hyperparams)
-    shortcuts = {
-        "engine.modules.memory_mod.kwargs.gamma": "gamma",
-        "engine.modules.memory_mod.kwargs.w0": "w0",
-        "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
-        "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
-        "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
-        "engine.modules.hypo_transitions_mod.kwargs.init_num": "init_num",
-        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": "max_active_hypotheses",
-        "simulation.window_size": "window_size",
-    }
-    for source, target in shortcuts.items():
-        if source in hyperparams:
-            summary[target] = hyperparams[source]
-    memory_kwargs = hyperparams.get("engine.modules.memory_mod.kwargs")
-    if isinstance(memory_kwargs, Mapping):
-        if "gamma" in memory_kwargs:
-            summary["gamma"] = memory_kwargs["gamma"]
-        if "w0" in memory_kwargs:
-            summary["w0"] = memory_kwargs["w0"]
-    return summary
 
 
 __all__ = ["HyperCDOptimizer", "CombinationResult"]

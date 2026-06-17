@@ -1,0 +1,71 @@
+# Single-stage coordinate-descent hyperparameter optimization for cond1.
+# v5 keeps choice_brier / best10 as the primary hyper-CD objective, then applies
+# a formal secondary selection step: among candidates whose primary choice loss
+# is close to the best candidate, select the one whose sampled trajectories best
+# match the observed accuracy-curve shape.
+# Compared with v4, the memory grid is theory-constrained because gamma/w0 were
+# weakly identifiable under the current behavioral objective.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v5
+selection_metric: best10_mean_simulation_error
+save_level: compact
+hyper_base_seed: 42
+
+# Final hyperparameter selection is two-tiered:
+# 1. Keep candidates with choice-Brier best10 error close to the best candidate.
+# 2. Within that gate, minimize:
+#    accuracy_mae + 0.03 * |log(pred_vol / true_vol)| + 0.02 * (1 - slope_agree)
+secondary_selection:
+  enabled: true
+  primary_tolerance_abs: 0.02
+  primary_tolerance_rel: 0.08
+  run_choice_fraction: 0.10
+  accuracy_weight: 1.0
+  volatility_weight: 0.03
+  slope_weight: 0.02
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+cd:
+  n_restarts: 8
+  max_outer_iters: 16
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 128
+
+hyperparam_space:
+  # Recency-dominant memory with weak long-term anchoring.
+  # The full v4 grid showed a broad near-optimal plateau, so v5 constrains
+  # gamma/w0 to values that are easier to interpret theoretically.
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.5, 0.6, 0.7, 0.8]
+      w0: [0.03, 0.06, 0.1, 0.15]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_candidates.json
+      key: cond1
+      value_key: hypo_transitions_kwargs
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0, 5.0, 8.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.30, 0.50, 0.70]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 5.0, 10.0, 20.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.5, 1.0, 2.0]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 128
+      keep_logs: false

@@ -29,6 +29,13 @@ from src.Bayesian_state.utils.hyperparam_values import (
     values_from_json,
     values_product,
 )
+from src.Bayesian_state.utils.hyper_results import (
+    build_root_best_payload,
+    build_subject_artifacts,
+    build_subject_best_payload,
+    combination_metrics_summary,
+    compact_hyperparams,
+)
 
 
 SELECTION_METRICS = {"mean_simulation_error", "best_simulation_error"}
@@ -372,6 +379,9 @@ class HyperGridOptimizer:
             "aggregated_error": combination.aggregated_error,
             "hyper_candidate_seed": combination.hyper_candidate_seed,
         }
+        metrics_summary = combination_metrics_summary(combination.subject_metrics)
+        if metrics_summary:
+            data["metrics_summary"] = metrics_summary
         if self.save_level == "full":
             data["subject_metrics"] = combination.subject_metrics
         return data
@@ -504,19 +514,24 @@ class HyperGridOptimizer:
             json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
 
         sid = int(subject_id)
-        subject_best = {
-            "best_stage": final_stage,
-            "best_combination_index": best_combination.combination_index,
-            "best_hyperparams": best_combination.hyperparams,
-            "best_params": _compact_hyperparams(best_combination.hyperparams),
-            "mean_error": float(best_combination.subject_metrics[sid]["mean_error"]),
-            "best_error": float(best_combination.subject_metrics[sid]["best_error"]),
-            "std_error": float(best_combination.subject_metrics[sid]["std_error"]),
-            "hyper_candidate_seed": best_combination.hyper_candidate_seed,
-            "simulation_repeats": int(best_combination.subject_metrics[sid]["simulation_repeats"]),
-        }
-        if self.save_level == "full":
-            subject_best["subject_metrics"] = {str(sid): best_combination.subject_metrics[sid]}
+        subject_best = build_subject_best_payload(
+            subject_id=sid,
+            backend="hyper_grid",
+            hyper_base_seed=self.hyper_base_seed,
+            selection_metric=self.selection_metric,
+            best_stage=final_stage,
+            best_combination_index=best_combination.combination_index,
+            best_hyperparams=best_combination.hyperparams,
+            aggregated_error=best_combination.aggregated_error,
+            hyper_candidate_seed=best_combination.hyper_candidate_seed,
+            metrics=best_combination.subject_metrics[sid],
+            artifacts=build_subject_artifacts(subject_dir, include_cd=False),
+            full_subject_metrics=(
+                {str(sid): best_combination.subject_metrics[sid]}
+                if self.save_level == "full"
+                else None
+            ),
+        )
 
         best_path = subject_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
@@ -543,6 +558,7 @@ class HyperGridOptimizer:
                         "combination_index": t.combination_index,
                         "aggregated_error": t.aggregated_error,
                         "hyperparams": t.hyperparams,
+                        "best_params": compact_hyperparams(t.hyperparams),
                         "hyper_candidate_seed": t.hyper_candidate_seed,
                     }
                     for t in ranked[:max(1, top_k)]
@@ -555,15 +571,6 @@ class HyperGridOptimizer:
             raise ValueError("stage must be one of: coarse, fine, all")
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
-
-        best_payload: Dict[str, Any] = {
-            "selection_metric": self.selection_metric,
-            "save_level": self.save_level,
-            "base_sim_config_path": str(self.base_sim_config_path),
-            "hyper_grid_config_path": str(self.config_path),
-            "hyper_base_seed": self.hyper_base_seed,
-            "hyper_backend": "hyper_grid",
-        }
 
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
@@ -582,7 +589,18 @@ class HyperGridOptimizer:
             }
             per_subject_best[str(int(sid))] = out["best"]
 
-        best_payload["per_subject_best"] = per_subject_best
+        best_payload = build_root_best_payload(
+            backend="hyper_grid",
+            config_path=self.config_path,
+            output_dir=self.output_dir,
+            base_sim_config_path=self.base_sim_config_path,
+            hyper_base_seed=self.hyper_base_seed,
+            selection_metric=self.selection_metric,
+            save_level=self.save_level,
+            subjects=subjects,
+            per_subject_best=per_subject_best,
+            per_subject_outputs=per_subject_outputs,
+        )
         best_path = self.output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
@@ -616,30 +634,6 @@ def _to_builtin(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_to_builtin(x) for x in obj]
     return obj
-
-
-def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
-    summary = dict(hyperparams)
-    shortcuts = {
-        "engine.modules.memory_mod.kwargs.gamma": "gamma",
-        "engine.modules.memory_mod.kwargs.w0": "w0",
-        "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
-        "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
-        "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
-        "engine.modules.hypo_transitions_mod.kwargs.init_num": "init_num",
-        "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": "max_active_hypotheses",
-        "simulation.window_size": "window_size",
-    }
-    for source, target in shortcuts.items():
-        if source in hyperparams:
-            summary[target] = hyperparams[source]
-    memory_kwargs = hyperparams.get("engine.modules.memory_mod.kwargs")
-    if isinstance(memory_kwargs, Mapping):
-        if "gamma" in memory_kwargs:
-            summary["gamma"] = memory_kwargs["gamma"]
-        if "w0" in memory_kwargs:
-            summary["w0"] = memory_kwargs["w0"]
-    return summary
 
 
 __all__ = ["HyperGridOptimizer", "CombinationResult"]

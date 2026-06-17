@@ -176,9 +176,6 @@ def load_run_samples(input_dir: Path, trajectory_key: str, prediction_mode: str)
 
     for file in subject_files:
         payload = _load_json(file)
-        schema_version = int(payload.get("schema_version", 0))
-        if schema_version < 3:
-            raise ValueError(f"{file} is schema_version={schema_version}, expected >= 3")
         raw_runs_ref = payload.get("raw_runs_ref")
         if not isinstance(raw_runs_ref, dict) or "path" not in raw_runs_ref:
             raise ValueError(f"{file} missing raw_runs_ref")
@@ -346,11 +343,13 @@ def _load_subject_overlay_trajectories(
 ) -> tuple[np.ndarray, np.ndarray, int | None, dict[str, Any] | None]:
     subject_path = _subject_json_path(input_dir, subject_id)
     payload = _load_json(subject_path)
-    metrics_by_mode = payload.get("metrics_by_mode")
+    representative = payload.get("representative_run") or {}
+    metrics_by_mode = representative.get("metrics_by_mode")
     if not isinstance(metrics_by_mode, dict):
         raise ValueError(f"Invalid metrics_by_mode in {subject_path}")
 
-    selection_mode = str(payload.get("selection_prediction_mode") or prediction_mode)
+    selection = payload.get("selection") or {}
+    selection_mode = str(selection.get("selection_prediction_mode") or prediction_mode)
     if selection_mode not in metrics_by_mode:
         available_modes = sorted(metrics_by_mode.keys())
         raise ValueError(
@@ -368,7 +367,7 @@ def _load_subject_overlay_trajectories(
         )
     best_curve = _to_float_array(metrics["sliding_pred_acc"], context=f"{subject_path} best-fit trajectory")
     true_curve = _to_float_array(metrics["sliding_true_acc"], context=f"{subject_path} true trajectory")
-    rep_idx_raw = payload.get("representative_run_index")
+    rep_idx_raw = selection.get("representative_run_index")
     representative_run_index = int(rep_idx_raw) if rep_idx_raw is not None else None
     best_params = payload.get("best_params")
     if best_params is not None and not isinstance(best_params, dict):

@@ -61,15 +61,17 @@ def _select_metrics(
     payload: Mapping[str, Any],
     eval_prediction_mode: str | None,
 ) -> tuple[str | None, Mapping[str, Any]]:
-    metrics_by_mode = payload.get("metrics_by_mode")
+    representative = payload.get("representative_run") or {}
+    metrics_by_mode = representative.get("metrics_by_mode")
     if not isinstance(metrics_by_mode, Mapping) or not metrics_by_mode:
         return None, {}
 
+    selection = payload.get("selection") or {}
     mode = (
         eval_prediction_mode
-        or payload.get("selection_prediction_mode")
-        or payload.get("prediction_mode")
-        or (payload.get("selection_meta") or {}).get("selection_prediction_mode")
+        or selection.get("selection_prediction_mode")
+        or selection.get("prediction_mode")
+        or (selection.get("selection_meta") or {}).get("selection_prediction_mode")
     )
     if mode is None and len(metrics_by_mode) == 1:
         mode = next(iter(metrics_by_mode))
@@ -98,20 +100,49 @@ def load_simulation_results(
             continue
 
         mode, metrics = _select_metrics(payload, eval_prediction_mode)
+        representative = payload.get("representative_run") or {}
+        state_log = representative.get("state_log") or {}
+        summary = payload.get("simulation_summary") or {}
+        selection = payload.get("selection") or {}
+        trial_events = representative.get("trial_events") or []
+        transition_counts = representative.get("transition_counts")
+
         info = dict(payload)
+        info["metrics_by_mode"] = representative.get("metrics_by_mode") or {}
+        info["posterior_log"] = state_log.get("posterior")
+        info["prior_log"] = state_log.get("prior")
+        info["beta_log"] = state_log.get("beta")
+        info["trial_events"] = trial_events
+        info["step_results"] = trial_events
+        info["strategy_counts_log"] = transition_counts
+        info["mean_error"] = summary.get("mean_error")
+        info["best_error"] = summary.get("best_error")
+        info["std_error"] = summary.get("std_error")
+        info["sample_errors"] = summary.get("sample_errors")
+        info["simulation_repeats"] = summary.get("simulation_repeats")
+        info["prediction_mode"] = selection.get("prediction_mode")
+        info["selection_prediction_mode"] = selection.get("selection_prediction_mode")
+        info["available_prediction_modes"] = selection.get("available_prediction_modes")
+        info["representative_run_index"] = selection.get("representative_run_index")
+        info["selection_meta"] = selection.get("selection_meta") or {}
+        info["loss_metric"] = selection.get("loss_metric")
+        info["loss_delta"] = selection.get("loss_delta")
+        info["hyper_base_seed"] = selection.get("hyper_base_seed")
+        info["hyper_candidate_seed"] = selection.get("hyper_candidate_seed")
+        info["simulation_point_seed"] = selection.get("simulation_point_seed")
         info.update(dict(metrics))
         info["subject_id"] = sid
         info["condition"] = int(info.get("condition", -1))
         info["subject_json_path"] = str(path)
         info["eval_prediction_mode"] = mode
 
-        meta = payload.get("selection_meta") or {}
-        resolved_window = payload.get("window_size") or meta.get("window_size") or window_size
+        meta = info.get("selection_meta") or {}
+        resolved_window = summary.get("window_size") or meta.get("window_size") or window_size
         if resolved_window is not None:
             info["window_size"] = int(resolved_window)
 
         if "n_trials" not in info:
-            for key in ("true_acc", "pred_acc", "best_step_results", "posterior_log", "prior_log"):
+            for key in ("true_acc", "pred_acc", "trial_events", "posterior_log", "prior_log"):
                 value = info.get(key)
                 if isinstance(value, list) and value:
                     info["n_trials"] = len(value)
@@ -199,6 +230,18 @@ def run_basic_plots(
             ),
             [basic_dir / "accuracy_family_comparison.png"],
         )
+    if any(str(info.get("loss_metric", "")).lower() == "choice_brier" for info in visible_results.values()):
+        run_step(
+            records,
+            "choice_brier",
+            lambda: evaluator.plot_choice_brier(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "choice_brier.png",
+                window_size=window_size,
+            ),
+            [basic_dir / "choice_brier.png"],
+        )
     run_step(
         records,
         "posterior_probabilities",
@@ -212,6 +255,17 @@ def run_basic_plots(
     )
     run_step(
         records,
+        "prior_probabilities",
+        lambda: evaluator.plot_prior_probabilities(
+            results,
+            subjects=subjects,
+            save_path=basic_dir / "prior_probabilities.png",
+            limit=posterior_limit,
+        ),
+        [basic_dir / "prior_probabilities.png"],
+    )
+    run_step(
+        records,
         "beta_dynamics",
         lambda: evaluator.plot_beta_dynamics(
             results,
@@ -222,14 +276,14 @@ def run_basic_plots(
     )
     run_step(
         records,
-        "cluster_amount",
-        lambda: evaluator.plot_cluster_amount(
+        "strategy_amount",
+        lambda: evaluator.plot_strategy_amount(
             results,
             subjects=subjects,
-            save_path=basic_dir / "cluster_amount.png",
+            save_path=basic_dir / "strategy_amount.png",
             window_size=window_size or 16,
         ),
-        [basic_dir / "cluster_amount.png"],
+        [basic_dir / "strategy_amount.png"],
     )
     run_step(
         records,

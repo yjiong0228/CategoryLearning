@@ -548,13 +548,10 @@ class SimulationResult:
     mean_error: float
     metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]]
     selection_prediction_mode: str
-    posterior_log: Optional[Sequence[np.ndarray]] = None
-    prior_log: Optional[Sequence[np.ndarray]] = None
-    beta_log: Optional[Sequence[np.ndarray]] = None
-    step_results: Optional[Sequence[Dict[str, Any]]] = None
-    strategy_counts_log: Optional[Sequence[Dict[str, Any]]] = None
+    state_log: Optional[Dict[str, Sequence[np.ndarray]]] = None
+    trial_events: Optional[Sequence[Dict[str, Any]]] = None
+    transition_counts: Optional[Sequence[Dict[str, Any]]] = None
     raw_runs: Optional[Sequence[Dict[str, Any]]] = None
-    raw_step_results: Optional[Sequence[Sequence[Dict[str, Any]]]] = None
     sample_errors: Optional[Sequence[float]] = None
     best_error: Optional[float] = None
     representative_run_index: Optional[int] = None
@@ -591,11 +588,9 @@ class SingleRunResult:
     selection_prediction_mode: str
     loss_metric: str
     loss_delta: Optional[float]
-    posterior_log: Optional[Sequence[np.ndarray]]
-    prior_log: Optional[Sequence[np.ndarray]]
-    beta_log: Optional[Sequence[np.ndarray]]
-    step_log: Optional[Sequence[Dict[str, Any]]]
-    strategy_counts_log: Optional[Sequence[Dict[str, Any]]]
+    state_log: Optional[Dict[str, Sequence[np.ndarray]]]
+    trial_events: Optional[Sequence[Dict[str, Any]]]
+    transition_counts: Optional[Sequence[Dict[str, Any]]]
     simulation_point_seed: Optional[int] = None
     trajectory_seed: Optional[int] = None
     module_seed: Optional[int] = None
@@ -805,23 +800,6 @@ def _get_prediction_modes(prediction_mode: str) -> List[str]:
     return [prediction_mode]
 
 
-def _extract_distribution_from_step(
-    step_item: Dict[str, Any],
-    key: str,
-    set_size: int,
-    trial_idx: int,
-) -> np.ndarray:
-    if key not in step_item:
-        raise ValueError(f"Missing {key} in step log at trial index {trial_idx}")
-    dist = np.asarray(step_item[key], dtype=float)
-    if dist.ndim != 1 or dist.shape[0] != set_size:
-        raise ValueError(
-            f"Invalid {key} shape at trial index {trial_idx}: "
-            f"expected ({set_size},), got {dist.shape}"
-        )
-    return dist
-
-
 def _family_correct(categories: np.ndarray, choices: np.ndarray, n_cats: int) -> np.ndarray:
     if n_cats >= 4:
         category_family = np.where(np.isin(categories, [1, 2]), 0, 1)
@@ -879,6 +857,7 @@ def _compute_single_mode_metrics(
     mode: str,
     model,
     post_arr: np.ndarray,
+    prior_arr: np.ndarray,
     step_log: Sequence[Dict[str, Any]],
     stimulus: np.ndarray,
     choices: np.ndarray,
@@ -966,12 +945,7 @@ def _compute_single_mode_metrics(
         if mode == PREDICTION_MODE_POSTERIOR_T_MINUS_1:
             current_dist = post_arr[trial_idx - 1]
         elif mode == PREDICTION_MODE_PRIOR_T:
-            current_dist = _extract_distribution_from_step(
-                step_item=step_item,
-                key="prior",
-                set_size=len(hypotheses),
-                trial_idx=trial_idx,
-            )
+            current_dist = prior_arr[trial_idx]
         else:
             raise ValueError(f"Unexpected mode: {mode}")
 
@@ -1133,6 +1107,7 @@ def _compute_single_mode_metrics(
 def compute_prediction_metrics(
     model,
     post_log: Sequence[np.ndarray],
+    prior_log: Sequence[np.ndarray],
     step_log: Sequence[Dict[str, Any]],
     stimulus: np.ndarray,
     choices: np.ndarray,
@@ -1158,6 +1133,9 @@ def compute_prediction_metrics(
     post_arr = np.asarray(post_log, dtype=float)
     if post_arr.ndim == 1:
         post_arr = post_arr.reshape(1, -1)
+    prior_arr = np.asarray(prior_log, dtype=float)
+    if prior_arr.ndim == 1:
+        prior_arr = prior_arr.reshape(1, -1)
 
     n_trials = len(feedback)
     if window_size <= 0:
@@ -1178,6 +1156,16 @@ def compute_prediction_metrics(
             "Posterior width does not match hypothesis set size: "
             f"{post_arr.shape[1]} vs {len(hypotheses)}"
         )
+    if prior_arr.shape[0] != n_trials:
+        raise ValueError(
+            "Prior log length does not match number of trials: "
+            f"{prior_arr.shape[0]} vs {n_trials}"
+        )
+    if prior_arr.shape[1] != len(hypotheses):
+        raise ValueError(
+            "Prior width does not match hypothesis set size: "
+            f"{prior_arr.shape[1]} vs {len(hypotheses)}"
+        )
     if len(step_log) != n_trials:
         raise ValueError(
             "Step log length does not match number of trials: "
@@ -1190,6 +1178,7 @@ def compute_prediction_metrics(
             mode=mode,
             model=model,
             post_arr=post_arr,
+            prior_arr=prior_arr,
             step_log=step_log,
             stimulus=stimulus,
             choices=choices,
@@ -1333,7 +1322,7 @@ def evaluate_state_model_run(
     all_step_log = getattr(model, "step_log", None)
     if all_step_log is None:
         raise ValueError("StateModel.step_log is missing after fit_step_by_step")
-    step_log = all_step_log if include_step_log else None
+    trial_events = all_step_log if include_step_log else None
 
     strategy_log = None
     hypo_mod = getattr(model.engine, "modules", {}).get("hypo_transitions_mod") if hasattr(model, "engine") else None
@@ -1348,6 +1337,7 @@ def evaluate_state_model_run(
     metrics_by_mode = compute_prediction_metrics(
         model,
         posterior_log,
+        prior_log,
         all_step_log,
         stimulus,
         choices,
@@ -1367,11 +1357,16 @@ def evaluate_state_model_run(
         )
 
     if not keep_logs:
-        posterior_log = None
-        prior_log = None
-        beta_log = None
-        step_log = None
-        strategy_log = None
+        state_log = None
+        trial_events = None
+        transition_counts = None
+    else:
+        state_log = {
+            "posterior": posterior_log,
+            "prior": prior_log,
+            "beta": beta_log,
+        }
+        transition_counts = strategy_log
 
     selected_mean_error = float(metrics_by_mode[selection_prediction_mode]["mean_error"])
 
@@ -1382,11 +1377,9 @@ def evaluate_state_model_run(
         selection_prediction_mode=selection_prediction_mode,
         loss_metric=str(loss_metric).lower(),
         loss_delta=float(loss_delta) if loss_delta is not None else None,
-        posterior_log=posterior_log,
-        prior_log=prior_log,
-        beta_log=beta_log,
-        step_log=step_log,
-        strategy_counts_log=strategy_log,
+        state_log=state_log,
+        trial_events=trial_events,
+        transition_counts=transition_counts,
         simulation_point_seed=int(simulation_point_seed) if simulation_point_seed is not None else None,
         trajectory_seed=int(effective_trajectory_seed) if effective_trajectory_seed is not None else None,
         module_seed=module_seed,

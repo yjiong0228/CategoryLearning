@@ -33,6 +33,14 @@ from src.Bayesian_state.utils.optimization_config import (
     resolve_prediction_modes,
     resolve_window_size,
 )
+from src.Bayesian_state.utils.hyper_results import (
+    build_root_best_payload,
+    root_base_sim_config_path,
+    root_hyper_base_seed,
+    subject_best_hyperparams,
+    subject_best_stage,
+    subject_hyper_candidate_seed,
+)
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -189,14 +197,22 @@ def _filter_hyper_best_payload(
     per_subject_best = payload.get("per_subject_best")
     if not isinstance(per_subject_best, Mapping) or not per_subject_best:
         raise ValueError("Hyper best payload is missing non-empty per_subject_best.")
+    per_subject_outputs = payload.get("per_subject_outputs")
+    if not isinstance(per_subject_outputs, Mapping):
+        per_subject_outputs = {}
     if subjects is None:
         payload["per_subject_best"] = dict(
             sorted(((str(k), v) for k, v in per_subject_best.items()), key=lambda item: int(item[0]))
         )
+        if per_subject_outputs:
+            payload["per_subject_outputs"] = dict(
+                sorted(((str(k), v) for k, v in per_subject_outputs.items()), key=lambda item: int(item[0]))
+            )
         payload["subjects"] = sorted(int(sid) for sid in payload["per_subject_best"].keys())
         return payload
 
     filtered: dict[str, Any] = {}
+    filtered_outputs: dict[str, Any] = {}
     missing: list[int] = []
     for sid in _sorted_unique_subjects(subjects):
         subject_payload = _subject_payload_for_sid(per_subject_best, sid)
@@ -204,9 +220,14 @@ def _filter_hyper_best_payload(
             missing.append(sid)
             continue
         filtered[str(sid)] = deepcopy(dict(subject_payload))
+        subject_outputs = _subject_payload_for_sid(per_subject_outputs, sid)
+        if subject_outputs is not None:
+            filtered_outputs[str(sid)] = deepcopy(dict(subject_outputs))
     if missing:
         raise FileNotFoundError(f"Hyper best payload is missing subjects: {missing}")
     payload["per_subject_best"] = filtered
+    if per_subject_outputs:
+        payload["per_subject_outputs"] = filtered_outputs
     payload["subjects"] = _sorted_unique_subjects(subjects)
     return payload
 
@@ -243,7 +264,7 @@ def build_subjectwise_simulation_config(
     if not isinstance(per_subject_best, Mapping) or not per_subject_best:
         raise ValueError("Hyper best payload is missing non-empty per_subject_best.")
 
-    base_sim_path_raw = hyper_best_payload.get("base_sim_config_path")
+    base_sim_path_raw = root_base_sim_config_path(hyper_best_payload)
     if not base_sim_path_raw:
         raise ValueError("Hyper best payload is missing base_sim_config_path.")
     base_sim_path = resolve_project_path(Path(str(base_sim_path_raw)))
@@ -262,14 +283,15 @@ def build_subjectwise_simulation_config(
     generated_cfg.pop("subject_range", None)
     generated_cfg["output_dir"] = relative_path_for_yaml(sim_output_dir, generated_dir)
     generated_cfg["keep_logs"] = bool(keep_logs)
-    if "hyper_base_seed" in hyper_best_payload:
-        generated_cfg["hyper_base_seed"] = hyper_best_payload["hyper_base_seed"]
+    hyper_base_seed = root_hyper_base_seed(hyper_best_payload)
+    if hyper_base_seed is not None:
+        generated_cfg["hyper_base_seed"] = int(hyper_base_seed)
 
     subject_overrides: dict[int, Any] = {}
     for sid_text, subject_payload in sorted(per_subject_best.items(), key=lambda item: int(item[0])):
         if not isinstance(subject_payload, Mapping):
             raise ValueError(f"per_subject_best[{sid_text}] must be a mapping")
-        best_hyperparams = subject_payload.get("best_hyperparams")
+        best_hyperparams = subject_best_hyperparams(subject_payload)
         if not isinstance(best_hyperparams, Mapping):
             raise ValueError(f"per_subject_best[{sid_text}] is missing best_hyperparams")
         sid = int(sid_text)
@@ -281,8 +303,9 @@ def build_subjectwise_simulation_config(
             generated_dir=generated_dir,
         )
         override = _deep_update(base_override, _split_hyperparams_for_simulation_override(best_hyperparams))
-        if "hyper_candidate_seed" in subject_payload:
-            override["hyper_candidate_seed"] = int(subject_payload["hyper_candidate_seed"])
+        hyper_candidate_seed = subject_hyper_candidate_seed(subject_payload)
+        if hyper_candidate_seed is not None:
+            override["hyper_candidate_seed"] = int(hyper_candidate_seed)
         subject_overrides[sid] = override
 
     generated_cfg["subject_overrides"] = subject_overrides
@@ -343,17 +366,18 @@ def aggregate_per_subject_best(
             outputs["coordinate_trace"] = str(coordinate_trace)
         per_subject_outputs[str(sid)] = outputs
 
-    payload = {
-        "selection_metric": optimizer.selection_metric,
-        "save_level": optimizer.save_level,
-        "base_sim_config_path": str(optimizer.base_sim_config_path),
-        f"{backend}_config_path": str(config_path),
-        "hyper_output_dir": str(output_dir),
-        "hyper_backend": backend,
-        "hyper_base_seed": optimizer.hyper_base_seed,
-        "subjects": _sorted_unique_subjects(subjects),
-        "per_subject_best": dict(sorted(per_subject_best.items(), key=lambda item: int(item[0]))),
-    }
+    payload = build_root_best_payload(
+        backend=backend,
+        config_path=config_path,
+        output_dir=output_dir,
+        base_sim_config_path=optimizer.base_sim_config_path,
+        hyper_base_seed=optimizer.hyper_base_seed,
+        selection_metric=optimizer.selection_metric,
+        save_level=optimizer.save_level,
+        subjects=subjects,
+        per_subject_best=per_subject_best,
+        per_subject_outputs=per_subject_outputs,
+    )
     if require_all and missing:
         raise FileNotFoundError(f"Missing completed hyper results for subjects: {missing}")
     best_path = output_dir / "best_hyperparams.json"
@@ -443,12 +467,12 @@ def _subject_hyper_result_satisfies_stage(best_path: Path, requested_stage: str)
         payload = json.loads(best_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         return False, f"invalid JSON in {best_path}: {exc}"
-    best_stage = payload.get("best_stage")
+    best_stage = subject_best_stage(payload)
     if not _hyper_stage_satisfies_request(best_stage, requested_stage):
         return False, f"best_stage={best_stage!r} does not satisfy requested stage={requested_stage!r}"
-    if not isinstance(payload.get("best_hyperparams"), Mapping):
+    if not isinstance(subject_best_hyperparams(payload), Mapping):
         return False, "missing best_hyperparams"
-    if payload.get("hyper_candidate_seed") is None:
+    if subject_hyper_candidate_seed(payload) is None:
         return False, "missing hyper_candidate_seed"
     return True, "ok"
 
@@ -514,19 +538,32 @@ def _simulation_result_satisfies_signature(
         payload = json.loads(subject_json_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         return False, f"invalid JSON in {subject_json_path}: {exc}"
-    selection_meta = payload.get("selection_meta") or {}
+
+    summary = payload.get("simulation_summary")
+    if not isinstance(summary, Mapping):
+        summary = {}
+    selection = payload.get("selection")
+    if not isinstance(selection, Mapping):
+        selection = {}
+    selection_meta = selection.get("selection_meta")
+    if not isinstance(selection_meta, Mapping):
+        selection_meta = payload.get("selection_meta") or {}
+
     checks = {
         "subject_id": payload.get("subject_id"),
         "fixed_hyperparams": payload.get("fixed_hyperparams"),
         "seed_hyperparams": selection_meta.get("seed_hyperparams"),
-        "hyper_base_seed": payload.get("hyper_base_seed"),
-        "hyper_candidate_seed": payload.get("hyper_candidate_seed"),
-        "simulation_repeats": payload.get("simulation_repeats"),
-        "window_size": payload.get("window_size"),
-        "prediction_mode": payload.get("prediction_mode"),
-        "selection_prediction_mode": payload.get("selection_prediction_mode"),
-        "loss_metric": payload.get("loss_metric"),
-        "loss_delta": payload.get("loss_delta"),
+        "hyper_base_seed": selection.get("hyper_base_seed", payload.get("hyper_base_seed")),
+        "hyper_candidate_seed": selection.get("hyper_candidate_seed", payload.get("hyper_candidate_seed")),
+        "simulation_repeats": summary.get("simulation_repeats", payload.get("simulation_repeats")),
+        "window_size": summary.get("window_size", payload.get("window_size")),
+        "prediction_mode": selection.get("prediction_mode", payload.get("prediction_mode")),
+        "selection_prediction_mode": selection.get(
+            "selection_prediction_mode",
+            payload.get("selection_prediction_mode"),
+        ),
+        "loss_metric": selection.get("loss_metric", payload.get("loss_metric")),
+        "loss_delta": selection.get("loss_delta", payload.get("loss_delta")),
     }
     for key, observed in checks.items():
         if not _values_equal(observed, expected.get(key)):

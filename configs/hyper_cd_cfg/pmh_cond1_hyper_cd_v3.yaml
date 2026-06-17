@@ -1,0 +1,56 @@
+# Single-stage coordinate-descent hyperparameter optimization for cond1.
+# v3 keeps the stricter choice-level fitting objective from the base simulation
+# config, while using the revised transition candidates and a wider memory/beta
+# space to allow abrupt behavioral trajectories.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v3
+selection_metric: best10_mean_simulation_error
+save_level: compact
+hyper_base_seed: 42
+
+cd:
+  n_restarts: 8
+  max_outer_iters: 16
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 128
+
+hyperparam_space:
+  # Keep the v2 memory grid so v2/v3 differ mainly in transition candidates and
+  # beta search range rather than in the memory grid itself.
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+      w0: [0.005, 0.01, 0.03, 0.06, 0.1, 0.15, 0.2, 0.5, 0.8]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_candidates.json
+      key: cond1
+      value_key: hypo_transitions_kwargs
+
+  # Higher beta_init / prior_beta_scale / correct_additive options allow a newly
+  # recovered hypothesis to become behaviorally sharp enough to create jumps.
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0, 5.0, 8.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.30, 0.50, 0.70]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 5.0, 10.0, 20.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.5, 1.0, 2.0]
+
+# One-stage search. Repeats are raised from 80 to 128 so the lower-tail
+# objective is based on about 13 runs rather than 8.
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 128
+      keep_logs: false

@@ -1,0 +1,110 @@
+# Coordinate-descent hyperparameter optimization for Exp5 Rule1.
+# This follows the current Bayesian_state flow: all tunable values, including
+# gamma/w0 and simulation.window_size, live in one hyperparam_space.
+base_sim_config_path: ../simulation_cfg/pmh_rule1_simulation.yaml
+
+subjects: [501, 503]
+
+output_dir: ../../results/state-based-hyper-cd-exp5/pmh/rule1
+selection_metric: best10_mean_simulation_error
+save_level: compact
+hyper_base_seed: 42
+
+secondary_selection:
+  enabled: true
+  primary_tolerance_abs: 0.02
+  primary_tolerance_rel: 0.08
+  run_choice_fraction: 0.10
+  accuracy_weight: 1.0
+  volatility_weight: 0.03
+  slope_weight: 0.02
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+cd:
+  n_restarts: 8
+  max_outer_iters: 12
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.0005
+  parallel_budget: 128
+
+hyperparam_space:
+  simulation.window_size:
+    values: [2, 4, 8, 16]
+
+  engine.modules.memory_mod.kwargs.gamma:
+    values: [0.1, 0.2, 0.4, 0.6, 0.7, 0.8, 0.95]
+  engine.modules.memory_mod.kwargs.w0:
+    values: [0.01, 0.02, 0.05, 0.1, 0.15, 0.3, 0.5]
+
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      - [
+          {label: retain_top8, amount: fixed, method: top_posterior, pool: active, value: 8},
+          {label: explore_random8, amount: fixed, method: random, pool: inactive, value: 8}
+        ]
+      - [
+          {label: retain_top12, amount: fixed, method: top_posterior, pool: active, value: 12},
+          {label: explore_random4, amount: fixed, method: random, pool: inactive, value: 4}
+        ]
+      - [
+          {label: retain_top4, amount: fixed, method: top_posterior, pool: active, value: 4},
+          {label: explore_random12, amount: fixed, method: random, pool: inactive, value: 12}
+        ]
+      - [
+          {label: retain_entropy, amount: entropy_norm_8, method: epsilon_posterior, pool: active, min_count: 2, epsilon: 0.35},
+          {label: explore_entropy, amount: opp_entropy_norm_8, method: random, pool: inactive}
+        ]
+      - [
+          {label: retain_temp, amount: entropy_norm_8, method: temperature_posterior, pool: active, min_count: 2, temperature: 2.0},
+          {label: explore_entropy, amount: opp_entropy_norm_4, method: random, pool: inactive},
+          {label: forced_explore, amount: fixed, value: 2, method: random, pool: inactive}
+        ]
+      - [
+          {label: retain_confidence, amount: confidence_8, method: epsilon_posterior, pool: active, min_count: 2, threshold_min: 0.2, scale: 8, epsilon: 0.30},
+          {label: explore_uncertain, amount: opp_confidence_8, method: random, pool: inactive}
+        ]
+      - [
+          {label: history_retain, amount: recent_accuracy_inverse_8, method: epsilon_posterior, pool: active, window: 8, padding: chance, feedback_mode: exact, min_count: 2, gamma: 1.2, epsilon: 0.35},
+          {label: explore_entropy, amount: opp_entropy_norm_4, method: random, pool: inactive}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [12, 16, 32, 62]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [4, 8, 12]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.5, 1.0, 2.0, 4.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.3, 0.5]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.3, 1.0, 2.0]
+  engine.modules.beta_mod.kwargs.use_prior_scaling:
+    values: [true, false]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 4.0, 8.0, 16.0]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 16
+      keep_logs: false
+
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 64
+      keep_logs: false
+
+refine_policy:
+  top_k: 12
+  expand:
+    simulation.window_size: [4, 8, 16]
+    engine.modules.memory_mod.kwargs.gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+    engine.modules.memory_mod.kwargs.w0: [0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.3, 0.5]

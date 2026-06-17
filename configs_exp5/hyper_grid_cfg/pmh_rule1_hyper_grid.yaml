@@ -1,0 +1,77 @@
+# Joint hyper-grid optimization for Exp5 Rule1.
+# gamma/w0, strategy, active-set size, beta, and window size are selected in one
+# current Bayesian_state hyperparameter space.
+base_sim_config_path: ../simulation_cfg/pmh_rule1_simulation.yaml
+
+subjects: [501, 503]
+
+output_dir: ../../results/state-based-hyper-grid-exp5/pmh/rule1
+selection_metric: mean_simulation_error
+save_level: compact
+hyper_base_seed: 42
+
+hyperparam_space:
+  simulation.window_size:
+    values: [4, 8]
+
+  engine.modules.memory_mod.kwargs.gamma:
+    values: [0.4, 0.7, 0.95]
+  engine.modules.memory_mod.kwargs.w0:
+    values: [0.03, 0.1, 0.3]
+
+  engine.modules.hypo_transitions_mod.kwargs.strategies:
+    values:
+      - [
+          {label: retain_top8, amount: fixed, method: top_posterior, pool: active, value: 8},
+          {label: explore_random8, amount: fixed, method: random, pool: inactive, value: 8}
+        ]
+      - [
+          {label: retain_top12, amount: fixed, method: top_posterior, pool: active, value: 12},
+          {label: explore_random4, amount: fixed, method: random, pool: inactive, value: 4}
+        ]
+      - [
+          {label: retain_top4, amount: fixed, method: top_posterior, pool: active, value: 4},
+          {label: explore_random12, amount: fixed, method: random, pool: inactive, value: 12}
+        ]
+      - [
+          {label: retain_entropy, amount: entropy_norm_8, method: epsilon_posterior, pool: active, min_count: 2, epsilon: 0.35},
+          {label: explore_entropy, amount: opp_entropy_norm_8, method: random, pool: inactive}
+        ]
+      - [
+          {label: retain_confidence, amount: confidence_8, method: epsilon_posterior, pool: active, min_count: 2, threshold_min: 0.2, scale: 8, epsilon: 0.30},
+          {label: explore_uncertain, amount: opp_confidence_8, method: random, pool: inactive}
+        ]
+
+  engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses:
+    values: [16, 32]
+  engine.modules.hypo_transitions_mod.kwargs.init_num:
+    values: [8, 12]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [1.0, 3.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.15, 0.3]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [4.0, 12.0]
+
+stages:
+  coarse:
+    n_jobs_combinations: 128
+    simulation_overrides:
+      simulation_repeats: 8
+      keep_logs: false
+      n_jobs: 1
+
+  fine:
+    n_jobs_combinations: 1
+    simulation_overrides:
+      simulation_repeats: 32
+      keep_logs: false
+      n_jobs: 128
+
+refine_policy:
+  top_k: 12
+  expand:
+    simulation.window_size: [4, 8, 16]
+    engine.modules.memory_mod.kwargs.gamma: [0.2, 0.4, 0.6, 0.7, 0.8, 0.95]
+    engine.modules.memory_mod.kwargs.w0: [0.02, 0.05, 0.1, 0.15, 0.3, 0.5]

@@ -287,28 +287,15 @@ class BaseEngine:
             # DEBUG
             #print(mod_name, "done", s=2)
 
-        log_info['prior'] = self.prior.copy() if self.prior is not None else None
+        prior_snapshot = self.prior.copy() if self.prior is not None else None
         if self.observation is not None:
             log_info["perceived_stimulus"] = np.asarray(self.observation[0], dtype=float).copy()
 
-        # Add hypo_details: {k: {'post_max': p}} for active hypotheses
-        if self.posterior is not None:
-            hypo_details = {}
-            # Threshold to filter out zero probabilities
-            indices = np.where(self.posterior > 1e-9)[0]
-            for k in indices:
-                hypo_details[int(k)] = {'post_max': float(self.posterior[k])}
-            log_info['hypo_details'] = hypo_details
+        mask = getattr(self, "hypotheses_mask", None)
+        if mask is not None:
+            log_info["active_indices"] = np.flatnonzero(np.asarray(mask, dtype=float) > 0).astype(int)
 
-        # Add best_step_amount from hypo_transitions_mod if available
-        # This is required for plot_cluster_amount in ModelEval
-        if 'hypo_transitions_mod' in self.modules:
-            mod = self.modules['hypo_transitions_mod']
-            if hasattr(mod, 'strategy_counts_log') and mod.strategy_counts_log:
-                # The module appends to the log during process(), so we take the last one
-                log_info['best_step_amount'] = mod.strategy_counts_log[-1]
-
-        return self.posterior, log_info
+        return self.posterior, prior_snapshot, log_info
 
     def process(self, **kwargs):
         """
