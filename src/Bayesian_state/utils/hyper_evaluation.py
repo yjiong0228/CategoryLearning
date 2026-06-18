@@ -87,6 +87,28 @@ ACCURACY_SHAPE_COLUMNS = (
     "accuracy_shape_eligible_score_mean",
 )
 
+HISTORY_KERNEL_COLUMNS = (
+    "history_kernel_score",
+    "history_kernel_choice_error",
+    "history_kernel_repeat_index",
+    "history_kernel_mse",
+    "history_kernel_corr",
+    "history_kernel_corr_loss",
+    "history_kernel_norm_ratio",
+    "history_kernel_human_norm",
+    "history_kernel_model_norm",
+    "history_kernel_max_lag",
+    "history_kernel_n_rows",
+    "history_kernel_human",
+    "history_kernel_model",
+    "history_kernel_run_choice_cutoff",
+    "history_kernel_eligible_run_count",
+    "history_kernel_all_run_count",
+    "history_kernel_score_mean",
+    "history_kernel_score_q10",
+    "history_kernel_eligible_score_mean",
+)
+
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -691,6 +713,14 @@ def load_all_combinations_table(
             key: _safe_float(metrics.get(key))
             for key in ACCURACY_SHAPE_COLUMNS
         }
+        history_metrics = {
+            key: (
+                metrics.get(key)
+                if key in {"history_kernel_human", "history_kernel_model"}
+                else _safe_float(metrics.get(key))
+            )
+            for key in HISTORY_KERNEL_COLUMNS
+        }
         rows.append(
             {
                 "subject_id": subject_id,
@@ -711,6 +741,7 @@ def load_all_combinations_table(
                 "hyper_simulation_repeats": metrics.get("simulation_repeats"),
                 **flat,
                 **shape_metrics,
+                **history_metrics,
             }
         )
     if not rows:
@@ -846,6 +877,11 @@ def summarize_near_optimal_plateau(
             shape_values = pd.to_numeric(near_group["accuracy_shape_score"], errors="coerce")
             if np.isfinite(shape_values).any():
                 best_shape_row = near_group.loc[shape_values.idxmin()]
+        best_history_row = None
+        if "history_kernel_score" in near_group and not near_group.empty:
+            history_values = pd.to_numeric(near_group["history_kernel_score"], errors="coerce")
+            if np.isfinite(history_values).any():
+                best_history_row = near_group.loc[history_values.idxmin()]
         best_primary_row = all_group.loc[all_values.idxmin()] if np.isfinite(all_values).any() else None
 
         row: dict[str, Any] = {
@@ -899,6 +935,15 @@ def summarize_near_optimal_plateau(
             row["best_shape_w0"] = best_shape_row.get("w0")
             row["best_shape_strategy_id"] = best_shape_row.get("strategy_id")
             row["best_shape_primary_error"] = best_shape_row.get(primary_metric)
+        if best_history_row is not None:
+            row["best_history_combination_index"] = int(best_history_row.get("combination_index", -1))
+            row["best_history_score"] = float(best_history_row.get("history_kernel_score"))
+            row["best_history_kernel_mse"] = best_history_row.get("history_kernel_mse")
+            row["best_history_kernel_corr"] = best_history_row.get("history_kernel_corr")
+            row["best_history_gamma"] = best_history_row.get("gamma")
+            row["best_history_w0"] = best_history_row.get("w0")
+            row["best_history_strategy_id"] = best_history_row.get("strategy_id")
+            row["best_history_primary_error"] = best_history_row.get(primary_metric)
         rows.append(row)
 
     return pd.DataFrame(rows).sort_values("subject_id").reset_index(drop=True)
@@ -1141,6 +1186,14 @@ def _write_plateau_report(
                     f"primary={row['best_shape_primary_error']:.4f}, "
                     f"gamma={row['best_shape_gamma']}, w0={row['best_shape_w0']}, "
                     f"strategy={row['best_shape_strategy_id']}."
+                )
+            if pd.notna(row.get("best_history_score", np.nan)):
+                lines.append(
+                    f"  Best history kernel within plateau: c{int(row['best_history_combination_index'])}, "
+                    f"history={row['best_history_score']:.4f}, "
+                    f"primary={row['best_history_primary_error']:.4f}, "
+                    f"gamma={row['best_history_gamma']}, w0={row['best_history_w0']}, "
+                    f"strategy={row['best_history_strategy_id']}."
                 )
             if bool(row.get("selected_in_plateau", False)):
                 lines.append(

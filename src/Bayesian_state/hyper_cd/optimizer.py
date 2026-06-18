@@ -57,6 +57,7 @@ SELECTION_METRICS = {
 
 SHAPE_DEFAULTS = {
     "enabled": False,
+    "mode": "accuracy_shape",
     "primary_tolerance_abs": 0.02,
     "primary_tolerance_rel": 0.08,
     "run_choice_fraction": 0.10,
@@ -65,6 +66,13 @@ SHAPE_DEFAULTS = {
     "slope_weight": 0.02,
     "target_volatility_ratio": 1.0,
     "min_volatility_ratio": 1e-6,
+    "history_max_lag": 8,
+    "history_ridge": 1e-3,
+    "history_standardize": True,
+    "history_kernel_weight": 1.0,
+    "history_corr_weight": 0.05,
+    "history_norm_weight": 0.0,
+    "history_min_norm": 1e-6,
 }
 
 
@@ -174,6 +182,123 @@ def _accuracy_curve_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
     }
 
 
+def _standardized_lag_kernel(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    ridge: float,
+    standardize: bool,
+) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.ndim != 2 or y.ndim != 1 or x.shape[0] != y.shape[0] or x.shape[0] <= x.shape[1]:
+        return np.full(x.shape[1] if x.ndim == 2 else 0, np.nan, dtype=float)
+    x = x - np.nanmean(x, axis=0, keepdims=True)
+    y = y - float(np.nanmean(y))
+    if standardize:
+        x_scale = np.nanstd(x, axis=0, keepdims=True)
+        x_scale = np.where(x_scale > 1e-12, x_scale, 1.0)
+        x = x / x_scale
+        y_scale = float(np.nanstd(y))
+        if y_scale > 1e-12:
+            y = y / y_scale
+    xtx = x.T @ x
+    penalty = max(0.0, float(ridge)) * np.eye(xtx.shape[0], dtype=float)
+    try:
+        return np.linalg.solve(xtx + penalty, x.T @ y)
+    except np.linalg.LinAlgError:
+        return np.linalg.pinv(xtx + penalty) @ (x.T @ y)
+
+
+def _history_kernel_metrics(
+    metrics: Mapping[str, Any],
+    *,
+    max_lag: int,
+    ridge: float,
+    standardize: bool,
+) -> Dict[str, Any]:
+    empty = {
+        "kernel_mse": float("nan"),
+        "kernel_corr": float("nan"),
+        "kernel_corr_loss": float("nan"),
+        "kernel_norm_ratio": float("nan"),
+        "human_kernel_norm": float("nan"),
+        "model_kernel_norm": float("nan"),
+        "human_kernel": [],
+        "model_kernel": [],
+        "max_lag": int(max_lag),
+        "n_rows": 0,
+    }
+    max_lag = int(max(1, max_lag))
+    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
+    pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float)
+    valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
+    if true_acc.ndim != 1 or pred_acc.ndim != 1 or true_acc.shape != pred_acc.shape:
+        return empty
+    if valid.shape != true_acc.shape or true_acc.size <= max_lag:
+        return empty
+
+    rows: List[List[float]] = []
+    human_y: List[float] = []
+    model_y: List[float] = []
+    for trial_idx in range(max_lag, true_acc.size):
+        if not bool(valid[trial_idx]):
+            continue
+        y_h = float(true_acc[trial_idx])
+        y_m = float(pred_acc[trial_idx])
+        if not (np.isfinite(y_h) and np.isfinite(y_m)):
+            continue
+        lag_values = [float(true_acc[trial_idx - lag]) for lag in range(1, max_lag + 1)]
+        if not all(np.isfinite(value) for value in lag_values):
+            continue
+        rows.append(lag_values)
+        human_y.append(y_h)
+        model_y.append(y_m)
+    if len(rows) <= max_lag:
+        return empty
+
+    x = np.asarray(rows, dtype=float)
+    human = _standardized_lag_kernel(
+        x,
+        np.asarray(human_y, dtype=float),
+        ridge=float(ridge),
+        standardize=bool(standardize),
+    )
+    model = _standardized_lag_kernel(
+        x,
+        np.asarray(model_y, dtype=float),
+        ridge=float(ridge),
+        standardize=bool(standardize),
+    )
+    if human.shape != model.shape or human.size == 0:
+        return empty
+    finite = np.isfinite(human) & np.isfinite(model)
+    if not finite.any():
+        return empty
+    human_f = human[finite]
+    model_f = model[finite]
+    diff = model_f - human_f
+    human_norm = float(np.linalg.norm(human_f))
+    model_norm = float(np.linalg.norm(model_f))
+    if human_f.size > 1 and np.nanstd(human_f) > 1e-12 and np.nanstd(model_f) > 1e-12:
+        kernel_corr = float(np.corrcoef(human_f, model_f)[0, 1])
+    else:
+        kernel_corr = float("nan")
+    corr_loss = 0.5 * (1.0 - kernel_corr) if np.isfinite(kernel_corr) else 1.0
+    return {
+        "kernel_mse": float(np.mean(diff * diff)),
+        "kernel_corr": kernel_corr,
+        "kernel_corr_loss": float(corr_loss),
+        "kernel_norm_ratio": float(model_norm / human_norm) if human_norm > 0 else float("nan"),
+        "human_kernel_norm": human_norm,
+        "model_kernel_norm": model_norm,
+        "human_kernel": [float(value) if np.isfinite(value) else None for value in human],
+        "model_kernel": [float(value) if np.isfinite(value) else None for value in model],
+        "max_lag": int(max_lag),
+        "n_rows": int(len(rows)),
+    }
+
+
 def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
     run = evaluate_state_model_run(
         task["subject_id"],
@@ -269,6 +394,18 @@ class HyperCDOptimizer:
             raise ValueError("secondary_selection must be a mapping when provided")
         cfg.update(dict(raw))
         cfg["enabled"] = bool(cfg.get("enabled", False))
+        cfg["mode"] = str(cfg.get("mode", "accuracy_shape")).strip().lower()
+        mode_aliases = {
+            "shape": "accuracy_shape",
+            "accuracy": "accuracy_shape",
+            "accuracy_curve": "accuracy_shape",
+            "history": "history_kernel",
+            "kernel": "history_kernel",
+            "history_feedback": "history_kernel",
+        }
+        cfg["mode"] = mode_aliases.get(cfg["mode"], cfg["mode"])
+        if cfg["mode"] not in {"accuracy_shape", "history_kernel"}:
+            raise ValueError("secondary_selection.mode must be 'accuracy_shape' or 'history_kernel'")
         for key in (
             "primary_tolerance_abs",
             "primary_tolerance_rel",
@@ -278,14 +415,25 @@ class HyperCDOptimizer:
             "slope_weight",
             "target_volatility_ratio",
             "min_volatility_ratio",
+            "history_ridge",
+            "history_kernel_weight",
+            "history_corr_weight",
+            "history_norm_weight",
+            "history_min_norm",
         ):
             cfg[key] = float(cfg[key])
+        cfg["history_max_lag"] = int(cfg["history_max_lag"])
+        cfg["history_standardize"] = bool(cfg.get("history_standardize", True))
         if cfg["run_choice_fraction"] <= 0 or cfg["run_choice_fraction"] > 1:
             raise ValueError("secondary_selection.run_choice_fraction must be in (0, 1]")
         if cfg["target_volatility_ratio"] <= 0:
             raise ValueError("secondary_selection.target_volatility_ratio must be > 0")
         if cfg["min_volatility_ratio"] <= 0:
             raise ValueError("secondary_selection.min_volatility_ratio must be > 0")
+        if cfg["history_max_lag"] <= 0:
+            raise ValueError("secondary_selection.history_max_lag must be positive")
+        if cfg["history_min_norm"] <= 0:
+            raise ValueError("secondary_selection.history_min_norm must be positive")
         return cfg
 
     @staticmethod
@@ -610,6 +758,21 @@ class HyperCDOptimizer:
             + cfg["slope_weight"] * (1.0 - slope)
         )
 
+    def _history_kernel_score(self, kernel: Mapping[str, Any]) -> float:
+        cfg = self.secondary_selection
+        kernel_mse = _safe_float(kernel.get("kernel_mse"))
+        if not np.isfinite(kernel_mse):
+            return float("inf")
+        corr_loss = _safe_float(kernel.get("kernel_corr_loss"), 1.0)
+        norm_ratio = _safe_float(kernel.get("kernel_norm_ratio"), 1.0)
+        norm_ratio = max(float(norm_ratio), float(cfg["history_min_norm"]))
+        norm_penalty = abs(np.log(norm_ratio))
+        return float(
+            cfg["history_kernel_weight"] * kernel_mse
+            + cfg["history_corr_weight"] * corr_loss
+            + cfg["history_norm_weight"] * norm_penalty
+        )
+
     def _accuracy_shape_metrics_from_runs(
         self,
         runs: Sequence[Any],
@@ -677,6 +840,83 @@ class HyperCDOptimizer:
             "accuracy_shape_eligible_score_mean": float(np.nanmean(eligible_scores)),
         }
 
+    def _history_kernel_metrics_from_runs(
+        self,
+        runs: Sequence[Any],
+        *,
+        selection_prediction_mode: str,
+    ) -> Dict[str, Any]:
+        rows: List[Dict[str, Any]] = []
+        cfg = self.secondary_selection
+        for repeat_index, run in enumerate(runs):
+            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
+            metrics = metrics_by_mode.get(selection_prediction_mode)
+            if not isinstance(metrics, Mapping):
+                continue
+            kernel = _history_kernel_metrics(
+                metrics,
+                max_lag=int(cfg["history_max_lag"]),
+                ridge=float(cfg["history_ridge"]),
+                standardize=bool(cfg["history_standardize"]),
+            )
+            score = self._history_kernel_score(kernel)
+            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
+            rows.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "choice_error": choice_error,
+                    "history_kernel_score": score,
+                    **kernel,
+                }
+            )
+        if not rows:
+            return {}
+
+        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
+        finite_choice = finite_choice[np.isfinite(finite_choice)]
+        if finite_choice.size == 0:
+            return {}
+        ordered_choice = np.sort(finite_choice)
+        gate_count = max(1, int(np.ceil(len(rows) * float(cfg["run_choice_fraction"]))))
+        gate_count = min(gate_count, ordered_choice.size)
+        run_choice_cutoff = float(ordered_choice[gate_count - 1])
+        eligible = [
+            row for row in rows
+            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
+        ]
+        if not eligible:
+            eligible = rows
+        best = min(
+            eligible,
+            key=lambda row: (
+                _safe_float(row.get("history_kernel_score"), float("inf")),
+                _safe_float(row.get("choice_error"), float("inf")),
+            ),
+        )
+        all_scores = np.asarray([row["history_kernel_score"] for row in rows], dtype=float)
+        eligible_scores = np.asarray([row["history_kernel_score"] for row in eligible], dtype=float)
+        return {
+            "history_kernel_score": _safe_float(best.get("history_kernel_score"), float("inf")),
+            "history_kernel_choice_error": _safe_float(best.get("choice_error")),
+            "history_kernel_repeat_index": int(best.get("repeat_index", -1)),
+            "history_kernel_mse": _safe_float(best.get("kernel_mse")),
+            "history_kernel_corr": _safe_float(best.get("kernel_corr")),
+            "history_kernel_corr_loss": _safe_float(best.get("kernel_corr_loss")),
+            "history_kernel_norm_ratio": _safe_float(best.get("kernel_norm_ratio")),
+            "history_kernel_human_norm": _safe_float(best.get("human_kernel_norm")),
+            "history_kernel_model_norm": _safe_float(best.get("model_kernel_norm")),
+            "history_kernel_max_lag": int(best.get("max_lag", int(cfg["history_max_lag"]))),
+            "history_kernel_n_rows": int(best.get("n_rows", 0)),
+            "history_kernel_human": list(best.get("human_kernel") or []),
+            "history_kernel_model": list(best.get("model_kernel") or []),
+            "history_kernel_run_choice_cutoff": run_choice_cutoff,
+            "history_kernel_eligible_run_count": int(len(eligible)),
+            "history_kernel_all_run_count": int(len(rows)),
+            "history_kernel_score_mean": float(np.nanmean(all_scores)),
+            "history_kernel_score_q10": float(np.nanquantile(all_scores, 0.1)),
+            "history_kernel_eligible_score_mean": float(np.nanmean(eligible_scores)),
+        }
+
     def _select_final_combination(
         self,
         combinations: Sequence[CombinationResult],
@@ -700,14 +940,14 @@ class HyperCDOptimizer:
             result for result in combinations
             if float(result.aggregated_error) <= gate_threshold
         ]
-        eligible_with_shape = [
+        eligible_with_secondary = [
             result for result in eligible
-            if self._combination_shape_score(result) < float("inf")
+            if self._combination_secondary_score(result) < float("inf")
         ]
-        if not eligible_with_shape:
+        if not eligible_with_secondary:
             return primary_best, {
                 "enabled": True,
-                "selected_by": "primary_fallback_no_shape_metrics",
+                "selected_by": f"primary_fallback_no_{self.secondary_selection['mode']}_metrics",
                 "primary_best_combination_index": primary_best.combination_index,
                 "primary_best_error": best_primary_error,
                 "gate_threshold": gate_threshold,
@@ -715,24 +955,27 @@ class HyperCDOptimizer:
             }
 
         selected = min(
-            eligible_with_shape,
+            eligible_with_secondary,
             key=lambda result: (
-                self._combination_shape_score(result),
+                self._combination_secondary_score(result),
                 float(result.aggregated_error),
                 int(result.combination_index),
             ),
         )
         return selected, {
             "enabled": True,
-            "selected_by": "choice_gated_accuracy_shape",
+            "mode": self.secondary_selection["mode"],
+            "selected_by": f"choice_gated_{self.secondary_selection['mode']}",
             "primary_best_combination_index": primary_best.combination_index,
             "primary_best_error": best_primary_error,
             "gate_threshold": gate_threshold,
             "eligible_count": len(eligible),
-            "eligible_with_shape_count": len(eligible_with_shape),
+            "eligible_with_secondary_count": len(eligible_with_secondary),
             "selected_combination_index": selected.combination_index,
             "selected_primary_error": float(selected.aggregated_error),
+            "selected_secondary_score": self._combination_secondary_score(selected),
             "selected_accuracy_shape_score": self._combination_shape_score(selected),
+            "selected_history_kernel_score": self._combination_history_kernel_score(selected),
             "config": dict(self.secondary_selection),
         }
 
@@ -746,6 +989,22 @@ class HyperCDOptimizer:
         if not finite:
             return float("inf")
         return float(np.mean(finite))
+
+    @staticmethod
+    def _combination_history_kernel_score(result: CombinationResult) -> float:
+        values = []
+        for metrics in (result.subject_metrics or {}).values():
+            if isinstance(metrics, Mapping):
+                values.append(_safe_float(metrics.get("history_kernel_score"), float("inf")))
+        finite = [value for value in values if np.isfinite(value)]
+        if not finite:
+            return float("inf")
+        return float(np.mean(finite))
+
+    def _combination_secondary_score(self, result: CombinationResult) -> float:
+        if self.secondary_selection.get("mode") == "history_kernel":
+            return self._combination_history_kernel_score(result)
+        return self._combination_shape_score(result)
 
     def _evaluate_point(
         self,
@@ -842,6 +1101,10 @@ class HyperCDOptimizer:
                 runs,
                 selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
             )
+            history_metrics = self._history_kernel_metrics_from_runs(
+                runs,
+                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+            )
             value = _selection_error_value(self.selection_metric, mean_err, best_err, tail_metrics)
             errors.append(value)
             subject_metrics[int(sid)] = {
@@ -858,6 +1121,7 @@ class HyperCDOptimizer:
                 "simulation_point_seed": int(simulation_point_seed),
                 "simulation_repeats": simulation_repeats,
                 **shape_metrics,
+                **history_metrics,
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
@@ -1030,6 +1294,10 @@ class HyperCDOptimizer:
                 runs,
                 selection_prediction_mode=str(meta["selection_prediction_mode"]),
             )
+            history_metrics = self._history_kernel_metrics_from_runs(
+                runs,
+                selection_prediction_mode=str(meta["selection_prediction_mode"]),
+            )
             selection_error = _selection_error_value(
                 self.selection_metric,
                 mean_error,
@@ -1051,6 +1319,7 @@ class HyperCDOptimizer:
                     "simulation_point_seed": int(meta["simulation_point_seed"]),
                     "simulation_repeats": simulation_repeats,
                     **shape_metrics,
+                    **history_metrics,
                 }
             }
             out.append(
