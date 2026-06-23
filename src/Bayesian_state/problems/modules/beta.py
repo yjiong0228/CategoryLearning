@@ -75,7 +75,7 @@ class BetaModule(BaseModule):
                 "probabilistic_feedback_lapse must be in [0, 1), "
                 f"got {self.probabilistic_feedback_lapse!r}."
             )
-        
+
         # Prior-based initialization
         self.use_prior_scaling = bool(kwargs.get("use_prior_scaling", True))
         self.prior_beta_scale = float(kwargs.get("prior_beta_scale", 10.0))
@@ -109,7 +109,10 @@ class BetaModule(BaseModule):
         resolved = aliases.get(mode, mode)
         valid = {"inferred_correct_category", "probabilistic_feedback"}
         if resolved not in valid:
-            raise ValueError(f"Unsupported beta_update_mode '{mode}'. Expected one of: {sorted(valid)}.")
+            raise ValueError(
+                f"Unsupported beta_update_mode '{mode}'. "
+                f"Expected one of: {sorted(valid)}."
+            )
         return resolved
         
     def _get_stimulus_category(self, stimulus: np.ndarray, hypo: int) -> int:
@@ -223,7 +226,7 @@ class BetaModule(BaseModule):
 
         self._zero_inactive_beta(active_indices)
         self.engine.beta = self.beta
-    
+
     def update_beta(self, 
                     stimulus: np.ndarray,
                     choice: int,

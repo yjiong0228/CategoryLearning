@@ -34,6 +34,13 @@ class DynamicHypothesisModule(BaseModule):
     VALID_TOP_P_SCOPES = ("global", "pool")
     VALID_FEEDBACK_MODES = ("graded", "exact")
     VALID_PADDING_MODES = ("chance", "zero", "one")
+    VALID_PRIOR_RESET_TARGETS = (
+        "uniform_active",
+        "newcomer_boost",
+        "sampled_active",
+        "sampled_newcomer",
+    )
+    VALID_PRIOR_RESET_SOURCES = ("feedback", "latent_volatility")
     amount_evaluators = {}
 
     def __init__(self, engine, **kwargs):
@@ -67,6 +74,158 @@ class DynamicHypothesisModule(BaseModule):
             "beta": kwargs.get("beta", 5.0) # Default to 5.0 to match likelihood
         }
         self.init_num = int(kwargs.get("init_num", 5))
+        self.latent_volatility_base = self._validate_float_range(
+            kwargs.get("latent_volatility_base", 0.0),
+            "latent_volatility_base",
+            0.0,
+            1.0,
+        )
+        self.latent_volatility_error_gain = self._validate_float_range(
+            kwargs.get("latent_volatility_error_gain", 0.0),
+            "latent_volatility_error_gain",
+            0.0,
+            1.0,
+        )
+        self.latent_volatility_low_accuracy_gain = self._validate_float_range(
+            kwargs.get("latent_volatility_low_accuracy_gain", 0.0),
+            "latent_volatility_low_accuracy_gain",
+            0.0,
+            1.0,
+        )
+        self.latent_volatility_threshold = self._validate_float_range(
+            kwargs.get("latent_volatility_threshold", 0.70),
+            "latent_volatility_threshold",
+            1e-9,
+            1.0,
+        )
+        self.latent_volatility_window = self._validate_count(
+            kwargs.get("latent_volatility_window", 6),
+            context="latent_volatility_window",
+        )
+        if self.latent_volatility_window <= 0:
+            raise ValueError("latent_volatility_window must be positive.")
+        self.latent_volatility_decay = self._validate_float_range(
+            kwargs.get("latent_volatility_decay", 0.0),
+            "latent_volatility_decay",
+            0.0,
+            1.0,
+        )
+        self.latent_volatility_max = self._validate_float_range(
+            kwargs.get("latent_volatility_max", 1.0),
+            "latent_volatility_max",
+            0.0,
+            1.0,
+        )
+        if self.latent_volatility_max < self.latent_volatility_base:
+            raise ValueError(
+                "latent_volatility_max must be >= latent_volatility_base, "
+                f"got {self.latent_volatility_max!r} < {self.latent_volatility_base!r}."
+            )
+        self.latent_volatility_feedback_mode = str(
+            kwargs.get("latent_volatility_feedback_mode", "exact")
+        )
+        if self.latent_volatility_feedback_mode not in self.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                "latent_volatility_feedback_mode must be one of "
+                f"{self.VALID_FEEDBACK_MODES}, got {self.latent_volatility_feedback_mode!r}."
+            )
+        self.latent_volatility_enabled = (
+            self.latent_volatility_max > 0.0
+            and (
+                self.latent_volatility_base > 0.0
+                or self.latent_volatility_error_gain > 0.0
+                or self.latent_volatility_low_accuracy_gain > 0.0
+            )
+        )
+        self.latent_volatility_state = 0.0
+        self.latent_volatility_log: List[Dict[str, Any]] = []
+        self.prior_reset_base = self._validate_float_range(
+            kwargs.get("prior_reset_base", 0.0),
+            "prior_reset_base",
+            0.0,
+            1.0,
+        )
+        self.prior_reset_post_error = self._validate_float_range(
+            kwargs.get("prior_reset_post_error", 0.0),
+            "prior_reset_post_error",
+            0.0,
+            1.0,
+        )
+        self.prior_reset_low_accuracy = self._validate_float_range(
+            kwargs.get("prior_reset_low_accuracy", 0.0),
+            "prior_reset_low_accuracy",
+            0.0,
+            1.0,
+        )
+        self.prior_reset_threshold = self._validate_float_range(
+            kwargs.get("prior_reset_threshold", 0.70),
+            "prior_reset_threshold",
+            1e-9,
+            1.0,
+        )
+        self.prior_reset_window = self._validate_count(
+            kwargs.get("prior_reset_window", 8),
+            context="prior_reset_window",
+        )
+        if self.prior_reset_window <= 0:
+            raise ValueError("prior_reset_window must be positive.")
+        self.prior_reset_decay = self._validate_float_range(
+            kwargs.get("prior_reset_decay", 0.0),
+            "prior_reset_decay",
+            0.0,
+            1.0,
+        )
+        self.prior_reset_max = self._validate_float_range(
+            kwargs.get("prior_reset_max", 0.50),
+            "prior_reset_max",
+            0.0,
+            1.0,
+        )
+        if self.prior_reset_max < self.prior_reset_base:
+            raise ValueError(
+                "prior_reset_max must be >= prior_reset_base, "
+                f"got {self.prior_reset_max!r} < {self.prior_reset_base!r}."
+            )
+        self.prior_reset_target = str(kwargs.get("prior_reset_target", "uniform_active"))
+        if self.prior_reset_target not in self.VALID_PRIOR_RESET_TARGETS:
+            raise ValueError(
+                "prior_reset_target must be one of "
+                f"{self.VALID_PRIOR_RESET_TARGETS}, got {self.prior_reset_target!r}."
+            )
+        self.prior_reset_source = str(kwargs.get("prior_reset_source", "feedback"))
+        if self.prior_reset_source not in self.VALID_PRIOR_RESET_SOURCES:
+            raise ValueError(
+                "prior_reset_source must be one of "
+                f"{self.VALID_PRIOR_RESET_SOURCES}, got {self.prior_reset_source!r}."
+            )
+        self.prior_reset_volatility_gain = self._validate_float_range(
+            kwargs.get("prior_reset_volatility_gain", 0.0),
+            "prior_reset_volatility_gain",
+            0.0,
+            1.0,
+        )
+        self.prior_reset_enabled = (
+            self.prior_reset_max > 0.0
+            and (
+                (
+                    self.prior_reset_source == "latent_volatility"
+                    and (
+                        self.prior_reset_base > 0.0
+                        or self.prior_reset_volatility_gain > 0.0
+                    )
+                )
+                or (
+                    self.prior_reset_source == "feedback"
+                    and (
+                        self.prior_reset_base > 0.0
+                        or self.prior_reset_post_error > 0.0
+                        or self.prior_reset_low_accuracy > 0.0
+                    )
+                )
+            )
+        )
+        self._prior_reset_state = 0.0
+        self.prior_reset_log: List[Dict[str, Any]] = []
         
         self.debug = kwargs.get("hypothesis_debug", False)
         # Track how many hypotheses each strategy selects per transition step (for plotting)
@@ -96,6 +255,8 @@ class DynamicHypothesisModule(BaseModule):
             self.amount_evaluators[f"opp_accuracy_static_{amount}"] = self._amount_opposite_accuracy_static_gen(amount)
             self.amount_evaluators[f"accuracy_delta_{amount}"] = self._amount_accuracy_delta_gen(amount)
             self.amount_evaluators[f"opp_accuracy_delta_{amount}"] = self._amount_opposite_accuracy_delta_gen(amount)
+            self.amount_evaluators[f"latent_volatility_{amount}"] = self._amount_latent_volatility_gen(amount)
+            self.amount_evaluators[f"opp_latent_volatility_{amount}"] = self._amount_opposite_latent_volatility_gen(amount)
         self.method_selectors = {
             "top_posterior": self._select_top_posterior,
             "random_posterior": self._select_random_posterior,
@@ -108,6 +269,10 @@ class DynamicHypothesisModule(BaseModule):
         if "history_maxlen" in kwargs:
             raise ValueError("history_maxlen is no longer a supported config key; set window on history-based strategies.")
         required_history = self._required_history_length(self.strategies)
+        if self.latent_volatility_enabled or self.prior_reset_enabled:
+            required_history = max(required_history, self.prior_reset_window, 1)
+        if self.latent_volatility_enabled:
+            required_history = max(required_history, self.latent_volatility_window, 1)
         self.uses_feedback_history = required_history > 0
         self.feedback_history = deque(maxlen=max(required_history, 1))
         self._validate_history_feedback_modes()
@@ -240,6 +405,12 @@ class DynamicHypothesisModule(BaseModule):
         if self._is_accuracy_delta_amount(amount):
             self._validate_float_range(strat.get("threshold", 0.0), "threshold", 0.0, 1.0)
             self._validate_positive_float(strat.get("scale", 0.5), "scale")
+        if self._is_latent_volatility_amount(amount):
+            min_count = self._validate_count(strat.get("min_count", 0), context=f"Strategy #{idx} min_count")
+            if min_count < 0:
+                raise ValueError(f"Strategy #{idx} min_count must be non-negative.")
+            self._validate_float_range(strat.get("threshold", 0.0), "threshold", 0.0, 1.0)
+            self._validate_positive_float(strat.get("power", 1.0), "power")
 
     @staticmethod
     def _validate_float_range(value: Any, name: str, low: float, high: float) -> float:
@@ -289,6 +460,12 @@ class DynamicHypothesisModule(BaseModule):
         return isinstance(amount, str) and amount.startswith(("accuracy_delta_", "opp_accuracy_delta_"))
 
     @classmethod
+    def _is_latent_volatility_amount(cls, amount: Any) -> bool:
+        return isinstance(amount, str) and amount.startswith(
+            ("latent_volatility_", "opp_latent_volatility_")
+        )
+
+    @classmethod
     def _is_history_amount(cls, amount: Any) -> bool:
         return (
             isinstance(amount, str)
@@ -296,6 +473,7 @@ class DynamicHypothesisModule(BaseModule):
                 amount.startswith("recent_accuracy_inverse_")
                 or cls._is_accuracy_static_amount(amount)
                 or cls._is_accuracy_delta_amount(amount)
+                or cls._is_latent_volatility_amount(amount)
             )
         )
 
@@ -305,11 +483,17 @@ class DynamicHypothesisModule(BaseModule):
             return 8
         if cls._is_accuracy_static_amount(amount):
             return 16
+        if cls._is_latent_volatility_amount(amount):
+            return 6
         return 10
 
     @classmethod
     def _default_feedback_mode_for_amount(cls, amount: str) -> str:
-        if cls._is_accuracy_static_amount(amount) or cls._is_accuracy_delta_amount(amount):
+        if (
+            cls._is_accuracy_static_amount(amount)
+            or cls._is_accuracy_delta_amount(amount)
+            or cls._is_latent_volatility_amount(amount)
+        ):
             return "exact"
         return "graded"
 
@@ -544,6 +728,27 @@ class DynamicHypothesisModule(BaseModule):
             return int(max(0, min(round(max_amount * normalized), max_amount)))
         return _amount_opposite_accuracy_delta
 
+    def _amount_latent_volatility_gen(self, max_amount=7):
+        def _amount_latent_volatility(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            min_count = self._validate_count(strategy_config.get("min_count", 0), context="latent volatility min_count")
+            if min_count > max_amount:
+                return max_amount
+            threshold = float(strategy_config.get("threshold", 0.0))
+            power = float(strategy_config.get("power", 1.0))
+            denom = max(self.latent_volatility_max - threshold, 1e-12)
+            normalized = np.clip((self.latent_volatility_state - threshold) / denom, 0.0, 1.0)
+            amount = min_count + round((normalized ** power) * (max_amount - min_count))
+            return int(max(min_count, min(amount, max_amount)))
+        return _amount_latent_volatility
+
+    def _amount_opposite_latent_volatility_gen(self, max_amount=7):
+        base_func = self._amount_latent_volatility_gen(max_amount)
+        def _amount_opposite_latent_volatility(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            vol_amount = base_func(posterior, max_amount=max_amount, **kwargs)
+            return int(max(0, max_amount - vol_amount))
+        return _amount_opposite_latent_volatility
+
     def _recent_accuracy(self, window: int, strategy_config: Dict[str, Any]) -> float:
         values = self._padded_history_values(window, strategy_config)
         accuracy = float(np.mean(values))
@@ -624,6 +829,8 @@ class DynamicHypothesisModule(BaseModule):
             for strat in self.strategies
             if self._is_history_amount(strat.get("amount"))
         }
+        if self.latent_volatility_enabled or self.prior_reset_enabled:
+            modes.add(self.latent_volatility_feedback_mode)
         if not modes:
             return "graded"
         if len(modes) > 1:
@@ -832,6 +1039,7 @@ class DynamicHypothesisModule(BaseModule):
         return dist
 
     def process(self, **kwargs) -> None:
+        self._update_latent_volatility_state()
         # Pass kwargs to transition (e.g. feedbacks)
         self._transition(**kwargs)
         self._apply_mask()
@@ -862,7 +1070,14 @@ class DynamicHypothesisModule(BaseModule):
         new_active_set = set()
         # Track counts for this step. Keep method-level aggregate keys for old
         # plotting code and add structured details for strategy-level debugging.
-        step_counts: Dict[str, Any] = {"strategies": []}
+        step_counts: Dict[str, Any] = {
+            "strategies": [],
+            "latent_volatility_state": float(self.latent_volatility_state),
+        }
+        if self.latent_volatility_log:
+            latest_volatility = self.latent_volatility_log[-1]
+            step_counts["latent_volatility_recent_accuracy"] = latest_volatility.get("recent_accuracy")
+            step_counts["latent_volatility_error_severity"] = latest_volatility.get("error_severity")
         
         for strat in self.strategies:
             amount_type = strat["amount"]
@@ -1151,6 +1366,186 @@ class DynamicHypothesisModule(BaseModule):
     def _exclude(self, pool: np.ndarray, used: np.ndarray) -> np.ndarray:
         mask = ~np.isin(pool, used)
         return pool[mask]
+
+    def _update_latent_volatility_state(self) -> None:
+        if not self.latent_volatility_enabled:
+            self.latent_volatility_state = 0.0
+            self.latent_volatility_log.append({
+                "state": 0.0,
+                "base": 0.0,
+                "error": 0.0,
+                "low_accuracy": 0.0,
+                "recent_accuracy": 1.0,
+                "error_severity": 0.0,
+            })
+            return
+
+        previous_feedback = 1.0
+        if self.feedback_history:
+            previous_feedback = float(self.feedback_history[-1])
+        error_severity = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
+        recent_accuracy = self._recent_accuracy(
+            self.latent_volatility_window,
+            {"padding": "chance"},
+        )
+        low_accuracy_scale = max(
+            0.0,
+            self.latent_volatility_threshold - recent_accuracy,
+        ) / max(self.latent_volatility_threshold, 1e-12)
+        error_component = self.latent_volatility_error_gain * error_severity
+        low_accuracy_component = self.latent_volatility_low_accuracy_gain * low_accuracy_scale
+        state = (
+            self.latent_volatility_decay * self.latent_volatility_state
+            + self.latent_volatility_base
+            + error_component
+            + low_accuracy_component
+        )
+        self.latent_volatility_state = float(np.clip(state, 0.0, self.latent_volatility_max))
+        self.latent_volatility_log.append({
+            "state": float(self.latent_volatility_state),
+            "base": float(self.latent_volatility_base),
+            "error": float(error_component),
+            "low_accuracy": float(low_accuracy_component),
+            "recent_accuracy": float(recent_accuracy),
+            "error_severity": float(error_severity),
+        })
+
+    def _compute_prior_reset_strength(self) -> Tuple[float, Dict[str, float]]:
+        if not self.prior_reset_enabled:
+            return 0.0, {
+                "base": 0.0,
+                "post_error_state": 0.0,
+                "low_accuracy": 0.0,
+                "recent_accuracy": 1.0,
+                "error_severity": 0.0,
+                "latent_volatility": float(self.latent_volatility_state),
+            }
+
+        if self.prior_reset_source == "latent_volatility":
+            reset_strength = self.prior_reset_base + (
+                self.prior_reset_volatility_gain * self.latent_volatility_state
+            )
+            reset_strength = float(np.clip(reset_strength, 0.0, self.prior_reset_max))
+            recent_accuracy = self._recent_accuracy(
+                self.latent_volatility_window,
+                {"padding": "chance"},
+            )
+            previous_feedback = float(self.feedback_history[-1]) if self.feedback_history else 1.0
+            return reset_strength, {
+                "base": float(self.prior_reset_base),
+                "post_error_state": 0.0,
+                "low_accuracy": 0.0,
+                "recent_accuracy": float(recent_accuracy),
+                "error_severity": float(np.clip(1.0 - previous_feedback, 0.0, 1.0)),
+                "latent_volatility": float(self.latent_volatility_state),
+            }
+
+        previous_feedback = 1.0
+        if self.feedback_history:
+            previous_feedback = float(self.feedback_history[-1])
+        error_severity = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
+        self._prior_reset_state = (
+            self.prior_reset_decay * self._prior_reset_state
+            + self.prior_reset_post_error * error_severity
+        )
+
+        recent_accuracy = self._recent_accuracy(
+            self.prior_reset_window,
+            {"padding": "chance"},
+        )
+        low_accuracy_scale = max(0.0, self.prior_reset_threshold - recent_accuracy) / max(
+            self.prior_reset_threshold,
+            1e-12,
+        )
+        low_accuracy_reset = self.prior_reset_low_accuracy * low_accuracy_scale
+        reset_strength = self.prior_reset_base + self._prior_reset_state + low_accuracy_reset
+        reset_strength = float(np.clip(reset_strength, 0.0, self.prior_reset_max))
+
+        return reset_strength, {
+            "base": float(self.prior_reset_base),
+            "post_error_state": float(self._prior_reset_state),
+            "low_accuracy": float(low_accuracy_reset),
+            "recent_accuracy": float(recent_accuracy),
+            "error_severity": float(error_severity),
+            "latent_volatility": float(self.latent_volatility_state),
+        }
+
+    def _prior_reset_distribution(
+        self,
+        active_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+    ) -> np.ndarray:
+        target = np.zeros(self.total_hypo, dtype=float)
+        active_indices = np.asarray(active_indices, dtype=int)
+        newcomer_indices = np.asarray(newcomer_indices, dtype=int)
+
+        def fill_uniform(indices: np.ndarray) -> np.ndarray:
+            out = np.zeros(self.total_hypo, dtype=float)
+            if indices.size:
+                out[indices] = 1.0 / float(indices.size)
+            return out
+
+        if self.prior_reset_target == "newcomer_boost":
+            target = fill_uniform(newcomer_indices if newcomer_indices.size else active_indices)
+        elif self.prior_reset_target == "sampled_active":
+            if active_indices.size:
+                target[int(self.rng.choice(active_indices))] = 1.0
+        elif self.prior_reset_target == "sampled_newcomer":
+            pool = newcomer_indices if newcomer_indices.size else active_indices
+            if pool.size:
+                target[int(self.rng.choice(pool))] = 1.0
+        else:
+            target = fill_uniform(active_indices)
+
+        total = float(target.sum())
+        if total <= 0.0 and active_indices.size:
+            target[active_indices] = 1.0 / float(active_indices.size)
+        elif total > 0.0:
+            target /= total
+        return target
+
+    def _apply_prior_reset(
+        self,
+        prior: np.ndarray,
+        active_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+    ) -> Tuple[np.ndarray, float]:
+        reset_strength, components = self._compute_prior_reset_strength()
+        if reset_strength <= 0.0:
+            log_item = {
+                "strength": 0.0,
+                "target": self.prior_reset_target,
+                "source": self.prior_reset_source,
+                **components,
+            }
+            self.prior_reset_log.append(log_item)
+            if self.strategy_counts_log:
+                self.strategy_counts_log[-1]["prior_reset_strength"] = 0.0
+                self.strategy_counts_log[-1]["prior_reset_target"] = self.prior_reset_target
+                self.strategy_counts_log[-1]["prior_reset_source"] = self.prior_reset_source
+            return prior, 0.0
+
+        target = self._prior_reset_distribution(active_indices, newcomer_indices)
+        mixed = (1.0 - reset_strength) * prior + reset_strength * target
+        total = float(mixed.sum())
+        if total > 0.0:
+            mixed /= total
+
+        log_item = {
+            "strength": float(reset_strength),
+            "target": self.prior_reset_target,
+            "source": self.prior_reset_source,
+            **components,
+        }
+        self.prior_reset_log.append(log_item)
+        if self.strategy_counts_log:
+            self.strategy_counts_log[-1]["prior_reset_strength"] = float(reset_strength)
+            self.strategy_counts_log[-1]["prior_reset_target"] = self.prior_reset_target
+            self.strategy_counts_log[-1]["prior_reset_source"] = self.prior_reset_source
+            self.strategy_counts_log[-1]["prior_reset_recent_accuracy"] = components["recent_accuracy"]
+            self.strategy_counts_log[-1]["prior_reset_error_severity"] = components["error_severity"]
+            self.strategy_counts_log[-1]["prior_reset_latent_volatility"] = components["latent_volatility"]
+        return mixed, float(reset_strength)
     
     def _posterior_to_prior_transition(self):
         """
@@ -1243,6 +1638,8 @@ class DynamicHypothesisModule(BaseModule):
             new_prior /= total_mass
         else:
             new_prior[self.active] = 1.0 / len(self.active)
+
+        new_prior, _ = self._apply_prior_reset(new_prior, active_indices, newcomer_indices)
 
         self.engine.prior = new_prior
         

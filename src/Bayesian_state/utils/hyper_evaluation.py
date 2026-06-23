@@ -41,21 +41,59 @@ from src.Bayesian_state.utils.optimization_config import (
     resolve_prediction_modes,
     resolve_window_size,
 )
+from src.Bayesian_state.utils.hyper_utils import (
+    subject_best_hyperparams,
+    subject_hyper_candidate_seed,
+)
 from src.Bayesian_state.utils.optimizer_common import (
+    BaseStateOptimizer,
     derive_simulation_point_seed,
     derive_trajectory_seed,
     evaluate_state_model_run,
+    stable_seed,
 )
 from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRunner
+from src.Bayesian_state.utils.simulation_statistics import get_stat_value
+from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
 MEMORY_KEY = "engine.modules.memory_mod.kwargs"
 TRANSITION_KEY = "engine.modules.hypo_transitions_mod.kwargs"
+PRIOR_RESET_BASE_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base"
+PRIOR_RESET_POST_ERROR_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_post_error"
+PRIOR_RESET_LOW_ACCURACY_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_low_accuracy"
+PRIOR_RESET_THRESHOLD_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_threshold"
+PRIOR_RESET_WINDOW_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_window"
+PRIOR_RESET_DECAY_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_decay"
+PRIOR_RESET_MAX_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_max"
+PRIOR_RESET_TARGET_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_target"
+PRIOR_RESET_SOURCE_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_source"
+PRIOR_RESET_VOLATILITY_GAIN_KEY = "engine.modules.hypo_transitions_mod.kwargs.prior_reset_volatility_gain"
+LATENT_VOLATILITY_BASE_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_base"
+LATENT_VOLATILITY_ERROR_GAIN_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_error_gain"
+LATENT_VOLATILITY_LOW_ACCURACY_GAIN_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_low_accuracy_gain"
+LATENT_VOLATILITY_THRESHOLD_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_threshold"
+LATENT_VOLATILITY_WINDOW_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_window"
+LATENT_VOLATILITY_DECAY_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_decay"
+LATENT_VOLATILITY_MAX_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_max"
+LATENT_VOLATILITY_FEEDBACK_MODE_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_feedback_mode"
 BETA_INIT_KEY = "engine.modules.beta_mod.kwargs.beta_init"
 DECREASE_RATE_KEY = "engine.modules.beta_mod.kwargs.decrease_rate"
 PRIOR_BETA_SCALE_KEY = "engine.modules.beta_mod.kwargs.prior_beta_scale"
 CORRECT_ADDITIVE_KEY = "engine.modules.beta_mod.kwargs.correct_additive"
+BETA_UPDATE_MODE_KEY = "engine.modules.beta_mod.kwargs.beta_update_mode"
+PROBABILISTIC_FEEDBACK_LAPSE_KEY = "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse"
 DISTANCE_MODE_KEY = "engine.modules.likelihood_mod.kwargs.distance_mode"
+OUTPUT_NOISE_BASE_LAPSE_KEY = "engine.output_noise.kwargs.base_lapse"
+OUTPUT_NOISE_POST_ERROR_LAPSE_KEY = "engine.output_noise.kwargs.post_error_lapse"
+OUTPUT_NOISE_LOW_ACCURACY_LAPSE_KEY = "engine.output_noise.kwargs.low_accuracy_lapse"
+OUTPUT_NOISE_LOW_ACCURACY_THRESHOLD_KEY = "engine.output_noise.kwargs.low_accuracy_threshold"
+OUTPUT_NOISE_LAPSE_DECAY_KEY = "engine.output_noise.kwargs.lapse_decay"
+OUTPUT_NOISE_MAX_LAPSE_KEY = "engine.output_noise.kwargs.max_lapse"
+OUTPUT_NOISE_RECENT_ACCURACY_WINDOW_KEY = "engine.output_noise.kwargs.recent_accuracy_window"
+OUTPUT_NOISE_LAPSE_TARGET_KEY = "engine.output_noise.kwargs.lapse_target"
+OUTPUT_NOISE_LATENT_VOLATILITY_LAPSE_KEY = "engine.output_noise.kwargs.latent_volatility_lapse"
+OUTPUT_NOISE_LATENT_VOLATILITY_POWER_KEY = "engine.output_noise.kwargs.latent_volatility_power"
 
 NUMERIC_PARAM_COLUMNS = (
     "gamma",
@@ -64,8 +102,41 @@ NUMERIC_PARAM_COLUMNS = (
     "decrease_rate",
     "prior_beta_scale",
     "correct_additive",
+    "probabilistic_feedback_lapse",
+    "prior_reset_base",
+    "prior_reset_post_error",
+    "prior_reset_low_accuracy",
+    "prior_reset_threshold",
+    "prior_reset_window",
+    "prior_reset_decay",
+    "prior_reset_max",
+    "prior_reset_volatility_gain",
+    "latent_volatility_base",
+    "latent_volatility_error_gain",
+    "latent_volatility_low_accuracy_gain",
+    "latent_volatility_threshold",
+    "latent_volatility_window",
+    "latent_volatility_decay",
+    "latent_volatility_max",
+    "output_base_lapse",
+    "output_post_error_lapse",
+    "output_low_accuracy_lapse",
+    "output_low_accuracy_threshold",
+    "output_lapse_decay",
+    "output_max_lapse",
+    "output_recent_accuracy_window",
+    "output_latent_volatility_lapse",
+    "output_latent_volatility_power",
 )
-CATEGORICAL_PARAM_COLUMNS = ("strategy_id", "distance_mode")
+CATEGORICAL_PARAM_COLUMNS = (
+    "strategy_id",
+    "beta_update_mode",
+    "distance_mode",
+    "prior_reset_target",
+    "prior_reset_source",
+    "latent_volatility_feedback_mode",
+    "output_lapse_target",
+)
 
 DEFAULT_BASE_SIM_CONFIG = Path("configs/simulation_cfg/pmh_cond1_simulation.yaml")
 
@@ -109,6 +180,312 @@ HISTORY_KERNEL_COLUMNS = (
     "history_kernel_eligible_score_mean",
 )
 
+SWITCH_BEHAVIOR_COLUMNS = (
+    "switch_behavior_score",
+    "switch_behavior_choice_error",
+    "switch_behavior_repeat_index",
+    "switch_behavior_switch_human",
+    "switch_behavior_switch_model",
+    "switch_behavior_switch_abs_diff",
+    "switch_behavior_perseveration_human",
+    "switch_behavior_perseveration_model",
+    "switch_behavior_perseveration_abs_diff",
+    "switch_behavior_win_stay_human",
+    "switch_behavior_win_stay_model",
+    "switch_behavior_win_stay_abs_diff",
+    "switch_behavior_lose_shift_human",
+    "switch_behavior_lose_shift_model",
+    "switch_behavior_lose_shift_abs_diff",
+    "switch_behavior_n_pairs",
+    "switch_behavior_n_win_pairs",
+    "switch_behavior_n_loss_pairs",
+    "switch_behavior_run_choice_cutoff",
+    "switch_behavior_eligible_run_count",
+    "switch_behavior_all_run_count",
+    "switch_behavior_score_mean",
+    "switch_behavior_score_q10",
+    "switch_behavior_eligible_score_mean",
+)
+
+DISTRIBUTION_BEHAVIOR_COLUMNS = (
+    "distribution_score",
+    "distribution_component_max_raw",
+    "distribution_intersection_score",
+    "distribution_intersection_violation_count",
+    "distribution_intersection_accept",
+    "distribution_intersection_acc_mae_violation",
+    "distribution_intersection_vol_ratio_low_violation",
+    "distribution_intersection_vol_ratio_high_violation",
+    "distribution_intersection_history_corr_violation",
+    "distribution_intersection_switch_rate_violation",
+    "distribution_intersection_win_stay_violation",
+    "distribution_intersection_lose_shift_violation",
+    "distribution_intersection_perseveration_violation",
+    "distribution_ppc_interval_score",
+    "distribution_ppc_interval_violation_count",
+    "distribution_ppc_interval_accept",
+    "distribution_ppc_interval_alpha",
+    "distribution_ppc_interval_stat_count",
+    "distribution_ppc_interval_lower_quantile",
+    "distribution_ppc_interval_upper_quantile",
+    "distribution_ppc_interval_acc_mean_human",
+    "distribution_ppc_interval_acc_mean_model_q05",
+    "distribution_ppc_interval_acc_mean_model_q95",
+    "distribution_ppc_interval_acc_mean_model_median",
+    "distribution_ppc_interval_acc_mean_percentile",
+    "distribution_ppc_interval_acc_mean_tail_score",
+    "distribution_ppc_interval_acc_mean_violation",
+    "distribution_ppc_interval_acc_mean_accept",
+    "distribution_ppc_interval_acc_vol_human",
+    "distribution_ppc_interval_acc_vol_model_q05",
+    "distribution_ppc_interval_acc_vol_model_q95",
+    "distribution_ppc_interval_acc_vol_model_median",
+    "distribution_ppc_interval_acc_vol_percentile",
+    "distribution_ppc_interval_acc_vol_tail_score",
+    "distribution_ppc_interval_acc_vol_violation",
+    "distribution_ppc_interval_acc_vol_accept",
+    "distribution_ppc_interval_acc_range_human",
+    "distribution_ppc_interval_acc_range_model_q05",
+    "distribution_ppc_interval_acc_range_model_q95",
+    "distribution_ppc_interval_acc_range_model_median",
+    "distribution_ppc_interval_acc_range_percentile",
+    "distribution_ppc_interval_acc_range_tail_score",
+    "distribution_ppc_interval_acc_range_violation",
+    "distribution_ppc_interval_acc_range_accept",
+    "distribution_ppc_interval_history_kernel_norm_human",
+    "distribution_ppc_interval_history_kernel_norm_model_q05",
+    "distribution_ppc_interval_history_kernel_norm_model_q95",
+    "distribution_ppc_interval_history_kernel_norm_model_median",
+    "distribution_ppc_interval_history_kernel_norm_percentile",
+    "distribution_ppc_interval_history_kernel_norm_tail_score",
+    "distribution_ppc_interval_history_kernel_norm_violation",
+    "distribution_ppc_interval_history_kernel_norm_accept",
+    "distribution_ppc_interval_switch_rate_human",
+    "distribution_ppc_interval_switch_rate_model_q05",
+    "distribution_ppc_interval_switch_rate_model_q95",
+    "distribution_ppc_interval_switch_rate_model_median",
+    "distribution_ppc_interval_switch_rate_percentile",
+    "distribution_ppc_interval_switch_rate_tail_score",
+    "distribution_ppc_interval_switch_rate_violation",
+    "distribution_ppc_interval_switch_rate_accept",
+    "distribution_ppc_interval_win_stay_human",
+    "distribution_ppc_interval_win_stay_model_q05",
+    "distribution_ppc_interval_win_stay_model_q95",
+    "distribution_ppc_interval_win_stay_model_median",
+    "distribution_ppc_interval_win_stay_percentile",
+    "distribution_ppc_interval_win_stay_tail_score",
+    "distribution_ppc_interval_win_stay_violation",
+    "distribution_ppc_interval_win_stay_accept",
+    "distribution_ppc_interval_lose_shift_human",
+    "distribution_ppc_interval_lose_shift_model_q05",
+    "distribution_ppc_interval_lose_shift_model_q95",
+    "distribution_ppc_interval_lose_shift_model_median",
+    "distribution_ppc_interval_lose_shift_percentile",
+    "distribution_ppc_interval_lose_shift_tail_score",
+    "distribution_ppc_interval_lose_shift_violation",
+    "distribution_ppc_interval_lose_shift_accept",
+    "distribution_ppc_interval_perseveration_human",
+    "distribution_ppc_interval_perseveration_model_q05",
+    "distribution_ppc_interval_perseveration_model_q95",
+    "distribution_ppc_interval_perseveration_model_median",
+    "distribution_ppc_interval_perseveration_percentile",
+    "distribution_ppc_interval_perseveration_tail_score",
+    "distribution_ppc_interval_perseveration_violation",
+    "distribution_ppc_interval_perseveration_accept",
+    "distribution_run_count",
+    "distribution_choice_error_mean",
+    "distribution_choice_error_median",
+    "distribution_choice_error_q10",
+    "distribution_choice_error_std",
+    "distribution_accuracy_shape_score",
+    "distribution_acc_mae_mean",
+    "distribution_acc_mae_median",
+    "distribution_acc_mae_q90",
+    "distribution_acc_rmse_mean",
+    "distribution_vol_ratio_mean",
+    "distribution_vol_ratio_median",
+    "distribution_vol_ratio_q10",
+    "distribution_vol_ratio_q90",
+    "distribution_slope_agree_mean",
+    "distribution_history_kernel_score",
+    "distribution_history_kernel_mse",
+    "distribution_history_kernel_corr",
+    "distribution_history_kernel_corr_loss",
+    "distribution_history_kernel_norm_ratio",
+    "distribution_history_kernel_human_norm",
+    "distribution_history_kernel_model_norm",
+    "distribution_history_kernel_run_count",
+    "distribution_switch_behavior_score",
+    "distribution_switch_human",
+    "distribution_switch_model",
+    "distribution_switch_abs_diff",
+    "distribution_perseveration_human",
+    "distribution_perseveration_model",
+    "distribution_perseveration_abs_diff",
+    "distribution_win_stay_human",
+    "distribution_win_stay_model",
+    "distribution_win_stay_abs_diff",
+    "distribution_lose_shift_human",
+    "distribution_lose_shift_model",
+    "distribution_lose_shift_abs_diff",
+    "distribution_switch_run_count",
+)
+
+METRIC_COLUMN_PATHS = {
+    "hyper_selection_error": "selection.primary.value",
+    "hyper_mean_error": "simulation.mean_error",
+    "hyper_best_error": "simulation.best_error",
+    "hyper_best10_mean_error": "simulation.best10_mean_error",
+    "hyper_q10_error": "simulation.q10_error",
+    "hyper_std_error": "simulation.std_error",
+    "hyper_simulation_repeats": "simulation.simulation_repeats",
+    "accuracy_shape_score": "statistics.scores.accuracy_shape.value",
+    "accuracy_shape_choice_error": "statistics.scores.accuracy_shape.choice_error",
+    "accuracy_shape_repeat_index": "statistics.scores.accuracy_shape.repeat_index",
+    "accuracy_shape_acc_mae": "statistics.diagnostics.accuracy_curve.selected.metrics.mae",
+    "accuracy_shape_acc_rmse": "statistics.diagnostics.accuracy_curve.selected.metrics.rmse",
+    "accuracy_shape_acc_corr": "statistics.diagnostics.accuracy_curve.selected.metrics.corr",
+    "accuracy_shape_vol_ratio": "statistics.diagnostics.accuracy_curve.selected.metrics.volatility_ratio",
+    "accuracy_shape_range_ratio": "statistics.diagnostics.accuracy_curve.selected.metrics.range_ratio",
+    "accuracy_shape_slope_agree": "statistics.diagnostics.accuracy_curve.selected.metrics.slope_agree",
+    "accuracy_shape_run_choice_cutoff": "statistics.diagnostics.accuracy_curve.run_gate.choice_error_cutoff",
+    "accuracy_shape_eligible_run_count": "statistics.diagnostics.accuracy_curve.run_gate.eligible_count",
+    "accuracy_shape_all_run_count": "statistics.diagnostics.accuracy_curve.run_gate.run_count",
+    "accuracy_shape_score_mean": "statistics.diagnostics.accuracy_curve.score_summary.mean",
+    "accuracy_shape_score_q10": "statistics.diagnostics.accuracy_curve.score_summary.q10",
+    "accuracy_shape_eligible_score_mean": "statistics.diagnostics.accuracy_curve.score_summary.eligible_mean",
+    "history_kernel_score": "statistics.scores.history_kernel.value",
+    "history_kernel_choice_error": "statistics.scores.history_kernel.choice_error",
+    "history_kernel_repeat_index": "statistics.scores.history_kernel.repeat_index",
+    "history_kernel_mse": "statistics.diagnostics.history_kernel.selected.metrics.mse",
+    "history_kernel_corr": "statistics.diagnostics.history_kernel.selected.metrics.corr",
+    "history_kernel_corr_loss": "statistics.diagnostics.history_kernel.selected.metrics.corr_loss",
+    "history_kernel_norm_ratio": "statistics.diagnostics.history_kernel.selected.metrics.norm_ratio",
+    "history_kernel_human_norm": "statistics.diagnostics.history_kernel.selected.metrics.human_norm",
+    "history_kernel_model_norm": "statistics.diagnostics.history_kernel.selected.metrics.model_norm",
+    "history_kernel_max_lag": "statistics.diagnostics.history_kernel.selected.metrics.max_lag",
+    "history_kernel_n_rows": "statistics.diagnostics.history_kernel.selected.metrics.n_rows",
+    "history_kernel_human": "statistics.diagnostics.history_kernel.selected.metrics.human_kernel",
+    "history_kernel_model": "statistics.diagnostics.history_kernel.selected.metrics.model_kernel",
+    "history_kernel_run_choice_cutoff": "statistics.diagnostics.history_kernel.run_gate.choice_error_cutoff",
+    "history_kernel_eligible_run_count": "statistics.diagnostics.history_kernel.run_gate.eligible_count",
+    "history_kernel_all_run_count": "statistics.diagnostics.history_kernel.run_gate.run_count",
+    "history_kernel_score_mean": "statistics.diagnostics.history_kernel.score_summary.mean",
+    "history_kernel_score_q10": "statistics.diagnostics.history_kernel.score_summary.q10",
+    "history_kernel_eligible_score_mean": "statistics.diagnostics.history_kernel.score_summary.eligible_mean",
+    "switch_behavior_score": "statistics.scores.switch_behavior.value",
+    "switch_behavior_choice_error": "statistics.scores.switch_behavior.choice_error",
+    "switch_behavior_repeat_index": "statistics.scores.switch_behavior.repeat_index",
+    "switch_behavior_switch_human": "statistics.diagnostics.switch_behavior.selected.metrics.switch.human",
+    "switch_behavior_switch_model": "statistics.diagnostics.switch_behavior.selected.metrics.switch.model",
+    "switch_behavior_switch_abs_diff": "statistics.diagnostics.switch_behavior.selected.metrics.switch.abs_diff",
+    "switch_behavior_perseveration_human": "statistics.diagnostics.switch_behavior.selected.metrics.perseveration.human",
+    "switch_behavior_perseveration_model": "statistics.diagnostics.switch_behavior.selected.metrics.perseveration.model",
+    "switch_behavior_perseveration_abs_diff": "statistics.diagnostics.switch_behavior.selected.metrics.perseveration.abs_diff",
+    "switch_behavior_win_stay_human": "statistics.diagnostics.switch_behavior.selected.metrics.win_stay.human",
+    "switch_behavior_win_stay_model": "statistics.diagnostics.switch_behavior.selected.metrics.win_stay.model",
+    "switch_behavior_win_stay_abs_diff": "statistics.diagnostics.switch_behavior.selected.metrics.win_stay.abs_diff",
+    "switch_behavior_lose_shift_human": "statistics.diagnostics.switch_behavior.selected.metrics.lose_shift.human",
+    "switch_behavior_lose_shift_model": "statistics.diagnostics.switch_behavior.selected.metrics.lose_shift.model",
+    "switch_behavior_lose_shift_abs_diff": "statistics.diagnostics.switch_behavior.selected.metrics.lose_shift.abs_diff",
+    "switch_behavior_n_pairs": "statistics.diagnostics.switch_behavior.selected.metrics.counts.pairs",
+    "switch_behavior_n_win_pairs": "statistics.diagnostics.switch_behavior.selected.metrics.counts.win_pairs",
+    "switch_behavior_n_loss_pairs": "statistics.diagnostics.switch_behavior.selected.metrics.counts.loss_pairs",
+    "switch_behavior_run_choice_cutoff": "statistics.diagnostics.switch_behavior.run_gate.choice_error_cutoff",
+    "switch_behavior_eligible_run_count": "statistics.diagnostics.switch_behavior.run_gate.eligible_count",
+    "switch_behavior_all_run_count": "statistics.diagnostics.switch_behavior.run_gate.run_count",
+    "switch_behavior_score_mean": "statistics.diagnostics.switch_behavior.score_summary.mean",
+    "switch_behavior_score_q10": "statistics.diagnostics.switch_behavior.score_summary.q10",
+    "switch_behavior_eligible_score_mean": "statistics.diagnostics.switch_behavior.score_summary.eligible_mean",
+    "distribution_score": "statistics.scores.distribution.multiobjective.score",
+    "distribution_component_max_raw": "statistics.scores.distribution.multiobjective.component_max_raw",
+    "distribution_intersection_score": "statistics.scores.distribution.intersection.score",
+    "distribution_intersection_violation_count": "statistics.scores.distribution.intersection.violation_count",
+    "distribution_intersection_accept": "statistics.scores.distribution.intersection.accept",
+    "distribution_run_count": "statistics.diagnostics.distribution.run_count",
+    "distribution_choice_error_mean": "statistics.diagnostics.distribution.choice_error.mean",
+    "distribution_choice_error_median": "statistics.diagnostics.distribution.choice_error.median",
+    "distribution_choice_error_q10": "statistics.diagnostics.distribution.choice_error.q10",
+    "distribution_choice_error_std": "statistics.diagnostics.distribution.choice_error.std",
+    "distribution_accuracy_shape_score": "statistics.scores.distribution.multiobjective.components.accuracy_shape",
+    "distribution_acc_mae_mean": "statistics.diagnostics.distribution.accuracy_curve.mae.mean",
+    "distribution_acc_mae_median": "statistics.diagnostics.distribution.accuracy_curve.mae.median",
+    "distribution_acc_mae_q90": "statistics.diagnostics.distribution.accuracy_curve.mae.q90",
+    "distribution_acc_rmse_mean": "statistics.diagnostics.distribution.accuracy_curve.rmse.mean",
+    "distribution_vol_ratio_mean": "statistics.diagnostics.distribution.accuracy_curve.volatility_ratio.mean",
+    "distribution_vol_ratio_median": "statistics.diagnostics.distribution.accuracy_curve.volatility_ratio.median",
+    "distribution_vol_ratio_q10": "statistics.diagnostics.distribution.accuracy_curve.volatility_ratio.q10",
+    "distribution_vol_ratio_q90": "statistics.diagnostics.distribution.accuracy_curve.volatility_ratio.q90",
+    "distribution_slope_agree_mean": "statistics.diagnostics.distribution.accuracy_curve.slope_agree.mean",
+    "distribution_history_kernel_score": "statistics.scores.distribution.multiobjective.components.history_kernel",
+    "distribution_history_kernel_mse": "statistics.diagnostics.distribution.history_kernel.mse",
+    "distribution_history_kernel_corr": "statistics.diagnostics.distribution.history_kernel.corr",
+    "distribution_history_kernel_corr_loss": "statistics.diagnostics.distribution.history_kernel.corr_loss",
+    "distribution_history_kernel_norm_ratio": "statistics.diagnostics.distribution.history_kernel.norm_ratio",
+    "distribution_history_kernel_human_norm": "statistics.diagnostics.distribution.history_kernel.human_norm",
+    "distribution_history_kernel_model_norm": "statistics.diagnostics.distribution.history_kernel.model_norm",
+    "distribution_history_kernel_run_count": "statistics.diagnostics.distribution.history_kernel.run_count",
+    "distribution_switch_behavior_score": "statistics.scores.distribution.multiobjective.components.switch_behavior",
+    "distribution_switch_human": "statistics.diagnostics.distribution.switch_behavior.switch.human",
+    "distribution_switch_model": "statistics.diagnostics.distribution.switch_behavior.switch.model",
+    "distribution_switch_abs_diff": "statistics.diagnostics.distribution.switch_behavior.switch.abs_diff",
+    "distribution_perseveration_human": "statistics.diagnostics.distribution.switch_behavior.perseveration.human",
+    "distribution_perseveration_model": "statistics.diagnostics.distribution.switch_behavior.perseveration.model",
+    "distribution_perseveration_abs_diff": "statistics.diagnostics.distribution.switch_behavior.perseveration.abs_diff",
+    "distribution_win_stay_human": "statistics.diagnostics.distribution.switch_behavior.win_stay.human",
+    "distribution_win_stay_model": "statistics.diagnostics.distribution.switch_behavior.win_stay.model",
+    "distribution_win_stay_abs_diff": "statistics.diagnostics.distribution.switch_behavior.win_stay.abs_diff",
+    "distribution_lose_shift_human": "statistics.diagnostics.distribution.switch_behavior.lose_shift.human",
+    "distribution_lose_shift_model": "statistics.diagnostics.distribution.switch_behavior.lose_shift.model",
+    "distribution_lose_shift_abs_diff": "statistics.diagnostics.distribution.switch_behavior.lose_shift.abs_diff",
+    "distribution_switch_run_count": "statistics.diagnostics.distribution.switch_behavior.run_count",
+    "distribution_ppc_interval_score": "statistics.scores.distribution.ppc_interval.score",
+    "distribution_ppc_interval_violation_count": "statistics.scores.distribution.ppc_interval.violation_count",
+    "distribution_ppc_interval_accept": "statistics.scores.distribution.ppc_interval.accept",
+    "distribution_ppc_interval_alpha": "statistics.scores.distribution.ppc_interval.alpha",
+    "distribution_ppc_interval_stat_count": "statistics.scores.distribution.ppc_interval.stat_count",
+    "distribution_ppc_interval_lower_quantile": "statistics.scores.distribution.ppc_interval.lower_quantile",
+    "distribution_ppc_interval_upper_quantile": "statistics.scores.distribution.ppc_interval.upper_quantile",
+}
+
+for _name in (
+    "acc_mae",
+    "vol_ratio_low",
+    "vol_ratio_high",
+    "history_corr",
+    "switch_rate",
+    "win_stay",
+    "lose_shift",
+    "perseveration",
+):
+    METRIC_COLUMN_PATHS[f"distribution_intersection_{_name}_violation"] = (
+        f"statistics.scores.distribution.intersection.violations.{_name}"
+    )
+
+for _label in (
+    "acc_mean",
+    "acc_vol",
+    "acc_range",
+    "history_kernel_norm",
+    "switch_rate",
+    "win_stay",
+    "lose_shift",
+    "perseveration",
+):
+    for _column_suffix, _path_suffix in (
+        ("human", "human"),
+        ("model_q05", "model_lower"),
+        ("model_q95", "model_upper"),
+        ("model_median", "model_median"),
+        ("percentile", "percentile"),
+        ("tail_score", "tail_score"),
+        ("violation", "violation"),
+        ("accept", "accept"),
+    ):
+        METRIC_COLUMN_PATHS[f"distribution_ppc_interval_{_label}_{_column_suffix}"] = (
+            f"statistics.scores.distribution.ppc_interval.stats.{_label}.{_path_suffix}"
+        )
+
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -145,6 +522,29 @@ def _safe_float(value: Any) -> float:
     except (TypeError, ValueError):
         return float("nan")
     return out if math.isfinite(out) else float("nan")
+
+
+def _metric_column(metrics: Mapping[str, Any], column: str, default: Any = None) -> Any:
+    if column in metrics:
+        return metrics[column]
+    path = METRIC_COLUMN_PATHS.get(column)
+    if path:
+        return get_stat_value(metrics, path, default)
+    return default
+
+
+def _metrics_summary_for_subject(summary: Any, subject_id: int | None) -> Mapping[str, Any]:
+    if not isinstance(summary, Mapping):
+        return {}
+    subjects = summary.get("subjects")
+    if isinstance(subjects, Mapping):
+        if subject_id is not None and str(subject_id) in subjects and isinstance(subjects[str(subject_id)], Mapping):
+            return subjects[str(subject_id)]
+        for value in subjects.values():
+            if isinstance(value, Mapping):
+                return value
+        return {}
+    return summary
 
 
 def _strategy_signature(strategy_kwargs: Mapping[str, Any] | None) -> str:
@@ -234,6 +634,176 @@ def flatten_hyperparams(
         ),
         "correct_additive": _safe_float(
             hp.get(CORRECT_ADDITIVE_KEY, hp.get("correct_additive"))
+        ),
+        "beta_update_mode": hp.get(BETA_UPDATE_MODE_KEY, hp.get("beta_update_mode")),
+        "probabilistic_feedback_lapse": _safe_float(
+            hp.get(
+                PROBABILISTIC_FEEDBACK_LAPSE_KEY,
+                hp.get("probabilistic_feedback_lapse", hp.get("feedback_lapse")),
+            )
+        ),
+        "prior_reset_base": _safe_float(
+            transition.get(
+                "prior_reset_base",
+                hp.get(PRIOR_RESET_BASE_KEY, hp.get("prior_reset_base")),
+            )
+        ),
+        "prior_reset_post_error": _safe_float(
+            transition.get(
+                "prior_reset_post_error",
+                hp.get(PRIOR_RESET_POST_ERROR_KEY, hp.get("prior_reset_post_error")),
+            )
+        ),
+        "prior_reset_low_accuracy": _safe_float(
+            transition.get(
+                "prior_reset_low_accuracy",
+                hp.get(PRIOR_RESET_LOW_ACCURACY_KEY, hp.get("prior_reset_low_accuracy")),
+            )
+        ),
+        "prior_reset_threshold": _safe_float(
+            transition.get(
+                "prior_reset_threshold",
+                hp.get(PRIOR_RESET_THRESHOLD_KEY, hp.get("prior_reset_threshold")),
+            )
+        ),
+        "prior_reset_window": _safe_float(
+            transition.get(
+                "prior_reset_window",
+                hp.get(PRIOR_RESET_WINDOW_KEY, hp.get("prior_reset_window")),
+            )
+        ),
+        "prior_reset_decay": _safe_float(
+            transition.get(
+                "prior_reset_decay",
+                hp.get(PRIOR_RESET_DECAY_KEY, hp.get("prior_reset_decay")),
+            )
+        ),
+        "prior_reset_max": _safe_float(
+            transition.get(
+                "prior_reset_max",
+                hp.get(PRIOR_RESET_MAX_KEY, hp.get("prior_reset_max")),
+            )
+        ),
+        "prior_reset_target": transition.get(
+            "prior_reset_target",
+            hp.get(
+                PRIOR_RESET_TARGET_KEY,
+                hp.get("prior_reset_target"),
+            ),
+        ),
+        "prior_reset_source": transition.get(
+            "prior_reset_source",
+            hp.get(PRIOR_RESET_SOURCE_KEY, hp.get("prior_reset_source")),
+        ),
+        "prior_reset_volatility_gain": _safe_float(
+            transition.get(
+                "prior_reset_volatility_gain",
+                hp.get(
+                    PRIOR_RESET_VOLATILITY_GAIN_KEY,
+                    hp.get("prior_reset_volatility_gain"),
+                ),
+            )
+        ),
+        "latent_volatility_base": _safe_float(
+            transition.get(
+                "latent_volatility_base",
+                hp.get(LATENT_VOLATILITY_BASE_KEY, hp.get("latent_volatility_base")),
+            )
+        ),
+        "latent_volatility_error_gain": _safe_float(
+            transition.get(
+                "latent_volatility_error_gain",
+                hp.get(
+                    LATENT_VOLATILITY_ERROR_GAIN_KEY,
+                    hp.get("latent_volatility_error_gain"),
+                ),
+            )
+        ),
+        "latent_volatility_low_accuracy_gain": _safe_float(
+            transition.get(
+                "latent_volatility_low_accuracy_gain",
+                hp.get(
+                    LATENT_VOLATILITY_LOW_ACCURACY_GAIN_KEY,
+                    hp.get("latent_volatility_low_accuracy_gain"),
+                ),
+            )
+        ),
+        "latent_volatility_threshold": _safe_float(
+            transition.get(
+                "latent_volatility_threshold",
+                hp.get(
+                    LATENT_VOLATILITY_THRESHOLD_KEY,
+                    hp.get("latent_volatility_threshold"),
+                ),
+            )
+        ),
+        "latent_volatility_window": _safe_float(
+            transition.get(
+                "latent_volatility_window",
+                hp.get(LATENT_VOLATILITY_WINDOW_KEY, hp.get("latent_volatility_window")),
+            )
+        ),
+        "latent_volatility_decay": _safe_float(
+            transition.get(
+                "latent_volatility_decay",
+                hp.get(LATENT_VOLATILITY_DECAY_KEY, hp.get("latent_volatility_decay")),
+            )
+        ),
+        "latent_volatility_max": _safe_float(
+            transition.get(
+                "latent_volatility_max",
+                hp.get(LATENT_VOLATILITY_MAX_KEY, hp.get("latent_volatility_max")),
+            )
+        ),
+        "latent_volatility_feedback_mode": transition.get(
+            "latent_volatility_feedback_mode",
+            hp.get(
+                LATENT_VOLATILITY_FEEDBACK_MODE_KEY,
+                hp.get("latent_volatility_feedback_mode"),
+            ),
+        ),
+        "output_base_lapse": _safe_float(
+            hp.get(OUTPUT_NOISE_BASE_LAPSE_KEY, hp.get("output_base_lapse"))
+        ),
+        "output_post_error_lapse": _safe_float(
+            hp.get(OUTPUT_NOISE_POST_ERROR_LAPSE_KEY, hp.get("output_post_error_lapse"))
+        ),
+        "output_low_accuracy_lapse": _safe_float(
+            hp.get(OUTPUT_NOISE_LOW_ACCURACY_LAPSE_KEY, hp.get("output_low_accuracy_lapse"))
+        ),
+        "output_low_accuracy_threshold": _safe_float(
+            hp.get(
+                OUTPUT_NOISE_LOW_ACCURACY_THRESHOLD_KEY,
+                hp.get("output_low_accuracy_threshold"),
+            )
+        ),
+        "output_lapse_decay": _safe_float(
+            hp.get(OUTPUT_NOISE_LAPSE_DECAY_KEY, hp.get("output_lapse_decay"))
+        ),
+        "output_max_lapse": _safe_float(
+            hp.get(OUTPUT_NOISE_MAX_LAPSE_KEY, hp.get("output_max_lapse"))
+        ),
+        "output_recent_accuracy_window": _safe_float(
+            hp.get(
+                OUTPUT_NOISE_RECENT_ACCURACY_WINDOW_KEY,
+                hp.get("output_recent_accuracy_window"),
+            )
+        ),
+        "output_lapse_target": hp.get(
+            OUTPUT_NOISE_LAPSE_TARGET_KEY,
+            hp.get("output_lapse_target"),
+        ),
+        "output_latent_volatility_lapse": _safe_float(
+            hp.get(
+                OUTPUT_NOISE_LATENT_VOLATILITY_LAPSE_KEY,
+                hp.get("output_latent_volatility_lapse"),
+            )
+        ),
+        "output_latent_volatility_power": _safe_float(
+            hp.get(
+                OUTPUT_NOISE_LATENT_VOLATILITY_POWER_KEY,
+                hp.get("output_latent_volatility_power"),
+            )
         ),
         "distance_mode": hp.get(DISTANCE_MODE_KEY, hp.get("distance_mode")),
         "hyperparam_signature": _canonical_json(hp),
@@ -705,21 +1275,29 @@ def load_all_combinations_table(
         if str(row.get("stage", "")) != str(stage):
             continue
         hp = row.get("hyperparams")
-        metrics = row.get("metrics_summary")
+        metrics = _metrics_summary_for_subject(row.get("metrics_summary"), subject_id)
         if not isinstance(hp, Mapping) or not isinstance(metrics, Mapping):
             continue
         flat = flatten_hyperparams(hp, strategy_lookup)
         shape_metrics = {
-            key: _safe_float(metrics.get(key))
+            key: _safe_float(_metric_column(metrics, key))
             for key in ACCURACY_SHAPE_COLUMNS
         }
         history_metrics = {
             key: (
-                metrics.get(key)
+                _metric_column(metrics, key)
                 if key in {"history_kernel_human", "history_kernel_model"}
-                else _safe_float(metrics.get(key))
+                else _safe_float(_metric_column(metrics, key))
             )
             for key in HISTORY_KERNEL_COLUMNS
+        }
+        switch_metrics = {
+            key: _safe_float(_metric_column(metrics, key))
+            for key in SWITCH_BEHAVIOR_COLUMNS
+        }
+        distribution_metrics = {
+            key: _safe_float(_metric_column(metrics, key))
+            for key in DISTRIBUTION_BEHAVIOR_COLUMNS
         }
         rows.append(
             {
@@ -732,16 +1310,20 @@ def load_all_combinations_table(
                 "hyper_candidate_seed": row.get("hyper_candidate_seed"),
                 "hyperparams": deepcopy(dict(hp)),
                 "hyperparam_signature": flat["hyperparam_signature"],
-                "hyper_selection_error": _safe_float(metrics.get("selection_error", row.get("aggregated_error"))),
-                "hyper_mean_error": _safe_float(metrics.get("mean_error")),
-                "hyper_best_error": _safe_float(metrics.get("best_error")),
-                "hyper_best10_mean_error": _safe_float(metrics.get("best10_mean_error")),
-                "hyper_q10_error": _safe_float(metrics.get("q10_error")),
-                "hyper_std_error": _safe_float(metrics.get("std_error")),
-                "hyper_simulation_repeats": metrics.get("simulation_repeats"),
+                "hyper_selection_error": _safe_float(
+                    _metric_column(metrics, "hyper_selection_error", row.get("aggregated_error"))
+                ),
+                "hyper_mean_error": _safe_float(_metric_column(metrics, "hyper_mean_error")),
+                "hyper_best_error": _safe_float(_metric_column(metrics, "hyper_best_error")),
+                "hyper_best10_mean_error": _safe_float(_metric_column(metrics, "hyper_best10_mean_error")),
+                "hyper_q10_error": _safe_float(_metric_column(metrics, "hyper_q10_error")),
+                "hyper_std_error": _safe_float(_metric_column(metrics, "hyper_std_error")),
+                "hyper_simulation_repeats": _metric_column(metrics, "hyper_simulation_repeats"),
                 **flat,
                 **shape_metrics,
                 **history_metrics,
+                **switch_metrics,
+                **distribution_metrics,
             }
         )
     if not rows:
@@ -1320,6 +1902,772 @@ def evaluate_near_optimal_plateau(
         "primary_metric": str(primary_metric),
         "abs_tol": float(abs_tol),
         "rel_tol": float(rel_tol),
+        "outputs": {key: str(value) for key, value in paths.items()},
+    }
+    with paths["manifest"].open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    return paths
+
+
+def _numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(np.nan, index=df.index, dtype=float)
+    return pd.to_numeric(df[column], errors="coerce")
+
+
+def _available_minimize_objectives(
+    df: pd.DataFrame,
+    objectives: Sequence[str],
+) -> list[str]:
+    out: list[str] = []
+    for column in objectives:
+        if column not in df.columns:
+            continue
+        values = _numeric_series(df, column)
+        if np.isfinite(values).any():
+            out.append(str(column))
+    return out
+
+
+def _minimize_percentile_rank(values: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(values, errors="coerce")
+    finite = numeric[np.isfinite(numeric)]
+    if finite.empty:
+        return pd.Series(1.0, index=values.index, dtype=float)
+    ranks = numeric.rank(method="average", na_option="bottom", ascending=True)
+    denom = max(1.0, float(len(numeric) - 1))
+    scaled = (ranks - 1.0) / denom
+    return scaled.clip(lower=0.0, upper=1.0).fillna(1.0)
+
+
+def _pearson_or_nan(left: pd.Series, right: pd.Series) -> float:
+    x = pd.to_numeric(left, errors="coerce")
+    y = pd.to_numeric(right, errors="coerce")
+    mask = np.isfinite(x) & np.isfinite(y)
+    if int(mask.sum()) < 3:
+        return float("nan")
+    return float(np.corrcoef(x[mask], y[mask])[0, 1])
+
+
+def _pareto_front_mask(df: pd.DataFrame, objectives: Sequence[str]) -> pd.Series:
+    if df.empty or not objectives:
+        return pd.Series(False, index=df.index, dtype=bool)
+    values = df.loc[:, list(objectives)].apply(pd.to_numeric, errors="coerce")
+    values = values.replace([np.inf, -np.inf], np.nan)
+    valid = values.notna().all(axis=1)
+    mask = pd.Series(False, index=df.index, dtype=bool)
+    if not bool(valid.any()):
+        return mask
+
+    arr = values.loc[valid].to_numpy(dtype=float)
+    valid_index = values.loc[valid].index.to_list()
+    keep = np.ones(arr.shape[0], dtype=bool)
+    for idx in range(arr.shape[0]):
+        if not keep[idx]:
+            continue
+        dominated_by = np.all(arr <= arr[idx] + 1e-12, axis=1) & np.any(arr < arr[idx] - 1e-12, axis=1)
+        dominated_by[idx] = False
+        if bool(np.any(dominated_by)):
+            keep[idx] = False
+    mask.loc[[valid_index[i] for i, is_keep in enumerate(keep) if is_keep]] = True
+    return mask
+
+
+def _weight_profiles(n_objectives: int, levels: Sequence[float]) -> list[tuple[float, ...]]:
+    if n_objectives <= 0:
+        return []
+    profiles: set[tuple[float, ...]] = set()
+    level_values = [float(x) for x in levels]
+
+    def build(prefix: tuple[float, ...]) -> None:
+        if len(prefix) == n_objectives:
+            total = float(sum(prefix))
+            if total <= 0.0:
+                return
+            profiles.add(tuple(round(x / total, 10) for x in prefix))
+            return
+        for value in level_values:
+            build(prefix + (value,))
+
+    build(())
+    return sorted(profiles)
+
+
+def _mode_summary(values: pd.Series, *, denominator: int | None = None) -> tuple[str, int, float]:
+    clean = values.dropna().astype(str)
+    if clean.empty:
+        return "", 0, float("nan")
+    counts = clean.value_counts()
+    mode = str(counts.index[0])
+    count = int(counts.iloc[0])
+    denom = int(denominator) if denominator is not None else int(len(clean))
+    return mode, count, count / max(1, denom)
+
+
+def _count_memory_pairs(df: pd.DataFrame) -> int:
+    if df.empty or not {"gamma", "w0"}.issubset(df.columns):
+        return 0
+    return int(df[["gamma", "w0"]].dropna().drop_duplicates().shape[0])
+
+
+def _weight_sensitivity_for_subject(
+    gate_df: pd.DataFrame,
+    *,
+    objectives: Sequence[str],
+    weight_levels: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    profiles = _weight_profiles(len(objectives), weight_levels)
+    if gate_df.empty or not objectives or not profiles:
+        return pd.DataFrame(), {
+            "n_weight_profiles": 0,
+            "n_unique_winners": 0,
+            "top_winner_combination_index": np.nan,
+            "top_winner_count": 0,
+            "top_winner_fraction": np.nan,
+            "n_winner_memory_pairs": 0,
+            "top_winner_memory_pair": "",
+            "top_winner_memory_pair_count": 0,
+            "top_winner_memory_pair_fraction": np.nan,
+            "n_winner_strategies": 0,
+            "top_winner_strategy_id": "",
+            "top_winner_strategy_count": 0,
+            "top_winner_strategy_fraction": np.nan,
+        }
+
+    ranked = gate_df.copy()
+    rank_cols = [f"{column}_rank01" for column in objectives]
+    for column, rank_col in zip(objectives, rank_cols):
+        if rank_col not in ranked.columns:
+            ranked[rank_col] = _minimize_percentile_rank(ranked[column])
+
+    rows: list[dict[str, Any]] = []
+    for profile in profiles:
+        score = np.zeros(len(ranked), dtype=float)
+        for weight, rank_col in zip(profile, rank_cols):
+            score = score + float(weight) * pd.to_numeric(ranked[rank_col], errors="coerce").fillna(1.0).to_numpy(dtype=float)
+        winner_pos = int(np.nanargmin(score))
+        winner = ranked.iloc[winner_pos]
+        row = {
+            "subject_id": winner.get("subject_id"),
+            "weight_profile": "|".join(f"{column}:{weight:.3f}" for column, weight in zip(objectives, profile)),
+            "weighted_rank_score": float(score[winner_pos]),
+            "combination_index": int(winner.get("combination_index", -1)),
+            "hyperparam_signature": winner.get("hyperparam_signature"),
+            "gamma": winner.get("gamma"),
+            "w0": winner.get("w0"),
+            "strategy_id": winner.get("strategy_id"),
+            "strategy_description": winner.get("strategy_description"),
+        }
+        for column in objectives:
+            row[column] = winner.get(column)
+        rows.append(row)
+
+    detail = pd.DataFrame(rows)
+    winner_mode, winner_count, winner_fraction = _mode_summary(
+        detail["combination_index"],
+        denominator=len(detail),
+    )
+    memory_key = detail["gamma"].astype(str) + "/" + detail["w0"].astype(str)
+    memory_mode, memory_count, memory_fraction = _mode_summary(memory_key, denominator=len(detail))
+    strategy_mode, strategy_count, strategy_fraction = _mode_summary(
+        detail.get("strategy_id", pd.Series(dtype=object)),
+        denominator=len(detail),
+    )
+    summary = {
+        "n_weight_profiles": int(len(detail)),
+        "n_unique_winners": int(detail["combination_index"].nunique(dropna=True)),
+        "top_winner_combination_index": int(float(winner_mode)) if str(winner_mode) else np.nan,
+        "top_winner_count": winner_count,
+        "top_winner_fraction": winner_fraction,
+        "n_winner_memory_pairs": int(memory_key.nunique(dropna=True)),
+        "top_winner_memory_pair": memory_mode,
+        "top_winner_memory_pair_count": memory_count,
+        "top_winner_memory_pair_fraction": memory_fraction,
+        "n_winner_strategies": int(detail["strategy_id"].nunique(dropna=True)) if "strategy_id" in detail else 0,
+        "top_winner_strategy_id": strategy_mode,
+        "top_winner_strategy_count": strategy_count,
+        "top_winner_strategy_fraction": strategy_fraction,
+    }
+    return detail, summary
+
+
+def _write_multiobjective_report(
+    summary_df: pd.DataFrame,
+    weight_summary_df: pd.DataFrame,
+    path: Path,
+    *,
+    primary_metric: str,
+    objectives: Sequence[str],
+    primary_abs_tol: float,
+    primary_rel_tol: float,
+    behavior_top_quantile: float,
+    acc_mae_max: float,
+    vol_ratio_min: float,
+    vol_ratio_max: float | None,
+    strict_vol_ratio_min: float,
+    history_corr_min: float | None,
+    switch_abs_max: float | None,
+    include_legacy_multiobjective: bool = False,
+) -> None:
+    vol_range = (
+        f"{vol_ratio_min:g} <= vol_ratio <= {vol_ratio_max:g}"
+        if vol_ratio_max is not None
+        else f"vol_ratio >= {vol_ratio_min:g}"
+    )
+    lines = [
+        "# Hyper-CD Selection Diagnostic",
+        "",
+        f"- Primary metric: `{primary_metric}`",
+        f"- Primary gate: metric <= max(best + {primary_abs_tol:g}, best * (1 + {primary_rel_tol:g}))",
+        f"- Distribution absolute set: distribution_acc_mae_mean <= {acc_mae_max:g}, {vol_range}",
+        "- PPC interval set: all selected distribution_ppc_interval statistics inside their central interval "
+        "(or distribution_ppc_interval_score <= 1 when only scores are available)",
+    ]
+    if include_legacy_multiobjective:
+        lines.extend(
+            [
+                f"- Pareto objectives: {', '.join(f'`{x}`' for x in objectives)}",
+                f"- Top-quantile behavior set: non-primary objectives <= subject q{behavior_top_quantile:g}",
+                f"- Legacy single-run absolute set: acc_mae <= {acc_mae_max:g}, vol_ratio >= {vol_ratio_min:g}",
+                f"- Strict volatility count: vol_ratio >= {strict_vol_ratio_min:g}",
+            ]
+        )
+    if history_corr_min is not None:
+        if include_legacy_multiobjective:
+            lines.append(
+                f"- History criterion: single-run history_kernel_corr >= {history_corr_min:g}; "
+                f"distribution_history_kernel_corr >= {history_corr_min:g}"
+            )
+        else:
+            lines.append(f"- History criterion: distribution_history_kernel_corr >= {history_corr_min:g}")
+    if switch_abs_max is not None:
+        if include_legacy_multiobjective:
+            lines.append(
+                f"- Switch criterion: single-run switch abs diff <= {switch_abs_max:g}; "
+                f"distribution_switch_behavior_score <= {switch_abs_max:g}"
+            )
+        else:
+            lines.append(f"- Switch criterion: distribution_switch_behavior_score <= {switch_abs_max:g}")
+    lines.extend(["", "## Subject Summary", ""])
+
+    if summary_df.empty:
+        lines.append("No candidate rows were available.")
+    else:
+        for _, row in summary_df.iterrows():
+            subject_id = int(row["subject_id"])
+            subject_line = (
+                f"- Subject {subject_id}: primary gate {int(row['n_primary_gate'])}/"
+                f"{int(row['n_unique_evaluated'])} "
+                f"({row['primary_gate_fraction']:.2f}); "
+                f"distribution absolute={int(row.get('n_distribution_accept', 0))}; "
+                f"PPC interval={int(row.get('n_ppc_interval_accept', 0))}"
+            )
+            if include_legacy_multiobjective:
+                subject_line += (
+                    f"; Pareto={int(row['n_pareto'])}; top-q={int(row['n_behavior_topq'])}; "
+                    f"legacy absolute={int(row['n_absolute_accept'])}; strict-vol={int(row['n_strict_vol_accept'])}"
+                )
+            lines.append(subject_line + ".")
+            lines.append(
+                f"  Gate diversity: memory pairs={int(row['memory_pairs_primary_gate'])}, "
+                f"strategies={int(row['strategy_unique_primary_gate'])}."
+            )
+            if include_legacy_multiobjective:
+                lines.append(
+                    f"  Legacy top-q diversity: memory pairs={int(row['memory_pairs_behavior_topq'])}, "
+                    f"strategies={int(row['strategy_unique_behavior_topq'])}."
+                )
+            lines.append(
+                f"  Distribution pass counts: acc={int(row.get('n_distribution_acc_mae_le_threshold', 0))}, "
+                f"vol={int(row.get('n_distribution_vol_ratio_in_range', 0))}, "
+                f"history={int(row.get('n_distribution_history_corr_ge_threshold', 0))}, "
+                f"switch={int(row.get('n_distribution_switch_score_le_threshold', 0))}, "
+                f"acc+vol={int(row.get('n_distribution_acc_and_vol', 0))}, "
+                f"acc+vol+history={int(row.get('n_distribution_acc_vol_history', 0))}."
+            )
+            if "n_ppc_interval_accept" in row:
+                lines.append(
+                    f"  PPC interval: accept={int(row.get('n_ppc_interval_accept', 0))}; "
+                    f"score<=1={int(row.get('n_ppc_interval_score_le_1', 0))}; "
+                    f"min score={float(row.get('min_ppc_interval_score', np.nan)):.3f}; "
+                    f"median score={float(row.get('median_ppc_interval_score', np.nan)):.3f}."
+                )
+            if int(row.get("n_distribution_accept", 0)) == 0:
+                lines.append("  Distribution-level absolute criteria selected no candidates under the current thresholds.")
+
+    if include_legacy_multiobjective and not weight_summary_df.empty:
+        lines.extend(["", "## Weight Sensitivity", ""])
+        for _, row in weight_summary_df.iterrows():
+            lines.append(
+                f"- Subject {int(row['subject_id'])}: {int(row['n_unique_winners'])} different winners "
+                f"across {int(row['n_weight_profiles'])} weight profiles; top winner "
+                f"c{int(row['top_winner_combination_index']) if np.isfinite(row['top_winner_combination_index']) else 'NA'} "
+                f"wins {row['top_winner_fraction']:.2f} of profiles; "
+                f"winner memory pairs={int(row['n_winner_memory_pairs'])}, "
+                f"winner strategies={int(row['n_winner_strategies'])}."
+            )
+
+    lines.extend(
+        [
+            "",
+            "## Reading Guide",
+            "",
+            "- If the primary gate remains broad, the original choice objective does not identify a point estimate.",
+            "- For v9-style runs, use the PPC interval set as the primary behavior-distribution acceptance diagnostic.",
+            "- For v8 and later, interpret distribution-level absolute counts as the main PPC-style acceptance diagnostic.",
+            "- If distribution absolute criteria select no candidates, the current model class is likely missing a mechanism for that behavior dimension.",
+        ]
+    )
+    if include_legacy_multiobjective:
+        lines.insert(
+            -1,
+            "- If the Pareto/top-q sets shrink but weight sensitivity has many winners, the candidate set is constrained but not point-identifiable.",
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def evaluate_multiobjective_selection(
+    hyper_dir: Path,
+    *,
+    output_dir: Path | None = None,
+    subjects: Sequence[int] | None = None,
+    stage: str = "coarse",
+    candidates_json: Path | None = None,
+    candidate_key: str = "cond1",
+    primary_metric: str = "hyper_selection_error",
+    primary_abs_tol: float = 0.015,
+    primary_rel_tol: float = 0.05,
+    objectives: Sequence[str] = (
+        "hyper_selection_error",
+        "accuracy_shape_score",
+        "history_kernel_score",
+        "switch_behavior_score",
+    ),
+    behavior_top_quantile: float = 0.20,
+    acc_mae_max: float = 0.10,
+    vol_ratio_min: float = 0.60,
+    vol_ratio_max: float | None = 1.50,
+    strict_vol_ratio_min: float = 0.80,
+    history_corr_min: float | None = 0.80,
+    switch_abs_max: float | None = 0.10,
+    slope_agree_min: float | None = None,
+    weight_levels: Sequence[float] = (0.0, 0.25, 0.50, 0.75, 1.0),
+    include_legacy_multiobjective: bool = False,
+) -> dict[str, Path]:
+    """Evaluate candidate selection diagnostics inside the near-optimal choice plateau."""
+    hyper_dir = Path(hyper_dir).resolve()
+    if output_dir is None:
+        output_dir = hyper_dir / "hyper_evaluation" / "selection_diagnostic"
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    strategy_lookup = load_strategy_lookup(candidates_json, candidate_key=candidate_key)
+    subject_dirs = discover_subject_dirs(hyper_dir, subjects)
+    if not subject_dirs:
+        raise FileNotFoundError(f"No subject_* directories found under {hyper_dir}")
+
+    candidate_tables: list[pd.DataFrame] = []
+    pareto_tables: list[pd.DataFrame] = []
+    topq_tables: list[pd.DataFrame] = []
+    absolute_tables: list[pd.DataFrame] = []
+    strict_tables: list[pd.DataFrame] = []
+    distribution_absolute_tables: list[pd.DataFrame] = []
+    ppc_interval_tables: list[pd.DataFrame] = []
+    summary_rows: list[dict[str, Any]] = []
+    weight_detail_tables: list[pd.DataFrame] = []
+    weight_summary_rows: list[dict[str, Any]] = []
+    objective_union: list[str] = []
+
+    for subject_dir in subject_dirs:
+        subject_id = _subject_id_from_dir(subject_dir)
+        combo_df = load_all_combinations_table(
+            subject_dir,
+            stage=stage,
+            strategy_lookup=strategy_lookup,
+        )
+        if combo_df.empty:
+            continue
+        unique_df = _deduplicate_combinations(combo_df)
+        selected_signature, _ = _load_subject_best_signature(subject_dir, strategy_lookup)
+        unique_df["is_subject_selected"] = (
+            unique_df["hyperparam_signature"].astype(str) == selected_signature
+            if selected_signature
+            else False
+        )
+        if primary_metric not in unique_df.columns:
+            continue
+        primary_values = _numeric_series(unique_df, primary_metric)
+        if not np.isfinite(primary_values).any():
+            continue
+
+        best_primary = float(np.nanmin(primary_values))
+        gate_cutoff = max(best_primary + float(primary_abs_tol), best_primary * (1.0 + float(primary_rel_tol)))
+        gate = unique_df.loc[primary_values <= gate_cutoff].copy()
+        gate["multiobjective_primary_metric"] = str(primary_metric)
+        gate["multiobjective_best_primary"] = best_primary
+        gate["multiobjective_gate_cutoff"] = gate_cutoff
+        gate["multiobjective_primary_delta"] = _numeric_series(gate, primary_metric) - best_primary
+
+        available_objectives = _available_minimize_objectives(gate, objectives)
+        if primary_metric not in available_objectives and primary_metric in gate.columns:
+            available_objectives = [primary_metric] + available_objectives
+        available_objectives = list(dict.fromkeys(available_objectives))
+        for objective in available_objectives:
+            if objective not in objective_union:
+                objective_union.append(objective)
+            if include_legacy_multiobjective:
+                gate[f"{objective}_rank01"] = _minimize_percentile_rank(gate[objective])
+
+        secondary_objectives = [column for column in available_objectives if column != primary_metric]
+        topq_mask = pd.Series(True, index=gate.index, dtype=bool)
+        if include_legacy_multiobjective:
+            for column in secondary_objectives:
+                values = _numeric_series(gate, column)
+                cutoff = float(np.nanquantile(values[np.isfinite(values)], behavior_top_quantile))
+                gate[f"{column}_topq_cutoff"] = cutoff
+                gate[f"{column}_topq_pass"] = values <= cutoff
+                topq_mask &= gate[f"{column}_topq_pass"].astype(bool)
+        if not include_legacy_multiobjective or not secondary_objectives:
+            topq_mask = pd.Series(False, index=gate.index, dtype=bool)
+
+        pareto_mask = (
+            _pareto_front_mask(gate, available_objectives)
+            if include_legacy_multiobjective
+            else pd.Series(False, index=gate.index, dtype=bool)
+        )
+        gate["is_pareto_front"] = pareto_mask
+        gate["is_behavior_topq"] = topq_mask
+
+        acc_mae = _numeric_series(gate, "accuracy_shape_acc_mae")
+        vol_ratio = _numeric_series(gate, "accuracy_shape_vol_ratio")
+        switch_abs = _numeric_series(gate, "switch_behavior_switch_abs_diff")
+        if include_legacy_multiobjective:
+            absolute_mask = (acc_mae <= float(acc_mae_max)) & (vol_ratio >= float(vol_ratio_min))
+            strict_mask = (acc_mae <= float(acc_mae_max)) & (vol_ratio >= float(strict_vol_ratio_min))
+            if history_corr_min is not None and "history_kernel_corr" in gate.columns:
+                history_corr = _numeric_series(gate, "history_kernel_corr")
+                if np.isfinite(history_corr).any():
+                    absolute_mask &= history_corr >= float(history_corr_min)
+                    strict_mask &= history_corr >= float(history_corr_min)
+            if switch_abs_max is not None and np.isfinite(switch_abs).any():
+                absolute_mask &= switch_abs <= float(switch_abs_max)
+                strict_mask &= switch_abs <= float(switch_abs_max)
+            if slope_agree_min is not None and "accuracy_shape_slope_agree" in gate.columns:
+                slope = _numeric_series(gate, "accuracy_shape_slope_agree")
+                absolute_mask &= slope >= float(slope_agree_min)
+                strict_mask &= slope >= float(slope_agree_min)
+        else:
+            absolute_mask = pd.Series(False, index=gate.index, dtype=bool)
+            strict_mask = pd.Series(False, index=gate.index, dtype=bool)
+        gate["is_absolute_accept"] = absolute_mask.fillna(False)
+        gate["is_strict_vol_accept"] = strict_mask.fillna(False)
+
+        dist_acc_mae = _numeric_series(gate, "distribution_acc_mae_mean")
+        dist_vol_ratio = _numeric_series(gate, "distribution_vol_ratio_median")
+        if not np.isfinite(dist_vol_ratio).any():
+            dist_vol_ratio = _numeric_series(gate, "distribution_vol_ratio_mean")
+        dist_history_corr = _numeric_series(gate, "distribution_history_kernel_corr")
+        dist_switch_score = _numeric_series(gate, "distribution_switch_behavior_score")
+        dist_acc_pass = dist_acc_mae <= float(acc_mae_max)
+        dist_vol_pass = dist_vol_ratio >= float(vol_ratio_min)
+        if vol_ratio_max is not None:
+            dist_vol_pass &= dist_vol_ratio <= float(vol_ratio_max)
+        dist_history_pass = pd.Series(True, index=gate.index, dtype=bool)
+        if history_corr_min is not None and np.isfinite(dist_history_corr).any():
+            dist_history_pass = dist_history_corr >= float(history_corr_min)
+        dist_switch_pass = pd.Series(True, index=gate.index, dtype=bool)
+        if switch_abs_max is not None and np.isfinite(dist_switch_score).any():
+            dist_switch_pass = dist_switch_score <= float(switch_abs_max)
+        distribution_accept_mask = dist_acc_pass & dist_vol_pass & dist_history_pass & dist_switch_pass
+        distribution_strict_vol_mask = (
+            dist_acc_pass
+            & (dist_vol_ratio >= float(strict_vol_ratio_min))
+            & dist_history_pass
+            & dist_switch_pass
+        )
+        if vol_ratio_max is not None:
+            distribution_strict_vol_mask &= dist_vol_ratio <= float(vol_ratio_max)
+        gate["distribution_acc_mae_pass"] = dist_acc_pass.fillna(False)
+        gate["distribution_vol_ratio_pass"] = dist_vol_pass.fillna(False)
+        gate["distribution_history_corr_pass"] = dist_history_pass.fillna(False)
+        gate["distribution_switch_score_pass"] = dist_switch_pass.fillna(False)
+        gate["is_distribution_accept"] = distribution_accept_mask.fillna(False)
+        gate["is_distribution_strict_vol_accept"] = distribution_strict_vol_mask.fillna(False)
+
+        ppc_interval_score = _numeric_series(gate, "distribution_ppc_interval_score")
+        ppc_interval_accept_raw = _numeric_series(gate, "distribution_ppc_interval_accept")
+        if np.isfinite(ppc_interval_accept_raw).any():
+            ppc_interval_accept_mask = ppc_interval_accept_raw >= 0.5
+        else:
+            ppc_interval_accept_mask = ppc_interval_score <= 1.0
+        gate["is_ppc_interval_accept"] = ppc_interval_accept_mask.fillna(False)
+
+        rank_cols = [f"{column}_rank01" for column in available_objectives if f"{column}_rank01" in gate.columns]
+        if include_legacy_multiobjective and rank_cols:
+            gate["equal_weight_rank_score"] = gate[rank_cols].mean(axis=1)
+            gate = gate.sort_values(
+                ["equal_weight_rank_score", primary_metric, "combination_index"],
+                na_position="last",
+            ).reset_index(drop=True)
+        else:
+            selection_sort_score = ppc_interval_score.copy()
+            fallback_score = _numeric_series(gate, "distribution_intersection_score")
+            selection_sort_score = selection_sort_score.where(np.isfinite(selection_sort_score), fallback_score)
+            fallback_score = _numeric_series(gate, "distribution_score")
+            selection_sort_score = selection_sort_score.where(np.isfinite(selection_sort_score), fallback_score)
+            selection_sort_score = selection_sort_score.where(
+                np.isfinite(selection_sort_score),
+                _numeric_series(gate, primary_metric) - best_primary,
+            )
+            gate["selection_sort_score"] = selection_sort_score
+            gate = gate.sort_values(
+                ["is_ppc_interval_accept", "selection_sort_score", primary_metric, "combination_index"],
+                ascending=[False, True, True, True],
+                na_position="last",
+            ).reset_index(drop=True)
+        gate["selection_rank"] = np.arange(1, len(gate) + 1)
+        gate["multiobjective_rank"] = gate["selection_rank"]
+
+        pareto_df = gate[gate["is_pareto_front"].astype(bool)].copy()
+        topq_df = gate[gate["is_behavior_topq"].astype(bool)].copy()
+        absolute_df = gate[gate["is_absolute_accept"].astype(bool)].copy()
+        strict_df = gate[gate["is_strict_vol_accept"].astype(bool)].copy()
+        distribution_absolute_df = gate[gate["is_distribution_accept"].astype(bool)].copy()
+        ppc_interval_df = gate[gate["is_ppc_interval_accept"].astype(bool)].copy()
+
+        if include_legacy_multiobjective:
+            weight_detail, weight_summary = _weight_sensitivity_for_subject(
+                gate,
+                objectives=available_objectives,
+                weight_levels=weight_levels,
+            )
+            if not weight_detail.empty:
+                weight_detail_tables.append(weight_detail)
+            weight_summary["subject_id"] = subject_id
+            weight_summary_rows.append(weight_summary)
+
+        def count_condition(mask: pd.Series) -> int:
+            return int(mask.fillna(False).sum())
+
+        summary_rows.append(
+            {
+                "subject_id": subject_id,
+                "available_objectives": "|".join(available_objectives),
+                "n_unique_evaluated": int(len(unique_df)),
+                "best_primary_error": best_primary,
+                "primary_gate_cutoff": gate_cutoff,
+                "n_primary_gate": int(len(gate)),
+                "primary_gate_fraction": int(len(gate)) / max(1, int(len(unique_df))),
+                "n_pareto": int(len(pareto_df)),
+                "n_behavior_topq": int(len(topq_df)),
+                "n_absolute_accept": int(len(absolute_df)),
+                "n_strict_vol_accept": int(len(strict_df)),
+                "n_distribution_accept": int(len(distribution_absolute_df)),
+                "n_ppc_interval_accept": int(len(ppc_interval_df)),
+                "n_distribution_strict_vol_accept": count_condition(gate["is_distribution_strict_vol_accept"].astype(bool)),
+                "memory_pairs_primary_gate": _count_memory_pairs(gate),
+                "memory_pairs_pareto": _count_memory_pairs(pareto_df),
+                "memory_pairs_behavior_topq": _count_memory_pairs(topq_df),
+                "memory_pairs_absolute_accept": _count_memory_pairs(absolute_df),
+                "memory_pairs_distribution_accept": _count_memory_pairs(distribution_absolute_df),
+                "memory_pairs_ppc_interval_accept": _count_memory_pairs(ppc_interval_df),
+                "strategy_unique_primary_gate": int(gate["strategy_id"].nunique(dropna=True)) if "strategy_id" in gate else 0,
+                "strategy_unique_pareto": int(pareto_df["strategy_id"].nunique(dropna=True)) if "strategy_id" in pareto_df else 0,
+                "strategy_unique_behavior_topq": int(topq_df["strategy_id"].nunique(dropna=True)) if "strategy_id" in topq_df else 0,
+                "strategy_unique_absolute_accept": int(absolute_df["strategy_id"].nunique(dropna=True)) if "strategy_id" in absolute_df else 0,
+                "strategy_unique_distribution_accept": int(distribution_absolute_df["strategy_id"].nunique(dropna=True)) if "strategy_id" in distribution_absolute_df else 0,
+                "strategy_unique_ppc_interval_accept": int(ppc_interval_df["strategy_id"].nunique(dropna=True)) if "strategy_id" in ppc_interval_df else 0,
+                "n_acc_mae_le_threshold": count_condition(acc_mae <= float(acc_mae_max)),
+                "n_vol_ratio_ge_threshold": count_condition(vol_ratio >= float(vol_ratio_min)),
+                "n_vol_ratio_ge_strict": count_condition(vol_ratio >= float(strict_vol_ratio_min)),
+                "n_acc_mae_and_vol": count_condition((acc_mae <= float(acc_mae_max)) & (vol_ratio >= float(vol_ratio_min))),
+                "n_acc_mae_and_strict_vol": count_condition((acc_mae <= float(acc_mae_max)) & (vol_ratio >= float(strict_vol_ratio_min))),
+                "n_switch_abs_le_threshold": (
+                    count_condition(switch_abs <= float(switch_abs_max))
+                    if switch_abs_max is not None
+                    else 0
+                ),
+                "n_distribution_acc_mae_le_threshold": count_condition(dist_acc_pass),
+                "n_distribution_vol_ratio_in_range": count_condition(dist_vol_pass),
+                "n_distribution_vol_ratio_ge_strict": count_condition(
+                    (dist_vol_ratio >= float(strict_vol_ratio_min))
+                    & ((dist_vol_ratio <= float(vol_ratio_max)) if vol_ratio_max is not None else True)
+                ),
+                "n_distribution_history_corr_ge_threshold": (
+                    count_condition(dist_history_pass)
+                    if history_corr_min is not None and np.isfinite(dist_history_corr).any()
+                    else 0
+                ),
+                "n_distribution_switch_score_le_threshold": (
+                    count_condition(dist_switch_pass)
+                    if switch_abs_max is not None and np.isfinite(dist_switch_score).any()
+                    else 0
+                ),
+                "n_distribution_acc_and_vol": count_condition(dist_acc_pass & dist_vol_pass),
+                "n_distribution_acc_vol_history": count_condition(dist_acc_pass & dist_vol_pass & dist_history_pass),
+                "n_distribution_acc_vol_history_switch": count_condition(
+                    dist_acc_pass & dist_vol_pass & dist_history_pass & dist_switch_pass
+                ),
+                "n_ppc_interval_score_le_1": count_condition(ppc_interval_score <= 1.0),
+                "min_ppc_interval_score": float(np.nanmin(ppc_interval_score)) if np.isfinite(ppc_interval_score).any() else np.nan,
+                "median_ppc_interval_score": float(np.nanmedian(ppc_interval_score)) if np.isfinite(ppc_interval_score).any() else np.nan,
+                "min_acc_mae": float(np.nanmin(acc_mae)) if np.isfinite(acc_mae).any() else np.nan,
+                "median_acc_mae": float(np.nanmedian(acc_mae)) if np.isfinite(acc_mae).any() else np.nan,
+                "max_vol_ratio": float(np.nanmax(vol_ratio)) if np.isfinite(vol_ratio).any() else np.nan,
+                "median_vol_ratio": float(np.nanmedian(vol_ratio)) if np.isfinite(vol_ratio).any() else np.nan,
+                "min_switch_abs_diff": float(np.nanmin(switch_abs)) if np.isfinite(switch_abs).any() else np.nan,
+                "median_switch_abs_diff": float(np.nanmedian(switch_abs)) if np.isfinite(switch_abs).any() else np.nan,
+                "min_distribution_acc_mae_mean": float(np.nanmin(dist_acc_mae)) if np.isfinite(dist_acc_mae).any() else np.nan,
+                "median_distribution_acc_mae_mean": float(np.nanmedian(dist_acc_mae)) if np.isfinite(dist_acc_mae).any() else np.nan,
+                "max_distribution_vol_ratio": float(np.nanmax(dist_vol_ratio)) if np.isfinite(dist_vol_ratio).any() else np.nan,
+                "median_distribution_vol_ratio": float(np.nanmedian(dist_vol_ratio)) if np.isfinite(dist_vol_ratio).any() else np.nan,
+                "max_distribution_history_corr": float(np.nanmax(dist_history_corr)) if np.isfinite(dist_history_corr).any() else np.nan,
+                "median_distribution_history_corr": float(np.nanmedian(dist_history_corr)) if np.isfinite(dist_history_corr).any() else np.nan,
+                "min_distribution_switch_score": float(np.nanmin(dist_switch_score)) if np.isfinite(dist_switch_score).any() else np.nan,
+                "median_distribution_switch_score": float(np.nanmedian(dist_switch_score)) if np.isfinite(dist_switch_score).any() else np.nan,
+                "corr_primary_shape": (
+                    _pearson_or_nan(gate[primary_metric], gate["accuracy_shape_score"])
+                    if "accuracy_shape_score" in gate.columns
+                    else np.nan
+                ),
+                "corr_primary_history": (
+                    _pearson_or_nan(gate[primary_metric], gate["history_kernel_score"])
+                    if "history_kernel_score" in gate.columns
+                    else np.nan
+                ),
+                "corr_shape_history": (
+                    _pearson_or_nan(gate["accuracy_shape_score"], gate["history_kernel_score"])
+                    if {"accuracy_shape_score", "history_kernel_score"}.issubset(gate.columns)
+                    else np.nan
+                ),
+                "corr_primary_switch": (
+                    _pearson_or_nan(gate[primary_metric], gate["switch_behavior_score"])
+                    if "switch_behavior_score" in gate.columns
+                    else np.nan
+                ),
+                "corr_shape_switch": (
+                    _pearson_or_nan(gate["accuracy_shape_score"], gate["switch_behavior_score"])
+                    if {"accuracy_shape_score", "switch_behavior_score"}.issubset(gate.columns)
+                    else np.nan
+                ),
+                "corr_history_switch": (
+                    _pearson_or_nan(gate["history_kernel_score"], gate["switch_behavior_score"])
+                    if {"history_kernel_score", "switch_behavior_score"}.issubset(gate.columns)
+                    else np.nan
+                ),
+            }
+        )
+
+        candidate_tables.append(gate)
+        pareto_tables.append(pareto_df)
+        topq_tables.append(topq_df)
+        absolute_tables.append(absolute_df)
+        strict_tables.append(strict_df)
+        distribution_absolute_tables.append(distribution_absolute_df)
+        ppc_interval_tables.append(ppc_interval_df)
+
+    candidates_df = pd.concat(candidate_tables, ignore_index=True) if candidate_tables else pd.DataFrame()
+    pareto_all = pd.concat(pareto_tables, ignore_index=True) if pareto_tables else pd.DataFrame()
+    topq_all = pd.concat(topq_tables, ignore_index=True) if topq_tables else pd.DataFrame()
+    absolute_all = pd.concat(absolute_tables, ignore_index=True) if absolute_tables else pd.DataFrame()
+    strict_all = pd.concat(strict_tables, ignore_index=True) if strict_tables else pd.DataFrame()
+    distribution_absolute_all = pd.concat(distribution_absolute_tables, ignore_index=True) if distribution_absolute_tables else pd.DataFrame()
+    ppc_interval_all = pd.concat(ppc_interval_tables, ignore_index=True) if ppc_interval_tables else pd.DataFrame()
+    summary_df = pd.DataFrame(summary_rows).sort_values("subject_id").reset_index(drop=True) if summary_rows else pd.DataFrame()
+    weight_detail_df = pd.concat(weight_detail_tables, ignore_index=True) if weight_detail_tables else pd.DataFrame()
+    weight_summary_df = pd.DataFrame(weight_summary_rows).sort_values("subject_id").reset_index(drop=True) if weight_summary_rows else pd.DataFrame()
+
+    paths = {
+        "selection_candidates": output_dir / "selection_candidates.csv",
+        "distribution_accepted_candidates": output_dir / "distribution_accepted_candidates.csv",
+        "ppc_interval_accepted_candidates": output_dir / "ppc_interval_accepted_candidates.csv",
+        "summary": output_dir / "selection_summary.csv",
+        "report": output_dir / "selection_report.md",
+        "manifest": output_dir / "manifest.json",
+    }
+    if include_legacy_multiobjective:
+        paths.update(
+            {
+                "multiobjective_candidates": output_dir / "multiobjective_candidates.csv",
+                "pareto_front": output_dir / "pareto_front.csv",
+                "behavior_topq_candidates": output_dir / "behavior_topq_candidates.csv",
+                "accepted_candidates": output_dir / "accepted_candidates.csv",
+                "strict_volatility_candidates": output_dir / "strict_volatility_candidates.csv",
+                "weight_sensitivity": output_dir / "weight_sensitivity.csv",
+                "weight_sensitivity_summary": output_dir / "weight_sensitivity_summary.csv",
+                "multiobjective_summary": output_dir / "multiobjective_summary.csv",
+                "multiobjective_report": output_dir / "multiobjective_report.md",
+            }
+        )
+    candidates_df.to_csv(paths["selection_candidates"], index=False)
+    distribution_absolute_all.to_csv(paths["distribution_accepted_candidates"], index=False)
+    ppc_interval_all.to_csv(paths["ppc_interval_accepted_candidates"], index=False)
+    summary_df.to_csv(paths["summary"], index=False)
+    if include_legacy_multiobjective:
+        candidates_df.to_csv(paths["multiobjective_candidates"], index=False)
+        pareto_all.to_csv(paths["pareto_front"], index=False)
+        topq_all.to_csv(paths["behavior_topq_candidates"], index=False)
+        absolute_all.to_csv(paths["accepted_candidates"], index=False)
+        strict_all.to_csv(paths["strict_volatility_candidates"], index=False)
+        summary_df.to_csv(paths["multiobjective_summary"], index=False)
+        weight_detail_df.to_csv(paths["weight_sensitivity"], index=False)
+        weight_summary_df.to_csv(paths["weight_sensitivity_summary"], index=False)
+    _write_multiobjective_report(
+        summary_df,
+        weight_summary_df,
+        paths["report"],
+        primary_metric=primary_metric,
+        objectives=objective_union or list(objectives),
+        primary_abs_tol=primary_abs_tol,
+        primary_rel_tol=primary_rel_tol,
+        behavior_top_quantile=behavior_top_quantile,
+        acc_mae_max=acc_mae_max,
+        vol_ratio_min=vol_ratio_min,
+        vol_ratio_max=vol_ratio_max,
+        strict_vol_ratio_min=strict_vol_ratio_min,
+        history_corr_min=history_corr_min,
+        switch_abs_max=switch_abs_max,
+        include_legacy_multiobjective=include_legacy_multiobjective,
+    )
+    if include_legacy_multiobjective:
+        _write_multiobjective_report(
+            summary_df,
+            weight_summary_df,
+            paths["multiobjective_report"],
+            primary_metric=primary_metric,
+            objectives=objective_union or list(objectives),
+            primary_abs_tol=primary_abs_tol,
+            primary_rel_tol=primary_rel_tol,
+            behavior_top_quantile=behavior_top_quantile,
+            acc_mae_max=acc_mae_max,
+            vol_ratio_min=vol_ratio_min,
+            vol_ratio_max=vol_ratio_max,
+            strict_vol_ratio_min=strict_vol_ratio_min,
+            history_corr_min=history_corr_min,
+            switch_abs_max=switch_abs_max,
+            include_legacy_multiobjective=True,
+        )
+    manifest = {
+        "hyper_dir": str(hyper_dir),
+        "output_dir": str(output_dir),
+        "stage": str(stage),
+        "subjects": [int(_subject_id_from_dir(path)) for path in subject_dirs],
+        "candidate_key": str(candidate_key),
+        "primary_metric": str(primary_metric),
+        "primary_abs_tol": float(primary_abs_tol),
+        "primary_rel_tol": float(primary_rel_tol),
+        "objectives": list(objectives),
+        "available_objectives": objective_union,
+        "behavior_top_quantile": float(behavior_top_quantile),
+        "acc_mae_max": float(acc_mae_max),
+        "vol_ratio_min": float(vol_ratio_min),
+        "vol_ratio_max": None if vol_ratio_max is None else float(vol_ratio_max),
+        "strict_vol_ratio_min": float(strict_vol_ratio_min),
+        "history_corr_min": None if history_corr_min is None else float(history_corr_min),
+        "switch_abs_max": None if switch_abs_max is None else float(switch_abs_max),
+        "slope_agree_min": None if slope_agree_min is None else float(slope_agree_min),
+        "weight_levels": [float(x) for x in weight_levels],
+        "include_legacy_multiobjective": bool(include_legacy_multiobjective),
         "outputs": {key: str(value) for key, value in paths.items()},
     }
     with paths["manifest"].open("w", encoding="utf-8") as f:
@@ -1982,6 +3330,515 @@ def diagnose_hyper_accuracy_sampling(
     with paths["manifest"].open("w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
     return paths
+
+
+def _volatility_resolve_project_path(path: Path) -> Path:
+    return path if path.is_absolute() else (ROOT_DIR / path).resolve()
+
+
+def _volatility_load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON payload must be a mapping: {path}")
+    return payload
+
+
+def _volatility_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _volatility_resolve_subjects(
+    input_dir: Path,
+    subjects: Sequence[int] | None,
+    subject_range: Sequence[int] | None,
+) -> list[int]:
+    if subjects:
+        return [int(x) for x in subjects]
+    if subject_range:
+        start, end = [int(x) for x in subject_range]
+        return list(range(start, end + 1))
+    out: list[int] = []
+    for path in sorted(input_dir.glob("subject_*")):
+        if path.is_dir():
+            try:
+                out.append(int(path.name.split("_", 1)[1]))
+            except (IndexError, ValueError):
+                continue
+    if not out:
+        raise ValueError(f"No subject_* directories found under {input_dir}")
+    return out
+
+
+def _volatility_infer_base_sim_config_path(input_dir: Path, override: Path | None) -> Path:
+    if override is not None:
+        return _volatility_resolve_project_path(override)
+    root_best = input_dir / "best_hyperparams.json"
+    if root_best.is_file():
+        payload = _volatility_load_json(root_best)
+        hyper = payload.get("hyper") if isinstance(payload.get("hyper"), Mapping) else {}
+        raw = hyper.get("base_sim_config_path") if isinstance(hyper, Mapping) else None
+        if raw:
+            return _volatility_resolve_project_path(Path(str(raw)))
+    return _volatility_resolve_project_path(DEFAULT_BASE_SIM_CONFIG)
+
+
+def _volatility_load_subject_best(
+    input_dir: Path,
+    subject_id: int,
+) -> tuple[dict[str, Any], dict[str, Any], int | None]:
+    path = input_dir / f"subject_{int(subject_id)}" / "best_hyperparams.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing subject best hyperparameters: {path}")
+    payload = _volatility_load_json(path)
+    params = subject_best_hyperparams(payload)
+    if not isinstance(params, Mapping):
+        raise ValueError(f"{path} is missing selected.best_hyperparams")
+    seed = subject_hyper_candidate_seed(payload)
+    return payload, deepcopy(dict(params)), None if seed is None else int(seed)
+
+
+def _engine_local_params(params: Mapping[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in params.items():
+        key_str = str(key)
+        if key_str.startswith("engine."):
+            out[key_str[len("engine.") :]] = deepcopy(value)
+        elif key_str.startswith("simulation."):
+            continue
+        else:
+            out[key_str] = deepcopy(value)
+    return out
+
+
+def _sliding_curve(values: np.ndarray, window_size: int) -> np.ndarray:
+    values = np.asarray(values, dtype=float).reshape(-1)
+    if values.size < window_size + 1:
+        return np.full(0, np.nan, dtype=float)
+    out = []
+    for start in range(1, values.size - window_size + 1):
+        window = values[start : start + window_size]
+        out.append(float(np.mean(window)) if np.all(np.isfinite(window)) else float("nan"))
+    return np.asarray(out, dtype=float)
+
+
+def _curve_volatility(curve: np.ndarray) -> float:
+    curve = np.asarray(curve, dtype=float).reshape(-1)
+    curve = curve[np.isfinite(curve)]
+    if curve.size <= 1:
+        return float("nan")
+    return float(np.mean(np.abs(np.diff(curve))))
+
+
+def _sample_binary_curves(
+    pred_acc: np.ndarray,
+    *,
+    window_size: int,
+    n_samples: int,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    probs = np.asarray(pred_acc, dtype=float).reshape(-1)
+    probs = np.clip(probs, 0.0, 1.0)
+    finite = np.isfinite(probs)
+    if not finite.any():
+        return np.full((0, 0), np.nan), np.full(0, np.nan)
+    probs = np.where(finite, probs, np.nanmean(probs[finite]))
+
+    curves: list[np.ndarray] = []
+    vols: list[float] = []
+    for _ in range(int(n_samples)):
+        sampled = rng.binomial(1, probs).astype(float)
+        curve = _sliding_curve(sampled, window_size)
+        curves.append(curve)
+        vols.append(_curve_volatility(curve))
+    return np.vstack(curves) if curves else np.full((0, 0), np.nan), np.asarray(vols, dtype=float)
+
+
+def _summarize_quantiles(values: np.ndarray, prefix: str) -> dict[str, float]:
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {
+            f"{prefix}_mean": float("nan"),
+            f"{prefix}_q05": float("nan"),
+            f"{prefix}_q10": float("nan"),
+            f"{prefix}_median": float("nan"),
+            f"{prefix}_q90": float("nan"),
+            f"{prefix}_q95": float("nan"),
+        }
+    return {
+        f"{prefix}_mean": float(np.mean(values)),
+        f"{prefix}_q05": float(np.quantile(values, 0.05)),
+        f"{prefix}_q10": float(np.quantile(values, 0.10)),
+        f"{prefix}_median": float(np.quantile(values, 0.50)),
+        f"{prefix}_q90": float(np.quantile(values, 0.90)),
+        f"{prefix}_q95": float(np.quantile(values, 0.95)),
+    }
+
+
+def _run_one_volatility_model_trajectory(
+    *,
+    subject_id: int,
+    condition: int,
+    arrays: Any,
+    params: Mapping[str, Any],
+    engine_config: Mapping[str, Any],
+    processed_data_dir: Path,
+    dataset_paths: Mapping[str, Path],
+    window_size: int,
+    prediction_mode: str,
+    selection_prediction_mode: str,
+    loss_metric: str,
+    loss_delta: float | None,
+    simulation_point_seed: int,
+    repeat_index: int,
+) -> dict[str, Any]:
+    trajectory_seed = derive_trajectory_seed(int(simulation_point_seed), "volatility_calibration", int(repeat_index))
+    run = evaluate_state_model_run(
+        int(subject_id),
+        int(condition),
+        arrays,
+        dict(params),
+        deepcopy(dict(engine_config)),
+        processed_data_dir,
+        int(window_size),
+        dataset_paths,
+        False,
+        False,
+        str(prediction_mode),
+        str(selection_prediction_mode),
+        str(loss_metric),
+        loss_delta,
+        simulation_point_seed=int(simulation_point_seed),
+        trajectory_seed=int(trajectory_seed),
+        seed_context={
+            "phase": "volatility_calibration",
+            "repeat_index": int(repeat_index),
+            "simulation_point_seed": int(simulation_point_seed),
+            "trajectory_seed": int(trajectory_seed),
+        },
+    )
+    metrics = run.metrics_by_mode[str(selection_prediction_mode)]
+    pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float)
+    pred_curve = np.asarray(metrics.get("sliding_pred_acc"), dtype=float)
+    true_curve = np.asarray(metrics.get("sliding_true_acc"), dtype=float)
+    return {
+        "repeat_index": int(repeat_index),
+        "trajectory_seed": int(trajectory_seed),
+        "mean_error": float(run.mean_error),
+        "pred_acc": pred_acc,
+        "pred_curve": pred_curve,
+        "true_curve": true_curve,
+        "prob_vol": _curve_volatility(pred_curve),
+    }
+
+
+def _evaluate_volatility_subject(
+    *,
+    input_dir: Path,
+    label: str,
+    base_cfg: Mapping[str, Any],
+    base_cfg_path: Path,
+    subject_id: int,
+    subjects: Sequence[int],
+    model_repeats: int,
+    binary_samples_per_run: int,
+    n_jobs: int,
+    seed: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    subject_payload, raw_params, hyper_candidate_seed = _volatility_load_subject_best(input_dir, subject_id)
+    params = _engine_local_params(raw_params)
+    subject_cfg = resolve_subject_config(base_cfg, subject_id)
+    base_cfg_dir = base_cfg_path.parent
+    dataset_paths = resolve_dataset_paths(subject_cfg, base_cfg_dir, DEFAULT_DATA_PATH)
+    engine_config = resolve_engine_config(subject_cfg, base_cfg_dir, subject_id=subject_id)
+    window_size = resolve_window_size(subject_cfg, subject_id, subjects)
+    prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+    loss_metric = resolve_loss_metric(subject_cfg)
+    loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
+    stop_at = float(subject_cfg.get("stop_at", 1.0))
+    max_trials_raw = subject_cfg.get("max_trials")
+    max_trials = None if max_trials_raw is None else int(max_trials_raw)
+
+    optimizer = BaseStateOptimizer(
+        engine_config,
+        processed_data_dir=dataset_paths["processed_dir"],
+        n_jobs=max(1, int(n_jobs)),
+        dataset_paths=dataset_paths,
+    )
+    optimizer.prepare_data(dataset_paths["learning_data"])
+    subject_frame = optimizer._get_subject_frame(subject_id, stop_at)
+    condition = optimizer._get_condition_value(subject_frame)
+    arrays = optimizer._extract_arrays(subject_frame, max_trials)
+
+    if hyper_candidate_seed is None:
+        hyper_candidate_seed = stable_seed(
+            {
+                "seed_role": "volatility_calibration_fallback_hyper_seed",
+                "input_dir": input_dir.as_posix(),
+                "subject_id": int(subject_id),
+                "params": raw_params,
+                "seed": int(seed),
+            }
+        )
+    simulation_point_seed = derive_simulation_point_seed(int(hyper_candidate_seed), int(subject_id), raw_params)
+
+    runs = Parallel(n_jobs=max(1, int(n_jobs)))(
+        delayed(_run_one_volatility_model_trajectory)(
+            subject_id=int(subject_id),
+            condition=int(condition),
+            arrays=arrays,
+            params=params,
+            engine_config=engine_config,
+            processed_data_dir=dataset_paths["processed_dir"],
+            dataset_paths=dataset_paths,
+            window_size=int(window_size),
+            prediction_mode=str(prediction_mode),
+            selection_prediction_mode=str(selection_prediction_mode),
+            loss_metric=str(loss_metric),
+            loss_delta=loss_delta,
+            simulation_point_seed=int(simulation_point_seed),
+            repeat_index=repeat_index,
+        )
+        for repeat_index in range(int(model_repeats))
+    )
+
+    true_curve = np.asarray(runs[0]["true_curve"], dtype=float) if runs else np.full(0, np.nan)
+    human_vol = _curve_volatility(true_curve)
+    sampled_vols: list[float] = []
+    sampled_curves: list[np.ndarray] = []
+    run_rows: list[dict[str, Any]] = []
+    for run in runs:
+        rng = np.random.default_rng(
+            stable_seed(
+                {
+                    "seed_role": "volatility_calibration_binary_sample",
+                    "seed": int(seed),
+                    "label": label,
+                    "subject_id": int(subject_id),
+                    "repeat_index": int(run["repeat_index"]),
+                    "trajectory_seed": int(run["trajectory_seed"]),
+                }
+            )
+        )
+        curves, vols = _sample_binary_curves(
+            np.asarray(run["pred_acc"], dtype=float),
+            window_size=int(window_size),
+            n_samples=int(binary_samples_per_run),
+            rng=rng,
+        )
+        sampled_vols.extend([float(x) for x in vols if np.isfinite(x)])
+        if curves.size:
+            sampled_curves.extend([curve for curve in curves])
+        prob_vol = float(run["prob_vol"])
+        run_rows.append(
+            {
+                "label": label,
+                "subject_id": int(subject_id),
+                "repeat_index": int(run["repeat_index"]),
+                "trajectory_seed": int(run["trajectory_seed"]),
+                "mean_error": float(run["mean_error"]),
+                "human_vol": human_vol,
+                "prob_vol": prob_vol,
+                "prob_vol_ratio": float(prob_vol / human_vol) if human_vol > 0 else float("nan"),
+                "binary_sample_count": int(len(vols)),
+                "sampled_binary_vol_mean": float(np.nanmean(vols)) if np.isfinite(vols).any() else float("nan"),
+                "sampled_binary_vol_median": float(np.nanmedian(vols)) if np.isfinite(vols).any() else float("nan"),
+            }
+        )
+
+    sampled_vol_arr = np.asarray(sampled_vols, dtype=float)
+    prob_vol_arr = np.asarray([row["prob_vol"] for row in run_rows], dtype=float)
+    sampled_ratio_arr = sampled_vol_arr / human_vol if human_vol > 0 else np.full(sampled_vol_arr.shape, np.nan)
+    prob_ratio_arr = prob_vol_arr / human_vol if human_vol > 0 else np.full(prob_vol_arr.shape, np.nan)
+
+    curve_stack = (
+        np.vstack(sampled_curves)
+        if sampled_curves and all(len(curve) == len(true_curve) for curve in sampled_curves)
+        else np.full((0, 0), np.nan)
+    )
+    if curve_stack.size and true_curve.size:
+        lower = np.nanquantile(curve_stack, 0.05, axis=0)
+        upper = np.nanquantile(curve_stack, 0.95, axis=0)
+        finite = np.isfinite(true_curve) & np.isfinite(lower) & np.isfinite(upper)
+        curve_coverage = (
+            float(np.mean((true_curve[finite] >= lower[finite]) & (true_curve[finite] <= upper[finite])))
+            if finite.any()
+            else float("nan")
+        )
+    else:
+        curve_coverage = float("nan")
+
+    summary = {
+        "label": label,
+        "subject_id": int(subject_id),
+        "condition": int(condition),
+        "model_repeats": int(model_repeats),
+        "binary_samples_per_run": int(binary_samples_per_run),
+        "total_binary_samples": int(sampled_vol_arr.size),
+        "window_size": int(window_size),
+        "prediction_mode": str(prediction_mode),
+        "selection_prediction_mode": str(selection_prediction_mode),
+        "loss_metric": str(loss_metric),
+        "human_vol": human_vol,
+        "human_vol_percentile": float(np.mean(sampled_vol_arr <= human_vol)) if sampled_vol_arr.size else float("nan"),
+        "sampled_binary_vol_covered_90": bool(
+            sampled_vol_arr.size
+            and np.nanquantile(sampled_vol_arr, 0.05) <= human_vol <= np.nanquantile(sampled_vol_arr, 0.95)
+        ),
+        "sampled_curve_point_coverage_90": curve_coverage,
+        "hyper_candidate_seed": int(hyper_candidate_seed),
+        "simulation_point_seed": int(simulation_point_seed),
+    }
+    summary.update(_summarize_quantiles(prob_vol_arr, "prob_vol"))
+    summary.update(_summarize_quantiles(prob_ratio_arr, "prob_vol_ratio"))
+    summary.update(_summarize_quantiles(sampled_vol_arr, "sampled_binary_vol"))
+    summary.update(_summarize_quantiles(sampled_ratio_arr, "sampled_binary_vol_ratio"))
+
+    selected = subject_payload.get("selected") if isinstance(subject_payload.get("selected"), Mapping) else {}
+    compact = selected.get("best_params") if isinstance(selected.get("best_params"), Mapping) else {}
+    for key in (
+        "gamma",
+        "w0",
+        "strategy_id",
+        "prior_reset_target",
+        "prior_reset_source",
+        "prior_reset_volatility_gain",
+        "latent_volatility_error_gain",
+        "latent_volatility_low_accuracy_gain",
+        "latent_volatility_decay",
+        "latent_volatility_max",
+        "output_base_lapse",
+        "output_latent_volatility_lapse",
+    ):
+        if key in compact:
+            summary[key] = compact[key]
+
+    return run_rows, summary
+
+
+def _write_volatility_report(output_dir: Path, label: str, summary_df: pd.DataFrame) -> Path:
+    lines = [
+        "# Volatility Calibration Diagnostic",
+        "",
+        f"- Label: `{label}`",
+        "- `prob_vol_ratio` compares the expected model accuracy curve to the human 0/1 curve.",
+        "- `sampled_binary_vol_ratio` compares Bernoulli-sampled model behavior to the same human 0/1 curve.",
+        "- `human_vol_percentile` is the posterior predictive CDF value of the observed human volatility.",
+        "- Coverage is good when the human volatility lies inside the sampled binary 5%-95% interval.",
+        "",
+        "## Subject Summary",
+        "",
+    ]
+    for _, row in summary_df.sort_values("subject_id").iterrows():
+        covered = "yes" if bool(row.get("sampled_binary_vol_covered_90")) else "no"
+        lines.append(
+            "- Subject {sid}: human percentile={pct:.3f}; sampled ratio median={med:.3f} "
+            "[q05={q05:.3f}, q95={q95:.3f}]; prob ratio median={pmed:.3f}; covered90={covered}; "
+            "curve point coverage={curve:.3f}.".format(
+                sid=int(row["subject_id"]),
+                pct=float(row.get("human_vol_percentile", np.nan)),
+                med=float(row.get("sampled_binary_vol_ratio_median", np.nan)),
+                q05=float(row.get("sampled_binary_vol_ratio_q05", np.nan)),
+                q95=float(row.get("sampled_binary_vol_ratio_q95", np.nan)),
+                pmed=float(row.get("prob_vol_ratio_median", np.nan)),
+                covered=covered,
+                curve=float(row.get("sampled_curve_point_coverage_90", np.nan)),
+            )
+        )
+    if not summary_df.empty:
+        lines.extend(
+            [
+                "",
+                "## Aggregate",
+                "",
+                f"- Covered subjects: {int(summary_df['sampled_binary_vol_covered_90'].sum())}/{len(summary_df)}",
+                f"- Mean human percentile: {float(summary_df['human_vol_percentile'].mean()):.3f}",
+                f"- Median sampled-binary volatility ratio: {float(summary_df['sampled_binary_vol_ratio_median'].median()):.3f}",
+                f"- Median probability-curve volatility ratio: {float(summary_df['prob_vol_ratio_median'].median()):.3f}",
+            ]
+        )
+    path = output_dir / "volatility_calibration_report.md"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def evaluate_volatility_calibration(
+    *,
+    input_dir: Path,
+    output_dir: Path | None,
+    base_sim_config: Path | None,
+    subjects: Sequence[int] | None,
+    subject_range: Sequence[int] | None,
+    model_repeats: int,
+    binary_samples_per_run: int,
+    n_jobs: int,
+    seed: int,
+) -> dict[str, str]:
+    """Run binary posterior-predictive volatility calibration for selected hyper-CD fits."""
+    input_dir = _volatility_resolve_project_path(input_dir)
+    label = input_dir.name
+    base_cfg_path = _volatility_infer_base_sim_config_path(input_dir, base_sim_config)
+    base_cfg = load_yaml(base_cfg_path)
+    subject_ids = _volatility_resolve_subjects(input_dir, subjects, subject_range)
+    out_dir = (
+        _volatility_resolve_project_path(output_dir)
+        if output_dir
+        else input_dir / "hyper_evaluation" / "volatility_calibration"
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    all_run_rows: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    for subject_id in subject_ids:
+        run_rows, summary = _evaluate_volatility_subject(
+            input_dir=input_dir,
+            label=label,
+            base_cfg=base_cfg,
+            base_cfg_path=base_cfg_path,
+            subject_id=int(subject_id),
+            subjects=subject_ids,
+            model_repeats=int(model_repeats),
+            binary_samples_per_run=int(binary_samples_per_run),
+            n_jobs=int(n_jobs),
+            seed=int(seed),
+        )
+        all_run_rows.extend(run_rows)
+        summaries.append(summary)
+
+    run_df = pd.DataFrame(all_run_rows)
+    summary_df = pd.DataFrame(summaries)
+    run_path = out_dir / "volatility_calibration_runs.csv"
+    summary_path = out_dir / "volatility_calibration_summary.csv"
+    run_df.to_csv(run_path, index=False)
+    summary_df.to_csv(summary_path, index=False)
+    report_path = _write_volatility_report(out_dir, label, summary_df)
+    manifest_path = out_dir / "manifest.json"
+    _volatility_write_json(
+        manifest_path,
+        {
+            "input_dir": input_dir.as_posix(),
+            "output_dir": out_dir.as_posix(),
+            "base_sim_config": base_cfg_path.as_posix(),
+            "subjects": [int(x) for x in subject_ids],
+            "model_repeats": int(model_repeats),
+            "binary_samples_per_run": int(binary_samples_per_run),
+            "n_jobs": int(n_jobs),
+            "seed": int(seed),
+            "outputs": {
+                "runs": run_path.as_posix(),
+                "summary": summary_path.as_posix(),
+                "report": report_path.as_posix(),
+            },
+        },
+    )
+    return {
+        "runs": run_path.as_posix(),
+        "summary": summary_path.as_posix(),
+        "report": report_path.as_posix(),
+        "manifest": manifest_path.as_posix(),
+    }
 
 
 def _parse_subjects(values: Sequence[str] | None) -> list[int] | None:

@@ -56,7 +56,6 @@ class LikelihoodModule(BaseModule):
         # Check if engine has per-hypothesis beta from BetaModule
         engine_beta = getattr(self.engine, "beta", None)
         if engine_beta is not None and isinstance(engine_beta, np.ndarray):
-            # Return beta values for active hypotheses
             return engine_beta[self.h_indices]
         
         # Fallback to global beta

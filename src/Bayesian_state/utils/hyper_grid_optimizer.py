@@ -24,21 +24,65 @@ from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.optimizer_common import derive_hyper_candidate_seed
 from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRunner
-from src.Bayesian_state.utils.hyperparam_values import (
-    validate_no_nested_hyperparam_paths,
-    values_from_json,
-    values_product,
-)
-from src.Bayesian_state.utils.hyper_results import (
+from src.Bayesian_state.utils.hyper_utils import (
+    HYPER_RESULT_SCHEMA_VERSION,
     build_root_best_payload,
+    build_hyper_provenance,
     build_subject_artifacts,
     build_subject_best_payload,
     combination_metrics_summary,
     compact_hyperparams,
+    to_builtin,
+    validate_no_nested_hyperparam_paths,
+    values_from_json,
+    values_product,
+)
+from src.Bayesian_state.utils.simulation_statistics import (
+    get_stat_value,
+    resolve_selection_metric_path,
 )
 
 
-SELECTION_METRICS = {"mean_simulation_error", "best_simulation_error"}
+LOWER_TAIL_FRACTION = 0.10
+DEFAULT_SELECTION_METRIC = "simulation.mean_error"
+
+
+def _lower_tail_metrics(sample_errors: Sequence[Any], fallback_error: float) -> Dict[str, Any]:
+    finite_values: List[float] = []
+    for value in sample_errors or []:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(numeric):
+            finite_values.append(numeric)
+    values = np.asarray(finite_values, dtype=float)
+    if values.size == 0:
+        values = np.asarray([float(fallback_error)], dtype=float)
+    ordered = np.sort(values)
+    tail_count = max(1, int(np.ceil(ordered.size * LOWER_TAIL_FRACTION)))
+    return {
+        "best10_mean_error": float(np.mean(ordered[:tail_count])),
+        "q10_error": float(np.quantile(ordered, LOWER_TAIL_FRACTION)),
+        "lower_tail_fraction": float(LOWER_TAIL_FRACTION),
+        "lower_tail_count": int(tail_count),
+    }
+
+
+def _selection_error_value(
+    selection_metric: str,
+    subject_record: Mapping[str, Any],
+) -> float:
+    value = get_stat_value(
+        subject_record,
+        resolve_selection_metric_path(selection_metric),
+        float("inf"),
+    )
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return float("inf")
+    return numeric if np.isfinite(numeric) else float("inf")
 
 
 @dataclass
@@ -59,13 +103,13 @@ class HyperGridOptimizer:
         self.config_path = config_path
         self.config_dir = config_path.parent
 
-        self.selection_metric = str(self.config.get("selection_metric", "mean_simulation_error"))
-        if self.selection_metric not in SELECTION_METRICS:
-            raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
+        self.selection_metric = resolve_selection_metric_path(
+            self.config.get("selection_metric", DEFAULT_SELECTION_METRIC)
+        )
 
-        # Historically users could set `hyperparam_selection_mode` in the config.
-        # This option is no longer required; the optimizer currently only
-        # supports per-subject selection internally.
+        requested_selection_mode = str(self.config.get("hyperparam_selection_mode", "per_subject"))
+        if requested_selection_mode != "per_subject":
+            raise ValueError("Only per_subject hyperparam_selection_mode is supported.")
         self.hyperparam_selection_mode = "per_subject"
 
         self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
@@ -306,7 +350,6 @@ class HyperGridOptimizer:
         subject_metrics: Dict[int, Dict[str, Any]] = {}
         errors: List[float] = []
 
-        metric_field = "mean_error" if self.selection_metric == "mean_simulation_error" else "best_error"
         for sid in subjects:
             subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, n_jobs = self._resolve_sim_components(
                 stage_sim_cfg,
@@ -323,6 +366,11 @@ class HyperGridOptimizer:
             simulation_repeats = resolve_simulation_repeats(combination_sim_cfg)
             effective_loss_metric = str(combination_sim_cfg["loss_metric"])
             effective_loss_delta = resolve_loss_delta(combination_sim_cfg, effective_loss_metric)
+            statistics_config = combination_sim_cfg.get("simulation_statistics")
+            if statistics_config is None:
+                statistics_config = self.config.get("simulation_statistics")
+            if statistics_config is None:
+                statistics_config = self.config.get("secondary_selection")
 
             result = runner.simulate_subject(
                 subject_id=sid,
@@ -337,23 +385,48 @@ class HyperGridOptimizer:
                 loss_metric=effective_loss_metric,
                 loss_delta=effective_loss_delta,
                 hyper_candidate_seed=hyper_candidate_seed,
+                statistics_config=statistics_config,
             )
 
             best = result["best"]
             mean_err = float(getattr(best, "mean_error"))
             best_err = float(getattr(best, "best_error", mean_err))
-            value = float(getattr(best, metric_field, mean_err))
-            errors.append(value)
-            subject_metrics[int(sid)] = {
+            sample_errors = list(getattr(best, "sample_errors", []) or [])
+            tail_metrics = _lower_tail_metrics(sample_errors, fallback_error=mean_err)
+            statistics_summary = dict(getattr(best, "statistics_summary", {}) or {})
+            simulation_summary = {
                 "mean_error": mean_err,
                 "best_error": best_err,
+                "best10_mean_error": float(tail_metrics["best10_mean_error"]),
+                "q10_error": float(tail_metrics["q10_error"]),
+                "lower_tail_fraction": float(tail_metrics["lower_tail_fraction"]),
+                "lower_tail_count": int(tail_metrics["lower_tail_count"]),
                 "std_error": float(getattr(best, "std_error", 0.0)),
-                "sample_errors": list(getattr(best, "sample_errors", []) or []),
+                "sample_errors": sample_errors,
+                "simulation_repeats": simulation_repeats,
+            }
+            subject_record = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+            }
+            value = _selection_error_value(
+                self.selection_metric,
+                subject_record,
+            )
+            errors.append(value)
+            subject_metrics[int(sid)] = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+                "selection": {
+                    "primary": {
+                        "metric": self.selection_metric,
+                        "value": float(value),
+                    },
+                },
                 "fixed_hyperparams": deepcopy(combination_params),
                 "condition": int(result.get("condition", -1)),
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
                 "hyper_candidate_seed": int(hyper_candidate_seed),
-                "simulation_repeats": simulation_repeats,
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
@@ -369,17 +442,21 @@ class HyperGridOptimizer:
     def _append_jsonl(self, path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(_to_builtin(payload), ensure_ascii=False) + "\n")
+            f.write(json.dumps(_to_builtin(payload), ensure_ascii=False, allow_nan=False) + "\n")
 
     def _serialize_combination_record(self, combination: CombinationResult) -> Dict[str, Any]:
         data = {
+            "schema_version": HYPER_RESULT_SCHEMA_VERSION,
             "stage": combination.stage,
             "combination_index": combination.combination_index,
             "hyperparams": combination.hyperparams,
             "aggregated_error": combination.aggregated_error,
             "hyper_candidate_seed": combination.hyper_candidate_seed,
         }
-        metrics_summary = combination_metrics_summary(combination.subject_metrics)
+        metrics_summary = combination_metrics_summary(
+            combination.subject_metrics,
+            aggregated_error=combination.aggregated_error,
+        )
         if metrics_summary:
             data["metrics_summary"] = metrics_summary
         if self.save_level == "full":
@@ -408,7 +485,7 @@ class HyperGridOptimizer:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             for record in records:
-                f.write(json.dumps(_to_builtin(record), ensure_ascii=False) + "\n")
+                f.write(json.dumps(_to_builtin(record), ensure_ascii=False, allow_nan=False) + "\n")
 
     def _combination_from_record(self, record: Mapping[str, Any], path: Path) -> CombinationResult:
         hyperparams = record.get("hyperparams")
@@ -463,7 +540,13 @@ class HyperGridOptimizer:
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
 
-        stages_to_run = ["coarse", "fine"] if stage == "all" else [stage]
+        if stage == "all":
+            configured_stages = self.config.get("stages") or {}
+            stages_to_run = [name for name in ("coarse", "fine") if name in configured_stages]
+            if not stages_to_run:
+                raise ValueError("Config must define at least one stage when stage='all'")
+        else:
+            stages_to_run = [stage]
         subject_dir = output_base / f"subject_{int(subject_id)}"
         subject_dir.mkdir(parents=True, exist_ok=True)
         all_combinations_path = subject_dir / "all_combinations.jsonl"
@@ -506,12 +589,20 @@ class HyperGridOptimizer:
         stage_summary = self._build_stage_summary(all_stage_combinations)
         final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
         final_combinations = all_stage_combinations[final_stage]
-        metric_field = "mean_error" if self.selection_metric == "mean_simulation_error" else "best_error"
-        best_combination = min(final_combinations, key=lambda t: float(t.subject_metrics[int(subject_id)][metric_field]))
+        best_combination = min(
+            final_combinations,
+            key=lambda t: float(
+                get_stat_value(
+                    t.subject_metrics.get(int(subject_id), {}),
+                    "selection.primary.value",
+                    t.aggregated_error,
+                )
+            ),
+        )
 
         stage_summary_path = subject_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         sid = int(subject_id)
         subject_best = build_subject_best_payload(
@@ -525,6 +616,11 @@ class HyperGridOptimizer:
             aggregated_error=best_combination.aggregated_error,
             hyper_candidate_seed=best_combination.hyper_candidate_seed,
             metrics=best_combination.subject_metrics[sid],
+            provenance=build_hyper_provenance(
+                config_path=self.config_path,
+                output_dir=subject_dir,
+                base_sim_config_path=self.base_sim_config_path,
+            ),
             artifacts=build_subject_artifacts(subject_dir, include_cd=False),
             full_subject_metrics=(
                 {str(sid): best_combination.subject_metrics[sid]}
@@ -535,7 +631,7 @@ class HyperGridOptimizer:
 
         best_path = subject_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(subject_best), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(subject_best), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         return {
             "subject_id": sid,
@@ -603,7 +699,7 @@ class HyperGridOptimizer:
         )
         best_path = self.output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
         return {
             "output_dir": str(self.output_dir),
             "per_subject_outputs": per_subject_outputs,
@@ -623,17 +719,7 @@ def _deep_update(base: Dict[str, Any], override: Mapping[str, Any]) -> Dict[str,
 
 
 def _to_builtin(obj: Any) -> Any:
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, dict):
-        return {str(k): _to_builtin(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_to_builtin(x) for x in obj]
-    return obj
+    return to_builtin(obj)
 
 
 __all__ = ["HyperGridOptimizer", "CombinationResult"]

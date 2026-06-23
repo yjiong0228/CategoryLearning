@@ -5,6 +5,7 @@ The public surface follows the output layout used by
 
 - basic:
   - accuracy_comparison and accuracy_family_comparison
+  - accuracy_band
   - choice_brier
   - posterior_probabilities and prior_probabilities
   - beta_dynamics
@@ -31,7 +32,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -118,6 +119,33 @@ class ModelEval(OralModelAlignmentMixin):
         if arr.size == 0:
             raise ValueError(f"{field_name} is empty")
         return arr
+
+    @staticmethod
+    def _safe_float(value, default=np.nan):
+        try:
+            out = float(value)
+        except (TypeError, ValueError):
+            return default
+        return out if np.isfinite(out) else default
+
+    @staticmethod
+    def _safe_pearson(x, y):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        y = np.asarray(y, dtype=float).reshape(-1)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if int(mask.sum()) < 3:
+            return np.nan
+        x = x[mask]
+        y = y[mask]
+        if np.nanstd(x) <= 1e-12 or np.nanstd(y) <= 1e-12:
+            return np.nan
+        return float(np.corrcoef(x, y)[0, 1])
+
+    @staticmethod
+    def _safe_mean(values):
+        arr = np.asarray([ModelEval._safe_float(value) for value in values], dtype=float)
+        arr = arr[np.isfinite(arr)]
+        return float(np.mean(arr)) if arr.size else np.nan
 
     @staticmethod
     def _extract_beta_log(info):
@@ -1087,7 +1115,7 @@ class ModelEval(OralModelAlignmentMixin):
         ref = payload.get("raw_runs_ref") or {}
         stream_count = int(ref.get("count", 0) or 0)
 
-        summary = payload.get("simulation_summary") or {}
+        summary = payload.get("simulation") or payload.get("simulation_summary") or {}
         sample_errors = summary.get("sample_errors")
         if isinstance(sample_errors, list) and sample_errors:
             rows = [
@@ -1169,6 +1197,639 @@ class ModelEval(OralModelAlignmentMixin):
                 if len(found) == len(wanted):
                     break
         return found
+
+    @staticmethod
+    def _extract_run_metrics(run_obj: Mapping[str, Any], eval_prediction_mode=None):
+        metrics = run_obj.get("metrics")
+        if isinstance(metrics, Mapping):
+            return metrics
+        metrics_by_mode = run_obj.get("metrics_by_mode")
+        mode = eval_prediction_mode or run_obj.get("selection_prediction_mode")
+        if mode is None and isinstance(metrics_by_mode, Mapping) and len(metrics_by_mode) == 1:
+            mode = next(iter(metrics_by_mode))
+        if isinstance(metrics_by_mode, Mapping) and mode in metrics_by_mode:
+            metrics = metrics_by_mode[mode]
+            if isinstance(metrics, Mapping):
+                return metrics
+        return {}
+
+    @staticmethod
+    def _accuracy_curve_summary(metrics: Mapping[str, Any]) -> dict[str, float]:
+        try:
+            true = ModelEval._as_float_1d(metrics.get("sliding_true_acc"), "sliding_true_acc")
+            pred = ModelEval._as_float_1d(metrics.get("sliding_pred_acc"), "sliding_pred_acc")
+        except (TypeError, ValueError):
+            return {
+                "acc_mae": np.nan,
+                "acc_rmse": np.nan,
+                "true_vol": np.nan,
+                "model_vol": np.nan,
+                "vol_ratio": np.nan,
+                "slope_agree": np.nan,
+            }
+        if true.shape != pred.shape:
+            return {
+                "acc_mae": np.nan,
+                "acc_rmse": np.nan,
+                "true_vol": np.nan,
+                "model_vol": np.nan,
+                "vol_ratio": np.nan,
+                "slope_agree": np.nan,
+            }
+        mask = np.isfinite(true) & np.isfinite(pred)
+        if not mask.any():
+            return {
+                "acc_mae": np.nan,
+                "acc_rmse": np.nan,
+                "true_vol": np.nan,
+                "model_vol": np.nan,
+                "vol_ratio": np.nan,
+                "slope_agree": np.nan,
+            }
+        true = true[mask]
+        pred = pred[mask]
+        diff = pred - true
+        true_vol = float(np.mean(np.abs(np.diff(true)))) if true.size > 1 else np.nan
+        model_vol = float(np.mean(np.abs(np.diff(pred)))) if pred.size > 1 else np.nan
+        d_true = np.diff(true)
+        d_pred = np.diff(pred)
+        slope_mask = (np.abs(d_true) > 1e-12) & (np.abs(d_pred) > 1e-12)
+        slope_agree = (
+            float(np.mean(np.sign(d_true[slope_mask]) == np.sign(d_pred[slope_mask])))
+            if slope_mask.any()
+            else np.nan
+        )
+        return {
+            "acc_mae": float(np.mean(np.abs(diff))),
+            "acc_rmse": float(np.sqrt(np.mean(diff * diff))),
+            "true_vol": true_vol,
+            "model_vol": model_vol,
+            "vol_ratio": float(model_vol / true_vol) if true_vol > 0 else np.nan,
+            "slope_agree": slope_agree,
+        }
+
+    @staticmethod
+    def _standardized_lag_kernel(x, y, ridge=1e-3):
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        if x.ndim != 2 or y.ndim != 1 or x.shape[0] != y.shape[0] or x.shape[0] <= x.shape[1]:
+            return np.full(x.shape[1] if x.ndim == 2 else 0, np.nan)
+        x = x - np.nanmean(x, axis=0, keepdims=True)
+        y = y - float(np.nanmean(y))
+        x_scale = np.nanstd(x, axis=0, keepdims=True)
+        x_scale = np.where(x_scale > 1e-12, x_scale, 1.0)
+        y_scale = float(np.nanstd(y))
+        x = x / x_scale
+        if y_scale > 1e-12:
+            y = y / y_scale
+        xtx = x.T @ x
+        penalty = max(0.0, float(ridge)) * np.eye(xtx.shape[0], dtype=float)
+        try:
+            return np.linalg.solve(xtx + penalty, x.T @ y)
+        except np.linalg.LinAlgError:
+            return np.linalg.pinv(xtx + penalty) @ (x.T @ y)
+
+    @staticmethod
+    def _history_kernel_summary(metrics: Mapping[str, Any], max_lag=8) -> dict[str, Any]:
+        true_acc = np.asarray(metrics.get("true_acc"), dtype=float).reshape(-1)
+        pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float).reshape(-1)
+        valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
+        if true_acc.shape != pred_acc.shape or valid.shape != true_acc.shape or true_acc.size <= max_lag:
+            return {
+                "history_corr": np.nan,
+                "history_mse": np.nan,
+                "human_kernel": [],
+                "model_kernel": [],
+            }
+        rows = []
+        human_y = []
+        model_y = []
+        for trial_idx in range(int(max_lag), true_acc.size):
+            if not bool(valid[trial_idx]):
+                continue
+            y_h = ModelEval._safe_float(true_acc[trial_idx])
+            y_m = ModelEval._safe_float(pred_acc[trial_idx])
+            lags = [ModelEval._safe_float(true_acc[trial_idx - lag]) for lag in range(1, int(max_lag) + 1)]
+            if not (np.isfinite(y_h) and np.isfinite(y_m) and all(np.isfinite(v) for v in lags)):
+                continue
+            rows.append(lags)
+            human_y.append(y_h)
+            model_y.append(y_m)
+        if len(rows) <= max_lag:
+            return {
+                "history_corr": np.nan,
+                "history_mse": np.nan,
+                "human_kernel": [],
+                "model_kernel": [],
+            }
+        x = np.asarray(rows, dtype=float)
+        human = ModelEval._standardized_lag_kernel(x, np.asarray(human_y, dtype=float))
+        model = ModelEval._standardized_lag_kernel(x, np.asarray(model_y, dtype=float))
+        finite = np.isfinite(human) & np.isfinite(model)
+        if not finite.any():
+            return {
+                "history_corr": np.nan,
+                "history_mse": np.nan,
+                "human_kernel": [],
+                "model_kernel": [],
+            }
+        diff = model[finite] - human[finite]
+        return {
+            "history_corr": ModelEval._safe_pearson(human[finite], model[finite]),
+            "history_mse": float(np.mean(diff * diff)),
+            "human_kernel": [float(v) if np.isfinite(v) else np.nan for v in human],
+            "model_kernel": [float(v) if np.isfinite(v) else np.nan for v in model],
+        }
+
+    @staticmethod
+    def _switch_summary(metrics: Mapping[str, Any]) -> dict[str, float]:
+        probs = np.asarray(metrics.get("pred_category_probs"), dtype=float)
+        choices = np.asarray(metrics.get("observed_choice_index"), dtype=float).reshape(-1)
+        true_acc = np.asarray(metrics.get("true_acc"), dtype=float).reshape(-1)
+        valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(choices, dtype=bool)), dtype=bool)
+        empty = {
+            "switch_human": np.nan,
+            "switch_model": np.nan,
+            "switch_abs_diff": np.nan,
+            "win_stay_abs_diff": np.nan,
+            "lose_shift_abs_diff": np.nan,
+            "switch_score": np.nan,
+        }
+        if probs.ndim != 2 or choices.size <= 1 or probs.shape[0] != choices.size or valid.size != choices.size:
+            return empty
+        prev_choice = choices[:-1]
+        next_choice = choices[1:]
+        pair_mask = (
+            valid[1:]
+            & np.isfinite(prev_choice)
+            & np.isfinite(next_choice)
+            & (prev_choice >= 0)
+            & (next_choice >= 0)
+            & (prev_choice < probs.shape[1])
+            & (next_choice < probs.shape[1])
+            & np.all(np.isfinite(probs[1:, :]), axis=1)
+        )
+        if not np.any(pair_mask):
+            return empty
+        rows = np.arange(1, choices.size)[pair_mask]
+        prev_idx = prev_choice[pair_mask].astype(int)
+        next_idx = next_choice[pair_mask].astype(int)
+        model_stay = np.clip(probs[rows, prev_idx], 0.0, 1.0)
+        model_switch = 1.0 - model_stay
+        human_stay = (next_idx == prev_idx).astype(float)
+        human_switch = 1.0 - human_stay
+        prev_acc = true_acc[:-1][pair_mask] if true_acc.size == choices.size else np.full(prev_idx.size, np.nan)
+        win_mask = np.isfinite(prev_acc) & (prev_acc >= 0.5)
+        loss_mask = np.isfinite(prev_acc) & (prev_acc < 0.5)
+        switch_abs = float(abs(np.mean(model_switch) - np.mean(human_switch)))
+        win_abs = (
+            float(abs(np.mean(model_stay[win_mask]) - np.mean(human_stay[win_mask])))
+            if win_mask.any()
+            else np.nan
+        )
+        loss_abs = (
+            float(abs(np.mean(model_switch[loss_mask]) - np.mean(human_switch[loss_mask])))
+            if loss_mask.any()
+            else np.nan
+        )
+        switch_score = ModelEval._safe_mean([switch_abs, win_abs, loss_abs])
+        return {
+            "switch_human": float(np.mean(human_switch)),
+            "switch_model": float(np.mean(model_switch)),
+            "switch_abs_diff": switch_abs,
+            "win_stay_abs_diff": win_abs,
+            "lose_shift_abs_diff": loss_abs,
+            "switch_score": switch_score,
+        }
+
+    def _run_behavior_row(self, payload, subject_json_path, stream_index, run_obj, eval_prediction_mode=None):
+        metrics = self._extract_run_metrics(run_obj, eval_prediction_mode=eval_prediction_mode)
+        if not metrics:
+            return None
+        curve = self._accuracy_curve_summary(metrics)
+        history = self._history_kernel_summary(metrics)
+        switch = self._switch_summary(metrics)
+        return {
+            "subject_id": int(payload.get("subject_id", -1)),
+            "condition": int(payload.get("condition", -1)),
+            "stream_index": int(stream_index),
+            "run_index": int(run_obj.get("run_index", stream_index)),
+            "choice_error": self._safe_float(run_obj.get("mean_error")),
+            "subject_json": str(subject_json_path),
+            **curve,
+            "history_corr": history["history_corr"],
+            "history_mse": history["history_mse"],
+            **switch,
+        }
+
+    def collect_behavior_ppc_rows(
+        self,
+        input_dir,
+        eval_prediction_mode=None,
+        max_runs_per_subject=None,
+        subjects=None,
+    ):
+        input_dir = Path(input_dir)
+        subject_set = {int(subject) for subject in subjects} if subjects is not None else None
+        rows = []
+        for subject_json in self._subject_json_files(input_dir):
+            payload = self.load_subject_payload(subject_json)
+            sid = int(payload.get("subject_id", subject_json.stem.replace("subject_", "-1")))
+            if subject_set is not None and sid not in subject_set:
+                continue
+            stream = self._load_run_stream(payload, subject_json)
+            for stream_index, run_obj in enumerate(stream):
+                if max_runs_per_subject is not None and stream_index >= int(max_runs_per_subject):
+                    break
+                if not isinstance(run_obj, Mapping):
+                    continue
+                row = self._run_behavior_row(
+                    payload,
+                    subject_json,
+                    stream_index,
+                    run_obj,
+                    eval_prediction_mode=eval_prediction_mode,
+                )
+                if row is not None:
+                    rows.append(row)
+        return pd.DataFrame(rows)
+
+    def _predictive_accuracy_band_data(
+        self,
+        subject_json_path,
+        *,
+        eval_prediction_mode=None,
+        max_runs=None,
+    ):
+        subject_json_path = Path(subject_json_path)
+        payload = self.load_subject_payload(subject_json_path)
+        stream = self._load_run_stream(payload, subject_json_path)
+        pred_curves = []
+        true_curve = None
+        for stream_index, run_obj in enumerate(stream):
+            if max_runs is not None and stream_index >= int(max_runs):
+                break
+            if not isinstance(run_obj, Mapping):
+                continue
+            try:
+                true_acc, pred_acc, _ = self._extract_run_eval_curves(
+                    run_obj,
+                    eval_prediction_mode=eval_prediction_mode,
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if true_curve is None:
+                true_curve = np.asarray(true_acc, dtype=float)
+            if len(pred_acc) == len(true_curve):
+                pred_curves.append(np.asarray(pred_acc, dtype=float))
+        if true_curve is None or not pred_curves:
+            raise ValueError(f"No usable run accuracy curves found in {subject_json_path}")
+        pred_stack = np.vstack(pred_curves)
+        q05, q25, q50, q75, q95 = np.nanquantile(pred_stack, [0.05, 0.25, 0.5, 0.75, 0.95], axis=0)
+
+        representative = payload.get("representative_run") or {}
+        representative_metrics = representative.get("metrics_by_mode") or {}
+        selection = payload.get("selection") or {}
+        mode = eval_prediction_mode or selection.get("selection_prediction_mode")
+        rep_pred = None
+        if isinstance(representative_metrics, Mapping) and mode in representative_metrics:
+            try:
+                rep_pred = self._as_float_1d(representative_metrics[mode].get("sliding_pred_acc"), "rep_pred")
+            except (TypeError, ValueError):
+                rep_pred = None
+
+        summary = payload.get("simulation") or payload.get("simulation_summary") or {}
+        win = int(summary.get("window_size") or (selection.get("selection_meta") or {}).get("window_size") or 1)
+        x = np.arange(win + 1, win + 1 + len(true_curve))
+        sid = int(payload.get("subject_id", -1))
+        condition = int(payload.get("condition", -1))
+
+        coverage_50 = float(np.mean((true_curve >= q25) & (true_curve <= q75)))
+        coverage_90 = float(np.mean((true_curve >= q05) & (true_curve <= q95)))
+        median_mae = float(np.mean(np.abs(q50 - true_curve)))
+        true_vol = float(np.mean(np.abs(np.diff(true_curve)))) if true_curve.size > 1 else np.nan
+        median_vol = float(np.mean(np.abs(np.diff(q50)))) if q50.size > 1 else np.nan
+        return {
+            "subject_id": sid,
+            "condition": condition,
+            "n_runs": int(len(pred_curves)),
+            "x": x,
+            "true_curve": true_curve,
+            "representative_curve": rep_pred,
+            "q05": q05,
+            "q25": q25,
+            "q50": q50,
+            "q75": q75,
+            "q95": q95,
+            "median_curve_mae": median_mae,
+            "coverage_50": coverage_50,
+            "coverage_90": coverage_90,
+            "median_vol_ratio": float(median_vol / true_vol) if true_vol > 0 else np.nan,
+        }
+
+    @staticmethod
+    def _draw_predictive_accuracy_band(ax, band, *, show_legend=True, compact_title=False):
+        x = band["x"]
+        ax.fill_between(x, band["q05"], band["q95"], color="#b7c9e2", alpha=0.35, label="Model 90% interval")
+        ax.fill_between(x, band["q25"], band["q75"], color="#5f8fc4", alpha=0.35, label="Model 50% interval")
+        ax.plot(x, band["q50"], color="#235789", lw=2.0, label="Model median")
+        rep_pred = band.get("representative_curve")
+        if rep_pred is not None and len(rep_pred) == len(x):
+            ax.plot(x, rep_pred, color="#e07a5f", lw=1.5, alpha=0.9, label="Representative run")
+        ax.plot(x, band["true_curve"], color="#1b1b1b", lw=2.2, label="Human")
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Trial")
+        ax.set_ylabel("Accuracy")
+        if compact_title:
+            ax.set_title(f"S{band['subject_id']} | n={band['n_runs']}")
+        else:
+            ax.set_title(
+                f"Predictive Accuracy Band | Subject {band['subject_id']} | "
+                f"n={band['n_runs']} runs"
+            )
+        ax.grid(alpha=0.25)
+        if show_legend:
+            ax.legend(loc="best")
+
+    def plot_predictive_accuracy_band(
+        self,
+        subject_json_path,
+        *,
+        save_path=None,
+        eval_prediction_mode=None,
+        max_runs=None,
+    ):
+        band = self._predictive_accuracy_band_data(
+            subject_json_path,
+            eval_prediction_mode=eval_prediction_mode,
+            max_runs=max_runs,
+        )
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        self._draw_predictive_accuracy_band(ax, band, show_legend=True)
+        fig.tight_layout()
+        if save_path:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+        return {
+            "subject_id": band["subject_id"],
+            "n_runs": band["n_runs"],
+            "median_curve_mae": band["median_curve_mae"],
+            "coverage_50": band["coverage_50"],
+            "coverage_90": band["coverage_90"],
+            "median_vol_ratio": band["median_vol_ratio"],
+            "plot_path": str(save_path) if save_path else "",
+        }
+
+    def plot_predictive_accuracy_band_group(
+        self,
+        input_dir,
+        save_path=None,
+        *,
+        eval_prediction_mode=None,
+        max_runs_per_subject=None,
+        subjects=None,
+        n_cols=None,
+        max_subjects_per_row=8,
+    ):
+        input_dir = Path(input_dir)
+        subject_set = {int(subject) for subject in subjects} if subjects is not None else None
+        bands = []
+        for subject_json in self._subject_json_files(input_dir):
+            sid = int(subject_json.stem.replace("subject_", ""))
+            if subject_set is not None and sid not in subject_set:
+                continue
+            try:
+                bands.append(
+                    self._predictive_accuracy_band_data(
+                        subject_json,
+                        eval_prediction_mode=eval_prediction_mode,
+                        max_runs=max_runs_per_subject,
+                    )
+                )
+            except (ValueError, FileNotFoundError, KeyError) as exc:
+                logger.warning("Skipping predictive band for %s: %s", subject_json, exc)
+
+        if not bands:
+            raise ValueError(f"No usable predictive accuracy bands found in {input_dir}")
+
+        bands = sorted(bands, key=lambda row: (row["condition"], row["subject_id"]))
+        grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for band in bands:
+            grouped[int(band["condition"])].append(band)
+        layout_kwargs = {"max_subjects_per_row": max_subjects_per_row}
+        if n_cols is not None:
+            layout_kwargs["n_cols"] = int(n_cols)
+        n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, layout_kwargs)
+
+        fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
+        row_offset = 0
+        legend_drawn = False
+        for condition, condition_bands in sorted(grouped.items()):
+            for idx, band in enumerate(condition_bands):
+                local_row = idx // n_cols
+                col = idx % n_cols
+                ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
+                show_legend = not legend_drawn
+                self._draw_predictive_accuracy_band(
+                    ax,
+                    band,
+                    show_legend=show_legend,
+                    compact_title=False,
+                )
+                legend_drawn = legend_drawn or show_legend
+            row_offset += rows_by_condition[condition]
+
+        used_axes = sum(len(items) for items in grouped.values())
+        for idx in range(used_axes, n_rows * n_cols):
+            ax = fig.add_subplot(n_rows, n_cols, idx + 1)
+            ax.axis("off")
+
+        fig.suptitle("Predictive Accuracy Band by Subject", fontsize=16, y=0.99)
+        fig.tight_layout()
+        if save_path:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(save_path)
+            plt.close(fig)
+
+        return pd.DataFrame(
+            [
+                {
+                    "subject_id": band["subject_id"],
+                    "condition": band["condition"],
+                    "n_runs": band["n_runs"],
+                    "median_curve_mae": band["median_curve_mae"],
+                    "coverage_50": band["coverage_50"],
+                    "coverage_90": band["coverage_90"],
+                    "median_vol_ratio": band["median_vol_ratio"],
+                    "plot_path": str(save_path) if save_path else "",
+                }
+                for band in bands
+            ]
+        )
+
+    def save_predictive_accuracy_bands(
+        self,
+        input_dir,
+        output_dir,
+        *,
+        eval_prediction_mode=None,
+        max_runs_per_subject=None,
+        subjects=None,
+    ):
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        subject_set = {int(subject) for subject in subjects} if subjects is not None else None
+        rows = []
+        for subject_json in self._subject_json_files(input_dir):
+            sid = int(subject_json.stem.replace("subject_", ""))
+            if subject_set is not None and sid not in subject_set:
+                continue
+            save_path = output_dir / f"subject_{sid}_predictive_accuracy_band.png"
+            try:
+                rows.append(
+                    self.plot_predictive_accuracy_band(
+                        subject_json,
+                        save_path=save_path,
+                        eval_prediction_mode=eval_prediction_mode,
+                        max_runs=max_runs_per_subject,
+                    )
+                )
+            except (ValueError, FileNotFoundError, KeyError) as exc:
+                logger.warning("Skipping predictive band for %s: %s", subject_json, exc)
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df.to_csv(output_dir / "predictive_accuracy_band_summary.csv", index=False)
+        return df
+
+    def save_behavior_ppc_outputs(
+        self,
+        input_dir,
+        output_dir,
+        *,
+        eval_prediction_mode=None,
+        max_runs_per_subject=None,
+        subjects=None,
+    ):
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        run_df = self.collect_behavior_ppc_rows(
+            input_dir,
+            eval_prediction_mode=eval_prediction_mode,
+            max_runs_per_subject=max_runs_per_subject,
+            subjects=subjects,
+        )
+        if run_df.empty:
+            raise ValueError("No raw-run behavior metrics available")
+        run_df.to_csv(output_dir / "behavior_ppc_run_metrics.csv", index=False)
+
+        summary_rows = []
+        for sid, group in run_df.groupby("subject_id", sort=True):
+            summary_rows.append(
+                {
+                    "subject_id": int(sid),
+                    "n_runs": int(len(group)),
+                    "choice_error_mean": float(group["choice_error"].mean()),
+                    "acc_mae_mean": float(group["acc_mae"].mean()),
+                    "acc_mae_median": float(group["acc_mae"].median()),
+                    "vol_ratio_median": float(group["vol_ratio"].median()),
+                    "vol_ratio_q10": float(group["vol_ratio"].quantile(0.10)),
+                    "vol_ratio_q90": float(group["vol_ratio"].quantile(0.90)),
+                    "history_corr_mean": float(group["history_corr"].mean()),
+                    "history_corr_median": float(group["history_corr"].median()),
+                    "switch_score_mean": float(group["switch_score"].mean()),
+                    "switch_score_median": float(group["switch_score"].median()),
+                    "acc_mae_pass": bool(group["acc_mae"].mean() <= 0.10),
+                    "vol_ratio_pass": bool(0.60 <= group["vol_ratio"].median() <= 1.50),
+                    "history_corr_pass": bool(group["history_corr"].mean() >= 0.80),
+                    "switch_score_pass": bool(group["switch_score"].mean() <= 0.10),
+                }
+            )
+        summary_df = pd.DataFrame(summary_rows)
+        summary_df.to_csv(output_dir / "behavior_ppc_subject_summary.csv", index=False)
+
+        self._plot_ppc_distribution(
+            run_df,
+            y="acc_mae",
+            threshold=0.10,
+            output_path=output_dir / "accuracy_mae_ppc.png",
+            ylabel="Accuracy Curve MAE",
+            title="Accuracy MAE PPC",
+            threshold_label="target <= 0.10",
+        )
+        self._plot_ppc_distribution(
+            run_df,
+            y="vol_ratio",
+            threshold=(0.60, 1.50),
+            output_path=output_dir / "volatility_ppc.png",
+            ylabel="Model / Human Volatility Ratio",
+            title="Volatility PPC",
+            threshold_label="target range [0.60, 1.50]",
+        )
+        self._plot_ppc_distribution(
+            run_df,
+            y="history_corr",
+            threshold=0.80,
+            output_path=output_dir / "history_kernel_ppc.png",
+            ylabel="History Kernel Correlation",
+            title="Feedback-History Kernel PPC",
+            threshold_label="target >= 0.80",
+        )
+        self._plot_ppc_distribution(
+            run_df,
+            y="switch_score",
+            threshold=0.10,
+            output_path=output_dir / "switch_ppc.png",
+            ylabel="Switch Profile Score",
+            title="Switch / Perseveration PPC",
+            threshold_label="target <= 0.10",
+        )
+        return {
+            "run_metrics": run_df,
+            "subject_summary": summary_df,
+        }
+
+    @staticmethod
+    def _plot_ppc_distribution(df, *, y, threshold, output_path, ylabel, title, threshold_label):
+        plot_df = df[["subject_id", y]].copy()
+        plot_df[y] = pd.to_numeric(plot_df[y], errors="coerce")
+        plot_df = plot_df[np.isfinite(plot_df[y])]
+        if plot_df.empty:
+            raise ValueError(f"No finite values for {y}")
+        plot_df["subject_id"] = plot_df["subject_id"].astype(str)
+        fig, ax = plt.subplots(figsize=(max(8, 0.55 * plot_df["subject_id"].nunique()), 5))
+        sns.violinplot(data=plot_df, x="subject_id", y=y, inner="quartile", cut=0, ax=ax, color="#d8e2dc")
+        sns.pointplot(
+            data=plot_df,
+            x="subject_id",
+            y=y,
+            estimator=np.mean,
+            errorbar=None,
+            color="#1b4965",
+            markers="D",
+            linestyles="",
+            ax=ax,
+        )
+        if isinstance(threshold, tuple):
+            ax.axhspan(float(threshold[0]), float(threshold[1]), color="#81b29a", alpha=0.18, label=threshold_label)
+        else:
+            ax.axhline(float(threshold), color="#d1495b", lw=1.5, ls="--", label=threshold_label)
+        ax.set_title(title)
+        ax.set_xlabel("Subject")
+        ax.set_ylabel(ylabel)
+        ax.tick_params(axis="x", rotation=45)
+        ax.grid(axis="y", alpha=0.25)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
 
     @staticmethod
     def _extract_run_state_log(run_obj, key):

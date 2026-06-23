@@ -40,9 +40,40 @@ DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.modules.hypo_transitions_mod.kwargs.strategies",
     "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
     "engine.modules.hypo_transitions_mod.kwargs.init_num",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_post_error",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_low_accuracy",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_threshold",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_window",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_decay",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_max",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_target",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_source",
+    "engine.modules.hypo_transitions_mod.kwargs.prior_reset_volatility_gain",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_base",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_error_gain",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_low_accuracy_gain",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_threshold",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_window",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_decay",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_max",
+    "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_feedback_mode",
     "engine.modules.beta_mod.kwargs.beta_init",
     "engine.modules.beta_mod.kwargs.decrease_rate",
     "engine.modules.beta_mod.kwargs.prior_beta_scale",
+    "engine.modules.beta_mod.kwargs.correct_additive",
+    "engine.modules.beta_mod.kwargs.beta_update_mode",
+    "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse",
+    "engine.output_noise.kwargs.base_lapse",
+    "engine.output_noise.kwargs.post_error_lapse",
+    "engine.output_noise.kwargs.low_accuracy_lapse",
+    "engine.output_noise.kwargs.low_accuracy_threshold",
+    "engine.output_noise.kwargs.recent_accuracy_window",
+    "engine.output_noise.kwargs.lapse_decay",
+    "engine.output_noise.kwargs.max_lapse",
+    "engine.output_noise.kwargs.lapse_target",
+    "engine.output_noise.kwargs.latent_volatility_lapse",
+    "engine.output_noise.kwargs.latent_volatility_power",
 )
 
 
@@ -153,6 +184,7 @@ def serialize_result(
     std_error = float(getattr(best, "std_error", 0.0))
     best_error = float(getattr(best, "best_error", mean_error))
     sample_errors = list(getattr(best, "sample_errors", []) or [])
+    statistics_summary = dict(getattr(best, "statistics_summary", {}) or {})
 
     raw_runs = getattr(best, "raw_runs", None)
     raw_runs_ref = None
@@ -166,20 +198,23 @@ def serialize_result(
     selection_mode = str(selection_meta.get("selection_prediction_mode", "posterior_t_minus_1"))
     available_modes = sorted(metrics_by_mode.keys())
 
+    simulation = {
+        "mean_error": mean_error,
+        "best_error": best_error,
+        "std_error": std_error,
+        "simulation_repeats": int(selection_meta.get("simulation_repeats", getattr(best, "simulation_repeats", 0))),
+        "window_size": selection_meta.get("window_size"),
+        "sample_errors": sample_errors,
+    }
+
     data = {
         "result_type": "simulation",
         "subject_id": subject_id,
         "condition": condition,
         "best_params": best_params,
         "fixed_hyperparams": fixed_hyperparams,
-        "simulation_summary": {
-            "mean_error": mean_error,
-            "best_error": best_error,
-            "std_error": std_error,
-            "simulation_repeats": int(selection_meta.get("simulation_repeats", getattr(best, "simulation_repeats", 0))),
-            "window_size": selection_meta.get("window_size"),
-            "sample_errors": sample_errors,
-        },
+        "simulation": simulation,
+        "statistics": statistics_summary,
         "selection": {
             "prediction_mode": selection_meta.get("prediction_mode"),
             "selection_prediction_mode": selection_mode,
@@ -211,6 +246,37 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
         "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
         "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
+        "engine.modules.beta_mod.kwargs.correct_additive": "correct_additive",
+        "engine.modules.beta_mod.kwargs.beta_update_mode": "beta_update_mode",
+        "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse": "probabilistic_feedback_lapse",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base": "prior_reset_base",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_post_error": "prior_reset_post_error",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_low_accuracy": "prior_reset_low_accuracy",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_threshold": "prior_reset_threshold",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_window": "prior_reset_window",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_decay": "prior_reset_decay",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_max": "prior_reset_max",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_target": "prior_reset_target",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_source": "prior_reset_source",
+        "engine.modules.hypo_transitions_mod.kwargs.prior_reset_volatility_gain": "prior_reset_volatility_gain",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_base": "latent_volatility_base",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_error_gain": "latent_volatility_error_gain",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_low_accuracy_gain": "latent_volatility_low_accuracy_gain",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_threshold": "latent_volatility_threshold",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_window": "latent_volatility_window",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_decay": "latent_volatility_decay",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_max": "latent_volatility_max",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_feedback_mode": "latent_volatility_feedback_mode",
+        "engine.output_noise.kwargs.base_lapse": "output_base_lapse",
+        "engine.output_noise.kwargs.post_error_lapse": "output_post_error_lapse",
+        "engine.output_noise.kwargs.low_accuracy_lapse": "output_low_accuracy_lapse",
+        "engine.output_noise.kwargs.low_accuracy_threshold": "output_low_accuracy_threshold",
+        "engine.output_noise.kwargs.recent_accuracy_window": "output_recent_accuracy_window",
+        "engine.output_noise.kwargs.lapse_decay": "output_lapse_decay",
+        "engine.output_noise.kwargs.max_lapse": "output_max_lapse",
+        "engine.output_noise.kwargs.lapse_target": "output_lapse_target",
+        "engine.output_noise.kwargs.latent_volatility_lapse": "output_latent_volatility_lapse",
+        "engine.output_noise.kwargs.latent_volatility_power": "output_latent_volatility_power",
         "engine.modules.hypo_transitions_mod.kwargs.init_num": "init_num",
         "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": "max_active_hypotheses",
         "simulation.window_size": "window_size",
@@ -218,6 +284,48 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
     for source, target in shortcuts.items():
         if source in hyperparams:
             summary[target] = hyperparams[source]
+    transition_kwargs = hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
+    if isinstance(transition_kwargs, Mapping):
+        for source, target in (
+            ("init_num", "init_num"),
+            ("max_active_hypotheses", "max_active_hypotheses"),
+            ("prior_reset_base", "prior_reset_base"),
+            ("prior_reset_post_error", "prior_reset_post_error"),
+            ("prior_reset_low_accuracy", "prior_reset_low_accuracy"),
+            ("prior_reset_threshold", "prior_reset_threshold"),
+            ("prior_reset_window", "prior_reset_window"),
+            ("prior_reset_decay", "prior_reset_decay"),
+            ("prior_reset_max", "prior_reset_max"),
+            ("prior_reset_target", "prior_reset_target"),
+            ("prior_reset_source", "prior_reset_source"),
+            ("prior_reset_volatility_gain", "prior_reset_volatility_gain"),
+            ("latent_volatility_base", "latent_volatility_base"),
+            ("latent_volatility_error_gain", "latent_volatility_error_gain"),
+            ("latent_volatility_low_accuracy_gain", "latent_volatility_low_accuracy_gain"),
+            ("latent_volatility_threshold", "latent_volatility_threshold"),
+            ("latent_volatility_window", "latent_volatility_window"),
+            ("latent_volatility_decay", "latent_volatility_decay"),
+            ("latent_volatility_max", "latent_volatility_max"),
+            ("latent_volatility_feedback_mode", "latent_volatility_feedback_mode"),
+        ):
+            if source in transition_kwargs:
+                summary[target] = transition_kwargs[source]
+    output_noise = hyperparams.get("engine.output_noise.kwargs")
+    if isinstance(output_noise, Mapping):
+        for source, target in (
+            ("base_lapse", "output_base_lapse"),
+            ("post_error_lapse", "output_post_error_lapse"),
+            ("low_accuracy_lapse", "output_low_accuracy_lapse"),
+            ("low_accuracy_threshold", "output_low_accuracy_threshold"),
+            ("recent_accuracy_window", "output_recent_accuracy_window"),
+            ("lapse_decay", "output_lapse_decay"),
+            ("max_lapse", "output_max_lapse"),
+            ("lapse_target", "output_lapse_target"),
+            ("latent_volatility_lapse", "output_latent_volatility_lapse"),
+            ("latent_volatility_power", "output_latent_volatility_power"),
+        ):
+            if source in output_noise:
+                summary[target] = output_noise[source]
     return summary
 
 
@@ -272,6 +380,15 @@ def main() -> None:
         max_trials = int(max_trials_val) if max_trials_val is not None else None
         keep_logs = bool(subject_cfg.get("keep_logs", False))
         window_size = resolve_window_size(subject_cfg, sid, subjects)
+        representative_run_selection = str(
+            subject_cfg.get("representative_run_selection", "min_error")
+        )
+        representative_choice_fraction = float(
+            subject_cfg.get("representative_choice_fraction", 0.10)
+        )
+        statistics_config = subject_cfg.get("simulation_statistics")
+        if statistics_config is None:
+            statistics_config = subject_cfg.get("secondary_selection")
 
         runner = StateModelSimulationRunner(
             engine_config=engine_config,
@@ -299,8 +416,13 @@ def main() -> None:
             loss_delta=loss_delta,
             hyper_candidate_seed=hyper_candidate_seed,
             seed_hyperparams=seed_hyperparams,
+            representative_run_selection=representative_run_selection,
+            representative_choice_fraction=representative_choice_fraction,
+            statistics_config=statistics_config,
         )
         result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
+        if statistics_config is not None:
+            result["selection_meta"]["statistics_config"] = statistics_config
 
         best: Any = result["best"]
         print(f"  Fixed hyperparams: {fixed_hyperparams}")

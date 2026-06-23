@@ -1,0 +1,113 @@
+# v9: simplified candidate model after the v8 probe series.
+#
+# The probe series showed that human-level local volatility is recovered when
+# model probabilities are evaluated through sampled binary behavior, so this
+# version removes mechanisms that mainly existed to inflate probability-curve
+# volatility. It keeps only:
+# - feedback-aware hypothesis refresh;
+# - the original v8 beta learning controls;
+# - one small, global output lapse.
+# Coordinate descent keeps the v7-style primary objective: a lower-tail
+# choice-Brier score. Final selection is then two-tiered: first keep candidates
+# with near-optimal choice fit, then prefer candidates whose behavioral
+# statistics all fall inside central posterior-predictive intervals. With
+# alpha=0.10, statistics.scores.distribution.ppc_interval.score <= 1 means all selected
+# statistics are inside their model-generated 5%-95% intervals.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
+
+subject_range: [127, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v9
+selection_metric: simulation.best10_mean_error
+save_level: compact
+hyper_base_seed: 42
+
+secondary_selection:
+  enabled: true
+  mode: distribution_ppc_interval
+  primary_tolerance_abs: 0.015
+  primary_tolerance_rel: 0.05
+
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 64
+  distribution_interval_alpha: 0.10
+
+  # Probability-curve volatility is no longer a hard acceptance target. The
+  # posterior-predictive binary volatility diagnostic is the right check for
+  # one observed human trajectory.
+  distribution_accept_acc_mae_max: 0.10
+  distribution_accept_vol_ratio_min: 0.000001
+  distribution_accept_vol_ratio_max: 2.0
+  distribution_accept_history_corr_min: 0.80
+  distribution_accept_switch_score_max: 0.10
+
+  accuracy_weight: 1.0
+  volatility_weight: 0.0
+  slope_weight: 0.03
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+  history_max_lag: 8
+  history_ridge: 0.001
+  history_standardize: true
+  history_kernel_weight: 1.0
+  history_corr_weight: 0.05
+  history_norm_weight: 0.0
+  history_min_norm: 0.000001
+
+  switch_weight: 0.5
+  win_stay_weight: 1.0
+  lose_shift_weight: 1.0
+  perseveration_weight: 0.5
+  min_switch_trials: 20
+
+cd:
+  n_restarts: 10
+  max_outer_iters: 10
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 128
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.5, 0.6, 0.7, 0.8]
+      w0: [0.03, 0.06, 0.1, 0.15]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_v9_candidates.json
+      key: cond1_v9
+      value_key: hypo_transitions_kwargs
+
+  # Revert beta to the original v8 mechanism. The v8 probe series did not show
+  # that the extra post-error beta softening/decay parameters were identifiable:
+  # they overlap with decrease_rate, feedback-aware hypothesis refresh, and
+  # output lapse.
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0, 5.0, 8.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.30, 0.50, 0.70]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 5.0, 10.0, 20.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.5, 1.0, 2.0]
+
+  # Only a small global lapse remains. No post-error output lapse, no
+  # low-accuracy output lapse, and no latent-volatility output lapse.
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.0, 0.02, 0.05]
+  engine.output_noise.kwargs.max_lapse:
+    values: [0.05]
+  engine.output_noise.kwargs.lapse_target:
+    values: [uniform]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 256
+      keep_logs: false

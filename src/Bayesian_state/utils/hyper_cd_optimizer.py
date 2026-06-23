@@ -14,17 +14,18 @@ from joblib import Parallel, delayed
 from src.Bayesian_state.run_simulation import resolve_simulation_repeats
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
-from src.Bayesian_state.utils.hyperparam_values import (
-    validate_no_nested_hyperparam_paths,
-    values_from_json,
-    values_product,
-)
-from src.Bayesian_state.utils.hyper_results import (
+from src.Bayesian_state.utils.hyper_utils import (
+    HYPER_RESULT_SCHEMA_VERSION,
     build_root_best_payload,
+    build_hyper_provenance,
     build_subject_artifacts,
     build_subject_best_payload,
     combination_metrics_summary,
     compact_hyperparams,
+    to_builtin,
+    validate_no_nested_hyperparam_paths,
+    values_from_json,
+    values_product,
 )
 from src.Bayesian_state.utils.optimization_config import (
     load_yaml,
@@ -41,6 +42,11 @@ from src.Bayesian_state.utils.optimizer_common import (
     evaluate_state_model_run,
     stable_seed,
 )
+from src.Bayesian_state.utils.simulation_statistics import (
+    get_stat_value,
+    resolve_selection_metric_path,
+    resolve_simulation_stat_config,
+)
 from src.Bayesian_state.utils.optimizer_simulation import (
     StateModelSimulationRunner,
     aggregate_simulation_runs,
@@ -48,11 +54,13 @@ from src.Bayesian_state.utils.optimizer_simulation import (
 
 
 LOWER_TAIL_FRACTION = 0.10
-SELECTION_METRICS = {
-    "mean_simulation_error",
-    "best_simulation_error",
-    "best10_mean_simulation_error",
-    "q10_simulation_error",
+DEFAULT_SELECTION_METRIC = "simulation.mean_error"
+
+MULTIOBJECTIVE_WEIGHT_DEFAULTS = {
+    "choice_error": 0.0,
+    "accuracy_shape": 1.0,
+    "history_kernel": 1.0,
+    "switch_behavior": 1.0,
 }
 
 SHAPE_DEFAULTS = {
@@ -73,6 +81,19 @@ SHAPE_DEFAULTS = {
     "history_corr_weight": 0.05,
     "history_norm_weight": 0.0,
     "history_min_norm": 1e-6,
+    "switch_weight": 1.0,
+    "win_stay_weight": 1.0,
+    "lose_shift_weight": 1.0,
+    "perseveration_weight": 0.5,
+    "min_switch_trials": 5,
+    "multiobjective_weights": MULTIOBJECTIVE_WEIGHT_DEFAULTS,
+    "distribution_min_run_count": 10,
+    "distribution_interval_alpha": 0.10,
+    "distribution_accept_acc_mae_max": 0.10,
+    "distribution_accept_vol_ratio_min": 0.60,
+    "distribution_accept_vol_ratio_max": 2.00,
+    "distribution_accept_history_corr_min": 0.80,
+    "distribution_accept_switch_score_max": 0.10,
 }
 
 
@@ -106,19 +127,14 @@ def _lower_tail_error_metrics(sample_errors: Sequence[float], fallback_error: fl
 
 def _selection_error_value(
     selection_metric: str,
-    mean_error: float,
-    best_error: float,
-    tail_metrics: Mapping[str, Any],
+    subject_record: Mapping[str, Any],
 ) -> float:
-    if selection_metric == "mean_simulation_error":
-        return float(mean_error)
-    if selection_metric == "best_simulation_error":
-        return float(best_error)
-    if selection_metric == "best10_mean_simulation_error":
-        return float(tail_metrics["best10_mean_error"])
-    if selection_metric == "q10_simulation_error":
-        return float(tail_metrics["q10_error"])
-    raise ValueError(f"Unsupported selection_metric '{selection_metric}'")
+    value = get_stat_value(
+        subject_record,
+        resolve_selection_metric_path(selection_metric),
+        float("inf"),
+    )
+    return _safe_float(value, float("inf"))
 
 
 def _safe_float(value: Any, default: float = float("nan")) -> float:
@@ -127,6 +143,172 @@ def _safe_float(value: Any, default: float = float("nan")) -> float:
     except (TypeError, ValueError):
         return default
     return out if np.isfinite(out) else default
+
+
+def _finite_array(values: Sequence[Any]) -> np.ndarray:
+    arr = np.asarray([_safe_float(value) for value in values], dtype=float)
+    return arr[np.isfinite(arr)]
+
+
+def _nanmean_or_nan(values: Sequence[Any]) -> float:
+    arr = _finite_array(values)
+    return float(np.mean(arr)) if arr.size else float("nan")
+
+
+def _nanmedian_or_nan(values: Sequence[Any]) -> float:
+    arr = _finite_array(values)
+    return float(np.median(arr)) if arr.size else float("nan")
+
+
+def _nanquantile_or_nan(values: Sequence[Any], q: float) -> float:
+    arr = _finite_array(values)
+    return float(np.quantile(arr, float(q))) if arr.size else float("nan")
+
+
+def _minimize_rank01(values: Sequence[float]) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    ranks = np.ones(arr.shape, dtype=float)
+    finite_positions = np.flatnonzero(np.isfinite(arr))
+    if finite_positions.size == 0:
+        return ranks
+    if finite_positions.size == 1:
+        ranks[finite_positions[0]] = 0.0
+        return ranks
+
+    finite_values = arr[finite_positions]
+    order = np.argsort(finite_values, kind="mergesort")
+    sorted_positions = finite_positions[order]
+    sorted_values = finite_values[order]
+    denom = float(max(1, sorted_positions.size - 1))
+    start = 0
+    while start < sorted_positions.size:
+        end = start + 1
+        while end < sorted_positions.size and sorted_values[end] == sorted_values[start]:
+            end += 1
+        rank = ((start + end - 1) / 2.0) / denom
+        ranks[sorted_positions[start:end]] = float(rank)
+        start = end
+    return ranks
+
+
+def _upper_bound_violation(value: Any, upper_bound: Any) -> float:
+    value = _safe_float(value, float("inf"))
+    upper_bound = _safe_float(upper_bound, float("nan"))
+    if not np.isfinite(value) or not np.isfinite(upper_bound):
+        return float("inf")
+    scale = max(abs(upper_bound), 1e-12)
+    return float(max(0.0, (value - upper_bound) / scale))
+
+
+def _lower_bound_violation(value: Any, lower_bound: Any) -> float:
+    value = _safe_float(value, float("nan"))
+    lower_bound = _safe_float(lower_bound, float("nan"))
+    if not np.isfinite(value) or not np.isfinite(lower_bound):
+        return float("inf")
+    scale = max(abs(lower_bound), 1e-12)
+    return float(max(0.0, (lower_bound - value) / scale))
+
+
+def _interval_violation(value: Any, lower_bound: Any, upper_bound: Any) -> float:
+    value = _safe_float(value, float("nan"))
+    lower_bound = _safe_float(lower_bound, float("nan"))
+    upper_bound = _safe_float(upper_bound, float("nan"))
+    if not (np.isfinite(value) and np.isfinite(lower_bound) and np.isfinite(upper_bound)):
+        return float("inf")
+    width = max(float(upper_bound - lower_bound), 1e-12)
+    scale = max(width, abs(value), abs(lower_bound), abs(upper_bound), 1e-12)
+    if value < lower_bound:
+        return float((lower_bound - value) / scale)
+    if value > upper_bound:
+        return float((value - upper_bound) / scale)
+    return 0.0
+
+
+def _accuracy_scalar_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
+    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
+    pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float)
+    valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
+    empty = {
+        "human_mean": float("nan"),
+        "model_mean": float("nan"),
+        "human_final": float("nan"),
+        "model_final": float("nan"),
+    }
+    if true_acc.ndim != 1 or pred_acc.ndim != 1 or true_acc.shape != pred_acc.shape:
+        return empty
+    if valid.shape != true_acc.shape:
+        return empty
+    mask = valid & np.isfinite(true_acc) & np.isfinite(pred_acc)
+    if not mask.any():
+        return empty
+    true = true_acc[mask]
+    pred = pred_acc[mask]
+    return {
+        "human_mean": float(np.mean(true)),
+        "model_mean": float(np.mean(pred)),
+        "human_final": float(true[-1]),
+        "model_final": float(pred[-1]),
+    }
+
+
+def _ppc_interval_summary(
+    rows: Sequence[Mapping[str, Any]],
+    stat_specs: Sequence[tuple[str, str, str]],
+    *,
+    alpha: float,
+) -> Dict[str, Any]:
+    alpha = float(alpha)
+    lower_q = alpha / 2.0
+    upper_q = 1.0 - lower_q
+    out: Dict[str, Any] = {
+        "score": float("inf"),
+        "accept": False,
+        "violation_count": 0,
+        "stat_count": int(len(stat_specs)),
+        "alpha": alpha,
+        "lower_quantile": lower_q,
+        "upper_quantile": upper_q,
+    }
+    tail_scores: List[float] = []
+    violations: List[float] = []
+    complete = True
+    for label, human_key, model_key in stat_specs:
+        human_values = _finite_array(row.get(human_key) for row in rows)
+        model_values = _finite_array(row.get(model_key) for row in rows)
+        if human_values.size == 0 or model_values.size == 0:
+            complete = False
+            human_value = float("nan")
+            lower = float("nan")
+            upper = float("nan")
+            median = float("nan")
+            violation = float("inf")
+            percentile = float("nan")
+            tail_score = float("inf")
+        else:
+            human_value = float(np.median(human_values))
+            lower = float(np.quantile(model_values, lower_q))
+            upper = float(np.quantile(model_values, upper_q))
+            median = float(np.median(model_values))
+            violation = _interval_violation(human_value, lower, upper)
+            percentile = float(np.mean(model_values <= human_value))
+            tail_scale = max(0.5 - lower_q, 1e-12)
+            tail_score = float(abs(percentile - 0.5) / tail_scale)
+            tail_scores.append(tail_score)
+            violations.append(violation)
+        out[f"{label}_human"] = human_value
+        out[f"{label}_model_q05"] = lower
+        out[f"{label}_model_q95"] = upper
+        out[f"{label}_model_median"] = median
+        out[f"{label}_percentile"] = percentile
+        out[f"{label}_tail_score"] = tail_score
+        out[f"{label}_violation"] = violation
+        out[f"{label}_accept"] = bool(np.isfinite(violation) and violation <= 0.0)
+
+    if complete and len(violations) == len(stat_specs):
+        out["score"] = float(max(tail_scores)) if tail_scores else float("inf")
+        out["accept"] = bool(all(value <= 0.0 for value in violations))
+        out["violation_count"] = int(sum(value > 0.0 for value in violations))
+    return out
 
 
 def _accuracy_curve_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
@@ -299,6 +481,111 @@ def _history_kernel_metrics(
     }
 
 
+def _switch_behavior_metrics(
+    metrics: Mapping[str, Any],
+    *,
+    min_trials: int,
+) -> Dict[str, Any]:
+    empty = {
+        "switch_human": float("nan"),
+        "switch_model": float("nan"),
+        "switch_abs_diff": float("nan"),
+        "perseveration_human": float("nan"),
+        "perseveration_model": float("nan"),
+        "perseveration_abs_diff": float("nan"),
+        "win_stay_human": float("nan"),
+        "win_stay_model": float("nan"),
+        "win_stay_abs_diff": float("nan"),
+        "lose_shift_human": float("nan"),
+        "lose_shift_model": float("nan"),
+        "lose_shift_abs_diff": float("nan"),
+        "n_pairs": 0,
+        "n_win_pairs": 0,
+        "n_loss_pairs": 0,
+    }
+    required = ("pred_category_probs", "observed_choice_index", "true_acc", "valid_trial_mask")
+    if any(key not in metrics for key in required):
+        return empty
+
+    probs = np.asarray(metrics.get("pred_category_probs"), dtype=float)
+    choices = np.asarray(metrics.get("observed_choice_index"), dtype=float)
+    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
+    valid = np.asarray(metrics.get("valid_trial_mask"), dtype=bool)
+    if probs.ndim != 2 or choices.ndim != 1 or true_acc.ndim != 1 or valid.ndim != 1:
+        return empty
+    n_trials = probs.shape[0]
+    if choices.shape[0] != n_trials or true_acc.shape[0] != n_trials or valid.shape[0] != n_trials:
+        return empty
+    if n_trials <= 1:
+        return empty
+
+    prev_choice = choices[:-1]
+    next_choice = choices[1:]
+    choice_pair_valid = (
+        np.isfinite(prev_choice)
+        & np.isfinite(next_choice)
+        & (prev_choice >= 0)
+        & (next_choice >= 0)
+        & (prev_choice < probs.shape[1])
+        & (next_choice < probs.shape[1])
+        & (np.floor(prev_choice) == prev_choice)
+        & (np.floor(next_choice) == next_choice)
+    )
+    pair_mask = valid[1:] & choice_pair_valid & np.all(np.isfinite(probs[1:, :]), axis=1)
+    if not np.any(pair_mask):
+        return empty
+
+    rows = np.arange(1, n_trials)[pair_mask]
+    prev_idx = prev_choice[pair_mask].astype(int)
+    next_idx = next_choice[pair_mask].astype(int)
+    prev_acc = true_acc[:-1][pair_mask]
+    model_stay = probs[rows, prev_idx]
+    finite = np.isfinite(model_stay) & np.isfinite(prev_acc)
+    if int(np.sum(finite)) < int(min_trials):
+        return empty
+
+    model_stay = np.clip(model_stay[finite], 0.0, 1.0)
+    prev_idx = prev_idx[finite]
+    next_idx = next_idx[finite]
+    prev_acc = prev_acc[finite]
+    human_stay = (next_idx == prev_idx).astype(float)
+    human_switch = 1.0 - human_stay
+    model_switch = 1.0 - model_stay
+
+    def summarize(human_values: np.ndarray, model_values: np.ndarray) -> tuple[float, float, float]:
+        if human_values.size == 0 or model_values.size == 0:
+            return float("nan"), float("nan"), float("nan")
+        human_mean = float(np.mean(human_values))
+        model_mean = float(np.mean(model_values))
+        return human_mean, model_mean, float(abs(model_mean - human_mean))
+
+    switch_h, switch_m, switch_diff = summarize(human_switch, model_switch)
+    stay_h, stay_m, stay_diff = summarize(human_stay, model_stay)
+
+    win_mask = prev_acc >= 0.5
+    loss_mask = prev_acc < 0.5
+    win_h, win_m, win_diff = summarize(human_stay[win_mask], model_stay[win_mask])
+    loss_h, loss_m, loss_diff = summarize(human_switch[loss_mask], model_switch[loss_mask])
+
+    return {
+        "switch_human": switch_h,
+        "switch_model": switch_m,
+        "switch_abs_diff": switch_diff,
+        "perseveration_human": stay_h,
+        "perseveration_model": stay_m,
+        "perseveration_abs_diff": stay_diff,
+        "win_stay_human": win_h,
+        "win_stay_model": win_m,
+        "win_stay_abs_diff": win_diff,
+        "lose_shift_human": loss_h,
+        "lose_shift_model": loss_m,
+        "lose_shift_abs_diff": loss_diff,
+        "n_pairs": int(model_stay.size),
+        "n_win_pairs": int(np.sum(win_mask)),
+        "n_loss_pairs": int(np.sum(loss_mask)),
+    }
+
+
 def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
     run = evaluate_state_model_run(
         task["subject_id"],
@@ -334,9 +621,9 @@ class HyperCDOptimizer:
         self.config_path = config_path
         self.config_dir = config_path.parent
 
-        self.selection_metric = str(self.config.get("selection_metric", "mean_simulation_error"))
-        if self.selection_metric not in SELECTION_METRICS:
-            raise ValueError(f"selection_metric must be one of {sorted(SELECTION_METRICS)}")
+        self.selection_metric = resolve_selection_metric_path(
+            self.config.get("selection_metric", DEFAULT_SELECTION_METRIC)
+        )
 
         # `hyperparam_selection_mode` config key is optional now; keep internal
         # default as per-subject selection (only mode currently implemented).
@@ -387,54 +674,7 @@ class HyperCDOptimizer:
         self._combination_counter = 0
 
     def _resolve_secondary_selection(self, raw: Any) -> Dict[str, Any]:
-        cfg = dict(SHAPE_DEFAULTS)
-        if raw is None:
-            return cfg
-        if not isinstance(raw, Mapping):
-            raise ValueError("secondary_selection must be a mapping when provided")
-        cfg.update(dict(raw))
-        cfg["enabled"] = bool(cfg.get("enabled", False))
-        cfg["mode"] = str(cfg.get("mode", "accuracy_shape")).strip().lower()
-        mode_aliases = {
-            "shape": "accuracy_shape",
-            "accuracy": "accuracy_shape",
-            "accuracy_curve": "accuracy_shape",
-            "history": "history_kernel",
-            "kernel": "history_kernel",
-            "history_feedback": "history_kernel",
-        }
-        cfg["mode"] = mode_aliases.get(cfg["mode"], cfg["mode"])
-        if cfg["mode"] not in {"accuracy_shape", "history_kernel"}:
-            raise ValueError("secondary_selection.mode must be 'accuracy_shape' or 'history_kernel'")
-        for key in (
-            "primary_tolerance_abs",
-            "primary_tolerance_rel",
-            "run_choice_fraction",
-            "accuracy_weight",
-            "volatility_weight",
-            "slope_weight",
-            "target_volatility_ratio",
-            "min_volatility_ratio",
-            "history_ridge",
-            "history_kernel_weight",
-            "history_corr_weight",
-            "history_norm_weight",
-            "history_min_norm",
-        ):
-            cfg[key] = float(cfg[key])
-        cfg["history_max_lag"] = int(cfg["history_max_lag"])
-        cfg["history_standardize"] = bool(cfg.get("history_standardize", True))
-        if cfg["run_choice_fraction"] <= 0 or cfg["run_choice_fraction"] > 1:
-            raise ValueError("secondary_selection.run_choice_fraction must be in (0, 1]")
-        if cfg["target_volatility_ratio"] <= 0:
-            raise ValueError("secondary_selection.target_volatility_ratio must be > 0")
-        if cfg["min_volatility_ratio"] <= 0:
-            raise ValueError("secondary_selection.min_volatility_ratio must be > 0")
-        if cfg["history_max_lag"] <= 0:
-            raise ValueError("secondary_selection.history_max_lag must be positive")
-        if cfg["history_min_norm"] <= 0:
-            raise ValueError("secondary_selection.history_min_norm must be positive")
-        return cfg
+        return resolve_simulation_stat_config(raw, setting_name="secondary_selection")
 
     @staticmethod
     def _positive_int(value: Any, name: str) -> int:
@@ -773,6 +1013,29 @@ class HyperCDOptimizer:
             + cfg["history_norm_weight"] * norm_penalty
         )
 
+    def _switch_behavior_score(self, switch: Mapping[str, Any]) -> float:
+        cfg = self.secondary_selection
+        components = (
+            ("switch_abs_diff", "switch_weight"),
+            ("win_stay_abs_diff", "win_stay_weight"),
+            ("lose_shift_abs_diff", "lose_shift_weight"),
+            ("perseveration_abs_diff", "perseveration_weight"),
+        )
+        total = 0.0
+        weight_sum = 0.0
+        for metric_key, weight_key in components:
+            weight = float(cfg[weight_key])
+            if weight <= 0:
+                continue
+            value = _safe_float(switch.get(metric_key))
+            if not np.isfinite(value):
+                continue
+            total += weight * value
+            weight_sum += weight
+        if weight_sum <= 0:
+            return float("inf")
+        return float(total / weight_sum)
+
     def _accuracy_shape_metrics_from_runs(
         self,
         runs: Sequence[Any],
@@ -917,6 +1180,408 @@ class HyperCDOptimizer:
             "history_kernel_eligible_score_mean": float(np.nanmean(eligible_scores)),
         }
 
+    def _switch_behavior_metrics_from_runs(
+        self,
+        runs: Sequence[Any],
+        *,
+        selection_prediction_mode: str,
+    ) -> Dict[str, Any]:
+        rows: List[Dict[str, Any]] = []
+        cfg = self.secondary_selection
+        for repeat_index, run in enumerate(runs):
+            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
+            metrics = metrics_by_mode.get(selection_prediction_mode)
+            if not isinstance(metrics, Mapping):
+                continue
+            switch = _switch_behavior_metrics(
+                metrics,
+                min_trials=int(cfg["min_switch_trials"]),
+            )
+            score = self._switch_behavior_score(switch)
+            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
+            rows.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "choice_error": choice_error,
+                    "switch_behavior_score": score,
+                    **switch,
+                }
+            )
+        if not rows:
+            return {}
+
+        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
+        finite_choice = finite_choice[np.isfinite(finite_choice)]
+        if finite_choice.size == 0:
+            return {}
+        ordered_choice = np.sort(finite_choice)
+        gate_count = max(1, int(np.ceil(len(rows) * float(cfg["run_choice_fraction"]))))
+        gate_count = min(gate_count, ordered_choice.size)
+        run_choice_cutoff = float(ordered_choice[gate_count - 1])
+        eligible = [
+            row for row in rows
+            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
+        ]
+        if not eligible:
+            eligible = rows
+        best = min(
+            eligible,
+            key=lambda row: (
+                _safe_float(row.get("switch_behavior_score"), float("inf")),
+                _safe_float(row.get("choice_error"), float("inf")),
+            ),
+        )
+        all_scores = np.asarray([row["switch_behavior_score"] for row in rows], dtype=float)
+        eligible_scores = np.asarray([row["switch_behavior_score"] for row in eligible], dtype=float)
+        return {
+            "switch_behavior_score": _safe_float(best.get("switch_behavior_score"), float("inf")),
+            "switch_behavior_choice_error": _safe_float(best.get("choice_error")),
+            "switch_behavior_repeat_index": int(best.get("repeat_index", -1)),
+            "switch_behavior_switch_human": _safe_float(best.get("switch_human")),
+            "switch_behavior_switch_model": _safe_float(best.get("switch_model")),
+            "switch_behavior_switch_abs_diff": _safe_float(best.get("switch_abs_diff")),
+            "switch_behavior_perseveration_human": _safe_float(best.get("perseveration_human")),
+            "switch_behavior_perseveration_model": _safe_float(best.get("perseveration_model")),
+            "switch_behavior_perseveration_abs_diff": _safe_float(best.get("perseveration_abs_diff")),
+            "switch_behavior_win_stay_human": _safe_float(best.get("win_stay_human")),
+            "switch_behavior_win_stay_model": _safe_float(best.get("win_stay_model")),
+            "switch_behavior_win_stay_abs_diff": _safe_float(best.get("win_stay_abs_diff")),
+            "switch_behavior_lose_shift_human": _safe_float(best.get("lose_shift_human")),
+            "switch_behavior_lose_shift_model": _safe_float(best.get("lose_shift_model")),
+            "switch_behavior_lose_shift_abs_diff": _safe_float(best.get("lose_shift_abs_diff")),
+            "switch_behavior_n_pairs": int(best.get("n_pairs", 0)),
+            "switch_behavior_n_win_pairs": int(best.get("n_win_pairs", 0)),
+            "switch_behavior_n_loss_pairs": int(best.get("n_loss_pairs", 0)),
+            "switch_behavior_run_choice_cutoff": run_choice_cutoff,
+            "switch_behavior_eligible_run_count": int(len(eligible)),
+            "switch_behavior_all_run_count": int(len(rows)),
+            "switch_behavior_score_mean": float(np.nanmean(all_scores)),
+            "switch_behavior_score_q10": float(np.nanquantile(all_scores, 0.1)),
+            "switch_behavior_eligible_score_mean": float(np.nanmean(eligible_scores)),
+        }
+
+    def _distribution_behavior_metrics_from_runs(
+        self,
+        runs: Sequence[Any],
+        *,
+        selection_prediction_mode: str,
+    ) -> Dict[str, Any]:
+        cfg = self.secondary_selection
+        rows: List[Dict[str, Any]] = []
+        for repeat_index, run in enumerate(runs):
+            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
+            metrics = metrics_by_mode.get(selection_prediction_mode)
+            if not isinstance(metrics, Mapping):
+                continue
+            acc_scalar = _accuracy_scalar_metrics(metrics)
+            curve = _accuracy_curve_metrics(metrics)
+            kernel = _history_kernel_metrics(
+                metrics,
+                max_lag=int(cfg["history_max_lag"]),
+                ridge=float(cfg["history_ridge"]),
+                standardize=bool(cfg["history_standardize"]),
+            )
+            switch = _switch_behavior_metrics(
+                metrics,
+                min_trials=int(cfg["min_switch_trials"]),
+            )
+            rows.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "choice_error": _safe_float(getattr(run, "mean_error", np.nan)),
+                    "shape_score": self._shape_score(curve),
+                    "history_score": self._history_kernel_score(kernel),
+                    "switch_score": self._switch_behavior_score(switch),
+                    **{f"acc_{key}": value for key, value in acc_scalar.items()},
+                    **{f"curve_{key}": value for key, value in curve.items()},
+                    **{f"kernel_{key}": value for key, value in kernel.items()},
+                    **{f"switch_{key}": value for key, value in switch.items()},
+                }
+            )
+        if len(rows) < int(cfg["distribution_min_run_count"]):
+            return {}
+
+        choice_errors = [_safe_float(row.get("choice_error")) for row in rows]
+        acc_mae_mean = _nanmean_or_nan(row.get("curve_acc_mae") for row in rows)
+        vol_ratio_median = _nanmedian_or_nan(row.get("curve_vol_ratio") for row in rows)
+        slope_agree_mean = _nanmean_or_nan(row.get("curve_slope_agree") for row in rows)
+        distribution_curve = {
+            "acc_mae": acc_mae_mean,
+            "vol_ratio": vol_ratio_median,
+            "slope_agree": slope_agree_mean,
+        }
+        distribution_shape_score = self._shape_score(distribution_curve)
+
+        history_summary = self._distribution_history_summary(rows)
+        distribution_history_score = self._history_kernel_score(history_summary)
+
+        switch_summary = self._distribution_switch_summary(rows)
+        distribution_switch_score = self._switch_behavior_score(switch_summary)
+
+        intersection_violations = {
+            "acc_mae": _upper_bound_violation(
+                acc_mae_mean,
+                cfg["distribution_accept_acc_mae_max"],
+            ),
+            "vol_ratio_low": _lower_bound_violation(
+                vol_ratio_median,
+                cfg["distribution_accept_vol_ratio_min"],
+            ),
+            "vol_ratio_high": _upper_bound_violation(
+                vol_ratio_median,
+                cfg["distribution_accept_vol_ratio_max"],
+            ),
+            "history_corr": _lower_bound_violation(
+                history_summary.get("kernel_corr"),
+                cfg["distribution_accept_history_corr_min"],
+            ),
+            "switch_rate": _upper_bound_violation(
+                switch_summary.get("switch_abs_diff"),
+                cfg["distribution_accept_switch_score_max"],
+            ),
+            "win_stay": _upper_bound_violation(
+                switch_summary.get("win_stay_abs_diff"),
+                cfg["distribution_accept_switch_score_max"],
+            ),
+            "lose_shift": _upper_bound_violation(
+                switch_summary.get("lose_shift_abs_diff"),
+                cfg["distribution_accept_switch_score_max"],
+            ),
+            "perseveration": _upper_bound_violation(
+                switch_summary.get("perseveration_abs_diff"),
+                cfg["distribution_accept_switch_score_max"],
+            ),
+        }
+        finite_violations = [
+            float(value)
+            for value in intersection_violations.values()
+            if np.isfinite(value)
+        ]
+        distribution_intersection_score = (
+            float(max(finite_violations))
+            if len(finite_violations) == len(intersection_violations)
+            else float("inf")
+        )
+        distribution_intersection_violation_count = int(
+            sum(float(value) > 0.0 for value in finite_violations)
+        )
+        ppc_interval = _ppc_interval_summary(
+            rows,
+            (
+                ("acc_mean", "acc_human_mean", "acc_model_mean"),
+                ("acc_vol", "curve_true_vol", "curve_pred_vol"),
+                ("acc_range", "curve_true_range", "curve_pred_range"),
+                ("history_kernel_norm", "kernel_human_kernel_norm", "kernel_model_kernel_norm"),
+                ("switch_rate", "switch_switch_human", "switch_switch_model"),
+                ("win_stay", "switch_win_stay_human", "switch_win_stay_model"),
+                ("lose_shift", "switch_lose_shift_human", "switch_lose_shift_model"),
+                ("perseveration", "switch_perseveration_human", "switch_perseveration_model"),
+            ),
+            alpha=float(cfg["distribution_interval_alpha"]),
+        )
+
+        component_scores = {
+            "choice_error": _nanmean_or_nan(choice_errors),
+            "accuracy_shape": distribution_shape_score,
+            "history_kernel": distribution_history_score,
+            "switch_behavior": distribution_switch_score,
+        }
+        weights = self.secondary_selection.get("multiobjective_weights") or {}
+        weighted_total = 0.0
+        weight_sum = 0.0
+        finite_components = []
+        for component, value in component_scores.items():
+            value = _safe_float(value, float("inf"))
+            if not np.isfinite(value):
+                continue
+            finite_components.append(value)
+            weight = float(weights.get(component, 1.0))
+            if weight <= 0:
+                continue
+            weighted_total += weight * value
+            weight_sum += weight
+        distribution_weighted_score = (
+            float(weighted_total / weight_sum)
+            if weight_sum > 0
+            else float("inf")
+        )
+
+        return {
+            "distribution_score": distribution_weighted_score,
+            "distribution_component_max_raw": (
+                float(max(finite_components)) if finite_components else float("inf")
+            ),
+            "distribution_intersection_score": distribution_intersection_score,
+            "distribution_intersection_violation_count": distribution_intersection_violation_count,
+            "distribution_intersection_accept": bool(distribution_intersection_score <= 0.0),
+            "distribution_ppc_interval_score": _safe_float(ppc_interval.get("score"), float("inf")),
+            "distribution_ppc_interval_violation_count": int(ppc_interval.get("violation_count", 0)),
+            "distribution_ppc_interval_accept": bool(ppc_interval.get("accept", False)),
+            "distribution_ppc_interval_alpha": _safe_float(ppc_interval.get("alpha")),
+            "distribution_ppc_interval_stat_count": int(ppc_interval.get("stat_count", 0)),
+            **{
+                f"distribution_ppc_interval_{key}": value
+                for key, value in ppc_interval.items()
+                if key not in {"score", "violation_count", "accept", "alpha", "stat_count"}
+            },
+            "distribution_intersection_acc_mae_violation": intersection_violations["acc_mae"],
+            "distribution_intersection_vol_ratio_low_violation": intersection_violations["vol_ratio_low"],
+            "distribution_intersection_vol_ratio_high_violation": intersection_violations["vol_ratio_high"],
+            "distribution_intersection_history_corr_violation": intersection_violations["history_corr"],
+            "distribution_intersection_switch_rate_violation": intersection_violations["switch_rate"],
+            "distribution_intersection_win_stay_violation": intersection_violations["win_stay"],
+            "distribution_intersection_lose_shift_violation": intersection_violations["lose_shift"],
+            "distribution_intersection_perseveration_violation": intersection_violations["perseveration"],
+            "distribution_run_count": int(len(rows)),
+            "distribution_choice_error_mean": _nanmean_or_nan(choice_errors),
+            "distribution_choice_error_median": _nanmedian_or_nan(choice_errors),
+            "distribution_choice_error_q10": _nanquantile_or_nan(choice_errors, 0.10),
+            "distribution_choice_error_std": (
+                float(np.std(_finite_array(choice_errors)))
+                if _finite_array(choice_errors).size > 1
+                else 0.0
+            ),
+            "distribution_accuracy_shape_score": distribution_shape_score,
+            "distribution_acc_mae_mean": acc_mae_mean,
+            "distribution_acc_mae_median": _nanmedian_or_nan(
+                row.get("curve_acc_mae") for row in rows
+            ),
+            "distribution_acc_mae_q90": _nanquantile_or_nan(
+                (row.get("curve_acc_mae") for row in rows),
+                0.90,
+            ),
+            "distribution_acc_rmse_mean": _nanmean_or_nan(
+                row.get("curve_acc_rmse") for row in rows
+            ),
+            "distribution_vol_ratio_mean": _nanmean_or_nan(
+                row.get("curve_vol_ratio") for row in rows
+            ),
+            "distribution_vol_ratio_median": vol_ratio_median,
+            "distribution_vol_ratio_q10": _nanquantile_or_nan(
+                (row.get("curve_vol_ratio") for row in rows),
+                0.10,
+            ),
+            "distribution_vol_ratio_q90": _nanquantile_or_nan(
+                (row.get("curve_vol_ratio") for row in rows),
+                0.90,
+            ),
+            "distribution_slope_agree_mean": slope_agree_mean,
+            "distribution_history_kernel_score": distribution_history_score,
+            "distribution_history_kernel_mse": _safe_float(history_summary.get("kernel_mse")),
+            "distribution_history_kernel_corr": _safe_float(history_summary.get("kernel_corr")),
+            "distribution_history_kernel_corr_loss": _safe_float(history_summary.get("kernel_corr_loss")),
+            "distribution_history_kernel_norm_ratio": _safe_float(history_summary.get("kernel_norm_ratio")),
+            "distribution_history_kernel_human_norm": _safe_float(history_summary.get("human_kernel_norm")),
+            "distribution_history_kernel_model_norm": _safe_float(history_summary.get("model_kernel_norm")),
+            "distribution_history_kernel_run_count": int(history_summary.get("run_count", 0)),
+            "distribution_switch_behavior_score": distribution_switch_score,
+            "distribution_switch_human": _safe_float(switch_summary.get("switch_human")),
+            "distribution_switch_model": _safe_float(switch_summary.get("switch_model")),
+            "distribution_switch_abs_diff": _safe_float(switch_summary.get("switch_abs_diff")),
+            "distribution_perseveration_human": _safe_float(switch_summary.get("perseveration_human")),
+            "distribution_perseveration_model": _safe_float(switch_summary.get("perseveration_model")),
+            "distribution_perseveration_abs_diff": _safe_float(switch_summary.get("perseveration_abs_diff")),
+            "distribution_win_stay_human": _safe_float(switch_summary.get("win_stay_human")),
+            "distribution_win_stay_model": _safe_float(switch_summary.get("win_stay_model")),
+            "distribution_win_stay_abs_diff": _safe_float(switch_summary.get("win_stay_abs_diff")),
+            "distribution_lose_shift_human": _safe_float(switch_summary.get("lose_shift_human")),
+            "distribution_lose_shift_model": _safe_float(switch_summary.get("lose_shift_model")),
+            "distribution_lose_shift_abs_diff": _safe_float(switch_summary.get("lose_shift_abs_diff")),
+            "distribution_switch_run_count": int(switch_summary.get("run_count", 0)),
+        }
+
+    @staticmethod
+    def _distribution_history_summary(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+        human_kernels: List[np.ndarray] = []
+        model_kernels: List[np.ndarray] = []
+        for row in rows:
+            human = np.asarray(row.get("kernel_human_kernel") or [], dtype=float)
+            model = np.asarray(row.get("kernel_model_kernel") or [], dtype=float)
+            if human.shape != model.shape or human.size == 0:
+                continue
+            finite = np.isfinite(human) & np.isfinite(model)
+            if not finite.any():
+                continue
+            human_kernels.append(np.where(finite, human, np.nan))
+            model_kernels.append(np.where(finite, model, np.nan))
+        if not human_kernels:
+            return {
+                "kernel_mse": float("nan"),
+                "kernel_corr": float("nan"),
+                "kernel_corr_loss": float("nan"),
+                "kernel_norm_ratio": float("nan"),
+                "human_kernel_norm": float("nan"),
+                "model_kernel_norm": float("nan"),
+                "run_count": 0,
+            }
+
+        human_stack = np.vstack(human_kernels)
+        model_stack = np.vstack(model_kernels)
+        human_mean = np.nanmean(human_stack, axis=0)
+        model_mean = np.nanmean(model_stack, axis=0)
+        finite = np.isfinite(human_mean) & np.isfinite(model_mean)
+        if not finite.any():
+            return {
+                "kernel_mse": float("nan"),
+                "kernel_corr": float("nan"),
+                "kernel_corr_loss": float("nan"),
+                "kernel_norm_ratio": float("nan"),
+                "human_kernel_norm": float("nan"),
+                "model_kernel_norm": float("nan"),
+                "run_count": 0,
+            }
+        human_f = human_mean[finite]
+        model_f = model_mean[finite]
+        diff = model_f - human_f
+        human_norm = float(np.linalg.norm(human_f))
+        model_norm = float(np.linalg.norm(model_f))
+        if human_f.size > 1 and np.nanstd(human_f) > 1e-12 and np.nanstd(model_f) > 1e-12:
+            corr = float(np.corrcoef(human_f, model_f)[0, 1])
+        else:
+            corr = float("nan")
+        corr_loss = 0.5 * (1.0 - corr) if np.isfinite(corr) else 1.0
+        return {
+            "kernel_mse": float(np.mean(diff * diff)),
+            "kernel_corr": corr,
+            "kernel_corr_loss": float(corr_loss),
+            "kernel_norm_ratio": float(model_norm / human_norm) if human_norm > 0 else float("nan"),
+            "human_kernel_norm": human_norm,
+            "model_kernel_norm": model_norm,
+            "run_count": int(len(model_kernels)),
+        }
+
+    @staticmethod
+    def _distribution_switch_summary(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+        def strip_prefix(key: str) -> str:
+            prefix = "switch_"
+            return key[len(prefix):] if key.startswith(prefix) else key
+
+        def pair_summary(human_key: str, model_key: str, diff_key: str) -> Dict[str, float]:
+            human_mean = _nanmean_or_nan(row.get(human_key) for row in rows)
+            model_mean = _nanmean_or_nan(row.get(model_key) for row in rows)
+            return {
+                strip_prefix(human_key): human_mean,
+                strip_prefix(model_key): model_mean,
+                strip_prefix(diff_key): (
+                    float(abs(model_mean - human_mean))
+                    if np.isfinite(human_mean) and np.isfinite(model_mean)
+                    else float("nan")
+                ),
+            }
+
+        out: Dict[str, float] = {}
+        for human_key, model_key, diff_key in (
+            ("switch_switch_human", "switch_switch_model", "switch_switch_abs_diff"),
+            ("switch_perseveration_human", "switch_perseveration_model", "switch_perseveration_abs_diff"),
+            ("switch_win_stay_human", "switch_win_stay_model", "switch_win_stay_abs_diff"),
+            ("switch_lose_shift_human", "switch_lose_shift_model", "switch_lose_shift_abs_diff"),
+        ):
+            out.update(pair_summary(human_key, model_key, diff_key))
+        out["run_count"] = int(
+            np.sum(np.isfinite([_safe_float(row.get("switch_switch_abs_diff")) for row in rows]))
+        )
+        return out
+
     def _select_final_combination(
         self,
         combinations: Sequence[CombinationResult],
@@ -928,6 +1593,7 @@ class HyperCDOptimizer:
             return primary_best, {
                 "enabled": False,
                 "selected_by": "primary_selection_metric",
+                "primary_selection_metric": self.selection_metric,
                 "primary_best_combination_index": primary_best.combination_index,
             }
 
@@ -948,24 +1614,58 @@ class HyperCDOptimizer:
             return primary_best, {
                 "enabled": True,
                 "selected_by": f"primary_fallback_no_{self.secondary_selection['mode']}_metrics",
+                "primary_selection_metric": self.selection_metric,
                 "primary_best_combination_index": primary_best.combination_index,
                 "primary_best_error": best_primary_error,
                 "gate_threshold": gate_threshold,
                 "eligible_count": len(eligible),
             }
 
-        selected = min(
-            eligible_with_secondary,
-            key=lambda result: (
-                self._combination_secondary_score(result),
-                float(result.aggregated_error),
-                int(result.combination_index),
-            ),
-        )
-        return selected, {
+        multiobjective_context: Dict[str, Any] = {}
+        if self.secondary_selection["mode"] == "distribution_ppc_interval":
+            selected, multiobjective_context = self._select_distribution_ppc_interval_combination(
+                eligible_with_secondary
+            )
+            selected_secondary_score = float(
+                multiobjective_context.get("selected_distribution_ppc_interval_score", float("inf"))
+            )
+        elif self.secondary_selection["mode"] == "distribution_intersection":
+            selected, multiobjective_context = self._select_distribution_intersection_combination(
+                eligible_with_secondary
+            )
+            selected_secondary_score = float(
+                multiobjective_context.get("selected_distribution_intersection_score", float("inf"))
+            )
+        elif self.secondary_selection["mode"] == "distribution_multiobjective":
+            selected, multiobjective_context = self._select_distribution_multiobjective_combination(
+                eligible_with_secondary
+            )
+            selected_secondary_score = float(
+                multiobjective_context.get("selected_distribution_minimax_rank_score", float("inf"))
+            )
+        elif self.secondary_selection["mode"] == "multiobjective":
+            selected, multiobjective_context = self._select_multiobjective_combination(
+                eligible_with_secondary
+            )
+            selected_secondary_score = float(
+                multiobjective_context.get("selected_multiobjective_rank_score", float("inf"))
+            )
+        else:
+            selected = min(
+                eligible_with_secondary,
+                key=lambda result: (
+                    self._combination_secondary_score(result),
+                    float(result.aggregated_error),
+                    int(result.combination_index),
+                ),
+            )
+            selected_secondary_score = self._combination_secondary_score(selected)
+
+        context = {
             "enabled": True,
             "mode": self.secondary_selection["mode"],
-            "selected_by": f"choice_gated_{self.secondary_selection['mode']}",
+            "selected_by": f"primary_gated_{self.secondary_selection['mode']}",
+            "primary_selection_metric": self.selection_metric,
             "primary_best_combination_index": primary_best.combination_index,
             "primary_best_error": best_primary_error,
             "gate_threshold": gate_threshold,
@@ -973,37 +1673,362 @@ class HyperCDOptimizer:
             "eligible_with_secondary_count": len(eligible_with_secondary),
             "selected_combination_index": selected.combination_index,
             "selected_primary_error": float(selected.aggregated_error),
-            "selected_secondary_score": self._combination_secondary_score(selected),
+            "selected_secondary_score": selected_secondary_score,
             "selected_accuracy_shape_score": self._combination_shape_score(selected),
             "selected_history_kernel_score": self._combination_history_kernel_score(selected),
+            "selected_switch_behavior_score": self._combination_switch_behavior_score(selected),
+            "selected_distribution_score": self._combination_distribution_score(selected),
+            "selected_distribution_intersection_score": self._combination_distribution_intersection_score(selected),
+            "selected_distribution_ppc_interval_score": self._combination_distribution_ppc_interval_score(selected),
+            "selected_distribution_accuracy_shape_score": self._combination_distribution_accuracy_shape_score(selected),
+            "selected_distribution_history_kernel_score": self._combination_distribution_history_kernel_score(selected),
+            "selected_distribution_switch_behavior_score": self._combination_distribution_switch_behavior_score(selected),
             "config": dict(self.secondary_selection),
         }
+        context.update(multiobjective_context)
+        return selected, context
+
+    def _select_distribution_ppc_interval_combination(
+        self,
+        eligible: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        interval_scores = [
+            self._combination_distribution_ppc_interval_score(result)
+            for result in eligible
+        ]
+        accepted_indices = [
+            idx for idx, result in enumerate(eligible)
+            if self._combination_distribution_ppc_interval_accepts(result)
+        ]
+        pool_indices = accepted_indices or list(range(len(eligible)))
+        selected_pos = min(
+            pool_indices,
+            key=lambda idx: (
+                float(interval_scores[idx]),
+                float(eligible[idx].aggregated_error),
+                int(eligible[idx].combination_index),
+            ),
+        )
+        selected = eligible[selected_pos]
+        return selected, {
+            "distribution_ppc_interval_accepted_count": int(len(accepted_indices)),
+            "selected_from_distribution_ppc_interval_accepted_set": bool(accepted_indices),
+            "selected_distribution_ppc_interval_score": float(interval_scores[selected_pos]),
+        }
+
+    def _select_distribution_intersection_combination(
+        self,
+        eligible: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        intersection_scores = [
+            self._combination_distribution_intersection_score(result)
+            for result in eligible
+        ]
+        accepted_indices = [
+            idx for idx, result in enumerate(eligible)
+            if self._combination_distribution_accepts(result)
+        ]
+        pool_indices = accepted_indices or list(range(len(eligible)))
+        selected_pos = min(
+            pool_indices,
+            key=lambda idx: (
+                float(intersection_scores[idx]),
+                float(eligible[idx].aggregated_error),
+                int(eligible[idx].combination_index),
+            ),
+        )
+        selected = eligible[selected_pos]
+        return selected, {
+            "distribution_accepted_count": int(len(accepted_indices)),
+            "selected_from_distribution_accepted_set": bool(accepted_indices),
+            "selected_distribution_intersection_score": float(intersection_scores[selected_pos]),
+        }
+
+    def _select_distribution_multiobjective_combination(
+        self,
+        eligible: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        weights = {
+            str(key): float(value)
+            for key, value in (self.secondary_selection.get("multiobjective_weights") or {}).items()
+            if float(value) > 0
+        }
+        components_by_result = [
+            self._combination_distribution_components(result)
+            for result in eligible
+        ]
+        available_components: List[str] = []
+        rank_arrays: Dict[str, np.ndarray] = {}
+        for component in weights:
+            values = np.asarray(
+                [components.get(component, float("nan")) for components in components_by_result],
+                dtype=float,
+            )
+            if not np.isfinite(values).any():
+                continue
+            available_components.append(component)
+            rank_arrays[component] = _minimize_rank01(values)
+
+        if not available_components:
+            selected = min(
+                eligible,
+                key=lambda result: (float(result.aggregated_error), int(result.combination_index)),
+            )
+            return selected, {
+                "distribution_available_components": [],
+                "distribution_component_weights": weights,
+                "distribution_accepted_count": 0,
+                "selected_from_distribution_accepted_set": False,
+                "selected_distribution_minimax_rank_score": float("inf"),
+            }
+
+        accepted_indices = [
+            idx for idx, result in enumerate(eligible)
+            if self._combination_distribution_accepts(result)
+        ]
+        pool_indices = accepted_indices or list(range(len(eligible)))
+        selected_from_accepted = bool(accepted_indices)
+
+        weight_total = float(sum(weights[name] for name in available_components))
+
+        def scores_for(idx: int) -> tuple[float, float]:
+            ranks = np.asarray([rank_arrays[name][idx] for name in available_components], dtype=float)
+            component_weights = np.asarray([weights[name] for name in available_components], dtype=float)
+            max_rank = float(np.max(ranks))
+            mean_rank = float(np.sum(component_weights * ranks) / max(weight_total, 1e-12))
+            return max_rank, mean_rank
+
+        selected_pos = min(
+            pool_indices,
+            key=lambda idx: (
+                scores_for(idx)[0],
+                scores_for(idx)[1],
+                float(eligible[idx].aggregated_error),
+                int(eligible[idx].combination_index),
+            ),
+        )
+        selected = eligible[selected_pos]
+        selected_max_rank, selected_mean_rank = scores_for(selected_pos)
+        selected_components = components_by_result[selected_pos]
+        context: Dict[str, Any] = {
+            "distribution_available_components": list(available_components),
+            "distribution_component_weights": {
+                name: float(weights[name]) for name in available_components
+            },
+            "distribution_accepted_count": int(len(accepted_indices)),
+            "selected_from_distribution_accepted_set": selected_from_accepted,
+            "selected_distribution_minimax_rank_score": selected_max_rank,
+            "selected_distribution_mean_rank_score": selected_mean_rank,
+        }
+        for component in available_components:
+            context[f"selected_distribution_{component}_score"] = _safe_float(
+                selected_components.get(component),
+                float("inf"),
+            )
+            context[f"selected_distribution_{component}_rank01"] = float(
+                rank_arrays[component][selected_pos]
+            )
+        return selected, context
+
+    def _select_multiobjective_combination(
+        self,
+        eligible: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        weights = {
+            str(key): float(value)
+            for key, value in (self.secondary_selection.get("multiobjective_weights") or {}).items()
+            if float(value) > 0
+        }
+        components_by_result = [
+            self._combination_multiobjective_components(result)
+            for result in eligible
+        ]
+        available_components: List[str] = []
+        rank_arrays: Dict[str, np.ndarray] = {}
+        for component, weight in weights.items():
+            values = np.asarray(
+                [components.get(component, float("nan")) for components in components_by_result],
+                dtype=float,
+            )
+            if not np.isfinite(values).any():
+                continue
+            available_components.append(component)
+            rank_arrays[component] = _minimize_rank01(values)
+
+        if not available_components:
+            selected = min(
+                eligible,
+                key=lambda result: (float(result.aggregated_error), int(result.combination_index)),
+            )
+            return selected, {
+                "multiobjective_available_components": [],
+                "multiobjective_component_weights": weights,
+                "selected_multiobjective_rank_score": float("inf"),
+            }
+
+        weight_total = float(sum(weights[name] for name in available_components))
+        rank_scores = np.zeros(len(eligible), dtype=float)
+        for component in available_components:
+            rank_scores += float(weights[component]) * rank_arrays[component]
+        rank_scores = rank_scores / max(weight_total, 1e-12)
+
+        selected_pos = min(
+            range(len(eligible)),
+            key=lambda idx: (
+                float(rank_scores[idx]),
+                float(eligible[idx].aggregated_error),
+                int(eligible[idx].combination_index),
+            ),
+        )
+        selected = eligible[selected_pos]
+        context: Dict[str, Any] = {
+            "multiobjective_available_components": list(available_components),
+            "multiobjective_component_weights": {
+                name: float(weights[name]) for name in available_components
+            },
+            "selected_multiobjective_rank_score": float(rank_scores[selected_pos]),
+        }
+        selected_components = components_by_result[selected_pos]
+        for component in available_components:
+            context[f"selected_{component}_score"] = _safe_float(
+                selected_components.get(component), float("inf")
+            )
+            context[f"selected_{component}_rank01"] = float(rank_arrays[component][selected_pos])
+        return selected, context
 
     @staticmethod
     def _combination_shape_score(result: CombinationResult) -> float:
-        values = []
-        for metrics in (result.subject_metrics or {}).values():
-            if isinstance(metrics, Mapping):
-                values.append(_safe_float(metrics.get("accuracy_shape_score"), float("inf")))
-        finite = [value for value in values if np.isfinite(value)]
-        if not finite:
-            return float("inf")
-        return float(np.mean(finite))
+        return HyperCDOptimizer._combination_metric_mean(
+            result,
+            "statistics.scores.accuracy_shape.value",
+        )
 
     @staticmethod
     def _combination_history_kernel_score(result: CombinationResult) -> float:
+        return HyperCDOptimizer._combination_metric_mean(
+            result,
+            "statistics.scores.history_kernel.value",
+        )
+
+    @staticmethod
+    def _combination_switch_behavior_score(result: CombinationResult) -> float:
+        return HyperCDOptimizer._combination_metric_mean(
+            result,
+            "statistics.scores.switch_behavior.value",
+        )
+
+    @staticmethod
+    def _combination_metric_mean(result: CombinationResult, path: str) -> float:
         values = []
         for metrics in (result.subject_metrics or {}).values():
             if isinstance(metrics, Mapping):
-                values.append(_safe_float(metrics.get("history_kernel_score"), float("inf")))
+                values.append(_safe_float(get_stat_value(metrics, path, float("inf")), float("inf")))
         finite = [value for value in values if np.isfinite(value)]
         if not finite:
             return float("inf")
         return float(np.mean(finite))
 
+    @classmethod
+    def _combination_distribution_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(result, "statistics.scores.distribution.multiobjective.score")
+
+    @classmethod
+    def _combination_distribution_intersection_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(result, "statistics.scores.distribution.intersection.score")
+
+    @classmethod
+    def _combination_distribution_ppc_interval_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(result, "statistics.scores.distribution.ppc_interval.score")
+
+    @classmethod
+    def _combination_distribution_accuracy_shape_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(
+            result,
+            "statistics.scores.distribution.multiobjective.components.accuracy_shape",
+        )
+
+    @classmethod
+    def _combination_distribution_history_kernel_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(
+            result,
+            "statistics.scores.distribution.multiobjective.components.history_kernel",
+        )
+
+    @classmethod
+    def _combination_distribution_switch_behavior_score(cls, result: CombinationResult) -> float:
+        return cls._combination_metric_mean(
+            result,
+            "statistics.scores.distribution.multiobjective.components.switch_behavior",
+        )
+
+    def _combination_distribution_components(self, result: CombinationResult) -> Dict[str, float]:
+        return {
+            "choice_error": self._combination_metric_mean(
+                result,
+                "statistics.scores.distribution.multiobjective.components.choice_error",
+            ),
+            "accuracy_shape": self._combination_distribution_accuracy_shape_score(result),
+            "history_kernel": self._combination_distribution_history_kernel_score(result),
+            "switch_behavior": self._combination_distribution_switch_behavior_score(result),
+        }
+
+    def _combination_distribution_accepts(self, result: CombinationResult) -> bool:
+        for metrics in (result.subject_metrics or {}).values():
+            if not isinstance(metrics, Mapping):
+                return False
+            if not bool(get_stat_value(metrics, "statistics.scores.distribution.intersection.accept", False)):
+                return False
+        return True
+
+    @staticmethod
+    def _combination_distribution_ppc_interval_accepts(result: CombinationResult) -> bool:
+        for metrics in (result.subject_metrics or {}).values():
+            if not isinstance(metrics, Mapping):
+                return False
+            if not bool(get_stat_value(metrics, "statistics.scores.distribution.ppc_interval.accept", False)):
+                return False
+        return True
+
+    def _combination_multiobjective_components(self, result: CombinationResult) -> Dict[str, float]:
+        return {
+            "choice_error": self._combination_metric_mean(result, "simulation.mean_error"),
+            "accuracy_shape": self._combination_shape_score(result),
+            "history_kernel": self._combination_history_kernel_score(result),
+            "switch_behavior": self._combination_switch_behavior_score(result),
+        }
+
+    def _combination_multiobjective_raw_score(self, result: CombinationResult) -> float:
+        weights = self.secondary_selection.get("multiobjective_weights") or {}
+        components = self._combination_multiobjective_components(result)
+        total = 0.0
+        weight_sum = 0.0
+        for component, raw_weight in weights.items():
+            weight = float(raw_weight)
+            if weight <= 0:
+                continue
+            value = _safe_float(components.get(component), float("inf"))
+            if not np.isfinite(value):
+                continue
+            total += weight * value
+            weight_sum += weight
+        if weight_sum <= 0:
+            return float("inf")
+        return float(total / weight_sum)
+
     def _combination_secondary_score(self, result: CombinationResult) -> float:
-        if self.secondary_selection.get("mode") == "history_kernel":
+        mode = self.secondary_selection.get("mode")
+        if mode == "history_kernel":
             return self._combination_history_kernel_score(result)
+        if mode == "switch_behavior":
+            return self._combination_switch_behavior_score(result)
+        if mode == "multiobjective":
+            return self._combination_multiobjective_raw_score(result)
+        if mode == "distribution_ppc_interval":
+            return self._combination_distribution_ppc_interval_score(result)
+        if mode == "distribution_intersection":
+            return self._combination_distribution_intersection_score(result)
+        if mode == "distribution_multiobjective":
+            return self._combination_distribution_score(result)
         return self._combination_shape_score(result)
 
     def _evaluate_point(
@@ -1091,37 +2116,45 @@ class HyperCDOptimizer:
                 simulation_repeats=simulation_repeats,
                 simulation_point_seed=simulation_point_seed,
                 keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
+                statistics_config=self.secondary_selection,
             )
 
             mean_err = float(getattr(best, "mean_error"))
             best_err = float(getattr(best, "best_error", mean_err))
             sample_errors = list(getattr(best, "sample_errors", []) or [])
             tail_metrics = _lower_tail_error_metrics(sample_errors, mean_err)
-            shape_metrics = self._accuracy_shape_metrics_from_runs(
-                runs,
-                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
-            )
-            history_metrics = self._history_kernel_metrics_from_runs(
-                runs,
-                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
-            )
-            value = _selection_error_value(self.selection_metric, mean_err, best_err, tail_metrics)
-            errors.append(value)
-            subject_metrics[int(sid)] = {
+            statistics_summary = dict(getattr(best, "statistics_summary", {}) or {})
+            simulation_summary = {
                 "mean_error": mean_err,
                 "best_error": best_err,
                 **tail_metrics,
-                "selection_error": value,
                 "std_error": float(getattr(best, "std_error", 0.0)),
                 "sample_errors": sample_errors,
+                "simulation_repeats": simulation_repeats,
+            }
+            subject_record = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+            }
+            value = _selection_error_value(
+                self.selection_metric,
+                subject_record,
+            )
+            errors.append(value)
+            subject_metrics[int(sid)] = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+                "selection": {
+                    "primary": {
+                        "metric": self.selection_metric,
+                        "value": float(value),
+                    },
+                },
                 "fixed_hyperparams": deepcopy(point),
                 "condition": int(condition),
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
                 "hyper_candidate_seed": int(hyper_candidate_seed),
                 "simulation_point_seed": int(simulation_point_seed),
-                "simulation_repeats": simulation_repeats,
-                **shape_metrics,
-                **history_metrics,
             }
 
         agg_error = float(np.mean(errors)) if errors else float("inf")
@@ -1285,41 +2318,44 @@ class HyperCDOptimizer:
                 simulation_repeats=simulation_repeats,
                 simulation_point_seed=int(meta["simulation_point_seed"]),
                 keep_logs=bool(meta["keep_logs"]),
+                statistics_config=self.secondary_selection,
             )
             mean_error = float(best.mean_error)
             best_error = float(best.best_error if best.best_error is not None else mean_error)
             sample_errors = list(best.sample_errors or [])
             tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
-            shape_metrics = self._accuracy_shape_metrics_from_runs(
-                runs,
-                selection_prediction_mode=str(meta["selection_prediction_mode"]),
-            )
-            history_metrics = self._history_kernel_metrics_from_runs(
-                runs,
-                selection_prediction_mode=str(meta["selection_prediction_mode"]),
-            )
+            statistics_summary = dict(best.statistics_summary or {})
+            simulation_summary = {
+                "mean_error": mean_error,
+                "best_error": best_error,
+                **tail_metrics,
+                "std_error": float(best.std_error),
+                "sample_errors": sample_errors,
+                "simulation_repeats": simulation_repeats,
+            }
+            subject_record = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+            }
             selection_error = _selection_error_value(
                 self.selection_metric,
-                mean_error,
-                best_error,
-                tail_metrics,
+                subject_record,
             )
             subject_metrics = {
                 sid: {
-                    "mean_error": mean_error,
-                    "best_error": best_error,
-                    **tail_metrics,
-                    "selection_error": selection_error,
-                    "std_error": float(best.std_error),
-                    "sample_errors": sample_errors,
+                    "simulation": simulation_summary,
+                    "statistics": statistics_summary,
+                    "selection": {
+                        "primary": {
+                            "metric": self.selection_metric,
+                            "value": float(selection_error),
+                        },
+                    },
                     "fixed_hyperparams": deepcopy(meta["point"]),
                     "condition": int(meta["condition"]),
                     "dataset_paths": dict(meta["dataset_paths"]),
                     "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
                     "simulation_point_seed": int(meta["simulation_point_seed"]),
-                    "simulation_repeats": simulation_repeats,
-                    **shape_metrics,
-                    **history_metrics,
                 }
             }
             out.append(
@@ -1388,10 +2424,11 @@ class HyperCDOptimizer:
     def _append_jsonl(self, path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(_to_builtin(payload), ensure_ascii=False) + "\n")
+            f.write(json.dumps(_to_builtin(payload), ensure_ascii=False, allow_nan=False) + "\n")
 
     def _serialize_combination_record(self, result: CombinationResult) -> Dict[str, Any]:
         data = {
+            "schema_version": HYPER_RESULT_SCHEMA_VERSION,
             "stage": result.stage,
             "combination_index": result.combination_index,
             "restart_id": result.restart_id,
@@ -1401,7 +2438,10 @@ class HyperCDOptimizer:
             "aggregated_error": result.aggregated_error,
             "hyper_candidate_seed": result.hyper_candidate_seed,
         }
-        metrics_summary = combination_metrics_summary(result.subject_metrics)
+        metrics_summary = combination_metrics_summary(
+            result.subject_metrics,
+            aggregated_error=result.aggregated_error,
+        )
         if metrics_summary:
             data["metrics_summary"] = metrics_summary
         if self.save_level == "full":
@@ -1430,7 +2470,7 @@ class HyperCDOptimizer:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             for record in records:
-                f.write(json.dumps(_to_builtin(record), ensure_ascii=False) + "\n")
+                f.write(json.dumps(_to_builtin(record), ensure_ascii=False, allow_nan=False) + "\n")
 
     def _trim_jsonl_to_stage(self, path: Path, stage: str) -> None:
         if not path.is_file():
@@ -1805,11 +2845,11 @@ class HyperCDOptimizer:
 
         stage_summary_path = output_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         restart_summary_path = output_dir / "restart_summary.json"
         with restart_summary_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(stage_restarts), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(stage_restarts), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         metrics = None
         if len(subjects) == 1:
@@ -1832,6 +2872,11 @@ class HyperCDOptimizer:
                 "coordinate": best_combination.coordinate,
                 "final_selection": final_selection_context,
             },
+            provenance=build_hyper_provenance(
+                config_path=self.config_path,
+                output_dir=output_dir,
+                base_sim_config_path=self.base_sim_config_path,
+            ),
             artifacts=build_subject_artifacts(output_dir, include_cd=True),
             full_subject_metrics=(
                 best_combination.subject_metrics
@@ -1842,7 +2887,7 @@ class HyperCDOptimizer:
 
         best_path = output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         return {
             "output_dir": str(output_dir),
@@ -1916,7 +2961,7 @@ class HyperCDOptimizer:
         )
         best_path = self.output_dir / "best_hyperparams.json"
         with best_path.open("w", encoding="utf-8") as f:
-            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2)
+            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
         return {
             "output_dir": str(self.output_dir),
             "per_subject_outputs": per_subject_outputs,
@@ -1936,17 +2981,7 @@ def _deep_update(base: Dict[str, Any], override: Mapping[str, Any]) -> Dict[str,
 
 
 def _to_builtin(obj: Any) -> Any:
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, dict):
-        return {str(key): _to_builtin(value) for key, value in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_to_builtin(value) for value in obj]
-    return obj
+    return to_builtin(obj)
 
 
 __all__ = ["HyperCDOptimizer", "CombinationResult"]

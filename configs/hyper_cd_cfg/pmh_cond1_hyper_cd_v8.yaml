@@ -1,0 +1,109 @@
+# Single-stage coordinate-descent hyperparameter optimization for cond1.
+# v8 changes the selection target from "can this hyperparameter setting produce
+# a few good-looking stochastic runs?" to "does this hyperparameter setting
+# produce a behavioral distribution that is consistently human-like?"
+#
+# Compared with v7:
+# - primary choice fit uses simulation.mean_error rather than best10;
+# - secondary behavior metrics are distribution-level summaries across all runs;
+# - final selection first looks for candidates passing absolute behavior gates;
+# - if such candidates exist, select by minimax rank across behavior dimensions.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v8
+selection_metric: simulation.mean_error
+save_level: compact
+hyper_base_seed: 42
+
+secondary_selection:
+  enabled: true
+  mode: distribution_multiobjective
+  primary_tolerance_abs: 0.015
+  primary_tolerance_rel: 0.05
+
+  # Retained for the legacy single-run summaries; v8 distribution summaries use
+  # all valid hyper-CD runs rather than selecting a best run per behavior metric.
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 64
+
+  multiobjective_weights:
+    accuracy_shape: 1.0
+    history_kernel: 1.0
+    switch_behavior: 1.0
+
+  # Distribution-level accepted set. If no candidate passes all thresholds,
+  # v8 falls back to minimax rank over the full primary choice gate and marks
+  # selected_from_distribution_accepted_set=false in best_hyperparams.json.
+  distribution_accept_acc_mae_max: 0.10
+  distribution_accept_vol_ratio_min: 0.60
+  distribution_accept_vol_ratio_max: 1.50
+  distribution_accept_history_corr_min: 0.80
+  distribution_accept_switch_score_max: 0.10
+
+  # Accuracy-curve shape score used both in legacy summaries and distribution
+  # summaries:
+  # acc_mae + volatility_weight * |log(pred_vol / true_vol)|
+  #         + slope_weight * (1 - slope_agree)
+  accuracy_weight: 1.0
+  volatility_weight: 0.06
+  slope_weight: 0.03
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+  # Feedback-history kernel score.
+  history_max_lag: 8
+  history_ridge: 0.001
+  history_standardize: true
+  history_kernel_weight: 1.0
+  history_corr_weight: 0.05
+  history_norm_weight: 0.0
+  history_min_norm: 0.000001
+
+  # Switch/perseveration profile score.
+  switch_weight: 0.5
+  win_stay_weight: 1.0
+  lose_shift_weight: 1.0
+  perseveration_weight: 0.5
+  min_switch_trials: 20
+
+cd:
+  n_restarts: 8
+  max_outer_iters: 16
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 128
+
+hyperparam_space:
+  # Keep v7's theory-constrained search grid so v8 isolates the effect of the
+  # distribution-level objective.
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.5, 0.6, 0.7, 0.8]
+      w0: [0.03, 0.06, 0.1, 0.15]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_candidates.json
+      key: cond1
+      value_key: hypo_transitions_kwargs
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0, 5.0, 8.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.30, 0.50, 0.70]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 5.0, 10.0, 20.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.5, 1.0, 2.0]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 512
+      keep_logs: false

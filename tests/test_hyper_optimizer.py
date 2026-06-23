@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.Bayesian_state.hyper_grid.optimizer import CombinationResult, HyperGridOptimizer
+from src.Bayesian_state.utils.hyper_grid_optimizer import CombinationResult, HyperGridOptimizer
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def _build_min_configs(tmp_path: Path) -> tuple[Path, Path]:
         "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out",
-        "selection_metric": "mean_simulation_error",
+        "selection_metric": "simulation.mean_error",
         "hyper_base_seed": 100,
         "hyperparam_space": {
             "engine.modules.beta_mod.kwargs.beta_init": {"values": [0.5, 1.0, 2.0]},
@@ -270,13 +270,18 @@ def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch)
     assert Path(result["best_hyperparams"]).exists()
 
     best = json.loads(Path(result["best_hyperparams"]).read_text(encoding="utf-8"))
+    assert best["schema_version"] == "hyper_result.v2"
+    assert "provenance" in best
     assert "per_subject_best" in best
     assert "1" in best["per_subject_best"]
-    assert best["save_level"] == "compact"
+    assert best["selection"]["save_level"] == "compact"
     assert "subject_metrics" not in best
 
     first_line = Path(result["per_subject_outputs"]["1"]["all_combinations"]).read_text(encoding="utf-8").splitlines()[0]
     first_payload = json.loads(first_line)
+    assert first_payload["schema_version"] == "hyper_result.v2"
+    assert "aggregate" in first_payload["metrics_summary"]
+    assert "subjects" in first_payload["metrics_summary"]
     assert "subject_metrics" not in first_payload
     assert "combination_index" in first_payload
 

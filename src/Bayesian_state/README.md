@@ -10,9 +10,9 @@ This package now uses a two-step workflow:
 
 ## Entrypoints
 
-- `python -m src.Bayesian_state.hyper_grid.cli --config <yaml>`
+- `python -m src.Bayesian_state.utils.hyper_cli --backend grid --config <yaml>`
   Runs explicit joint grid hyperparameter selection.
-- `python -m src.Bayesian_state.hyper_cd.cli --config <yaml>`
+- `python -m src.Bayesian_state.utils.hyper_cli --backend cd --config <yaml>`
   Runs coordinate-descent hyperparameter selection over the same style of search space.
 - `python -m src.Bayesian_state.run_hyper_then_simulation --backend hyper_grid --hyper-config <yaml>`
   Runs hyper-grid selection, materializes a subjectwise simulation config, then runs fixed simulations.

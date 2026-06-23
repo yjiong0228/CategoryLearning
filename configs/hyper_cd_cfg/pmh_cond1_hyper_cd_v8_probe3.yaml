@@ -1,0 +1,127 @@
+# Focused mechanism probe 3 after v8_probe2.
+#
+# Probe2 added transition-level feedback refresh and beta-level post-error
+# softening, which improved accuracy shape/history fit but still left local
+# volatility too low. Probe3 keeps those learning mechanisms fixed in the
+# searchable space and adds an output-level, feedback-contingent lapse mixture:
+# predicted choice/category probabilities can be blended with a uniform or
+# lose-shift target after errors or during locally poor performance.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
+
+subject_range: [127, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v8_probe3
+selection_metric: simulation.mean_error
+save_level: compact
+hyper_base_seed: 42
+
+secondary_selection:
+  enabled: true
+  mode: distribution_multiobjective
+  primary_tolerance_abs: 0.015
+  primary_tolerance_rel: 0.05
+
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 64
+
+  multiobjective_weights:
+    accuracy_shape: 1.20
+    history_kernel: 1.00
+    switch_behavior: 0.25
+
+  distribution_accept_acc_mae_max: 0.10
+  distribution_accept_vol_ratio_min: 0.60
+  distribution_accept_vol_ratio_max: 1.50
+  distribution_accept_history_corr_min: 0.80
+  distribution_accept_switch_score_max: 0.10
+
+  accuracy_weight: 1.0
+  volatility_weight: 0.06
+  slope_weight: 0.03
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+  history_max_lag: 8
+  history_ridge: 0.001
+  history_standardize: true
+  history_kernel_weight: 1.0
+  history_corr_weight: 0.05
+  history_norm_weight: 0.0
+  history_min_norm: 0.000001
+
+  switch_weight: 0.5
+  win_stay_weight: 1.0
+  lose_shift_weight: 1.0
+  perseveration_weight: 0.5
+  min_switch_trials: 20
+
+cd:
+  n_restarts: 4
+  max_outer_iters: 14
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 128
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.35, 0.50, 0.65, 0.80]
+      w0: [0.015, 0.03, 0.06, 0.10, 0.15]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_v8_probe2_candidates.json
+      key: cond1_v8_probe2
+      value_key: hypo_transitions_kwargs
+
+  engine.modules.beta_mod.kwargs.beta_update_mode:
+    values: [inferred_correct_category, probabilistic_feedback]
+  engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse:
+    values: [0.0, 0.05, 0.10]
+
+  engine.modules.beta_mod.kwargs.post_error_beta_scale:
+    values: [1.0, 0.70, 0.50, 0.35, 0.20]
+  engine.modules.beta_mod.kwargs.post_error_softening_decay:
+    values: [0.0, 0.35, 0.60]
+
+  engine.modules.beta_mod.kwargs.feedback_beta_decay:
+    values: [0.0, 0.15, 0.30, 0.50]
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.5, 1.5, 3.0, 5.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.15, 0.30, 0.50, 0.70, 0.90]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [5.0, 10.0, 20.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.5, 1.0]
+
+  # Output-level choice variability. These parameters affect predictive
+  # category probabilities used by the objective/evaluation, not posterior
+  # learning itself.
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.0, 0.02, 0.05]
+  engine.output_noise.kwargs.post_error_lapse:
+    values: [0.0, 0.05, 0.10, 0.20, 0.30]
+  engine.output_noise.kwargs.low_accuracy_lapse:
+    values: [0.0, 0.10, 0.20, 0.30]
+  engine.output_noise.kwargs.low_accuracy_threshold:
+    values: [0.60, 0.70, 0.80]
+  engine.output_noise.kwargs.recent_accuracy_window:
+    values: [6, 8, 12]
+  engine.output_noise.kwargs.lapse_decay:
+    values: [0.0, 0.35, 0.65, 0.85]
+  engine.output_noise.kwargs.max_lapse:
+    values: [0.25, 0.40, 0.60]
+  engine.output_noise.kwargs.lapse_target:
+    values: [uniform, lose_shift]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 128
+    simulation_overrides:
+      simulation_repeats: 256
+      keep_logs: false

@@ -1,23 +1,24 @@
-# Single-stage coordinate-descent hyperparameter optimization for all cond1 subjects.
-# This version removes coarse->fine gating and selects parameters by the mean
-# error of the best 10% repeated simulations, rather than by a single lucky run.
+# Exhaustive hyper-grid counterpart to hyper_cd_cfg/pmh_cond1_hyper_cd_v2.yaml.
+#
+# This config keeps the v2 search space but removes coordinate-descent path
+# dependence: every candidate in the joint grid is evaluated and saved to
+# all_combinations.jsonl. After this run, selection criteria can be changed
+# offline without rerunning simulations, as long as the needed metrics were
+# saved in the candidate records.
+#
+# WARNING: this is a large grid.
+#   memory 9*9 * transitions 14 * beta 4^4 * distance 2
+#   = 580,608 candidates per subject, each with 80 repeated simulations.
+# Use CLI --subjects / --subject-range for pilot runs before launching all
+# subjects, or reduce this grid for a staged diagnostic pass.
 base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 
 subject_range: [101, 132]
 
-output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v2
+output_dir: ../../results/state-based-hyper-grid/pmh/cond1_v1
 selection_metric: simulation.best10_mean_error
 save_level: compact
 hyper_base_seed: 42
-
-cd:
-  n_restarts: 8
-  max_outer_iters: 16
-  init_strategy: random
-  coordinate_order: shuffle_per_restart
-  patience: 2
-  min_delta: 0.001
-  parallel_budget: 128
 
 hyperparam_space:
   engine.modules.memory_mod.kwargs:
@@ -42,12 +43,12 @@ hyperparam_space:
   engine.modules.likelihood_mod.kwargs.distance_mode:
     values: [prototype, boundary]
 
-# One-stage search. The stage is named "coarse" for compatibility with the
-# existing CLI stage names, but it is the final search stage in this config.
+# One-stage exhaustive grid. The stage is named "coarse" for compatibility
+# with existing hyper selection tooling, but it is the final grid in this file.
 stages:
   coarse:
-    cd_parallel:
-      max_repeat_jobs: 128
+    n_jobs_combinations: 128
     simulation_overrides:
       simulation_repeats: 80
       keep_logs: false
+      n_jobs: 1

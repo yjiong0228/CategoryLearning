@@ -27,14 +27,20 @@ def test_aggregate_per_subject_best_filters_to_requested_subjects(tmp_path: Path
     output_dir = tmp_path / "hyper"
     _write_json(
         output_dir / "subject_101" / "best_hyperparams.json",
-        {"best_stage": "fine", "best_hyperparams": {"simulation.window_size": 8}, "hyper_candidate_seed": 101},
+        {
+            "selection": {"best_stage": "fine", "hyper_candidate_seed": 101},
+            "selected": {"best_hyperparams": {"simulation.window_size": 8}},
+        },
     )
     _write_json(
         output_dir / "subject_108" / "best_hyperparams.json",
-        {"best_stage": "fine", "best_hyperparams": {"simulation.window_size": 16}, "hyper_candidate_seed": 108},
+        {
+            "selection": {"best_stage": "fine", "hyper_candidate_seed": 108},
+            "selected": {"best_hyperparams": {"simulation.window_size": 16}},
+        },
     )
     optimizer = SimpleNamespace(
-        selection_metric="mean_simulation_error",
+        selection_metric="simulation.mean_error",
         save_level="compact",
         base_sim_config_path=tmp_path / "sim.yaml",
         hyper_base_seed=42,
@@ -94,17 +100,23 @@ def test_materialized_sim_config_preserves_base_subject_overrides(tmp_path: Path
         },
     )
     hyper_best_payload = {
-        "selection_metric": "mean_simulation_error",
-        "base_sim_config_path": str(base_sim_path),
-        "hyper_base_seed": 42,
+        "selection": {"metric": "simulation.mean_error"},
+        "hyper": {
+            "base_sim_config_path": str(base_sim_path),
+            "hyper_base_seed": 42,
+        },
         "per_subject_best": {
             "108": {
-                "best_stage": "fine",
-                "best_hyperparams": {
-                    "engine.modules.memory_mod.kwargs.gamma": 0.6,
-                    "engine.modules.memory_mod.kwargs.w0": 0.5,
+                "selection": {
+                    "best_stage": "fine",
+                    "hyper_candidate_seed": 123,
                 },
-                "hyper_candidate_seed": 123,
+                "selected": {
+                    "best_hyperparams": {
+                        "engine.modules.memory_mod.kwargs.gamma": 0.6,
+                        "engine.modules.memory_mod.kwargs.w0": 0.5,
+                    },
+                },
             },
         },
     }

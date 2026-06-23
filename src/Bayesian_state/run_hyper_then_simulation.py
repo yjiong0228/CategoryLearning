@@ -12,8 +12,8 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from src.Bayesian_state.hyper_cd.optimizer import HyperCDOptimizer
-from src.Bayesian_state.hyper_grid.optimizer import HyperGridOptimizer
+from src.Bayesian_state.utils.hyper_cd_optimizer import HyperCDOptimizer
+from src.Bayesian_state.utils.hyper_grid_optimizer import HyperGridOptimizer
 from src.Bayesian_state.run_simulation import (
     apply_fixed_hyperparams_to_subject_config,
     infer_fixed_hyperparams_from_engine_config,
@@ -33,13 +33,14 @@ from src.Bayesian_state.utils.optimization_config import (
     resolve_prediction_modes,
     resolve_window_size,
 )
-from src.Bayesian_state.utils.hyper_results import (
+from src.Bayesian_state.utils.hyper_utils import (
     build_root_best_payload,
     root_base_sim_config_path,
     root_hyper_base_seed,
     subject_best_hyperparams,
     subject_best_stage,
     subject_hyper_candidate_seed,
+    to_builtin as hyper_to_builtin,
 )
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
@@ -72,7 +73,10 @@ def save_yaml(path: Path, payload: Mapping[str, Any]) -> None:
 
 def save_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_to_builtin(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(_to_builtin(payload), ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
 
 
 def resolve_project_path(path: Path) -> Path:
@@ -283,6 +287,24 @@ def build_subjectwise_simulation_config(
     generated_cfg.pop("subject_range", None)
     generated_cfg["output_dir"] = relative_path_for_yaml(sim_output_dir, generated_dir)
     generated_cfg["keep_logs"] = bool(keep_logs)
+    hyper_meta = hyper_best_payload.get("hyper")
+    hyper_config_name = ""
+    if isinstance(hyper_meta, Mapping):
+        hyper_config_name = str(hyper_meta.get("config_path", ""))
+    selection_modes = []
+    for subject_payload in per_subject_best.values():
+        if not isinstance(subject_payload, Mapping):
+            continue
+        final_selection = (
+            ((subject_payload.get("search_context") or {}).get("final_selection") or {})
+            if isinstance(subject_payload.get("search_context"), Mapping)
+            else {}
+        )
+        if isinstance(final_selection, Mapping):
+            selection_modes.append(str(final_selection.get("mode", "")))
+    if "v8" in hyper_config_name or "distribution_multiobjective" in set(selection_modes):
+        generated_cfg["representative_run_selection"] = "behavior_composite"
+        generated_cfg["representative_choice_fraction"] = 0.10
     hyper_base_seed = root_hyper_base_seed(hyper_best_payload)
     if hyper_base_seed is not None:
         generated_cfg["hyper_base_seed"] = int(hyper_base_seed)
@@ -539,7 +561,9 @@ def _simulation_result_satisfies_signature(
     except json.JSONDecodeError as exc:
         return False, f"invalid JSON in {subject_json_path}: {exc}"
 
-    summary = payload.get("simulation_summary")
+    summary = payload.get("simulation")
+    if not isinstance(summary, Mapping):
+        summary = payload.get("simulation_summary")
     if not isinstance(summary, Mapping):
         summary = {}
     selection = payload.get("selection")
@@ -621,7 +645,7 @@ def run_hyper_resumable(
         require_all=True,
     )
     print(f"{backend} optimization done.")
-    print(json.dumps(_to_builtin(result), ensure_ascii=False, indent=2))
+    print(json.dumps(_to_builtin(result), ensure_ascii=False, indent=2, allow_nan=False))
     return result
 
 
@@ -840,23 +864,7 @@ def _deep_update(base: dict[str, Any], override: Mapping[str, Any]) -> dict[str,
 
 
 def _to_builtin(obj: Any) -> Any:
-    try:
-        import numpy as np
-    except Exception:  # pragma: no cover
-        np = None
-
-    if np is not None:
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-    if isinstance(obj, dict):
-        return {str(k): _to_builtin(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_to_builtin(x) for x in obj]
-    return obj
+    return hyper_to_builtin(obj)
 
 
 if __name__ == "__main__":

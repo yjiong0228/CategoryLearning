@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-import src.Bayesian_state.hyper_cd.optimizer as cd_optimizer
-from src.Bayesian_state.hyper_cd.optimizer import CombinationResult, HyperCDOptimizer
+import src.Bayesian_state.utils.hyper_cd_optimizer as cd_optimizer
+from src.Bayesian_state.utils.hyper_cd_optimizer import CombinationResult, HyperCDOptimizer
 from src.Bayesian_state.run_hyper_then_simulation import build_hyper_selector
 from src.Bayesian_state.utils.optimizer_common import SingleRunResult
 
@@ -82,7 +82,7 @@ def _build_min_cd_config(tmp_path: Path) -> Path:
         "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out_cd",
-        "selection_metric": "mean_simulation_error",
+        "selection_metric": "simulation.mean_error",
         "save_level": "compact",
         "hyper_base_seed": 42,
         "cd": {
@@ -187,9 +187,18 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
     assert "stopped_by" in restart_summary["coarse"][0]
     assert "num_improvements" in restart_summary["coarse"][0]
     assert "num_new_evaluations" in restart_summary["coarse"][0]
-    assert "best_combination_index" in subject_best
-    assert subject_best["hyper_backend"] == "hyper_cd"
-    assert root_best["hyper_backend"] == "hyper_cd"
+    assert subject_best["schema_version"] == "hyper_result.v2"
+    assert "provenance" in subject_best
+    assert "combination_index" in subject_best["selection"]["candidate"]
+    assert "primary" in subject_best["selection"]
+    assert "final" in subject_best["selection"]
+    assert subject_best["hyper"]["backend"] == "hyper_cd"
+    assert first_line["schema_version"] == "hyper_result.v2"
+    assert "aggregate" in first_line["metrics_summary"]
+    assert "subjects" in first_line["metrics_summary"]
+    assert root_best["hyper"]["backend"] == "hyper_cd"
+    assert root_best["schema_version"] == "hyper_result.v2"
+    assert "provenance" in root_best
     assert "per_subject_best" in root_best
 
 
@@ -427,8 +436,8 @@ def test_cd_flat_evaluator_groups_repeats_by_candidate_order(tmp_path: Path, mon
     assert [result.hyperparams["x"] for result in results] == [2, 3]
     assert results[0].aggregated_error == pytest.approx(2.1)
     assert results[1].aggregated_error == pytest.approx(3.1)
-    assert results[0].subject_metrics[1]["sample_errors"] == [2.0, 2.1, 2.2]
-    assert results[1].subject_metrics[1]["sample_errors"] == [3.0, 3.1, 3.2]
+    assert results[0].subject_metrics[1]["simulation"]["sample_errors"] == [2.0, 2.1, 2.2]
+    assert results[1].subject_metrics[1]["simulation"]["sample_errors"] == [3.0, 3.1, 3.2]
 
 
 def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:

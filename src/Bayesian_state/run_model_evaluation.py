@@ -102,7 +102,7 @@ def load_simulation_results(
         mode, metrics = _select_metrics(payload, eval_prediction_mode)
         representative = payload.get("representative_run") or {}
         state_log = representative.get("state_log") or {}
-        summary = payload.get("simulation_summary") or {}
+        summary = payload.get("simulation") or payload.get("simulation_summary") or {}
         selection = payload.get("selection") or {}
         trial_events = representative.get("trial_events") or []
         transition_counts = representative.get("transition_counts")
@@ -333,6 +333,56 @@ def run_trajectory_plots(
             limit=posterior_limit,
         ),
         [posterior_dir],
+    )
+
+
+def run_behavior_ppc_plots(
+    evaluator: ModelEval,
+    input_dir: Path,
+    output_dir: Path,
+    records: list[dict[str, Any]],
+    subjects: Sequence[int] | None,
+    eval_prediction_mode: str | None,
+    max_runs_per_subject: int | None,
+) -> None:
+    basic_dir = output_dir / "basic"
+    ppc_dir = output_dir / "behavior_ppc"
+    band_dir = output_dir / "predictive_accuracy_band"
+    run_step(
+        records,
+        "accuracy_band",
+        lambda: evaluator.plot_predictive_accuracy_band_group(
+            input_dir,
+            basic_dir / "accuracy_band.png",
+            eval_prediction_mode=eval_prediction_mode,
+            max_runs_per_subject=max_runs_per_subject,
+            subjects=subjects,
+        ),
+        [basic_dir / "accuracy_band.png"],
+    )
+    run_step(
+        records,
+        "predictive_accuracy_band",
+        lambda: evaluator.save_predictive_accuracy_bands(
+            input_dir,
+            band_dir,
+            eval_prediction_mode=eval_prediction_mode,
+            max_runs_per_subject=max_runs_per_subject,
+            subjects=subjects,
+        ),
+        [band_dir],
+    )
+    run_step(
+        records,
+        "behavior_ppc",
+        lambda: evaluator.save_behavior_ppc_outputs(
+            input_dir,
+            ppc_dir,
+            eval_prediction_mode=eval_prediction_mode,
+            max_runs_per_subject=max_runs_per_subject,
+            subjects=subjects,
+        ),
+        [ppc_dir],
     )
 
 
@@ -567,6 +617,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--window-size", type=int, help="Fallback window size for old result JSONs")
     p.add_argument("--skip-basic", action="store_true", help="Skip group-level metric/log plots")
     p.add_argument("--skip-trajectory", action="store_true", help="Skip raw-run trajectory plots")
+    p.add_argument("--skip-behavior-ppc", action="store_true", help="Skip predictive-distribution PPC plots")
+    p.add_argument(
+        "--ppc-max-runs-per-subject",
+        type=int,
+        help="Limit raw runs per subject for behavior PPC; omit to use all runs",
+    )
     p.add_argument("--skip-oral", action="store_true", help="Skip oral/model alignment plots")
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
     p.add_argument("--oral-mode", choices=("center", "region"), default="center")
@@ -637,6 +693,17 @@ def main() -> None:
             posterior_ranks=args.posterior_ranks,
             eval_prediction_mode=args.eval_prediction_mode,
             posterior_limit=bool(args.posterior_limit),
+        )
+
+    if not args.skip_behavior_ppc:
+        run_behavior_ppc_plots(
+            evaluator=evaluator,
+            input_dir=input_dir,
+            output_dir=output_dir,
+            records=records,
+            subjects=subjects,
+            eval_prediction_mode=args.eval_prediction_mode,
+            max_runs_per_subject=args.ppc_max_runs_per_subject,
         )
 
     oral_data = resolve_project_path(args.oral_data)

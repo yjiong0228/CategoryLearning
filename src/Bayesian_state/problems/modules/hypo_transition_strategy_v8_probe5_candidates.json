@@ -1,0 +1,362 @@
+{
+  "cond1_v8_probe5": [
+    {
+      "id": "c1_probe5_latent_newcomer_mild",
+      "description": "Mild trial-wise volatility state; higher volatility refreshes inactive hypotheses and resets prior toward newcomers.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "latent_volatility_base": 0.02,
+        "latent_volatility_error_gain": 0.3,
+        "latent_volatility_low_accuracy_gain": 0.3,
+        "latent_volatility_threshold": 0.7,
+        "latent_volatility_window": 6,
+        "latent_volatility_decay": 0.75,
+        "latent_volatility_max": 0.8,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 6,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.5,
+        "prior_reset_target": "newcomer_boost",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.55,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_4",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.0
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_8",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.15,
+            "power": 1.0
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe5_latent_newcomer_strong",
+      "description": "Persistent high-gain volatility state for subjects with extended unstable episodes.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.45,
+        "latent_volatility_low_accuracy_gain": 0.45,
+        "latent_volatility_threshold": 0.75,
+        "latent_volatility_window": 4,
+        "latent_volatility_decay": 0.85,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.75,
+        "prior_reset_window": 4,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "newcomer_boost",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.75,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "sample_active",
+            "amount": "fixed",
+            "value": 1,
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "epsilon": 0.3
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_9",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.1,
+            "power": 0.8
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe5_latent_sampled_active",
+      "description": "Volatility refresh paired with sampled-active prior reset, preserving some history while allowing jumps.",
+      "hypo_transitions_kwargs": {
+        "init_num": 9,
+        "max_active_hypotheses": 12,
+        "latent_volatility_base": 0.02,
+        "latent_volatility_error_gain": 0.4,
+        "latent_volatility_low_accuracy_gain": 0.25,
+        "latent_volatility_threshold": 0.7,
+        "latent_volatility_window": 5,
+        "latent_volatility_decay": 0.85,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 5,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "sampled_active",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.7,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_5",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.5
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_8",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.15,
+            "power": 1.0
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe5_latent_uniform_stable",
+      "description": "Conservative volatility state with uniform-active reset, intended to preserve feedback-history dependence.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 11,
+        "latent_volatility_base": 0.01,
+        "latent_volatility_error_gain": 0.25,
+        "latent_volatility_low_accuracy_gain": 0.25,
+        "latent_volatility_threshold": 0.7,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.65,
+        "latent_volatility_max": 0.7,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 8,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.35,
+        "prior_reset_target": "uniform_active",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.35,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "broad_retain",
+            "amount": "entropy_norm_5",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "temperature": 2.5
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_6",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 0,
+            "threshold": 0.2,
+            "power": 1.3
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe5_latent_fast_burst",
+      "description": "Fast post-error volatility burst with weak persistence, testing sharp local switching without long-history drift.",
+      "hypo_transitions_kwargs": {
+        "init_num": 7,
+        "max_active_hypotheses": 12,
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.7,
+        "latent_volatility_low_accuracy_gain": 0.15,
+        "latent_volatility_threshold": 0.75,
+        "latent_volatility_window": 3,
+        "latent_volatility_decay": 0.35,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.75,
+        "prior_reset_window": 3,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "sampled_newcomer",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.85,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "sample_active",
+            "amount": "fixed",
+            "value": 1,
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "epsilon": 0.45
+          },
+          {
+            "label": "volatility_burst",
+            "amount": "latent_volatility_9",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 0,
+            "threshold": 0.05,
+            "power": 0.75
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe5_probe2_anchor_no_latent",
+      "description": "Probe2-like anchor without latent volatility or prior reset.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "max_active_hypotheses": 11,
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.0,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.7,
+        "latent_volatility_window": 6,
+        "latent_volatility_decay": 0.0,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 8,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.25,
+        "prior_reset_target": "uniform_active",
+        "prior_reset_source": "feedback",
+        "prior_reset_volatility_gain": 0.0,
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.25
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.2
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    }
+  ]
+}

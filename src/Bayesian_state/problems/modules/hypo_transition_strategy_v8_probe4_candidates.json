@@ -1,0 +1,265 @@
+{
+  "cond1_v8_probe4": [
+    {
+      "id": "c1_probe4_probe2_wide_reset",
+      "description": "Probe2 wide error-burst candidate paired with prior-level reset search.",
+      "hypo_transitions_kwargs": {
+        "init_num": 9,
+        "max_active_hypotheses": 12,
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.3,
+        "prior_reset_low_accuracy": 0.2,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 4,
+        "prior_reset_decay": 0.5,
+        "prior_reset_max": 0.5,
+        "prior_reset_target": "newcomer_boost",
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_5",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.5
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_8",
+            "method": "random",
+            "pool": "inactive",
+            "window": 5,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.18
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe4_error_newcomer_shock",
+      "description": "Small retained core plus strong post-drop inactive refresh for latent state jumps.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.5,
+        "prior_reset_low_accuracy": 0.2,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 4,
+        "prior_reset_decay": 0.85,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "sampled_active",
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_3",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 4.0
+          },
+          {
+            "label": "drop_shock",
+            "amount": "opp_accuracy_delta_9",
+            "method": "random",
+            "pool": "inactive",
+            "window": 4,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.12
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe4_low_accuracy_state_reset",
+      "description": "Low-accuracy driven newcomer refresh to support extended volatile states.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "prior_reset_base": 0.05,
+        "prior_reset_post_error": 0.15,
+        "prior_reset_low_accuracy": 0.4,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 8,
+        "prior_reset_decay": 0.5,
+        "prior_reset_max": 0.5,
+        "prior_reset_target": "uniform_active",
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "active_sample",
+            "amount": "fixed",
+            "value": 1,
+            "method": "temperature_posterior",
+            "pool": "active",
+            "temperature": 5.0
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_9",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 0.7
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 5,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.18
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe4_sampled_state_switch",
+      "description": "Very small active core with stochastic active retention and broad inactive refresh.",
+      "hypo_transitions_kwargs": {
+        "init_num": 9,
+        "max_active_hypotheses": 11,
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.3,
+        "prior_reset_low_accuracy": 0.4,
+        "prior_reset_threshold": 0.8,
+        "prior_reset_window": 4,
+        "prior_reset_decay": 0.85,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "sampled_active",
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "sample_active",
+            "amount": "fixed",
+            "value": 1,
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "epsilon": 0.35
+          },
+          {
+            "label": "drop_shock",
+            "amount": "opp_accuracy_delta_8",
+            "method": "random",
+            "pool": "inactive",
+            "window": 4,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.15
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_probe4_hybrid_reset_anchor",
+      "description": "Probe2 hybrid feedback refresh anchor with prior reset available.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "max_active_hypotheses": 11,
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 8,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.25,
+        "prior_reset_target": "uniform_active",
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.25
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.2
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    }
+  ]
+}

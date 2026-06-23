@@ -67,6 +67,28 @@ LOSS_METRIC_CHOICES = (
 )
 SEED_MODULUS = 2 ** 32
 
+OUTPUT_NOISE_TARGET_UNIFORM = "uniform"
+OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE = "previous_choice"
+OUTPUT_NOISE_TARGET_LOSE_SHIFT = "lose_shift"
+OUTPUT_NOISE_TARGET_CHOICES = (
+    OUTPUT_NOISE_TARGET_UNIFORM,
+    OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE,
+    OUTPUT_NOISE_TARGET_LOSE_SHIFT,
+)
+OUTPUT_NOISE_KWARG_KEYS = (
+    "enabled",
+    "base_lapse",
+    "post_error_lapse",
+    "low_accuracy_lapse",
+    "low_accuracy_threshold",
+    "recent_accuracy_window",
+    "lapse_decay",
+    "max_lapse",
+    "lapse_target",
+    "latent_volatility_lapse",
+    "latent_volatility_power",
+)
+
 
 def _seedable(obj: Any) -> Any:
     """Convert common Python/numpy/path values to stable JSON seed payloads."""
@@ -540,6 +562,25 @@ def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> Lo
     raise ValueError(f"Unsupported loss_metric '{loss_metric}'. Valid: {LOSS_METRIC_CHOICES}")
 
 
+def compute_loss_values(
+    metrics: Dict[str, np.ndarray | float],
+    *,
+    loss_delta: float | None = None,
+) -> Dict[str, float]:
+    """Compute all scalar loss/statistic values available for one metrics dict."""
+    out: Dict[str, float] = {}
+    for metric in LOSS_METRIC_CHOICES:
+        if metric == LOSS_METRIC_ACCURACY_CURVE_BERHU and loss_delta is None:
+            continue
+        try:
+            strategy = build_loss_strategy(metric, loss_delta=loss_delta)
+            value = float(strategy.compute(metrics))
+        except Exception:
+            value = float("nan")
+        out[str(metric)] = value
+    return out
+
+
 @dataclass
 class SimulationResult:
     """Container for repeated simulations under one fixed parameter setting."""
@@ -558,6 +599,7 @@ class SimulationResult:
     simulation_repeats: int = 0
     simulation_point_seed: Optional[int] = None
     std_error: float = 0.0
+    statistics_summary: Optional[Dict[str, Any]] = None
 
     @property
     def gamma(self) -> float:
@@ -588,13 +630,18 @@ class SingleRunResult:
     selection_prediction_mode: str
     loss_metric: str
     loss_delta: Optional[float]
-    state_log: Optional[Dict[str, Sequence[np.ndarray]]]
-    trial_events: Optional[Sequence[Dict[str, Any]]]
-    transition_counts: Optional[Sequence[Dict[str, Any]]]
+    state_log: Optional[Dict[str, Sequence[np.ndarray]]] = None
+    trial_events: Optional[Sequence[Dict[str, Any]]] = None
+    transition_counts: Optional[Sequence[Dict[str, Any]]] = None
     simulation_point_seed: Optional[int] = None
     trajectory_seed: Optional[int] = None
     module_seed: Optional[int] = None
     seed_context: Optional[Dict[str, Any]] = None
+    posterior_log: Optional[Any] = None
+    prior_log: Optional[Any] = None
+    beta_log: Optional[Any] = None
+    step_log: Optional[Any] = None
+    strategy_counts_log: Optional[Any] = None
 
 
 @dataclass
@@ -853,6 +900,244 @@ def _safe_pearson(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.corrcoef(x, y)[0, 1])
 
 
+def _mapping_get_path(root: Mapping[str, Any] | None, path: str) -> Any:
+    curr: Any = root
+    for part in path.split("."):
+        if not isinstance(curr, Mapping) or part not in curr:
+            return None
+        curr = curr[part]
+    return curr
+
+
+def _float_from_mapping(
+    values: Mapping[str, Any],
+    key: str,
+    default: float,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> float:
+    raw = values.get(key, default)
+    try:
+        out = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"output_noise.kwargs.{key} must be numeric, got {raw!r}") from exc
+    if not np.isfinite(out):
+        raise ValueError(f"output_noise.kwargs.{key} must be finite, got {raw!r}")
+    if min_value is not None and out < min_value:
+        raise ValueError(
+            f"output_noise.kwargs.{key} must be >= {min_value}, got {out!r}"
+        )
+    if max_value is not None and out > max_value:
+        raise ValueError(
+            f"output_noise.kwargs.{key} must be <= {max_value}, got {out!r}"
+        )
+    return out
+
+
+def _bool_from_mapping(values: Mapping[str, Any], key: str, default: bool) -> bool:
+    raw = values.get(key, default)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(raw, (int, float, np.integer, np.floating)):
+        return bool(raw)
+    raise ValueError(f"output_noise.kwargs.{key} must be boolean-like, got {raw!r}")
+
+
+def _extract_output_noise_config(
+    params: Mapping[str, Any] | None,
+    engine_config: Mapping[str, Any] | None,
+) -> Dict[str, Any]:
+    raw: Dict[str, Any] = {}
+    sources = [
+        _mapping_get_path(engine_config, "output_noise.kwargs"),
+        _mapping_get_path(engine_config, "engine.output_noise.kwargs"),
+        _mapping_get_path(params, "output_noise.kwargs"),
+        _mapping_get_path(params, "engine.output_noise.kwargs"),
+    ]
+    for source in sources:
+        if isinstance(source, Mapping):
+            raw.update(dict(source))
+
+    flat_sources = [params, engine_config]
+    for source in flat_sources:
+        if not isinstance(source, Mapping):
+            continue
+        for key in OUTPUT_NOISE_KWARG_KEYS:
+            for prefix in ("engine.output_noise.kwargs.", "output_noise.kwargs."):
+                full_key = f"{prefix}{key}"
+                if full_key in source:
+                    raw[key] = source[full_key]
+
+    if not raw:
+        return {"enabled": False}
+
+    cfg = {
+        "enabled": _bool_from_mapping(raw, "enabled", True),
+        "base_lapse": _float_from_mapping(raw, "base_lapse", 0.0, min_value=0.0, max_value=1.0),
+        "post_error_lapse": _float_from_mapping(
+            raw, "post_error_lapse", 0.0, min_value=0.0, max_value=1.0
+        ),
+        "low_accuracy_lapse": _float_from_mapping(
+            raw, "low_accuracy_lapse", 0.0, min_value=0.0, max_value=1.0
+        ),
+        "low_accuracy_threshold": _float_from_mapping(
+            raw, "low_accuracy_threshold", 0.70, min_value=1e-9, max_value=1.0
+        ),
+        "recent_accuracy_window": int(raw.get("recent_accuracy_window", 8)),
+        "lapse_decay": _float_from_mapping(raw, "lapse_decay", 0.0, min_value=0.0, max_value=1.0),
+        "max_lapse": _float_from_mapping(raw, "max_lapse", 0.40, min_value=0.0, max_value=1.0),
+        "lapse_target": str(raw.get("lapse_target", OUTPUT_NOISE_TARGET_UNIFORM)),
+        "latent_volatility_lapse": _float_from_mapping(
+            raw,
+            "latent_volatility_lapse",
+            0.0,
+            min_value=0.0,
+            max_value=1.0,
+        ),
+        "latent_volatility_power": _float_from_mapping(
+            raw,
+            "latent_volatility_power",
+            1.0,
+            min_value=1e-9,
+        ),
+    }
+    if int(cfg["recent_accuracy_window"]) <= 0:
+        raise ValueError(
+            "output_noise.kwargs.recent_accuracy_window must be positive, "
+            f"got {cfg['recent_accuracy_window']!r}"
+        )
+    if cfg["lapse_target"] not in OUTPUT_NOISE_TARGET_CHOICES:
+        raise ValueError(
+            "output_noise.kwargs.lapse_target must be one of "
+            f"{OUTPUT_NOISE_TARGET_CHOICES}, got {cfg['lapse_target']!r}"
+        )
+    if cfg["max_lapse"] < cfg["base_lapse"]:
+        raise ValueError(
+            "output_noise.kwargs.max_lapse must be >= base_lapse, "
+            f"got max_lapse={cfg['max_lapse']!r}, base_lapse={cfg['base_lapse']!r}"
+        )
+    has_lapse = (
+        cfg["base_lapse"] > 0.0
+        or cfg["post_error_lapse"] > 0.0
+        or cfg["low_accuracy_lapse"] > 0.0
+        or cfg["latent_volatility_lapse"] > 0.0
+    )
+    cfg["enabled"] = bool(cfg["enabled"] and has_lapse and cfg["max_lapse"] > 0.0)
+    return cfg
+
+
+def _normalize_probability_vector(values: np.ndarray, n_cats: int) -> np.ndarray:
+    probs = np.asarray(values, dtype=float).reshape(-1)
+    if probs.shape[0] != n_cats:
+        raise ValueError(f"Probability vector width mismatch: expected {n_cats}, got {probs.shape[0]}")
+    if not np.all(np.isfinite(probs)) or np.any(probs < 0):
+        return np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
+    denom = float(np.sum(probs))
+    if denom <= 0.0:
+        return np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
+    return probs / denom
+
+
+def _one_hot_or_uniform(index: int, n_cats: int) -> np.ndarray:
+    out = np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
+    if 0 <= int(index) < n_cats:
+        out[:] = 0.0
+        out[int(index)] = 1.0
+    return out
+
+
+def _output_noise_target_vector(
+    lapse_target: str,
+    trial_idx: int,
+    choices: np.ndarray,
+    feedback: np.ndarray,
+    n_cats: int,
+) -> np.ndarray:
+    uniform = np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
+    if trial_idx <= 0:
+        return uniform
+    prev_choice_idx = int(choices[trial_idx - 1]) - 1
+    prev_feedback = float(feedback[trial_idx - 1]) if np.isfinite(feedback[trial_idx - 1]) else 1.0
+    if lapse_target == OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE:
+        return _one_hot_or_uniform(prev_choice_idx, n_cats)
+    if lapse_target == OUTPUT_NOISE_TARGET_LOSE_SHIFT:
+        if prev_feedback >= 1.0 or not (0 <= prev_choice_idx < n_cats):
+            return uniform
+        if n_cats == 2:
+            return _one_hot_or_uniform(1 - prev_choice_idx, n_cats)
+        out = np.ones(n_cats, dtype=float)
+        out[prev_choice_idx] = 0.0
+        denom = float(np.sum(out))
+        return out / denom if denom > 0.0 else uniform
+    return uniform
+
+
+def _recent_feedback_accuracy(feedback: np.ndarray, trial_idx: int, window: int) -> float:
+    start = max(0, int(trial_idx) - int(window))
+    recent = np.asarray(feedback[start:trial_idx], dtype=float)
+    recent = recent[np.isfinite(recent)]
+    if recent.size == 0:
+        return 1.0
+    return float(np.clip(np.mean(recent), 0.0, 1.0))
+
+
+def _apply_output_noise_to_category_prob(
+    category_prob: np.ndarray,
+    *,
+    trial_idx: int,
+    choices: np.ndarray,
+    feedback: np.ndarray,
+    n_cats: int,
+    output_noise_config: Mapping[str, Any],
+    post_error_lapse_state: float,
+    latent_volatility_value: float = 0.0,
+) -> tuple[np.ndarray, float, float]:
+    prob = _normalize_probability_vector(category_prob, n_cats)
+    if not bool(output_noise_config.get("enabled", False)):
+        return prob, 0.0, 0.0
+
+    prev_feedback = float(feedback[trial_idx - 1]) if trial_idx > 0 and np.isfinite(feedback[trial_idx - 1]) else 1.0
+    error_severity = float(np.clip(1.0 - prev_feedback, 0.0, 1.0))
+    post_error_state = (
+        float(output_noise_config["lapse_decay"]) * float(post_error_lapse_state)
+        + float(output_noise_config["post_error_lapse"]) * error_severity
+    )
+
+    recent_acc = _recent_feedback_accuracy(
+        feedback,
+        trial_idx,
+        int(output_noise_config["recent_accuracy_window"]),
+    )
+    threshold = float(output_noise_config["low_accuracy_threshold"])
+    low_acc_scale = max(0.0, threshold - recent_acc) / max(threshold, 1e-12)
+    low_acc_lapse = float(output_noise_config["low_accuracy_lapse"]) * low_acc_scale
+    latent_value = float(np.clip(latent_volatility_value, 0.0, 1.0))
+    latent_lapse = float(output_noise_config["latent_volatility_lapse"]) * (
+        latent_value ** float(output_noise_config["latent_volatility_power"])
+    )
+    lapse = float(output_noise_config["base_lapse"]) + post_error_state + low_acc_lapse + latent_lapse
+    lapse = float(np.clip(lapse, 0.0, float(output_noise_config["max_lapse"])))
+    if lapse <= 0.0:
+        return prob, 0.0, post_error_state
+
+    target = _output_noise_target_vector(
+        str(output_noise_config["lapse_target"]),
+        trial_idx,
+        choices,
+        feedback,
+        n_cats,
+    )
+    mixed = (1.0 - lapse) * prob + lapse * target
+    return _normalize_probability_vector(mixed, n_cats), lapse, post_error_state
+
+
 def _compute_single_mode_metrics(
     mode: str,
     model,
@@ -867,6 +1152,7 @@ def _compute_single_mode_metrics(
     window_size: int,
     engine_beta: np.ndarray,
     hypotheses: Sequence[int],
+    output_noise_config: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
     distance_mode = getattr(model.engine, "distance_mode", "prototype")
@@ -905,6 +1191,13 @@ def _compute_single_mode_metrics(
     pred_acc = np.full(n_trials, np.nan, dtype=float)
     pred_family_acc = np.full(n_trials, np.nan, dtype=float)
     pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
+    output_lapse_values = np.zeros(n_trials, dtype=float)
+    output_noise_config = output_noise_config or {"enabled": False}
+    latent_volatility_values = np.asarray(
+        output_noise_config.get("latent_volatility", np.zeros(n_trials, dtype=float)),
+        dtype=float,
+    ).reshape(-1)
+    post_error_lapse_state = 0.0
     true_category_index = (
         np.asarray(categories, dtype=int) - 1
         if has_categories
@@ -949,8 +1242,6 @@ def _compute_single_mode_metrics(
         else:
             raise ValueError(f"Unexpected mode: {mode}")
 
-        weighted_prob = 0.0
-        weighted_family_prob = 0.0
         weighted_cat_prob = np.zeros(n_cats, dtype=float)
         trial_slice = (
             [perceived_stimulus],
@@ -977,15 +1268,28 @@ def _compute_single_mode_metrics(
                     f"Category probability shape mismatch at trial {trial_idx}: expected {n_cats}, got {prob_vec.shape[0]}"
                 )
             weighted_cat_prob += weight * prob_vec
-            if has_categories and 0 <= category_idx < prob_vec.shape[0]:
-                weighted_prob += weight * float(prob_vec[category_idx])
-                valid_family_idx = family_idx[family_idx < prob_vec.shape[0]]
-                if valid_family_idx.size:
-                    weighted_family_prob += weight * float(np.sum(prob_vec[valid_family_idx]))
 
+        weighted_cat_prob, output_lapse, post_error_lapse_state = _apply_output_noise_to_category_prob(
+            weighted_cat_prob,
+            trial_idx=trial_idx,
+            choices=choices,
+            feedback=feedback,
+            n_cats=n_cats,
+            output_noise_config=output_noise_config,
+            post_error_lapse_state=post_error_lapse_state,
+            latent_volatility_value=(
+                float(latent_volatility_values[trial_idx])
+                if trial_idx < latent_volatility_values.size and np.isfinite(latent_volatility_values[trial_idx])
+                else 0.0
+            ),
+        )
+        output_lapse_values[trial_idx] = output_lapse
         if has_categories:
-            pred_acc[trial_idx] = weighted_prob
-            pred_family_acc[trial_idx] = weighted_family_prob
+            if 0 <= category_idx < weighted_cat_prob.shape[0]:
+                pred_acc[trial_idx] = float(weighted_cat_prob[category_idx])
+            valid_family_idx = family_idx[family_idx < weighted_cat_prob.shape[0]]
+            if valid_family_idx.size:
+                pred_family_acc[trial_idx] = float(np.sum(weighted_cat_prob[valid_family_idx]))
         else:
             choice_idx = int(choices[trial_idx]) - 1
             if 0 <= choice_idx < weighted_cat_prob.shape[0]:
@@ -1074,6 +1378,10 @@ def _compute_single_mode_metrics(
     else:
         target_prob_brier = float("nan")
         target_prob_corr_by_cat = np.full(n_cats, np.nan, dtype=float)
+    latent_volatility_for_mean = latent_volatility_values[:n_trials]
+    latent_volatility_mean = _safe_nanmean(
+        latent_volatility_for_mean[valid_trial_mask[:latent_volatility_for_mean.size]]
+    )
 
     return {
         "true_acc": true_acc,
@@ -1093,6 +1401,13 @@ def _compute_single_mode_metrics(
         "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
         "family_mean_error": family_mean_error,
         "pred_category_probs": pred_category_probs,
+        "output_lapse": output_lapse_values,
+        "output_lapse_mean": _safe_nanmean(output_lapse_values[valid_trial_mask]),
+        "output_lapse_max": float(np.nanmax(output_lapse_values)) if output_lapse_values.size else float("nan"),
+        "output_lapse_target": str(output_noise_config.get("lapse_target", OUTPUT_NOISE_TARGET_UNIFORM)),
+        "latent_volatility": latent_volatility_values,
+        "latent_volatility_mean": latent_volatility_mean,
+        "latent_volatility_max": float(np.nanmax(latent_volatility_values)) if latent_volatility_values.size else float("nan"),
         "target_probs": target_prob_matrix,
         "target_prob_brier": target_prob_brier,
         "target_prob_corr_by_cat": target_prob_corr_by_cat,
@@ -1118,6 +1433,7 @@ def compute_prediction_metrics(
     prediction_mode: str,
     loss_metric: str,
     loss_delta: float | None = None,
+    output_noise_config: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
     loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
@@ -1188,11 +1504,17 @@ def compute_prediction_metrics(
             window_size=window_size,
             engine_beta=np.asarray(engine_beta, dtype=float),
             hypotheses=hypotheses,
+            output_noise_config=output_noise_config,
         )
         objective_error = float(loss_strategy.compute(metrics))
+        loss_values = compute_loss_values(metrics, loss_delta=loss_delta)
+        loss_values[loss_strategy.name] = objective_error
         metrics["mean_error"] = objective_error
         metrics["objective_error"] = objective_error
         metrics["loss_metric"] = loss_strategy.name
+        metrics["loss_values"] = loss_values
+        for key, value in loss_values.items():
+            metrics[f"loss_{key}"] = value
         if loss_delta is not None:
             metrics["loss_delta"] = float(loss_delta)
         metrics_by_mode[mode] = metrics
@@ -1325,15 +1647,32 @@ def evaluate_state_model_run(
     trial_events = all_step_log if include_step_log else None
 
     strategy_log = None
+    latent_volatility_log = None
     hypo_mod = getattr(model.engine, "modules", {}).get("hypo_transitions_mod") if hasattr(model, "engine") else None
     if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
         strategy_log = getattr(hypo_mod, "strategy_counts_log")
+    if hypo_mod is not None and hasattr(hypo_mod, "latent_volatility_log"):
+        latent_volatility_log = getattr(hypo_mod, "latent_volatility_log")
 
     beta_log = None
     beta_mod = getattr(model.engine, "modules", {}).get("beta_mod") if hasattr(model, "engine") else None
     if beta_mod is not None and hasattr(beta_mod, "beta_log"):
         beta_log = getattr(beta_mod, "beta_log")
 
+    output_noise_config = _extract_output_noise_config(params, engine_config)
+    if latent_volatility_log is not None:
+        latent_values: List[float] = []
+        for item in latent_volatility_log:
+            if isinstance(item, Mapping):
+                raw_value = item.get("state", 0.0)
+            else:
+                raw_value = item
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                value = 0.0
+            latent_values.append(value if np.isfinite(value) else 0.0)
+        output_noise_config["latent_volatility"] = np.asarray(latent_values, dtype=float)
     metrics_by_mode = compute_prediction_metrics(
         model,
         posterior_log,
@@ -1348,6 +1687,7 @@ def evaluate_state_model_run(
         prediction_mode=prediction_mode,
         loss_metric=loss_metric,
         loss_delta=loss_delta,
+        output_noise_config=output_noise_config,
     )
 
     if selection_prediction_mode not in metrics_by_mode:
@@ -1365,6 +1705,7 @@ def evaluate_state_model_run(
             "posterior": posterior_log,
             "prior": prior_log,
             "beta": beta_log,
+            "latent_volatility": latent_volatility_log,
         }
         transition_counts = strategy_log
 
