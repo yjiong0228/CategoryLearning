@@ -404,6 +404,7 @@ def build_subject_artifacts(
     subject_dir: Path,
     *,
     include_cd: bool = False,
+    include_accepted: bool = False,
 ) -> dict[str, str]:
     artifacts = {
         "output_dir": str(subject_dir),
@@ -411,6 +412,8 @@ def build_subject_artifacts(
         "stage_summary": str(subject_dir / "stage_summary.json"),
         "best_hyperparams": str(subject_dir / "best_hyperparams.json"),
     }
+    if include_accepted:
+        artifacts["accepted_hyperparams"] = str(subject_dir / "accepted_hyperparams.jsonl")
     if include_cd:
         artifacts["restart_summary"] = str(subject_dir / "restart_summary.json")
         artifacts["coordinate_trace"] = str(subject_dir / "coordinate_trace.jsonl")
@@ -456,8 +459,14 @@ def build_subject_best_payload(
             final_context = dict(maybe_final)
     final_selection = {
         "method": final_context.get("selected_by", "primary_selection_metric"),
-        "metric": _final_selection_metric(final_context, str(selection_metric)),
-        "value": final_context.get("selected_secondary_score", selection_value),
+        "metric": final_context.get(
+            "final_metric",
+            _final_selection_metric(final_context, str(selection_metric)),
+        ),
+        "value": final_context.get(
+            "final_value",
+            final_context.get("selected_secondary_score", selection_value),
+        ),
     }
     if not final_context.get("enabled", False):
         final_selection["metric"] = str(selection_metric)

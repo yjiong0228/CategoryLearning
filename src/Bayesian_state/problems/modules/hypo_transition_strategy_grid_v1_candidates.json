@@ -1,0 +1,461 @@
+{
+  "cond1_grid_v1": [
+    {
+      "id": "c1_gridv1_low_forced_explore",
+      "description": "Low-capacity confidence retention with one guaranteed inactive hypothesis on each update; no hard active-set cap.",
+      "hypo_transitions_kwargs": {
+        "init_num": 3,
+        "strategies": [
+          {
+            "label": "retain_conf",
+            "amount": "confidence_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.35
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_mid_entropy_balanced",
+      "description": "Medium entropy-balanced retention and exploration, adapted from the original cond1 and v9 anchors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 4,
+        "strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_4",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.25
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_3",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_mid_temp_soft_floor",
+      "description": "Soft temperature retention plus entropy exploration and a small fixed exploration floor.",
+      "hypo_transitions_kwargs": {
+        "init_num": 4,
+        "strategies": [
+          {
+            "label": "retain_temp",
+            "amount": "entropy_norm_4",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 2.2
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_2",
+            "method": "random",
+            "pool": "inactive"
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_core_dynamic_random",
+      "description": "One posterior core, confidence-sensitive soft retention, and uncertainty-driven inactive refresh.",
+      "hypo_transitions_kwargs": {
+        "init_num": 4,
+        "strategies": [
+          {
+            "label": "core_retain",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "confidence_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.5
+          },
+          {
+            "label": "explore_uncertain",
+            "amount": "opp_confidence_3",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_no_permanent_exclusion",
+      "description": "Soft active core, entropy exploration, and fixed exploration to reduce early permanent exclusion.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "strategies": [
+          {
+            "label": "soft_core",
+            "amount": "confidence_5",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "epsilon": 0.55
+          },
+          {
+            "label": "entropy_explore",
+            "amount": "opp_entropy_norm_3",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_anchor_soft_retention",
+      "description": "High-init soft-retention anchor with broad active maintenance and steady exploration.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "strategies": [
+          {
+            "label": "broad_retain",
+            "amount": "entropy_norm_6",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 3,
+            "temperature": 2.5
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_feedback_hybrid_refresh",
+      "description": "Feedback hybrid refresh combining recent drop sensitivity, low-accuracy refresh, and steady exploration.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.25
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.2
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_error_burst_refresh",
+      "description": "Posterior core with soft active retention and inactive refresh after recent feedback drops.",
+      "hypo_transitions_kwargs": {
+        "init_num": 7,
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_4",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.0
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.2
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_low_accuracy_state_refresh",
+      "description": "Low-accuracy refresh anchor for extended uncertain states without prior reset.",
+      "hypo_transitions_kwargs": {
+        "init_num": 7,
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "sample_active",
+            "amount": "fixed",
+            "value": 1,
+            "method": "temperature_posterior",
+            "pool": "active",
+            "temperature": 4.0
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.0
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_mild_prior_reset_recovery",
+      "description": "Feedback-hybrid refresh with a mild prior reset channel for recovery after unstable stretches.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 8,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.25,
+        "prior_reset_target": "uniform_active",
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_6",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.25
+          },
+          {
+            "label": "low_accuracy_refresh",
+            "amount": "recent_accuracy_inverse_4",
+            "method": "random",
+            "pool": "inactive",
+            "window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.2
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_latent_volatility_mild",
+      "description": "Mild latent volatility state that increases inactive refresh and softly resets priors toward newcomers.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "latent_volatility_base": 0.02,
+        "latent_volatility_error_gain": 0.3,
+        "latent_volatility_low_accuracy_gain": 0.3,
+        "latent_volatility_threshold": 0.7,
+        "latent_volatility_window": 6,
+        "latent_volatility_decay": 0.75,
+        "latent_volatility_max": 0.8,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.7,
+        "prior_reset_window": 6,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.5,
+        "prior_reset_target": "newcomer_boost",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.55,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_4",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.0
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_6",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.15,
+            "power": 1.0
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_gridv1_latent_fast_burst",
+      "description": "Fast post-error volatility burst for sharp local switching without a long-history drift state.",
+      "hypo_transitions_kwargs": {
+        "init_num": 7,
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.7,
+        "latent_volatility_low_accuracy_gain": 0.15,
+        "latent_volatility_threshold": 0.75,
+        "latent_volatility_window": 3,
+        "latent_volatility_decay": 0.35,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "prior_reset_base": 0.0,
+        "prior_reset_post_error": 0.0,
+        "prior_reset_low_accuracy": 0.0,
+        "prior_reset_threshold": 0.75,
+        "prior_reset_window": 3,
+        "prior_reset_decay": 0.0,
+        "prior_reset_max": 0.75,
+        "prior_reset_target": "sampled_newcomer",
+        "prior_reset_source": "latent_volatility",
+        "prior_reset_volatility_gain": 0.85,
+        "strategies": [
+          {
+            "label": "retain_best",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "sample_active",
+            "amount": "fixed",
+            "value": 1,
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "epsilon": 0.45
+          },
+          {
+            "label": "volatility_burst",
+            "amount": "latent_volatility_7",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 0,
+            "threshold": 0.05,
+            "power": 0.75
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    }
+  ]
+}

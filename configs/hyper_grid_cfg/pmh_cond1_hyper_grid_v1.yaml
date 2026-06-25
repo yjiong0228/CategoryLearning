@@ -7,8 +7,8 @@
 # saved in the candidate records.
 #
 # WARNING: this is a large grid.
-#   memory 9*9 * transitions 14 * beta 4^4 * distance 2
-#   = 580,608 candidates per subject, each with 80 repeated simulations.
+#   memory 4*4 * transitions 12 * beta 3*3*2*3
+#   = 10,368 candidates per subject, each with 128 repeated simulations.
 # Use CLI --subjects / --subject-range for pilot runs before launching all
 # subjects, or reduce this grid for a staged diagnostic pass.
 base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
@@ -16,32 +16,61 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-grid/pmh/cond1_v1
-selection_metric: simulation.best10_mean_error
+tie_break_metric: statistics.loss.choice_brier.mean
 save_level: compact
 hyper_base_seed: 42
+
+# Hyper-grid keeps the whole candidate table, then selects an adequacy set:
+# candidates are accepted when the subject's empirical statistics fall inside
+# the model's central 90% posterior-predictive interval for every tracked
+# distribution statistic. The final single best candidate is only a tie-break
+# within that accepted set, using tie_break_metric above.
+acceptance_selection:
+  enabled: true
+  mode: distribution_ppc_interval
+  distribution_interval_alpha: 0.10
+  distribution_min_run_count: 10
+  run_choice_fraction: 0.10
+
+  # Retained so the saved statistics include the same behavioral components
+  # used by distribution PPC diagnostics.
+  accuracy_weight: 1.0
+  volatility_weight: 0.03
+  slope_weight: 0.02
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+  history_max_lag: 8
+  history_ridge: 0.001
+  history_standardize: true
+  history_kernel_weight: 1.0
+  history_corr_weight: 0.05
+  history_norm_weight: 0.0
+  switch_weight: 1.0
+  win_stay_weight: 1.0
+  lose_shift_weight: 1.0
+  perseveration_weight: 0.5
+  min_switch_trials: 5
 
 hyperparam_space:
   engine.modules.memory_mod.kwargs:
     values_product:
-      gamma: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-      w0: [0.005, 0.01, 0.03, 0.06, 0.1, 0.15, 0.2, 0.5, 0.8]
+      gamma: [0.4, 0.6, 0.8]
+      w0: [0.05, 0.1, 0.15]
 
   engine.modules.hypo_transitions_mod.kwargs:
     values_from_json:
-      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_candidates.json
-      key: cond1
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_grid_v1_candidates.json
+      key: cond1_grid_v1
       value_key: hypo_transitions_kwargs
 
   engine.modules.beta_mod.kwargs.beta_init:
-    values: [0.8, 1.5, 3.0, 5.0]
+    values: [1.5, 3.0, 5.0]
   engine.modules.beta_mod.kwargs.decrease_rate:
-    values: [0.05, 0.15, 0.30, 0.50]
+    values: [0.15, 0.30, 0.50]
   engine.modules.beta_mod.kwargs.prior_beta_scale:
-    values: [0.0, 5.0, 10.0, 20.0]
+    values: [0.0, 10.0]
   engine.modules.beta_mod.kwargs.correct_additive:
-    values: [0.0, 0.25, 0.5, 1.0]
-  engine.modules.likelihood_mod.kwargs.distance_mode:
-    values: [prototype, boundary]
+    values: [0.0, 0.5, 1.0]
 
 # One-stage exhaustive grid. The stage is named "coarse" for compatibility
 # with existing hyper selection tooling, but it is the final grid in this file.
@@ -49,6 +78,6 @@ stages:
   coarse:
     n_jobs_combinations: 128
     simulation_overrides:
-      simulation_repeats: 80
+      simulation_repeats: 128
       keep_logs: false
       n_jobs: 1

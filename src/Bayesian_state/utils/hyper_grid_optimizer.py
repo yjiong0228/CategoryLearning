@@ -40,11 +40,12 @@ from src.Bayesian_state.utils.hyper_utils import (
 from src.Bayesian_state.utils.simulation_statistics import (
     get_stat_value,
     resolve_selection_metric_path,
+    resolve_simulation_stat_config,
 )
 
 
 LOWER_TAIL_FRACTION = 0.10
-DEFAULT_SELECTION_METRIC = "simulation.mean_error"
+DEFAULT_TIE_BREAK_METRIC = "simulation.mean_error"
 
 
 def _lower_tail_metrics(sample_errors: Sequence[Any], fallback_error: float) -> Dict[str, Any]:
@@ -69,13 +70,13 @@ def _lower_tail_metrics(sample_errors: Sequence[Any], fallback_error: float) -> 
     }
 
 
-def _selection_error_value(
-    selection_metric: str,
+def _metric_value(
+    metric_path: str,
     subject_record: Mapping[str, Any],
 ) -> float:
     value = get_stat_value(
         subject_record,
-        resolve_selection_metric_path(selection_metric),
+        resolve_selection_metric_path(metric_path),
         float("inf"),
     )
     try:
@@ -103,8 +104,8 @@ class HyperGridOptimizer:
         self.config_path = config_path
         self.config_dir = config_path.parent
 
-        self.selection_metric = resolve_selection_metric_path(
-            self.config.get("selection_metric", DEFAULT_SELECTION_METRIC)
+        self.tie_break_metric = resolve_selection_metric_path(
+            self.config.get("tie_break_metric", DEFAULT_TIE_BREAK_METRIC)
         )
 
         requested_selection_mode = str(self.config.get("hyperparam_selection_mode", "per_subject"))
@@ -133,6 +134,10 @@ class HyperGridOptimizer:
             self.config.get("output_dir", "../../results/state-based-hyper-grid/default")
         )
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.acceptance_selection = resolve_simulation_stat_config(
+            self.config.get("acceptance_selection"),
+            setting_name="acceptance_selection",
+        )
 
     def _resolve_path(self, maybe_path: Any) -> Path:
         p = Path(maybe_path)
@@ -370,7 +375,7 @@ class HyperGridOptimizer:
             if statistics_config is None:
                 statistics_config = self.config.get("simulation_statistics")
             if statistics_config is None:
-                statistics_config = self.config.get("secondary_selection")
+                statistics_config = self.config.get("acceptance_selection")
 
             result = runner.simulate_subject(
                 subject_id=sid,
@@ -409,8 +414,8 @@ class HyperGridOptimizer:
                 "simulation": simulation_summary,
                 "statistics": statistics_summary,
             }
-            value = _selection_error_value(
-                self.selection_metric,
+            value = _metric_value(
+                self.tie_break_metric,
                 subject_record,
             )
             errors.append(value)
@@ -419,7 +424,11 @@ class HyperGridOptimizer:
                 "statistics": statistics_summary,
                 "selection": {
                     "primary": {
-                        "metric": self.selection_metric,
+                        "metric": self.tie_break_metric,
+                        "value": float(value),
+                    },
+                    "tie_break": {
+                        "metric": self.tie_break_metric,
                         "value": float(value),
                     },
                 },
@@ -462,6 +471,216 @@ class HyperGridOptimizer:
         if self.save_level == "full":
             data["subject_metrics"] = combination.subject_metrics
         return data
+
+    def _serialize_accepted_record(
+        self,
+        combination: CombinationResult,
+        *,
+        mode: str,
+    ) -> Dict[str, Any]:
+        tie_break_value = self._combination_tie_break_value(combination)
+        score = self._combination_acceptance_score(combination)
+        data = {
+            "schema_version": HYPER_RESULT_SCHEMA_VERSION,
+            "result_type": "hyper_grid_accepted_candidate",
+            "stage": combination.stage,
+            "combination_index": combination.combination_index,
+            "hyperparams": combination.hyperparams,
+            "best_params": compact_hyperparams(combination.hyperparams),
+            "aggregated_error": combination.aggregated_error,
+            "hyper_candidate_seed": combination.hyper_candidate_seed,
+            "selection": {
+                "tie_break": {
+                    "metric": self.tie_break_metric,
+                    "value": tie_break_value,
+                },
+                "acceptance": {
+                    "mode": mode,
+                    "score": score,
+                    "alpha": self.acceptance_selection.get("distribution_interval_alpha"),
+                },
+            },
+        }
+        metrics_summary = combination_metrics_summary(
+            combination.subject_metrics,
+            aggregated_error=combination.aggregated_error,
+        )
+        if metrics_summary:
+            data["metrics_summary"] = metrics_summary
+        if self.save_level == "full":
+            data["subject_metrics"] = combination.subject_metrics
+        return data
+
+    def _write_accepted_records(
+        self,
+        path: Path,
+        combinations: Sequence[CombinationResult],
+        *,
+        mode: str,
+    ) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for combination in combinations:
+                record = self._serialize_accepted_record(combination, mode=mode)
+                f.write(json.dumps(_to_builtin(record), ensure_ascii=False, allow_nan=False) + "\n")
+
+    @staticmethod
+    def _finite_float(value: Any, default: float = float("inf")) -> float:
+        try:
+            out = float(value)
+        except (TypeError, ValueError):
+            return default
+        return out if np.isfinite(out) else default
+
+    @staticmethod
+    def _combination_metric_mean(result: CombinationResult, path: str) -> float:
+        values: List[float] = []
+        for metrics in (result.subject_metrics or {}).values():
+            if not isinstance(metrics, Mapping):
+                continue
+            value = HyperGridOptimizer._finite_float(get_stat_value(metrics, path, float("inf")))
+            if np.isfinite(value):
+                values.append(value)
+        return float(np.mean(values)) if values else float("inf")
+
+    def _combination_tie_break_value(self, result: CombinationResult) -> float:
+        value = self._combination_metric_mean(result, "selection.tie_break.value")
+        if not np.isfinite(value):
+            value = self._combination_metric_mean(result, "selection.primary.value")
+        return value if np.isfinite(value) else float(result.aggregated_error)
+
+    def _combination_acceptance_score(self, result: CombinationResult) -> float:
+        mode = self.acceptance_selection.get("mode")
+        if mode == "distribution_ppc_interval":
+            return self._combination_metric_mean(result, "statistics.scores.distribution.ppc_interval.score")
+        if mode == "distribution_intersection":
+            return self._combination_metric_mean(result, "statistics.scores.distribution.intersection.score")
+        if mode == "accuracy_shape":
+            return self._combination_metric_mean(result, "statistics.scores.accuracy_shape.value")
+        if mode == "history_kernel":
+            return self._combination_metric_mean(result, "statistics.scores.history_kernel.value")
+        if mode == "switch_behavior":
+            return self._combination_metric_mean(result, "statistics.scores.switch_behavior.value")
+        if mode == "distribution_multiobjective":
+            return self._combination_metric_mean(result, "statistics.scores.distribution.multiobjective.score")
+        return float("inf")
+
+    @staticmethod
+    def _combination_all_subjects_accept(result: CombinationResult, path: str) -> bool:
+        if not result.subject_metrics:
+            return False
+        for metrics in result.subject_metrics.values():
+            if not isinstance(metrics, Mapping):
+                return False
+            if not bool(get_stat_value(metrics, path, False)):
+                return False
+        return True
+
+    def _combination_accepts(self, result: CombinationResult) -> bool:
+        mode = self.acceptance_selection.get("mode")
+        if mode == "distribution_ppc_interval":
+            return self._combination_all_subjects_accept(
+                result,
+                "statistics.scores.distribution.ppc_interval.accept",
+            )
+        if mode == "distribution_intersection":
+            return self._combination_all_subjects_accept(
+                result,
+                "statistics.scores.distribution.intersection.accept",
+            )
+        return False
+
+    def _select_final_combination(
+        self,
+        combinations: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any], List[CombinationResult]]:
+        if not combinations:
+            raise RuntimeError("No combinations available for final selection")
+        tie_break_best = min(
+            combinations,
+            key=lambda result: (
+                self._combination_tie_break_value(result),
+                int(result.combination_index),
+            ),
+        )
+        if not self.acceptance_selection.get("enabled", False):
+            return tie_break_best, {
+                "enabled": False,
+                "selected_by": "tie_break_metric",
+                "tie_break_metric": self.tie_break_metric,
+                "tie_break_best_combination_index": tie_break_best.combination_index,
+                "final_metric": self.tie_break_metric,
+                "final_value": self._combination_tie_break_value(tie_break_best),
+            }, []
+
+        mode = str(self.acceptance_selection["mode"])
+        accepted = [
+            result for result in combinations
+            if self._combination_accepts(result)
+        ]
+        if accepted:
+            selected = min(
+                accepted,
+                key=lambda result: (
+                    self._combination_tie_break_value(result),
+                    self._combination_acceptance_score(result),
+                    int(result.combination_index),
+                ),
+            )
+            selected_by = f"{mode}_accepted_set_tiebreak_metric"
+            final_metric = self.tie_break_metric
+            final_value = self._combination_tie_break_value(selected)
+            selected_from_accepted = True
+        else:
+            with_acceptance_score = [
+                result for result in combinations
+                if self._combination_acceptance_score(result) < float("inf")
+            ]
+            pool = with_acceptance_score or list(combinations)
+            selected = min(
+                pool,
+                key=lambda result: (
+                    self._combination_acceptance_score(result),
+                    self._combination_tie_break_value(result),
+                    int(result.combination_index),
+                ),
+            )
+            selected_by = f"fallback_min_{mode}_violation"
+            acceptance_score = self._combination_acceptance_score(selected)
+            final_metric = self._acceptance_metric_path(mode)
+            final_value = acceptance_score if np.isfinite(acceptance_score) else self._combination_tie_break_value(selected)
+            selected_from_accepted = False
+
+        context = {
+            "enabled": True,
+            "mode": mode,
+            "selected_by": selected_by,
+            "tie_break_metric": self.tie_break_metric,
+            "tie_break_best_combination_index": tie_break_best.combination_index,
+            "tie_break_best_value": self._combination_tie_break_value(tie_break_best),
+            "accepted_count": int(len(accepted)),
+            "accepted_combination_indices": [int(result.combination_index) for result in accepted],
+            "selected_from_accepted_set": selected_from_accepted,
+            "selected_combination_index": int(selected.combination_index),
+            "selected_tie_break_value": self._combination_tie_break_value(selected),
+            "selected_acceptance_score": self._combination_acceptance_score(selected),
+            "final_metric": final_metric,
+            "final_value": final_value,
+            "config": dict(self.acceptance_selection),
+        }
+        return selected, context, accepted
+
+    @staticmethod
+    def _acceptance_metric_path(mode: str) -> str:
+        by_mode = {
+            "distribution_ppc_interval": "statistics.scores.distribution.ppc_interval.score",
+            "distribution_intersection": "statistics.scores.distribution.intersection.score",
+            "accuracy_shape": "statistics.scores.accuracy_shape.value",
+            "history_kernel": "statistics.scores.history_kernel.value",
+            "switch_behavior": "statistics.scores.switch_behavior.value",
+            "distribution_multiobjective": "statistics.scores.distribution.multiobjective.score",
+        }
+        return by_mode.get(mode, "selection.primary.value")
 
     def _load_jsonl_records(self, path: Path) -> List[Dict[str, Any]]:
         if not path.is_file():
@@ -589,39 +808,42 @@ class HyperGridOptimizer:
         stage_summary = self._build_stage_summary(all_stage_combinations)
         final_stage = "fine" if "fine" in all_stage_combinations else "coarse"
         final_combinations = all_stage_combinations[final_stage]
-        best_combination = min(
-            final_combinations,
-            key=lambda t: float(
-                get_stat_value(
-                    t.subject_metrics.get(int(subject_id), {}),
-                    "selection.primary.value",
-                    t.aggregated_error,
-                )
-            ),
+        best_combination, final_selection_context, accepted_combinations = self._select_final_combination(
+            final_combinations
         )
 
         stage_summary_path = subject_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
+        accepted_path = subject_dir / "accepted_hyperparams.jsonl"
+        self._write_accepted_records(
+            accepted_path,
+            accepted_combinations,
+            mode=str(final_selection_context.get("mode", "disabled")),
+        )
+
         sid = int(subject_id)
         subject_best = build_subject_best_payload(
             subject_id=sid,
             backend="hyper_grid",
             hyper_base_seed=self.hyper_base_seed,
-            selection_metric=self.selection_metric,
+            selection_metric=self.tie_break_metric,
             best_stage=final_stage,
             best_combination_index=best_combination.combination_index,
             best_hyperparams=best_combination.hyperparams,
             aggregated_error=best_combination.aggregated_error,
             hyper_candidate_seed=best_combination.hyper_candidate_seed,
             metrics=best_combination.subject_metrics[sid],
+            search_context={
+                "final_selection": final_selection_context,
+            },
             provenance=build_hyper_provenance(
                 config_path=self.config_path,
                 output_dir=subject_dir,
                 base_sim_config_path=self.base_sim_config_path,
             ),
-            artifacts=build_subject_artifacts(subject_dir, include_cd=False),
+            artifacts=build_subject_artifacts(subject_dir, include_cd=False, include_accepted=True),
             full_subject_metrics=(
                 {str(sid): best_combination.subject_metrics[sid]}
                 if self.save_level == "full"
@@ -638,6 +860,7 @@ class HyperGridOptimizer:
             "output_dir": str(subject_dir),
             "all_combinations": str(all_combinations_path),
             "stage_summary": str(stage_summary_path),
+            "accepted_hyperparams": str(accepted_path),
             "best_hyperparams": str(best_path),
             "best": subject_best,
         }
@@ -681,6 +904,7 @@ class HyperGridOptimizer:
                 "output_dir": out["output_dir"],
                 "all_combinations": out["all_combinations"],
                 "stage_summary": out["stage_summary"],
+                "accepted_hyperparams": out["accepted_hyperparams"],
                 "best_hyperparams": out["best_hyperparams"],
             }
             per_subject_best[str(int(sid))] = out["best"]
@@ -691,7 +915,7 @@ class HyperGridOptimizer:
             output_dir=self.output_dir,
             base_sim_config_path=self.base_sim_config_path,
             hyper_base_seed=self.hyper_base_seed,
-            selection_metric=self.selection_metric,
+            selection_metric=self.tie_break_metric,
             save_level=self.save_level,
             subjects=subjects,
             per_subject_best=per_subject_best,

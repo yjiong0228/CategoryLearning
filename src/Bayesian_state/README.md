@@ -49,7 +49,7 @@ Simulation configs use:
 
 ## Outputs
 
-Hyper selection writes per-subject `best_hyperparams.json`, `stage_summary.json`, and `all_combinations.jsonl`. Hyper-CD also writes `restart_summary.json` and `coordinate_trace.jsonl`.
+Hyper selection writes per-subject `best_hyperparams.json`, `stage_summary.json`, and `all_combinations.jsonl`. Hyper-grid also writes `accepted_hyperparams.jsonl` when posterior-predictive acceptance selection is enabled. Hyper-CD also writes `restart_summary.json` and `coordinate_trace.jsonl`.
 
 The workflow runner writes a generated subjectwise simulation config and then writes simulation results under `results/state-based-simulation/...`.
 

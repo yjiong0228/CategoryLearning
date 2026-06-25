@@ -82,7 +82,7 @@ def _build_min_configs(tmp_path: Path) -> tuple[Path, Path]:
         "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out",
-        "selection_metric": "simulation.mean_error",
+        "tie_break_metric": "simulation.mean_error",
         "hyper_base_seed": 100,
         "hyperparam_space": {
             "engine.modules.beta_mod.kwargs.beta_init": {"values": [0.5, 1.0, 2.0]},
@@ -284,6 +284,91 @@ def test_run_outputs_files_with_mocked_combinations(tmp_path: Path, monkeypatch)
     assert "subjects" in first_payload["metrics_summary"]
     assert "subject_metrics" not in first_payload
     assert "combination_index" in first_payload
+
+
+def test_grid_acceptance_selection_writes_ppc_accepted_set(tmp_path: Path, monkeypatch) -> None:
+    _, hyper_path = _build_min_configs(tmp_path)
+    cfg = yaml.safe_load(hyper_path.read_text(encoding="utf-8"))
+    cfg["tie_break_metric"] = "statistics.loss.choice_brier.mean"
+    cfg["acceptance_selection"] = {
+        "enabled": True,
+        "mode": "distribution_ppc_interval",
+        "distribution_interval_alpha": 0.10,
+    }
+    cfg["stages"] = {
+        "coarse": {"simulation_overrides": {"simulation_repeats": 3}},
+    }
+    cfg["hyperparam_space"] = {
+        "simulation.window_size": {"values": [6, 8, 10]},
+    }
+    opt = HyperGridOptimizer(cfg, hyper_path)
+
+    candidate_rows = {
+        0: {"tie_break": 0.10, "accept": False, "score": 0.30},
+        1: {"tie_break": 0.20, "accept": True, "score": 0.00},
+        2: {"tie_break": 0.15, "accept": True, "score": 0.00},
+    }
+
+    def _fake_eval(stage_name, combination_index, combination_params, stage_inner_cfg, subjects):
+        row = candidate_rows[int(combination_index)]
+        metrics = {
+            "simulation": {
+                "mean_error": row["tie_break"],
+                "best_error": row["tie_break"],
+                "sample_errors": [row["tie_break"]],
+                "simulation_repeats": 3,
+            },
+            "statistics": {
+                "loss": {
+                    "choice_brier": {
+                        "mean": row["tie_break"],
+                        "count": 3,
+                    }
+                },
+                "scores": {
+                    "distribution": {
+                        "ppc_interval": {
+                            "accept": row["accept"],
+                            "score": row["score"],
+                            "alpha": 0.10,
+                            "violation_count": 0 if row["accept"] else 1,
+                        }
+                    }
+                },
+            },
+            "selection": {
+                "primary": {
+                    "metric": opt.tie_break_metric,
+                    "value": row["tie_break"],
+                },
+                "tie_break": {
+                    "metric": opt.tie_break_metric,
+                    "value": row["tie_break"],
+                }
+            },
+        }
+        return CombinationResult(
+            stage_name,
+            int(combination_index),
+            dict(combination_params),
+            float(row["tie_break"]),
+            {1: metrics},
+            42 + int(combination_index),
+        )
+
+    monkeypatch.setattr(opt, "_evaluate_combination", _fake_eval)
+
+    result = opt.run(subjects=[1], stage="coarse")
+    accepted_path = Path(result["per_subject_outputs"]["1"]["accepted_hyperparams"])
+    accepted_lines = [json.loads(line) for line in accepted_path.read_text(encoding="utf-8").splitlines()]
+
+    assert [row["combination_index"] for row in accepted_lines] == [1, 2]
+    subject_best = result["best"]["per_subject_best"]["1"]
+    assert subject_best["selection"]["candidate"]["combination_index"] == 2
+    assert subject_best["selection"]["final"]["method"] == "distribution_ppc_interval_accepted_set_tiebreak_metric"
+    assert subject_best["selection"]["final"]["metric"] == "statistics.loss.choice_brier.mean"
+    assert subject_best["search_context"]["final_selection"]["accepted_count"] == 2
+    assert subject_best["search_context"]["final_selection"]["selected_from_accepted_set"] is True
 
 
 def test_group_mean_mode_is_rejected(tmp_path: Path) -> None:
