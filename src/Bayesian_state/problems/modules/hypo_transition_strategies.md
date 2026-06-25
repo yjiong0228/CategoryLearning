@@ -47,6 +47,9 @@ number in names such as `entropy_7`.
 | `opp_acc_M`, `opp_accuracy_static_M` | Complement of the legacy accuracy step | same as `acc_M` | \(n=M-n_{acc}\) |
 | `accuracy_delta_M` | Improvement-driven amount | `window=8`, `padding=chance`, `feedback_mode=exact`, `threshold=0`, `scale=0.5` | \(\Delta acc=acc_{new}-acc_{old}\); \(n=round(M\cdot clip((\Delta acc-threshold)/scale,0,1))\) |
 | `opp_accuracy_delta_M` | Decline-driven amount, useful for exploration after performance drops | same as `accuracy_delta_M` | \(n=round(M\cdot clip((-\Delta acc-threshold)/scale,0,1))\) |
+| `latent_volatility_M` | Requests more hypotheses when the module's latent volatility state is high | `min_count=0`, `threshold=0`, `power=1.0` | \(v=clip((state-threshold)/(v_{max}-threshold),0,1)\); \(n=min\_count+round(v^{power}(M-min\_count))\) |
+| `opp_latent_volatility_M` | Complement of latent-volatility amount | same as `latent_volatility_M` | \(n=M-n_{latent}\) |
+| `post_error_explore_M` | Requests more exploration after the immediately previous trial was wrong | `padding=chance`, `feedback_mode=exact`, `min_count=0`, `gamma=1.0` | \(e=1-acc_{t-1}\); \(n=min\_count+round(e^\gamma(M-min\_count))\) |
 
 History-based amount strategies store feedback inside the transition module.
 The current trial's feedback is appended after transition, so transition at
@@ -65,7 +68,23 @@ left-pad missing early trials before splitting into old/new windows.
 | `random` | Uniform random selection | none | Sample without replacement uniformly from the pool. |
 | `epsilon_posterior` | Posterior sampling mixed with uniform noise | `epsilon=0.25` | \(w_i=(1-\epsilon)p_i/\sum p+\epsilon/|pool|\). |
 | `temperature_posterior` | Flatten or sharpen posterior weights | `temperature=1.0`, `weight_floor=1e-12` | \(w_i\propto(p_i+weight\_floor)^{1/T}\). Larger \(T\) is more random. |
+| `low_posterior` | Deliberately samples low-posterior candidates for jumpy exploration | none | Select the \(n\) candidates with the lowest posterior in the pool. |
 | `ksimilar_centers` | Prototype-center association around active hypotheses | `proto_hypo_amount=1`, `proto_hypo_method=top|random`, `cluster_hypo_method=top|random` | Samples reference categories from active prototype centers, scores candidates by center similarity, then selects by top score or score-weighted random. Requires prototype-backed partitions. |
+
+## Post-to-Prior Strategies
+
+After the active set is selected, `post_to_prior` controls how
+`posterior_{t-1}` initializes `prior_t` over the new active set. If omitted,
+the default is `similarity_novelty`, which preserves the previous behavior.
+Existing `prior_reset_*` options are still applied after this strategy as an
+optional second mixing step.
+
+| Method | Idea | Parameters | Formula / behavior |
+|---|---|---|---|
+| `similarity_novelty` | Carry survivor posterior and initialize newcomers by similarity/novelty | `confidence_source=max_posterior|entropy|recent_accuracy|latent_volatility`, `min_newcomer_scale=0.05` | For newcomer \(i\), \(score_i=c\cdot p_{sim,i}+(1-c)\cdot p_{nov,i}\), then scale by \(\max(1-c,min\_newcomer\_scale)\). |
+| `conservative_carryover` | Strong survivor carryover, small fixed newcomer budget | `newcomer_mass=0.05` | Survivors get \(1-newcomer\_mass\) proportional to previous posterior; newcomers share `newcomer_mass`. |
+| `error_boost_newcomers` | Boost newcomer prior mass after recent errors or volatility | `window=8`, `padding=chance`, `feedback_mode=exact`, `base_newcomer_mass=0.05`, `max_newcomer_mass=0.65`, `volatility_gain=0.0` | \(mass=base+(max-base)\cdot clip(1-acc+volatility\_gain\cdot state,0,1)\). |
+| `stochastic_reset` | Occasional random redistribution over active hypotheses | `reset_probability=0.25`, `newcomer_mass=0.50`, `concentration=1.0` | With reset probability, draw random active weights; if both survivors and newcomers exist, rescale newcomers to `newcomer_mass`. Otherwise fall back to `similarity_novelty`. |
 
 ## Example Configurations
 
@@ -104,5 +123,30 @@ strategies:
     value: 1
     method: random
     pool: inactive
+```
+
+Jumpy post-error exploration with explicit post-to-prior behavior:
+
+```yaml
+post_to_prior:
+  method: error_boost_newcomers
+  window: 6
+  padding: chance
+  feedback_mode: exact
+  base_newcomer_mass: 0.08
+  max_newcomer_mass: 0.60
+strategies:
+  - label: retain_core
+    amount: fixed
+    value: 1
+    method: top_posterior
+    pool: active
+  - label: post_error_refresh
+    amount: post_error_explore_5
+    method: low_posterior
+    pool: inactive
+    padding: chance
+    feedback_mode: exact
+    min_count: 1
 ```
 

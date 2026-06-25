@@ -717,6 +717,77 @@ class ModelEval(OralModelAlignmentMixin):
             **kwargs,
         )
 
+    def plot_exponential_accuracy_comparison(self, results, subjects=None, save_path=None, **kwargs):
+        visible_results = self._filter_results(results, subjects)
+        use_target_majority_plot = any(
+            self._has_target_probability_data(info) for info in visible_results.values()
+        )
+
+        def body(ax, condition, iSub, info):
+            if self._has_target_probability_data(info):
+                true_acc = info.get("exp_target_majority_acc")
+                pred_acc = info.get("exp_pred_target_majority_acc")
+                true_label = "Participant"
+                pred_label = "Model"
+                ylabel = "Exp. smoothed higher-probability option"
+                empty_text = "No exponential target accuracy data"
+            else:
+                true_acc = info.get("exp_true_acc")
+                pred_acc = info.get("exp_pred_acc")
+                true_label = "True"
+                pred_label = "Predicted"
+                ylabel = "Exp. smoothed accuracy"
+                empty_text = "No exponential accuracy data"
+
+            if true_acc is None or pred_acc is None:
+                ax.text(0.5, 0.5, empty_text, ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
+                return
+
+            true_acc = np.asarray(true_acc, dtype=float)
+            pred_acc = np.asarray(pred_acc, dtype=float)
+            if true_acc.shape != pred_acc.shape or pred_acc.size == 0:
+                ax.text(0.5, 0.5, empty_text, ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
+                return
+
+            trial = np.arange(1, pred_acc.size + 1)
+            df = pd.DataFrame(
+                {
+                    "Trial": trial,
+                    "Pred": pred_acc,
+                    "True": true_acc,
+                }
+            )
+            sns.lineplot(data=df, x="Trial", y="Pred", label=pred_label, ax=ax)
+            sns.lineplot(data=df, x="Trial", y="True", label=true_label, ax=ax)
+            n_trials = info.get("n_trials")
+            if n_trials:
+                ax.set_xlim(1, n_trials)
+            ax.set_ylim(0, 1)
+            alpha = info.get("exp_accuracy_alpha")
+            try:
+                alpha_val = float(alpha)
+            except (TypeError, ValueError):
+                alpha_val = float("nan")
+            suffix = f", alpha={alpha_val:.3f}" if np.isfinite(alpha_val) else ""
+            ax.set(title=f"Subject {iSub} (Condition {condition}{suffix})", xlabel="Trial", ylabel=ylabel)
+            ax.legend()
+
+        title = (
+            "Exponential Model vs Participant Higher-Probability Choice by Subject"
+            if use_target_majority_plot
+            else "Exponential Predicted vs True Accuracy by Subject"
+        )
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            title,
+            body,
+            **kwargs,
+        )
+
     def plot_accuracy_family_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
         filtered_results = self._filter_results(results, subjects)
         family_results = {

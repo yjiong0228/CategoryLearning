@@ -1,0 +1,103 @@
+# v10 test8: quick end-to-end hyper-CD plus repeated simulation test.
+#
+# This config uses cond1 subjects 101-108 and the v10 strategy candidates.
+# It intentionally uses lighter optimization repeats than production configs.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation_test8.yaml
+
+subject_range: [101, 108]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v10_test8
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.05
+    abs_tolerance: 0.015
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.distribution.ppc_interval.score
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
+save_level: compact
+hyper_base_seed: 42
+
+statistics_config:
+  enabled: true
+  mode: distribution_ppc_interval
+  primary_tolerance_abs: 0.015
+  primary_tolerance_rel: 0.05
+
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 16
+  distribution_interval_alpha: 0.10
+
+  distribution_accept_acc_mae_max: 0.10
+  distribution_accept_vol_ratio_min: 0.000001
+  distribution_accept_vol_ratio_max: 2.0
+  distribution_accept_history_corr_min: 0.80
+  distribution_accept_switch_score_max: 0.10
+
+  accuracy_weight: 1.0
+  volatility_weight: 0.0
+  slope_weight: 0.03
+  target_volatility_ratio: 1.0
+  min_volatility_ratio: 0.000001
+
+  history_max_lag: 8
+  history_ridge: 0.001
+  history_standardize: true
+  history_kernel_weight: 1.0
+  history_corr_weight: 0.05
+  history_norm_weight: 0.0
+  history_min_norm: 0.000001
+
+  switch_weight: 0.5
+  win_stay_weight: 1.0
+  lose_shift_weight: 1.0
+  perseveration_weight: 0.5
+  min_switch_trials: 20
+
+cd:
+  n_restarts: 2
+  max_outer_iters: 2
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 1
+  min_delta: 0.001
+  parallel_budget: 12
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.45, 0.60, 0.75, 0.90]
+      w0: [0.02, 0.06, 0.15, 0.35]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategy_v10_candidates.json
+      key: cond1_v10
+      value_key: hypo_transitions_kwargs
+
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.8, 1.5, 3.0, 6.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.05, 0.15, 0.35, 0.65]
+  engine.modules.beta_mod.kwargs.prior_beta_scale:
+    values: [0.0, 5.0, 15.0, 40.0]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.0, 0.25, 0.75, 1.5]
+
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.0, 0.02, 0.05, 0.10]
+  engine.output_noise.kwargs.max_lapse:
+    values: [0.10]
+  engine.output_noise.kwargs.lapse_target:
+    values: [uniform]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 12
+    simulation_overrides:
+      simulation_repeats: 32
+      keep_logs: false

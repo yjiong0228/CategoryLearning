@@ -122,6 +122,39 @@ def _set_by_path(root: dict[str, Any], path: str, value: Any) -> None:
     curr[parts[-1]] = deepcopy(value)
 
 
+def _clear_mapping_replacement_path(root: dict[str, Any], path: str) -> None:
+    curr = root
+    parts = path.split(".")
+    for part in parts[:-1]:
+        next_value = curr.get(part)
+        if next_value is None:
+            next_value = {}
+            curr[part] = next_value
+        if not isinstance(next_value, dict):
+            raise ValueError(f"Cannot clear nested replacement path through non-mapping segment: {path}")
+        curr = next_value
+    curr[parts[-1]] = {}
+
+
+def _engine_mapping_replacement_paths(per_subject_best: Mapping[str, Any]) -> list[str]:
+    paths: set[str] = set()
+    for subject_payload in per_subject_best.values():
+        if not isinstance(subject_payload, Mapping):
+            continue
+        best_hyperparams = subject_best_hyperparams(subject_payload)
+        if not isinstance(best_hyperparams, Mapping):
+            continue
+        for key, value in best_hyperparams.items():
+            if key.startswith("engine.") and isinstance(value, Mapping):
+                paths.add(key[len("engine."):])
+    return sorted(paths)
+
+
+def _clear_engine_mapping_replacements(engine_config: dict[str, Any], paths: Sequence[str]) -> None:
+    for path in paths:
+        _clear_mapping_replacement_path(engine_config, path)
+
+
 def _load_raw_base_engine_config(base_sim_cfg: Mapping[str, Any], base_sim_dir: Path) -> dict[str, Any]:
     inline_cfg = base_sim_cfg.get("engine_config")
     path_cfg = base_sim_cfg.get("engine_config_path")
@@ -242,6 +275,7 @@ def _base_subject_override_for_generated_config(
     subject_id: int,
     base_sim_dir: Path,
     generated_dir: Path,
+    engine_mapping_replacement_paths: Sequence[str],
 ) -> dict[str, Any]:
     override = deepcopy(subject_override_for(base_sim_cfg, subject_id))
     _rebase_generated_sim_paths(override, base_sim_dir, generated_dir)
@@ -255,6 +289,9 @@ def _base_subject_override_for_generated_config(
             dict(existing_engine or {}),
             engine_subject_override,
         )
+    existing_engine = override.get("engine_config")
+    if isinstance(existing_engine, dict):
+        _clear_engine_mapping_replacements(existing_engine, engine_mapping_replacement_paths)
     return override
 
 
@@ -275,6 +312,8 @@ def build_subjectwise_simulation_config(
     base_sim_cfg = load_yaml(base_sim_path)
     raw_engine_cfg = _load_raw_base_engine_config(base_sim_cfg, base_sim_path.parent)
     base_engine_cfg = _strip_subject_override_blocks(raw_engine_cfg)
+    engine_mapping_replacement_paths = _engine_mapping_replacement_paths(per_subject_best)
+    _clear_engine_mapping_replacements(base_engine_cfg, engine_mapping_replacement_paths)
 
     generated_dir = generated_sim_config_path.parent
     sim_output_dir = sim_output_dir.resolve()
@@ -323,6 +362,7 @@ def build_subjectwise_simulation_config(
             subject_id=sid,
             base_sim_dir=base_sim_path.parent,
             generated_dir=generated_dir,
+            engine_mapping_replacement_paths=engine_mapping_replacement_paths,
         )
         override = _deep_update(base_override, _split_hyperparams_for_simulation_override(best_hyperparams))
         hyper_candidate_seed = subject_hyper_candidate_seed(subject_payload)

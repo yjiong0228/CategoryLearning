@@ -14,6 +14,8 @@ from src.Bayesian_state.run_hyper_then_simulation import (
     aggregate_per_subject_best,
     build_subjectwise_simulation_config,
 )
+from src.Bayesian_state.utils.config_subjects import resolve_subject_config
+from src.Bayesian_state.utils.optimization_config import resolve_engine_config
 
 
 @pytest.fixture
@@ -153,3 +155,93 @@ def test_materialized_sim_config_preserves_base_subject_overrides(tmp_path: Path
     assert override["engine_config"]["modules"]["beta_mod"]["kwargs"]["beta_min"] == 0.2
     assert override["engine_config"]["modules"]["memory_mod"]["kwargs"]["gamma"] == 0.6
     assert override["engine_config"]["modules"]["memory_mod"]["kwargs"]["w0"] == 0.5
+
+
+def test_materialized_sim_config_replaces_whole_engine_kwargs_without_stale_base_keys(tmp_path: Path) -> None:
+    base_sim_path = tmp_path / "simulation.yaml"
+    selected_transition_kwargs = {
+        "init_num": 4,
+        "strategies": [
+            {
+                "label": "retain",
+                "amount": "fixed",
+                "value": 1,
+                "method": "top_posterior",
+                "pool": "active",
+            }
+        ],
+    }
+    _write_yaml(
+        base_sim_path,
+        {
+            "engine_config": {
+                "agenda": ["hypo_transitions_mod"],
+                "modules": {
+                    "hypo_transitions_mod": {
+                        "class": "src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule",
+                        "kwargs": {
+                            "init_num": 2,
+                            "max_active_hypotheses": 3,
+                            "strategies": [
+                                {
+                                    "label": "base",
+                                    "amount": "fixed",
+                                    "value": 1,
+                                    "method": "random",
+                                    "pool": "inactive",
+                                }
+                            ],
+                        },
+                    }
+                },
+            },
+            "subjects": [108],
+            "hyper_base_seed": 42,
+            "dataset": {"processed_dir": "data"},
+            "output_dir": "old-out",
+            "window_size": 16,
+            "simulation_repeats": 1024,
+            "loss_metric": "choice_brier",
+            "prediction_mode": "prior_t",
+            "selection_prediction_mode": "prior_t",
+        },
+    )
+    hyper_best_payload = {
+        "selection": {"metric": "simulation.mean_error"},
+        "hyper": {
+            "base_sim_config_path": str(base_sim_path),
+            "hyper_base_seed": 42,
+        },
+        "per_subject_best": {
+            "108": {
+                "selection": {
+                    "best_stage": "fine",
+                    "hyper_candidate_seed": 123,
+                },
+                "selected": {
+                    "best_hyperparams": {
+                        "engine.modules.hypo_transitions_mod.kwargs": selected_transition_kwargs,
+                    },
+                },
+            },
+        },
+    }
+
+    generated = build_subjectwise_simulation_config(
+        hyper_best_payload=hyper_best_payload,
+        generated_sim_config_path=tmp_path / "generated" / "simulation.yaml",
+        sim_output_dir=tmp_path / "sim-out",
+        keep_logs=True,
+    )
+
+    base_kwargs = generated["engine_config"]["modules"]["hypo_transitions_mod"]["kwargs"]
+    override_kwargs = generated["subject_overrides"][108]["engine_config"]["modules"]["hypo_transitions_mod"]["kwargs"]
+    subject_cfg = resolve_subject_config(generated, 108)
+    resolved_kwargs = resolve_engine_config(subject_cfg, tmp_path / "generated", subject_id=108)["modules"][
+        "hypo_transitions_mod"
+    ]["kwargs"]
+
+    assert base_kwargs == {}
+    assert override_kwargs == selected_transition_kwargs
+    assert resolved_kwargs == selected_transition_kwargs
+    assert "max_active_hypotheses" not in resolved_kwargs

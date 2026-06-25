@@ -30,10 +30,23 @@ class DynamicHypothesisModule(BaseModule):
         "ksimilar_centers",
         "epsilon_posterior",
         "temperature_posterior",
+        "low_posterior",
     )
     VALID_TOP_P_SCOPES = ("global", "pool")
     VALID_FEEDBACK_MODES = ("graded", "exact")
     VALID_PADDING_MODES = ("chance", "zero", "one")
+    VALID_POST_TO_PRIOR_METHODS = (
+        "similarity_novelty",
+        "conservative_carryover",
+        "error_boost_newcomers",
+        "stochastic_reset",
+    )
+    VALID_POST_TO_PRIOR_CONFIDENCE_SOURCES = (
+        "max_posterior",
+        "entropy",
+        "recent_accuracy",
+        "latent_volatility",
+    )
     VALID_PRIOR_RESET_TARGETS = (
         "uniform_active",
         "newcomer_boost",
@@ -226,6 +239,9 @@ class DynamicHypothesisModule(BaseModule):
         )
         self._prior_reset_state = 0.0
         self.prior_reset_log: List[Dict[str, Any]] = []
+        self.post_to_prior_config = self._validate_post_to_prior_config(
+            kwargs.get("post_to_prior", {"method": "similarity_novelty"})
+        )
         
         self.debug = kwargs.get("hypothesis_debug", False)
         # Track how many hypotheses each strategy selects per transition step (for plotting)
@@ -257,6 +273,7 @@ class DynamicHypothesisModule(BaseModule):
             self.amount_evaluators[f"opp_accuracy_delta_{amount}"] = self._amount_opposite_accuracy_delta_gen(amount)
             self.amount_evaluators[f"latent_volatility_{amount}"] = self._amount_latent_volatility_gen(amount)
             self.amount_evaluators[f"opp_latent_volatility_{amount}"] = self._amount_opposite_latent_volatility_gen(amount)
+            self.amount_evaluators[f"post_error_explore_{amount}"] = self._amount_post_error_explore_gen(amount)
         self.method_selectors = {
             "top_posterior": self._select_top_posterior,
             "random_posterior": self._select_random_posterior,
@@ -264,6 +281,7 @@ class DynamicHypothesisModule(BaseModule):
             "ksimilar_centers": self._cluster_strategy_ksimilar_centers,
             "epsilon_posterior": self._select_epsilon_posterior,
             "temperature_posterior": self._select_temperature_posterior,
+            "low_posterior": self._select_low_posterior,
         }
         self.strategies = self._validate_strategies(self.strategies)
         if "history_maxlen" in kwargs:
@@ -273,6 +291,7 @@ class DynamicHypothesisModule(BaseModule):
             required_history = max(required_history, self.prior_reset_window, 1)
         if self.latent_volatility_enabled:
             required_history = max(required_history, self.latent_volatility_window, 1)
+        required_history = max(required_history, self._post_to_prior_required_history())
         self.uses_feedback_history = required_history > 0
         self.feedback_history = deque(maxlen=max(required_history, 1))
         self._validate_history_feedback_modes()
@@ -411,6 +430,102 @@ class DynamicHypothesisModule(BaseModule):
                 raise ValueError(f"Strategy #{idx} min_count must be non-negative.")
             self._validate_float_range(strat.get("threshold", 0.0), "threshold", 0.0, 1.0)
             self._validate_positive_float(strat.get("power", 1.0), "power")
+        if self._is_post_error_explore_amount(amount):
+            min_count = self._validate_count(strat.get("min_count", 0), context=f"Strategy #{idx} min_count")
+            if min_count < 0:
+                raise ValueError(f"Strategy #{idx} min_count must be non-negative.")
+            if min_count > self._amount_suffix(amount):
+                raise ValueError(f"Strategy #{idx} min_count cannot exceed amount maximum.")
+            self._validate_positive_float(strat.get("gamma", 1.0), "gamma")
+
+    def _validate_post_to_prior_config(self, raw: Any) -> Dict[str, Any]:
+        if raw is None:
+            raw = {"method": "similarity_novelty"}
+        if not isinstance(raw, dict):
+            raise ValueError("post_to_prior must be a dictionary when provided.")
+        config = dict(raw)
+        method = str(config.get("method", "similarity_novelty"))
+        if method not in self.VALID_POST_TO_PRIOR_METHODS:
+            raise ValueError(
+                f"Unsupported post_to_prior method '{method}'. "
+                f"Supported methods: {', '.join(self.VALID_POST_TO_PRIOR_METHODS)}."
+            )
+        config["method"] = method
+        if "label" in config and not str(config["label"]).strip():
+            raise ValueError("post_to_prior label must be non-empty when provided.")
+
+        confidence_source = str(config.get("confidence_source", "max_posterior"))
+        if confidence_source not in self.VALID_POST_TO_PRIOR_CONFIDENCE_SOURCES:
+            raise ValueError(
+                "post_to_prior confidence_source must be one of "
+                f"{self.VALID_POST_TO_PRIOR_CONFIDENCE_SOURCES}, got {confidence_source!r}."
+            )
+        config["confidence_source"] = confidence_source
+        if confidence_source == "recent_accuracy":
+            self._validate_post_to_prior_history_config(config, context="post_to_prior")
+
+        if method == "similarity_novelty":
+            self._validate_float_range(config.get("min_newcomer_scale", 0.05), "post_to_prior.min_newcomer_scale", 0.0, 1.0)
+        elif method == "conservative_carryover":
+            self._validate_float_range(config.get("newcomer_mass", 0.05), "post_to_prior.newcomer_mass", 0.0, 1.0)
+        elif method == "error_boost_newcomers":
+            self._validate_post_to_prior_history_config(config, context="post_to_prior")
+            base_mass = self._validate_float_range(
+                config.get("base_newcomer_mass", 0.05),
+                "post_to_prior.base_newcomer_mass",
+                0.0,
+                1.0,
+            )
+            max_mass = self._validate_float_range(
+                config.get("max_newcomer_mass", 0.65),
+                "post_to_prior.max_newcomer_mass",
+                0.0,
+                1.0,
+            )
+            if max_mass < base_mass:
+                raise ValueError("post_to_prior.max_newcomer_mass must be >= base_newcomer_mass.")
+            self._validate_float_range(config.get("volatility_gain", 0.0), "post_to_prior.volatility_gain", 0.0, 1.0)
+        elif method == "stochastic_reset":
+            self._validate_float_range(config.get("reset_probability", 0.25), "post_to_prior.reset_probability", 0.0, 1.0)
+            self._validate_float_range(config.get("newcomer_mass", 0.50), "post_to_prior.newcomer_mass", 0.0, 1.0)
+            self._validate_positive_float(config.get("concentration", 1.0), "post_to_prior.concentration")
+        return config
+
+    def _validate_post_to_prior_history_config(self, config: Dict[str, Any], *, context: str) -> None:
+        window = self._validate_count(config.get("window", 8), context=f"{context}.window")
+        if window <= 0:
+            raise ValueError(f"{context}.window must be positive.")
+        feedback_mode = str(config.get("feedback_mode", "exact"))
+        if feedback_mode not in self.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                f"{context}.feedback_mode must be one of "
+                f"{self.VALID_FEEDBACK_MODES}, got {feedback_mode!r}."
+            )
+        padding = config.get("padding", "chance")
+        if isinstance(padding, str):
+            if padding not in self.VALID_PADDING_MODES:
+                raise ValueError(
+                    f"{context}.padding must be one of "
+                    f"{self.VALID_PADDING_MODES} or a numeric value, got {padding!r}."
+                )
+            if padding == "chance":
+                self._chance_padding_value(require=True)
+        else:
+            self._validate_float_range(padding, f"{context}.padding", 0.0, 1.0)
+
+    def _post_to_prior_required_history(self) -> int:
+        required = 0
+        if self.post_to_prior_config.get("method") == "error_boost_newcomers":
+            required = max(
+                required,
+                self._validate_count(self.post_to_prior_config.get("window", 8), context="post_to_prior.window"),
+            )
+        if self.post_to_prior_config.get("confidence_source") == "recent_accuracy":
+            required = max(
+                required,
+                self._validate_count(self.post_to_prior_config.get("window", 8), context="post_to_prior.window"),
+            )
+        return required
 
     @staticmethod
     def _validate_float_range(value: Any, name: str, low: float, high: float) -> float:
@@ -466,6 +581,10 @@ class DynamicHypothesisModule(BaseModule):
         )
 
     @classmethod
+    def _is_post_error_explore_amount(cls, amount: Any) -> bool:
+        return isinstance(amount, str) and amount.startswith("post_error_explore_")
+
+    @classmethod
     def _is_history_amount(cls, amount: Any) -> bool:
         return (
             isinstance(amount, str)
@@ -474,11 +593,14 @@ class DynamicHypothesisModule(BaseModule):
                 or cls._is_accuracy_static_amount(amount)
                 or cls._is_accuracy_delta_amount(amount)
                 or cls._is_latent_volatility_amount(amount)
+                or cls._is_post_error_explore_amount(amount)
             )
         )
 
     @classmethod
     def _default_history_window(cls, amount: str) -> int:
+        if cls._is_post_error_explore_amount(amount):
+            return 1
         if cls._is_accuracy_delta_amount(amount):
             return 8
         if cls._is_accuracy_static_amount(amount):
@@ -493,6 +615,7 @@ class DynamicHypothesisModule(BaseModule):
             cls._is_accuracy_static_amount(amount)
             or cls._is_accuracy_delta_amount(amount)
             or cls._is_latent_volatility_amount(amount)
+            or cls._is_post_error_explore_amount(amount)
         ):
             return "exact"
         return "graded"
@@ -521,6 +644,14 @@ class DynamicHypothesisModule(BaseModule):
         if int_count < 0:
             raise ValueError(f"{context} produced a negative amount: {int_count}.")
         return int_count
+
+    @staticmethod
+    def _amount_suffix(amount: Any) -> int:
+        text = str(amount)
+        try:
+            return int(text.rsplit("_", 1)[1])
+        except (IndexError, ValueError) as exc:
+            raise ValueError(f"Amount evaluator '{amount}' does not end with an integer maximum.") from exc
 
     @staticmethod
     def _validate_probability_vector(prob: np.ndarray, *, context: str) -> np.ndarray:
@@ -749,6 +880,21 @@ class DynamicHypothesisModule(BaseModule):
             return int(max(0, max_amount - vol_amount))
         return _amount_opposite_latent_volatility
 
+    def _amount_post_error_explore_gen(self, max_amount=7):
+        def _amount_post_error_explore(posterior: np.ndarray, max_amount=max_amount, **kwargs) -> int:
+            strategy_config = kwargs.get("strategy_config", {}) or {}
+            min_count = self._validate_count(strategy_config.get("min_count", 0), context="post_error_explore min_count")
+            if min_count > max_amount:
+                return max_amount
+            gamma = float(strategy_config.get("gamma", 1.0))
+            if not np.isfinite(gamma) or gamma <= 0.0:
+                raise ValueError(f"post_error_explore gamma must be positive, got {gamma!r}.")
+            last_accuracy = self._recent_accuracy(1, strategy_config)
+            error_severity = float(np.clip(1.0 - last_accuracy, 0.0, 1.0))
+            amount = min_count + round((error_severity ** gamma) * (max_amount - min_count))
+            return int(max(min_count, min(amount, max_amount)))
+        return _amount_post_error_explore
+
     def _recent_accuracy(self, window: int, strategy_config: Dict[str, Any]) -> float:
         values = self._padded_history_values(window, strategy_config)
         accuracy = float(np.mean(values))
@@ -831,6 +977,11 @@ class DynamicHypothesisModule(BaseModule):
         }
         if self.latent_volatility_enabled or self.prior_reset_enabled:
             modes.add(self.latent_volatility_feedback_mode)
+        if (
+            self.post_to_prior_config.get("method") == "error_boost_newcomers"
+            or self.post_to_prior_config.get("confidence_source") == "recent_accuracy"
+        ):
+            modes.add(str(self.post_to_prior_config.get("feedback_mode", "exact")))
         if not modes:
             return "graded"
         if len(modes) > 1:
@@ -1339,6 +1490,22 @@ class DynamicHypothesisModule(BaseModule):
         chosen = self.rng.choice(cand_indices, size=actual_amount, replace=False, p=prob)
         return chosen.tolist()
 
+    def _select_low_posterior(self, amount: int, candidates: Sequence[int] | np.ndarray, posterior: np.ndarray, strategy_config: Dict | None = None, **kwargs) -> List[int]:
+        strategy_config = strategy_config or {}
+        if amount <= 0:
+            return []
+        cand_indices = np.asarray(candidates, dtype=int)
+        if cand_indices.size == 0:
+            return []
+        actual_amount = min(amount, len(cand_indices))
+        raw = np.asarray(posterior[cand_indices], dtype=float)
+        if not np.all(np.isfinite(raw)) or np.any(raw < 0):
+            raise ValueError("low_posterior candidate posterior contains invalid values.")
+        if cand_indices.size <= actual_amount:
+            return cand_indices.tolist()
+        low_args = np.argsort(raw)[:actual_amount]
+        return cand_indices[low_args].tolist()
+
     def _apply_mask(self) -> None:
         if self.active is None:
             return
@@ -1547,103 +1714,389 @@ class DynamicHypothesisModule(BaseModule):
             self.strategy_counts_log[-1]["prior_reset_latent_volatility"] = components["latent_volatility"]
         return mixed, float(reset_strength)
     
+    def _post_to_prior_confidence(
+        self,
+        current_posterior: np.ndarray,
+        config: Dict[str, Any],
+    ) -> float:
+        source = str(config.get("confidence_source", "max_posterior"))
+        if source == "max_posterior":
+            confidence = float(np.max(current_posterior)) if current_posterior.size else 0.0
+        elif source == "entropy":
+            p_entropy = entropy(current_posterior)
+            max_entropy = np.log(len(current_posterior)) if len(current_posterior) > 1 else 1.0
+            confidence = 1.0 - float(np.clip(p_entropy / max_entropy, 0.0, 1.0))
+        elif source == "recent_accuracy":
+            window = self._validate_count(config.get("window", 8), context="post_to_prior confidence window")
+            confidence = self._recent_accuracy(window, config)
+        elif source == "latent_volatility":
+            denom = max(self.latent_volatility_max, 1e-12)
+            confidence = 1.0 - float(np.clip(self.latent_volatility_state / denom, 0.0, 1.0))
+        else:
+            raise ValueError(f"Unsupported post_to_prior confidence_source '{source}'.")
+        if not np.isfinite(confidence):
+            raise ValueError("post_to_prior confidence is non-finite.")
+        return float(np.clip(confidence, 0.0, 1.0))
+
+    def _normalize_weights_or_uniform(self, values: np.ndarray, size: int) -> np.ndarray:
+        values = np.asarray(values, dtype=float).reshape(-1)
+        if size <= 0:
+            return np.empty(0, dtype=float)
+        if values.size != size or not np.all(np.isfinite(values)) or np.any(values < 0):
+            return np.full(size, 1.0 / float(size), dtype=float)
+        total = float(values.sum())
+        if total <= 0.0:
+            return np.full(size, 1.0 / float(size), dtype=float)
+        return values / total
+
+    def _allocate_prior_between_survivors_and_newcomers(
+        self,
+        survivor_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        survivor_values: np.ndarray,
+        newcomer_values: np.ndarray,
+        newcomer_mass: float,
+    ) -> np.ndarray:
+        new_prior = np.zeros(self.total_hypo, dtype=float)
+        if len(survivor_indices) == 0 and len(newcomer_indices) == 0:
+            return new_prior
+        if len(survivor_indices) == 0:
+            new_prior[newcomer_indices] = self._normalize_weights_or_uniform(newcomer_values, len(newcomer_indices))
+            return new_prior
+        if len(newcomer_indices) == 0:
+            new_prior[survivor_indices] = self._normalize_weights_or_uniform(survivor_values, len(survivor_indices))
+            return new_prior
+
+        newcomer_mass = float(np.clip(newcomer_mass, 0.0, 1.0))
+        survivor_mass = 1.0 - newcomer_mass
+        new_prior[survivor_indices] = (
+            survivor_mass * self._normalize_weights_or_uniform(survivor_values, len(survivor_indices))
+        )
+        new_prior[newcomer_indices] = (
+            newcomer_mass * self._normalize_weights_or_uniform(newcomer_values, len(newcomer_indices))
+        )
+        return new_prior
+
+    def _similarity_novelty_newcomer_scores(
+        self,
+        current_posterior: np.ndarray,
+        old_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        confidence: float,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        if len(newcomer_indices) == 0:
+            return np.empty(0, dtype=float), {"similarity_available": False, "fallback": False}
+        partition = getattr(self.engine, "partition", None)
+        similarity_matrix = getattr(partition, "similarity_matrix", None)
+        if similarity_matrix is None or len(old_indices) == 0:
+            return (
+                np.ones(len(newcomer_indices), dtype=float),
+                {"similarity_available": False, "fallback": True},
+            )
+        similarity_matrix = np.asarray(similarity_matrix, dtype=float)
+        if (
+            similarity_matrix.ndim != 2
+            or similarity_matrix.shape[0] < self.total_hypo
+            or similarity_matrix.shape[1] < self.total_hypo
+        ):
+            raise ValueError(
+                "partition.similarity_matrix must cover all hypotheses for post_to_prior similarity_novelty."
+            )
+        sim_sub = similarity_matrix[np.ix_(newcomer_indices, old_indices)]
+        if not np.all(np.isfinite(sim_sub)):
+            raise ValueError("post_to_prior similarity matrix contains non-finite values.")
+
+        old_posterior_values = current_posterior[old_indices].copy()
+        old_total = float(old_posterior_values.sum())
+        if old_total > 0.0:
+            old_posterior_values /= old_total
+        p_sim = sim_sub @ old_posterior_values
+        max_sim_to_old = np.max(sim_sub, axis=1)
+        p_nov = np.clip(1.0 - max_sim_to_old, 0.0, 1.0)
+        raw_score = confidence * p_sim + (1.0 - confidence) * p_nov
+        return raw_score, {
+            "similarity_available": True,
+            "fallback": False,
+            "mean_similarity_score": float(np.mean(p_sim)) if p_sim.size else float("nan"),
+            "mean_novelty_score": float(np.mean(p_nov)) if p_nov.size else float("nan"),
+        }
+
+    def _post_to_prior_similarity_novelty(
+        self,
+        current_posterior: np.ndarray,
+        old_indices: np.ndarray,
+        active_indices: np.ndarray,
+        survivor_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        config: Dict[str, Any],
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        confidence = self._post_to_prior_confidence(current_posterior, config)
+        min_scale = float(config.get("min_newcomer_scale", 0.05))
+        new_prior = np.zeros(self.total_hypo, dtype=float)
+        new_prior[survivor_indices] = current_posterior[survivor_indices]
+        raw_score, score_log = self._similarity_novelty_newcomer_scores(
+            current_posterior,
+            old_indices,
+            newcomer_indices,
+            confidence,
+        )
+        scale_factor = max(1.0 - confidence, min_scale)
+        if len(newcomer_indices) > 0:
+            if score_log.get("similarity_available", False):
+                new_prior[newcomer_indices] = scale_factor * raw_score
+            else:
+                new_prior[newcomer_indices] = (scale_factor / float(len(active_indices)))
+        total_mass = float(new_prior.sum())
+        if total_mass > 0.0:
+            new_prior /= total_mass
+        elif len(active_indices) > 0:
+            new_prior[active_indices] = 1.0 / float(len(active_indices))
+        log = {
+            "method": str(config.get("method", "similarity_novelty")),
+            "confidence": float(confidence),
+            "newcomer_scale": float(scale_factor),
+            **score_log,
+        }
+        return new_prior, log
+
+    def _post_to_prior_conservative_carryover(
+        self,
+        current_posterior: np.ndarray,
+        survivor_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        config: Dict[str, Any],
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        newcomer_mass = float(config.get("newcomer_mass", 0.05)) if len(newcomer_indices) > 0 else 0.0
+        new_prior = self._allocate_prior_between_survivors_and_newcomers(
+            survivor_indices,
+            newcomer_indices,
+            current_posterior[survivor_indices],
+            np.ones(len(newcomer_indices), dtype=float),
+            newcomer_mass,
+        )
+        return new_prior, {
+            "method": "conservative_carryover",
+            "configured_newcomer_mass": float(newcomer_mass),
+            "similarity_available": False,
+            "fallback": False,
+        }
+
+    def _post_to_prior_error_boost_newcomers(
+        self,
+        current_posterior: np.ndarray,
+        old_indices: np.ndarray,
+        survivor_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        config: Dict[str, Any],
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        confidence = self._post_to_prior_confidence(current_posterior, config)
+        raw_score, score_log = self._similarity_novelty_newcomer_scores(
+            current_posterior,
+            old_indices,
+            newcomer_indices,
+            confidence,
+        )
+        window = self._validate_count(config.get("window", 8), context="post_to_prior.window")
+        recent_accuracy = self._recent_accuracy(window, config)
+        error_severity = float(np.clip(1.0 - recent_accuracy, 0.0, 1.0))
+        volatility_gain = float(config.get("volatility_gain", 0.0))
+        volatility_component = volatility_gain * float(np.clip(self.latent_volatility_state, 0.0, 1.0))
+        boost = float(np.clip(error_severity + volatility_component, 0.0, 1.0))
+        base_mass = float(config.get("base_newcomer_mass", 0.05))
+        max_mass = float(config.get("max_newcomer_mass", 0.65))
+        newcomer_mass = base_mass + (max_mass - base_mass) * boost
+        if len(newcomer_indices) == 0:
+            newcomer_mass = 0.0
+        new_prior = self._allocate_prior_between_survivors_and_newcomers(
+            survivor_indices,
+            newcomer_indices,
+            current_posterior[survivor_indices],
+            raw_score,
+            newcomer_mass,
+        )
+        return new_prior, {
+            "method": "error_boost_newcomers",
+            "confidence": float(confidence),
+            "recent_accuracy": float(recent_accuracy),
+            "error_severity": float(error_severity),
+            "latent_volatility": float(self.latent_volatility_state),
+            "newcomer_mass": float(newcomer_mass),
+            **score_log,
+        }
+
+    def _post_to_prior_stochastic_reset(
+        self,
+        current_posterior: np.ndarray,
+        old_indices: np.ndarray,
+        active_indices: np.ndarray,
+        survivor_indices: np.ndarray,
+        newcomer_indices: np.ndarray,
+        config: Dict[str, Any],
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        reset_probability = float(config.get("reset_probability", 0.25))
+        reset_applied = bool(self.rng.random() < reset_probability)
+        if not reset_applied:
+            delegated_config = dict(config)
+            delegated_config["method"] = "similarity_novelty"
+            new_prior, log = self._post_to_prior_similarity_novelty(
+                current_posterior,
+                old_indices,
+                active_indices,
+                survivor_indices,
+                newcomer_indices,
+                delegated_config,
+            )
+            log.update({
+                "method": "stochastic_reset",
+                "reset_applied": False,
+                "reset_probability": float(reset_probability),
+            })
+            return new_prior, log
+
+        concentration = float(config.get("concentration", 1.0))
+        random_active_weights = self.rng.gamma(
+            shape=concentration,
+            scale=1.0,
+            size=len(active_indices),
+        )
+        if not np.all(np.isfinite(random_active_weights)) or float(random_active_weights.sum()) <= 0.0:
+            random_active_weights = np.ones(len(active_indices), dtype=float)
+        random_active_weights = random_active_weights / float(random_active_weights.sum())
+        new_prior = np.zeros(self.total_hypo, dtype=float)
+        new_prior[active_indices] = random_active_weights
+        if len(survivor_indices) > 0 and len(newcomer_indices) > 0:
+            newcomer_mass = float(config.get("newcomer_mass", 0.50))
+            survivor_weights = new_prior[survivor_indices]
+            newcomer_weights = new_prior[newcomer_indices]
+            new_prior[survivor_indices] = (
+                (1.0 - newcomer_mass)
+                * self._normalize_weights_or_uniform(survivor_weights, len(survivor_indices))
+            )
+            new_prior[newcomer_indices] = (
+                newcomer_mass
+                * self._normalize_weights_or_uniform(newcomer_weights, len(newcomer_indices))
+            )
+        return new_prior, {
+            "method": "stochastic_reset",
+            "reset_applied": True,
+            "reset_probability": float(reset_probability),
+            "newcomer_mass": (
+                float(np.sum(new_prior[newcomer_indices])) if len(newcomer_indices) > 0 else 0.0
+            ),
+            "similarity_available": False,
+            "fallback": False,
+        }
+
     def _posterior_to_prior_transition(self):
         """
         Update engine.prior based on the transition from old_active to active hypotheses.
-        Uses a heuristic mixture of Similarity (Exploitation) and Novelty (Exploration)
-        to initialize new hypotheses.
         """
         if self.old_active is None or self.active is None:
             return
-        
-        # 1. Get current posterior (from previous step)
+
+        active_indices = np.asarray(self.active, dtype=int)
+        old_indices = np.asarray(self.old_active, dtype=int)
+        if len(active_indices) == 0:
+            return
+        if not hasattr(self, "strategy_counts_log"):
+            self.strategy_counts_log = []
+        if not self.strategy_counts_log:
+            self.strategy_counts_log.append({"strategies": [], "active_total": int(len(active_indices))})
+
         current_posterior = None
         if hasattr(self.engine, "posterior") and self.engine.posterior is not None:
-            current_posterior = self.engine.posterior.copy()
-        
+            current_posterior = np.asarray(self.engine.posterior, dtype=float).copy()
+
         if current_posterior is None:
-            # Fallback: uniform
-            mask = np.zeros(self.total_hypo, dtype=float)
-            mask[self.active] = 1.0
-            self.engine.prior = mask / mask.sum()
+            new_prior = np.zeros(self.total_hypo, dtype=float)
+            new_prior[active_indices] = 1.0 / float(len(active_indices))
+            self.engine.prior = new_prior
+            if self.strategy_counts_log:
+                self.strategy_counts_log[-1]["post_to_prior"] = {
+                    "method": self.post_to_prior_config.get("method", "similarity_novelty"),
+                    "fallback": True,
+                    "fallback_reason": "missing_posterior",
+                    "survivor_mass": 0.0,
+                    "newcomer_mass": 1.0,
+                }
             return
-            
-        # 2. Identify Survivors vs Newcomers
-        old_indices = self.old_active
-        active_indices = self.active
-        
-        # Boolean masks
+
+        if current_posterior.shape[0] != self.total_hypo:
+            raise ValueError(
+                "posterior length does not match hypothesis space in post_to_prior transition: "
+                f"{current_posterior.shape[0]} vs {self.total_hypo}."
+            )
+        if not np.all(np.isfinite(current_posterior)) or np.any(current_posterior < 0):
+            raise ValueError("posterior contains invalid values in post_to_prior transition.")
+
         is_survivor = np.isin(active_indices, old_indices)
         survivor_indices = active_indices[is_survivor]
         newcomer_indices = active_indices[~is_survivor]
 
-        # 3. Calculate Confidence of the previous step
-        # using max posterior probability of the *original* global posterior
-        confidence = np.max(current_posterior) if len(current_posterior) > 0 else 0.0
+        config = self.post_to_prior_config
+        method = str(config.get("method", "similarity_novelty"))
+        if method == "similarity_novelty":
+            new_prior, log = self._post_to_prior_similarity_novelty(
+                current_posterior,
+                old_indices,
+                active_indices,
+                survivor_indices,
+                newcomer_indices,
+                config,
+            )
+        elif method == "conservative_carryover":
+            new_prior, log = self._post_to_prior_conservative_carryover(
+                current_posterior,
+                survivor_indices,
+                newcomer_indices,
+                config,
+            )
+        elif method == "error_boost_newcomers":
+            new_prior, log = self._post_to_prior_error_boost_newcomers(
+                current_posterior,
+                old_indices,
+                survivor_indices,
+                newcomer_indices,
+                config,
+            )
+        elif method == "stochastic_reset":
+            new_prior, log = self._post_to_prior_stochastic_reset(
+                current_posterior,
+                old_indices,
+                active_indices,
+                survivor_indices,
+                newcomer_indices,
+                config,
+            )
+        else:
+            raise ValueError(f"Unsupported post_to_prior method '{method}'.")
 
-        # Prepare normalized old values for matrix product
-        old_posterior_values = current_posterior[old_indices].copy()
-        if old_posterior_values.sum() > 0:
-            old_posterior_values /= old_posterior_values.sum()
-        
-        # 4. Initialize new prior
-        # Survivors carry over their previous posterior (raw values from engine.posterior)
-        new_prior = np.zeros(self.total_hypo, dtype=float)
-        new_prior[survivor_indices] = current_posterior[survivor_indices]
-
-        # 5. Calculate Prior for Newcomers
-        if len(newcomer_indices) > 0:
-            partition = getattr(self.engine, "partition", None)
-            similarity_matrix = getattr(partition, "similarity_matrix", None)
-
-            if similarity_matrix is not None:
-                # S[new, old]
-                sim_sub = similarity_matrix[np.ix_(newcomer_indices, old_indices)]
-
-                # Component A: Similarity-based (Likelihood propagation)
-                # "Similar to good is good" (Exploitation)
-                p_sim = sim_sub @ old_posterior_values
-
-                # Component B: Novelty-based (Repulsion)
-                # "Dissimilar to bad is good" (Exploration)
-                max_sim_to_old = np.max(sim_sub, axis=1) # (n_new,)
-                p_nov = 1.0 - max_sim_to_old
-                p_nov = np.clip(p_nov, 0, 1)
-
-                # Mixture based on Confidence
-                # High Confidence -> Trust similarity (Exploit)
-                # Low Confidence -> Trust novelty (Explore)
-                raw_score = confidence * p_sim + (1.0 - confidence) * p_nov
-                
-                # SCALING Factor applied to Newcomers
-                # If Confident, new hypotheses should have low prior mass to preserve survivor dominance.
-                # If Uncertain, new hypotheses should have higher mass to encourage replacement.
-                # min_scale ensures we don't zero out completely (keeps 5% budget for pure exploration).
-                scale_factor = max(1.0 - confidence, 0.05)
-                
-                prior_newcomers = scale_factor * raw_score
-                new_prior[newcomer_indices] = prior_newcomers
-            else:
-                # Fallback if no similarity matrix: uniform scaled by uncertainty
-                scale_factor = max(1.0 - confidence, 0.05)
-                # Distribute scale_factor * avg_survivor_mass? 
-                # Or just assign relative to current survivors.
-                # Heuristic: Assign small value relative to max.
-                fill_val = (1.0 / len(self.active)) * scale_factor
-                new_prior[newcomer_indices] = fill_val
-
-        # 6. Normalize
-        total_mass = new_prior.sum()
-        if total_mass > 0:
+        total_mass = float(new_prior.sum())
+        if total_mass > 0.0:
             new_prior /= total_mass
         else:
-            new_prior[self.active] = 1.0 / len(self.active)
+            new_prior[active_indices] = 1.0 / float(len(active_indices))
+            log["fallback"] = True
+            log["fallback_reason"] = "zero_prior_mass"
 
-        new_prior, _ = self._apply_prior_reset(new_prior, active_indices, newcomer_indices)
+        pre_reset_survivor_mass = float(np.sum(new_prior[survivor_indices])) if len(survivor_indices) else 0.0
+        pre_reset_newcomer_mass = float(np.sum(new_prior[newcomer_indices])) if len(newcomer_indices) else 0.0
+        new_prior, reset_strength = self._apply_prior_reset(new_prior, active_indices, newcomer_indices)
+
+        log.update({
+            "survivor_count": int(len(survivor_indices)),
+            "newcomer_count": int(len(newcomer_indices)),
+            "survivor_mass": float(pre_reset_survivor_mass),
+            "newcomer_mass": float(pre_reset_newcomer_mass),
+            "post_reset_survivor_mass": float(np.sum(new_prior[survivor_indices])) if len(survivor_indices) else 0.0,
+            "post_reset_newcomer_mass": float(np.sum(new_prior[newcomer_indices])) if len(newcomer_indices) else 0.0,
+            "prior_reset_strength": float(reset_strength),
+        })
+        if self.strategy_counts_log:
+            self.strategy_counts_log[-1]["post_to_prior"] = log
 
         self.engine.prior = new_prior
-        
-        # 7. Initialize beta for newcomers via BetaModule
+
         self._initialize_beta_for_newcomers(newcomer_indices, new_prior)
 
     def _initialize_beta_for_newcomers(self, newcomer_indices: np.ndarray, prior: np.ndarray) -> None:

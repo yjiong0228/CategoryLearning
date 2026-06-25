@@ -6,6 +6,7 @@ from src.Bayesian_state.utils.optimizer_common import (
     SingleRunResult,
     build_loss_strategy,
     compute_loss_values,
+    exponential_smooth_curve,
 )
 from src.Bayesian_state.utils.optimizer_simulation import aggregate_simulation_runs
 from src.Bayesian_state.utils.optimization_config import resolve_loss_delta
@@ -57,6 +58,25 @@ def test_resolve_loss_delta_requires_positive_for_berhu() -> None:
 def test_resolve_loss_delta_ignored_for_other_losses() -> None:
     assert resolve_loss_delta({}, "accuracy_curve_mse") is None
     assert resolve_loss_delta({"loss_delta": 0.5}, "accuracy_nll") is None
+
+
+def test_exponential_smooth_curve_matches_manual_formula_and_skips_nan() -> None:
+    got = exponential_smooth_curve(
+        np.asarray([1.0, 0.0, np.nan, 1.0], dtype=float),
+        alpha=0.5,
+        init_value=0.25,
+    )
+    expected = np.asarray([0.625, 0.3125, 0.3125, 0.65625], dtype=float)
+    assert np.allclose(got, expected)
+    assert np.all((got >= 0.0) & (got <= 1.0))
+
+
+def test_exponential_smooth_curve_rejects_invalid_alpha() -> None:
+    try:
+        exponential_smooth_curve([1.0], alpha=0.0, init_value=0.5)
+        assert False, "Expected ValueError for invalid alpha"
+    except ValueError as e:
+        assert "alpha" in str(e)
 
 
 def test_choice_brier_is_recorded_even_when_not_objective() -> None:

@@ -1,0 +1,450 @@
+{
+  "cond1_v10": [
+    {
+      "id": "c1_v10_conservative_low_capacity",
+      "description": "Low-capacity retention with conservative newcomer priors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 3,
+        "max_active_hypotheses": 6,
+        "post_to_prior": {
+          "method": "conservative_carryover",
+          "newcomer_mass": 0.04
+        },
+        "strategies": [
+          {
+            "label": "retain_conf",
+            "amount": "confidence_3",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.35
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_v10_similarity_entropy",
+      "description": "Entropy-balanced retention and exploration with explicit similarity-novelty prior initialization.",
+      "hypo_transitions_kwargs": {
+        "init_num": 4,
+        "max_active_hypotheses": 8,
+        "post_to_prior": {
+          "method": "similarity_novelty",
+          "confidence_source": "max_posterior",
+          "min_newcomer_scale": 0.05
+        },
+        "strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_4",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.25
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_3",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_v10_error_boost_refresh",
+      "description": "Post-error inactive refresh with newcomer prior mass boosted by recent errors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 9,
+        "post_to_prior": {
+          "method": "error_boost_newcomers",
+          "window": 6,
+          "padding": "chance",
+          "feedback_mode": "exact",
+          "base_newcomer_mass": 0.08,
+          "max_newcomer_mass": 0.60
+        },
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 1,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "post_error_refresh",
+            "amount": "post_error_explore_5",
+            "method": "random",
+            "pool": "inactive",
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.0
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_v10_low_posterior_jump",
+      "description": "Keeps a soft active core while deliberately sampling low-posterior inactive hypotheses.",
+      "hypo_transitions_kwargs": {
+        "init_num": 6,
+        "max_active_hypotheses": 10,
+        "post_to_prior": {
+          "method": "stochastic_reset",
+          "reset_probability": 0.20,
+          "newcomer_mass": 0.55,
+          "concentration": 0.8
+        },
+        "strategies": [
+          {
+            "label": "soft_retain",
+            "amount": "entropy_norm_4",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 3.0
+          },
+          {
+            "label": "low_post_jump",
+            "amount": "post_error_explore_4",
+            "method": "low_posterior",
+            "pool": "inactive",
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 0,
+            "gamma": 0.8
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_v10_volatility_refresh",
+      "description": "Latent-volatility driven refresh with boosted newcomer priors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 7,
+        "max_active_hypotheses": 11,
+        "latent_volatility_base": 0.01,
+        "latent_volatility_error_gain": 0.45,
+        "latent_volatility_low_accuracy_gain": 0.25,
+        "latent_volatility_threshold": 0.70,
+        "latent_volatility_window": 6,
+        "latent_volatility_decay": 0.65,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "post_to_prior": {
+          "method": "error_boost_newcomers",
+          "window": 6,
+          "padding": "chance",
+          "feedback_mode": "exact",
+          "base_newcomer_mass": 0.08,
+          "max_newcomer_mass": 0.70,
+          "volatility_gain": 0.50
+        },
+        "strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_4",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "epsilon": 0.35
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_6",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.05,
+            "power": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "c1_v10_high_random_reset",
+      "description": "Higher-capacity jumpy strategy with stochastic prior reset and wide inactive refresh.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "post_to_prior": {
+          "method": "stochastic_reset",
+          "reset_probability": 0.35,
+          "newcomer_mass": 0.65,
+          "concentration": 0.6
+        },
+        "strategies": [
+          {
+            "label": "retain_temp",
+            "amount": "entropy_norm_5",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 1,
+            "temperature": 4.0
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_7",
+            "method": "random",
+            "pool": "inactive",
+            "window": 6,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.20
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    }
+  ],
+  "cond23_v10": [
+    {
+      "id": "c23_v10_conservative_similarity",
+      "description": "Moderate capacity with conservative post-to-prior carryover.",
+      "hypo_transitions_kwargs": {
+        "init_num": 8,
+        "max_active_hypotheses": 12,
+        "post_to_prior": {
+          "method": "conservative_carryover",
+          "newcomer_mass": 0.04
+        },
+        "strategies": [
+          {
+            "label": "retain_conf",
+            "amount": "confidence_5",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "epsilon": 0.30
+          },
+          {
+            "label": "explore_uncertain",
+            "amount": "opp_confidence_4",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_v10_entropy_similarity",
+      "description": "Higher-capacity entropy balance with current similarity-novelty prior initialization.",
+      "hypo_transitions_kwargs": {
+        "init_num": 10,
+        "max_active_hypotheses": 16,
+        "post_to_prior": {
+          "method": "similarity_novelty",
+          "confidence_source": "max_posterior",
+          "min_newcomer_scale": 0.05
+        },
+        "strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_7",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "epsilon": 0.25
+          },
+          {
+            "label": "explore_entropy",
+            "amount": "opp_entropy_norm_5",
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_v10_error_boost",
+      "description": "Broad post-error refresh with newcomer priors boosted after low recent accuracy.",
+      "hypo_transitions_kwargs": {
+        "init_num": 12,
+        "max_active_hypotheses": 18,
+        "post_to_prior": {
+          "method": "error_boost_newcomers",
+          "window": 12,
+          "padding": "chance",
+          "feedback_mode": "exact",
+          "base_newcomer_mass": 0.06,
+          "max_newcomer_mass": 0.65
+        },
+        "strategies": [
+          {
+            "label": "retain_core",
+            "amount": "fixed",
+            "value": 2,
+            "method": "top_posterior",
+            "pool": "active"
+          },
+          {
+            "label": "post_error_refresh",
+            "amount": "post_error_explore_8",
+            "method": "random",
+            "pool": "inactive",
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_v10_low_posterior_jump",
+      "description": "Jumpy exploration that can sample low-posterior inactive hypotheses after errors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 12,
+        "max_active_hypotheses": 18,
+        "post_to_prior": {
+          "method": "stochastic_reset",
+          "reset_probability": 0.25,
+          "newcomer_mass": 0.60,
+          "concentration": 0.7
+        },
+        "strategies": [
+          {
+            "label": "retain_temp",
+            "amount": "entropy_norm_7",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "temperature": 3.0
+          },
+          {
+            "label": "low_post_jump",
+            "amount": "post_error_explore_7",
+            "method": "low_posterior",
+            "pool": "inactive",
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "min_count": 1,
+            "gamma": 0.8
+          },
+          {
+            "label": "forced_explore",
+            "amount": "fixed",
+            "value": 1,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_v10_volatility_wide_refresh",
+      "description": "Latent-volatility refresh for large hypothesis spaces with error-boosted newcomer priors.",
+      "hypo_transitions_kwargs": {
+        "init_num": 14,
+        "max_active_hypotheses": 20,
+        "latent_volatility_base": 0.01,
+        "latent_volatility_error_gain": 0.50,
+        "latent_volatility_low_accuracy_gain": 0.25,
+        "latent_volatility_threshold": 0.70,
+        "latent_volatility_window": 12,
+        "latent_volatility_decay": 0.70,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "post_to_prior": {
+          "method": "error_boost_newcomers",
+          "window": 12,
+          "padding": "chance",
+          "feedback_mode": "exact",
+          "base_newcomer_mass": 0.08,
+          "max_newcomer_mass": 0.75,
+          "volatility_gain": 0.60
+        },
+        "strategies": [
+          {
+            "label": "retain_entropy",
+            "amount": "entropy_norm_8",
+            "method": "epsilon_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "epsilon": 0.30
+          },
+          {
+            "label": "volatility_refresh",
+            "amount": "latent_volatility_9",
+            "method": "random",
+            "pool": "inactive",
+            "min_count": 1,
+            "threshold": 0.05,
+            "power": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "c23_v10_aggressive_random_reset",
+      "description": "High-capacity stochastic-reset strategy for abrupt shifts in active hypotheses.",
+      "hypo_transitions_kwargs": {
+        "init_num": 16,
+        "max_active_hypotheses": 22,
+        "post_to_prior": {
+          "method": "stochastic_reset",
+          "reset_probability": 0.40,
+          "newcomer_mass": 0.70,
+          "concentration": 0.5
+        },
+        "strategies": [
+          {
+            "label": "retain_temp",
+            "amount": "entropy_norm_8",
+            "method": "temperature_posterior",
+            "pool": "active",
+            "min_count": 2,
+            "temperature": 4.0
+          },
+          {
+            "label": "drop_refresh",
+            "amount": "opp_accuracy_delta_9",
+            "method": "random",
+            "pool": "inactive",
+            "window": 12,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "scale": 0.20
+          },
+          {
+            "label": "steady_explore",
+            "amount": "fixed",
+            "value": 2,
+            "method": "random",
+            "pool": "inactive"
+          }
+        ]
+      }
+    }
+  ]
+}

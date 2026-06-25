@@ -1088,6 +1088,27 @@ def _recent_feedback_accuracy(feedback: np.ndarray, trial_idx: int, window: int)
     return float(np.clip(np.mean(recent), 0.0, 1.0))
 
 
+def exponential_smooth_curve(
+    values: Sequence[float] | np.ndarray,
+    *,
+    alpha: float,
+    init_value: float,
+) -> np.ndarray:
+    """Return an exponentially smoothed curve aligned to the input trials."""
+    if not np.isfinite(alpha) or alpha <= 0.0 or alpha > 1.0:
+        raise ValueError(f"alpha must be in (0, 1], got {alpha!r}.")
+    if not np.isfinite(init_value):
+        raise ValueError(f"init_value must be finite, got {init_value!r}.")
+    arr = np.asarray(values, dtype=float).reshape(-1)
+    state = float(init_value)
+    out = np.empty(arr.shape[0], dtype=float)
+    for idx, value in enumerate(arr):
+        if np.isfinite(value):
+            state = float(alpha) * float(value) + (1.0 - float(alpha)) * state
+        out[idx] = state
+    return out
+
+
 def _apply_output_noise_to_category_prob(
     category_prob: np.ndarray,
     *,
@@ -1353,6 +1374,19 @@ def _compute_single_mode_metrics(
                 float(np.sqrt(np.sum(valid_target_majority * (1 - valid_target_majority))) / denom)
             )
 
+    exp_alpha = float(2.0 / (float(window_size) + 1.0))
+    chance_level = 1.0 / float(max(1, n_cats))
+    exp_true_acc = exponential_smooth_curve(true_acc, alpha=exp_alpha, init_value=chance_level)
+    exp_pred_acc = exponential_smooth_curve(pred_acc, alpha=exp_alpha, init_value=chance_level)
+    exp_true_family_acc = exponential_smooth_curve(true_family_acc, alpha=exp_alpha, init_value=chance_level)
+    exp_pred_family_acc = exponential_smooth_curve(pred_family_acc, alpha=exp_alpha, init_value=chance_level)
+    exp_target_majority_acc = exponential_smooth_curve(target_majority_acc, alpha=exp_alpha, init_value=chance_level)
+    exp_pred_target_majority_acc = exponential_smooth_curve(
+        pred_target_majority_acc,
+        alpha=exp_alpha,
+        init_value=chance_level,
+    )
+
     family_error = np.abs(np.array(sliding_true_family_acc) - np.array(sliding_pred_family_acc))
     finite_family_error = family_error[np.isfinite(family_error)]
     family_mean_error = float(np.mean(finite_family_error)) if finite_family_error.size else float("nan")
@@ -1394,11 +1428,18 @@ def _compute_single_mode_metrics(
         "sliding_true_family_acc": np.asarray(sliding_true_family_acc, dtype=float),
         "sliding_pred_family_acc": np.asarray(sliding_pred_family_acc, dtype=float),
         "sliding_pred_family_acc_std": np.asarray(sliding_pred_family_std, dtype=float),
+        "exp_true_acc": exp_true_acc,
+        "exp_pred_acc": exp_pred_acc,
+        "exp_true_family_acc": exp_true_family_acc,
+        "exp_pred_family_acc": exp_pred_family_acc,
+        "exp_accuracy_alpha": float(exp_alpha),
         "target_majority_acc": target_majority_acc,
         "pred_target_majority_acc": pred_target_majority_acc,
         "sliding_target_majority_acc": np.asarray(sliding_target_majority_acc, dtype=float),
         "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
         "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
+        "exp_target_majority_acc": exp_target_majority_acc,
+        "exp_pred_target_majority_acc": exp_pred_target_majority_acc,
         "family_mean_error": family_mean_error,
         "pred_category_probs": pred_category_probs,
         "output_lapse": output_lapse_values,
