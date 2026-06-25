@@ -136,3 +136,49 @@ def test_choice_brier_is_recorded_even_when_not_objective() -> None:
     loss_summary = result.statistics_summary["loss"]
     assert np.isclose(loss_summary["choice_brier"]["mean"], 0.13)
     assert loss_summary["choice_brier"]["count"] == 2
+
+
+def test_loss_summary_records_best10_and_best25_lower_tail_means() -> None:
+    runs = []
+    for value in (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80):
+        runs.append(
+            SingleRunResult(
+                params={},
+                mean_error=value,
+                metrics_by_mode={
+                    "prior_t": {
+                        "loss_metric": "choice_brier",
+                        "mean_error": value,
+                        "loss_values": {
+                            "choice_brier": value,
+                            "accuracy_curve_berhu": value * 2.0,
+                        },
+                    }
+                },
+                selection_prediction_mode="prior_t",
+                loss_metric="choice_brier",
+                loss_delta=None,
+            )
+        )
+
+    result = aggregate_simulation_runs(
+        runs,
+        params={},
+        subject_id=1,
+        condition=1,
+        window_size=2,
+        selection_prediction_mode="prior_t",
+        simulation_repeats=len(runs),
+        simulation_point_seed=123,
+        keep_logs=False,
+    )
+
+    choice_summary = result.statistics_summary["loss"]["choice_brier"]
+    berhu_summary = result.statistics_summary["loss"]["accuracy_curve_berhu"]
+
+    assert np.isclose(choice_summary["best10_mean"], 0.10)
+    assert choice_summary["best10_count"] == 1
+    assert np.isclose(choice_summary["best25_mean"], 0.15)
+    assert np.isclose(choice_summary["best25-mean"], 0.15)
+    assert choice_summary["best25_count"] == 2
+    assert np.isclose(berhu_summary["best25_mean"], 0.30)

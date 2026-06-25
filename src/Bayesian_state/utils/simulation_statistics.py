@@ -753,10 +753,20 @@ def _loss_metric_summary_from_runs(
         arr = np.asarray(values, dtype=float)
         if arr.size == 0:
             continue
+        ordered = np.sort(arr)
+        best10_count = max(1, int(np.ceil(ordered.size * 0.10)))
+        best25_count = max(1, int(np.ceil(ordered.size * 0.25)))
+        best10_mean = float(np.mean(ordered[:best10_count]))
+        best25_mean = float(np.mean(ordered[:best25_count]))
         summary[name] = {
             "mean": float(np.mean(arr)),
             "median": float(np.median(arr)),
             "best": float(np.min(arr)),
+            "best10_mean": best10_mean,
+            "best10_count": int(best10_count),
+            "best25_mean": best25_mean,
+            "best25-mean": best25_mean,
+            "best25_count": int(best25_count),
             "q10": float(np.quantile(arr, 0.10)),
             "std": float(np.std(arr)) if arr.size > 1 else 0.0,
             "count": int(arr.size),
