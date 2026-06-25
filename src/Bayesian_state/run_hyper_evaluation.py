@@ -157,7 +157,10 @@ def infer_secondary_config(hyper_config_path: Path | None) -> Mapping[str, Any]:
     if hyper_config_path is None or not hyper_config_path.is_file():
         return {}
     cfg = load_yaml(hyper_config_path)
-    return _as_mapping(cfg.get("secondary_selection"))
+    statistics_config = _as_mapping(cfg.get("statistics_config"))
+    if statistics_config:
+        return statistics_config
+    return _as_mapping(cfg.get("acceptance_selection"))
 
 
 def _float_or_default(value: Any, default: float) -> float:
@@ -242,8 +245,8 @@ def parse_args() -> argparse.Namespace:
         default="hyper_selection_error",
         help="Metric column used to define the near-optimal plateau",
     )
-    parser.add_argument("--plateau-abs-tol", type=float, help="Defaults to hyper config secondary_selection")
-    parser.add_argument("--plateau-rel-tol", type=float, help="Defaults to hyper config secondary_selection")
+    parser.add_argument("--plateau-abs-tol", type=float, help="Defaults to hyper config statistics_config/acceptance_selection")
+    parser.add_argument("--plateau-rel-tol", type=float, help="Defaults to hyper config statistics_config/acceptance_selection")
     parser.add_argument(
         "--selection-objectives",
         type=parse_csv_strings,
@@ -251,8 +254,8 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated minimization objectives for candidate diagnostics",
     )
     parser.add_argument("--selection-primary-metric", default="hyper_selection_error")
-    parser.add_argument("--selection-primary-abs-tol", type=float, help="Defaults to hyper config secondary_selection")
-    parser.add_argument("--selection-primary-rel-tol", type=float, help="Defaults to hyper config secondary_selection")
+    parser.add_argument("--selection-primary-abs-tol", type=float, help="Defaults to hyper config statistics_config/acceptance_selection")
+    parser.add_argument("--selection-primary-rel-tol", type=float, help="Defaults to hyper config statistics_config/acceptance_selection")
 
     parser.add_argument("--accuracy-repeats", type=int, default=256)
     parser.add_argument("--accuracy-max-candidates-per-subject", type=int, default=12)

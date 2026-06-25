@@ -11,8 +11,18 @@ import yaml
 
 import src.Bayesian_state.utils.hyper_cd_optimizer as cd_optimizer
 from src.Bayesian_state.utils.hyper_cd_optimizer import CombinationResult, HyperCDOptimizer
+from src.Bayesian_state.utils.hyper_objectives import (
+    compare_objective_values,
+    passes_anchor_guard,
+    resolve_objective_order,
+    select_best_by_objectives,
+    update_anchor_values,
+)
 from src.Bayesian_state.run_hyper_then_simulation import build_hyper_selector
 from src.Bayesian_state.utils.optimizer_common import SingleRunResult
+
+OBJECTIVE_PATH = "simulation.mean_error"
+SECONDARY_OBJECTIVE_PATH = "statistics.scores.history_kernel.value"
 
 
 @pytest.fixture
@@ -36,6 +46,61 @@ def _write_yaml(path: Path, payload: dict) -> None:
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _objective_order(path: str = OBJECTIVE_PATH) -> list[dict]:
+    return [
+        {
+            "path": path,
+            "rel_tolerance": 0.0,
+            "abs_tolerance": 0.0,
+            "scale_floor": 0.0,
+            "anchor_guard": True,
+        }
+    ]
+
+
+def _subject_metrics(score: float, extra_objectives: dict | None = None) -> dict:
+    values = {OBJECTIVE_PATH: score}
+    if extra_objectives:
+        values.update(extra_objectives)
+    return {
+        "simulation": {
+            "mean_error": score,
+            "best_error": score,
+            "std_error": 0.0,
+            "simulation_repeats": 1,
+        },
+        "objectives": {"values": values},
+    }
+
+
+def _cd_result(
+    *,
+    stage: str,
+    combination_index: int,
+    point: dict,
+    score: float,
+    restart_id: int,
+    iter_id: int,
+    coordinate: str,
+    extra_objectives: dict | None = None,
+) -> CombinationResult:
+    objective_values = {OBJECTIVE_PATH: score}
+    if extra_objectives:
+        objective_values.update(extra_objectives)
+    return CombinationResult(
+        stage=stage,
+        combination_index=combination_index,
+        hyperparams=dict(point),
+        aggregated_error=score,
+        objective_values=objective_values,
+        subject_metrics={1: _subject_metrics(score, extra_objectives)},
+        hyper_candidate_seed=100 + combination_index,
+        restart_id=restart_id,
+        iter_id=iter_id,
+        coordinate=coordinate,
+    )
 
 
 def _strategy_candidates_payload() -> dict:
@@ -65,6 +130,129 @@ def _strategy_candidates_payload() -> dict:
     }
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("selection_metric", "simulation.mean_error"),
+        ("secondary_selection", {"enabled": True}),
+        ("simulation_statistics", {"enabled": True}),
+        ("tie_break_metric", "statistics.loss.choice_brier.mean"),
+        ("acceptance_selection", {"enabled": True}),
+    ],
+)
+def test_objective_config_rejects_legacy_hyper_keys(tmp_path: Path, key: str, value: object) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    cfg[key] = value
+    with pytest.raises(ValueError, match="Legacy hyper config keys"):
+        HyperCDOptimizer(cfg, cd_path)
+
+
+def test_objective_comparator_uses_priority_and_raw_tiebreak() -> None:
+    specs = resolve_objective_order(
+        {
+            "objective_order": [
+                {
+                    "path": OBJECTIVE_PATH,
+                    "rel_tolerance": 0.03,
+                    "abs_tolerance": 0.0,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+                {
+                    "path": SECONDARY_OBJECTIVE_PATH,
+                    "rel_tolerance": 0.0,
+                    "abs_tolerance": 0.01,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+            ]
+        }
+    )
+
+    assert compare_objective_values(
+        {OBJECTIVE_PATH: 0.10, SECONDARY_OBJECTIVE_PATH: 10.0},
+        {OBJECTIVE_PATH: 0.20, SECONDARY_OBJECTIVE_PATH: 0.0},
+        specs,
+    ) < 0
+    assert compare_objective_values(
+        {OBJECTIVE_PATH: 0.101, SECONDARY_OBJECTIVE_PATH: 0.10},
+        {OBJECTIVE_PATH: 0.100, SECONDARY_OBJECTIVE_PATH: 0.20},
+        specs,
+    ) < 0
+    assert compare_objective_values(
+        {OBJECTIVE_PATH: 0.101, SECONDARY_OBJECTIVE_PATH: 0.199},
+        {OBJECTIVE_PATH: 0.100, SECONDARY_OBJECTIVE_PATH: 0.200},
+        specs,
+    ) > 0
+
+
+def test_objective_batch_selection_is_restart_order_independent() -> None:
+    specs = resolve_objective_order(
+        {
+            "objective_order": [
+                {
+                    "path": OBJECTIVE_PATH,
+                    "rel_tolerance": 0.03,
+                    "abs_tolerance": 0.0,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+                {
+                    "path": SECONDARY_OBJECTIVE_PATH,
+                    "rel_tolerance": 0.0,
+                    "abs_tolerance": 0.0,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+            ]
+        }
+    )
+    rows = [
+        {"id": 1, "values": {OBJECTIVE_PATH: 0.100, SECONDARY_OBJECTIVE_PATH: 0.40}},
+        {"id": 2, "values": {OBJECTIVE_PATH: 0.102, SECONDARY_OBJECTIVE_PATH: 0.10}},
+        {"id": 3, "values": {OBJECTIVE_PATH: 0.130, SECONDARY_OBJECTIVE_PATH: 0.00}},
+    ]
+
+    selected_a, _ = select_best_by_objectives(rows, lambda row: row["values"], specs, tie_breaker=lambda row: row["id"])
+    selected_b, _ = select_best_by_objectives(list(reversed(rows)), lambda row: row["values"], specs, tie_breaker=lambda row: row["id"])
+
+    assert selected_a["id"] == 2
+    assert selected_b["id"] == 2
+
+
+def test_objective_anchor_guard_rejects_drift_and_updates_only_accepted() -> None:
+    specs = resolve_objective_order(
+        {
+            "objective_order": [
+                {
+                    "path": OBJECTIVE_PATH,
+                    "rel_tolerance": 0.0,
+                    "abs_tolerance": 0.01,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+                {
+                    "path": SECONDARY_OBJECTIVE_PATH,
+                    "rel_tolerance": 0.0,
+                    "abs_tolerance": 0.02,
+                    "scale_floor": 0.0,
+                    "anchor_guard": True,
+                },
+            ]
+        }
+    )
+    anchor = {OBJECTIVE_PATH: 0.10, SECONDARY_OBJECTIVE_PATH: 0.20}
+    rejected = {OBJECTIVE_PATH: 0.105, SECONDARY_OBJECTIVE_PATH: 0.25}
+    accepted = {OBJECTIVE_PATH: 0.095, SECONDARY_OBJECTIVE_PATH: 0.19}
+
+    assert passes_anchor_guard(rejected, anchor, specs)[0] is False
+    updated = update_anchor_values(anchor, accepted, specs)
+
+    assert updated[OBJECTIVE_PATH] == pytest.approx(0.095)
+    assert updated[SECONDARY_OBJECTIVE_PATH] == pytest.approx(0.19)
+
+
 def _build_min_cd_config(tmp_path: Path) -> Path:
     sim_cfg = {
         "engine_config": {
@@ -82,7 +270,7 @@ def _build_min_cd_config(tmp_path: Path) -> Path:
         "base_sim_config_path": "sim.yaml",
         "subjects": [1],
         "output_dir": "./out_cd",
-        "selection_metric": "simulation.mean_error",
+        "objective_order": _objective_order(),
         "save_level": "compact",
         "hyper_base_seed": 42,
         "cd": {
@@ -124,13 +312,11 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
         score = float(point.get("simulation.window_size", 0)) + float(
             point.get("engine.modules.beta_mod.kwargs.beta_init", 0)
         )
-        return CombinationResult(
+        return _cd_result(
             stage=stage_name,
             combination_index=combination_index,
-            hyperparams=dict(point),
-            aggregated_error=score,
-            subject_metrics={1: {"mean_error": score, "best_error": score, "std_error": 0.0, "simulation_repeats": 1}},
-            hyper_candidate_seed=100 + combination_index,
+            point=point,
+            score=score,
             restart_id=restart_id,
             iter_id=iter_id,
             coordinate=coordinate,
@@ -190,8 +376,8 @@ def test_cd_outputs_combination_schema(tmp_path: Path, monkeypatch) -> None:
     assert subject_best["schema_version"] == "hyper_result.v2"
     assert "provenance" in subject_best
     assert "combination_index" in subject_best["selection"]["candidate"]
-    assert "primary" in subject_best["selection"]
-    assert "final" in subject_best["selection"]
+    assert subject_best["selection"]["method"] == "objective_order"
+    assert "objectives" in subject_best["selection"]
     assert subject_best["hyper"]["backend"] == "hyper_cd"
     assert first_line["schema_version"] == "hyper_result.v2"
     assert "aggregate" in first_line["metrics_summary"]
@@ -256,13 +442,11 @@ def test_cd_coordinate_values_flatten_value_repeat_jobs(tmp_path: Path, monkeypa
     def _fake_eval(stage_name, point, stage_sim_cfg, subjects, restart_id, iter_id, coordinate, combination_index):
         seen.append((int(combination_index), int(stage_sim_cfg["n_jobs"]), int(point["x"])))
         score = float(point["x"])
-        return CombinationResult(
+        return _cd_result(
             stage=stage_name,
             combination_index=combination_index,
-            hyperparams=dict(point),
-            aggregated_error=score,
-            subject_metrics={1: {"mean_error": score, "best_error": score, "std_error": 0.0, "simulation_repeats": 4}},
-            hyper_candidate_seed=100 + combination_index,
+            point=point,
+            score=score,
             restart_id=restart_id,
             iter_id=iter_id,
             coordinate=coordinate,
@@ -555,13 +739,11 @@ def test_cd_shuffle_per_restart_reuses_coordinate_order_within_restart(tmp_path:
     opt = HyperCDOptimizer(cfg, cd_path)
 
     def _fake_eval(stage_name, point, stage_sim_cfg, subjects, restart_id, iter_id, coordinate, combination_index):
-        return CombinationResult(
+        return _cd_result(
             stage=stage_name,
             combination_index=combination_index,
-            hyperparams=dict(point),
-            aggregated_error=1.0,
-            subject_metrics={1: {"mean_error": 1.0, "best_error": 1.0, "std_error": 0.0, "simulation_repeats": 1}},
-            hyper_candidate_seed=100 + combination_index,
+            point=point,
+            score=1.0,
             restart_id=restart_id,
             iter_id=iter_id,
             coordinate=coordinate,

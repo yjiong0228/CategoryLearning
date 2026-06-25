@@ -1,6 +1,6 @@
 # Single-stage coordinate-descent hyperparameter optimization for cond1.
 # v6 keeps choice_brier / best10 as the primary hyper-CD objective, then applies
-# a memory-sensitive secondary selection step: among candidates whose primary
+# a memory-sensitive secondary objective: among candidates whose primary
 # choice loss is close to the best candidate, select the one whose feedback-history
 # kernel best matches the subject's empirical history kernel.
 # This keeps gamma/w0 as individual-level memory traits, but constrains them via
@@ -10,14 +10,23 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v6
-selection_metric: simulation.best10_mean_error
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.05
+    abs_tolerance: 0.015
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.history_kernel.value
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
 save_level: compact
 hyper_base_seed: 42
 
-# Final hyperparameter selection is two-tiered:
-# 1. Keep candidates with choice-Brier best10 error close to the best candidate.
-# 2. Within that gate, minimize feedback-history-kernel mismatch.
-secondary_selection:
+# objective_order compares choice-Brier best10 first, then feedback-history-kernel
+# mismatch. statistics_config controls how the history-kernel score is computed.
+statistics_config:
   enabled: true
   mode: history_kernel
   primary_tolerance_abs: 0.015

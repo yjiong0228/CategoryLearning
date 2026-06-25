@@ -1,6 +1,6 @@
 # Single-stage coordinate-descent hyperparameter optimization for cond1.
 # v5 keeps choice_brier / best10 as the primary hyper-CD objective, then applies
-# a formal secondary selection step: among candidates whose primary choice loss
+# a formal secondary objective: among candidates whose primary choice loss
 # is close to the best candidate, select the one whose sampled trajectories best
 # match the observed accuracy-curve shape.
 # Compared with v4, the memory grid is theory-constrained because gamma/w0 were
@@ -10,16 +10,25 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v5
-selection_metric: simulation.best10_mean_error
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.08
+    abs_tolerance: 0.02
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.accuracy_shape.value
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
 save_level: compact
 hyper_base_seed: 42
 
-# Final hyperparameter selection is two-tiered:
-# 1. Keep candidates with choice-Brier best10 error close to the best candidate.
-# 2. Within that gate, minimize:
-#    accuracy_mae + 0.03 * |log(pred_vol / true_vol)| + 0.02 * (1 - slope_agree)
-secondary_selection:
+# objective_order compares choice-Brier best10 first, then accuracy-shape
+# mismatch. statistics_config controls how the accuracy-shape score is computed.
+statistics_config:
   enabled: true
+  mode: accuracy_shape
   primary_tolerance_abs: 0.02
   primary_tolerance_rel: 0.08
   run_choice_fraction: 0.10

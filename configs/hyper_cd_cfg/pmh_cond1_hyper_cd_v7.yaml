@@ -1,6 +1,6 @@
 # Single-stage coordinate-descent hyperparameter optimization for cond1.
 # v7 keeps choice_brier / best10 as the primary hyper-CD objective, then applies
-# a rank-based multiobjective secondary selection step. Within a near-optimal
+# a rank-based multiobjective secondary objective. Within a near-optimal
 # choice-loss gate, candidates are ranked jointly by:
 #   1. global/local accuracy-curve shape,
 #   2. feedback-history kernel,
@@ -13,15 +13,23 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v7
-selection_metric: simulation.best10_mean_error
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.05
+    abs_tolerance: 0.015
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.distribution.multiobjective.score
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
 save_level: compact
 hyper_base_seed: 42
 
-# Final hyperparameter selection is two-tiered:
-# 1. Keep candidates with choice-Brier best10 error close to the best candidate.
-# 2. Within that gate, convert each secondary objective to a percentile rank
-#    and minimize the weighted mean rank. This avoids raw-score scale dominance.
-secondary_selection:
+# objective_order compares choice-Brier best10 first, then a behavioral
+# multiobjective score. statistics_config controls how behavior scores are computed.
+statistics_config:
   enabled: true
   mode: multiobjective
   primary_tolerance_abs: 0.015
@@ -72,7 +80,7 @@ cd:
 hyperparam_space:
   # Recency-dominant memory with weak long-term anchoring.
   # Keep the v6 constrained grid so v7 isolates the effect of multiobjective
-  # secondary selection rather than changing the search space at the same time.
+  # objective_order comparison rather than changing the search space at the same time.
   engine.modules.memory_mod.kwargs:
     values_product:
       gamma: [0.5, 0.6, 0.7, 0.8]

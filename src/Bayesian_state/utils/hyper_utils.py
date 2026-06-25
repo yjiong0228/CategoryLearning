@@ -319,6 +319,10 @@ def compact_metric_summary(
     if isinstance(statistics, Mapping):
         out["statistics"] = deepcopy(dict(statistics))
 
+    objectives = metrics.get("objectives")
+    if isinstance(objectives, Mapping):
+        out["objectives"] = deepcopy(dict(objectives))
+
     selection = metrics.get("selection")
     if isinstance(selection, Mapping):
         if isinstance(selection.get("primary"), Mapping):
@@ -331,6 +335,15 @@ def compact_metric_summary(
                 }
             }
     return out
+
+
+def _objective_values(metrics: Mapping[str, Any]) -> Mapping[str, Any]:
+    objectives = metrics.get("objectives")
+    if isinstance(objectives, Mapping):
+        values = objectives.get("values")
+        if isinstance(values, Mapping):
+            return values
+    return {}
 
 
 def _selection_primary_value(metrics: Mapping[str, Any]) -> Any:
@@ -347,6 +360,7 @@ def combination_metrics_summary(
     subject_metrics: Mapping[int, Mapping[str, Any]] | None,
     *,
     aggregated_error: float | None = None,
+    objective_values: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(subject_metrics, Mapping) or not subject_metrics:
         return {}
@@ -355,24 +369,46 @@ def combination_metrics_summary(
         for subject_id, metrics in subject_metrics.items()
         if isinstance(metrics, Mapping)
     }
-    values = []
-    for metrics in subject_metrics.values():
-        if not isinstance(metrics, Mapping):
-            continue
-        value = _selection_primary_value(metrics)
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            continue
-        if math.isfinite(numeric):
-            values.append(numeric)
+    if objective_values is None:
+        values = []
+        for metrics in subject_metrics.values():
+            if not isinstance(metrics, Mapping):
+                continue
+            value = _selection_primary_value(metrics)
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric):
+                values.append(numeric)
+        aggregate_value = aggregated_error
+        if aggregate_value is None and values:
+            aggregate_value = sum(values) / len(values)
+        return {
+            "aggregate": {
+                "subject_count": int(len(subject_summaries)),
+                "selection": {
+                    "value": aggregate_value,
+                },
+            },
+            "subjects": subject_summaries,
+        }
+
     aggregate_value = aggregated_error
-    if aggregate_value is None and values:
-        aggregate_value = sum(values) / len(values)
+    if aggregate_value is None:
+        first_value = next(iter(objective_values.values()), None)
+        try:
+            aggregate_value = float(first_value)
+        except (TypeError, ValueError):
+            aggregate_value = None
     return {
         "aggregate": {
             "subject_count": int(len(subject_summaries)),
+            "objectives": {
+                "values": deepcopy(dict(objective_values or {})),
+            },
             "selection": {
+                "method": "objective_order",
                 "value": aggregate_value,
             },
         },
@@ -425,12 +461,14 @@ def build_subject_best_payload(
     subject_id: int,
     backend: str,
     hyper_base_seed: int,
-    selection_metric: str,
     best_stage: str,
     best_combination_index: int,
     best_hyperparams: Mapping[str, Any],
     aggregated_error: float,
     hyper_candidate_seed: int,
+    selection_metric: str | None = None,
+    objective_order: Sequence[Mapping[str, Any]] | None = None,
+    objective_values: Mapping[str, Any] | None = None,
     metrics: Mapping[str, Any] | None = None,
     search_context: Mapping[str, Any] | None = None,
     artifacts: Mapping[str, Any] | None = None,
@@ -440,6 +478,60 @@ def build_subject_best_payload(
     metric_summary = compact_metric_summary(metrics, include_sample_errors=True)
     simulation = deepcopy(metric_summary.get("simulation") or {})
     statistics = deepcopy(metric_summary.get("statistics") or {})
+    final_context = {}
+    if isinstance(search_context, Mapping):
+        maybe_final = search_context.get("final_selection")
+        if isinstance(maybe_final, Mapping):
+            final_context = dict(maybe_final)
+
+    using_objectives = objective_order is not None or objective_values is not None
+    if using_objectives:
+        objective_payload = {
+            "order": deepcopy(list(objective_order or [])),
+            "values": deepcopy(dict(objective_values or {})),
+        }
+        metadata = {
+            key: deepcopy(value)
+            for key, value in metric_summary.items()
+            if key not in {"simulation", "statistics", "selection", "objectives"}
+        }
+        payload: dict[str, Any] = {
+            "schema_version": HYPER_RESULT_SCHEMA_VERSION,
+            "result_type": "hyper_subject_best",
+            "subject_id": int(subject_id),
+            "hyper": {
+                "backend": str(backend),
+                "hyper_base_seed": int(hyper_base_seed),
+            },
+            "selected": {
+                "best_hyperparams": deepcopy(dict(best_hyperparams)),
+                "best_params": compact_hyperparams(best_hyperparams),
+            },
+            "selection": {
+                "method": final_context.get("selected_by", "objective_order"),
+                "value": aggregated_error,
+                "objectives": objective_payload,
+                "candidate": {
+                    "stage": str(best_stage),
+                    "combination_index": int(best_combination_index),
+                    "aggregated_error": float(aggregated_error),
+                    "hyper_candidate_seed": int(hyper_candidate_seed),
+                },
+            },
+            "simulation": simulation,
+            "statistics": statistics,
+            "objectives": objective_payload,
+            "metadata": metadata,
+            "provenance": dict(provenance or {}),
+            "search_context": _clean_mapping(dict(search_context or {})),
+            "artifacts": dict(artifacts or {}),
+        }
+        if full_subject_metrics is not None:
+            payload["details"] = {"subject_metrics": full_subject_metrics}
+        return to_builtin(payload)
+
+    if selection_metric is None:
+        raise ValueError("selection_metric is required when objective_order is not provided.")
     metric_selection = deepcopy(metric_summary.get("selection") or {})
     primary_selection = deepcopy(metric_selection.get("primary") or {})
     if not primary_selection:
@@ -452,11 +544,6 @@ def build_subject_best_payload(
         if primary_selection.get("value") is not None
         else aggregated_error
     )
-    final_context = {}
-    if isinstance(search_context, Mapping):
-        maybe_final = search_context.get("final_selection")
-        if isinstance(maybe_final, Mapping):
-            final_context = dict(maybe_final)
     final_selection = {
         "method": final_context.get("selected_by", "primary_selection_metric"),
         "metric": final_context.get(
@@ -520,7 +607,8 @@ def build_root_best_payload(
     output_dir: Path,
     base_sim_config_path: Path,
     hyper_base_seed: int,
-    selection_metric: str,
+    selection_metric: str | None = None,
+    objective_order: Sequence[Mapping[str, Any]] | None = None,
     save_level: str,
     subjects: Sequence[int],
     per_subject_best: Mapping[str, Any],
@@ -538,7 +626,6 @@ def build_root_best_payload(
             "hyper_base_seed": int(hyper_base_seed),
         },
         "selection": {
-            "metric": str(selection_metric),
             "save_level": str(save_level),
         },
         "provenance": build_hyper_provenance(
@@ -554,6 +641,19 @@ def build_root_best_payload(
             sorted(((str(key), value) for key, value in (per_subject_outputs or {}).items()), key=lambda item: int(item[0]))
         ),
     }
+    if objective_order is not None:
+        payload["selection"].update(
+            {
+                "method": "objective_order",
+                "objectives": {
+                    "order": deepcopy(list(objective_order)),
+                },
+            }
+        )
+    elif selection_metric is not None:
+        payload["selection"]["metric"] = str(selection_metric)
+    else:
+        raise ValueError("Either selection_metric or objective_order is required.")
     return to_builtin(payload)
 
 

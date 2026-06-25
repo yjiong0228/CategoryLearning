@@ -386,9 +386,7 @@ def main() -> None:
         representative_choice_fraction = float(
             subject_cfg.get("representative_choice_fraction", 0.10)
         )
-        statistics_config = subject_cfg.get("simulation_statistics")
-        if statistics_config is None:
-            statistics_config = subject_cfg.get("secondary_selection")
+        statistics_config = subject_cfg.get("statistics_config")
 
         runner = StateModelSimulationRunner(
             engine_config=engine_config,

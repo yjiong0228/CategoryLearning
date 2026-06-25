@@ -7,7 +7,12 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [101, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v3
-selection_metric: simulation.best10_mean_error
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.03
+    abs_tolerance: 0.002
+    scale_floor: 0.05
+    anchor_guard: true
 save_level: compact
 hyper_base_seed: 42
 

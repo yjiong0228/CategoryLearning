@@ -12,6 +12,8 @@ The current optimization utilities support the new hyper-selection plus fixed-si
   Config-resolution layer. It owns YAML loading, path resolution, subject selection, engine-config resolution, prediction/loss/window parsing, JSON serialization, and stream-reference helpers.
 - `hyper_utils.py`
   Shared hyper-search utilities: result payload schemas, JSON-safe serialization, provenance metadata, and hyperparameter value expansion.
+- `hyper_objectives.py`
+  Objective-order utilities for hyper-CD. It parses `objective_order`, extracts `simulation.*` / `statistics.*` values, compares candidates with tolerance-aware priority ordering, and applies CD anchor guards.
 - `config_subjects.py`
   Applies subject-specific config overrides.
 - `datasets.py`
@@ -23,7 +25,7 @@ The current optimization utilities support the new hyper-selection plus fixed-si
 
 ## Expected Flow
 
-Hyper selectors in `hyper_grid_optimizer.py` and `hyper_cd_optimizer.py` score candidate hyperparameters by repeated simulation. `run_simulation.py` then repeats the final fixed model many times using the selected subjectwise hyperparameters.
+Hyper selectors in `hyper_grid_optimizer.py` and `hyper_cd_optimizer.py` score candidate hyperparameters by repeated simulation. Hyper-grid uses its `tie_break_metric` / `acceptance_selection` selection path, while hyper-CD uses the required `objective_order` config. `run_simulation.py` then repeats the final fixed model many times using the selected subjectwise hyperparameters.
 
 After final simulation, `run_model_evaluation.py` loads `subjects/subject_*.json`, expands the selected `metrics_by_mode`, and calls `ModelEval` to write plots under `model_evaluation/`. Plots that depend on run-level streams require `keep_logs: true` during simulation.
 

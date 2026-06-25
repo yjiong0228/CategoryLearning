@@ -145,7 +145,7 @@ def minimize_rank01(values: Sequence[float]) -> np.ndarray:
 def resolve_simulation_stat_config(
     raw: Any = None,
     *,
-    setting_name: str = "simulation_statistics",
+    setting_name: str = "statistics_config",
 ) -> Dict[str, Any]:
     cfg = dict(SIMULATION_STAT_DEFAULTS)
     if raw is not None:

@@ -291,18 +291,18 @@ def build_subjectwise_simulation_config(
     hyper_config_name = ""
     if isinstance(hyper_meta, Mapping):
         hyper_config_name = str(hyper_meta.get("config_path", ""))
-    selection_modes = []
+    objective_paths = []
     for subject_payload in per_subject_best.values():
         if not isinstance(subject_payload, Mapping):
             continue
-        final_selection = (
-            ((subject_payload.get("search_context") or {}).get("final_selection") or {})
-            if isinstance(subject_payload.get("search_context"), Mapping)
-            else {}
-        )
-        if isinstance(final_selection, Mapping):
-            selection_modes.append(str(final_selection.get("mode", "")))
-    if "v8" in hyper_config_name or "distribution_multiobjective" in set(selection_modes):
+        objectives = subject_payload.get("objectives")
+        if isinstance(objectives, Mapping):
+            order = objectives.get("order")
+            if isinstance(order, list):
+                for item in order:
+                    if isinstance(item, Mapping):
+                        objective_paths.append(str(item.get("path", "")))
+    if "v8" in hyper_config_name or any(path.startswith("statistics.scores.distribution") for path in objective_paths):
         generated_cfg["representative_run_selection"] = "behavior_composite"
         generated_cfg["representative_choice_fraction"] = 0.10
     hyper_base_seed = root_hyper_base_seed(hyper_best_payload)
@@ -388,18 +388,25 @@ def aggregate_per_subject_best(
             outputs["coordinate_trace"] = str(coordinate_trace)
         per_subject_outputs[str(sid)] = outputs
 
-    payload = build_root_best_payload(
-        backend=backend,
-        config_path=config_path,
-        output_dir=output_dir,
-        base_sim_config_path=optimizer.base_sim_config_path,
-        hyper_base_seed=optimizer.hyper_base_seed,
-        selection_metric=optimizer.selection_metric,
-        save_level=optimizer.save_level,
-        subjects=subjects,
-        per_subject_best=per_subject_best,
-        per_subject_outputs=per_subject_outputs,
-    )
+    root_payload_kwargs = {
+        "backend": backend,
+        "config_path": config_path,
+        "output_dir": output_dir,
+        "base_sim_config_path": optimizer.base_sim_config_path,
+        "hyper_base_seed": optimizer.hyper_base_seed,
+        "save_level": optimizer.save_level,
+        "subjects": subjects,
+        "per_subject_best": per_subject_best,
+        "per_subject_outputs": per_subject_outputs,
+    }
+    if hasattr(optimizer, "objective_order_config"):
+        root_payload_kwargs["objective_order"] = optimizer.objective_order_config
+    else:
+        selection_metric = getattr(optimizer, "selection_metric", None)
+        if selection_metric is None:
+            selection_metric = getattr(optimizer, "tie_break_metric")
+        root_payload_kwargs["selection_metric"] = selection_metric
+    payload = build_root_best_payload(**root_payload_kwargs)
     if require_all and missing:
         raise FileNotFoundError(f"Missing completed hyper results for subjects: {missing}")
     best_path = output_dir / "best_hyperparams.json"

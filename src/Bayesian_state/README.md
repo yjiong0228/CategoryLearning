@@ -36,10 +36,36 @@ Hyper configs use:
 
 - `base_sim_config_path`: base simulation YAML.
 - `hyperparam_space`: parameters to select. Supported prefixes are `engine.` and `simulation.`.
+- Hyper-CD uses `objective_order`: required ordered minimization objectives for hyperparameter selection. Each objective uses a dotted path under `simulation.*` or `statistics.*`, with `rel_tolerance`, `abs_tolerance`, `scale_floor`, and optional `anchor_guard`.
+- Hyper-CD uses `statistics_config`: optional repeated-simulation diagnostics config. It controls how `statistics.diagnostics.*` and `statistics.scores.*` are computed; it does not perform a separate final selection step.
+- Hyper-grid keeps its own selection interface with `tie_break_metric` and optional `acceptance_selection`.
 - `stages.coarse.simulation_overrides`: simulation budget/settings for coarse selection.
 - `stages.fine.simulation_overrides`: simulation budget/settings for fine selection.
 - `refine_policy.top_k`: number of coarse candidates used to build fine candidates.
 - `refine_policy.expand`: optional fine-stage expansion for selected coordinates such as `gamma` and `w0`.
+
+Example hyper objective config:
+
+```yaml
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.03
+    abs_tolerance: 0.002
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.history_kernel.value
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
+
+statistics_config:
+  enabled: true
+  mode: history_kernel
+  history_max_lag: 8
+```
+
+Hyper-CD configs no longer support `selection_metric`, `secondary_selection`, or `simulation_statistics`.
 
 Simulation configs use:
 
@@ -49,7 +75,7 @@ Simulation configs use:
 
 ## Outputs
 
-Hyper selection writes per-subject `best_hyperparams.json`, `stage_summary.json`, and `all_combinations.jsonl`. Hyper-grid also writes `accepted_hyperparams.jsonl` when posterior-predictive acceptance selection is enabled. Hyper-CD also writes `restart_summary.json` and `coordinate_trace.jsonl`.
+Hyper selection writes per-subject `best_hyperparams.json`, `stage_summary.json`, and `all_combinations.jsonl`. Hyper-grid also writes `accepted_hyperparams.jsonl` when `acceptance_selection` is enabled. Hyper-CD also writes `restart_summary.json` and `coordinate_trace.jsonl`.
 
 The workflow runner writes a generated subjectwise simulation config and then writes simulation results under `results/state-based-simulation/...`.
 

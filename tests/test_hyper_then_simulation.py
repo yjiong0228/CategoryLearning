@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from src.Bayesian_state.run_hyper_then_simulation import (
     aggregate_per_subject_best,
     build_subjectwise_simulation_config,
 )
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    root = Path(tempfile.gettempdir()) / "catelearn_test_tmp"
+    root.mkdir(exist_ok=True)
+    path = root / f"hyper_then_{uuid.uuid4().hex}"
+    path.mkdir()
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -40,7 +56,7 @@ def test_aggregate_per_subject_best_filters_to_requested_subjects(tmp_path: Path
         },
     )
     optimizer = SimpleNamespace(
-        selection_metric="simulation.mean_error",
+        tie_break_metric="simulation.mean_error",
         save_level="compact",
         base_sim_config_path=tmp_path / "sim.yaml",
         hyper_base_seed=42,
@@ -57,6 +73,7 @@ def test_aggregate_per_subject_best_filters_to_requested_subjects(tmp_path: Path
 
     payload = result["best"]
     assert payload["subjects"] == [108]
+    assert payload["selection"]["metric"] == "simulation.mean_error"
     assert list(payload["per_subject_best"].keys()) == ["108"]
     root_payload = json.loads((output_dir / "best_hyperparams.json").read_text(encoding="utf-8"))
     assert root_payload["subjects"] == [108]

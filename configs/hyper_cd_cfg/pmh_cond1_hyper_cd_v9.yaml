@@ -8,9 +8,9 @@
 # - the original v8 beta learning controls;
 # - one small, global output lapse.
 # Coordinate descent keeps the v7-style primary objective: a lower-tail
-# choice-Brier score. Final selection is then two-tiered: first keep candidates
-# with near-optimal choice fit, then prefer candidates whose behavioral
-# statistics all fall inside central posterior-predictive intervals. With
+# choice-Brier score. The objective_order compares lower-tail choice fit first, then uses the
+# posterior-predictive interval score as a secondary objective during CD search
+# and final restart selection. With
 # alpha=0.10, statistics.scores.distribution.ppc_interval.score <= 1 means all selected
 # statistics are inside their model-generated 5%-95% intervals.
 base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
@@ -18,11 +18,21 @@ base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation.yaml
 subject_range: [127, 132]
 
 output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v9
-selection_metric: simulation.best10_mean_error
+objective_order:
+  - path: simulation.best10_mean_error
+    rel_tolerance: 0.05
+    abs_tolerance: 0.015
+    scale_floor: 0.05
+    anchor_guard: true
+  - path: statistics.scores.distribution.ppc_interval.score
+    rel_tolerance: 0.05
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
 save_level: compact
 hyper_base_seed: 42
 
-secondary_selection:
+statistics_config:
   enabled: true
   mode: distribution_ppc_interval
   primary_tolerance_abs: 0.015

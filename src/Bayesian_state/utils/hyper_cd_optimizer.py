@@ -42,11 +42,19 @@ from src.Bayesian_state.utils.optimizer_common import (
     evaluate_state_model_run,
     stable_seed,
 )
-from src.Bayesian_state.utils.simulation_statistics import (
-    get_stat_value,
-    resolve_selection_metric_path,
-    resolve_simulation_stat_config,
+from src.Bayesian_state.utils.hyper_objectives import (
+    aggregate_objective_values,
+    compare_objective_values,
+    extract_subject_objective_values,
+    first_objective_value,
+    objective_order_payload,
+    passes_anchor_guard,
+    rank_by_objectives,
+    resolve_objective_order,
+    select_best_by_objectives,
+    update_anchor_values,
 )
+from src.Bayesian_state.utils.simulation_statistics import resolve_simulation_stat_config
 from src.Bayesian_state.utils.optimizer_simulation import (
     StateModelSimulationRunner,
     aggregate_simulation_runs,
@@ -54,47 +62,6 @@ from src.Bayesian_state.utils.optimizer_simulation import (
 
 
 LOWER_TAIL_FRACTION = 0.10
-DEFAULT_SELECTION_METRIC = "simulation.mean_error"
-
-MULTIOBJECTIVE_WEIGHT_DEFAULTS = {
-    "choice_error": 0.0,
-    "accuracy_shape": 1.0,
-    "history_kernel": 1.0,
-    "switch_behavior": 1.0,
-}
-
-SHAPE_DEFAULTS = {
-    "enabled": False,
-    "mode": "accuracy_shape",
-    "primary_tolerance_abs": 0.02,
-    "primary_tolerance_rel": 0.08,
-    "run_choice_fraction": 0.10,
-    "accuracy_weight": 1.0,
-    "volatility_weight": 0.03,
-    "slope_weight": 0.02,
-    "target_volatility_ratio": 1.0,
-    "min_volatility_ratio": 1e-6,
-    "history_max_lag": 8,
-    "history_ridge": 1e-3,
-    "history_standardize": True,
-    "history_kernel_weight": 1.0,
-    "history_corr_weight": 0.05,
-    "history_norm_weight": 0.0,
-    "history_min_norm": 1e-6,
-    "switch_weight": 1.0,
-    "win_stay_weight": 1.0,
-    "lose_shift_weight": 1.0,
-    "perseveration_weight": 0.5,
-    "min_switch_trials": 5,
-    "multiobjective_weights": MULTIOBJECTIVE_WEIGHT_DEFAULTS,
-    "distribution_min_run_count": 10,
-    "distribution_interval_alpha": 0.10,
-    "distribution_accept_acc_mae_max": 0.10,
-    "distribution_accept_vol_ratio_min": 0.60,
-    "distribution_accept_vol_ratio_max": 2.00,
-    "distribution_accept_history_corr_min": 0.80,
-    "distribution_accept_switch_score_max": 0.10,
-}
 
 
 @dataclass
@@ -103,6 +70,7 @@ class CombinationResult:
     combination_index: int
     hyperparams: Dict[str, Any]
     aggregated_error: float
+    objective_values: Dict[str, float]
     subject_metrics: Dict[int, Dict[str, Any]]
     hyper_candidate_seed: int
     restart_id: int
@@ -125,486 +93,25 @@ def _lower_tail_error_metrics(sample_errors: Sequence[float], fallback_error: fl
     }
 
 
-def _selection_error_value(
-    selection_metric: str,
-    subject_record: Mapping[str, Any],
-) -> float:
-    value = get_stat_value(
-        subject_record,
-        resolve_selection_metric_path(selection_metric),
-        float("inf"),
-    )
-    return _safe_float(value, float("inf"))
-
-
-def _safe_float(value: Any, default: float = float("nan")) -> float:
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return default
-    return out if np.isfinite(out) else default
-
-
-def _finite_array(values: Sequence[Any]) -> np.ndarray:
-    arr = np.asarray([_safe_float(value) for value in values], dtype=float)
-    return arr[np.isfinite(arr)]
-
-
-def _nanmean_or_nan(values: Sequence[Any]) -> float:
-    arr = _finite_array(values)
-    return float(np.mean(arr)) if arr.size else float("nan")
-
-
-def _nanmedian_or_nan(values: Sequence[Any]) -> float:
-    arr = _finite_array(values)
-    return float(np.median(arr)) if arr.size else float("nan")
-
-
-def _nanquantile_or_nan(values: Sequence[Any], q: float) -> float:
-    arr = _finite_array(values)
-    return float(np.quantile(arr, float(q))) if arr.size else float("nan")
-
-
-def _minimize_rank01(values: Sequence[float]) -> np.ndarray:
-    arr = np.asarray(values, dtype=float)
-    ranks = np.ones(arr.shape, dtype=float)
-    finite_positions = np.flatnonzero(np.isfinite(arr))
-    if finite_positions.size == 0:
-        return ranks
-    if finite_positions.size == 1:
-        ranks[finite_positions[0]] = 0.0
-        return ranks
-
-    finite_values = arr[finite_positions]
-    order = np.argsort(finite_values, kind="mergesort")
-    sorted_positions = finite_positions[order]
-    sorted_values = finite_values[order]
-    denom = float(max(1, sorted_positions.size - 1))
-    start = 0
-    while start < sorted_positions.size:
-        end = start + 1
-        while end < sorted_positions.size and sorted_values[end] == sorted_values[start]:
-            end += 1
-        rank = ((start + end - 1) / 2.0) / denom
-        ranks[sorted_positions[start:end]] = float(rank)
-        start = end
-    return ranks
-
-
-def _upper_bound_violation(value: Any, upper_bound: Any) -> float:
-    value = _safe_float(value, float("inf"))
-    upper_bound = _safe_float(upper_bound, float("nan"))
-    if not np.isfinite(value) or not np.isfinite(upper_bound):
-        return float("inf")
-    scale = max(abs(upper_bound), 1e-12)
-    return float(max(0.0, (value - upper_bound) / scale))
-
-
-def _lower_bound_violation(value: Any, lower_bound: Any) -> float:
-    value = _safe_float(value, float("nan"))
-    lower_bound = _safe_float(lower_bound, float("nan"))
-    if not np.isfinite(value) or not np.isfinite(lower_bound):
-        return float("inf")
-    scale = max(abs(lower_bound), 1e-12)
-    return float(max(0.0, (lower_bound - value) / scale))
-
-
-def _interval_violation(value: Any, lower_bound: Any, upper_bound: Any) -> float:
-    value = _safe_float(value, float("nan"))
-    lower_bound = _safe_float(lower_bound, float("nan"))
-    upper_bound = _safe_float(upper_bound, float("nan"))
-    if not (np.isfinite(value) and np.isfinite(lower_bound) and np.isfinite(upper_bound)):
-        return float("inf")
-    width = max(float(upper_bound - lower_bound), 1e-12)
-    scale = max(width, abs(value), abs(lower_bound), abs(upper_bound), 1e-12)
-    if value < lower_bound:
-        return float((lower_bound - value) / scale)
-    if value > upper_bound:
-        return float((value - upper_bound) / scale)
-    return 0.0
-
-
-def _accuracy_scalar_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
-    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
-    pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float)
-    valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
-    empty = {
-        "human_mean": float("nan"),
-        "model_mean": float("nan"),
-        "human_final": float("nan"),
-        "model_final": float("nan"),
-    }
-    if true_acc.ndim != 1 or pred_acc.ndim != 1 or true_acc.shape != pred_acc.shape:
-        return empty
-    if valid.shape != true_acc.shape:
-        return empty
-    mask = valid & np.isfinite(true_acc) & np.isfinite(pred_acc)
-    if not mask.any():
-        return empty
-    true = true_acc[mask]
-    pred = pred_acc[mask]
-    return {
-        "human_mean": float(np.mean(true)),
-        "model_mean": float(np.mean(pred)),
-        "human_final": float(true[-1]),
-        "model_final": float(pred[-1]),
-    }
-
-
-def _ppc_interval_summary(
-    rows: Sequence[Mapping[str, Any]],
-    stat_specs: Sequence[tuple[str, str, str]],
-    *,
-    alpha: float,
-) -> Dict[str, Any]:
-    alpha = float(alpha)
-    lower_q = alpha / 2.0
-    upper_q = 1.0 - lower_q
-    out: Dict[str, Any] = {
-        "score": float("inf"),
-        "accept": False,
-        "violation_count": 0,
-        "stat_count": int(len(stat_specs)),
-        "alpha": alpha,
-        "lower_quantile": lower_q,
-        "upper_quantile": upper_q,
-    }
-    tail_scores: List[float] = []
-    violations: List[float] = []
-    complete = True
-    for label, human_key, model_key in stat_specs:
-        human_values = _finite_array(row.get(human_key) for row in rows)
-        model_values = _finite_array(row.get(model_key) for row in rows)
-        if human_values.size == 0 or model_values.size == 0:
-            complete = False
-            human_value = float("nan")
-            lower = float("nan")
-            upper = float("nan")
-            median = float("nan")
-            violation = float("inf")
-            percentile = float("nan")
-            tail_score = float("inf")
-        else:
-            human_value = float(np.median(human_values))
-            lower = float(np.quantile(model_values, lower_q))
-            upper = float(np.quantile(model_values, upper_q))
-            median = float(np.median(model_values))
-            violation = _interval_violation(human_value, lower, upper)
-            percentile = float(np.mean(model_values <= human_value))
-            tail_scale = max(0.5 - lower_q, 1e-12)
-            tail_score = float(abs(percentile - 0.5) / tail_scale)
-            tail_scores.append(tail_score)
-            violations.append(violation)
-        out[f"{label}_human"] = human_value
-        out[f"{label}_model_q05"] = lower
-        out[f"{label}_model_q95"] = upper
-        out[f"{label}_model_median"] = median
-        out[f"{label}_percentile"] = percentile
-        out[f"{label}_tail_score"] = tail_score
-        out[f"{label}_violation"] = violation
-        out[f"{label}_accept"] = bool(np.isfinite(violation) and violation <= 0.0)
-
-    if complete and len(violations) == len(stat_specs):
-        out["score"] = float(max(tail_scores)) if tail_scores else float("inf")
-        out["accept"] = bool(all(value <= 0.0 for value in violations))
-        out["violation_count"] = int(sum(value > 0.0 for value in violations))
-    return out
-
-
-def _accuracy_curve_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
-    true = np.asarray(metrics.get("sliding_true_acc"), dtype=float)
-    pred = np.asarray(metrics.get("sliding_pred_acc"), dtype=float)
-    empty = {
-        "acc_mae": float("nan"),
-        "acc_rmse": float("nan"),
-        "acc_corr": float("nan"),
-        "true_vol": float("nan"),
-        "pred_vol": float("nan"),
-        "vol_ratio": float("nan"),
-        "true_range": float("nan"),
-        "pred_range": float("nan"),
-        "range_ratio": float("nan"),
-        "slope_agree": float("nan"),
-    }
-    if true.shape != pred.shape or true.size == 0:
-        return empty
-    mask = np.isfinite(true) & np.isfinite(pred)
-    if not mask.any():
-        return empty
-    true = true[mask]
-    pred = pred[mask]
-    diff = pred - true
-    true_vol = float(np.mean(np.abs(np.diff(true)))) if true.size > 1 else float("nan")
-    pred_vol = float(np.mean(np.abs(np.diff(pred)))) if pred.size > 1 else float("nan")
-    true_range = float(np.nanmax(true) - np.nanmin(true))
-    pred_range = float(np.nanmax(pred) - np.nanmin(pred))
-    if np.nanstd(true) > 1e-12 and np.nanstd(pred) > 1e-12:
-        acc_corr = float(np.corrcoef(true, pred)[0, 1])
-    else:
-        acc_corr = float("nan")
-    d_true = np.diff(true)
-    d_pred = np.diff(pred)
-    slope_mask = (np.abs(d_true) > 1e-12) & (np.abs(d_pred) > 1e-12)
-    slope_agree = (
-        float(np.mean(np.sign(d_true[slope_mask]) == np.sign(d_pred[slope_mask])))
-        if slope_mask.any()
-        else float("nan")
-    )
-    return {
-        "acc_mae": float(np.mean(np.abs(diff))),
-        "acc_rmse": float(np.sqrt(np.mean(diff * diff))),
-        "acc_corr": acc_corr,
-        "true_vol": true_vol,
-        "pred_vol": pred_vol,
-        "vol_ratio": float(pred_vol / true_vol) if true_vol > 0 else float("nan"),
-        "true_range": true_range,
-        "pred_range": pred_range,
-        "range_ratio": float(pred_range / true_range) if true_range > 0 else float("nan"),
-        "slope_agree": slope_agree,
-    }
-
-
-def _standardized_lag_kernel(
-    x: np.ndarray,
-    y: np.ndarray,
-    *,
-    ridge: float,
-    standardize: bool,
-) -> np.ndarray:
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-    if x.ndim != 2 or y.ndim != 1 or x.shape[0] != y.shape[0] or x.shape[0] <= x.shape[1]:
-        return np.full(x.shape[1] if x.ndim == 2 else 0, np.nan, dtype=float)
-    x = x - np.nanmean(x, axis=0, keepdims=True)
-    y = y - float(np.nanmean(y))
-    if standardize:
-        x_scale = np.nanstd(x, axis=0, keepdims=True)
-        x_scale = np.where(x_scale > 1e-12, x_scale, 1.0)
-        x = x / x_scale
-        y_scale = float(np.nanstd(y))
-        if y_scale > 1e-12:
-            y = y / y_scale
-    xtx = x.T @ x
-    penalty = max(0.0, float(ridge)) * np.eye(xtx.shape[0], dtype=float)
-    try:
-        return np.linalg.solve(xtx + penalty, x.T @ y)
-    except np.linalg.LinAlgError:
-        return np.linalg.pinv(xtx + penalty) @ (x.T @ y)
-
-
-def _history_kernel_metrics(
-    metrics: Mapping[str, Any],
-    *,
-    max_lag: int,
-    ridge: float,
-    standardize: bool,
-) -> Dict[str, Any]:
-    empty = {
-        "kernel_mse": float("nan"),
-        "kernel_corr": float("nan"),
-        "kernel_corr_loss": float("nan"),
-        "kernel_norm_ratio": float("nan"),
-        "human_kernel_norm": float("nan"),
-        "model_kernel_norm": float("nan"),
-        "human_kernel": [],
-        "model_kernel": [],
-        "max_lag": int(max_lag),
-        "n_rows": 0,
-    }
-    max_lag = int(max(1, max_lag))
-    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
-    pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float)
-    valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
-    if true_acc.ndim != 1 or pred_acc.ndim != 1 or true_acc.shape != pred_acc.shape:
-        return empty
-    if valid.shape != true_acc.shape or true_acc.size <= max_lag:
-        return empty
-
-    rows: List[List[float]] = []
-    human_y: List[float] = []
-    model_y: List[float] = []
-    for trial_idx in range(max_lag, true_acc.size):
-        if not bool(valid[trial_idx]):
-            continue
-        y_h = float(true_acc[trial_idx])
-        y_m = float(pred_acc[trial_idx])
-        if not (np.isfinite(y_h) and np.isfinite(y_m)):
-            continue
-        lag_values = [float(true_acc[trial_idx - lag]) for lag in range(1, max_lag + 1)]
-        if not all(np.isfinite(value) for value in lag_values):
-            continue
-        rows.append(lag_values)
-        human_y.append(y_h)
-        model_y.append(y_m)
-    if len(rows) <= max_lag:
-        return empty
-
-    x = np.asarray(rows, dtype=float)
-    human = _standardized_lag_kernel(
-        x,
-        np.asarray(human_y, dtype=float),
-        ridge=float(ridge),
-        standardize=bool(standardize),
-    )
-    model = _standardized_lag_kernel(
-        x,
-        np.asarray(model_y, dtype=float),
-        ridge=float(ridge),
-        standardize=bool(standardize),
-    )
-    if human.shape != model.shape or human.size == 0:
-        return empty
-    finite = np.isfinite(human) & np.isfinite(model)
-    if not finite.any():
-        return empty
-    human_f = human[finite]
-    model_f = model[finite]
-    diff = model_f - human_f
-    human_norm = float(np.linalg.norm(human_f))
-    model_norm = float(np.linalg.norm(model_f))
-    if human_f.size > 1 and np.nanstd(human_f) > 1e-12 and np.nanstd(model_f) > 1e-12:
-        kernel_corr = float(np.corrcoef(human_f, model_f)[0, 1])
-    else:
-        kernel_corr = float("nan")
-    corr_loss = 0.5 * (1.0 - kernel_corr) if np.isfinite(kernel_corr) else 1.0
-    return {
-        "kernel_mse": float(np.mean(diff * diff)),
-        "kernel_corr": kernel_corr,
-        "kernel_corr_loss": float(corr_loss),
-        "kernel_norm_ratio": float(model_norm / human_norm) if human_norm > 0 else float("nan"),
-        "human_kernel_norm": human_norm,
-        "model_kernel_norm": model_norm,
-        "human_kernel": [float(value) if np.isfinite(value) else None for value in human],
-        "model_kernel": [float(value) if np.isfinite(value) else None for value in model],
-        "max_lag": int(max_lag),
-        "n_rows": int(len(rows)),
-    }
-
-
-def _switch_behavior_metrics(
-    metrics: Mapping[str, Any],
-    *,
-    min_trials: int,
-) -> Dict[str, Any]:
-    empty = {
-        "switch_human": float("nan"),
-        "switch_model": float("nan"),
-        "switch_abs_diff": float("nan"),
-        "perseveration_human": float("nan"),
-        "perseveration_model": float("nan"),
-        "perseveration_abs_diff": float("nan"),
-        "win_stay_human": float("nan"),
-        "win_stay_model": float("nan"),
-        "win_stay_abs_diff": float("nan"),
-        "lose_shift_human": float("nan"),
-        "lose_shift_model": float("nan"),
-        "lose_shift_abs_diff": float("nan"),
-        "n_pairs": 0,
-        "n_win_pairs": 0,
-        "n_loss_pairs": 0,
-    }
-    required = ("pred_category_probs", "observed_choice_index", "true_acc", "valid_trial_mask")
-    if any(key not in metrics for key in required):
-        return empty
-
-    probs = np.asarray(metrics.get("pred_category_probs"), dtype=float)
-    choices = np.asarray(metrics.get("observed_choice_index"), dtype=float)
-    true_acc = np.asarray(metrics.get("true_acc"), dtype=float)
-    valid = np.asarray(metrics.get("valid_trial_mask"), dtype=bool)
-    if probs.ndim != 2 or choices.ndim != 1 or true_acc.ndim != 1 or valid.ndim != 1:
-        return empty
-    n_trials = probs.shape[0]
-    if choices.shape[0] != n_trials or true_acc.shape[0] != n_trials or valid.shape[0] != n_trials:
-        return empty
-    if n_trials <= 1:
-        return empty
-
-    prev_choice = choices[:-1]
-    next_choice = choices[1:]
-    choice_pair_valid = (
-        np.isfinite(prev_choice)
-        & np.isfinite(next_choice)
-        & (prev_choice >= 0)
-        & (next_choice >= 0)
-        & (prev_choice < probs.shape[1])
-        & (next_choice < probs.shape[1])
-        & (np.floor(prev_choice) == prev_choice)
-        & (np.floor(next_choice) == next_choice)
-    )
-    pair_mask = valid[1:] & choice_pair_valid & np.all(np.isfinite(probs[1:, :]), axis=1)
-    if not np.any(pair_mask):
-        return empty
-
-    rows = np.arange(1, n_trials)[pair_mask]
-    prev_idx = prev_choice[pair_mask].astype(int)
-    next_idx = next_choice[pair_mask].astype(int)
-    prev_acc = true_acc[:-1][pair_mask]
-    model_stay = probs[rows, prev_idx]
-    finite = np.isfinite(model_stay) & np.isfinite(prev_acc)
-    if int(np.sum(finite)) < int(min_trials):
-        return empty
-
-    model_stay = np.clip(model_stay[finite], 0.0, 1.0)
-    prev_idx = prev_idx[finite]
-    next_idx = next_idx[finite]
-    prev_acc = prev_acc[finite]
-    human_stay = (next_idx == prev_idx).astype(float)
-    human_switch = 1.0 - human_stay
-    model_switch = 1.0 - model_stay
-
-    def summarize(human_values: np.ndarray, model_values: np.ndarray) -> tuple[float, float, float]:
-        if human_values.size == 0 or model_values.size == 0:
-            return float("nan"), float("nan"), float("nan")
-        human_mean = float(np.mean(human_values))
-        model_mean = float(np.mean(model_values))
-        return human_mean, model_mean, float(abs(model_mean - human_mean))
-
-    switch_h, switch_m, switch_diff = summarize(human_switch, model_switch)
-    stay_h, stay_m, stay_diff = summarize(human_stay, model_stay)
-
-    win_mask = prev_acc >= 0.5
-    loss_mask = prev_acc < 0.5
-    win_h, win_m, win_diff = summarize(human_stay[win_mask], model_stay[win_mask])
-    loss_h, loss_m, loss_diff = summarize(human_switch[loss_mask], model_switch[loss_mask])
-
-    return {
-        "switch_human": switch_h,
-        "switch_model": switch_m,
-        "switch_abs_diff": switch_diff,
-        "perseveration_human": stay_h,
-        "perseveration_model": stay_m,
-        "perseveration_abs_diff": stay_diff,
-        "win_stay_human": win_h,
-        "win_stay_model": win_m,
-        "win_stay_abs_diff": win_diff,
-        "lose_shift_human": loss_h,
-        "lose_shift_model": loss_m,
-        "lose_shift_abs_diff": loss_diff,
-        "n_pairs": int(model_stay.size),
-        "n_win_pairs": int(np.sum(win_mask)),
-        "n_loss_pairs": int(np.sum(loss_mask)),
-    }
-
-
 def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
     run = evaluate_state_model_run(
-        task["subject_id"],
-        task["condition"],
+        int(task["subject_id"]),
+        int(task["condition"]),
         task["arrays"],
-        task["params"],
+        dict(task["params"]),
         task["engine_config_template"],
         task["processed_data_dir"],
-        task["window_size"],
+        int(task["window_size"]),
         task["dataset_paths"],
-        task["keep_logs"],
-        task["keep_logs"],
-        task["prediction_mode"],
-        task["selection_prediction_mode"],
-        task["loss_metric"],
-        task["loss_delta"],
-        simulation_point_seed=task["simulation_point_seed"],
-        trajectory_seed=task["trajectory_seed"],
-        seed_context=task["seed_context"],
+        bool(task["keep_logs"]),
+        bool(task["keep_logs"]),
+        str(task["prediction_mode"]),
+        str(task["selection_prediction_mode"]),
+        str(task["loss_metric"]),
+        task.get("loss_delta"),
+        simulation_point_seed=int(task["simulation_point_seed"]),
+        trajectory_seed=int(task["trajectory_seed"]),
+        seed_context=task.get("seed_context"),
     )
     return {
         "position": int(task["position"]),
@@ -621,9 +128,8 @@ class HyperCDOptimizer:
         self.config_path = config_path
         self.config_dir = config_path.parent
 
-        self.selection_metric = resolve_selection_metric_path(
-            self.config.get("selection_metric", DEFAULT_SELECTION_METRIC)
-        )
+        self.objective_order = resolve_objective_order(self.config)
+        self.objective_order_config = objective_order_payload(self.objective_order)
 
         # `hyperparam_selection_mode` config key is optional now; keep internal
         # default as per-subject selection (only mode currently implemented).
@@ -663,8 +169,8 @@ class HyperCDOptimizer:
             cd_cfg.get("parallel_budget", 1),
             "cd.parallel_budget",
         )
-        self.secondary_selection = self._resolve_secondary_selection(
-            self.config.get("secondary_selection")
+        self.statistics_config = self._resolve_statistics_config(
+            self.config.get("statistics_config")
         )
         if self.coordinate_order not in {"shuffle_each_iter", "shuffle_per_restart", "fixed"}:
             raise ValueError("cd.coordinate_order must be 'shuffle_each_iter', 'shuffle_per_restart', or 'fixed'")
@@ -673,8 +179,8 @@ class HyperCDOptimizer:
 
         self._combination_counter = 0
 
-    def _resolve_secondary_selection(self, raw: Any) -> Dict[str, Any]:
-        return resolve_simulation_stat_config(raw, setting_name="secondary_selection")
+    def _resolve_statistics_config(self, raw: Any) -> Dict[str, Any]:
+        return resolve_simulation_stat_config(raw, setting_name="statistics_config")
 
     @staticmethod
     def _positive_int(value: Any, name: str) -> int:
@@ -765,7 +271,12 @@ class HyperCDOptimizer:
     def _top_k_combinations_from_coarse(self, coarse_combinations: Sequence[CombinationResult]) -> List[Dict[str, Any]]:
         policy = self.config.get("refine_policy") or {}
         top_k = max(1, int(policy.get("top_k", 3)))
-        ranked = sorted(coarse_combinations, key=lambda x: x.aggregated_error)
+        ranked = rank_by_objectives(
+            coarse_combinations,
+            lambda combination: combination.objective_values,
+            self.objective_order,
+            tie_breaker=lambda combination: int(combination.combination_index),
+        )
         selected: List[Dict[str, Any]] = []
         seen = set()
         for combination in ranked:
@@ -981,1055 +492,23 @@ class HyperCDOptimizer:
         )
         return [run for run in runs if run is not None], int(condition), int(simulation_point_seed)
 
-    def _shape_score(self, curve: Mapping[str, Any]) -> float:
-        cfg = self.secondary_selection
-        acc_mae = _safe_float(curve.get("acc_mae"))
-        if not np.isfinite(acc_mae):
-            return float("inf")
-        vol_ratio = _safe_float(curve.get("vol_ratio"), cfg["min_volatility_ratio"])
-        vol_ratio = max(float(vol_ratio), float(cfg["min_volatility_ratio"]))
-        target_vol = float(cfg["target_volatility_ratio"])
-        vol_penalty = abs(np.log(vol_ratio / target_vol))
-        slope = _safe_float(curve.get("slope_agree"), 0.0)
-        slope = min(1.0, max(0.0, slope))
-        return float(
-            cfg["accuracy_weight"] * acc_mae
-            + cfg["volatility_weight"] * vol_penalty
-            + cfg["slope_weight"] * (1.0 - slope)
-        )
-
-    def _history_kernel_score(self, kernel: Mapping[str, Any]) -> float:
-        cfg = self.secondary_selection
-        kernel_mse = _safe_float(kernel.get("kernel_mse"))
-        if not np.isfinite(kernel_mse):
-            return float("inf")
-        corr_loss = _safe_float(kernel.get("kernel_corr_loss"), 1.0)
-        norm_ratio = _safe_float(kernel.get("kernel_norm_ratio"), 1.0)
-        norm_ratio = max(float(norm_ratio), float(cfg["history_min_norm"]))
-        norm_penalty = abs(np.log(norm_ratio))
-        return float(
-            cfg["history_kernel_weight"] * kernel_mse
-            + cfg["history_corr_weight"] * corr_loss
-            + cfg["history_norm_weight"] * norm_penalty
-        )
-
-    def _switch_behavior_score(self, switch: Mapping[str, Any]) -> float:
-        cfg = self.secondary_selection
-        components = (
-            ("switch_abs_diff", "switch_weight"),
-            ("win_stay_abs_diff", "win_stay_weight"),
-            ("lose_shift_abs_diff", "lose_shift_weight"),
-            ("perseveration_abs_diff", "perseveration_weight"),
-        )
-        total = 0.0
-        weight_sum = 0.0
-        for metric_key, weight_key in components:
-            weight = float(cfg[weight_key])
-            if weight <= 0:
-                continue
-            value = _safe_float(switch.get(metric_key))
-            if not np.isfinite(value):
-                continue
-            total += weight * value
-            weight_sum += weight
-        if weight_sum <= 0:
-            return float("inf")
-        return float(total / weight_sum)
-
-    def _accuracy_shape_metrics_from_runs(
-        self,
-        runs: Sequence[Any],
-        *,
-        selection_prediction_mode: str,
-    ) -> Dict[str, Any]:
-        rows: List[Dict[str, Any]] = []
-        for repeat_index, run in enumerate(runs):
-            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
-            metrics = metrics_by_mode.get(selection_prediction_mode)
-            if not isinstance(metrics, Mapping):
-                continue
-            curve = _accuracy_curve_metrics(metrics)
-            score = self._shape_score(curve)
-            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
-            rows.append(
-                {
-                    "repeat_index": int(repeat_index),
-                    "choice_error": choice_error,
-                    "accuracy_shape_score": score,
-                    **curve,
-                }
-            )
-        if not rows:
-            return {}
-
-        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
-        finite_choice = finite_choice[np.isfinite(finite_choice)]
-        if finite_choice.size == 0:
-            return {}
-        ordered_choice = np.sort(finite_choice)
-        gate_count = max(1, int(np.ceil(len(rows) * float(self.secondary_selection["run_choice_fraction"]))))
-        gate_count = min(gate_count, ordered_choice.size)
-        run_choice_cutoff = float(ordered_choice[gate_count - 1])
-        eligible = [
-            row for row in rows
-            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
-        ]
-        if not eligible:
-            eligible = rows
-        best = min(
-            eligible,
-            key=lambda row: (
-                _safe_float(row.get("accuracy_shape_score"), float("inf")),
-                _safe_float(row.get("choice_error"), float("inf")),
-            ),
-        )
-        all_scores = np.asarray([row["accuracy_shape_score"] for row in rows], dtype=float)
-        eligible_scores = np.asarray([row["accuracy_shape_score"] for row in eligible], dtype=float)
-        return {
-            "accuracy_shape_score": _safe_float(best.get("accuracy_shape_score"), float("inf")),
-            "accuracy_shape_choice_error": _safe_float(best.get("choice_error")),
-            "accuracy_shape_repeat_index": int(best.get("repeat_index", -1)),
-            "accuracy_shape_acc_mae": _safe_float(best.get("acc_mae")),
-            "accuracy_shape_acc_rmse": _safe_float(best.get("acc_rmse")),
-            "accuracy_shape_acc_corr": _safe_float(best.get("acc_corr")),
-            "accuracy_shape_vol_ratio": _safe_float(best.get("vol_ratio")),
-            "accuracy_shape_range_ratio": _safe_float(best.get("range_ratio")),
-            "accuracy_shape_slope_agree": _safe_float(best.get("slope_agree")),
-            "accuracy_shape_run_choice_cutoff": run_choice_cutoff,
-            "accuracy_shape_eligible_run_count": int(len(eligible)),
-            "accuracy_shape_all_run_count": int(len(rows)),
-            "accuracy_shape_score_mean": float(np.nanmean(all_scores)),
-            "accuracy_shape_score_q10": float(np.nanquantile(all_scores, 0.1)),
-            "accuracy_shape_eligible_score_mean": float(np.nanmean(eligible_scores)),
-        }
-
-    def _history_kernel_metrics_from_runs(
-        self,
-        runs: Sequence[Any],
-        *,
-        selection_prediction_mode: str,
-    ) -> Dict[str, Any]:
-        rows: List[Dict[str, Any]] = []
-        cfg = self.secondary_selection
-        for repeat_index, run in enumerate(runs):
-            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
-            metrics = metrics_by_mode.get(selection_prediction_mode)
-            if not isinstance(metrics, Mapping):
-                continue
-            kernel = _history_kernel_metrics(
-                metrics,
-                max_lag=int(cfg["history_max_lag"]),
-                ridge=float(cfg["history_ridge"]),
-                standardize=bool(cfg["history_standardize"]),
-            )
-            score = self._history_kernel_score(kernel)
-            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
-            rows.append(
-                {
-                    "repeat_index": int(repeat_index),
-                    "choice_error": choice_error,
-                    "history_kernel_score": score,
-                    **kernel,
-                }
-            )
-        if not rows:
-            return {}
-
-        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
-        finite_choice = finite_choice[np.isfinite(finite_choice)]
-        if finite_choice.size == 0:
-            return {}
-        ordered_choice = np.sort(finite_choice)
-        gate_count = max(1, int(np.ceil(len(rows) * float(cfg["run_choice_fraction"]))))
-        gate_count = min(gate_count, ordered_choice.size)
-        run_choice_cutoff = float(ordered_choice[gate_count - 1])
-        eligible = [
-            row for row in rows
-            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
-        ]
-        if not eligible:
-            eligible = rows
-        best = min(
-            eligible,
-            key=lambda row: (
-                _safe_float(row.get("history_kernel_score"), float("inf")),
-                _safe_float(row.get("choice_error"), float("inf")),
-            ),
-        )
-        all_scores = np.asarray([row["history_kernel_score"] for row in rows], dtype=float)
-        eligible_scores = np.asarray([row["history_kernel_score"] for row in eligible], dtype=float)
-        return {
-            "history_kernel_score": _safe_float(best.get("history_kernel_score"), float("inf")),
-            "history_kernel_choice_error": _safe_float(best.get("choice_error")),
-            "history_kernel_repeat_index": int(best.get("repeat_index", -1)),
-            "history_kernel_mse": _safe_float(best.get("kernel_mse")),
-            "history_kernel_corr": _safe_float(best.get("kernel_corr")),
-            "history_kernel_corr_loss": _safe_float(best.get("kernel_corr_loss")),
-            "history_kernel_norm_ratio": _safe_float(best.get("kernel_norm_ratio")),
-            "history_kernel_human_norm": _safe_float(best.get("human_kernel_norm")),
-            "history_kernel_model_norm": _safe_float(best.get("model_kernel_norm")),
-            "history_kernel_max_lag": int(best.get("max_lag", int(cfg["history_max_lag"]))),
-            "history_kernel_n_rows": int(best.get("n_rows", 0)),
-            "history_kernel_human": list(best.get("human_kernel") or []),
-            "history_kernel_model": list(best.get("model_kernel") or []),
-            "history_kernel_run_choice_cutoff": run_choice_cutoff,
-            "history_kernel_eligible_run_count": int(len(eligible)),
-            "history_kernel_all_run_count": int(len(rows)),
-            "history_kernel_score_mean": float(np.nanmean(all_scores)),
-            "history_kernel_score_q10": float(np.nanquantile(all_scores, 0.1)),
-            "history_kernel_eligible_score_mean": float(np.nanmean(eligible_scores)),
-        }
-
-    def _switch_behavior_metrics_from_runs(
-        self,
-        runs: Sequence[Any],
-        *,
-        selection_prediction_mode: str,
-    ) -> Dict[str, Any]:
-        rows: List[Dict[str, Any]] = []
-        cfg = self.secondary_selection
-        for repeat_index, run in enumerate(runs):
-            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
-            metrics = metrics_by_mode.get(selection_prediction_mode)
-            if not isinstance(metrics, Mapping):
-                continue
-            switch = _switch_behavior_metrics(
-                metrics,
-                min_trials=int(cfg["min_switch_trials"]),
-            )
-            score = self._switch_behavior_score(switch)
-            choice_error = _safe_float(getattr(run, "mean_error", np.nan))
-            rows.append(
-                {
-                    "repeat_index": int(repeat_index),
-                    "choice_error": choice_error,
-                    "switch_behavior_score": score,
-                    **switch,
-                }
-            )
-        if not rows:
-            return {}
-
-        finite_choice = np.asarray([row["choice_error"] for row in rows], dtype=float)
-        finite_choice = finite_choice[np.isfinite(finite_choice)]
-        if finite_choice.size == 0:
-            return {}
-        ordered_choice = np.sort(finite_choice)
-        gate_count = max(1, int(np.ceil(len(rows) * float(cfg["run_choice_fraction"]))))
-        gate_count = min(gate_count, ordered_choice.size)
-        run_choice_cutoff = float(ordered_choice[gate_count - 1])
-        eligible = [
-            row for row in rows
-            if np.isfinite(row["choice_error"]) and row["choice_error"] <= run_choice_cutoff
-        ]
-        if not eligible:
-            eligible = rows
-        best = min(
-            eligible,
-            key=lambda row: (
-                _safe_float(row.get("switch_behavior_score"), float("inf")),
-                _safe_float(row.get("choice_error"), float("inf")),
-            ),
-        )
-        all_scores = np.asarray([row["switch_behavior_score"] for row in rows], dtype=float)
-        eligible_scores = np.asarray([row["switch_behavior_score"] for row in eligible], dtype=float)
-        return {
-            "switch_behavior_score": _safe_float(best.get("switch_behavior_score"), float("inf")),
-            "switch_behavior_choice_error": _safe_float(best.get("choice_error")),
-            "switch_behavior_repeat_index": int(best.get("repeat_index", -1)),
-            "switch_behavior_switch_human": _safe_float(best.get("switch_human")),
-            "switch_behavior_switch_model": _safe_float(best.get("switch_model")),
-            "switch_behavior_switch_abs_diff": _safe_float(best.get("switch_abs_diff")),
-            "switch_behavior_perseveration_human": _safe_float(best.get("perseveration_human")),
-            "switch_behavior_perseveration_model": _safe_float(best.get("perseveration_model")),
-            "switch_behavior_perseveration_abs_diff": _safe_float(best.get("perseveration_abs_diff")),
-            "switch_behavior_win_stay_human": _safe_float(best.get("win_stay_human")),
-            "switch_behavior_win_stay_model": _safe_float(best.get("win_stay_model")),
-            "switch_behavior_win_stay_abs_diff": _safe_float(best.get("win_stay_abs_diff")),
-            "switch_behavior_lose_shift_human": _safe_float(best.get("lose_shift_human")),
-            "switch_behavior_lose_shift_model": _safe_float(best.get("lose_shift_model")),
-            "switch_behavior_lose_shift_abs_diff": _safe_float(best.get("lose_shift_abs_diff")),
-            "switch_behavior_n_pairs": int(best.get("n_pairs", 0)),
-            "switch_behavior_n_win_pairs": int(best.get("n_win_pairs", 0)),
-            "switch_behavior_n_loss_pairs": int(best.get("n_loss_pairs", 0)),
-            "switch_behavior_run_choice_cutoff": run_choice_cutoff,
-            "switch_behavior_eligible_run_count": int(len(eligible)),
-            "switch_behavior_all_run_count": int(len(rows)),
-            "switch_behavior_score_mean": float(np.nanmean(all_scores)),
-            "switch_behavior_score_q10": float(np.nanquantile(all_scores, 0.1)),
-            "switch_behavior_eligible_score_mean": float(np.nanmean(eligible_scores)),
-        }
-
-    def _distribution_behavior_metrics_from_runs(
-        self,
-        runs: Sequence[Any],
-        *,
-        selection_prediction_mode: str,
-    ) -> Dict[str, Any]:
-        cfg = self.secondary_selection
-        rows: List[Dict[str, Any]] = []
-        for repeat_index, run in enumerate(runs):
-            metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
-            metrics = metrics_by_mode.get(selection_prediction_mode)
-            if not isinstance(metrics, Mapping):
-                continue
-            acc_scalar = _accuracy_scalar_metrics(metrics)
-            curve = _accuracy_curve_metrics(metrics)
-            kernel = _history_kernel_metrics(
-                metrics,
-                max_lag=int(cfg["history_max_lag"]),
-                ridge=float(cfg["history_ridge"]),
-                standardize=bool(cfg["history_standardize"]),
-            )
-            switch = _switch_behavior_metrics(
-                metrics,
-                min_trials=int(cfg["min_switch_trials"]),
-            )
-            rows.append(
-                {
-                    "repeat_index": int(repeat_index),
-                    "choice_error": _safe_float(getattr(run, "mean_error", np.nan)),
-                    "shape_score": self._shape_score(curve),
-                    "history_score": self._history_kernel_score(kernel),
-                    "switch_score": self._switch_behavior_score(switch),
-                    **{f"acc_{key}": value for key, value in acc_scalar.items()},
-                    **{f"curve_{key}": value for key, value in curve.items()},
-                    **{f"kernel_{key}": value for key, value in kernel.items()},
-                    **{f"switch_{key}": value for key, value in switch.items()},
-                }
-            )
-        if len(rows) < int(cfg["distribution_min_run_count"]):
-            return {}
-
-        choice_errors = [_safe_float(row.get("choice_error")) for row in rows]
-        acc_mae_mean = _nanmean_or_nan(row.get("curve_acc_mae") for row in rows)
-        vol_ratio_median = _nanmedian_or_nan(row.get("curve_vol_ratio") for row in rows)
-        slope_agree_mean = _nanmean_or_nan(row.get("curve_slope_agree") for row in rows)
-        distribution_curve = {
-            "acc_mae": acc_mae_mean,
-            "vol_ratio": vol_ratio_median,
-            "slope_agree": slope_agree_mean,
-        }
-        distribution_shape_score = self._shape_score(distribution_curve)
-
-        history_summary = self._distribution_history_summary(rows)
-        distribution_history_score = self._history_kernel_score(history_summary)
-
-        switch_summary = self._distribution_switch_summary(rows)
-        distribution_switch_score = self._switch_behavior_score(switch_summary)
-
-        intersection_violations = {
-            "acc_mae": _upper_bound_violation(
-                acc_mae_mean,
-                cfg["distribution_accept_acc_mae_max"],
-            ),
-            "vol_ratio_low": _lower_bound_violation(
-                vol_ratio_median,
-                cfg["distribution_accept_vol_ratio_min"],
-            ),
-            "vol_ratio_high": _upper_bound_violation(
-                vol_ratio_median,
-                cfg["distribution_accept_vol_ratio_max"],
-            ),
-            "history_corr": _lower_bound_violation(
-                history_summary.get("kernel_corr"),
-                cfg["distribution_accept_history_corr_min"],
-            ),
-            "switch_rate": _upper_bound_violation(
-                switch_summary.get("switch_abs_diff"),
-                cfg["distribution_accept_switch_score_max"],
-            ),
-            "win_stay": _upper_bound_violation(
-                switch_summary.get("win_stay_abs_diff"),
-                cfg["distribution_accept_switch_score_max"],
-            ),
-            "lose_shift": _upper_bound_violation(
-                switch_summary.get("lose_shift_abs_diff"),
-                cfg["distribution_accept_switch_score_max"],
-            ),
-            "perseveration": _upper_bound_violation(
-                switch_summary.get("perseveration_abs_diff"),
-                cfg["distribution_accept_switch_score_max"],
-            ),
-        }
-        finite_violations = [
-            float(value)
-            for value in intersection_violations.values()
-            if np.isfinite(value)
-        ]
-        distribution_intersection_score = (
-            float(max(finite_violations))
-            if len(finite_violations) == len(intersection_violations)
-            else float("inf")
-        )
-        distribution_intersection_violation_count = int(
-            sum(float(value) > 0.0 for value in finite_violations)
-        )
-        ppc_interval = _ppc_interval_summary(
-            rows,
-            (
-                ("acc_mean", "acc_human_mean", "acc_model_mean"),
-                ("acc_vol", "curve_true_vol", "curve_pred_vol"),
-                ("acc_range", "curve_true_range", "curve_pred_range"),
-                ("history_kernel_norm", "kernel_human_kernel_norm", "kernel_model_kernel_norm"),
-                ("switch_rate", "switch_switch_human", "switch_switch_model"),
-                ("win_stay", "switch_win_stay_human", "switch_win_stay_model"),
-                ("lose_shift", "switch_lose_shift_human", "switch_lose_shift_model"),
-                ("perseveration", "switch_perseveration_human", "switch_perseveration_model"),
-            ),
-            alpha=float(cfg["distribution_interval_alpha"]),
-        )
-
-        component_scores = {
-            "choice_error": _nanmean_or_nan(choice_errors),
-            "accuracy_shape": distribution_shape_score,
-            "history_kernel": distribution_history_score,
-            "switch_behavior": distribution_switch_score,
-        }
-        weights = self.secondary_selection.get("multiobjective_weights") or {}
-        weighted_total = 0.0
-        weight_sum = 0.0
-        finite_components = []
-        for component, value in component_scores.items():
-            value = _safe_float(value, float("inf"))
-            if not np.isfinite(value):
-                continue
-            finite_components.append(value)
-            weight = float(weights.get(component, 1.0))
-            if weight <= 0:
-                continue
-            weighted_total += weight * value
-            weight_sum += weight
-        distribution_weighted_score = (
-            float(weighted_total / weight_sum)
-            if weight_sum > 0
-            else float("inf")
-        )
-
-        return {
-            "distribution_score": distribution_weighted_score,
-            "distribution_component_max_raw": (
-                float(max(finite_components)) if finite_components else float("inf")
-            ),
-            "distribution_intersection_score": distribution_intersection_score,
-            "distribution_intersection_violation_count": distribution_intersection_violation_count,
-            "distribution_intersection_accept": bool(distribution_intersection_score <= 0.0),
-            "distribution_ppc_interval_score": _safe_float(ppc_interval.get("score"), float("inf")),
-            "distribution_ppc_interval_violation_count": int(ppc_interval.get("violation_count", 0)),
-            "distribution_ppc_interval_accept": bool(ppc_interval.get("accept", False)),
-            "distribution_ppc_interval_alpha": _safe_float(ppc_interval.get("alpha")),
-            "distribution_ppc_interval_stat_count": int(ppc_interval.get("stat_count", 0)),
-            **{
-                f"distribution_ppc_interval_{key}": value
-                for key, value in ppc_interval.items()
-                if key not in {"score", "violation_count", "accept", "alpha", "stat_count"}
-            },
-            "distribution_intersection_acc_mae_violation": intersection_violations["acc_mae"],
-            "distribution_intersection_vol_ratio_low_violation": intersection_violations["vol_ratio_low"],
-            "distribution_intersection_vol_ratio_high_violation": intersection_violations["vol_ratio_high"],
-            "distribution_intersection_history_corr_violation": intersection_violations["history_corr"],
-            "distribution_intersection_switch_rate_violation": intersection_violations["switch_rate"],
-            "distribution_intersection_win_stay_violation": intersection_violations["win_stay"],
-            "distribution_intersection_lose_shift_violation": intersection_violations["lose_shift"],
-            "distribution_intersection_perseveration_violation": intersection_violations["perseveration"],
-            "distribution_run_count": int(len(rows)),
-            "distribution_choice_error_mean": _nanmean_or_nan(choice_errors),
-            "distribution_choice_error_median": _nanmedian_or_nan(choice_errors),
-            "distribution_choice_error_q10": _nanquantile_or_nan(choice_errors, 0.10),
-            "distribution_choice_error_std": (
-                float(np.std(_finite_array(choice_errors)))
-                if _finite_array(choice_errors).size > 1
-                else 0.0
-            ),
-            "distribution_accuracy_shape_score": distribution_shape_score,
-            "distribution_acc_mae_mean": acc_mae_mean,
-            "distribution_acc_mae_median": _nanmedian_or_nan(
-                row.get("curve_acc_mae") for row in rows
-            ),
-            "distribution_acc_mae_q90": _nanquantile_or_nan(
-                (row.get("curve_acc_mae") for row in rows),
-                0.90,
-            ),
-            "distribution_acc_rmse_mean": _nanmean_or_nan(
-                row.get("curve_acc_rmse") for row in rows
-            ),
-            "distribution_vol_ratio_mean": _nanmean_or_nan(
-                row.get("curve_vol_ratio") for row in rows
-            ),
-            "distribution_vol_ratio_median": vol_ratio_median,
-            "distribution_vol_ratio_q10": _nanquantile_or_nan(
-                (row.get("curve_vol_ratio") for row in rows),
-                0.10,
-            ),
-            "distribution_vol_ratio_q90": _nanquantile_or_nan(
-                (row.get("curve_vol_ratio") for row in rows),
-                0.90,
-            ),
-            "distribution_slope_agree_mean": slope_agree_mean,
-            "distribution_history_kernel_score": distribution_history_score,
-            "distribution_history_kernel_mse": _safe_float(history_summary.get("kernel_mse")),
-            "distribution_history_kernel_corr": _safe_float(history_summary.get("kernel_corr")),
-            "distribution_history_kernel_corr_loss": _safe_float(history_summary.get("kernel_corr_loss")),
-            "distribution_history_kernel_norm_ratio": _safe_float(history_summary.get("kernel_norm_ratio")),
-            "distribution_history_kernel_human_norm": _safe_float(history_summary.get("human_kernel_norm")),
-            "distribution_history_kernel_model_norm": _safe_float(history_summary.get("model_kernel_norm")),
-            "distribution_history_kernel_run_count": int(history_summary.get("run_count", 0)),
-            "distribution_switch_behavior_score": distribution_switch_score,
-            "distribution_switch_human": _safe_float(switch_summary.get("switch_human")),
-            "distribution_switch_model": _safe_float(switch_summary.get("switch_model")),
-            "distribution_switch_abs_diff": _safe_float(switch_summary.get("switch_abs_diff")),
-            "distribution_perseveration_human": _safe_float(switch_summary.get("perseveration_human")),
-            "distribution_perseveration_model": _safe_float(switch_summary.get("perseveration_model")),
-            "distribution_perseveration_abs_diff": _safe_float(switch_summary.get("perseveration_abs_diff")),
-            "distribution_win_stay_human": _safe_float(switch_summary.get("win_stay_human")),
-            "distribution_win_stay_model": _safe_float(switch_summary.get("win_stay_model")),
-            "distribution_win_stay_abs_diff": _safe_float(switch_summary.get("win_stay_abs_diff")),
-            "distribution_lose_shift_human": _safe_float(switch_summary.get("lose_shift_human")),
-            "distribution_lose_shift_model": _safe_float(switch_summary.get("lose_shift_model")),
-            "distribution_lose_shift_abs_diff": _safe_float(switch_summary.get("lose_shift_abs_diff")),
-            "distribution_switch_run_count": int(switch_summary.get("run_count", 0)),
-        }
-
-    @staticmethod
-    def _distribution_history_summary(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-        human_kernels: List[np.ndarray] = []
-        model_kernels: List[np.ndarray] = []
-        for row in rows:
-            human = np.asarray(row.get("kernel_human_kernel") or [], dtype=float)
-            model = np.asarray(row.get("kernel_model_kernel") or [], dtype=float)
-            if human.shape != model.shape or human.size == 0:
-                continue
-            finite = np.isfinite(human) & np.isfinite(model)
-            if not finite.any():
-                continue
-            human_kernels.append(np.where(finite, human, np.nan))
-            model_kernels.append(np.where(finite, model, np.nan))
-        if not human_kernels:
-            return {
-                "kernel_mse": float("nan"),
-                "kernel_corr": float("nan"),
-                "kernel_corr_loss": float("nan"),
-                "kernel_norm_ratio": float("nan"),
-                "human_kernel_norm": float("nan"),
-                "model_kernel_norm": float("nan"),
-                "run_count": 0,
-            }
-
-        human_stack = np.vstack(human_kernels)
-        model_stack = np.vstack(model_kernels)
-        human_mean = np.nanmean(human_stack, axis=0)
-        model_mean = np.nanmean(model_stack, axis=0)
-        finite = np.isfinite(human_mean) & np.isfinite(model_mean)
-        if not finite.any():
-            return {
-                "kernel_mse": float("nan"),
-                "kernel_corr": float("nan"),
-                "kernel_corr_loss": float("nan"),
-                "kernel_norm_ratio": float("nan"),
-                "human_kernel_norm": float("nan"),
-                "model_kernel_norm": float("nan"),
-                "run_count": 0,
-            }
-        human_f = human_mean[finite]
-        model_f = model_mean[finite]
-        diff = model_f - human_f
-        human_norm = float(np.linalg.norm(human_f))
-        model_norm = float(np.linalg.norm(model_f))
-        if human_f.size > 1 and np.nanstd(human_f) > 1e-12 and np.nanstd(model_f) > 1e-12:
-            corr = float(np.corrcoef(human_f, model_f)[0, 1])
-        else:
-            corr = float("nan")
-        corr_loss = 0.5 * (1.0 - corr) if np.isfinite(corr) else 1.0
-        return {
-            "kernel_mse": float(np.mean(diff * diff)),
-            "kernel_corr": corr,
-            "kernel_corr_loss": float(corr_loss),
-            "kernel_norm_ratio": float(model_norm / human_norm) if human_norm > 0 else float("nan"),
-            "human_kernel_norm": human_norm,
-            "model_kernel_norm": model_norm,
-            "run_count": int(len(model_kernels)),
-        }
-
-    @staticmethod
-    def _distribution_switch_summary(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-        def strip_prefix(key: str) -> str:
-            prefix = "switch_"
-            return key[len(prefix):] if key.startswith(prefix) else key
-
-        def pair_summary(human_key: str, model_key: str, diff_key: str) -> Dict[str, float]:
-            human_mean = _nanmean_or_nan(row.get(human_key) for row in rows)
-            model_mean = _nanmean_or_nan(row.get(model_key) for row in rows)
-            return {
-                strip_prefix(human_key): human_mean,
-                strip_prefix(model_key): model_mean,
-                strip_prefix(diff_key): (
-                    float(abs(model_mean - human_mean))
-                    if np.isfinite(human_mean) and np.isfinite(model_mean)
-                    else float("nan")
-                ),
-            }
-
-        out: Dict[str, float] = {}
-        for human_key, model_key, diff_key in (
-            ("switch_switch_human", "switch_switch_model", "switch_switch_abs_diff"),
-            ("switch_perseveration_human", "switch_perseveration_model", "switch_perseveration_abs_diff"),
-            ("switch_win_stay_human", "switch_win_stay_model", "switch_win_stay_abs_diff"),
-            ("switch_lose_shift_human", "switch_lose_shift_model", "switch_lose_shift_abs_diff"),
-        ):
-            out.update(pair_summary(human_key, model_key, diff_key))
-        out["run_count"] = int(
-            np.sum(np.isfinite([_safe_float(row.get("switch_switch_abs_diff")) for row in rows]))
-        )
-        return out
-
     def _select_final_combination(
         self,
         combinations: Sequence[CombinationResult],
     ) -> tuple[CombinationResult, Dict[str, Any]]:
-        if not combinations:
-            raise RuntimeError("No combinations available for final selection")
-        primary_best = min(combinations, key=lambda result: result.aggregated_error)
-        if not self.secondary_selection.get("enabled", False):
-            return primary_best, {
-                "enabled": False,
-                "selected_by": "primary_selection_metric",
-                "primary_selection_metric": self.selection_metric,
-                "primary_best_combination_index": primary_best.combination_index,
+        selected, context = select_best_by_objectives(
+            combinations,
+            lambda result: result.objective_values,
+            self.objective_order,
+            tie_breaker=lambda result: (int(result.restart_id), int(result.combination_index)),
+        )
+        context.update(
+            {
+                "selected_combination_index": selected.combination_index,
+                "selected_restart_id": selected.restart_id,
             }
-
-        best_primary_error = float(primary_best.aggregated_error)
-        abs_threshold = best_primary_error + float(self.secondary_selection["primary_tolerance_abs"])
-        rel_threshold = best_primary_error * (1.0 + float(self.secondary_selection["primary_tolerance_rel"]))
-        gate_threshold = max(abs_threshold, rel_threshold)
-
-        eligible = [
-            result for result in combinations
-            if float(result.aggregated_error) <= gate_threshold
-        ]
-        eligible_with_secondary = [
-            result for result in eligible
-            if self._combination_secondary_score(result) < float("inf")
-        ]
-        if not eligible_with_secondary:
-            return primary_best, {
-                "enabled": True,
-                "selected_by": f"primary_fallback_no_{self.secondary_selection['mode']}_metrics",
-                "primary_selection_metric": self.selection_metric,
-                "primary_best_combination_index": primary_best.combination_index,
-                "primary_best_error": best_primary_error,
-                "gate_threshold": gate_threshold,
-                "eligible_count": len(eligible),
-            }
-
-        multiobjective_context: Dict[str, Any] = {}
-        if self.secondary_selection["mode"] == "distribution_ppc_interval":
-            selected, multiobjective_context = self._select_distribution_ppc_interval_combination(
-                eligible_with_secondary
-            )
-            selected_secondary_score = float(
-                multiobjective_context.get("selected_distribution_ppc_interval_score", float("inf"))
-            )
-        elif self.secondary_selection["mode"] == "distribution_intersection":
-            selected, multiobjective_context = self._select_distribution_intersection_combination(
-                eligible_with_secondary
-            )
-            selected_secondary_score = float(
-                multiobjective_context.get("selected_distribution_intersection_score", float("inf"))
-            )
-        elif self.secondary_selection["mode"] == "distribution_multiobjective":
-            selected, multiobjective_context = self._select_distribution_multiobjective_combination(
-                eligible_with_secondary
-            )
-            selected_secondary_score = float(
-                multiobjective_context.get("selected_distribution_minimax_rank_score", float("inf"))
-            )
-        elif self.secondary_selection["mode"] == "multiobjective":
-            selected, multiobjective_context = self._select_multiobjective_combination(
-                eligible_with_secondary
-            )
-            selected_secondary_score = float(
-                multiobjective_context.get("selected_multiobjective_rank_score", float("inf"))
-            )
-        else:
-            selected = min(
-                eligible_with_secondary,
-                key=lambda result: (
-                    self._combination_secondary_score(result),
-                    float(result.aggregated_error),
-                    int(result.combination_index),
-                ),
-            )
-            selected_secondary_score = self._combination_secondary_score(selected)
-
-        context = {
-            "enabled": True,
-            "mode": self.secondary_selection["mode"],
-            "selected_by": f"primary_gated_{self.secondary_selection['mode']}",
-            "primary_selection_metric": self.selection_metric,
-            "primary_best_combination_index": primary_best.combination_index,
-            "primary_best_error": best_primary_error,
-            "gate_threshold": gate_threshold,
-            "eligible_count": len(eligible),
-            "eligible_with_secondary_count": len(eligible_with_secondary),
-            "selected_combination_index": selected.combination_index,
-            "selected_primary_error": float(selected.aggregated_error),
-            "selected_secondary_score": selected_secondary_score,
-            "selected_accuracy_shape_score": self._combination_shape_score(selected),
-            "selected_history_kernel_score": self._combination_history_kernel_score(selected),
-            "selected_switch_behavior_score": self._combination_switch_behavior_score(selected),
-            "selected_distribution_score": self._combination_distribution_score(selected),
-            "selected_distribution_intersection_score": self._combination_distribution_intersection_score(selected),
-            "selected_distribution_ppc_interval_score": self._combination_distribution_ppc_interval_score(selected),
-            "selected_distribution_accuracy_shape_score": self._combination_distribution_accuracy_shape_score(selected),
-            "selected_distribution_history_kernel_score": self._combination_distribution_history_kernel_score(selected),
-            "selected_distribution_switch_behavior_score": self._combination_distribution_switch_behavior_score(selected),
-            "config": dict(self.secondary_selection),
-        }
-        context.update(multiobjective_context)
+        )
         return selected, context
-
-    def _select_distribution_ppc_interval_combination(
-        self,
-        eligible: Sequence[CombinationResult],
-    ) -> tuple[CombinationResult, Dict[str, Any]]:
-        interval_scores = [
-            self._combination_distribution_ppc_interval_score(result)
-            for result in eligible
-        ]
-        accepted_indices = [
-            idx for idx, result in enumerate(eligible)
-            if self._combination_distribution_ppc_interval_accepts(result)
-        ]
-        pool_indices = accepted_indices or list(range(len(eligible)))
-        selected_pos = min(
-            pool_indices,
-            key=lambda idx: (
-                float(interval_scores[idx]),
-                float(eligible[idx].aggregated_error),
-                int(eligible[idx].combination_index),
-            ),
-        )
-        selected = eligible[selected_pos]
-        return selected, {
-            "distribution_ppc_interval_accepted_count": int(len(accepted_indices)),
-            "selected_from_distribution_ppc_interval_accepted_set": bool(accepted_indices),
-            "selected_distribution_ppc_interval_score": float(interval_scores[selected_pos]),
-        }
-
-    def _select_distribution_intersection_combination(
-        self,
-        eligible: Sequence[CombinationResult],
-    ) -> tuple[CombinationResult, Dict[str, Any]]:
-        intersection_scores = [
-            self._combination_distribution_intersection_score(result)
-            for result in eligible
-        ]
-        accepted_indices = [
-            idx for idx, result in enumerate(eligible)
-            if self._combination_distribution_accepts(result)
-        ]
-        pool_indices = accepted_indices or list(range(len(eligible)))
-        selected_pos = min(
-            pool_indices,
-            key=lambda idx: (
-                float(intersection_scores[idx]),
-                float(eligible[idx].aggregated_error),
-                int(eligible[idx].combination_index),
-            ),
-        )
-        selected = eligible[selected_pos]
-        return selected, {
-            "distribution_accepted_count": int(len(accepted_indices)),
-            "selected_from_distribution_accepted_set": bool(accepted_indices),
-            "selected_distribution_intersection_score": float(intersection_scores[selected_pos]),
-        }
-
-    def _select_distribution_multiobjective_combination(
-        self,
-        eligible: Sequence[CombinationResult],
-    ) -> tuple[CombinationResult, Dict[str, Any]]:
-        weights = {
-            str(key): float(value)
-            for key, value in (self.secondary_selection.get("multiobjective_weights") or {}).items()
-            if float(value) > 0
-        }
-        components_by_result = [
-            self._combination_distribution_components(result)
-            for result in eligible
-        ]
-        available_components: List[str] = []
-        rank_arrays: Dict[str, np.ndarray] = {}
-        for component in weights:
-            values = np.asarray(
-                [components.get(component, float("nan")) for components in components_by_result],
-                dtype=float,
-            )
-            if not np.isfinite(values).any():
-                continue
-            available_components.append(component)
-            rank_arrays[component] = _minimize_rank01(values)
-
-        if not available_components:
-            selected = min(
-                eligible,
-                key=lambda result: (float(result.aggregated_error), int(result.combination_index)),
-            )
-            return selected, {
-                "distribution_available_components": [],
-                "distribution_component_weights": weights,
-                "distribution_accepted_count": 0,
-                "selected_from_distribution_accepted_set": False,
-                "selected_distribution_minimax_rank_score": float("inf"),
-            }
-
-        accepted_indices = [
-            idx for idx, result in enumerate(eligible)
-            if self._combination_distribution_accepts(result)
-        ]
-        pool_indices = accepted_indices or list(range(len(eligible)))
-        selected_from_accepted = bool(accepted_indices)
-
-        weight_total = float(sum(weights[name] for name in available_components))
-
-        def scores_for(idx: int) -> tuple[float, float]:
-            ranks = np.asarray([rank_arrays[name][idx] for name in available_components], dtype=float)
-            component_weights = np.asarray([weights[name] for name in available_components], dtype=float)
-            max_rank = float(np.max(ranks))
-            mean_rank = float(np.sum(component_weights * ranks) / max(weight_total, 1e-12))
-            return max_rank, mean_rank
-
-        selected_pos = min(
-            pool_indices,
-            key=lambda idx: (
-                scores_for(idx)[0],
-                scores_for(idx)[1],
-                float(eligible[idx].aggregated_error),
-                int(eligible[idx].combination_index),
-            ),
-        )
-        selected = eligible[selected_pos]
-        selected_max_rank, selected_mean_rank = scores_for(selected_pos)
-        selected_components = components_by_result[selected_pos]
-        context: Dict[str, Any] = {
-            "distribution_available_components": list(available_components),
-            "distribution_component_weights": {
-                name: float(weights[name]) for name in available_components
-            },
-            "distribution_accepted_count": int(len(accepted_indices)),
-            "selected_from_distribution_accepted_set": selected_from_accepted,
-            "selected_distribution_minimax_rank_score": selected_max_rank,
-            "selected_distribution_mean_rank_score": selected_mean_rank,
-        }
-        for component in available_components:
-            context[f"selected_distribution_{component}_score"] = _safe_float(
-                selected_components.get(component),
-                float("inf"),
-            )
-            context[f"selected_distribution_{component}_rank01"] = float(
-                rank_arrays[component][selected_pos]
-            )
-        return selected, context
-
-    def _select_multiobjective_combination(
-        self,
-        eligible: Sequence[CombinationResult],
-    ) -> tuple[CombinationResult, Dict[str, Any]]:
-        weights = {
-            str(key): float(value)
-            for key, value in (self.secondary_selection.get("multiobjective_weights") or {}).items()
-            if float(value) > 0
-        }
-        components_by_result = [
-            self._combination_multiobjective_components(result)
-            for result in eligible
-        ]
-        available_components: List[str] = []
-        rank_arrays: Dict[str, np.ndarray] = {}
-        for component, weight in weights.items():
-            values = np.asarray(
-                [components.get(component, float("nan")) for components in components_by_result],
-                dtype=float,
-            )
-            if not np.isfinite(values).any():
-                continue
-            available_components.append(component)
-            rank_arrays[component] = _minimize_rank01(values)
-
-        if not available_components:
-            selected = min(
-                eligible,
-                key=lambda result: (float(result.aggregated_error), int(result.combination_index)),
-            )
-            return selected, {
-                "multiobjective_available_components": [],
-                "multiobjective_component_weights": weights,
-                "selected_multiobjective_rank_score": float("inf"),
-            }
-
-        weight_total = float(sum(weights[name] for name in available_components))
-        rank_scores = np.zeros(len(eligible), dtype=float)
-        for component in available_components:
-            rank_scores += float(weights[component]) * rank_arrays[component]
-        rank_scores = rank_scores / max(weight_total, 1e-12)
-
-        selected_pos = min(
-            range(len(eligible)),
-            key=lambda idx: (
-                float(rank_scores[idx]),
-                float(eligible[idx].aggregated_error),
-                int(eligible[idx].combination_index),
-            ),
-        )
-        selected = eligible[selected_pos]
-        context: Dict[str, Any] = {
-            "multiobjective_available_components": list(available_components),
-            "multiobjective_component_weights": {
-                name: float(weights[name]) for name in available_components
-            },
-            "selected_multiobjective_rank_score": float(rank_scores[selected_pos]),
-        }
-        selected_components = components_by_result[selected_pos]
-        for component in available_components:
-            context[f"selected_{component}_score"] = _safe_float(
-                selected_components.get(component), float("inf")
-            )
-            context[f"selected_{component}_rank01"] = float(rank_arrays[component][selected_pos])
-        return selected, context
-
-    @staticmethod
-    def _combination_shape_score(result: CombinationResult) -> float:
-        return HyperCDOptimizer._combination_metric_mean(
-            result,
-            "statistics.scores.accuracy_shape.value",
-        )
-
-    @staticmethod
-    def _combination_history_kernel_score(result: CombinationResult) -> float:
-        return HyperCDOptimizer._combination_metric_mean(
-            result,
-            "statistics.scores.history_kernel.value",
-        )
-
-    @staticmethod
-    def _combination_switch_behavior_score(result: CombinationResult) -> float:
-        return HyperCDOptimizer._combination_metric_mean(
-            result,
-            "statistics.scores.switch_behavior.value",
-        )
-
-    @staticmethod
-    def _combination_metric_mean(result: CombinationResult, path: str) -> float:
-        values = []
-        for metrics in (result.subject_metrics or {}).values():
-            if isinstance(metrics, Mapping):
-                values.append(_safe_float(get_stat_value(metrics, path, float("inf")), float("inf")))
-        finite = [value for value in values if np.isfinite(value)]
-        if not finite:
-            return float("inf")
-        return float(np.mean(finite))
-
-    @classmethod
-    def _combination_distribution_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(result, "statistics.scores.distribution.multiobjective.score")
-
-    @classmethod
-    def _combination_distribution_intersection_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(result, "statistics.scores.distribution.intersection.score")
-
-    @classmethod
-    def _combination_distribution_ppc_interval_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(result, "statistics.scores.distribution.ppc_interval.score")
-
-    @classmethod
-    def _combination_distribution_accuracy_shape_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(
-            result,
-            "statistics.scores.distribution.multiobjective.components.accuracy_shape",
-        )
-
-    @classmethod
-    def _combination_distribution_history_kernel_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(
-            result,
-            "statistics.scores.distribution.multiobjective.components.history_kernel",
-        )
-
-    @classmethod
-    def _combination_distribution_switch_behavior_score(cls, result: CombinationResult) -> float:
-        return cls._combination_metric_mean(
-            result,
-            "statistics.scores.distribution.multiobjective.components.switch_behavior",
-        )
-
-    def _combination_distribution_components(self, result: CombinationResult) -> Dict[str, float]:
-        return {
-            "choice_error": self._combination_metric_mean(
-                result,
-                "statistics.scores.distribution.multiobjective.components.choice_error",
-            ),
-            "accuracy_shape": self._combination_distribution_accuracy_shape_score(result),
-            "history_kernel": self._combination_distribution_history_kernel_score(result),
-            "switch_behavior": self._combination_distribution_switch_behavior_score(result),
-        }
-
-    def _combination_distribution_accepts(self, result: CombinationResult) -> bool:
-        for metrics in (result.subject_metrics or {}).values():
-            if not isinstance(metrics, Mapping):
-                return False
-            if not bool(get_stat_value(metrics, "statistics.scores.distribution.intersection.accept", False)):
-                return False
-        return True
-
-    @staticmethod
-    def _combination_distribution_ppc_interval_accepts(result: CombinationResult) -> bool:
-        for metrics in (result.subject_metrics or {}).values():
-            if not isinstance(metrics, Mapping):
-                return False
-            if not bool(get_stat_value(metrics, "statistics.scores.distribution.ppc_interval.accept", False)):
-                return False
-        return True
-
-    def _combination_multiobjective_components(self, result: CombinationResult) -> Dict[str, float]:
-        return {
-            "choice_error": self._combination_metric_mean(result, "simulation.mean_error"),
-            "accuracy_shape": self._combination_shape_score(result),
-            "history_kernel": self._combination_history_kernel_score(result),
-            "switch_behavior": self._combination_switch_behavior_score(result),
-        }
-
-    def _combination_multiobjective_raw_score(self, result: CombinationResult) -> float:
-        weights = self.secondary_selection.get("multiobjective_weights") or {}
-        components = self._combination_multiobjective_components(result)
-        total = 0.0
-        weight_sum = 0.0
-        for component, raw_weight in weights.items():
-            weight = float(raw_weight)
-            if weight <= 0:
-                continue
-            value = _safe_float(components.get(component), float("inf"))
-            if not np.isfinite(value):
-                continue
-            total += weight * value
-            weight_sum += weight
-        if weight_sum <= 0:
-            return float("inf")
-        return float(total / weight_sum)
-
-    def _combination_secondary_score(self, result: CombinationResult) -> float:
-        mode = self.secondary_selection.get("mode")
-        if mode == "history_kernel":
-            return self._combination_history_kernel_score(result)
-        if mode == "switch_behavior":
-            return self._combination_switch_behavior_score(result)
-        if mode == "multiobjective":
-            return self._combination_multiobjective_raw_score(result)
-        if mode == "distribution_ppc_interval":
-            return self._combination_distribution_ppc_interval_score(result)
-        if mode == "distribution_intersection":
-            return self._combination_distribution_intersection_score(result)
-        if mode == "distribution_multiobjective":
-            return self._combination_distribution_score(result)
-        return self._combination_shape_score(result)
 
     def _evaluate_point(
         self,
@@ -2075,7 +554,7 @@ class HyperCDOptimizer:
         )
 
         subject_metrics: Dict[int, Dict[str, Any]] = {}
-        errors: List[float] = []
+        subject_objectives: List[Dict[str, float]] = []
         for sid in subjects:
             subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, n_jobs = self._resolve_sim_components(
                 stage_sim_cfg,
@@ -2116,7 +595,7 @@ class HyperCDOptimizer:
                 simulation_repeats=simulation_repeats,
                 simulation_point_seed=simulation_point_seed,
                 keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
-                statistics_config=self.secondary_selection,
+                statistics_config=self.statistics_config,
             )
 
             mean_err = float(getattr(best, "mean_error"))
@@ -2136,19 +615,16 @@ class HyperCDOptimizer:
                 "simulation": simulation_summary,
                 "statistics": statistics_summary,
             }
-            value = _selection_error_value(
-                self.selection_metric,
+            objective_values = extract_subject_objective_values(
                 subject_record,
+                self.objective_order,
             )
-            errors.append(value)
+            subject_objectives.append(objective_values)
             subject_metrics[int(sid)] = {
                 "simulation": simulation_summary,
                 "statistics": statistics_summary,
-                "selection": {
-                    "primary": {
-                        "metric": self.selection_metric,
-                        "value": float(value),
-                    },
+                "objectives": {
+                    "values": objective_values,
                 },
                 "fixed_hyperparams": deepcopy(point),
                 "condition": int(condition),
@@ -2157,12 +633,14 @@ class HyperCDOptimizer:
                 "simulation_point_seed": int(simulation_point_seed),
             }
 
-        agg_error = float(np.mean(errors)) if errors else float("inf")
+        aggregated_objectives = aggregate_objective_values(subject_objectives, self.objective_order)
+        agg_error = first_objective_value(aggregated_objectives, self.objective_order)
         return CombinationResult(
             stage=stage_name,
             combination_index=combination_index,
             hyperparams=deepcopy(point),
             aggregated_error=agg_error,
+            objective_values=aggregated_objectives,
             subject_metrics=subject_metrics,
             hyper_candidate_seed=hyper_candidate_seed,
             restart_id=restart_id,
@@ -2318,7 +796,7 @@ class HyperCDOptimizer:
                 simulation_repeats=simulation_repeats,
                 simulation_point_seed=int(meta["simulation_point_seed"]),
                 keep_logs=bool(meta["keep_logs"]),
-                statistics_config=self.secondary_selection,
+                statistics_config=self.statistics_config,
             )
             mean_error = float(best.mean_error)
             best_error = float(best.best_error if best.best_error is not None else mean_error)
@@ -2337,19 +815,18 @@ class HyperCDOptimizer:
                 "simulation": simulation_summary,
                 "statistics": statistics_summary,
             }
-            selection_error = _selection_error_value(
-                self.selection_metric,
+            objective_values = extract_subject_objective_values(
                 subject_record,
+                self.objective_order,
             )
+            aggregated_objectives = aggregate_objective_values([objective_values], self.objective_order)
+            selection_error = first_objective_value(aggregated_objectives, self.objective_order)
             subject_metrics = {
                 sid: {
                     "simulation": simulation_summary,
                     "statistics": statistics_summary,
-                    "selection": {
-                        "primary": {
-                            "metric": self.selection_metric,
-                            "value": float(selection_error),
-                        },
+                    "objectives": {
+                        "values": objective_values,
                     },
                     "fixed_hyperparams": deepcopy(meta["point"]),
                     "condition": int(meta["condition"]),
@@ -2364,6 +841,7 @@ class HyperCDOptimizer:
                     combination_index=int(meta["combination_index"]),
                     hyperparams=deepcopy(meta["point"]),
                     aggregated_error=selection_error,
+                    objective_values=aggregated_objectives,
                     subject_metrics=subject_metrics,
                     hyper_candidate_seed=int(meta["hyper_candidate_seed"]),
                     restart_id=restart_id,
@@ -2436,11 +914,13 @@ class HyperCDOptimizer:
             "coordinate": result.coordinate,
             "hyperparams": result.hyperparams,
             "aggregated_error": result.aggregated_error,
+            "objective_values": result.objective_values,
             "hyper_candidate_seed": result.hyper_candidate_seed,
         }
         metrics_summary = combination_metrics_summary(
             result.subject_metrics,
             aggregated_error=result.aggregated_error,
+            objective_values=result.objective_values,
         )
         if metrics_summary:
             data["metrics_summary"] = metrics_summary
@@ -2499,6 +979,7 @@ class HyperCDOptimizer:
             combination_index=int(record["combination_index"]),
             hyperparams=deepcopy(dict(hyperparams)),
             aggregated_error=float(record["aggregated_error"]),
+            objective_values=deepcopy(dict(record["objective_values"])),
             subject_metrics=subject_metrics,
             hyper_candidate_seed=int(record["hyper_candidate_seed"]),
             restart_id=int(record.get("restart_id", -1)),
@@ -2541,6 +1022,7 @@ class HyperCDOptimizer:
         all_combinations: List[CombinationResult] = []
         restart_best: List[Dict[str, Any]] = []
         global_best: CombinationResult | None = None
+        restart_local_bests: List[CombinationResult] = []
         cache: Dict[str, CombinationResult] = {}
         coords_base = list(space.keys())
 
@@ -2586,6 +1068,7 @@ class HyperCDOptimizer:
             if current_is_new:
                 all_combinations.append(current_result)
             best_local = current_result
+            anchor_values = dict(best_local.objective_values)
             initial_result = current_result
             no_improve_rounds = 0
             outer_iters_completed = 0
@@ -2606,10 +1089,12 @@ class HyperCDOptimizer:
                 for coord_index, coord in enumerate(coords):
                     start_best = best_local
                     candidate_best = best_local
+                    candidate_best_guard: Dict[str, Any] = {"checks": []}
                     base_point = deepcopy(current)
                     candidate_count = 0
                     coord_new_evaluations = 0
                     coord_cache_hits = 0
+                    anchor_reject_count = 0
                     value_jobs, repeat_jobs = self._coordinate_parallel_plan(
                         stage_name,
                         stage_sim_cfg,
@@ -2671,15 +1156,44 @@ class HyperCDOptimizer:
                             coord_new_evaluations += 1
                         else:
                             candidate_result = entry["result"]
-                        if candidate_result.aggregated_error + self.min_delta < candidate_best.aggregated_error:
+                        passed_guard, guard_context = passes_anchor_guard(
+                            candidate_result.objective_values,
+                            anchor_values,
+                            self.objective_order,
+                        )
+                        if not passed_guard:
+                            anchor_reject_count += 1
+                            continue
+                        if (
+                            compare_objective_values(
+                                candidate_result.objective_values,
+                                candidate_best.objective_values,
+                                self.objective_order,
+                            )
+                            < 0
+                        ):
                             candidate_best = candidate_result
+                            candidate_best_guard = guard_context
 
                     restart_new_evaluations += coord_new_evaluations
                     restart_cache_hits += coord_cache_hits
                     improved_coord = False
-                    if candidate_best.aggregated_error + self.min_delta < best_local.aggregated_error:
+                    if (
+                        candidate_best.combination_index != best_local.combination_index
+                        and compare_objective_values(
+                            candidate_best.objective_values,
+                            best_local.objective_values,
+                            self.objective_order,
+                        )
+                        < 0
+                    ):
                         current = deepcopy(candidate_best.hyperparams)
                         best_local = candidate_best
+                        anchor_values = update_anchor_values(
+                            anchor_values,
+                            best_local.objective_values,
+                            self.objective_order,
+                        )
                         improved_this_round = True
                         improved_coord = True
                         improvements.append(
@@ -2690,6 +1204,10 @@ class HyperCDOptimizer:
                                 "to_combination_index": best_local.combination_index,
                                 "from_error": start_best.aggregated_error,
                                 "to_error": best_local.aggregated_error,
+                                "from_objective_values": start_best.objective_values,
+                                "to_objective_values": best_local.objective_values,
+                                "anchor_values": anchor_values,
+                                "anchor_guard": candidate_best_guard,
                                 "selected_hyperparams": best_local.hyperparams,
                             }
                         )
@@ -2708,6 +1226,7 @@ class HyperCDOptimizer:
                                 "missing_value_count": len(missing_entries),
                                 "new_evaluations": coord_new_evaluations,
                                 "cache_hits": coord_cache_hits,
+                                "anchor_reject_count": anchor_reject_count,
                                 "value_jobs": value_jobs,
                                 "repeat_jobs": repeat_jobs,
                                 "planned_total_jobs": flat_diag["planned_total_jobs"],
@@ -2716,8 +1235,11 @@ class HyperCDOptimizer:
                                 "parallel_backend": flat_diag["parallel_backend"],
                                 "start_best_combination_index": start_best.combination_index,
                                 "start_best_error": start_best.aggregated_error,
+                                "start_best_objective_values": start_best.objective_values,
                                 "end_best_combination_index": best_local.combination_index,
                                 "end_best_error": best_local.aggregated_error,
+                                "end_best_objective_values": best_local.objective_values,
+                                "anchor_values": anchor_values,
                                 "improved": improved_coord,
                             },
                         )
@@ -2735,8 +1257,11 @@ class HyperCDOptimizer:
                     "restart_id": restart_id,
                     "initial_combination_index": initial_result.combination_index,
                     "initial_error": initial_result.aggregated_error,
+                    "initial_objective_values": initial_result.objective_values,
                     "best_combination_index": best_local.combination_index,
                     "best_error": best_local.aggregated_error,
+                    "best_objective_values": best_local.objective_values,
+                    "anchor_values": anchor_values,
                     "best_hyperparams": best_local.hyperparams,
                     "best_params": compact_hyperparams(best_local.hyperparams),
                     "outer_iters_completed": outer_iters_completed,
@@ -2749,11 +1274,16 @@ class HyperCDOptimizer:
                     "improvements": improvements,
                 }
             )
-            if global_best is None or best_local.aggregated_error < global_best.aggregated_error:
-                global_best = best_local
+            restart_local_bests.append(best_local)
 
-        if global_best is None:
+        if not restart_local_bests:
             raise RuntimeError("CD optimizer produced no combination")
+        global_best, _ = select_best_by_objectives(
+            restart_local_bests,
+            lambda result: result.objective_values,
+            self.objective_order,
+            tie_breaker=lambda result: (int(result.restart_id), int(result.combination_index)),
+        )
         return all_combinations, restart_best, global_best
 
     def _run_subject_pipeline(
@@ -2859,7 +1389,8 @@ class HyperCDOptimizer:
             subject_id=int(subjects[0]) if len(subjects) == 1 else -1,
             backend="hyper_cd",
             hyper_base_seed=self.hyper_base_seed,
-            selection_metric=self.selection_metric,
+            objective_order=self.objective_order_config,
+            objective_values=best_combination.objective_values,
             best_stage=final_stage,
             best_combination_index=best_combination.combination_index,
             best_hyperparams=best_combination.hyperparams,
@@ -2870,6 +1401,7 @@ class HyperCDOptimizer:
                 "restart_id": best_combination.restart_id,
                 "iter_id": best_combination.iter_id,
                 "coordinate": best_combination.coordinate,
+                "objectives": {"order": self.objective_order_config},
                 "final_selection": final_selection_context,
             },
             provenance=build_hyper_provenance(
@@ -2903,13 +1435,19 @@ class HyperCDOptimizer:
         top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
         summary: Dict[str, Any] = {}
         for stage_name, combinations in stage_combinations.items():
-            ranked = sorted(combinations, key=lambda x: x.aggregated_error)
+            ranked = rank_by_objectives(
+                combinations,
+                lambda combination: combination.objective_values,
+                self.objective_order,
+                tie_breaker=lambda combination: (int(combination.restart_id), int(combination.combination_index)),
+            )
             summary[stage_name] = {
                 "num_combinations": len(combinations),
                 "top_combinations": [
                     {
                         "combination_index": result.combination_index,
                         "aggregated_error": result.aggregated_error,
+                        "objective_values": result.objective_values,
                         "hyperparams": result.hyperparams,
                         "best_params": compact_hyperparams(result.hyperparams),
                         "restart_id": result.restart_id,
@@ -2953,7 +1491,7 @@ class HyperCDOptimizer:
             output_dir=self.output_dir,
             base_sim_config_path=self.base_sim_config_path,
             hyper_base_seed=self.hyper_base_seed,
-            selection_metric=self.selection_metric,
+            objective_order=self.objective_order_config,
             save_level=self.save_level,
             subjects=subjects,
             per_subject_best=per_subject_best,
