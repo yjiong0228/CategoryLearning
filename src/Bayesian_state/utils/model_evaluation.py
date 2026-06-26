@@ -40,6 +40,7 @@ import pandas as pd
 import seaborn as sns
 
 from src.Bayesian_state.utils.oral_model_alignment import OralModelAlignmentMixin
+from src.Bayesian_state.utils.optimizer_common import exponential_smooth_curve
 from src.Bayesian_state.problems.partitions import Partition
 from src.Bayesian_state.utils.stream import StreamList
 
@@ -336,6 +337,121 @@ class ModelEval(OralModelAlignmentMixin):
             "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
             "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
         }
+
+    def compute_accuracy_metrics(self, info, window_size=None):
+        true_acc = info.get("true_acc")
+        pred_acc = info.get("pred_acc")
+        if true_acc is None or pred_acc is None:
+            return {}
+        try:
+            true_acc = np.asarray(true_acc, dtype=float).reshape(-1)
+            pred_acc = np.asarray(pred_acc, dtype=float).reshape(-1)
+        except (TypeError, ValueError):
+            return {}
+        n_trials = min(true_acc.size, pred_acc.size)
+        if n_trials <= 1:
+            return {}
+        true_acc = true_acc[:n_trials]
+        pred_acc = pred_acc[:n_trials]
+
+        win = window_size if window_size is not None else info.get("window_size")
+        try:
+            win = int(win)
+        except (TypeError, ValueError):
+            win = 16
+        if win <= 0 or n_trials < win + 1:
+            return {}
+
+        sliding_true_acc = []
+        sliding_pred_acc = []
+        sliding_pred_std = []
+        for start in range(1, n_trials - win + 1):
+            end = start + win
+            true_window = true_acc[start:end]
+            pred_window = pred_acc[start:end]
+            sliding_true_acc.append(self._safe_nanmean(true_window))
+            sliding_pred_acc.append(self._safe_nanmean(pred_window))
+            valid = pred_window[np.isfinite(pred_window)]
+            if valid.size:
+                sliding_pred_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / win))
+            else:
+                sliding_pred_std.append(float("nan"))
+        return {
+            "sliding_true_acc": np.asarray(sliding_true_acc, dtype=float),
+            "sliding_pred_acc": np.asarray(sliding_pred_acc, dtype=float),
+            "sliding_pred_acc_std": np.asarray(sliding_pred_std, dtype=float),
+            "window_size": int(win),
+        }
+
+    @staticmethod
+    def _validate_exp_accuracy_alpha(alpha):
+        if alpha is None:
+            return None
+        try:
+            alpha_val = float(alpha)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"exp_accuracy_alpha must be a number in (0, 1], got {alpha!r}") from exc
+        if not np.isfinite(alpha_val) or alpha_val <= 0.0 or alpha_val > 1.0:
+            raise ValueError(f"exp_accuracy_alpha must be in (0, 1], got {alpha!r}")
+        return alpha_val
+
+    def compute_exponential_accuracy_metrics(self, info, exp_accuracy_alpha=None):
+        alpha = self._validate_exp_accuracy_alpha(exp_accuracy_alpha)
+        if alpha is None:
+            alpha = info.get("exp_accuracy_alpha")
+        if alpha is None:
+            win = info.get("window_size")
+            try:
+                alpha = 2.0 / (float(win) + 1.0)
+            except (TypeError, ValueError):
+                alpha = None
+        alpha = self._validate_exp_accuracy_alpha(alpha)
+        if alpha is None:
+            return {}
+
+        condition = int(info.get("condition", 1))
+        n_cats = 2 if condition == 1 else 4
+        chance_level = 1.0 / float(max(1, n_cats))
+        out = {"exp_accuracy_alpha": float(alpha)}
+
+        true_acc = info.get("true_acc")
+        pred_acc = info.get("pred_acc")
+        if true_acc is not None and pred_acc is not None:
+            true_arr = np.asarray(true_acc, dtype=float).reshape(-1)
+            pred_arr = np.asarray(pred_acc, dtype=float).reshape(-1)
+            n = min(true_arr.size, pred_arr.size)
+            if n:
+                out["exp_true_acc"] = exponential_smooth_curve(
+                    true_arr[:n],
+                    alpha=alpha,
+                    init_value=chance_level,
+                )
+                out["exp_pred_acc"] = exponential_smooth_curve(
+                    pred_arr[:n],
+                    alpha=alpha,
+                    init_value=chance_level,
+                )
+
+        if self._has_target_probability_data(info):
+            target_metrics = self.compute_target_majority_accuracy_metrics(info, window_size=1)
+            target_acc = target_metrics.get("target_majority_acc")
+            pred_target_acc = target_metrics.get("pred_target_majority_acc")
+            if target_acc is not None and pred_target_acc is not None:
+                target_arr = np.asarray(target_acc, dtype=float).reshape(-1)
+                pred_target_arr = np.asarray(pred_target_acc, dtype=float).reshape(-1)
+                n = min(target_arr.size, pred_target_arr.size)
+                if n:
+                    out["exp_target_majority_acc"] = exponential_smooth_curve(
+                        target_arr[:n],
+                        alpha=alpha,
+                        init_value=chance_level,
+                    )
+                    out["exp_pred_target_majority_acc"] = exponential_smooth_curve(
+                        pred_target_arr[:n],
+                        alpha=alpha,
+                        init_value=chance_level,
+                    )
+        return out
 
     @staticmethod
     def _resolve_beta_for_hypo(beta_vec, hypo, default_beta):
@@ -642,9 +758,20 @@ class ModelEval(OralModelAlignmentMixin):
         def body(ax, condition, iSub, info):
             use_target_majority = self._has_target_probability_data(info)
             if use_target_majority:
-                true_acc = info.get("sliding_target_majority_acc")
-                pred_acc = info.get("sliding_pred_target_majority_acc")
-                pred_std = info.get("sliding_pred_target_majority_acc_std")
+                computed = {}
+                if window_size is not None:
+                    computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size)
+                true_acc = computed.get("sliding_target_majority_acc") if computed else info.get("sliding_target_majority_acc")
+                pred_acc = (
+                    computed.get("sliding_pred_target_majority_acc")
+                    if computed
+                    else info.get("sliding_pred_target_majority_acc")
+                )
+                pred_std = (
+                    computed.get("sliding_pred_target_majority_acc_std")
+                    if computed
+                    else info.get("sliding_pred_target_majority_acc_std")
+                )
                 if true_acc is None or pred_acc is None or pred_std is None:
                     computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size)
                     true_acc = computed.get("sliding_target_majority_acc")
@@ -655,9 +782,10 @@ class ModelEval(OralModelAlignmentMixin):
                 ylabel = "Higher-probability option"
                 empty_text = "No target probability data"
             else:
-                true_acc = info.get("sliding_true_acc")
-                pred_acc = info.get("sliding_pred_acc")
-                pred_std = info.get("sliding_pred_acc_std")
+                computed = self.compute_accuracy_metrics(info, window_size=window_size) if window_size is not None else {}
+                true_acc = computed.get("sliding_true_acc") if computed else info.get("sliding_true_acc")
+                pred_acc = computed.get("sliding_pred_acc") if computed else info.get("sliding_pred_acc")
+                pred_std = computed.get("sliding_pred_acc_std") if computed else info.get("sliding_pred_acc_std")
                 pred_label = "Predicted"
                 true_label = "True"
                 ylabel = "Accuracy"
@@ -676,7 +804,7 @@ class ModelEval(OralModelAlignmentMixin):
                 ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel=ylabel)
                 return
 
-            win = info.get("window_size") or window_size
+            win = window_size or info.get("window_size")
             try:
                 win = int(win)
             except (TypeError, ValueError):
@@ -717,23 +845,36 @@ class ModelEval(OralModelAlignmentMixin):
             **kwargs,
         )
 
-    def plot_exponential_accuracy_comparison(self, results, subjects=None, save_path=None, **kwargs):
+    def plot_exponential_accuracy_comparison(
+        self,
+        results,
+        subjects=None,
+        save_path=None,
+        window_size=None,
+        exp_accuracy_alpha=None,
+        **kwargs,
+    ):
+        override_alpha = self._validate_exp_accuracy_alpha(exp_accuracy_alpha)
+        if override_alpha is None and window_size is not None:
+            override_alpha = self._validate_exp_accuracy_alpha(2.0 / (float(window_size) + 1.0))
         visible_results = self._filter_results(results, subjects)
         use_target_majority_plot = any(
             self._has_target_probability_data(info) for info in visible_results.values()
         )
 
         def body(ax, condition, iSub, info):
+            exp_override = self.compute_exponential_accuracy_metrics(info, exp_accuracy_alpha=override_alpha)
+            exp_source = exp_override if override_alpha is not None else info
             if self._has_target_probability_data(info):
-                true_acc = info.get("exp_target_majority_acc")
-                pred_acc = info.get("exp_pred_target_majority_acc")
+                true_acc = exp_source.get("exp_target_majority_acc")
+                pred_acc = exp_source.get("exp_pred_target_majority_acc")
                 true_label = "Participant"
                 pred_label = "Model"
                 ylabel = "Exp. smoothed higher-probability option"
                 empty_text = "No exponential target accuracy data"
             else:
-                true_acc = info.get("exp_true_acc")
-                pred_acc = info.get("exp_pred_acc")
+                true_acc = exp_source.get("exp_true_acc")
+                pred_acc = exp_source.get("exp_pred_acc")
                 true_label = "True"
                 pred_label = "Predicted"
                 ylabel = "Exp. smoothed accuracy"
@@ -765,7 +906,7 @@ class ModelEval(OralModelAlignmentMixin):
             if n_trials:
                 ax.set_xlim(1, n_trials)
             ax.set_ylim(0, 1)
-            alpha = info.get("exp_accuracy_alpha")
+            alpha = exp_source.get("exp_accuracy_alpha")
             try:
                 alpha_val = float(alpha)
             except (TypeError, ValueError):
@@ -799,9 +940,19 @@ class ModelEval(OralModelAlignmentMixin):
             raise RuntimeError("No condition 2/3 results available for family accuracy comparison")
 
         def body(ax, condition, iSub, info):
-            true_acc = info.get("sliding_true_family_acc")
-            pred_acc = info.get("sliding_pred_family_acc")
-            pred_std = info.get("sliding_pred_family_acc_std")
+            computed = {}
+            if window_size is not None:
+                computed = self.compute_family_accuracy_metrics(
+                    info,
+                    condition=condition,
+                    window_size=window_size,
+                    prediction_mode=kwargs.get("prediction_mode"),
+                    default_beta=kwargs.get("default_beta", 10.0),
+                    distance_mode=kwargs.get("distance_mode", "prototype"),
+                )
+            true_acc = computed.get("sliding_true_family_acc") if computed else info.get("sliding_true_family_acc")
+            pred_acc = computed.get("sliding_pred_family_acc") if computed else info.get("sliding_pred_family_acc")
+            pred_std = computed.get("sliding_pred_family_acc_std") if computed else info.get("sliding_pred_family_acc_std")
             if true_acc is None or pred_acc is None or pred_std is None:
                 computed = self.compute_family_accuracy_metrics(
                     info,
@@ -828,7 +979,7 @@ class ModelEval(OralModelAlignmentMixin):
                 ax.set(title=f"Subject {iSub} (Condition {condition})", xlabel="Trial", ylabel="Family Accuracy")
                 return
 
-            win = info.get("window_size") or window_size
+            win = window_size or info.get("window_size")
             try:
                 win = int(win)
             except (TypeError, ValueError):
@@ -866,9 +1017,18 @@ class ModelEval(OralModelAlignmentMixin):
 
     def plot_target_majority_accuracy_comparison(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
         def body(ax, condition, iSub, info):
-            true_acc = info.get("sliding_target_majority_acc")
-            pred_acc = info.get("sliding_pred_target_majority_acc")
-            pred_std = info.get("sliding_pred_target_majority_acc_std")
+            computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size) if window_size is not None else {}
+            true_acc = computed.get("sliding_target_majority_acc") if computed else info.get("sliding_target_majority_acc")
+            pred_acc = (
+                computed.get("sliding_pred_target_majority_acc")
+                if computed
+                else info.get("sliding_pred_target_majority_acc")
+            )
+            pred_std = (
+                computed.get("sliding_pred_target_majority_acc_std")
+                if computed
+                else info.get("sliding_pred_target_majority_acc_std")
+            )
             if true_acc is None or pred_acc is None or pred_std is None:
                 computed = self.compute_target_majority_accuracy_metrics(info, window_size=window_size)
                 true_acc = computed.get("sliding_target_majority_acc")
@@ -896,7 +1056,7 @@ class ModelEval(OralModelAlignmentMixin):
                 )
                 return
 
-            win = info.get("window_size") or window_size
+            win = window_size or info.get("window_size")
             try:
                 win = int(win)
             except (TypeError, ValueError):

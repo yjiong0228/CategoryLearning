@@ -137,7 +137,7 @@ def load_simulation_results(
         info["eval_prediction_mode"] = mode
 
         meta = info.get("selection_meta") or {}
-        resolved_window = summary.get("window_size") or meta.get("window_size") or window_size
+        resolved_window = window_size or summary.get("window_size") or meta.get("window_size")
         if resolved_window is not None:
             info["window_size"] = int(resolved_window)
 
@@ -200,6 +200,7 @@ def run_basic_plots(
     output_dir: Path,
     subjects: Sequence[int] | None,
     window_size: int | None,
+    exp_accuracy_alpha: float | None,
     records: list[dict[str, Any]],
     posterior_limit: bool,
 ) -> None:
@@ -224,6 +225,8 @@ def run_basic_plots(
             results,
             subjects=subjects,
             save_path=basic_dir / "exponential_accuracy_comparison.png",
+            window_size=window_size,
+            exp_accuracy_alpha=exp_accuracy_alpha,
         ),
         [basic_dir / "exponential_accuracy_comparison.png"],
     )
@@ -624,7 +627,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--subjects", nargs="+", type=int, help="Subject IDs to evaluate")
     p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Inclusive subject range")
     p.add_argument("--eval-prediction-mode", help="Metrics mode to plot, e.g. prior_t")
-    p.add_argument("--window-size", type=int, help="Fallback window size for old result JSONs")
+    p.add_argument("--window-size", type=int, help="Override window size for evaluation plots")
+    p.add_argument(
+        "--exp-accuracy-alpha",
+        type=float,
+        help="Override exponential accuracy alpha for evaluation plots; must be in (0, 1].",
+    )
     p.add_argument("--skip-basic", action="store_true", help="Skip group-level metric/log plots")
     p.add_argument("--skip-trajectory", action="store_true", help="Skip raw-run trajectory plots")
     p.add_argument("--skip-behavior-ppc", action="store_true", help="Skip predictive-distribution PPC plots")
@@ -689,6 +697,7 @@ def main() -> None:
             output_dir=output_dir,
             subjects=subjects,
             window_size=args.window_size,
+            exp_accuracy_alpha=args.exp_accuracy_alpha,
             records=records,
             posterior_limit=bool(args.posterior_limit),
         )
