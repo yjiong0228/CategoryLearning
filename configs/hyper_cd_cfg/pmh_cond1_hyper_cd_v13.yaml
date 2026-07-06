@@ -1,0 +1,74 @@
+# v13 Cond1 hyper-CD config.
+# Beta is fixed in the model config; CD optimizes only memory and profile/readout candidates.
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation_v13.yaml
+
+subject_range: [101, 132]
+
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v13
+objective_order:
+  - path: statistics.loss.choice_brier.best10_mean
+    rel_tolerance: 0.03
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
+  - path: statistics.loss.accuracy_curve_berhu.best25_mean
+    rel_tolerance: 0.05
+    abs_tolerance: 0.005
+    scale_floor: 0.01
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 42
+loss_metric: accuracy_curve_berhu
+loss_delta: 0.10
+window_size: 16
+
+statistics_config:
+  enabled: true
+  mode: distribution_ppc_interval
+  primary_tolerance_abs: 0.015
+  primary_tolerance_rel: 0.05
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 32
+  distribution_interval_alpha: 0.10
+
+cd:
+  n_restarts: 8
+  max_outer_iters: 8
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.001
+  parallel_budget: 64
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.25, 0.40, 0.55, 0.70, 0.85, 0.95]
+      w0: [0.005, 0.02, 0.06, 0.12, 0.25, 0.45]
+
+  __profile_candidate__:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v13_candidates.json
+      key: cond1_v13
+      value_key: model_kwargs
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 16
+    simulation_overrides:
+      simulation_repeats: 64
+      keep_logs: false
+      loss_metric: accuracy_curve_berhu
+      loss_delta: 0.10
+      window_size: 16
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 16
+    simulation_overrides:
+      simulation_repeats: 128
+      keep_logs: false
+      loss_metric: accuracy_curve_berhu
+      loss_delta: 0.10
+      window_size: 16

@@ -86,6 +86,70 @@ optional second mixing step.
 | `error_boost_newcomers` | Boost newcomer prior mass after recent errors or volatility | `window=8`, `padding=chance`, `feedback_mode=exact`, `base_newcomer_mass=0.05`, `max_newcomer_mass=0.65`, `volatility_gain=0.0` | \(mass=base+(max-base)\cdot clip(1-acc+volatility\_gain\cdot state,0,1)\). |
 | `stochastic_reset` | Occasional random redistribution over active hypotheses | `reset_probability=0.25`, `newcomer_mass=0.50`, `concentration=1.0` | With reset probability, draw random active weights; if both survivors and newcomers exist, rescale newcomers to `newcomer_mass`. Otherwise fall back to `similarity_novelty`. |
 
+`stochastic_reset` is kept for v10 reproducibility, but it is deprecated for
+v11 optimization candidates because it can disrupt learned trajectories too
+aggressively. The v11 candidate files exclude it.
+
+## Profile Controller
+
+Static `strategies` remain supported. For v11 experiments, a
+`strategy_controller` can choose one profile per trial:
+
+```yaml
+strategy_controller:
+  method: feedback_gated_softmax
+  features:
+    recent_accuracy_window: 8
+    accuracy_delta_window: 8
+    padding: chance
+    feedback_mode: exact
+  activation:
+    temperature: 0.7
+  profiles:
+    - id: exploit
+      activation:
+        recent_accuracy: 2.0
+        posterior_confidence: 1.0
+      strategies: [...]
+      post_to_prior:
+        method: conservative_carryover
+```
+
+Only causal history is used for activation: previous feedback, recent
+accuracy, accuracy delta, posterior entropy/confidence, latent volatility, and
+trial progress. The current trial feedback is appended after transition, so it
+cannot select the profile for the same trial. The first v11 implementation uses
+hard gating: a single profile is sampled from a softmax and then that profile's
+`strategies` and `post_to_prior` are executed.
+
+## Choice Readout
+
+`engine.choice_readout.kwargs` controls how the model reads out category
+probabilities from the current hypothesis distribution. It affects prediction
+metrics and simulated choice probabilities only; it does not change posterior
+updates.
+
+| Method | Idea | Main parameters |
+|---|---|---|
+| `expectation` | Current default: average category probabilities under the hypothesis distribution | none |
+| `sharpened_expectation` | Raise hypothesis weights to a power before averaging | `power`, `weight_floor` |
+| `map_hypothesis` | Read out the single highest-weight active hypothesis | none |
+| `sample_hypothesis` | Sample one active hypothesis per trial from the distribution | `weight_floor` |
+| `sticky_sample` | Keep a sampled hypothesis until confidence/error/inactivity triggers switching | `switch_probability`, `post_error_switch_delta`, `low_confidence_switch_gain` |
+| `stubborn_sticky` | Like sticky readout, but errors can reduce switching and create persistent wrong choices | `switch_probability`, `post_error_switch_delta` |
+
+V11 profile candidates are stored as multi-path model kwargs, so a YAML file can
+refer to a JSON candidate list with:
+
+```yaml
+hyperparam_space:
+  __profile_candidate__:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v11_candidates.json
+      key: cond1_v11
+      value_key: model_kwargs
+```
+
 ## Example Configurations
 
 Retention plus explicit exploration:

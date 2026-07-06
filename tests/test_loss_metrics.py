@@ -5,11 +5,86 @@ import numpy as np
 from src.Bayesian_state.utils.optimizer_common import (
     SingleRunResult,
     build_loss_strategy,
+    compute_prediction_metrics,
     compute_loss_values,
     exponential_smooth_curve,
+    _choice_readout_weights,
 )
 from src.Bayesian_state.utils.optimizer_simulation import aggregate_simulation_runs
 from src.Bayesian_state.utils.optimization_config import resolve_loss_delta
+
+
+class _BetaSensitivePartition:
+    n_cats = 2
+
+    def get_category_probabilities(self, hypo, data, beta, distance_mode="prototype"):
+        if float(beta) >= 10.0:
+            return np.asarray([[0.9], [0.1]], dtype=float)
+        return np.asarray([[0.5], [0.5]], dtype=float)
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.beta = np.asarray([0.1], dtype=float)
+        self.distance_mode = "prototype"
+
+
+class _FakeModel:
+    def __init__(self):
+        self.hypotheses_set = [0]
+        self.partition_model = _BetaSensitivePartition()
+        self.engine = _FakeEngine()
+
+
+def test_prediction_metrics_uses_trial_beta_log_when_available() -> None:
+    model = _FakeModel()
+    post = np.asarray([[1.0], [1.0], [1.0]], dtype=float)
+    prior = np.asarray([[1.0], [1.0], [1.0]], dtype=float)
+    step_log = [
+        {"perceived_stimulus": np.asarray([0.0], dtype=float)},
+        {"perceived_stimulus": np.asarray([0.0], dtype=float)},
+        {"perceived_stimulus": np.asarray([0.0], dtype=float)},
+    ]
+    stimulus = np.zeros((3, 1), dtype=float)
+    choices = np.asarray([1, 1, 1], dtype=int)
+    feedback = np.asarray([1.0, 1.0, 1.0], dtype=float)
+    categories = np.asarray([1, 1, 1], dtype=int)
+    beta_log = np.asarray([[0.1], [15.0], [15.0]], dtype=float)
+
+    with_log = compute_prediction_metrics(
+        model,
+        post,
+        prior,
+        step_log,
+        stimulus,
+        choices,
+        feedback,
+        categories,
+        None,
+        window_size=1,
+        prediction_mode="prior_t",
+        loss_metric="choice_brier",
+        choice_readout_config={"method": "map_hypothesis"},
+        beta_log=beta_log,
+    )["prior_t"]
+    without_log = compute_prediction_metrics(
+        model,
+        post,
+        prior,
+        step_log,
+        stimulus,
+        choices,
+        feedback,
+        categories,
+        None,
+        window_size=1,
+        prediction_mode="prior_t",
+        loss_metric="choice_brier",
+        choice_readout_config={"method": "map_hypothesis"},
+    )["prior_t"]
+
+    assert np.isclose(with_log["pred_acc"][1], 0.9)
+    assert np.isclose(without_log["pred_acc"][1], 0.5)
 
 
 def test_berhu_numeric_piecewise() -> None:
@@ -182,3 +257,51 @@ def test_loss_summary_records_best10_and_best25_lower_tail_means() -> None:
     assert np.isclose(choice_summary["best25-mean"], 0.15)
     assert choice_summary["best25_count"] == 2
     assert np.isclose(berhu_summary["best25_mean"], 0.30)
+
+
+def test_choice_readout_map_and_sticky_behaviors() -> None:
+    distribution = np.asarray([0.2, 0.8], dtype=float)
+
+    map_weights, map_log = _choice_readout_weights(
+        distribution,
+        trial_idx=1,
+        feedback=np.asarray([1.0], dtype=float),
+        config={"method": "map_hypothesis"},
+        rng=np.random.default_rng(3),
+        sticky_state={},
+    )
+    assert map_weights.tolist() == [0.0, 1.0]
+    assert map_log["selected_arg"] == 1
+
+    sticky_state = {"selected_arg": 0}
+    sticky_weights, sticky_log = _choice_readout_weights(
+        np.asarray([0.0, 1.0], dtype=float),
+        trial_idx=1,
+        feedback=np.asarray([1.0], dtype=float),
+        config={"method": "sticky_sample", "switch_probability": 0.0},
+        rng=np.random.default_rng(3),
+        sticky_state=sticky_state,
+    )
+    assert sticky_weights.tolist() == [0.0, 1.0]
+    assert sticky_log["switched"] is True
+    assert sticky_state["selected_arg"] == 1
+
+
+def test_stubborn_readout_lowers_post_error_switch_probability() -> None:
+    distribution = np.asarray([0.8, 0.2], dtype=float)
+    sticky_state = {"selected_arg": 0}
+
+    _, log = _choice_readout_weights(
+        distribution,
+        trial_idx=1,
+        feedback=np.asarray([0.0], dtype=float),
+        config={
+            "method": "stubborn_sticky",
+            "switch_probability": 0.5,
+            "post_error_switch_delta": -0.3,
+        },
+        rng=np.random.default_rng(3),
+        sticky_state=sticky_state,
+    )
+
+    assert np.isclose(log["switch_probability"], 0.2)

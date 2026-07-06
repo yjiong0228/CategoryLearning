@@ -444,7 +444,7 @@ class Partition(BasePartition):
     EPS = 1e-7
 
     # In-process cache for loaded similarity matrices:
-    # {(n_dims, n_cats, n_samples, region_label_version): matrix_array}.
+    # {(n_dims, n_cats, n_samples, region_label_version, label_signature): matrix_array}.
     _loaded_matrices_cache = {}
     REGION_LABEL_VERSION = "prototype_labels_v2"
 
@@ -458,16 +458,29 @@ class Partition(BasePartition):
 
     def __init__(self, n_dims: int, n_cats: int, n_protos: int = 1, **kwargs):
         """Build split definitions, prototype centers, and region cache."""
+        self._label_permutations = self._resolve_label_permutations(
+            n_cats=int(n_cats),
+            include_label_reversals=bool(kwargs.get("include_label_reversals", False)),
+            label_permutations=kwargs.get("label_permutations"),
+        )
+        self._label_permutation_signature = self._label_signature(self._label_permutations)
         super().__init__(n_dims, n_cats, n_protos, **kwargs)
+        self.base_hypothesis_count = len(self.splits)
+        self._apply_label_permutations()
         self.connectivity_map = self._compute_connectivity_map()
 
         # Similarity can be expensive, so only remember how to build/load it.
         # The matrix itself is loaded or computed on first access.
         cache_dir = Path(kwargs.get("cache_dir", self.DEFAULT_CACHE_DIR))
         self._similarity_n_samples = int(kwargs.get("similarity_n_samples", 100000))
+        label_suffix = (
+            ""
+            if self._label_permutation_signature == "identity"
+            else f"_labels_{self._label_permutation_signature}"
+        )
         filename = (
             f"similarity_matrix_{self.REGION_LABEL_VERSION}"
-            f"_d{n_dims}_c{n_cats}_n{self._similarity_n_samples}.npy"
+            f"_d{n_dims}_c{n_cats}_n{self._similarity_n_samples}{label_suffix}.npy"
         )
         self._similarity_matrix_path = cache_dir / filename
         self._similarity_matrix = None
@@ -483,6 +496,95 @@ class Partition(BasePartition):
                 self._similarity_n_samples,
             )
         return self._similarity_matrix
+
+    @staticmethod
+    def _resolve_label_permutations(
+        n_cats: int,
+        include_label_reversals: bool,
+        label_permutations,
+    ) -> tuple[tuple[int, ...], ...]:
+        identity = tuple(range(int(n_cats)))
+        if label_permutations is None:
+            if include_label_reversals:
+                if int(n_cats) != 2:
+                    raise ValueError(
+                        "include_label_reversals=True currently supports binary partitions only; "
+                        "use explicit label_permutations for other category counts."
+                    )
+                raw_perms = [identity, tuple(reversed(identity))]
+            else:
+                raw_perms = [identity]
+        else:
+            raw_perms = [tuple(int(x) for x in perm) for perm in label_permutations]
+            if identity not in raw_perms:
+                raw_perms.insert(0, identity)
+
+        seen = set()
+        resolved = []
+        expected = list(range(int(n_cats)))
+        for perm in raw_perms:
+            if len(perm) != int(n_cats) or sorted(perm) != expected:
+                raise ValueError(
+                    f"label permutation {perm!r} must be a permutation of {tuple(expected)!r}."
+                )
+            if perm not in seen:
+                seen.add(perm)
+                resolved.append(perm)
+        return tuple(resolved)
+
+    @staticmethod
+    def _label_signature(permutations: tuple[tuple[int, ...], ...]) -> str:
+        if permutations == (tuple(range(len(permutations[0]))),):
+            return "identity"
+        return "_".join("".join(str(idx) for idx in perm) for perm in permutations)
+
+    @staticmethod
+    def _copy_region(region: dict) -> dict:
+        copied = {}
+        for key, value in region.items():
+            if isinstance(value, np.ndarray):
+                copied[key] = value.copy()
+            else:
+                copied[key] = value
+        return copied
+
+    def _apply_label_permutations(self) -> None:
+        identity = tuple(range(self.n_cats))
+        base_splits = list(self.splits)
+        base_regions = list(self.regions)
+        base_prototypes = np.asarray(self.prototypes, dtype=float)
+        base_count = len(base_splits)
+
+        self.hypothesis_metadata = [
+            {
+                "base_hypo": int(base_idx),
+                "label_permutation": tuple(int(x) for x in perm),
+                "is_label_permuted": tuple(perm) != identity,
+            }
+            for perm in self._label_permutations
+            for base_idx in range(base_count)
+        ]
+
+        if self._label_permutations == (identity,):
+            return
+
+        expanded_splits = []
+        expanded_regions = []
+        expanded_prototypes = []
+        for perm in self._label_permutations:
+            perm_indices = list(perm)
+            expanded_splits.extend(base_splits)
+            expanded_regions.extend(
+                [
+                    [self._copy_region(base_regions[base_idx][old_cat]) for old_cat in perm_indices]
+                    for base_idx in range(base_count)
+                ]
+            )
+            expanded_prototypes.append(base_prototypes[:, :, perm_indices, :])
+
+        self.splits = expanded_splits
+        self.regions = expanded_regions
+        self.prototypes = np.concatenate(expanded_prototypes, axis=0)
 
     # ------------------------------------------------------------------
     # Internal helpers: connectivity and boundary geometry
@@ -610,7 +712,13 @@ class Partition(BasePartition):
 
     def _load_or_compute_similarity(self, n_dims, n_cats, file_path, n_samples):
         """Load a similarity matrix from memory/disk or compute it."""
-        cache_key = (n_dims, n_cats, int(n_samples), self.REGION_LABEL_VERSION)
+        cache_key = (
+            n_dims,
+            n_cats,
+            int(n_samples),
+            self.REGION_LABEL_VERSION,
+            self._label_permutation_signature,
+        )
 
         # 1. Check in-process cache.
         if cache_key in Partition._loaded_matrices_cache:

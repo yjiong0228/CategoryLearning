@@ -1,0 +1,82 @@
+partition:
+  class: src.Bayesian_state.problems.partitions.Partition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+    include_label_reversals: true
+
+modules:
+  perception_mod:
+    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+  beta_mod:
+    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      decrease_rate: 0.15
+      correct_additive: 0.5
+      use_prior_scaling: true
+      prior_beta_scale: 3.0
+      beta_update_mode: inferred_correct_category
+  hypo_transitions_mod:
+    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    kwargs:
+      init_num: 5
+      max_active_hypotheses: 5
+      strategy_controller:
+        method: feedback_gated_softmax
+        features:
+          recent_accuracy_window: 8
+          accuracy_delta_window: 8
+          padding: chance
+          feedback_mode: exact
+          trial_progress_scale: 160
+        activation:
+          temperature: 0.85
+        profiles:
+          - id: conservative
+            policy_method: conservative
+            activation: {bias: 0.1, recent_accuracy: 0.7, posterior_confidence: 0.5}
+            post_to_prior: {method: conservative_carryover, newcomer_mass: 0.0}
+          - id: stable
+            policy_method: stable
+            activation: {bias: 1.0, posterior_entropy: 0.5, recent_accuracy: 0.3}
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 0.8
+            post_to_prior: {method: similarity_novelty, min_newcomer_scale: 0.04}
+          - id: aggressive
+            policy_method: aggressive
+            activation: {bias: -0.4, recent_error: 0.7, posterior_entropy: 0.6}
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 0
+          - id: stubborn
+            policy_method: stubborn
+            activation: {bias: -0.3, last_error: 0.7, posterior_confidence: 0.5}
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.03
+            post_correct_explore_prob: 0.18
+            newcomer_mass: 0.02
+  likelihood_mod:
+    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+    kwargs:
+      distance_mode: prototype
+  memory_mod:
+    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    kwargs:
+      w0: 0.06
+      gamma: 0.55
+
+choice_readout:
+  kwargs:
+    method: map_hypothesis
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod

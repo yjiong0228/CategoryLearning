@@ -1,0 +1,612 @@
+{
+  "cond1_v11": [
+    {
+      "id": "c1_v11_exploit_sharpened",
+      "description": "Low-capacity exploit profile with sharpened expectation readout.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 3,
+          "max_active_hypotheses": 6,
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 8,
+              "accuracy_delta_window": 8,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 160
+            },
+            "activation": {
+              "temperature": 0.8
+            },
+            "profiles": [
+              {
+                "id": "exploit",
+                "activation": {
+                  "bias": 1.0,
+                  "recent_accuracy": 1.0,
+                  "posterior_confidence": 0.8
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.04
+                },
+                "strategies": [
+                  {
+                    "label": "retain_core",
+                    "amount": "confidence_3",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 1,
+                    "epsilon": 0.20
+                  },
+                  {
+                    "label": "small_explore",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "random",
+                    "pool": "inactive"
+                  }
+                ]
+              },
+              {
+                "id": "explore",
+                "activation": {
+                  "bias": -0.3,
+                  "recent_error": 1.2,
+                  "posterior_entropy": 0.8
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.08
+                },
+                "strategies": [
+                  {
+                    "label": "retain_soft",
+                    "amount": "entropy_norm_2",
+                    "method": "temperature_posterior",
+                    "pool": "active",
+                    "min_count": 1,
+                    "temperature": 2.5
+                  },
+                  {
+                    "label": "explore_entropy",
+                    "amount": "opp_entropy_norm_3",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "sharpened_expectation",
+          "power": 2.0,
+          "weight_floor": 1e-12
+        }
+      }
+    },
+    {
+      "id": "c1_v11_stubborn_sticky",
+      "description": "Stubborn profile becomes more active after errors and uses sticky readout.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 4,
+          "max_active_hypotheses": 7,
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 8,
+              "accuracy_delta_window": 8,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 160
+            },
+            "activation": {
+              "temperature": 0.7
+            },
+            "profiles": [
+              {
+                "id": "explore",
+                "activation": {
+                  "bias": 0.2,
+                  "posterior_entropy": 1.0,
+                  "recent_error": 0.6
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.10
+                },
+                "strategies": [
+                  {
+                    "label": "retain_one",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "epsilon": 0.35
+                  },
+                  {
+                    "label": "refresh",
+                    "amount": "opp_entropy_norm_4",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1
+                  }
+                ]
+              },
+              {
+                "id": "low_capacity",
+                "activation": {
+                  "bias": -0.1,
+                  "recent_error": 0.5,
+                  "posterior_entropy": 0.5
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.02
+                },
+                "strategies": [
+                  {
+                    "label": "retain_tiny_core",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "epsilon": 0.45
+                  },
+                  {
+                    "label": "rare_probe",
+                    "amount": "post_error_explore_1",
+                    "method": "random",
+                    "pool": "inactive",
+                    "padding": "chance",
+                    "feedback_mode": "exact"
+                  }
+                ]
+              },
+              {
+                "id": "stubborn",
+                "activation": {
+                  "bias": 0.0,
+                  "last_error": 1.6,
+                  "recent_error": 0.8,
+                  "posterior_confidence": 0.4
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.02
+                },
+                "strategies": [
+                  {
+                    "label": "retain_stubborn_core",
+                    "amount": "confidence_4",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 2,
+                    "epsilon": 0.10
+                  },
+                  {
+                    "label": "minimal_explore",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "random",
+                    "pool": "inactive"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "stubborn_sticky",
+          "switch_probability": 0.12,
+          "post_error_switch_delta": -0.10,
+          "low_confidence_switch_gain": 0.10
+        }
+      }
+    },
+    {
+      "id": "c1_v11_volatile_sample",
+      "description": "Low accuracy activates volatile refresh; sampled readout widens trajectories.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 5,
+          "max_active_hypotheses": 9,
+          "latent_volatility_base": 0.01,
+          "latent_volatility_error_gain": 0.45,
+          "latent_volatility_low_accuracy_gain": 0.25,
+          "latent_volatility_threshold": 0.70,
+          "latent_volatility_window": 8,
+          "latent_volatility_decay": 0.65,
+          "latent_volatility_max": 1.0,
+          "latent_volatility_feedback_mode": "exact",
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 8,
+              "accuracy_delta_window": 8,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 160
+            },
+            "activation": {
+              "temperature": 0.9
+            },
+            "profiles": [
+              {
+                "id": "exploit",
+                "activation": {
+                  "bias": 0.5,
+                  "recent_accuracy": 0.8,
+                  "posterior_confidence": 0.6
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.05
+                },
+                "strategies": [
+                  {
+                    "label": "retain_entropy",
+                    "amount": "entropy_norm_3",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 1,
+                    "epsilon": 0.25
+                  }
+                ]
+              },
+              {
+                "id": "volatile_refresh",
+                "activation": {
+                  "bias": -0.2,
+                  "last_error": 1.0,
+                  "recent_error": 1.2,
+                  "latent_volatility": 1.4
+                },
+                "post_to_prior": {
+                  "method": "error_boost_newcomers",
+                  "window": 8,
+                  "padding": "chance",
+                  "feedback_mode": "exact",
+                  "base_newcomer_mass": 0.08,
+                  "max_newcomer_mass": 0.65,
+                  "volatility_gain": 0.40
+                },
+                "strategies": [
+                  {
+                    "label": "retain_small",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "top_posterior",
+                    "pool": "active"
+                  },
+                  {
+                    "label": "volatility_refresh",
+                    "amount": "latent_volatility_5",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1,
+                    "threshold": 0.05,
+                    "power": 1.0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "sample_hypothesis",
+          "power": 1.0
+        }
+      }
+    }
+  ],
+  "cond23_v11": [
+    {
+      "id": "c23_v11_exploit_sharpened",
+      "description": "Moderate-capacity exploit/explore controller with sharpened readout.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 8,
+          "max_active_hypotheses": 14,
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 16,
+              "accuracy_delta_window": 16,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 240
+            },
+            "activation": {
+              "temperature": 0.9
+            },
+            "profiles": [
+              {
+                "id": "exploit",
+                "activation": {
+                  "bias": 1.0,
+                  "recent_accuracy": 1.0,
+                  "posterior_confidence": 0.7
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.04
+                },
+                "strategies": [
+                  {
+                    "label": "retain_conf",
+                    "amount": "confidence_6",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 2,
+                    "epsilon": 0.20
+                  },
+                  {
+                    "label": "small_explore",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "random",
+                    "pool": "inactive"
+                  }
+                ]
+              },
+              {
+                "id": "explore",
+                "activation": {
+                  "bias": -0.2,
+                  "recent_error": 1.1,
+                  "posterior_entropy": 0.8
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.08
+                },
+                "strategies": [
+                  {
+                    "label": "retain_soft",
+                    "amount": "entropy_norm_4",
+                    "method": "temperature_posterior",
+                    "pool": "active",
+                    "min_count": 2,
+                    "temperature": 2.5
+                  },
+                  {
+                    "label": "explore_entropy",
+                    "amount": "opp_entropy_norm_5",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "sharpened_expectation",
+          "power": 2.0,
+          "weight_floor": 1e-12
+        }
+      }
+    },
+    {
+      "id": "c23_v11_stubborn_sticky",
+      "description": "Higher-capacity stubborn profile with sticky readout after errors.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 10,
+          "max_active_hypotheses": 16,
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 16,
+              "accuracy_delta_window": 16,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 240
+            },
+            "activation": {
+              "temperature": 0.8
+            },
+            "profiles": [
+              {
+                "id": "explore",
+                "activation": {
+                  "bias": 0.2,
+                  "posterior_entropy": 1.0,
+                  "recent_error": 0.6
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.10
+                },
+                "strategies": [
+                  {
+                    "label": "retain_core",
+                    "amount": "entropy_norm_5",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 2,
+                    "epsilon": 0.35
+                  },
+                  {
+                    "label": "refresh",
+                    "amount": "opp_entropy_norm_6",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1
+                  }
+                ]
+              },
+              {
+                "id": "low_capacity",
+                "activation": {
+                  "bias": -0.1,
+                  "recent_error": 0.5,
+                  "posterior_entropy": 0.5
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.02
+                },
+                "strategies": [
+                  {
+                    "label": "retain_tiny_core",
+                    "amount": "fixed",
+                    "value": 2,
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "epsilon": 0.45
+                  },
+                  {
+                    "label": "rare_probe",
+                    "amount": "post_error_explore_1",
+                    "method": "random",
+                    "pool": "inactive",
+                    "padding": "chance",
+                    "feedback_mode": "exact"
+                  }
+                ]
+              },
+              {
+                "id": "stubborn",
+                "activation": {
+                  "bias": 0.0,
+                  "last_error": 1.5,
+                  "recent_error": 0.8,
+                  "posterior_confidence": 0.4
+                },
+                "post_to_prior": {
+                  "method": "conservative_carryover",
+                  "newcomer_mass": 0.03
+                },
+                "strategies": [
+                  {
+                    "label": "retain_stubborn_core",
+                    "amount": "confidence_7",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 3,
+                    "epsilon": 0.10
+                  },
+                  {
+                    "label": "minimal_explore",
+                    "amount": "fixed",
+                    "value": 1,
+                    "method": "random",
+                    "pool": "inactive"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "stubborn_sticky",
+          "switch_probability": 0.10,
+          "post_error_switch_delta": -0.08,
+          "low_confidence_switch_gain": 0.10
+        }
+      }
+    },
+    {
+      "id": "c23_v11_volatile_sample",
+      "description": "Large-space volatile refresh with sampled hypothesis readout.",
+      "model_kwargs": {
+        "engine.modules.hypo_transitions_mod.kwargs": {
+          "init_num": 12,
+          "max_active_hypotheses": 18,
+          "latent_volatility_base": 0.01,
+          "latent_volatility_error_gain": 0.45,
+          "latent_volatility_low_accuracy_gain": 0.25,
+          "latent_volatility_threshold": 0.70,
+          "latent_volatility_window": 16,
+          "latent_volatility_decay": 0.70,
+          "latent_volatility_max": 1.0,
+          "latent_volatility_feedback_mode": "exact",
+          "strategy_controller": {
+            "method": "feedback_gated_softmax",
+            "features": {
+              "recent_accuracy_window": 16,
+              "accuracy_delta_window": 16,
+              "padding": "chance",
+              "feedback_mode": "exact",
+              "trial_progress_scale": 240
+            },
+            "activation": {
+              "temperature": 0.9
+            },
+            "profiles": [
+              {
+                "id": "exploit",
+                "activation": {
+                  "bias": 0.5,
+                  "recent_accuracy": 0.8,
+                  "posterior_confidence": 0.6
+                },
+                "post_to_prior": {
+                  "method": "similarity_novelty",
+                  "min_newcomer_scale": 0.05
+                },
+                "strategies": [
+                  {
+                    "label": "retain_entropy",
+                    "amount": "entropy_norm_7",
+                    "method": "epsilon_posterior",
+                    "pool": "active",
+                    "min_count": 2,
+                    "epsilon": 0.25
+                  }
+                ]
+              },
+              {
+                "id": "volatile_refresh",
+                "activation": {
+                  "bias": -0.2,
+                  "last_error": 1.0,
+                  "recent_error": 1.2,
+                  "latent_volatility": 1.4
+                },
+                "post_to_prior": {
+                  "method": "error_boost_newcomers",
+                  "window": 16,
+                  "padding": "chance",
+                  "feedback_mode": "exact",
+                  "base_newcomer_mass": 0.08,
+                  "max_newcomer_mass": 0.70,
+                  "volatility_gain": 0.40
+                },
+                "strategies": [
+                  {
+                    "label": "retain_small",
+                    "amount": "fixed",
+                    "value": 2,
+                    "method": "top_posterior",
+                    "pool": "active"
+                  },
+                  {
+                    "label": "volatility_refresh",
+                    "amount": "latent_volatility_8",
+                    "method": "random",
+                    "pool": "inactive",
+                    "min_count": 1,
+                    "threshold": 0.05,
+                    "power": 1.0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "engine.choice_readout.kwargs": {
+          "method": "sample_hypothesis",
+          "power": 1.0
+        }
+      }
+    }
+  ]
+}

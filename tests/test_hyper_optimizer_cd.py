@@ -656,6 +656,89 @@ def test_cd_values_from_json_expands_kwargs_coordinate(tmp_path: Path) -> None:
     assert out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["init_num"] == 12
 
 
+def test_cd_profile_candidate_injects_multiple_hyperparam_paths(tmp_path: Path) -> None:
+    cd_path = _build_min_cd_config(tmp_path)
+    payload = {
+        "cond1_v11": [
+            {
+                "id": "profile_a",
+                "model_kwargs": {
+                    "engine.modules.hypo_transitions_mod.kwargs": {
+                        "init_num": 3,
+                        "strategy_controller": {
+                            "method": "feedback_gated_softmax",
+                            "profiles": [
+                                {
+                                    "id": "exploit",
+                                    "strategies": [
+                                        {
+                                            "label": "retain",
+                                            "amount": "fixed",
+                                            "value": 1,
+                                            "method": "random",
+                                            "pool": "active",
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    },
+                    "engine.choice_readout.kwargs": {
+                        "method": "stubborn_sticky",
+                        "switch_probability": 0.1,
+                    },
+                },
+            }
+        ]
+    }
+    _write_json(tmp_path / "profile_candidates.json", payload)
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    cfg["hyperparam_space"] = {
+        "__profile_candidate__": {
+            "values_from_json": {
+                "path": "profile_candidates.json",
+                "key": "cond1_v11",
+                "value_key": "model_kwargs",
+            }
+        }
+    }
+    opt = HyperCDOptimizer(cfg, cd_path)
+
+    specs = opt._param_specs_for_stage("coarse")
+    values = opt._hyperparam_values(specs["__profile_candidate__"])
+    next_sim, out_engine = opt._apply_hyperparams(
+        {"__profile_candidate__": values[0]},
+        {"window_size": 8},
+        {"modules": {"hypo_transitions_mod": {"kwargs": {}}}},
+    )
+
+    assert out_engine["modules"]["hypo_transitions_mod"]["kwargs"]["init_num"] == 3
+    assert out_engine["choice_readout"]["kwargs"]["method"] == "stubborn_sticky"
+    assert "__profile_candidate__" in next_sim["fixed_hyperparams"]
+
+
+def test_cond1_v13_cd_config_optimizes_memory_and_profile_only() -> None:
+    cd_path = Path(__file__).parents[1] / "configs" / "hyper_cd_cfg" / "pmh_cond1_hyper_cd_v13.yaml"
+    cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))
+    opt = HyperCDOptimizer(cfg, cd_path)
+
+    specs = opt._param_specs_for_stage("coarse")
+    assert set(specs) == {"engine.modules.memory_mod.kwargs", "__profile_candidate__"}
+    assert "beta_mod" not in yaml.safe_dump(specs)
+
+    memory_values = opt._hyperparam_values(specs["engine.modules.memory_mod.kwargs"])
+    profile_values = opt._hyperparam_values(specs["__profile_candidate__"])
+
+    assert len(memory_values) == 36
+    assert profile_values
+    for value in profile_values:
+        assert set(value) == {
+            "engine.modules.hypo_transitions_mod.kwargs",
+            "engine.choice_readout.kwargs",
+        }
+        assert value["engine.choice_readout.kwargs"]["method"] in {"expectation", "map_hypothesis"}
+
+
 def test_cd_values_product_expands_grouped_memory_coordinate(tmp_path: Path) -> None:
     cd_path = _build_min_cd_config(tmp_path)
     cfg = yaml.safe_load(cd_path.read_text(encoding="utf-8"))

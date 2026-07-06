@@ -31,6 +31,10 @@ from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.utils.optimizer_common import derive_hyper_candidate_seed
 from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRunner
+from src.Bayesian_state.utils.hyper_utils import (
+    PROFILE_CANDIDATE_KEY,
+    expand_profile_candidate_hyperparams,
+)
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -38,6 +42,8 @@ DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.modules.memory_mod.kwargs.gamma",
     "engine.modules.memory_mod.kwargs.w0",
     "engine.modules.hypo_transitions_mod.kwargs.strategies",
+    "engine.modules.hypo_transitions_mod.kwargs.strategy_controller",
+    "engine.modules.hypo_transitions_mod.kwargs.post_to_prior",
     "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
     "engine.modules.hypo_transitions_mod.kwargs.init_num",
     "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base",
@@ -74,6 +80,13 @@ DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.output_noise.kwargs.lapse_target",
     "engine.output_noise.kwargs.latent_volatility_lapse",
     "engine.output_noise.kwargs.latent_volatility_power",
+    "engine.choice_readout.kwargs",
+    "engine.choice_readout.kwargs.method",
+    "engine.choice_readout.kwargs.power",
+    "engine.choice_readout.kwargs.weight_floor",
+    "engine.choice_readout.kwargs.switch_probability",
+    "engine.choice_readout.kwargs.post_error_switch_delta",
+    "engine.choice_readout.kwargs.low_confidence_switch_gain",
 )
 
 
@@ -145,7 +158,7 @@ def apply_fixed_hyperparams_to_subject_config(
     fixed_hyperparams: Mapping[str, Any],
 ) -> Dict[str, Any]:
     resolved = deepcopy(dict(subject_cfg))
-    for key, value in fixed_hyperparams.items():
+    for key, value in expand_profile_candidate_hyperparams(fixed_hyperparams).items():
         if key.startswith("simulation."):
             _set_by_path(resolved, key[len("simulation."):], value)
         elif key.startswith("engine."):
@@ -160,7 +173,7 @@ def apply_fixed_hyperparams_to_engine_config(
     fixed_hyperparams: Mapping[str, Any],
 ) -> Dict[str, Any]:
     resolved = deepcopy(dict(engine_config))
-    for key, value in fixed_hyperparams.items():
+    for key, value in expand_profile_candidate_hyperparams(fixed_hyperparams).items():
         if key.startswith("engine."):
             _set_by_path(resolved, key[len("engine."):], value)
         elif key.startswith("simulation."):
@@ -239,7 +252,10 @@ def serialize_result(
 
 
 def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
-    summary = dict(hyperparams)
+    expanded_hyperparams = expand_profile_candidate_hyperparams(hyperparams)
+    summary = dict(expanded_hyperparams)
+    if PROFILE_CANDIDATE_KEY in hyperparams:
+        summary[PROFILE_CANDIDATE_KEY] = deepcopy(hyperparams[PROFILE_CANDIDATE_KEY])
     shortcuts = {
         "engine.modules.memory_mod.kwargs.gamma": "gamma",
         "engine.modules.memory_mod.kwargs.w0": "w0",
@@ -282,9 +298,9 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         "simulation.window_size": "window_size",
     }
     for source, target in shortcuts.items():
-        if source in hyperparams:
-            summary[target] = hyperparams[source]
-    transition_kwargs = hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
+        if source in expanded_hyperparams:
+            summary[target] = expanded_hyperparams[source]
+    transition_kwargs = expanded_hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
     if isinstance(transition_kwargs, Mapping):
         for source, target in (
             ("init_num", "init_num"),
@@ -310,7 +326,7 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         ):
             if source in transition_kwargs:
                 summary[target] = transition_kwargs[source]
-    output_noise = hyperparams.get("engine.output_noise.kwargs")
+    output_noise = expanded_hyperparams.get("engine.output_noise.kwargs")
     if isinstance(output_noise, Mapping):
         for source, target in (
             ("base_lapse", "output_base_lapse"),
@@ -326,6 +342,17 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         ):
             if source in output_noise:
                 summary[target] = output_noise[source]
+    readout = expanded_hyperparams.get("engine.choice_readout.kwargs")
+    if isinstance(readout, Mapping):
+        for source, target in (
+            ("method", "choice_readout_method"),
+            ("power", "choice_readout_power"),
+            ("switch_probability", "choice_readout_switch_probability"),
+            ("post_error_switch_delta", "choice_readout_post_error_switch_delta"),
+            ("low_confidence_switch_gain", "choice_readout_low_confidence_switch_gain"),
+        ):
+            if source in readout:
+                summary[target] = readout[source]
     return summary
 
 

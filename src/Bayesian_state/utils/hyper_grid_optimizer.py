@@ -32,6 +32,7 @@ from src.Bayesian_state.utils.hyper_utils import (
     build_subject_best_payload,
     combination_metrics_summary,
     compact_hyperparams,
+    expand_profile_candidate_hyperparams,
     to_builtin,
     validate_no_nested_hyperparam_paths,
     values_from_json,
@@ -272,6 +273,20 @@ class HyperGridOptimizer:
             curr = curr.setdefault(part, {})
         curr[parts[-1]] = deepcopy(value)
 
+    def _apply_single_hyperparam(
+        self,
+        key: str,
+        value: Any,
+        next_sim: Dict[str, Any],
+        next_engine: Dict[str, Any],
+    ) -> None:
+        if key.startswith("engine."):
+            self._set_by_path(next_engine, key[len("engine."):], value)
+        elif key.startswith("simulation."):
+            self._set_by_path(next_sim, key[len("simulation."):], value)
+        else:
+            raise ValueError(f"Hyperparameter key '{key}' must start with 'engine.' or 'simulation.'.")
+
     def _apply_hyperparams(
         self,
         combination: Dict[str, Any],
@@ -280,15 +295,8 @@ class HyperGridOptimizer:
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         next_sim = deepcopy(sim_cfg)
         next_engine = deepcopy(engine_cfg)
-        for key, val in combination.items():
-            if key.startswith("engine."):
-                self._set_by_path(next_engine, key[len("engine."):], val)
-            elif key.startswith("simulation."):
-                self._set_by_path(next_sim, key[len("simulation."):], val)
-            else:
-                raise ValueError(
-                    f"Hyperparameter key '{key}' must start with 'engine.' or 'simulation.'."
-                )
+        for key, val in expand_profile_candidate_hyperparams(combination).items():
+            self._apply_single_hyperparam(key, val, next_sim, next_engine)
         next_sim["fixed_hyperparams"] = deepcopy(combination)
         return next_sim, next_engine
 

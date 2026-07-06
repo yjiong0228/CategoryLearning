@@ -35,6 +35,7 @@ from src.Bayesian_state.utils.optimization_config import (
 )
 from src.Bayesian_state.utils.hyper_utils import (
     build_root_best_payload,
+    expand_profile_candidate_hyperparams,
     root_base_sim_config_path,
     root_hyper_base_seed,
     subject_best_hyperparams,
@@ -144,7 +145,7 @@ def _engine_mapping_replacement_paths(per_subject_best: Mapping[str, Any]) -> li
         best_hyperparams = subject_best_hyperparams(subject_payload)
         if not isinstance(best_hyperparams, Mapping):
             continue
-        for key, value in best_hyperparams.items():
+        for key, value in expand_profile_candidate_hyperparams(best_hyperparams).items():
             if key.startswith("engine.") and isinstance(value, Mapping):
                 paths.add(key[len("engine."):])
     return sorted(paths)
@@ -201,7 +202,8 @@ def _rebase_generated_sim_paths(
 def _split_hyperparams_for_simulation_override(best_hyperparams: Mapping[str, Any]) -> dict[str, Any]:
     override: dict[str, Any] = {}
     engine_override: dict[str, Any] = {}
-    for key, value in best_hyperparams.items():
+    expanded_hyperparams = expand_profile_candidate_hyperparams(best_hyperparams)
+    for key, value in expanded_hyperparams.items():
         if key.startswith("engine."):
             _set_by_path(engine_override, key[len("engine."):], value)
         elif key.startswith("simulation."):
@@ -210,7 +212,7 @@ def _split_hyperparams_for_simulation_override(best_hyperparams: Mapping[str, An
             raise ValueError(f"Hyperparameter key must start with 'engine.' or 'simulation.': {key}")
     if engine_override:
         override["engine_config"] = engine_override
-    override["fixed_hyperparams"] = deepcopy(dict(best_hyperparams))
+    override["fixed_hyperparams"] = deepcopy(expanded_hyperparams)
     return override
 
 

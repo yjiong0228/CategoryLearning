@@ -47,6 +47,14 @@ class DynamicHypothesisModule(BaseModule):
         "recent_accuracy",
         "latent_volatility",
     )
+    VALID_PROFILE_POLICY_METHODS = (
+        "conservative",
+        "stable",
+        "aggressive",
+        "stubborn",
+    )
+    VALID_NEWCOMER_SCORES = ("random", "recent_choice", "recent_error_choice")
+    VALID_INIT_POOLS = ("all", "base", "label_permuted")
     VALID_PRIOR_RESET_TARGETS = (
         "uniform_active",
         "newcomer_boost",
@@ -65,17 +73,18 @@ class DynamicHypothesisModule(BaseModule):
         self.module_seed = kwargs.get("module_seed", None)
         self.rng = np.random.default_rng(self.module_seed)
         
-        # Config: strategies is a list of dicts
-        # Example: [{"amount": "entropy", "method": "top_posterior", "min": 3, "max": 7}, ...]
+        # Config: strategies is a list of dicts. A strategy_controller may
+        # provide per-trial profiles instead of a single static strategy list.
         strategies_input = kwargs.get("strategies", None)
-        if strategies_input is None:
+        self.strategy_controller_raw = kwargs.get("strategy_controller", None)
+        if strategies_input is None and self.strategy_controller_raw is None:
             raise ValueError("Strategies configuration is required. Provide a non-empty list of strategy dicts.")
         if isinstance(strategies_input, str):
             raise ValueError(
                 "String strategy shortcuts are no longer supported. "
                 "Provide an explicit list of strategy dicts with amount, method, and pool."
             )
-        self.strategies = strategies_input
+        self.strategies = strategies_input if strategies_input is not None else []
 
         # Hard cap for total active hypotheses after each transition.
         self.max_active_hypotheses: int | None = kwargs.get("max_active_hypotheses", None)
@@ -87,6 +96,25 @@ class DynamicHypothesisModule(BaseModule):
             "beta": kwargs.get("beta", 5.0) # Default to 5.0 to match likelihood
         }
         self.init_num = int(kwargs.get("init_num", 5))
+        raw_init_hypotheses = kwargs.get("init_hypotheses", None)
+        self.init_hypotheses: np.ndarray | None = None
+        if raw_init_hypotheses is not None:
+            if not isinstance(raw_init_hypotheses, (list, tuple, np.ndarray)):
+                raise ValueError("init_hypotheses must be a list of hypothesis indices when provided.")
+            init_arr = np.asarray(raw_init_hypotheses, dtype=int).reshape(-1)
+            if init_arr.size == 0:
+                raise ValueError("init_hypotheses cannot be empty when provided.")
+            if np.unique(init_arr).size != init_arr.size:
+                raise ValueError("init_hypotheses cannot contain duplicate indices.")
+            if np.any(init_arr < 0) or np.any(init_arr >= self.total_hypo):
+                raise ValueError("init_hypotheses contains indices outside the hypothesis space.")
+            self.init_hypotheses = init_arr
+        self.init_pool = str(kwargs.get("init_pool", "all"))
+        if self.init_pool not in self.VALID_INIT_POOLS:
+            raise ValueError(
+                "init_pool must be one of "
+                f"{self.VALID_INIT_POOLS}, got {self.init_pool!r}."
+            )
         self.latent_volatility_base = self._validate_float_range(
             kwargs.get("latent_volatility_base", 0.0),
             "latent_volatility_base",
@@ -242,6 +270,8 @@ class DynamicHypothesisModule(BaseModule):
         self.post_to_prior_config = self._validate_post_to_prior_config(
             kwargs.get("post_to_prior", {"method": "similarity_novelty"})
         )
+        self._current_post_to_prior_config = self.post_to_prior_config
+        self._post_to_prior_override: Dict[str, Any] | None = None
         
         self.debug = kwargs.get("hypothesis_debug", False)
         # Track how many hypotheses each strategy selects per transition step (for plotting)
@@ -283,22 +313,43 @@ class DynamicHypothesisModule(BaseModule):
             "temperature_posterior": self._select_temperature_posterior,
             "low_posterior": self._select_low_posterior,
         }
-        self.strategies = self._validate_strategies(self.strategies)
+        self.strategies = self._validate_strategies(self.strategies) if self.strategies else []
+        self.strategy_controller = self._validate_strategy_controller(self.strategy_controller_raw)
         if "history_maxlen" in kwargs:
             raise ValueError("history_maxlen is no longer a supported config key; set window on history-based strategies.")
-        required_history = self._required_history_length(self.strategies)
+        required_history = self._required_history_length(self._all_configured_strategies())
+        required_history = max(required_history, self._strategy_controller_required_history())
         if self.latent_volatility_enabled or self.prior_reset_enabled:
             required_history = max(required_history, self.prior_reset_window, 1)
         if self.latent_volatility_enabled:
             required_history = max(required_history, self.latent_volatility_window, 1)
-        required_history = max(required_history, self._post_to_prior_required_history())
+        required_history = max(
+            required_history,
+            max(self._post_to_prior_required_history(config) for config in self._all_post_to_prior_configs()),
+        )
         self.uses_feedback_history = required_history > 0
         self.feedback_history = deque(maxlen=max(required_history, 1))
         self._validate_history_feedback_modes()
         
         self.active: np.ndarray | None = None
         self.old_active: np.ndarray | None = None
+        self.previous_observation: tuple[np.ndarray, int, float] | None = None
+        self.observation_history = deque(maxlen=max(required_history, 1))
         self._init_mask()
+
+    def _all_configured_strategies(self) -> List[Dict[str, Any]]:
+        strategies = list(self.strategies)
+        if isinstance(getattr(self, "strategy_controller", None), dict):
+            for profile in self.strategy_controller.get("profiles", []):
+                strategies.extend(profile.get("strategies", []))
+        return strategies
+
+    def _all_post_to_prior_configs(self) -> List[Dict[str, Any]]:
+        configs = [self.post_to_prior_config]
+        if isinstance(getattr(self, "strategy_controller", None), dict):
+            for profile in self.strategy_controller.get("profiles", []):
+                configs.append(profile.get("post_to_prior", self.post_to_prior_config))
+        return configs
 
     def _validate_strategies(self, strategies: Any) -> List[Dict[str, Any]]:
         if not isinstance(strategies, list) or not strategies:
@@ -344,6 +395,208 @@ class DynamicHypothesisModule(BaseModule):
             self._validate_strategy_parameters(idx, strat)
             validated.append(strat)
         return validated
+
+    def _validate_strategy_controller(self, raw: Any) -> Dict[str, Any] | None:
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            raise ValueError("strategy_controller must be a dictionary when provided.")
+        config = dict(raw)
+        method = str(config.get("method", "feedback_gated_softmax"))
+        if method != "feedback_gated_softmax":
+            raise ValueError("strategy_controller.method must be 'feedback_gated_softmax'.")
+        profiles = config.get("profiles")
+        if not isinstance(profiles, list) or not profiles:
+            raise ValueError("strategy_controller.profiles must be a non-empty list.")
+
+        activation = config.get("activation", {}) or {}
+        if not isinstance(activation, dict):
+            raise ValueError("strategy_controller.activation must be a dictionary when provided.")
+        temperature = self._validate_positive_float(
+            activation.get("temperature", 1.0),
+            "strategy_controller.activation.temperature",
+        )
+        weights_by_profile = activation.get("weights", {}) or {}
+        if not isinstance(weights_by_profile, dict):
+            raise ValueError("strategy_controller.activation.weights must be a mapping when provided.")
+
+        features = config.get("features", {}) or {}
+        if not isinstance(features, dict):
+            raise ValueError("strategy_controller.features must be a dictionary when provided.")
+        recent_window = self._validate_count(
+            features.get("recent_accuracy_window", 8),
+            context="strategy_controller.features.recent_accuracy_window",
+        )
+        delta_window = self._validate_count(
+            features.get("accuracy_delta_window", recent_window),
+            context="strategy_controller.features.accuracy_delta_window",
+        )
+        if recent_window <= 0 or delta_window <= 0:
+            raise ValueError("strategy_controller history windows must be positive.")
+        feedback_mode = str(features.get("feedback_mode", "exact"))
+        if feedback_mode not in self.VALID_FEEDBACK_MODES:
+            raise ValueError(
+                "strategy_controller.features.feedback_mode must be one of "
+                f"{self.VALID_FEEDBACK_MODES}, got {feedback_mode!r}."
+            )
+        padding = features.get("padding", "chance")
+        if isinstance(padding, str):
+            if padding not in self.VALID_PADDING_MODES:
+                raise ValueError(
+                    "strategy_controller.features.padding must be one of "
+                    f"{self.VALID_PADDING_MODES} or a numeric value, got {padding!r}."
+                )
+            if padding == "chance":
+                self._chance_padding_value(require=True)
+        else:
+            self._validate_float_range(padding, "strategy_controller.features.padding", 0.0, 1.0)
+
+        profile_ids: Set[str] = set()
+        validated_profiles: List[Dict[str, Any]] = []
+        for idx, raw_profile in enumerate(profiles):
+            if not isinstance(raw_profile, dict):
+                raise ValueError(f"strategy_controller.profiles[{idx}] must be a dictionary.")
+            profile = dict(raw_profile)
+            profile_id = str(profile.get("id", "")).strip()
+            if not profile_id:
+                raise ValueError(f"strategy_controller.profiles[{idx}].id must be non-empty.")
+            if profile_id in profile_ids:
+                raise ValueError(f"Duplicate strategy_controller profile id: {profile_id!r}.")
+            profile_ids.add(profile_id)
+            profile["id"] = profile_id
+            policy_method = profile.get("policy_method")
+            if policy_method is not None:
+                policy_method = str(policy_method)
+                if policy_method not in self.VALID_PROFILE_POLICY_METHODS:
+                    raise ValueError(
+                        f"strategy_controller profile {profile_id!r} has unsupported policy_method "
+                        f"{policy_method!r}. Supported values: {', '.join(self.VALID_PROFILE_POLICY_METHODS)}."
+                    )
+                if "strategies" in profile:
+                    raise ValueError(
+                        f"strategy_controller profile {profile_id!r} cannot define both "
+                        "policy_method and strategies."
+                    )
+                profile["policy_method"] = policy_method
+                profile["strategies"] = []
+                self._validate_profile_policy_parameters(profile)
+            else:
+                profile["strategies"] = self._validate_strategies(profile.get("strategies"))
+            profile["post_to_prior"] = self._validate_post_to_prior_config(
+                profile.get("post_to_prior", self.post_to_prior_config)
+            )
+            profile_activation = dict(weights_by_profile.get(profile_id, {}) or {})
+            if "activation" in profile:
+                if not isinstance(profile["activation"], dict):
+                    raise ValueError(f"strategy_controller profile {profile_id!r} activation must be a dictionary.")
+                profile_activation.update(dict(profile["activation"]))
+            for name, value in profile_activation.items():
+                self._validate_finite_float(value, f"strategy_controller profile {profile_id}.{name}")
+            profile["activation"] = profile_activation
+            validated_profiles.append(profile)
+
+        return {
+            "method": method,
+            "profiles": validated_profiles,
+            "activation": {"temperature": temperature},
+            "features": {
+                "recent_accuracy_window": recent_window,
+                "accuracy_delta_window": delta_window,
+                "feedback_mode": feedback_mode,
+                "padding": padding,
+                "trial_progress_scale": self._validate_positive_float(
+                    features.get("trial_progress_scale", 100.0),
+                    "strategy_controller.features.trial_progress_scale",
+                ),
+                "mid_phase_center": self._validate_float_range(
+                    features.get("mid_phase_center", 0.35),
+                    "strategy_controller.features.mid_phase_center",
+                    0.0,
+                    1.0,
+                ),
+                "mid_phase_width": self._validate_positive_float(
+                    features.get("mid_phase_width", 0.12),
+                    "strategy_controller.features.mid_phase_width",
+                ),
+            },
+        }
+
+    def _validate_profile_policy_parameters(self, profile: Dict[str, Any]) -> None:
+        profile_id = str(profile.get("id", "<unknown>"))
+        prefix = f"strategy_controller profile {profile_id!r}"
+        active_limit = self._validate_count(profile.get("active_limit", 5), context=f"{prefix} active_limit")
+        if active_limit <= 0:
+            raise ValueError(f"{prefix} active_limit must be positive.")
+        if active_limit > self.total_hypo:
+            raise ValueError(f"{prefix} active_limit cannot exceed hypothesis space size.")
+
+        policy_method = str(profile["policy_method"])
+        if policy_method == "stable":
+            self._validate_positive_float(profile.get("retain_temperature", 1.0), f"{prefix} retain_temperature")
+            explore_count = self._validate_count(profile.get("explore_count", 1), context=f"{prefix} explore_count")
+            if explore_count < 0:
+                raise ValueError(f"{prefix} explore_count must be non-negative.")
+        elif policy_method == "aggressive":
+            max_newcomers = self._validate_count(profile.get("max_newcomers", active_limit - 1), context=f"{prefix} max_newcomers")
+            min_newcomers = self._validate_count(profile.get("min_newcomers", 0), context=f"{prefix} min_newcomers")
+            if min_newcomers < 0 or max_newcomers < 0 or min_newcomers > max_newcomers:
+                raise ValueError(f"{prefix} newcomer bounds must satisfy 0 <= min_newcomers <= max_newcomers.")
+        elif policy_method == "stubborn":
+            retain_count = self._validate_count(profile.get("retain_count", 2), context=f"{prefix} retain_count")
+            if retain_count <= 0:
+                raise ValueError(f"{prefix} retain_count must be positive.")
+            self._validate_float_range(profile.get("base_explore_prob", 0.02), f"{prefix} base_explore_prob", 0.0, 1.0)
+            self._validate_float_range(profile.get("post_correct_explore_prob", 0.20), f"{prefix} post_correct_explore_prob", 0.0, 1.0)
+            self._validate_float_range(profile.get("post_error_explore_prob", 0.0), f"{prefix} post_error_explore_prob", 0.0, 1.0)
+            self._validate_float_range(profile.get("newcomer_mass", 0.02), f"{prefix} newcomer_mass", 0.0, 1.0)
+        survivor_score = str(profile.get("survivor_score", "posterior"))
+        if survivor_score not in ("posterior", "posterior_choice"):
+            raise ValueError(f"{prefix} survivor_score must be 'posterior' or 'posterior_choice'.")
+        self._validate_float_range(
+            profile.get("survivor_posterior_weight", 1.0),
+            f"{prefix} survivor_posterior_weight",
+            0.0,
+            10.0,
+        )
+        self._validate_float_range(
+            profile.get("survivor_choice_weight", 0.0),
+            f"{prefix} survivor_choice_weight",
+            0.0,
+            10.0,
+        )
+        self._validate_positive_float(
+            profile.get("survivor_choice_floor", 1e-9),
+            f"{prefix} survivor_choice_floor",
+        )
+        if "survivor_choice_beta" in profile:
+            self._validate_positive_float(profile["survivor_choice_beta"], f"{prefix} survivor_choice_beta")
+        newcomer_score = str(profile.get("newcomer_score", "random"))
+        if newcomer_score not in self.VALID_NEWCOMER_SCORES:
+            raise ValueError(
+                f"{prefix} newcomer_score must be one of {self.VALID_NEWCOMER_SCORES}, got {newcomer_score!r}."
+            )
+        newcomer_choice_window = self._validate_count(
+            profile.get("newcomer_choice_window", 8),
+            context=f"{prefix} newcomer_choice_window",
+        )
+        if newcomer_choice_window <= 0:
+            raise ValueError(f"{prefix} newcomer_choice_window must be positive.")
+        self._validate_float_range(
+            profile.get("newcomer_choice_weight", 1.0),
+            f"{prefix} newcomer_choice_weight",
+            0.0,
+            10.0,
+        )
+        self._validate_positive_float(
+            profile.get("newcomer_choice_floor", 1e-9),
+            f"{prefix} newcomer_choice_floor",
+        )
+        self._validate_positive_float(
+            profile.get("newcomer_choice_temperature", 1.0),
+            f"{prefix} newcomer_choice_temperature",
+        )
+        if "newcomer_choice_beta" in profile:
+            self._validate_positive_float(profile["newcomer_choice_beta"], f"{prefix} newcomer_choice_beta")
 
     def _validate_strategy_parameters(self, idx: int, strat: Dict[str, Any]) -> None:
         method = str(strat["method"])
@@ -513,18 +766,33 @@ class DynamicHypothesisModule(BaseModule):
         else:
             self._validate_float_range(padding, f"{context}.padding", 0.0, 1.0)
 
-    def _post_to_prior_required_history(self) -> int:
+    def _post_to_prior_required_history(self, config: Dict[str, Any] | None = None) -> int:
+        config = config or self.post_to_prior_config
         required = 0
-        if self.post_to_prior_config.get("method") == "error_boost_newcomers":
+        if config.get("method") == "error_boost_newcomers":
             required = max(
                 required,
-                self._validate_count(self.post_to_prior_config.get("window", 8), context="post_to_prior.window"),
+                self._validate_count(config.get("window", 8), context="post_to_prior.window"),
             )
-        if self.post_to_prior_config.get("confidence_source") == "recent_accuracy":
+        if config.get("confidence_source") == "recent_accuracy":
             required = max(
                 required,
-                self._validate_count(self.post_to_prior_config.get("window", 8), context="post_to_prior.window"),
+                self._validate_count(config.get("window", 8), context="post_to_prior.window"),
             )
+        return required
+
+    def _strategy_controller_required_history(self) -> int:
+        if not isinstance(getattr(self, "strategy_controller", None), dict):
+            return 0
+        features = self.strategy_controller["features"]
+        required = max(
+            int(features.get("recent_accuracy_window", 0)),
+            2 * int(features.get("accuracy_delta_window", 0)),
+            1,
+        )
+        for profile in self.strategy_controller.get("profiles", []):
+            if str(profile.get("newcomer_score", "random")) in ("recent_choice", "recent_error_choice"):
+                required = max(required, int(profile.get("newcomer_choice_window", 8)))
         return required
 
     @staticmethod
@@ -543,6 +811,15 @@ class DynamicHypothesisModule(BaseModule):
         val = float(value)
         if not np.isfinite(val) or val <= 0.0:
             raise ValueError(f"{name} must be a positive finite number, got {value!r}.")
+        return val
+
+    @staticmethod
+    def _validate_finite_float(value: Any, name: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a finite number, got boolean.")
+        val = float(value)
+        if not np.isfinite(val):
+            raise ValueError(f"{name} must be finite, got {value!r}.")
         return val
 
     def _required_history_length(self, strategies: Sequence[Dict[str, Any]]) -> int:
@@ -972,16 +1249,19 @@ class DynamicHypothesisModule(BaseModule):
     def _history_feedback_mode(self) -> str:
         modes = {
             str(strat.get("feedback_mode", self._default_feedback_mode_for_amount(str(strat.get("amount")))))
-            for strat in self.strategies
+            for strat in self._all_configured_strategies()
             if self._is_history_amount(strat.get("amount"))
         }
         if self.latent_volatility_enabled or self.prior_reset_enabled:
             modes.add(self.latent_volatility_feedback_mode)
-        if (
-            self.post_to_prior_config.get("method") == "error_boost_newcomers"
-            or self.post_to_prior_config.get("confidence_source") == "recent_accuracy"
-        ):
-            modes.add(str(self.post_to_prior_config.get("feedback_mode", "exact")))
+        for config in self._all_post_to_prior_configs():
+            if (
+                config.get("method") == "error_boost_newcomers"
+                or config.get("confidence_source") == "recent_accuracy"
+            ):
+                modes.add(str(config.get("feedback_mode", "exact")))
+        if isinstance(getattr(self, "strategy_controller", None), dict):
+            modes.add(str(self.strategy_controller["features"].get("feedback_mode", "exact")))
         if not modes:
             return "graded"
         if len(modes) > 1:
@@ -1189,53 +1469,100 @@ class DynamicHypothesisModule(BaseModule):
         self.cached_dist[inv] = dist
         return dist
 
-    def process(self, **kwargs) -> None:
-        self._update_latent_volatility_state()
-        # Pass kwargs to transition (e.g. feedbacks)
-        self._transition(**kwargs)
-        self._apply_mask()
-        self._posterior_to_prior_transition()
-        self._record_feedback_from_observation()
-
-    def _init_mask(self) -> None:
-        # Simple random init
-        selection = self._sample_from_pool(self.full_indices, self.init_num)
-        self.active = np.sort(np.array(selection, dtype=int))
-        self._apply_mask()
-
-    def _transition(self, **kwargs) -> None:
-        self.old_active = self.active.copy() if self.active is not None else None
-        
-        posterior = self._get_posterior_like()
-        if posterior is None:
-            posterior = np.ones(self.total_hypo, dtype=float)
-            posterior /= posterior.sum()
-        posterior = self._validate_probability_vector(posterior, context="transition posterior")
-        
-        if self.debug:
-            max_post = np.max(posterior)
-            print(f"Transition Debug: Max Posterior = {max_post:.4f}")
-            beta_debug = kwargs.get("beta", self.strategy_params.get("beta", "N/A"))
-            print(f"Transition Debug: Beta = {beta_debug}")
-
-        new_active_set = set()
-        # Track counts for this step. Keep method-level aggregate keys for old
-        # plotting code and add structured details for strategy-level debugging.
-        step_counts: Dict[str, Any] = {
-            "strategies": [],
-            "latent_volatility_state": float(self.latent_volatility_state),
+    def _controller_history_config(self) -> Dict[str, Any]:
+        if not isinstance(getattr(self, "strategy_controller", None), dict):
+            return {}
+        features = self.strategy_controller["features"]
+        return {
+            "padding": features.get("padding", "chance"),
+            "feedback_mode": features.get("feedback_mode", "exact"),
         }
-        if self.latent_volatility_log:
-            latest_volatility = self.latent_volatility_log[-1]
-            step_counts["latent_volatility_recent_accuracy"] = latest_volatility.get("recent_accuracy")
-            step_counts["latent_volatility_error_severity"] = latest_volatility.get("error_severity")
-        
-        for strat in self.strategies:
+
+    def _controller_activation_features(self, posterior: np.ndarray) -> Dict[str, float]:
+        config = self._controller_history_config()
+        features_cfg = self.strategy_controller["features"]
+        recent_window = int(features_cfg["recent_accuracy_window"])
+        delta_window = int(features_cfg["accuracy_delta_window"])
+        recent_accuracy = self._recent_accuracy(recent_window, config)
+        values = self._padded_history_values(delta_window * 2, config)
+        old_acc = float(np.mean(values[:delta_window]))
+        new_acc = float(np.mean(values[delta_window:]))
+        p_entropy = entropy(posterior)
+        max_entropy = np.log(len(posterior)) if len(posterior) > 1 else 1.0
+        entropy_norm = float(np.clip(p_entropy / max(max_entropy, 1e-12), 0.0, 1.0))
+        last_feedback = float(self.feedback_history[-1]) if self.feedback_history else self._resolve_padding_value(config["padding"])
+        progress_scale = float(features_cfg["trial_progress_scale"])
+        trial_progress = float(np.clip(len(self.strategy_counts_log) / max(progress_scale, 1e-12), 0.0, 1.0))
+        mid_center = float(features_cfg.get("mid_phase_center", 0.35))
+        mid_width = float(features_cfg.get("mid_phase_width", 0.12))
+        mid_phase = float(np.exp(-0.5 * ((trial_progress - mid_center) / max(mid_width, 1e-12)) ** 2))
+        latent_denom = max(float(self.latent_volatility_max), 1e-12)
+        return {
+            "bias": 1.0,
+            "last_error": float(np.clip(1.0 - last_feedback, 0.0, 1.0)),
+            "recent_accuracy": float(recent_accuracy),
+            "recent_error": float(np.clip(1.0 - recent_accuracy, 0.0, 1.0)),
+            "accuracy_delta": float(np.clip(new_acc - old_acc, -1.0, 1.0)),
+            "posterior_entropy": entropy_norm,
+            "posterior_confidence": float(1.0 - entropy_norm),
+            "latent_volatility": float(np.clip(self.latent_volatility_state / latent_denom, 0.0, 1.0)),
+            "trial_progress": trial_progress,
+            "mid_phase": mid_phase,
+        }
+
+    def _select_strategy_profile(self, posterior: np.ndarray) -> Tuple[Dict[str, Any] | None, Dict[str, Any]]:
+        if not isinstance(getattr(self, "strategy_controller", None), dict):
+            return None, {}
+        features = self._controller_activation_features(posterior)
+        profiles = self.strategy_controller["profiles"]
+        logits = []
+        for profile in profiles:
+            weights = profile.get("activation", {}) or {}
+            logit = 0.0
+            for name, weight in weights.items():
+                if name not in features:
+                    raise ValueError(
+                        f"strategy_controller profile {profile['id']!r} references unknown feature {name!r}."
+                    )
+                logit += float(weight) * float(features[name])
+            logits.append(logit)
+        logits_arr = np.asarray(logits, dtype=float)
+        if not np.all(np.isfinite(logits_arr)):
+            raise ValueError("strategy_controller activation logits contain non-finite values.")
+        temperature = float(self.strategy_controller["activation"]["temperature"])
+        scaled = logits_arr / temperature
+        scaled -= np.max(scaled)
+        probs = np.exp(scaled)
+        probs = self._validate_probability_vector(probs, context="strategy_controller profile")
+        chosen_idx = int(self.rng.choice(len(profiles), p=probs))
+        probabilities = {
+            str(profile["id"]): float(prob)
+            for profile, prob in zip(profiles, probs)
+        }
+        return profiles[chosen_idx], {
+            "method": self.strategy_controller["method"],
+            "features": {key: float(value) for key, value in features.items()},
+            "profile_logits": {
+                str(profile["id"]): float(logit)
+                for profile, logit in zip(profiles, logits_arr)
+            },
+            "profile_probabilities": probabilities,
+            "selected_profile": str(profiles[chosen_idx]["id"]),
+        }
+
+    def _run_strategy_chain(
+        self,
+        strategies: Sequence[Dict[str, Any]],
+        posterior: np.ndarray,
+        step_counts: Dict[str, Any],
+        **kwargs,
+    ) -> Set[int]:
+        new_active_set: Set[int] = set()
+        for strat in strategies:
             amount_type = strat["amount"]
             method_type = strat["method"]
             pool_type = strat["pool"]
             
-            # 1. Calculate Amount
             if amount_type == "fixed":
                 count = self._validate_count(strat["value"], context="fixed amount")
             else:
@@ -1248,7 +1575,6 @@ class DynamicHypothesisModule(BaseModule):
                 )
             requested_count = count
 
-            # Enforce a global budget for active hypotheses.
             remaining_budget = None
             if self.max_active_hypotheses is not None:
                 remaining_budget = self.max_active_hypotheses - len(new_active_set)
@@ -1295,8 +1621,541 @@ class DynamicHypothesisModule(BaseModule):
                 "selected_count": len(selected),
                 "selected": selected,
             })
-            # Backward-compatible aggregate count by method for plotting.
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
+        return new_active_set
+
+    def _profile_active_limit(self, profile: Dict[str, Any]) -> int:
+        configured = int(profile.get("active_limit", 5))
+        if self.max_active_hypotheses is not None:
+            configured = min(configured, int(self.max_active_hypotheses))
+        return max(1, min(configured, self.total_hypo))
+
+    def _posterior_weighted_sample(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        count: int,
+        posterior: np.ndarray,
+        *,
+        temperature: float = 1.0,
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if count <= 0 or cand.size == 0:
+            return np.empty(0, dtype=int)
+        actual = min(int(count), int(cand.size))
+        raw = np.asarray(posterior[cand], dtype=float)
+        if not np.all(np.isfinite(raw)) or np.any(raw < 0):
+            raise ValueError("profile policy posterior weights contain invalid values.")
+        if float(raw.sum()) <= 0.0:
+            return self._sample_from_pool(cand, actual)
+        weights = np.power(raw + 1e-12, 1.0 / max(float(temperature), 1e-12))
+        prob = self._validate_probability_vector(weights, context="profile policy")
+        return self.rng.choice(cand, size=actual, replace=False, p=prob)
+
+    def _current_beta_for_hypothesis(self, hypo: int, profile: Dict[str, Any]) -> float:
+        if "survivor_choice_beta" in profile:
+            return float(profile["survivor_choice_beta"])
+        beta = getattr(self.engine, "beta", 1.0)
+        arr = np.asarray(beta, dtype=float).reshape(-1)
+        if arr.size == self.total_hypo:
+            return float(arr[int(hypo)])
+        if arr.size > 0:
+            return float(arr[0])
+        return 1.0
+
+    def _previous_choice_likelihood(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        profile: Dict[str, Any],
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if cand.size == 0:
+            return np.empty(0, dtype=float)
+        if self.previous_observation is None:
+            return np.ones(cand.size, dtype=float)
+        partition = getattr(self.engine, "partition", None)
+        if partition is None or not hasattr(partition, "get_category_probabilities"):
+            return np.ones(cand.size, dtype=float)
+        stimulus, choice, _feedback = self.previous_observation
+        choice_idx = int(choice) - 1
+        n_cats = int(getattr(partition, "n_cats", 0))
+        if choice_idx < 0 or (n_cats > 0 and choice_idx >= n_cats):
+            return np.ones(cand.size, dtype=float)
+        likelihood = np.ones(cand.size, dtype=float)
+        for pos, hypo in enumerate(cand):
+            prob = partition.get_category_probabilities(
+                int(hypo),
+                ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
+                beta=self._current_beta_for_hypothesis(int(hypo), profile),
+                distance_mode=getattr(self.engine, "distance_mode", "prototype"),
+            )
+            prob = np.asarray(prob, dtype=float)
+            if prob.ndim == 1:
+                prob = prob.reshape(-1, 1)
+            likelihood[pos] = float(prob[choice_idx, 0])
+        floor = float(profile.get("survivor_choice_floor", 1e-9))
+        likelihood = np.clip(likelihood, floor, 1.0)
+        if not np.all(np.isfinite(likelihood)):
+            raise ValueError("survivor choice likelihood contains non-finite values.")
+        return likelihood
+
+    def _recent_choice_likelihood(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        profile: Dict[str, Any],
+        *,
+        errors_only: bool = False,
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if cand.size == 0:
+            return np.empty(0, dtype=float)
+        history = list(self.observation_history)
+        if not history:
+            return np.ones(cand.size, dtype=float)
+        window = int(profile.get("newcomer_choice_window", 8))
+        recent = history[-window:]
+        if errors_only:
+            recent = [obs for obs in recent if float(obs[2]) < 1.0]
+            if not recent:
+                return np.ones(cand.size, dtype=float)
+        partition = getattr(self.engine, "partition", None)
+        if partition is None or not hasattr(partition, "get_category_probabilities"):
+            return np.ones(cand.size, dtype=float)
+        n_cats = int(getattr(partition, "n_cats", 0))
+        floor = float(profile.get("newcomer_choice_floor", 1e-9))
+        beta_override = profile.get("newcomer_choice_beta", None)
+        log_likelihood = np.zeros(cand.size, dtype=float)
+        count = 0
+        for stimulus, choice, _feedback in recent:
+            choice_idx = int(choice) - 1
+            if choice_idx < 0 or (n_cats > 0 and choice_idx >= n_cats):
+                continue
+            count += 1
+            for pos, hypo in enumerate(cand):
+                beta = float(beta_override) if beta_override is not None else self._current_beta_for_hypothesis(int(hypo), profile)
+                prob = partition.get_category_probabilities(
+                    int(hypo),
+                    ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
+                    beta=beta,
+                    distance_mode=getattr(self.engine, "distance_mode", "prototype"),
+                )
+                prob = np.asarray(prob, dtype=float)
+                if prob.ndim == 1:
+                    prob = prob.reshape(-1, 1)
+                log_likelihood[pos] += np.log(float(np.clip(prob[choice_idx, 0], floor, 1.0)))
+        if count == 0:
+            return np.ones(cand.size, dtype=float)
+        log_likelihood /= float(count)
+        log_likelihood -= float(np.max(log_likelihood))
+        likelihood = np.exp(log_likelihood)
+        if not np.all(np.isfinite(likelihood)) or np.any(likelihood < 0):
+            raise ValueError("newcomer recent-choice likelihood contains invalid values.")
+        return np.clip(likelihood, floor, 1.0)
+
+    def _newcomer_scores(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        profile: Dict[str, Any],
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if cand.size == 0:
+            return np.empty(0, dtype=float)
+        newcomer_score = str(profile.get("newcomer_score", "random"))
+        if newcomer_score == "random":
+            return np.ones(cand.size, dtype=float)
+        floor = float(profile.get("newcomer_choice_floor", 1e-9))
+        weight = float(profile.get("newcomer_choice_weight", 1.0))
+        likelihood = self._recent_choice_likelihood(
+            cand,
+            profile,
+            errors_only=(newcomer_score == "recent_error_choice"),
+        )
+        scores = np.power(np.clip(likelihood, floor, 1.0), weight)
+        if not np.all(np.isfinite(scores)) or np.any(scores < 0):
+            raise ValueError("newcomer scores contain invalid values.")
+        return scores
+
+    def _newcomer_sample(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        count: int,
+        profile: Dict[str, Any],
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if count <= 0 or cand.size == 0:
+            return np.empty(0, dtype=int)
+        actual = min(int(count), int(cand.size))
+        raw = self._newcomer_scores(cand, profile)
+        if float(raw.sum()) <= 0.0:
+            return self._sample_from_pool(cand, actual)
+        temperature = float(profile.get("newcomer_choice_temperature", 1.0))
+        weights = np.power(raw + 1e-12, 1.0 / max(temperature, 1e-12))
+        prob = self._validate_probability_vector(weights, context="profile newcomer policy")
+        return self.rng.choice(cand, size=actual, replace=False, p=prob)
+
+    def _survivor_scores(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        posterior: np.ndarray,
+        profile: Dict[str, Any],
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if cand.size == 0:
+            return np.empty(0, dtype=float)
+        raw_post = np.asarray(posterior[cand], dtype=float)
+        if not np.all(np.isfinite(raw_post)) or np.any(raw_post < 0):
+            raise ValueError("survivor posterior scores contain invalid values.")
+        if str(profile.get("survivor_score", "posterior")) == "posterior":
+            return raw_post
+        floor = float(profile.get("survivor_choice_floor", 1e-9))
+        post_weight = float(profile.get("survivor_posterior_weight", 1.0))
+        choice_weight = float(profile.get("survivor_choice_weight", 1.0))
+        choice_like = self._previous_choice_likelihood(cand, profile)
+        log_score = (
+            post_weight * np.log(np.clip(raw_post, floor, 1.0))
+            + choice_weight * np.log(np.clip(choice_like, floor, 1.0))
+        )
+        log_score -= np.max(log_score)
+        score = np.exp(log_score)
+        if not np.all(np.isfinite(score)) or np.any(score < 0):
+            raise ValueError("survivor combined scores contain invalid values.")
+        return score
+
+    def _survivor_weighted_sample(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        count: int,
+        posterior: np.ndarray,
+        profile: Dict[str, Any],
+        *,
+        temperature: float = 1.0,
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if count <= 0 or cand.size == 0:
+            return np.empty(0, dtype=int)
+        actual = min(int(count), int(cand.size))
+        raw = self._survivor_scores(cand, posterior, profile)
+        if float(raw.sum()) <= 0.0:
+            return self._sample_from_pool(cand, actual)
+        weights = np.power(raw + 1e-12, 1.0 / max(float(temperature), 1e-12))
+        prob = self._validate_probability_vector(weights, context="profile survivor policy")
+        return self.rng.choice(cand, size=actual, replace=False, p=prob)
+
+    def _top_survivor_indices(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        count: int,
+        posterior: np.ndarray,
+        profile: Dict[str, Any],
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if count <= 0 or cand.size == 0:
+            return np.empty(0, dtype=int)
+        actual = min(int(count), int(cand.size))
+        score = self._survivor_scores(cand, posterior, profile)
+        order = np.argsort(score)[-actual:]
+        return np.sort(cand[order])
+
+    def _top_posterior_indices(
+        self,
+        candidates: Sequence[int] | np.ndarray,
+        count: int,
+        posterior: np.ndarray,
+    ) -> np.ndarray:
+        cand = np.asarray(candidates, dtype=int)
+        if count <= 0 or cand.size == 0:
+            return np.empty(0, dtype=int)
+        actual = min(int(count), int(cand.size))
+        order = np.argsort(posterior[cand])[-actual:]
+        return np.sort(cand[order])
+
+    def _policy_inactive_candidates(self, retained: Sequence[int] | np.ndarray) -> np.ndarray:
+        retained_arr = np.asarray(retained, dtype=int)
+        old_active = np.asarray(self.old_active, dtype=int) if self.old_active is not None else np.empty(0, dtype=int)
+        inactive = self._exclude(self.full_indices, old_active)
+        return self._exclude(inactive, retained_arr)
+
+    def _policy_override_prior(
+        self,
+        active_indices: Sequence[int] | np.ndarray,
+        survivor_indices: Sequence[int] | np.ndarray,
+        newcomer_indices: Sequence[int] | np.ndarray,
+        survivor_values: Sequence[float] | np.ndarray,
+        newcomer_values: Sequence[float] | np.ndarray,
+        newcomer_mass: float,
+        log: Dict[str, Any],
+    ) -> None:
+        active_arr = np.asarray(active_indices, dtype=int)
+        survivor_arr = np.asarray(survivor_indices, dtype=int)
+        newcomer_arr = np.asarray(newcomer_indices, dtype=int)
+        prior = self._allocate_prior_between_survivors_and_newcomers(
+            survivor_arr,
+            newcomer_arr,
+            np.asarray(survivor_values, dtype=float),
+            np.asarray(newcomer_values, dtype=float),
+            float(newcomer_mass),
+        )
+        if float(prior.sum()) <= 0.0 and active_arr.size > 0:
+            prior[active_arr] = 1.0 / float(active_arr.size)
+        self._post_to_prior_override = {"prior": prior, "log": dict(log)}
+
+    def _run_profile_policy(
+        self,
+        profile: Dict[str, Any],
+        posterior: np.ndarray,
+        step_counts: Dict[str, Any],
+    ) -> Set[int]:
+        method = str(profile["policy_method"])
+        limit = self._profile_active_limit(profile)
+        old_active = (
+            np.asarray(self.old_active, dtype=int)
+            if self.old_active is not None
+            else np.empty(0, dtype=int)
+        )
+        old_active = old_active[(old_active >= 0) & (old_active < self.total_hypo)]
+        self._post_to_prior_override = None
+
+        if method == "conservative":
+            active = old_active[:limit]
+            if active.size == 0:
+                active = self._top_survivor_indices(self.full_indices, 1, posterior, profile)
+            step_counts["profile_policy"] = {
+                "policy_method": method,
+                "survivor_score": str(profile.get("survivor_score", "posterior")),
+                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "retained_count": int(active.size),
+                "dropped_count": int(max(0, old_active.size - active.size)),
+                "newcomer_count": 0,
+                "newcomer_mass": 0.0,
+            }
+            return {int(x) for x in active}
+
+        if method == "stable":
+            explore_count = min(int(profile.get("explore_count", 1)), max(0, limit - 1))
+            has_inactive = self._policy_inactive_candidates(old_active).size > 0
+            reserved_for_new = explore_count if has_inactive else 0
+            retain_target = min(int(old_active.size), max(0, limit - reserved_for_new))
+            if old_active.size >= limit and has_inactive:
+                retain_target = min(retain_target, max(0, limit - 1))
+                reserved_for_new = max(1, min(explore_count or 1, limit - retain_target))
+            retained = self._survivor_weighted_sample(
+                old_active,
+                retain_target,
+                posterior,
+                profile,
+                temperature=float(profile.get("retain_temperature", 1.0)),
+            )
+            inactive = self._policy_inactive_candidates(retained)
+            newcomers = self._newcomer_sample(inactive, min(reserved_for_new, inactive.size), profile)
+            active = np.sort(np.concatenate([retained, newcomers]).astype(int))
+            step_counts["profile_policy"] = {
+                "policy_method": method,
+                "survivor_score": str(profile.get("survivor_score", "posterior")),
+                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "retained_count": int(retained.size),
+                "dropped_count": int(max(0, old_active.size - retained.size)),
+                "newcomer_count": int(newcomers.size),
+                "newcomer_mass": None,
+                "p2p": "similarity_novelty",
+            }
+            return {int(x) for x in active}
+
+        if method == "aggressive":
+            source_pool = old_active if old_active.size > 0 else self.full_indices
+            top = self._top_survivor_indices(source_pool, 1, posterior, profile)
+            p_top = float(posterior[int(top[0])]) if top.size else 0.0
+            max_newcomers = min(int(profile.get("max_newcomers", limit - 1)), max(0, limit - 1))
+            min_newcomers = min(int(profile.get("min_newcomers", 0)), max_newcomers)
+            requested = int(round((1.0 - p_top) * float(max_newcomers)))
+            requested = max(min_newcomers, min(max_newcomers, requested))
+            inactive = self._policy_inactive_candidates(top)
+            newcomers = self._newcomer_sample(inactive, min(requested, inactive.size), profile)
+            active = np.sort(np.concatenate([top, newcomers]).astype(int))
+            newcomer_mass = (1.0 - p_top) if newcomers.size > 0 else 0.0
+            self._policy_override_prior(
+                active,
+                top,
+                newcomers,
+                np.asarray([max(p_top, 0.0)], dtype=float),
+                np.ones(newcomers.size, dtype=float),
+                newcomer_mass,
+                {
+                    "method": "policy_aggressive",
+                    "policy_method": method,
+                    "top_hypothesis": int(top[0]) if top.size else None,
+                    "top_posterior": float(p_top),
+                    "newcomer_score": str(profile.get("newcomer_score", "random")),
+                    "newcomer_mass": float(newcomer_mass),
+                },
+            )
+            step_counts["profile_policy"] = {
+                "policy_method": method,
+                "survivor_score": str(profile.get("survivor_score", "posterior")),
+                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "retained_count": int(top.size),
+                "dropped_count": int(max(0, old_active.size - top.size)),
+                "newcomer_count": int(newcomers.size),
+                "newcomer_mass": float(newcomer_mass),
+            }
+            return {int(x) for x in active}
+
+        if method == "stubborn":
+            retain_count = min(int(profile.get("retain_count", 2)), limit)
+            source_pool = old_active if old_active.size > 0 else self.full_indices
+            retained = self._top_survivor_indices(source_pool, retain_count, posterior, profile)
+            previous_feedback = float(self.feedback_history[-1]) if self.feedback_history else 1.0
+            last_error = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
+            explore_prob = (
+                float(profile.get("base_explore_prob", 0.02))
+                + float(profile.get("post_correct_explore_prob", 0.20)) * (1.0 - last_error)
+                + float(profile.get("post_error_explore_prob", 0.0)) * last_error
+            )
+            explore_prob = float(np.clip(explore_prob, 0.0, 1.0))
+            inactive = self._policy_inactive_candidates(retained)
+            can_add = retained.size < limit and inactive.size > 0
+            newcomers = (
+                self._newcomer_sample(inactive, 1, profile)
+                if can_add and bool(self.rng.random() < explore_prob)
+                else np.empty(0, dtype=int)
+            )
+            active = np.sort(np.concatenate([retained, newcomers]).astype(int))
+            newcomer_mass = float(profile.get("newcomer_mass", 0.02)) if newcomers.size > 0 else 0.0
+            self._policy_override_prior(
+                active,
+                retained,
+                newcomers,
+                posterior[retained] if retained.size > 0 else np.empty(0, dtype=float),
+                np.ones(newcomers.size, dtype=float),
+                newcomer_mass,
+                {
+                    "method": "policy_stubborn",
+                    "policy_method": method,
+                    "last_error": float(last_error),
+                    "explore_probability": float(explore_prob),
+                    "newcomer_score": str(profile.get("newcomer_score", "random")),
+                    "newcomer_mass": float(newcomer_mass),
+                },
+            )
+            step_counts["profile_policy"] = {
+                "policy_method": method,
+                "survivor_score": str(profile.get("survivor_score", "posterior")),
+                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "retained_count": int(retained.size),
+                "dropped_count": int(max(0, old_active.size - retained.size)),
+                "newcomer_count": int(newcomers.size),
+                "newcomer_mass": float(newcomer_mass),
+                "explore_probability": float(explore_prob),
+            }
+            return {int(x) for x in active}
+
+        raise ValueError(f"Unsupported profile policy_method '{method}'.")
+
+    def process(self, **kwargs) -> None:
+        self._update_latent_volatility_state()
+        # Pass kwargs to transition (e.g. feedbacks)
+        self._transition(**kwargs)
+        self._apply_mask()
+        self._posterior_to_prior_transition()
+        self._record_feedback_from_observation()
+        self._record_previous_observation()
+
+    def _record_previous_observation(self) -> None:
+        observation = getattr(self.engine, "observation", None)
+        if observation is None or len(observation) < 3:
+            return
+        self.previous_observation = (
+            np.asarray(observation[0], dtype=float).copy(),
+            int(observation[1]),
+            float(observation[2]),
+        )
+        self.observation_history.append(self.previous_observation)
+
+    def _init_pool_indices(self) -> np.ndarray:
+        if self.init_pool == "all":
+            return self.full_indices
+
+        partition = getattr(self.engine, "partition", None)
+        metadata = getattr(partition, "hypothesis_metadata", None)
+        if metadata is None:
+            raise ValueError(
+                f"init_pool={self.init_pool!r} requires partition.hypothesis_metadata "
+                "with is_label_permuted flags."
+            )
+        if len(metadata) != self.total_hypo:
+            raise ValueError(
+                "partition.hypothesis_metadata length does not match hypothesis space "
+                f"for init_pool={self.init_pool!r}: {len(metadata)} vs {self.total_hypo}."
+            )
+        mask = np.asarray(
+            [bool(item.get("is_label_permuted", False)) for item in metadata],
+            dtype=bool,
+        )
+        if self.init_pool == "base":
+            indices = self.full_indices[~mask]
+        elif self.init_pool == "label_permuted":
+            indices = self.full_indices[mask]
+        else:
+            raise ValueError(f"Unsupported init_pool {self.init_pool!r}.")
+        if indices.size == 0:
+            raise ValueError(f"init_pool={self.init_pool!r} resolved to an empty candidate set.")
+        return indices
+
+    def _init_mask(self) -> None:
+        # Simple random init
+        if self.init_hypotheses is not None:
+            forced = np.asarray(self.init_hypotheses, dtype=int)
+            if forced.size >= self.init_num:
+                selection = forced[: self.init_num]
+            else:
+                pool = self._exclude(self._init_pool_indices(), forced)
+                fill = self._sample_from_pool(pool, self.init_num - int(forced.size))
+                selection = np.concatenate([forced, np.asarray(fill, dtype=int)])
+        else:
+            selection = self._sample_from_pool(self._init_pool_indices(), self.init_num)
+        self.active = np.sort(np.array(selection, dtype=int))
+        self._apply_mask()
+
+    def _transition(self, **kwargs) -> None:
+        self.old_active = self.active.copy() if self.active is not None else None
+
+        posterior = self._get_posterior_like()
+        if posterior is None:
+            posterior = np.ones(self.total_hypo, dtype=float)
+            posterior /= posterior.sum()
+        posterior = self._validate_probability_vector(posterior, context="transition posterior")
+
+        if self.debug:
+            max_post = np.max(posterior)
+            print(f"Transition Debug: Max Posterior = {max_post:.4f}")
+            beta_debug = kwargs.get("beta", self.strategy_params.get("beta", "N/A"))
+            print(f"Transition Debug: Beta = {beta_debug}")
+
+        # Track counts for this step. Keep method-level aggregate keys for old
+        # plotting code and add structured details for strategy-level debugging.
+        step_counts: Dict[str, Any] = {
+            "strategies": [],
+            "latent_volatility_state": float(self.latent_volatility_state),
+        }
+        if self.latent_volatility_log:
+            latest_volatility = self.latent_volatility_log[-1]
+            step_counts["latent_volatility_recent_accuracy"] = latest_volatility.get("recent_accuracy")
+            step_counts["latent_volatility_error_severity"] = latest_volatility.get("error_severity")
+
+        profile, controller_log = self._select_strategy_profile(posterior)
+        if profile is None:
+            active_strategies = self.strategies
+            self._current_post_to_prior_config = self.post_to_prior_config
+            self._post_to_prior_override = None
+        else:
+            active_strategies = profile["strategies"]
+            self._current_post_to_prior_config = profile.get("post_to_prior", self.post_to_prior_config)
+            self._post_to_prior_override = None
+            step_counts["strategy_controller"] = controller_log
+            step_counts["selected_profile"] = controller_log.get("selected_profile")
+            step_counts["profile_probabilities"] = controller_log.get("profile_probabilities", {})
+        if profile is not None and "policy_method" in profile:
+            new_active_set = self._run_profile_policy(profile, posterior, step_counts)
+        else:
+            new_active_set = self._run_strategy_chain(active_strategies, posterior, step_counts, **kwargs)
         
         if not new_active_set:
             fallback_idx, fallback_pool = self._fallback_best_posterior(posterior)
@@ -2013,7 +2872,7 @@ class DynamicHypothesisModule(BaseModule):
             self.engine.prior = new_prior
             if self.strategy_counts_log:
                 self.strategy_counts_log[-1]["post_to_prior"] = {
-                    "method": self.post_to_prior_config.get("method", "similarity_novelty"),
+                    "method": getattr(self, "_current_post_to_prior_config", self.post_to_prior_config).get("method", "similarity_novelty"),
                     "fallback": True,
                     "fallback_reason": "missing_posterior",
                     "survivor_mass": 0.0,
@@ -2033,7 +2892,44 @@ class DynamicHypothesisModule(BaseModule):
         survivor_indices = active_indices[is_survivor]
         newcomer_indices = active_indices[~is_survivor]
 
-        config = self.post_to_prior_config
+        override = getattr(self, "_post_to_prior_override", None)
+        if isinstance(override, dict):
+            new_prior = np.asarray(override.get("prior"), dtype=float).copy()
+            if new_prior.shape[0] != self.total_hypo:
+                raise ValueError(
+                    "profile policy prior override length does not match hypothesis space: "
+                    f"{new_prior.shape[0]} vs {self.total_hypo}."
+                )
+            if not np.all(np.isfinite(new_prior)) or np.any(new_prior < 0):
+                raise ValueError("profile policy prior override contains invalid values.")
+            log = dict(override.get("log", {}) or {})
+            total_mass = float(new_prior.sum())
+            if total_mass > 0.0:
+                new_prior /= total_mass
+            else:
+                new_prior[active_indices] = 1.0 / float(len(active_indices))
+                log["fallback"] = True
+                log["fallback_reason"] = "zero_prior_mass"
+
+            pre_reset_survivor_mass = float(np.sum(new_prior[survivor_indices])) if len(survivor_indices) else 0.0
+            pre_reset_newcomer_mass = float(np.sum(new_prior[newcomer_indices])) if len(newcomer_indices) else 0.0
+            new_prior, reset_strength = self._apply_prior_reset(new_prior, active_indices, newcomer_indices)
+            log.update({
+                "survivor_count": int(len(survivor_indices)),
+                "newcomer_count": int(len(newcomer_indices)),
+                "survivor_mass": float(pre_reset_survivor_mass),
+                "newcomer_mass": float(pre_reset_newcomer_mass),
+                "post_reset_survivor_mass": float(np.sum(new_prior[survivor_indices])) if len(survivor_indices) else 0.0,
+                "post_reset_newcomer_mass": float(np.sum(new_prior[newcomer_indices])) if len(newcomer_indices) else 0.0,
+                "prior_reset_strength": float(reset_strength),
+            })
+            if self.strategy_counts_log:
+                self.strategy_counts_log[-1]["post_to_prior"] = log
+            self.engine.prior = new_prior
+            self._initialize_beta_for_newcomers(newcomer_indices, new_prior)
+            return
+
+        config = getattr(self, "_current_post_to_prior_config", self.post_to_prior_config)
         method = str(config.get("method", "similarity_novelty"))
         if method == "similarity_novelty":
             new_prior, log = self._post_to_prior_similarity_novelty(

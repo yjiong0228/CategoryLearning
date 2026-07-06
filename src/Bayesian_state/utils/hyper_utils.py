@@ -13,6 +13,7 @@ from typing import Any, List, Mapping, Sequence
 
 
 HYPER_RESULT_SCHEMA_VERSION = "hyper_result.v2"
+PROFILE_CANDIDATE_KEY = "__profile_candidate__"
 
 
 def to_builtin(obj: Any) -> Any:
@@ -167,7 +168,7 @@ def values_product(spec: Mapping[str, Any]) -> List[Any]:
 
 
 def validate_no_nested_hyperparam_paths(param_specs: Mapping[str, Any]) -> None:
-    names = sorted(str(name) for name in param_specs.keys())
+    names = sorted(str(name) for name in param_specs.keys() if str(name) != PROFILE_CANDIDATE_KEY)
     for idx, left in enumerate(names):
         prefix = f"{left}."
         for right in names[idx + 1:]:
@@ -178,8 +179,28 @@ def validate_no_nested_hyperparam_paths(param_specs: Mapping[str, Any]) -> None:
                 )
 
 
+def expand_profile_candidate_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
+    expanded: dict[str, Any] = {}
+    for key, value in hyperparams.items():
+        key_text = str(key)
+        if key_text != PROFILE_CANDIDATE_KEY:
+            expanded[key_text] = deepcopy(value)
+            continue
+        if not isinstance(value, Mapping):
+            raise ValueError(f"{PROFILE_CANDIDATE_KEY} value must be a mapping of hyperparameter paths.")
+        for nested_key, nested_value in value.items():
+            if not isinstance(nested_key, str) or not nested_key:
+                raise ValueError(f"{PROFILE_CANDIDATE_KEY} nested keys must be non-empty strings.")
+            if nested_key == PROFILE_CANDIDATE_KEY:
+                raise ValueError(f"{PROFILE_CANDIDATE_KEY} cannot contain itself.")
+            expanded[nested_key] = deepcopy(nested_value)
+    return expanded
+
+
 def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
-    summary = dict(hyperparams)
+    expanded_hyperparams = expand_profile_candidate_hyperparams(hyperparams)
+
+    summary = dict(expanded_hyperparams)
     shortcuts = {
         "engine.modules.memory_mod.kwargs.gamma": "gamma",
         "engine.modules.memory_mod.kwargs.w0": "w0",
@@ -222,16 +243,16 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         "simulation.window_size": "window_size",
     }
     for source, target in shortcuts.items():
-        if source in hyperparams:
-            summary[target] = hyperparams[source]
+        if source in expanded_hyperparams:
+            summary[target] = expanded_hyperparams[source]
 
-    memory_kwargs = hyperparams.get("engine.modules.memory_mod.kwargs")
+    memory_kwargs = expanded_hyperparams.get("engine.modules.memory_mod.kwargs")
     if isinstance(memory_kwargs, Mapping):
         if "gamma" in memory_kwargs:
             summary["gamma"] = memory_kwargs["gamma"]
         if "w0" in memory_kwargs:
             summary["w0"] = memory_kwargs["w0"]
-    transition_kwargs = hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
+    transition_kwargs = expanded_hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
     if isinstance(transition_kwargs, Mapping):
         for source, target in (
             ("init_num", "init_num"),
@@ -257,7 +278,7 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         ):
             if source in transition_kwargs:
                 summary[target] = transition_kwargs[source]
-    output_noise = hyperparams.get("engine.output_noise.kwargs")
+    output_noise = expanded_hyperparams.get("engine.output_noise.kwargs")
     if isinstance(output_noise, Mapping):
         for source, target in (
             ("base_lapse", "output_base_lapse"),
@@ -273,6 +294,17 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         ):
             if source in output_noise:
                 summary[target] = output_noise[source]
+    readout = expanded_hyperparams.get("engine.choice_readout.kwargs")
+    if isinstance(readout, Mapping):
+        for source, target in (
+            ("method", "choice_readout_method"),
+            ("power", "choice_readout_power"),
+            ("switch_probability", "choice_readout_switch_probability"),
+            ("post_error_switch_delta", "choice_readout_post_error_switch_delta"),
+            ("low_confidence_switch_gain", "choice_readout_low_confidence_switch_gain"),
+        ):
+            if source in readout:
+                summary[target] = readout[source]
     return summary
 
 

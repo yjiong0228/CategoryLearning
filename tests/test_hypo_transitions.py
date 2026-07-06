@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from src.Bayesian_state.problems.discrete_partitions import DiscreteRulePartition
+from src.Bayesian_state.problems.partitions import Partition
 from src.Bayesian_state.problems.modules.hypo_transitions import DynamicHypothesisModule
 from src.Bayesian_state.utils.optimizer_common import derive_run_seed
 
@@ -24,6 +25,20 @@ class FakePrototypePartition(FakePartition):
         self.n_dims = n_dims
         base = np.arange(set_size * n_cats * n_dims, dtype=float).reshape(set_size, n_cats, n_dims)
         self.prototypes = base[:, None, :, :] / float(set_size * n_cats * n_dims)
+
+
+class FakeLabelMetadataPartition(FakePartition):
+    def __init__(self, flags: list[bool]):
+        super().__init__(n_cats=2, similarity_matrix=np.eye(len(flags)))
+        half = max(1, len(flags) // 2)
+        self.hypothesis_metadata = [
+            {
+                "base_hypo": idx % half,
+                "is_label_permuted": bool(flag),
+                "label_permutation": (1, 0) if flag else (0, 1),
+            }
+            for idx, flag in enumerate(flags)
+        ]
 
 
 class FarPrototypePartition(FakePartition):
@@ -80,6 +95,148 @@ def test_strategy_without_pool_raises() -> None:
 def test_invalid_strategy_config_raises(strategy, match) -> None:
     with pytest.raises(ValueError, match=match):
         _module([strategy])
+
+
+def test_init_pool_label_permuted_uses_metadata() -> None:
+    partition = FakeLabelMetadataPartition([False, False, True, True])
+    mod = DynamicHypothesisModule(
+        _engine(set_size=4, partition=partition),
+        strategies=[{"amount": "fixed", "method": "random", "pool": "active", "value": 1}],
+        init_num=2,
+        init_pool="label_permuted",
+        module_seed=3,
+    )
+    assert set(mod.active).issubset({2, 3})
+
+
+def test_init_pool_label_permuted_requires_metadata() -> None:
+    with pytest.raises(ValueError, match="hypothesis_metadata"):
+        DynamicHypothesisModule(
+            _engine(set_size=4, partition=FakePartition()),
+            strategies=[{"amount": "fixed", "method": "random", "pool": "active", "value": 1}],
+            init_num=1,
+            init_pool="label_permuted",
+        )
+
+
+def test_init_hypotheses_forces_initial_active_set() -> None:
+    mod = DynamicHypothesisModule(
+        _engine(set_size=5, partition=FakePartition()),
+        strategies=[{"amount": "fixed", "method": "random", "pool": "active", "value": 1}],
+        init_num=2,
+        init_hypotheses=[3, 1],
+    )
+    assert mod.active.tolist() == [1, 3]
+
+
+def _policy_module(policy_profile, posterior=None, module_seed=11) -> DynamicHypothesisModule:
+    if posterior is None:
+        posterior = np.full(8, 1.0 / 8.0)
+    controller = {
+        "method": "feedback_gated_softmax",
+        "activation": {"temperature": 0.1},
+        "features": {"padding": "chance", "feedback_mode": "exact"},
+        "profiles": [policy_profile],
+    }
+    return DynamicHypothesisModule(
+        _engine(set_size=len(posterior), posterior=posterior, partition=FakePartition(n_cats=2)),
+        strategy_controller=controller,
+        init_num=0,
+        max_active_hypotheses=5,
+        module_seed=module_seed,
+    )
+
+
+def test_profile_policy_unknown_method_raises() -> None:
+    with pytest.raises(ValueError, match="policy_method"):
+        _policy_module({"id": "bad", "policy_method": "bad"})
+
+
+def test_profile_policy_conservative_keeps_active_set() -> None:
+    posterior = np.array([0.01, 0.03, 0.40, 0.22, 0.18, 0.10, 0.04, 0.02])
+    mod = _policy_module({"id": "conservative", "policy_method": "conservative"}, posterior)
+    mod.active = np.array([1, 2, 3, 4], dtype=int)
+
+    mod._transition()
+    mod._apply_mask()
+    mod._posterior_to_prior_transition()
+
+    assert mod.active.tolist() == [1, 2, 3, 4]
+    assert mod.strategy_counts_log[-1]["profile_policy"]["policy_method"] == "conservative"
+    assert mod.strategy_counts_log[-1]["profile_policy"]["newcomer_count"] == 0
+
+
+def test_profile_policy_stable_drops_when_full_and_adds_one_newcomer() -> None:
+    posterior = np.array([0.01, 0.02, 0.60, 0.20, 0.10, 0.03, 0.02, 0.02])
+    profile = {
+        "id": "stable",
+        "policy_method": "stable",
+        "active_limit": 5,
+        "explore_count": 1,
+        "retain_temperature": 0.1,
+        "post_to_prior": {"method": "similarity_novelty"},
+    }
+    mod = _policy_module(profile, posterior, module_seed=2)
+    mod.active = np.array([0, 1, 2, 3, 4], dtype=int)
+
+    mod._transition()
+
+    log = mod.strategy_counts_log[-1]["profile_policy"]
+    assert len(mod.active) == 5
+    assert log["dropped_count"] == 1
+    assert log["newcomer_count"] == 1
+    assert any(idx not in {0, 1, 2, 3, 4} for idx in mod.active.tolist())
+    assert 2 in mod.active
+
+
+def test_profile_policy_aggressive_top1_and_newcomer_mass() -> None:
+    posterior = np.array([0.02, 0.05, 0.30, 0.10, 0.08, 0.25, 0.12, 0.08])
+    profile = {
+        "id": "aggressive",
+        "policy_method": "aggressive",
+        "active_limit": 5,
+        "max_newcomers": 4,
+    }
+    mod = _policy_module(profile, posterior, module_seed=3)
+    mod.active = np.array([1, 2, 3, 4, 5], dtype=int)
+
+    mod._transition()
+    mod._apply_mask()
+    mod._posterior_to_prior_transition()
+
+    assert 2 in mod.active.tolist()
+    assert len(mod.active) == 4  # round((1 - 0.30) * 4) newcomers + top1
+    p2p = mod.strategy_counts_log[-1]["post_to_prior"]
+    assert p2p["policy_method"] == "aggressive"
+    assert p2p["top_hypothesis"] == 2
+    assert p2p["newcomer_count"] == 3
+    assert p2p["newcomer_mass"] == pytest.approx(0.70)
+
+
+def test_profile_policy_stubborn_explores_less_after_error() -> None:
+    posterior = np.array([0.02, 0.05, 0.45, 0.20, 0.12, 0.08, 0.05, 0.03])
+    profile = {
+        "id": "stubborn",
+        "policy_method": "stubborn",
+        "active_limit": 5,
+        "retain_count": 2,
+        "base_explore_prob": 0.0,
+        "post_correct_explore_prob": 1.0,
+        "newcomer_mass": 0.02,
+    }
+    correct = _policy_module(profile, posterior, module_seed=4)
+    correct.active = np.array([1, 2, 3, 4, 5], dtype=int)
+    correct.feedback_history.append(1.0)
+    correct._transition()
+
+    wrong = _policy_module(profile, posterior, module_seed=4)
+    wrong.active = np.array([1, 2, 3, 4, 5], dtype=int)
+    wrong.feedback_history.append(0.0)
+    wrong._transition()
+
+    assert correct.strategy_counts_log[-1]["profile_policy"]["newcomer_count"] == 1
+    assert wrong.strategy_counts_log[-1]["profile_policy"]["newcomer_count"] == 0
+    assert wrong.active.tolist() == [2, 3]
 
 
 @pytest.mark.parametrize(
@@ -656,6 +813,31 @@ def test_ksimilar_random_zero_scores_falls_back_to_uniform() -> None:
     assert mod.active[0] in (1, 2, 3)
 
 
+def test_ksimilar_centers_runs_with_label_reversed_partition() -> None:
+    partition = Partition(n_dims=4, n_cats=2, include_label_reversals=True)
+    posterior = np.full(partition.length, 1.0 / partition.length)
+    posterior[0] = 0.3
+    posterior = posterior / posterior.sum()
+    strategy = {
+        "amount": "fixed",
+        "method": "ksimilar_centers",
+        "pool": "inactive",
+        "value": 1,
+        "proto_hypo_amount": 1,
+        "proto_hypo_method": "top",
+        "cluster_hypo_method": "top",
+    }
+    engine = _engine(set_size=partition.length, posterior=posterior, partition=partition)
+    engine.observation = (np.array([0.25, 0.5, 0.5, 0.5]), 1, 1.0)
+    mod = DynamicHypothesisModule(engine, strategies=[strategy], init_num=1, module_seed=17)
+    mod.active = np.array([0], dtype=int)
+
+    mod._transition()
+
+    assert len(mod.active) == 1
+    assert 0 <= int(mod.active[0]) < partition.length
+
+
 @pytest.mark.parametrize(
     "amount, posterior, partition",
     [
@@ -840,3 +1022,132 @@ def test_v10_strategy_candidate_json_validates_post_to_prior_candidates() -> Non
                 **kwargs,
             )
     assert {"similarity_novelty", "conservative_carryover", "error_boost_newcomers", "stochastic_reset"} <= seen_methods
+
+
+def test_strategy_controller_uses_history_features_and_logs_profile_probabilities() -> None:
+    controller = {
+        "method": "feedback_gated_softmax",
+        "features": {
+            "recent_accuracy_window": 4,
+            "accuracy_delta_window": 2,
+            "padding": 0.5,
+            "feedback_mode": "graded",
+        },
+        "activation": {"temperature": 1.0},
+        "profiles": [
+            {
+                "id": "exploit",
+                "activation": {"recent_accuracy": 6.0},
+                "strategies": [
+                    {"label": "retain", "amount": "fixed", "value": 1, "method": "top_posterior", "pool": "active"}
+                ],
+                "post_to_prior": {"method": "similarity_novelty"},
+            },
+            {
+                "id": "refresh",
+                "activation": {"recent_error": 6.0},
+                "strategies": [
+                    {"label": "explore", "amount": "fixed", "value": 1, "method": "random", "pool": "inactive"}
+                ],
+                "post_to_prior": {"method": "conservative_carryover", "newcomer_mass": 0.1},
+            },
+        ],
+    }
+    posterior = np.asarray([0.7, 0.2, 0.08, 0.02], dtype=float)
+    engine = _engine(set_size=4, posterior=posterior, partition=FakePartition(n_cats=2))
+    mod = DynamicHypothesisModule(
+        engine,
+        strategy_controller=controller,
+        init_num=2,
+        module_seed=11,
+    )
+    mod.feedback_history.extend([0.0, 0.0, 0.0, 0.0])
+
+    mod._transition()
+    log = mod.strategy_counts_log[-1]
+
+    assert log["strategy_controller"]["features"]["recent_accuracy"] == pytest.approx(0.0)
+    assert log["profile_probabilities"]["refresh"] > log["profile_probabilities"]["exploit"]
+    assert log["selected_profile"] in {"exploit", "refresh"}
+
+
+def test_v11_profile_candidate_json_validates_and_excludes_stochastic_reset() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "Bayesian_state"
+        / "problems"
+        / "modules"
+        / "hypo_transition_strategies"
+        / "hypo_transition_profile_v11_candidates.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["cond1_v11"]
+    assert payload["cond23_v11"]
+    for candidates in payload.values():
+        for candidate in candidates:
+            model_kwargs = candidate["model_kwargs"]
+            transition_kwargs = model_kwargs["engine.modules.hypo_transitions_mod.kwargs"]
+            readout_kwargs = model_kwargs["engine.choice_readout.kwargs"]
+            assert readout_kwargs["method"] in {
+                "sharpened_expectation",
+                "sticky_sample",
+                "stubborn_sticky",
+                "sample_hypothesis",
+                "map_hypothesis",
+            }
+            controller = transition_kwargs["strategy_controller"]
+            for profile in controller["profiles"]:
+                assert profile["post_to_prior"]["method"] != "stochastic_reset"
+                for strategy in profile["strategies"]:
+                    assert strategy["pool"] in {"active", "inactive"}
+            DynamicHypothesisModule(
+                _engine(
+                    set_size=24,
+                    posterior=np.full(24, 1.0 / 24.0),
+                    partition=FakePrototypePartition(set_size=24),
+                ),
+                module_seed=31,
+                **transition_kwargs,
+            )
+
+
+def test_v13_profile_candidate_json_validates_policy_profiles() -> None:
+    path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "Bayesian_state"
+        / "problems"
+        / "modules"
+        / "hypo_transition_strategies"
+        / "hypo_transition_profile_v13_candidates.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["cond1_v13"]
+    for candidate in payload["cond1_v13"]:
+        model_kwargs = candidate["model_kwargs"]
+        transition_kwargs = model_kwargs["engine.modules.hypo_transitions_mod.kwargs"]
+        readout_kwargs = model_kwargs["engine.choice_readout.kwargs"]
+
+        assert readout_kwargs["method"] in {"expectation", "map_hypothesis"}
+        assert transition_kwargs["max_active_hypotheses"] == 5
+        controller = transition_kwargs["strategy_controller"]
+        methods = {profile["policy_method"] for profile in controller["profiles"]}
+        assert methods == {"conservative", "stable", "aggressive", "stubborn"}
+        for profile in controller["profiles"]:
+            assert "strategies" not in profile
+            assert profile.get("post_to_prior", {}).get("method") != "stochastic_reset"
+
+        mod = DynamicHypothesisModule(
+            _engine(
+                set_size=38,
+                posterior=np.full(38, 1.0 / 38.0),
+                partition=FakeLabelMetadataPartition([False] * 19 + [True] * 19),
+            ),
+            module_seed=31,
+            **transition_kwargs,
+        )
+        mod._transition()
+        assert 1 <= len(mod.active) <= 5

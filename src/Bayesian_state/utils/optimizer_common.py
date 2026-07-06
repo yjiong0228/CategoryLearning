@@ -89,6 +89,29 @@ OUTPUT_NOISE_KWARG_KEYS = (
     "latent_volatility_power",
 )
 
+CHOICE_READOUT_EXPECTATION = "expectation"
+CHOICE_READOUT_SHARPENED = "sharpened_expectation"
+CHOICE_READOUT_MAP = "map_hypothesis"
+CHOICE_READOUT_SAMPLE = "sample_hypothesis"
+CHOICE_READOUT_STICKY = "sticky_sample"
+CHOICE_READOUT_STUBBORN = "stubborn_sticky"
+CHOICE_READOUT_METHODS = (
+    CHOICE_READOUT_EXPECTATION,
+    CHOICE_READOUT_SHARPENED,
+    CHOICE_READOUT_MAP,
+    CHOICE_READOUT_SAMPLE,
+    CHOICE_READOUT_STICKY,
+    CHOICE_READOUT_STUBBORN,
+)
+CHOICE_READOUT_KWARG_KEYS = (
+    "method",
+    "power",
+    "weight_floor",
+    "switch_probability",
+    "post_error_switch_delta",
+    "low_confidence_switch_gain",
+)
+
 
 def _seedable(obj: Any) -> Any:
     """Convert common Python/numpy/path values to stable JSON seed payloads."""
@@ -1033,6 +1056,51 @@ def _extract_output_noise_config(
     return cfg
 
 
+def _extract_choice_readout_config(
+    params: Mapping[str, Any] | None,
+    engine_config: Mapping[str, Any] | None,
+) -> Dict[str, Any]:
+    raw: Dict[str, Any] = {}
+    sources = [
+        _mapping_get_path(engine_config, "choice_readout.kwargs"),
+        _mapping_get_path(engine_config, "engine.choice_readout.kwargs"),
+        _mapping_get_path(params, "choice_readout.kwargs"),
+        _mapping_get_path(params, "engine.choice_readout.kwargs"),
+    ]
+    for source in sources:
+        if isinstance(source, Mapping):
+            raw.update(dict(source))
+
+    for source in (params, engine_config):
+        if not isinstance(source, Mapping):
+            continue
+        for key in CHOICE_READOUT_KWARG_KEYS:
+            for prefix in ("engine.choice_readout.kwargs.", "choice_readout.kwargs."):
+                full_key = f"{prefix}{key}"
+                if full_key in source:
+                    raw[key] = source[full_key]
+
+    method = str(raw.get("method", CHOICE_READOUT_EXPECTATION))
+    if method not in CHOICE_READOUT_METHODS:
+        raise ValueError(
+            "choice_readout.kwargs.method must be one of "
+            f"{CHOICE_READOUT_METHODS}, got {method!r}"
+        )
+    cfg = {
+        "method": method,
+        "power": _float_from_mapping(raw, "power", 1.0, min_value=1e-9),
+        "weight_floor": _float_from_mapping(raw, "weight_floor", 0.0, min_value=0.0),
+        "switch_probability": _float_from_mapping(raw, "switch_probability", 0.15, min_value=0.0, max_value=1.0),
+        "post_error_switch_delta": _float_from_mapping(raw, "post_error_switch_delta", 0.0, min_value=-1.0, max_value=1.0),
+        "low_confidence_switch_gain": _float_from_mapping(raw, "low_confidence_switch_gain", 0.0, min_value=0.0, max_value=1.0),
+    }
+    if method == CHOICE_READOUT_STUBBORN and "post_error_switch_delta" not in raw:
+        cfg["post_error_switch_delta"] = -0.10
+    if method == CHOICE_READOUT_STICKY and "post_error_switch_delta" not in raw:
+        cfg["post_error_switch_delta"] = 0.10
+    return cfg
+
+
 def _normalize_probability_vector(values: np.ndarray, n_cats: int) -> np.ndarray:
     probs = np.asarray(values, dtype=float).reshape(-1)
     if probs.shape[0] != n_cats:
@@ -1159,6 +1227,110 @@ def _apply_output_noise_to_category_prob(
     return _normalize_probability_vector(mixed, n_cats), lapse, post_error_state
 
 
+def _normalize_hypothesis_distribution(values: np.ndarray) -> np.ndarray:
+    probs = np.asarray(values, dtype=float).reshape(-1)
+    if not np.all(np.isfinite(probs)) or np.any(probs < 0):
+        return np.full(probs.shape[0], 1.0 / max(1, probs.shape[0]), dtype=float)
+    total = float(probs.sum())
+    if total <= 0.0:
+        return np.full(probs.shape[0], 1.0 / max(1, probs.shape[0]), dtype=float)
+    return probs / total
+
+
+def _readout_base_weights(dist: np.ndarray, config: Mapping[str, Any]) -> np.ndarray:
+    method = str(config.get("method", CHOICE_READOUT_EXPECTATION))
+    base = _normalize_hypothesis_distribution(dist)
+    if method == CHOICE_READOUT_SHARPENED:
+        floor = float(config.get("weight_floor", 0.0))
+        power = float(config.get("power", 1.0))
+        return _normalize_hypothesis_distribution(np.power(base + floor, power))
+    return base
+
+
+def _one_hot_hypothesis(index: int, size: int) -> np.ndarray:
+    out = np.zeros(size, dtype=float)
+    if 0 <= int(index) < size:
+        out[int(index)] = 1.0
+    elif size > 0:
+        out[:] = 1.0 / float(size)
+    return out
+
+
+def _choice_readout_weights(
+    dist: np.ndarray,
+    *,
+    trial_idx: int,
+    feedback: np.ndarray,
+    config: Mapping[str, Any],
+    rng: np.random.Generator,
+    sticky_state: Dict[str, Any],
+) -> tuple[np.ndarray, Dict[str, Any]]:
+    method = str(config.get("method", CHOICE_READOUT_EXPECTATION))
+    base = _readout_base_weights(dist, config)
+    size = int(base.size)
+    selected_arg = -1
+    switched = False
+    confidence = float(np.max(base)) if size else 0.0
+
+    if method in (CHOICE_READOUT_EXPECTATION, CHOICE_READOUT_SHARPENED):
+        return base, {
+            "method": method,
+            "selected_arg": selected_arg,
+            "switched": switched,
+            "confidence": confidence,
+        }
+
+    if method == CHOICE_READOUT_MAP:
+        selected_arg = int(np.argmax(base)) if size else -1
+        return _one_hot_hypothesis(selected_arg, size), {
+            "method": method,
+            "selected_arg": selected_arg,
+            "switched": True,
+            "confidence": confidence,
+        }
+
+    if method == CHOICE_READOUT_SAMPLE:
+        selected_arg = int(rng.choice(size, p=base)) if size else -1
+        return _one_hot_hypothesis(selected_arg, size), {
+            "method": method,
+            "selected_arg": selected_arg,
+            "switched": True,
+            "confidence": confidence,
+        }
+
+    if method in (CHOICE_READOUT_STICKY, CHOICE_READOUT_STUBBORN):
+        current = sticky_state.get("selected_arg")
+        force_switch = (
+            current is None
+            or int(current) < 0
+            or int(current) >= size
+            or base[int(current)] <= 0.0
+        )
+        prev_feedback = float(feedback[trial_idx - 1]) if trial_idx > 0 and np.isfinite(feedback[trial_idx - 1]) else 1.0
+        last_error = float(np.clip(1.0 - prev_feedback, 0.0, 1.0))
+        switch_prob = (
+            float(config.get("switch_probability", 0.15))
+            + float(config.get("post_error_switch_delta", 0.0)) * last_error
+            + float(config.get("low_confidence_switch_gain", 0.0)) * (1.0 - confidence)
+        )
+        switch_prob = float(np.clip(switch_prob, 0.0, 1.0))
+        if force_switch or bool(rng.random() < switch_prob):
+            selected_arg = int(rng.choice(size, p=base)) if size else -1
+            sticky_state["selected_arg"] = selected_arg
+            switched = True
+        else:
+            selected_arg = int(current)
+        return _one_hot_hypothesis(selected_arg, size), {
+            "method": method,
+            "selected_arg": selected_arg,
+            "switched": switched,
+            "confidence": confidence,
+            "switch_probability": switch_prob,
+        }
+
+    raise ValueError(f"Unsupported choice_readout method: {method!r}")
+
+
 def _compute_single_mode_metrics(
     mode: str,
     model,
@@ -1174,6 +1346,8 @@ def _compute_single_mode_metrics(
     engine_beta: np.ndarray,
     hypotheses: Sequence[int],
     output_noise_config: Optional[Mapping[str, Any]] = None,
+    choice_readout_config: Optional[Mapping[str, Any]] = None,
+    readout_seed: int | None = None,
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
     distance_mode = getattr(model.engine, "distance_mode", "prototype")
@@ -1214,6 +1388,13 @@ def _compute_single_mode_metrics(
     pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
     output_lapse_values = np.zeros(n_trials, dtype=float)
     output_noise_config = output_noise_config or {"enabled": False}
+    choice_readout_config = choice_readout_config or {"method": CHOICE_READOUT_EXPECTATION}
+    readout_rng = np.random.default_rng(0 if readout_seed is None else int(readout_seed))
+    readout_selected_hypothesis = np.full(n_trials, -1, dtype=int)
+    readout_switch = np.zeros(n_trials, dtype=bool)
+    readout_confidence = np.full(n_trials, np.nan, dtype=float)
+    readout_switch_probability = np.full(n_trials, np.nan, dtype=float)
+    sticky_state: Dict[str, Any] = {}
     latent_volatility_values = np.asarray(
         output_noise_config.get("latent_volatility", np.zeros(n_trials, dtype=float)),
         dtype=float,
@@ -1235,6 +1416,21 @@ def _compute_single_mode_metrics(
         target_majority_index = np.full(n_trials, -1, dtype=int)
     target_majority_acc = np.full(n_trials, np.nan, dtype=float)
     pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
+    beta_arr = np.asarray(engine_beta, dtype=float)
+    if beta_arr.ndim == 1:
+        if beta_arr.shape[0] != len(hypotheses):
+            raise ValueError(
+                "engine_beta width does not match hypothesis set size: "
+                f"{beta_arr.shape[0]} vs {len(hypotheses)}"
+            )
+    elif beta_arr.ndim == 2:
+        if beta_arr.shape[0] != n_trials or beta_arr.shape[1] != len(hypotheses):
+            raise ValueError(
+                "engine_beta log shape does not match trials/hypotheses: "
+                f"{beta_arr.shape} vs ({n_trials}, {len(hypotheses)})"
+            )
+    else:
+        raise ValueError(f"engine_beta must be 1-D or 2-D, got shape {beta_arr.shape}")
     target_choice_valid = (
         (target_majority_index >= 0)
         & (observed_choice_index >= 0)
@@ -1263,7 +1459,8 @@ def _compute_single_mode_metrics(
         else:
             raise ValueError(f"Unexpected mode: {mode}")
 
-        weighted_cat_prob = np.zeros(n_cats, dtype=float)
+        hypo_cat_probs = np.zeros((len(hypotheses), n_cats), dtype=float)
+        beta_for_trial = beta_arr[trial_idx] if beta_arr.ndim == 2 else beta_arr
         trial_slice = (
             [perceived_stimulus],
             [choices[trial_idx]],
@@ -1271,10 +1468,8 @@ def _compute_single_mode_metrics(
         )
         category_idx = int(categories[trial_idx]) - 1 if has_categories else -1
         family_idx = _family_indices(int(categories[trial_idx]), n_cats) if has_categories else np.asarray([], dtype=int)
-        for weight, hypo in zip(current_dist, hypotheses):
-            if weight <= 0:
-                continue
-            beta_for_hypo = float(engine_beta[hypo]) if hypo < len(engine_beta) else 10.0
+        for hypo_arg, hypo in enumerate(hypotheses):
+            beta_for_hypo = float(beta_for_trial[hypo]) if hypo < len(beta_for_trial) else 10.0
             prob = partition.get_category_probabilities(
                 hypo,
                 trial_slice,
@@ -1288,7 +1483,24 @@ def _compute_single_mode_metrics(
                 raise ValueError(
                     f"Category probability shape mismatch at trial {trial_idx}: expected {n_cats}, got {prob_vec.shape[0]}"
                 )
-            weighted_cat_prob += weight * prob_vec
+            hypo_cat_probs[hypo_arg, :] = prob_vec
+
+        readout_weights, readout_log = _choice_readout_weights(
+            current_dist,
+            trial_idx=trial_idx,
+            feedback=feedback,
+            config=choice_readout_config,
+            rng=readout_rng,
+            sticky_state=sticky_state,
+        )
+        weighted_cat_prob = np.sum(readout_weights[:, None] * hypo_cat_probs, axis=0)
+        selected_arg = int(readout_log.get("selected_arg", -1))
+        if 0 <= selected_arg < len(hypotheses):
+            readout_selected_hypothesis[trial_idx] = int(hypotheses[selected_arg])
+        readout_switch[trial_idx] = bool(readout_log.get("switched", False))
+        readout_confidence[trial_idx] = float(readout_log.get("confidence", np.nan))
+        if "switch_probability" in readout_log:
+            readout_switch_probability[trial_idx] = float(readout_log["switch_probability"])
 
         weighted_cat_prob, output_lapse, post_error_lapse_state = _apply_output_noise_to_category_prob(
             weighted_cat_prob,
@@ -1442,6 +1654,11 @@ def _compute_single_mode_metrics(
         "exp_pred_target_majority_acc": exp_pred_target_majority_acc,
         "family_mean_error": family_mean_error,
         "pred_category_probs": pred_category_probs,
+        "choice_readout_method": str(choice_readout_config.get("method", CHOICE_READOUT_EXPECTATION)),
+        "readout_selected_hypothesis": readout_selected_hypothesis,
+        "readout_switch": readout_switch,
+        "readout_confidence": readout_confidence,
+        "readout_switch_probability": readout_switch_probability,
         "output_lapse": output_lapse_values,
         "output_lapse_mean": _safe_nanmean(output_lapse_values[valid_trial_mask]),
         "output_lapse_max": float(np.nanmax(output_lapse_values)) if output_lapse_values.size else float("nan"),
@@ -1475,11 +1692,14 @@ def compute_prediction_metrics(
     loss_metric: str,
     loss_delta: float | None = None,
     output_noise_config: Optional[Mapping[str, Any]] = None,
+    choice_readout_config: Optional[Mapping[str, Any]] = None,
+    readout_seed: int | None = None,
+    beta_log: Optional[Sequence[np.ndarray]] = None,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
     loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
 
-    engine_beta = getattr(model.engine, "beta", None)
+    engine_beta = beta_log if beta_log is not None else getattr(model.engine, "beta", None)
     if engine_beta is None:
         beta_param = 10.0
         if hasattr(model.engine, "likelihood_mod"):
@@ -1531,6 +1751,13 @@ def compute_prediction_metrics(
 
     metrics_by_mode: Dict[str, Dict[str, np.ndarray | float]] = {}
     for mode in _get_prediction_modes(prediction_mode):
+        mode_readout_seed = stable_seed(
+            {
+                "seed_role": "choice_readout",
+                "base": readout_seed,
+                "mode": mode,
+            }
+        )
         metrics = _compute_single_mode_metrics(
             mode=mode,
             model=model,
@@ -1546,6 +1773,8 @@ def compute_prediction_metrics(
             engine_beta=np.asarray(engine_beta, dtype=float),
             hypotheses=hypotheses,
             output_noise_config=output_noise_config,
+            choice_readout_config=choice_readout_config,
+            readout_seed=mode_readout_seed,
         )
         objective_error = float(loss_strategy.compute(metrics))
         loss_values = compute_loss_values(metrics, loss_delta=loss_delta)
@@ -1701,6 +1930,7 @@ def evaluate_state_model_run(
         beta_log = getattr(beta_mod, "beta_log")
 
     output_noise_config = _extract_output_noise_config(params, engine_config)
+    choice_readout_config = _extract_choice_readout_config(params, engine_config)
     if latent_volatility_log is not None:
         latent_values: List[float] = []
         for item in latent_volatility_log:
@@ -1729,6 +1959,16 @@ def evaluate_state_model_run(
         loss_metric=loss_metric,
         loss_delta=loss_delta,
         output_noise_config=output_noise_config,
+        choice_readout_config=choice_readout_config,
+        beta_log=beta_log,
+        readout_seed=stable_seed(
+            {
+                "seed_role": "choice_readout_run",
+                "trajectory_seed": effective_trajectory_seed,
+                "subject_id": int(subject_id),
+                "params": params,
+            }
+        ),
     )
 
     if selection_prediction_mode not in metrics_by_mode:
