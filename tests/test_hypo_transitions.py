@@ -1126,12 +1126,17 @@ def test_v13_profile_candidate_json_validates_policy_profiles() -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
 
     assert payload["cond1_v13"]
+    candidate_ids = {candidate["id"] for candidate in payload["cond1_v13"]}
+    assert {
+        "c1_v13_choice_stubborn_valley",
+        "c1_v13_choice_volatile_refresh",
+        "c1_v13_choice_error_recovery_switch",
+        "c1_v13_choice_low_capacity_wave",
+    } <= candidate_ids
     for candidate in payload["cond1_v13"]:
-        model_kwargs = candidate["model_kwargs"]
-        transition_kwargs = model_kwargs["engine.modules.hypo_transitions_mod.kwargs"]
-        readout_kwargs = model_kwargs["engine.choice_readout.kwargs"]
+        assert "model_kwargs" not in candidate
+        transition_kwargs = candidate["hypo_transitions_kwargs"]
 
-        assert readout_kwargs["method"] in {"expectation", "map_hypothesis"}
         assert transition_kwargs["max_active_hypotheses"] == 5
         controller = transition_kwargs["strategy_controller"]
         methods = {profile["policy_method"] for profile in controller["profiles"]}

@@ -723,20 +723,27 @@ def test_cond1_v13_cd_config_optimizes_memory_and_profile_only() -> None:
     opt = HyperCDOptimizer(cfg, cd_path)
 
     specs = opt._param_specs_for_stage("coarse")
-    assert set(specs) == {"engine.modules.memory_mod.kwargs", "__profile_candidate__"}
+    assert set(specs) == {
+        "engine.modules.memory_mod.kwargs",
+        "engine.modules.hypo_transitions_mod.kwargs",
+        "engine.choice_readout.kwargs",
+    }
     assert "beta_mod" not in yaml.safe_dump(specs)
 
     memory_values = opt._hyperparam_values(specs["engine.modules.memory_mod.kwargs"])
-    profile_values = opt._hyperparam_values(specs["__profile_candidate__"])
+    profile_values = opt._hyperparam_values(specs["engine.modules.hypo_transitions_mod.kwargs"])
+    readout_values = opt._hyperparam_values(specs["engine.choice_readout.kwargs"])
 
-    assert len(memory_values) == 36
+    memory_product = specs["engine.modules.memory_mod.kwargs"]["values_product"]
+    expected_memory_values = 1
+    for factor_values in memory_product.values():
+        expected_memory_values *= len(factor_values)
+    assert len(memory_values) == expected_memory_values
     assert profile_values
+    assert {value["method"] for value in readout_values} == {"expectation", "map_hypothesis"}
     for value in profile_values:
-        assert set(value) == {
-            "engine.modules.hypo_transitions_mod.kwargs",
-            "engine.choice_readout.kwargs",
-        }
-        assert value["engine.choice_readout.kwargs"]["method"] in {"expectation", "map_hypothesis"}
+        assert "strategy_controller" in value
+        assert "choice_readout" not in yaml.safe_dump(value)
 
 
 def test_cd_values_product_expands_grouped_memory_coordinate(tmp_path: Path) -> None:

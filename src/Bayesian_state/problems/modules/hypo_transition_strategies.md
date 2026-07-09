@@ -150,6 +150,24 @@ hyperparam_space:
       value_key: model_kwargs
 ```
 
+V13 profile candidates separate transition/p2p profiles from readout. The JSON
+candidate only provides `hypo_transitions_kwargs`; readout is a separate
+coordinate, so every profile is evaluated with both expectation and MAP readout:
+
+```yaml
+hyperparam_space:
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v13_candidates.json
+      key: cond1_v13
+      value_key: hypo_transitions_kwargs
+
+  engine.choice_readout.kwargs:
+    values:
+      - method: expectation
+      - method: map_hypothesis
+```
+
 ## Example Configurations
 
 Retention plus explicit exploration:

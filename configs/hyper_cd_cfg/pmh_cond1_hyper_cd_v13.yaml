@@ -2,11 +2,14 @@
 # Beta is fixed in the model config; CD optimizes only memory and profile/readout candidates.
 base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation_v13.yaml
 
-subject_range: [101, 132]
+# Representative Cond1 subset selected from window-16 accuracy curves.
+# Volatile / deep-valley: 103, 111, 118, 131.
+# Distinct non-volatile shapes: 105, 112, 117, 127.
+subjects: [103, 105, 111, 112, 117, 118, 127, 131]
 
-output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v13
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v13_selected8
 objective_order:
-  - path: statistics.loss.choice_brier.best10_mean
+  - path: statistics.loss.choice_brier.best25_mean
     rel_tolerance: 0.03
     abs_tolerance: 0.001
     scale_floor: 0.01
@@ -33,7 +36,7 @@ statistics_config:
   distribution_interval_alpha: 0.10
 
 cd:
-  n_restarts: 8
+  n_restarts: 6
   max_outer_iters: 8
   init_strategy: random
   coordinate_order: shuffle_per_restart
@@ -44,21 +47,26 @@ cd:
 hyperparam_space:
   engine.modules.memory_mod.kwargs:
     values_product:
-      gamma: [0.25, 0.40, 0.55, 0.70, 0.85, 0.95]
-      w0: [0.005, 0.02, 0.06, 0.12, 0.25, 0.45]
+      gamma: [0.25, 0.50, 0.70, 0.85, 0.95]
+      w0: [0.01, 0.05, 0.10, 0.20, 0.50]
 
-  __profile_candidate__:
+  engine.modules.hypo_transitions_mod.kwargs:
     values_from_json:
       path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v13_candidates.json
       key: cond1_v13
-      value_key: model_kwargs
+      value_key: hypo_transitions_kwargs
+
+  engine.choice_readout.kwargs:
+    values:
+      - method: expectation
+      - method: map_hypothesis
 
 stages:
   coarse:
     cd_parallel:
       max_repeat_jobs: 16
     simulation_overrides:
-      simulation_repeats: 64
+      simulation_repeats: 256
       keep_logs: false
       loss_metric: accuracy_curve_berhu
       loss_delta: 0.10
@@ -67,7 +75,7 @@ stages:
     cd_parallel:
       max_repeat_jobs: 16
     simulation_overrides:
-      simulation_repeats: 128
+      simulation_repeats: 512
       keep_logs: false
       loss_metric: accuracy_curve_berhu
       loss_delta: 0.10
