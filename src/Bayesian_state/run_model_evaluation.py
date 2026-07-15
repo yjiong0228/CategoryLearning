@@ -13,8 +13,11 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Sequence
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
-os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
+_PROJECT_TMP = Path(__file__).resolve().parents[2] / "tmp"
+_MPL_CACHE = _PROJECT_TMP / "matplotlib"
+_MPL_CACHE.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(_MPL_CACHE))
+os.environ.setdefault("XDG_CACHE_HOME", str(_PROJECT_TMP))
 
 import matplotlib
 
@@ -289,25 +292,25 @@ def run_basic_plots(
     )
     run_step(
         records,
-        "strategy_amount",
-        lambda: evaluator.plot_strategy_amount(
+        "dynamic_strategy_profile",
+        lambda: evaluator.plot_dynamic_strategy_profile(
             results,
             subjects=subjects,
-            save_path=basic_dir / "strategy_amount.png",
-            window_size=window_size or 16,
+            save_path=basic_dir / "dynamic_strategy_profile.png",
+            window_size=window_size,
         ),
-        [basic_dir / "strategy_amount.png"],
+        [basic_dir / "dynamic_strategy_profile.png"],
     )
     run_step(
         records,
-        "strategy_amount_details",
-        lambda: evaluator.plot_strategy_amount_details(
+        "hypothesis_active_set_counts",
+        lambda: evaluator.plot_hypothesis_active_set_counts(
             results,
             subjects=subjects,
-            save_path=basic_dir / "strategy_amount_details.png",
-            window_size=window_size or 16,
+            save_path=basic_dir / "hypothesis_active_set_counts.png",
+            window_size=window_size,
         ),
-        [basic_dir / "strategy_amount_details.png"],
+        [basic_dir / "hypothesis_active_set_counts.png"],
     )
 
 

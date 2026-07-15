@@ -1539,6 +1539,19 @@ class DynamicHypothesisModule(BaseModule):
             str(profile["id"]): float(prob)
             for profile, prob in zip(profiles, probs)
         }
+        profile_policy_methods = {
+            str(profile["id"]): str(profile.get("policy_method", profile["id"]))
+            for profile in profiles
+        }
+        policy_probabilities: Dict[str, float] = {}
+        for profile, prob in zip(profiles, probs):
+            policy_method = str(profile.get("policy_method", profile["id"]))
+            policy_probabilities[policy_method] = (
+                policy_probabilities.get(policy_method, 0.0) + float(prob)
+            )
+        selected_policy_method = str(
+            profiles[chosen_idx].get("policy_method", profiles[chosen_idx]["id"])
+        )
         return profiles[chosen_idx], {
             "method": self.strategy_controller["method"],
             "features": {key: float(value) for key, value in features.items()},
@@ -1547,7 +1560,10 @@ class DynamicHypothesisModule(BaseModule):
                 for profile, logit in zip(profiles, logits_arr)
             },
             "profile_probabilities": probabilities,
+            "profile_policy_methods": profile_policy_methods,
+            "policy_probabilities": policy_probabilities,
             "selected_profile": str(profiles[chosen_idx]["id"]),
+            "selected_policy_method": selected_policy_method,
         }
 
     def _run_strategy_chain(
@@ -2152,6 +2168,8 @@ class DynamicHypothesisModule(BaseModule):
             step_counts["strategy_controller"] = controller_log
             step_counts["selected_profile"] = controller_log.get("selected_profile")
             step_counts["profile_probabilities"] = controller_log.get("profile_probabilities", {})
+            step_counts["selected_policy_method"] = controller_log.get("selected_policy_method")
+            step_counts["policy_probabilities"] = controller_log.get("policy_probabilities", {})
         if profile is not None and "policy_method" in profile:
             new_active_set = self._run_profile_policy(profile, posterior, step_counts)
         else:

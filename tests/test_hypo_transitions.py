@@ -1068,6 +1068,8 @@ def test_strategy_controller_uses_history_features_and_logs_profile_probabilitie
 
     assert log["strategy_controller"]["features"]["recent_accuracy"] == pytest.approx(0.0)
     assert log["profile_probabilities"]["refresh"] > log["profile_probabilities"]["exploit"]
+    assert log["policy_probabilities"] == log["profile_probabilities"]
+    assert log["selected_policy_method"] == log["selected_profile"]
     assert log["selected_profile"] in {"exploit", "refresh"}
 
 

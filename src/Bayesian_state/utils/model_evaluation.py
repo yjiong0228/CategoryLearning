@@ -6,10 +6,10 @@ The public surface follows the output layout used by
 - basic:
   - accuracy_comparison and accuracy_family_comparison
   - accuracy_band
+  - dynamic_strategy_profile and hypothesis_active_set_counts
   - choice_brier
   - posterior_probabilities and prior_probabilities
   - beta_dynamics
-  - strategy_amount and strategy_amount_details
 - oral_alignment:
   - oral_mass_distribution
   - distribution_based_alignment: oral reports -> hypothesis distribution
@@ -58,6 +58,13 @@ class ModelEval(OralModelAlignmentMixin):
         4000, 4001, 4002, 4003,
     )
     DEFAULT_TOP16_RANKS = tuple(range(1, 17))
+    PROFILE_POLICY_ORDER = ("conservative", "stable", "aggressive", "stubborn")
+    PROFILE_POLICY_COLORS = {
+        "conservative": "#0072B2",
+        "stable": "#009E73",
+        "aggressive": "#D55E00",
+        "stubborn": "#CC79A7",
+    }
 
     # Shared plotting helpers -------------------------------------------------
 
@@ -1697,6 +1704,9 @@ class ModelEval(OralModelAlignmentMixin):
         stream = self._load_run_stream(payload, subject_json_path)
         pred_curves = []
         true_curve = None
+        best_curve = None
+        best_error = np.inf
+        best_run_index = None
         for stream_index, run_obj in enumerate(stream):
             if max_runs is not None and stream_index >= int(max_runs):
                 break
@@ -1712,11 +1722,19 @@ class ModelEval(OralModelAlignmentMixin):
             if true_curve is None:
                 true_curve = np.asarray(true_acc, dtype=float)
             if len(pred_acc) == len(true_curve):
-                pred_curves.append(np.asarray(pred_acc, dtype=float))
+                pred_curve = np.asarray(pred_acc, dtype=float)
+                pred_curves.append(pred_curve)
+                run_error = self._safe_float(run_obj.get("mean_error"), default=np.inf)
+                if run_error < best_error:
+                    best_error = run_error
+                    best_curve = pred_curve
+                    best_run_index = int(run_obj.get("run_index", stream_index))
         if true_curve is None or not pred_curves:
             raise ValueError(f"No usable run accuracy curves found in {subject_json_path}")
         pred_stack = np.vstack(pred_curves)
+        q00 = np.nanmin(pred_stack, axis=0)
         q05, q25, q50, q75, q95 = np.nanquantile(pred_stack, [0.05, 0.25, 0.5, 0.75, 0.95], axis=0)
+        q100 = np.nanmax(pred_stack, axis=0)
 
         representative = payload.get("representative_run") or {}
         representative_metrics = representative.get("metrics_by_mode") or {}
@@ -1728,6 +1746,10 @@ class ModelEval(OralModelAlignmentMixin):
                 rep_pred = self._as_float_1d(representative_metrics[mode].get("sliding_pred_acc"), "rep_pred")
             except (TypeError, ValueError):
                 rep_pred = None
+        if best_curve is None and rep_pred is not None and len(rep_pred) == len(true_curve):
+            best_curve = rep_pred
+            best_run_index = selection.get("representative_run_index")
+            best_error = self._safe_float((payload.get("simulation") or {}).get("best_error"))
 
         summary = payload.get("simulation") or payload.get("simulation_summary") or {}
         win = int(summary.get("window_size") or (selection.get("selection_meta") or {}).get("window_size") or 1)
@@ -1747,11 +1769,16 @@ class ModelEval(OralModelAlignmentMixin):
             "x": x,
             "true_curve": true_curve,
             "representative_curve": rep_pred,
+            "best_curve": best_curve,
+            "best_run_index": best_run_index,
+            "best_error": float(best_error) if np.isfinite(best_error) else np.nan,
+            "q00": q00,
             "q05": q05,
             "q25": q25,
             "q50": q50,
             "q75": q75,
             "q95": q95,
+            "q100": q100,
             "median_curve_mae": median_mae,
             "coverage_50": coverage_50,
             "coverage_90": coverage_90,
@@ -1761,13 +1788,13 @@ class ModelEval(OralModelAlignmentMixin):
     @staticmethod
     def _draw_predictive_accuracy_band(ax, band, *, show_legend=True, compact_title=False):
         x = band["x"]
-        ax.fill_between(x, band["q05"], band["q95"], color="#b7c9e2", alpha=0.35, label="Model 90% interval")
-        ax.fill_between(x, band["q25"], band["q75"], color="#5f8fc4", alpha=0.35, label="Model 50% interval")
-        ax.plot(x, band["q50"], color="#235789", lw=2.0, label="Model median")
-        rep_pred = band.get("representative_curve")
-        if rep_pred is not None and len(rep_pred) == len(x):
-            ax.plot(x, rep_pred, color="#e07a5f", lw=1.5, alpha=0.9, label="Representative run")
-        ax.plot(x, band["true_curve"], color="#1b1b1b", lw=2.2, label="Human")
+        ax.fill_between(x, band["q00"], band["q100"], color="#dce6f2", alpha=0.45, label="Model 100% band")
+        ax.fill_between(x, band["q05"], band["q95"], color="#9db9d8", alpha=0.45, label="Model 90% band")
+        ax.fill_between(x, band["q25"], band["q75"], color="#4f81b8", alpha=0.45, label="Model 50% band")
+        best_curve = band.get("best_curve")
+        if best_curve is not None and len(best_curve) == len(x):
+            ax.plot(x, best_curve, color="#E69F00", lw=2.0, alpha=0.95, label="Best run")
+        ax.plot(x, band["true_curve"], color="#111111", lw=2.4, label="Subject")
         ax.set_ylim(0, 1)
         ax.set_xlabel("Trial")
         ax.set_ylabel("Accuracy")
@@ -2377,7 +2404,251 @@ class ModelEval(OralModelAlignmentMixin):
         summary.to_csv(summary_path, index=False)
         return summary
 
-    # strategy_amount ---------------------------------------------------------
+    # dynamic strategy controller --------------------------------------------
+
+    @classmethod
+    def _policy_order(cls, policies: Sequence[str]) -> list[str]:
+        unique = list(dict.fromkeys(str(policy) for policy in policies))
+        canonical = [policy for policy in cls.PROFILE_POLICY_ORDER if policy in unique]
+        return canonical + sorted(policy for policy in unique if policy not in canonical)
+
+    @classmethod
+    def _profile_activation_data(cls, info):
+        logs = info.get("strategy_counts_log") or []
+        probability_rows = []
+        selected = []
+        trials = []
+        all_policies = []
+        for trial_idx, step in enumerate(logs, start=1):
+            if not isinstance(step, Mapping):
+                continue
+            probabilities = step.get("policy_probabilities")
+            if not isinstance(probabilities, Mapping) or not probabilities:
+                controller = step.get("strategy_controller") or {}
+                probabilities = controller.get("policy_probabilities")
+            if not isinstance(probabilities, Mapping) or not probabilities:
+                probabilities = step.get("profile_probabilities")
+            if not isinstance(probabilities, Mapping) or not probabilities:
+                continue
+
+            clean = {}
+            for key, value in probabilities.items():
+                prob = cls._safe_float(value, default=np.nan)
+                if np.isfinite(prob) and prob >= 0.0:
+                    clean[str(key)] = float(prob)
+            total = float(sum(clean.values()))
+            if total <= 0.0:
+                continue
+            clean = {key: value / total for key, value in clean.items()}
+            policy = step.get("selected_policy_method")
+            if policy is None:
+                policy = (step.get("profile_policy") or {}).get("policy_method")
+            if policy is None:
+                policy = step.get("selected_profile")
+
+            trials.append(int(trial_idx))
+            probability_rows.append(clean)
+            selected.append(str(policy) if policy is not None else "")
+            all_policies.extend(clean)
+
+        if not probability_rows:
+            return None
+        policies = cls._policy_order(all_policies)
+        matrix = np.asarray(
+            [[row.get(policy, 0.0) for policy in policies] for row in probability_rows],
+            dtype=float,
+        )
+        row_sums = matrix.sum(axis=1, keepdims=True)
+        matrix = np.divide(matrix, row_sums, out=np.zeros_like(matrix), where=row_sums > 0.0)
+        return {
+            "trial": np.asarray(trials, dtype=int),
+            "policies": policies,
+            "probabilities": matrix,
+            "selected": selected,
+        }
+
+    def plot_dynamic_strategy_profile(
+        self,
+        results,
+        window_size=None,
+        subjects=None,
+        save_path=None,
+        **kwargs,
+    ):
+        """Plot controller probabilities, sampled policy, and representative accuracy."""
+
+        def body(ax, condition, iSub, info):
+            activation = self._profile_activation_data(info)
+            if activation is None:
+                ax.text(0.5, 0.5, "No dynamic strategy log", ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})")
+                return
+
+            x = activation["trial"]
+            policies = activation["policies"]
+            probabilities = activation["probabilities"]
+            colors = [
+                self.PROFILE_POLICY_COLORS.get(policy, sns.color_palette("colorblind", len(policies))[idx])
+                for idx, policy in enumerate(policies)
+            ]
+            ax.stackplot(
+                x,
+                probabilities.T,
+                labels=[f"P({policy})" for policy in policies],
+                colors=colors,
+                alpha=0.24,
+                linewidth=0,
+                zorder=1,
+            )
+
+            cumulative = np.cumsum(probabilities, axis=1)
+            selected_y = []
+            selected_colors = []
+            for row_idx, policy in enumerate(activation["selected"]):
+                if policy not in policies:
+                    selected_y.append(np.nan)
+                    selected_colors.append("#444444")
+                    continue
+                policy_idx = policies.index(policy)
+                lower = cumulative[row_idx, policy_idx - 1] if policy_idx > 0 else 0.0
+                selected_y.append(lower + probabilities[row_idx, policy_idx] / 2.0)
+                selected_colors.append(colors[policy_idx])
+            ax.scatter(
+                x,
+                selected_y,
+                c=selected_colors,
+                marker="|",
+                s=42,
+                linewidths=1.2,
+                alpha=0.95,
+                zorder=3,
+                label="Activated policy",
+            )
+
+            computed = self.compute_accuracy_metrics(info, window_size=window_size)
+            true_acc = computed.get("sliding_true_acc")
+            pred_acc = computed.get("sliding_pred_acc")
+            win = int(computed.get("window_size", window_size or info.get("window_size") or 1))
+            if true_acc is not None and pred_acc is not None:
+                true_acc = np.asarray(true_acc, dtype=float)
+                pred_acc = np.asarray(pred_acc, dtype=float)
+                acc_x = np.arange(win + 1, win + 1 + min(len(true_acc), len(pred_acc)))
+                ax.plot(acc_x, pred_acc[: len(acc_x)], color="#E69F00", lw=2.1, label="Best run", zorder=5)
+                ax.plot(acc_x, true_acc[: len(acc_x)], color="#111111", lw=2.4, label="Subject", zorder=6)
+
+            ax.set_xlim(1, max(int(x[-1]), int(info.get("n_trials") or x[-1])))
+            ax.set_ylim(0, 1)
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition})",
+                xlabel="Trial",
+                ylabel="Accuracy / activation probability",
+            )
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(handles, labels, fontsize=8, ncol=4, loc="upper center")
+            ax.grid(axis="x", alpha=0.18)
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Dynamic Strategy Probabilities and Accuracy",
+            body,
+            **kwargs,
+        )
+
+    @staticmethod
+    def _active_set_count_rows(info):
+        rows = []
+        for trial_idx, step in enumerate(info.get("strategy_counts_log") or [], start=1):
+            if not isinstance(step, Mapping):
+                continue
+            policy_log = step.get("profile_policy")
+            if isinstance(policy_log, Mapping):
+                retained = ModelEval._safe_float(policy_log.get("retained_count"), default=0.0)
+                newcomer = ModelEval._safe_float(policy_log.get("newcomer_count"), default=0.0)
+            else:
+                retained = 0.0
+                newcomer = 0.0
+                for strategy in step.get("strategies") or []:
+                    if not isinstance(strategy, Mapping):
+                        continue
+                    count = ModelEval._safe_float(strategy.get("selected_count"), default=0.0)
+                    if strategy.get("pool") == "active":
+                        retained += count
+                    elif strategy.get("pool") == "inactive":
+                        newcomer += count
+            total = ModelEval._safe_float(step.get("active_total"), default=retained + newcomer)
+            rows.append(
+                {
+                    "trial": int(trial_idx),
+                    "retained": float(retained),
+                    "newcomer": float(newcomer),
+                    "total": float(total),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def plot_hypothesis_active_set_counts(
+        self,
+        results,
+        window_size=None,
+        subjects=None,
+        save_path=None,
+        **kwargs,
+    ):
+        """Plot rolling retained, newcomer, and active-hypothesis counts."""
+
+        def body(ax, condition, iSub, info):
+            counts = self._active_set_count_rows(info)
+            if counts.empty:
+                ax.text(0.5, 0.5, "No active-set count log", ha="center", va="center", transform=ax.transAxes)
+                ax.set(title=f"Subject {iSub} (Condition {condition})")
+                return
+            win = max(1, int(window_size or info.get("window_size") or 16))
+            smooth = counts.copy()
+            value_columns = ["retained", "newcomer", "total"]
+            smooth[value_columns] = counts[value_columns].rolling(window=win, min_periods=1).mean()
+
+            for field, color in (
+                ("retained", "#009E73"),
+                ("newcomer", "#D55E00"),
+                ("total", "#0072B2"),
+            ):
+                ax.step(
+                    counts["trial"],
+                    counts[field],
+                    where="mid",
+                    color=color,
+                    lw=0.8,
+                    alpha=0.12,
+                    zorder=1,
+                )
+
+            ax.plot(smooth["trial"], smooth["total"], color="#0072B2", lw=2.2, linestyle="--", zorder=3, label="Active total")
+            ax.plot(smooth["trial"], smooth["retained"], color="#009E73", lw=2.4, alpha=0.95, zorder=4, label="Retained")
+            ax.plot(smooth["trial"], smooth["newcomer"], color="#D55E00", lw=2.2, alpha=0.95, zorder=4, label="Newcomers")
+            ymax = max(1.0, float(np.nanmax(counts[["retained", "newcomer", "total"]].to_numpy())))
+            ax.set_ylim(-0.15, ymax + 0.6)
+            ax.set(
+                title=f"Subject {iSub} (Condition {condition}) | rolling window={win}",
+                xlabel="Trial",
+                ylabel="Mean hypothesis count",
+            )
+            handles, labels = ax.get_legend_handles_labels()
+            order = [labels.index(name) for name in ("Retained", "Newcomers", "Active total")]
+            ax.legend([handles[idx] for idx in order], [labels[idx] for idx in order], loc="best")
+            ax.grid(axis="y", alpha=0.22)
+
+        self._plot_by_condition(
+            results,
+            subjects,
+            save_path,
+            "Hypothesis Active-Set Counts",
+            body,
+            **kwargs,
+        )
+
+    # Legacy static-strategy amount helpers ----------------------------------
 
     def plot_strategy_amount(self, results, window_size=16, subjects=None, save_path=None, **kwargs):
         def _first_numeric(value, default=0.0):
