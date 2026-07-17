@@ -1,3 +1,4 @@
+*.wav
 *.png
 !results/Model_results/
 !results/Model_results/*.png
