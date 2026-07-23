@@ -228,6 +228,8 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_decay": "latent_volatility_decay",
         "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_max": "latent_volatility_max",
         "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_feedback_mode": "latent_volatility_feedback_mode",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_signal": "latent_volatility_signal",
+        "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_pressure_slope": "latent_volatility_pressure_slope",
         "engine.output_noise.kwargs.base_lapse": "output_base_lapse",
         "engine.output_noise.kwargs.post_error_lapse": "output_post_error_lapse",
         "engine.output_noise.kwargs.low_accuracy_lapse": "output_low_accuracy_lapse",
@@ -275,6 +277,8 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
             ("latent_volatility_decay", "latent_volatility_decay"),
             ("latent_volatility_max", "latent_volatility_max"),
             ("latent_volatility_feedback_mode", "latent_volatility_feedback_mode"),
+            ("latent_volatility_signal", "latent_volatility_signal"),
+            ("latent_volatility_pressure_slope", "latent_volatility_pressure_slope"),
         ):
             if source in transition_kwargs:
                 summary[target] = transition_kwargs[source]

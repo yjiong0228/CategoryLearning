@@ -122,6 +122,34 @@ cannot select the profile for the same trial. The first v11 implementation uses
 hard gating: a single profile is sampled from a softmax and then that profile's
 `strategies` and `post_to_prior` are executed.
 
+### Persistent belief-instability state (V14)
+
+V14 distinguishes the fast error features (`last_error`, `recent_error`) from
+a state that survives across trials. With `latent_volatility_signal` set to
+`confidence_weighted_error`, the update is
+
+\[
+z_{t+1}=clip(\rho z_t+\alpha(1-feedback_t)confidence_t,0,z_{max}).
+\]
+
+`latent_volatility_decay` is \(\rho\) and
+`latent_volatility_error_gain` is \(\alpha\). The confidence term is the
+pre-feedback posterior confidence recorded at the preceding transition, so a
+confident error contributes more evidence for a change point than an error
+made while the model was already uncertain.
+
+Controllers can use either the normalized raw state (`latent_volatility`) or
+the thresholded smooth feature (`latent_volatility_pressure`). The latter is
+
+\[
+pressure_t=\sigma(s(z_t/z_{max}-threshold/z_{max})),
+\]
+
+where `latent_volatility_pressure_slope` is \(s\). Setting all volatility
+gains to zero preserves the V13 state-off behavior. V14 candidates keep the
+four inner policy profiles and use pressure primarily to increase the
+aggressive profile's probability during sustained instability.
+
 ## Choice Readout
 
 `engine.choice_readout.kwargs` controls how the model reads out category
@@ -167,6 +195,11 @@ hyperparam_space:
       - method: expectation
       - method: map_hypothesis
 ```
+
+V14 preserves the V13 candidate file and adds a separate six-family candidate
+set. Each family has a state-off ablation plus confidence-weighted persistent
+state gains 0.20, 0.35, and 0.50. Readout remains a separate four-value
+coordinate: expectation, sharpened expectation at powers 2 and 4, and MAP.
 
 ## Example Configurations
 
@@ -231,4 +264,3 @@ strategies:
     feedback_mode: exact
     min_count: 1
 ```
-

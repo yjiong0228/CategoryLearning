@@ -213,6 +213,64 @@ def test_choice_brier_is_recorded_even_when_not_objective() -> None:
     assert loss_summary["choice_brier"]["count"] == 2
 
 
+def test_marginal_prediction_scores_average_probabilities_across_runs() -> None:
+    common = {
+        "observed_choice_index": np.asarray([-1, 0, 1], dtype=int),
+        "valid_trial_mask": np.asarray([False, True, True], dtype=bool),
+        "sliding_true_acc": np.asarray([0.5, 0.5], dtype=float),
+        "loss_metric": "choice_brier",
+        "mean_error": 0.2,
+        "loss_values": {"choice_brier": 0.2},
+    }
+    run_metrics = [
+        {
+            **common,
+            "pred_category_probs": np.asarray(
+                [[np.nan, np.nan], [0.9, 0.1], [0.2, 0.8]],
+                dtype=float,
+            ),
+            "sliding_pred_acc": np.asarray([0.2, 0.8], dtype=float),
+        },
+        {
+            **common,
+            "pred_category_probs": np.asarray(
+                [[np.nan, np.nan], [0.5, 0.5], [0.6, 0.4]],
+                dtype=float,
+            ),
+            "sliding_pred_acc": np.asarray([0.4, 0.6], dtype=float),
+        },
+    ]
+    runs = [
+        SingleRunResult(
+            params={},
+            mean_error=0.2,
+            metrics_by_mode={"prior_t": metrics},
+            selection_prediction_mode="prior_t",
+            loss_metric="choice_brier",
+            loss_delta=None,
+        )
+        for metrics in run_metrics
+    ]
+
+    result = aggregate_simulation_runs(
+        runs,
+        params={},
+        subject_id=1,
+        condition=1,
+        window_size=2,
+        selection_prediction_mode="prior_t",
+        simulation_repeats=2,
+        simulation_point_seed=123,
+        keep_logs=False,
+    )
+
+    marginal = result.statistics_summary["marginal_prediction"]
+    assert np.isclose(marginal["choice_brier"], 0.25)
+    assert np.isclose(marginal["choice_nll"], -0.5 * (np.log(0.7) + np.log(0.6)))
+    assert np.isclose(marginal["trajectory_crps"], 0.15)
+    assert np.isclose(marginal["trajectory_median_mae"], 0.2)
+
+
 def test_loss_summary_records_best10_and_best25_lower_tail_means() -> None:
     runs = []
     for value in (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80):

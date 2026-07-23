@@ -34,6 +34,7 @@ class DynamicHypothesisModule(BaseModule):
     )
     VALID_TOP_P_SCOPES = ("global", "pool")
     VALID_FEEDBACK_MODES = ("graded", "exact")
+    VALID_LATENT_VOLATILITY_SIGNALS = ("error", "confidence_weighted_error")
     VALID_PADDING_MODES = ("chance", "zero", "one")
     VALID_POST_TO_PRIOR_METHODS = (
         "similarity_novelty",
@@ -170,6 +171,19 @@ class DynamicHypothesisModule(BaseModule):
                 "latent_volatility_feedback_mode must be one of "
                 f"{self.VALID_FEEDBACK_MODES}, got {self.latent_volatility_feedback_mode!r}."
             )
+        self.latent_volatility_signal = str(
+            kwargs.get("latent_volatility_signal", "error")
+        )
+        if self.latent_volatility_signal not in self.VALID_LATENT_VOLATILITY_SIGNALS:
+            raise ValueError(
+                "latent_volatility_signal must be one of "
+                f"{self.VALID_LATENT_VOLATILITY_SIGNALS}, "
+                f"got {self.latent_volatility_signal!r}."
+            )
+        self.latent_volatility_pressure_slope = self._validate_positive_float(
+            kwargs.get("latent_volatility_pressure_slope", 8.0),
+            "latent_volatility_pressure_slope",
+        )
         self.latent_volatility_enabled = (
             self.latent_volatility_max > 0.0
             and (
@@ -1497,6 +1511,17 @@ class DynamicHypothesisModule(BaseModule):
         mid_width = float(features_cfg.get("mid_phase_width", 0.12))
         mid_phase = float(np.exp(-0.5 * ((trial_progress - mid_center) / max(mid_width, 1e-12)) ** 2))
         latent_denom = max(float(self.latent_volatility_max), 1e-12)
+        latent_normalized = float(
+            np.clip(self.latent_volatility_state / latent_denom, 0.0, 1.0)
+        )
+        latent_threshold = float(
+            np.clip(self.latent_volatility_threshold / latent_denom, 0.0, 1.0)
+        )
+        pressure_argument = self.latent_volatility_pressure_slope * (
+            latent_normalized - latent_threshold
+        )
+        pressure_argument = float(np.clip(pressure_argument, -60.0, 60.0))
+        latent_pressure = float(1.0 / (1.0 + np.exp(-pressure_argument)))
         return {
             "bias": 1.0,
             "last_error": float(np.clip(1.0 - last_feedback, 0.0, 1.0)),
@@ -1505,7 +1530,8 @@ class DynamicHypothesisModule(BaseModule):
             "accuracy_delta": float(np.clip(new_acc - old_acc, -1.0, 1.0)),
             "posterior_entropy": entropy_norm,
             "posterior_confidence": float(1.0 - entropy_norm),
-            "latent_volatility": float(np.clip(self.latent_volatility_state / latent_denom, 0.0, 1.0)),
+            "latent_volatility": latent_normalized,
+            "latent_volatility_pressure": latent_pressure,
             "trial_progress": trial_progress,
             "mid_phase": mid_phase,
         }
@@ -2155,6 +2181,8 @@ class DynamicHypothesisModule(BaseModule):
             latest_volatility = self.latent_volatility_log[-1]
             step_counts["latent_volatility_recent_accuracy"] = latest_volatility.get("recent_accuracy")
             step_counts["latent_volatility_error_severity"] = latest_volatility.get("error_severity")
+            step_counts["latent_volatility_confidence"] = latest_volatility.get("confidence")
+            step_counts["latent_volatility_signal"] = latest_volatility.get("signal")
 
         profile, controller_log = self._select_strategy_profile(posterior)
         if profile is None:
@@ -2411,6 +2439,24 @@ class DynamicHypothesisModule(BaseModule):
         mask = ~np.isin(pool, used)
         return pool[mask]
 
+    def _previous_controller_confidence(self) -> float:
+        """Return pre-feedback confidence recorded at the previous transition."""
+        if not self.strategy_counts_log:
+            return 1.0
+        controller = self.strategy_counts_log[-1].get("strategy_controller")
+        if not isinstance(controller, dict):
+            return 1.0
+        features = controller.get("features")
+        if not isinstance(features, dict):
+            return 1.0
+        try:
+            confidence = float(features.get("posterior_confidence", 1.0))
+        except (TypeError, ValueError):
+            confidence = 1.0
+        if not np.isfinite(confidence):
+            confidence = 1.0
+        return float(np.clip(confidence, 0.0, 1.0))
+
     def _update_latent_volatility_state(self) -> None:
         if not self.latent_volatility_enabled:
             self.latent_volatility_state = 0.0
@@ -2421,13 +2467,20 @@ class DynamicHypothesisModule(BaseModule):
                 "low_accuracy": 0.0,
                 "recent_accuracy": 1.0,
                 "error_severity": 0.0,
+                "confidence": 1.0,
+                "signal": self.latent_volatility_signal,
             })
             return
 
         previous_feedback = 1.0
         if self.feedback_history:
             previous_feedback = float(self.feedback_history[-1])
-        error_severity = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
+        raw_error_severity = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
+        confidence = self._previous_controller_confidence()
+        if self.latent_volatility_signal == "confidence_weighted_error":
+            error_severity = raw_error_severity * confidence
+        else:
+            error_severity = raw_error_severity
         recent_accuracy = self._recent_accuracy(
             self.latent_volatility_window,
             {"padding": "chance"},
@@ -2452,6 +2505,9 @@ class DynamicHypothesisModule(BaseModule):
             "low_accuracy": float(low_accuracy_component),
             "recent_accuracy": float(recent_accuracy),
             "error_severity": float(error_severity),
+            "raw_error_severity": float(raw_error_severity),
+            "confidence": float(confidence),
+            "signal": self.latent_volatility_signal,
         })
 
     def _compute_prior_reset_strength(self) -> Tuple[float, Dict[str, float]]:

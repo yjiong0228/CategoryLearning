@@ -1,59 +1,63 @@
-hyper_base_seed: 42
+hyper_base_seed: 140014
 dataset:
   processed_dir: ../../../data/processed
   learning_data: Task2_processed.csv
   perception_summary: Task1b_errorsummary_24.csv
   perception_summary_72: Task1b_errorsummary_72.csv
   feature_order_data: Task2_processed.csv
-output_dir: ../../../results/state-based-simulation/pmh/cond1_v3
+output_dir: ../../../results/state-based-simulation/pmh/cond1_subjectwise_hyper_cd_best
 oral:
   mode: center
-n_jobs: 128
-simulation_repeats: 8192
+n_jobs: 64
+simulation_repeats: 1024
 window_size: 16
 stop_at: 1.0
 max_trials: null
-keep_logs: true
+keep_logs: false
 prediction_mode: prior_t
 selection_prediction_mode: prior_t
 loss_metric: choice_brier
+statistics_config:
+  enabled: true
+  mode: distribution_ppc_interval
+  primary_tolerance_abs: 0.01
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.1
+  distribution_min_run_count: 64
+  distribution_interval_alpha: 0.1
 engine_config:
+  partition:
+    class: src.Bayesian_state.problems.partitions.Partition
+    kwargs:
+      n_dims: 4
+      n_cats: 2
+      include_label_reversals: true
   modules:
     perception_mod:
       class: src.Bayesian_state.problems.modules.perception.PerceptionModule
     beta_mod:
       class: src.Bayesian_state.problems.modules.beta.BetaModule
       kwargs:
-        beta_init: 1.0
+        beta_init: 5.0
         beta_min: 0.1
-        beta_max: 50.0
-        decrease_rate: 0.2
-        correct_additive: 1
+        beta_max: 25.0
+        decrease_rate: 0.15
+        correct_additive: 0.5
         use_prior_scaling: true
-        prior_beta_scale: 10.0
+        prior_beta_scale: 3.0
+        beta_update_mode: inferred_correct_category
     hypo_transitions_mod:
       class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
-      kwargs:
-        strategies:
-        - label: retain_random
-          amount: random_4
-          method: random_posterior
-          pool: active
-        - label: explore_random
-          amount: opp_random_4
-          method: random
-          pool: inactive
-        init_num: 2
-        max_active_hypotheses: 3
+      kwargs: {}
     likelihood_mod:
       class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
       kwargs:
         distance_mode: prototype
     memory_mod:
       class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
-      kwargs:
-        w0: 0.02
-        gamma: 0.2
+      kwargs: {}
+  choice_readout:
+    kwargs: {}
   agenda:
   - perception_mod
   - hypo_transitions_mod
@@ -61,294 +65,1430 @@ engine_config:
   - memory_mod
   - beta_mod
 subjects:
-- 128
-- 129
-- 130
+- 103
+- 105
+- 111
+- 112
+- 117
+- 118
+- 127
 - 131
-- 132
 subject_overrides:
-  '128':
+  '103':
     engine_config:
       modules:
         memory_mod:
           kwargs:
-            gamma: 0.1
+            gamma: 0.25
+            w0: 0.01
+        hypo_transitions_mod:
+          kwargs:
+            init_num: 5
+            init_pool: label_permuted
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 0.8
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -0.2
+                  trial_progress: 1.2
+                  recent_accuracy: 0.8
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: 0.3
+                  trial_progress: 0.8
+                  posterior_entropy: 0.5
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 0.9
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.04
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.5
+                  posterior_entropy: 1.0
+                  trial_progress: -1.2
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 1
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.3
+                  last_error: 0.8
+                  posterior_confidence: 0.5
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.02
+                post_correct_explore_prob: 0.16
+                newcomer_mass: 0.02
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.5
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 2.0
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs:
+        gamma: 0.25
+        w0: 0.01
+      engine.modules.hypo_transitions_mod.kwargs:
+        init_num: 5
+        init_pool: label_permuted
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 0.8
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -0.2
+              trial_progress: 1.2
+              recent_accuracy: 0.8
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: 0.3
+              trial_progress: 0.8
+              posterior_entropy: 0.5
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 0.9
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.04
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.5
+              posterior_entropy: 1.0
+              trial_progress: -1.2
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 1
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.3
+              last_error: 0.8
+              posterior_confidence: 0.5
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.02
+            post_correct_explore_prob: 0.16
+            newcomer_mass: 0.02
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.5
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 2.0
+    hyper_candidate_seed: 626508911
+  '105':
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs:
+            gamma: 0.85
+            w0: 0.05
+        hypo_transitions_mod:
+          kwargs:
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 0.85
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: 0.1
+                  recent_accuracy: 0.7
+                  posterior_confidence: 0.5
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: 1.0
+                  posterior_entropy: 0.5
+                  recent_accuracy: 0.3
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 0.8
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.04
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: -0.4
+                  posterior_entropy: 0.6
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 0
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.3
+                  last_error: 0.7
+                  posterior_confidence: 0.5
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.03
+                post_correct_explore_prob: 0.18
+                newcomer_mass: 0.02
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.35
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: map_hypothesis
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs:
+        gamma: 0.85
+        w0: 0.05
+      engine.modules.hypo_transitions_mod.kwargs:
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 0.85
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: 0.1
+              recent_accuracy: 0.7
+              posterior_confidence: 0.5
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: 1.0
+              posterior_entropy: 0.5
+              recent_accuracy: 0.3
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 0.8
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.04
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: -0.4
+              posterior_entropy: 0.6
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 0
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.3
+              last_error: 0.7
+              posterior_confidence: 0.5
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.03
+            post_correct_explore_prob: 0.18
+            newcomer_mass: 0.02
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.35
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: map_hypothesis
+    hyper_candidate_seed: 1496304230
+  '111':
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs:
+            gamma: 0.85
+            w0: 0.05
+        hypo_transitions_mod:
+          kwargs:
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 1.1
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -1.5
+                  recent_accuracy: 1.0
+                  recent_error: -0.5
+                  posterior_confidence: 0.8
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: -0.2
+                  posterior_entropy: 0.9
+                  recent_accuracy: 0.2
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 1.5
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.05
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.0
+                  last_error: 0.9
+                  posterior_entropy: 1.0
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 2
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.6
+                survivor_choice_weight: 1.4
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.2
+                newcomer_choice_temperature: 0.8
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.1
+                  last_error: 0.8
+                  recent_error: 0.4
+                  posterior_confidence: 0.6
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.12
+                post_correct_explore_prob: 0.02
+                post_error_explore_prob: 0.2
+                newcomer_mass: 0.12
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.5
+                survivor_choice_weight: 1.5
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.8
+                newcomer_choice_temperature: 0.5
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.35
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 2.0
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs:
+        gamma: 0.85
+        w0: 0.05
+      engine.modules.hypo_transitions_mod.kwargs:
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 1.1
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -1.5
+              recent_accuracy: 1.0
+              recent_error: -0.5
+              posterior_confidence: 0.8
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: -0.2
+              posterior_entropy: 0.9
+              recent_accuracy: 0.2
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 1.5
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.05
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.0
+              last_error: 0.9
+              posterior_entropy: 1.0
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 2
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.6
+            survivor_choice_weight: 1.4
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.2
+            newcomer_choice_temperature: 0.8
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.1
+              last_error: 0.8
+              recent_error: 0.4
+              posterior_confidence: 0.6
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.12
+            post_correct_explore_prob: 0.02
+            post_error_explore_prob: 0.2
+            newcomer_mass: 0.12
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.5
+            survivor_choice_weight: 1.5
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.8
+            newcomer_choice_temperature: 0.5
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.35
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 2.0
+    hyper_candidate_seed: 897626909
+  '112':
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs:
+            gamma: 0.25
+            w0: 0.5
+        hypo_transitions_mod:
+          kwargs:
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 1.1
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -1.5
+                  recent_accuracy: 1.0
+                  recent_error: -0.5
+                  posterior_confidence: 0.8
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: -0.2
+                  posterior_entropy: 0.9
+                  recent_accuracy: 0.2
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 1.5
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.05
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.0
+                  last_error: 0.9
+                  posterior_entropy: 1.0
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 2
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.6
+                survivor_choice_weight: 1.4
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.2
+                newcomer_choice_temperature: 0.8
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.1
+                  last_error: 0.8
+                  recent_error: 0.4
+                  posterior_confidence: 0.6
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.12
+                post_correct_explore_prob: 0.02
+                post_error_explore_prob: 0.2
+                newcomer_mass: 0.12
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.5
+                survivor_choice_weight: 1.5
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.8
+                newcomer_choice_temperature: 0.5
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.35
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 4.0
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs:
+        gamma: 0.25
+        w0: 0.5
+      engine.modules.hypo_transitions_mod.kwargs:
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 1.1
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -1.5
+              recent_accuracy: 1.0
+              recent_error: -0.5
+              posterior_confidence: 0.8
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: -0.2
+              posterior_entropy: 0.9
+              recent_accuracy: 0.2
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 1.5
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.05
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.0
+              last_error: 0.9
+              posterior_entropy: 1.0
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 2
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.6
+            survivor_choice_weight: 1.4
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.2
+            newcomer_choice_temperature: 0.8
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.1
+              last_error: 0.8
+              recent_error: 0.4
+              posterior_confidence: 0.6
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.12
+            post_correct_explore_prob: 0.02
+            post_error_explore_prob: 0.2
+            newcomer_mass: 0.12
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.5
+            survivor_choice_weight: 1.5
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.8
+            newcomer_choice_temperature: 0.5
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.35
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 4.0
+    hyper_candidate_seed: 3926354444
+  '117':
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs:
+            gamma: 0.7
+            w0: 0.01
+        hypo_transitions_mod:
+          kwargs:
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 0.85
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: 0.1
+                  recent_accuracy: 0.7
+                  posterior_confidence: 0.5
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: 1.0
+                  posterior_entropy: 0.5
+                  recent_accuracy: 0.3
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 0.8
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.04
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: -0.4
+                  posterior_entropy: 0.6
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 0
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.3
+                  last_error: 0.7
+                  posterior_confidence: 0.5
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.03
+                post_correct_explore_prob: 0.18
+                newcomer_mass: 0.02
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.2
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: map_hypothesis
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs:
+        gamma: 0.7
+        w0: 0.01
+      engine.modules.hypo_transitions_mod.kwargs:
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 0.85
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: 0.1
+              recent_accuracy: 0.7
+              posterior_confidence: 0.5
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: 1.0
+              posterior_entropy: 0.5
+              recent_accuracy: 0.3
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 0.8
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.04
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: -0.4
+              posterior_entropy: 0.6
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 0
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.3
+              last_error: 0.7
+              posterior_confidence: 0.5
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.03
+            post_correct_explore_prob: 0.18
+            newcomer_mass: 0.02
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.2
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: map_hypothesis
+    hyper_candidate_seed: 3882122988
+  '118':
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs:
+            gamma: 0.85
             w0: 0.1
         hypo_transitions_mod:
           kwargs:
             init_num: 5
-            strategies:
-            - label: retain_core
-              amount: fixed
-              value: 1
-              method: top_posterior
-              pool: active
-            - label: drop_recovery
-              amount: opp_accuracy_delta_6
-              method: random
-              pool: inactive
-              window: 6
-              padding: chance
-              feedback_mode: exact
-              scale: 0.25
-            - label: steady_explore
-              amount: fixed
-              value: 1
-              method: random
-              pool: inactive
-        beta_mod:
-          kwargs:
-            beta_init: 0.8
-            decrease_rate: 0.15
-            prior_beta_scale: 5.0
-            correct_additive: 0.25
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 1.1
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -1.5
+                  recent_accuracy: 1.0
+                  recent_error: -0.5
+                  posterior_confidence: 0.8
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: -0.2
+                  posterior_entropy: 0.9
+                  recent_accuracy: 0.2
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 1.5
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.05
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.0
+                  last_error: 0.9
+                  recent_error: 1.4
+                  posterior_entropy: 1.0
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 2
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.6
+                survivor_choice_weight: 1.4
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.2
+                newcomer_choice_temperature: 0.8
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.1
+                  last_error: 0.8
+                  recent_error: 0.4
+                  posterior_confidence: 0.6
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.12
+                post_correct_explore_prob: 0.02
+                post_error_explore_prob: 0.2
+                newcomer_mass: 0.12
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.5
+                survivor_choice_weight: 1.5
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.8
+                newcomer_choice_temperature: 0.5
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 4.0
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
-        gamma: 0.1
+        gamma: 0.85
         w0: 0.1
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
-        strategies:
-        - label: retain_core
-          amount: fixed
-          value: 1
-          method: top_posterior
-          pool: active
-        - label: drop_recovery
-          amount: opp_accuracy_delta_6
-          method: random
-          pool: inactive
-          window: 6
-          padding: chance
-          feedback_mode: exact
-          scale: 0.25
-        - label: steady_explore
-          amount: fixed
-          value: 1
-          method: random
-          pool: inactive
-      engine.modules.beta_mod.kwargs.beta_init: 0.8
-      engine.modules.beta_mod.kwargs.decrease_rate: 0.15
-      engine.modules.beta_mod.kwargs.prior_beta_scale: 5.0
-      engine.modules.beta_mod.kwargs.correct_additive: 0.25
-    hyper_candidate_seed: 1595667125
-  '129':
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 1.1
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -1.5
+              recent_accuracy: 1.0
+              recent_error: -0.5
+              posterior_confidence: 0.8
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: -0.2
+              posterior_entropy: 0.9
+              recent_accuracy: 0.2
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 1.5
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.05
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.0
+              last_error: 0.9
+              recent_error: 1.4
+              posterior_entropy: 1.0
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 2
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.6
+            survivor_choice_weight: 1.4
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.2
+            newcomer_choice_temperature: 0.8
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.1
+              last_error: 0.8
+              recent_error: 0.4
+              posterior_confidence: 0.6
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.12
+            post_correct_explore_prob: 0.02
+            post_error_explore_prob: 0.2
+            newcomer_mass: 0.12
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.5
+            survivor_choice_weight: 1.5
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.8
+            newcomer_choice_temperature: 0.5
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 4.0
+    hyper_candidate_seed: 3990250964
+  '127':
     engine_config:
       modules:
         memory_mod:
           kwargs:
-            gamma: 0.6
-            w0: 0.03
+            gamma: 0.25
+            w0: 0.05
         hypo_transitions_mod:
           kwargs:
-            init_num: 4
-            strategies:
-            - label: retain_confident_core
-              amount: confidence_3
-              method: epsilon_posterior
-              pool: active
-              epsilon: 0.25
-            - label: explore_after_drop
-              amount: opp_accuracy_delta_4
-              method: random
-              pool: inactive
-              window: 8
-              padding: chance
-              feedback_mode: exact
-              scale: 0.5
-        beta_mod:
-          kwargs:
-            beta_init: 0.8
-            decrease_rate: 0.05
-            prior_beta_scale: 10.0
-            correct_additive: 0.25
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 0.7
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -0.2
+                  recent_accuracy: 0.9
+                  posterior_confidence: 0.6
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: 0.2
+                  posterior_entropy: 0.4
+                  recent_accuracy: 0.4
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 1.0
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.05
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.3
+                  last_error: 1.2
+                  recent_error: 1.2
+                  posterior_entropy: 0.8
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 1
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.5
+                  last_error: 0.3
+                  posterior_confidence: 0.4
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.02
+                post_correct_explore_prob: 0.2
+                newcomer_mass: 0.02
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 2.0
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
-        gamma: 0.6
-        w0: 0.03
+        gamma: 0.25
+        w0: 0.05
       engine.modules.hypo_transitions_mod.kwargs:
-        init_num: 4
-        strategies:
-        - label: retain_confident_core
-          amount: confidence_3
-          method: epsilon_posterior
-          pool: active
-          epsilon: 0.25
-        - label: explore_after_drop
-          amount: opp_accuracy_delta_4
-          method: random
-          pool: inactive
-          window: 8
-          padding: chance
-          feedback_mode: exact
-          scale: 0.5
-      engine.modules.beta_mod.kwargs.beta_init: 0.8
-      engine.modules.beta_mod.kwargs.decrease_rate: 0.05
-      engine.modules.beta_mod.kwargs.prior_beta_scale: 10.0
-      engine.modules.beta_mod.kwargs.correct_additive: 0.25
-    hyper_candidate_seed: 3001074689
-  '130':
-    engine_config:
-      modules:
-        memory_mod:
-          kwargs:
-            gamma: 0.4
-            w0: 0.2
-        hypo_transitions_mod:
-          kwargs:
-            init_num: 3
-            strategies:
-            - label: core_retain
-              amount: fixed
-              value: 1
-              method: top_posterior
-              pool: active
-            - label: soft_retain
-              amount: confidence_3
-              method: epsilon_posterior
-              pool: active
-              min_count: 1
-              epsilon: 0.5
-            - label: explore_uncertain
-              amount: opp_confidence_3
-              method: random
-              pool: inactive
-        beta_mod:
-          kwargs:
-            beta_init: 1.5
-            decrease_rate: 0.3
-            prior_beta_scale: 20.0
-            correct_additive: 2.0
-    fixed_hyperparams:
-      engine.modules.memory_mod.kwargs:
-        gamma: 0.4
-        w0: 0.2
-      engine.modules.hypo_transitions_mod.kwargs:
-        init_num: 3
-        strategies:
-        - label: core_retain
-          amount: fixed
-          value: 1
-          method: top_posterior
-          pool: active
-        - label: soft_retain
-          amount: confidence_3
-          method: epsilon_posterior
-          pool: active
-          min_count: 1
-          epsilon: 0.5
-        - label: explore_uncertain
-          amount: opp_confidence_3
-          method: random
-          pool: inactive
-      engine.modules.beta_mod.kwargs.beta_init: 1.5
-      engine.modules.beta_mod.kwargs.decrease_rate: 0.3
-      engine.modules.beta_mod.kwargs.prior_beta_scale: 20.0
-      engine.modules.beta_mod.kwargs.correct_additive: 2.0
-    hyper_candidate_seed: 3114996030
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 0.7
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -0.2
+              recent_accuracy: 0.9
+              posterior_confidence: 0.6
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: 0.2
+              posterior_entropy: 0.4
+              recent_accuracy: 0.4
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 1.0
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.05
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.3
+              last_error: 1.2
+              recent_error: 1.2
+              posterior_entropy: 0.8
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 1
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.5
+              last_error: 0.3
+              posterior_confidence: 0.4
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.02
+            post_correct_explore_prob: 0.2
+            newcomer_mass: 0.02
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 2.0
+    hyper_candidate_seed: 890365578
   '131':
     engine_config:
       modules:
         memory_mod:
           kwargs:
-            gamma: 0.6
-            w0: 0.1
+            gamma: 0.7
+            w0: 0.5
         hypo_transitions_mod:
           kwargs:
-            init_num: 4
-            strategies:
-            - label: retain_confident_core
-              amount: confidence_3
-              method: epsilon_posterior
-              pool: active
-              epsilon: 0.25
-            - label: explore_after_drop
-              amount: opp_accuracy_delta_4
-              method: random
-              pool: inactive
-              window: 8
-              padding: chance
-              feedback_mode: exact
-              scale: 0.5
-        beta_mod:
-          kwargs:
-            beta_init: 5.0
-            decrease_rate: 0.7
-            prior_beta_scale: 40.0
-            correct_additive: 2.0
+            init_num: 5
+            max_active_hypotheses: 5
+            strategy_controller:
+              method: feedback_gated_softmax
+              features:
+                recent_accuracy_window: 8
+                accuracy_delta_window: 8
+                padding: chance
+                feedback_mode: exact
+                trial_progress_scale: 160
+              activation:
+                temperature: 1.1
+              profiles:
+              - id: conservative
+                policy_method: conservative
+                activation:
+                  bias: -1.5
+                  recent_accuracy: 1.0
+                  recent_error: -0.5
+                  posterior_confidence: 0.8
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: conservative_carryover
+                  newcomer_mass: 0.0
+              - id: stable
+                policy_method: stable
+                activation:
+                  bias: -0.2
+                  posterior_entropy: 0.9
+                  recent_accuracy: 0.2
+                active_limit: 5
+                explore_count: 1
+                retain_temperature: 1.5
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.8
+                survivor_choice_weight: 1.2
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.0
+                newcomer_choice_temperature: 0.7
+                post_to_prior:
+                  method: similarity_novelty
+                  min_newcomer_scale: 0.05
+              - id: aggressive
+                policy_method: aggressive
+                activation:
+                  bias: 0.0
+                  last_error: 0.9
+                  posterior_entropy: 1.0
+                  latent_volatility_pressure: 1.5
+                active_limit: 5
+                max_newcomers: 4
+                min_newcomers: 2
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.6
+                survivor_choice_weight: 1.4
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.2
+                newcomer_choice_temperature: 0.8
+              - id: stubborn
+                policy_method: stubborn
+                activation:
+                  bias: -0.1
+                  last_error: 0.8
+                  recent_error: 0.4
+                  posterior_confidence: 0.6
+                active_limit: 5
+                retain_count: 2
+                base_explore_prob: 0.12
+                post_correct_explore_prob: 0.02
+                post_error_explore_prob: 0.2
+                newcomer_mass: 0.12
+                survivor_score: posterior_choice
+                survivor_posterior_weight: 0.5
+                survivor_choice_weight: 1.5
+                newcomer_score: recent_error_choice
+                newcomer_choice_window: 8
+                newcomer_choice_weight: 2.8
+                newcomer_choice_temperature: 0.5
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.35
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
+      choice_readout:
+        kwargs:
+          method: sharpened_expectation
+          power: 4.0
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
-        gamma: 0.6
-        w0: 0.1
+        gamma: 0.7
+        w0: 0.5
       engine.modules.hypo_transitions_mod.kwargs:
-        init_num: 4
-        strategies:
-        - label: retain_confident_core
-          amount: confidence_3
-          method: epsilon_posterior
-          pool: active
-          epsilon: 0.25
-        - label: explore_after_drop
-          amount: opp_accuracy_delta_4
-          method: random
-          pool: inactive
-          window: 8
-          padding: chance
-          feedback_mode: exact
-          scale: 0.5
-      engine.modules.beta_mod.kwargs.beta_init: 5.0
-      engine.modules.beta_mod.kwargs.decrease_rate: 0.7
-      engine.modules.beta_mod.kwargs.prior_beta_scale: 40.0
-      engine.modules.beta_mod.kwargs.correct_additive: 2.0
-    hyper_candidate_seed: 2733587040
-  '132':
-    engine_config:
-      modules:
-        memory_mod:
-          kwargs:
-            gamma: 0.3
-            w0: 0.8
-        hypo_transitions_mod:
-          kwargs:
-            init_num: 8
-            strategies:
-            - label: broad_retain
-              amount: entropy_norm_6
-              method: temperature_posterior
-              pool: active
-              min_count: 3
-              temperature: 2.5
-            - label: steady_explore
-              amount: fixed
-              value: 1
-              method: random
-              pool: inactive
-        beta_mod:
-          kwargs:
-            beta_init: 8.0
-            decrease_rate: 0.05
-            prior_beta_scale: 5.0
-            correct_additive: 0.0
-    fixed_hyperparams:
-      engine.modules.memory_mod.kwargs:
-        gamma: 0.3
-        w0: 0.8
-      engine.modules.hypo_transitions_mod.kwargs:
-        init_num: 8
-        strategies:
-        - label: broad_retain
-          amount: entropy_norm_6
-          method: temperature_posterior
-          pool: active
-          min_count: 3
-          temperature: 2.5
-        - label: steady_explore
-          amount: fixed
-          value: 1
-          method: random
-          pool: inactive
-      engine.modules.beta_mod.kwargs.beta_init: 8.0
-      engine.modules.beta_mod.kwargs.decrease_rate: 0.05
-      engine.modules.beta_mod.kwargs.prior_beta_scale: 5.0
-      engine.modules.beta_mod.kwargs.correct_additive: 0.0
-    hyper_candidate_seed: 4087030291
+        init_num: 5
+        max_active_hypotheses: 5
+        strategy_controller:
+          method: feedback_gated_softmax
+          features:
+            recent_accuracy_window: 8
+            accuracy_delta_window: 8
+            padding: chance
+            feedback_mode: exact
+            trial_progress_scale: 160
+          activation:
+            temperature: 1.1
+          profiles:
+          - id: conservative
+            policy_method: conservative
+            activation:
+              bias: -1.5
+              recent_accuracy: 1.0
+              recent_error: -0.5
+              posterior_confidence: 0.8
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: conservative_carryover
+              newcomer_mass: 0.0
+          - id: stable
+            policy_method: stable
+            activation:
+              bias: -0.2
+              posterior_entropy: 0.9
+              recent_accuracy: 0.2
+            active_limit: 5
+            explore_count: 1
+            retain_temperature: 1.5
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.8
+            survivor_choice_weight: 1.2
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.0
+            newcomer_choice_temperature: 0.7
+            post_to_prior:
+              method: similarity_novelty
+              min_newcomer_scale: 0.05
+          - id: aggressive
+            policy_method: aggressive
+            activation:
+              bias: 0.0
+              last_error: 0.9
+              posterior_entropy: 1.0
+              latent_volatility_pressure: 1.5
+            active_limit: 5
+            max_newcomers: 4
+            min_newcomers: 2
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.6
+            survivor_choice_weight: 1.4
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.2
+            newcomer_choice_temperature: 0.8
+          - id: stubborn
+            policy_method: stubborn
+            activation:
+              bias: -0.1
+              last_error: 0.8
+              recent_error: 0.4
+              posterior_confidence: 0.6
+            active_limit: 5
+            retain_count: 2
+            base_explore_prob: 0.12
+            post_correct_explore_prob: 0.02
+            post_error_explore_prob: 0.2
+            newcomer_mass: 0.12
+            survivor_score: posterior_choice
+            survivor_posterior_weight: 0.5
+            survivor_choice_weight: 1.5
+            newcomer_score: recent_error_choice
+            newcomer_choice_window: 8
+            newcomer_choice_weight: 2.8
+            newcomer_choice_temperature: 0.5
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.35
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
+      engine.choice_readout.kwargs:
+        method: sharpened_expectation
+        power: 4.0
+    hyper_candidate_seed: 3055569137

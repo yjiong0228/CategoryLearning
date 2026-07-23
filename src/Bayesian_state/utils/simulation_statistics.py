@@ -774,6 +774,162 @@ def _loss_metric_summary_from_runs(
     return summary
 
 
+def _empirical_crps(samples: Sequence[Any], observation: Any) -> float:
+    """Compute CRPS for an empirical one-dimensional predictive sample."""
+    values = finite_array(samples)
+    observed = safe_float(observation)
+    if values.size == 0 or not np.isfinite(observed):
+        return float("nan")
+    ordered = np.sort(values)
+    n_values = int(ordered.size)
+    coefficients = 2.0 * np.arange(n_values, dtype=float) - n_values + 1.0
+    pairwise_mean = 2.0 * float(np.sum(coefficients * ordered)) / float(n_values * n_values)
+    return float(np.mean(np.abs(ordered - observed)) - 0.5 * pairwise_mean)
+
+
+def marginal_prediction_metrics_from_runs(
+    runs: Sequence[Any],
+    *,
+    selection_prediction_mode: str,
+) -> Dict[str, Any]:
+    """Score the marginal predictive distribution across stochastic runs.
+
+    Per-run lower-tail scores answer whether a model can occasionally match the
+    data. These metrics instead average category probabilities over all runs and
+    score that marginal prediction. The trajectory CRPS additionally evaluates
+    the calibration and sharpness of the run-level accuracy-curve distribution.
+    """
+    probability_rows: list[np.ndarray] = []
+    sliding_rows: list[np.ndarray] = []
+    observed_choice: np.ndarray | None = None
+    valid_trial_mask: np.ndarray | None = None
+    sliding_true: np.ndarray | None = None
+
+    for run in runs:
+        metrics_by_mode = getattr(run, "metrics_by_mode", {}) or {}
+        metrics = metrics_by_mode.get(selection_prediction_mode)
+        if not isinstance(metrics, Mapping):
+            continue
+
+        probs = np.asarray(metrics.get("pred_category_probs"), dtype=float)
+        choices = np.asarray(metrics.get("observed_choice_index"), dtype=float).reshape(-1)
+        valid = np.asarray(
+            metrics.get("valid_trial_mask", np.ones(choices.size, dtype=bool)),
+            dtype=bool,
+        ).reshape(-1)
+        if probs.ndim == 2 and probs.shape[0] == choices.size and valid.size == choices.size:
+            if observed_choice is None:
+                observed_choice = choices.copy()
+                valid_trial_mask = valid.copy()
+            if (
+                observed_choice.shape == choices.shape
+                and probs.shape[0] == observed_choice.size
+                and probs.shape[1] > 0
+            ):
+                probability_rows.append(probs)
+
+        pred_curve = np.asarray(metrics.get("sliding_pred_acc"), dtype=float).reshape(-1)
+        true_curve = np.asarray(metrics.get("sliding_true_acc"), dtype=float).reshape(-1)
+        if pred_curve.size and pred_curve.shape == true_curve.shape:
+            if sliding_true is None:
+                sliding_true = true_curve.copy()
+            if sliding_true.shape == pred_curve.shape:
+                sliding_rows.append(pred_curve)
+
+    out: Dict[str, Any] = {
+        "run_count": int(len(probability_rows)),
+        "choice_brier": float("nan"),
+        "choice_nll": float("nan"),
+        "trajectory_run_count": int(len(sliding_rows)),
+        "trajectory_crps": float("nan"),
+        "trajectory_mean_mae": float("nan"),
+        "trajectory_median_mae": float("nan"),
+        "trajectory_coverage_90": float("nan"),
+        "trajectory_median_vol_ratio": float("nan"),
+    }
+
+    if probability_rows and observed_choice is not None and valid_trial_mask is not None:
+        stack = np.stack(probability_rows, axis=0)
+        finite = np.all(np.isfinite(stack), axis=2)
+        masked = np.where(finite[:, :, None], stack, np.nan)
+        finite_counts = np.sum(np.isfinite(masked), axis=0)
+        marginal = np.divide(
+            np.nansum(masked, axis=0),
+            finite_counts,
+            out=np.full(masked.shape[1:], np.nan, dtype=float),
+            where=finite_counts > 0,
+        )
+        row_sums = np.nansum(marginal, axis=1)
+        finite_choice = np.isfinite(observed_choice)
+        choice_index = np.full(observed_choice.shape, -1, dtype=int)
+        choice_index[finite_choice] = observed_choice[finite_choice].astype(int)
+        keep = (
+            valid_trial_mask
+            & finite_choice
+            & (choice_index >= 0)
+            & (choice_index < marginal.shape[1])
+            & np.all(np.isfinite(marginal), axis=1)
+            & (row_sums > 0.0)
+        )
+        if np.any(keep):
+            normalized = marginal[keep] / row_sums[keep, None]
+            selected = choice_index[keep]
+            one_hot = np.zeros_like(normalized)
+            one_hot[np.arange(normalized.shape[0]), selected] = 1.0
+            out["choice_brier"] = float(
+                np.mean(np.sum(np.square(normalized - one_hot), axis=1))
+            )
+            selected_probability = normalized[np.arange(normalized.shape[0]), selected]
+            out["choice_nll"] = float(
+                np.mean(-np.log(np.clip(selected_probability, 1e-12, 1.0)))
+            )
+
+    if sliding_rows and sliding_true is not None:
+        stack = np.stack(sliding_rows, axis=0)
+        finite_true = np.isfinite(sliding_true)
+        crps = np.asarray(
+            [
+                _empirical_crps(stack[:, idx], sliding_true[idx])
+                for idx in range(sliding_true.size)
+            ],
+            dtype=float,
+        )
+        finite_crps = crps[np.isfinite(crps) & finite_true]
+        if finite_crps.size:
+            out["trajectory_crps"] = float(np.mean(finite_crps))
+
+        mean_curve = np.full(sliding_true.shape, np.nan, dtype=float)
+        median_curve = np.full(sliding_true.shape, np.nan, dtype=float)
+        q05 = np.full(sliding_true.shape, np.nan, dtype=float)
+        q95 = np.full(sliding_true.shape, np.nan, dtype=float)
+        for idx in range(sliding_true.size):
+            values = stack[:, idx]
+            values = values[np.isfinite(values)]
+            if values.size:
+                mean_curve[idx] = float(np.mean(values))
+                median_curve[idx] = float(np.median(values))
+                q05[idx], q95[idx] = np.quantile(values, [0.05, 0.95])
+        keep = finite_true & np.isfinite(mean_curve) & np.isfinite(median_curve)
+        if np.any(keep):
+            out["trajectory_mean_mae"] = float(
+                np.mean(np.abs(mean_curve[keep] - sliding_true[keep]))
+            )
+            out["trajectory_median_mae"] = float(
+                np.mean(np.abs(median_curve[keep] - sliding_true[keep]))
+            )
+            out["trajectory_coverage_90"] = float(
+                np.mean((sliding_true[keep] >= q05[keep]) & (sliding_true[keep] <= q95[keep]))
+            )
+            true_values = sliding_true[keep]
+            median_values = median_curve[keep]
+            true_vol = float(np.mean(np.abs(np.diff(true_values)))) if true_values.size > 1 else float("nan")
+            median_vol = float(np.mean(np.abs(np.diff(median_values)))) if median_values.size > 1 else float("nan")
+            if np.isfinite(true_vol) and true_vol > 0.0 and np.isfinite(median_vol):
+                out["trajectory_median_vol_ratio"] = float(median_vol / true_vol)
+
+    return out
+
+
 def _score_stats(rows: Sequence[Mapping[str, Any]], score_key: str, eligible: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     all_scores = finite_array(row.get(score_key) for row in rows)
     eligible_scores = finite_array(row.get(score_key) for row in eligible)
@@ -1629,6 +1785,13 @@ def compute_simulation_statistics(
     if loss_summary:
         summary["loss"] = loss_summary
 
+    marginal = marginal_prediction_metrics_from_runs(
+        runs,
+        selection_prediction_mode=selection_prediction_mode,
+    )
+    if marginal:
+        summary["marginal_prediction"] = marginal
+
     shape = _accuracy_shape_nested(
         accuracy_shape_metrics_from_runs(
             runs,
@@ -1690,6 +1853,7 @@ __all__ = [
     "finite_array",
     "get_stat_value",
     "history_kernel_metrics",
+    "marginal_prediction_metrics_from_runs",
     "minimize_rank01",
     "nanmean_or_nan",
     "nanmedian_or_nan",

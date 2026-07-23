@@ -3,7 +3,7 @@ Bayesian Engine
 """
 from typing import Dict, Tuple, List, Any
 import numpy as np
-from ..utils import print, LOGGER
+from ..utils import LOGGER
 import importlib # FIXME: 模块从config里的string转化为真正的class在哪里实现？
 
 EPS = 1e-15
@@ -226,7 +226,7 @@ class BaseEngine:
             }
         """
         # DEBUG
-        print(module_configs, s=5)
+        LOGGER.debug("Building engine modules from config: %s", module_configs)
         for name, config in module_configs.items():
 
             class_path = config['class']
@@ -240,13 +240,13 @@ class BaseEngine:
             module_params = config.get('kwargs', {})
             
             # DEBUG module_kwargs
-            print("name:", name, "mod_kwargs:", module_params, s=4)
+            LOGGER.debug("Building module %s with kwargs=%s", name, module_params)
 
             module_instance = module_class(engine=self, **module_params)
 
             # 将实例化的模块注册为 engine 的一个成员 (属性)
             setattr(self, name, module_instance)
-            LOGGER.info(f"  - Module '{name}' registered as 'self.{name}'.")
+            LOGGER.debug("Module '%s' registered as 'self.%s'.", name, name)
             # 添加到模块列表
             self.modules[name] = module_instance
         likelihood_mod = self.modules.get("likelihood_mod")

@@ -1,0 +1,79 @@
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation_v14.yaml
+subjects: [103, 105, 111, 112, 117, 118, 127, 131]
+output_dir: ../../results/state-based-hyper-cd/pmh/cond1_v14_selected8
+
+# V14 scores the entire stochastic predictive distribution. Lower-tail
+# best-run statistics remain diagnostics but no longer select hyperparameters.
+objective_order:
+  - path: statistics.marginal_prediction.choice_brier
+    rel_tolerance: 0.01
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
+  - path: statistics.marginal_prediction.trajectory_crps
+    rel_tolerance: 0.03
+    abs_tolerance: 0.002
+    scale_floor: 0.01
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 140014
+loss_metric: choice_brier
+window_size: 16
+
+statistics_config:
+  enabled: true
+  mode: distribution_ppc_interval
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10
+  distribution_min_run_count: 64
+  distribution_interval_alpha: 0.10
+
+cd:
+  n_restarts: 3
+  max_outer_iters: 6
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.0005
+  parallel_budget: 64
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.25, 0.50, 0.70, 0.85, 0.95]
+      w0: [0.01, 0.05, 0.10, 0.20, 0.50]
+
+  engine.modules.hypo_transitions_mod.kwargs:
+    values_from_json:
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v14_candidates.json
+      key: cond1_v14
+      value_key: hypo_transitions_kwargs
+
+  engine.choice_readout.kwargs:
+    values:
+      - method: expectation
+      - method: sharpened_expectation
+        power: 2.0
+      - method: sharpened_expectation
+        power: 4.0
+      - method: map_hypothesis
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 16
+    simulation_overrides:
+      simulation_repeats: 128
+      keep_logs: false
+      loss_metric: choice_brier
+      window_size: 16
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 16
+    simulation_overrides:
+      simulation_repeats: 256
+      keep_logs: false
+      loss_metric: choice_brier
+      window_size: 16

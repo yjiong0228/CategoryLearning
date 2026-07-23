@@ -147,6 +147,88 @@ def _policy_module(policy_profile, posterior=None, module_seed=11) -> DynamicHyp
     )
 
 
+def test_confidence_weighted_latent_volatility_uses_previous_controller_confidence() -> None:
+    profile = {
+        "id": "aggressive",
+        "policy_method": "aggressive",
+        "activation": {"latent_volatility_pressure": 1.0},
+    }
+    controller = {
+        "method": "feedback_gated_softmax",
+        "activation": {"temperature": 1.0},
+        "features": {"padding": "chance", "feedback_mode": "exact"},
+        "profiles": [profile],
+    }
+    mod = DynamicHypothesisModule(
+        _engine(set_size=8, partition=FakePartition(n_cats=2)),
+        strategy_controller=controller,
+        init_num=0,
+        max_active_hypotheses=5,
+        latent_volatility_signal="confidence_weighted_error",
+        latent_volatility_error_gain=1.0,
+        latent_volatility_decay=0.0,
+        latent_volatility_max=1.0,
+    )
+    mod.feedback_history.append(0.0)
+    mod.strategy_counts_log.append(
+        {
+            "strategy_controller": {
+                "features": {"posterior_confidence": 0.25},
+            }
+        }
+    )
+
+    mod._update_latent_volatility_state()
+
+    assert np.isclose(mod.latent_volatility_state, 0.25)
+    assert np.isclose(mod.latent_volatility_log[-1]["raw_error_severity"], 1.0)
+    assert np.isclose(mod.latent_volatility_log[-1]["confidence"], 0.25)
+
+
+def test_latent_volatility_pressure_increases_across_threshold() -> None:
+    profile = {
+        "id": "aggressive",
+        "policy_method": "aggressive",
+        "activation": {"latent_volatility_pressure": 1.0},
+    }
+    controller = {
+        "method": "feedback_gated_softmax",
+        "activation": {"temperature": 1.0},
+        "features": {"padding": "chance", "feedback_mode": "exact"},
+        "profiles": [profile],
+    }
+    mod = DynamicHypothesisModule(
+        _engine(set_size=8, partition=FakePartition(n_cats=2)),
+        strategy_controller=controller,
+        init_num=0,
+        max_active_hypotheses=5,
+        latent_volatility_error_gain=0.1,
+        latent_volatility_threshold=0.5,
+        latent_volatility_pressure_slope=8.0,
+    )
+    posterior = np.full(8, 1.0 / 8.0)
+    mod.latent_volatility_state = 0.25
+    low = mod._controller_activation_features(posterior)["latent_volatility_pressure"]
+    mod.latent_volatility_state = 0.75
+    high = mod._controller_activation_features(posterior)["latent_volatility_pressure"]
+
+    assert low < 0.5 < high
+    assert np.isclose(low, 1.0 - high)
+
+
+def test_invalid_latent_volatility_signal_raises() -> None:
+    with pytest.raises(ValueError, match="latent_volatility_signal"):
+        DynamicHypothesisModule(
+            _engine(set_size=8, partition=FakePartition(n_cats=2)),
+            strategy_controller={
+                "method": "feedback_gated_softmax",
+                "profiles": [{"id": "stable", "policy_method": "stable"}],
+            },
+            init_num=0,
+            latent_volatility_signal="bad",
+        )
+
+
 def test_profile_policy_unknown_method_raises() -> None:
     with pytest.raises(ValueError, match="policy_method"):
         _policy_module({"id": "bad", "policy_method": "bad"})
