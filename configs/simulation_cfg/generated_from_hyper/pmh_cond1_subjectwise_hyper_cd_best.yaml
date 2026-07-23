@@ -152,7 +152,7 @@ subject_overrides:
       choice_readout:
         kwargs:
           method: sharpened_expectation
-          power: 2.0
+          power: 4.0
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
         gamma: 0.25
@@ -226,14 +226,14 @@ subject_overrides:
         latent_volatility_pressure_slope: 8.0
       engine.choice_readout.kwargs:
         method: sharpened_expectation
-        power: 2.0
-    hyper_candidate_seed: 626508911
+        power: 4.0
+    hyper_candidate_seed: 3513295224
   '105':
     engine_config:
       modules:
         memory_mod:
           kwargs:
-            gamma: 0.85
+            gamma: 0.7
             w0: 0.05
         hypo_transitions_mod:
           kwargs:
@@ -306,7 +306,7 @@ subject_overrides:
           method: map_hypothesis
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
-        gamma: 0.85
+        gamma: 0.7
         w0: 0.05
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
@@ -375,7 +375,7 @@ subject_overrides:
         latent_volatility_pressure_slope: 8.0
       engine.choice_readout.kwargs:
         method: map_hypothesis
-    hyper_candidate_seed: 1496304230
+    hyper_candidate_seed: 4083456140
   '111':
     engine_config:
       modules:
@@ -589,7 +589,7 @@ subject_overrides:
       engine.choice_readout.kwargs:
         method: sharpened_expectation
         power: 2.0
-    hyper_candidate_seed: 897626909
+    hyper_candidate_seed: 174551597
   '112':
     engine_config:
       modules:
@@ -653,8 +653,8 @@ subject_overrides:
                 activation:
                   bias: 0.0
                   last_error: 0.9
+                  recent_error: 1.4
                   posterior_entropy: 1.0
-                  latent_volatility_pressure: 1.5
                 active_limit: 5
                 max_newcomers: 4
                 min_newcomers: 2
@@ -685,20 +685,9 @@ subject_overrides:
                 newcomer_choice_window: 8
                 newcomer_choice_weight: 2.8
                 newcomer_choice_temperature: 0.5
-            latent_volatility_base: 0.0
-            latent_volatility_error_gain: 0.35
-            latent_volatility_low_accuracy_gain: 0.0
-            latent_volatility_threshold: 0.55
-            latent_volatility_window: 8
-            latent_volatility_decay: 0.8
-            latent_volatility_max: 1.0
-            latent_volatility_feedback_mode: exact
-            latent_volatility_signal: confidence_weighted_error
-            latent_volatility_pressure_slope: 8.0
       choice_readout:
         kwargs:
-          method: sharpened_expectation
-          power: 4.0
+          method: map_hypothesis
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
         gamma: 0.25
@@ -758,8 +747,8 @@ subject_overrides:
             activation:
               bias: 0.0
               last_error: 0.9
+              recent_error: 1.4
               posterior_entropy: 1.0
-              latent_volatility_pressure: 1.5
             active_limit: 5
             max_newcomers: 4
             min_newcomers: 2
@@ -790,20 +779,9 @@ subject_overrides:
             newcomer_choice_window: 8
             newcomer_choice_weight: 2.8
             newcomer_choice_temperature: 0.5
-        latent_volatility_base: 0.0
-        latent_volatility_error_gain: 0.35
-        latent_volatility_low_accuracy_gain: 0.0
-        latent_volatility_threshold: 0.55
-        latent_volatility_window: 8
-        latent_volatility_decay: 0.8
-        latent_volatility_max: 1.0
-        latent_volatility_feedback_mode: exact
-        latent_volatility_signal: confidence_weighted_error
-        latent_volatility_pressure_slope: 8.0
       engine.choice_readout.kwargs:
-        method: sharpened_expectation
-        power: 4.0
-    hyper_candidate_seed: 3926354444
+        method: map_hypothesis
+    hyper_candidate_seed: 3909750791
   '117':
     engine_config:
       modules:
@@ -868,7 +846,7 @@ subject_overrides:
                 post_correct_explore_prob: 0.18
                 newcomer_mass: 0.02
             latent_volatility_base: 0.0
-            latent_volatility_error_gain: 0.2
+            latent_volatility_error_gain: 0.35
             latent_volatility_low_accuracy_gain: 0.0
             latent_volatility_threshold: 0.55
             latent_volatility_window: 8
@@ -940,7 +918,7 @@ subject_overrides:
             post_correct_explore_prob: 0.18
             newcomer_mass: 0.02
         latent_volatility_base: 0.0
-        latent_volatility_error_gain: 0.2
+        latent_volatility_error_gain: 0.35
         latent_volatility_low_accuracy_gain: 0.0
         latent_volatility_threshold: 0.55
         latent_volatility_window: 8
@@ -951,7 +929,7 @@ subject_overrides:
         latent_volatility_pressure_slope: 8.0
       engine.choice_readout.kwargs:
         method: map_hypothesis
-    hyper_candidate_seed: 3882122988
+    hyper_candidate_seed: 1759580951
   '118':
     engine_config:
       modules:
@@ -1145,7 +1123,7 @@ subject_overrides:
       engine.choice_readout.kwargs:
         method: sharpened_expectation
         power: 4.0
-    hyper_candidate_seed: 3990250964
+    hyper_candidate_seed: 3183338474
   '127':
     engine_config:
       modules:
@@ -1166,50 +1144,59 @@ subject_overrides:
                 feedback_mode: exact
                 trial_progress_scale: 160
               activation:
-                temperature: 0.7
+                temperature: 0.85
               profiles:
               - id: conservative
                 policy_method: conservative
                 activation:
-                  bias: -0.2
-                  recent_accuracy: 0.9
-                  posterior_confidence: 0.6
+                  bias: 0.1
+                  recent_accuracy: 0.7
+                  posterior_confidence: 0.5
                 post_to_prior:
                   method: conservative_carryover
                   newcomer_mass: 0.0
               - id: stable
                 policy_method: stable
                 activation:
-                  bias: 0.2
-                  posterior_entropy: 0.4
-                  recent_accuracy: 0.4
+                  bias: 1.0
+                  posterior_entropy: 0.5
+                  recent_accuracy: 0.3
                 active_limit: 5
                 explore_count: 1
-                retain_temperature: 1.0
+                retain_temperature: 0.8
                 post_to_prior:
                   method: similarity_novelty
-                  min_newcomer_scale: 0.05
+                  min_newcomer_scale: 0.04
               - id: aggressive
                 policy_method: aggressive
                 activation:
-                  bias: 0.3
-                  last_error: 1.2
-                  recent_error: 1.2
-                  posterior_entropy: 0.8
+                  bias: -0.4
+                  posterior_entropy: 0.6
+                  latent_volatility_pressure: 1.5
                 active_limit: 5
                 max_newcomers: 4
-                min_newcomers: 1
+                min_newcomers: 0
               - id: stubborn
                 policy_method: stubborn
                 activation:
-                  bias: -0.5
-                  last_error: 0.3
-                  posterior_confidence: 0.4
+                  bias: -0.3
+                  last_error: 0.7
+                  posterior_confidence: 0.5
                 active_limit: 5
                 retain_count: 2
-                base_explore_prob: 0.02
-                post_correct_explore_prob: 0.2
+                base_explore_prob: 0.03
+                post_correct_explore_prob: 0.18
                 newcomer_mass: 0.02
+            latent_volatility_base: 0.0
+            latent_volatility_error_gain: 0.5
+            latent_volatility_low_accuracy_gain: 0.0
+            latent_volatility_threshold: 0.55
+            latent_volatility_window: 8
+            latent_volatility_decay: 0.8
+            latent_volatility_max: 1.0
+            latent_volatility_feedback_mode: exact
+            latent_volatility_signal: confidence_weighted_error
+            latent_volatility_pressure_slope: 8.0
       choice_readout:
         kwargs:
           method: sharpened_expectation
@@ -1230,60 +1217,69 @@ subject_overrides:
             feedback_mode: exact
             trial_progress_scale: 160
           activation:
-            temperature: 0.7
+            temperature: 0.85
           profiles:
           - id: conservative
             policy_method: conservative
             activation:
-              bias: -0.2
-              recent_accuracy: 0.9
-              posterior_confidence: 0.6
+              bias: 0.1
+              recent_accuracy: 0.7
+              posterior_confidence: 0.5
             post_to_prior:
               method: conservative_carryover
               newcomer_mass: 0.0
           - id: stable
             policy_method: stable
             activation:
-              bias: 0.2
-              posterior_entropy: 0.4
-              recent_accuracy: 0.4
+              bias: 1.0
+              posterior_entropy: 0.5
+              recent_accuracy: 0.3
             active_limit: 5
             explore_count: 1
-            retain_temperature: 1.0
+            retain_temperature: 0.8
             post_to_prior:
               method: similarity_novelty
-              min_newcomer_scale: 0.05
+              min_newcomer_scale: 0.04
           - id: aggressive
             policy_method: aggressive
             activation:
-              bias: 0.3
-              last_error: 1.2
-              recent_error: 1.2
-              posterior_entropy: 0.8
+              bias: -0.4
+              posterior_entropy: 0.6
+              latent_volatility_pressure: 1.5
             active_limit: 5
             max_newcomers: 4
-            min_newcomers: 1
+            min_newcomers: 0
           - id: stubborn
             policy_method: stubborn
             activation:
-              bias: -0.5
-              last_error: 0.3
-              posterior_confidence: 0.4
+              bias: -0.3
+              last_error: 0.7
+              posterior_confidence: 0.5
             active_limit: 5
             retain_count: 2
-            base_explore_prob: 0.02
-            post_correct_explore_prob: 0.2
+            base_explore_prob: 0.03
+            post_correct_explore_prob: 0.18
             newcomer_mass: 0.02
+        latent_volatility_base: 0.0
+        latent_volatility_error_gain: 0.5
+        latent_volatility_low_accuracy_gain: 0.0
+        latent_volatility_threshold: 0.55
+        latent_volatility_window: 8
+        latent_volatility_decay: 0.8
+        latent_volatility_max: 1.0
+        latent_volatility_feedback_mode: exact
+        latent_volatility_signal: confidence_weighted_error
+        latent_volatility_pressure_slope: 8.0
       engine.choice_readout.kwargs:
         method: sharpened_expectation
         power: 2.0
-    hyper_candidate_seed: 890365578
+    hyper_candidate_seed: 2623716779
   '131':
     engine_config:
       modules:
         memory_mod:
           kwargs:
-            gamma: 0.7
+            gamma: 0.5
             w0: 0.5
         hypo_transitions_mod:
           kwargs:
@@ -1389,7 +1385,7 @@ subject_overrides:
           power: 4.0
     fixed_hyperparams:
       engine.modules.memory_mod.kwargs:
-        gamma: 0.7
+        gamma: 0.5
         w0: 0.5
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
@@ -1491,4 +1487,4 @@ subject_overrides:
       engine.choice_readout.kwargs:
         method: sharpened_expectation
         power: 4.0
-    hyper_candidate_seed: 3055569137
+    hyper_candidate_seed: 2349435741
