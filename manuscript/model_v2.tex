@@ -12,7 +12,7 @@
 \begin{enumerate}
     \item 任务定义的几何假设空间；
     \item 容量受限的活跃假设集合；
-    \item Stable、Persistent 和 Revision 三类假设转移 profile；
+    \item 被试特异的 feedback-gated 多-profile假设转移；
     \item 由任务反馈事件定义的贝叶斯证据更新；
     \item 包含 fade-only 与 static-only 两个边界的双通道记忆；
     \item 假设特异的动态逆温度 $\beta_{t,h}$；
@@ -108,7 +108,7 @@ $\pi_t^-$ 与 $\pi_t^+$ 必须在实现和结果文件中分别保存。$\pi_t^-
 四分类原型与相应区域保持一致。轴向切分主要使用 $0.25/0.75$；等值与求和关系主要使用 $1/3$ 与 $2/3$；等值--求和产生的四个区域使用 $1/6$、$1/2$ 和 $5/6$；dimension-max 原型将目标维度设为 $0.8$、其余维度设为 $0.4$，dimension-min 原型采用相反设置。所有原型必须通过所属区域约束检查。
 
 \paragraph{完整空间与有限活跃集合。}
-$\mathcal H$ 只规定学习者可能搜索到哪些规则，并不表示这些规则同时处于工作状态。正式模型固定活跃容量 $M=5$，因此条件 1 每个试次最多维持 19 个候选中的 5 个，条件 2 和 3 每个试次也只维持 116 个候选中的 5 个。扩大完整假设空间只增加长期搜索范围，不增加单个试次的并行假设负荷。
+$\mathcal H$ 只规定学习者可能搜索到哪些规则，并不表示这些规则同时处于工作状态。当前经验参照模型固定活跃容量 $M=5$，因此条件 1 每个试次最多维持 19 个候选中的 5 个，条件 2 和 3 每个试次也只维持 116 个候选中的 5 个。扩大完整假设空间只增加长期搜索范围，不增加单个试次的并行假设负荷。有限容量是模型的理论承诺，但精确数值 $M=5$ 尚未通过容量恢复或相邻有限容量的公平比较独立确认；正式报告应将二者分开表述。
 
 代码内部的整数索引只是枚举标签。保存或报告一个假设时，必须同时保存其边界、原型和类别映射，不能把 ``hypothesis 0'' 等实现索引当作可跨版本解释的理论名称。
 
@@ -167,7 +167,7 @@ $\beta_{t,h}$ 越大，类别概率越集中于最近原型；$\beta_{t,h}$ 越�
 该架构是以真实行为序列为条件的一步状态滤波器：模型先预测当前选择，然后使用观察到的选择和反馈更新内部状态。若要生成完全新的自主行为轨迹，则需在该滤波器外部由式 \ref{eq:modelv2-causal-choice} 抽取选择、由实验任务规则生成反馈，再调用相同的状态更新。
 
 
-\subsubsection{三类 profile 的有限容量假设转移}
+\subsubsection{被试特异的多-profile有限容量假设转移}
 
 \paragraph{初始化。}
 第一个试次从 $\mathcal H$ 中无放回抽取 $M=5$ 个假设：
@@ -184,17 +184,21 @@ $\beta_{t,h}$ 越大，类别概率越集中于最近原型；$\beta_{t,h}$ 越�
 初始化随机性通过重复模拟积分，不能以单一有利初始集合代表一个参数配置。
 
 \paragraph{控制信号。}
-Profile controller 只读取两个因果信号：过去 $W$ 个试次的平均错误程度和上一后验在活跃集合内的归一化熵。令
-\begin{equation}
-    e_j=1-r_j ,
-    \qquad
-    \bar e_t
-    =
+单一、固定的 profile 无法表达被试在规则维持、局部探索和较大幅度修正之间的差异。模型因此保留一个被试特异的 feedback-gated controller。Controller 只读取过去反馈、上一后验和试次进程，不读取当前反馈。令
+\begin{align}
+    e_{t-1}&=1-r_{t-1},\\
+    \bar a_t
+    &=
     \frac{1}{W}
-    \sum_{j=t-W}^{t-1}\tilde e_j ,
-    \label{eq:modelv2-recent-error}
-\end{equation}
-其中 $W=8$；条件 3 的部分反馈 $r_j=0.5$ 对应错误程度 $e_j=0.5$。历史不足 $W$ 个试次时，用该实验条件下随机选择的期望反馈填充缺失的 $r_j$，而不是使用当前反馈。
+    \sum_{j=t-W}^{t-1}\tilde r_j,
+    \qquad
+    \bar e_t=1-\bar a_t,\\
+    \tau_t
+    &=
+    \min\left(\frac{t-1}{160},1\right),
+    \label{eq:modelv2-controller-history}
+\end{align}
+其中 $W=8$；条件 3 的部分反馈 $r_j=0.5$ 对 $\bar a_t$ 贡献 $0.5$。历史不足 $W$ 个试次时，用该实验条件下随机选择的期望反馈填充缺失的 $r_j$，而不是使用当前反馈。
 具体地，条件 1 和条件 2 的填充值为
 \[
     r_{\mathrm{chance}}=\frac{1}{N};
@@ -228,34 +232,128 @@ Profile controller 只读取两个因果信号：过去 $W$ 个试次的平均�
 \end{equation}
 熵按实际活跃集合大小归一化，因此 $H_t\in[0,1]$：$H_t$ 高表示模型在当前活跃假设之间不确定，$1-H_t$ 高表示后验集中。
 
-\paragraph{Profile 概率。}
-令 $K_t\in\{\mathrm S,\mathrm P,\mathrm R\}$ 分别表示 Stable、Persistent 和 Revision。三类 profile 的概率定义为
-\begin{align}
-    P(K_t=\mathrm S)
-    &=1-\bar e_t,\\
-    P(K_t=\mathrm P)
-    &=\bar e_t(1-H_t),\\
-    P(K_t=\mathrm R)
-    &=\bar e_tH_t.
-    \label{eq:modelv2-three-profile-probabilities}
-\end{align}
-三项均非负且和为 1。该分解表达一个层级判断：近期反馈大体成功时，模型主要维持稳定搜索；近期反馈较差但当前后验高度集中时，模型表现为对既有解释的坚持；近期反馈较差且后验分散时，模型进行较大幅度修正。三类 profile 是试次级计算状态，不是对被试进行固定人格分类。
+\paragraph{Feedback-gated profile 概率。}
+当前经验参照模型包含四种操作 profile：
+\[
+    K_t\in\{\mathrm C,\mathrm S,\mathrm A,\mathrm B\},
+\]
+分别表示 Conservative、Stable、Aggressive 和 Stubborn；下标 $\mathrm B$ 用于避免与 Stable 的 $\mathrm S$ 混淆。这些名称表示算法行为，不表示固定的人格类型。每名被试选择一个 controller family $g_s$。在 family $g_s$ 下，profile $k$ 的激活值和抽样概率为
+\begin{equation}
+    u_{t,k}^{(g_s)}
+    =
+    \mathbf a_k^{(g_s)\top}\mathbf f_t,
+    \qquad
+    P(K_t=k\mid g_s)
+    =
+    \frac{
+        \exp[u_{t,k}^{(g_s)}/T_{g_s}]
+    }{
+        \sum_{\ell\in\{\mathrm C,\mathrm S,\mathrm A,\mathrm B\}}
+        \exp[u_{t,\ell}^{(g_s)}/T_{g_s}]
+    },
+    \label{eq:modelv2-profile-softmax}
+\end{equation}
+其中
+\[
+    \mathbf f_t
+    =
+    (1,\bar a_t,\bar e_t,e_{t-1},H_t,1-H_t,\tau_t)
+\]
+且 $T_{g_s}>0$。因而，同一被试可以在不同试次进入不同 profile；subject-specific 指的是 controller 的激活结构，而不是把被试永久归入某一种 profile。
 
-\paragraph{幸存者与新进入者。}
-令上一活跃假设按 $\pi_{t-1}^+(h)$ 从高到低排序。三类 profile 对集合的操作为：
+\paragraph{六个 controller family。}
+当前结构筛选保留六个具有不同反馈反应模式的 family：
 \begin{enumerate}
-    \item \textit{Stable}：保留 posterior 最高的 $M-1$ 个旧假设，并从 $\mathcal H\setminus A_{t-1}$ 中均匀抽取 1 个 newcomer；
-    \item \textit{Persistent}：保留整个 $A_{t-1}$，不引入 newcomer；
-    \item \textit{Revision}：保留 posterior 最高的
-    \begin{equation}
-        m_{\mathrm R}
-        =
-        \max\left(1,\left\lceil\frac{M}{3}\right\rceil\right)
-        \label{eq:modelv2-revision-survivors}
-    \end{equation}
-    个旧假设，并从未激活假设中无放回抽取 $M-m_{\mathrm R}$ 个 newcomer。
+    \item \texttt{stable\_dominant}：以 Stable 为主要状态，同时允许错误和高熵提高 Aggressive；
+    \item \texttt{error\_aggressive}：错误、近期低正确率和高熵更强地提高 Aggressive；
+    \item \texttt{early\_explore\_late\_stable}：学习早期更易探索，后期更易稳定维持；
+    \item \texttt{conservative\_heavy}：高正确率和高置信度更强地维持现有集合；
+    \item \texttt{error\_choice\_newcomer}：错误后提高 Stubborn，并允许近期错误选择参与候选打分；
+    \item \texttt{choice\_volatile\_refresh}：保留 choice-informed 打分，同时提高 profile 抽样和集合刷新的变异性。
 \end{enumerate}
-当 inactive pool 小于所需 newcomer 数量时，先使用全部 inactive 假设，再用 posterior 次高的旧假设补足容量。任一 profile 都至少保留一个旧假设，因此单个错误不会导致整套内部状态被完全重置。
+这六个 family 是被试层面的离散候选，不是六个同时叠加的模块。令
+\[
+    A=\bar a_t,\quad E=\bar e_t,\quad
+    e=e_{t-1},\quad H=H_t,\quad
+    C=1-H_t,\quad \tau=\tau_t .
+\]
+六个 family 对 $(\mathrm C,\mathrm S,\mathrm A,\mathrm B)$ 的当前经验参照 logits 为
+\begin{align}
+    \texttt{stable\_dominant}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (0.1+0.7A+0.5C,\;
+     1.0+0.5H+0.3A,\nonumber\\
+    &-0.4+0.7E+0.6H,\;
+     -0.3+0.7e+0.5C),\\
+    \texttt{error\_aggressive}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-0.2+0.9A+0.6C,\;
+     0.2+0.4H+0.4A,\nonumber\\
+    &0.3+1.2e+1.2E+0.8H,\;
+     -0.5+0.3e+0.4C),\\
+    \texttt{early\_explore\_late\_stable}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-0.2+1.2\tau+0.8A,\;
+     0.3+0.8\tau+0.5H,\nonumber\\
+    &0.5+H-1.2\tau,\;
+     -0.3+0.8e+0.5C),\\
+    \texttt{conservative\_heavy}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (1.0+A+C,\;
+     0.2+0.6H,\;
+     -1.0+0.5E,\;
+     -0.6+0.5e),\\
+    \texttt{error\_choice\_newcomer}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-1.5+A-0.5E+0.8C,\;
+     -1.0+0.8A+0.4C-0.5H,\nonumber\\
+    &-1.2+0.5e+E+H-0.5C,\;
+     0.8+0.7e+0.4E+C),\\
+    \texttt{choice\_volatile\_refresh}:\quad
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-1.5+A-0.5E+0.8C,\;
+     -0.2+0.9H+0.2A,\nonumber\\
+    &0.9e+1.4E+H,\;
+     -0.1+0.8e+0.4E+0.6C).
+    \label{eq:modelv2-controller-family-logits}
+\end{align}
+相应温度依次为 $0.85$、$0.70$、$0.80$、$0.75$、$0.65$ 和 $1.10$。由于式 \ref{eq:modelv2-active-entropy} 使用 active-set entropy，而旧实现曾按完整假设空间归一化熵，上述系数在正式 v2 中必须作为重新优化的起点，而不能未经重拟合直接冻结。
+
+\paragraph{四种操作 profile。}
+令上一活跃假设按其 survivor 得分排序。四种 profile 对集合的操作为：
+\begin{enumerate}
+    \item \textit{Conservative}：保持 $A_{t-1}$ 不变，不引入 newcomer；
+    \item \textit{Stable}：通常保留 $M-1$ 个旧假设并引入 1 个 newcomer；旧假设按 survivor 得分经温度变换后无放回抽样；
+    \item \textit{Aggressive}：保留得分最高的一个旧假设 $h^\star$，并引入
+    \begin{equation}
+        n_t^{\mathrm{new}}
+        =
+        \operatorname{clip}
+        \left[
+            \operatorname{round}
+            \{(1-\pi_{t-1}^+(h^\star))n_{\max}\},
+            n_{\min},n_{\max}
+        \right]
+        \label{eq:modelv2-aggressive-count}
+    \end{equation}
+    个 newcomer；
+    \item \textit{Stubborn}：确定性保留得分最高的 $n_{\mathrm{retain}}$ 个旧假设，并以
+    \begin{equation}
+        p_t^{\mathrm{explore}}
+        =
+        p_0+p_{\mathrm{correct}}(1-e_{t-1})
+        +p_{\mathrm{error}}e_{t-1}
+        \label{eq:modelv2-stubborn-explore}
+    \end{equation}
+    的概率引入至多一个 newcomer。
+\end{enumerate}
+任一 profile 都至少保留一个旧假设；若 inactive pool 不足，则使用全部剩余候选并保持 $|A_t|\leq M$。当前六个 family 均使用 $M=5$；Stable 的 newcomer 数为 1，Aggressive 的 $n_{\max}=4$，Stubborn 的 $n_{\mathrm{retain}}=2$。不同 family 只改变保留温度、最小 newcomer 数、探索概率和 newcomer 质量，而不改变四种 profile 的基本语义。
 
 定义幸存者和新进入者为
 \begin{equation}
@@ -266,29 +364,72 @@ Profile controller 只读取两个因果信号：过去 $W$ 个试次的平均�
     n_t^{\mathrm{new}}=|\mathcal N_t|.
     \label{eq:modelv2-survivor-newcomer}
 \end{equation}
-Newcomer 的总先验质量由其在容量中的比例决定：
+
+\paragraph{Survivor 与 newcomer 得分。}
+默认 survivor 得分为上一后验：
+\[
+    s_t^{\mathrm{surv}}(h)=\pi_{t-1}^+(h).
+\]
+\texttt{error\_choice\_newcomer} 和 \texttt{choice\_volatile\_refresh} 允许上一选择的可解释性参与 survivor 得分：
 \begin{equation}
-    \nu_t=\frac{n_t^{\mathrm{new}}}{M}.
-    \label{eq:modelv2-newcomer-mass}
+    s_t^{\mathrm{surv}}(h)
+    \propto
+    [\pi_{t-1}^+(h)]^a
+    [q_{t-1,h}(c_{t-1})]^b .
+    \label{eq:modelv2-choice-survivor}
 \end{equation}
-转移后的先验为
+对未激活假设，这两个 family 使用最近 $W_c=8$ 个错误试次的选择概率：
+\begin{equation}
+    \log s_t^{\mathrm{new}}(h)
+    =
+    \frac{b_c}{|\mathcal E_t|}
+    \sum_{j\in\mathcal E_t}
+    \log q_{j,h}(c_j),
+    \qquad
+    \mathcal E_t=
+    \{j<t:r_j<1\}\cap\{t-W_c,\ldots,t-1\}.
+    \label{eq:modelv2-choice-newcomer}
+\end{equation}
+其他 family 从 inactive pool 均匀抽取 newcomer。Choice-informed 得分只属于相应 controller family，不是所有被试共享的默认状态变量。
+
+\paragraph{转移后的先验质量。}
+令 $\nu_{t,k}\in[0,1]$ 为 profile $k$ 分给 newcomer 的总质量。给定 profile、survivor 和 newcomer 得分，转移先验统一写为
 \begin{equation}
     \pi_t^-(h)
     =
     \begin{cases}
     \displaystyle
-    (1-\nu_t)
-    \frac{\pi_{t-1}^+(h)}
-    {\sum_{u\in\mathcal S_t}\pi_{t-1}^+(u)},
+    (1-\nu_{t,k})
+    \frac{s_t^{\mathrm{surv}}(h)}
+    {\sum_{u\in\mathcal S_t}s_t^{\mathrm{surv}}(u)},
     &h\in\mathcal S_t,\\[14pt]
     \displaystyle
-    \frac{\nu_t}{n_t^{\mathrm{new}}},
-    &h\in\mathcal N_t,\ n_t^{\mathrm{new}}>0,\\[10pt]
+    \nu_{t,k}
+    \frac{s_t^{\mathrm{new}}(h)}
+    {\sum_{u\in\mathcal N_t}s_t^{\mathrm{new}}(u)},
+    &h\in\mathcal N_t,\\[12pt]
     0,&h\notin A_t .
     \end{cases}
     \label{eq:modelv2-transition-prior}
 \end{equation}
-Persistent profile 中 $n_t^{\mathrm{new}}=0$、$\nu_t=0$，因此完全继承上一后验。Stable profile 在 $M=5$ 时给单个 newcomer 分配 $1/5$ 的总质量；Revision profile 保留两个旧假设、引入三个 newcomer，并给 newcomer 总计分配 $3/5$ 的质量。该规则只使用 posterior 排序和有限容量，不再引入额外的假设得分或隐藏状态。
+Conservative 使用 $\nu_{t,C}=0$；Aggressive 将 $1-\pi_{t-1}^+(h^\star)$ 分给 newcomer；Stubborn 使用 family-specific 的小质量。Stable 使用相似性--新颖性映射：高 posterior confidence 时优先给与旧解释相似的 newcomer 质量，低 confidence 时提高结构上新颖候选的质量。假设相似性通过在 $[0,1]^4$ 上预先抽取 $B=100{,}000$ 个共同点并比较带标签类别分配计算：
+\begin{equation}
+    \operatorname{Sim}(h,u)
+    =
+    \frac{1}{B}
+    \sum_{b=1}^{B}
+    I\{g_h(\mathbf x_b)=g_u(\mathbf x_b)\}.
+    \label{eq:modelv2-hypothesis-similarity}
+\end{equation}
+
+\paragraph{证据边界与精简条件。}
+现有配对删除结果支持多-profile controller 作为整体保留，但不支持把每个内部 profile 都解释为同等必要。删除 Stable 的平均 Brier 代价为 $0.0203$；Stubborn 和 Conservative 分别为 $0.0048$ 和 $0.0031$；当前 Aggressive 的平均贡献为 $-0.0047$。另一方面，把 subject-specific controller 统一为 stable-dominant 在既有结构筛选中造成约 $0.0147$--$0.0183$ 的平均 Brier 损失。因此，正式 v2 在完成直接比较之前保留六-family、四-profile controller 作为经验参照，不能用未经拟合的
+\[
+    P(S)=1-\bar e_t,\qquad
+    P(P)=\bar e_t(1-H_t),\qquad
+    P(R)=\bar e_tH_t
+\]
+替代它。三-profile 压缩只有在与六-family参照使用相同预算、联合重优化其他参数后，在边际 Brier、轨迹 CRPS 和被试级预测上达到预设非劣标准，才能取代当前 controller。代码重构可以合并重复实现，但不能在这一比较之前删除相应的行为自由度。
 
 
 \subsubsection{反馈事件与贝叶斯似然}
@@ -489,6 +630,9 @@ Beta 在当前反馈之后更新：
 \paragraph{因果记录。}
 式 \ref{eq:modelv2-beta-update} 必须在使用 $\beta_{t,h}$ 计算当前 $q_{t,h}$、选择概率和 $L_t(h)$ 之后执行。结果文件分别保存 pre-feedback $\beta_{t,h}$ 和更新后的 $\beta_{t+1,h}$；任何同试次选择分析都只能使用前者。
 
+\paragraph{证据边界。}
+现有消融支持保留 ``反馈驱动、假设特异的动态 beta'' 这一机制：它相对固定 $\beta=5$ 的平均 Brier 收益为 $0.0542$，8/8 代表性被试方向一致。然而，这一结果尚未排除被试特异的最优静态 beta，且式 \ref{eq:modelv2-beta-evidence}--\ref{eq:modelv2-beta-update} 的条件通用版本需要重新拟合。因此，主模型保留动态 beta 的功能自由度，但不把当前学习率或新多分类更新式描述为已经由同一消融单独确认。
+
 
 \subsubsection{连续 concentration readout}
 
@@ -516,6 +660,8 @@ $\rho=1$ 是 posterior expectation；$\rho>1$ 逐渐增加高概率假设对选�
 
 Readout 只改变由 $\pi_t^-$ 到选择概率的映射，不回写 active set、profile、likelihood、memory 或 beta。在其他参数和随机种子相同的条件下，不同 $\rho$ 共享完全相同的潜在学习状态轨迹。拟合时必须把 $\rho=1$ 作为显式边界，并预先报告连续搜索采用的数值上界或变换方式。
 
+现有消融支持 readout 灵活性：相对 expectation，所选灵活 readout 的平均 Brier 收益为 $0.0233$，8/8 代表性被试方向一致。该证据来自离散 expectation、sharpened 和 MAP 候选；连续 $\rho$ 是对这些候选的统一参数化，仍需在联合重优化中确认，而不能把离散候选的收益直接当作连续参数估计的验证。
+
 
 \subsubsection{完整逐试次算法}
 
@@ -524,7 +670,7 @@ Readout 只改变由 $\pi_t^-$ 到选择概率的映射，不回写 active set�
     \item 从 $\mathcal H$ 中抽取 $A_1$，令 $\pi_1^-$ 在 $A_1$ 上均匀，并令所有初始假设的 $\beta_{1,h}=\beta_0$；
     \item 对试次 $t=1,\ldots,T$：
     \begin{enumerate}
-        \item 若 $t=1$，直接使用初始化得到的 $A_1$ 和 $\pi_1^-$；若 $t>1$，由过去反馈计算 $\bar e_t$，由 $\pi_{t-1}^+$ 计算 $H_t$，按式 \ref{eq:modelv2-three-profile-probabilities} 抽取 $K_t$，再由对应 profile 和式 \ref{eq:modelv2-transition-prior} 生成 $A_t$ 与 $\pi_t^-$；
+        \item 若 $t=1$，直接使用初始化得到的 $A_1$ 和 $\pi_1^-$；若 $t>1$，由过去反馈和 $\pi_{t-1}^+$ 构造 controller features，按式 \ref{eq:modelv2-profile-softmax} 在被试 family $g_s$ 下抽取 $K_t$，再由对应 profile 和式 \ref{eq:modelv2-transition-prior} 生成 $A_t$ 与 $\pi_t^-$；
         \item 按式 \ref{eq:modelv2-category-softmax} 计算每个活跃假设的类别概率；
         \item 按式 \ref{eq:modelv2-readout-weight}--\ref{eq:modelv2-choice-probability} 计算当前选择预测；
         \item 读取真实 $c_t,r_t$，由式 \ref{eq:modelv2-feedback-set-cond12} 或 \ref{eq:modelv2-feedback-set-cond3} 构造 $\mathcal Y_t$；
@@ -542,10 +688,10 @@ Readout 只改变由 $\pi_t^-$ 到选择概率的映射，不回写 active set�
 \paragraph{参数层级。}
 精简模型固定任务结构、$M=5$、$W=8$ 以及 dynamic-beta 更新常数。主要被试层参数为
 \begin{equation}
-    \Omega_s=(\gamma_s,w_{0,s},\rho_s).
+    \Omega_s=(g_s,\gamma_s,w_{0,s},\rho_s).
     \label{eq:modelv2-subject-parameters}
 \end{equation}
-其中 $\gamma_s$ 控制近期证据衰减，$w_{0,s}$ 控制长期与近期证据的混合，$\rho_s$ 控制外显选择对高 posterior 假设的集中程度。Profile 概率和集合操作由式 \ref{eq:modelv2-three-profile-probabilities} 及其后规则直接确定，不再为每名被试搜索离散 controller family。
+其中 $g_s$ 是六个 controller family 之一，$\gamma_s$ 控制近期证据衰减，$w_{0,s}$ 控制长期与近期证据的混合，$\rho_s$ 控制外显选择对高 posterior 假设的集中程度。Controller family 必须与 memory 和 readout 联合重优化；不能先在一组固定参数下选择 $g_s$，再把由此产生的局部最优当作其他模块的独立效应。
 
 \paragraph{随机变量与边际预测。}
 初始化、profile 抽样和 newcomer 抽样使同一参数组合产生不同潜在轨迹。对每个参数组合运行 $R$ 次模拟，正式评分使用边际类别概率
@@ -650,14 +796,15 @@ $w_0$ 的候选或连续优化区间必须包含 0 和 1。对 $w_0=1$ 的候选
     \item 每个条件报告完整假设数、几何构成、类别映射和固定活跃容量 $M=5$；
     \item 报告逐试次模块顺序，并明确同试次选择只使用 $\pi_t^-$ 和 pre-feedback $\beta_{t,h}$；
     \item 条件 3 的类别家族映射由任务设计固定，并确认三种反馈事件互斥且完备；
-    \item Profile controller 只使用过去 $W=8$ 个反馈和 active-set posterior entropy；
+    \item Profile controller 只使用过去反馈、active-set posterior entropy 和预先定义的试次进程；保存每名被试选择的 family $g_s$；
     \item 保存每个试次的 profile、active set、先验、后验、两条记忆轨道、beta 和类别概率；
     \item $w_0$ 搜索明确包含 0 与 1，并正确处理边界上的不可识别参数；
     \item $\rho$ 搜索明确包含 expectation 边界 $\rho=1$；
     \item 报告所有固定 beta 参数、数值截断常数、搜索范围、停止规则、随机种子和模拟重复数；
     \item 使用全部随机重复形成边际选择概率，并同时报告 Brier、NLL 和轨迹 CRPS；
     \item 在行为拟合完成后再评价口头报告一致性，不能用口头报告选择行为模型参数；
-    \item 在正式结果生成前，对三-profile transition、条件通用 beta 更新和 $w_0$ 两个端点进行单元测试、参数恢复和全样本重新拟合。
+    \item 在正式结果生成前，对六-family参照、三-profile精简候选、条件通用 beta 更新和 $w_0$ 两个端点进行单元测试、参数恢复和全样本重新拟合；三-profile候选达到预设非劣标准后才能替代六-family参照。
+    \item 将 ``有限 active set'' 与 ``精确容量 $M=5$'' 分别检验；容量敏感性分析只比较预先限定的小容量候选，不把完整假设空间作为正式心理模型。
 \end{enumerate}
 
-综上，model v2 是一个容量受限、反馈驱动的动态假设系统。学习者在任务定义的大型几何空间中只维持五个活跃假设；近期错误与当前信念不确定性共同决定稳定维持、坚持或修正规则；任务反馈以互斥事件似然更新证据；长短期证据通过包含两个边界的双通道记忆整合；动态 beta 调节单个假设的类别锐度；连续 concentration readout 将内部规则信念转化为外显选择。该架构在保留关键认知功能的同时，使每个模块的输入、输出和可检验作用保持明确。
+综上，model v2 是一个容量受限、反馈驱动的动态假设系统。学习者在任务定义的大型几何空间中只维持少量活跃假设；被试特异的 feedback-gated controller 根据过去表现、后验不确定性和学习进程，在多种集合维持与更新策略之间切换；任务反馈以互斥事件似然更新证据；长短期证据通过包含两个边界的双通道记忆整合；动态 beta 调节单个假设的类别锐度；连续 concentration readout 将内部规则信念转化为外显选择。该架构保留已有拟合所支持的 controller 异质性，同时把任何进一步压缩明确置于公平重优化和非劣检验之后。
