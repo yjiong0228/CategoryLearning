@@ -333,6 +333,10 @@ class BetaModule(BaseModule):
         
         This should be called AFTER likelihood computation but can be placed
         at any point in the agenda where observation data is available.
+
+        ``beta_log[t]`` records the pre-feedback beta that was actually used by
+        the likelihood and choice prediction on trial ``t``.  The update based
+        on the current outcome becomes available on the following trial.
         """
         observation = getattr(self.engine, "observation", None)
         if observation is None:
@@ -345,12 +349,13 @@ class BetaModule(BaseModule):
         
         # Get active mask
         active_mask = getattr(self.engine, "hypotheses_mask", None)
-        
+
+        # Log before consuming the current outcome. Prediction metrics aligned
+        # to prior_t must not use a beta that has already seen feedback_t.
+        self.beta_log.append(self.beta.copy())
+
         # Update beta based on trial outcome
         self.update_beta(stimulus, choice, feedback, active_mask)
-        
-        # Log current beta state (copy to avoid reference issues)
-        self.beta_log.append(self.beta.copy())
     
     def get_beta_for_hypotheses(self, indices: Optional[np.ndarray] = None) -> np.ndarray:
         """

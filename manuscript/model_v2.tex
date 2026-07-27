@@ -1,0 +1,662 @@
+% model_v2.tex
+% Category-learning state model v2：精简后的正式主模型方法底稿。
+% 本文件只描述主模型中保留的机制，不收录旧版架构搜索中的可选扩展。
+% 在正式投稿前，所有尚未冻结的数值搜索边界与模拟次数应与最终代码配置一致。
+
+\subsubsection{模型目标与理论承诺}
+
+本研究使用逐试次计算模型刻画类别学习过程中内部规则信念的形成、维持与修正。模型的核心假设是，实验任务定义了一个完整的候选假设空间 $\mathcal H$，但学习者在任一试次只能同时维持其中少量假设。因而，模型将 ``任务中可能存在的规则'' 与 ``学习者当前正在考虑的规则'' 明确区分：$\mathcal H$ 表示长期可搜索空间，容量受限的活跃集合 $A_t\subset\mathcal H$ 表示试次 $t$ 实际参与推断的假设。
+
+该模型由七个相互衔接的部分构成：
+\begin{enumerate}
+    \item 任务定义的几何假设空间；
+    \item 容量受限的活跃假设集合；
+    \item Stable、Persistent 和 Revision 三类假设转移 profile；
+    \item 由任务反馈事件定义的贝叶斯证据更新；
+    \item 包含 fade-only 与 static-only 两个边界的双通道记忆；
+    \item 假设特异的动态逆温度 $\beta_{t,h}$；
+    \item 将内部假设信念映射为外显选择的连续 concentration readout。
+\end{enumerate}
+这些部分共同定义一个因果的状态滤波器。模型在作出试次 $t$ 的选择预测时只能读取试次 $t-1$ 及更早的反馈；当前反馈 $r_t$ 只能用于形成反馈后的状态，并预测下一试次。模型拟合使用物理刺激、被试选择与任务反馈，口头规则报告不参与参数选择，而用于拟合后的外部效度检验。
+
+
+\subsubsection{符号、观测与状态变量}
+
+对被试 $s$ 的第 $t$ 个试次，观测记为
+\begin{equation}
+    o_{s,t}=(\mathbf x_{s,t},c_{s,t},r_{s,t}),
+    \qquad
+    \mathbf x_{s,t}\in[0,1]^4 ,
+    \label{eq:modelv2-observation}
+\end{equation}
+其中 $\mathbf x_{s,t}$ 是四维刺激，$c_{s,t}\in\{1,\ldots,N\}$ 是被试选择，$r_{s,t}$ 是任务反馈。条件 1 中 $N=2$ 且 $r_t\in\{0,1\}$；条件 2 中 $N=4$ 且 $r_t\in\{0,1\}$；条件 3 中 $N=4$ 且 $r_t\in\{0,0.5,1\}$，分别表示类别家族错误、家族正确但精确类别错误，以及精确类别正确。
+
+全文使用以下记号：
+\begin{itemize}
+    \item $\mathcal H=\{h_1,\ldots,h_K\}$：任务定义的完整候选假设空间；
+    \item $A_t\subset\mathcal H$：试次 $t$ 的活跃假设集合，满足 $|A_t|\leq M$；
+    \item $m_t(h)=I(h\in A_t)$：活跃集合掩码；
+    \item $\pi_t^-(h)$：试次 $t$ 反馈出现之前的假设先验；
+    \item $\pi_t^+(h)$：整合试次 $t$ 反馈之后的假设后验；
+    \item $q_{t,h}(i)=P(C_i\mid\mathbf x_t,h,\beta_{t,h})$：假设 $h$ 对类别 $i$ 的预测概率；
+    \item $\mathcal Y_t$：与试次 $t$ 的选择和反馈相容的真实类别集合；
+    \item $L_t(h)=P(r_t\mid\mathbf x_t,c_t,h,\beta_{t,h})$：反馈似然；
+    \item $F_t(h)$ 与 $S_t(h)$：近期衰减证据和长期累积证据；
+    \item $\beta_{t,h}$：假设 $h$ 在试次 $t$ 的逆温度；
+    \item $\rho$：将假设先验读出为选择概率时的 concentration 参数。
+\end{itemize}
+
+$\pi_t^-$ 与 $\pi_t^+$ 必须在实现和结果文件中分别保存。$\pi_t^-$ 可以用于预测同一试次的选择；$\pi_t^+$ 已经包含当前反馈，只能解释反馈后的信念变化或预测下一试次。
+
+
+\subsubsection{任务定义的几何假设空间}
+
+\paragraph{统一表示。}
+每个假设 $h\in\mathcal H$ 将四维单位超立方体 $[0,1]^4$ 划分为 $N$ 个带类别标签的区域。类别 $i$ 的区域写为
+\begin{equation}
+    R_{h,i}
+    =
+    \left\{
+        \mathbf x\in[0,1]^4:
+        A_{h,i}\mathbf x\leq\mathbf b_{h,i}
+    \right\},
+    \qquad i=1,\ldots,N .
+    \label{eq:modelv2-region}
+\end{equation}
+每个区域对应一个代表性原型 $\boldsymbol\mu_{h,i}\in[0,1]^4$。区域定义保存规则的几何边界和类别标签；原型用于计算试次级类别概率。刺激按每名被试实际经历的 feature 顺序进入模型，因此假设的几何含义始终相对于该被试的四维坐标系定义。
+
+\paragraph{条件 1：19 个二分类假设。}
+条件 1 的假设空间由四类可解释划分构成：
+\begin{enumerate}
+    \item 单维轴向边界 $x_i=0.5$，共 4 个；
+    \item 二维等值边界 $x_i=x_j$，共 $\binom{4}{2}=6$ 个；
+    \item 二维求和边界 $x_i+x_j=1$，共 $\binom{4}{2}=6$ 个；
+    \item 四维混合边界 $x_i+x_j=x_k+x_l$，共 3 个互不重复的维度配对。
+\end{enumerate}
+因此
+\begin{equation}
+    |\mathcal H_1|=4+6+6+3=19 .
+    \label{eq:modelv2-cond1-count}
+\end{equation}
+轴向规则的两个类别原型在诊断维度上分别取 $0.25$ 和 $0.75$，其他维度取 $0.5$；等值规则使用 $(1/3,2/3)$ 与 $(2/3,1/3)$ 的镜像原型；求和规则在两个相关维度上共同取 $1/3$ 或 $2/3$；四维混合规则使等式两侧的维度采用相反的 $1/3$ 与 $2/3$ 排列。类别标签由任务定义，不额外复制标签排列版本。
+
+\paragraph{条件 2 和 3：116 个四分类假设。}
+条件 2 和 3 共享四分类几何空间。116 个候选划分的构成为
+\begin{equation}
+\begin{aligned}
+    |\mathcal H_{2,3}|
+    ={}&
+    6_{\mathrm{axis+axis}}
+    +6_{\mathrm{equality+sum}}
+    +12_{\mathrm{axis+equality}}
+    +12_{\mathrm{axis+sum}}\\
+    &+3_{\mathrm{equality+equality}}
+    +3_{\mathrm{sum+sum}}
+    +24_{\mathrm{three\ axes}}\\
+    &+24_{\mathrm{axis+equality+sum}}
+    +12_{\mathrm{equality+two\ axes}}
+    +12_{\mathrm{sum+two\ axes}}\\
+    &+1_{\mathrm{dimension\ max}}
+    +1_{\mathrm{dimension\ min}}
+    =116 .
+    \label{eq:modelv2-cond23-count}
+\end{aligned}
+\end{equation}
+三轴划分以及轴向--等值--求和划分中超平面的顺序会改变四个区域的标签，因此在计数中保留顺序。dimension-max 假设把最大维度映射为类别，dimension-min 假设把最小维度映射为类别。
+
+四分类原型与相应区域保持一致。轴向切分主要使用 $0.25/0.75$；等值与求和关系主要使用 $1/3$ 与 $2/3$；等值--求和产生的四个区域使用 $1/6$、$1/2$ 和 $5/6$；dimension-max 原型将目标维度设为 $0.8$、其余维度设为 $0.4$，dimension-min 原型采用相反设置。所有原型必须通过所属区域约束检查。
+
+\paragraph{完整空间与有限活跃集合。}
+$\mathcal H$ 只规定学习者可能搜索到哪些规则，并不表示这些规则同时处于工作状态。正式模型固定活跃容量 $M=5$，因此条件 1 每个试次最多维持 19 个候选中的 5 个，条件 2 和 3 每个试次也只维持 116 个候选中的 5 个。扩大完整假设空间只增加长期搜索范围，不增加单个试次的并行假设负荷。
+
+代码内部的整数索引只是枚举标签。保存或报告一个假设时，必须同时保存其边界、原型和类别映射，不能把 ``hypothesis 0'' 等实现索引当作可跨版本解释的理论名称。
+
+
+\subsubsection{单个假设下的类别概率}
+
+模型直接使用物理刺激 $\mathbf x_t$。对假设 $h$ 和类别 $i$，刺激到类别原型的欧氏距离为
+\begin{equation}
+    d_{t,h,i}
+    =
+    \left\|
+        \mathbf x_t-\boldsymbol\mu_{h,i}
+    \right\|_2 .
+    \label{eq:modelv2-prototype-distance}
+\end{equation}
+假设 $h$ 通过距离 softmax 产生类别概率：
+\begin{equation}
+    q_{t,h}(i)
+    =
+    \frac{
+        \exp[-\beta_{t,h}d_{t,h,i}]
+    }{
+        \sum_{j=1}^{N}
+        \exp[-\beta_{t,h}d_{t,h,j}]
+    } .
+    \label{eq:modelv2-category-softmax}
+\end{equation}
+$\beta_{t,h}$ 越大，类别概率越集中于最近原型；$\beta_{t,h}$ 越小，概率越接近均匀分布。$\beta_{t,h}$ 控制单个假设内部的类别边界锐度，而 $\rho$ 控制多个假设之间的 readout 集中程度，两者承担不同作用。
+
+
+\subsubsection{逐试次因果顺序}
+
+模型在每个试次按照以下顺序运行：
+\begin{enumerate}
+    \item 读取上一试次的活跃集合 $A_{t-1}$、后验 $\pi_{t-1}^+$、记忆状态和 $\beta_{t-1,h}$；
+    \item 只使用截至 $t-1$ 的反馈历史和 $\pi_{t-1}^+$，抽取当前 profile $K_t$；
+    \item 根据 $K_t$ 生成容量不超过 $M$ 的 $A_t$，并将 $\pi_{t-1}^+$ 映射为 $\pi_t^-$；
+    \item 使用 $(\mathbf x_t,\pi_t^-,\beta_{t,h})$ 计算当前选择概率；
+    \item 在观察真实选择 $c_t$ 和反馈 $r_t$ 后，构造反馈事件 $\mathcal Y_t$ 和似然 $L_t(h)$；
+    \item 将 $L_t(h)$ 写入双通道记忆，得到 $\pi_t^+$；
+    \item 先保存本试次实际使用的 $\beta_{t,h}$，再根据当前反馈更新 $\beta_{t+1,h}$；
+    \item 将 $r_t$ 写入历史，供试次 $t+1$ 的 profile controller 使用。
+\end{enumerate}
+
+因此，试次 $t$ 的选择预测满足
+\begin{equation}
+    P(c_t=i\mid\mathcal D_{1:t-1},\mathbf x_t)
+    =
+    \sum_{h\in A_t}
+    \omega_{t,h}(\rho)
+    q_{t,h}(i),
+    \label{eq:modelv2-causal-choice}
+\end{equation}
+其中 $\mathcal D_{1:t-1}$ 只包含过去试次。当前反馈不能进入 $\pi_t^-$、profile $K_t$ 或产生当前选择的 $\beta_{t,h}$。
+
+该架构是以真实行为序列为条件的一步状态滤波器：模型先预测当前选择，然后使用观察到的选择和反馈更新内部状态。若要生成完全新的自主行为轨迹，则需在该滤波器外部由式 \ref{eq:modelv2-causal-choice} 抽取选择、由实验任务规则生成反馈，再调用相同的状态更新。
+
+
+\subsubsection{三类 profile 的有限容量假设转移}
+
+\paragraph{初始化。}
+第一个试次从 $\mathcal H$ 中无放回抽取 $M=5$ 个假设：
+\begin{equation}
+    A_1\sim\operatorname{UniformSubset}(\mathcal H,M),
+    \qquad
+    \pi_1^-(h)=
+    \begin{cases}
+        1/M,&h\in A_1,\\
+        0,&h\notin A_1.
+    \end{cases}
+    \label{eq:modelv2-initial-active-set}
+\end{equation}
+初始化随机性通过重复模拟积分，不能以单一有利初始集合代表一个参数配置。
+
+\paragraph{控制信号。}
+Profile controller 只读取两个因果信号：过去 $W$ 个试次的平均错误程度和上一后验在活跃集合内的归一化熵。令
+\begin{equation}
+    e_j=1-r_j ,
+    \qquad
+    \bar e_t
+    =
+    \frac{1}{W}
+    \sum_{j=t-W}^{t-1}\tilde e_j ,
+    \label{eq:modelv2-recent-error}
+\end{equation}
+其中 $W=8$；条件 3 的部分反馈 $r_j=0.5$ 对应错误程度 $e_j=0.5$。历史不足 $W$ 个试次时，用该实验条件下随机选择的期望反馈填充缺失的 $r_j$，而不是使用当前反馈。
+具体地，条件 1 和条件 2 的填充值为
+\[
+    r_{\mathrm{chance}}=\frac{1}{N};
+\]
+若条件 3 的每个类别家族包含两个类别，则随机选择获得精确反馈的概率为 $1/N$，获得家族反馈的概率也为 $1/N$，所以
+\[
+    r_{\mathrm{chance}}
+    =
+    \frac{1}{N}+\frac{0.5}{N}
+    =
+    \frac{3}{2N}
+    =0.375 .
+\]
+
+上一后验的归一化熵为
+\begin{equation}
+    H_t
+    =
+    \begin{cases}
+    \displaystyle
+    \frac{
+        -\sum_{h\in A_{t-1}}
+        \pi_{t-1}^+(h)\log\pi_{t-1}^+(h)
+    }{
+        \log |A_{t-1}|
+    },
+    &|A_{t-1}|>1,\\[12pt]
+    0,&|A_{t-1}|=1.
+    \end{cases}
+    \label{eq:modelv2-active-entropy}
+\end{equation}
+熵按实际活跃集合大小归一化，因此 $H_t\in[0,1]$：$H_t$ 高表示模型在当前活跃假设之间不确定，$1-H_t$ 高表示后验集中。
+
+\paragraph{Profile 概率。}
+令 $K_t\in\{\mathrm S,\mathrm P,\mathrm R\}$ 分别表示 Stable、Persistent 和 Revision。三类 profile 的概率定义为
+\begin{align}
+    P(K_t=\mathrm S)
+    &=1-\bar e_t,\\
+    P(K_t=\mathrm P)
+    &=\bar e_t(1-H_t),\\
+    P(K_t=\mathrm R)
+    &=\bar e_tH_t.
+    \label{eq:modelv2-three-profile-probabilities}
+\end{align}
+三项均非负且和为 1。该分解表达一个层级判断：近期反馈大体成功时，模型主要维持稳定搜索；近期反馈较差但当前后验高度集中时，模型表现为对既有解释的坚持；近期反馈较差且后验分散时，模型进行较大幅度修正。三类 profile 是试次级计算状态，不是对被试进行固定人格分类。
+
+\paragraph{幸存者与新进入者。}
+令上一活跃假设按 $\pi_{t-1}^+(h)$ 从高到低排序。三类 profile 对集合的操作为：
+\begin{enumerate}
+    \item \textit{Stable}：保留 posterior 最高的 $M-1$ 个旧假设，并从 $\mathcal H\setminus A_{t-1}$ 中均匀抽取 1 个 newcomer；
+    \item \textit{Persistent}：保留整个 $A_{t-1}$，不引入 newcomer；
+    \item \textit{Revision}：保留 posterior 最高的
+    \begin{equation}
+        m_{\mathrm R}
+        =
+        \max\left(1,\left\lceil\frac{M}{3}\right\rceil\right)
+        \label{eq:modelv2-revision-survivors}
+    \end{equation}
+    个旧假设，并从未激活假设中无放回抽取 $M-m_{\mathrm R}$ 个 newcomer。
+\end{enumerate}
+当 inactive pool 小于所需 newcomer 数量时，先使用全部 inactive 假设，再用 posterior 次高的旧假设补足容量。任一 profile 都至少保留一个旧假设，因此单个错误不会导致整套内部状态被完全重置。
+
+定义幸存者和新进入者为
+\begin{equation}
+    \mathcal S_t=A_{t-1}\cap A_t,
+    \qquad
+    \mathcal N_t=A_t\setminus A_{t-1},
+    \qquad
+    n_t^{\mathrm{new}}=|\mathcal N_t|.
+    \label{eq:modelv2-survivor-newcomer}
+\end{equation}
+Newcomer 的总先验质量由其在容量中的比例决定：
+\begin{equation}
+    \nu_t=\frac{n_t^{\mathrm{new}}}{M}.
+    \label{eq:modelv2-newcomer-mass}
+\end{equation}
+转移后的先验为
+\begin{equation}
+    \pi_t^-(h)
+    =
+    \begin{cases}
+    \displaystyle
+    (1-\nu_t)
+    \frac{\pi_{t-1}^+(h)}
+    {\sum_{u\in\mathcal S_t}\pi_{t-1}^+(u)},
+    &h\in\mathcal S_t,\\[14pt]
+    \displaystyle
+    \frac{\nu_t}{n_t^{\mathrm{new}}},
+    &h\in\mathcal N_t,\ n_t^{\mathrm{new}}>0,\\[10pt]
+    0,&h\notin A_t .
+    \end{cases}
+    \label{eq:modelv2-transition-prior}
+\end{equation}
+Persistent profile 中 $n_t^{\mathrm{new}}=0$、$\nu_t=0$，因此完全继承上一后验。Stable profile 在 $M=5$ 时给单个 newcomer 分配 $1/5$ 的总质量；Revision profile 保留两个旧假设、引入三个 newcomer，并给 newcomer 总计分配 $3/5$ 的质量。该规则只使用 posterior 排序和有限容量，不再引入额外的假设得分或隐藏状态。
+
+
+\subsubsection{反馈事件与贝叶斯似然}
+
+\paragraph{反馈相容类别集合。}
+模型首先把任务反馈转换为一组互斥、完备的反馈事件。条件 1 和条件 2 中，
+\begin{equation}
+    \mathcal Y_t
+    =
+    \begin{cases}
+        \{c_t\},&r_t=1,\\
+        \{1,\ldots,N\}\setminus\{c_t\},&r_t=0.
+    \end{cases}
+    \label{eq:modelv2-feedback-set-cond12}
+\end{equation}
+
+条件 3 使用由实验设计固定、对所有假设相同的类别家族映射 $\mathcal G(c)$。若类别编码中的两个家族为 $\{1,2\}$ 和 $\{3,4\}$，则 $\mathcal G(1)=\mathcal G(2)=\{1,2\}$，$\mathcal G(3)=\mathcal G(4)=\{3,4\}$；若实际数据采用其他标签顺序，应在读入数据时显式重映射，而不能让家族关系随假设几何改变。反馈事件为
+\begin{equation}
+    \mathcal Y_t
+    =
+    \begin{cases}
+        \{c_t\},&r_t=1,\\
+        \mathcal G(c_t)\setminus\{c_t\},&r_t=0.5,\\
+        \{1,\ldots,4\}\setminus\mathcal G(c_t),&r_t=0.
+    \end{cases}
+    \label{eq:modelv2-feedback-set-cond3}
+\end{equation}
+三个集合互不重叠，并完整覆盖所有真实类别，因此 $r_t=0.5$ 与 $r_t=0$ 表示不同的实验事件。
+
+\paragraph{反馈似然。}
+假设 $h$ 对观测反馈的支持为
+\begin{equation}
+    L_t(h)
+    =
+    \sum_{i\in\mathcal Y_t}q_{t,h}(i).
+    \label{eq:modelv2-feedback-likelihood}
+\end{equation}
+计算时将 $L_t(h)$ 截断到 $[\epsilon,1-\epsilon]$ 以避免对数溢出，但截断常数 $\epsilon$ 必须固定并报告。对条件 1，错误反馈的 $\mathcal Y_t$ 只有另一个类别；对条件 2，错误反馈的似然是其余三个类别概率之和；对条件 3，精确正确、家族正确和家族错误分别累加三个互斥集合中的概率。
+
+若不包含记忆扩展，一步规范性更新为
+\begin{equation}
+    \pi_t^+(h)
+    =
+    \frac{
+        \pi_t^-(h)L_t(h)m_t(h)
+    }{
+        \sum_{u\in\mathcal H}
+        \pi_t^-(u)L_t(u)m_t(u)
+    }.
+    \label{eq:modelv2-standard-bayes}
+\end{equation}
+正式模型通过下一节的双通道证据状态实现跨试次积累，但仍保持 ``先验由转移产生、当前反馈通过似然进入后验'' 的贝叶斯骨架。
+
+
+\subsubsection{包含 static-only 边界的双通道记忆}
+
+\paragraph{两条证据轨道。}
+对每个活跃假设，模型维护近期衰减轨道 $F_t(h)$ 和长期累积轨道 $S_t(h)$：
+\begin{align}
+    F_t(h)
+    &=\gamma F_{t^-}(h)+\log L_t(h),\\
+    S_t(h)
+    &=S_{t^-}(h)+\log L_t(h),
+    \label{eq:modelv2-dual-memory}
+\end{align}
+其中 $t^-$ 表示当前反馈进入之前、完成 active-set 转移和状态同步之后的状态，$0\leq\gamma<1$。两条轨道按
+\begin{equation}
+    \ell_t(h)
+    =
+    w_0S_t(h)+(1-w_0)F_t(h),
+    \qquad 0\leq w_0\leq1 ,
+    \label{eq:modelv2-memory-mixture}
+\end{equation}
+混合，并在 $A_t$ 内归一化：
+\begin{equation}
+    \pi_t^+(h)
+    =
+    \frac{
+        \exp[\ell_t(h)]m_t(h)
+    }{
+        \sum_{u\in\mathcal H}
+        \exp[\ell_t(u)]m_t(u)
+    } .
+    \label{eq:modelv2-memory-posterior}
+\end{equation}
+第一个试次在当前活跃集合上初始化为
+\begin{equation}
+    F_{1^-}(h)=S_{1^-}(h)=\log\pi_1^-(h),
+    \qquad h\in A_1.
+    \label{eq:modelv2-memory-initialization}
+\end{equation}
+
+$w_0=0$ 时，式 \ref{eq:modelv2-memory-mixture} 只读取衰减轨道，模型退化为 fade-only；$w_0=1$ 时只读取累积轨道，模型严格退化为 static-only；只有 $0<w_0<1$ 时两条轨道同时影响后验。因此，fade-only、static-only 和内部混合不是三个互不相关的架构，而是同一个双通道模型族中的两个边界和内部区域。
+
+\paragraph{转移后的状态同步。}
+Hypothesis transition 已经通过式 \ref{eq:modelv2-transition-prior} 定义新的 $\pi_t^-$，所以双通道内部状态必须在吸收当前似然之前与该先验一致。对幸存假设，保留其长期与近期轨道差
+\begin{equation}
+    \Delta_{t,h}
+    =
+    S_{t-1}(h)-F_{t-1}(h).
+    \label{eq:modelv2-memory-offset}
+\end{equation}
+令
+\begin{equation}
+    T_{t,h}=\log\pi_t^-(h)+C_t ,
+    \label{eq:modelv2-memory-target}
+\end{equation}
+其中 $C_t$ 是对所有活跃假设相同、归一化后抵消的平移常数。同步状态定义为
+\begin{align}
+    F_{t^-}(h)
+    &=T_{t,h}-w_0\Delta_{t,h},\\
+    S_{t^-}(h)
+    &=T_{t,h}+(1-w_0)\Delta_{t,h}.
+    \label{eq:modelv2-memory-sync}
+\end{align}
+因此
+\[
+    w_0S_{t^-}(h)+(1-w_0)F_{t^-}(h)=T_{t,h},
+\]
+同时保留幸存假设的长短期证据差。对 newcomer，设 $\Delta_{t,h}=0$，即
+\[
+    F_{t^-}(h)=S_{t^-}(h)=T_{t,h};
+\]
+对离开 active set 的假设，两条轨道设为 $-\infty$。同步必须在每个试次、当前似然进入之前执行，而不只在 active-set 掩码发生变化时执行。
+
+\paragraph{参数边界与可识别性。}
+双通道拟合必须显式允许
+\begin{equation}
+    w_0\in[0,1]
+    \label{eq:modelv2-w0-range}
+\end{equation}
+并实际评估 $w_0=0$ 与 $w_0=1$。遗漏 $w_0=1$ 会使被拟合的 ``双通道模型'' 不再包含 static-only，从而破坏嵌套模型比较。当 $w_0=1$ 时，$\gamma$ 不影响后验，应记录为不可识别或不适用，而不能解释其估计值。当 $\gamma=1$ 且两条轨道初始化相同时，两条轨道完全重合，$w_0$ 同样不可识别；因此内部双通道解要求 $0<w_0<1$ 且 $\gamma<1$。
+
+在相同训练损失、参数空间和充分优化条件下，包含 $w_0=1$ 的双通道模型族的最优训练损失不可能高于 static-only。是否需要内部双通道解，应根据重新优化后的参数位置、独立预测表现和复杂度惩罚共同判断，而不能用冻结其他参数后的一次局部切换替代完整比较。
+
+
+\subsubsection{假设特异的动态 beta}
+
+\paragraph{初始化与解释。}
+每个活跃假设拥有独立的 $\beta_{t,h}$。初始假设和 newcomer 均使用
+\begin{equation}
+    \beta_{t,h}=\beta_0,
+    \qquad
+    \beta_{\min}\leq\beta_0\leq\beta_{\max}.
+    \label{eq:modelv2-beta-init}
+\end{equation}
+当前固定值为
+\[
+    \beta_0=5,\qquad
+    \beta_{\min}=0.1,\qquad
+    \beta_{\max}=25.
+\]
+假设离开 active set 后不继续更新；若以后重新进入，则重新设为 $\beta_0$。这样，$\beta_{t,h}$ 表示学习者当前使用假设 $h$ 时，其刺激到类别映射的确定程度，而不是该假设的 posterior mass。
+
+\paragraph{条件通用的反馈一致性。}
+为使动态 beta 在二分类、四分类和家族反馈条件下具有相同含义，首先使用式 \ref{eq:modelv2-feedback-likelihood} 定义假设对观测反馈事件的支持：
+\[
+    s_{t,h}=L_t(h).
+\]
+在均匀类别预测下，该事件的机会概率为
+\begin{equation}
+    b_t=\frac{|\mathcal Y_t|}{N}.
+    \label{eq:modelv2-feedback-chance}
+\end{equation}
+将支持度相对于机会水平标准化为 $[-1,1]$：
+\begin{equation}
+    \xi_{t,h}
+    =
+    \begin{cases}
+    \displaystyle
+    \frac{s_{t,h}-b_t}{1-b_t},
+    &s_{t,h}\geq b_t,\\[10pt]
+    \displaystyle
+    \frac{s_{t,h}-b_t}{b_t},
+    &s_{t,h}<b_t.
+    \end{cases}
+    \label{eq:modelv2-beta-evidence}
+\end{equation}
+$\xi_{t,h}>0$ 表示假设给观测反馈事件分配了高于机会水平的概率，$\xi_{t,h}<0$ 表示低于机会水平。
+
+Beta 在当前反馈之后更新：
+\begin{equation}
+\begin{aligned}
+    \beta_{t+1,h}
+    =
+    \operatorname{clip}\Bigg[
+    &\beta_{t,h}
+    +\eta_+\max(\xi_{t,h},0)
+    \frac{\beta_{\max}-\beta_{t,h}}{\beta_{\max}}\\
+    &-\eta_-\max(-\xi_{t,h},0)\beta_{t,h},
+    \ \beta_{\min},\beta_{\max}
+    \Bigg].
+    \label{eq:modelv2-beta-update}
+\end{aligned}
+\end{equation}
+当前学习率为 $\eta_+=0.5$ 和 $\eta_-=0.15$。正证据使类别映射逐渐锐化，且接近上界时增量减小；负证据使映射按当前 beta 的比例变平。由于 $\mathcal Y_t$ 已经编码条件 3 的固定家族结构，$r_t=0.5$ 可以直接改变 beta，不需要从错误反馈猜测一个唯一正确类别。
+
+\paragraph{因果记录。}
+式 \ref{eq:modelv2-beta-update} 必须在使用 $\beta_{t,h}$ 计算当前 $q_{t,h}$、选择概率和 $L_t(h)$ 之后执行。结果文件分别保存 pre-feedback $\beta_{t,h}$ 和更新后的 $\beta_{t+1,h}$；任何同试次选择分析都只能使用前者。
+
+
+\subsubsection{连续 concentration readout}
+
+内部先验 $\pi_t^-$ 表示当前选择之前对假设的信念，但外显选择未必对所有活跃假设进行线性平均。模型用一个连续 concentration 参数 $\rho\geq1$ 定义 readout 权重：
+\begin{equation}
+    \omega_{t,h}(\rho)
+    =
+    \frac{
+        [\pi_t^-(h)]^\rho
+    }{
+        \sum_{u\in A_t}[\pi_t^-(u)]^\rho
+    },
+    \qquad h\in A_t .
+    \label{eq:modelv2-readout-weight}
+\end{equation}
+最终类别概率为
+\begin{equation}
+    \widehat P_t(C_i)
+    =
+    \sum_{h\in A_t}
+    \omega_{t,h}(\rho)q_{t,h}(i).
+    \label{eq:modelv2-choice-probability}
+\end{equation}
+$\rho=1$ 是 posterior expectation；$\rho>1$ 逐渐增加高概率假设对选择的支配程度；当 $\rho\rightarrow\infty$ 时，readout 接近只使用最大 posterior 假设。Expectation、sharpened expectation 和 MAP 极限因此属于同一连续机制，而不是相互独立的输出模块。
+
+Readout 只改变由 $\pi_t^-$ 到选择概率的映射，不回写 active set、profile、likelihood、memory 或 beta。在其他参数和随机种子相同的条件下，不同 $\rho$ 共享完全相同的潜在学习状态轨迹。拟合时必须把 $\rho=1$ 作为显式边界，并预先报告连续搜索采用的数值上界或变换方式。
+
+
+\subsubsection{完整逐试次算法}
+
+对一次模拟重复，完整算法如下：
+\begin{enumerate}
+    \item 从 $\mathcal H$ 中抽取 $A_1$，令 $\pi_1^-$ 在 $A_1$ 上均匀，并令所有初始假设的 $\beta_{1,h}=\beta_0$；
+    \item 对试次 $t=1,\ldots,T$：
+    \begin{enumerate}
+        \item 若 $t=1$，直接使用初始化得到的 $A_1$ 和 $\pi_1^-$；若 $t>1$，由过去反馈计算 $\bar e_t$，由 $\pi_{t-1}^+$ 计算 $H_t$，按式 \ref{eq:modelv2-three-profile-probabilities} 抽取 $K_t$，再由对应 profile 和式 \ref{eq:modelv2-transition-prior} 生成 $A_t$ 与 $\pi_t^-$；
+        \item 按式 \ref{eq:modelv2-category-softmax} 计算每个活跃假设的类别概率；
+        \item 按式 \ref{eq:modelv2-readout-weight}--\ref{eq:modelv2-choice-probability} 计算当前选择预测；
+        \item 读取真实 $c_t,r_t$，由式 \ref{eq:modelv2-feedback-set-cond12} 或 \ref{eq:modelv2-feedback-set-cond3} 构造 $\mathcal Y_t$；
+        \item 按式 \ref{eq:modelv2-feedback-likelihood} 计算反馈似然；
+        \item 同步两条记忆轨道，再按式 \ref{eq:modelv2-dual-memory}--\ref{eq:modelv2-memory-posterior} 得到 $\pi_t^+$；
+        \item 保存 pre-feedback $\beta_{t,h}$，再按式 \ref{eq:modelv2-beta-update} 得到 $\beta_{t+1,h}$；
+        \item 保存 $A_t,K_t,\pi_t^-,\pi_t^+,F_t,S_t,\beta_t$ 和选择预测。
+    \end{enumerate}
+\end{enumerate}
+所有概率归一化都只在当前 active set 内进行。若数值截断导致总质量为 0，则使用当前 active set 上的均匀分布作为明确记录的数值兜底；该事件的发生次数必须进入诊断日志。
+
+
+\subsubsection{被试层参数、随机性与拟合目标}
+
+\paragraph{参数层级。}
+精简模型固定任务结构、$M=5$、$W=8$ 以及 dynamic-beta 更新常数。主要被试层参数为
+\begin{equation}
+    \Omega_s=(\gamma_s,w_{0,s},\rho_s).
+    \label{eq:modelv2-subject-parameters}
+\end{equation}
+其中 $\gamma_s$ 控制近期证据衰减，$w_{0,s}$ 控制长期与近期证据的混合，$\rho_s$ 控制外显选择对高 posterior 假设的集中程度。Profile 概率和集合操作由式 \ref{eq:modelv2-three-profile-probabilities} 及其后规则直接确定，不再为每名被试搜索离散 controller family。
+
+\paragraph{随机变量与边际预测。}
+初始化、profile 抽样和 newcomer 抽样使同一参数组合产生不同潜在轨迹。对每个参数组合运行 $R$ 次模拟，正式评分使用边际类别概率
+\begin{equation}
+    \bar P_t(C_i\mid\Omega_s)
+    =
+    \frac{1}{R}
+    \sum_{r=1}^{R}
+    \widehat P_{t,r}(C_i\mid\Omega_s).
+    \label{eq:modelv2-marginal-choice}
+\end{equation}
+参数比较应使用相同随机数流，使两个候选之间的差异尽可能来自参数或结构改变，而不是不同的随机初始集合。搜索阶段与最终确认阶段分别报告 $R$；最终 $R$ 应通过边际预测和损失的 Monte Carlo 收敛检查确定。
+
+\paragraph{Choice Brier 与 NLL。}
+主拟合损失为多类别 Brier score：
+\begin{equation}
+    \mathcal L_{\mathrm{Brier}}(\Omega_s)
+    =
+    \frac{1}{|\mathcal T_s|}
+    \sum_{t\in\mathcal T_s}
+    \sum_{i=1}^{N}
+    \left[
+        \bar P_t(C_i\mid\Omega_s)-I(c_t=i)
+    \right]^2 .
+    \label{eq:modelv2-brier}
+\end{equation}
+同时报告选择负对数似然
+\begin{equation}
+    \mathcal L_{\mathrm{NLL}}(\Omega_s)
+    =
+    -\frac{1}{|\mathcal T_s|}
+    \sum_{t\in\mathcal T_s}
+    \log\bar P_t(C_{c_t}\mid\Omega_s).
+    \label{eq:modelv2-nll}
+\end{equation}
+第一个试次主要用于随机状态初始化，是否计入 $\mathcal T_s$ 必须在所有模型和被试间保持一致。
+
+\paragraph{轨迹校准。}
+为避免只拟合平均选择概率，模型还评价滑动窗口正确率的经验 continuous ranked probability score（CRPS）。设第 $j$ 个窗口的真实正确率为 $y_j$，第 $r$ 次模拟的预测正确率为 $\hat y_{j,r}$，则
+\begin{equation}
+    \operatorname{CRPS}_j
+    =
+    \frac{1}{R}
+    \sum_{r=1}^{R}|\hat y_{j,r}-y_j|
+    -
+    \frac{1}{2R^2}
+    \sum_{r=1}^{R}\sum_{r'=1}^{R}
+    |\hat y_{j,r}-\hat y_{j,r'}|.
+    \label{eq:modelv2-crps}
+\end{equation}
+最终 CRPS 对窗口求平均。Brier 决定主要参数选择，NLL 检查概率分配是否出现灾难性低值，CRPS 检查预测轨迹的位置和离散度。三项指标必须基于全部模拟的边际或经验分布，而不是选择表现最好的若干随机轨迹。
+
+\paragraph{双通道的公平搜索。}
+$w_0$ 的候选或连续优化区间必须包含 0 和 1。对 $w_0=1$ 的候选不搜索或解释 $\gamma$；对内部解 $0<w_0<1$，联合重新优化 $\gamma$、$w_0$ 和 $\rho$。所有候选使用相同模拟预算和随机数流。这样，static-only 是双通道模型族内的合法边界，而不是使用不同优化预算的外部模型。
+
+
+\subsubsection{口头规则报告的独立验证}
+
+口头报告不参与 $\Omega_s$ 的估计。若报告在被试作出选择之后、反馈出现之前获得，则模型比较状态应吸收被试已经作出的选择，但不能吸收当前反馈：
+\begin{equation}
+    \pi_t^{\mathrm{oral}}(h)
+    =
+    \frac{
+        \pi_t^-(h)q_{t,h}(c_t)
+    }{
+        \sum_{u\in A_t}
+        \pi_t^-(u)q_{t,u}(c_t)
+    } .
+    \label{eq:modelv2-oral-posterior}
+\end{equation}
+该 choice-conditioned distribution 与模型选择预测使用同一组 $q_{t,h}$，不引入额外的 oral-specific beta。
+
+若口头报告编码为四维中心 $\mathbf v_t$，则将其与每个假设所选类别的原型比较：
+\begin{equation}
+    d_t^{\mathrm{oral}}(h)
+    =
+    \left\|
+        \boldsymbol\mu_{h,c_t}-\mathbf v_t
+    \right\|_2 .
+    \label{eq:modelv2-oral-center-distance}
+\end{equation}
+若口头报告编码为线性区域，则在同一组预先生成的 $[0,1]^4$ Monte Carlo 点上，比较口头区域与 $R_{h,c_t}$ 的交并比。中心距离或区域重叠转换为定义在 $\mathcal H$ 上的口头假设分布后，使用 Jensen--Shannon similarity 比较模型分布与报告分布：
+\begin{equation}
+    \operatorname{JSSim}(p,q)
+    =
+    1-
+    \frac{
+        \tfrac12D_{\mathrm{KL}}(p\|m)
+        +\tfrac12D_{\mathrm{KL}}(q\|m)
+    }{\log2},
+    \qquad
+    m=\tfrac12(p+q).
+    \label{eq:modelv2-js-similarity}
+\end{equation}
+由于口头报告没有进入行为参数拟合，该一致性用于检验模型潜在假设状态是否具有独立的心理解释。
+
+
+\subsubsection{实现冻结与最低报告要求}
+
+正式运行和论文报告必须满足以下要求：
+\begin{enumerate}
+    \item 每个条件报告完整假设数、几何构成、类别映射和固定活跃容量 $M=5$；
+    \item 报告逐试次模块顺序，并明确同试次选择只使用 $\pi_t^-$ 和 pre-feedback $\beta_{t,h}$；
+    \item 条件 3 的类别家族映射由任务设计固定，并确认三种反馈事件互斥且完备；
+    \item Profile controller 只使用过去 $W=8$ 个反馈和 active-set posterior entropy；
+    \item 保存每个试次的 profile、active set、先验、后验、两条记忆轨道、beta 和类别概率；
+    \item $w_0$ 搜索明确包含 0 与 1，并正确处理边界上的不可识别参数；
+    \item $\rho$ 搜索明确包含 expectation 边界 $\rho=1$；
+    \item 报告所有固定 beta 参数、数值截断常数、搜索范围、停止规则、随机种子和模拟重复数；
+    \item 使用全部随机重复形成边际选择概率，并同时报告 Brier、NLL 和轨迹 CRPS；
+    \item 在行为拟合完成后再评价口头报告一致性，不能用口头报告选择行为模型参数；
+    \item 在正式结果生成前，对三-profile transition、条件通用 beta 更新和 $w_0$ 两个端点进行单元测试、参数恢复和全样本重新拟合。
+\end{enumerate}
+
+综上，model v2 是一个容量受限、反馈驱动的动态假设系统。学习者在任务定义的大型几何空间中只维持五个活跃假设；近期错误与当前信念不确定性共同决定稳定维持、坚持或修正规则；任务反馈以互斥事件似然更新证据；长短期证据通过包含两个边界的双通道记忆整合；动态 beta 调节单个假设的类别锐度；连续 concentration readout 将内部规则信念转化为外显选择。该架构在保留关键认知功能的同时，使每个模块的输入、输出和可检验作用保持明确。

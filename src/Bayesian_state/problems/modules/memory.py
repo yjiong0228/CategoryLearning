@@ -277,8 +277,16 @@ class DualMemoryModule(BaseModule):
         b_fade = self.baseline_state["fade"]
         b_combined = self.w0 * b_static + (1 - self.w0) * b_fade
         
-        # Offset between static and fade from baseline
-        offset = b_static - b_fade
+        # Preserve each survivor's long-vs-short memory disagreement.  A common
+        # baseline offset is used only for hypotheses without an existing
+        # finite state (normally newcomers).
+        baseline_offset = b_static - b_fade
+        offset = np.full_like(target_log, baseline_offset, dtype=float)
+        if "static" in self.state and "fade" in self.state:
+            state_static = np.asarray(self.state["static"], dtype=float)
+            state_fade = np.asarray(self.state["fade"], dtype=float)
+            finite_offset = np.isfinite(state_static) & np.isfinite(state_fade)
+            offset[finite_offset] = state_static[finite_offset] - state_fade[finite_offset]
         
         # Shift to align target_log (normalized) with state (unnormalized)
         # We assume baseline corresponds to uniform probability 1/N_active
@@ -302,9 +310,12 @@ class DualMemoryModule(BaseModule):
             
             if "static" in self.state and "fade" in self.state:
                 # w0 * static + (1-w0) * fade = target
-                # static - fade = offset
-                self.state["fade"][update_mask] = target_val - self.w0 * offset
-                self.state["static"][update_mask] = target_val + (1 - self.w0) * offset
+                # static - fade = per-hypothesis offset
+                update_offset = offset[update_mask]
+                self.state["fade"][update_mask] = target_val - self.w0 * update_offset
+                self.state["static"][update_mask] = (
+                    target_val + (1 - self.w0) * update_offset
+                )
             elif "static" in self.state:
                 self.state["static"][update_mask] = target_val
             elif "fade" in self.state:
@@ -351,9 +362,10 @@ class DualMemoryModule(BaseModule):
         # TODO: 改到 engine 里做更合适
         # Check if a hypothesis transition module exists
         
-        # Perform state transition before updating mask and state
-        # If Hypo module exists, we trust engine.prior and force sync
-        self._state_transition(np.asarray(new_mask, dtype=float), force_sync=False)
+        # Align the memory's combined pre-likelihood belief with engine.prior
+        # on every trial.  Per-hypothesis static/fade offsets are preserved, so
+        # this synchronization does not erase dual-memory information.
+        self._state_transition(np.asarray(new_mask, dtype=float), force_sync=True)
 
         self.mask = np.asarray(new_mask, dtype=float)
         

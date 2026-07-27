@@ -1,0 +1,220 @@
+\subsubsection{模型总体思路}
+
+实验一的计算模型旨在从被试的外显选择中推断其内部加工状态，尤其是被试在每个试次中可能依赖的类别划分假设。模型拟合只使用刺激、被试选择和反馈，口头报告仅用于后续验证。这一区分对于本文的问题尤为重要：如果模型不仅能够拟合正确率，而且能够预测未参与拟合的口头报告轨迹，那么模型潜变量就不只是数学上的拟合工具，而更可能反映学习者真实使用的内部表征。
+
+本研究采用状态化贝叶斯模型。对于第 $t$ 个试次，观测量记为 $o_t=(\mathbf{x}_t,c_t,r_t)$，其中 $\mathbf{x}_t\in[0,1]^4$ 为四维刺激，$c_t$ 为被试选择的类别标签，$r_t\in\{0,1\}$ 为确定性反馈。模型在一组候选类别划分假设 $\mathcal K$ 上维持信念分布，并在每个试次依次完成五个步骤：第一，知觉模块将物理刺激映射为内部感知刺激 $\tilde{\mathbf{x}}_t$；第二，动态假设模块根据上一试次后验选择当前活跃假设集合 $A_t$，并把上一试次后验迁移为当前先验 $p_t^-(h)$；第三，似然模块计算当前观测在各假设下的支持程度 $L_t(h)$；第四，双通道记忆模块把当前似然与历史证据整合为后验 $p_t(h)$；第五，动态 beta 模块根据本试次反馈更新各假设的决策陡峭度 $\beta_t(h)$，用于下一试次的似然计算。由此，模型把类别学习刻画为“输入编码--候选假设选择--证据评估--记忆整合--决策锐度更新”的循环过程，而不是一次性地在固定假设集合上做静态拟合。
+
+\subsubsection{两分类假设空间}
+
+模型将分类行为形式化为对连续特征空间进行几何划分，而每个候选假设 $h\in\mathcal K$ 对应一种把 $\mathbf X=[0,1]^4$ 划分为 $N$ 个类别区域的规则；对本实验而言，$N=2$。每个类别区域可写为若干线性不等式的交集：
+\begin{equation}
+    R_i(h)=\{\mathbf{x}\in[0,1]^4: A_{h,i}\mathbf{x}\leq \mathbf{b}_{h,i}\},
+    \qquad i=1,\ldots,N.
+    \label{eq:exp1-region}
+\end{equation}
+其中，$R_i(h)$ 表示假设 $h$ 下类别 $C_i$ 对应的区域，$A_{h,i}$ 和 $\mathbf{b}_{h,i}$ 由该假设的一个或多个超平面边界生成。这样的写法使模型能够同时支持两种几何读法：一是由类别原型中心刻画的原型距离，二是由类别区域约束刻画的边界距离。在模型拟合中，我们分别采用了原型距离模式和边界距离模式，二者结果相似。
+
+在两分类任务中，候选假设集合包括四类可解释划分。第一类是单维轴向边界 $x_i=0.5$，共有 4 个候选假设；第二类是二维等值边界 $x_i=x_j$，共有 6 个候选假设；第三类是二维求和边界 $x_i+x_j=1$，共有 6 个候选假设；第四类是四维混合边界 $x_i+x_j=x_k+x_l$，共有 3 个候选假设，其中 $i,j,k,l$ 为互不相同的特征维度。因此，实验一的有限假设集合共有 19 个候选划分。该设定既包含实验中实际使用的单维诊断规则，也允许模型表达围绕特征比较、特征求和和跨维组合关系形成的错误假设。
+
+每个候选划分进一步对应一组类别原型中心 $\boldsymbol{\pi}_{h,i}$。当前实现中，每个类别只有一个原型中心；因此，原型数组的结构可表示为 $|\mathcal K|\times 1\times N\times 4$。对于单维轴向假设，若第 $q$ 个维度为诊断维度，则两类中心在该维度上分别为 0.25 和 0.75，其余维度为 0.5；对于等值边界 $x_i=x_j$，两个相关维度采用 $(1/3,2/3)$ 与 $(2/3,1/3)$ 的镜像中心；对于求和边界 $x_i+x_j=1$，两个相关维度在同一类别内共同取 $1/3$ 或 $2/3$；对于混合边界 $x_i+x_j=x_k+x_l$，正负两组维度采用相反的 $1/3$ 与 $2/3$ 排列。给定感知刺激 $\tilde{\mathbf{x}}_t$，若采用原型距离模式，则原型距离为
+\begin{equation}
+    d_i^{\mathrm{proto}}(\tilde{\mathbf{x}}_t;h)
+    =
+    \|\tilde{\mathbf{x}}_t-\boldsymbol{\pi}_{h,i}\|_2.
+    \label{eq:exp1-prototype-distance}
+\end{equation}
+若采用边界距离模式，则类别距离定义为刺激到区域 $R_i(h)$ 的最短欧氏距离：
+\begin{equation}
+    d_i^{\mathrm{bdry}}(\tilde{\mathbf{x}}_t;h)
+    =
+    \min_{\mathbf{z}\in R_i(h)}\|\tilde{\mathbf{x}}_t-\mathbf{z}\|_2,
+    \label{eq:exp1-boundary-distance}
+\end{equation}
+当刺激已经落在该类别区域内部时，边界距离为 0。两种距离最终都通过负距离 softmax 转换为类别概率：
+\begin{equation}
+    P_t(C_i\mid\tilde{\mathbf{x}}_t,h)
+    =
+    \frac{\exp[-\beta_t(h)d_i(\tilde{\mathbf{x}}_t;h)]}
+    {\sum_{j=1}^{N}\exp[-\beta_t(h)d_j(\tilde{\mathbf{x}}_t;h)]}.
+    \label{eq:exp1-choice-probability}
+\end{equation}
+其中，$d_i(\cdot)$ 取式 \ref{eq:exp1-prototype-distance} 或式 \ref{eq:exp1-boundary-distance} 定义的距离；$\beta_t(h)>0$ 为假设特异的逆温度参数，数值越大，类别概率越接近确定性判断，数值越小，则类别边界附近的选择不确定性越高。
+
+\subsubsection{贝叶斯更新}
+
+模型在每个试次上更新关于假设 $h$ 的状态分布。学习开始时，模型在全部候选假设上设置均匀先验（若启用动态假设模块，则当前试次只有活跃集合 $A_t\subseteq\mathcal K$ 内的假设参与竞争，见2.2.9所述）。给定被试在第 $t$ 个试次选择的类别 $c_t$，式 \ref{eq:exp1-choice-probability} 给出该选择对应类别的概率
+\begin{equation}
+    q_t(h)=P_t(C_{c_t}\mid\tilde{\mathbf{x}}_t,h).
+    \label{eq:exp1-choice-support}
+\end{equation}
+在实验一的确定性反馈条件下，反馈似然为
+\begin{equation}
+    L_t(h)
+    =
+    p(r_t\mid\tilde{\mathbf{x}}_t,c_t,h,\beta_t(h))
+    =
+    \begin{cases}
+        q_t(h), & r_t=1,\\
+        1-q_t(h), & r_t=0.
+    \end{cases}
+    \label{eq:exp1-likelihood}
+\end{equation}
+也就是说，当被试得到正确反馈时，一个假设的似然等于该假设赋予被选类别的概率；当被试得到错误反馈时，似然等于该假设赋予其他类别的概率。在不启用记忆模块的基础更新中，当前后验可写为标准贝叶斯形式：
+\begin{equation}
+    p_t(h)
+    =
+    \frac{p_t^-(h)L_t(h)}
+    {\sum_{u\in\mathcal K}p_t^-(u)L_t(u)}.
+    \label{eq:exp1-posterior}
+\end{equation}
+在完整模型中，式 \ref{eq:exp1-posterior} 不作为唯一的证据累积方式，而是由下述双通道记忆模块替代；但它仍然说明了模型的规范性骨架，即先验信念与当前试次似然共同决定后验信念。
+
+\subsubsection{有限理性模块}
+
+基础贝叶斯模型提供了理性更新的规范性基线，但真实被试并不一定能够无噪声地编码刺激、完整保留全部历史证据，也不一定会在全部候选假设上进行穷尽推断。当前模型因此把有限理性约束拆分为知觉噪声、动态假设迁移、双通道记忆和动态 beta 四类模块；这些模块既可以组合成完整模型，也可以通过删减配置形成对照模型。
+
+第一，知觉模块刻画感觉编码中的个体化噪声。模型假定被试实际用于决策的刺激表征为
+\begin{equation}
+    \tilde{x}_{t,j}
+    =
+    \operatorname{clip}(x_{t,j}+\varepsilon_{t,j},0,1).
+    \label{eq:exp1-perception}
+\end{equation}
+其中，$j=1,\ldots,4$ 表示特征维度，$\operatorname{clip}(\cdot)$ 将采样后的刺激限制在 $[0,1]$ 范围内。对于使用匹配任务的被试，进行正态误差估计，
+\begin{equation}
+    \varepsilon_{t,j}\sim\mathcal N(\mu_{s,j},\sigma_{s,j}^{2});
+    \label{eq:exp1-perception-normal}
+\end{equation}
+对于使用判断任务的被试，进行均匀分布的阈限半宽估计，
+\begin{equation}
+    \varepsilon_{t,j}\sim\mathcal U(-a_{s,j},a_{s,j}).
+    \label{eq:exp1-perception-uniform}
+\end{equation}
+其中，$\mu_{s,j}$、$\sigma_{s,j}$ 和 $a_{s,j}$ 均来自正式学习前的知觉校准数据，并按照每名被试实际看到的特征顺序重排。该模块允许模型区分两类现象：一类是学习者尚未形成正确假设，另一类是学习者虽然持有合理假设，但在具体刺激上受到感知误差影响而做出错误选择。
+
+第二，动态假设迁移模块刻画学习者在有限认知资源下对候选假设集合的选择。模型不要求学习者在所有 19 个候选假设上同时更新，而是在每个试次维持一个活跃集合 $A_t$。设上一试次活跃集合为 $A_{t-1}$，上一试次后验为 $p_{t-1}(h)$。策略模块先从上一活跃集合中保留部分假设，再从非活跃集合中抽取探索性假设：
+\begin{equation}
+    A_t=\bigcup_{\ell=1}^{K_s}B_{\ell,t},\qquad |A_t|\leq M.
+    \label{eq:exp1-hypothesis-set}
+\end{equation}
+其中，$B_{\ell,t}$ 表示第 $\ell$ 个策略选出的假设集合，$M$ 为活跃假设数量上限。实验一当前完整模型的默认设置使用两个策略：保留策略从旧活跃集合中按后验概率加权抽样，探索策略从旧非活跃集合中均匀抽样；两者的抽样数量由置信度控制。以 \texttt{random\_M} 策略为例，若 $p_{\max}=\max_h p_{t-1}(h)$，则
+\begin{equation}
+    P(n=0)=1-p_{\max},\qquad
+    P(n=k)=\frac{p_{\max}}{M},\quad k=1,\ldots,M.
+    \label{eq:exp1-random-amount}
+\end{equation}
+其互补策略 \texttt{opp\_random\_M} 取 $M-n$ 作为探索数量。这样，当上一试次后验较集中时，模型更倾向于保留既有假设；当后验较分散时，模型增加对新假设的探索。
+
+活跃集合变化后，模型需要把上一试次后验迁移为当前试次先验。设幸存假设集合为 $S=A_{t-1}\cap A_t$，新进入假设集合为 $N=A_t\setminus A_{t-1}$，上一试次置信度为 $c_{t-1}=\max_h p_{t-1}(h)$。对于幸存假设，模型直接继承上一试次后验；对于新进入假设，模型根据其与旧活跃集合的相似性和新颖性分配先验质量：
+\begin{equation}
+    \tilde p_t^-(h)=
+    \begin{cases}
+        p_{t-1}(h), & h\in S,\\
+        \alpha_t\left[c_{t-1}s_h+(1-c_{t-1})n_h\right], & h\in N,\\
+        0, & h\notin A_t,
+    \end{cases}
+    \label{eq:exp1-hypothesis-transition}
+\end{equation}
+其中，
+\begin{equation}
+    s_h=\sum_{u\in A_{t-1}}\operatorname{Sim}(h,u)
+    \frac{p_{t-1}(u)}{\sum_{v\in A_{t-1}}p_{t-1}(v)},\qquad
+    n_h=1-\max_{u\in A_{t-1}}\operatorname{Sim}(h,u),
+    \label{eq:exp1-sim-novelty}
+\end{equation}
+\begin{equation}
+    \alpha_t=\max(1-c_{t-1},0.05),\qquad
+    p_t^-(h)=\frac{\tilde p_t^-(h)}{\sum_{u\in\mathcal K}\tilde p_t^-(u)}.
+    \label{eq:exp1-transition-normalize}
+\end{equation}
+$\operatorname{Sim}(h,u)$ 由两个假设的类别区域或原型结构计算并缓存。该迁移规则的心理含义是：当模型对当前解释较确信时，新假设主要通过与高后验旧假设相似而获得先验；当模型不确信时，和旧假设差异较大的候选也会获得更多探索机会。
+
+第三，记忆模块刻画历史证据的时间整合。新版模型不再把第 $j$ 个历史试次简单写为 $w_0+\gamma^{t-j}$ 的单一权重，而是同时维护长期累积轨道和近期衰减轨道。对活跃假设 $h$，两条轨道在对数空间中的更新为
+\begin{equation}
+    F_t(h)=\gamma F_{t-1}(h)+\log L_t(h),
+    \qquad
+    S_t(h)=S_{t-1}(h)+\log L_t(h),
+    \label{eq:exp1-memory}
+\end{equation}
+其中，$F_t(h)$ 表示近期衰减轨道，$\gamma\in[0,1]$ 控制早期证据在该轨道中的保留程度；$S_t(h)$ 表示长期累积轨道，对所有已整合证据进行相加。随后，模型用 $w_0$ 混合两条轨道：
+\begin{equation}
+    \ell_t(h)
+    =
+    w_0 S_t(h)+(1-w_0)F_t(h),
+    \qquad 0\leq w_0\leq 1,
+    \label{eq:exp1-memory-combine}
+\end{equation}
+并在当前活跃掩码 $m_t(h)$ 下归一化得到后验：
+\begin{equation}
+    p_t(h)
+    =
+    \frac{\exp[\ell_t(h)]m_t(h)}
+    {\sum_{u\in\mathcal K}\exp[\ell_t(u)]m_t(u)}.
+    \label{eq:exp1-memory-posterior}
+\end{equation}
+因此，较大的 $w_0$ 表示模型更依赖长期累积证据，较小的 $w_0$ 表示模型更依赖近期反馈；较大的 $\gamma$ 表示近期轨道衰减较慢，较小的 $\gamma$ 则表示模型更强调最近几个试次。当活跃集合发生变化时，记忆模块会把新进入假设的 $F_t(h)$ 和 $S_t(h)$ 初始化到与迁移先验一致的数值范围，从而避免新假设因缺乏历史记录而被不合理地压低或抬高。
+
+第四，动态 beta 模块刻画不同假设在决策锐度上的变化。每个假设都有自己的逆温度 $\beta_t(h)$，并被限制在 $[\beta_{\min},\beta_{\max}]$ 内。新进入活跃集合的假设根据迁移先验初始化：
+\begin{equation}
+    \beta_t^{\mathrm{init}}(h)
+    =
+    \operatorname{clip}
+    \left(
+        \beta_{\mathrm{init}}+
+        \lambda\frac{p_t^-(h)}{\max_{u\in N}p_t^-(u)},
+        \beta_{\min},
+        \beta_{\max}
+    \right),
+    \qquad h\in N.
+    \label{eq:exp1-beta-init}
+\end{equation}
+其中，$\lambda$ 为先验缩放系数。反馈出现后，模型先根据被试选择和反馈推断本试次正确类别；在两分类任务中，若 $r_t=1$，正确类别就是 $c_t$，若 $r_t=0$，正确类别为另一类别。设假设 $h$ 对感知刺激的最大概率类别为 $\hat C_h(\tilde{\mathbf{x}}_t)$，则 beta 更新为
+\begin{equation}
+    \beta_{t+1}(h)=
+    \begin{cases}
+        \min\left[\beta_{\max},
+        \beta_t(h)+\eta_+\dfrac{\beta_{\max}-\beta_t(h)}{\beta_{\max}}\right],
+        & \hat C_h(\tilde{\mathbf{x}}_t)=C_t^{\mathrm{correct}},\\[8pt]
+        \max\left[\beta_{\min},
+        \beta_t(h)-\eta_-\beta_t(h)\right],
+        & \hat C_h(\tilde{\mathbf{x}}_t)\neq C_t^{\mathrm{correct}}.
+    \end{cases}
+    \label{eq:exp1-beta-update}
+\end{equation}
+其中，$\eta_+$ 和 $\eta_-$ 分别控制正确一致假设的增益和错误不一致假设的惩罚。非活跃假设的 $\beta$ 在当前试次置为 0。该模块使模型能够表达这样一种过程：某个假设不仅需要拥有较高后验，也需要在连续反馈中形成更稳定、更陡峭的决策映射。
+
+\subsubsection{模型拟合与评价}
+
+对每名被试 $s$，模型先进行超参数(包括记忆参数搜索、假设迁移策略、活跃集合规模、初始假设数量和 beta 更新参数等)联合优化，选择损失最小的组合，作为最优超参数集合 $\Omega$ ：
+\begin{equation}
+    \hat{\Omega}_s
+    =
+    \arg\min_{\Omega\in\mathcal G}
+    \bar{\mathcal L}_s(\Omega),
+    \qquad
+    \bar{\mathcal L}_s(\Omega)
+    =
+    \frac{1}{R}\sum_{r=1}^{R}\mathcal L_{s,r}(\Omega).
+    \label{eq:exp1-hyper-selection}
+\end{equation}
+实际分析中先用较少重复次数进行粗搜索，再对表现较好的候选组合展开细搜索。随后，在最优超参数下进行固定参数重复模拟，目的是降低单条随机轨迹对模型评价的影响，也是解决真实学习数据只有一条观测轨迹这一限制的手段 \parencite{gershman2015computational}。
+
+行为拟合主要使用选择概率的 Brier 损失，其计算方式为：模型在第 $t$ 个试次给出的预测类别概率为
+\begin{equation}
+    \hat P_t(C_i)
+    =
+    \sum_{h\in\mathcal K}p_t^-(h)
+    P_t(C_i\mid\tilde{\mathbf{x}}_t,h),
+    \label{eq:exp1-pred-category-prob}
+\end{equation}
+其中，当前实现使用试次开始时的先验 $p_t^-(h)$ 作为预测权重，以避免用本试次反馈后的后验回看同一试次选择。若 $I(c_t=i)$ 表示被试实际选择类别的指示函数，则单名被试的选择 Brier 损失可写为
+\begin{equation}
+    \mathcal L_{\mathrm{choice}}
+    =
+    \frac{1}{|\mathcal T|}
+    \sum_{t\in\mathcal T}
+    \sum_{i=1}^{N}
+    \left[\hat P_t(C_i)-I(c_t=i)\right]^2.
+    \label{eq:exp1-choice-brier}
+\end{equation}
+在重复模拟后，进入模型评价阶段。在外显指标上，看模型能否正确预测被试的行为，即比较模型预测滑动窗口正确率与被试实际滑动窗口正确率之间的差异。在内部表征方面，检查模型是否能够合理地恢复被试在学习过程中形成的特征假设。具体而言，将口头报告转换为四维特征空间中的原型化表征或假设质量分布，再与模型后验、活跃假设集合和目标假设概率进行比较。较高的一致性表示模型不仅能够拟合被试做出何种选择，而且能够较好恢复其在学习过程中逐步形成、保留或放弃的特征假设。由于口头报告不参与参数拟合，这一检验为模型潜变量的心理含义提供了独立约束。
