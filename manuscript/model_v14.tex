@@ -1,0 +1,949 @@
+% !TeX root = model_v14_standalone.tex
+% model_v14.tex
+% Category-learning state model V14：对条件 1 V14 代码、配置与冻结选择流程的忠实方法记录。
+% 本文件的目标是复现实际实现，而不是提出经过规范性修订的后续模型。
+
+\subsubsection{文档范围与版本边界}
+
+本节记录条件 1（binary category learning）中 V14 模型的实际计算架构、候选搜索空间和代表性被试冻结确认流程。结构、搜索和模拟的基础配置分别来自以下三个文件：
+\begin{center}
+\small
+\texttt{pmh\_model\_cond1\_v14.yaml}\\
+\texttt{pmh\_cond1\_hyper\_cd\_v14.yaml}\\
+\texttt{pmh\_cond1\_simulation\_v14.yaml}
+\end{center}
+具体算法再以 V14 controller candidate JSON 及相应 Python 模块的执行行为为准。这里的 ``忠实'' 有三层含义：
+\begin{enumerate}
+    \item 只描述 V14 已实现并实际进入条件 1 搜索或评分的机制；
+    \item 区分基础 YAML 中用于构造模型的默认值、超参数搜索候选以及搜索后冻结的被试特异取值；
+    \item 保留实现中的边界、非对称性和潜在限制，不用后续 model v2 的规范性修订替换 V14 的实际做法。
+\end{enumerate}
+
+V14 本身不是条件 2 或条件 3 的统一模型。以下反馈似然、beta 更新和候选搜索均针对 $N=2$、反馈 $r_t\in\{0,1\}$ 的条件 1。条件 2/3 的四分类假设空间、部分反馈事件和相应更新规则不属于本节所定义的 V14。
+
+
+\subsubsection{总体架构}
+
+V14 将类别学习表示为一个随机、容量受限的逐试次状态滤波器。任务定义一个包含 38 个带标签规则的完整假设空间 $\mathcal H$，但模型在任一试次最多激活 5 个假设。每个模拟轨迹由以下模块按固定顺序执行：
+\begin{enumerate}
+    \item 被试特异的知觉噪声；
+    \item 容量受限的 hypothesis transition；
+    \item 原型距离反馈似然；
+    \item fade/static 双通道记忆；
+    \item 假设特异的动态逆温度 beta。
+\end{enumerate}
+选择 readout 不作为上述 inference agenda 中的状态更新模块运行，而是在保存的 \texttt{prior\_t}、当前知觉刺激和 pre-feedback beta 上计算行为预测。
+
+对被试 $s$ 的试次 $t$，物理观测为
+\begin{equation}
+    o_{s,t}
+    =
+    (\mathbf x_{s,t},c_{s,t},r_{s,t}),
+    \qquad
+    \mathbf x_{s,t}\in[0,1]^4,\quad
+    c_{s,t}\in\{1,2\},\quad
+    r_{s,t}\in\{0,1\}.
+    \label{eq:modelv14-observation}
+\end{equation}
+其中 $\mathbf x_{s,t}$ 是物理刺激，$c_{s,t}$ 是被试实际选择，$r_{s,t}$ 是该选择是否正确。模型内部另行生成知觉刺激 $\widetilde{\mathbf x}_{s,t}$。
+
+全文采用以下状态记号：
+\begin{itemize}
+    \item $\mathcal H=\{h_1,\ldots,h_{38}\}$：完整带标签假设空间；
+    \item $A_t\subset\mathcal H$：当前活跃假设集合，$|A_t|\leq5$；
+    \item $\pi_t^-(h)$：试次 $t$ transition 后、吸收当前反馈前的先验；
+    \item $\pi_t^+(h)$：吸收试次 $t$ 反馈后的后验；
+    \item $q_{t,h}(i)$：假设 $h$ 对类别 $i$ 的预测概率；
+    \item $\lambda_t(h)$：由选择和反馈得到的未跨假设归一化反馈似然；
+    \item $L_t(h)$：代码实际写入记忆的、跨全部 38 个假设归一化后的似然；
+    \item $F_t(h)$ 与 $S_t(h)$：fade 和 static 两条对数记忆状态；
+    \item $\beta_{t,h}$：当前似然及 readout 使用的 pre-feedback 逆温度；
+    \item $z_t$：可选的 persistent latent volatility state。
+\end{itemize}
+
+
+\subsubsection{完整带标签假设空间}
+
+\paragraph{19 个基础几何划分。}
+每个基础假设将四维单位超立方体划分为两个区域。类别区域可以写为
+\begin{equation}
+    R_{h,i}
+    =
+    \{\mathbf x\in[0,1]^4:
+      A_{h,i}\mathbf x\leq\mathbf b_{h,i}\},
+    \qquad i\in\{1,2\}.
+    \label{eq:modelv14-region}
+\end{equation}
+条件 1 的基础空间由以下四类线性划分构成：
+\begin{enumerate}
+    \item 4 个轴向边界 $x_i=0.5$；
+    \item 6 个二维等值边界 $x_i=x_j$；
+    \item 6 个二维求和边界 $x_i+x_j=1$；
+    \item 3 个四维混合边界 $x_i+x_j=x_k+x_l$。
+\end{enumerate}
+因此
+\begin{equation}
+    |\mathcal H^{\mathrm{base}}|
+    =
+    4+6+6+3
+    =
+    19.
+    \label{eq:modelv14-base-space}
+\end{equation}
+
+\paragraph{类别原型。}
+每个区域配置一个四维代表性原型 $\bm\mu_{h,i}$。轴向规则在诊断维度上使用 $0.25/0.75$，其他维度为 $0.5$；等值规则在两个相关维度上使用 $(1/3,2/3)$ 与 $(2/3,1/3)$；求和规则在两个相关维度上共同使用 $1/3$ 或 $2/3$；四维混合规则使等式两侧的维度采用相反的 $1/3$ 与 $2/3$ 排列。
+
+\paragraph{标签反转使实际空间增至 38。}
+V14 的 partition 配置为
+\[
+    n_{\mathrm{dims}}=4,\qquad
+    n_{\mathrm{cats}}=2,\qquad
+    \texttt{include\_label\_reversals=true}.
+\]
+对每个基础几何划分，代码保留恒等标签映射 $(0,1)$ 和反向映射 $(1,0)$。反向版本的边界几何不变，但两个区域的类别标签和类别原型交换。因此
+\begin{equation}
+    \mathcal H
+    =
+    \mathcal H^{\mathrm{base}}
+    \times\{(0,1),(1,0)\},
+    \qquad
+    |\mathcal H|=19\times2=38.
+    \label{eq:modelv14-labelled-space}
+\end{equation}
+这里的 38 是带类别标签的规则数；无标签的几何边界仍为 19 个。
+
+\paragraph{假设相似性。}
+Stable profile 的 post-to-prior 映射使用一个 $38\times38$ 相似性矩阵。代码从 $[0,1]^4$ 均匀抽取 $B=100{,}000$ 个共同 Monte Carlo 点，依据每个假设的带标签区域分配计算
+\begin{equation}
+    \operatorname{Sim}(h,u)
+    =
+    \frac{1}{B}
+    \sum_{b=1}^{B}
+    I\!\left[
+        a_h(\mathbf x_b)=a_u(\mathbf x_b)
+    \right].
+    \label{eq:modelv14-similarity}
+\end{equation}
+因此，几何相同但标签相反的一对假设不会被当作相同规则。相似性矩阵按假设空间签名缓存在磁盘；若没有现成缓存，当前实现以未显式指定 \texttt{random\_state} 的 NumPy generator 生成这批点。
+
+
+\subsubsection{被试特异的知觉输入}
+
+V14 在每个试次首先将物理刺激 $\mathbf x_{s,t}$ 转换为知觉刺激 $\widetilde{\mathbf x}_{s,t}$。知觉参数来自独立的 Task 1b 测量，而不是由 Task 2 类别选择重新拟合。Task 1b 统计量先按 feature name 读取，再重排为每名被试在 \texttt{Task2\_processed.csv} 中的实际四维 feature 顺序。
+
+\paragraph{均匀阈限噪声。}
+默认自动规则将被试 101--124、201--224 和 301--324 设为 uniform 模式。令 $a_{s,d}$ 为 \texttt{Task1b\_errorsummary\_72.csv} 中被试 $s$、维度 $d$ 的 \texttt{threshold\_mean\_mean} 绝对值，则
+\begin{equation}
+    \epsilon_{s,t,d}
+    \sim
+    \operatorname{Uniform}(-a_{s,d},a_{s,d}).
+    \label{eq:modelv14-perception-uniform}
+\end{equation}
+
+\paragraph{正态误差噪声。}
+被试 125--132、225--232、325--335 和 401--424 使用 normal 模式；不在两个预设列表内的其他被试也默认使用 normal 模式。令 $\mu_{s,d}$ 和 $\sigma_{s,d}$ 为 \texttt{Task1b\_errorsummary\_24.csv} 中的 \texttt{error\_mean} 与 \texttt{error\_std}，则
+\begin{equation}
+    \epsilon_{s,t,d}
+    \sim
+    \mathcal N(\mu_{s,d},\sigma_{s,d}^{2}).
+    \label{eq:modelv14-perception-normal}
+\end{equation}
+
+\paragraph{逐试次抽样与截断。}
+每次模拟重复、每个试次均重新抽样知觉误差：
+\begin{equation}
+    \widetilde{\mathbf x}_{s,t}
+    =
+    \operatorname{clip}
+    \left(
+        \mathbf x_{s,t}
+        +
+        \bm\epsilon_{s,t},
+        0,1
+    \right).
+    \label{eq:modelv14-perceived-stimulus}
+\end{equation}
+截断逐维执行。Perception module 使用全局 NumPy random state；simulation runner 在每条轨迹开始前用该轨迹的派生种子设置它。后续 hypothesis transition 虽不直接使用当前刺激，但 likelihood、beta 更新和行为 readout 均使用 $\widetilde{\mathbf x}_{s,t}$；评分代码优先从逐试次日志中的 \texttt{perceived\_stimulus} 读取该值。
+
+
+\subsubsection{单个假设的类别概率与反馈似然}
+
+\paragraph{原型距离 softmax。}
+V14 固定 \texttt{distance\_mode=prototype}。对活跃或被 readout 赋予非零权重的假设 $h$，知觉刺激到类别原型的距离为
+\begin{equation}
+    d_{t,h,i}
+    =
+    \left\|
+        \widetilde{\mathbf x}_t-\bm\mu_{h,i}
+    \right\|_2.
+    \label{eq:modelv14-prototype-distance}
+\end{equation}
+类别概率为
+\begin{equation}
+    q_{t,h}(i)
+    =
+    \frac{
+        \exp[-\beta_{t,h}d_{t,h,i}]
+    }{
+        \sum_{j=1}^{2}
+        \exp[-\beta_{t,h}d_{t,h,j}]
+    },
+    \qquad i\in\{1,2\}.
+    \label{eq:modelv14-category-probability}
+\end{equation}
+
+\paragraph{二分类反馈似然。}
+若被试选择 $c_t$，则代码在 condition 1 中计算
+\begin{equation}
+    \lambda_t(h)
+    =
+    \begin{cases}
+        q_{t,h}(c_t),&r_t=1,\\
+        1-q_{t,h}(c_t),&r_t=0.
+    \end{cases}
+    \label{eq:modelv14-raw-likelihood}
+\end{equation}
+单假设反馈似然在内部截断到 $[10^{-12},1-10^{-12}]$。Likelihood module 随后设置 \texttt{normalized=true}，因此实际保存并写入记忆的是
+\begin{equation}
+    L_t(h)
+    =
+    \frac{\lambda_t(h)}
+    {\sum_{u\in\mathcal H}\lambda_t(u)}.
+    \label{eq:modelv14-normalized-likelihood}
+\end{equation}
+这个跨假设归一化只乘入一个试次共同常数，因而不改变同一试次不同假设之间的相对证据；但它确实进入 fade/static 两条未归一化对数状态，属于 V14 的实际数值实现。
+
+
+\subsubsection{活跃集合初始化与首试次行为}
+
+Dynamic hypothesis module 在模型构造时先无放回抽取 5 个初始假设并建立 active mask。除一个 family 外，抽样池是全部 38 个假设：
+\begin{equation}
+    A_{\mathrm{init}}
+    \sim
+    \operatorname{UniformSubset}(\mathcal H,5).
+    \label{eq:modelv14-init-all}
+\end{equation}
+\texttt{early\_explore\_late\_stable} family 设置 \texttt{init\_pool=label\_permuted}，因此其 5 个初始假设只从 19 个反向标签版本中抽取：
+\begin{equation}
+    A_{\mathrm{init}}
+    \sim
+    \operatorname{UniformSubset}
+    (\mathcal H_{\mathrm{label\mbox{-}permuted}},5).
+    \label{eq:modelv14-init-reversed}
+\end{equation}
+
+首试次不是 ``固定使用初始化集合后直接计算似然''。实际 engine 在试次 1 也按 agenda 调用 hypothesis transition：controller 使用机会水平填充的空反馈历史和 engine 在全部 38 个 hypotheses 上初始化的均匀 prior 抽取一个 profile，该 profile 可以在首个 likelihood 之前改变 active set。因为此时尚无 posterior，post-to-prior 转换把 transition 后的活跃集合初始化为均匀 prior。首试次随后完成 likelihood、memory 和 beta 更新，但 V14 评分循环从第二个试次开始；因此首试次相当于影响后续状态的 burn-in update。
+
+
+\subsubsection{Feedback-gated profile controller}
+
+\paragraph{控制特征。}
+Controller 的反馈窗口为 $W=8$，\texttt{feedback\_mode=exact}。在条件 1 中，反馈本身已经是二元值。历史不足 8 个试次时以机会水平 $1/2$ 填充。定义
+\begin{align}
+    e_{t-1}&=1-r_{t-1},\\
+    \bar a_t
+    &=
+    \frac{1}{8}
+    \sum_{j=t-8}^{t-1}\widetilde r_j,
+    \qquad
+    \bar e_t=1-\bar a_t,\\
+    \tau_t
+    &=
+    \operatorname{clip}
+    \left(\frac{t-1}{160},0,1\right).
+    \label{eq:modelv14-controller-history}
+\end{align}
+在没有过去反馈时，$r_{t-1}$ 同样取填充值 $1/2$。
+
+V14 的 posterior entropy 不是按 active-set 大小归一化，而是对长度为 38 的完整 posterior 向量计算：
+\begin{equation}
+    H_t
+    =
+    \frac{
+        -\sum_{h=1}^{38}
+        \pi_{t-1}^{+}(h)
+        \log\pi_{t-1}^{+}(h)
+    }{
+        \log38
+    },
+    \qquad
+    C_t=1-H_t,
+    \label{eq:modelv14-full-entropy}
+\end{equation}
+其中 inactive hypothesis 的零概率按 $0\log0=0$ 处理。首试次是一个实现上的例外：controller 此时读取的是尚未按 initial mask 重归一化的全空间均匀 prior，故 $H_1=1$。从首个 posterior 形成以后，belief 最多只在 5 个活跃假设上有非零质量；此时即使 active set 内完全均匀，$H_t$ 的上限也只有 $\log5/\log38$，而不是 1。这一点是 V14 controller 系数的实际标度。
+
+代码还计算两个长度为 8 的相邻窗口之正确率差以及一个高斯形状的 mid-phase feature，但 V14 的 6 个 family logits 均未使用这两个量。
+
+\paragraph{Profile 抽样。}
+四个操作 profile 记为 Conservative（C）、Stable（S）、Aggressive（A）和 Stubborn（B）。对给定 family $g$，
+\begin{equation}
+    P(K_t=k\mid g)
+    =
+    \frac{
+        \exp[u_{t,k}^{(g)}/T_g]
+    }{
+        \sum_{\ell\in\{\mathrm C,\mathrm S,\mathrm A,\mathrm B\}}
+        \exp[u_{t,\ell}^{(g)}/T_g]
+    }.
+    \label{eq:modelv14-profile-softmax}
+\end{equation}
+令
+\[
+    A=\bar a_t,\quad
+    E=\bar e_t,\quad
+    e=e_{t-1},\quad
+    H=H_t,\quad
+    C=1-H_t,\quad
+    \tau=\tau_t.
+\]
+State-off 版本的六组 logits 与温度如下。
+
+\paragraph{\texttt{stable\_dominant}（$T_g=0.85$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (0.1+0.7A+0.5C,\;
+     1.0+0.5H+0.3A,\nonumber\\
+    &-0.4+0.7E+0.6H,\;
+     -0.3+0.7e+0.5C),
+    \label{eq:modelv14-family-stable}
+\end{align}
+
+\paragraph{\texttt{error\_aggressive}（$T_g=0.70$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-0.2+0.9A+0.6C,\;
+     0.2+0.4H+0.4A,\nonumber\\
+    &0.3+1.2e+1.2E+0.8H,\;
+     -0.5+0.3e+0.4C),
+    \label{eq:modelv14-family-error}
+\end{align}
+
+\paragraph{\texttt{early\_explore\_late\_stable}（$T_g=0.80$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-0.2+1.2\tau+0.8A,\;
+     0.3+0.8\tau+0.5H,\nonumber\\
+    &0.5+H-1.2\tau,\;
+     -0.3+0.8e+0.5C),
+    \label{eq:modelv14-family-early}
+\end{align}
+
+\paragraph{\texttt{conservative\_heavy}（$T_g=0.75$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (1.0+A+C,\;
+     0.2+0.6H,\;
+     -1.0+0.5E,\;
+     -0.6+0.5e),
+    \label{eq:modelv14-family-conservative}
+\end{align}
+
+\paragraph{\texttt{error\_choice\_newcomer}（$T_g=0.65$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-1.5+A-0.5E+0.8C,\;
+     -1.0+0.8A+0.4C-0.5H,\nonumber\\
+    &-1.2+0.5e+E+H-0.5C,\;
+     0.8+0.7e+0.4E+C),
+    \label{eq:modelv14-family-choice}
+\end{align}
+
+\paragraph{\texttt{choice\_volatile\_refresh}（$T_g=1.10$）。}
+\begin{align}
+    (u_C,u_S,u_A,u_B)
+    ={}&
+    (-1.5+A-0.5E+0.8C,\;
+     -0.2+0.9H+0.2A,\nonumber\\
+    &0.9e+1.4E+H,\;
+     -0.1+0.8e+0.4E+0.6C).
+    \label{eq:modelv14-family-volatile}
+\end{align}
+
+
+\subsubsection{Persistent latent volatility 候选}
+
+V14 对每个 controller family 搜索 state-off 以及三个 state-on 版本。State-on 的 error gain 为
+\begin{equation}
+    g\in\{0.20,0.35,0.50\},
+    \label{eq:modelv14-state-gain}
+\end{equation}
+state-off 等价于没有启用 persistent state。State-on 的其余常数固定为：base $=0$、low-accuracy gain $=0$、decay $=0.80$、threshold $=0.55$、maximum $=1$、pressure slope $=8$。
+
+令 $C_{t-1}^{\mathrm{ctrl}}$ 为上一次 controller 记录的 posterior confidence，首试次前默认置信度为 1。Latent-state 更新在没有 previous feedback 时将其默认设为 1，因此首试次的 raw error 为 0；这与 controller activation 对空历史使用 $1/2$ 填充是两套不同的初始化规则。上一反馈的置信加权错误为
+\begin{equation}
+    \varepsilon_t^{\mathrm{state}}
+    =
+    (1-r_{t-1})C_{t-1}^{\mathrm{ctrl}}.
+    \label{eq:modelv14-state-error}
+\end{equation}
+Persistent state 与其压力信号按
+\begin{align}
+    z_t
+    &=
+    \operatorname{clip}
+    \left(
+        0.80z_{t-1}
+        +
+        g\varepsilon_t^{\mathrm{state}},
+        0,1
+    \right),\\
+    P_t^{\mathrm{state}}
+    &=
+    \frac{1}{
+        1+\exp[-8(z_t-0.55)]
+    }.
+    \label{eq:modelv14-state-dynamics}
+\end{align}
+这个 state 只改变 Aggressive profile 的 logit；不直接重置 prior，不改变其他三个 profile，也不直接进入 likelihood、memory、beta 或 readout。State-on 将式
+\ref{eq:modelv14-family-stable}--\ref{eq:modelv14-family-volatile} 中的 Aggressive logit替换为：
+\begin{align}
+    \texttt{stable\_dominant}:&\quad
+    -0.4+0.6H+1.5P_t^{\mathrm{state}},\\
+    \texttt{error\_aggressive}:&\quad
+    0.3+1.2e+0.8H+1.5P_t^{\mathrm{state}},\\
+    \texttt{early\_explore\_late\_stable}:&\quad
+    0.5+H-1.2\tau+1.5P_t^{\mathrm{state}},\\
+    \texttt{conservative\_heavy}:&\quad
+    -1.0+1.5P_t^{\mathrm{state}},\\
+    \texttt{error\_choice\_newcomer}:&\quad
+    -1.2+0.5e+H-0.5C+1.5P_t^{\mathrm{state}},\\
+    \texttt{choice\_volatile\_refresh}:&\quad
+    0.9e+H+1.5P_t^{\mathrm{state}}.
+    \label{eq:modelv14-state-on-logits}
+\end{align}
+注意，state-on 不只是向 state-off logit 机械增加一项：若 state-off Aggressive logit 含 recent error $E$，该项在 state-on candidate 中被移除，再加入 $1.5P_t^{\mathrm{state}}$。因此 state-on/off 是两个不同的 controller 参数化候选。
+
+
+\subsubsection{四种 profile 的集合操作}
+
+令上一活跃集合为 $A_{t-1}$，其中假设的 survivor 得分见下节。
+
+\paragraph{Conservative。}
+保留旧集合中至多前 5 个索引，不引入 newcomer。在 V14 的常规运行中旧集合本就不超过 5，因此该 profile 通常保持集合不变。
+
+\paragraph{Stable。}
+若存在 inactive candidate，则为一个 newcomer 预留位置。旧集合已有 5 个假设时，按 survivor 得分经 retain temperature 变换后无放回抽取 4 个，再加入 1 个 newcomer；若旧集合少于 5，则保留目标为全部旧假设并再加入 1 个 newcomer，而不是一次补满到 5。若没有 inactive candidate，则不预留 newcomer。
+
+\paragraph{Aggressive。}
+确定性保留 survivor 得分最高的假设 $h^\star$。令 $p^\star=\pi_{t-1}^{+}(h^\star)$，newcomer 数为
+\begin{equation}
+    n_t^{\mathrm{new}}
+    =
+    \operatorname{clip}
+    \left[
+        \operatorname{round}\{(1-p^\star)4\},
+        n_{\min},4
+    \right].
+    \label{eq:modelv14-aggressive-count}
+\end{equation}
+实际 active-set 大小是 $1+n_t^{\mathrm{new}}$，因而可以小于 5。
+
+\paragraph{Stubborn。}
+确定性保留 survivor 得分最高的 2 个旧假设，并以
+\begin{equation}
+    p_t^{\mathrm{explore}}
+    =
+    \operatorname{clip}
+    \left[
+        p_0
+        +
+        p_{\mathrm{correct}}(1-e_{t-1})
+        +
+        p_{\mathrm{error}}e_{t-1},
+        0,1
+    \right]
+    \label{eq:modelv14-stubborn-explore}
+\end{equation}
+抽取至多 1 个 newcomer。因此该 profile 的 active-set 大小通常为 2 或 3。
+
+四个 profile 所称的 newcomer 均从 ``上一试次不活跃'' 的 hypotheses 中抽取。一个旧 hypothesis 即使在当前 transition 中被丢弃，也不会在同一步被重新作为 newcomer 选回。
+
+\paragraph{Family-specific 操作常数。}
+六个 family 的参数如下：
+\begin{enumerate}
+    \item \texttt{stable\_dominant}：Stable retain temperature $0.8$、minimum newcomer scale $0.04$；Aggressive $n_{\min}=0$；Stubborn $(p_0,p_{\mathrm{correct}},p_{\mathrm{error}},m_{\mathrm{new}})=(0.03,0.18,0,0.02)$。
+    \item \texttt{error\_aggressive}：Stable temperature $1.0$、scale $0.05$；Aggressive $n_{\min}=1$；Stubborn $(0.02,0.20,0,0.02)$。
+    \item \texttt{early\_explore\_late\_stable}：Stable temperature $0.9$、scale $0.04$；Aggressive $n_{\min}=1$；Stubborn $(0.02,0.16,0,0.02)$。
+    \item \texttt{conservative\_heavy}：Stable temperature $0.8$、scale $0.03$；Aggressive $n_{\min}=0$；Stubborn $(0.02,0.15,0,0.02)$。
+    \item \texttt{error\_choice\_newcomer}：Stable temperature $0.7$、scale $0.05$；Aggressive $n_{\min}=1$；Stubborn $(0.10,0.02,0.25,0.25)$。
+    \item \texttt{choice\_volatile\_refresh}：Stable temperature $1.5$、scale $0.05$；Aggressive $n_{\min}=2$；Stubborn $(0.12,0.02,0.20,0.12)$。
+\end{enumerate}
+所有 family 均使用 Stable explore count $=1$、Aggressive maximum newcomers $=4$、Stubborn retain count $=2$ 和全局 active-set cap $=5$。
+
+
+\subsubsection{Survivor 与 newcomer 打分}
+
+\paragraph{四个非 choice-informed family。}
+前四个 family 使用 posterior 作为 survivor 得分，inactive newcomer 之间采用均匀随机抽样。
+
+\paragraph{两个 choice-informed family。}
+\texttt{error\_choice\_newcomer} 与 \texttt{choice\_volatile\_refresh} 在四个 profile 中都设置 \texttt{survivor\_score=posterior\_choice} 和 \texttt{newcomer\_score=recent\_error\_choice}。
+
+对旧假设，代码使用上一试次的知觉刺激与被试选择，但用当前 transition 时刻 engine 中的 beta 重新计算 choice probability。该 beta 已经吸收了上一试次反馈，而不是被试作出上一选择时使用的 pre-feedback beta。记这个重新计算的概率为 $q_{t\leftarrow t-1,h}^{\mathrm{curr}\mbox{-}\beta}(c_{t-1})$，则
+\begin{equation}
+    s_t^{\mathrm{surv}}(h)
+    =
+    [\pi_{t-1}^{+}(h)]^{a_k}
+    [q_{t\leftarrow t-1,h}^{\mathrm{curr}\mbox{-}\beta}(c_{t-1})]^{b_k}.
+    \label{eq:modelv14-choice-survivor}
+\end{equation}
+Conservative/Stable 使用 $(a_k,b_k)=(0.8,1.2)$；Aggressive 使用 $(0.6,1.4)$；Stubborn 使用 $(0.5,1.5)$。Stable 的无放回抽样还会再应用 family-specific retain temperature；Aggressive 和 Stubborn 直接取该得分最高者。
+
+对 inactive candidate，模型最多读取最近 8 个错误试次。代码同样使用 transition 时刻的当前 beta，逐一重新评价这些历史刺激，而不读取各历史试次当时保存的 beta。令 $\mathcal E_t$ 为该窗口中的错误试次集合，则
+\begin{equation}
+    \widetilde q_t(h)
+    =
+    \exp\left[
+        \frac{1}{|\mathcal E_t|}
+        \sum_{j\in\mathcal E_t}
+        \log q_{t\leftarrow j,h}^{\mathrm{curr}\mbox{-}\beta}(c_j)
+    \right].
+    \label{eq:modelv14-choice-newcomer-base}
+\end{equation}
+若窗口内没有错误试次，所有 candidate 的该量均设为 1。Newcomer 原始得分为
+\begin{equation}
+    s_t^{\mathrm{new}}(h)
+    =
+    [\widetilde q_t(h)]^{v_k},
+    \label{eq:modelv14-choice-newcomer-score}
+\end{equation}
+再以温度 $T_k^{\mathrm{new}}$ 转换为无放回抽样概率。Conservative/Stable 的 $(v_k,T_k^{\mathrm{new}})=(2.0,0.7)$；Stubborn 为 $(2.8,0.5)$；Aggressive 在 \texttt{error\_choice\_newcomer} 中为 $(2.4,0.6)$，在 \texttt{choice\_volatile\_refresh} 中为 $(2.2,0.8)$。
+
+这里没有单独配置 choice-scoring beta。代码读取 engine 中当前每个 hypothesis 的 beta。Beta module 在每次反馈更新后把 inactive hypothesis 的 beta 置为 0；因此，从第二个试次开始，尚未激活的 hypothesis 在 newcomer 历史评分中通常以 $\beta=0$ 产生均匀二分类概率。这个后果来自 V14 模块之间的实际交互。
+
+
+\subsubsection{从上一后验到当前先验}
+
+设 survivor 集合为 $\mathcal S_t=A_{t-1}\cap A_t$，newcomer 集合为 $\mathcal N_t=A_t\setminus A_{t-1}$。
+
+\paragraph{Conservative。}
+Newcomer mass 固定为 0；survivor posterior 在当前集合内重新归一化。
+
+\paragraph{Aggressive。}
+保留假设 $h^\star$ 获得质量 $p^\star$，newcomers 共同获得 $1-p^\star$ 并在其内部均分：
+\begin{equation}
+    \pi_t^-(h^\star)=p^\star,
+    \qquad
+    \pi_t^-(u)
+    =
+    \frac{1-p^\star}{|\mathcal N_t|},
+    \quad u\in\mathcal N_t.
+    \label{eq:modelv14-aggressive-prior}
+\end{equation}
+若没有 newcomer，则 survivor 质量重新归一化为 1。
+
+\paragraph{Stubborn。}
+若引入 newcomer，family-specific 的 $m_{\mathrm{new}}$ 分给该 newcomer，余下质量按 survivor posterior 比例分配；若没有 newcomer，则只对 survivors 重新归一化。
+
+\paragraph{Stable similarity--novelty。}
+令旧集合后验在 $A_{t-1}$ 内归一化为 $\bar\pi_{t-1}^{+}$，并令当前 confidence 为旧 posterior 的最大值
+\begin{equation}
+    \chi_t
+    =
+    \max_{h\in A_{t-1}}\pi_{t-1}^{+}(h).
+    \label{eq:modelv14-stable-confidence}
+\end{equation}
+对 newcomer $u$，
+\begin{align}
+    p_{\mathrm{sim}}(u)
+    &=
+    \sum_{h\in A_{t-1}}
+    \operatorname{Sim}(u,h)
+    \bar\pi_{t-1}^{+}(h),\\
+    p_{\mathrm{nov}}(u)
+    &=
+    1-
+    \max_{h\in A_{t-1}}
+    \operatorname{Sim}(u,h),\\
+    b_t(u)
+    &=
+    \chi_t p_{\mathrm{sim}}(u)
+    +(1-\chi_t)p_{\mathrm{nov}}(u),\\
+    \kappa_t
+    &=
+    \max(1-\chi_t,\kappa_{\min}).
+    \label{eq:modelv14-stable-newcomer}
+\end{align}
+Survivor 的未归一化 prior value 等于其旧 posterior，newcomer 的未归一化 value 为 $\kappa_t b_t(u)$，最后在 $A_t$ 内整体归一化。这里用于 post-to-prior 的 $\chi_t$ 是最大 posterior，不是式 \ref{eq:modelv14-full-entropy} 的 controller confidence。
+
+
+\subsubsection{Fade/static 双通道记忆}
+
+\paragraph{状态初始化与逐试次同步。}
+Memory module 保存 fade 状态 $F(h)$ 和 static 状态 $S(h)$。模型构造时两者均由当时的 prior 转换为对数状态。每个试次在当前 likelihood 进入之前，memory 都被强制同步到 transition 已生成的 $\pi_t^-$，即便 active mask 没有变化也执行同步。
+
+对 survivor，代码保留上一时刻的通道差
+\begin{equation}
+    \Delta_{t,h}
+    =
+    S_{t-1}(h)-F_{t-1}(h).
+    \label{eq:modelv14-memory-offset}
+\end{equation}
+令
+\begin{equation}
+    T_{t,h}
+    =
+    \log\pi_t^-(h)+C_t^{\mathrm{base}},
+    \label{eq:modelv14-memory-target}
+\end{equation}
+其中 $C_t^{\mathrm{base}}$ 是由 baseline state 产生、对全部当前活跃假设相同的平移。同步后的状态为
+\begin{align}
+    F_{t^-}(h)
+    &=
+    T_{t,h}-w_0\Delta_{t,h},\\
+    S_{t^-}(h)
+    &=
+    T_{t,h}+(1-w_0)\Delta_{t,h}.
+    \label{eq:modelv14-memory-sync}
+\end{align}
+因而
+\[
+    w_0S_{t^-}(h)+(1-w_0)F_{t^-}(h)=T_{t,h}.
+\]
+Newcomer 通常没有有限的旧状态，因而使用 baseline 的共同通道差；离开 active set 的假设状态被设为 $-\infty$。
+
+\paragraph{证据更新。}
+当前归一化反馈似然进入两条通道：
+\begin{align}
+    F_t(h)
+    &=
+    \gamma F_{t^-}(h)+\log L_t(h),\\
+    S_t(h)
+    &=
+    S_{t^-}(h)+\log L_t(h).
+    \label{eq:modelv14-memory-update}
+\end{align}
+后验 log weight 为
+\begin{equation}
+    \ell_t(h)
+    =
+    w_0S_t(h)+(1-w_0)F_t(h),
+    \label{eq:modelv14-memory-mixture}
+\end{equation}
+并只在当前 active set 上 softmax 归一化：
+\begin{equation}
+    \pi_t^+(h)
+    =
+    \frac{
+        I(h\in A_t)\exp[\ell_t(h)]
+    }{
+        \sum_{u\in A_t}\exp[\ell_t(u)]
+    }.
+    \label{eq:modelv14-memory-posterior}
+\end{equation}
+
+\paragraph{Baseline state。}
+实现另行维护一个虚拟 baseline hypothesis。Memory 构造时 active set 已有 5 个 hypotheses，因此 fade/static baseline 都初始化为 $\log(1/5)$；此后每个试次以 $1/38$ 作为其 fake likelihood：
+\begin{align}
+    F_t^{\mathrm{base}}
+    &=
+    \gamma F_{t-1}^{\mathrm{base}}+\log(1/38),\\
+    S_t^{\mathrm{base}}
+    &=
+    S_{t-1}^{\mathrm{base}}+\log(1/38).
+    \label{eq:modelv14-memory-baseline}
+\end{align}
+该 baseline 只决定式 \ref{eq:modelv14-memory-target} 的共同平移，归一化 posterior 中会抵消，但属于状态同步的实际实现。
+
+\paragraph{V14 的正式搜索网格。}
+正式 coarse/fine 搜索使用
+\begin{align}
+    \gamma
+    &\in\{0.25,0.50,0.70,0.85,0.95\},\\
+    w_0
+    &\in\{0.01,0.05,0.10,0.20,0.50\}.
+    \label{eq:modelv14-memory-grid}
+\end{align}
+因此 V14 搜索的是双通道内部点，没有把 $w_0=0$ 的 fade-only 或 $w_0=1$ 的 static-only 作为同一轮正式候选。Fine selection 后对触及边界的被试局部探查了 $\gamma=0.10$、$w_0=0.005$ 和 $w_0=0.75$；只有被试 127 改为 $\gamma=0.10,w_0=0.05$。这些局部 boundary probes 也没有构成对 $w_0=0/1$ 的完整联合搜索。
+
+
+\subsubsection{假设特异的动态 beta}
+
+\paragraph{初始值与 newcomer 初始化。}
+V14 配置为
+\begin{equation}
+    \beta_0=5,\qquad
+    \beta_{\min}=0.1,\qquad
+    \beta_{\max}=25.
+    \label{eq:modelv14-beta-constants}
+\end{equation}
+Beta module 构造时先把全部 38 个 beta 设为 5。初始 active hypotheses 因此都以 5 进入首试次。Transition 后新进入的 hypothesis 使用 prior scaling：
+\begin{equation}
+    \beta_{t,u}
+    =
+    \operatorname{clip}
+    \left[
+        5+
+        3
+        \frac{
+            \pi_t^-(u)
+        }{
+            \max_{v\in\mathcal N_t}\pi_t^-(v)
+        },
+        0.1,25
+    \right].
+    \label{eq:modelv14-beta-newcomer}
+\end{equation}
+因此具有最大 newcomer prior 的假设初始化为 8，而不是 5。
+
+\paragraph{Hard inferred-correct-category 更新。}
+V14 使用 \texttt{beta\_update\_mode=inferred\_correct\_category}。二分类条件下，由被试选择和反馈推断正确类别：
+\begin{equation}
+    y_t^\star
+    =
+    \begin{cases}
+        c_t,&r_t=1,\\
+        3-c_t,&r_t=0.
+    \end{cases}
+    \label{eq:modelv14-inferred-correct}
+\end{equation}
+每个活跃 hypothesis 先以 prototype mode、$\beta=1$ 的 argmax 得到 hard category assignment $\widehat y_{t,h}$。若 $\widehat y_{t,h}=y_t^\star$，
+\begin{equation}
+    \beta_{t+1,h}
+    =
+    \min\left[
+        \beta_{t,h}
+        0.5
+        \frac{25-\beta_{t,h}}{25},
+        25
+    \right];
+    \label{eq:modelv14-beta-reward}
+\end{equation}
+否则
+\begin{equation}
+    \beta_{t+1,h}
+    =
+    \max[
+        \beta_{t,h}-0.15\beta_{t,h},
+        0.1
+    ].
+    \label{eq:modelv14-beta-penalty}
+\end{equation}
+
+\paragraph{因果记录和 inactive beta。}
+当前试次的 likelihood 与 readout 使用更新前的 $\beta_{t,h}$。Beta module 先把这一向量写入 \texttt{beta\_log}，再依据 $r_t$ 更新；更新后的 beta 从下一试次开始生效。每次更新结束后，代码把所有 inactive hypothesis 的 beta 设为 0。以后重新进入 active set 时，该 hypothesis 作为 newcomer 按式 \ref{eq:modelv14-beta-newcomer} 重新初始化，而不是恢复离开前的 beta。
+
+
+\subsubsection{离散 choice readout}
+
+V14 的 readout 搜索不是连续 concentration 参数。正式候选只有以下四种：
+\begin{enumerate}
+    \item posterior expectation；
+    \item sharpened expectation，power $=2$；
+    \item sharpened expectation，power $=4$；
+    \item MAP hypothesis。
+\end{enumerate}
+四者均读取同一试次的 \texttt{prior\_t}：
+\begin{equation}
+    \mathbf d_t=\pi_t^-.
+    \label{eq:modelv14-readout-input}
+\end{equation}
+Expectation 使用 $\omega_{t,h}=d_t(h)$。Sharpened expectation 的 \texttt{weight\_floor} 默认为 0，故
+\begin{equation}
+    \omega_{t,h}^{(p)}
+    =
+    \frac{[d_t(h)]^p}
+    {\sum_{u\in\mathcal H}[d_t(u)]^p},
+    \qquad p\in\{2,4\}.
+    \label{eq:modelv14-sharpened-readout}
+\end{equation}
+MAP 选择
+\begin{equation}
+    h_t^{\mathrm{MAP}}
+    =
+    \operatorname*{arg\,max}_{h\in\mathcal H}d_t(h)
+    \label{eq:modelv14-map}
+\end{equation}
+并将 $\omega_{t,h}$ 设为该 hypothesis 上的 one-hot 权重；若精确并列，NumPy \texttt{argmax} 取第一个索引。最终类别概率为
+\begin{equation}
+    \widehat P_{t,r}(C_i)
+    =
+    \sum_{h\in\mathcal H}
+    \omega_{t,h}
+    q_{t,h}(i),
+    \label{eq:modelv14-choice-probability}
+\end{equation}
+其中 $r$ 表示模拟重复。Readout 只用于评分，不回写 transition、memory 或 beta 状态。虽然当前评分代码还支持 sample/sticky readout 和额外 output lapse，但这些选项没有进入 V14 candidate space；V14 配置也没有启用 output-noise module。
+
+
+\subsubsection{逐试次执行顺序}
+
+对一条模拟轨迹，实际顺序如下：
+\begin{enumerate}
+    \item 构造 38 个带标签 hypotheses，初始化 active set、memory 和 beta；
+    \item 对 $t=1,\ldots,T$：
+    \begin{enumerate}
+        \item engine 先把当前 prior 设为上一 posterior；若还没有 posterior，则保留构造时 prior；
+        \item perception module 由物理刺激抽样 $\widetilde{\mathbf x}_t$；
+        \item latent-state candidate 先用截至 $t-1$ 的反馈和上一次 controller confidence 更新 $z_t$；
+        \item controller 使用过去反馈与上一 belief 抽取 profile，并生成 $A_t$；
+        \item post-to-prior 映射生成 $\pi_t^-$，同时按 prior 初始化 newcomers 的 beta；
+        \item likelihood module 使用 $\widetilde{\mathbf x}_t$、实际选择 $c_t$、反馈 $r_t$ 和 pre-feedback beta 计算 $L_t(h)$；
+        \item memory module强制同步到 $\pi_t^-$，再吸收 $L_t(h)$ 得到 $\pi_t^+$；
+        \item beta module 记录 pre-feedback beta，再按当前反馈更新 active beta，并把 inactive beta 置零；
+        \item engine 保存 posterior、transition 后的 prior、perceived stimulus 与 active indices。
+    \end{enumerate}
+    \item 行为评分从 trial index 1，即实验的第二个试次开始。对每个被评分试次，读取该试次保存的 $\pi_t^-$、$\widetilde{\mathbf x}_t$ 和 pre-feedback beta，应用候选 readout。
+\end{enumerate}
+
+Hypothesis transition 在读取当前 observation 时，直到其内部 transition 与 post-to-prior 已完成之后才把当前 $r_t$ 写入 feedback history。因此当前反馈不会进入当前 profile 或 $\pi_t^-$。Likelihood、memory 和 beta 则按设计使用当前反馈。
+
+
+\subsubsection{超参数搜索与随机预测分布}
+
+\paragraph{代表性被试。}
+V14 正式 selected-eight 搜索对象为
+\begin{equation}
+    s\in
+    \{103,105,111,112,117,118,127,131\}.
+    \label{eq:modelv14-selected-subjects}
+\end{equation}
+搜索候选由 6 个 controller families、每个 family 的 4 个 state settings、5 个 $\gamma$、5 个 $w_0$ 和 4 个 readouts 组成。Controller/state JSON 因此包含 $6\times4=24$ 个 transition candidates。
+
+\paragraph{基础 simulation 配置。}
+V14 simulation YAML 读取 \texttt{Task2\_processed.csv} 以及上述两个 Task 1b perception summaries，并设置：
+\begin{itemize}
+    \item subject range 101--132；
+    \item 每个配置 1024 repeats、并行作业数 64、窗口长度 16；
+    \item \texttt{prediction\_mode=prior\_t}；
+    \item \texttt{selection\_prediction\_mode=prior\_t}；
+    \item \texttt{loss\_metric=choice\_brier}；
+    \item \texttt{keep\_logs=false}。
+\end{itemize}
+Search stage 会用下述 128/256 repeats 覆盖基础预算。YAML 还记录 \texttt{oral.mode=center}，但 oral measure 没有出现在 V14 的 objective order 中，因而不参与本轮参数选择。
+
+\paragraph{Coordinate descent。}
+搜索的 hyper base seed 为 140014。算法设置为 3 个 restarts、最多 6 次 outer iterations、随机初始化、每个 restart 打乱 coordinate 顺序、patience $=2$、minimum improvement $=0.0005$、parallel budget $=64$。Coarse stage 每个配置运行 128 个 repeats，fine stage 运行 256 个 repeats；每阶段最多并行 16 个 repeat jobs。
+
+\paragraph{共同随机数与边际预测。}
+模型随机性包括知觉噪声、初始集合、profile 和 newcomer 抽样。对参数组合 $\Omega_s$ 运行 $R$ 条轨迹后，选择预测为
+\begin{equation}
+    \overline P_t(C_i\mid\Omega_s)
+    =
+    \frac{1}{R}
+    \sum_{r=1}^{R}
+    \widehat P_{t,r}(C_i\mid\Omega_s).
+    \label{eq:modelv14-marginal-choice}
+\end{equation}
+种子由 hyper candidate、被试、参数、阶段和 repeat index 稳定派生；同一比较中的候选尽可能共享轨迹级随机数，以降低 Monte Carlo 差异。
+
+Distribution-PPC diagnostics 使用 \texttt{mode=distribution\_ppc\_interval}、absolute tolerance $0.010$、relative tolerance $0.03$、run-choice fraction $0.10$、minimum run count $64$ 和 interval alpha $0.10$。每次运行的 lower-tail/best-run 统计仍被保留为诊断，但 V14 不再用它们选择超参数。
+
+\paragraph{主目标：choice Brier。}
+V14 对第二个试次至最后一个试次计算
+\begin{equation}
+    \mathcal L_{\mathrm{Brier}}
+    =
+    \frac{1}{|\mathcal T_s|}
+    \sum_{t\in\mathcal T_s}
+    \sum_{i=1}^{2}
+    \left[
+        \overline P_t(C_i)
+        -
+        I(c_t=i)
+    \right]^2.
+    \label{eq:modelv14-brier}
+\end{equation}
+Primary selection tolerance 为 relative $0.01$、absolute $0.001$、scale floor $0.01$，并启用 anchor guard。
+
+\paragraph{次目标：trajectory CRPS。}
+对每条模拟轨迹，代码在每个试次读取模型赋给任务真实类别的概率，再对该概率序列形成长度 16 的滑动均值；它不是在 readout 后另行抽取一个离散的模型选择。若真实行为窗口正确率为 $y_j$，第 $r$ 条随机状态轨迹对真实类别概率的窗口均值为 $\widehat y_{j,r}$，经验 CRPS 为
+\begin{equation}
+    \operatorname{CRPS}_j
+    =
+    \frac{1}{R}
+    \sum_{r=1}^{R}
+    |\widehat y_{j,r}-y_j|
+    -
+    \frac{1}{2R^2}
+    \sum_{r=1}^{R}
+    \sum_{r'=1}^{R}
+    |\widehat y_{j,r}-\widehat y_{j,r'}|.
+    \label{eq:modelv14-crps}
+\end{equation}
+窗口间再取平均。Secondary tolerance 为 relative $0.03$、absolute $0.002$、scale floor $0.01$，同样启用 anchor guard。V14 的超参数选择顺序是先 Brier、再在容差规则下比较 CRPS；NLL 不是本轮 V14 的正式选择目标。
+
+
+\subsubsection{Fine selection 与冻结配置}
+
+Fine stage 的 8 名被试配置如下；被试 127 的 $\gamma$ 是随后 boundary probe 冻结的 $0.10$，其余为 fine winner。
+
+\begin{center}
+\small
+\begin{tabular}{c|l|c|l|c|c}
+被试 & Controller family & State & Readout & $\gamma$ & $w_0$\\
+\hline
+103 & early explore late stable & $g=0.50$ & sharp $p=4$ & 0.25 & 0.01\\
+105 & stable dominant & $g=0.35$ & MAP & 0.70 & 0.05\\
+111 & choice volatile refresh & $g=0.35$ & sharp $p=2$ & 0.85 & 0.05\\
+112 & choice volatile refresh & off & MAP & 0.25 & 0.50\\
+117 & stable dominant & $g=0.35$ & MAP & 0.70 & 0.01\\
+118 & choice volatile refresh & off & sharp $p=4$ & 0.85 & 0.10\\
+127 & stable dominant & $g=0.50$ & sharp $p=2$ & 0.10 & 0.05\\
+131 & choice volatile refresh & $g=0.35$ & sharp $p=4$ & 0.50 & 0.50\\
+\end{tabular}
+\end{center}
+
+六个被试冻结为 state-on，两个冻结为 state-off。最终被选中的 family 只有 \texttt{early\_explore\_late\_stable}、\texttt{stable\_dominant} 和 \texttt{choice\_volatile\_refresh} 三类，但搜索阶段确实同时比较了全部六类，不能据最终入选频数把另外三类从 V14 的候选架构定义中删除。
+
+
+\subsubsection{独立冻结确认}
+
+Fine selection 后先用 candidate seed 140016、每个配置 512 repeats 完成局部 memory boundary probe；随后使用 candidate seed 140017、每个配置 1024 repeats，并在同一被试内共享轨迹种子，独立比较冻结的 V14、冻结的 V13 和匹配的 state counterfactual。V14 相对 V13 的平均差异为
+\begin{align}
+    \Delta\mathrm{Brier}
+    &=-0.004133,
+    &95\%\ \mathrm{CI}
+    &=[-0.012630,\ 0.004739],\\
+    \Delta\mathrm{CRPS}
+    &=-0.007994,
+    &95\%\ \mathrm{CI}
+    &=[-0.017856,\ -0.001066].
+    \label{eq:modelv14-confirmation}
+\end{align}
+两项指标均为 7/8 被试优于 V13；Brier 区间跨过 0，CRPS 区间低于 0。
+
+在 6 个冻结 state-on 被试中，state-on 相对 matched state-off 的 wins 为 Brier 4/6、CRPS 3/6；在 2 个冻结 state-off 被试中，state-off 相对 matched $g=0.35$ 的 wins 为 Brier 1/2、CRPS 2/2。冻结配置减去 matched counterfactual 的平均差异只有 Brier $-0.000803$、CRPS $-0.000933$。因此，确认结果支持保留 state-on/off 作为被试特异候选，但不能把 V14 相对 V13 的整体改善主要归因于 persistent latent state。
+
+
+\subsubsection{必须保留的实现解释边界}
+
+为避免把 V14 与后续模型建议混为一谈，论文中应明确以下事实：
+\begin{enumerate}
+    \item V14 条件 1 的实际假设数是 38，而不是 19；19 只是不考虑标签方向时的基础几何数。
+    \item 同试次预测使用抽样后的 $\widetilde{\mathbf x}_t$，不是物理刺激 $\mathbf x_t$。
+    \item Controller entropy 以 $\log38$ 归一化，不以 $\log|A_t|$ 归一化。
+    \item 首试次也执行 stochastic transition，但不进入 Brier/CRPS 评分；其反馈会影响第二试次状态。
+    \item V14 readout 是 expectation、power-2、power-4 和 MAP 四个离散候选，不是连续 concentration 参数。
+    \item 正式 memory grid 不包含 $w_0=0$ 或 $w_0=1$；因此 V14 本身没有在同一联合搜索中完整比较 fade-only 与 static-only。
+    \item Latent state 只进入 Aggressive logit，且 state-on candidate 会删除相应的 recent-error 项。
+    \item Likelihood 在写入 memory 前跨 38 个 hypotheses 归一化。
+    \item Beta update 使用 inferred correct category 的 hard assignment，不使用反馈事件概率相对于机会水平的连续证据。
+    \item Inactive beta 每个试次后被设为 0；这会使 choice-informed newcomer scoring 对 inactive hypotheses 通常使用均匀类别概率。
+    \item 基础 model YAML 中的 controller、$\gamma=0.55$、$w_0=0.06$ 和 sharpened $p=2$ 只是构造默认值，不代表 8 名被试最终冻结为同一个配置。
+    \item 代表性 8 被试的冻结确认通过后，文档建议扩展到 full sample；这不等于本节已经报告了条件 1 全样本的冻结选择结果。
+\end{enumerate}
+
+
+\subsubsection{可复现性最低报告要求}
+
+复现 V14 至少需要保存或报告：
+\begin{enumerate}
+    \item 38 个 hypotheses 的边界、原型、标签映射及其稳定索引；
+    \item Task 1b 两个误差汇总文件、被试 noise mode 和 Task 2 feature 顺序；
+    \item 每个 trial/repeat 的派生种子，或足以完全重建这些种子的 base seed 与参数签名；
+    \item 每个试次的 perceived stimulus、active indices、selected profile、profile probabilities、$\pi_t^-$、$\pi_t^+$、pre-feedback beta 和 latent state；
+    \item 六个 controller families 及四个 state settings 的完整 JSON，而不是只保存最终入选 family；
+    \item $\gamma$、$w_0$、readout、coarse/fine repeats、coordinate-descent 停止规则和 boundary-probe 规则；
+    \item 明确声明评分排除首试次，并使用 \texttt{prediction\_mode=prior\_t}；
+    \item 用全部 repeats 的边际类别概率计算 Brier，并用全部轨迹的经验分布计算窗口 CRPS；
+    \item 区分 search/fine score、boundary-probe score 和 independent frozen-confirmation score。
+\end{enumerate}
+
+综上，V14 是一个针对条件 1 的、带知觉噪声和动态 beta 的容量受限假设学习模型。它在 38 个带标签规则中随机维持至多 5 个，通过六类 feedback-gated controller、四种集合操作以及可选的 persistent volatility state 产生 active-set 转移；反馈证据进入 fade/static 双通道记忆；行为预测再由四种离散 prior readout 之一给出。上述架构及其搜索结果应作为 V14 的历史事实报告，而 model v2 对 entropy、memory endpoints、连续 readout 或跨条件反馈更新所作的修订应另行描述。
