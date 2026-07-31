@@ -253,6 +253,7 @@ class StateModelSimulationRunner(BaseStateOptimizer):
         representative_run_selection: str = "min_error",
         representative_choice_fraction: float = 0.10,
         statistics_config: Mapping[str, Any] | None = None,
+        score_trial_mask: Sequence[bool] | np.ndarray | None = None,
     ) -> Dict[str, object]:
         if simulation_repeats is None:
             raise ValueError("simulation_repeats is required.")
@@ -263,6 +264,14 @@ class StateModelSimulationRunner(BaseStateOptimizer):
         subject_frame = self._get_subject_frame(subject_id, stop_at)
         condition = self._get_condition_value(subject_frame)
         arrays = self._extract_arrays(subject_frame, max_trials)
+        resolved_score_mask = None
+        if score_trial_mask is not None:
+            resolved_score_mask = np.asarray(score_trial_mask, dtype=bool).reshape(-1)
+            if resolved_score_mask.shape[0] != arrays.feedback.shape[0]:
+                raise ValueError(
+                    "score_trial_mask length does not match the evaluated subject trials: "
+                    f"{resolved_score_mask.shape[0]} vs {arrays.feedback.shape[0]}"
+                )
 
         fixed_payload = dict(fixed_hyperparams or {})
         eval_params = dict(runtime_params or {})
@@ -320,6 +329,7 @@ class StateModelSimulationRunner(BaseStateOptimizer):
                         "phase": "simulation",
                         "repeat_index": task["repeat_index"],
                     },
+                    score_trial_mask=resolved_score_mask,
                 )
                 for task in tqdm(tasks, desc=f"Sub {subject_id} Simulation")
             )
@@ -362,6 +372,11 @@ class StateModelSimulationRunner(BaseStateOptimizer):
                 "simulation_repeats": simulation_repeats,
                 "window_size": int(window_size),
                 "statistics_config": statistics_config,
+                "score_trial_count": (
+                    int(np.sum(resolved_score_mask))
+                    if resolved_score_mask is not None
+                    else int(arrays.feedback.shape[0])
+                ),
             },
         }
 

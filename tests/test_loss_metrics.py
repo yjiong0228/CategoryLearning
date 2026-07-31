@@ -8,6 +8,8 @@ from src.Bayesian_state.utils.optimizer_common import (
     compute_prediction_metrics,
     compute_loss_values,
     exponential_smooth_curve,
+    sequential_importance_marginal,
+    _apply_output_noise_to_category_prob,
     _choice_readout_weights,
 )
 from src.Bayesian_state.utils.optimizer_simulation import aggregate_simulation_runs
@@ -34,6 +36,151 @@ class _FakeModel:
         self.hypotheses_set = [0]
         self.partition_model = _BetaSensitivePartition()
         self.engine = _FakeEngine()
+
+
+def _constant_lapse_config(epsilon: float) -> dict[str, object]:
+    return {
+        "enabled": epsilon > 0.0,
+        "base_lapse": float(epsilon),
+        "post_error_lapse": 0.0,
+        "low_accuracy_lapse": 0.0,
+        "low_accuracy_threshold": 0.70,
+        "recent_accuracy_window": 8,
+        "lapse_decay": 0.0,
+        "max_lapse": 1.0,
+        "lapse_target": "uniform",
+        "latent_volatility_lapse": 0.0,
+        "latent_volatility_power": 1.0,
+    }
+
+
+def test_constant_lapse_has_exact_zero_and_uniform_boundaries() -> None:
+    cognitive = np.asarray([0.9, 0.1], dtype=float)
+    choices = np.asarray([1, 1], dtype=int)
+    feedback = np.asarray([0.0, 1.0], dtype=float)
+
+    no_lapse, epsilon_zero, state_zero = _apply_output_noise_to_category_prob(
+        cognitive,
+        trial_idx=1,
+        choices=choices,
+        feedback=feedback,
+        n_cats=2,
+        output_noise_config=_constant_lapse_config(0.0),
+        post_error_lapse_state=0.0,
+    )
+    all_lapse, epsilon_one, state_one = _apply_output_noise_to_category_prob(
+        cognitive,
+        trial_idx=1,
+        choices=choices,
+        feedback=feedback,
+        n_cats=2,
+        output_noise_config=_constant_lapse_config(1.0),
+        post_error_lapse_state=0.0,
+    )
+
+    assert np.array_equal(no_lapse, cognitive)
+    assert epsilon_zero == 0.0
+    assert state_zero == 0.0
+    assert np.allclose(all_lapse, [0.5, 0.5])
+    assert epsilon_one == 1.0
+    assert state_one == 0.0
+
+
+def test_constant_lapse_is_exact_convex_mixture_and_history_independent() -> None:
+    cognitive = np.asarray([0.8, 0.15, 0.05], dtype=float)
+    config = _constant_lapse_config(0.2)
+    expected = 0.8 * cognitive + 0.2 / 3.0
+
+    after_error, lapse_error, state_error = _apply_output_noise_to_category_prob(
+        cognitive,
+        trial_idx=1,
+        choices=np.asarray([1, 2], dtype=int),
+        feedback=np.asarray([0.0, 1.0], dtype=float),
+        n_cats=3,
+        output_noise_config=config,
+        post_error_lapse_state=0.9,
+        latent_volatility_value=1.0,
+    )
+    after_correct, lapse_correct, state_correct = _apply_output_noise_to_category_prob(
+        cognitive,
+        trial_idx=1,
+        choices=np.asarray([3, 2], dtype=int),
+        feedback=np.asarray([1.0, 1.0], dtype=float),
+        n_cats=3,
+        output_noise_config=config,
+        post_error_lapse_state=0.0,
+        latent_volatility_value=0.0,
+    )
+
+    assert np.allclose(after_error, expected)
+    assert np.allclose(after_correct, expected)
+    assert lapse_error == lapse_correct == 0.2
+    assert state_error == state_correct == 0.0
+
+
+def test_sequential_importance_marginal_updates_only_future_predictions() -> None:
+    # Particle 0 favors category 1, particle 1 favors category 2.
+    stack = np.asarray(
+        [
+            [[0.9, 0.1], [0.9, 0.1], [0.9, 0.1]],
+            [[0.1, 0.9], [0.1, 0.9], [0.1, 0.9]],
+        ],
+        dtype=float,
+    )
+    choices = np.asarray([0, 0, 1], dtype=int)
+
+    marginal, ess = sequential_importance_marginal(
+        stack,
+        choices,
+        valid_trial_mask=np.asarray([True, True, True]),
+    )
+
+    # Current choice cannot alter its own prediction.
+    assert np.allclose(marginal[0], [0.5, 0.5])
+    # Observing category 1 on trial 0 increases particle-0 weight for trial 1.
+    assert np.allclose(marginal[1], [0.82, 0.18])
+    assert marginal[2, 0] > marginal[1, 0]
+    assert np.isclose(ess[0], 2.0)
+    assert ess[1] < ess[0]
+
+
+def test_sequential_importance_mask_skips_weight_update() -> None:
+    stack = np.asarray(
+        [
+            [[0.9, 0.1], [0.9, 0.1]],
+            [[0.1, 0.9], [0.1, 0.9]],
+        ],
+        dtype=float,
+    )
+    marginal, ess = sequential_importance_marginal(
+        stack,
+        observed_choice_index=np.asarray([0, 0]),
+        valid_trial_mask=np.asarray([False, True]),
+    )
+
+    assert np.allclose(marginal[0], [0.5, 0.5])
+    assert np.allclose(marginal[1], [0.5, 0.5])
+    assert np.allclose(ess, [2.0, 2.0])
+
+
+def test_sequential_importance_normalizes_each_particle_probability_row() -> None:
+    normalized = np.asarray(
+        [
+            [[0.8, 0.2], [0.7, 0.3]],
+            [[0.2, 0.8], [0.3, 0.7]],
+        ],
+        dtype=float,
+    )
+    scaled = normalized.copy()
+    scaled[0] *= 4.0
+    scaled[1] *= 0.25
+    choices = np.asarray([0, 1], dtype=int)
+
+    expected, expected_ess = sequential_importance_marginal(normalized, choices)
+    observed, observed_ess = sequential_importance_marginal(scaled, choices)
+
+    assert np.allclose(observed, expected)
+    assert np.allclose(observed_ess, expected_ess)
 
 
 def test_prediction_metrics_uses_trial_beta_log_when_available() -> None:
@@ -85,6 +232,67 @@ def test_prediction_metrics_uses_trial_beta_log_when_available() -> None:
 
     assert np.isclose(with_log["pred_acc"][1], 0.9)
     assert np.isclose(without_log["pred_acc"][1], 0.5)
+
+
+def test_score_trial_mask_limits_losses_without_changing_predictions() -> None:
+    model = _FakeModel()
+    post = np.ones((4, 1), dtype=float)
+    prior = np.ones((4, 1), dtype=float)
+    step_log = [
+        {"perceived_stimulus": np.asarray([0.0], dtype=float)}
+        for _ in range(4)
+    ]
+    stimulus = np.zeros((4, 1), dtype=float)
+    choices = np.asarray([1, 1, 2, 1], dtype=int)
+    feedback = np.asarray([1.0, 1.0, 0.0, 1.0], dtype=float)
+    categories = np.asarray([1, 1, 1, 1], dtype=int)
+    beta_log = np.full((4, 1), 15.0, dtype=float)
+
+    all_trials = compute_prediction_metrics(
+        model,
+        post,
+        prior,
+        step_log,
+        stimulus,
+        choices,
+        feedback,
+        categories,
+        None,
+        window_size=1,
+        prediction_mode="prior_t",
+        loss_metric="choice_brier",
+        beta_log=beta_log,
+    )["prior_t"]
+    held_out = compute_prediction_metrics(
+        model,
+        post,
+        prior,
+        step_log,
+        stimulus,
+        choices,
+        feedback,
+        categories,
+        None,
+        window_size=1,
+        prediction_mode="prior_t",
+        loss_metric="choice_brier",
+        beta_log=beta_log,
+        score_trial_mask=np.asarray([False, False, True, True]),
+    )["prior_t"]
+
+    assert np.allclose(
+        all_trials["pred_category_probs"][1:],
+        held_out["pred_category_probs"][1:],
+    )
+    assert held_out["valid_trial_mask"].tolist() == [False, False, True, True]
+    assert held_out["score_trial_mask"].tolist() == [False, False, True, True]
+    expected = np.mean(
+        [
+            np.sum(np.square(np.asarray([0.9, 0.1]) - np.asarray([0.0, 1.0]))),
+            np.sum(np.square(np.asarray([0.9, 0.1]) - np.asarray([1.0, 0.0]))),
+        ]
+    )
+    assert np.isclose(held_out["loss_choice_brier"], expected)
 
 
 def test_berhu_numeric_piecewise() -> None:

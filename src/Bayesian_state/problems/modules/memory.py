@@ -138,10 +138,24 @@ class DualMemoryModule(BaseModule):
         })
         self.state = self.engine.state
 
-        self.gamma = kwargs.get("gamma", 0.9)
-        self.w0 = kwargs.get("w0", 0.1)
+        self.gamma = float(kwargs.get("gamma", 0.9))
+        self.w0 = float(kwargs.get("w0", 0.1))
+        # Subject-level feedback sensitivity is implemented as a gain on the
+        # hypothesis-specific log likelihood written into memory.  The raw
+        # likelihood remains unchanged for the beta module, which keeps
+        # evidence updating distinct from rule-representation plasticity.
+        self.feedback_gain = float(kwargs.get("feedback_gain", 1.0))
+        if not np.isfinite(self.gamma) or self.gamma < 0.0 or self.gamma > 1.0:
+            raise ValueError(
+                f"gamma must be a finite float in [0, 1], got {self.gamma!r}."
+            )
         if not np.isfinite(self.w0) or self.w0 < 0.0 or self.w0 > 1.0:
             raise ValueError(f"w0 must be a finite float in [0, 1], got {self.w0!r}.")
+        if not np.isfinite(self.feedback_gain) or self.feedback_gain < 0.0:
+            raise ValueError(
+                "feedback_gain must be a finite non-negative float, "
+                f"got {self.feedback_gain!r}."
+            )
 
 
         ##### For parameter optimization #####
@@ -336,6 +350,11 @@ class DualMemoryModule(BaseModule):
         log_fake_likelihood = np.log(1.0 / n_total) if n_total > 0 else -np.inf
         # Clip to avoid numerical issues if needed, though 1/N is usually safe
         log_fake_likelihood = np.clip(log_fake_likelihood, np.log(DualMemoryModule.lower_numerical_bound), np.log(DualMemoryModule.upper_numerical_bound))
+        log_fake_likelihood *= self.feedback_gain
+
+        log_likelihood = self.translate_to_log(likelihood, mask=self.mask)
+        finite_likelihood = np.isfinite(log_likelihood)
+        log_likelihood[finite_likelihood] *= self.feedback_gain
 
         if "fade" in self.baseline_state:
             self.baseline_state["fade"] = self.baseline_state["fade"] * self.gamma + log_fake_likelihood
@@ -343,9 +362,9 @@ class DualMemoryModule(BaseModule):
             self.baseline_state["static"] = self.baseline_state["static"] + log_fake_likelihood
 
         if "fade" in self.state:
-            self.state["fade"] = self.state["fade"] * self.gamma + self.translate_to_log(likelihood, mask=self.mask)
+            self.state["fade"] = self.state["fade"] * self.gamma + log_likelihood
         if "static" in self.state:
-            self.state["static"] = self.state["static"] + self.translate_to_log(likelihood, mask=self.mask)
+            self.state["static"] = self.state["static"] + log_likelihood
 
     def process(self, **kwargs):
         """
@@ -414,4 +433,5 @@ class DualMemoryModule(BaseModule):
         return {
             "gamma": float,
             "w0": float,
+            "feedback_gain": float,
         }

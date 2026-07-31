@@ -204,6 +204,7 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
     shortcuts = {
         "engine.modules.memory_mod.kwargs.gamma": "gamma",
         "engine.modules.memory_mod.kwargs.w0": "w0",
+        "engine.modules.memory_mod.kwargs.feedback_gain": "feedback_gain",
         "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
         "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
         "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
@@ -242,6 +243,8 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         "engine.output_noise.kwargs.latent_volatility_power": "output_latent_volatility_power",
         "engine.modules.hypo_transitions_mod.kwargs.init_num": "init_num",
         "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": "max_active_hypotheses",
+        "engine.modules.hypo_transitions_mod.kwargs.capacity": "capacity",
+        "engine.modules.hypo_transitions_mod.kwargs.theta": "theta",
         "simulation.window_size": "window_size",
     }
     for source, target in shortcuts.items():
@@ -257,6 +260,8 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
     transition_kwargs = expanded_hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
     if isinstance(transition_kwargs, Mapping):
         for source, target in (
+            ("capacity", "capacity"),
+            ("theta", "theta"),
             ("init_num", "init_num"),
             ("max_active_hypotheses", "max_active_hypotheses"),
             ("prior_reset_base", "prior_reset_base"),

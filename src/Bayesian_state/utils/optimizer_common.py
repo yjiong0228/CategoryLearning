@@ -1113,6 +1113,100 @@ def _normalize_probability_vector(values: np.ndarray, n_cats: int) -> np.ndarray
     return probs / denom
 
 
+def sequential_importance_marginal(
+    probability_stack: np.ndarray,
+    observed_choice_index: Sequence[int] | np.ndarray,
+    valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Causally marginalize stochastic state paths using observed choices.
+
+    ``probability_stack`` has shape ``[n_particles, n_trials, n_categories]``.
+    The prediction for trial ``t`` uses particle weights after trial ``t-1``.
+    Only after producing that marginal prediction is the weight of each path
+    multiplied by its probability for the observed choice on trial ``t``.
+
+    Returns
+    -------
+    marginal_probabilities, effective_sample_size
+        Trial-aligned arrays with shapes ``[n_trials, n_categories]`` and
+        ``[n_trials]``.  ESS is recorded for the pre-choice weights used at
+        each trial.
+    """
+    stack = np.asarray(probability_stack, dtype=float)
+    if stack.ndim != 3 or stack.shape[0] <= 0 or stack.shape[2] <= 0:
+        raise ValueError(
+            "probability_stack must have shape [particles, trials, categories], "
+            f"got {stack.shape}."
+        )
+    n_particles, n_trials, n_categories = stack.shape
+    choices = np.asarray(observed_choice_index, dtype=int).reshape(-1)
+    if choices.shape[0] != n_trials:
+        raise ValueError(
+            "observed_choice_index length does not match probability trials: "
+            f"{choices.shape[0]} vs {n_trials}."
+        )
+    if valid_trial_mask is None:
+        valid = np.ones(n_trials, dtype=bool)
+    else:
+        valid = np.asarray(valid_trial_mask, dtype=bool).reshape(-1)
+        if valid.shape[0] != n_trials:
+            raise ValueError(
+                "valid_trial_mask length does not match probability trials: "
+                f"{valid.shape[0]} vs {n_trials}."
+            )
+
+    log_weights = np.full(n_particles, -np.log(float(n_particles)), dtype=float)
+    marginal = np.full((n_trials, n_categories), np.nan, dtype=float)
+    effective_sample_size = np.full(n_trials, np.nan, dtype=float)
+
+    for trial_idx in range(n_trials):
+        trial_probability = stack[:, trial_idx, :]
+        finite_particle = (
+            np.all(np.isfinite(trial_probability), axis=1)
+            & np.all(trial_probability >= 0.0, axis=1)
+            & (np.sum(trial_probability, axis=1) > 0.0)
+        )
+        finite_weight = np.isfinite(log_weights)
+        available = finite_particle & finite_weight
+        if not np.any(available):
+            log_weights[:] = -np.log(float(n_particles))
+            continue
+
+        normalized_rows = trial_probability[available]
+        normalized_rows = normalized_rows / np.sum(
+            normalized_rows,
+            axis=1,
+            keepdims=True,
+        )
+        available_log_weights = log_weights[available]
+        available_log_weights -= float(np.max(available_log_weights))
+        weights = np.exp(available_log_weights)
+        weights /= float(np.sum(weights))
+        marginal[trial_idx] = np.sum(weights[:, None] * normalized_rows, axis=0)
+        effective_sample_size[trial_idx] = 1.0 / float(np.sum(np.square(weights)))
+
+        choice = int(choices[trial_idx])
+        if not bool(valid[trial_idx]) or not 0 <= choice < n_categories:
+            continue
+        row_sums = np.sum(trial_probability, axis=1)
+        choice_probability = np.divide(
+            trial_probability[:, choice],
+            row_sums,
+            out=np.zeros(n_particles, dtype=float),
+            where=row_sums > 0.0,
+        )
+        choice_probability = np.clip(choice_probability, 1e-12, 1.0)
+        choice_probability[~finite_particle] = 1e-12
+        log_weights += np.log(choice_probability)
+        finite_after = np.isfinite(log_weights)
+        if not np.any(finite_after):
+            log_weights[:] = -np.log(float(n_particles))
+        else:
+            log_weights -= float(np.max(log_weights[finite_after]))
+
+    return marginal, effective_sample_size
+
+
 def _one_hot_or_uniform(index: int, n_cats: int) -> np.ndarray:
     out = np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
     if 0 <= int(index) < n_cats:
@@ -1348,10 +1442,20 @@ def _compute_single_mode_metrics(
     output_noise_config: Optional[Mapping[str, Any]] = None,
     choice_readout_config: Optional[Mapping[str, Any]] = None,
     readout_seed: int | None = None,
+    score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
     distance_mode = getattr(model.engine, "distance_mode", "prototype")
     n_trials = len(feedback)
+    if score_trial_mask is None:
+        resolved_score_mask = np.ones(n_trials, dtype=bool)
+    else:
+        resolved_score_mask = np.asarray(score_trial_mask, dtype=bool).reshape(-1)
+        if resolved_score_mask.shape[0] != n_trials:
+            raise ValueError(
+                "score_trial_mask length does not match number of trials: "
+                f"{resolved_score_mask.shape[0]} vs {n_trials}"
+            )
     n_features = int(stimulus.shape[1])
     partition_n_cats = getattr(partition, "n_cats", None)
     if partition_n_cats is not None:
@@ -1531,7 +1635,7 @@ def _compute_single_mode_metrics(
         if 0 <= majority_idx < weighted_cat_prob.shape[0]:
             pred_target_majority_acc[trial_idx] = float(weighted_cat_prob[majority_idx])
         pred_category_probs[trial_idx, :] = weighted_cat_prob
-        valid_trial_mask[trial_idx] = True
+        valid_trial_mask[trial_idx] = bool(resolved_score_mask[trial_idx])
 
     sliding_true_acc: List[float] = []
     sliding_pred_acc: List[float] = []
@@ -1545,6 +1649,17 @@ def _compute_single_mode_metrics(
 
     for start in range(1, n_trials - window_size + 1):
         end = start + window_size
+        if not bool(np.all(resolved_score_mask[start:end])):
+            sliding_true_acc.append(np.nan)
+            sliding_pred_acc.append(np.nan)
+            sliding_pred_std.append(np.nan)
+            sliding_true_family_acc.append(np.nan)
+            sliding_pred_family_acc.append(np.nan)
+            sliding_pred_family_std.append(np.nan)
+            sliding_target_majority_acc.append(np.nan)
+            sliding_pred_target_majority_acc.append(np.nan)
+            sliding_pred_target_majority_std.append(np.nan)
+            continue
         true_window = true_acc[start:end]
         pred_window = pred_acc[start:end]
         true_family_window = true_family_acc[start:end]
@@ -1674,6 +1789,7 @@ def _compute_single_mode_metrics(
         "observed_choice_index": observed_choice_index,
         "target_majority_index": target_majority_index,
         "valid_trial_mask": valid_trial_mask,
+        "score_trial_mask": resolved_score_mask,
     }
 
 
@@ -1695,6 +1811,7 @@ def compute_prediction_metrics(
     choice_readout_config: Optional[Mapping[str, Any]] = None,
     readout_seed: int | None = None,
     beta_log: Optional[Sequence[np.ndarray]] = None,
+    score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
     loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
@@ -1775,6 +1892,7 @@ def compute_prediction_metrics(
             output_noise_config=output_noise_config,
             choice_readout_config=choice_readout_config,
             readout_seed=mode_readout_seed,
+            score_trial_mask=score_trial_mask,
         )
         objective_error = float(loss_strategy.compute(metrics))
         loss_values = compute_loss_values(metrics, loss_delta=loss_delta)
@@ -1883,6 +2001,7 @@ def evaluate_state_model_run(
     simulation_point_seed: int | None = None,
     trajectory_seed: int | None = None,
     seed_context: Optional[Mapping[str, Any]] = None,
+    score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> SingleRunResult:
     """Run one parameter evaluation for StateModel and return normalized outputs."""
     trial_arrays = _coerce_trial_arrays(arrays)
@@ -1961,6 +2080,7 @@ def evaluate_state_model_run(
         output_noise_config=output_noise_config,
         choice_readout_config=choice_readout_config,
         beta_log=beta_log,
+        score_trial_mask=score_trial_mask,
         readout_seed=stable_seed(
             {
                 "seed_role": "choice_readout_run",

@@ -64,3 +64,36 @@ def test_memory_transition_syncs_prior_and_preserves_channel_offsets() -> None:
 
     assert np.allclose(synced, engine.prior)
     assert np.allclose(new_offsets, old_offsets)
+
+
+def _memory_posterior(feedback_gain: float) -> np.ndarray:
+    engine = SimpleNamespace(
+        set_size=2,
+        hypotheses_mask=np.ones(2, dtype=float),
+        prior=np.asarray([0.5, 0.5], dtype=float),
+        posterior=None,
+        likelihood=np.asarray([0.8, 0.2], dtype=float),
+        state=None,
+    )
+    module = DualMemoryModule(
+        engine,
+        gamma=1.0,
+        w0=1.0,
+        feedback_gain=feedback_gain,
+    )
+    module.process()
+    return np.asarray(engine.posterior, dtype=float)
+
+
+def test_feedback_gain_one_preserves_standard_bayes_update() -> None:
+    assert np.allclose(_memory_posterior(1.0), [0.8, 0.2])
+
+
+def test_feedback_gain_scales_evidence_without_changing_likelihood() -> None:
+    weak = _memory_posterior(0.5)
+    neutral = _memory_posterior(0.0)
+    strong = _memory_posterior(2.0)
+
+    assert np.allclose(neutral, [0.5, 0.5])
+    assert 0.5 < weak[0] < 0.8
+    assert strong[0] > 0.8

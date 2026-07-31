@@ -327,6 +327,13 @@ class PerceptionModule(BaseModule):
         """
 
         super().__init__(engine, **kwargs)
+        module_seed = kwargs.pop("module_seed", None)
+        self.module_seed = None if module_seed is None else int(module_seed)
+        self.rng = (
+            np.random.default_rng(self.module_seed)
+            if self.module_seed is not None
+            else None
+        )
         self.features = kwargs.pop("features", 4)
         self.subject_id = kwargs.pop("subject_id", getattr(engine, "subject_id", None))
         processed_data_dir = kwargs.pop(
@@ -461,11 +468,23 @@ class PerceptionModule(BaseModule):
             assert self.uniform_half_range is not None
             low = -self.uniform_half_range
             high = self.uniform_half_range
-            noise = np.random.uniform(low=low, high=high, size=stimu.shape)
+            if self.rng is None:
+                noise = np.random.uniform(low=low, high=high, size=stimu.shape)
+            else:
+                noise = self.rng.uniform(low=low, high=high, size=stimu.shape)
         else:
             # stimu 的每个维度加上各个特征各自的mean和std采样的噪声
-            noise = np.random.normal(loc=self.mean, scale=self.std, size=stimu.shape)
+            if self.rng is None:
+                noise = np.random.normal(loc=self.mean, scale=self.std, size=stimu.shape)
+            else:
+                noise = self.rng.normal(loc=self.mean, scale=self.std, size=stimu.shape)
         return stimu + noise
+
+    def reseed_future(self, module_seed: int) -> None:
+        """Assign an independent future stream without changing module parameters."""
+
+        self.module_seed = int(module_seed)
+        self.rng = np.random.default_rng(self.module_seed)
     
     def process(self, **kwargs):
         """

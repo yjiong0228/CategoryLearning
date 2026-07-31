@@ -1,0 +1,72 @@
+# Condition-1 common core for the minimal B0/B1/D0/D1 comparison.
+# Candidate models may override only theta, base_lapse, gamma, w0, and readout
+# power.  All state-controller, reset, and history-dependent lapse mechanisms
+# are intentionally absent.
+
+partition:
+  class: src.Bayesian_state.problems.partitions.Partition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+    include_label_reversals: true
+
+modules:
+  perception_mod:
+    class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+
+  beta_mod:
+    class: src.Bayesian_state.problems.modules.beta.BetaModule
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      decrease_rate: 0.15
+      correct_additive: 0.5
+      beta_update_mode: probabilistic_feedback
+      probabilistic_feedback_lapse: 0.0
+      use_prior_scaling: false
+      prior_beta_scale: 0.0
+
+  hypo_transitions_mod:
+    class: src.Bayesian_state.problems.modules.minimal_hypo_transition.FeedbackSwapHypothesisModule
+    kwargs:
+      capacity: 5
+      theta: 0.0
+      tie_atol: 1.0e-12
+
+  likelihood_mod:
+    class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+    kwargs:
+      distance_mode: prototype
+
+  memory_mod:
+    class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+    kwargs:
+      gamma: 0.55
+      w0: 0.10
+
+choice_readout:
+  kwargs:
+    method: sharpened_expectation
+    power: 1.0
+
+output_noise:
+  kwargs:
+    enabled: true
+    base_lapse: 0.0
+    post_error_lapse: 0.0
+    low_accuracy_lapse: 0.0
+    low_accuracy_threshold: 0.70
+    recent_accuracy_window: 8
+    lapse_decay: 0.0
+    max_lapse: 1.0
+    lapse_target: uniform
+    latent_volatility_lapse: 0.0
+    latent_volatility_power: 1.0
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod

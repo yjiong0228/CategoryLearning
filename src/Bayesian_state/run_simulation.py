@@ -41,9 +41,12 @@ from src.Bayesian_state.utils.paths import ROOT_DIR
 DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.modules.memory_mod.kwargs.gamma",
     "engine.modules.memory_mod.kwargs.w0",
+    "engine.modules.memory_mod.kwargs.feedback_gain",
     "engine.modules.hypo_transitions_mod.kwargs.strategies",
     "engine.modules.hypo_transitions_mod.kwargs.strategy_controller",
     "engine.modules.hypo_transitions_mod.kwargs.post_to_prior",
+    "engine.modules.hypo_transitions_mod.kwargs.capacity",
+    "engine.modules.hypo_transitions_mod.kwargs.theta",
     "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
     "engine.modules.hypo_transitions_mod.kwargs.init_num",
     "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base",
@@ -299,6 +302,8 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         "engine.output_noise.kwargs.latent_volatility_power": "output_latent_volatility_power",
         "engine.modules.hypo_transitions_mod.kwargs.init_num": "init_num",
         "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses": "max_active_hypotheses",
+        "engine.modules.hypo_transitions_mod.kwargs.capacity": "capacity",
+        "engine.modules.hypo_transitions_mod.kwargs.theta": "theta",
         "simulation.window_size": "window_size",
     }
     for source, target in shortcuts.items():
@@ -307,6 +312,8 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
     transition_kwargs = expanded_hyperparams.get("engine.modules.hypo_transitions_mod.kwargs")
     if isinstance(transition_kwargs, Mapping):
         for source, target in (
+            ("capacity", "capacity"),
+            ("theta", "theta"),
             ("init_num", "init_num"),
             ("max_active_hypotheses", "max_active_hypotheses"),
             ("prior_reset_base", "prior_reset_base"),
