@@ -1,0 +1,519 @@
+% model_v13.tex
+% Cond1 V13：依据 results/cond1_v13、冻结超参数、配置及产出提交的忠实方法与结果记录。
+% 本文件是可嵌入 manuscript 主文档的 LaTeX 片段，不含 documentclass 与 bibliography。
+
+\subsubsection{V13 的范围、证据来源与版本边界}
+
+本节记录条件 1（binary category learning）V13 模型的实际计算流程、超参数选择和最终模拟结果。模型的核心目标是：在不引入任意输出 lapse 的前提下，使容量受限的学习者能够在 38 个带类别标签的规则中形成、维持并最终摆脱一个错误规则，从而表达低于机会水平的持续错误以及随后的恢复。本文所称 hypothesis（假设）是一个带类别标签的几何分类规则；active set（活跃集合）是当前由模型维持的少量假设；profile 是每个试次选择的集合更新操作；readout 是把试次开始时的假设分布变为类别概率的行为读取方式。这四个概念在下文中不互换使用。
+
+描述的证据优先级依次为：（i）\texttt{results/cond1\_v13} 中每名被试的冻结参数、原始重复模拟和评估工件；（ii）结果元数据所记录的 Git 提交 \texttt{748075c3635ab2a2bf3cb75f8de1e398a2e57af5}；（iii）V13 的 model、hyper-CD 和 simulation YAML 以及 16 个 controller candidate 的 JSON。结果目录实际包含被试 101--132 共 32 名被试，而当前 hyper-CD YAML 顶部保留的是一个 8 人代表性子样本说明；因此，本节报告全样本结果时以结果工件为准，不把该注释误当作实际产出范围。最终工件记录的配置 SHA256 与当前工作树中同名 YAML 的 SHA256 不完全一致，故可复现时应优先使用每名被试结果 JSON 中保存的冻结参数、重复数、种子与 provenance，而不能只依赖当前同名配置文件。
+
+V13 只定义条件 1 的二分类模型。条件 2/3 的四分类标签映射、部分反馈和相应似然不属于本节。除特别说明外，以下公式描述的是产生 \texttt{results/cond1\_v13} 的历史实现，而不是后续 V14 或 model v2 的修订版本。
+
+
+\subsubsection{总体架构与逐试次状态}
+
+对被试 $s$ 的试次 $t$，物理观测写为
+\begin{equation}
+    o_{s,t}=(\mathbf x_{s,t},c_{s,t},r_{s,t}),
+    \qquad
+    \mathbf x_{s,t}\in[0,1]^4,\quad
+    c_{s,t}\in\{1,2\},\quad
+    r_{s,t}\in\{0,1\}.
+    \label{eq:modelv13-observation}
+\end{equation}
+其中 $\mathbf x_{s,t}$ 为物理刺激，$c_{s,t}$ 为被试选择，$r_{s,t}$ 表示该选择是否正确。每条随机模拟轨迹按固定 agenda 依次运行：（i）被试特异知觉噪声；（ii）动态 hypothesis transition；（iii）原型距离反馈似然；（iv）fade/static 双通道记忆；（v）假设特异 beta 更新。行为 readout 不在上述 agenda 中更新状态，而是在整条轨迹结束后读取保存的状态日志计算预测。
+
+全文采用以下记号：
+\begin{itemize}
+    \item $\mathcal H=\{h_1,\ldots,h_{38}\}$：完整的带标签假设空间；
+    \item $A_t\subset\mathcal H$：试次 $t$ 的活跃集合，通常 $|A_t|\leq5$；
+    \item $\pi_t^-(h)$：transition 后、当前反馈进入前保存的 \texttt{prior\_t}；
+    \item $\pi_t^+(h)$：当前反馈进入记忆后得到的 posterior；
+    \item $q_{t,h}(i)$：假设 $h$ 对类别 $i$ 的类别概率；
+    \item $L_t(h)$：实际写入双通道记忆的跨假设归一化似然；
+    \item $F_t(h)$ 与 $S_t(h)$：fade 与 static 两条对数记忆状态；
+    \item $\beta_{t,h}$：控制假设 $h$ 类别概率锐度的逆温度。
+\end{itemize}
+
+
+\subsubsection{38 个带标签的分类假设}
+
+\paragraph{19 个基础几何规则。}
+四维单位超立方体上的基础空间由 4 个轴向边界 $x_i=0.5$、6 个等值边界 $x_i=x_j$、6 个求和边界 $x_i+x_j=1$ 和 3 个四维混合边界 $x_i+x_j=x_k+x_l$ 构成，因此
+\begin{equation}
+    |\mathcal H^{\mathrm{base}}|=4+6+6+3=19.
+    \label{eq:modelv13-base-hypotheses}
+\end{equation}
+每个规则的两个区域各有一个四维原型 $\boldsymbol\mu_{h,i}$。轴向规则在诊断维度使用 $0.25/0.75$、其余维度使用 $0.5$；等值规则在两个相关维度使用 $(1/3,2/3)$ 与 $(2/3,1/3)$；求和规则在两个相关维度共同使用 $1/3$ 或 $2/3$；四维混合规则使等式两侧采用相反的 $1/3$ 与 $2/3$ 排列。
+
+\paragraph{类别标签反转。}
+V13 设置 \texttt{include\_label\_reversals=true}。每个基础几何划分同时保留恒等标签映射 $(0,1)$ 和反向映射 $(1,0)$：边界几何不变，但两个区域的类别标签及原型互换。故实际推断空间为
+\begin{equation}
+    \mathcal H
+    =\mathcal H^{\mathrm{base}}\times\{(0,1),(1,0)\},
+    \qquad |\mathcal H|=19\times2=38.
+    \label{eq:modelv13-labelled-space}
+\end{equation}
+这一步使“几何规则正确、类别标签相反”的状态成为显式假设，因而模型可以结构性地产生低于 $0.5$ 的预测，而不必把深低谷解释为纯随机反应。
+
+\paragraph{规则相似性。}
+Stable profile 使用一个 $38\times38$ 相似性矩阵。代码从 $[0,1]^4$ 均匀抽取 $B=100{,}000$ 个共同点，并按两个假设赋予相同类别标签的比例定义
+\begin{equation}
+    \operatorname{Sim}(h,u)
+    =\frac{1}{B}\sum_{b=1}^{B}
+    I\!\left[a_h(\mathbf x_b)=a_u(\mathbf x_b)\right].
+    \label{eq:modelv13-similarity}
+\end{equation}
+相同边界的两个标签反转版本因此不是相同假设。矩阵按假设空间签名缓存；若缓存不存在，产出版本没有为相似性 Monte Carlo 单独固定 \texttt{random\_state}，这是复现时需要保存缓存文件的原因。
+
+
+\subsubsection{被试特异的知觉噪声}
+
+知觉参数来自独立的 Task 1b 汇总，而不是用 Task 2 类别选择重新拟合。参数先按 feature name 读取，再按每名被试在 \texttt{Task2\_processed.csv} 中的四维特征顺序重排。
+
+对被试 101--124，令 $a_{s,d}$ 为 \texttt{Task1b\_errorsummary\_72.csv} 中 \texttt{threshold\_mean\_mean} 的绝对值，则
+\begin{equation}
+    \epsilon_{s,t,d}\sim\operatorname{Uniform}(-a_{s,d},a_{s,d}).
+    \label{eq:modelv13-uniform-noise}
+\end{equation}
+对被试 125--132，令 $\mu_{s,d},\sigma_{s,d}$ 为 \texttt{Task1b\_errorsummary\_24.csv} 中的 \texttt{error\_mean} 与 \texttt{error\_std}，则
+\begin{equation}
+    \epsilon_{s,t,d}\sim\mathcal N(\mu_{s,d},\sigma_{s,d}^2).
+    \label{eq:modelv13-normal-noise}
+\end{equation}
+每个 repeat、每个试次重新抽样，并逐维截断：
+\begin{equation}
+    \widetilde{\mathbf x}_{s,t}
+    =\operatorname{clip}(\mathbf x_{s,t}+\boldsymbol\epsilon_{s,t},0,1).
+    \label{eq:modelv13-perceived-stimulus}
+\end{equation}
+产出提交中的 perception module 使用全局 NumPy random state；simulation runner 在每条轨迹开始时用该轨迹的派生种子重置全局状态。Likelihood、beta 更新以及离线 readout 均使用日志中同一条 $\widetilde{\mathbf x}_{s,t}$，而不是重新抽样或改用物理刺激。
+
+
+\subsubsection{类别概率与反馈似然}
+
+V13 固定 \texttt{distance\_mode=prototype}。知觉刺激到类别原型的欧氏距离为
+\begin{equation}
+    d_{t,h,i}=\|\widetilde{\mathbf x}_t-\boldsymbol\mu_{h,i}\|_2,
+\end{equation}
+类别概率为
+\begin{equation}
+    q_{t,h}(i)
+    =\frac{\exp[-\beta_{t,h}d_{t,h,i}]}
+    {\sum_{j=1}^{2}\exp[-\beta_{t,h}d_{t,h,j}]}.
+    \label{eq:modelv13-category-probability}
+\end{equation}
+在二分类 condition 1 中，选择--反馈对给出的原始似然为
+\begin{equation}
+    \lambda_t(h)=
+    \begin{cases}
+        q_{t,h}(c_t),&r_t=1,\\
+        1-q_{t,h}(c_t),&r_t=0.
+    \end{cases}
+    \label{eq:modelv13-feedback-likelihood}
+\end{equation}
+具体 \texttt{Partition} 类把该量截断到 $[10^{-7},1-10^{-7}]$。Likelihood module 使用 \texttt{normalized=true}，故实际写入 memory 的量为
+\begin{equation}
+    L_t(h)=\frac{\lambda_t(h)}{\sum_{u\in\mathcal H}\lambda_t(u)}.
+    \label{eq:modelv13-normalized-likelihood}
+\end{equation}
+这是在全部 38 个假设间的归一化，而不是仅在 $A_t$ 内归一化。共同分母不改变同一试次中假设之间的似然比，但会进入两条未归一化对数记忆状态。
+
+
+\subsubsection{活跃集合初始化与首试次}
+
+模型构造时先无放回抽取 5 个初始假设。14 个候选从全部 38 个假设抽取；\texttt{low\_capacity\_stubborn} 与 \texttt{early\_explore\_late\_stable} 只从 19 个标签反转假设中抽取。初始化之后，首试次仍会运行 controller 和 transition；由于此时尚无 posterior，transition 后的集合以内均匀分布建立第一条 \texttt{prior\_t}。随后首试次完成 likelihood、memory 与 beta 更新。
+
+离线评分循环从 Python 索引 1 开始，即首试次不计入 Brier 或滑窗 BerHu，但其反馈与状态更新会影响第二试次。因而首试次是有状态作用的 burn-in，而不是从数据中删除的观测。
+
+
+\subsubsection{Feedback-gated profile controller}
+
+\paragraph{历史特征。}
+Controller 只读取当前试次之前的反馈和 posterior。反馈窗口 $W=8$，不足部分以二分类机会水平 $0.5$ 填充。定义
+\begin{align}
+    e_t&=1-r_{t-1},\\
+    A_t&=\frac{1}{8}\sum_{j=t-8}^{t-1}\widetilde r_j,
+    &E_t&=1-A_t,\\
+    D_t&=A_t-A_t^{\mathrm{old}},
+    &\tau_t&=\operatorname{clip}\!\left(\frac{t-1}{160},0,1\right),
+    \label{eq:modelv13-controller-history}
+\end{align}
+其中 $A_t^{\mathrm{old}}$ 是紧邻当前 8-trial window 之前的另一个 8-trial window 的均值。Posterior entropy 对长度为 38 的完整向量计算并以 $\log38$ 归一化：
+\begin{equation}
+    H_t=-\frac{\sum_{h=1}^{38}\pi_{t-1}^{+}(h)
+    \log\pi_{t-1}^{+}(h)}{\log38},
+    \qquad Q_t=1-H_t.
+    \label{eq:modelv13-controller-entropy}
+\end{equation}
+因此在 posterior 仅分布于 5 个活跃假设后，即使集合内完全均匀，$H_t$ 也只有 $\log5/\log38$，而不是 1。首试次读取全空间初始化 belief，是一个标度上的特殊情形。
+
+\paragraph{Profile 抽样。}
+四个操作 profile 分别记为 Conservative（C）、Stable（S）、Aggressive（A）和 Stubborn（B）。候选 family $g$ 给出四个线性 logit，并以
+\begin{equation}
+    P(K_t=k\mid g)=
+    \frac{\exp[u_{t,k}^{(g)}/T_g]}
+    {\sum_{\ell\in\{\mathrm C,\mathrm S,\mathrm A,\mathrm B\}}
+    \exp[u_{t,\ell}^{(g)}/T_g]}
+    \label{eq:modelv13-profile-softmax}
+\end{equation}
+逐试次随机抽取一个 profile。当前反馈 $r_t$ 不进入本次抽样。
+
+\paragraph{16 个候选的精确 activation。}
+为压缩记号，以下省略下标 $t$，并令 $(A,E,e,H,Q,D,\tau)$ 对应式
+\ref{eq:modelv13-controller-history}--\ref{eq:modelv13-controller-entropy}。四元组始终按 $(u_C,u_S,u_A,u_B)$ 排列：
+\begin{align}
+\texttt{stable\_dominant},\ T=.85:
+&\ ( .1+.7A+.5Q,\ 1+.5H+.3A,\ -.4+.7E+.6H,\ -.3+.7e+.5Q),\\
+\texttt{error\_aggressive},\ T=.70:
+&\ ( -.2+.9A+.6Q,\ .2+.4H+.4A,\ .3+1.2e+1.2E+.8H,\ -.5+.3e+.4Q),\\
+\texttt{error\_stubborn},\ T=.65:
+&\ ( -.1+.8A+.7Q,\ .5H+.2A,\ -.7+.4E+.5H,\ .4+1.5e+E+.6Q),\\
+\texttt{low\_capacity\_stubborn},\ T=.75:
+&\ ( .2+A+.7Q,\ -.1+.4H+.2A,\ -.2+.8e+.8E,\ .5+1.2e+.7Q),\\
+\texttt{early\_explore\_late\_stable},\ T=.80:
+&\ ( -.2+1.2\tau+.8A,\ .3+.8\tau+.5H,\ .5+H-1.2\tau,\ -.3+.8e+.5Q),\\
+\texttt{conservative\_heavy},\ T=.75:
+&\ ( 1+A+Q,\ .2+.6H,\ -1+.5E,\ -.6+.5e),\\
+\texttt{volatile\_switch},\ T=1.25:
+&\ ( .5A,\ .4+.6H,\ .2+.9e+.8H,\ .9e+.4Q),\\
+\texttt{low\_accuracy\_refresh},\ T=.75:
+&\ ( -.2+A+.6Q,\ .1+.4A+.5H,\ .5+1.6E-.8D,\ -.7+.4e),
+\end{align}
+\begin{align}
+\texttt{low\_accuracy\_stubborn},\ T=.65:
+&\ ( -.1+.7A+.6Q,\ -.1+.5H,\ -.5+.4E,\ .5+1.4E+.8e+.7Q),\\
+\texttt{confidence\_locked},\ T=.70:
+&\ ( .4+1.2Q+.6A,\ .2+.8H,\ -.2+.8E+.6H,\ .1+e+Q),\\
+\texttt{error\_choice\_newcomer},\ T=.65:
+&\ ( -1.5+A-.5E+.8Q,\ -1+.8A+.4Q-.5H,\\
+&\qquad -1.2+.5e+E+H-.5Q,\ .8+.7e+.4E+Q),\\
+\texttt{balanced},\ T=1.10:
+&\ ( .2+.5A+.5Q,\ .4+.5H,\ .1+.8e+.6E,\ .1+.8e+.6Q),\\
+\texttt{choice\_stubborn\_valley},\ T=.55:
+&\ ( -1.8+1.2A-.8E+.8Q,\ -1.2+.7A+.4Q-.4H,\\
+&\qquad -1.4+.4e+.8E+1.1H-.6Q,\ 1+.9e+.7E+1.1Q),\\
+\texttt{choice\_volatile\_refresh},\ T=1.10:
+&\ ( -1.5+A-.5E+.8Q,\ -.2+.9H+.2A,\\
+&\qquad .9e+1.4E+H,\ -.1+.8e+.4E+.6Q),\\
+\texttt{choice\_error\_recovery\_switch},\ T=.75:
+&\ ( -.8+1.6A-E+Q,\ -.4+A+.3H+.8D,\\
+&\qquad -.6+1.5E-D+.8H,\ .3+.9e+.8E-.4D+.7Q),\\
+\texttt{choice\_low\_capacity\_wave},\ T=.85:
+&\ ( -.6+.8A+.6Q,\ -.3+.7H+.3E,\ .9e+E,\ .4+e+.8Q).
+\end{align}
+这些是 16 个离散候选，不是拟合得到的连续 regression coefficients。搜索只在候选之间选择，不逐个优化上述权重。
+
+
+\subsubsection{四种 profile 的集合操作}
+
+令上一集合为 $A_{t-1}$，survivor 为 $A_{t-1}\cap A_t$，newcomer 从 $\mathcal H\setminus A_{t-1}$ 中抽取。
+
+\paragraph{Conservative。}
+代码保留旧集合按索引排序后的前 $K_C$ 个假设，不引入 newcomer。这里不是按 posterior 重新选择 top-$K_C$；在常见的 $K_C=5$ 情形中，它等价于保持旧集合。
+
+\paragraph{Stable。}
+若仍有 inactive hypothesis，则通常为一个 newcomer 预留位置。旧集合已满时，survivors 按得分经 retain temperature 变换后无放回抽样；随后从 inactive pool 抽取 newcomer。旧集合未满时保留目标为全部旧假设再加一个 newcomer，而不是一次补满容量。
+
+\paragraph{Aggressive。}
+确定性保留 survivor 得分最高的 $h^\star$。令 $p^\star=\pi_{t-1}^{+}(h^\star)$，则
+\begin{equation}
+    n_t^{\mathrm{new}}
+    =\operatorname{clip}\!\left[
+      \operatorname{round}\{(1-p^\star)n_{\max}\},
+      n_{\min},n_{\max}
+    \right],
+    \qquad n_{\max}=4.
+    \label{eq:modelv13-aggressive-count}
+\end{equation}
+因此 active-set 大小可小于 5。
+
+\paragraph{Stubborn。}
+确定性保留得分最高的 $R_B$ 个 core hypotheses，再以
+\begin{equation}
+    p_t^{\mathrm{explore}}
+    =\operatorname{clip}\!\left[
+    p_0+p_{\mathrm{correct}}(1-e_t)+p_{\mathrm{error}}e_t,0,1
+    \right]
+    \label{eq:modelv13-stubborn-explore}
+\end{equation}
+抽取至多一个 newcomer。Candidate-specific 的 $R_B$ 为 1 或 2，newcomer mass 在 $0.01$--$0.25$ 之间。两个低容量候选分别把 Stable/Conservative 容量降到 3--4，并把 Stubborn 容量降到 3；其余候选四个 profile 的容量上限通常为 5。Aggressive 的 $n_{\min}$ 依候选取 0、1 或 2。
+
+
+\subsubsection{Survivor 与 newcomer 的 choice-informed 打分}
+
+11 个非 choice-informed 候选以 posterior 作为 survivor score，并在 inactive hypotheses 中均匀抽取 newcomer。其余 5 个候选（\texttt{error\_choice\_newcomer} 以及 4 个以 \texttt{choice\_} 开头的候选）设置 choice-informed score。对旧假设，
+\begin{equation}
+    s_t^{\mathrm{surv}}(h)
+    =[\pi_{t-1}^{+}(h)]^{a_k}
+    [q_{t\leftarrow t-1,h}(c_{t-1})]^{b_k}.
+    \label{eq:modelv13-choice-survivor}
+\end{equation}
+Conservative/Stable 使用 $(a_k,b_k)=(0.8,1.2)$，Aggressive 使用 $(0.6,1.4)$，Stubborn 使用 $(0.5,1.5)$。这里用上一试次的知觉刺激与选择，但以 transition 时刻的当前 beta 重新评价。
+
+Newcomer score 最多读取最近 8 个错误试次 $\mathcal E_t$：
+\begin{align}
+    \widetilde q_t(h)
+    &=\exp\left[
+      \frac{1}{|\mathcal E_t|}
+      \sum_{j\in\mathcal E_t}\log q_{t\leftarrow j,h}(c_j)
+    \right],\\
+    s_t^{\mathrm{new}}(h)&=[\widetilde q_t(h)]^{v_k}.
+    \label{eq:modelv13-choice-newcomer}
+\end{align}
+若窗口中没有错误，所有 newcomer base score 设为 1。Conservative/Stable 一般使用 $(v_k,T_k^{\mathrm{new}})=(2.0,0.7)$；Aggressive 和 Stubborn 依候选在 $v_k=2.2$--$3.0$、$T_k^{\mathrm{new}}=0.45$--$0.8$ 范围内变化。
+
+必须注意模块交互造成的实际边界：V13 没有单独配置 \texttt{newcomer\_choice\_beta}，而 beta module 每次更新后把 inactive hypothesis 的 beta 置为 0。因此第二试次以后，inactive newcomer 通常以 $\beta=0$ 得到二分类均匀概率 $q=0.5$，不同 newcomer 的式 \ref{eq:modelv13-choice-newcomer} 得分相同。Choice-informed survivor score 仍然有效，但“近期错误选择定向引导 newcomer”的解释在当前结果实现中并未真正区分 inactive candidates。
+
+
+\subsubsection{从 posterior 到保存的 \texttt{prior\_t}}
+
+Conservative 对 survivors 的 posterior 重新归一化。Aggressive 把 $p^\star$ 分给 $h^\star$，把 $1-p^\star$ 在 newcomers 中均分。Stubborn 把候选定义的固定 newcomer mass 分给至多一个 newcomer，剩余质量按 survivor posterior 比例分配。
+
+Stable 使用 similarity--novelty 映射。令 $\chi_t=\max_h\pi_{t-1}^{+}(h)$，对 newcomer $u$ 定义
+\begin{align}
+    p_{\mathrm{sim}}(u)
+    &=\sum_{h\in A_{t-1}}\operatorname{Sim}(u,h)
+      \bar\pi_{t-1}^{+}(h),\\
+    p_{\mathrm{nov}}(u)
+    &=1-\max_{h\in A_{t-1}}\operatorname{Sim}(u,h),\\
+    b_t(u)&=\chi_t p_{\mathrm{sim}}(u)+(1-\chi_t)p_{\mathrm{nov}}(u),\\
+    \kappa_t&=\max(1-\chi_t,\kappa_{\min}).
+    \label{eq:modelv13-stable-p2p}
+\end{align}
+Survivor 的未归一化值为旧 posterior，newcomer 的未归一化值为 $\kappa_tb_t(u)$，最后在 $A_t$ 内归一化。这一分布被保存为 $\pi_t^-$，并直接供行为 readout 使用。
+
+
+\subsubsection{Fade/static 双通道记忆}
+
+Memory module 保存 fade 状态 $F(h)$ 与 static 状态 $S(h)$。构造时两条状态均由初始 prior 转为对数；另设 baseline state，初值为 $\log(1/5)$。每试次以 $1/38$ 作为 baseline 的 fake likelihood：
+\begin{align}
+    F_t^{\mathrm{base}}&=\gamma F_{t-1}^{\mathrm{base}}+\log(1/38),\\
+    S_t^{\mathrm{base}}&=S_{t-1}^{\mathrm{base}}+\log(1/38).
+    \label{eq:modelv13-memory-baseline}
+\end{align}
+
+与后续修订不同，产出 V13 的代码以 \texttt{force\_sync=false} 调用状态转移。若 active mask 未变化，memory 完全跳过到 $\pi_t^-$ 的同步；若 mask 变化，离开集合的状态被置为 $-\infty$，只有 newcomer 按其 $\pi_t^-$ 和 baseline 的 static--fade offset 初始化，survivors 保留上一试次积累的 $F,S$。因此 transition 生成的 $\pi_t^-$ 是 readout 的直接输入，但它不一定是本试次 memory posterior 更新的完整先验，特别是 survivor 质量发生改变而 active mask 不变时。
+
+随后当前似然进入两条通道：
+\begin{align}
+    F_t(h)&=\gamma F_{t^-}(h)+\log L_t(h),\\
+    S_t(h)&=S_{t^-}(h)+\log L_t(h),\\
+    \ell_t(h)&=w_0S_t(h)+(1-w_0)F_t(h),\\
+    \pi_t^+(h)&=
+    \frac{I(h\in A_t)\exp[\ell_t(h)]}
+    {\sum_{u\in A_t}\exp[\ell_t(u)]}.
+    \label{eq:modelv13-dual-memory}
+\end{align}
+V13 没有 feedback-gain 参数。正式网格为
+\begin{equation}
+    \gamma\in\{0.25,0.50,0.70,0.85,0.95\},
+    \qquad
+    w_0\in\{0.01,0.05,0.10,0.20,0.50\}.
+    \label{eq:modelv13-memory-grid}
+\end{equation}
+因此没有在同一轮搜索中比较严格的 fade-only（$w_0=0$）或 static-only（$w_0=1$）端点。
+
+
+\subsubsection{假设特异的动态 beta}
+
+固定常数为
+\begin{equation}
+    \beta_{\mathrm{init}}=5,
+    \quad\beta_{\min}=0.1,
+    \quad\beta_{\max}=25,
+    \quad d=0.15,
+    \quad a=0.5.
+    \label{eq:modelv13-beta-constants}
+\end{equation}
+初始 38 个 beta 均为 5。Newcomer 按其相对 prior 初始化：
+\begin{equation}
+    \beta_{t,u}=\operatorname{clip}\!\left[
+    5+3\frac{\pi_t^-(u)}{\max_{v\in\mathcal N_t}\pi_t^-(v)},
+    0.1,25
+    \right],
+    \label{eq:modelv13-newcomer-beta}
+\end{equation}
+故具有最大 newcomer prior 的假设从 8 开始。
+
+V13 使用 \texttt{inferred\_correct\_category}。二分类下由选择和反馈推断正确类别
+\begin{equation}
+    y_t^\star=\begin{cases}c_t,&r_t=1,\\3-c_t,&r_t=0.\end{cases}
+\end{equation}
+每个活跃假设以 prototype mode、$\beta=1$ 的 argmax 给出 hard assignment $\widehat y_{t,h}$。若一致，
+\begin{equation}
+    \beta'_{t,h}=\min\!\left[
+    \beta_{t,h}+0.5\frac{25-\beta_{t,h}}{25},25
+    \right];
+\end{equation}
+若不一致，
+\begin{equation}
+    \beta'_{t,h}=\max[(1-0.15)\beta_{t,h},0.1].
+    \label{eq:modelv13-beta-update}
+\end{equation}
+更新结束后 inactive hypotheses 的 beta 被置为 0。
+
+当前 likelihood 在 beta module 之前运行，故其使用的是吸收 $r_t$ 之前的 beta。可是产出提交中的 beta module 先依据 $r_t$ 执行式 \ref{eq:modelv13-beta-update}，再把结果写入 \texttt{beta\_log}；离线 readout 又从 \texttt{beta\_log}[t] 读取 beta。因此归档 V13 的行为评分在假设权重层使用反馈前的 $\pi_t^-$，但在类别概率锐度层使用已经吸收同试次反馈的 $\beta'_{t,h}$。这构成同试次 outcome leakage；相关 Brier、BerHu 和 predictive band 应被视为历史实现的描述性结果，而不是严格因果的 out-of-sample 预测。
+
+
+\subsubsection{行为 readout 与执行顺序}
+
+V13 只搜索两种离散 readout，且两者都读取 $\pi_t^-$。Expectation 为
+\begin{equation}
+    P_t(i)=\sum_{h\in\mathcal H}\pi_t^-(h)q_{t,h}(i),
+    \label{eq:modelv13-expectation-readout}
+\end{equation}
+MAP 为
+\begin{equation}
+    h_t^\star=\operatorname*{arg\,max}_{h}\pi_t^-(h),
+    \qquad P_t(i)=q_{t,h_t^\star}(i).
+    \label{eq:modelv13-map-readout}
+\end{equation}
+并列最大值由 NumPy \texttt{argmax} 选取索引最小者。V13 没有搜索 sharpened expectation，也没有启用 output lapse。
+
+归档版本每个试次的实际顺序可概括为：
+\begin{enumerate}
+    \item 抽样 $\widetilde{\mathbf x}_t$；
+    \item 用截至 $t-1$ 的历史抽取 profile，更新 $A_t$ 并保存 $\pi_t^-$；
+    \item 用更新前 beta 计算 $L_t$；
+    \item 用未强制同步 survivor 的双通道状态计算 $\pi_t^+$；
+    \item 用当前反馈更新 beta，清零 inactive beta，再写入 \texttt{beta\_log}；
+    \item 轨迹结束后，用 $\pi_t^-$、同一 $\widetilde{\mathbf x}_t$ 和已更新的 \texttt{beta\_log}[t] 计算式 \ref{eq:modelv13-expectation-readout} 或 \ref{eq:modelv13-map-readout}。
+\end{enumerate}
+
+
+\subsubsection{超参数搜索与冻结规则}
+
+四个搜索坐标是：（i）25 个 $(\gamma,w_0)$ 组合；（ii）16 个 transition candidates；（iii）expectation/MAP 两种 readout；beta 常数固定。完整笛卡尔积为 $25\times16\times2=800$，但算法是 coordinate descent，并未穷举 800 个组合。
+
+每个 stage 使用 6 个随机起点，最多 8 个 outer iterations；每个 restart 固定一次随机 coordinate 顺序，patience 为连续 2 个 outer rounds 没有 objective 改善，parallel budget 为 64，单次最多 16 个 repeat jobs。Coarse 每个参数点运行 256 条轨迹，fine 运行 512 条；\texttt{hyper\_base\_seed=42}。配置声明的 \texttt{min\_delta=0.001} 在产出版本中只被解析，未进入接受或停止判断，实际停止规则只有 objective ranking 与 patience。
+
+每条轨迹从第二试次开始计算 choice Brier：
+\begin{equation}
+    B_r=\frac{1}{T-1}\sum_{t=2}^{T}\sum_{i=1}^{2}
+    [P_{r,t}(i)-I(c_t=i)]^2.
+    \label{eq:modelv13-brier}
+\end{equation}
+第二目标先用长度 16 的滑窗形成真实正确率 $a_j$ 与模型赋给真实类别概率的窗口均值 $\widehat a_{r,j}$。令 $e_{r,j}=|a_j-\widehat a_{r,j}|$、$\delta=0.10$，BerHu 为
+\begin{equation}
+    \rho_\delta(e)=
+    \begin{cases}
+        e,&e\leq\delta,\\
+        (e^2+\delta^2)/(2\delta),&e>\delta,
+    \end{cases}
+    \qquad
+    H_r=\frac{1}{J}\sum_j\rho_{0.10}(e_{r,j}).
+    \label{eq:modelv13-berhu}
+\end{equation}
+
+候选的统计量不是全部 repeats 的均值，而是把每项 loss 从小到大排序，取最低 $\lceil0.25R\rceil$ 条轨迹后求均值；因此 coarse 使用最低 64/256，fine 使用最低 128/512。选择先比较 \texttt{choice\_brier.best25\_mean}，容差为
+\begin{equation}
+    0.03\,|B_{\min}|\ \text{或}\ 0.001
+\end{equation}
+中较大者（scale floor $0.01$）；在该候选集合内再比较 \texttt{accuracy\_curve\_berhu.best25\_mean}，容差为相对 $0.05$ 或绝对 $0.005$ 中较大者。两项目标都启用 anchor guard，禁止当前 coordinate 更新使受保护目标恶化超过 anchor 的同一容差。该 best-quarter 目标刻画“模型可生成的较好轨迹”，不等价于模型随机预测分布的平均拟合。
+
+
+\subsubsection{32 名被试的冻结参数与搜索分数}
+
+最终选择覆盖被试 101--132。表中 $B_{25}$ 和 $H_{25}$ 分别为 fine/search 工件中的 Brier 与 BerHu best-quarter mean；它们是被同一数据选择后的内部拟合量，不是 held-out estimates。
+
+\begin{center}
+\scriptsize
+\begin{tabular}{c|l|c|c|c|c|c}
+被试 & Controller family & $\gamma$ & $w_0$ & Readout & $B_{25}$ & $H_{25}$\\
+\hline
+101 & early explore late stable & .50 & .01 & Exp. & .246869 & .078597\\
+102 & choice volatile refresh & .95 & .10 & MAP & .260872 & .130755\\
+103 & error choice newcomer & .95 & .20 & Exp. & .369553 & .138076\\
+104 & stable dominant & .50 & .05 & Exp. & .303810 & .086323\\
+105 & stable dominant & .50 & .05 & MAP & .129889 & .069495\\
+106 & stable dominant & .25 & .05 & Exp. & .293198 & .088269\\
+107 & stable dominant & .50 & .05 & Exp. & .298598 & .067670\\
+108 & choice volatile refresh & .95 & .20 & Exp. & .300857 & .131013\\
+109 & conservative heavy & .25 & .01 & Exp. & .344797 & .128229\\
+110 & stable dominant & .50 & .01 & Exp. & .278272 & .089300\\
+111 & choice volatile refresh & .70 & .05 & Exp. & .382956 & .130724\\
+112 & choice volatile refresh & .70 & .50 & MAP & .267585 & .127595\\
+113 & conservative heavy & .25 & .01 & Exp. & .392151 & .110090\\
+114 & choice volatile refresh & .50 & .50 & Exp. & .315172 & .121834\\
+115 & stable dominant & .25 & .05 & Exp. & .289286 & .083233\\
+116 & stable dominant & .70 & .05 & Exp. & .239905 & .083661\\
+\end{tabular}
+\end{center}
+
+\begin{center}
+\scriptsize
+\begin{tabular}{c|l|c|c|c|c|c}
+被试 & Controller family & $\gamma$ & $w_0$ & Readout & $B_{25}$ & $H_{25}$\\
+\hline
+117 & error aggressive & .25 & .20 & Exp. & .091749 & .058484\\
+118 & stable dominant & .25 & .05 & Exp. & .380479 & .117663\\
+119 & choice volatile refresh & .95 & .10 & Exp. & .320219 & .157670\\
+120 & conservative heavy & .25 & .01 & Exp. & .321449 & .129049\\
+121 & choice volatile refresh & .85 & .10 & Exp. & .336654 & .132776\\
+122 & stable dominant & .50 & .05 & Exp. & .251064 & .088334\\
+123 & error choice newcomer & .95 & .05 & Exp. & .368029 & .118554\\
+124 & stable dominant & .25 & .10 & Exp. & .352850 & .142840\\
+125 & stable dominant & .70 & .10 & MAP & .148570 & .069913\\
+126 & stable dominant & .70 & .01 & MAP & .130959 & .041029\\
+127 & early explore late stable & .25 & .05 & Exp. & .311401 & .085325\\
+128 & stable dominant & .25 & .05 & Exp. & .371968 & .143573\\
+129 & choice volatile refresh & .70 & .20 & Exp. & .407376 & .152652\\
+130 & conservative heavy & .25 & .01 & Exp. & .344847 & .139356\\
+131 & choice volatile refresh & .85 & .05 & Exp. & .427877 & .131725\\
+132 & choice volatile refresh & .50 & .50 & MAP & .326617 & .144975\\
+\end{tabular}
+\end{center}
+
+入选 family 为 stable dominant 13 人、choice volatile refresh 10 人、conservative heavy 4 人、early explore late stable 2 人、error choice newcomer 2 人、error aggressive 1 人；其余 10 个候选无人入选，但它们仍属于被比较的模型空间。Expectation 入选 26 人，MAP 入选 6 人。$\gamma$ 的入选频数依次为 .25：11 人、.50：8 人、.70：6 人、.85：2 人、.95：5 人；$w_0$ 为 .01：7 人、.05：13 人、.10：5 人、.20：4 人、.50：3 人。32 人的 $B_{25}$ 均值为 0.300184，$H_{25}$ 均值为 0.109962。
+
+
+\subsubsection{最终 4096-repeat 模拟与 posterior predictive checks}
+
+基础 simulation YAML 写有 \texttt{simulation\_repeats=1024}，但归档的 32 个被试结果 JSON 和 raw-run reference 都记录每名被试实际完成 4096 条轨迹；本节因此按 4096 报告。最终模拟固定上述被试特异参数，\texttt{prediction\_mode=prior\_t}、\texttt{selection\_prediction\_mode=prior\_t}、window size 16、base seed 42。每名被试用于展示的代表轨迹是 4096 条轨迹中 \texttt{accuracy\_curve\_berhu} 最小者，而不是一条预先指定的典型轨迹。
+
+Predictive accuracy band 在每个滑窗汇总 4096 条轨迹的 $0,5,25,50,75,95,100\%$ 分位数。32 人平均的 median-curve MAE 为 0.113728；50\% band coverage 为 0.377200，90\% band coverage 为 0.656056；预测与真实曲线绝对一阶差分之比的中位数再跨被试平均为 0.538926。因而模型的中位预测总体比行为曲线更平滑，且经验覆盖明显低于名义覆盖。
+
+Behavior PPC 对每条轨迹计算四组统计量：（i）正确率曲线 MAE；（ii）预测/真实一阶差分幅度比；（iii）用 8 个滞后选择/反馈特征的标准化 ridge history kernel 相关；（iv）switch、win--stay 与 lose--shift 偏差绝对值的平均。预设通过阈值分别为 MAE $\leq0.10$、volatility ratio $\in[0.60,1.50]$、history correlation $\geq0.80$、switch score $\leq0.10$。结果如下：
+\begin{center}
+\small
+\begin{tabular}{l|c|c}
+PPC 指标 & 32 人均值 & 通过人数\\
+\hline
+Accuracy-curve MAE & 0.141918 & 1/32\\
+Volatility ratio & 0.782084 & 13/32\\
+History-kernel correlation & 0.218382 & 0/32\\
+Switch/win--stay/lose--shift score & 0.040256 & 30/32\\
+\end{tabular}
+\end{center}
+这些 PPC 表明 V13 具备产生错误规则锁定与恢复轨迹的表达能力，但其随机预测分布并没有充分复现被试的逐窗正确率、时间波动和选择历史依赖。尤其是 best-quarter search score 不能替代对全部 4096 条轨迹的 PPC。
+
+
+\subsubsection{Oral alignment 的维度不一致}
+
+评估目录还包含 oral center mode 的规则质量对齐。其基本做法是把被试口述规则中心到类别原型的距离转为 oral mass，再与模型 prior 在 full、active 和 active--oral union 三个空间计算 Jensen--Shannon similarity、target mass、hit 与 coverage。然而归档 evaluator 在构造 oral partition 时没有设置 \texttt{include\_label\_reversals=true}，所以 oral mass 只有 19 维；模型 prior 为 38 维。Distribution alignment 通过取两者最小长度而截断到模型前 19 维，忽略全部 reversed-label hypotheses；另一项 oral-based alignment 则因访问第 22 个索引而报出 \texttt{index 21 is out of bounds for axis 0 with size 19}，manifest 将其标为 skipped。
+
+因此，现存 oral distribution、target、hit 和 coverage 图只能作为一个 19 维 reduced-space 的诊断，不能作为 V13 完整 38-hypothesis space 的验证证据。要进行正式比较，必须先把 oral rule mapping 显式扩展到相同的 38 个带标签假设，并重新运行全部 alignment。
+
+
+\subsubsection{解释边界与最低复现要求}
+
+对 V13 的论文表述必须保留以下边界：
+\begin{enumerate}
+    \item 38 是带类别标签的假设数；无标签的几何边界数仍为 19。
+    \item Controller 使用过去反馈且当前 profile 抽样在因果上不读取 $r_t$；首试次也执行随机 transition，但不进入 loss。
+    \item Entropy 用 $\log38$ 而不是 $\log|A_t|$ 归一化。
+    \item Conservative 截断按 hypothesis index，而不是 posterior top-$K$。
+    \item Choice-informed survivor score 有效，但 inactive beta 清零使 recent-error newcomer score 通常不能区分 newcomers。
+    \item 保存的 $\pi_t^-$ 直接进入 readout；V13 memory 没有每试次强制同步 survivor 到该 prior。
+    \item Likelihood 在写入 memory 前跨全部 38 个假设归一化。
+    \item Beta 采用 inferred correct category 的 hard update；归档 readout 又使用 post-feedback \texttt{beta\_log}，所以现有行为 loss 含同试次 outcome leakage。
+    \item 搜索目标是 repeats 中表现最好的四分之一，不是平均 predictive performance；最终 PPC 才汇总全部 4096 条轨迹。
+    \item 基础 YAML 的 1024 repeats 与实际工件的 4096 repeats 不一致，应以结果工件为准。
+    \item Oral evaluator 的 19/38 维不一致使现存 oral alignment 不能验证完整 V13。
+\end{enumerate}
+
+最低限度的复现包应保存：38 个假设的稳定索引、标签映射和相似性缓存；两份 Task 1b 误差汇总与 Task 2 feature 顺序；16 个 controller JSON；每名被试冻结的 $\gamma,w_0$, family 和 readout；base/candidate/trajectory seeds；逐试次 perceived stimulus、active indices、profile probabilities、$\pi_t^-$、$\pi_t^+$ 与 pre-/post-feedback beta；coarse/fine 的全部 candidate summaries；以及最终每名被试 4096 条 raw-run reference。若用于新的因果或验证性结论，还应先改用 pre-feedback beta 进行 readout、显式决定 memory 是否同步到 $\pi_t^-$，并在统一的 38 维空间重跑 oral alignment。
+
+综上，V13 的核心贡献是把条件 1 建模为一个在 38 个带标签规则中运行的、容量受限且可动态切换 profile 的 Bayesian state learner。Label reversal 使稳定错误规则和 below-chance 轨迹在结构上可表达；双通道记忆和两种 prior readout 提供了被试特异动态。但全分布 PPC、beta 日志顺序、memory--prior 不完全同步以及 oral 维度不一致共同限定了当前结果的解释强度，故 V13 应被报告为一个具有目标行为能力但仍需因果修正与外部验证的历史模型版本。
