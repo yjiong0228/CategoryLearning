@@ -16,6 +16,7 @@ printf '%s\n' \
     '\documentclass[12pt]{article}' \
     '\usepackage[a4paper,margin=2.5cm]{geometry}' \
     '\usepackage{amsmath,amssymb,bm}' \
+    '\usepackage{graphicx}' \
     '\usepackage{etoolbox}' \
     '\usepackage{fontspec}' \
     '\usepackage[unicode,hidelinks]{hyperref}' \
