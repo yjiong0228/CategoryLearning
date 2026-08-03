@@ -1,0 +1,889 @@
+% model_0803.tex
+% 2026-08-03：贝叶斯规则学习框架下 H 模块的重新设计。
+% 本文件是一份可嵌入 manuscript 的理论与方法设计文档，不报告尚未完成的实证结果。
+
+\subsubsection{设计目标：把 H 模块从人工 profile 改写为可检验的生成动力学}
+
+\paragraph{本文档的任务。}
+我们已经共同确定了模型的大部分骨架：物理刺激先经过被试特异的知觉模型；候选规则对刺激给出类别预测；反馈前规则信念产生选择；反馈到达后更新规则信念；决策读出、反应时（RT）和口头报告分别构成可以单独检验的模块。当前尚未解决的核心问题是 H 模块，即学习者如何在相邻试次之间保持、局部修正或大幅重组其规则信念。
+
+本文件不再比较贝叶斯框架与强化学习、样例学习等其他理论框架。这里把贝叶斯规则学习作为既定的理论取向，集中回答以下问题：第一，怎样在数学上定义一个足够简洁、同时能够覆盖主要规则转移方式的 H 操作空间；第二，策略控制怎样根据上一试次的信念、选择和反馈连续演化，而不是从若干人工 controller family 中抽取；第三，新的 H 模块怎样嵌入已有的知觉、记忆、选择、RT、口头报告和反馈更新流程；第四，当多个参数或模块产生近似相同的行为时，怎样定义、检验和报告等价性。
+
+本文档提出的是待检验模型，不把数学上的良好性质写成已经得到实证支持的心理结论。下文的“命题”和“证明”只证明所定义模型的概率闭合、嵌套关系和集合性质；H 模块是否能够描述真实被试，仍需依靠恢复分析、时间留出预测、跨条件检验以及 RT 和口头报告约束。
+
+\paragraph{TL;DR：不看后面的数学证明，也可以先把握三点。}
+\begin{enumerate}
+    \item \textbf{策略动力学不应再由几种离散 profile 人为规定。}学习者并不是在每个试次从 Stable、Aggressive 等几个固定身份中切换。更自然的描述是：他在当前试次愿意在多大程度上修正原来的规则；如果要修正，是在相似规则附近寻找，还是到更大的规则空间重新寻找。这两个倾向可以连续变化，并由上一试次的反馈惊讶、规则不确定性以及策略自身的持续性共同推动。这样，早期探索、后期稳定或连续错误后的大幅调整都可以从同一套动力学中产生，而不需要分别编写几种生硬的 profile 转移表。
+    \item \textbf{参数等价性不一定是需要消灭的缺陷，也可能是模型应当呈现的认知事实。}相同的外部选择序列，可能来自 fade/static 两种记忆机制的不同组合，也可能来自 H 模块中的规则搜索，或者来自决策读出的随机性。既然被试的外部行为本来就可能由多种内部过程产生，我们不必强迫模型为每个人找出唯一的一组“真实参数”。更严谨的做法是找出哪些参数组合在预测上彼此等价，报告这个可接受集合，并只解释在整个集合中仍然稳定的心理量。
+    \item \textbf{Choice、RT 和 oral report 应当形成逐层增加的约束。}Choice 是最基本的约束，但只看选择时，记忆衰减、规则搜索和决策噪声可能产生很相似的结果。RT 可以进一步约束搜索和控制成本，口头报告则可以更直接地约束被试当时考虑的规则内容以及规则改变的距离。因此可以依次比较 choice、choice+RT、choice+RT+oral report 下仍然成立的参数集合，检查等价集合是否逐步缩小。加入新通道并不保证最终只剩一个参数点；它的价值在于说明哪些解释被排除了，哪些不同的内部机制在现有数据下仍然无法区分。
+\end{enumerate}
+
+\paragraph{核心设计。}
+新的 H 模块不再把 Conservative、Stable、Aggressive 和 Stubborn 当作四个先验给定的心理实体。模型先定义三个基本规则操作：保持当前规则、在相似规则附近局部搜索、以及从更广的规则空间重新搜索。两个连续控制量决定这些操作在当前试次的混合比例：
+\begin{enumerate}
+    \item 修正幅度 $m_{s,t}\in[0,1]$：有多少规则质量离开原位置；
+    \item 全局搜索比例 $g_{s,t}\in[0,1]$：发生修正时，有多少使用全局而不是局部搜索。
+\end{enumerate}
+之前定义的 4 种策略标签只在结果展示时作为连续状态空间中的可解释区域。策略标签不反向控制模型，也不用于人为指定转移概率。
+
+
+\subsubsection{历史版本 V13、V14}
+
+\paragraph{历史版本提供了不同层面的基础。}
+V13 的重要贡献是建立了带标签的规则空间、有限活跃集合以及逐试次可变化的规则集合操作。它证明模型在表达能力上可以生成错误规则锁定、低于机会水平的行为和随后恢复。然而，V13 同时枚举 16 个 controller family，并为每个 family 人工规定反馈窗口、熵、时间和错误率怎样进入四个 profile 的 logit。其四种 profile 也不处于同一抽象层级：Conservative、Stable 和 Aggressive 主要按照替换数量区分，Stubborn 则同时涉及集中程度、持续性和对负反馈的低敏感性。
+
+V14 保留了这一结构，将 controller family 减少为 6 类，并加入 persistent volatility state。V14 还修正了 memory 与 transition prior 的同步、同试次 beta 记录以及全部随机重复的边际预测。这些计算原则应继续保留。但 V14 的 persistent state 只改变 Aggressive profile 的 logit，不能统一说明其他操作怎样随反馈演化；冻结比较也没有证明该 state 是 V14 相对 V13 改善的主要来源。因此，V14 更像是对旧 H 架构的计算修订，而不是新的 H 理论。
+
+\paragraph{四个概念必须分开。}
+本文件固定以下术语及含义，不再混用：
+\begin{center}
+\small
+\begin{tabular}{p{0.20\textwidth}|p{0.68\textwidth}}
+\hline
+概念 & 定义\\
+\hline
+规则内容 $h$ & 一条具体、带类别标签的几何分类规则\\
+规则信念 $\pi_t(h)$ & 当前时刻在全部候选规则上的概率分布\\
+策略控制 $(m_t,g_t)$ & 决定规则信念在相邻试次之间移动多少、移动多远的连续状态\\
+观测通道 & 选择、RT 和口头报告怎样读取同一个反馈前状态\\
+\hline
+\end{tabular}
+\normalsize
+\end{center}
+规则内容回答“被试可能使用什么规则”，策略控制回答“被试怎样修正规则”，观测通道回答“内部状态怎样表现为数据”。这一分离是新 H 模块相对于 V13/V14 最重要的结构变化。
+
+
+\subsubsection{统一模型中的位置：H 模块怎样嵌入已有框架}
+
+\paragraph{基本符号。}
+令 $s$、$t$ 和 $k$ 分别表示被试、试次和实验条件。条件 $k$ 的带标签候选规则集合为 $\mathcal H_k$，类别集合为 $\mathcal C_k$，规则先验为 $p_{0,k}(h)>0$，且
+\begin{equation}
+    \sum_{h\in\mathcal H_k}p_{0,k}(h)=1.
+    \label{eq:model0803-rule-prior}
+\end{equation}
+物理刺激为 $\mathbf x_{s,t}$。Task 1b 给出的被试特异知觉分布被积分进规则预测：
+\begin{equation}
+    q_{s,t,h}(c)
+    =P\!\left(
+      \widetilde{\mathbf x}_{s,t}\in R_{k,h,c}
+      \mid \mathbf x_{s,t},g_s
+    \right),
+    \qquad
+    \sum_{c\in\mathcal C_k}q_{s,t,h}(c)=1.
+    \label{eq:model0803-rule-prediction}
+\end{equation}
+$F_{s,t}(h)$ 和 $S_{s,t}(h)$ 分别表示规则 $h$ 的 fade（近期衰减）与 static（长期累积）对数记忆状态；$\pi^+_{s,t-1}$ 表示由两条通道混合得到的上一试次反馈后规则信念，$\pi^-_{s,t}$ 表示 H 转移后、当前反馈前的规则信念。
+
+\paragraph{先执行 H 转移，再把双通道记忆同步到当前先验。}
+
+实验开始前，两条记忆轨道都由规则先验初始化：
+\begin{equation}
+    F_{s,0}(h)=S_{s,0}(h)=\log p_{0,k}(h),
+    \qquad
+    \pi^+_{s,0}(h)=p_{0,k}(h).
+    \label{eq:model0803-memory-initial}
+\end{equation}
+每个试次首先由 H 转移上一反馈后信念：
+\begin{equation}
+    \pi^-_{s,t}(h')
+    =
+    \sum_{h\in\mathcal H_k}
+    \pi^+_{s,t-1}(h)T_{s,t}(h'\mid h).
+    \label{eq:model0803-h-position}
+\end{equation}
+随后定义上一时刻两通道的规则特异差异
+\begin{equation}
+    \Delta_{s,t-1}(h)
+    =S_{s,t-1}(h)-F_{s,t-1}(h).
+    \label{eq:model0803-memory-offset}
+\end{equation}
+令 $\gamma_{s,k}\in(0,1]$ 为 fade 通道保持率，$w_{0,s,k}\in[0,1]$ 为 static 通道在最终记忆混合中的权重。当前反馈进入之前，两条状态同步为
+\begin{align}
+    F_{s,t^-}(h)
+    &=\log\pi^-_{s,t}(h)
+      -w_{0,s,k}\Delta_{s,t-1}(h),\\
+    S_{s,t^-}(h)
+    &=\log\pi^-_{s,t}(h)
+      +(1-w_{0,s,k})\Delta_{s,t-1}(h).
+    \label{eq:model0803-memory-sync}
+\end{align}
+当前选择、RT 和口头报告读取 $\pi^-_{s,t}$。反馈到达后，先将其规则支持度写成数值稳定形式
+\begin{equation}
+    \widetilde L_{s,t}(h)
+    =\max\{L_{s,t}(h),\epsilon\},
+    \label{eq:model0803-effective-likelihood}
+\end{equation}
+其中 $\epsilon>0$ 在分析前冻结，只防止对零取对数。$\widetilde L_{s,t}(h)$ 随后同时进入两条轨道：
+\begin{align}
+    F_{s,t}(h)
+    &=\gamma_{s,k}F_{s,t^-}(h)
+      +\log\widetilde L_{s,t}(h),\\
+    S_{s,t}(h)
+    &=S_{s,t^-}(h)
+      +\log\widetilde L_{s,t}(h).
+    \label{eq:model0803-dual-memory-update}
+\end{align}
+两条轨道的混合对数权重和反馈后信念为
+\begin{align}
+    \ell_{s,t}(h)
+    &=w_{0,s,k}S_{s,t}(h)
+      +(1-w_{0,s,k})F_{s,t}(h),\\
+    \pi^+_{s,t}(h)
+    &=\frac{\exp[\ell_{s,t}(h)]}
+      {\sum_{u\in\mathcal H_k}\exp[\ell_{s,t}(u)]}.
+    \label{eq:model0803-feedback-posterior}
+\end{align}
+$S_t$ 在每次 H 先验同步以后，以不衰减方式吸收反馈证据；$F_t$ 在吸收新证据时先按 $\gamma$ 衰减。$w_0$ 决定两条机制对反馈后规则信念的相对贡献。H 模块改变规则质量向哪里移动，双通道记忆则改变旧证据与新反馈怎样共同决定下一后验。
+
+\paragraph{命题 1：双通道同步精确保留 H 先验，并嵌套规范性端点。}
+式 \ref{eq:model0803-memory-sync} 满足
+\begin{equation}
+    w_{0,s,k}S_{s,t^-}(h)
+    +(1-w_{0,s,k})F_{s,t^-}(h)
+    =\log\pi^-_{s,t}(h).
+    \label{eq:model0803-memory-sync-identity}
+\end{equation}
+进一步，若 H 转移为恒等映射，则同步只给上一试次的 $F$ 和 $S$ 分别加上同一个与规则无关的常数，不改变任一通道的规则间对数比。当 $\gamma=1$ 或 $w_0=1$ 时，反馈后信念退化为使用稳定化支持度的标准贝叶斯更新 $\pi^+_t(h)\propto\pi^-_t(h)\widetilde L_t(h)$；当 $w_0=0$ 时，模型退化为 fade-only 更新 $\pi^+_t(h)\propto[\pi^-_t(h)]^\gamma\widetilde L_t(h)$。当所有 $L_t(h)>\epsilon$ 时，$\widetilde L_t=L_t$，上述第一种端点就是未经截断的标准贝叶斯更新。
+
+\textit{证明。}
+把式 \ref{eq:model0803-memory-sync} 代入左侧，有
+\begin{align}
+    &w_0[\log\pi^-(h)+(1-w_0)\Delta(h)]
+    +(1-w_0)[\log\pi^-(h)-w_0\Delta(h)]\\
+    &\qquad=\log\pi^-(h),
+\end{align}
+因为两个含 $\Delta(h)$ 的交叉项相消。若 $T=I$，则 $\log\pi^-_{t}(h)=\ell_{t-1}(h)-\log Z_{t-1}$。再次代入同步式可得
+\begin{equation}
+    F_{t^-}(h)=F_{t-1}(h)-\log Z_{t-1},
+    \qquad
+    S_{t^-}(h)=S_{t-1}(h)-\log Z_{t-1},
+\end{equation}
+所以每条通道的任意两条规则之差保持不变。若 $\gamma=1$，式 \ref{eq:model0803-dual-memory-update}--\ref{eq:model0803-feedback-posterior} 给出
+\begin{equation}
+    \ell_t(h)=\log\pi^-_t(h)+\log\widetilde L_t(h),
+\end{equation}
+$w_0=1$ 时结论相同。若 $w_0=0$，同步式给出 $F_{t^-}(h)=\log\pi^-_t(h)$，故 $\ell_t(h)=\gamma\log\pi^-_t(h)+\log\widetilde L_t(h)$。证明完毕。
+
+该命题说明，H 转移与双通道记忆之间没有两个相互竞争的“当前先验”。H 先生成唯一的 $\pi^-_t$；同步操作让两条记忆轨道在反馈前共同表示该先验，同时保留它们过去累积方式的差异。完整规则空间中不需要 V14 的虚拟 baseline state，因为任意共同平移都会在 softmax 中抵消；若以后恢复有限活跃集合，newcomer 的通道差异初始化才需要单独规定。
+
+\paragraph{双通道参数的层级估计与端点比较。}
+正式双通道模型令 $0<\gamma_{s,k}<1$ 且 $0<w_{0,s,k}<1$。为允许个体差异和条件间部分汇聚，可定义
+\begin{equation}
+    \begin{pmatrix}
+      \operatorname{logit}\gamma_{s,k}\\
+      \operatorname{logit}w_{0,s,k}
+    \end{pmatrix}
+    =\boldsymbol\mu_M
+     +\boldsymbol\delta_{M,k}
+     +\mathbf u_{M,s},
+    \qquad
+    \mathbf u_{M,s}\sim
+    \mathcal N(\mathbf0,\boldsymbol\Sigma_M).
+    \label{eq:model0803-memory-hierarchy}
+\end{equation}
+$\boldsymbol\Sigma_M$ 允许 $\gamma$ 与 $w_0$ 的被试差异相关，这一点对于呈现两者的后验脊线很重要。由于 logit 参数化不能达到边界，fade-only（$w_0=0$）与标准贝叶斯端点应作为明确的嵌套候选单独拟合，而不是只在内部网格附近做 boundary probe。根据命题 1，static-only（$w_0=1$）与无 fade 衰减（$\gamma=1$）在本模型中属于同一个结构等价类：二者都给出标准贝叶斯更新，不能靠 choice、RT 或 oral report 区分。实现时仍应分别测试两个参数化是否产生相同预测，但模型比较只把它们计作一个端点。这样既沿用 V13/V14 的双机制解释，也能检验数据是否真的需要两条轨道。
+
+\paragraph{一个试次内的完整因果顺序。}
+模型采用以下顺序：
+\begin{equation}
+\begin{aligned}
+&(F_{s,t-1},S_{s,t-1},\pi^+_{s,t-1})
+\xrightarrow{\text{H dynamics}}
+\pi^-_{s,t}
+\xrightarrow{\text{memory sync}}
+(F_{s,t^-},S_{s,t^-})\\
+&\quad\xrightarrow{\mathbf x_{s,t},q_{s,t,h}}
+\text{choice and RT}
+\longrightarrow
+\text{oral report}
+\longrightarrow
+\text{feedback}\\
+&\quad\xrightarrow{\text{fade/static update}}
+(F_{s,t},S_{s,t},\pi^+_{s,t}).
+\end{aligned}
+\label{eq:model0803-trial-order}
+\end{equation}
+当前选择、RT 和口头报告只能读取 $\pi^-_{s,t}$ 及当前选择之前已经形成的策略控制。当前反馈 $r_{s,t}$ 只进入 $\pi^+_{s,t}$ 和下一试次的 H 动力学，不进入当前选择预测。
+
+
+\subsubsection{H 操作空间：保持、局部搜索与全局搜索}
+
+\paragraph{规则差异度。}
+沿用 V13/V14 的带标签规则相似性 $\operatorname{Sim}_k(h,u)\in[0,1]$，定义
+\begin{equation}
+    d_k(h,u)=1-\operatorname{Sim}_k(h,u).
+    \label{eq:model0803-rule-distance}
+\end{equation}
+$d_k(h,u)=0$ 表示两条规则在用于计算相似性的刺激空间上给出相同标签；数值越大，表示两条规则的类别划分越不同。这里把 $d_k$ 称为规则差异度，不要求有限 Monte Carlo 近似严格满足所有度量空间公理。
+
+\paragraph{局部搜索核。}
+给定预先冻结的局部尺度 $\tau_{L,k}>0$，定义
+\begin{equation}
+    K_{L,k}(h'\mid h)
+    =
+    \frac{
+      I(h'\neq h)p_{0,k}(h')
+      \exp[-d_k(h,h')/\tau_{L,k}]
+    }{
+      \sum_{u\neq h}p_{0,k}(u)
+      \exp[-d_k(h,u)/\tau_{L,k}]
+    }.
+    \label{eq:model0803-local-kernel}
+\end{equation}
+该核只把质量分给与当前规则不同的候选，并优先选择差异较小的规则。$\tau_{L,k}$ 不应与每名被试的 $g_{s,t}$ 同时自由变化，否则“局部核本身变宽”和“更多使用全局核”容易等价。正式分析应依据规则几何和开发数据冻结 $\tau_{L,k}$，再在留出数据上检验。
+
+\paragraph{全局搜索核。}
+全局搜索从规则先验中重新提出候选，但排除当前规则：
+\begin{equation}
+    K_{G,k}(h'\mid h)
+    =
+    \frac{I(h'\neq h)p_{0,k}(h')}
+    {1-p_{0,k}(h)}.
+    \label{eq:model0803-global-kernel}
+\end{equation}
+在均匀规则先验下，该核等概率提出除当前规则以外的所有规则；在规则家族平衡先验下，它遵循预先规定的家族质量。全局搜索并不表示完全随机选择类别，而是表示不再局限于当前规则附近搜索。
+
+\paragraph{连续 H 转移核。}
+新 H 模块定义为
+\begin{align}
+    T_{s,t}(h'\mid h)
+    ={}&(1-m_{s,t})I(h'=h)\nonumber\\
+    &+m_{s,t}(1-g_{s,t})K_{L,k}(h'\mid h)
+    +m_{s,t}g_{s,t}K_{G,k}(h'\mid h).
+    \label{eq:model0803-transition-kernel}
+\end{align}
+三个系数分别为
+\begin{equation}
+    w_I=1-m_{s,t},\qquad
+    w_L=m_{s,t}(1-g_{s,t}),\qquad
+    w_G=m_{s,t}g_{s,t},
+    \label{eq:model0803-operation-weights}
+\end{equation}
+且 $w_I+w_L+w_G=1$。因此，H 模块不是先抽取一个命名 profile 再执行许多 family-specific 常数，而是直接给出三种基本操作的概率混合。
+
+\paragraph{命题 2：H 转移保持概率闭合。}
+若 $m_{s,t},g_{s,t}\in[0,1]$，$p_{0,k}(h)>0$ 且 $|\mathcal H_k|\geq2$，则对任意 $h$，$T_{s,t}(h'\mid h)$ 是 $\mathcal H_k$ 上的概率分布；进一步，式 \ref{eq:model0803-h-position} 给出的 $\pi^-_{s,t}$ 也是概率分布。
+
+\textit{证明。}
+式 \ref{eq:model0803-local-kernel} 和式 \ref{eq:model0803-global-kernel} 的分子非负，分母为正，且分别对 $h'$ 求和为 1。式 \ref{eq:model0803-operation-weights} 的三个权重非负且和为 1，所以 $T_{s,t}(\cdot\mid h)$ 是三个概率分布的凸组合，对 $h'$ 求和为 1。再由 $\pi^+_{s,t-1}(h)\geq0$ 且 $\sum_h\pi^+_{s,t-1}(h)=1$，有
+\begin{equation}
+    \sum_{h'}\pi^-_{s,t}(h')
+    =\sum_h\pi^+_{s,t-1}(h)
+      \sum_{h'}T_{s,t}(h'\mid h)
+    =1.
+\end{equation}
+证明完毕。
+
+\paragraph{命题 3：三个基本操作在其凸组合族内相对完备。}
+令 $I$、$K_L$ 和 $K_G$ 分别表示保持、局部搜索和全局搜索三个固定核。对任意非负权重 $(w_I,w_L,w_G)$，只要 $w_I+w_L+w_G=1$，都存在 $(m,g)\in[0,1]^2$ 使
+\begin{equation}
+    w_I I+w_LK_L+w_GK_G
+    =(1-m)I+m(1-g)K_L+mgK_G.
+    \label{eq:model0803-relative-completeness}
+\end{equation}
+当 $m>0$ 时，给定操作权重 $(w_I,w_L,w_G)$，其 $(m,g)$ 坐标唯一；当 $m=0$ 时，$g$ 不可识别，但转移核仍唯一等于 $I$。这里不声称可以从最终转移矩阵唯一反推出操作权重；如果 $I$、$K_L$ 和 $K_G$ 线性相关，或 $K_L$ 与 $K_G$ 在当前规则空间上相同，不同操作权重仍可能给出同一个转移矩阵。
+
+\textit{证明。}
+给定 $(w_I,w_L,w_G)$，令
+\begin{equation}
+    m=1-w_I=w_L+w_G.
+\end{equation}
+若 $m>0$，令 $g=w_G/(w_L+w_G)$，则 $m(1-g)=w_L$ 且 $mg=w_G$，得到式 \ref{eq:model0803-relative-completeness}。反过来，若操作权重由 $(m,g)$ 给出，则 $w_I=1-m$、$w_L=m(1-g)$、$w_G=mg$，所以给定权重且 $m>0$ 时坐标变换唯一。若 $m=0$，则 $w_I=1$、$w_L=w_G=0$，任意 $g$ 都给出同一个恒等转移。证明完毕。
+
+这里的“完备”具有严格边界：它只表示模型覆盖了三个预先定义基本操作的全部概率混合，不表示穷尽人类能够采用的所有学习策略，也不表示覆盖全部可能的随机矩阵。实证上的充分性仍需由后文的灵活上界模型和残差检验判断。
+
+\paragraph{命题 4：$m_{s,t}$ 控制规则信念改变的上界。}
+令
+\begin{equation}
+    Q_{s,t}(h')
+    =\sum_h\pi^+_{s,t-1}(h)
+      \big[(1-g_{s,t})K_{L,k}(h'\mid h)
+      +g_{s,t}K_{G,k}(h'\mid h)\big].
+\end{equation}
+则
+\begin{equation}
+    \pi^-_{s,t}
+    =(1-m_{s,t})\pi^+_{s,t-1}
+      +m_{s,t}Q_{s,t},
+\end{equation}
+并且其全变差距离满足
+\begin{equation}
+    \operatorname{TV}
+    (\pi^-_{s,t},\pi^+_{s,t-1})
+    \leq m_{s,t}.
+    \label{eq:model0803-tv-bound}
+\end{equation}
+
+\textit{证明。}
+由全变差距离定义，
+\begin{align}
+    \operatorname{TV}(\pi^-,\pi^+_{t-1})
+    &=\frac12\sum_h
+      |(1-m)\pi^+_{t-1}(h)+mQ(h)-\pi^+_{t-1}(h)|\\
+    &=m\frac12\sum_h|Q(h)-\pi^+_{t-1}(h)|\\
+    &=m\operatorname{TV}(Q,\pi^+_{t-1})\leq m,
+\end{align}
+因为任意两个概率分布的全变差距离不超过 1。证明完毕。
+
+因此，$m_t$ 具有直接而有限的解释：它是潜在规则发生修正的概率，也是当前规则信念分布改变量的上界。它不等同于实际观察到的选择切换率，因为不同规则可能对当前刺激给出相同类别。
+
+\paragraph{命题 5：在局部核确实比全局核更近时，$g_{s,t}$ 单调控制搜索范围。}
+定义从当前信念出发、在局部或全局修正条件下的期望规则差异：
+\begin{align}
+    D_{L,s,t}
+    &=\sum_h\pi^+_{s,t-1}(h)
+      \sum_{h'}K_{L,k}(h'\mid h)d_k(h,h'),\\
+    D_{G,s,t}
+    &=\sum_h\pi^+_{s,t-1}(h)
+      \sum_{h'}K_{G,k}(h'\mid h)d_k(h,h').
+    \label{eq:model0803-local-global-distance}
+\end{align}
+发生修正时的期望差异为
+\begin{equation}
+    D_{s,t}(g)
+    =(1-g)D_{L,s,t}+gD_{G,s,t}.
+    \label{eq:model0803-search-distance}
+\end{equation}
+若 $D_{G,s,t}\geq D_{L,s,t}$，则 $D_{s,t}(g)$ 关于 $g$ 单调不减；若严格大于，则严格递增。
+
+\textit{证明。}
+对 $g$ 求导，
+\begin{equation}
+    \frac{\partial D_{s,t}(g)}{\partial g}
+    =D_{G,s,t}-D_{L,s,t}.
+\end{equation}
+结论立即成立。证明完毕。
+
+正式拟合前必须对全部条件和有代表性的信念分布审计 $D_G-D_L$。如果局部核和全局核的期望差异接近零，则数据原则上难以区分 $g$，此时应重新定义局部邻域或删除 $g$，而不是把不可恢复的 $g$ 解释为被试特质。
+
+
+\subsubsection{连续 H 动力学：策略怎样从上一试次演化到下一试次}
+
+\paragraph{反馈先形成信息量，再影响下一试次策略。}
+当前选择为 $c_{s,t}$、反馈为 $r_{s,t}$ 时，令 $\mathcal Y_k(c_{s,t},r_{s,t})$ 表示反馈仍允许的真实类别集合。规则 $h$ 对反馈的支持度为
+\begin{equation}
+    L_{s,t}(h)
+    =\sum_{c\in\mathcal Y_k(c_{s,t},r_{s,t})}
+      q_{s,t,h}(c).
+    \label{eq:model0803-feedback-likelihood}
+\end{equation}
+在条件 1 和条件 2 中，正确反馈对应 $\mathcal Y_k(c,1)=\{c\}$，错误反馈对应 $\mathcal Y_k(c,0)=\mathcal C_k\setminus\{c\}$。在条件 3 中，若 $\mathcal F(c)$ 表示选择类别所属家族，则
+\begin{equation}
+    \mathcal Y_3(c,r)
+    =
+    \begin{cases}
+      \{c\},&r=1,\\
+      \mathcal F(c)\setminus\{c\},&r=0.5,\\
+      \mathcal C_3\setminus\mathcal F(c),&r=0.
+    \end{cases}
+    \label{eq:model0803-graded-feedback}
+\end{equation}
+三个事件互斥并覆盖条件 3 的全部类别。
+反馈到来前，模型赋给实际反馈事件的概率为
+\begin{equation}
+    P_{s,t}^{\mathrm{fb}}
+    =\sum_h\pi^-_{s,t}(h)L_{s,t}(h),
+\end{equation}
+反馈惊讶度为
+\begin{equation}
+    S_{s,t}^{\mathrm{fb}}
+    =-\log\max(P_{s,t}^{\mathrm{fb}},\epsilon),
+    \label{eq:model0803-feedback-surprise}
+\end{equation}
+其中 $\epsilon$ 只用于数值稳定，在分析前冻结。反馈支持度不再通过单通道贝叶斯式直接生成 $\pi^+_{s,t}$；它按式 \ref{eq:model0803-effective-likelihood}--\ref{eq:model0803-feedback-posterior} 同时更新 fade/static 两条轨道，再由二者的混合得到反馈后信念。
+反馈后规则不确定性定义为
+\begin{equation}
+    U^{\mathrm{rule}}_{s,t}
+    =-
+    \frac{\sum_h\pi^+_{s,t}(h)
+      \log\pi^+_{s,t}(h)}
+    {\log|\mathcal H_k|}.
+    \label{eq:model0803-rule-uncertainty}
+\end{equation}
+惊讶度表示当前反馈多大程度违背了反馈前预测；规则不确定性表示吸收反馈后仍有多少规则竞争。二者从不同方向约束下一试次的策略控制。
+
+\paragraph{连续状态方程。}
+令
+\begin{equation}
+    a^m_{s,t}=\operatorname{logit}(m_{s,t}),
+    \qquad
+    a^g_{s,t}=\operatorname{logit}(g_{s,t}),
+    \qquad
+    \mathbf a_{s,t}=
+    \begin{pmatrix}a^m_{s,t}\\a^g_{s,t}\end{pmatrix}.
+    \label{eq:model0803-control-logits}
+\end{equation}
+H 动力学采用同一个跨条件状态方程：
+\begin{equation}
+    \mathbf a_{s,t}
+    =\boldsymbol\mu_H
+     +\boldsymbol\delta_{H,k}
+     +\mathbf u_{H,s}
+     +\boldsymbol\Phi_H\mathbf a_{s,t-1}
+     +\mathbf B_H\mathbf f_{s,t-1}
+     +\boldsymbol\varepsilon_{s,t},
+    \label{eq:model0803-h-dynamics}
+\end{equation}
+其中
+\begin{equation}
+    \mathbf f_{s,t-1}
+    =
+    \begin{pmatrix}
+      \widetilde S^{\mathrm{fb}}_{s,t-1}\\
+      \widetilde U^{\mathrm{rule}}_{s,t-1}
+    \end{pmatrix},
+    \label{eq:model0803-dynamic-inputs}
+\end{equation}
+波浪号表示使用参数训练段冻结的中心和尺度进行标准化。$\boldsymbol\mu_H$ 是群体平均，$\boldsymbol\delta_{H,k}$ 是条件偏离，$\mathbf u_{H,s}$ 是被试随机效应，$\boldsymbol\Phi_H$ 表示策略持续性，$\mathbf B_H$ 表示反馈惊讶度和规则不确定性怎样改变下一试次策略。创新项满足
+\begin{equation}
+    \boldsymbol\varepsilon_{s,t}
+    \sim\mathcal N(\mathbf0,\boldsymbol\Sigma_H).
+    \label{eq:model0803-h-innovation}
+\end{equation}
+式 \ref{eq:model0803-control-logits} 用于 H3/H4 时令 $m_{s,t},g_{s,t}\in(0,1)$；H0 等边界模型直接固定 $m=0$，不计算其 logit。第一试次令 $\mathbf f_{s,0}=\mathbf0$，并从层级初始分布
+\begin{equation}
+    \mathbf a_{s,1}
+    \sim\mathcal N\!\left(
+      \boldsymbol\mu_{H,0}
+      +\boldsymbol\delta_{H,0,k}
+      +\mathbf u_{H,0,s},
+      \boldsymbol\Sigma_{H,0}
+    \right)
+    \label{eq:model0803-h-initial}
+\end{equation}
+产生控制状态；初始分布只用参数训练段估计，进入留出段后冻结。
+确定性版本令 $\boldsymbol\Sigma_H=\mathbf0$。只有确定性动力学不能通过生成检验、且随机创新能够恢复时，才保留非零 $\boldsymbol\Sigma_H$。
+
+$\boldsymbol\Phi_H$ 的特征值绝对值限制在 1 以下，以避免没有新信息时控制状态无限漂移。第一版可以先令 $\boldsymbol\Phi_H$ 为对角矩阵，分别估计 $m$ 和 $g$ 的自回归持续性；只有留出预测要求时才增加交叉滞后。条件偏离采用和为零约束，并通过层级先验收缩；不能因为三个条件的试次数不同就默认建立三套完全独立动力学。
+
+\paragraph{模型如何产生“早期探索、后期稳定”。}
+式 \ref{eq:model0803-h-dynamics} 不需要显式加入线性试次时间 $\tau_t$。学习早期通常具有较高规则不确定性和较多反馈惊讶，模型可以因此产生较大的 $m_t$ 或 $g_t$；随着规则信念集中且反馈变得可预测，策略自然向较低修正幅度移动。只有在控制惊讶度和不确定性以后，时间本身仍能稳定改善留出预测，才增加预先规定的练习项。这样，阶段性模式首先由认知状态生成，而不是由人为的“early/late”模板写入。
+
+\paragraph{命题 6：当前反馈不能泄漏到当前策略和选择。}
+令当前选择前的核心信息集为
+\begin{equation}
+    \mathcal F^{\mathrm{core}}_{s,t^-}
+    =\sigma\!\left(
+      \mathbf x_{s,1:t},
+      c_{s,1:t-1},
+      r_{s,1:t-1}
+    \right).
+    \label{eq:model0803-filtration}
+\end{equation}
+若 $\mathbf a_{s,t}$ 只使用式 \ref{eq:model0803-h-dynamics} 中截至 $t-1$ 的输入，且 $\boldsymbol\varepsilon_{s,t}$ 在当前选择和反馈前抽取，则 $m_{s,t}$、$g_{s,t}$、$T_{s,t}$ 和 $\pi^-_{s,t}$ 均只依赖 $\mathcal F^{\mathrm{core}}_{s,t^-}$ 与反馈前创新，不依赖 $c_{s,t}$ 或 $r_{s,t}$。
+
+\textit{证明。}
+用归纳法。第一试次的 $\mathbf a_{s,1}$ 从预先规定的初始分布产生，$\pi^-_{s,1}$ 由规则先验、记忆映射和该状态决定，因此不依赖尚未发生的选择或反馈。假设试次 $t-1$ 结束时的所有状态只使用截至 $t-1$ 的信息，则式 \ref{eq:model0803-feedback-surprise}--\ref{eq:model0803-rule-uncertainty} 在反馈 $r_{s,t-1}$ 到达后形成，并只进入式 \ref{eq:model0803-h-dynamics} 的 $t$ 时刻。于是 $\mathbf a_{s,t}$、$T_{s,t}$ 和 $\pi^-_{s,t}$ 在 $c_{s,t}$、$r_{s,t}$ 之前已经确定。结论对所有 $t$ 成立。证明完毕。
+
+\paragraph{四种策略是连续空间的描述性划分。}
+为了画图和逐被试报告，预先冻结三个阈值 $m_0$、$g_0$ 和 $S_0$。令上一反馈惊讶度为 $S^{\mathrm{fb}}_{s,t-1}$，定义
+\begin{equation}
+    z_{s,t}^{\mathrm{desc}}
+    =
+    \begin{cases}
+    \text{stable maintenance},
+      &m_{s,t}\leq m_0,
+       \ S^{\mathrm{fb}}_{s,t-1}\leq S_0,\\
+    \text{resistant maintenance},
+      &m_{s,t}\leq m_0,
+       \ S^{\mathrm{fb}}_{s,t-1}>S_0,\\
+    \text{local revision},
+      &m_{s,t}>m_0,
+       \ g_{s,t}\leq g_0,\\
+    \text{global search},
+      &m_{s,t}>m_0,
+       \ g_{s,t}>g_0.
+    \end{cases}
+    \label{eq:model0803-four-regimes}
+\end{equation}
+“Stubborn”只用于描述连续多个试次处于 resistant maintenance 的轨迹，例如预先规定连续 $d_0$ 个试次，而不把单个低 $m_t$ 试次称为固着。阈值只改变展示标签，不进入似然，也不改变 $\pi_t$。
+
+\paragraph{命题 7：四个描述性区域互斥并覆盖全部试次。}
+对任意 $m,g\in[0,1]$ 和有限的上一反馈惊讶度，式 \ref{eq:model0803-four-regimes} 恰好分配一个标签。
+
+\textit{证明。}
+首先，$m\leq m_0$ 与 $m>m_0$ 互斥且覆盖全部 $m$。在第一种情况下，$S\leq S_0$ 与 $S>S_0$ 互斥且完备；在第二种情况下，$g\leq g_0$ 与 $g>g_0$ 互斥且完备。因此四个笛卡尔区域两两不重叠，并覆盖所有可能取值。证明完毕。
+
+该命题证明的是展示分类的完备性，不证明人类心理状态天然只有四种。四个标签的认知价值还取决于相邻区域是否对选择、RT 或口头报告产生可以恢复的不同预测。
+
+\paragraph{与旧四种 profile 的功能对应。}
+新旧模型没有逐行代码等价关系，但旧 profile 的主要功能可以在连续空间中表示：
+\begin{center}
+\small
+\begin{tabular}{p{0.20\textwidth}|p{0.31\textwidth}|p{0.36\textwidth}}
+\hline
+旧 profile & 新 H 空间中的位置 & 关键区别\\
+\hline
+Conservative & $m_t$ 接近 0 & 不再按规则索引截断集合\\
+Stable & 中低 $m_t$、低 $g_t$ & 局部替换数量连续变化，不固定每次恰好一个 newcomer\\
+Aggressive & 高 $m_t$、较高 $g_t$ & 大幅重组由统一核产生，不需要 family-specific newcomer 常数\\
+Stubborn & 高惊讶下 $m_t$ 仍持续较低 & 固着被定义为反馈--策略关系，而不是另一种集合操作\\
+\hline
+\end{tabular}
+\normalsize
+\end{center}
+V14 的 persistent volatility state 可以看成式 \ref{eq:model0803-h-dynamics} 中 $a^m_t$ 的一个受限前身。但新状态同时决定三种操作的连续权重，并允许惊讶度、规则不确定性和持续性共同作用，而不是只向 Aggressive logit 加一个固定压力项。
+
+\paragraph{有限活跃集合作为后续独立扩展。}
+核心 H 模型首先在完整的 $\mathcal H_k$ 上传播概率。若完整空间的留出预测仍不足，并且口头报告或 RT 提供了有限候选集合的独特证据，再增加容量 $M$。对任意大小不超过 $M$ 的集合 $A$，定义归一化投影
+\begin{equation}
+    \mathcal P_A[\pi](h)
+    =\frac{I(h\in A)\pi(h)}{\pi(A)},
+    \qquad
+    \pi(A)=\sum_{h\in A}\pi(h).
+    \label{eq:model0803-capacity-projection}
+\end{equation}
+可直接验证
+\begin{equation}
+    \operatorname{TV}(\mathcal P_A[\pi],\pi)
+    =1-\pi(A).
+    \label{eq:model0803-projection-error}
+\end{equation}
+证明如下：集合 $A$ 内的绝对差之和为
+\begin{equation}
+    \sum_{h\in A}
+    \left|\frac{\pi(h)}{\pi(A)}-\pi(h)\right|
+    =1-\pi(A),
+\end{equation}
+集合外的绝对差之和同样为 $1-\pi(A)$，二者相加再除以 2，得到式 \ref{eq:model0803-projection-error}。因此，若只追求给定 $M$ 下最小的概率近似误差，应选择使 $\pi(A)$ 最大的 $M$ 条规则，也就是 top-$M$ 集合。但这种 top-$M$ 投影只是计算近似，不自动等于人的认知容量。若把 $A_t$ 解释为心理活跃集合，必须另行定义随机进入和退出机制，并与完整空间模型进行恢复和留出比较，不能直接恢复旧模型固定 $M=5$ 的设定。
+
+
+\subsubsection{选择、RT 和口头报告：同一状态的三个观测通道}
+
+\paragraph{选择通道。}
+规则信念首先产生核心类别概率
+\begin{equation}
+    p^{\mathrm{core}}_{s,t}(c)
+    =\sum_{h\in\mathcal H_k}
+      \pi^-_{s,t}(h)q_{s,t,h}(c).
+    \label{eq:model0803-core-choice}
+\end{equation}
+若稳定决策敏感度 $\kappa_{s,k}$ 已通过简单模型比较，则
+\begin{equation}
+    P(c_{s,t}=c)
+    =
+    \frac{[p^{\mathrm{core}}_{s,t}(c)]^{\kappa_{s,k}}}
+    {\sum_{j\in\mathcal C_k}
+     [p^{\mathrm{core}}_{s,t}(j)]^{\kappa_{s,k}}}.
+    \label{eq:model0803-choice-readout}
+\end{equation}
+H 模块不另加逐试次 lapse。$m_t$ 和 $g_t$ 通过改变 $\pi^-_t$ 影响选择；$\kappa$ 只改变同一类别概率向外显选择的读取。这样可以在模型恢复中直接检查“规则移动”和“决策变得更随机”是否可区分。
+
+\paragraph{RT 通道。}
+选择不确定性为
+\begin{equation}
+    U^{\mathrm{choice}}_{s,t}
+    =-\sum_{c\in\mathcal C_k}
+      P(c_{s,t}=c)\log P(c_{s,t}=c).
+    \label{eq:model0803-choice-uncertainty}
+\end{equation}
+H 模块还给出局部修正强度 $m_t(1-g_t)$ 和全局搜索强度 $m_tg_t$。在预先规定的练习、刺激模糊性和时间结构协变量之外，RT 测量模型为
+\begin{align}
+    \log(\mathrm{RT}_{s,t})
+    \sim t_\nu\!\Big(&
+      \alpha_{s,k}
+      +\mathbf b_{0,k}^{\mathsf T}\mathbf Z_{s,t}
+      +b_{U,k}U^{\mathrm{choice}}_{s,t}\nonumber\\
+      &+b_{L,k}m_{s,t}(1-g_{s,t})
+      +b_{G,k}m_{s,t}g_{s,t},
+      \sigma_{\mathrm{RT},k}
+    \Big).
+    \label{eq:model0803-rt-channel}
+\end{align}
+其中 $\mathbf Z_{s,t}$ 与所有 RT 排除规则必须在比较 H 候选前冻结。$b_L$ 和 $b_G$ 检验局部修正与全局搜索是否具有超出选择不确定性的时间代价。现有 RT 阴性结果意味着不能预设这些系数一定为正或一定改善预测；其方向、区间和留出预测增量都必须完整报告。若加入 H 指标没有改善留出 RT，结论应是 RT 没有为 H 提供额外识别信息，而不是继续增加自由 RT 参数直到得到正结果。
+
+\paragraph{口头报告先按当前选择进行一致性读取。}
+口头报告发生在选择之后、反馈之前。给定已经观察或生成的当前选择，定义
+\begin{equation}
+    \pi^{\mathrm{oral}}_{s,t}(h)
+    =
+    \frac{\pi^-_{s,t}(h)q_{s,t,h}(c_{s,t})}
+    {\sum_u\pi^-_{s,t}(u)q_{s,t,u}(c_{s,t})}.
+    \label{eq:model0803-oral-belief}
+\end{equation}
+该量提高支持当前选择的规则权重，但不构成学习更新，也不改变下一试次的真实生成状态。
+
+\paragraph{正式口头报告观测模型。}
+若要让口头报告真正缩小参数后验，而不只计算兼容集合分数，需要定义归一化观测空间。令 $\mathcal V_k$ 为冻结编码后的有限报告代码集合，$W_k(v,h)\geq0$ 表示报告代码 $v$ 与规则 $h$ 的兼容权重。对每条规则归一化：
+\begin{equation}
+    A_k(v\mid h)
+    =\frac{W_k(v,h)}
+    {\sum_{u\in\mathcal V_k}W_k(u,h)}.
+    \label{eq:model0803-oral-mapping}
+\end{equation}
+若某条规则对所有报告代码的兼容权重均为零，应在冻结编码时修正规则注册表；不能在拟合中临时补一个有利映射。允许一个只在参数训练段估计的报告噪声 $\eta_{O,k}\in[0,1]$：
+\begin{equation}
+    A_{k,\eta}(v\mid h)
+    =(1-\eta_{O,k})A_k(v\mid h)
+      +\eta_{O,k}r_{0,k}(v),
+    \label{eq:model0803-oral-reliability}
+\end{equation}
+其中 $r_{0,k}$ 是预先规定的报告基线分布。正式报告概率为
+\begin{equation}
+    P(v_{s,t}=v\mid c_{s,t},\pi^-_{s,t})
+    =\sum_h A_{k,\eta}(v\mid h)
+      \pi^{\mathrm{oral}}_{s,t}(h).
+    \label{eq:model0803-oral-emission}
+\end{equation}
+
+\paragraph{命题 8：式 \ref{eq:model0803-oral-emission} 是规范化的报告分布。}
+若对每个 $h$，$A_k(\cdot\mid h)$ 和 $r_{0,k}$ 均为 $\mathcal V_k$ 上的概率分布，则式 \ref{eq:model0803-oral-emission} 对 $v$ 非负且求和为 1。
+
+\textit{证明。}
+式 \ref{eq:model0803-oral-reliability} 是两个概率分布的凸组合，所以对每个 $h$ 都归一化。又因为 $\pi^{\mathrm{oral}}$ 是规则上的概率分布，
+\begin{equation}
+    \sum_vP(v)
+    =\sum_h\pi^{\mathrm{oral}}(h)
+      \sum_vA_{k,\eta}(v\mid h)
+    =\sum_h\pi^{\mathrm{oral}}(h)=1.
+\end{equation}
+证明完毕。
+
+如果当前数据只能把报告编码为一个兼容规则集合 $\mathcal O_{s,t}$，仍可报告
+\begin{equation}
+    M^{\mathrm{oral}}_{s,t}
+    =\sum_{h\in\mathcal O_{s,t}}
+      \pi^{\mathrm{oral}}_{s,t}(h),
+\end{equation}
+但它是兼容概率质量，不是自然语言报告的生成似然。只有式 \ref{eq:model0803-oral-mapping}--\ref{eq:model0803-oral-emission} 的报告代码空间和归一化映射被冻结后，才能把口头报告纳入联合参数后验。
+
+\paragraph{三个通道的联合分解。}
+在最小测量模型中，给定反馈前状态和当前刺激，单试次联合分布分解为
+\begin{align}
+    &P(c_{s,t},\mathrm{RT}_{s,t},v_{s,t}
+      \mid\pi^-_{s,t},m_{s,t},g_{s,t},\mathbf x_{s,t})\nonumber\\
+    &\quad=
+    P(c_{s,t}\mid\pi^-_{s,t},\mathbf x_{s,t})
+    P(\mathrm{RT}_{s,t}\mid
+      \pi^-_{s,t},m_{s,t},g_{s,t},\mathbf x_{s,t})\nonumber\\
+    &\qquad\times
+    P(v_{s,t}\mid
+      c_{s,t},\pi^-_{s,t},\mathbf x_{s,t}).
+    \label{eq:model0803-joint-emission}
+\end{align}
+这一定义允许研究者在统计推断时利用报告和 RT 判断哪条潜在状态轨迹更可信，但生成模型中没有 oral report $\rightarrow H_{t+1}$ 或 RT $\rightarrow H_{t+1}$ 的因果箭头。若未来要检验“口头表达本身改变下一试次策略”，必须单独增加一个 report-reactivity 候选，并与纯测量模型比较，不能把统计条件化误写成心理因果作用。
+
+
+\subsubsection{参数和模块等价性：从唯一参数转向预测等价类}
+
+\paragraph{精确预测等价。}
+令 $\boldsymbol\theta$ 表示核心参数及 H 动力学参数，$\mathcal D$ 表示固定的刺激、条件、block 和 session 设计，$\mathcal C$ 表示被评价的观测通道集合。例如，$\mathcal C=\{C\}$ 只包含选择，$\mathcal C=\{C,R,O\}$ 包含选择、RT 和口头报告。定义
+\begin{equation}
+    \boldsymbol\theta
+    \sim_{\mathcal D,\mathcal C}
+    \boldsymbol\theta'
+    \quad\Longleftrightarrow\quad
+    P_{\boldsymbol\theta}
+      (Y_{\mathcal C}\mid\mathcal D)
+    =
+    P_{\boldsymbol\theta'}
+      (Y_{\mathcal C}\mid\mathcal D).
+    \label{eq:model0803-exact-equivalence}
+\end{equation}
+这里比较的是完整预测分布，而不是两组参数的欧氏距离。两个数值相差很大的参数仍可能预测等价；两个数值接近的参数也可能在长程生成中明显不同。
+
+\paragraph{命题 9：式 \ref{eq:model0803-exact-equivalence} 定义等价关系。}
+
+\textit{证明。}
+任意预测分布与自身相等，所以关系自反；若 $P_\theta=P_{\theta'}$，则 $P_{\theta'}=P_\theta$，所以关系对称；若 $P_\theta=P_{\theta'}$ 且 $P_{\theta'}=P_{\theta''}$，则 $P_\theta=P_{\theta''}$，所以关系传递。因此该关系把参数空间划分为互不重叠的预测等价类。证明完毕。
+
+还应区分两种范围：若等价只在本实验实际刺激序列上成立，称为设计条件下等价；若对预先定义的全部可允许刺激与反馈日程都成立，才称为结构等价。真实数据通常只能直接支持前一种判断。
+
+\paragraph{近似预测等价。}
+有限数据中几乎不会出现逐点完全相等，因此定义各通道的预测距离 $d_C$、$d_R$ 和 $d_O$。选择可以使用平均 Jensen--Shannon 距离或留出对数分数差；RT 可以使用留出对数预测密度差和分位数距离；口头报告可以使用归一化报告分布距离。给定分析前冻结的容差 $\epsilon_{\mathcal C}$，若
+\begin{equation}
+    d_{\mathcal D,\mathcal C}
+    (P_{\boldsymbol\theta},P_{\boldsymbol\theta'})
+    \leq\epsilon_{\mathcal C},
+    \label{eq:model0803-approx-equivalence}
+\end{equation}
+则两组参数在相应设计和通道下近似等价。容差必须大于计算误差和 Monte Carlo 误差，但不能根据是否得到希望的等价类大小事后调整。
+
+\paragraph{本模型中预期出现的等价来源。}
+至少需要主动检查以下等价性：
+\begin{enumerate}
+    \item \textbf{H 内部等价。}当 $m_t=0$ 时，$g_t$ 完全不可识别；当 $K_L$ 与 $K_G$ 在当前规则空间上接近时，不同 $g_t$ 也会给出相近预测。
+    \item \textbf{记忆内部等价。}$\gamma$ 和 $w_0$ 可能沿一条后验脊线共同改变有效证据时间尺度。当 $\gamma\approx1$ 时，两条轨道几乎相同，$w_0$ 很难识别；当 $w_0\approx1$ 时，fade 轨道对行为几乎没有贡献，$\gamma$ 也很难识别。
+    \item \textbf{H 与记忆等价。}较小的 $\gamma$ 配合较小的 $w_0$ 会加快旧证据的消退；较大的 $m_tg_t$ 会把上一后验向更广的规则空间重新分配。两者都能降低旧规则对未来选择的持续影响，但只有 H 直接预测规则移动距离和搜索成本，因此 RT 与口头报告原则上可以帮助区分二者。
+    \item \textbf{H 与读出等价。}较大的规则重组可能使选择分布变平；较小的 $\kappa$ 也会使选择更随机。二者对规则报告的预测原则上不同。
+    \item \textbf{规则内容等价。}在实际呈现的有限刺激上，多条几何规则可能给出相同类别，因此无法只用选择区分；需要口头报告或具有诊断性的后续刺激。
+\end{enumerate}
+前两类可能来自参数冗余，后三类可能反映不同心理过程产生相似行为。只有在排除实现错误并量化设计信息以后，才能讨论认知上的多重实现。
+
+\paragraph{命题 10：增加观测通道只能细化精确等价类。}
+若 $\mathcal C_1\subseteq\mathcal C_2$，则
+\begin{equation}
+    [\boldsymbol\theta]_{\mathcal D,\mathcal C_2}
+    \subseteq
+    [\boldsymbol\theta]_{\mathcal D,\mathcal C_1},
+    \label{eq:model0803-equivalence-refinement}
+\end{equation}
+其中 $[\boldsymbol\theta]$ 表示包含 $\boldsymbol\theta$ 的精确预测等价类。
+
+\textit{证明。}
+若 $\boldsymbol\theta'$ 与 $\boldsymbol\theta$ 在较大的联合通道 $\mathcal C_2$ 上预测分布相同，则对该联合分布边际化，必然得到它们在子通道 $\mathcal C_1$ 上的预测分布也相同。因此，属于较大通道等价类的所有参数都属于较小通道等价类。证明完毕。
+
+该命题给出“choice $\rightarrow$ choice+RT $\rightarrow$ choice+RT+oral report”逐步增加约束的数学基础。但它不保证每次加入真实数据都会显著缩小等价类。如果 RT 与 H 状态条件独立、测量噪声很大或测量模型错误，RT 可能几乎不提供新信息。加入新的测量参数后，常用后验可信区间也不一定逐级嵌套；严格嵌套的是同一联合模型下的精确预测等价关系，而不是任意重新拟合得到的区间。
+
+\paragraph{可接受集合的顺序收缩。}
+在实际分析中，可以先定义通过各通道预测门槛的集合
+\begin{align}
+    \mathcal A_C
+    &=\{\boldsymbol\theta:
+      d_C(\boldsymbol\theta)\leq\epsilon_C\},\\
+    \mathcal A_{C,R}
+    &=\mathcal A_C\cap
+      \{\boldsymbol\theta:
+      d_R(\boldsymbol\theta)\leq\epsilon_R\},\\
+    \mathcal A_{C,R,O}
+    &=\mathcal A_{C,R}\cap
+      \{\boldsymbol\theta:
+      d_O(\boldsymbol\theta)\leq\epsilon_O\}.
+    \label{eq:model0803-acceptable-sets}
+\end{align}
+由集合交的定义，
+\begin{equation}
+    \mathcal A_{C,R,O}
+    \subseteq\mathcal A_{C,R}
+    \subseteq\mathcal A_C.
+    \label{eq:model0803-acceptable-nesting}
+\end{equation}
+这正是“增加约束后保留更小的参数集合”的操作性含义。报告时应展示集合缩小了多少、哪些方向仍然不可区分，而不是只报告最后一个最佳点。
+
+\paragraph{外部验证线与联合整合线必须分开。}
+第一条分析线保持外部检验逻辑：只用参数训练段 choice 估计核心后验
+\begin{equation}
+    p(\boldsymbol\theta\mid C_{\mathrm{train}}),
+\end{equation}
+进入时间留出段后不利用 RT 或口头报告重新加权核心参数，只评价这些参数抽样对留出 RT 和报告的预测。这条线回答“由选择推断的状态能否独立预测其他行为”。
+
+第二条分析线在模型结构和报告编码冻结后建立联合后验：
+\begin{align}
+    &p(\boldsymbol\theta,
+      \boldsymbol\psi_R,\boldsymbol\psi_O
+      \mid C,R,O)\nonumber\\
+    &\quad\propto
+      p(\boldsymbol\theta)
+      p(\boldsymbol\psi_R)p(\boldsymbol\psi_O)
+      p(C\mid\boldsymbol\theta)
+      p(R\mid\boldsymbol\theta,\boldsymbol\psi_R)
+      p(O\mid\boldsymbol\theta,\boldsymbol\psi_O),
+    \label{eq:model0803-joint-posterior}
+\end{align}
+其中 $\boldsymbol\psi_R$ 和 $\boldsymbol\psi_O$ 是测量参数。该分析回答“多通道共同观测后，我们对潜在状态和参数的不确定性减少了多少”。联合整合结果不能回过头替代第一条外部验证结果；两条线回答不同问题。
+
+\paragraph{只解释等价类内稳定的量。}
+给定等价类 $[\boldsymbol\theta]$，如果某个函数 $\varphi(\boldsymbol\theta)$ 在类内近似不变，则称其为可稳定解释量。候选包括：有效证据时间尺度、修正规则质量的期望、局部与全局修正比例、目标规则家族总质量、反馈惊讶度，以及对负反馈的平均策略响应。若 $(\gamma,w_0)$、$m$ 和 $\kappa$ 在等价类内大幅变化，则不能分别把它们解释为唯一的记忆、搜索和决策特质。
+
+用于后续神经分析的逐试次变量应对核心参数后验和可接受模型集合共同边际化。至少同时输出后验均值、可信区间和不同等价模型下的敏感性结果。只有跨等价模型保持方向和时间位置的神经关联，才适合解释为对模型稳定成分的支持。
+
+
+\subsubsection{理论完备性与实证充分性：为什么是这些操作}
+
+\paragraph{理论回答限定在操作族内。}
+保持、局部搜索和全局搜索分别回答三个最基本的问题：是否离开当前解释；若离开，是否仍围绕相似解释搜索；若不局限于邻域，怎样回到更广的规则先验。命题 3 已证明，$(m,g)$ 覆盖这三个基本操作的全部概率混合。相比直接枚举四个 profile，这一设计把“为什么就是这些策略”转化为更清楚的问题：规则信念的改变是否还需要身份保持、局部扩散和全局重提议之外的第四种基本转移核。
+
+这不是绝对完备性。例如，学习者可能有规则家族特异的定向跳转、目标驱动的组合规则生成、或不经过现有规则库的新规则构造。若数据系统性要求这些行为，就应增加新的基本核，而不是强迫 $(m,g)$ 吸收。
+
+\paragraph{实证筛查不从模型标签出发。}
+在开发数据中先使用可观测现象寻找遗漏的操作类型，包括：连续错误期间选择是否保持；负反馈后口头规则是否保持、局部改变或跨家族改变；规则报告变化的几何距离；选择切换是否伴随 RT 增加；恢复前是否存在逐步局部移动或突然全局重置。该步骤用于检查三个基本操作是否覆盖主要行为模式，不直接估计正式留出结果。
+
+筛查后冻结以下对象：规则相似性、$K_L$ 和 $K_G$、$\tau_{L,k}$、报告代码映射、描述性阈值以及主要预测指标。正式模型随后只在参数训练段估计动力学参数，在时间留出段评价。不能一边查看留出段策略图，一边修改局部邻域或增加新的策略标签。
+
+\paragraph{灵活上界模型用于发现遗漏，而不作心理解释。}
+定义一个更灵活的贝叶斯规则转移上界，例如允许 $a^m_t$ 和 $a^g_t$ 采用强正则化随机游走：
+\begin{equation}
+    \mathbf a_{s,t}
+    =\mathbf a_{s,t-1}+\boldsymbol\xi_{s,t},
+    \qquad
+    \boldsymbol\xi_{s,t}
+    \sim\mathcal N(\mathbf0,\boldsymbol\Sigma_{\mathrm{upper}}).
+    \label{eq:model0803-upper-bound}
+\end{equation}
+该模型允许数据决定逐试次变化，但不把每个变化解释为认知策略。若上界模型在留出选择、RT、口头报告或联合轨迹上稳定优于式 \ref{eq:model0803-h-dynamics}，说明当前动力学遗漏了系统性结构。随后应检查残差与报告内容，再提出新的、可解释的输入或基本核。若两者预测接近，则支持当前低维动力学在本实验设计下具有经验充分性，但仍不意味着穷尽所有心理策略。
+
+
+\subsubsection{候选模型、恢复分析和顺序判定}
+
+\paragraph{H 模型按嵌套顺序增加复杂度。}
+为避免 $m$、$g$、动力学和随机创新同时吸收同一行为，建议依次比较：
+\begin{enumerate}
+    \item \textbf{H0：无策略迁移。}$m_{s,t}=0$。此时 $T=I$，模型退化为只含 fade/static 双通道记忆、没有 H 规则迁移的最小模型。
+    \item \textbf{H1：恒定局部修正。}$m_{s,t}=m_{s,k}$，$g_{s,t}=0$。检验是否需要在相似规则之间移动。
+    \item \textbf{H2：恒定局部--全局混合。}$m_{s,t}=m_{s,k}$，$g_{s,t}=g_{s,k}$。检验全局搜索核是否提供额外预测。
+    \item \textbf{H3：反馈驱动的确定性动力学。}使用式 \ref{eq:model0803-h-dynamics}，但 $\boldsymbol\Sigma_H=\mathbf0$。先允许惊讶度和不确定性影响 $m_t$，再检验是否还需要影响 $g_t$。
+    \item \textbf{H4：带持续创新的动力学。}仅在 H3 不能生成真实波动且创新方差可恢复时，估计非零 $\boldsymbol\Sigma_H$。
+    \item \textbf{H5：离散或半马尔可夫近似。}仅当连续状态后验呈稳定多峰、策略持续时间明显偏离连续模型时，才把式 \ref{eq:model0803-four-regimes} 提升为离散生成状态。
+\end{enumerate}
+每一步只与直接上一级比较。若更复杂模型没有改善时间留出选择，也没有提供预先指定的 RT 或口头报告优势，则保留较简单模型。
+
+\paragraph{离散状态不是默认起点。}
+若 H5 获得前述证据，可定义 $z_{s,t}\in\{1,2,3,4\}$，并使用输入驱动的半马尔可夫转移：
+\begin{equation}
+    P(z_{s,t}=j\mid z_{s,t-1}=i,d_{s,t-1},\mathbf f_{s,t-1})
+    \propto
+    \exp\!\left[
+      \alpha_{ij}
+      +\mathbf b_j^{\mathsf T}\mathbf f_{s,t-1}
+      +c_j\,r(d_{s,t-1})
+    \right],
+    \label{eq:model0803-semi-markov}
+\end{equation}
+其中 $d_{s,t-1}$ 是当前状态已经持续的时间，$r(d)$ 是预先规定的持续时间函数。各状态使用固定或层级收缩的 $(m_j,g_j)$ 区域。该模型与 V13/V14 的区别在于：所有转移系数来自同一个估计方程，不再枚举 family；持续时间显式建模，不再把“固着”混入集合操作常数。由于参数较多，H5 必须有比连续模型更强的恢复证据才能解释离散策略。
+
+\paragraph{参数恢复。}
+对 $\gamma$、$w_0$、$\kappa$、H 动力学系数、$m_t$ 和 $g_t$ 的函数摘要分别报告：偏差、均方根误差、后验区间覆盖率、真实值与后验均值相关，以及边界参数的恢复。同时报告 $(\gamma,w_0)$ 的联合后验形状和相关性，不能用两个边际区间代替双通道等价脊线。$m_t$ 和 $g_t$ 是逐试次状态，除点误差外还要报告轨迹相关、转折时点误差和四个描述区域的概率校准。
+
+恢复模拟应覆盖以下困难区域：$m\approx0$；$K_L$ 与 $K_G$ 预测接近；$\gamma\approx1$ 或 $w_0\approx1$ 导致双通道退化；低 $\gamma$、低 $w_0$ 与高 $m_tg_t$ 产生相近选择；$\kappa<1$ 与高 $m$ 并存；口头报告缺失或兼容集合宽；RT 完全不依赖 H；以及三个条件的不同试次数。模型恢复至少比较 fade-only、标准贝叶斯端点和完整双通道三个生成族；另用 $w_0=1$ 与 $\gamma=1$ 两种参数化生成成对数据，确认拟合流程正确地把它们判为同一结构等价类，而不是声称能够区分。若在这些区域不能恢复单个参数，应检查等价类或稳定函数是否仍能恢复，而不是只报告全参数平均准确率。
+
+\paragraph{模型恢复和多通道增量。}
+分别由 H0--H5 生成完整虚拟数据，再用完全相同的拟合流程建立模型混淆矩阵。每份模拟依次进行三次识别：只使用 choice；使用 choice+RT；使用 choice+RT+oral report。比较加入通道前后的模型识别率、错误混淆方向和等价类大小。这样可以直接检验 RT 和口头报告是否真的减少 H 与记忆、H 与读出之间的混淆，而不是预设信息一定单调增加。
+
+\paragraph{真实数据的顺序门槛。}
+H 机制依次通过：
+\begin{enumerate}
+    \item 转移核、试次顺序和概率归一化实现正确；
+    \item 关键模型身份或等价类能够从模拟数据中恢复；
+    \item 相对于直接简单模型改善被试内时间留出选择；
+    \item 核心参数冻结后，至少一个预先指定的 RT 或口头报告检验提供增量信息，且另一通道没有清楚的系统性反证；
+    \item 前 64 试次之后的自主生成和完整后验预测能够重现选择切换、规则报告距离、RT 分布及其联合关系，预测区间不能仅靠变宽取得覆盖；
+    \item 主要动力学形式能够跨条件部分汇聚，条件特异参数只在留出预测支持时保留。
+\end{enumerate}
+某个门槛失败时，应简化机制、合并等价模型或降低解释层级，而不是继续增加 profile。
+
+
+\subsubsection{实际运转流程与实现要求}
+
+\paragraph{确定性 H0--H3 的逐试次计算。}
+给定一组核心参数，每名被试按以下顺序运行：
+\begin{enumerate}
+    \item 按式 \ref{eq:model0803-memory-initial} 初始化 $F_{s,0}$、$S_{s,0}$ 和 $\pi^+_{s,0}$，并初始化 $\mathbf a_{s,1}$；
+    \item 使用 Task 1b 知觉分布计算或读取全部 $q_{s,t,h}(c)$；
+    \item 用上一试次的惊讶度和规则不确定性，通过式 \ref{eq:model0803-h-dynamics} 得到 $(m_{s,t},g_{s,t})$；
+    \item 构造式 \ref{eq:model0803-transition-kernel}，再直接转移 $\pi^+_{s,t-1}$，由式 \ref{eq:model0803-h-position} 得到 $\pi^-_{s,t}$；
+    \item 用式 \ref{eq:model0803-memory-offset}--\ref{eq:model0803-memory-sync} 将 $F_{s,t-1}$ 和 $S_{s,t-1}$ 强制同步到同一个 $\pi^-_{s,t}$；
+    \item 用式 \ref{eq:model0803-choice-readout} 预测并评分当前选择；
+    \item 用式 \ref{eq:model0803-rt-channel} 预测 RT；观察当前选择后，用式 \ref{eq:model0803-oral-emission} 预测口头报告；
+    \item 当前反馈到达后，计算 $L_{s,t}$、$\widetilde L_{s,t}$ 和反馈惊讶度 $S^{\mathrm{fb}}_{s,t}$；
+    \item 用式 \ref{eq:model0803-dual-memory-update} 分别更新 fade/static 状态，再用式 \ref{eq:model0803-feedback-posterior} 得到 $\pi^+_{s,t}$；
+    \item 计算 $U^{\mathrm{rule}}_{s,t}$；$S^{\mathrm{fb}}_{s,t}$ 和 $U^{\mathrm{rule}}_{s,t}$ 只供下一试次使用。
+\end{enumerate}
+H0--H3 在概率知觉 $q$ 给定后可以直接计算序列似然。H4/H5 包含不可直接观察的随机状态路径，需要使用粒子滤波、前向算法或其他经过数值验证的边际化方法；不能从大量随机轨迹中挑选最接近真实行为的一条进行评分。
+
+\paragraph{自主生成。}
+进入自主生成区间后，模型不读取真实选择、真实 RT、真实口头报告或已记录反馈。每个试次从式 \ref{eq:model0803-choice-readout} 生成选择，从式 \ref{eq:model0803-rt-channel} 生成 RT，从式 \ref{eq:model0803-oral-emission} 生成结构化报告；实验规则再依据生成选择和真实类别产生反馈，模型据此更新 $F$、$S$、$\pi^+$、惊讶度和下一试次 H 状态。全部轨迹共同形成预测分布，不进行 best-quarter 选择，也不选代表性最佳轨迹作为主要证据。
+
+\paragraph{必须保存的状态。}
+最低复现记录包括：规则注册表和带标签相似性；$K_L$、$K_G$ 和 $\tau_{L,k}$；$p_{0,k}$；每试次同步前后的 $F_t$、$S_t$、通道差异 $\Delta_t$、$\pi^-_t$、$\pi^+_t$、$m_t$、$g_t$、三个操作权重、反馈惊讶度和规则不确定性；$\gamma$、$w_0$ 的层级参数抽样及其联合后验；选择、RT 和口头报告预测分布；随机状态创新或粒子种子；模型恢复配置；以及外部验证线与联合整合线的独立结果。
+
+\paragraph{数值检查。}
+每次运行必须确认：所有核的行和为 1；所有规则信念非负且归一化；$m_t,g_t\in[0,1]$；式 \ref{eq:model0803-memory-sync-identity} 在浮点容差内成立；同步前后的两通道规则特异差异保持为 $\Delta_{t-1}$；$\gamma=1$、$w_0=1$ 和 $w_0=0$ 的实现分别复现命题 1 的三个端点；当前反馈不进入当前 $\pi^-_t$；局部核的期望差异不大于全局核；不同积分点数和粒子数下主要预测稳定；独立随机种子不改变模型排序；缺失 RT 或口头报告只删除对应测量项，不删除选择和双通道反馈更新。
+
+
+\subsubsection{结论边界与下一阶段工作重点}
+
+新的 H 模块把旧模型中的人工 profile 重新表达为一个低维生成问题：规则信念是否修正、修正多少，以及修正时在局部还是全局搜索。三个基本操作的凸组合在其定义域内具有严格的相对完备性；连续动力学说明策略怎样由上一试次的惊讶度、不确定性和自身持续性产生；四种策略标签只是该连续空间的互斥展示区域。
+
+这一设计并不保证 $m$、$g$、$\gamma$、$w_0$ 和 $\kappa$ 能被行为唯一识别。相反，模型从一开始就把预测等价类作为正式结果对象。Choice 提供核心约束；冻结后的 RT 和口头报告提供外部检验；结构确定后的联合模型再量化多通道观测使等价集合缩小了多少。如果不同参数或模块仍产生近似相同的 choice、RT 和 oral report 分布，应报告整个可接受集合，并只解释其中稳定的动力学函数。
+
+因此，下一阶段的重点不是继续扩展 controller family，而是依次完成：冻结规则几何和局部/全局核；实现 H0--H3；验证概率和因果顺序；进行困难区域的参数与模型恢复；建立规范化口头报告观测模型；随后才考虑随机 H4、离散 H5 或有限活跃集合。只有当一个新增结构提供可恢复、可留出预测且跨观测通道一致的增量时，它才进入最终认知解释。
