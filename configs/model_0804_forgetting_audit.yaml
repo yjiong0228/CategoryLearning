@@ -1,0 +1,55 @@
+analysis_id: model_0804_cond1_forgetting_audit_20260804_v1
+base_config: configs/model_0804_cond1_preflight.yaml
+scope: structural_history_forgetting_audit_not_model_comparison
+
+data_scope:
+  subject_id: 101
+  model_id: FA2
+  anchors_zero_based: [15, 47, 95, 159]
+  horizon: 128
+  reason: anchors_and_horizon_frozen_before_viewing_coupled_decay_results
+
+filter_anchor_sampling:
+  particle_count: 512
+  posterior_state_pairs_per_anchor: 64
+  independent_filter_seeds: [20260804, 20260805]
+  resample_threshold_fraction: 0.5
+
+common_future:
+  coupling_seed: 20260804
+  same_transition_innovations_within_pair: true
+  same_observed_choices_within_pair: true
+  same_feedback_within_pair: true
+
+fixed_parameters:
+  source: base_config_preflight_fixed_parameter_probe
+  lapse: 0.02
+  probes:
+    - {id: frozen_dual, w0: 0.40, gamma: 0.70}
+    - {id: fade_only, w0: 0.00, gamma: 0.70}
+
+metrics:
+  - active_overlap_distance
+  - omega_total_variation
+  - absolute_choice_probability_difference
+  - common_active_memory_delta_difference
+
+forgetting_gate:
+  terminal_window: 16
+  predictive:
+    maximum_mean_choice_probability_difference: 0.005
+    maximum_p95_choice_probability_difference: 0.02
+  state:
+    maximum_median_omega_total_variation: 0.05
+    maximum_median_active_distance: 0.20
+  route_rules:
+    dual_predictive_and_state_pass: bridge_filter_eligible
+    fade_only_passes_but_dual_fails: static_memory_is_structural_obstacle
+    neither_probe_passes: active_set_dynamics_is_structural_obstacle
+    predictive_passes_but_state_fails: behavioral_forgetting_without_state_coupling
+
+guardrails:
+  - no_parameter_optimization
+  - no_nll_or_model_comparison_claim
+  - no_selection_of_anchor_or_horizon_after_results
+  - formal_32_subject_fit_remains_closed

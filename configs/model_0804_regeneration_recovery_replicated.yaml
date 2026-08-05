@@ -1,0 +1,90 @@
+# Replicated, cross-sequence behaviour-level mechanism recovery for FA2R.
+#
+# Subjects are the first four condition-1 identifiers, fixed without reference
+# to fit or recovery outcome.  Five independent generated choice paths per
+# subject give 20 replications for every mechanism and 180 datasets in total.
+
+analysis_id: model_0804_fa2r_replicated_mechanism_recovery_20260805_v1
+base_config: configs/model_0804_cond1_preflight.yaml
+scope: replicated_cross_sequence_behaviour_level_mechanism_recovery
+
+data_scope:
+  subject_ids: [101, 102, 103, 104]
+  subject_policy: first_four_condition1_ids_not_selected_by_outcome
+  model_id: FA2R
+  use_full_frozen_trial_sequence: true
+  use_observed_category_sequence_as_correct_choice: true
+  use_observed_choice_only_to_verify_category_reconstruction: true
+
+architecture:
+  capacity: 5
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+
+generation:
+  base_seed: 20260805
+  replicates_per_subject: 5
+  scenarios:
+    - {id: center, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: rho_zero, rho: 0.00, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: rho_high, rho: 0.05, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: m_low, rho: 0.02, m: 0.05, g: 0.35, lapse: 0.02}
+    - {id: m_high, rho: 0.02, m: 0.30, g: 0.35, lapse: 0.02}
+    - {id: g_low, rho: 0.02, m: 0.15, g: 0.00, lapse: 0.02}
+    - {id: g_high, rho: 0.02, m: 0.15, g: 0.70, lapse: 0.02}
+    - {id: lapse_low, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.005}
+    - {id: lapse_high, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.05}
+
+candidate_grid:
+  rho: [0.00, 0.02, 0.05]
+  m: [0.05, 0.15, 0.30]
+  g: [0.00, 0.35, 0.70]
+  lapse: [0.005, 0.02, 0.05]
+
+filter:
+  resample_threshold_fraction: 0.5
+  stage1:
+    particle_count: 512
+    filter_seed: 20260805
+  confirmation:
+    top_k_stage1: 5
+    particle_count: 2048
+    independent_filter_seeds: [20260805, 20260806]
+    always_include_true_grid_point: true
+    always_include_rho_zero_parent: true
+    always_include_stage1_profile_winner_per_parameter_level: true
+    likelihood_combination: arithmetic_mean_likelihood_across_seeds
+
+execution:
+  workers: 4
+  worker_blas_threads: 1
+  checkpoint_every_stage1_candidates: 5
+
+recovery_gates:
+  # Point-estimate routing thresholds are frozen before this run. Wilson
+  # intervals are also reported, but are not silently substituted as gates.
+  minimum_true_grid_point_within_2_nll_fraction: 0.70
+  minimum_per_scenario_true_grid_point_within_2_nll_fraction: 0.50
+  minimum_rho_zero_vs_positive_classification_accuracy: 0.80
+  minimum_rho_zero_specificity: 0.75
+  minimum_rho_positive_sensitivity: 0.80
+  maximum_median_absolute_rho_error: 0.02
+  minimum_monotonic_parameter_axes: 4
+  minimum_g_extreme_exact_level_accuracy: 0.60
+  minimum_g_low_vs_high_direction_accuracy: 0.70
+  route_on_pass: advance_to_fa2r_real_data_fit_preflight
+  route_on_fail: revise_or_restrict_fa2r_parameterization
+
+guardrails:
+  - twenty_independent_choice_paths_per_mechanism_across_four_q_sequences
+  - subjects_are_first_four_ids_not_selected_by_outcome
+  - true_parameters_are_on_the_candidate_grid
+  - fixed_gamma_w0_kappa_are_not_recovered_in_this_gate
+  - choices_and_feedback_are_newly_simulated_for_every_dataset
+  - candidate_selection_uses_choice_marginal_nll_not_latent_path_truth
+  - every_parameter_grid_level_has_a_profile_winner_in_confirmation
+  - stage1_winners_require_independent_seed_high_particle_confirmation
+  - all_nine_mechanisms_and_all_replicates_must_finish_before_gate_decision
+  - no_real_subject_parameter_or_model_comparison_claim
+  - formal_32_subject_fit_remains_closed_until_this_gate_is_interpreted

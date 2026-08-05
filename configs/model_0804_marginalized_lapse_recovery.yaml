@@ -1,0 +1,102 @@
+# Recovery of FA2R with g fixed and sequence-level lapse marginalized.
+# Frozen before any marginalized-lapse N=8192/N=32768 result was viewed.
+
+analysis_id: model_0804_fa2r_marginalized_lapse_recovery_20260805_v1
+scope: replicated_cross_sequence_rho_m_recovery_with_sequence_level_lapse_marginalization
+
+source:
+  fixed_g_report: results/zhuran/model_0804_cond1/fixed_g_recovery_20260805_v1/fixed_g_recovery_report.json
+  expected_fixed_g_report_sha256: d2b8092bc89c2a5e20028b3934cae0a62d8128ba7ca3aa8bdc976886d62dc81b
+  reuse_source_stage1_nll: true
+  reuse_compatible_fixed_g_high_particle_values: true
+
+data_scope:
+  subject_ids: [101, 102, 103, 104]
+  replicates_per_subject: 5
+  primary_scenarios: [center, rho_zero, rho_high, m_low, m_high, lapse_low, lapse_high]
+  misspecification_scenarios: [g_low, g_high]
+  expected_primary_dataset_count: 140
+  expected_misspecification_dataset_count: 40
+  model_id: FA2R
+
+architecture:
+  capacity: 5
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+  fixed_g: 0.35
+
+candidate_grid:
+  rho: [0.00, 0.02, 0.05]
+  m: [0.05, 0.15, 0.30]
+
+nuisance_lapse:
+  levels: [0.005, 0.02, 0.05]
+  prior_weights: [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
+  marginalization_scope: whole_sequence
+  interpret_as_recovered_parameter: false
+
+screening:
+  source_particle_count: 512
+  top_k_marginal_stage1: 4
+  always_include_reference_rho_m: true
+  always_include_rho_zero_parent: true
+  always_include_profile_winner_per_rho_m_level: true
+  score_all_lapse_components_for_every_confirmed_rho_m_candidate: true
+
+filter:
+  resample_threshold_fraction: 0.5
+  seeds: [20260805, 20260806, 20260807, 20260808]
+  tiers:
+    - {id: n8192, particle_count: 8192}
+    - {id: n32768, particle_count: 32768, escalation_only: true}
+
+diagnostic_thresholds:
+  maximum_plausible_candidate_paired_difference_se_nll: 0.35
+  maximum_reference_candidate_absolute_nll_se: 0.50
+  minimum_seed_modal_exact_winner_fraction: 0.75
+  minimum_seed_modal_rho_class_fraction: 1.00
+  plausible_candidate_delta_nll: 2.00
+
+escalation:
+  escalate_if_n8192_numerically_unresolved: true
+  escalate_if_seed_modal_exact_winner_below_threshold: true
+  escalate_if_seed_rho_class_below_threshold: true
+
+recovery_gates:
+  minimum_numerically_resolved_dataset_fraction: 0.75
+  minimum_seed_exact_winner_stable_fraction: 0.75
+  minimum_seed_rho_class_stable_fraction: 0.95
+  minimum_primary_true_grid_point_within_2_nll_fraction: 0.75
+  minimum_per_scenario_true_grid_point_within_2_nll_fraction: 0.60
+  minimum_rho_zero_vs_positive_classification_accuracy: 0.85
+  minimum_rho_zero_specificity: 0.80
+  minimum_rho_positive_sensitivity: 0.85
+  minimum_exact_m_recovery_fraction: 0.65
+  maximum_median_absolute_rho_error: 0.02
+  maximum_median_absolute_m_error: 0.05
+  minimum_monotonic_parameter_axes: 2
+  minimum_paired_monotonic_fraction_per_axis: 0.70
+  minimum_per_generating_lapse_stratum_true_within_2_nll_fraction: 0.70
+  minimum_per_generating_lapse_stratum_rho_classification_accuracy: 0.80
+  minimum_per_generating_lapse_stratum_exact_m_recovery_fraction: 0.60
+  route_on_pass: advance_to_rho_zero_parent_recovery_and_predictive_audit
+  route_on_fail: stop_fa2r_restricted_recovery_failed
+
+execution:
+  workers: 128
+  worker_blas_threads: 1
+
+guardrails:
+  - g_is_fixed_at_the_preexisting_grid_center_not_estimated
+  - lapse_is_a_sequence_level_nuisance_marginalized_in_likelihood_space
+  - lapse_is_not_selected_or_interpreted_as_a_recovered_subject_parameter
+  - nuisance_prior_weights_are_frozen_and_sum_to_one
+  - each_rho_m_candidate_scores_all_three_lapse_components
+  - component_likelihoods_are_mixed_before_filter_seed_likelihoods_are_averaged
+  - nll_values_are_never_averaged_across_lapse_components_or_filter_seeds
+  - all_140_correctly_specified_existing_synthetic_datasets_are_required_for_recovery_gates
+  - all_40_g_extreme_datasets_are_misspecification_stress_only
+  - generating_lapse_strata_are_reported_as_robustness_gates_not_recovery_of_lapse
+  - identical_filter_seeds_are_used_across_components_candidates_and_particle_counts
+  - no_real_subject_fit_or_fa3_claim

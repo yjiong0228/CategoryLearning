@@ -1,0 +1,146 @@
+# Frozen pre-run specification for the condition-1, choice-only model_0803 gate.
+#
+# Scientific scope: formal subject-level temporal-holdout conclusions about
+# choice prediction for deterministic H0--H3.  This file does not authorize
+# claims about RT, oral report, H4/H5, cross-condition generalization,
+# hierarchical parameter posteriors, or autonomous generation adequacy.
+
+analysis_id: model_0803_cond1_choice_formal_20260803_v3
+condition: 1
+
+data:
+  path: data/processed/Task2_processed.csv
+  expected_sha256: e67293ee3a60ca12bba56d19fcaf83422ec459e1f2e539b996a0088a22c5369d
+  expected_subjects: 32
+  expected_rows: 10048
+  inclusion: all_condition1_rows_with_observed_choice_and_feedback
+  exclusion: none
+  independent_unit: subject
+  trial_order: [iSession, iBlock, iTrial]
+
+perception:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/q_cache
+  sobol_points: 512
+  probability_floor: 1.0e-7
+  cache_policy: require_matching_subject_trial_fingerprint
+
+holdout:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/subject_predictions
+  policy: frozen_existing_temporal_suffix
+  multiple_block_subject: last_complete_block
+  one_block_subject: last_25_percent
+  conditioning: one_step_ahead_observed_history
+
+rule_space:
+  expected_hypotheses: 38
+  labelled_similarity_cache: src/Bayesian_state/problems/cache/similarity_matrix_prototype_labels_v2_d4_c2_n100000_labels_01_10.npy
+  expected_similarity_sha256: 67e3079d90a51ba90d3fa29d2eeccdb49cdd4016c69f676c720b18fc3ea4174b
+  local_scale_rule: median_nearest_nonself_labelled_distance
+  primary_prior: uniform_family
+  sensitivity_prior: uniform_rule
+  global_kernel: prior_excluding_source
+  local_kernel: prior_times_exp_negative_distance_over_tau_excluding_source
+
+numerics:
+  likelihood_epsilon: 1.0e-12
+  probability_tolerance: 1.0e-10
+  synchronization_tolerance: 1.0e-10
+  require_local_global_distance_gap_every_rule: true
+
+models:
+  sequence: [H0, H1, H2, H3_M, H3_MG]
+  descriptions:
+    H0: no_hypothesis_transition
+    H1: constant_local_revision
+    H2: constant_local_global_mixture
+    H3_M: feedback_driven_revision_mass_with_constant_global_share
+    H3_MG: feedback_driven_revision_mass_and_global_share
+  memory_endpoints: [bayes, fade, dual]
+  primary_grid:
+    prior: uniform_family
+    memory: [bayes, fade, dual]
+    models: [H0, H1, H2, H3_M, H3_MG]
+  prior_sensitivity_grid:
+    prior: uniform_rule
+    memory: [dual]
+    models: [H0, H1, H2, H3_M, H3_MG]
+  h3_input_scaling: training_H0_bayes_gamma1_w1_kappa1
+  h3_dynamics: diagonal_mean_reverting_deterministic
+  h3_initial_state: subject_equilibrium_intercept
+
+optimization:
+  method: multi_start_L-BFGS-B
+  convergence_policy: select_only_successful_optimizations_and_continue_a_better_nonconverged_solution_for_twice_max_iterations
+  supersedes_run: results/zhuran/model_0803_cond1/formal_20260803_v2
+  supersession_reason: widen_H3_logit_intercept_bounds_so_the_H2_boundary_is_reachable_in_the_H3_closure_to_numerical_tolerance
+  h3_logit_intercept_bounds: [-30.0, 30.0]
+  real_n_starts:
+    H0: 16
+    H1: 16
+    H2: 20
+    H3_M: 24
+    H3_MG: 32
+  recovery_n_starts:
+    H0: 8
+    H1: 8
+    H2: 10
+    H3_M: 12
+    H3_MG: 16
+  max_iterations: 800
+  max_unresolved_nonconverged_advantage: 1.0e-6
+  base_seed: 20260803
+  reuse_parent_optimum_as_child_start: true
+  score_for_fitting: training_choice_negative_log_likelihood
+
+inference:
+  primary_metric: subject_level_holdout_nll_per_trial_difference
+  positive_delta_favors: candidate
+  subject_weighting: equal
+  bootstrap_replicates: 20000
+  bootstrap_seed: 20260804
+  interval: percentile_95
+  paired_test: two_sided_wilcoxon
+  multiplicity: holm_within_primary_family
+  primary_comparisons:
+    - {candidate: H1_dual_uniform_family, baseline: H0_dual_uniform_family}
+    - {candidate: H2_dual_uniform_family, baseline: H1_dual_uniform_family}
+    - {candidate: H3_M_dual_uniform_family, baseline: H2_dual_uniform_family}
+    - {candidate: H3_MG_dual_uniform_family, baseline: H3_M_dual_uniform_family}
+    - {candidate: H3_M_dual_uniform_family, baseline: H0_dual_uniform_family}
+    - {candidate: H3_MG_dual_uniform_family, baseline: NR2_frozen}
+  secondary_metrics: [brier, accuracy, calibration, improved_subject_count]
+  decision_rule:
+    supported: adjusted_p_below_0.05_and_bootstrap_interval_strictly_above_zero
+    worse: adjusted_p_below_0.05_and_bootstrap_interval_strictly_below_zero
+    otherwise: inconclusive
+
+recovery:
+  enabled: true
+  replicates_per_generator: 100
+  generators: [H0, H1, H2, H3_M, H3_MG]
+  fitted_candidates: [H0, H1, H2, H3_M, H3_MG]
+  memory: dual
+  prior: uniform_family
+  template_subject_policy: deterministic_cycle_over_all_32_subject_designs
+  simulate_feedback_from_recorded_true_category: true
+  model_identity_metric: minimum_holdout_nll_per_trial
+  reports:
+    - confusion_matrix
+    - pairwise_parent_recovery
+    - parameter_bias_rmse_correlation
+    - trajectory_correlation_for_m_and_g
+  interpretation_gate: mechanism_labels_require_direct_parent_recovery_wilson_interval_above_0.5_and_trajectory_recovery
+
+reporting:
+  save_trial_states: true
+  save_optimizer_diagnostics: true
+  save_input_hashes_and_versions: true
+  report_exact_p_values: true
+  report_effects_intervals_and_subject_counts: true
+  forbidden_claims:
+    - unique_psychological_parameter_identification
+    - rt_validation
+    - oral_report_validation
+    - cross_condition_generalization
+    - h4_or_h5_support
+    - autonomous_generation_adequacy

@@ -1,0 +1,76 @@
+# Behaviour-level mechanism-recovery pilot for FA2R.
+#
+# This is a deliberately small gate before any real-data optimization.  One
+# synthetic choice sequence is generated for each known mechanism on subject
+# 101's frozen q/category sequence.  The true values lie on the candidate grid.
+
+analysis_id: model_0804_fa2r_mechanism_recovery_pilot_20260804_v1
+base_config: configs/model_0804_cond1_preflight.yaml
+scope: single_replicate_behaviour_level_mechanism_recovery_pilot
+
+data_scope:
+  subject_id: 101
+  model_id: FA2R
+  use_full_frozen_trial_sequence: true
+  use_observed_category_sequence_as_correct_choice: true
+  use_observed_choice_only_to_verify_category_reconstruction: true
+
+architecture:
+  capacity: 5
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+
+generation:
+  base_seed: 20260804
+  replicates: 1
+  scenarios:
+    - {id: center, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: rho_zero, rho: 0.00, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: rho_high, rho: 0.05, m: 0.15, g: 0.35, lapse: 0.02}
+    - {id: m_low, rho: 0.02, m: 0.05, g: 0.35, lapse: 0.02}
+    - {id: m_high, rho: 0.02, m: 0.30, g: 0.35, lapse: 0.02}
+    - {id: g_low, rho: 0.02, m: 0.15, g: 0.00, lapse: 0.02}
+    - {id: g_high, rho: 0.02, m: 0.15, g: 0.70, lapse: 0.02}
+    - {id: lapse_low, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.005}
+    - {id: lapse_high, rho: 0.02, m: 0.15, g: 0.35, lapse: 0.05}
+
+candidate_grid:
+  rho: [0.00, 0.02, 0.05]
+  m: [0.05, 0.15, 0.30]
+  g: [0.00, 0.35, 0.70]
+  lapse: [0.005, 0.02, 0.05]
+
+filter:
+  resample_threshold_fraction: 0.5
+  stage1:
+    particle_count: 512
+    filter_seed: 20260804
+  confirmation:
+    top_k_stage1: 5
+    particle_count: 2048
+    independent_filter_seeds: [20260804, 20260805]
+    always_include_true_grid_point: true
+    always_include_rho_zero_parent: true
+    always_include_stage1_profile_winner_per_parameter_level: true
+    likelihood_combination: arithmetic_mean_likelihood_across_seeds
+
+pilot_gates:
+  # Descriptive routing thresholds only; they are not inferential error rates.
+  minimum_true_grid_point_within_2_nll_fraction: 0.67
+  minimum_rho_zero_vs_positive_classification_accuracy: 0.75
+  maximum_median_absolute_rho_error: 0.02
+  minimum_monotonic_parameter_axes: 3
+  total_parameter_axes: 4
+
+guardrails:
+  - one_replicate_per_mechanism_is_a_pilot_not_formal_model_recovery
+  - true_parameters_are_on_the_candidate_grid
+  - fixed_gamma_w0_kappa_are_not_recovered_in_this_gate
+  - same_real_q_and_correct_category_sequence_used_for_all_generators
+  - choices_and_feedback_are_newly_simulated_for_every_generator
+  - candidate_selection_uses_choice_marginal_nll_not_latent_path_truth
+  - stage1_winners_require_independent_seed_high_particle_confirmation
+  - every_parameter_grid_level_has_a_profile_winner_in_confirmation
+  - no_real_subject_parameter_or_model_comparison_claim
+  - formal_32_subject_fit_remains_closed

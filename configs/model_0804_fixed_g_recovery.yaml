@@ -1,0 +1,95 @@
+# Replicated recovery of the restricted FA2R model with g fixed at 0.35.
+# Frozen before any restricted-model N=8192/N=32768 result was viewed.
+
+analysis_id: model_0804_fa2r_fixed_g_recovery_20260805_v1
+scope: replicated_cross_sequence_fixed_g_recovery_and_misspecification_stress
+
+source:
+  recovery_report: results/zhuran/model_0804_cond1/regeneration_recovery_replicated_20260805_v1/recovery_report.json
+  expected_recovery_report_sha256: 79fd34640a28fdcb68eb0686e07c20cfa560630c54c866c9be06fbf8f18a1fcd
+  stability_report: results/zhuran/model_0804_cond1/particle_stability_audit_20260805_v1/particle_stability_report.json
+  expected_stability_report_sha256: 58b7492a3fd08141c608bcaf463a2e0615d35b2261a6f291898ace9e4625ea65
+  reuse_source_stage1_nll: true
+  reuse_compatible_high_particle_values: true
+
+data_scope:
+  subject_ids: [101, 102, 103, 104]
+  replicates_per_subject: 5
+  primary_scenarios: [center, rho_zero, rho_high, m_low, m_high, lapse_low, lapse_high]
+  misspecification_scenarios: [g_low, g_high]
+  expected_primary_dataset_count: 140
+  expected_misspecification_dataset_count: 40
+  model_id: FA2R
+
+architecture:
+  capacity: 5
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+  fixed_g: 0.35
+
+candidate_grid:
+  rho: [0.00, 0.02, 0.05]
+  m: [0.05, 0.15, 0.30]
+  lapse: [0.005, 0.02, 0.05]
+
+screening:
+  source_particle_count: 512
+  top_k_restricted_stage1: 5
+  always_include_reference_projection: true
+  always_include_rho_zero_parent: true
+  always_include_profile_winner_per_level: true
+
+filter:
+  resample_threshold_fraction: 0.5
+  seeds: [20260805, 20260806, 20260807, 20260808]
+  tiers:
+    - {id: n8192, particle_count: 8192}
+    - {id: n32768, particle_count: 32768, escalation_only: true}
+
+diagnostic_thresholds:
+  maximum_plausible_candidate_paired_difference_se_nll: 0.35
+  maximum_reference_candidate_absolute_nll_se: 0.50
+  minimum_seed_modal_exact_winner_fraction: 0.75
+  minimum_seed_modal_rho_class_fraction: 1.00
+  plausible_candidate_delta_nll: 2.00
+
+escalation:
+  escalate_if_n8192_numerically_unresolved: true
+  escalate_if_seed_modal_exact_winner_below_threshold: true
+  escalate_if_seed_rho_class_below_threshold: true
+
+recovery_gates:
+  minimum_numerically_resolved_dataset_fraction: 0.75
+  minimum_seed_exact_winner_stable_fraction: 0.75
+  minimum_seed_rho_class_stable_fraction: 0.95
+  minimum_primary_true_grid_point_within_2_nll_fraction: 0.75
+  minimum_per_scenario_true_grid_point_within_2_nll_fraction: 0.60
+  minimum_rho_zero_vs_positive_classification_accuracy: 0.85
+  minimum_rho_zero_specificity: 0.80
+  minimum_rho_positive_sensitivity: 0.85
+  minimum_exact_m_recovery_fraction: 0.65
+  minimum_exact_lapse_recovery_fraction: 0.60
+  maximum_median_absolute_rho_error: 0.02
+  maximum_median_absolute_m_error: 0.05
+  maximum_median_absolute_lapse_error: 0.015
+  minimum_monotonic_parameter_axes: 3
+  minimum_paired_monotonic_fraction_per_axis: 0.70
+  route_on_pass: advance_to_paired_free_vs_restricted_predictive_audit
+  route_on_fail: stop_or_revise_restricted_fa2r
+
+execution:
+  workers: 16
+  worker_blas_threads: 1
+
+guardrails:
+  - g_is_fixed_at_the_preexisting_grid_center_not_estimated
+  - fixed_g_is_a_numerical_architecture_choice_not_a_human_parameter_claim
+  - all_140_correctly_specified_existing_synthetic_datasets_are_required_for_recovery_gates
+  - all_40_g_extreme_datasets_are_misspecification_stress_only
+  - misspecification_stress_does_not_enter_parameter_recovery_gates
+  - source_stage1_scores_only_choose_the_confirmation_set
+  - every_recovered_parameter_level_has_a_stage1_profile_winner_in_confirmation
+  - seed_likelihoods_are_combined_by_arithmetic_mean_likelihood_not_mean_nll
+  - identical_filter_seeds_are_used_across_candidates_and_particle_counts
+  - no_real_subject_fit_or_fa3_claim

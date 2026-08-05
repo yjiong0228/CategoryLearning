@@ -1,0 +1,224 @@
+# Frozen implementation preflight for manuscript/model_0804.tex.
+#
+# Scope: condition-1, choice-only HFW correctness and particle stability for
+# FS-H0/FA0/FA1/FA2.  This configuration is not a formal cognitive inference
+# run and does not authorize FA3, RAW, RT, oral-report, or cross-condition
+# claims.
+
+analysis_id: model_0804_cond1_hfw_preflight_20260804_v6
+condition: 1
+
+data:
+  path: data/processed/Task2_processed.csv
+  expected_sha256: e67293ee3a60ca12bba56d19fcaf83422ec459e1f2e539b996a0088a22c5369d
+  expected_subjects: 32
+  expected_rows: 10048
+  inclusion: all_condition1_rows_with_observed_choice_and_feedback
+  exclusion: none
+  independent_unit: subject
+  trial_order: [iSession, iBlock, iTrial]
+
+perception:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/q_cache
+  sobol_points: 512
+  probability_floor: 1.0e-7
+  cache_policy: require_matching_subject_trial_fingerprint
+
+holdout:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/subject_predictions
+  policy: frozen_existing_temporal_suffix
+  conditioning: one_step_ahead_observed_history
+
+rule_space:
+  expected_hypotheses: 38
+  labelled_similarity_cache: src/Bayesian_state/problems/cache/similarity_matrix_prototype_labels_v2_d4_c2_n100000_labels_01_10.npy
+  expected_similarity_sha256: 67e3079d90a51ba90d3fa29d2eeccdb49cdd4016c69f676c720b18fc3ea4174b
+  local_scale_rule: median_nearest_nonself_labelled_distance
+  primary_prior: uniform_family
+  global_kernel: prior_restricted_to_pretransition_inactive_rules
+  local_kernel: posterior_weighted_local_kernel_restricted_to_pretransition_inactive_rules
+
+architecture:
+  name: hard_finite_workspace
+  capacity: 5
+  no_same_trial_reentry: true
+  replacement_count: binomial_capacity_m
+  exit_kernel: one_minus_active_posterior_plus_epsilon
+  exit_epsilon: 1.0e-9
+  newcomer_mass: paired_dropped_slot_mass
+  retained_memory: preserve_fade_static_difference
+  newcomer_memory_difference: 0.0
+
+models:
+  sequence: [FA0, FA1, FA2]
+  descriptions:
+    FA0: fixed_random_finite_set
+    FA1: constant_local_multislot_replacement
+    FA2: constant_local_global_multislot_replacement
+  memory: dual
+  decision_lapse: 0.0
+  dynamic_controls: false
+  reservoir_access: false
+
+preflight:
+  pilot_subject_policy: first_subject_ids_not_selected_by_outcome
+  pilot_subjects: [101, 102]
+  fixed_parameter_probe:
+    gamma: 0.70
+    w0: 0.40
+    kappa: 2.0
+    FA0: {m: 0.0, g: 0.0}
+    FA1: {m: 0.15, g: 0.0}
+    FA2: {m: 0.15, g: 0.35}
+  particle_counts:
+    FA0: [501942]
+    FA1: [32768, 65536, 131072]
+    FA2: [32768, 65536, 131072]
+  fa0_integration:
+    mode: exact_successive_wor_initial_sets
+    expected_initial_sets: 501942
+    maximum_exact_initial_sets: 600000
+  transition_proposals_per_particle:
+    FA0: 1
+    FA1: 1
+    FA2: 1
+  independent_filter_seeds: [20260804, 20260805]
+  structural_check_trials: 16
+  resample_threshold_fraction:
+    FA0: 0.0
+    FA1: 0.5
+    FA2: 0.5
+  resampling_note: FA0_has_no_state_rejuvenation_and_must_not_duplicate_static_sets
+  quantitative_stability_gate:
+    calibration_basis: frozen_fixed_parameter_probe_before_any_formal_model_fit
+    maximum_largest_count_seed_nll_range: 1.0
+    maximum_top_two_count_nll_change: 1.0
+    maximum_top_two_probability_difference: 0.04
+    maximum_top_two_mean_probability_difference: 0.01
+  exact_enumeration:
+    enabled: true
+    hypotheses: 3
+    capacity: 1
+    trials: 3
+    maximum_branches: 250000
+  stability_reports:
+    - marginal_nll
+    - maximum_probability_difference_from_largest_particle_count
+    - mean_probability_difference_from_largest_particle_count
+    - minimum_pre_choice_ess
+    - minimum_post_choice_ess
+    - resampling_count
+    - maximum_memory_sync_error
+
+optimization_smoke:
+  enabled_by_default: false
+  particle_count: 128
+  transition_proposals_per_particle: 4
+  n_starts: 1
+  max_iterations: 8
+  method: Powell_common_random_numbers
+  score: training_choice_marginal_nll
+
+numerics:
+  likelihood_epsilon: 1.0e-12
+  probability_tolerance: 1.0e-10
+  synchronization_tolerance: 1.0e-10
+  exact_particle_probability_tolerance: 0.02
+  exact_particle_nll_tolerance: 0.04
+  require_local_global_distance_gap_every_rule: true
+
+formal_run_gate:
+  required_before_full_condition1_fit:
+    - unit_tests_pass
+    - exact_small_space_particle_agreement
+    - fullset_FA0_matches_FS_H0
+    - FA1_matches_FA2_at_g_zero
+    - no_current_feedback_leakage
+    - particle_stability_quantitative
+  explicitly_deferred:
+    - full_32_subject_optimization
+    - model_recovery
+    - autonomous_generation
+    - FA3_M
+    - FA3_MG
+    - RAW
+    - RT
+    - oral_report
+
+adaptation_diagnostic:
+  purpose: compare_bootstrap_alive_island_and_fixed_lag_rejuvenation_diagnostics
+  pilot_subjects: [101]
+  models: [FA2]
+  filter_seeds: [20260804]
+  settings:
+    - {id: diagnostic_r32768_b1, particle_count: 32768, proposals_per_parent: 1}
+    - {id: diagnostic_r65536_b1, particle_count: 65536, proposals_per_parent: 1}
+    - {id: baseline_r131072_b1, particle_count: 131072, proposals_per_parent: 1}
+    - {id: parent_r65536_b2, particle_count: 65536, proposals_per_parent: 2}
+    - {id: balanced_r32768_b4, particle_count: 32768, proposals_per_parent: 4}
+    - {id: proposal_r16384_b8, particle_count: 16384, proposals_per_parent: 8}
+    - {id: expanded_r32768_b8, particle_count: 32768, proposals_per_parent: 8}
+    - {id: stratified_k_r32768, particle_count: 32768, proposals_per_parent: 1, stratify_replacement_count: true}
+    - {id: alive_r2048, particle_count: 2048, proposals_per_parent: 1, filter_method: alive}
+    - {id: alive_r8192, particle_count: 8192, proposals_per_parent: 1, filter_method: alive}
+    - {id: alive_r32768, particle_count: 32768, proposals_per_parent: 1, filter_method: alive}
+    - {id: move_r2048_l2, particle_count: 2048, proposals_per_parent: 1, filter_method: resample_move, rejuvenation_window: 2, rejuvenation_sweeps: 1}
+    - {id: move_r2048_l4, particle_count: 2048, proposals_per_parent: 1, filter_method: resample_move, rejuvenation_window: 4, rejuvenation_sweeps: 1}
+    - {id: move_r2048_l8, particle_count: 2048, proposals_per_parent: 1, filter_method: resample_move, rejuvenation_window: 8, rejuvenation_sweeps: 1}
+    - {id: move_r8192_l4, particle_count: 8192, proposals_per_parent: 1, filter_method: resample_move, rejuvenation_window: 4, rejuvenation_sweeps: 1}
+    - {id: move_r32768_l4, particle_count: 32768, proposals_per_parent: 1, filter_method: resample_move, rejuvenation_window: 4, rejuvenation_sweeps: 1}
+  comparison_reference_setting: expanded_r32768_b8
+  collapse_report_trials: 12
+  ess_fraction_diagnostics: [0.5, 0.1, 0.01, 0.001]
+  stage1_note: one_hard_model_one_subject_one_seed_before_independent_seed_confirmation
+  kappa_probe_values: [0.5, 1.0, 1.5, 2.0]
+  lapse_probe_values: [0.005, 0.01, 0.02]
+  alive_filter:
+    augmentation: simulated_categorical_choice_indicator
+    retained_successes: particle_count
+    stopping_successes: particle_count_plus_one
+    incremental_normalizer: particle_count_over_attempts_minus_one
+    default_batch_size: 8192
+    maximum_attempts_per_trial: 100000000
+  island_combination:
+    rule: pretrial_cumulative_evidence_weighting
+    final_likelihood: arithmetic_mean_of_independent_island_likelihoods
+  resample_move:
+    frozen_window: 4
+    frozen_sweeps: 1
+    proposal: replay_original_transition_prior_conditional_on_fixed_anchor
+    acceptance: window_choice_loglikelihood_ratio
+    score_before_move: true
+    current_feedback_leakage: forbidden
+  next_method_gate:
+    candidate: particle_gibbs_with_ancestor_sampling_for_longer_history_updates
+    require_exact_small_space_validation: true
+    formal_32_subject_fit_remains_closed: true
+
+pgas_diagnostic:
+  purpose: posterior_active_set_history_mixing_at_frozen_parameters
+  pilot_subjects: [101]
+  models: [FA2]
+  chain_seeds: [20260804, 20260805]
+  particle_count: 8
+  iterations: 60
+  burn_in: 20
+  thin: 1
+  ancestor_lookahead: 4
+  latent_parameterization: uniform_innovations
+  conditional_smc: bootstrap_with_reference_path
+  ancestor_sampling:
+    small_space_validation: exact_full_reference_suffix
+    long_sequence_pilot: explicitly_approximate_truncated_reference_suffix
+  outputs:
+    - posterior_active_probability
+    - posterior_expected_replacement_count
+    - path_change_fraction
+    - reference_ancestor_switch_fraction
+    - minimum_ancestor_ess
+    - independent_chain_difference
+  interpretation_guardrails:
+    - frozen_parameters_only
+    - posterior_path_diagnostic_not_likelihood_estimator
+    - no_nll_or_model_comparison_claim
+    - formal_32_subject_fit_remains_closed

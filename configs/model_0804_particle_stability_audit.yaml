@@ -1,0 +1,73 @@
+# Targeted numerical-stability audit for the replicated FA2R recovery.
+#
+# This is a post-hoc diagnostic, not a replacement recovery gate.  The twelve
+# datasets were frozen before any N=8192 or N=32768 result was computed.  They
+# balance the four q-sequences, key mechanisms, and agreement/disagreement of
+# the two original N=2048 confirmation seeds.
+
+analysis_id: model_0804_fa2r_particle_stability_20260805_v1
+scope: stratified_posthoc_particle_likelihood_stability_diagnostic
+
+source:
+  report: results/zhuran/model_0804_cond1/regeneration_recovery_replicated_20260805_v1/recovery_report.json
+  expected_report_sha256: 79fd34640a28fdcb68eb0686e07c20cfa560630c54c866c9be06fbf8f18a1fcd
+  candidate_policy: exact_original_confirmation_set_per_dataset
+  original_particle_count: 2048
+  original_seeds: [20260805, 20260806]
+
+selection:
+  policy: explicit_balanced_slots_frozen_before_high_particle_results
+  datasets:
+    - {dataset_id: subject_101_center_replicate_01, subject_id: 101, scenario_id: center, expected_original_seed_agreement: true}
+    - {dataset_id: subject_101_g_low_replicate_00, subject_id: 101, scenario_id: g_low, expected_original_seed_agreement: false}
+    - {dataset_id: subject_101_rho_zero_replicate_02, subject_id: 101, scenario_id: rho_zero, expected_original_seed_agreement: true}
+    - {dataset_id: subject_102_g_high_replicate_00, subject_id: 102, scenario_id: g_high, expected_original_seed_agreement: false}
+    - {dataset_id: subject_102_rho_high_replicate_00, subject_id: 102, scenario_id: rho_high, expected_original_seed_agreement: true}
+    - {dataset_id: subject_102_center_replicate_00, subject_id: 102, scenario_id: center, expected_original_seed_agreement: false}
+    - {dataset_id: subject_103_g_low_replicate_00, subject_id: 103, scenario_id: g_low, expected_original_seed_agreement: true}
+    - {dataset_id: subject_103_g_high_replicate_00, subject_id: 103, scenario_id: g_high, expected_original_seed_agreement: false}
+    - {dataset_id: subject_103_rho_zero_replicate_01, subject_id: 103, scenario_id: rho_zero, expected_original_seed_agreement: true}
+    - {dataset_id: subject_104_center_replicate_02, subject_id: 104, scenario_id: center, expected_original_seed_agreement: false}
+    - {dataset_id: subject_104_rho_high_replicate_00, subject_id: 104, scenario_id: rho_high, expected_original_seed_agreement: false}
+    - {dataset_id: subject_104_g_low_replicate_01, subject_id: 104, scenario_id: g_low, expected_original_seed_agreement: true}
+
+filter:
+  resample_threshold_fraction: 0.5
+  seeds: [20260805, 20260806, 20260807, 20260808]
+  tiers:
+    - {id: n2048, particle_count: 2048, reuse_original_seed_values: true}
+    - {id: n8192, particle_count: 8192, reuse_original_seed_values: false}
+    - {id: n32768, particle_count: 32768, reuse_original_seed_values: false, escalation_only: true}
+
+# These thresholds route the numerical diagnostic only.  They are deliberately
+# separate from the frozen replicated-recovery gates in the source report.
+diagnostic_thresholds:
+  maximum_plausible_candidate_paired_difference_se_nll: 0.35
+  maximum_true_candidate_absolute_nll_se: 0.50
+  minimum_seed_modal_exact_winner_fraction: 0.75
+  minimum_seed_modal_rho_class_fraction: 1.00
+  plausible_candidate_delta_nll: 2.00
+  minimum_numerically_resolved_dataset_fraction: 0.75
+
+escalation:
+  escalate_if_n8192_numerically_unresolved: true
+  escalate_if_exact_ensemble_winner_changed_from_n2048: true
+  escalate_if_seed_modal_exact_winner_below_threshold: true
+  escalate_if_seed_rho_class_below_threshold: true
+
+routing:
+  route_if_numerically_resolved: advance_to_fixed_g_restricted_recovery
+  route_if_numerically_unresolved: repair_or_replace_particle_likelihood_estimator
+
+execution:
+  workers: 12
+  worker_blas_threads: 1
+
+guardrails:
+  - diagnostic_sample_not_used_as_a_formal_recovery_rate
+  - no_dataset_was_selected_using_n8192_or_n32768_results
+  - original_confirmed_candidate_set_is_held_fixed_within_dataset
+  - identical_filter_seeds_are_used_across_particle_counts_and_candidates
+  - seed_likelihoods_are_combined_by_arithmetic_mean_likelihood_not_mean_nll
+  - n32768_is_triggered_only_by_the_frozen_n8192_escalation_rule
+  - no_real_subject_fit_or_cognitive_claim

@@ -1,0 +1,53 @@
+analysis_id: model_0804_cond1_forgetting_m_sensitivity_20260804_v1
+base_config: configs/model_0804_cond1_preflight.yaml
+scope: secondary_parameter_sensitivity_not_primary_forgetting_gate
+
+data_scope:
+  subject_id: 101
+  model_id: FA2
+  anchors_zero_based: [15, 47, 95, 159]
+  horizon: 128
+  reason: reuse_primary_audit_design_without_changing_anchors_or_horizon
+
+filter_anchor_sampling:
+  particle_count: 512
+  posterior_state_pairs_per_anchor: 64
+  independent_filter_seeds: [20260804, 20260805]
+  resample_threshold_fraction: 0.5
+
+common_future:
+  coupling_seed: 20260804
+  same_transition_innovations_within_pair: true
+  same_observed_choices_within_pair: true
+  same_feedback_within_pair: true
+
+fixed_parameters:
+  source: base_config_preflight_fixed_parameter_probe
+  lapse: 0.02
+  probes:
+    - {id: frozen_dual_m0p30, w0: 0.40, gamma: 0.70, m: 0.30}
+    - {id: frozen_dual_m0p50, w0: 0.40, gamma: 0.70, m: 0.50}
+
+metrics:
+  - active_overlap_distance
+  - omega_total_variation
+  - absolute_choice_probability_difference
+  - common_active_memory_delta_difference
+
+forgetting_gate:
+  terminal_window: 16
+  predictive:
+    maximum_mean_choice_probability_difference: 0.005
+    maximum_p95_choice_probability_difference: 0.02
+  state:
+    maximum_median_omega_total_variation: 0.05
+    maximum_median_active_distance: 0.20
+  route_rules:
+    purpose: descriptive_sensitivity_only
+
+guardrails:
+  - secondary_after_primary_m0p15_audit
+  - no_replacement_of_primary_gate
+  - no_parameter_optimization
+  - no_nll_or_model_comparison_claim
+  - formal_32_subject_fit_remains_closed
