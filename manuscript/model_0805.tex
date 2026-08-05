@@ -1,0 +1,677 @@
+% model_0805.tex
+% 2026-08-05：有限活跃假设集模型的完整架构与分层证据标准。
+% 本文件是一份可嵌入 manuscript 的完整理论、方法和分析计划。
+% 它透明记录 model_0804 结果之后的修订，不把新标准追溯用于改变旧门槛的判定。
+
+\subsubsection{设计目标：保留有限假设集，同时把“模型有效”与“参数精确可解释”分开}
+
+\paragraph{本文档的任务。}
+本文件整理截至 2026-08-05 的完整模型，而不是只修订 lapse、参数恢复或粒子滤波中的某一个局部。模型从被试特异的知觉表示开始，经过有限活跃规则集合、集合内双通道记忆、随机假设集转移、选择读出和反馈更新，并进一步为 RT 与口头报告给出测量模型。由于活跃集合路径不可观察，选择似然对全部可能路径作边际化；由于偶发反应噪声不必具有逐试次心理解释，序列级 lapse 作为 nuisance 被边际化而不是逐点挑选。
+
+本版本同时修订证据标准。先前冻结的恢复门把许多条件写成合取关系：即使模型的结构类别、参数方向、近优真值和数值稳定性均通过，只要某个生成 lapse 分层中的 $m$ 没有精确回到同一个三点网格，整条路线就停止。这个标准适合保护“$m$ 是可精确解释的个体心理参数”这一强结论，却可能过度限制较弱、也更符合实际的结论：有限集合架构是否具有预测价值，以及 reset 或替换强度的大方向是否包含可辨识信息。
+
+因此，\texttt{model\_0805} 不追溯修改 \texttt{model\_0804} 的冻结判定。旧结果仍然是 \texttt{stop\_fa2r\_restricted\_recovery\_failed}。从本版本开始，我们预先区分四种结论权限：模型架构、粗粒度机制、精确参数和逐试次潜在状态。精确参数恢复失败会禁止相应的参数级解释，但不再自动等价于整个模型架构失败；模型能否保留，必须由直接父模型恢复、时间留出预测、校准和自主生成另行决定。
+
+\paragraph{核心科学主张。}
+学习者并不需要在每个试次同时维持全部候选规则。当前行为只由容量为 $M$ 的活跃假设集 $A_{s,t}$ 及其集合内权重产生。学习过程中，学习者可能保留当前集合、替换其中若干规则，或以较小概率放弃整个工作空间并重新生成一个集合。反馈改变活跃规则的证据，也影响后续是否需要更强搜索；选择中的一部分不可预测波动由观测层 nuisance 表示，而不是强迫潜在认知状态追随每一次偶发选择。
+
+这一主张要求模型解释的是\textbf{条件选择分布和可重复的学习结构}，不是事后为每一个看似非理性的按钮反应找到一条心理故事。一个正确的概率模型完全允许实际选择落在低概率选项上；关键问题是这种事件出现的频率、时序和条件依赖是否与模型的预测分布校准一致。
+
+\paragraph{理论全架构与当前已实现子集。}
+本文件写出的是最终需要检验的全架构，因此包括 choice、RT、口头报告、动态 H3 和 HFW--RAW 竞争；它们并非都已进入现有代码或正式数据分析。截至本文档日期，已经实现并接受系统恢复审计的是条件 1 的 HFW choice-only 子集：FA0、FA1、FA2、FA2-R、静态 $(m,g,\rho)$、双通道记忆、静态 choice contamination，以及相应的精确枚举和粒子 likelihood。动态 FA3、RAW、RT 与口头报告仍是有明确进入条件的后续模块。下文每次讨论现有证据时都只指向已实现子集；把未来模块写完整，是为了冻结接口和判定顺序，不是把计划写成已完成结果。
+
+\paragraph{TL;DR：完整模型的八个决定。}
+\begin{enumerate}
+    \item \textbf{有限活跃集合是核心潜变量。}选择、RT 和口头报告只直接读取当前 $M$ 条活跃规则，而不是完整规则空间上的平滑概率分布。
+    \item \textbf{假设集转移保持随机。}普通转移用 $K_t\sim\operatorname{Binomial}(M,m_t)$ 决定替换数；退出与 newcomer 都随机抽取，因此同一参数必须积分许多可能路径。
+    \item \textbf{局部和全局搜索仍然存在。}$g_t$ 控制 newcomer 来自局部还是全局提议；当前 choice-only 版本把 $g=0.35$ 固定为架构常数，不把它解释为被试参数。
+    \item \textbf{允许独立的全工作空间 regeneration。}$B_t\sim\operatorname{Bernoulli}(\rho)$；当 $B_t=1$ 时，整个活跃集合与规则特异记忆重新初始化。它与普通的高 $m_t$ 是两个不同机制。
+    \item \textbf{双通道记忆只在当前 HFW 集合内更新。}保留规则继承 fade/static 差异，普通 newcomer 不继承规则特异差异，reset 后全部差异清零。
+    \item \textbf{偶发选择噪声属于观测层。}静态 lapse 给所有类别保留非零污染概率；它在整条序列层面边际化，不逐试次变化，也不标注某一个真实选择“就是 lapse”。
+    \item \textbf{似然先边际化、后取对数。}先对活跃集合路径、lapse 分量和独立 filter seeds 在 likelihood 空间作合法混合，再计算 NLL；禁止平均轨迹 NLL、平均 seed NLL或挑最佳轨迹。
+    \item \textbf{恢复标准按结论层级匹配。}数学和数值正确性是所有结论的硬门；模型恢复与留出预测决定架构是否保留；精确参数恢复只决定能否解释该参数；逐试次状态还需要粒子、参数和候选模型间稳定性。
+\end{enumerate}
+
+
+\subsubsection{模型边界、术语和状态空间}
+
+\paragraph{被试、试次、条件与规则空间。}
+令 $s$、$t$ 和 $k$ 分别表示被试、试次与实验条件。条件 $k$ 的类别集合为 $\mathcal C_k$，带类别标签的候选规则集合为 $\mathcal H_k$。条件 1 当前有 $|\mathcal H_1|=38$ 条规则。规则先验满足
+\begin{equation}
+    p_{0,k}(h)>0,
+    \qquad
+    \sum_{h\in\mathcal H_k}p_{0,k}(h)=1.
+    \label{eq:model0805-rule-prior}
+\end{equation}
+规则注册表、规则家族、标签对称性和 $p_{0,k}$ 都在模型比较前冻结，不能根据留出表现删除不方便的规则。
+
+\paragraph{知觉层不是当前 H 模块的自由部分。}
+物理刺激为 $\mathbf x_{s,t}$。沿用 Task 1b 的被试特异知觉模型，把知觉不确定性积分进规则预测：
+\begin{equation}
+    q_{s,t,h}(c)
+    =P\!\left(
+      \widetilde{\mathbf x}_{s,t}\in R_{k,h,c}
+      \mid \mathbf x_{s,t},g_s
+    \right),
+    \qquad
+    \sum_{c\in\mathcal C_k}q_{s,t,h}(c)=1.
+    \label{eq:model0805-rule-prediction}
+\end{equation}
+正式 H 模型读取冻结的 $q_{s,t,h}(c)$。这样，规则搜索、选择噪声与知觉噪声不会在同一轮优化中任意互相补偿。若未来重新估计知觉层，必须把它定义为新的联合模型版本并重新进行恢复。
+
+\paragraph{规则几何。}
+沿用带标签规则相似性 $\operatorname{Sim}_k(h,u)$，定义规则差异度
+\begin{equation}
+    d_k(h,u)=1-\operatorname{Sim}_k(h,u).
+    \label{eq:model0805-rule-distance}
+\end{equation}
+局部搜索核为
+\begin{equation}
+    K_{L,k}(h'\mid h)
+    \propto I(h'\neq h)p_{0,k}(h')
+    \exp[-d_k(h,h')/\tau_{L,k}],
+    \label{eq:model0805-local-kernel}
+\end{equation}
+其中 $\tau_{L,k}$ 按规则几何冻结。全局搜索以规则先验为基础。正式运行前应审计局部 newcomer 的期望差异确实小于全局 newcomer；若二者在设计上近似相同，$g$ 原则上不可解释。
+
+\paragraph{完整潜在状态。}
+HFW 的反馈后状态写为
+\begin{equation}
+    X^+_{s,t}
+    =\left(A_{s,t},\omega^+_{s,t},F_{s,t},S_{s,t},\mathbf a_{s,t}\right).
+    \label{eq:model0805-latent-state}
+\end{equation}
+其中 $A_{s,t}\subseteq\mathcal H_k$ 且 $|A_{s,t}|=M$；$\omega^+_{s,t}(h)$ 是集合内反馈后规则概率；$F$ 和 $S$ 分别是近期衰减与长期累积的对数记忆状态；$\mathbf a_t$ 只在动态控制候选中启用。若 $h\notin A_{s,t}$，HFW 的当前行为权重为 0，且不保存其在线规则特异记忆。
+
+\paragraph{HFW 与 RAW 是竞争架构。}
+严格有限工作空间（hard finite workspace, HFW）假定规则退出后，其在线 fade/static 差异被删除；重新进入时按 newcomer 初始化。长期规则库加有限工作空间（reservoir-access workspace, RAW）则为全部规则保存背景证据，但仍只允许 $M$ 条活跃规则驱动当前行为。当前实现与恢复结果只覆盖 HFW。RAW 是未来结构竞争者，不是 HFW 拟合不佳时可以临时打开的选项。
+
+\paragraph{完整空间模型是必要边界。}
+完整空间（full-space, FS）模型在全部 $h\in\mathcal H_k$ 上传播概率，不包含离散集合路径。它既提供可直接计算的数值参照，也回答一个不同问题：有限工作空间是否比完整概率表示提供增量预测。FS 表现好不等于被试有意识地同时思考 38 条规则；它也可能只是对群体或潜在集合不确定性的有效边际表示。
+
+
+\subsubsection{一个试次内的完整因果顺序}
+
+\paragraph{第一试次初始化。}
+活跃集合从规则先验进行逐次加权不放回抽样：
+\begin{equation}
+    A_{s,1}\sim\operatorname{WOR}_M(p_{0,k}).
+    \label{eq:model0805-initial-set}
+\end{equation}
+给定 $A_{s,1}$，初始权重为
+\begin{equation}
+    \omega^-_{s,1}(h)
+    =\frac{I(h\in A_{s,1})p_{0,k}(h)}
+    {\sum_{u\in A_{s,1}}p_{0,k}(u)}.
+    \label{eq:model0805-initial-weight}
+\end{equation}
+对活跃规则令 $F_{s,1^-}(h)=S_{s,1^-}(h)=\log\omega^-_{s,1}(h)$。初始集合不是每名被试可以优化挑选的离散参数；它必须被精确求和或用经过验证的粒子方法边际化。
+
+\paragraph{逐试次顺序。}
+对 $t>1$，模型按以下顺序运行：
+\begin{equation}
+\begin{aligned}
+&X^+_{s,t-1}
+\xrightarrow{\text{controls from history through }t-1}
+(m_{s,t},g_{s,t},\rho_{s,k})\\
+&\quad\xrightarrow{\text{sample reset or ordinary transition}}
+(A_{s,t},\omega^-_{s,t},F_{s,t^-},S_{s,t^-})\\
+&\quad\xrightarrow{\mathbf x_{s,t},q_{s,t,h}}
+\text{choice}
+\longrightarrow \text{RT/oral measurement}
+\longrightarrow \text{feedback}\\
+&\quad\xrightarrow{\text{dual-memory update}}
+(\omega^+_{s,t},F_{s,t},S_{s,t})
+\longrightarrow
+(S^{\mathrm{fb}}_{s,t},U^{\mathrm{rule}}_{s,t}).
+\end{aligned}
+\label{eq:model0805-trial-order}
+\end{equation}
+当前反馈只能影响当前反馈后状态及下一试次控制，不能参与当前 $A_{s,t}$、$\omega^-_{s,t}$ 或 choice prediction。当前选择可用于过滤潜在路径，但只有在模型已经给出当前选择概率之后。这个时间顺序比任何拟合优度都优先；发生反馈泄漏的实现直接无效。
+
+
+\subsubsection{有限活跃假设集的随机转移}
+
+\paragraph{普通多槽位替换。}
+在没有全局 regeneration 的普通分支中，替换数满足
+\begin{equation}
+    K_{s,t}\mid m_{s,t}
+    \sim\operatorname{Binomial}(M,m_{s,t}),
+    \label{eq:model0805-replacement-count}
+\end{equation}
+因此
+\begin{equation}
+    E(K_{s,t}/M\mid m_{s,t})=m_{s,t},
+    \qquad
+    \operatorname{Var}(K_{s,t}/M\mid m_{s,t})
+    =\frac{m_{s,t}(1-m_{s,t})}{M}.
+    \label{eq:model0805-replacement-moments}
+\end{equation}
+$m_t$ 表示预期被替换的活跃槽位比例，而不是实际 choice switch rate，也不是某个试次一定改变了多少信念质量。
+
+\paragraph{随机退出。}
+给定上一反馈后权重，活跃规则的退出权重为
+\begin{equation}
+    R^{\mathrm{out}}_{s,t}(h)
+    \propto I(h\in A_{s,t-1})
+    [1-\omega^+_{s,t-1}(h)+\epsilon_{\mathrm{out}}].
+    \label{eq:model0805-exit-kernel}
+\end{equation}
+按该权重不放回抽取 $K_{s,t}$ 条规则形成 $D_{s,t}$。低权重规则更容易退出，但任何规则都有非零退出概率。这既保留认知随机性，也避免确定性删除最低权重规则把微小数值差放大为完全不同的集合路径。
+
+\paragraph{局部--全局 newcomer。}
+在转移前非活跃规则上定义
+\begin{align}
+    Q_{L,s,t}(h')
+    &\propto I(h'\notin A_{s,t-1})
+      \sum_{h\in A_{s,t-1}}
+      \omega^+_{s,t-1}(h)K_{L,k}(h'\mid h),\\
+    Q_{G,s,t}(h')
+    &\propto I(h'\notin A_{s,t-1})p_{0,k}(h'),\\
+    Q_{s,t}(h')
+    &=(1-g_{s,t})Q_{L,s,t}(h')+g_{s,t}Q_{G,s,t}(h').
+    \label{eq:model0805-newcomer-proposal}
+\end{align}
+从 $Q_{s,t}$ 不放回抽取 $K_{s,t}$ 条规则形成 $E_{s,t}$，然后
+\begin{equation}
+    A_{s,t}
+    =(A_{s,t-1}\setminus D_{s,t})\cup E_{s,t}.
+    \label{eq:model0805-active-update}
+\end{equation}
+newcomer 只从转移前的非活跃集合产生，所以一条刚退出的规则不能在同一试次原样返回。普通转移严格保持 $|A_{s,t}|=M$。
+
+\paragraph{质量守恒的槽位映射。}
+把退出顺序记为 $(d_1,\ldots,d_K)$，进入顺序记为 $(e_1,\ldots,e_K)$。保留规则维持旧质量，newcomer 接收对应退出槽位的质量：
+\begin{equation}
+    \omega^-_{s,t}(h)=
+    \begin{cases}
+      \omega^+_{s,t-1}(h),
+      &h\in A_{s,t-1}\setminus D_{s,t},\\
+      \omega^+_{s,t-1}(d_j),
+      &h=e_j,\ j=1,\ldots,K,\\
+      0,&h\notin A_{s,t}.
+    \end{cases}
+    \label{eq:model0805-mass-transfer}
+\end{equation}
+所以普通集合转移不凭空制造概率质量。需要同时保存结构替换比例 $K/M$、移出质量
+\begin{equation}
+    \mu_{s,t}=\sum_{h\in D_{s,t}}\omega^+_{s,t-1}(h),
+    \label{eq:model0805-removed-mass}
+\end{equation}
+以及 newcomer 距离。替换一条边缘规则和替换一条主导规则不能被解释为同样强的信念改变。
+
+\paragraph{全工作空间 regeneration。}
+普通槽位替换在长序列中保留了少量重尾历史模式。FA2-R 因此增加与 $m_t$ 分开的 reset 指示量：
+\begin{equation}
+\begin{aligned}
+    B_{s,t}&\sim\operatorname{Bernoulli}(\rho_{s,k}),\\
+    B_{s,t}=1:\quad
+    A_{s,t}&\sim\operatorname{WOR}_M(p_{0,k}),\\
+    \omega^-_{s,t}(h)
+    &\propto p_{0,k}(h)I(h\in A_{s,t}),\\
+    F_{s,t^-}(h)&=S_{s,t^-}(h)=\log\omega^-_{s,t}(h).
+\end{aligned}
+\label{eq:model0805-regeneration}
+\end{equation}
+当 $B_{s,t}=0$ 时执行式 \ref{eq:model0805-replacement-count}--\ref{eq:model0805-mass-transfer}；当 $B_{s,t}=1$ 时整个工作空间重新生成，移出质量记为 1，规则特异的 fade--static 差异清零。reset 不是计算上的强制重采样，而是会改变行为分布的认知候选机制，必须通过 $ho=0$ 的直接父模型比较来检验。
+
+若两个历史不同的状态以后共享同一次 reset，它们在 reset 后精确相同。长度为 $L$ 的区间中从未 reset 的概率为
+\begin{equation}
+    P(\text{no reset in }L\text{ trials})=(1-\rho)^L.
+    \label{eq:model0805-reset-bound}
+\end{equation}
+这给出了可审计的历史遗忘界，但不能把某个通过耦合审计的 $\rho$ 数值直接解释为真实被试的 reset 频率。
+
+\paragraph{静态控制与动态 H3 扩展。}
+当前可实现并完成恢复审计的核心是静态 FA2-R：$m_{s,t}=m_{s,k}$、$g_{s,t}=0.35$、$\rho_{s,t}=\rho_{s,k}$。固定 $g$ 只是现阶段的识别约束，不是“所有被试全局搜索比例都等于 0.35”的心理结论。
+
+只有静态架构通过直接父模型恢复和时间留出门以后，才启用动态控制。令
+\begin{equation}
+    \mathbf a_{s,t}
+    =\begin{pmatrix}
+      \operatorname{logit}m_{s,t}\\
+      \operatorname{logit}g_{s,t}
+    \end{pmatrix},
+\end{equation}
+候选动力学为
+\begin{equation}
+    \mathbf a_{s,t}
+    =\boldsymbol\mu_H+\boldsymbol\delta_{H,k}+\mathbf u_{H,s}
+     +\boldsymbol\Phi_H\mathbf a_{s,t-1}
+     +\mathbf B_H
+      \begin{pmatrix}
+      \widetilde S^{\mathrm{fb}}_{s,t-1}\\
+      \widetilde U^{\mathrm{rule}}_{s,t-1}
+      \end{pmatrix}.
+    \label{eq:model0805-control-dynamics}
+\end{equation}
+FA3-M 只让 $m_t$ 动态变化；FA3-MG 才进一步允许 $g_t$ 动态变化。第一版不增加连续高斯创新，因为离散集合转移已经提供随机性。$\rho$ 保持静态，除非独立证据表明 reset 也需要反馈驱动；否则动态 $m_t$、$g_t$ 和 $\rho_t$ 会争相解释同一批行为突变。
+
+
+\subsubsection{集合内双通道记忆与反馈更新}
+
+\paragraph{转移后的记忆同步。}
+令保留规则上一时刻的通道差异为
+\begin{equation}
+    \Delta_{s,t-1}(h)=S_{s,t-1}(h)-F_{s,t-1}(h).
+\end{equation}
+普通转移中，保留规则继承 $\Delta$，newcomer 令 $\Delta^*=0$；reset 后所有规则均令 $\Delta^*=0$。给定转移后权重，定义
+\begin{align}
+    F_{s,t^-}(h)
+    &=\log\omega^-_{s,t}(h)-w_{0,s,k}\Delta^*_{s,t-1}(h),\\
+    S_{s,t^-}(h)
+    &=\log\omega^-_{s,t}(h)+(1-w_{0,s,k})\Delta^*_{s,t-1}(h).
+    \label{eq:model0805-memory-sync}
+\end{align}
+于是
+\begin{equation}
+    w_{0,s,k}S_{s,t^-}(h)
+    +(1-w_{0,s,k})F_{s,t^-}(h)
+    =\log\omega^-_{s,t}(h).
+    \label{eq:model0805-sync-identity}
+\end{equation}
+这保证 H 转移与记忆模块共享唯一的当前先验，而不是各自保留一套互相矛盾的权重。
+
+\paragraph{反馈支持度。}
+令 $\mathcal Y_k(c_{s,t},r_{s,t})$ 表示当前 choice 与 feedback 仍允许的真实类别集合。规则支持度为
+\begin{equation}
+    L_{s,t}(h)
+    =\sum_{c\in\mathcal Y_k(c_{s,t},r_{s,t})}
+      q_{s,t,h}(c),
+    \qquad
+    \widetilde L_{s,t}(h)=\max\{L_{s,t}(h),\epsilon\}.
+    \label{eq:model0805-feedback-likelihood}
+\end{equation}
+条件 1 的二分类正确反馈对应 $\mathcal Y(c,1)=\{c\}$，错误反馈对应另一类别。$\epsilon$ 只防止数值上的 $\log0$，在分析前冻结。
+
+\paragraph{双通道更新。}
+反馈到达后，只在当前活跃集合内更新：
+\begin{align}
+    F_{s,t}(h)
+    &=\gamma_{s,k}F_{s,t^-}(h)+\log\widetilde L_{s,t}(h),\\
+    S_{s,t}(h)
+    &=S_{s,t^-}(h)+\log\widetilde L_{s,t}(h),\\
+    \ell_{s,t}(h)
+    &=w_{0,s,k}S_{s,t}(h)
+      +(1-w_{0,s,k})F_{s,t}(h),\\
+    \omega^+_{s,t}(h)
+    &=\frac{\exp[\ell_{s,t}(h)]}
+      {\sum_{u\in A_{s,t}}\exp[\ell_{s,t}(u)]}.
+    \label{eq:model0805-memory-update}
+\end{align}
+$\gamma\in[0,1]$ 是 fade 保持率，$w_0\in[0,1]$ 是 static 通道在最终混合中的权重。$\gamma=1$ 或 $w_0=1$ 都给出当前集合上的标准贝叶斯端点；$w_0=0$ 给出 fade-only 端点。这些结构端点单独比较，不靠把连续优化推到边界来假装识别。
+
+\paragraph{反馈惊讶与规则不确定性。}
+动态 H3 候选读取
+\begin{align}
+    S^{\mathrm{fb}}_{s,t}
+    &=-\log\max\left\{
+      \sum_{h\in A_{s,t}}
+      \omega^-_{s,t}(h)L_{s,t}(h),\epsilon
+      \right\},\\
+    U^{\mathrm{rule}}_{s,t}
+    &=-\frac{\sum_{h\in A_{s,t}}
+      \omega^+_{s,t}(h)\log\omega^+_{s,t}(h)}{\log M}.
+    \label{eq:model0805-surprise-uncertainty}
+\end{align}
+二者只影响 $t+1$ 及以后。惊讶表示实际反馈违背当前预测的程度；不确定性表示吸收反馈后仍有多少活跃规则竞争。它们不是同一个信号，也不应与当前是否作出错误选择简单等同。
+
+
+\subsubsection{选择、偶发反应、RT 与口头报告}
+
+\paragraph{集合内核心选择概率。}
+给定一条潜在路径或一个粒子 $r$，当前类别核心概率为
+\begin{equation}
+    p^{\mathrm{core},(r)}_{s,t}(c)
+    =\sum_{h\in A^{(r)}_{s,t}}
+      \omega^{-,(r)}_{s,t}(h)q_{s,t,h}(c).
+    \label{eq:model0805-core-choice}
+\end{equation}
+稳定的决策敏感度 $\kappa_{s,k}>0$ 给出
+\begin{equation}
+    p^{\mathrm{read},(r)}_{s,t}(c)
+    =\frac{[p^{\mathrm{core},(r)}_{s,t}(c)]^{\kappa_{s,k}}}
+    {\sum_{j\in\mathcal C_k}
+     [p^{\mathrm{core},(r)}_{s,t}(j)]^{\kappa_{s,k}}}.
+    \label{eq:model0805-choice-readout}
+\end{equation}
+$\kappa$ 改变同一规则信念向选择的读出锐度，但不改变活跃集合本身。
+
+\paragraph{静态污染层不解释单个“非理性”选择。}
+观测选择分布为
+\begin{equation}
+    p^{\mathrm{obs},(r)}_{s,t}(c\mid\lambda_{s,k})
+    =(1-\lambda_{s,k})p^{\mathrm{read},(r)}_{s,t}(c)
+      +\frac{\lambda_{s,k}}{|\mathcal C_k|}.
+    \label{eq:model0805-lapse}
+\end{equation}
+该层允许注意中断、误按、瞬时走神或模型未表达的非系统性反应污染。它不声称每个低概率 choice 都有同一种心理原因，也不在观察 choice 后判定某一试次属于 lapse。$\lambda$ 对整条序列保持共同，不能逐试次自由变化；否则它会把真正的学习转折、错误锁定和规则搜索一并吸收。
+
+允许不可预测行为不等于取消拟合标准。若模型持续给真实选择过低概率，累计 log score 仍会变差；若某些异常选择在负反馈后形成可重复的序列结构，它们也不能被独立均匀污染解释。lapse 只为孤立污染提供有限概率质量，不为错误的学习动力学免责。
+
+\paragraph{RT 测量模型。}
+选择不确定性定义为
+\begin{equation}
+    U^{\mathrm{choice},(r)}_{s,t}
+    =-\sum_c p^{\mathrm{obs},(r)}_{s,t}(c)
+      \log p^{\mathrm{obs},(r)}_{s,t}(c).
+\end{equation}
+冻结练习、刺激模糊性和运动协变量 $\mathbf Z_{s,t}$ 后，候选 RT 模型为
+\begin{align}
+    \log(\mathrm{RT}_{s,t})\sim t_\nu\!\Big(&
+      \alpha_{s,k}+\mathbf b_{0,k}^{\mathsf T}\mathbf Z_{s,t}
+      +b_{U,k}U^{\mathrm{choice},(r)}_{s,t}
+      +b_{K,k}K^{(r)}_{s,t}/M\nonumber\\
+      &+b_{\mu,k}\mu^{(r)}_{s,t}
+      +b_{d,k}\bar d^{\mathrm{new},(r)}_{s,t},
+      \sigma_{\mathrm{RT},k}\Big).
+    \label{eq:model0805-rt-channel}
+\end{align}
+第一轮分别检验 $K/M$、$\mu$ 和 newcomer 距离的单一增量，不同时释放全部系数。若控制 choice uncertainty 后没有任何集合变量的外部预测增量，RT 就没有为“搜索成本”提供证据。
+
+\paragraph{口头报告测量模型。}
+令 $\mathcal V_k$ 为冻结编码后的有限报告空间，$R_k(v\mid h)$ 是规则 $h$ 产生报告 $v$ 的归一化映射。观察当前 choice 后，先形成 choice-consistent 集合内权重
+\begin{equation}
+    \widetilde\omega^{(r)}_{s,t}(h\mid c_{s,t})
+    \propto\omega^{-,(r)}_{s,t}(h)
+      q_{s,t,h}(c_{s,t}).
+    \label{eq:model0805-report-weight}
+\end{equation}
+报告分布为
+\begin{align}
+    P^{(r)}(v_{s,t}=v\mid c_{s,t})
+    =&(1-\eta_{O,s,k})
+      \sum_{h\in A^{(r)}_{s,t}}
+      \widetilde\omega^{(r)}_{s,t}(h\mid c_{s,t})R_k(v\mid h)\nonumber\\
+      &+\eta_{O,s,k}b_{O,k}(v).
+    \label{eq:model0805-oral-channel}
+\end{align}
+报告是对当前状态的测量，不在生成模型中反过来造成下一试次集合变化。只有另建 report-reactivity 候选并通过比较后，才允许口头表达本身进入动力学。
+
+\paragraph{外部验证与联合整合必须分开。}
+第一条分析线只用 choice 拟合核心模型，然后冻结参数与路径过滤规则，评价 RT 和报告；它回答 choice 推断的状态能否预测独立通道。第二条分析线在结构和测量模型冻结后，用 choice、RT 与报告共同更新潜在路径；它回答多通道能把不确定性缩小多少。联合整合不能替代第一条外部验证，否则 RT/报告既参与选择状态又被宣称验证同一状态。
+
+
+\subsubsection{随机路径、lapse 与 NLL 的正确边际化}
+
+\paragraph{先积分活跃集合路径。}
+给定核心参数 $\boldsymbol\theta$ 与 lapse 分量 $\lambda_j$，粒子 $r$ 在观察当前 choice 之前给出 $p^{\mathrm{obs},(r)}_{s,t}(c\mid\lambda_j)$，预测粒子权重为 $W^{(r)}_{s,t^-}$。实际 choice $y_{s,t}$ 的边际概率为
+\begin{equation}
+    \widehat p_{s,t}(y_{s,t}\mid\boldsymbol\theta,\lambda_j)
+    =\sum_{r=1}^{N}W^{(r)}_{s,t^-}
+      p^{\mathrm{obs},(r)}_{s,t}(y_{s,t}\mid\lambda_j).
+    \label{eq:model0805-particle-marginal}
+\end{equation}
+评分以后才按当前 choice likelihood 更新粒子权重，并在 feedback 到达后更新记忆。因而多个粒子是对潜在集合历史的数值积分，不是可供挑选的多条心理解释。
+
+\paragraph{序列 likelihood 与 NLL。}
+一条完整序列在一个 filter seed 下的 likelihood estimator 为
+\begin{equation}
+    \widehat L_a(\boldsymbol\theta,\lambda_j)
+    =\prod_{t\in\mathcal T_s}
+      \widehat p^{(a)}_{s,t}(y_{s,t}\mid\boldsymbol\theta,\lambda_j).
+    \label{eq:model0805-sequence-likelihood}
+\end{equation}
+NLL 是
+\begin{equation}
+    \operatorname{NLL}_s(\boldsymbol\theta,\lambda_j)
+    =-\log\widehat L_a
+    =-\sum_t\log\widehat p_{s,t}(y_{s,t}).
+    \label{eq:model0805-nll}
+\end{equation}
+这里的对数作用在粒子混合概率上。一般有
+\begin{equation}
+    -\log E_r[p_r(y)]\neq E_r[-\log p_r(y)],
+\end{equation}
+所以平均粒子 NLL 会计算另一个错误目标；选择最小 NLL 的粒子则会使用已经看到的真实数据挑潜在历史，产生更严重的乐观偏差。
+
+\paragraph{序列级 lapse 边际化。}
+当前条件 1 的离散 nuisance 支持为
+\begin{equation}
+    \lambda_j\in\{0.005,0.02,0.05\},
+    \qquad \pi_j=1/3.
+\end{equation}
+对 filter seed $a$，先在完整序列 likelihood 空间混合：
+\begin{equation}
+    \widetilde L_a(\boldsymbol\theta)
+    =\sum_{j=1}^{3}\pi_j
+      \widehat L_a(\boldsymbol\theta,\lambda_j).
+    \label{eq:model0805-lapse-marginal}
+\end{equation}
+这表示一名被试的整条序列共享一个未知污染水平；不是每个试次重新抽取一个 $\lambda_j$，也不是选出一个最佳 $\lambda$ 后进行心理解释。
+
+\paragraph{独立 filter seeds 的合法组合。}
+若用 $A$ 个独立 seeds 减少 Monte Carlo 误差，则
+\begin{equation}
+    \overline L(\boldsymbol\theta)
+    =\frac1A\sum_{a=1}^{A}\widetilde L_a(\boldsymbol\theta),
+    \qquad
+    \operatorname{NLL}^{\mathrm{ens}}(\boldsymbol\theta)
+    =-\log\overline L(\boldsymbol\theta).
+    \label{eq:model0805-seed-ensemble}
+\end{equation}
+不能先把每个 lapse 或 seed 的 NLL 平均。候选参数使用 common random numbers 作低方差比较，最终排序再用独立 seeds 和更高粒子数确认。模型差异若不大于配对 Monte Carlo 标准误，结论为数值未分辨，而不是强行按均值排序。
+
+\paragraph{三种预测任务。}
+参数训练、留出一步预测和自主生成回答不同问题。训练阶段按真实 choice 过滤路径并估计参数；一步预测在看到当前 choice 前评分，随后可用该 choice 与 feedback 预测下一试次；自主生成在切点后不再读取真实 choice、RT 或报告，而由模型生成 choice，并由任务规则产生 feedback。训练拟合好不能替代时间留出，自主生成覆盖也不能替代逐试次 proper score。
+
+
+\subsubsection{参数、结构量与估计方法}
+
+\paragraph{哪些量是固定的、边际化的和待估计的。}
+当前 choice-only、条件 1 的核心版本使用以下分工：
+\begin{center}
+\small
+\begin{tabular}{p{0.18\textwidth}|p{0.22\textwidth}|p{0.47\textwidth}}
+\hline
+类型 & 对象 & 当前处理\\
+\hline
+规则与知觉 & $\mathcal H_1,p_0,q,d,K_L,K_G$ & 从既有规则注册表与 Task 1b 冻结\\
+结构量 & HFW/FS、$M$、是否 reset & 作为离散候选比较；主容量 $M=5$\\
+记忆与读出 & $\gamma,w_0,\kappa$ & 当前恢复阶段固定为 $0.70,0.40,2.0$；正式模型须按父模型中冻结或分阶段估计\\
+普通转移 & $m$ & 保留为机制坐标，但允许宽 profile/后验；不默认要求精确个体点解释\\
+搜索范围 & $g$ & 当前固定 $0.35$；不作个体解释\\
+regeneration & $\rho$ & 静态候选参数；首先解释零/正类别，再讨论数值大小\\
+观测污染 & $\lambda$ & 在三个冻结水平上作整序列离散边际化，不选择个体点\\
+动态控制 & $\mathbf B_H,\boldsymbol\Phi_H$ & 静态模型通过后才进入 FA3-M/FA3-MG\\
+\hline
+\end{tabular}
+\normalsize
+\end{center}
+这里的固定数值描述当前受限恢复架构，不表示最终所有被试共享这些心理真值。正式真实数据阶段若释放 $\gamma,w_0,\kappa$，必须先证明新增自由度不会重新制造 $m$--$\rho$--lapse 混淆。
+
+\paragraph{恢复实验中的网格不等于正式拟合只能使用网格。}
+恢复分析使用离散网格，是因为生成真值位于已知点，便于直接审计分类、方向和近优集合。正式连续参数可使用变换空间中的多起点优化、分层贝叶斯积分或冻结网格上的加权平均。无论使用哪种算法，都必须保存多个近优解并独立重评；优化器找到一个最小点不等于该点具有唯一心理含义。
+
+\paragraph{架构比较应对弱识别 nuisance 积分。}
+比较 FA2-R 与 $ho=0$ 父模型时，主要问题是数据是否需要 reset，而不是能否同时猜中 $m$ 和 $\lambda$ 的精确网格身份。因此新的直接父模型恢复与真实数据预测应在训练信息下对弱识别 nuisance 作预先规定的积分或模型平均。例如在冻结离散支持上，
+\begin{equation}
+    p(y_{\mathrm{new}}\mid y_{\mathrm{train}},\mathcal M)
+    =\sum_{\vartheta\in\Theta_{\mathcal M}}
+      p(y_{\mathrm{new}}\mid\vartheta,\mathcal M)
+      p(\vartheta\mid y_{\mathrm{train}},\mathcal M),
+    \label{eq:model0805-parameter-average}
+\end{equation}
+其中 $\vartheta$ 可包括 $m$、$\lambda$ 及其他 nuisance。先验权重、支持点和训练--留出切分必须在查看新结果前冻结。最大化版本可保留为敏感性，但不能一边对复杂模型挑最佳点、一边对简单模型积分。
+
+\paragraph{参数触界的处理。}
+$m=0$、$g=0$、$\rho=0$ 或 $M=|\mathcal H|$ 是有理论含义的结构端点，应作为独立候选；优化器的人为上下限则不是心理端点。连续参数触及人为边界时，检查 profile、梯度、多起点和一次预定扩界。若预测在宽范围内几乎不变，应报告平台或等价集合，而不是把最外侧数值当作被试特质。
+
+\paragraph{容量 $M$ 的处理。}
+条件 1 的主容量 $M=5$ 来自 V13/V14 的历史假设，敏感性容量为 $M\in\{3,7\}$，$M=38$ 是完整空间边界。相邻容量若预测等价，只能结论为“少量有限集合”或一个可接受容量集合；不能把同一留出集上最优的整数写成人类工作记忆容量的精确估计。
+
+
+\subsubsection{候选模型阶梯与各自回答的问题}
+
+\paragraph{候选阶梯。}
+所有候选共享同一知觉输入、规则空间、记忆端点与 choice scoring；每一步只增加一个主要结构。
+\begin{enumerate}
+    \item \textbf{FS-H0：完整空间静态边界。}全部规则始终可用，不进行 H 转移。它是现有 choice-only 结果保留的简洁参照。
+    \item \textbf{FA0：固定有限集合。}随机初始化 $A_1$，以后不替换。它单独检验有限容量和初始可用性。
+    \item \textbf{FA1：恒定纯局部替换。}$m>0,g=0,\rho=0$。它检验是否需要持续从邻域引入规则。
+    \item \textbf{FA2：恒定局部--全局替换。}$m>0,g\geq0,\rho=0$。当前受限版本固定 $g=0.35$。
+    \item \textbf{FA2-R：带 regeneration 的静态有限模型。}$\rho\geq0$；直接父模型是相同参数处理下的 FA2，即 $\rho=0$。
+    \item \textbf{FA3-M：反馈驱动的替换率。}在最佳可恢复静态架构上让 $m_t$ 随上一试次惊讶和不确定性变化。
+    \item \textbf{FA3-MG：反馈驱动的替换率与搜索范围。}只有独立通道或新设计使 $g$ 可恢复时，才允许 $g_t$ 动态变化。
+    \item \textbf{RA-$j$：长期规则库版本。}固定已经通过的控制结构，只把 HFW 的退出遗忘改为 RAW 的背景证据保存。
+\end{enumerate}
+
+\paragraph{动态策略没有被放弃。}
+FA2-R 不是最终声称所有被试始终用固定搜索策略，而是当前最小可审计架构。H3 的核心想法仍保留：反馈惊讶与规则不确定性可以改变下一试次搜索多少、搜索多远。它被放在静态有限集合之后，是因为当前 choice-only 数据尚不能稳定区分自由 $g$、$m$、$\rho$ 和 lapse；在这个基础上直接增加动态 $g_t$ 只会产生更灵活但更难解释的训练拟合。
+
+\paragraph{不同候选不能使用不对称的噪声层。}
+lapse、知觉输入、记忆端点和参数平均规则必须在直接父子模型之间共享。不能只给复杂模型增加污染层来改善粒子稳定，也不能只给简单模型固定参数而允许复杂模型事后选取更多 nuisance。比较的差异必须可以归因于新增结构本身。
+
+
+\subsubsection{为什么精确参数恢复不是唯一的模型有效性标准}
+
+\paragraph{四种证据对象必须分开。}
+\begin{center}
+\small
+\begin{tabular}{p{0.19\textwidth}|p{0.27\textwidth}|p{0.41\textwidth}}
+\hline
+证据层级 & 主要问题 & 允许的结论\\
+\hline
+计算有效性 & 概率、时间顺序、边际似然和数值误差是否正确 & 允许继续评价；失败则所有更高结论无效\\
+架构/模型恢复 & 数据能否区分 FS、有限集合、普通替换和 reset & 允许保留或拒绝一个模型结构\\
+参数/函数恢复 & $m,\rho$ 或其方向、类别、期望替换率能否恢复 & 只允许解释通过恢复的参数或稳定函数\\
+潜在轨迹恢复 & $A_t$、进入时点或 reset 时点能否稳定定位 & 允许逐试次认知或神经关联；要求最强证据\\
+\hline
+\end{tabular}
+\normalsize
+\end{center}
+一个模型可能能够预测选择分布并区分“有无 reset”，却不能从一条高噪声序列精确区分 $m=0.15$ 与 $m=0.30$。此时合法结论是保留架构或粗粒度 reset 机制，同时把个体 $m$ 视为弱识别量；不合法的两个极端分别是“整个模型因此必然错误”和“既然模型可用，最佳 $m$ 就是真实心理参数”。
+
+\paragraph{精确网格命中为什么特别严格。}
+假设真值为 $m=0.15$，另一候选 $m=0.30$ 对当前有限序列给出几乎相同的完整选择分布。一次随机 choice realization 可能让任一候选获得略高 likelihood；要求每份数据都选回 $0.15$，实际上要求模型从有限随机样本中识别一个预测差异极小的坐标。它是参数点解释的合理压力测试，却不是模型是否能预测新 choice 的充分必要条件。
+
+因此恢复应同时报告：精确网格命中、真值距最优 NLL、profile/后验区间覆盖、低--高方向、粗粒度类别、生成与拟合模型混淆，以及由候选产生的预测分布距离。若真值经常位于 $\Delta\mathrm{NLL}\leq2$ 的近优集合、方向和模型类别可恢复，但精确点不稳定，结论应落在等价集合而不是单一点上。
+
+\paragraph{预测等价集合。}
+给定数据设计 $\mathcal D$ 和预先冻结的容差 $\epsilon_{\mathrm{pred}}$，定义
+\begin{equation}
+    \mathcal E_s
+    =\left\{\boldsymbol\theta:
+      d_{\mathrm{pred}}
+      (P_{\boldsymbol\theta},P_{\widehat{\boldsymbol\theta}})
+      \leq\epsilon_{\mathrm{pred}}
+      \right\},
+    \label{eq:model0805-equivalence-set}
+\end{equation}
+其中 $d_{\mathrm{pred}}$ 可由留出 log score、逐试次 Jensen--Shannon 距离或生成摘要距离构成，容差必须大于 Monte Carlo 误差。只解释在 $\mathcal E_s$ 内近似不变的函数，例如 $P(\rho>0)$、平均替换率区间、正确规则活跃概率或目标规则家族总质量。若 $m$ 在集合内跨越多个水平，就不报告唯一 $m$。
+
+\paragraph{修订后的硬门与软门。}
+从 \texttt{model\_0805} 开始，以下仍是不可放宽的硬门：概率与端点正确；无反馈泄漏；边际 likelihood 算法在小空间恢复精确结果；高粒子独立 seeds 下模型差异可分辨；直接父子模型身份至少在预先定义的可辨识区域中能够恢复；正式结论依赖时间留出而不是训练 NLL。
+
+以下指标用于决定解释层级，而不单独处决整个架构：精确 $m$ 网格命中、精确 $\rho$ 数值、单条集合路径、某个 reset 时点以及相邻 $M$ 的唯一选择。它们失败时，相应结论降级为区间、类别、平均函数或模型平均。如果直接父模型恢复和留出预测也失败，架构仍然停止；“人很随机”不能把真正的模型失败改写成成功。
+
+\paragraph{版本化防止事后放宽。}
+这一分层标准是在看到 \texttt{model\_0804} 高-lapse 精确 $m$ 失败之后提出的，所以必须标为新版本，并在新的直接父模型恢复和后续真实数据分析之前冻结。它不能追溯宣布旧合取门已经通过，也不能只对当前喜欢的模型使用。今后若修改 lapse 支持、参数先验、恢复指标或通过规则，必须再增加版本并重跑所有受影响的直接父子候选。
+
+
+\subsubsection{恢复、预测和生成的完整验证方案}
+
+\paragraph{第一层：实现与数值验证。}
+每次正式运行必须确认：所有规则核和 choice 分布归一化；普通转移保持容量与质量；reset 分支质量等于 $\rho$；$\rho=0$ 时 FA2-R 与 FA2 在 common random numbers 下逐位相同；$m=0$、$g=0$ 和记忆端点正确；当前 feedback 不改变当前预测；小空间粒子 likelihood 与精确枚举相符；不同粒子数与 seeds 的 NLL 差和逐试次概率差低于冻结容差。
+
+\paragraph{第二层：直接父模型恢复。}
+新的首要恢复问题不是“能否每次猜中完整参数组合”，而是：由 FA2 生成的数据是否被归为 $\rho=0$，由 FA2-R 生成的数据是否需要 $\rho>0$。生成和拟合双方都必须对 $m$ 与 $\lambda$ 使用相同的冻结支持和积分规则，并覆盖低、中、高反应污染、不同序列长度、早期与晚期学习。报告完整混淆矩阵、校准概率和在不同生成参数下的敏感性，而不只报告总体准确率。
+
+若 FA2 与 FA2-R 的预测在某些参数区域本来就近似相同，应预先标记为不可辨识区域，不要求强行分类；但模型必须在设计声称可辨识的区域达到冻结标准。若所有区域都不能区分，reset 结构没有行为识别依据。
+
+\paragraph{第三层：参数和稳定函数恢复。}
+对 $\rho$ 依次检验零/正类别、低--高方向、近优真值和数值大小；对 $m$ 依次检验平均替换率方向、profile/后验覆盖、预测等价集合和精确点。精确点只有在更弱层级都稳定且数据有足够信息时才解释。lapse 仍是整序列 nuisance，不设“恢复某名被试真实 lapse”的目标。
+
+逐试次状态主要评价后验量，而不是单一模拟真路径的逐点身份：正确规则活跃概率、$E(K_t/M\mid\mathrm{data})$、$E(\mu_t\mid\mathrm{data})$、规则家族质量、首次进入时间分布和 reset 概率。只有这些量跨粒子、近优参数和可接受模型稳定时，才进入神经分析。
+
+\paragraph{第四层：严格时间留出。}
+所有模型共享相同的被试内时间切分。核心比较使用留出一步前瞻 log score，并报告每名被试的
+\begin{equation}
+    \Delta_s
+    =\frac{\operatorname{NLL}_{s,\mathrm{parent}}
+      -\operatorname{NLL}_{s,\mathrm{candidate}}}
+      {|\mathcal T^{\mathrm{holdout}}_s|}.
+    \label{eq:model0805-subject-delta}
+\end{equation}
+$\Delta_s>0$ 表示候选更好。群体推断以被试为独立单位，报告均值、中位数、改善人数、bootstrap 区间和冻结比较族内校正。不能把试次当作独立被试来制造显著性。
+
+除 NLL 外，还报告概率校准、Brier score、极端低概率事件数以及学习前后分层的 score。NLL 对自信但错误的预测惩罚较强，这是 proper scoring rule 的优点；lapse 层可以避免不现实的零概率，但不能为了让 NLL 好看而事后提高污染上限。
+
+\paragraph{第五层：自主生成与联合结构。}
+在冻结切点后生成大量自由轨迹，比较滚动正确率、低于机会水平时长、错误锁定、choice switch、正确规则首次进入、突然恢复、RT 分位数和报告规则距离。覆盖率必须与区间宽度或 CRPS 同时报告；依靠极宽预测区间覆盖真实轨迹不算成功。模型不需要重现真实后缀的每一个随机 choice，但应重现这类序列的统计频率和联合关系。
+
+\paragraph{第六层：RT 与报告的有限集合特异验证。}
+choice 核心冻结后，RT 检验实际替换和搜索距离是否有增量代价，口头报告检验当前规则内容是否主要来自活跃集合。只有至少一个独立通道给出有限集合特异的增量、另一通道无系统性反证，才把有限集合解释为认知工作空间；否则它至多是一个有预测价值的潜变量构造。
+
+
+\subsubsection{晚期学习者与不可预测选择的处理}
+
+\paragraph{晚期学习不是应当删除的异常。}
+有些被试直到最后才找到正确规则。只用前段估计参数再预测末段，本来就会面临“训练中尚未发生发现”的困难。严格时间留出仍然保留，因为模型若声称具有随机规则发现机制，就应在尚未观察真实发现之前为其分配概率；但单一切点会把结构错误、个体信息不足和随机发现时点混在一起，所以需要滚动起点作为补充。
+
+\paragraph{滚动起点和 acquisition-aligned 次要分析。}
+预先把序列分为连续区块，依次执行 $1\rightarrow2$、$1{:}2\rightarrow3$、$1{:}3\rightarrow4$ 的预测。另用不依赖候选模型参数的行为规则定义 acquisition onset，描述 onset 前、转变窗和 onset 后的 score、校准与正确规则活跃概率。onset 分析使用了行为结果，因此只作次要诊断，不替代主时间留出，也不用于重新选参数。
+
+\paragraph{孤立的怪异选择与系统性错误必须区分。}
+若某次选择与前后状态均不一致、没有形成可重复反馈反应，静态污染层可以给它有限概率而不强迫 $A_t$ 跳变。若一串错误选择持续指向同一错误规则，并伴随相应报告或 RT，则它是模型应解释的结构，而不是简单 lapse。诊断时比较孤立错误、连续错误、负反馈后重复和规则报告一致性，避免用一个总 lapse 比例掩盖不同现象。
+
+
+\subsubsection{截至 2026-08-05 的既有证据与其边界}
+
+\paragraph{完整空间与旧有限模型告诉了我们什么。}
+条件 1 的 \texttt{model\_0803} choice-only 正式运行没有支持完整空间动态 H3：H3-M 相对 H2 的平均留出差异为 $-0.1058$ NLL/trial，说明复杂动力学可以改善训练拟合却损害未知未来预测。既有 swap-one、$M=5$ 的 B0 也没有通过联合自主生成：32 名被试只有 9 名真实后缀位于模型联合 $95\%$ 区域，平均曲线 CRPS 为 0.1867；对应完整空间边界为 30/32 和 0.0340。这否定的是两个具体实现，不是有限活跃假设的全部可能形式。
+
+\paragraph{FA2-R 的计算与恢复结果。}
+多槽位 HFW、双通道记忆与 FA2-R 已通过概率端点、小空间精确枚举和无反馈泄漏测试。原 FA2 的长历史重尾使不同粒子运行保留不同早期模式；显式 reset 为历史遗忘提供了可验证界，并在固定 $\rho\geq0.02$ 的结构探针中消除了相应重尾。这个结果证明 reset 的计算作用符合定义，不证明真实被试采用 reset。
+
+自由 $(\rho,m,g,\lambda)$ 的 180 份跨序列恢复显示 $g$ 在单条 choice 轨迹上与其他参数混淆；高粒子审计表明该失败不能只归因于 Monte Carlo 噪声。因此当前版本固定 $g=0.35$。进一步把 $\lambda$ 作为整序列 nuisance 边际化以后，140 份正确规格数据中：真 $(\rho,m)$ 点在 $\Delta\mathrm{NLL}\leq2$ 内为 $128/140=0.914$；$\rho=0$ 与 $\rho>0$ 分类正确同为 $128/140=0.914$；$m$ 精确网格恢复为 $94/140=0.671$；$\rho$ 和 $m$ 的配对低--中--高次序分别为 $17/20$ 与 $18/20$。180 份数据中，数值分辨、精确赢家种子稳定和 $\rho$ 类别种子稳定分别为 $170/180$、$167/180$ 与 $176/180$。
+
+\paragraph{旧门为什么失败，新版本怎样解释。}
+生成 $\lambda=0.005,0.02,0.05$ 时，$m$ 精确恢复分别为 $16/20$、$70/100$ 和 $8/20$。最后一层低于冻结的 $0.60$，所以 \texttt{model\_0804} 的 15 项合取门依法失败。高-lapse 的 12 个错误中七份选到 $m=0.05$、五份选到 $m=0.30$，更像 likelihood 变平而不是一个可简单校正的单向偏差；同时高-lapse 中真 $(\rho,m)$ 点近优为 $16/20$，$\rho$ 类别正确为 $19/20$。
+
+这些结果支持一个更精确的边界：choice-only 高污染序列不足以稳定解释 $m$ 的精确个体网格值，但没有同样摧毁 reset 类别、真值近优性或总体替换方向。\texttt{model\_0805} 因而把精确 $m$ 失败用于降低 $m$ 的解释权限，而不预先把整个有限集合架构判死。架构是否值得保留仍未知，必须由新版本的 FA2 versus FA2-R 直接模型恢复和真实时间留出预测决定。
+
+
+\subsubsection{从本版本开始的冻结实施顺序}
+
+\paragraph{第一步：直接父模型恢复，而不是继续调精确 $m$ 门槛。}
+保持 HFW、$M=5$、$g=0.35$、双通道参数、lapse 支持、粒子档和 seeds 不变，建立 FA2（$\rho=0$）与 FA2-R（$\rho>0$）的交叉生成--拟合矩阵。两边都对 $m$ 和 $\lambda$ 使用相同的预先冻结积分或模型平均。主要终点是模型身份、reset posterior probability、留出预测和校准；精确 $m$ 作为参数级诊断继续完整报告，但不再是单独的架构否决项。
+
+\paragraph{第二步：只有父模型恢复通过才拟合真实条件 1。}
+按最小阶梯比较 FS-H0、FA0、FA1、FA2 与 FA2-R。先用训练段形成参数/模型权重，再评价严格时间留出和滚动起点。保存所有触界、近优集合、Monte Carlo 标准误和被试级差异。若有限模型只改善训练 NLL、留出仍明显更差，就保留简单边界，停止动态升级。
+
+\paragraph{第三步：自主生成和多通道。}
+只有静态有限模型在 choice 留出中具有稳定增量，才运行自主后缀生成。choice 核心冻结后，用 RT 与口头报告作外部验证；若现有数据没有可用的结构化报告或 RT 测量模型，应明确写成缺少识别通道，而不是把 choice-only 的活跃集合路径直接解释为被试意识内容。
+
+\paragraph{第四步：动态 H3 与 RAW。}
+FA3-M 只在最佳静态有限架构通过前述门后进入；FA3-MG 还要求新的设计或独立通道能够识别 $g$。RAW 只在 HFW 对重入行为出现预先指定残差时比较。所有扩展都从其直接父模型开始恢复，不一次性释放动态 $m_t$、动态 $g_t$、RAW、新 lapse 和自由 newcomer 质量。
+
+\paragraph{必须保存的复现对象。}
+最低记录包括：配置和代码 hash；规则注册表、先验、$q$、距离与转移核；被试切分；模型和参数先验；全部 lapse 分量；粒子数、seeds、ESS、重采样与每试次边际 choice 概率；训练、留出、滚动和自主生成输出；活跃概率、$K/M$、$\mu$、newcomer 距离与 reset 概率；多个近优参数或后验权重；触界与扩界记录；恢复混淆矩阵；RT/报告是否参与路径过滤的标志。不得只保存最佳粒子、最佳轨迹或最佳参数点。
+
+
+\subsubsection{可能结论及其合法表述}
+
+\paragraph{如果架构胜出但 $m$ 仍弱识别。}
+可以写：在对偶发选择污染和参数不确定性边际化以后，有限活跃集合及其随机转移相对于直接边界改善了未知未来预测；数据支持某种有限集合搜索架构。若 reset 类别恢复和父模型比较也通过，可以进一步写数据需要偶发的全工作空间再生分支。此时不能写“被试的真实替换率是 $m=0.15$”，只能报告 $m$ 的后验/profile 范围、平均替换率方向或模型平均后的稳定函数。
+
+\paragraph{如果只恢复 reset 类别但没有留出增量。}
+这只是模拟中的机制可识别性，不是对真实被试的证据。合法结论是算法原则上能从合成 choice 区分零/正 reset，但真实数据不要求该结构；保留更简单模型。
+
+\paragraph{如果有限模型训练好、留出差。}
+结论是潜在路径和额外参数吸收了训练噪声。被试存在随机行为不能挽救该结果，因为一个适当的概率模型应在留出中为随机性分配校准概率。此时不解释训练段的 $A_t$、$m_t$ 或 reset 时点。
+
+\paragraph{如果完整空间继续最好。}
+可以写：当前任务和观测通道没有提供有限活跃集合的增量预测支持，完整空间概率表示是更充分或更节约的行为近似。不能由此推断被试意识中同时保留全部规则。
+
+\paragraph{如果 choice 支持而 RT/报告不支持。}
+有限集合可以作为预测潜变量保留，但工作空间、搜索成本和可报告假设内容的心理解释必须降级。只有 choice、至少一个独立通道和生成检验形成一致证据，才把“被试不能同时保留众多假设”写成获得支持的认知结论。
+
+
+\subsubsection{结论：0805 的模型与证据逻辑}
+
+截至目前的完整模型不是完整规则空间上的永久概率分布，而是一个有限容量、随机演化的活跃假设集模型。物理刺激先经过被试特异知觉积分；当前 $M$ 条规则及其集合内双通道记忆产生选择；普通转移随机替换若干槽位，局部--全局提议决定 newcomer 来源；FA2-R 另允许偶发的全工作空间 regeneration；反馈只在选择以后更新记忆并影响未来控制。不可观察的集合路径用粒子方法边际化，偶发选择污染在整条序列层面边际化。RT 和口头报告是对同一潜在状态的独立测量通道，而不是事后装饰。
+
+本版本最重要的统计修订，是不再用一个精确参数网格命中率同时裁决所有科学问题。计算正确性、架构恢复、预测有效性、参数解释和逐试次状态解释属于不同层级。模型不必解释每一个非理性 choice 的具体原因，但必须给这类选择校准的概率，并解释可重复的学习结构。若 $m$ 的精确值在高噪声序列中不可恢复，我们降低 $m$ 的解释层级；若直接父模型恢复或时间留出预测失败，我们仍然拒绝更复杂架构。
+
+因此下一步不是事后宣布 \texttt{model\_0804} 已经过门，也不是继续调整 lapse prior 直到精确 $m$ 达标。下一步是在 \texttt{model\_0805} 下预先冻结新的分层标准，对 FA2 与 FA2-R 做直接模型恢复，并把 $m$ 与 $\lambda$ 的不确定性对称地积分。只有这一步证明结构本身可辨识，才进入真实条件 1 的最小模型阶梯、严格时间留出、自主生成以及 RT/口头报告验证。这样的结论强度与数据实际提供的信息相匹配：既不因被试随机就要求模型解释不可能解释的每一次选择，也不因参数等价就把一个未经留出检验的复杂心理故事保留下来。
