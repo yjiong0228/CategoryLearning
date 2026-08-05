@@ -1,0 +1,888 @@
+% model_0804.tex
+% 2026-08-04：有限活跃规则集合与连续 H3 动力学的统一设计。
+% 本文件是一份可嵌入 manuscript 的理论、方法与后续分析计划；
+% 它区分既有证据、待检验假设和判定门槛，不报告尚未完成的结果。
+
+\subsubsection{设计修订：恢复有限活跃集合，但不恢复旧 controller family}
+
+\paragraph{本文档回答什么问题。}
+\texttt{model\_0803.tex} 把 H 模块改写为完整规则空间上的连续概率转移：学习者始终在全部候选规则上保留一个概率分布，$m_t$ 控制修正幅度，$g_t$ 控制局部与全局搜索的比例。这个版本的价值是把旧模型中手工规定的 Conservative、Stable、Aggressive 和 Stubborn profile 变成低维、可估计的动力学；它也是一个重要的计算边界模型。然而，这个实现暂时拿掉了 V13/V14 的另一个核心认知主张：被试在任一时刻只能同时考虑少数规则，活跃规则集合本身会随机进入和退出。
+
+本文件据此修订下一阶段计划。我们不再把有限活跃集合留到所有完整空间模型之后，而是把它作为一个独立、正式的认知假设重新引入。新的模型保留 \texttt{model\_0803.tex} 中连续的 $(m_t,g_t)$ 控制，不恢复 16 个或 6 个手工 controller family；同时令这些控制量作用于有限集合的随机替换过程，而不是作用于完整规则分布的确定性质量输运。简言之，新模型是“\textbf{有限容量的随机 H3}”，而不是“V14 加更多 profile”，也不是“完整空间 H3 换一个名字”。
+
+\paragraph{先给出结论。}
+下一步的主问题应当从
+\begin{quote}
+被试在完整规则空间上怎样连续搬运概率质量？
+\end{quote}
+改成
+\begin{quote}
+被试在每个试次实际激活了哪些规则；在反馈惊讶和规则不确定性的推动下，他替换多少条活跃规则，并从局部还是全局范围引入新规则？
+\end{quote}
+完整空间模型继续保留，但它的角色变为计算和预测边界，而不是默认的最终心理模型。有限活跃集合若要获得认知解释，必须同时满足三类要求：第一，在正确边际化集合转移随机性后改善时间留出预测；第二，其容量、替换和搜索过程在模拟中可恢复；第三，它对 RT 或口头报告产生完整空间模型不能同样产生的增量预测。
+
+\paragraph{TL;DR：后续计划的六个决定。}
+\begin{enumerate}
+    \item \textbf{恢复活跃集合 $A_{s,t}$。}任一试次只有 $M$ 条规则能够直接决定选择、RT 和口头报告；集合外规则的当前选择权重为 0。
+    \item \textbf{保留连续 H3 控制。}$m_{s,t}$ 不再表示完整空间中被搬运的概率质量，而表示每个活跃槽位在当前试次被替换的概率；$g_{s,t}$ 表示新规则来自全局而不是局部提议的比例。
+    \item \textbf{允许一次替换多条规则。}令 $K_{s,t}\sim\operatorname{Binomial}(M,m_{s,t})$，所以 $E(K_{s,t}/M)=m_{s,t}$。这比旧版“发生转移时固定换一条”更忠实地保留了连续修正幅度的含义。
+    \item \textbf{随机轨迹必须边际化。}同一参数下的多条轨迹是积分活跃集合转移所需的粒子，不是可供挑选的候选解释。选择概率先在粒子间加权平均，再计算 $-\log$；不平均各轨迹 NLL，也不选择最佳轨迹或 best quarter。
+    \item \textbf{严格容量和长期规则库是两个不同假设。}主模型首先检验“退出即失去在线证据”的严格工作空间；若它失败，再检验“只有 $M$ 条规则活跃，但未激活规则可保留长期痕迹”的两层模型。二者不能在第一个版本中悄悄混合。
+    \item \textbf{条件 1 先做，但一晚运行不是正式结论的充分条件。}一晚可以完成冻结的首轮拟合和数值审计；只有恢复、粒子收敛、滚动时间预测和自主生成门槛也通过，模型才进入正式认知结论。
+\end{enumerate}
+
+
+\subsubsection{为什么现在重新引入有限活跃集合}
+
+\paragraph{V13/V14 中值得保留的不是 controller 名称，而是容量主张。}
+V13/V14 把每条模拟轨迹中的活跃规则数限制为 $M=5$，并允许反馈驱动的集合转移。这个结构能够产生三类完整空间平滑转移不容易自然生成的现象：对一个错误规则的持续锁定、由错误规则导致的低于机会水平选择，以及某条关键规则随机进入工作空间后出现的突然恢复。这些现象并不证明旧模型正确，但说明“哪些规则当前可被使用”与“活跃规则各有多少权重”是两个不同的潜变量。
+
+旧版真正的问题是把有限容量与许多其他决定捆绑在一起：固定 $M=5$、每次至多替换一条、确定性淘汰最低权重规则、若干 newcomer 初始化常数、人工 profile 转移和 family-specific 反馈窗口。旧版失败时，我们无法知道失败来自容量假设，还是来自其中任何一个附加设定。新的计划因此保留容量变量，拆掉手工 profile，并用嵌套模型逐项检验替换幅度和搜索范围。
+
+\paragraph{现有结果否定了什么。}
+已有证据给出三个明确但有限的结论。
+\begin{enumerate}
+    \item 既有 newplan 中精确 $M=5$、swap-one 的具体 B0 实现没有通过联合轨迹生成门槛。32 名被试中只有 9 名真实后缀落在该模型自己的联合 $95\%$ 轨迹区域内，平均曲线 CRPS 为 0.1867；相应完整空间边界覆盖 30/32，平均曲线 CRPS 为 0.0340。这说明旧 B0 的具体随机集合过程不足，不能说明所有有限容量模型都不足。
+    \item 条件 1 的 \texttt{model\_0803} 正式 choice-only 运行没有支持完整空间 H3。相对于 H2，H3-M 的平均留出差异为 $-0.1058$ NLL/trial，且被试级校正检验支持预测变差；H3-M 和 H3-MG 的状态恢复也较弱。因此不能继续解释这版完整空间 H3 的逐试次参数轨迹。
+    \item 同一次正式运行在冻结主分析下保留了带双通道记忆的 H0，而不是简单地否定规则学习。并且 640 个真实数据选中解中有 480 个至少一个参数触及拟合边界。这要求后续模型把优化边界和预测等价类作为正式审计对象。
+\end{enumerate}
+
+\paragraph{现有结果没有否定什么。}
+上述结果没有比较“相同连续 H3 控制下的完整空间与有限活跃集合”，也没有利用 RT 和口头报告识别当前活跃规则。因此它们没有检验本文件提出的有限容量随机 H3。更准确的表述是：完整空间静态边界目前具有较好的生成充分性；旧 swap-one 有限模型失败；完整空间确定性 H3 在条件 1 的 choice-only 留出中失败。三者之间仍留有一个尚未检验的模型位置，即本文件的有限容量随机 H3。
+
+\paragraph{为什么完整空间边界仍然必须保留。}
+完整空间模型提供两个必要参照。计算上，它没有离散集合路径，因此可以直接计算似然，用来检查粒子方法是否在 $M=|\mathcal H_k|$ 时回到正确端点。认知上，如果有限模型不能在同一数据切分下改善预测或提供 RT/口头报告的独特证据，就不应仅凭“人不可能同时想 38 条规则”的直觉选择更复杂模型。完整空间表现好只说明其概率表示是一个有效的预测近似，不等于被试意识中同时保存了全部规则。
+
+
+\subsubsection{术语、状态空间与两个容量版本}
+
+\paragraph{固定术语。}
+后续代码、图表和正文统一使用以下术语。
+\begin{enumerate}
+    \item 候选规则空间 $\mathcal H_k$：条件 $k$ 中所有带类别标签的规则；条件 1 当前共有 38 条候选规则。
+    \item 活跃规则集合 $A_{s,t}\subseteq\mathcal H_k$：试次 $t$ 可以直接驱动行为的规则，主分析令 $|A_{s,t}|=M$。
+    \item 集合内规则权重 $\omega^-_{s,t}(h)$ 和 $\omega^+_{s,t}(h)$：分别表示当前反馈前与反馈后的活跃规则概率；若 $h\notin A_{s,t}$，其当前选择权重为 0。
+    \item 修正率 $m_{s,t}$：每个活跃槽位在试次 $t$ 被替换的概率，而不是完整空间中被移动的概率质量。
+    \item 全局搜索比例 $g_{s,t}$：一次 newcomer 提议来自全局核的概率；$1-g_{s,t}$ 为来自局部核的概率。
+    \item 替换数 $K_{s,t}$：当前试次实际退出并进入的规则数。
+    \item 移出质量 $\mu_{s,t}$：退出规则在上一反馈后权重的总和。$K/M$ 是结构改变比例，$\mu$ 是信念质量改变比例，二者必须分别保存和解释。
+\end{enumerate}
+这里特意使用 $\omega$ 表示集合内权重，避免与双通道记忆中的 static 权重 $w_0$ 混淆。
+
+\paragraph{主版本：严格有限工作空间（hard finite workspace, HFW）。}
+HFW 假定只有 $A_{s,t}$ 中的规则保留在线的规则特异证据。规则退出集合后，其 fade/static 差异不再保存；将来重新进入时按 newcomer 规则重新初始化。这个版本最直接对应“被试不可能同时在脑中保留众多假设”的强主张，也产生最清楚的可证伪预测：一个已退出的规则不能在未重新进入集合之前立即影响选择或被报告。
+
+\paragraph{竞争版本：长期规则库加有限工作空间（reservoir-access workspace, RAW）。}
+RAW 区分长期可用性与当前激活。完整规则空间上的背景状态 $B_t(h)$ 可以保留反馈积累形成的长期痕迹，但只有 $A_{s,t}$ 中的 $M$ 条规则被归一化后驱动当前行为。规则退出只表示离开工作空间，不表示长期痕迹被删除；重新进入时可以恢复其背景支持度。这个版本对应较弱的容量主张：人不能同时比较所有规则，但可以从长期记忆重新提取过去考虑过的规则。
+
+HFW 与 RAW 不能被视为同一模型的两个随意初始化选项。若 HFW 和 RAW 都能解释 choice，口头报告中的规则回归速度、重入后的立即准确率以及 RT 的重新提取成本应当帮助区分它们。第一轮以 HFW 为主；只有 HFW 已完成恢复和生成审计后，才把 RAW 作为预先登记的结构竞争者，而不是在 HFW 拟合不好时临时增加的补丁。
+
+
+\subsubsection{一个试次内的完整生成顺序}
+
+\paragraph{基本输入。}
+令 $s$、$t$ 和 $k$ 分别表示被试、试次和实验条件。规则先验为 $p_{0,k}(h)>0$，且
+\begin{equation}
+    \sum_{h\in\mathcal H_k}p_{0,k}(h)=1.
+    \label{eq:model0804-rule-prior}
+\end{equation}
+沿用 Task 1b 的被试特异知觉积分，规则 $h$ 对类别 $c$ 的预测为
+\begin{equation}
+    q_{s,t,h}(c)
+    =P\!\left(
+      \widetilde{\mathbf x}_{s,t}\in R_{k,h,c}
+      \mid \mathbf x_{s,t},g_s
+    \right),
+    \qquad
+    \sum_{c\in\mathcal C_k}q_{s,t,h}(c)=1.
+    \label{eq:model0804-rule-prediction}
+\end{equation}
+规则差异度仍定义为
+\begin{equation}
+    d_k(h,u)=1-\operatorname{Sim}_k(h,u),
+    \label{eq:model0804-rule-distance}
+\end{equation}
+并在查看正式留出结果前冻结相似性计算、局部尺度和全局先验。
+
+\paragraph{试次顺序。}
+每个试次必须按下列因果顺序运行：
+\begin{equation}
+\begin{aligned}
+&(A_{s,t-1},\omega^+_{s,t-1},\text{memory}_{s,t-1},
+  \mathbf a_{s,t-1})\\
+&\quad\xrightarrow{\text{previous feedback state}}
+  (m_{s,t},g_{s,t})
+\xrightarrow{\text{sample }K,D,E}
+  A_{s,t}
+\xrightarrow{\text{mass/memory mapping}}
+  \omega^-_{s,t}\\
+&\quad\xrightarrow{\mathbf x_{s,t},q_{s,t,h}}
+  \text{choice and RT}
+\longrightarrow \text{oral report}
+\longrightarrow \text{feedback}\\
+&\quad\xrightarrow{\text{memory update}}
+  \omega^+_{s,t}
+\longrightarrow
+  (S^{\mathrm{fb}}_{s,t},U^{\mathrm{rule}}_{s,t}).
+\end{aligned}
+\label{eq:model0804-trial-order}
+\end{equation}
+当前反馈不能决定当前集合转移。它只能更新当前反馈后状态，并通过 $S^{\mathrm{fb}}_{s,t}$ 和 $U^{\mathrm{rule}}_{s,t}$ 影响下一试次的 $(m_{s,t+1},g_{s,t+1})$。实现中若使用了 $r_{s,t}$ 计算 $A_{s,t}$，就发生了时间泄漏，无论留出 NLL 多好都必须判为错误。
+
+\paragraph{初始活跃集合。}
+第一试次从规则先验进行不放回抽样：
+\begin{equation}
+    A_{s,1}\sim
+    \operatorname{WOR}_M(p_{0,k}),
+    \label{eq:model0804-initial-set}
+\end{equation}
+其中 $\operatorname{WOR}$ 表示逐次按剩余规则的归一化权重抽样。给定 $A_{s,1}$，初始集合内权重为
+\begin{equation}
+    \omega^-_{s,1}(h)
+    =\frac{I(h\in A_{s,1})p_{0,k}(h)}
+    {\sum_{u\in A_{s,1}}p_{0,k}(u)}.
+    \label{eq:model0804-initial-weight}
+\end{equation}
+初始集合本身是潜变量，必须在所有可能初始集合上边际化；不能为每名被试搜索一个最有利的初始集合后把它当作已观察参数。
+
+
+\subsubsection{有限活跃集合的随机 H3 转移}
+
+\paragraph{连续控制状态。}
+保留 \texttt{model\_0803.tex} 的低维控制思想。令
+\begin{equation}
+    m_{s,t}=\operatorname{logit}^{-1}(a^m_{s,t}),
+    \qquad
+    g_{s,t}=\operatorname{logit}^{-1}(a^g_{s,t}).
+    \label{eq:model0804-controls}
+\end{equation}
+第一版确定性控制动力学为
+\begin{equation}
+    \mathbf a_{s,t}
+    =\boldsymbol\mu_H+\boldsymbol\delta_{H,k}
+     +\mathbf u_{H,s}
+     +\boldsymbol\Phi_H\mathbf a_{s,t-1}
+     +\mathbf B_H
+       \begin{pmatrix}
+       \widetilde S^{\mathrm{fb}}_{s,t-1}\\
+       \widetilde U^{\mathrm{rule}}_{s,t-1}
+       \end{pmatrix},
+    \label{eq:model0804-control-dynamics}
+\end{equation}
+其中标准化中心和尺度只由参数训练段冻结。第一版令 $\boldsymbol\Phi_H$ 为对角矩阵，不加入交叉滞后和逐试次高斯创新。这里的集合转移本身已经产生随机性；只有在它不能生成真实轨迹波动、且新增连续创新能够恢复时，才进一步加入 $\boldsymbol\varepsilon_{s,t}$。
+
+第一试次令标准化输入为 0，并从仅由参数训练段估计的层级初始分布产生 $\mathbf a_{s,1}$。进入时间留出以后，控制方程、标准化常数和个体参数全部冻结；只能用新到达的历史选择与反馈过滤潜在集合，不能重新估计动力学系数。
+
+反馈支持度、反馈惊讶度和规则不确定性只在当前活跃集合上计算：
+\begin{align}
+    L_{s,t}(h)
+    &=\sum_{c\in\mathcal Y_k(c_{s,t},r_{s,t})}
+      q_{s,t,h}(c),\\
+    S^{\mathrm{fb}}_{s,t}
+    &=-\log\max\!\left\{
+      \sum_{h\in A_{s,t}}
+      \omega^-_{s,t}(h)L_{s,t}(h),\epsilon
+      \right\},\\
+    U^{\mathrm{rule}}_{s,t}
+    &=-\frac{
+      \sum_{h\in A_{s,t}}
+      \omega^+_{s,t}(h)\log\omega^+_{s,t}(h)}
+      {\log M}.
+    \label{eq:model0804-surprise-uncertainty}
+\end{align}
+当 $M=1$ 时不使用熵归一化版本；本项目的主容量不涉及该端点。
+
+\paragraph{第一步：抽取替换数。}
+给定 $m_{s,t}$，令
+\begin{equation}
+    K_{s,t}\mid m_{s,t}
+    \sim\operatorname{Binomial}(M,m_{s,t}).
+    \label{eq:model0804-replacement-count}
+\end{equation}
+因此
+\begin{equation}
+    E\!\left(\frac{K_{s,t}}{M}\middle|m_{s,t}\right)
+    =m_{s,t},
+    \qquad
+    \operatorname{Var}\!\left(\frac{K_{s,t}}{M}\middle|m_{s,t}\right)
+    =\frac{m_{s,t}(1-m_{s,t})}{M}.
+    \label{eq:model0804-replacement-moments}
+\end{equation}
+这使连续 $m_t$ 有明确的有限容量含义：它是预期被改写的活跃槽位比例。旧 swap-one 模型只允许 $K\in\{0,1\}$，当 $M=5$ 时即使处于极强修正状态也至多改变 $20\%$ 的集合，因而可能系统性限制快速恢复。式 \ref{eq:model0804-replacement-count} 允许稳定、局部修正和大幅重组从同一个变量连续产生。
+
+式 \ref{eq:model0804-replacement-count} 的不放回 newcomer 实现要求当前非活跃规则数至少为 $K$。条件 1 的正式有限容量候选 $M\in\{3,5,7\}$ 均满足 $2M\leq|\mathcal H_1|$，所以所有 $K\leq M$ 都可实现。$M=38$ 只作为 $m=0$ 的完整空间端点，不运行随机替换；若以后研究 $M>|\mathcal H_k|/2$ 的动态候选，必须预先定义截断计数分布或允许被删除规则重新提议，并重新推导 $m$ 的含义。
+
+\paragraph{第二步：随机选择退出规则。}
+给定上一反馈后集合内权重，定义无需新增自由参数的保护性退出权重
+\begin{equation}
+    R^{\mathrm{out}}_{s,t}(h)
+    \propto I(h\in A_{s,t-1})
+    \left[1-\omega^+_{s,t-1}(h)+\epsilon_{\mathrm{out}}\right].
+    \label{eq:model0804-exit-kernel}
+\end{equation}
+按该权重不放回抽取 $K_{s,t}$ 条规则组成退出集合 $D_{s,t}$。低权重规则更容易退出，但任何活跃规则都有非零退出概率；这保留认知随机性，也避免“永远确定性删除最低规则”把拟合变成不连续排序算法。$\epsilon_{\mathrm{out}}$ 是分析前冻结的数值常数，不按被试估计。均匀退出作为预先规定的敏感性分析；只有它稳定改变模型判定时，才考虑估计退出选择性。
+
+\paragraph{第三步：构造局部和全局 newcomer 提议。}
+沿用冻结的局部核
+\begin{equation}
+    K_{L,k}(h'\mid h)
+    \propto I(h'\neq h)p_{0,k}(h')
+    \exp[-d_k(h,h')/\tau_{L,k}],
+    \label{eq:model0804-local-kernel}
+\end{equation}
+以及全局核 $K_{G,k}(h')=p_{0,k}(h')$。局部搜索的锚点不是被确定删除的最低规则，而是上一活跃集合的后验加权混合：
+\begin{equation}
+    Q_{L,s,t}(h')
+    \propto I(h'\notin A_{s,t-1})
+    \sum_{h\in A_{s,t-1}}
+    \omega^+_{s,t-1}(h)K_{L,k}(h'\mid h),
+    \label{eq:model0804-active-local-proposal}
+\end{equation}
+\begin{equation}
+    Q_{G,s,t}(h')
+    \propto I(h'\notin A_{s,t-1})p_{0,k}(h').
+    \label{eq:model0804-active-global-proposal}
+\end{equation}
+二者在非活跃规则上分别归一化。最终 newcomer 提议为
+\begin{equation}
+    Q_{s,t}(h')
+    =(1-g_{s,t})Q_{L,s,t}(h')
+      +g_{s,t}Q_{G,s,t}(h').
+    \label{eq:model0804-newcomer-mixture}
+\end{equation}
+从 $Q_{s,t}$ 不放回抽取 $K_{s,t}$ 条规则得到进入集合 $E_{s,t}$，并令
+\begin{equation}
+    A_{s,t}
+    =(A_{s,t-1}\setminus D_{s,t})\cup E_{s,t}.
+    \label{eq:model0804-set-update}
+\end{equation}
+新规则只从转移前的非活跃集合提议，因此同一试次被删除的规则不会立即原样放回。以后试次允许它重新进入。
+
+\paragraph{命题 1：容量严格保持。}
+若 $|A_{s,t-1}|=M$、$|D_{s,t}|=|E_{s,t}|=K_{s,t}$，且 $D_{s,t}\subseteq A_{s,t-1}$、$E_{s,t}\subseteq\mathcal H_k\setminus A_{s,t-1}$，则式 \ref{eq:model0804-set-update} 满足 $|A_{s,t}|=M$。
+
+\textit{证明。}
+$A_{s,t-1}\setminus D_{s,t}$ 含 $M-K_{s,t}$ 条规则；$E_{s,t}$ 与 $A_{s,t-1}$ 不相交，因此也与保留集合不相交。两者并集大小为 $(M-K_{s,t})+K_{s,t}=M$。证明完毕。
+
+\paragraph{命题 2：$g_t$ 仍具有局部--全局混合含义。}
+给定当前活跃状态，令 $\bar d_L$ 和 $\bar d_G$ 分别为 $Q_L$ 和 $Q_G$ 相对于上一活跃集合的后验加权期望差异度。由式 \ref{eq:model0804-newcomer-mixture}，一次 newcomer 的期望差异度为
+\begin{equation}
+    \bar d(g_t)=(1-g_t)\bar d_L+g_t\bar d_G.
+    \label{eq:model0804-distance-mixture}
+\end{equation}
+若冻结核满足 $\bar d_G>\bar d_L$，则 $\partial\bar d(g_t)/\partial g_t=\bar d_G-\bar d_L>0$。因此 $g_t$ 越大，新进入规则平均离当前活跃解释越远。若某条件或某状态下两核距离接近，则该处的 $g_t$ 不可识别，必须按预测等价处理。
+
+\paragraph{实际改变不能只用 $K_t$ 描述。}
+定义退出的上一后验质量
+\begin{equation}
+    \mu_{s,t}
+    =\sum_{h\in D_{s,t}}\omega^+_{s,t-1}(h),
+    \label{eq:model0804-removed-mass}
+\end{equation}
+以及 newcomer 平均距离
+\begin{equation}
+    \bar d^{\mathrm{new}}_{s,t}
+    =\frac{1}{K_{s,t}}
+      \sum_{e\in E_{s,t}}
+      \sum_{h\in A_{s,t-1}}
+      \omega^+_{s,t-1}(h)d_k(h,e),
+    \label{eq:model0804-newcomer-distance}
+\end{equation}
+其中 $K=0$ 时约定 $\bar d^{\mathrm{new}}=0$。同样替换一条规则，删除权重 0.01 的边缘假设与删除权重 0.70 的主导假设不是同一种认知改变。后续 RT、轨迹图和神经分析至少同时保存 $K/M$、$\mu$ 和 $\bar d^{\mathrm{new}}$，不能把它们都叫作 switch strength。
+
+
+\subsubsection{集合转移以后怎样初始化权重和记忆}
+
+\paragraph{为什么 newcomer 初始化是核心理论决定。}
+有限集合模型不仅要规定谁进入，还要规定进入时携带多少信念以及是否带回过去证据。旧模型中一个固定 newcomer 常数可能同时控制进入速度、恢复速度和选择随机性，从而与 $m$、$g$、fade/static 记忆产生严重混淆。本计划用两个明确架构分别回答，不把 newcomer 常数作为第一轮自由参数。
+
+\paragraph{HFW：质量守恒的槽位替换。}
+把退出规则按抽样顺序记为 $(d_1,\ldots,d_K)$，进入规则按抽样顺序记为 $(e_1,\ldots,e_K)$。保留规则维持上一后验质量，每个 newcomer 接收其对应退出槽位的质量：
+\begin{equation}
+    \omega^-_{s,t}(h)=
+    \begin{cases}
+      \omega^+_{s,t-1}(h),
+      &h\in A_{s,t-1}\setminus D_{s,t},\\
+      \omega^+_{s,t-1}(d_j),
+      &h=e_j,\ j=1,\ldots,K,\\
+      0,&h\notin A_{s,t}.
+    \end{cases}
+    \label{eq:model0804-mass-transfer}
+\end{equation}
+这样集合改变本身只重新分配既有概率质量，不额外制造或删除总质量。退出核倾向移除低权重规则，所以一般 newcomer 初始权重较小；但与反馈高度一致的 newcomer 可在随后更新中迅速上升。
+
+\paragraph{命题 3：槽位替换保持概率闭合。}
+若 $\omega^+_{s,t-1}$ 在 $A_{s,t-1}$ 上非负且和为 1，则式 \ref{eq:model0804-mass-transfer} 在 $A_{s,t}$ 上非负且和为 1。
+
+\textit{证明。}
+保留规则贡献所有未退出质量，newcomer 逐一接收全部退出质量，因此新权重之和等于上一集合所有规则权重之和，即 1；非负性由旧权重非负立即得到。证明完毕。
+
+HFW 的双通道记忆使用统一同步接口。令 $\Delta_{s,t-1}(h)=S_{s,t-1}(h)-F_{s,t-1}(h)$。保留规则继承 $\Delta$，newcomer 令 $\Delta^{\mathrm{new}}=0$，表示它没有可恢复的规则特异长期--近期差异。对所有 $h\in A_{s,t}$ 定义
+\begin{align}
+    F_{s,t^-}(h)
+    &=\log\omega^-_{s,t}(h)-w_{0,s,k}\Delta^*_{s,t-1}(h),\\
+    S_{s,t^-}(h)
+    &=\log\omega^-_{s,t}(h)+(1-w_{0,s,k})\Delta^*_{s,t-1}(h),
+    \label{eq:model0804-hard-memory-sync}
+\end{align}
+其中保留规则的 $\Delta^*=\Delta$，newcomer 的 $\Delta^*=0$。该构造满足
+\begin{equation}
+    w_0S_{s,t^-}(h)+(1-w_0)F_{s,t^-}(h)
+    =\log\omega^-_{s,t}(h).
+    \label{eq:model0804-hard-sync-identity}
+\end{equation}
+反馈到达后，令 $\widetilde L_{s,t}(h)=\max\{L_{s,t}(h),\epsilon\}$，仅对当前活跃规则执行
+\begin{align}
+    F_{s,t}(h)
+    &=\gamma_{s,k}F_{s,t^-}(h)
+      +\log\widetilde L_{s,t}(h),\\
+    S_{s,t}(h)
+    &=S_{s,t^-}(h)+\log\widetilde L_{s,t}(h),\\
+    \ell_{s,t}(h)
+    &=w_{0,s,k}S_{s,t}(h)
+      +(1-w_{0,s,k})F_{s,t}(h),\\
+    \omega^+_{s,t}(h)
+    &=\frac{\exp[\ell_{s,t}(h)]}
+      {\sum_{u\in A_{s,t}}\exp[\ell_{s,t}(u)]}.
+    \label{eq:model0804-hard-memory-update}
+\end{align}
+退出规则的两条记忆状态被删除。由式 \ref{eq:model0804-hard-sync-identity}，$\gamma=1$ 或 $w_0=1$ 仍回到当前集合上的标准贝叶斯更新；$w_0=0$ 回到集合内 fade-only 更新。这些端点应当与完整空间端点分别做数值等价测试。
+
+\paragraph{RAW：长期背景证据与工作空间投影。}
+RAW 为全部 $h\in\mathcal H_k$ 保存背景 fade/static 状态并形成归一化背景信念 $B^+_{s,t}(h)$；反馈可以更新完整背景规则库，但选择只能读取当前集合：
+\begin{equation}
+    \omega^-_{s,t}(h)
+    =\frac{I(h\in A_{s,t})B^+_{s,t-1}(h)}
+    {\sum_{u\in A_{s,t}}B^+_{s,t-1}(u)}.
+    \label{eq:model0804-reservoir-projection}
+\end{equation}
+集合转移仍完全由式 \ref{eq:model0804-replacement-count}--\ref{eq:model0804-set-update} 决定；背景信念本身不再执行完整空间 H 质量输运。RAW 的关键预测是某条旧规则重入时可以立即恢复较高权重，而 HFW 必须从新槽位质量和随后反馈重新建立。由于 RAW 允许非活跃规则积累隐性证据，它是长期记忆容量与工作空间容量分离的理论，不应被描述为严格遗忘模型。
+
+\paragraph{两架构的正式判别。}
+HFW 是第一轮主模型。RAW 只有在以下至少一项出现时进入正式竞争：旧规则在口头报告中间隔若干试次后无渐进过程地恢复；重入规则立即产生高准确率但没有对应的高替换质量；或者 HFW 系统性无法生成晚期学习而 RAW 可以。若两者只在不可观测内部记忆上不同、对 choice、RT 和 oral report 都近似等价，则报告容量架构等价类，不选择心理故事更丰富者。
+
+
+\subsubsection{选择、RT 与口头报告的独特预测}
+
+\paragraph{选择只由当前活跃规则驱动。}
+粒子内的核心类别概率为
+\begin{equation}
+    p^{\mathrm{core},(r)}_{s,t}(c)
+    =\sum_{h\in A^{(r)}_{s,t}}
+      \omega^{-,(r)}_{s,t}(h)q_{s,t,h}(c),
+    \label{eq:model0804-particle-core-choice}
+\end{equation}
+并通过冻结的决策读出
+\begin{equation}
+    P^{(r)}(c_{s,t}=c)
+    =\frac{[p^{\mathrm{core},(r)}_{s,t}(c)]^{\kappa_{s,k}}}
+    {\sum_{j\in\mathcal C_k}
+     [p^{\mathrm{core},(r)}_{s,t}(j)]^{\kappa_{s,k}}}.
+    \label{eq:model0804-particle-choice}
+\end{equation}
+第一版不再增加逐试次 lapse。否则“目标规则不在集合”“集合刚发生大幅替换”和“读出随机”会同时产生平坦选择概率，容量机制难以识别。
+
+\paragraph{RT 应当读取实际搜索成本，而不只读取 $m_t$。}
+有限集合为 RT 提供完整空间模型没有的离散成本变量。粒子内测量模型可写为
+\begin{align}
+    \log(\mathrm{RT}_{s,t})\sim t_\nu\!\Big(&
+      \alpha_{s,k}+\mathbf b_{0,k}^{\mathsf T}\mathbf Z_{s,t}
+      +b_{U,k}U^{\mathrm{choice},(r)}_{s,t}
+      +b_{H,k}\widetilde H^{(r)}_{s,t}\nonumber\\
+      &+b_{K,k}\frac{K^{(r)}_{s,t}}{M}
+      +b_{\mu,k}\mu^{(r)}_{s,t}
+      +b_{d,k}\bar d^{\mathrm{new},(r)}_{s,t},
+      \sigma_{\mathrm{RT},k}\Big),
+    \label{eq:model0804-rt-channel}
+\end{align}
+其中 $\widetilde H$ 是集合内规则熵，$\mathbf Z$ 包含预先冻结的练习、刺激模糊性和必要的运动协变量。第一轮不同时自由估计 $b_K$、$b_\mu$ 和 $b_d$；先分别做单一增量模型，再在恢复支持时合并。核心可证伪预测是：控制选择不确定性后，实际发生更多替换或更远 newcomer 的试次仍应更慢。若 RT 只跟选择熵有关，不跟任何集合变量有关，则 RT 不支持有限集合的搜索成本解释。
+
+\paragraph{口头报告应从当前集合发射。}
+令 $R_k(o\mid h)$ 表示规则 $h$ 产生结构化报告 $o$ 的冻结编码模型。观察当前选择 $c_{s,t}$ 后，可先把集合内权重按该选择的兼容性重加权：
+\begin{equation}
+    \widetilde\omega^{(r)}_{s,t}(h\mid c_{s,t})
+    \propto \omega^{-,(r)}_{s,t}(h)q_{s,t,h}(c_{s,t}).
+    \label{eq:model0804-report-readout-weight}
+\end{equation}
+正式报告分布为
+\begin{align}
+    P^{(r)}(o_{s,t}=o\mid c_{s,t})
+    =&(1-\epsilon_{O,s,k})
+      \sum_{h\in A^{(r)}_{s,t}}
+      \widetilde\omega^{(r)}_{s,t}(h\mid c_{s,t})R_k(o\mid h)\nonumber\\
+      &+\epsilon_{O,s,k}b_{O,k}(o),
+    \label{eq:model0804-oral-channel}
+\end{align}
+其中 $b_O$ 是冻结的报告噪声基线。有限集合的独特预测不是“报告等于最高权重规则”这一过强断言，而是报告概率质量主要来自当前集合；集合外报告只能通过编码噪声或粒子间集合不确定性出现。连续报告中突然跨规则家族的变化，应与较大的 $K$、$g$ 或 newcomer 距离共同出现。
+
+\paragraph{三种观测通道怎样区分机制。}
+Choice 主要约束集合内合成类别概率，却可能无法区分“正确规则从未进入”“正确规则进入但权重很低”与“正确规则权重高但决策读出噪声大”。RT 对集合替换数量和距离提供约束；oral report 对具体活跃规则提供约束。只有 choice 改善而 RT/报告均不支持时，可以把有限集合保留为预测工具，但不能强解释为工作空间容量。只有报告显示少数规则的进入退出、RT 同时出现相应成本，并且这些关联在参数冻结后留出预测成立，才支持有限活跃集的认知解释。
+
+
+\subsubsection{随机轨迹下 NLL 的正确计算}
+
+\paragraph{一套参数为什么需要很多粒子。}
+给定参数 $\boldsymbol\theta$，集合初始化、$K_t$、退出规则、newcomer 及其配对都是未观察的随机变量。第 $r$ 个粒子保存一条可能的潜在状态
+\begin{equation}
+    X^{(r)}_{s,t}
+    =\left(A^{(r)}_{s,t},\omega^{(r)}_{s,t},
+      F^{(r)}_{s,t},S^{(r)}_{s,t},\mathbf a^{(r)}_{s,t}\right)
+    \label{eq:model0804-particle-state}
+\end{equation}
+及其权重 $W^{(r)}_{s,t}$。多粒子不是把一个被试复制很多次，而是用 Monte Carlo 积分逼近所有可能活跃集合路径的概率和。
+
+\paragraph{逐试次边际选择概率。}
+在观察试次 $t$ 的真实选择 $y_{s,t}$ 之前，先把所有粒子从 $t-1$ 传播到 $t$，得到预测权重 $W^{(r)}_{s,t^-}$ 和粒子内选择概率 $P^{(r)}_{s,t}(c)$。模型给实际选择的边际概率是
+\begin{equation}
+    p_{s,t}^{\mathrm{marg}}
+    =\sum_{r=1}^{R}W^{(r)}_{s,t^-}
+      P^{(r)}_{s,t}(y_{s,t}),
+    \qquad
+    \sum_{r=1}^{R}W^{(r)}_{s,t^-}=1.
+    \label{eq:model0804-marginal-choice}
+\end{equation}
+整段选择 NLL 为
+\begin{equation}
+    \operatorname{NLL}_s(\boldsymbol\theta)
+    =-\sum_{t\in\mathcal T_s}
+      \log\max\{p_{s,t}^{\mathrm{marg}},\epsilon_{\mathrm{NLL}}\}.
+    \label{eq:model0804-nll}
+\end{equation}
+观察选择以后，粒子权重按
+\begin{equation}
+    W^{(r)}_{s,t}
+    =\frac{W^{(r)}_{s,t^-}P^{(r)}_{s,t}(y_{s,t})}
+    {\sum_jW^{(j)}_{s,t^-}P^{(j)}_{s,t}(y_{s,t})}
+    \label{eq:model0804-particle-weight-update}
+\end{equation}
+更新，再在真实反馈到达后更新各粒子的规则记忆和下一试次输入。有效样本量
+\begin{equation}
+    \operatorname{ESS}_{s,t}
+    =\frac{1}{\sum_r[W^{(r)}_{s,t}]^2}
+    \label{eq:model0804-ess}
+\end{equation}
+低于预先冻结阈值时进行系统重采样。
+
+外部验证线中，RT 和口头报告使用由 choice 过滤后的粒子预测，但不反过来重加权核心 choice 参数或集合路径；这回答“只由选择推断的集合能否预测其他通道”。只有在核心结构冻结后的联合整合线，粒子权重才乘以同一试次按因果顺序分解的 choice、RT 和报告联合发射概率。两条分析线必须分别保存，联合结果不能替代外部验证结果。
+
+\paragraph{为什么不能平均 NLL。}
+设两条等权轨迹给真实选择的概率分别为 0.9 和 0.1。正确边际概率为 $(0.9+0.1)/2=0.5$，所以该试次 NLL 为 $-\log0.5$。若先计算每条轨迹 NLL 再平均，会得到 $[-\log0.9-\log0.1]/2$，明显更大。原因是
+\begin{equation}
+    -\log E_R[p_R(y)]
+    \neq E_R[-\log p_R(y)],
+    \label{eq:model0804-log-average}
+\end{equation}
+而模型的预测对象是轨迹混合分布。更不能取 NLL 最小的轨迹，因为那等于在看到真实选择以后选择最有利的潜在历史，系统性高估拟合并破坏生成解释。
+
+\paragraph{命题 4：粒子边际选择分布保持归一化。}
+若每条粒子的 $P^{(r)}_{s,t}(c)$ 是类别上的概率分布，且预测权重非负并和为 1，则
+\begin{equation}
+    P^{\mathrm{marg}}_{s,t}(c)
+    =\sum_rW^{(r)}_{s,t^-}P^{(r)}_{s,t}(c)
+    \label{eq:model0804-marginal-distribution}
+\end{equation}
+也是概率分布。
+
+\textit{证明。}
+非负性由两组非负量的乘积和得到；对类别求和后，$\sum_cP^{\mathrm{marg}}(c)=\sum_rW_r\sum_cP_r(c)=\sum_rW_r=1$。证明完毕。
+
+\paragraph{训练、一步预测和自主生成是三种不同计算。}
+参数训练段使用式 \ref{eq:model0804-particle-weight-update} 按观察到的选择过滤潜在路径。时间留出的一步前瞻预测在每个留出试次先评分，再允许该试次真实选择和反馈更新粒子，用于预测下一个试次。自主后缀生成则在切点以后不再读取真实选择、RT 或报告；每条粒子从自身预测分布生成选择，实验规则据此产生反馈，轨迹自由演化。一步前瞻回答“已知截至昨天，能否预测今天”，自主生成回答“从训练结尾出发，能否生成整个未来学习过程”，两者都必须报告，不能互相替代。
+
+\paragraph{Monte Carlo 审计。}
+参数候选之间使用 common random numbers，使相同随机数位置对应相同初始化、替换数和提议抽样，从而降低目标函数比较噪声。最终候选必须用独立随机种子重新评分，并至少比较 $R$、$2R$ 和 $4R$ 三个粒子数。保存每试次 ESS、重采样次数、边际 log likelihood 的种子间标准差和模型差异的 Monte Carlo 标准误。若模型间留出差异不大于 Monte Carlo 误差，判定为计算上不确定，不能据均值排序。
+
+\paragraph{FA0 的精确初始集合积分。}
+FA0 的集合在初始化后不再变化，连续 choice 条件化会使少数固定集合获得很大后验权重；此时仅增加静态重要性粒子仍可能产生严重退化。条件 1 的主分析有 $|\mathcal H_1|=38$、$M=5$，所以不同无序初始集合只有 $\binom{38}{5}=501{,}942$ 个。实现对这些集合全部枚举，并用 $2^M$ 动态规划精确求和逐次加权不放回抽样的全部 $M!$ 个进入顺序，从而得到每个集合的真实初始概率。FA0 因此不含初始集合 Monte Carlo 误差；若以后某条件的组合数超过预先设置的计算上限，必须另行登记近似算法，不能静默退回低粒子数结果。
+
+\paragraph{动态模型的批量传播与候选数审计。}
+FA1/FA2 的实现用批量数组运算同时传播全部父粒子，但不改变式 \ref{eq:model0804-marginal-choice} 的边际似然。代码也支持每个父粒子产生 $B>1$ 个转移候选：当前发射概率先在 $B$ 个候选上平均，观察 choice 后再按候选 choice likelihood 选择一个状态用于后续过滤；这相当于对转移再做一层重要性边际化。正式配置中的 $B$ 和父粒子数只根据冻结参数探针的数值预检选择。若相同总转移预算下增加父粒子比增加每父候选更稳定，则正式 choice 拟合优先保留父状态多样性，而不把 $B$ 当作认知参数。
+
+\paragraph{2026-08-04 实施审计：普通 bootstrap filter 尚未通过正式门槛。}
+完整试次 pilot 显示，FA0 的精确集合积分稳定，但 FA1/FA2 在若干偶发错误试次把 choice 权重集中到极少数路径；即使 $R=131{,}072$，不同种子或粒子数的 NLL 和逐试次概率仍可明显变化。相同总提议预算下把父粒子换成每父多候选没有改善；把 $K=0,\ldots,M$ 按精确二项概率分层传播也未在独立种子下复现。因此这些方法保留为诊断实现，但不能作为正式拟合已就绪的证据。
+
+审计同时表明，原先完全无 lapse 的观测层会把少数明显的偶发反应错误解释成潜在集合历史突变。共享的固定 choice contamination
+\begin{equation}
+ P^{\mathrm{obs}}(c)=(1-\lambda)P^{\mathrm{core}}(c)+\lambda/2
+\end{equation}
+能显著缓解瞬时 ESS 坍缩；但它改变观测模型，不能作为纯数值技巧静默加入。下一版本只能把它作为所有 FS/FA 候选共享、静态且明确报告的观测层，与 $\lambda=0$ 基线共同恢复和比较，不允许逐试次动态 lapse。即使加入该层，正式门槛仍要求独立种子、粒子数和逐试次预测同时稳定。若普通重加权仍不能满足门槛，下一数值候选应是带正确 normalizing-constant 估计的全局 choice-adapted/alive particle filter；在其精确小空间验证完成以前，不启动 32 人正式优化。
+
+\paragraph{全局 categorical-alive filter。}
+为避免在当前 choice 后只剩极少数非零权重路径，实现把连续 choice likelihood 精确扩充为 indicator potential。对每个由上一时刻等权粒子和集合转移核产生的候选状态 $X^{(j)}_t$，额外模拟
+\begin{equation}
+ Z^{(j)}_t\sim\operatorname{Categorical}
+ \left(P_t(\cdot\mid X^{(j)}_t)\right),
+ \qquad
+ G^{(j)}_t=\mathbb I\{Z^{(j)}_t=y_t\}.
+\end{equation}
+因为对扩充变量积分后 $P(G_t=1\mid X_t)=P_t(y_t\mid X_t)$，该步骤没有改变原 choice 模型。算法保留前 $N$ 个 $G=1$ 的状态，并继续抽样至第 $N+1$ 个成功；若第 $N+1$ 个成功出现在总尝试数 $T_t$，则当前增量 normalizing constant 使用
+\begin{equation}
+ \widehat p_t(y_t\mid y_{1:t-1})=\frac{N}{T_t-1}.
+ \label{eq:model0804-alive-increment}
+\end{equation}
+这是 alive particle filter 的停止校正，而不是普通成功比例。第 $N+1$ 个成功仅用于校正并被丢弃；前 $T_t-1$ 次模拟类别的频数给出归一化的完整 choice 预测向量。当前反馈仍只在预测和 choice 条件化以后更新保留粒子的记忆，因而没有反馈泄漏。小空间测试中，该实现逐试次满足式 \ref{eq:model0804-alive-increment}，恢复精确枚举的 NLL 和预测；200 个独立小粒子运行的平均 likelihood 距精确 likelihood 仅 $0.34$ 个 Monte Carlo 标准误。FA1 也在 common random numbers 下与 $g=0$ 的 FA2 逐位相等。
+
+\paragraph{2026-08-04 alive 实施结果：解决权重坍缩，但未解决长期路径退化。}
+冻结探针在被试 101、FA2、$\lambda=0.02$ 下依次使用 $N=2{,}048$、$8{,}192$ 和 $32{,}768$。两独立种子的 NLL 范围从 $7.595$ 降至 $5.433$，最后降至 $0.411$；跨种子的平均逐试次概率差从 $0.0401$ 降至 $0.0223$ 和 $0.0137$。但是最大逐试次概率差仍依次为 $0.659$、$0.482$ 和 $0.339$，远高于冻结门槛 $0.04$。从 $8{,}192$ 增至 $32{,}768$ 时，一个种子的 NLL 改变 $0.776$，另一个仍改变 $4.246$。最大粒子档的罕见错误试次需要约 $3.23\times10^6$ 次候选才能获得 $N+1$ 个成功，但算法没有零权重或内存错误。剩余分歧主要出现在第 80--90、169、172 和 222 等学习阶段，说明不同运行保留了不同的长期集合历史；它不是由式 \ref{eq:model0804-alive-increment} 的即时接受率噪声单独造成。
+
+\paragraph{独立 island 平均不是充分的修复。}
+进一步把多个独立 alive filters 作为 islands。第 $t$ 个试次以前，island $j$ 按其此前累计 evidence $\widehat Z_{j,t-1}$ 加权：
+\begin{equation}
+ \widehat P^{\mathrm{isl}}_t(c)=
+ \frac{\sum_j\widehat Z_{j,t-1}\widehat P_{j,t}(c)}
+      {\sum_j\widehat Z_{j,t-1}}.
+\end{equation}
+该递推保证最终 ensemble likelihood 严格等于独立 island likelihood 的算术平均，而不是错误地平均 NLL。两个互不重叠的 $4\times2{,}048$ 组仍给出 $1.322$ 的 NLL 差、$0.645$ 的最大逐试次概率差和 $0.0270$ 的平均差；组内最小有效 island 数分别只有 $1.002$ 和 $1.048$，表明累计 evidence 又被单个历史模式支配。因此不继续用更多互不作用的 islands 堆算力。
+
+\paragraph{固定窗 resample--move。}
+为让重采样产生的重复粒子重新获得不同的近期集合历史，实现保存最近 $L$ 个反馈后状态及对应 choice log likelihood。每个试次先按普通 bootstrap filter 计算完整粒子平均的边际 choice likelihood，并据当前 choice 重采样；评分结束后才执行 move，因此 move 不能回头改变当前已记录的 normalizing constant。令 $a=t-L$ 表示固定 anchor，独立提议从原生成核重演 $a+1{:}t$ 的初始/转移路径，并在每个重演试次先计算 choice likelihood、再应用真实反馈的确定性记忆更新。由于提议密度正是 anchor 后的转移先验，Metropolis 接受概率化简为
+\begin{equation}
+ \alpha=\min\left\{1,
+ \exp\left[
+   \sum_{u=a+1}^{t}\log P(y_u\mid\widetilde X_u)
+   -\sum_{u=a+1}^{t}\log P(y_u\mid X_u)
+ \right]\right\}.
+ \label{eq:model0804-resample-move-acceptance}
+\end{equation}
+因此该 move kernel 以固定 anchor 下的窗口路径后验为不变分布；窗口以前的历史不变，当前反馈也不进入当前选择预测。精确小空间测试中，resample--move 恢复精确 NLL 和逐试次预测；200 个独立小粒子运行的平均 likelihood 位于精确 likelihood 的 $1.20$ 个 Monte Carlo 标准误以内，并通过 FA1--FA2 $g=0$ 端点、当前反馈无泄漏和 masked choice 不条件化测试。
+
+\paragraph{窗口冻结与实施结果。}
+被试 101、FA2、$\lambda=0.02$、$N=2{,}048$ 的单种子窗口扫描比较 $L=2,4,8$。$L=2$ 的平均接受率为 $0.969$，说明窗口过短而几乎无条件接受；$L=8$ 的最低试次接受率只有 $0.004$，表明部分学习阶段已难以独立移动；$L=4$ 的平均和最低接受率分别为 $0.887$ 和 $0.191$，move 后中位唯一活跃集合为 $1{,}979/2{,}048$。因此按可移动性与历史长度的平衡冻结 $L=4$，而不是选择 NLL 最低的窗口。
+
+在冻结 $L=4$ 后，$N=2{,}048$、$8{,}192$、$32{,}768$ 的两种子 NLL 范围分别为 $0.902$、$3.046$ 和 $0.506$；跨种子最大逐试次概率差依次为 $0.477$、$0.347$ 和 $0.208$，平均差依次为 $0.0304$、$0.0166$ 和 $0.0113$。最大粒子档的 mean acceptance 约为 $0.886$，move 后最少仍有 $13{,}252/32{,}768$ 个唯一活跃集合，说明 rejuvenation 确实执行并明显优于未 move 的 alive 结果；但最大概率差仍远高于 $0.04$，平均差仍略高于 $0.01$。从 $8{,}192$ 增至 $32{,}768$ 时，一个种子的 NLL 只改变 $0.115$，另一个仍改变 $2.425$。因此固定四试次局部 move 改善但没有通过三重正式门槛。
+
+\paragraph{PGAS 的 innovation-space 实现。}
+固定窗 move 只能重写最近四个试次，因此下一诊断实现 particle Gibbs with ancestor sampling（PGAS），尝试在 conditional SMC 中改写更长历史。直接把“移出哪条、进入哪条”作为参考事件会产生支持集问题：换一个祖先以后，参考事件要求移出的规则可能已经不在其活跃集合中。实现因此把潜变量改写为与生成代码一一对应的均匀创新量
+\begin{equation}
+ U_1\in[0,1)^M,
+ \qquad
+ U_t\in[0,1)^{1+2M},\quad t=2,\ldots,T,
+ \label{eq:model0804-pgas-innovations}
+\end{equation}
+其中 $U_1$ 决定初始加权不放回抽样，$U_t$ 的第一维决定 $K_t$，其余维决定退出和 newcomer 顺序。给定任一祖先状态，同一 $U_t$ 都能通过原生成映射产生一个合法后继，所以 conditional particle 永远有定义。在这个 non-centred 表示下，创新先验为常数，目标路径后验为
+\begin{equation}
+ p(U_{1:T}\mid y_{1:T},r_{1:T})
+ \propto
+ \prod_{t=1}^T P(y_t\mid X_t(U_{1:t})),
+ \label{eq:model0804-pgas-target}
+\end{equation}
+且每一项仍严格遵循 choice 在前、feedback 更新在后的顺序。
+
+\paragraph{完整与截断 ancestor weight 必须区分。}
+由于 innovation path 而不是 $X_t$ 被固定，改变祖先会通过记忆状态影响参考创新后缀产生的所有未来状态；因此该表示对 $U_t$ 是 non-Markovian。参考粒子在试次 $t$ 的精确祖先权重为
+\begin{equation}
+ \widetilde W^{(i)}_{t-1}
+ \propto W^{(i)}_{t-1}
+ \exp\left\{
+   \sum_{u=t}^{T}
+   \log P\left(y_u\mid
+   X_u(X^{(i)}_{t-1},U'_{t:u})\right)
+ \right\}.
+ \label{eq:model0804-pgas-ancestor}
+\end{equation}
+完整求和保持精确路径后验，但成本为 $O(NT^2)$。只保留未来 $\ell$ 项可把成本降为 $O(NT\ell)$，却是明确的近似 kernel；除非另行证明遗忘误差足够小，它不能与完整后缀结果混写，也不能作为正式后验。
+
+\paragraph{PGAS 的精确小空间验证。}
+在三条假设、容量一、三个试次的 27 条完整状态路径上，精确平滑枚举得到 NLL $2.1061561477914$，与现有精确前向算法相差小于 $10^{-15}$。完整后缀 PGAS 使用 $N=16$、500 次迭代、前 100 次 burn-in 时，active probability 相对精确平滑边缘的最大误差为 $0.05991$，期望替换数最大误差为 $0.01964$。实现还通过 FA1 与 $g=0$ 的 FA2 在共同随机数下逐位一致、末次反馈不能改变反馈前路径后验，以及 PGAS 输出不包含 normalizing-constant estimate 的测试。这些结果证明小空间代码目标正确，但不证明长序列已经混合。
+
+\paragraph{2026-08-04 cond1 短序列停机结果。}
+真实被试 101、FA2、$\lambda=0.02$ 的前 32 个试次先运行两个独立完整后缀链；冻结预算为 $N=8$、60 次迭代、前 20 次 burn-in。两链每次迭代的总体 active membership 改写率为 $0.0841$ 和 $0.0778$，且 40 个保留样本得到 40 条不同路径，表面上并未完全停滞；但是两链 active probability 的平均差为 $0.1231$、最大差为 $1.0$，期望替换数平均差为 $0.4328$，路径 choice log likelihood 均值相差 $3.441$。逐试次诊断显示问题集中在早期历史：前四分之一 active 改写率只有 $0.0123$ 和 $0.00214$，参考祖先切换率只有 $0.0969$ 和 $0.0281$，ancestor ESS 中位数约为 1；最后四分之一 active 改写率约为 $0.171$ 和 $0.164$，ancestor ESS 中位数才上升到约 4.0。因此全局平均“路径会动”掩盖了早期路径被参考轨迹锁死。
+
+把祖先后缀截为 $\ell=4$ 后，总体改写率升至 $0.186$ 和 $0.174$，两链 active probability 平均差降至 $0.0721$，但最大差仍为 $0.525$，路径 log likelihood 均值仍差 $3.904$；而该 kernel 本身只是近似。完整后缀再升至 $N=16$、80 次迭代时，两链 active probability 平均差仍为 $0.1036$、最大差仍为 $1.0$，只是路径 log likelihood 均值差从 $3.441$ 降到 $1.613$。短 32 试次尚未通过时，不继续运行约 314 试次的全长链；这是一条预防无界算力升级的停机结论，不是对有限容量认知假设的否定。
+
+\paragraph{PGAS 不能替代边际 NLL estimator。}
+PGAS 在固定参数下抽取平滑路径，本身不返回 $p(y_{1:T})$；即使路径混合良好，也不能把样本路径的平均 log likelihood 当成边际 NLL。因此它只保留为小空间和短序列的后验路径诊断，不能为 32 人参数优化或模型比较放行。普通 bootstrap、每父多候选、替换数分层、alive、island、固定窗 resample--move 和本次 PGAS 都未解决“长历史模式与稳定 normalizing constant 同时获得”的问题。
+
+\paragraph{共同未来的历史遗忘审计。}
+在继续设计 bridge filter 前，先直接检查当前生成过程是否会忘记早期状态。对每个冻结 anchor $a\in\{15,47,95,159\}$，分别从两个独立的 $N=512$ bootstrap filters 抽取 64 对反馈后状态 $(X_a^{L,j},X_a^{R,j})$；每一对在以后 128 个试次使用完全相同的转移创新 $U_{a+1:a+128}^{j}$、真实 choice 和 feedback：
+\begin{equation}
+ X_{t}^{L,j}=F(X_{t-1}^{L,j},U_t^j,y_t,r_t),
+ \qquad
+ X_{t}^{R,j}=F(X_{t-1}^{R,j},U_t^j,y_t,r_t).
+ \label{eq:model0804-coupled-forgetting}
+\end{equation}
+因此未来 Monte Carlo 差异被配对消除；剩余 active overlap、$\omega$ total variation、choice probability 和共同活跃规则的 static--fade 差异均来自 anchor 以前的不同历史。完全相同的 anchor 状态在单元测试中逐位保持相同。主探针固定 FA2、$m=0.15$、$g=0.35$、$\gamma=0.70$、$\lambda=0.02$，比较原双通道 $w_0=0.40$ 和 fade-only $w_0=0$。查看结果前冻结的末端 16 步门槛要求 mean choice difference 不超过 $0.005$、第 95 百分位不超过 $0.02$；状态门槛要求 median $\omega$ total variation 不超过 $0.05$ 且 median active distance 不超过 $0.20$。
+
+\paragraph{遗忘审计结果：多数路径耦合，但重尾没有消失。}
+双通道和 fade-only 的中位状态门槛分别从 lag 19 和 35 起保持通过；lag 128 时 active set 完全相同的比例为 $0.8789$ 和 $0.9063$。但这不能推出预测已经遗忘，因为分布高度零膨胀且重尾。末端 16 步内，单路径 choice difference 的 pooled mean 分别为 $0.03427$ 和 $0.02606$，第 99 百分位均约为 $0.98$；超过 $0.02$ 的状态--试次比例为 $4.37\%$ 和 $3.83\%$，且分别有 $11.33\%$ 和 $10.16\%$ 的状态对至少一次超过该门槛。双通道末端逐 lag 的最大 mean 和最大第 95 百分位分别为 $0.0630$ 和 $0.978$；fade-only 相应为 $0.0372$ 和 $0.0320$，所以二者都没有通过冻结预测门槛。
+
+单路径绝对差可能在积分后正负抵消，因此另外保存 class-1 choice probability 的有符号差，先在每个 anchor 的 64 对状态上平均，再取两套起始历史的边际预测差。双通道末端 16 步的最大和平均 anchor-level 边际差仍为 $0.0766$ 和 $0.0180$；fade-only 为 $0.0675$ 和 $0.0158$。lag 128 的最大 anchor 差仍为 $0.0150$ 和 $0.0145$。因此失败不只是两条潜在路径身份不同，已经传到粒子积分真正关心的边际 choice prediction。
+
+去掉 static memory 有一定改善但不足以消除重尾，所以不能把故障只归因于 static 通道。作为查看主结果后的明确次要机制敏感性，保持相同 anchor、horizon 和样本数，把双通道 $m$ 提高到 $0.30$ 和 $0.50$；二者仍未通过，末端最大 anchor-level 边际差反而为 $0.121$ 和 $0.097$。更频繁替换不自动产生耦合，因为退出权重和局部 newcomer 核都依赖当前状态：同一均匀随机数从不同状态出发仍可能选择不同规则。该结论严格限于实现使用的 natural common-random-number coupling；它不是转移核在所有可能 coupling 下永不遍历的数学证明，但足以说明固定短窗近似没有经验遗忘依据。
+
+\paragraph{更新后的下一结构候选：可再生的全工作空间 reset。}
+因此下一步先不在当前转移上直接堆叠 bridge/twisted SMC，而是把长尾是否源自“独立槽位替换”本身变成可检验的模型结构。新增一个与普通 $K_t\sim\operatorname{Binomial}(M,m_t)$ 分开的 regeneration indicator
+\begin{equation}
+ \begin{aligned}
+ B_t&\sim\operatorname{Bernoulli}(\rho),\\
+ B_t=1:\quad
+ A_t&\sim\operatorname{WOR}(p_0,M),\\
+ \omega_t(h)&\propto p_0(h)\mathbb I\{h\in A_t\},
+ \qquad \delta_t(h)=0.
+ \end{aligned}
+ \label{eq:model0804-regeneration}
+\end{equation}
+$B_t=0$ 时完全保留当前 FA2 转移。这个事件表示学习者偶尔放弃整个当前 hypothesis set 并从全局重新开始，而不是把 $m$ 人为增大；共同 reset 后两个状态精确相同，因而给出可审计的几何遗忘界 $P(\text{lag }L\text{ 前未 reset})=(1-\rho)^L$。它改变了认知模型且在 reset 时放弃质量守恒，所以必须作为独立的 FA2-R 候选与 $\rho=0$ 父模型比较，不能作为数值技巧静默加入。
+
+最小实施顺序是：（i）固定若干 $\rho$ 仅做生成和耦合审计，确认重尾按理论界消失；（ii）精确小空间验证 transition mass、choice evidence、反馈顺序和 $\rho=0$ 端点；（iii）验证 $\rho$ 与 $m,g,\lambda$ 的恢复和等价性；（iv）只有结构与恢复通过，才为 FA2-R 设计带正确 normalizing-constant 校正的 particle filter；（v）前 32 试次、单被试全长和正式优化依次设门。当前 FA2 继续保留为科学父模型和失败计算基线；本次审计没有否定有限活跃集合，只否定了在冻结参数和自然 coupling 下把“多数路径中位数已靠近”当作充分遗忘证据。
+
+\paragraph{2026-08-04 FA2-R 实现与固定 $\rho$ 审计。}
+FA2-R 已作为独立模型标识实现；\texttt{Model0804Parameters} 新增默认值为 0 的 $\rho$，普通、alive 和 resample--move 使用同一个扩展随机映射。为保持严格端点，原 FA2 的 $1+2M$ 个创新量保持为扩展向量的前缀；reset indicator 和重新抽取 $M$ 条规则只使用新增坐标。因此 $\rho=0$ 的 FA2-R 在 common random numbers 下与 FA2 的 NLL、逐试次 choice probability、active probability 和替换摘要逐位相等。$\rho=1$ 时任意两个初始状态经一次共同 transition 后，active、$\omega$、fade 和 static 均逐位相等。精确转移枚举中的 regeneration 总质量严格等于 $\rho$，批量与标量随机映射一致，当前 feedback 不改变当前预测；三规则、容量一、三试次中，粒子预测和 NLL 也恢复精确 FA2-R 枚举。
+
+冻结真实被试 101 的相同四个 anchor、每 anchor 64 对状态和 128 lag，比较 $\rho\in\{0,0.01,0.02,0.05\}$，其余参数保持 $m=0.15,g=0.35,w_0=0.40,\gamma=0.70,\lambda=0.02$。$\rho=0$ 和 $0.01$ 没有通过预测遗忘门槛；后者在 lag 128 的理论未-reset概率仍为 $0.99^{128}=0.2763$，经验共同 reset 比例为 $0.6992$。$\rho=0.02$ 同时通过预测和中位状态门槛：理论未-reset概率为 $0.98^{128}=0.0753$，经验共同 reset 和完整状态精确耦合比例均为 $0.9570$，末端 16 步最大 mean choice difference 为 $0.00383$、最大第 95 百分位为 0，predictive gate 从 lag 103 起保持。$\rho=0.05$ 的理论未-reset概率为 $0.00141$，样本中 lag 128 前所有状态对均至少 reset 一次，末端 choice 和边际差均为 0，predictive gate 从 lag 45 起保持。四档的“共同 reset 后再次分叉”计数均为 0，直接验证了式 \ref{eq:model0804-regeneration} 的再生性质。
+
+$\rho=0.02$ 只是预先检查档中最小的结构通过值，相当于平均约 50 个试次一次 reset；它不是用真实选择优化得到的心理参数，也不能据此声称被试确实每 50 个试次推倒重来。当前合法结论是：显式再生事件能够按预期消除原 FA2 的重尾历史依赖，FA2-R 因而可以进入参数/模型恢复门槛。下一步先在模拟数据中交叉生成和拟合 $\rho,m,g,\lambda$；若 reset 只能通过吸收普通高替换、全局搜索或 lapse 才被“恢复”，则删除 FA2-R，不进入真实数据 NLL 比较。
+
+\paragraph{2026-08-04 单重复机制恢复 pilot。}
+第一道行为恢复门使用被试 101 冻结的 320 试次 $q_{t,h,c}$ 和正确类别序列，但为每个生成条件重新模拟 choice 与 feedback；因此没有把被试 101 的真实 choice 当作恢复结果。固定 $M=5,\gamma=0.70,w_0=0.40,\kappa=2.0$，以中心点 $(\rho,m,g,\lambda)=(0.02,0.15,0.35,0.02)$ 为基准，分别生成中心、$\rho$ 的零/高值、$m$ 的低/高值、$g$ 的低/高值和 $\lambda$ 的低/高值，共九份单重复数据。候选为 $3^4=81$ 点完整网格：$\rho\in\{0,0.02,0.05\}$、$m\in\{0.05,0.15,0.30\}$、$g\in\{0,0.35,0.70\}$、$\lambda\in\{0.005,0.02,0.05\}$；真值均在网格上。
+
+每个候选先以 $N=512$ 粒子、共同初筛种子计算 choice-marginal NLL。初筛前五名、真值、同一 $(m,g,\lambda)$ 下的 $\rho=0$ 父点，以及每个参数每个网格水平的初筛 profile winner，再以 $N=2048$ 和两个独立 filter seeds 复核；两个 seed 的 likelihood 取算术平均后再转为 NLL，而不是平均 NLL。九份数据中七份的真网格点位于确认最佳点 $\Delta\mathrm{NLL}\leq2$ 内；按确认最佳点判断 $\rho=0$ versus $\rho>0$ 的正确率为 $8/9$，所选 $\rho$ 的中位绝对误差为 0。$\rho$、$m$ 和 $\lambda$ 的低--中--高软估计方向均单调；例如 $\rho$ 三档为 $0.00016,0.03054,0.04969$，$m$ 三档为 $0.0641,0.1595,0.2983$。低 $m$、高 $m$ 和低 lapse 数据的完整真参数组合均为确认最佳点；中心点只把 $\lambda=0.02$ 换成 $0.005$，真点仅落后 $0.131$ NLL。
+
+但是 $g$ 没有恢复：低--中--高 $g$ 条件的软估计为 $0.451,0.213,0.399$，不单调。低-$g$ 数据的最佳点反而为 $(\rho,m,g,\lambda)=(0.02,0.30,0.70,0.05)$，真点落后 $3.398$ NLL；高-$g$ 数据虽选回 $g=0.70$，却选成 $\rho=0,\lambda=0.05$，真点落后 $5.095$ NLL。预先冻结的 pilot 路由门要求四个方向至少三个通过，故机器判定为进入 replicated mechanism recovery；这个判定不等于四参数已经可识别。尤其是本 pilot 每个机制只有一条随机 choice 序列，不能区分稳定混淆与单次抽样偶然。下一门必须增加独立 choice replicates，并跨不止一个冻结 $q$/类别序列复查 $g$--$\rho$--$\lambda$ 混淆；在该门通过前，真实被试优化、32 人 NLL 比较和 FA3 动态控制继续关闭。
+
+\paragraph{2026-08-05 多重复、跨序列恢复结果。}
+第二道恢复门在查看新结果前冻结：选择条件 1 编号最前的四名被试 101--104，而不按拟合或恢复表现挑选；其完整序列分别有 320、448、256 和 192 个试次。每个序列对上述九个机制各生成五条独立 choice 路径，因此每个机制有 20 次、合计 180 份数据。候选网格、$N=512$ 初筛、$N=2048$ 双独立种子确认和每参数每水平 profile winner 的规则均保持不变。恢复率同时报告 Wilson $95\%$ 区间；所有 180 份数据完成后才计算冻结门槛。
+
+reset 的粗粒度存在性恢复通过：$\rho=0$ versus $\rho>0$ 正确 $157/180=0.872$（Wilson 区间 $[0.816,0.913]$），其中 zero specificity 为 $19/20=0.95$，positive sensitivity 为 $138/160=0.8625$；所选 $\rho$ 的中位绝对误差为 0。$\rho$ 三档的软估计均值为 $0.0026,0.0219,0.0406$，且 20 个匹配的低--中--高三元组中 17 个保持次序。$m$ 的三档均值为 $0.0943,0.1989,0.2744$，同样有 $17/20$ 个三元组保持次序；高 $m$ 条件精确选回 $m=0.30$ 的比例为 $18/20$。这些结果说明“有无偶发 reset”和替换率的大方向含有行为信息，但不等于四参数联合可识别。
+
+完整四参数恢复没有通过。真网格点位于确认最佳点 $\Delta\mathrm{NLL}\leq2$ 内的比例为 $119/180=0.661$（Wilson 区间 $[0.589,0.726]$），低于冻结的 $0.70$ 门槛。各参数精确选中率依次为 $\rho:0.678$、$m:0.644$、lapse: $0.506$、$g:0.406$。虽然按 20 次平均后的 $g$ 软估计仍呈 $0.261<0.295<0.441$，低/高 $g$ 条件精确选中对应极端水平和方向正确都只有 $20/40=0.50$，分别低于冻结的 $0.60$ 和 $0.70$ 门槛；20 个匹配三元组中也只有 8 个逐组三档有序。因此组均值单调不能挽救单轨迹层面的 $g$ 不可恢复。
+
+另一个重要限制来自事后但预先标为非门槛的数值诊断：两个 $N=2048$ 确认种子在同一确认集内选择相同最佳点的比例只有 $53/180=0.294$；真参数 NLL 的两种子极差中位数为 $1.141$，第 90 百分位为 $3.421$，最大为 $8.005$。所以本门的失败不能全部解释为认知参数等价，也包含长序列 particle likelihood 尚不稳定。冻结路由因此是 \texttt{revise\_or\_restrict\_fa2r\_parameterization}：不能开始真实选择拟合；也不能仅凭 reset 分类较好就保留自由 $(\rho,m,g,\lambda)$ 四参数模型。下一步先在少量分层合成数据上提高粒子数验证确认排序，再比较预先规定的受限模型（首要候选为固定 $g$，只恢复 $\rho,m,\lambda$）。若高精度下 $g$ 仍不可恢复，则删除自由 $g$，而不是继续增加动态 $g_t$。
+
+\paragraph{2026-08-05 分层高粒子稳定性审计。}
+第三道检查不是新的恢复率实验，而是把上一步的“参数等价”和“Monte Carlo 误差”拆开。审计在查看任何 $N=8192$ 或 $N=32768$ 结果前显式冻结 12 份合成数据：四条 $q$/类别序列各三份，覆盖 center、低/高 $g$ 和零/高 $\rho$，并使原 $N=2048$ 双种子赢家一致与不一致各占六份。每份数据保持原恢复中完全相同的确认候选集合；所有候选在相同四个 filter seeds 下先比较 $N=2048$ 与 $N=8192$。若 $N=8192$ 的近优候选配对差值标准误或真参数绝对 NLL 标准误未过门槛、精确赢家相对 $N=2048$ 改变、精确赢家四种子多数不足 $3/4$，或 $\rho=0$ versus $\rho>0$ 的种子一致率不足 1，则该份数据自动升到 $N=32768$。12 份中 11 份按冻结规则升级；未升级的一份保留 $N=8192$ 作为最终档。不同 seeds 的 likelihood 仍先取算术平均再转为 NLL，所有差值标准误则使用候选间 common-random-number 配对差。
+
+提高粒子数确实消除了大部分数值歧义。赢家附近所有 $\Delta\mathrm{NLL}\leq2$ 候选相对于最终赢家的最大配对差值标准误，其中位数从 $N=2048$ 的 $0.935$ 降至 $N=8192$ 的 $0.396$，最终自适应档为 $0.220$；真参数绝对 NLL 标准误中位数相应从 $0.523$ 降至 $0.316$ 和 $0.109$。最终 12 份的绝对 NLL 标准误均低于冻结的 $0.50$，9/12 的近优候选最大配对差值标准误不超过 $0.35$，恰好达到预先规定的 $0.75$ 数值放行比例。精确参数组合的四种子多数稳定门通过 11/12，$\rho=0$ versus $\rho>0$ 的四种子分类在 12/12 中一致；从 $N=8192$ 到最终档只有三份更换 ensemble winner，升级样本的排名 Kendall $\tau$ 中位数为 $0.891$。因此 $N=2048$ 不足以正式确认，$N=32768$ 也没有让每份长序列都完全无误差，但“全部恢复失败只是粒子噪声”的解释不再成立。
+
+关键的参数结论没有随数值精度提高而改善。五份低/高 $g$ 诊断数据中，最终 ensemble winner 只在 2/5 选回正确极端水平，低--高方向也只正确 2/5；相反，$\rho=0$ versus $\rho>0$ 的最终 ensemble 分类为 11/12。真网格点在最终确认集 $\Delta\mathrm{NLL}\leq2$ 内为 9/12，但该数字来自按原种子一致性刻意分层的诊断样本，不能替代 180 份冻结恢复率。合法解释是：更高粒子数把粗粒度 reset 分类和多数候选排序变得可重复，却仍显示自由 $g$ 与 $\rho,m,\lambda$ 在单条 choice 轨迹上混淆。机器路由因此为 \texttt{advance\_to\_fixed\_g\_restricted\_recovery}；它放行的是下一道受限合成恢复，不是真实被试拟合。
+
+\paragraph{预先冻结的固定搜索范围受限恢复门。}
+受限 FA2-R 将 $g=0.35$ 作为预先指定的架构常数，只恢复 $\rho\in\{0,0.02,0.05\}$、$m\in\{0.05,0.15,0.30\}$ 和 $\lambda\in\{0.005,0.02,0.05\}$，使候选网格由 81 点降为 27 点。$g=0.35$ 是既有网格的冻结中心和数值规约，不解释为人的真实全局搜索比例。主要恢复池复用四条序列上 center、$\rho$、$m$ 和 $\lambda$ 的七类、每类 20 份既有合成数据；这些数据的生成 $g$ 同样为 0.35，允许在完全相同 choice 上直接比较自由与受限参数化。原低/高 $g$ 的 40 份数据另作为有意模型错设的压力测试，只报告受限模型损失多少预测 NLL，不纳入 $\rho,m,\lambda$ 的正确规格恢复门。确认使用四个独立种子和上述自适应 $N=8192\rightarrow32768$ 精度规则。只有受限模型在正确规格数据中稳定恢复 $\rho,m,\lambda$，且相对自由模型没有系统性预测损失，才重新开启直接父模型恢复；否则停止 FA2-R。该设计回答的是“固定搜索范围后，reset 与替换能否识别”，不是用固定 $g$ 证明搜索范围恒定。
+
+\paragraph{2026-08-05 固定 $g$ 受限恢复结果。}
+冻结分析完整运行了 140 份正确规格数据和 40 份 $g$ 错设压力数据。每份数据先在 27 点受限网格中复用原 $N=512$ 初筛，再以四个独立 filter seeds 在 $N=8192$ 确认；126/180 份因近优候选差值标准误、参考点绝对 NLL 标准误、赢家变化或种子多数不足而自动升至 $N=32768$。最终 $154/180=0.856$ 的数据满足数值分辨门，$147/180=0.817$ 的精确 ensemble winner 满足种子稳定门，$172/180=0.956$ 的 $\rho=0$ versus $\rho>0$ 分类在四种子间稳定，三项均通过冻结阈值。因此以下恢复失败不能再主要归因于低粒子数确认噪声。
+
+受限模型可靠恢复了 reset 的粗粒度类别。正确规格池中，$\rho=0$ versus $\rho>0$ 正确 $128/140=0.914$（Wilson $95\%$ 区间 $[0.856,0.950]$）；zero specificity 为 $19/20=0.95$，positive sensitivity 为 $109/120=0.908$。$\rho$ 的精确网格恢复为 $103/140=0.736$，中位绝对误差为 0；低--中--高 $\rho$ 的软估计均值为 $0.00227,0.02286,0.04012$，20 个配对三元组中 17 个保持次序。$m$ 的软估计均值同样按 $0.0803,0.1915,0.2646$ 单调增加，20 个三元组中 18 个保持次序，中位绝对误差为 0。真网格点位于最终赢家 $\Delta\mathrm{NLL}\leq2$ 内的比例为 $119/140=0.85$（Wilson 区间 $[0.782,0.900]$）；七类正确规格情景的最低值出现在 high-$\rho$，为冻结门槛上的 $12/20=0.60$。这些结果支持“reset 类别与平均替换率方向含有可恢复信息”，但不支持所有 nuisance 参数在单条 choice 轨迹上均可精确识别。
+
+三项冻结门没有通过。第一，$m$ 的精确网格恢复为 $90/140=0.643$（Wilson 区间 $[0.561,0.717]$），低于 $0.65$ 门槛一个数据集；低/高 $m$ 边界各恢复 $17/20$，主要误差来自中心 $m=0.15$ 的 $56/100$。第二，$\lambda$ 的精确恢复仅为 $70/140=0.50$（Wilson 区间 $[0.418,0.582]$），低于 $0.60$ 门槛；低/高边界各恢复 $13/20$，中心 $\lambda=0.02$ 只有 $44/100$。虽然 $\lambda$ 的中位绝对误差为 $0.0075$，且低--中--高软估计均值为 $0.0172,0.0290,0.0368$，20 个配对三元组中只有 $11/20=0.55$ 严格有序，低于 $0.70$ 门槛。九个次序失败中，最短的 192-trial 序列五个重复全部失败，256-trial 序列失败两个，320 和 448-trial 序列各失败一个；所以当前证据指向短序列中的 lapse 辨识不足，而不是群体方向反转。
+
+低/高 $g$ 压力数据不进入正确规格恢复门。固定 $g=0.35$ 后，低-$g$ 和高-$g$ 数据的投影参考点中位 $\Delta\mathrm{NLL}$ 分别为 $0.722$ 和 $0.755$，位于 $\Delta\mathrm{NLL}\leq2$ 内的比例分别为 $16/20$ 和 $17/20$。这说明受限模型对中等 $g$ 错设并非立即崩溃，但这些数字不能证明 $g$ 可忽略，也不能替代自由--受限模型的配对预测比较。
+
+冻结机器路由为 \texttt{stop\_or\_revise\_restricted\_fa2r}。该失败不允许事后降低原阈值，也不允许直接进入真实选择、FA3-M 或 FA3-MG；同时，它没有否定 $\rho$ 的类别恢复或有限活跃集合这一上位假设。最小合法修订应只处理观测 nuisance：保持 $g=0.35$，不再把单轨迹 $\lambda$ 当作需要心理解释的逐被试点估计，而是在预先固定的 $\{0.005,0.02,0.05\}$ 上对整条序列 likelihood 作离散边际化，只恢复 $(\rho,m)$。新版本须以独立配置重新冻结门槛，并在三个生成 $\lambda$ 水平上检验 $\rho/m$ 的恢复和错设稳健性；若边际化后 $m$ 仍不能恢复，则停止 FA2-R。只有这道两参数恢复通过，才重新开启 $\rho=0$ 直接父模型恢复和自由--受限配对预测审计。
+
+\paragraph{2026-08-05 序列级 lapse 离散边际化恢复结果。}
+最后一道受限恢复在查看新高粒子结果前另行冻结。保持 FA2-R transition、$g=0.35$、$M=5$、$\gamma=0.70$、$w_0=0.40$ 和 $\kappa=2.0$ 不变；只把候选缩为九个 $(\rho,m)$ 点，其中 $\rho\in\{0,0.02,0.05\}$、$m\in\{0.05,0.15,0.30\}$。每个 $(\rho,m)$ 点仍计算 $\lambda\in\{0.005,0.02,0.05\}$ 的三个完整序列分量，但不选择或解释一个最佳 $\lambda$。对 filter seed $s$，冻结的序列级混合为
+\begin{equation}
+ \widetilde L_s(\rho,m)
+ =\sum_{j=1}^{3}\pi_j
+   \exp\{-\operatorname{NLL}_s(\rho,m,\lambda_j)\},
+ \qquad \pi_j=\frac{1}{3},
+ \label{eq:model0804-lapse-marginal}
+\end{equation}
+再对四个 filter seeds 的 $\widetilde L_s$ 取算术平均并取负对数。因而既没有平均三个 component NLL，也没有平均四个 seed NLL；$\lambda$ 是对整条序列共同的离散 nuisance，而不是每 trial 重新抽取的 lapse。正确规格恢复仍使用原七类 140 份数据，低/高 $g$ 的 40 份数据仍只作错设压力测试。全部数据先用 $N=8192$ 确认；77/180 份按冻结规则升级到 $N=32768$。四个 seeds、全部三个 lapse 分量和升级规则均不随中间结果改变。正式运行使用 128 个工作进程，完成 180/180 个 $N=8192$ 检查点和 77/77 个 $N=32768$ 检查点，总墙钟时间为 9175 秒。
+
+边际化显著改善了数值重复性和两参数的总体恢复。最终 $170/180=0.944$ 的数据满足数值分辨门，$167/180=0.928$ 的精确赢家满足四种子多数门，$176/180=0.978$ 的 $\rho$ 零/正类别满足种子一致门。正确规格池中，真 $(\rho,m)$ 点位于最终赢家 $\Delta\operatorname{NLL}\leq2$ 内为 $128/140=0.914$（Wilson $95\%$ 区间 $[0.856,0.950]$）；$\rho=0$ versus $\rho>0$ 同样正确 $128/140=0.914$，其中 zero specificity 为 $18/20=0.90$，positive sensitivity 为 $110/120=0.917$。$m$ 的精确网格恢复由固定-$g$ 点估计版本的 $90/140$ 提高到 $94/140=0.671$（Wilson 区间 $[0.590,0.744]$），超过冻结的 $0.65$ 总体门槛；$\rho$ 与 $m$ 的中位绝对误差均为 0。$\rho$ 和 $m$ 的组均值均按低--中--高单调变化，配对次序分别为 $17/20=0.85$ 和 $18/20=0.90$，也均通过 $0.70$ 门槛。因此不能再把受限模型的总体 $m$ 失败归因于必须点估计单轨迹 $\lambda$。
+
+但是预先规定的生成-lapse 分层稳健性门没有通过。生成 $\lambda=0.005,0.02,0.05$ 时，$m$ 精确恢复依次为 $16/20=0.80$、$70/100=0.70$ 和 $8/20=0.40$；最低分层值低于冻结的 $0.60$。高-lapse 的 12 个错误没有统一方向：七份选到 $m=0.05$，五份选到 $m=0.30$，说明较高选择 lapse 使 $m$ 的序列证据变平，而不是产生一个可用固定校正消除的单向偏差。相同三层的真 $(\rho,m)$ 点 $\Delta\operatorname{NLL}\leq2$ 比例为 $19/20,93/100,16/20$，$\rho$ 类别正确率为 $17/20,92/100,19/20$；两项分层最低门均通过。换言之，高 lapse 没有摧毁 reset 类别或真点的近优性，却使单轨迹 $m$ 的精确网格身份不可稳健恢复。
+
+15 项冻结检查中只有这一项失败，但预先登记的合取门不允许用其余 14 项通过来覆盖它。机器路线因此为 \texttt{stop\_fa2r\_restricted\_recovery\_failed}，而不是开启 $\rho=0$ 父模型恢复、真实被试拟合或留出预测审计。合法结论是：序列级 lapse 边际化修复了此前把 $\lambda$ 当作逐数据集心理点估计所造成的总体恢复损失，并保留了稳定的 reset 类别证据；但当前 choice-only FA2-R 仍不能在高 lapse 条件下稳健辨识 $m$。冻结计划已经规定“边际化后 $m$ 仍失败则停止 FA2-R”，所以不事后改变 $\pi_j$、删去高-lapse 数据、降低门槛或增加 FA3 动态控制。若未来由独立 RT/报告证据或新的观测模型重新打开该问题，必须建立新版本并重新恢复；本版本不再进入真实 choice 的正式模型比较。
+
+
+\subsubsection{参数估计、优化边界与容量 \texorpdfstring{$M$}{M} 的处理}
+
+\paragraph{不是用一个巨大网格寻找所有参数。}
+连续参数采用分阶段的多起点优化。第一步在变换后的无约束空间进行 Sobol 或 Latin hypercube 初始点筛查；第二步从若干最佳初始点进行使用 common random numbers 的局部优化；第三步用更多粒子和独立种子重新评估候选最优点；第四步只在多个近优解预测可区分时继续优化。单位区间参数使用 logit 变换，正参数使用 log 变换。离散结构量 $M$、记忆架构和候选核不与连续参数混成一个网格，而作为预先登记的模型比较。
+
+粒子目标若在 common random numbers 下足够平滑，可使用带界拟牛顿方法；若集合排序导致局部不平滑，则使用 Powell 或其他经过恢复验证的无导数方法。优化器名称本身不构成证据；必须报告多起点是否到达相同目标值、继续优化的剩余 objective gap，以及独立种子重评后模型排序是否稳定。
+
+\paragraph{参数触界时怎样处理。}
+边界分两类。
+\begin{enumerate}
+    \item \textbf{有理论含义的结构端点。}例如 $m=0$ 表示无集合转移，$g=0$ 表示纯局部提议，$M=|\mathcal H_k|$ 表示完整空间。它们应作为独立嵌套候选拟合，不能只把连续参数压到极小数后声称恢复了端点。
+    \item \textbf{人为数值边界。}例如控制 logit 截距、持续性系数或 RT 系数到达优化器给定上下限。此时先检查梯度、profile likelihood 和多起点结果，再按预先规则向外扩展一次边界并重跑。若最优解继续外移，则报告单侧识别或预测平台，不把边界数值解释为真实心理参数。
+\end{enumerate}
+正式审计至少报告：每个模型和被试的触界参数、扩界前后 objective 差异、留出预测变化，以及有多少结论只由触界被试驱动。既有正式运行的高触界比例说明这一项是必要门槛，不是附录中的技术细节。
+
+\paragraph{容量 $M$ 不从同一批留出数据事后挑选。}
+条件 1 的主容量固定为旧模型提出的 $M=5$，因为这是有历史理论来源、而不是由当前结果挑出的值。预先指定 $M\in\{3,5,7\}$ 为容量敏感性，$M=38=|\mathcal H_1|$ 为完整空间端点。主结论先报告 $M=5$；只有不同有限 $M$ 给出一致的机制方向，才可说证据支持“少量活跃规则”这一范围性结论。若只有一个 $M$ 获胜，应把 $M$ 看作模型选择结果而非精确的人类容量估计。
+
+Choice 单独通常不足以精确识别 $M$。容量越小可以通过更低替换率、更宽决策噪声或 RAW 背景记忆补偿。精确容量只有在模型恢复表明相邻 $M$ 可区分、RT/报告也提供增量信息时才解释；否则报告可接受容量集合，例如 $M\in\{3,5,7\}$，而不是报告一个最佳整数。
+
+
+\subsubsection{候选模型阶梯与每一步回答的问题}
+
+\paragraph{完整空间边界。}
+\textbf{FS-H0} 是当前保留的完整空间、双通道记忆、无 H 转移模型；\textbf{FS-H2} 是恒定局部--全局质量输运边界；已有完整空间 H3-M/H3-MG 结果保留为失败历史，不在同一数据上换名字重新确认。FS 模型用于给有限模型提供预测和计算参照。
+
+\paragraph{严格有限工作空间阶梯。}
+HFW 模型依次增加一个结构：
+\begin{enumerate}
+    \item \textbf{FA0：固定有限集合。}随机初始化 $A_1$ 后不再替换，$m_t=0$。它单独检验有限容量和初始集合随机性；若目标规则未进入，模型可以持续使用错误规则。
+    \item \textbf{FA1：恒定局部替换。}$m_{s,t}=m_{s,k}$，$g_{s,t}=0$。它检验学习是否需要从活跃规则邻域持续引入 newcomer。
+    \item \textbf{FA2：恒定局部--全局替换。}$m_{s,t}=m_{s,k}$，$g_{s,t}=g_{s,k}$。它检验远距离规则进入是否提供额外预测。
+    \item \textbf{FA3-M：反馈驱动修正率。}使用式 \ref{eq:model0804-control-dynamics} 动态改变 $m_t$，而 $g$ 保持被试或群体常数。它检验反馈惊讶和规则不确定性是否改变替换数量。
+    \item \textbf{FA3-MG：反馈驱动修正率和搜索范围。}在 FA3-M 通过直接父模型恢复与留出门槛后，再允许 $g_t$ 动态变化。它检验学习者是否不仅改变搜索多少，还改变搜索多远。
+\end{enumerate}
+FA0--FA3-MG 都使用同一个退出核、newcomer 核、质量映射、记忆和选择读出。每一步只与直接上一级比较，避免把容量、替换、全局搜索和动态控制的收益混在一起。
+
+\paragraph{两层规则库何时进入。}
+在 HFW 阶梯中获得最好且可恢复的控制结构后，固定该结构，将 HFW 替换为 RAW，形成对应的 \textbf{RA-$j$} 模型。比较只改变退出规则是否丢失长期证据。若在 HFW 尚未通过基本恢复前就同时拟合 RAW、动态 $g$、新 lapse 和自由 newcomer 质量，任何更好拟合都无法定位到有限容量的哪一部分。
+
+\paragraph{预先规定的判定顺序。}
+候选模型不是按训练 NLL 最小者直接获胜，而按以下顺序：
+\begin{enumerate}
+    \item 数学端点、概率归一化、时间顺序和粒子边际化实现正确；
+    \item 当前候选能够在困难模拟区域中击败并区分直接父模型；
+    \item 相对于直接父模型改善被试内时间留出 NLL，且效应不由少数被试或 Monte Carlo 误差驱动；
+    \item 自主生成能够覆盖晚期学习、错误锁定、切换和恢复，而不是只靠极宽区间覆盖；
+    \item 核心 choice 参数冻结后，至少一个预先指定的 RT 或口头报告检验提供有限集合特异的增量证据，另一通道没有系统性反证；
+    \item 最后才检验跨条件部分汇聚和用于神经分析的逐试次状态稳定性。
+\end{enumerate}
+某一级失败时，保留直接父模型或降低解释层级，不继续向下叠加复杂模块。
+
+
+\subsubsection{晚期学习者与时间预测设计}
+
+\paragraph{为什么固定前段拟合、末段留出可能对晚期学习者特别困难。}
+部分被试直到实验最后才找到正确规则。若只用前面大部分试次估计一个人的参数，再要求模型预测最后突然发生的学习，训练段可能根本没有包含该人的成功状态。这不是取消时间留出的理由：预测未知未来本来就是模型应面对的问题。但它说明单一切点把“模型结构不对”“个体参数尚未暴露”和“随机发现尚未发生”混在一起，不能仅凭一个末段 NLL 判断全部机制。
+
+\paragraph{主分析仍保留严格时间留出。}
+所有模型使用相同冻结切点。训练 NLL 只衡量参数拟合；主要模型选择使用留出的一步前瞻 NLL。每个试次必须在观察当前选择前给出预测，随后才允许当前选择和反馈进入下一试次过滤。有限集合模型如果确实表达随机发现，应在正确规则尚未进入时给突然进入保留适当预测概率，而不是等观察到学习后倒推一条最佳转移路径。
+
+\paragraph{增加滚动起点预测。}
+把每名被试按时间分成预先规定的连续区块，进行
+\begin{equation}
+    \text{block }1\rightarrow2,
+    \quad
+    1{:}2\rightarrow3,
+    \quad
+    1{:}3\rightarrow4,
+    \quad\ldots
+    \label{eq:model0804-rolling-origin}
+\end{equation}
+的滚动预测。每个起点只用此前数据拟合或更新参数，并预测紧接的下一区块。报告模型差异随训练历史长度和行为阶段怎样变化。若有限集合模型只在接近学习时改善，说明它可能捕捉发现过程；若只在最早区块改善、后期反而更差，则可能主要拟合初始随机性。
+
+\paragraph{学习起点对齐只作为预登记的次要分析。}
+用不依赖任何候选模型参数的行为规则定义 acquisition onset，例如预先规定的滚动正确率阈值及其持续试次数。随后把试次标为 onset 前、转变窗和 onset 后，比较三个阶段的边际 NLL、校准、$K/M$、正确规则进入概率和自主生成覆盖。学习起点来自行为结果，因此该分层不替代主要时间留出，也不用于重新挑选参数或阈值；它只回答失败是否集中在晚期学习转变。
+
+不删除晚期学习者，也不把他们单独当作异常值。群体推断以被试为独立单位，同时报告预先定义的早、中、晚学习组的描述性异质性。如果模型只对早学会者有效，最终结论必须明确限定适用人群。
+
+
+\subsubsection{恢复分析、生成检验与可证伪预测}
+
+\paragraph{参数恢复不能只看连续参数相关。}
+每个候选生成模型都要模拟完整 choice 轨迹，并在可用时模拟 RT 和 oral report。连续参数报告偏差、RMSE、区间覆盖和边界恢复；离散状态另外报告：$A_t$ 的集合 Jaccard、正确规则首次进入时点误差、$K_t$ 校准、退出/重入事件精确率、$\mu_t$ 和 newcomer 距离的轨迹相关。由于单条真实潜在路径不可观察，主要恢复对象仍是过滤后的进入概率、替换数分布和预测分布，而不是要求粒子逐试次重建完全相同的随机集合。
+
+\paragraph{模型恢复必须覆盖困难区域。}
+至少生成以下情形：
+\begin{enumerate}
+    \item 正确规则最初不在集合，早期长期错误锁定后才进入；
+    \item 正确规则最初在集合但初始质量很低；
+    \item $m\approx0$，使 FA0 与 FA1 接近；
+    \item $g\approx0$，或局部核与全局核在当前规则空间上接近；
+    \item 同样的 $K/M$ 对应很小或很大的移出质量 $\mu$；
+    \item HFW 重入与 RAW 长期痕迹产生相似 choice；
+    \item 低 fade 保持率、较大替换率和较低决策敏感度产生相似错误；
+    \item 口头报告缺失、报告编码集合很宽或 RT 完全不依赖集合状态；
+    \item 早期、渐进和直到最后才学习的不同 acquisition 轨迹。
+\end{enumerate}
+恢复矩阵分别使用 choice、choice+RT 和 choice+RT+oral report。若增加通道没有减少 FA/FS、HFW/RAW 或相邻 $M$ 的混淆，就不能声称该通道识别了有限容量。
+
+\paragraph{自主生成的目标不是复现一条最佳轨迹。}
+在冻结切点后生成大量完整轨迹，比较：滚动正确率曲线、低于机会水平持续时间、选择切换率、正确规则首次进入分布、错误规则锁定长度、恢复斜率、RT 分位数、报告规则距离，以及这些量的联合关系。主要检查真实轨迹是否落入模型自身校准的联合预测区域，并同时报告区间宽度或 CRPS。覆盖率高但区间极宽不能算成功；平均曲线接近但无法生成个体突然恢复也不能算成功。
+
+\paragraph{有限活跃集合的关键证伪模式。}
+以下结果会削弱有限容量解释：
+\begin{enumerate}
+    \item 在同一切分和相同记忆/readout 下，所有有限 $M$ 都稳定劣于 FS-H0；
+    \item 拟合只有靠 $M$ 达到 38 或 $m$ 达到持续高边界才能成立；
+    \item choice 的微小改善完全来自粒子 Monte Carlo 噪声或少数晚期学习者；
+    \item 报告经常稳定指向粒子后验认为集合外的规则，且不能由报告噪声解释；
+    \item 控制选择不确定性后，RT 与 $K$、$\mu$、newcomer 距离均无增量关系；
+    \item 模型恢复无法区分有限集合与完整空间，却仍试图解释逐试次集合身份。
+\end{enumerate}
+相反，有限模型若只改善训练拟合而留出明显变差，应解释为潜在路径和参数吸收了训练噪声，不是“训练段证明被试确实有容量限制”。
+
+
+\subsubsection{统计推断、粒子不确定性与报告原则}
+
+\paragraph{被试是独立统计单位。}
+试次 likelihood 用于被试内拟合，但群体模型比较以被试为独立单位。对每个直接父子比较，计算每名被试的留出
+\begin{equation}
+    \Delta_{s}
+    =\frac{\operatorname{NLL}_{s,\mathrm{parent}}
+      -\operatorname{NLL}_{s,\mathrm{candidate}}}
+      {|\mathcal T^{\mathrm{holdout}}_s|},
+    \label{eq:model0804-subject-delta}
+\end{equation}
+所以 $\Delta_s>0$ 表示候选更好。报告均值、中位数、改善人数、被试级 bootstrap 区间、配对检验及冻结比较族内的多重校正。不能把 10,000 个试次当作 10,000 个独立样本来制造极小 $P$ 值。
+
+\paragraph{优化不确定性和粒子不确定性必须进入判定。}
+每名被试保存多个近优参数点及其独立种子重评。模型差异若小于优化剩余 gap 或粒子标准误，标为不确定。对正式群体比较，优先使用每个模型经高粒子数确认后的边际 NLL；敏感性分析再对近优参数集合边际化。只有跨优化起点、粒子数和随机种子都保持方向的差异，才进入机制判断。
+
+\paragraph{只解释稳定函数，不解释单条粒子路径。}
+可报告的逐试次量包括：某条规则处于活跃集合的后验概率、正确规则活跃概率、$E(K_t/M\mid\text{data})$、$E(\mu_t\mid\text{data})$、newcomer 距离分布和局部/全局提议概率。不能把最高权重粒子的 $A_t$ 画成“被试真实想法”而忽略其他粒子。用于神经分析的变量必须对粒子、核心参数后验和可接受模型集合共同边际化，并报告模型间敏感性。
+
+
+\subsubsection{条件 1 的实施顺序与整晚运行范围}
+
+\paragraph{第一阶段：在不改理论的情况下建立可验证计算骨架。}
+先复用现有 newplan 粒子滤波基础，但重写其 transition module：把 Bernoulli swap-one 改为式 \ref{eq:model0804-replacement-count} 的多替换过程；实现随机退出、局部--全局 newcomer 混合、质量守恒配对和 HFW 记忆同步。建立小规则空间的精确枚举测试，使粒子边际 likelihood 可以与所有集合路径的精确和比较。再检查 $M=|\mathcal H|$、$m=0$、$g=0$ 和无记忆衰减端点。
+
+截至 2026-08-05，这一计算骨架、精确枚举、alive、resample--move、innovation-space PGAS、共同未来遗忘审计和 FA2-R regeneration 均已实现并通过各自的端点测试。原 FA2 在 cond1 长历史下仍有少量 active-set 模式在 128 lag 后产生很大的边际 choice 差异；FA2-R 的固定 $\rho\geq0.02$ 结构探针消除了该重尾。自由四参数的 180 份跨序列恢复没有通过，12 份分层高粒子审计进一步表明自由 $g$ 的失败不能由低粒子数单独解释。随后完成的固定 $g$ 受限恢复把 $\rho$ 类别正确率提高到 $128/140=0.914$，且数值、精确赢家和 $\rho$ 类别的种子稳定门均通过；但是 $m$ 精确恢复为 $90/140=0.643$、$\lambda$ 精确恢复为 $70/140=0.50$，lapse 配对单调次序仅为 $11/20=0.55$。最后的序列级 lapse 边际化把总体 $m$ 精确恢复提高到 $94/140=0.671$，真 $(\rho,m)$ 点近优比例提高到 $128/140=0.914$，但生成 $\lambda=0.05$ 分层中的 $m$ 精确恢复只有 $8/20=0.40$，低于冻结的 $0.60$。故当前 choice-only FA2-R 已按预定路线停止，不放行真实被试的 optimization 或模型比较。
+
+\paragraph{第二阶段：最小阶梯而不是一次跑满。}
+条件 1 首轮只运行 FS-H0、FA0、FA1 和 FA2，主容量 $M=5$，choice-only，使用冻结的规则几何、知觉积分、双通道记忆和时间切分。其目标是回答有限集合与随机替换是否有基本预测价值，不在第一晚同时估计动态 $m_t$、动态 $g_t$、RT、报告和 RAW。若 FA1/FA2 连直接父模型恢复都不能通过，则当晚停止升级并诊断，不运行 FA3 来弥补。
+
+\paragraph{第三阶段：只有静态有限模型通过才运行动态 H3。}
+若 FA2 至少通过实现、恢复和基础留出门槛，再运行 FA3-M；只有 FA3-M 能被直接父模型恢复且改善留出，才运行 FA3-MG。这里特别防止重复 \texttt{model\_0803} 的错误：复杂动力学在训练段可以拟合得更好，但若留出明显变差，就应保留简单模型，而不是继续解释训练段的 $m_t$ 或 $g_t$。
+
+\paragraph{第四阶段：多通道和架构竞争。}
+冻结 choice 核心以后，用 RT 检验 $K/M$、$\mu$ 或 newcomer 距离的单一增量，用口头报告检验活跃规则内容。只有存在 HFW 特异残差时，再运行同控制结构的 RAW。随后做 $M=3,7,38$ 敏感性、滚动起点、自主生成和跨条件验证。
+
+\paragraph{一晚运行可以产出什么。}
+在数值稳定门槛通过以后，一晚正式计算可以产出条件 1 首轮各模型的训练和时间留出边际 NLL、优化收敛与边界审计、粒子数/种子稳定性、被试级配对比较和初步自主生成。但当前模型门槛没有通过：冻结的 FA2-R 生成、耦合、单重复 pilot、180 份自由四参数恢复、12 份分层高粒子审计、180 份固定 $g$ 三参数恢复以及 180 份序列级 lapse 边际化两参数恢复均已完成。最后一轮以 128 个工作进程运行 9175 秒；总体 $m$、$\rho$、近优真点、单调方向和数值稳定性均过门，但高生成 lapse 分层中的 $m$ 精确恢复只有 $8/20$，使冻结合取门失败。因而下一步不是启动 32 人优化，也不是继续调 nuisance 权重或增加 FA3；本版本的 FA2-R 计算阶梯在进入真实数据前停止。不能把 $128/140$ 的 reset 二分类当成真实被试证据，也不能用其余 14 项门槛通过来覆盖高-lapse 的恢复失败。若以后由独立观测通道提出新的可识别观测模型，必须以新版本重新开始受影响的恢复门。
+
+\paragraph{必须保存的复现对象。}
+每次运行至少保存：配置和代码 hash；规则注册表、先验、相似性和 $K_L/K_G$；每名被试的切分；所有连续参数变换与人工边界；优化起点和 objective gap；粒子随机种子、粒子数、每试次 ESS 和重采样记录；边际选择概率；活跃概率、$K/M$、$\mu$ 和 newcomer 距离的过滤后摘要；训练/留出/自主生成的独立输出；边界扩展记录；参数与模型恢复配置；RT/报告是否用于拟合的明确标志。日志中不得只保存最佳粒子或最佳轨迹。
+
+
+\subsubsection{实现前必须冻结的决定清单}
+
+正式运行前把下列决定写入配置与 manifest，查看留出以后不得修改：
+\begin{enumerate}
+    \item 条件 1 的 38 条带标签规则、规则家族和规则先验；
+    \item 规则差异度、局部核尺度 $\tau_{L,1}$ 和全局核；
+    \item 主容量 $M=5$，敏感性容量 $M=3,7,38$；
+    \item 式 \ref{eq:model0804-exit-kernel} 的退出核和 $\epsilon_{\mathrm{out}}$；
+    \item newcomer 不允许同试次重入、按抽样顺序接收退出质量的规则；
+    \item HFW 为主、RAW 的进入条件；
+    \item 双通道记忆的端点候选、选择读出和不使用动态 lapse；
+    \item 时间切点、滚动区块、学习起点定义和主要预测指标；
+    \item 粒子数序列、ESS 阈值、重采样方法和独立确认种子；
+    \item 优化初始设计、多起点数量、边界扩展规则和收敛容差；
+    \item 直接父子比较、恢复门槛、群体多重校正族和自主生成指标；
+    \item RT 与口头报告只在 choice 核心冻结后的外部验证线进入，除非另行明确标记联合整合分析。
+\end{enumerate}
+这些对象中若有一项因实现审计必须改变，应产生新版本号并完整重跑受影响的候选，不能只重跑结果不理想的模型。
+
+
+\subsubsection{可能结论及其合法表述}
+
+\paragraph{如果有限模型胜出。}
+只有当有限 $M$ 模型在恢复、留出、自主生成和至少一个外部通道上共同胜出，才可写：行为支持一个在每个试次仅激活少量规则、并通过反馈驱动随机替换进行搜索的模型。若相邻 $M$ 不可区分，应写“少量有限集合”，不能写“容量精确等于 5”。若只有 RAW 胜出，应写“当前工作空间有限，但长期规则可用性可能更广”，不能写“被试完全遗忘所有非活跃规则”。
+
+\paragraph{如果完整空间继续胜出。}
+若 FS-H0 稳定优于所有有限模型，合法结论是：在当前任务和观测通道下，完整空间概率表示提供了更充分、或至少更节约的行为预测；当前数据没有为所检验的有限集合转移提供增量支持。不能进一步推断被试在意识中同时维持 38 条规则，因为完整空间仍可能只是对未知个体集合或长期可用性的有效边际表示。
+
+\paragraph{如果 choice 与 RT/报告给出不同答案。}
+若有限模型改善 choice 但 RT/报告不支持，应把它保留为计算潜变量而降低心理解释。若 choice 差异很小，但 RT 和报告稳定支持有限集合，则应联合报告多通道证据，同时确认 RT/报告模型不是在看过同一留出结果后调整。若 HFW 与 RAW、不同 $M$ 或 $m$ 与决策噪声仍然预测等价，则正式结果是等价类，而不是任意选取其中一个最易叙述的参数点。
+
+
+\subsubsection{结论：下一阶段真正要检验的猜想}
+
+\texttt{model\_0803.tex} 的完整空间 H3 解决了旧 controller family 过度人工化的问题，但暂时牺牲了 V13/V14 中有限认知容量的核心猜想。本文件把两项设计重新组合：学习者只在 $M$ 条活跃规则上形成当前选择信念；连续状态 $(m_t,g_t)$ 决定预期替换多少活跃槽位以及 newcomer 来自局部还是全局范围；实际集合路径保持随机，并通过粒子滤波对所有路径边际化。
+
+这不是回到旧版。旧版的固定 swap-one、确定性最低规则淘汰、手工 profile family、best trajectory 选择和含混 newcomer 初始化均不恢复。新的有限模型具有明确的生成顺序、概率闭合、NLL 计算、结构端点和可证伪预测。严格容量 HFW 与长期规则库 RAW 被分成两个竞争架构；$M$ 作为预先规定的离散结构做敏感性，而不是从同一留出集事后挑选。
+
+因此，条件 1 当前的下一步不是进入 FA3，也不是拟合真实被试。固定 $g=0.35$、序列级边际化 $\lambda$ 的两参数恢复已经完成：它在高粒子、四确认种子下通过了总体 $m$、$\rho$、真点近优、单调方向和数值稳定性门，却在生成 $\lambda=0.05$ 时只精确恢复 $8/20$ 个 $m$，机器路线为 \texttt{stop\_fa2r\_restricted\_recovery\_failed}。这正是预先规定的停止条件，所以不能用 FA3-MG、改变 lapse prior 或真实被试拟合补偿。当前可保留的科学信息是：有限集合加 regeneration 的结构可以产生可重复的 reset 零/正证据，而 choice-only 单轨迹不足以在高 lapse 下稳健辨识替换率；前者是模型恢复事实，不是被试心理事实。若未来有独立 RT/口头报告或新的观测模型重新打开该路线，晚期学习者仍不被删除，并须重新经过恢复、严格时间留出、滚动起点和 acquisition-aligned 次要分析。最终证据仍须同时回答四个问题：有限集合是否比完整空间预测更好；随机转移是否可恢复；它是否能自主生成错误锁定和晚期恢复；RT 或口头报告是否真的看到了有限集合。只有四条证据相互一致，我们才把“被试不能同时维持众多假设”写成获得支持的认知结论。
