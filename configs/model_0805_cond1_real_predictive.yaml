@@ -1,0 +1,149 @@
+# Prospective real-choice predictive triage for manuscript/model_0805.tex.
+# Frozen before any FA2/FA2-R result from this analysis is viewed.
+
+analysis_id: model_0805_cond1_real_predictive_overnight_20260805_v1
+condition: 1
+
+data:
+  path: data/processed/Task2_processed.csv
+  expected_sha256: e67293ee3a60ca12bba56d19fcaf83422ec459e1f2e539b996a0088a22c5369d
+  expected_subjects: 32
+  expected_rows: 10048
+  independent_unit: subject
+  trial_order: [iSession, iBlock, iTrial]
+
+perception:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/q_cache
+  sobol_points: 512
+
+holdout:
+  source: results/zhuran/unified_newplan/core_sobol512_20260802/subject_predictions
+  outer_policy: frozen_existing_temporal_suffix
+  outer_conditioning: one_step_ahead_observed_history
+  inner_validation_fraction_of_outer_training: 0.25
+  iteration_uses: inner_validation_only
+  outer_holdout_opening: after_variant_selection_is_written
+
+rule_space:
+  expected_hypotheses: 38
+  labelled_similarity_cache: src/Bayesian_state/problems/cache/similarity_matrix_prototype_labels_v2_d4_c2_n100000_labels_01_10.npy
+  expected_similarity_sha256: 67e3079d90a51ba90d3fa29d2eeccdb49cdd4016c69f676c720b18fc3ea4174b
+  primary_prior: uniform_family
+
+numerics:
+  likelihood_epsilon: 1.0e-12
+  require_local_global_distance_gap_every_rule: true
+
+architecture:
+  workspace: HFW
+  primary_capacity: 5
+  candidate_models: [FS_H0, FA2, FA2R]
+  ordinary_replacement: binomial_capacity_m
+  regeneration: static_sequence_rho
+  parameter_inference: sequential_discrete_model_average
+  parameter_point_selection_for_primary_prediction: false
+
+parameter_support:
+  m: [0.05, 0.15, 0.30]
+  rho_FA2: [0.0]
+  rho_FA2R: [0.02, 0.05]
+  lapse_current: [0.005, 0.02, 0.05]
+  lapse_robust: [0.005, 0.02, 0.05, 0.10, 0.20]
+
+variants:
+  - id: v0_current_0805
+    description: exact_current_restricted_architecture
+    memory_states:
+      - {id: dual_g070_w040, gamma: 0.70, w0: 0.40}
+    kappa: [2.0]
+    g: [0.35]
+    lapse_support: current
+
+  - id: v1_robust_readout
+    description: adapt_decision_sensitivity_and_allow_more_response_contamination
+    memory_states:
+      - {id: dual_g070_w040, gamma: 0.70, w0: 0.40}
+    kappa: [0.50, 1.0, 2.0, 4.0, 8.0]
+    g: [0.35]
+    lapse_support: robust
+
+  - id: v2_memory_readout
+    description: adapt_memory_endpoint_timescale_and_decision_readout
+    memory_states:
+      - {id: bayes, gamma: 1.0, w0: 1.0}
+      - {id: fade_g040, gamma: 0.40, w0: 0.0}
+      - {id: fade_g070, gamma: 0.70, w0: 0.0}
+      - {id: fade_g090, gamma: 0.90, w0: 0.0}
+      - {id: dual_g040_w040, gamma: 0.40, w0: 0.40}
+      - {id: dual_g070_w040, gamma: 0.70, w0: 0.40}
+      - {id: dual_g090_w040, gamma: 0.90, w0: 0.40}
+      - {id: dual_g070_w080, gamma: 0.70, w0: 0.80}
+    kappa: [0.50, 1.0, 2.0, 4.0, 8.0]
+    g: [0.35]
+    lapse_support: robust
+
+  - id: v3_search_average
+    description: model_average_search_range_without_interpreting_subject_g
+    derive_memory_readout_pairs_from: v2_memory_readout
+    retained_pairs_per_subject_model: 4
+    g: [0.0, 0.35, 0.70]
+    lapse_support: robust
+
+  - id: v4_capacity_sensitivity
+    description: sensitivity_of_best_development_variant_to_capacity
+    derive_structures_from_best_development_variant: true
+    retained_structures_per_subject_model: 8
+    capacities: [3, 7]
+    lapse_support: robust
+
+screening:
+  particle_count: 512
+  filter_seeds: [2026080511]
+  retain_structures_per_subject_model: 12
+  resample_threshold_fraction: 0.5
+
+confirmation:
+  particle_count: 8192
+  filter_seeds: [2026080521, 2026080522, 2026080523, 2026080524]
+  retain_structures_per_subject_model: 8
+  resample_threshold_fraction: 0.5
+
+escalation:
+  enabled: true
+  particle_count: 32768
+  retain_structures_per_subject_model: 3
+  maximum_seed_nll_range: 1.0
+  maximum_seed_probability_range: 0.08
+  escalate_if_model_delta_abs_below_nll_per_trial: 0.02
+
+variant_selection:
+  unit: subject
+  metric: mean_inner_validation_nll_per_trial
+  minimum_mean_improvement_to_prefer_more_flexible_variant: 0.002
+  tie_break: fewer_grid_dimensions_then_earlier_variant
+  finite_model_promising_if_mean_advantage_over_FS_H0: 0.0
+  report_all_variants: true
+
+outer_reporting:
+  primary_metric: subject_level_outer_holdout_nll_per_trial_difference
+  secondary_metrics: [brier, accuracy, calibration, improved_subject_count]
+  bootstrap_replicates: 20000
+  bootstrap_seed: 20260806
+  positive_delta_favors: finite_candidate
+
+execution:
+  workers: 128
+  worker_blas_threads: 1
+  checkpoint_every_completed_tasks: 32
+  resume_existing: true
+
+guardrails:
+  - variants_and_parameter_support_frozen_before_new_real_FA2_or_FA2R_results
+  - variant_iteration_uses_only_inner_validation
+  - outer_holdout_summary_written_only_after_variant_selection_manifest
+  - observed_outer_history_may_filter_particles_after_each_trial
+  - no_best_particle_or_best_latent_trajectory_selection
+  - lapse_and_filter_seeds_are_mixed_in_likelihood_space
+  - parameter_grid_is_model_averaged_not_interpreted_as_exact_subject_truth
+  - g_sensitivity_is_not_subject_level_g_estimation
+  - if_all_prespecified_variants_fail_report_model_failure_not_forced_success

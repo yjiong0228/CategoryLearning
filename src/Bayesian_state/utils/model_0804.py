@@ -1312,11 +1312,19 @@ def _feedback_update_dense(
     updated_static[active] = (
         static[active] + np.broadcast_to(log_likelihood, static.shape)[active]
     )
-    ell = (
-        float(parameters.w0) * updated_static
-        + (1.0 - float(parameters.w0)) * updated_fade
-    )
-    ell = np.where(active, ell, -np.inf)
+    # Compute only on active entries.  Multiplying an inactive ``-inf`` by
+    # the exact endpoint weight zero would otherwise create NaN (0 * -inf),
+    # even though that channel is mathematically absent from the mixture.
+    ell = np.full_like(fade, -np.inf)
+    if float(parameters.w0) <= 0.0:
+        ell[active] = updated_fade[active]
+    elif float(parameters.w0) >= 1.0:
+        ell[active] = updated_static[active]
+    else:
+        ell[active] = (
+            float(parameters.w0) * updated_static[active]
+            + (1.0 - float(parameters.w0)) * updated_fade[active]
+        )
     ell -= np.max(ell, axis=1, keepdims=True)
     updated_omega = np.where(active, np.exp(ell), 0.0)
     updated_omega /= updated_omega.sum(axis=1, keepdims=True)
