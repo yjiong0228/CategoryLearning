@@ -1,0 +1,35 @@
+# Standard simulation/evaluation entry for model 0806.
+# Each repeat is an independent particle-filter seed, not a separately sampled
+# single latent trajectory.  The particle count is configured in the model file.
+
+engine_config_path: ../model_struct/pmh_model_cond1_0806.yaml
+subject_range: [101, 132]
+hyper_base_seed: 20260806
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/state-based-simulation/pmh/cond1_0806
+oral:
+  mode: center
+
+n_jobs: 4
+simulation_repeats: 4
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_brier
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10

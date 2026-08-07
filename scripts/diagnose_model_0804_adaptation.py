@@ -40,7 +40,7 @@ from scripts.run_model_0804_cond1_preflight import (  # noqa: E402
     _resample_threshold,
     _segment_scores,
 )
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     run_model0804_alive_particle_filter,
     run_model0804_particle_filter,
     run_model0804_resample_move_particle_filter,
@@ -577,7 +577,7 @@ def main() -> None:
         "config_sha256": _sha256(config_path),
         "implementation_sha256": {
             "model_0804.py": _sha256(
-                ROOT / "src/Bayesian_state/utils/model_0804.py"
+                ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
             ),
             "diagnostic_runner": _sha256(Path(__file__).resolve()),
             "model_0804_tests": _sha256(ROOT / "tests/test_model_0804.py"),

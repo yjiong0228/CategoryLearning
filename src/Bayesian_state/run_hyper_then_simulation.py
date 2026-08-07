@@ -12,8 +12,8 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from src.Bayesian_state.utils.hyper_cd_optimizer import HyperCDOptimizer
-from src.Bayesian_state.utils.hyper_grid_optimizer import HyperGridOptimizer
+from src.Bayesian_state.optimization.hyper_cd_optimizer import HyperCDOptimizer
+from src.Bayesian_state.optimization.hyper_grid_optimizer import HyperGridOptimizer
 from src.Bayesian_state.run_simulation import (
     apply_fixed_hyperparams_to_subject_config,
     infer_fixed_hyperparams_from_engine_config,
@@ -26,14 +26,14 @@ from src.Bayesian_state.utils.config_subjects import (
     resolve_subject_config,
     subject_override_for,
 )
-from src.Bayesian_state.utils.optimization_config import (
+from src.Bayesian_state.optimization.optimization_config import (
     resolve_engine_config,
     resolve_loss_delta,
     resolve_loss_metric,
     resolve_prediction_modes,
     resolve_window_size,
 )
-from src.Bayesian_state.utils.hyper_utils import (
+from src.Bayesian_state.optimization.hyper_utils import (
     build_root_best_payload,
     expand_profile_candidate_hyperparams,
     root_base_sim_config_path,
@@ -46,8 +46,8 @@ from src.Bayesian_state.utils.hyper_utils import (
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
-DEFAULT_HYPER_GRID_CONFIG = Path("configs/hyper_grid_cfg/pmh_cond1_hyper_grid.yaml")
-DEFAULT_HYPER_CD_CONFIG = Path("configs/hyper_cd_cfg/pmh_cond1_hyper_cd.yaml")
+DEFAULT_HYPER_GRID_CONFIG = Path("configs/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml")
+DEFAULT_HYPER_CD_CONFIG = Path("configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v1.yaml")
 DEFAULT_GENERATED_SIM_CONFIGS = {
     "hyper_grid": Path("configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_grid_best.yaml"),
     "hyper_cd": Path("configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml"),

@@ -1,15 +1,16 @@
 """Minimal feedback-driven, fixed-capacity hypothesis transition.
 
-This module implements the ``swap-one`` mechanism specified in
-``manuscript/model_newplan.tex``.  It intentionally does not inherit from the
-large strategy-controller implementation: the only dynamic parameter is
+This module implements the ``swap-one`` mechanism retained by the active-set
+analysis pipeline. It intentionally does not inherit from the large
+strategy-controller implementation: the only dynamic parameter is
 ``theta``, the probability scale for replacing one hypothesis after imperfect
 feedback.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence
+from copy import deepcopy
+from typing import Any, Dict, Mapping, Sequence
 
 import numpy as np
 
@@ -183,6 +184,33 @@ class FeedbackSwapHypothesisModule(BaseModule):
 
         self.module_seed = int(module_seed)
         self.trial_rng = np.random.default_rng(self.module_seed)
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Return the cognitive state needed by a particle descendant."""
+
+        return {
+            "active": self.active.copy(),
+            "old_active": self.old_active.copy(),
+            "previous_feedback": self.previous_feedback,
+            "trial_index": int(self.trial_index),
+            "trial_rng_state": deepcopy(self.trial_rng.bit_generator.state),
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        self.active = np.asarray(state["active"], dtype=int).copy()
+        self.old_active = np.asarray(state["old_active"], dtype=int).copy()
+        previous_feedback = state.get("previous_feedback")
+        self.previous_feedback = (
+            None if previous_feedback is None else float(previous_feedback)
+        )
+        self.trial_index = int(state["trial_index"])
+        rng_state = state.get("trial_rng_state")
+        if rng_state is not None:
+            self.trial_rng.bit_generator.state = deepcopy(rng_state)
+        self._apply_mask()
+
+    def clear_logs(self) -> None:
+        self.transition_log.clear()
 
     def _initialize_newcomer_beta(self, newcomer: int | None) -> None:
         if newcomer is None:

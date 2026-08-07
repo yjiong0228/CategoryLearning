@@ -45,7 +45,7 @@ from src.Bayesian_state.run_simulation import (  # noqa: E402
 from src.Bayesian_state.utils.datasets import (  # noqa: E402
     resolve_dataset_paths,
 )
-from src.Bayesian_state.utils.optimization_config import (  # noqa: E402
+from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "fullset_trajectory_ppc_early_anchor/subject_summary.csv"
         ),
     )
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "acquisition_changepoint_sweep"
         ),
     )
@@ -114,7 +114,7 @@ def candidate_name(half_life: float) -> str:
 
 
 def build_engine() -> tuple[dict[str, Any], dict[str, Path]]:
-    model_path = ROOT / "configs/model_struct/pmh_model_cond1_newplan.yaml"
+    model_path = ROOT / "configs/model_struct/pmh_model_cond1_active_set.yaml"
     simulation_path = (
         ROOT / "configs/simulation_cfg/pmh_cond1_simulation_v14.yaml"
     )

@@ -1,32 +1,23 @@
 # Bayesian State Utilities
 
-The current optimization utilities support the new hyper-selection plus fixed-simulation workflow.
+This directory contains small shared utilities only:
 
-## Main Modules
+- `paths.py`: centralized project, config, data, log, and result paths.
+- `datasets.py`: dataset-path resolution.
+- `config_subjects.py`: subject-specific configuration overrides.
+- `basic_stat.py` and `classical_tools.py`: small numerical helpers.
+- `base.py`, `console_styles.py`, and `load_config.py`: legacy logging,
+  console, and configuration helpers.
+- `simulation_statistics.py`: repeated-simulation summary statistics shared by
+  optimization and final simulation runs.
+- `stream.py`: compressed storage for large optional run logs.
 
-- `optimizer_simulation.py`
-  Execution layer for fixed-parameter repeated simulations. It owns `StateModelSimulationRunner`, repeat-level seeding, parallel execution, aggregation over repeated runs, and optional raw-run logging.
-- `optimizer_common.py`
-  Model-evaluation layer. It owns one-run `StateModel` evaluation, prediction/loss metrics, deterministic seed helpers, shared result containers, and the base data-preparation class.
-- `optimization_config.py`
-  Config-resolution layer. It owns YAML loading, path resolution, subject selection, engine-config resolution, prediction/loss/window parsing, JSON serialization, and stream-reference helpers.
-- `hyper_utils.py`
-  Shared hyper-search utilities: result payload schemas, JSON-safe serialization, provenance metadata, and hyperparameter value expansion.
-- `hyper_objectives.py`
-  Objective-order utilities for hyper-CD. It parses `objective_order`, extracts `simulation.*` / `statistics.*` values, compares candidates with tolerance-aware priority ordering, and applies CD anchor guards.
-- `config_subjects.py`
-  Applies subject-specific config overrides.
-- `datasets.py`
-  Resolves processed-data inputs.
-- `stream.py`
-  Stores large optional logs out of the compact JSON payload.
-- `model_evaluation.py`
-  Plotting and analysis facade for post-simulation evaluation, including accuracy alignment, posterior trajectories, beta/strategy dynamics, trajectory-rank plots, and oral/model alignment.
+Domain implementations now live in dedicated packages:
 
-## Expected Flow
-
-Hyper selectors in `hyper_grid_optimizer.py` and `hyper_cd_optimizer.py` score candidate hyperparameters by repeated simulation. Hyper-grid uses its `tie_break_metric` / `acceptance_selection` selection path, while hyper-CD uses the required `objective_order` config. `run_simulation.py` then repeats the final fixed model many times using the selected subjectwise hyperparameters.
-
-After final simulation, `run_model_evaluation.py` loads `subjects/subject_*.json`, expands the selected `metrics_by_mode`, and calls `ModelEval` to write plots under `model_evaluation/`. Plots that depend on run-level streams require `keep_logs: true` during simulation.
-
-`optimization_config.py` is intentionally separate from `optimizer_common.py`: config parsing is runner-facing plumbing, while `optimizer_common.py` is model-facing evaluation logic. Keeping them separate avoids making the common evaluator responsible for CLI/YAML concerns.
+- `src.Bayesian_state.optimization`: config parsing, simulation execution,
+  hyperparameter search, and hyper-search evaluation.
+- `src.Bayesian_state.model_evaluation`: post-simulation plots and oral/model
+  alignment.
+- `src.Bayesian_state.manuscript_models`: standalone manuscript model series.
+- `src.Bayesian_state.active_set`: minimal active-set generation, filtering,
+  mechanism variants, and posterior-predictive rollouts.

@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--results-root",
         type=Path,
-        default=ROOT / "results/zhuran/cond1_newplan",
+        default=ROOT / "results/zhuran/cond1_active_set",
     )
     parser.add_argument(
         "--data",
@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "dynamic_rho_consolidated"
         ),
     )

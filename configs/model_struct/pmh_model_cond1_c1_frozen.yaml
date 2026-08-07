@@ -1,5 +1,5 @@
 # Explicit frozen full-hypothesis-set C1 configuration.
-# This file avoids relying on run-script overrides of the newplan template.
+# This file avoids relying on run-script overrides of the active_set template.
 
 partition:
   class: src.Bayesian_state.problems.partitions.Partition

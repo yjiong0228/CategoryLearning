@@ -47,7 +47,7 @@ def resolve_dataset_paths(cfg: Mapping[str, Any], yaml_dir: Path, default_learni
         feature_order_data: Task3b_processed.csv
 
     Legacy style:
-      data_path: ../../data/processed/Task2_processed_new.csv
+      data_path: ../../data/processed/Task2_processed.csv
     """
     dataset = cfg.get("dataset") or {}
     if dataset and not isinstance(dataset, Mapping):

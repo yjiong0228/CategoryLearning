@@ -35,22 +35,22 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     split_for_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.utils.newplan_generation import (  # noqa: E402
+from src.Bayesian_state.active_set.generation import (  # noqa: E402
     generate_condition1_trajectory,
 )
-from src.Bayesian_state.utils.newplan_mechanism_variants import (  # noqa: E402
+from src.Bayesian_state.active_set.mechanism_variants import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.utils.newplan_particle_filter import (  # noqa: E402
-    run_newplan_particle_filter,
+from src.Bayesian_state.active_set.particle_filter import (  # noqa: E402
+    run_active_set_particle_filter,
 )
-from src.Bayesian_state.utils.optimization_config import (  # noqa: E402
+from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.utils.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "results/zhuran/cond1_newplan/mechanism_recovery_within_v1",
+        default=ROOT / "results/zhuran/cond1_active_set/mechanism_recovery_within_v1",
     )
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
@@ -231,7 +231,7 @@ def recover_one_dataset(
     )
     rows: list[dict[str, Any]] = []
     for fit_candidate in fit_candidates:
-        fitted = run_newplan_particle_filter(
+        fitted = run_active_set_particle_filter(
             engine_config=apply_candidate(base_engine, fit_candidate),
             subject_id=subject_id,
             stimulus=stimulus,

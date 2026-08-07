@@ -10,9 +10,9 @@ This package now uses a two-step workflow:
 
 ## Entrypoints
 
-- `python -m src.Bayesian_state.utils.hyper_cli --backend grid --config <yaml>`
+- `python -m src.Bayesian_state.optimization.hyper_cli --backend grid --config <yaml>`
   Runs explicit joint grid hyperparameter selection.
-- `python -m src.Bayesian_state.utils.hyper_cli --backend cd --config <yaml>`
+- `python -m src.Bayesian_state.optimization.hyper_cli --backend cd --config <yaml>`
   Runs coordinate-descent hyperparameter selection over the same style of search space.
 - `python -m src.Bayesian_state.run_hyper_then_simulation --backend hyper_grid --hyper-config <yaml>`
   Runs hyper-grid selection, materializes a subjectwise simulation config, then runs fixed simulations.
@@ -26,9 +26,9 @@ This package now uses a two-step workflow:
 ## Configs
 
 - `configs/hyper_grid_cfg/`
-  Joint grid hyperparameter selection configs, e.g. `pmh_cond1_hyper_grid.yaml`.
+  Joint grid hyperparameter selection configs, e.g. `pmh_cond1_hyper_grid_v1.yaml`.
 - `configs/hyper_cd_cfg/`
-  Coordinate-descent hyperparameter selection configs, e.g. `pmh_cond1_hyper_cd.yaml`.
+  Coordinate-descent hyperparameter selection configs, e.g. `pmh_cond1_hyper_cd_v1.yaml`.
 - `configs/simulation_cfg/`
   Fixed-parameter repeated simulation configs, e.g. `pmh_cond1_simulation.yaml`.
 
@@ -72,6 +72,19 @@ Simulation configs use:
 - `simulation_repeats`: number of repeated simulations per subject.
 - `fixed_hyperparams`: optional explicit fixed hyperparameters. If omitted, direct simulation infers the baseline hyperparameters from the resolved model structure. Hyper-generated subject overrides write this block explicitly.
 - `engine_config_path` or `engine_config`: model structure and module settings.
+- `engine_config.inference.backend: particle_filter`: integrate latent module
+  trajectories inside the same runner. `particle_count` and
+  `resample_threshold_fraction` live under the same `inference` mapping.
+
+Model 0806 is the reference particle-backed configuration:
+
+- `configs/model_struct/pmh_model_cond1_0806.yaml`
+- `configs/simulation_cfg/pmh_cond1_simulation_0806.yaml`
+- `configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml`
+
+Its trial-varying fixed-capacity transition is a normal
+`hypo_transitions_mod`; the standalone code in `manuscript_models/` is retained
+only as a recovery/numerical reference.
 
 ## Outputs
 

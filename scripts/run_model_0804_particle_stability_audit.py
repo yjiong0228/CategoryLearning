@@ -651,8 +651,8 @@ def main() -> None:
     kernels = kernels_by_prior[prior_id]
     candidate_lookup = _candidate_lookup(report)
     config_sha256 = _sha256(config_path)
-    model_path = ROOT / "src/Bayesian_state/utils/model_0804.py"
-    recovery_path = ROOT / "src/Bayesian_state/utils/model_0804_recovery.py"
+    model_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
+    recovery_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804_recovery.py"
     model_sha256 = _sha256(model_path)
     recovery_sha256 = _sha256(recovery_path)
     if model_sha256 != str(report["implementation_sha256"]["model_0804.py"]):

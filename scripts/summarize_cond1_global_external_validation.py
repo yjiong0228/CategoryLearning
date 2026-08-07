@@ -37,7 +37,7 @@ from scripts.run_cond1_mechanism_external_validation import (  # noqa: E402
     _safe_spearman,
 )
 from src.Bayesian_state.problems.partitions import Partition  # noqa: E402
-from src.Bayesian_state.utils.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

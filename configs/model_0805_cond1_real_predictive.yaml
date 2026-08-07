@@ -13,11 +13,11 @@ data:
   trial_order: [iSession, iBlock, iTrial]
 
 perception:
-  source: results/zhuran/unified_newplan/core_sobol512_20260802/q_cache
+  source: results/zhuran/model_0803_cond1/input_cache_20260802/q_cache
   sobol_points: 512
 
 holdout:
-  source: results/zhuran/unified_newplan/core_sobol512_20260802/subject_predictions
+  source: results/zhuran/model_0803_cond1/input_cache_20260802/subject_predictions
   outer_policy: frozen_existing_temporal_suffix
   outer_conditioning: one_step_ahead_observed_history
   inner_validation_fraction_of_outer_training: 0.25

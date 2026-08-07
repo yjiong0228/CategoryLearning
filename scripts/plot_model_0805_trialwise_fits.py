@@ -11,8 +11,8 @@ Archetype:
 Evidence chain:
     The atlas preserves every subject-model-trial probability; each detailed
     page adds behavioral outcome, a trailing-window trend, and cumulative NLL
-    change relative to FS_H0, followed by observed/model-predicted accuracy and
-    target-rule compatibility of encoded oral reports.
+    change relative to FS_H0, followed by observed/model-predicted accuracy.
+    Oral-report compatibility is added only when an explicit source is given.
 Backend/output:
     Python only; editable overview SVG/PDF, overview PNG, 32-page detailed PDF,
     one PNG per subject, and complete trial-level source data.
@@ -53,11 +53,7 @@ DEFAULT_RESULT = (
 )
 DEFAULT_CONFIG = ROOT / "configs/model_0805_cond1_real_predictive.yaml"
 DEFAULT_OUTPUT = DEFAULT_RESULT / "figures/trialwise_model_fit"
-DEFAULT_ORAL_TRIALS = (
-    ROOT
-    / "results/zhuran/unified_newplan/behavior_state_oral_validation_20260802"
-    / "trial_predictions.csv"
-)
+DEFAULT_ORAL_TRIALS = None
 
 MODEL_ORDER = [
     "FS_H0",
@@ -231,9 +227,17 @@ def reconstruct_subject(
 
 
 def attach_oral_target_alignment(
-    reconstructed: dict[int, dict[str, Any]], oral_trials_path: Path
+    reconstructed: dict[int, dict[str, Any]], oral_trials_path: Path | None
 ) -> int:
     """Attach observed oral-target compatibility, leaving unencoded trials NaN."""
+    if oral_trials_path is None:
+        for payload in reconstructed.values():
+            trial_count = int(payload["choices"].size)
+            payload["oral_target_compatible"] = np.full(
+                trial_count, np.nan, dtype=float
+            )
+            payload["oral_report_encoded"] = np.zeros(trial_count, dtype=bool)
+        return 0
     oral = pd.read_csv(oral_trials_path)
     required = {"subject_id", "condition", "trial", "oral_target_compatible"}
     missing = required - set(oral.columns)

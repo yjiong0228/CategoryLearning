@@ -15,7 +15,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = "条件1连续动态 readout：生成充分性、比较边界与个体限制"
 REPORT_QUERY_PATH = (
-    "results/zhuran/cond1_newplan/dynamic_rho_report/report/"
+    "results/zhuran/cond1_active_set/dynamic_rho_report/report/"
     "report_queries.sql"
 )
 
@@ -25,14 +25,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--results-root",
         type=Path,
-        default=ROOT / "results/zhuran/cond1_newplan",
+        default=ROOT / "results/zhuran/cond1_active_set",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/dynamic_rho_report/"
+            / "results/zhuran/cond1_active_set/dynamic_rho_report/"
             "report/artifact.json"
         ),
     )

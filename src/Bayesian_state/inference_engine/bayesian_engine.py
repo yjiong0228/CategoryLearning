@@ -1,6 +1,7 @@
 """
 Bayesian Engine
 """
+from copy import deepcopy
 from typing import Dict, Tuple, List, Any
 import numpy as np
 from ..utils import LOGGER
@@ -255,6 +256,54 @@ class BaseEngine:
         # DEBUG
         #print("All modules built successfully.")
         #print("modules", self.modules, s=7)
+
+    @staticmethod
+    def _copy_state_value(value):
+        if value is None:
+            return None
+        if isinstance(value, np.ndarray):
+            return value.copy()
+        return deepcopy(value)
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Return engine and module state needed for particle resampling."""
+
+        core = {
+            name: self._copy_state_value(getattr(self, name, None))
+            for name in (
+                "prior",
+                "posterior",
+                "likelihood",
+                "hypotheses_mask",
+                "observation",
+                "last_prior",
+            )
+        }
+        modules: Dict[str, Any] = {}
+        for name, module in self.modules.items():
+            if name == "__self__":
+                continue
+            if hasattr(module, "state_dict"):
+                modules[name] = deepcopy(module.state_dict())
+        return {"core": core, "modules": modules}
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        """Restore an engine snapshot produced by :meth:`state_dict`."""
+
+        core = state.get("core", {})
+        for name, value in core.items():
+            setattr(self, name, self._copy_state_value(value))
+        module_states = state.get("modules", {})
+        for name, payload in module_states.items():
+            module = self.modules.get(name)
+            if module is None:
+                raise ValueError(f"snapshot refers to unavailable module {name!r}.")
+            module.load_state_dict(deepcopy(payload))
+
+    def clear_module_logs(self) -> None:
+        for name, module in self.modules.items():
+            if name != "__self__" and hasattr(module, "clear_logs"):
+                module.clear_logs()
 
 
 

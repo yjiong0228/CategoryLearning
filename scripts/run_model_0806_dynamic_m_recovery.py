@@ -28,18 +28,18 @@ from scripts.run_model_0803_cond1 import (  # noqa: E402
     validate_subject_cache,
 )
 from scripts.run_model_0805_real_predictive import load_config  # noqa: E402
-from src.Bayesian_state.utils.model_0803 import TransitionKernels  # noqa: E402
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0803 import TransitionKernels  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     Model0804Parameters,
 )
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     run_model0804_particle_filter,
 )
-from src.Bayesian_state.utils.model_0806 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0806 import (  # noqa: E402
     Model0804RTParameters,
     simulate_model0806_log_rt,
 )
-from src.Bayesian_state.utils.model_0806 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0806 import (  # noqa: E402
     simulate_model0806_choices,
 )
 

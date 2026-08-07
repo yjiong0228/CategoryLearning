@@ -37,7 +37,7 @@ from scripts.run_model_0804_cond1_preflight import (  # noqa: E402
     _load_subject_arrays,
     _parameters,
 )
-from src.Bayesian_state.utils.model_0804_pgas import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804_pgas import (  # noqa: E402
     run_model0804_pgas,
 )
 
@@ -473,10 +473,10 @@ def main() -> None:
         "config_sha256": _sha256(config_path),
         "implementation_sha256": {
             "model_0804.py": _sha256(
-                ROOT / "src/Bayesian_state/utils/model_0804.py"
+                ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
             ),
             "model_0804_pgas.py": _sha256(
-                ROOT / "src/Bayesian_state/utils/model_0804_pgas.py"
+                ROOT / "src/Bayesian_state/manuscript_models/model_0804_pgas.py"
             ),
             "diagnostic_runner": _sha256(Path(__file__).resolve()),
             "pgas_tests": _sha256(ROOT / "tests/test_model_0804_pgas.py"),

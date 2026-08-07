@@ -37,13 +37,13 @@ from scripts.run_model_0806_dynamic_m_recovery import (  # noqa: E402
     save_geometry,
     softmax,
 )
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     Model0804Parameters,
 )
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     run_model0804_particle_filter,
 )
-from src.Bayesian_state.utils.model_evaluation import (  # noqa: E402
+from src.Bayesian_state.model_evaluation.model_evaluation import (  # noqa: E402
     ModelEval as ModelEvaluationReport,
 )
 
@@ -696,8 +696,8 @@ def summarize(
         },
         "component_integrity": integrity,
         "metric_implementation": {
-            "choice_brier": "src.Bayesian_state.utils.model_evaluation.ModelEval",
-            "accuracy_curve": "src.Bayesian_state.utils.model_evaluation.ModelEval",
+            "choice_brier": "src.Bayesian_state.model_evaluation.model_evaluation.ModelEval",
+            "accuracy_curve": "src.Bayesian_state.model_evaluation.model_evaluation.ModelEval",
         },
         "model_0805_reproduction": reproduce_0805(config),
         "rolling": {

@@ -40,25 +40,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.utils.model_0803 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0803 import (  # noqa: E402
     EPS,
     MEMORY_IDS,
     MODEL_IDS,
+    ORDER_COLUMNS,
     Model0803Fit,
     TransitionKernels,
+    build_partition,
     build_transition_kernels,
     decode_parameters,
+    expected_feedback_from_category,
     fit_model0803,
     parameter_definition,
+    partition_prior,
     reference_feature_scaling,
     run_model0803,
     score_choice_predictions,
-)
-from src.Bayesian_state.utils.unified_newplan import (  # noqa: E402
-    ORDER_COLUMNS,
-    build_partition,
-    expected_feedback_from_category,
-    partition_prior,
 )
 
 
@@ -1652,7 +1650,7 @@ def main() -> None:
         "config_sha256": sha256_file(config_path),
         "script_sha256": sha256_file(Path(__file__).resolve()),
         "module_sha256": sha256_file(
-            ROOT / "src/Bayesian_state/utils/model_0803.py"
+            ROOT / "src/Bayesian_state/manuscript_models/model_0803.py"
         ),
         "git_commit": _git_commit(),
         "subjects": subjects,

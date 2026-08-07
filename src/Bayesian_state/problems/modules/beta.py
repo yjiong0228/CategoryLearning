@@ -9,7 +9,7 @@ with dynamic evolution rules that reflect learning behavior:
 """
 
 from __future__ import annotations
-from typing import Optional, List
+from typing import Any, Mapping, Optional, List
 import numpy as np
 from .base_module import BaseModule
 
@@ -374,6 +374,21 @@ class BetaModule(BaseModule):
         if indices is None:
             return self.beta.copy()
         return self.beta[indices].copy()
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"beta": self.beta.copy()}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        beta = np.asarray(state["beta"], dtype=float).copy()
+        if beta.shape != self.beta.shape:
+            raise ValueError(
+                f"beta state shape mismatch: {beta.shape} vs {self.beta.shape}."
+            )
+        self.beta = beta
+        self.engine.beta = self.beta
+
+    def clear_logs(self) -> None:
+        self.beta_log.clear()
     
     def reset(self) -> None:
         """Reset all beta values to initial state."""

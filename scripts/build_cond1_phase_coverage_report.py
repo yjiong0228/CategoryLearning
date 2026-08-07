@@ -15,7 +15,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = "条件1阶段级生成检验：复杂轨迹覆盖与机制停止规则"
 REPORT_QUERY_PATH = (
-    "results/zhuran/cond1_newplan/phase_coverage_report/report/"
+    "results/zhuran/cond1_active_set/phase_coverage_report/report/"
     "report_queries.sql"
 )
 
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "phase_coverage_frozen_models"
         ),
     )
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "phase_coverage_report/report/artifact.json"
         ),
     )

@@ -16,7 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = "条件1异常表现事件图谱：机制诊断与止损结论"
 REPORT_QUERY_PATH = (
-    "results/zhuran/cond1_newplan/behavior_event_atlas/"
+    "results/zhuran/cond1_active_set/behavior_event_atlas/"
     "report/report_queries.sql"
 )
 
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/behavior_event_atlas"
+            / "results/zhuran/cond1_active_set/behavior_event_atlas"
         ),
     )
     parser.add_argument(
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/behavior_event_atlas/"
+            / "results/zhuran/cond1_active_set/behavior_event_atlas/"
             "report/artifact.json"
         ),
     )

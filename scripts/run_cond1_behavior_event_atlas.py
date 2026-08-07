@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/event_atlas_b0_r128/cache"
+            / "results/zhuran/cond1_active_set/event_atlas_b0_r128/cache"
         ),
     )
     parser.add_argument("--particle-count", type=int, default=128)
@@ -101,7 +101,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/behavior_event_atlas"
+            / "results/zhuran/cond1_active_set/behavior_event_atlas"
         ),
     )
     return parser.parse_args()

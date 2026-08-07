@@ -34,18 +34,18 @@ from src.Bayesian_state.run_simulation import (  # noqa: E402
 from src.Bayesian_state.utils.datasets import (  # noqa: E402
     resolve_dataset_paths,
 )
-from src.Bayesian_state.utils.newplan_posterior_predictive import (  # noqa: E402
+from src.Bayesian_state.active_set.posterior_predictive import (  # noqa: E402
     DynamicRhoConfig,
     run_conditioned_condition1_rollouts,
 )
-from src.Bayesian_state.utils.newplan_particle_filter import (  # noqa: E402
-    run_newplan_particle_filter,
+from src.Bayesian_state.active_set.particle_filter import (  # noqa: E402
+    run_active_set_particle_filter,
 )
-from src.Bayesian_state.utils.optimization_config import (  # noqa: E402
+from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.utils.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
 
 
 DEVELOPMENT_SUBJECTS = (103, 105, 111, 112, 117, 118, 127, 131)
@@ -223,7 +223,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/b0_trajectory_ppc"
+            / "results/zhuran/cond1_active_set/b0_trajectory_ppc"
         ),
     )
     return parser.parse_args()
@@ -707,7 +707,7 @@ def simulate_subject(
                     ): float(beta_additive)
                 },
             )
-            candidate = run_newplan_particle_filter(
+            candidate = run_active_set_particle_filter(
                 engine_config=candidate_engine,
                 subject_id=subject_id,
                 stimulus=stimulus[:split_index],
@@ -1462,7 +1462,7 @@ def main() -> None:
     if missing:
         raise ValueError(f"Subjects absent from condition 1: {missing}")
 
-    model_path = ROOT / "configs/model_struct/pmh_model_cond1_newplan.yaml"
+    model_path = ROOT / "configs/model_struct/pmh_model_cond1_active_set.yaml"
     simulation_path = (
         ROOT / "configs/simulation_cfg/pmh_cond1_simulation_v14.yaml"
     )

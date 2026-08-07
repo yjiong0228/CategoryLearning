@@ -44,8 +44,8 @@ from scripts.run_model_0803_cond1 import (  # noqa: E402
     validate_and_load_inputs,
     validate_subject_cache,
 )
-from src.Bayesian_state.utils.model_0803 import TransitionKernels  # noqa: E402
-from src.Bayesian_state.utils.model_0804 import (  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0803 import TransitionKernels  # noqa: E402
+from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
     Model0804Parameters,
     run_model0804_particle_filter,
 )

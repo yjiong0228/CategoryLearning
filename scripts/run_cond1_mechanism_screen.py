@@ -35,16 +35,16 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     simulate_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.utils.newplan_mechanism_variants import (  # noqa: E402
+from src.Bayesian_state.active_set.mechanism_variants import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.utils.optimization_config import (  # noqa: E402
+from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.utils.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
 
 
 READOUT_STATIC = "static"
@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/mechanism_screen_dev_v1"
+            / "results/zhuran/cond1_active_set/mechanism_screen_dev_v1"
         ),
     )
     parser.add_argument("--force", action="store_true")

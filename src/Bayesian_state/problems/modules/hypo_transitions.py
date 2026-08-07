@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sequence, List, Dict, Set, Tuple, Callable, Any
+from typing import Sequence, List, Dict, Set, Tuple, Callable, Any, Mapping
 from scipy.spatial.distance import cdist
 from ...utils import print, entropy, softmax
 
@@ -3087,6 +3088,60 @@ class DynamicHypothesisModule(BaseModule):
         beta_mod = self.engine.modules.get("beta_mod", None)
         if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
             beta_mod.initialize_beta_for_hypotheses(newcomer_indices, prior)
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Return dynamic controller state for generic particle resampling."""
+
+        return {
+            "active": None if self.active is None else self.active.copy(),
+            "old_active": None if self.old_active is None else self.old_active.copy(),
+            "previous_observation": deepcopy(self.previous_observation),
+            "feedback_history": list(self.feedback_history),
+            "observation_history": deepcopy(list(self.observation_history)),
+            "latent_volatility_state": float(self.latent_volatility_state),
+            "prior_reset_state": float(self._prior_reset_state),
+            "current_post_to_prior_config": deepcopy(self._current_post_to_prior_config),
+            "post_to_prior_override": deepcopy(self._post_to_prior_override),
+            "rng_state": deepcopy(self.rng.bit_generator.state),
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        active = state.get("active")
+        old_active = state.get("old_active")
+        self.active = None if active is None else np.asarray(active, dtype=int).copy()
+        self.old_active = (
+            None if old_active is None else np.asarray(old_active, dtype=int).copy()
+        )
+        self.previous_observation = deepcopy(state.get("previous_observation"))
+        self.feedback_history = deque(
+            state.get("feedback_history", []),
+            maxlen=self.feedback_history.maxlen,
+        )
+        self.observation_history = deque(
+            deepcopy(state.get("observation_history", [])),
+            maxlen=self.observation_history.maxlen,
+        )
+        self.latent_volatility_state = float(
+            state.get("latent_volatility_state", 0.0)
+        )
+        self._prior_reset_state = float(state.get("prior_reset_state", 0.0))
+        self._current_post_to_prior_config = deepcopy(
+            state.get("current_post_to_prior_config", self.post_to_prior_config)
+        )
+        self._post_to_prior_override = deepcopy(state.get("post_to_prior_override"))
+        rng_state = state.get("rng_state")
+        if rng_state is not None:
+            self.rng.bit_generator.state = deepcopy(rng_state)
+        self._apply_mask()
+
+    def clear_logs(self) -> None:
+        self.strategy_counts_log.clear()
+        self.latent_volatility_log.clear()
+        self.prior_reset_log.clear()
+
+    def reseed_future(self, module_seed: int) -> None:
+        self.module_seed = int(module_seed)
+        self.rng = np.random.default_rng(self.module_seed)
 
 
 # TODO: 现在有了similarity matrix，能不能简化dynamic hypothesis module的transition逻辑？

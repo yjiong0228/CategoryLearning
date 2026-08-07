@@ -7,9 +7,9 @@
 0806 必须继续使用仓库已经验证过的基础设施：
 
 1. choice Brier 和 accuracy curve 统一调用
-   `src.Bayesian_state.utils.model_evaluation.ModelEval`；不允许脚本各写一套定义。
+   `src.Bayesian_state.model_evaluation.model_evaluation.ModelEval`；不允许脚本各写一套定义。
 2. 超参数搜索继续使用
-   `src.Bayesian_state.utils.hyper_cd_optimizer.HyperCDOptimizer` 的坐标下降框架。
+   `src.Bayesian_state.optimization.hyper_cd_optimizer.HyperCDOptimizer` 的坐标下降框架。
 3. 数据切分、被试级汇总、重复模拟、随机种子敏感性和模型评价，继续遵守
    `src/Bayesian_state` 的现有工作流。
 4. 0805 已冻结的知觉输入、规则空间、局部/全局核、双通道记忆、选择读出和
@@ -34,19 +34,36 @@
 
 ## 0806 当前正式入口
 
-- `scripts/run_model_0806_dynamic_m_recovery.py`：静态/动态模型恢复，支持 surprise 或 uncertainty。
-- `scripts/run_model_0806_real_rolling.py`：真实 choice 滚动比较；内置组件完整性检查，并调用公共 Brier/accuracy 实现。
-- `scripts/run_model_0806_targeted_diagnostics.py`：冻结 choice 状态后的 choice/RT 定向诊断。
-- `scripts/run_model_0806_uncertainty_gate.py`：不确定性的低成本进入门槛。
+0806 已经嵌入通用 `StateModel`，正式运行不再调用一套专用模型代码：
 
-对应的正式配置：
+- 模型结构：`configs/model_struct/pmh_model_cond1_0806.yaml`
+- 固定参数仿真：`configs/simulation_cfg/pmh_cond1_simulation_0806.yaml`
+- Hyper-CD：`configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml`
+- 新机制模块：
+  `src/Bayesian_state.problems.modules.finite_workspace_transition.AdaptiveFiniteWorkspaceTransitionModule`
+- 数值积分入口：`src.Bayesian_state.optimization.particle_filter.run_state_model_particle_filter`
+- 统一评价入口：`src.Bayesian_state.optimization.optimizer_common.evaluate_state_model_run`
 
-- `configs/model_0806_dynamic_m_recovery.yaml`
-- `configs/model_0806_dynamic_m_real_rolling.yaml`
-- `configs/model_0806_dynamic_u_recovery.yaml`
-- `configs/model_0806_dynamic_u_real_rolling.yaml`
-- `configs/model_0806_targeted_diagnostics.yaml`
-- `configs/model_0806_dynamic_u_targeted_diagnostics.yaml`
-- `configs/model_0806_uncertainty_gate.yaml`
+运行命令：
 
-下一次联合 surprise+uncertainty 动态运行应扩展这些入口，不再新建一套评价脚本。
+```bash
+python -m src.Bayesian_state.optimization.hyper_cli \
+  --backend cd \
+  --config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
+
+python -m src.Bayesian_state.run_simulation \
+  --config configs/simulation_cfg/pmh_cond1_simulation_0806.yaml
+```
+
+配置中的 `inference.backend: particle_filter` 使标准 runner 自动积分潜在
+active-set 路径。每个 simulation repeat 只是独立的 filter seed，用来检查有限粒子
+近似的稳定性，不再代表一条被挑选的潜在轨迹。
+
+## 旧 0806 代码的保留边界
+
+`src/Bayesian_state/manuscript_models/model_0806.py` 与原来的
+`scripts/run_model_0806_*.py` 只保留为恢复实验、历史结果复现和数值 oracle。它们不再是
+真实数据拟合的正式入口，也不应继续扩展新的 transition、评价或超参数搜索逻辑。
+
+联合 surprise+uncertainty、静态 FA2 和单信号 FA3-M 的区别现在全部由同一个 transition
+module 的 `rate_controller` 配置表达；无需新增模型脚本。

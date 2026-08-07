@@ -25,7 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.Bayesian_state.utils.model_evaluation import ModelEval
+from src.Bayesian_state.model_evaluation.model_evaluation import ModelEval
 from src.Bayesian_state.utils.paths import PROCESSED_DATA_DIR, ROOT_DIR, SIMULATION_RESULTS_DIR
 
 

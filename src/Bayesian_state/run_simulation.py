@@ -11,7 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence
 
-from src.Bayesian_state.utils.optimization_config import (
+from src.Bayesian_state.optimization.optimization_config import (
     DEFAULT_DATA_PATH,
     DEFAULT_OUTPUT_DIR,
     load_yaml,
@@ -29,9 +29,9 @@ from src.Bayesian_state.utils.optimization_config import (
 )
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
-from src.Bayesian_state.utils.optimizer_common import derive_hyper_candidate_seed
-from src.Bayesian_state.utils.optimizer_simulation import StateModelSimulationRunner
-from src.Bayesian_state.utils.hyper_utils import (
+from src.Bayesian_state.optimization.optimizer_common import derive_hyper_candidate_seed
+from src.Bayesian_state.optimization.optimizer_simulation import StateModelSimulationRunner
+from src.Bayesian_state.optimization.hyper_utils import (
     PROFILE_CANDIDATE_KEY,
     expand_profile_candidate_hyperparams,
 )

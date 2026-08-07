@@ -1,0 +1,92 @@
+# Model 0806 inside the standard StateModel framework.
+#
+# The only model-specific mechanism is the fixed-capacity, trial-varying
+# hypothesis transition.  Perception, likelihood, dual memory, beta, choice
+# readout, output noise, and execution order remain standard modules.
+
+partition:
+  class: src.Bayesian_state.problems.partitions.Partition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+    include_label_reversals: true
+
+inference:
+  backend: particle_filter
+  particle_count: 512
+  resample_threshold_fraction: 0.5
+
+modules:
+  perception_mod:
+    class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+
+  # Fixed hypothesis-level category sensitivity.  The 0806 transition is the
+  # source of trial-varying structural dynamics; beta evolution is not added as
+  # a second adaptation mechanism in this baseline configuration.
+  beta_mod:
+    class: src.Bayesian_state.problems.modules.beta.BetaModule
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      decrease_rate: 0.0
+      correct_additive: 0.0
+      beta_update_mode: probabilistic_feedback
+      probabilistic_feedback_lapse: 0.0
+      use_prior_scaling: false
+      prior_beta_scale: 0.0
+
+  hypo_transitions_mod:
+    class: src.Bayesian_state.problems.modules.finite_workspace_transition.AdaptiveFiniteWorkspaceTransitionModule
+    kwargs:
+      capacity: 3
+      m: 0.15
+      m_phi: 0.50
+      m_beta_surprise: 0.80
+      surprise_center: 2.56
+      surprise_scale: 4.58
+      # The module supports uncertainty-only and joint controllers.  The
+      # default remains the prespecified surprise-driven 0806 candidate.
+      m_beta_uncertainty: 0.0
+      uncertainty_center: 0.1332542767
+      uncertainty_scale: 0.0643078377
+      g: 0.35
+      epsilon: 1.0e-12
+
+  likelihood_mod:
+    class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+    kwargs:
+      distance_mode: prototype
+
+  memory_mod:
+    class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+    kwargs:
+      gamma: 0.70
+      w0: 0.40
+      feedback_gain: 1.0
+
+choice_readout:
+  kwargs:
+    method: sharpened_expectation
+    power: 2.0
+
+output_noise:
+  kwargs:
+    enabled: true
+    base_lapse: 0.05
+    post_error_lapse: 0.0
+    low_accuracy_lapse: 0.0
+    low_accuracy_threshold: 0.70
+    recent_accuracy_window: 8
+    lapse_decay: 0.0
+    max_lapse: 1.0
+    lapse_target: uniform
+    latent_volatility_lapse: 0.0
+    latent_volatility_power: 1.0
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - likelihood_mod
+  - memory_mod
+  - beta_mod

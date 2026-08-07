@@ -182,6 +182,36 @@ p_{t+1}(h)=\frac{\tilde p_{t+1}(h)}{\sum_u \tilde p_{t+1}(u)}
 
 新加入假设在迁移后会触发 `beta_mod.initialize_beta_for_hypotheses()`，给 newcomer 设置初始 beta。
 
+### 4.7 `finite_workspace_transition.py`：0806 固定容量动态替换
+
+`AdaptiveFiniteWorkspaceTransitionModule` 是 0806 在主框架中的 transition 实现。它保持
+workspace 容量 `C` 不变；trial 0 只初始化集合，此后每个 trial 在 choice 前执行：
+
+\[
+\operatorname{logit}(m_t)=\operatorname{logit}(m_0)
++\phi\left[\operatorname{logit}(m_{t-1})-\operatorname{logit}(m_0)\right]
++\beta_s z(S_{t-1})+\beta_u z(U_{t-1})
+\]
+
+其中上一试次的反馈 surprise 为
+
+\[
+S_{t-1}=-\log\sum_h p^-_{t-1}(h)L_{t-1}(h),
+\]
+
+`U` 是 active posterior 的归一化熵。随后抽取
+`K_t ~ Binomial(C, m_t)`，按 `1-posterior` 权重移除 `K_t` 个假设，再从
+local/global proposal 混合中无放回抽取相同数量的 newcomer。被移除的 posterior mass
+逐一转移给 newcomer，因此容量和总概率质量都保持不变。
+
+可配置项包括：`capacity`, `m`, `m_phi`, `m_beta_surprise`,
+`m_beta_uncertainty`, 两组 signal center/scale、`g`, `tau_local`。也可把动态控制参数
+放入一个 `rate_controller` mapping，便于 Hyper-CD 把静态、单信号和联合控制器作为完整
+候选进行比较。
+
+该模块只管理 hypothesis transition。感知、likelihood、dual memory、beta、choice readout
+和粒子积分仍由原有模块与 optimization 层负责。
+
 ## 5. `likelihood.py`：似然模块（LikelihoodModule）
 
 ### 5.1 作用

@@ -2,7 +2,7 @@
 Module: Memory Mechanism
 """
 
-from typing import List, Dict, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 import numpy as np
 
 #from CategoryLearning.Old_version.Bayesian_new.inference_engine.bayesian_engine import BaseEngine
@@ -420,6 +420,33 @@ class DualMemoryModule(BaseModule):
         
         posterior = self.translate_from_log(log_posterior, mask=self.mask)
         self.engine.posterior = posterior
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "state": {
+                str(key): np.asarray(value, dtype=float).copy()
+                for key, value in self.state.items()
+            },
+            "baseline_state": {
+                str(key): float(value)
+                for key, value in self.baseline_state.items()
+            },
+            "mask": self.mask.copy(),
+            "prior": np.asarray(self.prior, dtype=float).copy(),
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        self.state = {
+            str(key): np.asarray(value, dtype=float).copy()
+            for key, value in state["state"].items()
+        }
+        self.engine.state = self.state
+        self.baseline_state = {
+            str(key): float(value)
+            for key, value in state["baseline_state"].items()
+        }
+        self.mask = np.asarray(state["mask"], dtype=float).copy()
+        self.prior = np.asarray(state["prior"], dtype=float).copy()
 
     @property
     def optimize_params_dict(self) -> Dict[str, np.ndarray]:

@@ -23,16 +23,16 @@ from matplotlib import font_manager
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ANALYSIS = (
-    ROOT / "results/zhuran/cond1_newplan/phase_coverage_frozen_models"
+    ROOT / "results/zhuran/cond1_active_set/phase_coverage_frozen_models"
 )
 DEFAULT_C1 = (
     ROOT
-    / "results/zhuran/cond1_newplan/dynamic_rho_reserved_c1_p256_r1024"
+    / "results/zhuran/cond1_active_set/dynamic_rho_reserved_c1_p256_r1024"
     / "c1_s0p5_e0p5_v0p2_p0p95/rolling_curve_summary.csv"
 )
 DEFAULT_ACQUISITION = (
     ROOT
-    / "results/zhuran/cond1_newplan/acquisition_changepoint_reserved_h128_p256_r1024"
+    / "results/zhuran/cond1_active_set/acquisition_changepoint_reserved_h128_p256_r1024"
     / "rolling_curve_summary.csv"
 )
 

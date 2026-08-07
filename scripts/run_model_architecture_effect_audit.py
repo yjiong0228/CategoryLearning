@@ -39,12 +39,12 @@ from src.Bayesian_state.run_simulation import (  # noqa: E402
     apply_fixed_hyperparams_to_engine_config,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.utils.optimization_config import (  # noqa: E402
+from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
     resolve_engine_config,
 )
-from src.Bayesian_state.utils.optimizer_simulation import (  # noqa: E402
+from src.Bayesian_state.optimization.optimizer_simulation import (  # noqa: E402
     StateModelSimulationRunner,
 )
 

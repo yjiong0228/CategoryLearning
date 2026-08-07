@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "dynamic_rho_reserved_c1_p256_r1024/"
             "c1_s0p5_e0p5_v0p2_p0p95"
         ),
@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "acquisition_changepoint_reserved_h128_p256_r1024"
         ),
     )
@@ -109,7 +109,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/"
+            / "results/zhuran/cond1_active_set/"
             "phase_coverage_frozen_models"
         ),
     )

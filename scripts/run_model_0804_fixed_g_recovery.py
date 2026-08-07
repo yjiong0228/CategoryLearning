@@ -598,8 +598,8 @@ def main() -> None:
     prior_id = str(base["rule_space"]["primary_prior"])
     prior = priors[prior_id]
     kernels = kernels_by_prior[prior_id]
-    model_path = ROOT / "src/Bayesian_state/utils/model_0804.py"
-    recovery_impl_path = ROOT / "src/Bayesian_state/utils/model_0804_recovery.py"
+    model_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
+    recovery_impl_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804_recovery.py"
     model_sha256 = _sha256(model_path)
     recovery_sha256 = _sha256(recovery_impl_path)
     if model_sha256 != source["implementation_sha256"]["model_0804.py"]:

@@ -15,7 +15,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = "条件1随机生成充分性：从静态全规则集到单次掌握变点"
 REPORT_QUERY_PATH = (
-    "results/zhuran/cond1_newplan/trajectory_ppc_report/report/"
+    "results/zhuran/cond1_active_set/trajectory_ppc_report/report/"
     "report_queries.sql"
 )
 
@@ -63,14 +63,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--results-root",
         type=Path,
-        default=ROOT / "results/zhuran/cond1_newplan",
+        default=ROOT / "results/zhuran/cond1_active_set",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=(
             ROOT
-            / "results/zhuran/cond1_newplan/trajectory_ppc_report/"
+            / "results/zhuran/cond1_active_set/trajectory_ppc_report/"
             "report/artifact.json"
         ),
     )
