@@ -4,13 +4,16 @@ The implementation deliberately covers the first frozen gate only:
 
 * HFW (hard finite workspace), not the reservoir-access variant;
 * FA0, FA1, and FA2 with constant controls;
+* the model_0806 single-signal FA3-M extensions, enabled explicitly through
+  the Model0804Parameters.dynamic_m flag;
 * fixed integrated rule predictions ``q[t, h, c]`` from the model_0803 cache;
 * mass-conserving multi-slot replacement and synchronized dual memory;
 * bootstrap-particle and alive-particle marginal choice likelihoods;
 * exact small-space enumeration for implementation validation.
 
-Dynamic FA3 controls, RT, oral reports, autonomous generation, and formal
-group inference are intentionally outside this module's current scope.
+An optional frozen RT emission is available for joint recovery checks.  Oral
+reports, autonomous generation, and formal group inference remain outside this
+module's current scope.
 """
 
 from __future__ import annotations
@@ -45,6 +48,26 @@ class Model0804Parameters:
     g: float
     lapse: float = 0.0
     rho: float = 0.0
+    dynamic_m: bool = False
+    m_phi: float = 0.0
+    m_beta_surprise: float = 0.0
+    surprise_center: float = 0.0
+    surprise_scale: float = 1.0
+    m_beta_uncertainty: float = 0.0
+    uncertainty_center: float = 0.0
+    uncertainty_scale: float = 1.0
+
+
+@dataclass(frozen=True)
+class Model0804RTParameters:
+    """Frozen pre-choice log-RT emission for recovery and external validation."""
+
+    intercept: float
+    choice_entropy: float
+    replacement_fraction: float
+    newcomer_distance: float = 0.0
+    sigma: float = 0.15
+    degrees_of_freedom: float = 5.0
 
 
 @dataclass
@@ -108,6 +131,12 @@ class Model0804Trace:
     rejuvenation_sweeps: int = 0
     rejuvenation_acceptance_rate: np.ndarray | None = None
     rejuvenation_unique_active_sets: np.ndarray | None = None
+    predictive_m: np.ndarray | None = None
+    feedback_surprise: np.ndarray | None = None
+    feedback_uncertainty: np.ndarray | None = None
+    joint_nll: float | None = None
+    rt_conditional_nll: float | None = None
+    rt_predictive_log_density: np.ndarray | None = None
 
 
 @dataclass
@@ -199,8 +228,19 @@ def _validate_model_and_parameters(
         "g": float(parameters.g),
         "lapse": float(parameters.lapse),
         "rho": float(parameters.rho),
+        "dynamic_m": bool(parameters.dynamic_m),
+        "m_phi": float(parameters.m_phi),
+        "m_beta_surprise": float(parameters.m_beta_surprise),
+        "surprise_center": float(parameters.surprise_center),
+        "surprise_scale": float(parameters.surprise_scale),
+        "m_beta_uncertainty": float(parameters.m_beta_uncertainty),
+        "uncertainty_center": float(parameters.uncertainty_center),
+        "uncertainty_scale": float(parameters.uncertainty_scale),
     }
-    if not all(np.isfinite(value) for value in values.values()):
+    numeric_values = {
+        key: value for key, value in values.items() if key != "dynamic_m"
+    }
+    if not all(np.isfinite(value) for value in numeric_values.values()):
         raise ValueError("all model_0804 parameters must be finite")
     if not 0.0 <= values["gamma"] <= 1.0:
         raise ValueError("gamma must lie in [0, 1]")
@@ -216,6 +256,28 @@ def _validate_model_and_parameters(
         raise ValueError("lapse must lie in [0, 1)")
     if not 0.0 <= values["rho"] <= 1.0:
         raise ValueError("rho must lie in [0, 1]")
+    if not -1.0 < values["m_phi"] < 1.0:
+        raise ValueError("m_phi must lie in (-1, 1)")
+    if values["m_beta_surprise"] < 0.0:
+        raise ValueError("m_beta_surprise must be non-negative")
+    if values["m_beta_uncertainty"] < 0.0:
+        raise ValueError("m_beta_uncertainty must be non-negative")
+    if values["surprise_scale"] <= 0.0:
+        raise ValueError("surprise_scale must be positive")
+    if values["uncertainty_scale"] <= 0.0:
+        raise ValueError("uncertainty_scale must be positive")
+    if values["dynamic_m"] and values["rho"] > 0.0:
+        raise ValueError("the first FA3-M implementation requires rho=0")
+    if values["dynamic_m"] and not 0.0 < values["m"] < 1.0:
+        raise ValueError("dynamic_m requires a baseline m strictly between 0 and 1")
+    if not values["dynamic_m"]:
+        values["m_phi"] = 0.0
+        values["m_beta_surprise"] = 0.0
+        values["surprise_center"] = 0.0
+        values["surprise_scale"] = 1.0
+        values["m_beta_uncertainty"] = 0.0
+        values["uncertainty_center"] = 0.0
+        values["uncertainty_scale"] = 1.0
     if model_id == "FA0":
         values["m"] = 0.0
         values["g"] = 0.0
@@ -1084,6 +1146,7 @@ def _sample_transition_candidates_dense(
     proposal_count: int,
     transition_unit: np.ndarray,
     replacement_count_override: np.ndarray | None = None,
+    m_by_parent: np.ndarray | None = None,
 ) -> tuple[
     np.ndarray,
     np.ndarray,
@@ -1141,14 +1204,39 @@ def _sample_transition_candidates_dense(
     newcomer_weights = np.repeat(parent_proposal, int(proposal_count), axis=0)
 
     if replacement_count_override is None:
-        count_probabilities = _binomial_probabilities(
-            int(capacity), parameters.m
-        )
-        count_cumulative = np.cumsum(count_probabilities)
-        count_cumulative[-1] = 1.0
-        replacement_count = np.searchsorted(
-            count_cumulative, ordinary_unit[:, 0], side="right"
-        ).astype(int)
+        if m_by_parent is None:
+            count_probabilities = _binomial_probabilities(
+                int(capacity), parameters.m
+            )
+            count_cumulative = np.cumsum(count_probabilities)
+            count_cumulative[-1] = 1.0
+            replacement_count = np.searchsorted(
+                count_cumulative, ordinary_unit[:, 0], side="right"
+            ).astype(int)
+        else:
+            parent_m = np.asarray(m_by_parent, dtype=float).reshape(-1)
+            if parent_m.size != n_particles or np.any(~np.isfinite(parent_m)) or np.any(
+                (parent_m < 0.0) | (parent_m > 1.0)
+            ):
+                raise ValueError("m_by_parent must contain one probability per particle")
+            candidate_m = np.repeat(parent_m, int(proposal_count))
+            counts = np.arange(int(capacity) + 1, dtype=float)
+            combinations = np.asarray(
+                [math.comb(int(capacity), int(value)) for value in counts],
+                dtype=float,
+            )
+            count_probabilities = (
+                combinations[None, :]
+                * candidate_m[:, None] ** counts[None, :]
+                * (1.0 - candidate_m[:, None])
+                ** (float(capacity) - counts[None, :])
+            )
+            count_probabilities /= count_probabilities.sum(axis=1, keepdims=True)
+            count_cumulative = np.cumsum(count_probabilities, axis=1)
+            count_cumulative[:, -1] = 1.0
+            replacement_count = np.sum(
+                ordinary_unit[:, 0, None] >= count_cumulative, axis=1
+            ).astype(int)
     else:
         replacement_count = np.asarray(
             replacement_count_override, dtype=int
@@ -1329,6 +1417,90 @@ def _feedback_update_dense(
     updated_omega = np.where(active, np.exp(ell), 0.0)
     updated_omega /= updated_omega.sum(axis=1, keepdims=True)
     return updated_omega, updated_fade, updated_static
+
+
+def _feedback_surprise_dense(
+    omega: np.ndarray,
+    q_trial: np.ndarray,
+    choice: int,
+    feedback: float,
+    epsilon: float,
+) -> np.ndarray:
+    """Return one pre-feedback surprise value per latent particle."""
+
+    compatible = int(choice) if float(feedback) >= 0.5 else 1 - int(choice)
+    likelihood = np.clip(q_trial[:, compatible], float(epsilon), 1.0)
+    probability = np.asarray(omega @ likelihood, dtype=float)
+    return -np.log(np.clip(probability, float(epsilon), 1.0))
+
+
+def _rule_uncertainty_dense(
+    omega: np.ndarray,
+    capacity: int,
+) -> np.ndarray:
+    """Return normalized active-rule entropy after feedback."""
+
+    if int(capacity) <= 1:
+        return np.zeros(omega.shape[0], dtype=float)
+    values = np.where(
+        omega > 0.0,
+        omega * np.log(np.clip(omega, EPS, None)),
+        0.0,
+    )
+    return -np.sum(values, axis=1) / math.log(int(capacity))
+
+
+def _validate_rt_parameters(
+    parameters: Model0804RTParameters,
+) -> Model0804RTParameters:
+    values = {
+        "intercept": float(parameters.intercept),
+        "choice_entropy": float(parameters.choice_entropy),
+        "replacement_fraction": float(parameters.replacement_fraction),
+        "newcomer_distance": float(parameters.newcomer_distance),
+        "sigma": float(parameters.sigma),
+        "degrees_of_freedom": float(parameters.degrees_of_freedom),
+    }
+    if not all(np.isfinite(value) for value in values.values()):
+        raise ValueError("all RT parameters must be finite")
+    if values["sigma"] <= 0.0:
+        raise ValueError("RT sigma must be positive")
+    if values["degrees_of_freedom"] <= 2.0:
+        raise ValueError("RT degrees_of_freedom must exceed 2")
+    return Model0804RTParameters(**values)
+
+
+def _student_t_log_density(
+    values: np.ndarray,
+    location: np.ndarray,
+    sigma: float,
+    degrees_of_freedom: float,
+) -> np.ndarray:
+    observed = np.asarray(values, dtype=float)
+    mean = np.asarray(location, dtype=float)
+    nu = float(degrees_of_freedom)
+    scale = float(sigma)
+    standardized = (observed - mean) / scale
+    normalizer = (
+        math.lgamma((nu + 1.0) / 2.0)
+        - math.lgamma(nu / 2.0)
+        - 0.5 * math.log(nu * math.pi)
+        - math.log(scale)
+    )
+    return normalizer - 0.5 * (nu + 1.0) * np.log1p(
+        np.square(standardized) / nu
+    )
+
+
+def _weighted_log_mean_density(
+    log_density: np.ndarray,
+    weights: np.ndarray,
+) -> float:
+    values = np.log(np.clip(np.asarray(weights, dtype=float), EPS, None)) + np.asarray(
+        log_density, dtype=float
+    )
+    maximum = float(np.max(values))
+    return maximum + math.log(float(np.sum(np.exp(values - maximum))))
 
 
 def _trial_masks(
@@ -1519,9 +1691,13 @@ def run_model0804_particle_filter(
     fa0_maximum_exact_initial_sets: int = 1_000_000,
     score_mask: np.ndarray | None = None,
     condition_on_choice_mask: np.ndarray | None = None,
+    log_rt_values: np.ndarray | None = None,
+    rt_parameters: Model0804RTParameters | None = None,
+    score_rt_mask: np.ndarray | None = None,
+    condition_on_rt_mask: np.ndarray | None = None,
     epsilon: float = EPS,
 ) -> Model0804Trace:
-    """Run the FA0--FA2 bootstrap filter in strict trial order."""
+    """Run FA0--FA3-M in strict order, optionally with a joint RT emission."""
 
     q, y, r, p0, decoded = _validate_inputs(
         q_values, choices, feedback, prior, kernels, capacity, model_id, parameters
@@ -1537,6 +1713,17 @@ def run_model0804_particle_filter(
     if proposal_count != float(transition_proposals_per_particle) or proposal_count < 1:
         raise ValueError("transition_proposals_per_particle must be a positive integer")
     count_stratified = bool(stratify_replacement_count)
+    dynamic_signal_active = bool(
+        decoded.dynamic_m
+        and (
+            decoded.m_beta_surprise > 0.0
+            or decoded.m_beta_uncertainty > 0.0
+        )
+    )
+    if count_stratified and dynamic_signal_active:
+        raise ValueError(
+            "replacement-count stratification is not available for dynamic m"
+        )
     if count_stratified:
         proposal_count = int(capacity) + 1
         proposal_weights = _binomial_probabilities(int(capacity), decoded.m)
@@ -1547,6 +1734,26 @@ def run_model0804_particle_filter(
     score, condition = _trial_masks(
         n_trials, score_mask, condition_on_choice_mask
     )
+    rt_requested = log_rt_values is not None or rt_parameters is not None
+    if rt_requested and (log_rt_values is None or rt_parameters is None):
+        raise ValueError("log_rt_values and rt_parameters must be supplied together")
+    if rt_requested:
+        if model_id == "FA0":
+            raise ValueError("joint RT emission is currently implemented for FA1--FA3-M")
+        if proposal_count != 1:
+            raise ValueError("joint RT emission requires one transition proposal per particle")
+        log_rt = np.asarray(log_rt_values, dtype=float).reshape(-1)
+        if log_rt.size != n_trials or not np.all(np.isfinite(log_rt)):
+            raise ValueError("log_rt_values must be finite with one value per trial")
+        decoded_rt = _validate_rt_parameters(rt_parameters)
+        rt_score, rt_condition = _trial_masks(
+            n_trials, score_rt_mask, condition_on_rt_mask
+        )
+    else:
+        log_rt = np.zeros(n_trials, dtype=float)
+        decoded_rt = None
+        rt_score = np.zeros(n_trials, dtype=bool)
+        rt_condition = np.zeros(n_trials, dtype=bool)
 
     if model_id == "FA0":
         return _run_fa0_vectorized(
@@ -1575,14 +1782,32 @@ def run_model0804_particle_filter(
     predictive_count = np.zeros(n_trials, dtype=float)
     predictive_removed = np.zeros(n_trials, dtype=float)
     predictive_distance = np.zeros(n_trials, dtype=float)
+    predictive_m = np.full(n_trials, float(decoded.m), dtype=float)
+    feedback_surprise = np.zeros(n_trials, dtype=float)
+    feedback_uncertainty = np.zeros(n_trials, dtype=float)
     pre_ess = np.zeros(n_trials, dtype=float)
     post_ess = np.zeros(n_trials, dtype=float)
     resampled = np.zeros(n_trials, dtype=bool)
     unique_ancestors = np.full(n_trials, n_particles, dtype=int)
     sync_error = np.zeros(n_trials, dtype=float)
+    rt_predictive_log_density = np.full(n_trials, np.nan, dtype=float)
     nll = 0.0
+    rt_conditional_nll = 0.0
+    baseline_m_logit = (
+        math.log(float(decoded.m) / (1.0 - float(decoded.m)))
+        if dynamic_signal_active
+        else 0.0
+    )
+    control_m_logit = np.full(n_particles, baseline_m_logit, dtype=float)
 
     for trial_index in range(n_trials):
+        if dynamic_signal_active:
+            particle_m = 1.0 / (
+                1.0 + np.exp(-np.clip(control_m_logit, -30.0, 30.0))
+            )
+        else:
+            particle_m = np.full(n_particles, float(decoded.m), dtype=float)
+        predictive_m[trial_index] = float(np.sum(weights * particle_m))
         particle_probabilities = np.zeros((n_particles, n_categories), dtype=float)
         particle_prior = np.zeros((n_particles, n_hypotheses), dtype=float)
         particle_active = np.zeros((n_particles, n_hypotheses), dtype=float)
@@ -1649,6 +1874,9 @@ def run_model0804_particle_filter(
                         np.tile(proposal_slots, n_particles)
                         if count_stratified
                         else None
+                    ),
+                    m_by_parent=(
+                        particle_m if dynamic_signal_active else None
                     ),
                 )
                 candidate_probabilities = _choice_probability_dense(
@@ -1774,13 +2002,66 @@ def run_model0804_particle_filter(
         observed_probability = float(probabilities[trial_index, y[trial_index]])
         if score[trial_index]:
             nll -= math.log(max(observed_probability, float(epsilon)))
+        particle_rt_log_density = None
+        if rt_requested:
+            particle_entropy = -np.sum(
+                particle_probabilities
+                * np.log(np.clip(particle_probabilities, float(epsilon), 1.0)),
+                axis=1,
+            )
+            particle_rt_location = (
+                float(decoded_rt.intercept)
+                + float(decoded_rt.choice_entropy) * particle_entropy
+                + float(decoded_rt.replacement_fraction)
+                * particle_count_values
+                / float(capacity)
+                + float(decoded_rt.newcomer_distance) * particle_distance
+            )
+            particle_rt_log_density = _student_t_log_density(
+                np.full(n_particles, log_rt[trial_index], dtype=float),
+                particle_rt_location,
+                float(decoded_rt.sigma),
+                float(decoded_rt.degrees_of_freedom),
+            )
+            joint_log_density = _weighted_log_mean_density(
+                np.log(
+                    np.clip(
+                        particle_probabilities[:, y[trial_index]],
+                        float(epsilon),
+                        1.0,
+                    )
+                )
+                + particle_rt_log_density,
+                weights,
+            )
+            conditional_rt_log_density = (
+                joint_log_density
+                - math.log(max(observed_probability, float(epsilon)))
+            )
+            rt_predictive_log_density[trial_index] = conditional_rt_log_density
+            if rt_score[trial_index]:
+                rt_conditional_nll -= conditional_rt_log_density
         if condition[trial_index]:
             weights *= np.clip(
                 particle_probabilities[:, y[trial_index]], float(epsilon), 1.0
             )
             weights = _normalize(weights, "choice-filtered particle weights")
+        if rt_condition[trial_index]:
+            assert particle_rt_log_density is not None
+            stabilized_rt_density = np.exp(
+                particle_rt_log_density - float(np.max(particle_rt_log_density))
+            )
+            weights *= stabilized_rt_density
+            weights = _normalize(weights, "RT-filtered particle weights")
         post_ess[trial_index] = effective_sample_size(weights)
 
+        particle_surprise = _feedback_surprise_dense(
+            omega,
+            q[trial_index],
+            int(y[trial_index]),
+            float(r[trial_index]),
+            float(epsilon),
+        )
         omega, fade, static = _feedback_update_dense(
             active,
             omega,
@@ -1792,6 +2073,27 @@ def run_model0804_particle_filter(
             decoded,
             float(epsilon),
         )
+        particle_uncertainty = _rule_uncertainty_dense(omega, int(capacity))
+        feedback_surprise[trial_index] = float(
+            np.sum(weights * particle_surprise)
+        )
+        feedback_uncertainty[trial_index] = float(
+            np.sum(weights * particle_uncertainty)
+        )
+        if dynamic_signal_active:
+            standardized_surprise = (
+                particle_surprise - float(decoded.surprise_center)
+            ) / float(decoded.surprise_scale)
+            standardized_uncertainty = (
+                particle_uncertainty - float(decoded.uncertainty_center)
+            ) / float(decoded.uncertainty_scale)
+            control_m_logit = (
+                baseline_m_logit
+                + float(decoded.m_phi)
+                * (control_m_logit - baseline_m_logit)
+                + float(decoded.m_beta_surprise) * standardized_surprise
+                + float(decoded.m_beta_uncertainty) * standardized_uncertainty
+            )
 
         if threshold > 0.0 and post_ess[trial_index] < threshold * float(n_particles):
             uniform = float(
@@ -1804,6 +2106,7 @@ def run_model0804_particle_filter(
             omega = omega[ancestors].copy()
             fade = fade[ancestors].copy()
             static = static[ancestors].copy()
+            control_m_logit = control_m_logit[ancestors].copy()
             weights.fill(1.0 / float(n_particles))
             resampled[trial_index] = True
             unique_ancestors[trial_index] = int(np.unique(ancestors).size)
@@ -1833,6 +2136,14 @@ def run_model0804_particle_filter(
             else "particle_qmc_multiple_proposal"
         ),
         replacement_count_stratified=count_stratified,
+        predictive_m=predictive_m,
+        feedback_surprise=feedback_surprise,
+        feedback_uncertainty=feedback_uncertainty,
+        joint_nll=float(nll + rt_conditional_nll) if rt_requested else None,
+        rt_conditional_nll=float(rt_conditional_nll) if rt_requested else None,
+        rt_predictive_log_density=(
+            rt_predictive_log_density if rt_requested else None
+        ),
     )
 
 

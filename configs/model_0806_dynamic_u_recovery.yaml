@@ -1,0 +1,51 @@
+analysis_id: model_0806_dynamic_u_recovery_20260806_v1
+dynamic_signal: uncertainty
+base_config: configs/model_0805_cond1_real_predictive.yaml
+
+design:
+  template_subjects: [101, 102, 103, 108, 109, 110, 111, 112]
+  trials_per_dataset: 256
+  capacity: 3
+  train_fraction: 0.75
+  particle_count: 512
+  filter_seed: 2026080641
+
+fixed_choice_parameters:
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+  g: 0.35
+  lapse: 0.02
+  rho: 0.0
+
+# Frozen from the first 64-trial block of the condition-1 FA2 development run.
+uncertainty_standardization:
+  center: 0.1332542767
+  scale: 0.0643078377
+  label: condition1_FA2_first_block_mean_sd
+
+generators:
+  static:
+    m: 0.15
+    phi: 0.0
+    beta_uncertainty: 0.0
+  dynamic:
+    m: 0.15
+    phi: 0.50
+    beta_uncertainty: 0.80
+
+candidate_support:
+  m: [0.05, 0.15, 0.30]
+  phi: [0.20, 0.50]
+  beta_uncertainty: [0.40, 0.80, 1.20]
+
+rt_emission:
+  intercept: -0.10
+  choice_entropy: 0.25
+  replacement_fraction: 0.35
+  newcomer_distance: 0.0
+  sigma: 0.15
+  degrees_of_freedom: 5.0
+
+equivalence:
+  maximum_delta_nll: 2.0

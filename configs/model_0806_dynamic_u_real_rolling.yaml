@@ -1,0 +1,40 @@
+analysis_id: model_0806_dynamic_u_real_rolling_20260806_v2_isolated
+dynamic_signal: uncertainty
+base_config: configs/model_0805_cond1_real_predictive.yaml
+model_0805_output: results/zhuran/model_0805_cond1/real_predictive_overnight_20260805_v1
+
+design:
+  capacity: 3
+  block_size: 64
+  minimum_training_trials: 64
+  particle_count: 512
+  filter_seeds: [2026080671, 2026080672]
+  bootstrap_replicates: 20000
+  bootstrap_seed: 2026080672
+
+nuisance_support:
+  memory_states:
+    - {id: bayes, gamma: 1.0, w0: 1.0}
+    - {id: fade_g040, gamma: 0.40, w0: 0.0}
+    - {id: dual_g070_w040, gamma: 0.70, w0: 0.40}
+  kappa: [0.50, 2.0]
+  lapse: [0.05, 0.20]
+
+fixed_parameters:
+  g: 0.35
+  rho: 0.0
+
+uncertainty_standardization:
+  center: 0.1332542767
+  scale: 0.0643078377
+  label: development_static_FA2_first_block_mean_sd
+
+candidate_support:
+  m: [0.05, 0.15, 0.30]
+  phi: [0.20, 0.50]
+  beta_uncertainty: [0.40, 0.80, 1.20]
+
+phases:
+  early_evaluation_blocks: [2]
+  middle_evaluation_blocks: [3, 4]
+  late_evaluation_block_minimum: 5

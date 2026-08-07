@@ -1,0 +1,33 @@
+analysis_id: model_0806_uncertainty_gate_20260806_v1
+rolling_config: configs/model_0806_dynamic_m_real_rolling.yaml
+rolling_output: results/zhuran/model_0806_cond1/dynamic_m_real_rolling_20260806_v1
+data_path: data/processed/Task2_processed.csv
+
+design:
+  block_size: 64
+  first_evaluation_block: 2
+  bootstrap_replicates: 20000
+  bootstrap_seed: 2026080641
+  primary_lag_policy: within_block
+  sensitivity_lag_policy: all_transitions
+
+choice_residual:
+  ridge_penalty: 0.10
+  ridge_penalty_sensitivity: [0.01, 1.0]
+  controls:
+    - subject_intercept
+    - static_FA2_correct_probability_offset
+    - log_trial
+    - stimulus_ambiguity
+    - previous_error
+  tested_increment: previous_feedback_rule_uncertainty
+
+learning_phases:
+  early: [2]
+  middle: [3, 4]
+  late_minimum_block: 5
+
+support_gate:
+  require_subject_bootstrap_95_interval_lower_above_zero: true
+  require_nonzero_median_coefficient: true
+  require_same_coefficient_direction_in_all_learning_phases: true

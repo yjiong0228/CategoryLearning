@@ -1,0 +1,51 @@
+analysis_id: model_0806_dynamic_m_recovery_20260806_v1
+base_config: configs/model_0805_cond1_real_predictive.yaml
+
+design:
+  template_subjects: [101, 102, 103, 108, 109, 110, 111, 112]
+  trials_per_dataset: 256
+  capacity: 3
+  train_fraction: 0.75
+  particle_count: 512
+  filter_seed: 2026080611
+
+fixed_choice_parameters:
+  gamma: 0.70
+  w0: 0.40
+  kappa: 2.0
+  g: 0.35
+  lapse: 0.02
+  rho: 0.0
+
+# Development calibration from the first eight condition-1 FA2 training prefixes.
+# These constants are frozen for every synthetic generator and fitted candidate.
+surprise_standardization:
+  center: 2.56
+  scale: 4.58
+  label: development_FA2_prefix_mean_sd
+
+generators:
+  static:
+    m: 0.15
+    phi: 0.0
+    beta_surprise: 0.0
+  dynamic:
+    m: 0.15
+    phi: 0.50
+    beta_surprise: 0.80
+
+candidate_support:
+  m: [0.05, 0.15, 0.30]
+  phi: [0.20, 0.50]
+  beta_surprise: [0.40, 0.80, 1.20]
+
+rt_emission:
+  intercept: -0.10
+  choice_entropy: 0.25
+  replacement_fraction: 0.35
+  newcomer_distance: 0.0
+  sigma: 0.15
+  degrees_of_freedom: 5.0
+
+equivalence:
+  maximum_delta_nll: 2.0

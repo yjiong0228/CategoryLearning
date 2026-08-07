@@ -1,0 +1,41 @@
+analysis_id: model_0806_targeted_diagnostics_20260806_v1
+rolling_config: configs/model_0806_dynamic_m_real_rolling.yaml
+rolling_output: results/zhuran/model_0806_cond1/dynamic_m_real_rolling_20260806_v1
+data_path: data/processed/Task2_processed.csv
+
+design:
+  block_size: 64
+  first_evaluation_block: 2
+  bootstrap_replicates: 20000
+  bootstrap_seed: 2026080631
+
+choice_residual:
+  ridge_penalty: 0.10
+  primary_lag_policy: within_block
+  controls:
+    - subject_intercept
+    - static_FA2_correct_probability_offset
+    - log_trial
+    - stimulus_ambiguity
+    - previous_error
+  tested_increment: previous_feedback_surprise
+
+rt:
+  student_degrees_of_freedom: 5.0
+  ridge_penalty: 0.0001
+  qc_mad_threshold: 4.0
+  minimum_scale: 0.02
+  minimum_predictor_train_sd: 0.01
+  stable_fold_minimum_subjects: 5
+  controls:
+    - subject_intercept
+    - log_trial
+    - log_block_position
+    - stimulus_ambiguity
+    - previous_error
+    - previous_log_rt
+    - choice_entropy
+  tested_increment: predictive_replacement_fraction
+  primary_family: dynamic
+  negative_control_family: static
+  sensitivity_practice_model: subject_slopes
