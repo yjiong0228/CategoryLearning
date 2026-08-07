@@ -5,6 +5,7 @@
 
 data/processed/oral_hypo_hits.pkl
 results/
+reports/
 
 # *.csv
 *data/不用
