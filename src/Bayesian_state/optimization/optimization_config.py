@@ -29,6 +29,17 @@ DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = SIMULATION_RESULTS_DIR
 
 
+def resolve_simulation_repeats(cfg: Mapping[str, Any]) -> int:
+    """Validate the repeated-run budget shared by simulation and optimizers."""
+
+    if "simulation_repeats" not in cfg:
+        raise ValueError("Config must include simulation_repeats.")
+    repeats = int(cfg["simulation_repeats"])
+    if repeats <= 0:
+        raise ValueError(f"simulation_repeats must be positive, got {repeats}")
+    return repeats
+
+
 def load_yaml(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}

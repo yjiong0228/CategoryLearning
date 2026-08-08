@@ -16,12 +16,12 @@ from scripts.run_cond1_v14_pilot import CORE6, enable_v14_state  # noqa: E402
 
 SOURCE = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition_strategies"
+    / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
     / "hypo_transition_profile_v13_candidates.json"
 )
 TARGET = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition_strategies"
+    / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
     / "hypo_transition_profile_v14_candidates.json"
 )
 GAINS = (0.20, 0.35, 0.50)
@@ -82,7 +82,7 @@ def main() -> None:
         "design": {
             "controller_families": 6,
             "state_settings_per_family": 4,
-            "inner_policy_profiles": [
+            "inner_strategy_states": [
                 "conservative",
                 "stable",
                 "aggressive",

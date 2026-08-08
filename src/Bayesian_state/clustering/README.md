@@ -3,6 +3,13 @@
 This folder provides clustering analysis for run-level accuracy trajectories cached in simulation result files (`raw_runs_ref`).
 Clustering is done **within each subject** (`subject_id`) independently.
 
+This is a post-hoc analysis layer. Cluster labels must not be fed back into hyperparameter selection unless a separate, prospectively specified analysis defines that use.
+
+## Files
+
+- `run_fft_clustering.py`: CLI, stream loading, FFT features, clustering, PCA embedding, figures, and output tables.
+- `__init__.py`: package marker.
+
 ## Input
 
 - `subjects/subject_*.json` under a result directory (for example `results/state-based-simulation/pmh/cond1/subjects`)

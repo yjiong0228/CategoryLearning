@@ -3864,7 +3864,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--candidates-json",
         type=Path,
         default=Path(
-            "src/Bayesian_state/problems/modules/hypo_transition_strategies/"
+            "src/Bayesian_state/problems/modules/hypo_transition/candidates/"
             "hypo_transition_strategy_candidates.json"
         ),
         help="Strategy candidate JSON used to recover candidate ids",

@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..optimization.optimizer_common import inject_module_seed_from_trajectory, stable_seed
+from ..utils.seeding import inject_module_seed_from_trajectory, stable_seed
 
 
 @dataclass

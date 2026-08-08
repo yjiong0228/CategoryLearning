@@ -47,7 +47,7 @@ engine_config:
         prior_beta_scale: 3.0
         beta_update_mode: inferred_correct_category
     hypo_transitions_mod:
-      class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
+      class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_discrete.DynamicDiscreteHypothesisTransitionModule
       kwargs: {}
     likelihood_mod:
       class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
@@ -86,7 +86,7 @@ subject_overrides:
             init_num: 5
             init_pool: label_permuted
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -96,7 +96,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 0.8
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -161,7 +161,7 @@ subject_overrides:
         init_num: 5
         init_pool: label_permuted
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -171,7 +171,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 0.8
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -239,7 +239,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -249,7 +249,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 0.85
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -311,7 +311,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -321,7 +321,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 0.85
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -387,7 +387,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -397,7 +397,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 1.1
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -492,7 +492,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -502,7 +502,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 1.1
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -601,7 +601,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -611,7 +611,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 1.1
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -695,7 +695,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -705,7 +705,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 1.1
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -793,7 +793,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -803,7 +803,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 0.85
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -865,7 +865,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -875,7 +875,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 0.85
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -941,7 +941,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -951,7 +951,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 1.1
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -1036,7 +1036,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -1046,7 +1046,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 1.1
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -1135,7 +1135,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -1145,7 +1145,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 0.85
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -1208,7 +1208,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -1218,7 +1218,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 0.85
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:
@@ -1285,7 +1285,7 @@ subject_overrides:
           kwargs:
             init_num: 5
             max_active_hypotheses: 5
-            strategy_controller:
+            state_controller:
               method: feedback_gated_softmax
               features:
                 recent_accuracy_window: 8
@@ -1295,7 +1295,7 @@ subject_overrides:
                 trial_progress_scale: 160
               activation:
                 temperature: 1.1
-              profiles:
+              states:
               - id: conservative
                 policy_method: conservative
                 activation:
@@ -1390,7 +1390,7 @@ subject_overrides:
       engine.modules.hypo_transitions_mod.kwargs:
         init_num: 5
         max_active_hypotheses: 5
-        strategy_controller:
+        state_controller:
           method: feedback_gated_softmax
           features:
             recent_accuracy_window: 8
@@ -1400,7 +1400,7 @@ subject_overrides:
             trial_progress_scale: 160
           activation:
             temperature: 1.1
-          profiles:
+          states:
           - id: conservative
             policy_method: conservative
             activation:

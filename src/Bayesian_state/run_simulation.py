@@ -19,6 +19,7 @@ from src.Bayesian_state.optimization.optimization_config import (
     resolve_loss_delta,
     resolve_loss_metric,
     resolve_prediction_modes,
+    resolve_simulation_repeats,
     resolve_subjects,
     resolve_window_size,
     save_json,
@@ -43,9 +44,14 @@ DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.modules.memory_mod.kwargs.w0",
     "engine.modules.memory_mod.kwargs.feedback_gain",
     "engine.modules.hypo_transitions_mod.kwargs.strategies",
-    "engine.modules.hypo_transitions_mod.kwargs.strategy_controller",
+    "engine.modules.hypo_transitions_mod.kwargs.state_controller",
     "engine.modules.hypo_transitions_mod.kwargs.post_to_prior",
     "engine.modules.hypo_transitions_mod.kwargs.capacity",
+    "engine.modules.hypo_transitions_mod.kwargs.m",
+    "engine.modules.hypo_transitions_mod.kwargs.g",
+    "engine.modules.hypo_transitions_mod.kwargs.rate_controller",
+    "engine.modules.hypo_transitions_mod.kwargs.range_controller",
+    "engine.modules.hypo_transitions_mod.kwargs.tau_local",
     "engine.modules.hypo_transitions_mod.kwargs.theta",
     "engine.modules.hypo_transitions_mod.kwargs.max_active_hypotheses",
     "engine.modules.hypo_transitions_mod.kwargs.init_num",
@@ -93,15 +99,6 @@ DEFAULT_FIXED_HYPERPARAM_PATHS = (
     "engine.choice_readout.kwargs.post_error_switch_delta",
     "engine.choice_readout.kwargs.low_confidence_switch_gain",
 )
-
-
-def resolve_simulation_repeats(cfg: Mapping[str, Any]) -> int:
-    if "simulation_repeats" not in cfg:
-        raise ValueError("Config must include simulation_repeats.")
-    repeats = int(cfg["simulation_repeats"])
-    if repeats <= 0:
-        raise ValueError(f"simulation_repeats must be positive, got {repeats}")
-    return repeats
 
 
 def resolve_hyper_base_seed(cfg: Mapping[str, Any]) -> int:

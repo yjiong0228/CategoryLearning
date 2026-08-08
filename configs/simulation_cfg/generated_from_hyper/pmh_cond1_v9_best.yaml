@@ -32,7 +32,7 @@ engine_config:
         use_prior_scaling: true
         prior_beta_scale: 10.0
     hypo_transitions_mod:
-      class: src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule
+      class: src.Bayesian_state.problems.modules.hypo_transition.static.StaticHypothesisTransitionModule
       kwargs:
         strategies:
         - label: retain_random

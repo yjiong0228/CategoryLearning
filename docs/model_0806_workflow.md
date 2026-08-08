@@ -40,8 +40,8 @@
 - 固定参数仿真：`configs/simulation_cfg/pmh_cond1_simulation_0806.yaml`
 - Hyper-CD：`configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml`
 - 新机制模块：
-  `src/Bayesian_state.problems.modules.finite_workspace_transition.AdaptiveFiniteWorkspaceTransitionModule`
-- 数值积分入口：`src.Bayesian_state.optimization.particle_filter.run_state_model_particle_filter`
+  `src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule`
+- 数值积分入口：`src.Bayesian_state.inference_engine.backends.particle_filter.run_state_model_particle_filter`
 - 统一评价入口：`src.Bayesian_state.optimization.optimizer_common.evaluate_state_model_run`
 
 运行命令：
@@ -65,5 +65,9 @@ active-set 路径。每个 simulation repeat 只是独立的 filter seed，用�
 `scripts/run_model_0806_*.py` 只保留为恢复实验、历史结果复现和数值 oracle。它们不再是
 真实数据拟合的正式入口，也不应继续扩展新的 transition、评价或超参数搜索逻辑。
 
-联合 surprise+uncertainty、静态 FA2 和单信号 FA3-M 的区别现在全部由同一个 transition
-module 的 `rate_controller` 配置表达；无需新增模型脚本。
+联合 surprise+uncertainty 和单信号 FA3-M 由 continuous transition 的
+`rate_controller` 表达；可选 FA3-MG 用 `range_controller` 令 `g_t` 随上一试次信号变化。
+Hyper-CD 把 transition class 与两组 controller 绑定成同一个机制坐标：全零 controller 的
+静态 FA2 使用 `StaticWorkspaceHypothesisTransitionModule`，其余候选使用
+`DynamicContinuousHypothesisTransitionModule`。因此静态/动态的认知解释不会依赖运行后再
+猜测参数是否恰好为零。

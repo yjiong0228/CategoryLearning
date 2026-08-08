@@ -35,19 +35,19 @@ from scripts.run_cond1_mechanism_screen import (  # noqa: E402
     _paired_signflip_p,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.active_set.mechanism_variants import (  # noqa: E402
+from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.active_set.particle_filter import (  # noqa: E402
-    run_active_set_particle_filter,
+from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+    run_state_model_particle_filter,
 )
 from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.utils.seeding import stable_seed  # noqa: E402
 from src.Bayesian_state.model_evaluation.oral_model_alignment import (  # noqa: E402
     OralModelAlignmentMixin,
     Oral_center_mapping,
@@ -158,15 +158,15 @@ def _run_candidate_filter(
             "particle_count": int(args.particle_count),
         }
     )
-    result = run_active_set_particle_filter(
+    result = run_state_model_particle_filter(
         engine_config=apply_candidate(base_engine, candidate),
         subject_id=subject_id,
         stimulus=frame[list(FEATURE_COLUMNS)].to_numpy(dtype=float),
         choices=frame["choice"].to_numpy(dtype=int),
         feedback=frame["feedback"].to_numpy(dtype=float),
         particle_count=int(args.particle_count),
-        rho=float(args.rho),
-        epsilon=float(args.epsilon),
+        choice_readout_power=float(args.rho),
+        output_lapse=float(args.epsilon),
         filter_seed=int(filter_seed),
         processed_data_dir=dataset_paths["processed_dir"],
         dataset_paths=dataset_paths,

@@ -38,6 +38,22 @@ cd:
   min_delta: 0.0005
   parallel_budget: 8
 
+# Reusable YAML anchors for the joint finite-workspace mechanism coordinate.
+# The static/dynamic class is bound to the controller values below so an
+# all-zero controller is never mislabeled as continuous dynamics.
+transition_controller_library:
+  rate_static: &rate_static {m_phi: 0.0, m_beta_surprise: 0.0, m_beta_uncertainty: 0.0}
+  rate_s04: &rate_s04 {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+  rate_s08: &rate_s08 {m_phi: 0.20, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+  rate_s08_persist: &rate_s08_persist {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+  rate_u04: &rate_u04 {m_phi: 0.20, m_beta_surprise: 0.0, m_beta_uncertainty: 0.40}
+  rate_u08: &rate_u08 {m_phi: 0.50, m_beta_surprise: 0.0, m_beta_uncertainty: 0.80}
+  rate_joint: &rate_joint {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.80}
+  range_static: &range_static {g_phi: 0.0, g_beta_surprise: 0.0, g_beta_uncertainty: 0.0}
+  range_s04: &range_s04 {g_phi: 0.20, g_beta_surprise: 0.40, g_beta_uncertainty: 0.0}
+  range_u04: &range_u04 {g_phi: 0.20, g_beta_surprise: 0.0, g_beta_uncertainty: 0.40}
+  range_joint: &range_joint {g_phi: 0.20, g_beta_surprise: 0.40, g_beta_uncertainty: 0.40}
+
 hyperparam_space:
   engine.modules.memory_mod.kwargs:
     values:
@@ -51,18 +67,39 @@ hyperparam_space:
   engine.modules.hypo_transitions_mod.kwargs.g:
     values: [0.0, 0.35, 0.70]
 
-  # Controller candidates cover static FA2, surprise-only FA3-M-S,
-  # uncertainty-only FA3-M-U, and a prespecified joint controller.  Supplying
-  # the controller as one coordinate prevents incoherent coefficient mixtures.
-  engine.modules.hypo_transitions_mod.kwargs.rate_controller:
+  # Joint mode/controller candidates preserve the original 7 x 4 support.
+  # The single all-zero point uses the subject-fixed static implementation;
+  # every point with dynamic m_t or g_t uses the continuous-control class.
+  __profile_candidate__:
     values:
-      - {m_phi: 0.0, m_beta_surprise: 0.0, m_beta_uncertainty: 0.0}
-      - {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
-      - {m_phi: 0.20, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
-      - {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
-      - {m_phi: 0.20, m_beta_surprise: 0.0, m_beta_uncertainty: 0.40}
-      - {m_phi: 0.50, m_beta_surprise: 0.0, m_beta_uncertainty: 0.80}
-      - {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.80}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.static.StaticWorkspaceHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
 
   engine.choice_readout.kwargs:
     values:

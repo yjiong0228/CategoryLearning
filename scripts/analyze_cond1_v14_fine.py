@@ -25,7 +25,7 @@ GENERATED_CONFIG = (
 )
 CANDIDATES = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition_strategies/"
+    / "src/Bayesian_state/problems/modules/hypo_transition/candidates/"
     "hypo_transition_profile_v14_candidates.json"
 )
 CONFIRM_ROWS = ROOT / "results/cond1_v14/confirm_gain_readout/pilot_rows.csv"
@@ -64,7 +64,7 @@ def identify_candidate(
     params: dict[str, Any], candidates: list[dict[str, Any]]
 ) -> dict[str, Any]:
     transition = params[TRANSITION_PATH]
-    controller = transition.get("strategy_controller")
+    controller = transition.get("state_controller")
     gain = float(transition.get("latent_volatility_error_gain", 0.0))
     for candidate in candidates:
         candidate_transition = candidate["hypo_transitions_kwargs"]
@@ -72,7 +72,7 @@ def identify_candidate(
             candidate_transition.get("latent_volatility_error_gain", 0.0)
         )
         if (
-            controller == candidate_transition.get("strategy_controller")
+            controller == candidate_transition.get("state_controller")
             and math.isclose(gain, candidate_gain, abs_tol=1e-12)
         ):
             return candidate

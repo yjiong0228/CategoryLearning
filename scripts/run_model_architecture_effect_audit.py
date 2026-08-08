@@ -79,7 +79,7 @@ def frozen_params(config: Mapping[str, Any], subject_id: int) -> dict[str, Any]:
 
 def has_choice_informed_policy(params: Mapping[str, Any]) -> bool:
     transition = params[TRANSITION_PATH]
-    profiles = (transition.get("strategy_controller") or {}).get("profiles", [])
+    profiles = (transition.get("state_controller") or {}).get("states", [])
     return any(
         profile.get("survivor_score") == "posterior_choice"
         or profile.get("newcomer_score") in {"recent_choice", "recent_error_choice"}
@@ -90,8 +90,8 @@ def has_choice_informed_policy(params: Mapping[str, Any]) -> bool:
 def remove_choice_evidence(params: Mapping[str, Any]) -> dict[str, Any]:
     out = deepcopy(dict(params))
     profiles = (
-        out[TRANSITION_PATH].get("strategy_controller") or {}
-    ).get("profiles", [])
+        out[TRANSITION_PATH].get("state_controller") or {}
+    ).get("states", [])
     for profile in profiles:
         if profile.get("survivor_score") == "posterior_choice":
             profile["survivor_score"] = "posterior"
@@ -105,15 +105,15 @@ def remove_controller_profile(
     profile_id: str,
 ) -> dict[str, Any]:
     out = deepcopy(dict(params))
-    controller = out[TRANSITION_PATH].get("strategy_controller") or {}
-    profiles = list(controller.get("profiles", []))
+    controller = out[TRANSITION_PATH].get("state_controller") or {}
+    profiles = list(controller.get("states", []))
     kept = [profile for profile in profiles if profile.get("id") != profile_id]
     if len(kept) != len(profiles) - 1:
         raise ValueError(
             f"Expected exactly one controller profile {profile_id!r}, "
             f"found {len(profiles) - len(kept)}"
         )
-    controller["profiles"] = kept
+    controller["states"] = kept
     return out
 
 

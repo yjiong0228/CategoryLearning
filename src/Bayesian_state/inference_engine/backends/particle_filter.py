@@ -1,11 +1,10 @@
-"""Online particle filtering for engine-configured active-set models.
+"""Online particle filtering for engine-configured ``StateModel`` objects.
 
 The filter is a numerical integration layer and does not add cognitive state.
 Each particle is one possible latent trajectory of perception noise,
 active-set initialization, transition events, tie breaking, and newcomer
 sampling.  The public model-agnostic entry point lives in
-``Bayesian_state.optimization.particle_filter``; this module keeps the original
-active-set API compatible with existing analyses.
+``Bayesian_state.inference_engine.backends.particle_filter``.
 """
 
 from __future__ import annotations
@@ -17,33 +16,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..optimization.optimizer_common import stable_seed
-
-
-@dataclass
-class ActiveSetParticleFilterResult:
-    marginal_probabilities: np.ndarray
-    marginal_hypothesis_prior: np.ndarray
-    marginal_active_probability: np.ndarray
-    pre_choice_ess: np.ndarray
-    post_choice_ess: np.ndarray
-    resampled: np.ndarray
-    resampling_unique_ancestors: np.ndarray
-    filtered_swap_probability: np.ndarray
-    filtered_swap_event_probability: np.ndarray
-    filtered_transition_rate: np.ndarray
-    filtered_replacement_count: np.ndarray
-    filtered_replacement_fraction: np.ndarray
-    filtered_removed_mass: np.ndarray
-    filtered_newcomer_distance: np.ndarray
-    filtered_feedback_surprise: np.ndarray
-    filtered_feedback_uncertainty: np.ndarray
-    final_weights: np.ndarray
-    particle_swap_counts: np.ndarray
-    resampling_log: list[dict[str, Any]]
-    particle_count: int
-    resample_threshold_fraction: float
-    filter_seed: int
+from ..results import InferenceResult, ParticleFilterResult
+from ...utils.seeding import stable_seed
 
 
 @dataclass
@@ -199,41 +173,19 @@ def _choice_probability(
     rho: float,
     epsilon: float,
 ) -> np.ndarray:
-    engine = model.engine
-    n_categories = int(model.n_cats)
-    prior = np.asarray(engine.prior, dtype=float)
-    beta = np.asarray(engine.beta, dtype=float)
-    active = np.flatnonzero(
-        np.asarray(engine.hypotheses_mask, dtype=float) > 0.0
-    )
-    if active.size == 0:
-        raise RuntimeError("Particle has an empty active hypothesis set.")
-    rho_value = float(rho)
-    if not np.isfinite(rho_value) or rho_value <= 0.0:
-        raise ValueError("rho must be finite and positive.")
-    log_readout = rho_value * np.log(
-        np.clip(prior[active], 1e-300, None)
-    )
-    log_readout -= float(np.max(log_readout))
-    readout = _normalize(np.exp(log_readout))
-    cognitive = np.zeros(n_categories, dtype=float)
-    for weight, hypothesis in zip(readout, active):
-        raw = model.partition_model.get_category_probabilities(
-            hypo=int(hypothesis),
-            data=([perceived_stimulus], [1], [1.0]),
-            beta=float(beta[hypothesis]),
-            distance_mode=getattr(engine, "distance_mode", "prototype"),
-        )
-        probability = _normalize(np.asarray(raw[:, 0], dtype=float))
-        cognitive += float(weight) * probability
-    cognitive = _normalize(cognitive)
-    return _normalize(
-        (1.0 - float(epsilon)) * cognitive
-        + float(epsilon) / float(n_categories)
+    """Compatibility wrapper around the shared choice readout."""
+
+    from ...problems.modules.readout import read_choice_probabilities_from_model
+
+    return read_choice_probabilities_from_model(
+        model,
+        perceived_stimulus,
+        power=float(rho),
+        lapse=float(epsilon),
     )
 
 
-def run_active_set_particle_filter(
+def run_state_model_particle_filter(
     *,
     engine_config: Mapping[str, Any],
     subject_id: int,
@@ -241,19 +193,19 @@ def run_active_set_particle_filter(
     choices: Sequence[int] | np.ndarray,
     feedback: Sequence[float] | np.ndarray,
     particle_count: int,
-    rho: float,
-    epsilon: float = 0.0,
-    epsilon_schedule: Sequence[float] | np.ndarray | None = None,
+    choice_readout_power: float,
+    output_lapse: float = 0.0,
+    output_lapse_schedule: Sequence[float] | np.ndarray | None = None,
     learning_update_probability: float = 1.0,
     filter_seed: int = 20260730,
     resample_threshold_fraction: float = 0.5,
     valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
-) -> ActiveSetParticleFilterResult:
+) -> InferenceResult:
     """Filter one observed condition-1 trajectory using bootstrap particles."""
 
-    from ..problems import StateModel
+    from ...problems import StateModel
 
     x = np.asarray(stimulus, dtype=float)
     observed_choices = np.asarray(choices, dtype=int).reshape(-1)
@@ -272,30 +224,30 @@ def run_active_set_particle_filter(
     n_particles = int(particle_count)
     if n_particles < 2:
         raise ValueError("particle_count must be at least 2.")
-    rho_value = float(rho)
-    epsilon_value = float(epsilon)
+    rho_value = float(choice_readout_power)
+    epsilon_value = float(output_lapse)
     threshold_fraction = float(resample_threshold_fraction)
     update_probability = float(learning_update_probability)
     if not np.isfinite(rho_value) or rho_value <= 0.0:
-        raise ValueError("rho must be finite and positive.")
+        raise ValueError("choice_readout_power must be finite and positive.")
     if not np.isfinite(epsilon_value) or not 0.0 <= epsilon_value <= 1.0:
-        raise ValueError("epsilon must lie in [0, 1].")
-    if epsilon_schedule is None:
+        raise ValueError("output_lapse must lie in [0, 1].")
+    if output_lapse_schedule is None:
         epsilon_by_trial = np.full(n_trials, epsilon_value, dtype=float)
     else:
         epsilon_by_trial = np.asarray(
-            epsilon_schedule, dtype=float
+            output_lapse_schedule, dtype=float
         ).reshape(-1)
         if epsilon_by_trial.size != n_trials:
             raise ValueError(
-                "epsilon_schedule length must match the number of trials."
+                "output_lapse_schedule length must match the number of trials."
             )
         if (
             not np.all(np.isfinite(epsilon_by_trial))
             or np.any(epsilon_by_trial < 0.0)
             or np.any(epsilon_by_trial > 1.0)
         ):
-            raise ValueError("epsilon_schedule values must lie in [0, 1].")
+            raise ValueError("output_lapse_schedule values must lie in [0, 1].")
     if (
         not np.isfinite(threshold_fraction)
         or not 0.0 < threshold_fraction <= 1.0
@@ -347,6 +299,7 @@ def run_active_set_particle_filter(
     filtered_swap_probability = np.zeros(n_trials, dtype=float)
     filtered_swap_event_probability = np.zeros(n_trials, dtype=float)
     filtered_transition_rate = np.zeros(n_trials, dtype=float)
+    filtered_search_range = np.zeros(n_trials, dtype=float)
     filtered_replacement_count = np.zeros(n_trials, dtype=float)
     filtered_replacement_fraction = np.zeros(n_trials, dtype=float)
     filtered_removed_mass = np.zeros(n_trials, dtype=float)
@@ -362,6 +315,7 @@ def run_active_set_particle_filter(
         swap_probabilities = np.zeros(n_particles, dtype=float)
         swap_events = np.zeros(n_particles, dtype=float)
         transition_rates = np.zeros(n_particles, dtype=float)
+        search_ranges = np.zeros(n_particles, dtype=float)
         replacement_counts = np.zeros(n_particles, dtype=float)
         replacement_fractions = np.zeros(n_particles, dtype=float)
         removed_masses = np.zeros(n_particles, dtype=float)
@@ -395,6 +349,9 @@ def run_active_set_particle_filter(
             swap_events[particle_index] = float(bool(event["swap_event"]))
             transition_rates[particle_index] = float(
                 event.get("predictive_m", event["swap_probability"])
+            )
+            search_ranges[particle_index] = float(
+                event.get("predictive_g", event.get("g", 0.0))
             )
             replacement_counts[particle_index] = float(
                 event.get("replacement_count", bool(event["swap_event"]))
@@ -458,6 +415,9 @@ def run_active_set_particle_filter(
         )
         filtered_transition_rate[trial_index] = float(
             np.sum(weights * transition_rates)
+        )
+        filtered_search_range[trial_index] = float(
+            np.sum(weights * search_ranges)
         )
         filtered_replacement_count[trial_index] = float(
             np.sum(weights * replacement_counts)
@@ -543,7 +503,7 @@ def run_active_set_particle_filter(
                 }
             )
 
-    return ActiveSetParticleFilterResult(
+    return ParticleFilterResult(
         marginal_probabilities=marginal,
         marginal_hypothesis_prior=marginal_hypothesis_prior,
         marginal_active_probability=marginal_active_probability,
@@ -554,6 +514,7 @@ def run_active_set_particle_filter(
         filtered_swap_probability=filtered_swap_probability,
         filtered_swap_event_probability=filtered_swap_event_probability,
         filtered_transition_rate=filtered_transition_rate,
+        filtered_search_range=filtered_search_range,
         filtered_replacement_count=filtered_replacement_count,
         filtered_replacement_fraction=filtered_replacement_fraction,
         filtered_removed_mass=filtered_removed_mass,
@@ -570,8 +531,8 @@ def run_active_set_particle_filter(
 
 
 __all__ = [
-    "ActiveSetParticleFilterResult",
+    "ParticleFilterResult",
     "effective_sample_size",
-    "run_active_set_particle_filter",
+    "run_state_model_particle_filter",
     "systematic_resample",
 ]

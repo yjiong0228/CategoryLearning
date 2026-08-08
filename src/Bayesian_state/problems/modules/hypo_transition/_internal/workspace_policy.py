@@ -1,10 +1,7 @@
-"""Fixed-capacity hypothesis transitions with a trial-varying replacement rate.
+"""Private bounded-workspace policy implementation used by public H modes.
 
-This module is the engine-native implementation of the finite-workspace
-transition used by model 0806.  It deliberately owns only hypothesis-set
-transition state.  Perception, likelihood, memory, beta evolution, choice
-readout, and numerical integration remain responsibilities of the existing
-StateModel framework.
+The runtime stores workspace geometry and controller state.  The mixin below
+implements the same public two-step contract used by every H mode.
 """
 
 from __future__ import annotations
@@ -15,17 +12,26 @@ from typing import Any, Dict, Mapping, Sequence
 
 import numpy as np
 
-from .base_module import BaseModule
+from ...base_module import BaseModule
+from ..process import (
+    HypothesisSelection,
+    TransitionContext,
+    TwoStepHypothesisTransitionMixin,
+)
 
 
-class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
-    """Maintain a fixed-capacity workspace with adaptive binomial replacement.
+class BoundedWorkspacePolicyRuntime(BaseModule):
+    """Maintain a bounded workspace with adaptive binomial replacement.
 
     Before trial ``t > 0`` the module computes feedback surprise and normalized
-    rule uncertainty from trial ``t - 1`` and updates
+    rule uncertainty from trial ``t - 1`` and can update both replacement rate
+    ``m_t`` and global-search range ``g_t``:
 
     ``logit(m_t) = logit(m_0) + phi * (logit(m_{t-1}) - logit(m_0))
                     + beta_s * z(surprise) + beta_u * z(uncertainty)``.
+
+    ``g_t`` follows the same mean-reverting form with its own ``g_phi`` and
+    ``g_beta_*`` coefficients.  The range controller is disabled by default.
 
     It then samples ``K_t ~ Binomial(capacity, m_t)``, drops ``K_t`` active
     hypotheses with weights proportional to ``1 - posterior``, and samples the
@@ -39,7 +45,7 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         self.total_hypo = int(getattr(engine, "set_size", 0))
         if self.total_hypo <= 0:
             raise ValueError(
-                "AdaptiveFiniteWorkspaceTransitionModule requires engine.set_size > 0."
+                "bounded-workspace transition requires engine.set_size > 0."
             )
 
         capacity_raw = kwargs.get(
@@ -96,7 +102,51 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         if self.dynamic_rate and not 0.0 < self.m < 1.0:
             raise ValueError("a dynamic replacement rate requires baseline m in (0, 1).")
 
-        self.g = self._validate_probability(kwargs.get("g", 0.35), "g")
+        range_controller = kwargs.get("range_controller", {}) or {}
+        if not isinstance(range_controller, Mapping):
+            raise ValueError("range_controller must be a mapping when provided.")
+
+        def range_setting(name: str, default: Any) -> Any:
+            return range_controller.get(name, kwargs.get(name, default))
+
+        self.g = self._validate_probability(range_setting("g", 0.35), "g")
+        self.g_phi = self._validate_open_unit(
+            range_setting("g_phi", range_controller.get("phi", 0.0)),
+            "g_phi",
+        )
+        self.g_beta_surprise = self._validate_nonnegative(
+            range_setting(
+                "g_beta_surprise", range_controller.get("beta_surprise", 0.0)
+            ),
+            "g_beta_surprise",
+        )
+        self.g_beta_uncertainty = self._validate_nonnegative(
+            range_setting(
+                "g_beta_uncertainty", range_controller.get("beta_uncertainty", 0.0)
+            ),
+            "g_beta_uncertainty",
+        )
+        self.g_surprise_center = self._validate_finite(
+            range_setting("g_surprise_center", self.surprise_center),
+            "g_surprise_center",
+        )
+        self.g_surprise_scale = self._validate_positive(
+            range_setting("g_surprise_scale", self.surprise_scale),
+            "g_surprise_scale",
+        )
+        self.g_uncertainty_center = self._validate_finite(
+            range_setting("g_uncertainty_center", self.uncertainty_center),
+            "g_uncertainty_center",
+        )
+        self.g_uncertainty_scale = self._validate_positive(
+            range_setting("g_uncertainty_scale", self.uncertainty_scale),
+            "g_uncertainty_scale",
+        )
+        self.dynamic_range = bool(
+            self.g_beta_surprise > 0.0 or self.g_beta_uncertainty > 0.0
+        )
+        if self.dynamic_range and not 0.0 < self.g < 1.0:
+            raise ValueError("a dynamic search range requires baseline g in (0, 1).")
         tau_local = kwargs.get("tau_local")
         self.tau_local = (
             None if tau_local is None else self._validate_positive(tau_local, "tau_local")
@@ -127,6 +177,9 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         self.baseline_logit = self._logit(self.m) if 0.0 < self.m < 1.0 else 0.0
         self.control_logit = float(self.baseline_logit)
         self.current_m = float(self.m)
+        self.g_baseline_logit = self._logit(self.g) if 0.0 < self.g < 1.0 else 0.0
+        self.g_control_logit = float(self.g_baseline_logit)
+        self.current_g = float(self.g)
         self.predictive_prior: np.ndarray | None = None
         self.feedback_surprise = float("nan")
         self.feedback_uncertainty = float("nan")
@@ -277,15 +330,21 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
             )
         return float(surprise), float(uncertainty)
 
-    def _update_transition_rate(self) -> tuple[float, float]:
+    def _update_transition_controls(self) -> tuple[float, float]:
         surprise, uncertainty = self._previous_feedback_signals()
         self.feedback_surprise = float(surprise)
         self.feedback_uncertainty = float(uncertainty)
-        if self.dynamic_rate and np.isfinite(surprise) and np.isfinite(uncertainty):
+        signals_available = bool(np.isfinite(surprise) and np.isfinite(uncertainty))
+        if signals_available:
             z_surprise = (surprise - self.surprise_center) / self.surprise_scale
             z_uncertainty = (
                 uncertainty - self.uncertainty_center
             ) / self.uncertainty_scale
+        else:
+            z_surprise = float("nan")
+            z_uncertainty = float("nan")
+
+        if self.dynamic_rate and signals_available:
             self.control_logit = (
                 self.baseline_logit
                 + self.m_phi * (self.control_logit - self.baseline_logit)
@@ -294,9 +353,24 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
             )
             self.current_m = self._expit(self.control_logit)
         else:
-            z_surprise = float("nan")
-            z_uncertainty = float("nan")
             self.current_m = float(self.m)
+
+        if self.dynamic_range and signals_available:
+            g_z_surprise = (
+                surprise - self.g_surprise_center
+            ) / self.g_surprise_scale
+            g_z_uncertainty = (
+                uncertainty - self.g_uncertainty_center
+            ) / self.g_uncertainty_scale
+            self.g_control_logit = (
+                self.g_baseline_logit
+                + self.g_phi * (self.g_control_logit - self.g_baseline_logit)
+                + self.g_beta_surprise * g_z_surprise
+                + self.g_beta_uncertainty * g_z_uncertainty
+            )
+            self.current_g = self._expit(self.g_control_logit)
+        else:
+            self.current_g = float(self.g)
         return float(z_surprise), float(z_uncertainty)
 
     def _ensure_geometry(self) -> None:
@@ -306,7 +380,7 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         similarity = getattr(partition, "similarity_matrix", None)
         if similarity is None:
             raise ValueError(
-                "adaptive finite-workspace transitions require partition.similarity_matrix."
+                "adaptive bounded-workspace transitions require partition.similarity_matrix."
             )
         similarity_array = np.asarray(similarity, dtype=float)
         expected = (self.total_hypo, self.total_hypo)
@@ -365,14 +439,14 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         global_weights = self._normalize(
             self.base_prior[inactive], "inactive global proposal"
         )
-        if self.g >= 1.0:
+        if self.current_g >= 1.0:
             return global_weights
         self._ensure_geometry()
         assert self._local_kernel is not None
         local_full = np.asarray(posterior @ self._local_kernel, dtype=float)
         local = self._normalize(local_full[inactive], "inactive local proposal")
         return self._normalize(
-            (1.0 - self.g) * local + self.g * global_weights,
+            (1.0 - self.current_g) * local + self.current_g * global_weights,
             "newcomer mixture",
         )
 
@@ -403,101 +477,6 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
             beta_mod.initialize_beta_for_hypotheses(newcomers, priors=None)
 
-    def process(self, **kwargs) -> None:
-        del kwargs
-        active_before = self.active.copy()
-        self.old_active = active_before.copy()
-        posterior = self._posterior_for_transition()
-
-        if self.trial_index == 0:
-            z_surprise = float("nan")
-            z_uncertainty = float("nan")
-            replacement_count = 0
-        else:
-            z_surprise, z_uncertainty = self._update_transition_rate()
-            replacement_count = int(
-                self.trial_rng.binomial(self.capacity, self.current_m)
-            )
-
-        dropped = np.empty(0, dtype=int)
-        newcomers = np.empty(0, dtype=int)
-        new_prior = posterior.copy()
-        if replacement_count > 0:
-            drop_weights = 1.0 - posterior[active_before] + self.epsilon
-            dropped = self._weighted_sample_without_replacement(
-                active_before, drop_weights, replacement_count
-            )
-            inactive = self.full_indices[~np.isin(self.full_indices, active_before)]
-            proposal = self._newcomer_proposal(posterior, inactive)
-            newcomers = self._weighted_sample_without_replacement(
-                inactive, proposal, replacement_count
-            )
-            for dropped_hypothesis, newcomer in zip(dropped, newcomers):
-                new_prior[int(newcomer)] = new_prior[int(dropped_hypothesis)]
-                new_prior[int(dropped_hypothesis)] = 0.0
-            survivors = active_before[~np.isin(active_before, dropped)]
-            self.active = np.sort(np.concatenate([survivors, newcomers]))
-        else:
-            self.active = active_before.copy()
-
-        if self.active.size != self.capacity or np.unique(self.active).size != self.capacity:
-            raise RuntimeError("adaptive replacement violated fixed workspace capacity.")
-        new_prior = self._normalize(new_prior, "post-transition prior")
-        if np.any(new_prior[self.full_indices[~np.isin(self.full_indices, self.active)]] > 0.0):
-            raise RuntimeError("post-transition prior has mass outside the active workspace.")
-
-        newcomer_distance = self._newcomer_distance(
-            posterior, active_before, newcomers
-        )
-        removed_mass = float(np.sum(posterior[dropped])) if dropped.size else 0.0
-        self.engine.prior = new_prior
-        self.predictive_prior = new_prior.copy()
-        self._apply_mask()
-        self._initialize_newcomer_beta(newcomers)
-
-        probability_any_replacement = 1.0 - (1.0 - self.current_m) ** self.capacity
-        log_item: Dict[str, Any] = {
-            "trial_index": int(self.trial_index),
-            "transition_method": "adaptive_binomial_replacement",
-            "m": float(self.m),
-            "predictive_m": float(self.current_m),
-            "control_logit": float(self.control_logit),
-            "feedback_surprise": float(self.feedback_surprise),
-            "feedback_uncertainty": float(self.feedback_uncertainty),
-            "standardized_surprise": float(z_surprise),
-            "standardized_uncertainty": float(z_uncertainty),
-            "replacement_count": int(replacement_count),
-            "replacement_fraction": float(replacement_count) / float(self.capacity),
-            "removed_mass": float(removed_mass),
-            "newcomer_distance": float(newcomer_distance),
-            "dropped_hypotheses": dropped.astype(int).tolist(),
-            "new_hypotheses": newcomers.astype(int).tolist(),
-            "active_before": active_before.astype(int).tolist(),
-            "active_after": self.active.astype(int).tolist(),
-            "active_total": int(self.active.size),
-            "prior_sum": float(np.sum(new_prior)),
-            # Compatibility fields consumed by the legacy active-set filter.
-            "swap_probability": float(probability_any_replacement),
-            "swap_event": bool(replacement_count > 0),
-            "strategies": [],
-        }
-        self.transition_log.append(log_item)
-        self.transition_rate_log.append(
-            {
-                key: log_item[key]
-                for key in (
-                    "trial_index",
-                    "predictive_m",
-                    "control_logit",
-                    "feedback_surprise",
-                    "feedback_uncertainty",
-                    "replacement_count",
-                    "replacement_fraction",
-                )
-            }
-        )
-        self.trial_index += 1
-
     def reseed_future(self, module_seed: int) -> None:
         self.module_seed = int(module_seed)
         self.trial_rng = np.random.default_rng(self.module_seed)
@@ -509,6 +488,8 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
             "trial_index": int(self.trial_index),
             "control_logit": float(self.control_logit),
             "current_m": float(self.current_m),
+            "g_control_logit": float(self.g_control_logit),
+            "current_g": float(self.current_g),
             "predictive_prior": (
                 None if self.predictive_prior is None else self.predictive_prior.copy()
             ),
@@ -523,6 +504,10 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         self.trial_index = int(state["trial_index"])
         self.control_logit = float(state["control_logit"])
         self.current_m = float(state["current_m"])
+        self.g_control_logit = float(
+            state.get("g_control_logit", self.g_baseline_logit)
+        )
+        self.current_g = float(state.get("current_g", self.g))
         predictive_prior = state.get("predictive_prior")
         self.predictive_prior = (
             None
@@ -543,4 +528,182 @@ class AdaptiveFiniteWorkspaceTransitionModule(BaseModule):
         self.transition_rate_log.clear()
 
 
-__all__ = ["AdaptiveFiniteWorkspaceTransitionModule"]
+class BoundedWorkspaceTransitionMixin(TwoStepHypothesisTransitionMixin):
+    """Two-step bounded-workspace lifecycle shared by public modes."""
+
+    dynamic_controls = False
+
+    def _transition_signals(self) -> Mapping[str, Any]:
+        return {
+            "m_previous": float(self.current_m),
+            "g_previous": float(self.current_g),
+            "feedback_surprise_previous": float(self.feedback_surprise),
+            "feedback_uncertainty_previous": float(self.feedback_uncertainty),
+        }
+
+    def select_hypotheses(
+        self,
+        context: TransitionContext,
+        **kwargs,
+    ) -> HypothesisSelection:
+        del kwargs
+        active_before = self.active.copy()
+        posterior = self._posterior_for_transition()
+
+        if self.trial_index == 0:
+            z_surprise = float("nan")
+            z_uncertainty = float("nan")
+            replacement_count = 0
+        else:
+            if self.dynamic_controls:
+                z_surprise, z_uncertainty = self._update_transition_controls()
+            else:
+                z_surprise = float("nan")
+                z_uncertainty = float("nan")
+            replacement_count = int(
+                self.trial_rng.binomial(self.capacity, self.current_m)
+            )
+
+        dropped = np.empty(0, dtype=int)
+        newcomers = np.empty(0, dtype=int)
+        active_after = active_before.copy()
+        if replacement_count > 0:
+            drop_weights = 1.0 - posterior[active_before] + self.epsilon
+            dropped = self._weighted_sample_without_replacement(
+                active_before,
+                drop_weights,
+                replacement_count,
+            )
+            inactive = self.full_indices[~np.isin(self.full_indices, active_before)]
+            proposal = self._newcomer_proposal(posterior, inactive)
+            newcomers = self._weighted_sample_without_replacement(
+                inactive,
+                proposal,
+                replacement_count,
+            )
+            survivors = active_before[~np.isin(active_before, dropped)]
+            active_after = np.sort(np.concatenate([survivors, newcomers]))
+
+        if active_after.size != self.capacity or np.unique(active_after).size != self.capacity:
+            raise RuntimeError("bounded-workspace transition violated fixed capacity.")
+
+        replacement_pairs = tuple(
+            (int(dropped_hypothesis), int(newcomer))
+            for dropped_hypothesis, newcomer in zip(dropped, newcomers)
+        )
+        self._pending_transition = {
+            "posterior": posterior,
+            "z_surprise": float(z_surprise),
+            "z_uncertainty": float(z_uncertainty),
+            "replacement_count": int(replacement_count),
+            "dropped": dropped,
+            "newcomers": newcomers,
+        }
+        return HypothesisSelection.from_active_sets(
+            context.active_before,
+            active_after,
+            replacement_pairs=replacement_pairs,
+            diagnostics={
+                "strategy_mode": self.strategy_mode,
+                "predictive_m": float(self.current_m),
+                "predictive_g": float(self.current_g),
+            },
+        )
+
+    def assign_prior(
+        self,
+        context: TransitionContext,
+        selection: HypothesisSelection,
+        **kwargs,
+    ) -> np.ndarray:
+        del context, kwargs
+        if self._pending_transition is None:
+            raise RuntimeError("bounded-workspace transition has no pending selection.")
+        posterior = np.asarray(self._pending_transition["posterior"], dtype=float)
+        prior = posterior.copy()
+        for dropped_hypothesis, newcomer in selection.replacement_pairs:
+            prior[newcomer] = prior[dropped_hypothesis]
+            prior[dropped_hypothesis] = 0.0
+        return self._normalize(prior, "post-transition prior")
+
+    def _finish_hypothesis_transition(
+        self,
+        context: TransitionContext,
+        selection: HypothesisSelection,
+        prior: np.ndarray,
+        **kwargs,
+    ) -> Mapping[str, Any]:
+        del kwargs
+        if self._pending_transition is None:
+            raise RuntimeError("bounded-workspace transition has no pending state.")
+        pending = self._pending_transition
+        posterior = np.asarray(pending["posterior"], dtype=float)
+        dropped = np.asarray(pending["dropped"], dtype=int)
+        newcomers = np.asarray(pending["newcomers"], dtype=int)
+        replacement_count = int(pending["replacement_count"])
+
+        newcomer_distance = self._newcomer_distance(
+            posterior,
+            selection.active_before,
+            newcomers,
+        )
+        removed_mass = float(np.sum(posterior[dropped])) if dropped.size else 0.0
+        self.predictive_prior = prior.copy()
+        self._initialize_newcomer_beta(newcomers)
+
+        probability_any_replacement = 1.0 - (1.0 - self.current_m) ** self.capacity
+        event: Dict[str, Any] = {
+            "trial_index": int(context.trial_index),
+            "strategy_mode": self.strategy_mode,
+            "transition_method": (
+                "adaptive_binomial_replacement"
+                if self.dynamic_controls
+                else "fixed_binomial_replacement"
+            ),
+            "m": float(self.m),
+            "predictive_m": float(self.current_m),
+            "control_logit": float(self.control_logit),
+            "g": float(self.g),
+            "predictive_g": float(self.current_g),
+            "g_control_logit": float(self.g_control_logit),
+            "feedback_surprise": float(self.feedback_surprise),
+            "feedback_uncertainty": float(self.feedback_uncertainty),
+            "standardized_surprise": float(pending["z_surprise"]),
+            "standardized_uncertainty": float(pending["z_uncertainty"]),
+            "replacement_count": replacement_count,
+            "replacement_fraction": float(replacement_count) / float(self.capacity),
+            "removed_mass": removed_mass,
+            "newcomer_distance": float(newcomer_distance),
+            "dropped_hypotheses": dropped.astype(int).tolist(),
+            "new_hypotheses": newcomers.astype(int).tolist(),
+            "active_before": selection.active_before.astype(int).tolist(),
+            "active_after": selection.active_after.astype(int).tolist(),
+            "active_total": int(selection.active_after.size),
+            "prior_sum": float(np.sum(prior)),
+            "swap_probability": float(probability_any_replacement),
+            "swap_event": bool(replacement_count > 0),
+            "strategies": [],
+        }
+        self.transition_log.append(event)
+        self.transition_rate_log.append(
+            {
+                key: event[key]
+                for key in (
+                    "trial_index",
+                    "predictive_m",
+                    "control_logit",
+                    "predictive_g",
+                    "g_control_logit",
+                    "feedback_surprise",
+                    "feedback_uncertainty",
+                    "replacement_count",
+                    "replacement_fraction",
+                )
+            }
+        )
+        self.trial_index += 1
+        self._pending_transition = None
+        return event
+
+
+__all__ = ["BoundedWorkspacePolicyRuntime", "BoundedWorkspaceTransitionMixin"]

@@ -28,7 +28,7 @@ modules:
       prior_beta_scale: 0.0
 
   hypo_transitions_mod:
-    class: src.Bayesian_state.problems.modules.minimal_hypo_transition.FeedbackSwapHypothesisModule
+    class: src.Bayesian_state.problems.modules.hypo_transition.static.StaticFeedbackSwapHypothesisTransitionModule
     kwargs:
       capacity: 5
       theta: 0.0

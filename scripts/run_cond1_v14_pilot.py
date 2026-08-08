@@ -80,7 +80,7 @@ def load_inputs() -> tuple[dict[str, Any], list[dict[str, Any]], Path, dict[str,
     best_path = ROOT / "results/zhuran/cond1_v13/cd/cond1_v13/best_hyperparams.json"
     candidate_path = (
         ROOT
-        / "src/Bayesian_state/problems/modules/hypo_transition_strategies"
+        / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
         / "hypo_transition_profile_v13_candidates.json"
     )
     sim_path = ROOT / "configs/simulation_cfg/pmh_cond1_simulation_v13.yaml"
@@ -134,9 +134,9 @@ def enable_v14_state(
             "latent_volatility_pressure_slope": 8.0,
         }
     )
-    controller = out.get("strategy_controller") or {}
+    controller = out.get("state_controller") or {}
     aggressive_count = 0
-    for profile in controller.get("profiles", []):
+    for profile in controller.get("states", []):
         if profile.get("policy_method") != "aggressive":
             continue
         aggressive_count += 1

@@ -19,7 +19,6 @@ from src.Bayesian_state.run_simulation import (
     infer_fixed_hyperparams_from_engine_config,
     resolve_hyper_base_seed,
     resolve_hyper_candidate_seed as resolve_direct_hyper_candidate_seed,
-    resolve_simulation_repeats,
 )
 from src.Bayesian_state.utils.config_subjects import (
     SUBJECT_OVERRIDE_KEYS,
@@ -31,6 +30,7 @@ from src.Bayesian_state.optimization.optimization_config import (
     resolve_loss_delta,
     resolve_loss_metric,
     resolve_prediction_modes,
+    resolve_simulation_repeats,
     resolve_window_size,
 )
 from src.Bayesian_state.optimization.hyper_utils import (

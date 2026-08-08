@@ -37,7 +37,7 @@ modules:
       prior_beta_scale: 0.0
 
   hypo_transitions_mod:
-    class: src.Bayesian_state.problems.modules.finite_workspace_transition.AdaptiveFiniteWorkspaceTransitionModule
+    class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule
     kwargs:
       capacity: 3
       m: 0.15
@@ -51,6 +51,13 @@ modules:
       uncertainty_center: 0.1332542767
       uncertainty_scale: 0.0643078377
       g: 0.35
+      # Optional FA3-MG range controller.  All coefficients are zero here, so
+      # the baseline model retains static g=0.35 unless a hyper config selects
+      # an explicitly dynamic range-controller candidate.
+      range_controller:
+        g_phi: 0.0
+        g_beta_surprise: 0.0
+        g_beta_uncertainty: 0.0
       epsilon: 1.0e-12
 
   likelihood_mod:

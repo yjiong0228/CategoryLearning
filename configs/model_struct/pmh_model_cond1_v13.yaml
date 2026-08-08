@@ -20,11 +20,11 @@ modules:
       prior_beta_scale: 3.0
       beta_update_mode: inferred_correct_category
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    class: 'src.Bayesian_state.problems.modules.hypo_transition.dynamic_discrete.DynamicDiscreteHypothesisTransitionModule'
     kwargs:
       init_num: 5
       max_active_hypotheses: 5
-      strategy_controller:
+      state_controller:
         method: feedback_gated_softmax
         features:
           recent_accuracy_window: 8
@@ -34,7 +34,7 @@ modules:
           trial_progress_scale: 160
         activation:
           temperature: 0.85
-        profiles:
+        states:
           - id: conservative
             policy_method: conservative
             activation: {bias: 0.1, recent_accuracy: 0.7, posterior_confidence: 0.5}

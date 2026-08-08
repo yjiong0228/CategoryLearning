@@ -1,7 +1,13 @@
 # Hypothesis Transition Strategies
 
-`DynamicHypothesisModule` updates the active hypothesis set with an ordered list
-of strategies. Each strategy must set:
+This document is the detailed catalogue for the strategy-chain runtime.  In the
+public model layer, a fixed chain is executed by
+`StaticHypothesisTransitionModule`; a trial-varying discrete state is executed
+by `DynamicDiscreteHypothesisTransitionModule`.  The underlying strategy-chain
+component is not a separate public H module.
+
+A fixed strategy chain updates the active hypothesis set with an ordered list
+of steps. Each step must set:
 
 ```yaml
 - label: optional_name
@@ -90,13 +96,13 @@ optional second mixing step.
 v11 optimization candidates because it can disrupt learned trajectories too
 aggressively. The v11 candidate files exclude it.
 
-## Profile Controller
+## Dynamic-discrete state controller
 
-Static `strategies` remain supported. For v11 experiments, a
-`strategy_controller` can choose one profile per trial:
+Static `strategies` remain subject-fixed. In dynamic-discrete mode, a
+`state_controller` chooses one discrete strategy state per trial:
 
 ```yaml
-strategy_controller:
+state_controller:
   method: feedback_gated_softmax
   features:
     recent_accuracy_window: 8
@@ -105,7 +111,7 @@ strategy_controller:
     feedback_mode: exact
   activation:
     temperature: 0.7
-  profiles:
+  states:
     - id: exploit
       activation:
         recent_accuracy: 2.0
@@ -118,8 +124,8 @@ strategy_controller:
 Only causal history is used for activation: previous feedback, recent
 accuracy, accuracy delta, posterior entropy/confidence, latent volatility, and
 trial progress. The current trial feedback is appended after transition, so it
-cannot select the profile for the same trial. The first v11 implementation uses
-hard gating: a single profile is sampled from a softmax and then that profile's
+cannot select the state for the same trial. The first v11 implementation uses
+hard gating: a single state is sampled from a softmax and then that state's
 `strategies` and `post_to_prior` are executed.
 
 ### Persistent belief-instability state (V14)
@@ -147,8 +153,8 @@ pressure_t=\sigma(s(z_t/z_{max}-threshold/z_{max})),
 
 where `latent_volatility_pressure_slope` is \(s\). Setting all volatility
 gains to zero preserves the V13 state-off behavior. V14 candidates keep the
-four inner policy profiles and use pressure primarily to increase the
-aggressive profile's probability during sustained instability.
+four inner strategy states and use pressure primarily to increase the
+aggressive state's probability during sustained instability.
 
 ## Choice Readout
 
@@ -173,20 +179,20 @@ refer to a JSON candidate list with:
 hyperparam_space:
   __profile_candidate__:
     values_from_json:
-      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v11_candidates.json
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition/candidates/hypo_transition_profile_v11_candidates.json
       key: cond1_v11
       value_key: model_kwargs
 ```
 
-V13 profile candidates separate transition/p2p profiles from readout. The JSON
-candidate only provides `hypo_transitions_kwargs`; readout is a separate
-coordinate, so every profile is evaluated with both expectation and MAP readout:
+V13 controller-profile candidates separate transition/p2p states from readout. The
+JSON candidate only provides `hypo_transitions_kwargs`; readout is a separate
+coordinate, so every controller candidate is evaluated with both expectation and MAP readout:
 
 ```yaml
 hyperparam_space:
   engine.modules.hypo_transitions_mod.kwargs:
     values_from_json:
-      path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v13_candidates.json
+      path: ../../src/Bayesian_state/problems/modules/hypo_transition/candidates/hypo_transition_profile_v13_candidates.json
       key: cond1_v13
       value_key: hypo_transitions_kwargs
 

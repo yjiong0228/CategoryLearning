@@ -1,7 +1,6 @@
 """Shared utilities for StateModel hyperparameter selection and simulations."""
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -11,7 +10,68 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
 import numpy as np
 import pandas as pd
+from ..metrics.learning_curves import exponential_smooth_curve
+from ..metrics.losses import (
+    ACCURACY_LOSS_METRIC_CHOICES,
+    CHOICE_LOSS_METRIC_CHOICES,
+    LOSS_METRIC_ACCURACY_BERHU,
+    LOSS_METRIC_ACCURACY_BRIER,
+    LOSS_METRIC_ACCURACY_CURVE_BERHU,
+    LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE,
+    LOSS_METRIC_ACCURACY_CURVE_MAE,
+    LOSS_METRIC_ACCURACY_CURVE_MSE,
+    LOSS_METRIC_ACCURACY_FAMILY_BRIER,
+    LOSS_METRIC_ACCURACY_MAE,
+    LOSS_METRIC_ACCURACY_MSE,
+    LOSS_METRIC_ACCURACY_NLL,
+    LOSS_METRIC_BERHU,
+    LOSS_METRIC_CHOICE_BRIER,
+    LOSS_METRIC_CHOICE_NLL,
+    LOSS_METRIC_CHOICES,
+    LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
+    LOSS_METRIC_MAE,
+    LOSS_METRIC_MSE,
+    LOSS_METRIC_TARGET_PROB_BRIER,
+    LOSS_METRIC_WRONG_CHOICE_NLL,
+    PROBABILISTIC_LOSS_METRIC_CHOICES,
+    AccuracyBrierLoss,
+    AccuracyCurveBerHuLoss,
+    AccuracyCurveFamilyMSELoss,
+    AccuracyCurveMAELoss,
+    AccuracyCurveMSELoss,
+    AccuracyFamilyBrierLoss,
+    AccuracyNLLLoss,
+    ChoiceBrierLoss,
+    ChoiceNLLLoss,
+    ConditionalWrongChoiceNLLLoss,
+    LossStrategy,
+    TargetProbBrierLoss,
+    WrongChoiceNLLLoss,
+    attach_loss_metrics,
+    build_loss_strategy,
+    compute_loss_values,
+)
+from ..metrics.trial_metrics import (
+    build_prediction_metric_bundle,
+)
+from ..problems.modules.readout import (
+    CHOICE_READOUT_EXPECTATION,
+    CHOICE_READOUT_SHARPENED,
+    OUTPUT_NOISE_TARGET_UNIFORM,
+    apply_output_noise_to_category_prob as _apply_output_noise_to_category_prob,
+    choice_readout_weights as _choice_readout_weights,
+    resolve_choice_readout_config as _extract_choice_readout_config,
+    resolve_output_noise_config as _extract_output_noise_config,
+)
 from ..utils.paths import PROCESSED_DATA_DIR, TASK2_PROCESSED_PATH
+from ..utils.seeding import (
+    derive_hyper_candidate_seed,
+    derive_module_seed,
+    derive_simulation_point_seed,
+    derive_trajectory_seed,
+    inject_module_seed_from_trajectory,
+    stable_seed,
+)
 
 PREDICTION_MODE_POSTERIOR_T_MINUS_1 = "posterior_t_minus_1"
 PREDICTION_MODE_PRIOR_T = "prior_t"
@@ -21,588 +81,6 @@ PREDICTION_MODE_CHOICES = (
     PREDICTION_MODE_PRIOR_T,
     PREDICTION_MODE_BOTH,
 )
-
-LOSS_METRIC_ACCURACY_CURVE_MAE = "accuracy_curve_mae"
-LOSS_METRIC_ACCURACY_CURVE_MSE = "accuracy_curve_mse"
-LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE = "accuracy_curve_family_mse"
-LOSS_METRIC_ACCURACY_CURVE_BERHU = "accuracy_curve_berhu"
-LOSS_METRIC_ACCURACY_BRIER = "accuracy_brier"
-LOSS_METRIC_ACCURACY_FAMILY_BRIER = "accuracy_family_brier"
-LOSS_METRIC_ACCURACY_NLL = "accuracy_nll"
-LOSS_METRIC_CHOICE_BRIER = "choice_brier"
-LOSS_METRIC_CHOICE_NLL = "choice_nll"
-LOSS_METRIC_WRONG_CHOICE_NLL = "wrong_choice_nll"
-LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL = "conditional_wrong_choice_nll"
-LOSS_METRIC_TARGET_PROB_BRIER = "target_prob_brier"
-
-# Short aliases for internal call sites. Configs should use the explicit names above.
-LOSS_METRIC_ACCURACY_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
-LOSS_METRIC_ACCURACY_MSE = LOSS_METRIC_ACCURACY_CURVE_MSE
-LOSS_METRIC_ACCURACY_BERHU = LOSS_METRIC_ACCURACY_CURVE_BERHU
-LOSS_METRIC_MAE = LOSS_METRIC_ACCURACY_CURVE_MAE
-LOSS_METRIC_MSE = LOSS_METRIC_ACCURACY_CURVE_MSE
-LOSS_METRIC_BERHU = LOSS_METRIC_ACCURACY_CURVE_BERHU
-ACCURACY_LOSS_METRIC_CHOICES = (
-    LOSS_METRIC_ACCURACY_CURVE_MAE,
-    LOSS_METRIC_ACCURACY_CURVE_MSE,
-    LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE,
-    LOSS_METRIC_ACCURACY_CURVE_BERHU,
-    LOSS_METRIC_ACCURACY_BRIER,
-    LOSS_METRIC_ACCURACY_FAMILY_BRIER,
-    LOSS_METRIC_ACCURACY_NLL,
-)
-CHOICE_LOSS_METRIC_CHOICES = (
-    LOSS_METRIC_CHOICE_BRIER,
-    LOSS_METRIC_CHOICE_NLL,
-    LOSS_METRIC_WRONG_CHOICE_NLL,
-    LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL,
-)
-PROBABILISTIC_LOSS_METRIC_CHOICES = (
-    LOSS_METRIC_TARGET_PROB_BRIER,
-)
-LOSS_METRIC_CHOICES = (
-    ACCURACY_LOSS_METRIC_CHOICES
-    + CHOICE_LOSS_METRIC_CHOICES
-    + PROBABILISTIC_LOSS_METRIC_CHOICES
-)
-SEED_MODULUS = 2 ** 32
-
-OUTPUT_NOISE_TARGET_UNIFORM = "uniform"
-OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE = "previous_choice"
-OUTPUT_NOISE_TARGET_LOSE_SHIFT = "lose_shift"
-OUTPUT_NOISE_TARGET_CHOICES = (
-    OUTPUT_NOISE_TARGET_UNIFORM,
-    OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE,
-    OUTPUT_NOISE_TARGET_LOSE_SHIFT,
-)
-OUTPUT_NOISE_KWARG_KEYS = (
-    "enabled",
-    "base_lapse",
-    "post_error_lapse",
-    "low_accuracy_lapse",
-    "low_accuracy_threshold",
-    "recent_accuracy_window",
-    "lapse_decay",
-    "max_lapse",
-    "lapse_target",
-    "latent_volatility_lapse",
-    "latent_volatility_power",
-)
-
-CHOICE_READOUT_EXPECTATION = "expectation"
-CHOICE_READOUT_SHARPENED = "sharpened_expectation"
-CHOICE_READOUT_MAP = "map_hypothesis"
-CHOICE_READOUT_SAMPLE = "sample_hypothesis"
-CHOICE_READOUT_STICKY = "sticky_sample"
-CHOICE_READOUT_STUBBORN = "stubborn_sticky"
-CHOICE_READOUT_METHODS = (
-    CHOICE_READOUT_EXPECTATION,
-    CHOICE_READOUT_SHARPENED,
-    CHOICE_READOUT_MAP,
-    CHOICE_READOUT_SAMPLE,
-    CHOICE_READOUT_STICKY,
-    CHOICE_READOUT_STUBBORN,
-)
-CHOICE_READOUT_KWARG_KEYS = (
-    "method",
-    "power",
-    "weight_floor",
-    "switch_probability",
-    "post_error_switch_delta",
-    "low_confidence_switch_gain",
-)
-
-
-def _seedable(obj: Any) -> Any:
-    """Convert common Python/numpy/path values to stable JSON seed payloads."""
-    if isinstance(obj, np.ndarray):
-        return [_seedable(x) for x in obj.tolist()]
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, Path):
-        return obj.as_posix()
-    if isinstance(obj, Mapping):
-        return {str(k): _seedable(v) for k, v in sorted(obj.items(), key=lambda item: str(item[0]))}
-    if isinstance(obj, (list, tuple)):
-        return [_seedable(x) for x in obj]
-    return obj
-
-
-def stable_seed(payload: Any) -> int:
-    """Derive a deterministic uint32 seed from a JSON-serializable payload."""
-    encoded = json.dumps(_seedable(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-    return int(digest[:8], 16) % SEED_MODULUS
-
-
-def derive_hyper_candidate_seed(
-    hyper_base_seed: int,
-    stage: str,
-    combination_index: int,
-    hyperparams: Mapping[str, Any],
-    extra_context: Mapping[str, Any] | None = None,
-) -> int:
-    payload: Dict[str, Any] = {
-        "seed_role": "hyper_candidate_seed",
-        "hyper_base_seed": int(hyper_base_seed),
-        "stage": str(stage),
-        "combination_index": int(combination_index),
-        "hyperparams": dict(hyperparams),
-    }
-    if extra_context:
-        payload["extra_context"] = dict(extra_context)
-    return stable_seed(payload)
-
-
-def derive_simulation_point_seed(
-    hyper_candidate_seed: int,
-    subject_id: int,
-    params: Mapping[str, Any],
-) -> int:
-    return stable_seed(
-        {
-            "seed_role": "simulation_point_seed",
-            "hyper_candidate_seed": int(hyper_candidate_seed),
-            "subject_id": int(subject_id),
-            "params": dict(params),
-        }
-    )
-
-
-def derive_trajectory_seed(
-    simulation_point_seed: int,
-    phase: str,
-    repeat_index: int,
-) -> int:
-    return stable_seed(
-        {
-            "seed_role": "trajectory_seed",
-            "simulation_point_seed": int(simulation_point_seed),
-            "phase": str(phase),
-            "repeat_index": int(repeat_index),
-        }
-    )
-
-
-def derive_module_seed(
-    trajectory_seed: int,
-    module_name: str = "hypo_transitions_mod",
-) -> int:
-    return stable_seed(
-        {
-            "seed_role": "module_seed",
-            "trajectory_seed": int(trajectory_seed),
-            "module_name": str(module_name),
-        }
-    )
-
-
-def inject_module_seed_from_trajectory(
-    engine_config: Dict[str, Any],
-    trajectory_seed: int | None,
-    module_name: str = "hypo_transitions_mod",
-) -> int | None:
-    if trajectory_seed is None:
-        return None
-    module_seed = derive_module_seed(int(trajectory_seed), module_name=module_name)
-    modules = engine_config.get("modules")
-    if not isinstance(modules, dict) or module_name not in modules:
-        return None
-    module_cfg = modules[module_name]
-    if not isinstance(module_cfg, dict):
-        return None
-    kwargs = module_cfg.setdefault("kwargs", {})
-    if not isinstance(kwargs, dict):
-        return None
-    kwargs["module_seed"] = int(module_seed)
-    return int(module_seed)
-
-
-class LossStrategy(ABC):
-    name: str
-
-    @abstractmethod
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        raise NotImplementedError
-
-
-# Accuracy-based losses compare predicted and observed correctness.
-class AccuracyCurveMAELoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_CURVE_MAE
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
-        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
-        err = np.abs(true_acc - pred_acc)
-        return float(np.nanmean(err)) if err.size else float("nan")
-
-
-class AccuracyCurveMSELoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_CURVE_MSE
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
-        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
-        err = np.square(true_acc - pred_acc)
-        return float(np.nanmean(err)) if err.size else float("nan")
-
-
-class AccuracyCurveFamilyMSELoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        true_acc = np.asarray(metrics["sliding_true_family_acc"], dtype=float)
-        pred_acc = np.asarray(metrics["sliding_pred_family_acc"], dtype=float)
-        err = np.square(true_acc - pred_acc)
-        return float(np.nanmean(err)) if err.size else float("nan")
-
-
-class AccuracyCurveBerHuLoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_CURVE_BERHU
-
-    def __init__(self, delta: float):
-        if delta <= 0:
-            raise ValueError(f"loss_delta must be > 0 for accuracy_curve_berhu, got {delta}")
-        self.delta = float(delta)
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        true_acc = np.asarray(metrics["sliding_true_acc"], dtype=float)
-        pred_acc = np.asarray(metrics["sliding_pred_acc"], dtype=float)
-        abs_err = np.abs(true_acc - pred_acc)
-        piecewise = np.where(
-            abs_err <= self.delta,
-            abs_err,
-            (np.square(abs_err) + self.delta ** 2) / (2.0 * self.delta),
-        )
-        return float(np.nanmean(piecewise)) if piecewise.size else float("nan")
-
-
-def _valid_trial_accuracy_data(
-    metrics: Dict[str, np.ndarray | float],
-) -> Tuple[np.ndarray, np.ndarray]:
-    probs = np.asarray(metrics["pred_category_probs"], dtype=float)
-    true_idx = np.asarray(metrics["true_category_index"], dtype=int)
-    true_acc = np.asarray(metrics["true_acc"], dtype=float)
-    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-    if probs.ndim != 2:
-        raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
-    if valid_mask.shape[0] != probs.shape[0]:
-        raise ValueError(
-            "valid_trial_mask length does not match pred_category_probs rows: "
-            f"{valid_mask.shape[0]} vs {probs.shape[0]}"
-        )
-    if true_idx.shape[0] != probs.shape[0]:
-        raise ValueError(
-            "true_category_index length does not match pred_category_probs rows: "
-            f"{true_idx.shape[0]} vs {probs.shape[0]}"
-        )
-    if true_acc.shape[0] != probs.shape[0]:
-        raise ValueError(
-            "true_acc length does not match pred_category_probs rows: "
-            f"{true_acc.shape[0]} vs {probs.shape[0]}"
-        )
-
-    probs = probs[valid_mask]
-    true_idx = true_idx[valid_mask]
-    true_acc = true_acc[valid_mask]
-    if probs.size == 0:
-        return np.asarray([], dtype=float), np.asarray([], dtype=float)
-
-    n_cats = probs.shape[1]
-    valid_true = (true_idx >= 0) & (true_idx < n_cats)
-    finite_probs = np.all(np.isfinite(probs), axis=1)
-    finite_acc = np.isfinite(true_acc)
-    keep = valid_true & finite_probs & finite_acc
-    if not np.any(keep):
-        return np.asarray([], dtype=float), np.asarray([], dtype=float)
-
-    probs = probs[keep]
-    true_idx = true_idx[keep]
-    true_acc = np.clip(true_acc[keep], 0.0, 1.0)
-    p_true = probs[np.arange(probs.shape[0]), true_idx]
-    return p_true, true_acc
-
-
-class AccuracyBrierLoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_BRIER
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        p_true, true_acc = _valid_trial_accuracy_data(metrics)
-        if p_true.size == 0:
-            return float("nan")
-        return float(np.mean(np.square(p_true - true_acc)))
-
-
-def _valid_trial_family_accuracy_data(
-    metrics: Dict[str, np.ndarray | float],
-) -> Tuple[np.ndarray, np.ndarray]:
-    pred_family_acc = np.asarray(metrics["pred_family_acc"], dtype=float)
-    true_family_acc = np.asarray(metrics["true_family_acc"], dtype=float)
-    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-    if valid_mask.shape[0] != pred_family_acc.shape[0]:
-        raise ValueError(
-            "valid_trial_mask length does not match pred_family_acc length: "
-            f"{valid_mask.shape[0]} vs {pred_family_acc.shape[0]}"
-        )
-    if true_family_acc.shape[0] != pred_family_acc.shape[0]:
-        raise ValueError(
-            "true_family_acc length does not match pred_family_acc length: "
-            f"{true_family_acc.shape[0]} vs {pred_family_acc.shape[0]}"
-        )
-
-    pred_family_acc = pred_family_acc[valid_mask]
-    true_family_acc = true_family_acc[valid_mask]
-    keep = np.isfinite(pred_family_acc) & np.isfinite(true_family_acc)
-    if not np.any(keep):
-        return np.asarray([], dtype=float), np.asarray([], dtype=float)
-    return pred_family_acc[keep], np.clip(true_family_acc[keep], 0.0, 1.0)
-
-
-class AccuracyFamilyBrierLoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_FAMILY_BRIER
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        pred_family_acc, true_family_acc = _valid_trial_family_accuracy_data(metrics)
-        if pred_family_acc.size == 0:
-            return float("nan")
-        return float(np.mean(np.square(pred_family_acc - true_family_acc)))
-
-
-class AccuracyNLLLoss(LossStrategy):
-    name = LOSS_METRIC_ACCURACY_NLL
-
-    def __init__(self, eps: float = 1e-12):
-        self.eps = float(eps)
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        p_true, true_acc = _valid_trial_accuracy_data(metrics)
-        if p_true.size == 0:
-            return float("nan")
-        p_true = np.clip(p_true, self.eps, 1.0 - self.eps)
-        return float(
-            np.mean(
-                -(true_acc * np.log(p_true) + (1.0 - true_acc) * np.log(1.0 - p_true))
-            )
-        )
-
-
-# Choice-based losses compare predicted category probabilities with observed choices.
-def _valid_trial_classification_data(
-    metrics: Dict[str, np.ndarray | float],
-    target_key: str,
-) -> Tuple[np.ndarray, np.ndarray]:
-    probs, target_idx, _ = _valid_trial_two_target_data(
-        metrics,
-        target_key,
-        target_key,
-    )
-    return probs, target_idx
-
-
-def _valid_trial_two_target_data(
-    metrics: Dict[str, np.ndarray | float],
-    first_target_key: str,
-    second_target_key: str,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    probs = np.asarray(metrics["pred_category_probs"], dtype=float)
-    first_idx = np.asarray(metrics[first_target_key], dtype=int)
-    second_idx = np.asarray(metrics[second_target_key], dtype=int)
-    valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-    if probs.ndim != 2:
-        raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
-    if valid_mask.shape[0] != probs.shape[0]:
-        raise ValueError(
-            "valid_trial_mask length does not match pred_category_probs rows: "
-            f"{valid_mask.shape[0]} vs {probs.shape[0]}"
-        )
-    if first_idx.shape[0] != probs.shape[0]:
-        raise ValueError(
-            f"{first_target_key} length does not match pred_category_probs rows: "
-            f"{first_idx.shape[0]} vs {probs.shape[0]}"
-        )
-    if second_idx.shape[0] != probs.shape[0]:
-        raise ValueError(
-            f"{second_target_key} length does not match pred_category_probs rows: "
-            f"{second_idx.shape[0]} vs {probs.shape[0]}"
-        )
-
-    probs = probs[valid_mask]
-    first_idx = first_idx[valid_mask]
-    second_idx = second_idx[valid_mask]
-    if probs.size == 0:
-        return probs, first_idx, second_idx
-
-    n_cats = probs.shape[1]
-    valid_first = (first_idx >= 0) & (first_idx < n_cats)
-    valid_second = (second_idx >= 0) & (second_idx < n_cats)
-    finite_probs = np.all(np.isfinite(probs), axis=1)
-    keep = valid_first & valid_second & finite_probs
-    return probs[keep], first_idx[keep], second_idx[keep]
-
-
-class ChoiceBrierLoss(LossStrategy):
-    name = LOSS_METRIC_CHOICE_BRIER
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs, choice_idx = _valid_trial_classification_data(
-            metrics, "observed_choice_index"
-        )
-        if probs.size == 0:
-            return float("nan")
-        n_trials, n_cats = probs.shape
-        one_hot = np.zeros((n_trials, n_cats), dtype=float)
-        one_hot[np.arange(n_trials), choice_idx] = 1.0
-        return float(np.mean(np.sum(np.square(probs - one_hot), axis=1)))
-
-
-class ChoiceNLLLoss(LossStrategy):
-    name = LOSS_METRIC_CHOICE_NLL
-
-    def __init__(self, eps: float = 1e-12):
-        self.eps = float(eps)
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs, choice_idx = _valid_trial_classification_data(
-            metrics, "observed_choice_index"
-        )
-        if probs.size == 0:
-            return float("nan")
-        p_choice = probs[np.arange(probs.shape[0]), choice_idx]
-        p_choice = np.clip(p_choice, self.eps, 1.0)
-        return float(np.mean(-np.log(p_choice)))
-
-
-class WrongChoiceNLLLoss(LossStrategy):
-    name = LOSS_METRIC_WRONG_CHOICE_NLL
-
-    def __init__(self, eps: float = 1e-12):
-        self.eps = float(eps)
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs, choice_idx, true_idx = _valid_trial_two_target_data(
-            metrics,
-            "observed_choice_index",
-            "true_category_index",
-        )
-        if probs.size == 0:
-            return float("nan")
-        wrong_mask = choice_idx != true_idx
-        if not np.any(wrong_mask):
-            return float("nan")
-        wrong_probs = probs[wrong_mask]
-        wrong_choice_idx = choice_idx[wrong_mask]
-        p_choice = wrong_probs[np.arange(wrong_probs.shape[0]), wrong_choice_idx]
-        p_choice = np.clip(p_choice, self.eps, 1.0)
-        return float(np.mean(-np.log(p_choice)))
-
-
-class ConditionalWrongChoiceNLLLoss(LossStrategy):
-    name = LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL
-
-    def __init__(self, eps: float = 1e-12):
-        self.eps = float(eps)
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs, choice_idx, true_idx = _valid_trial_two_target_data(
-            metrics,
-            "observed_choice_index",
-            "true_category_index",
-        )
-        if probs.size == 0:
-            return float("nan")
-        wrong_mask = choice_idx != true_idx
-        if not np.any(wrong_mask):
-            return float("nan")
-        wrong_probs = probs[wrong_mask]
-        wrong_choice_idx = choice_idx[wrong_mask]
-        wrong_true_idx = true_idx[wrong_mask]
-        row = np.arange(wrong_probs.shape[0])
-        p_choice = wrong_probs[row, wrong_choice_idx]
-        p_true = wrong_probs[row, wrong_true_idx]
-        wrong_mass = np.clip(1.0 - p_true, self.eps, 1.0)
-        conditional_p_choice = np.clip(p_choice / wrong_mass, self.eps, 1.0)
-        return float(np.mean(-np.log(conditional_p_choice)))
-
-
-class TargetProbBrierLoss(LossStrategy):
-    name = LOSS_METRIC_TARGET_PROB_BRIER
-
-    def compute(self, metrics: Dict[str, np.ndarray | float]) -> float:
-        probs = np.asarray(metrics["pred_category_probs"], dtype=float)
-        target_probs = np.asarray(metrics.get("target_probs"), dtype=float)
-        valid_mask = np.asarray(metrics["valid_trial_mask"], dtype=bool)
-        if probs.ndim != 2:
-            raise ValueError(f"pred_category_probs must be 2-D, got shape {probs.shape}")
-        if target_probs.ndim != 2:
-            raise ValueError(f"target_probs must be 2-D, got shape {target_probs.shape}")
-        if probs.shape != target_probs.shape:
-            raise ValueError(
-                "target_probs shape does not match pred_category_probs: "
-                f"{target_probs.shape} vs {probs.shape}"
-            )
-        if valid_mask.shape[0] != probs.shape[0]:
-            raise ValueError(
-                "valid_trial_mask length does not match pred_category_probs rows: "
-                f"{valid_mask.shape[0]} vs {probs.shape[0]}"
-            )
-        finite = np.all(np.isfinite(probs), axis=1) & np.all(np.isfinite(target_probs), axis=1)
-        keep = valid_mask & finite
-        if not np.any(keep):
-            return float("nan")
-        return float(np.mean(np.sum(np.square(probs[keep] - target_probs[keep]), axis=1)))
-
-
-def build_loss_strategy(loss_metric: str, loss_delta: float | None = None) -> LossStrategy:
-    metric = str(loss_metric).strip().lower()
-    if metric == LOSS_METRIC_ACCURACY_CURVE_MAE:
-        return AccuracyCurveMAELoss()
-    if metric == LOSS_METRIC_ACCURACY_CURVE_MSE:
-        return AccuracyCurveMSELoss()
-    if metric == LOSS_METRIC_ACCURACY_CURVE_FAMILY_MSE:
-        return AccuracyCurveFamilyMSELoss()
-    if metric == LOSS_METRIC_ACCURACY_CURVE_BERHU:
-        if loss_delta is None:
-            raise ValueError("loss_delta is required when loss_metric='accuracy_curve_berhu'")
-        return AccuracyCurveBerHuLoss(float(loss_delta))
-    if metric == LOSS_METRIC_ACCURACY_BRIER:
-        return AccuracyBrierLoss()
-    if metric == LOSS_METRIC_ACCURACY_FAMILY_BRIER:
-        return AccuracyFamilyBrierLoss()
-    if metric == LOSS_METRIC_ACCURACY_NLL:
-        return AccuracyNLLLoss()
-    if metric == LOSS_METRIC_CHOICE_BRIER:
-        return ChoiceBrierLoss()
-    if metric == LOSS_METRIC_CHOICE_NLL:
-        return ChoiceNLLLoss()
-    if metric == LOSS_METRIC_WRONG_CHOICE_NLL:
-        return WrongChoiceNLLLoss()
-    if metric == LOSS_METRIC_CONDITIONAL_WRONG_CHOICE_NLL:
-        return ConditionalWrongChoiceNLLLoss()
-    if metric == LOSS_METRIC_TARGET_PROB_BRIER:
-        return TargetProbBrierLoss()
-    raise ValueError(f"Unsupported loss_metric '{loss_metric}'. Valid: {LOSS_METRIC_CHOICES}")
-
-
-def compute_loss_values(
-    metrics: Dict[str, np.ndarray | float],
-    *,
-    loss_delta: float | None = None,
-) -> Dict[str, float]:
-    """Compute all scalar loss/statistic values available for one metrics dict."""
-    out: Dict[str, float] = {}
-    for metric in LOSS_METRIC_CHOICES:
-        if metric == LOSS_METRIC_ACCURACY_CURVE_BERHU and loss_delta is None:
-            continue
-        try:
-            strategy = build_loss_strategy(metric, loss_delta=loss_delta)
-            value = float(strategy.compute(metrics))
-        except Exception:
-            value = float("nan")
-        out[str(metric)] = value
-    return out
-
 
 @dataclass
 class SimulationResult:
@@ -870,249 +348,6 @@ def _get_prediction_modes(prediction_mode: str) -> List[str]:
     return [prediction_mode]
 
 
-def _family_correct(categories: np.ndarray, choices: np.ndarray, n_cats: int) -> np.ndarray:
-    if n_cats >= 4:
-        category_family = np.where(np.isin(categories, [1, 2]), 0, 1)
-        choice_family = np.where(np.isin(choices, [1, 2]), 0, 1)
-        return (category_family == choice_family).astype(float)
-    return (categories == choices).astype(float)
-
-
-def _family_indices(category: int, n_cats: int) -> np.ndarray:
-    category_idx = int(category) - 1
-    if n_cats >= 4:
-        if category_idx in (0, 1):
-            return np.array([0, 1], dtype=int)
-        return np.array([2, 3], dtype=int)
-    return np.array([category_idx], dtype=int)
-
-
-def _target_majority_indices(target_probs: Optional[np.ndarray]) -> Optional[np.ndarray]:
-    """Return the unique highest-probability category for each trial, or -1 for ties/missing."""
-    if target_probs is None:
-        return None
-    probs = np.asarray(target_probs, dtype=float)
-    if probs.ndim != 2 or probs.shape[0] == 0:
-        return None
-    finite = np.all(np.isfinite(probs), axis=1)
-    max_prob = np.full(probs.shape[0], np.nan, dtype=float)
-    max_prob[finite] = np.max(probs[finite], axis=1)
-    is_max = np.isclose(probs, max_prob[:, None], rtol=0.0, atol=1e-12)
-    unique = finite & (np.sum(is_max, axis=1) == 1)
-    majority = np.full(probs.shape[0], -1, dtype=int)
-    majority[unique] = np.argmax(probs[unique], axis=1)
-    return majority
-
-
-def _safe_nanmean(values: np.ndarray) -> float:
-    finite = np.asarray(values, dtype=float)
-    finite = finite[np.isfinite(finite)]
-    return float(np.mean(finite)) if finite.size else float("nan")
-
-
-def _safe_pearson(x: np.ndarray, y: np.ndarray) -> float:
-    x = np.asarray(x, dtype=float).reshape(-1)
-    y = np.asarray(y, dtype=float).reshape(-1)
-    keep = np.isfinite(x) & np.isfinite(y)
-    if int(np.sum(keep)) < 2:
-        return float("nan")
-    x = x[keep]
-    y = y[keep]
-    if float(np.std(x)) <= 0.0 or float(np.std(y)) <= 0.0:
-        return float("nan")
-    return float(np.corrcoef(x, y)[0, 1])
-
-
-def _mapping_get_path(root: Mapping[str, Any] | None, path: str) -> Any:
-    curr: Any = root
-    for part in path.split("."):
-        if not isinstance(curr, Mapping) or part not in curr:
-            return None
-        curr = curr[part]
-    return curr
-
-
-def _float_from_mapping(
-    values: Mapping[str, Any],
-    key: str,
-    default: float,
-    *,
-    min_value: float | None = None,
-    max_value: float | None = None,
-) -> float:
-    raw = values.get(key, default)
-    try:
-        out = float(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"output_noise.kwargs.{key} must be numeric, got {raw!r}") from exc
-    if not np.isfinite(out):
-        raise ValueError(f"output_noise.kwargs.{key} must be finite, got {raw!r}")
-    if min_value is not None and out < min_value:
-        raise ValueError(
-            f"output_noise.kwargs.{key} must be >= {min_value}, got {out!r}"
-        )
-    if max_value is not None and out > max_value:
-        raise ValueError(
-            f"output_noise.kwargs.{key} must be <= {max_value}, got {out!r}"
-        )
-    return out
-
-
-def _bool_from_mapping(values: Mapping[str, Any], key: str, default: bool) -> bool:
-    raw = values.get(key, default)
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, str):
-        lowered = raw.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "off"}:
-            return False
-    if isinstance(raw, (int, float, np.integer, np.floating)):
-        return bool(raw)
-    raise ValueError(f"output_noise.kwargs.{key} must be boolean-like, got {raw!r}")
-
-
-def _extract_output_noise_config(
-    params: Mapping[str, Any] | None,
-    engine_config: Mapping[str, Any] | None,
-) -> Dict[str, Any]:
-    raw: Dict[str, Any] = {}
-    sources = [
-        _mapping_get_path(engine_config, "output_noise.kwargs"),
-        _mapping_get_path(engine_config, "engine.output_noise.kwargs"),
-        _mapping_get_path(params, "output_noise.kwargs"),
-        _mapping_get_path(params, "engine.output_noise.kwargs"),
-    ]
-    for source in sources:
-        if isinstance(source, Mapping):
-            raw.update(dict(source))
-
-    flat_sources = [params, engine_config]
-    for source in flat_sources:
-        if not isinstance(source, Mapping):
-            continue
-        for key in OUTPUT_NOISE_KWARG_KEYS:
-            for prefix in ("engine.output_noise.kwargs.", "output_noise.kwargs."):
-                full_key = f"{prefix}{key}"
-                if full_key in source:
-                    raw[key] = source[full_key]
-
-    if not raw:
-        return {"enabled": False}
-
-    cfg = {
-        "enabled": _bool_from_mapping(raw, "enabled", True),
-        "base_lapse": _float_from_mapping(raw, "base_lapse", 0.0, min_value=0.0, max_value=1.0),
-        "post_error_lapse": _float_from_mapping(
-            raw, "post_error_lapse", 0.0, min_value=0.0, max_value=1.0
-        ),
-        "low_accuracy_lapse": _float_from_mapping(
-            raw, "low_accuracy_lapse", 0.0, min_value=0.0, max_value=1.0
-        ),
-        "low_accuracy_threshold": _float_from_mapping(
-            raw, "low_accuracy_threshold", 0.70, min_value=1e-9, max_value=1.0
-        ),
-        "recent_accuracy_window": int(raw.get("recent_accuracy_window", 8)),
-        "lapse_decay": _float_from_mapping(raw, "lapse_decay", 0.0, min_value=0.0, max_value=1.0),
-        "max_lapse": _float_from_mapping(raw, "max_lapse", 0.40, min_value=0.0, max_value=1.0),
-        "lapse_target": str(raw.get("lapse_target", OUTPUT_NOISE_TARGET_UNIFORM)),
-        "latent_volatility_lapse": _float_from_mapping(
-            raw,
-            "latent_volatility_lapse",
-            0.0,
-            min_value=0.0,
-            max_value=1.0,
-        ),
-        "latent_volatility_power": _float_from_mapping(
-            raw,
-            "latent_volatility_power",
-            1.0,
-            min_value=1e-9,
-        ),
-    }
-    if int(cfg["recent_accuracy_window"]) <= 0:
-        raise ValueError(
-            "output_noise.kwargs.recent_accuracy_window must be positive, "
-            f"got {cfg['recent_accuracy_window']!r}"
-        )
-    if cfg["lapse_target"] not in OUTPUT_NOISE_TARGET_CHOICES:
-        raise ValueError(
-            "output_noise.kwargs.lapse_target must be one of "
-            f"{OUTPUT_NOISE_TARGET_CHOICES}, got {cfg['lapse_target']!r}"
-        )
-    if cfg["max_lapse"] < cfg["base_lapse"]:
-        raise ValueError(
-            "output_noise.kwargs.max_lapse must be >= base_lapse, "
-            f"got max_lapse={cfg['max_lapse']!r}, base_lapse={cfg['base_lapse']!r}"
-        )
-    has_lapse = (
-        cfg["base_lapse"] > 0.0
-        or cfg["post_error_lapse"] > 0.0
-        or cfg["low_accuracy_lapse"] > 0.0
-        or cfg["latent_volatility_lapse"] > 0.0
-    )
-    cfg["enabled"] = bool(cfg["enabled"] and has_lapse and cfg["max_lapse"] > 0.0)
-    return cfg
-
-
-def _extract_choice_readout_config(
-    params: Mapping[str, Any] | None,
-    engine_config: Mapping[str, Any] | None,
-) -> Dict[str, Any]:
-    raw: Dict[str, Any] = {}
-    sources = [
-        _mapping_get_path(engine_config, "choice_readout.kwargs"),
-        _mapping_get_path(engine_config, "engine.choice_readout.kwargs"),
-        _mapping_get_path(params, "choice_readout.kwargs"),
-        _mapping_get_path(params, "engine.choice_readout.kwargs"),
-    ]
-    for source in sources:
-        if isinstance(source, Mapping):
-            raw.update(dict(source))
-
-    for source in (params, engine_config):
-        if not isinstance(source, Mapping):
-            continue
-        for key in CHOICE_READOUT_KWARG_KEYS:
-            for prefix in ("engine.choice_readout.kwargs.", "choice_readout.kwargs."):
-                full_key = f"{prefix}{key}"
-                if full_key in source:
-                    raw[key] = source[full_key]
-
-    method = str(raw.get("method", CHOICE_READOUT_EXPECTATION))
-    if method not in CHOICE_READOUT_METHODS:
-        raise ValueError(
-            "choice_readout.kwargs.method must be one of "
-            f"{CHOICE_READOUT_METHODS}, got {method!r}"
-        )
-    cfg = {
-        "method": method,
-        "power": _float_from_mapping(raw, "power", 1.0, min_value=1e-9),
-        "weight_floor": _float_from_mapping(raw, "weight_floor", 0.0, min_value=0.0),
-        "switch_probability": _float_from_mapping(raw, "switch_probability", 0.15, min_value=0.0, max_value=1.0),
-        "post_error_switch_delta": _float_from_mapping(raw, "post_error_switch_delta", 0.0, min_value=-1.0, max_value=1.0),
-        "low_confidence_switch_gain": _float_from_mapping(raw, "low_confidence_switch_gain", 0.0, min_value=0.0, max_value=1.0),
-    }
-    if method == CHOICE_READOUT_STUBBORN and "post_error_switch_delta" not in raw:
-        cfg["post_error_switch_delta"] = -0.10
-    if method == CHOICE_READOUT_STICKY and "post_error_switch_delta" not in raw:
-        cfg["post_error_switch_delta"] = 0.10
-    return cfg
-
-
-def _normalize_probability_vector(values: np.ndarray, n_cats: int) -> np.ndarray:
-    probs = np.asarray(values, dtype=float).reshape(-1)
-    if probs.shape[0] != n_cats:
-        raise ValueError(f"Probability vector width mismatch: expected {n_cats}, got {probs.shape[0]}")
-    if not np.all(np.isfinite(probs)) or np.any(probs < 0):
-        return np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
-    denom = float(np.sum(probs))
-    if denom <= 0.0:
-        return np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
-    return probs / denom
-
-
 def sequential_importance_marginal(
     probability_stack: np.ndarray,
     observed_choice_index: Sequence[int] | np.ndarray,
@@ -1207,225 +442,7 @@ def sequential_importance_marginal(
     return marginal, effective_sample_size
 
 
-def _one_hot_or_uniform(index: int, n_cats: int) -> np.ndarray:
-    out = np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
-    if 0 <= int(index) < n_cats:
-        out[:] = 0.0
-        out[int(index)] = 1.0
-    return out
-
-
-def _output_noise_target_vector(
-    lapse_target: str,
-    trial_idx: int,
-    choices: np.ndarray,
-    feedback: np.ndarray,
-    n_cats: int,
-) -> np.ndarray:
-    uniform = np.full(n_cats, 1.0 / max(1, n_cats), dtype=float)
-    if trial_idx <= 0:
-        return uniform
-    prev_choice_idx = int(choices[trial_idx - 1]) - 1
-    prev_feedback = float(feedback[trial_idx - 1]) if np.isfinite(feedback[trial_idx - 1]) else 1.0
-    if lapse_target == OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE:
-        return _one_hot_or_uniform(prev_choice_idx, n_cats)
-    if lapse_target == OUTPUT_NOISE_TARGET_LOSE_SHIFT:
-        if prev_feedback >= 1.0 or not (0 <= prev_choice_idx < n_cats):
-            return uniform
-        if n_cats == 2:
-            return _one_hot_or_uniform(1 - prev_choice_idx, n_cats)
-        out = np.ones(n_cats, dtype=float)
-        out[prev_choice_idx] = 0.0
-        denom = float(np.sum(out))
-        return out / denom if denom > 0.0 else uniform
-    return uniform
-
-
-def _recent_feedback_accuracy(feedback: np.ndarray, trial_idx: int, window: int) -> float:
-    start = max(0, int(trial_idx) - int(window))
-    recent = np.asarray(feedback[start:trial_idx], dtype=float)
-    recent = recent[np.isfinite(recent)]
-    if recent.size == 0:
-        return 1.0
-    return float(np.clip(np.mean(recent), 0.0, 1.0))
-
-
-def exponential_smooth_curve(
-    values: Sequence[float] | np.ndarray,
-    *,
-    alpha: float,
-    init_value: float,
-) -> np.ndarray:
-    """Return an exponentially smoothed curve aligned to the input trials."""
-    if not np.isfinite(alpha) or alpha <= 0.0 or alpha > 1.0:
-        raise ValueError(f"alpha must be in (0, 1], got {alpha!r}.")
-    if not np.isfinite(init_value):
-        raise ValueError(f"init_value must be finite, got {init_value!r}.")
-    arr = np.asarray(values, dtype=float).reshape(-1)
-    state = float(init_value)
-    out = np.empty(arr.shape[0], dtype=float)
-    for idx, value in enumerate(arr):
-        if np.isfinite(value):
-            state = float(alpha) * float(value) + (1.0 - float(alpha)) * state
-        out[idx] = state
-    return out
-
-
-def _apply_output_noise_to_category_prob(
-    category_prob: np.ndarray,
-    *,
-    trial_idx: int,
-    choices: np.ndarray,
-    feedback: np.ndarray,
-    n_cats: int,
-    output_noise_config: Mapping[str, Any],
-    post_error_lapse_state: float,
-    latent_volatility_value: float = 0.0,
-) -> tuple[np.ndarray, float, float]:
-    prob = _normalize_probability_vector(category_prob, n_cats)
-    if not bool(output_noise_config.get("enabled", False)):
-        return prob, 0.0, 0.0
-
-    prev_feedback = float(feedback[trial_idx - 1]) if trial_idx > 0 and np.isfinite(feedback[trial_idx - 1]) else 1.0
-    error_severity = float(np.clip(1.0 - prev_feedback, 0.0, 1.0))
-    post_error_state = (
-        float(output_noise_config["lapse_decay"]) * float(post_error_lapse_state)
-        + float(output_noise_config["post_error_lapse"]) * error_severity
-    )
-
-    recent_acc = _recent_feedback_accuracy(
-        feedback,
-        trial_idx,
-        int(output_noise_config["recent_accuracy_window"]),
-    )
-    threshold = float(output_noise_config["low_accuracy_threshold"])
-    low_acc_scale = max(0.0, threshold - recent_acc) / max(threshold, 1e-12)
-    low_acc_lapse = float(output_noise_config["low_accuracy_lapse"]) * low_acc_scale
-    latent_value = float(np.clip(latent_volatility_value, 0.0, 1.0))
-    latent_lapse = float(output_noise_config["latent_volatility_lapse"]) * (
-        latent_value ** float(output_noise_config["latent_volatility_power"])
-    )
-    lapse = float(output_noise_config["base_lapse"]) + post_error_state + low_acc_lapse + latent_lapse
-    lapse = float(np.clip(lapse, 0.0, float(output_noise_config["max_lapse"])))
-    if lapse <= 0.0:
-        return prob, 0.0, post_error_state
-
-    target = _output_noise_target_vector(
-        str(output_noise_config["lapse_target"]),
-        trial_idx,
-        choices,
-        feedback,
-        n_cats,
-    )
-    mixed = (1.0 - lapse) * prob + lapse * target
-    return _normalize_probability_vector(mixed, n_cats), lapse, post_error_state
-
-
-def _normalize_hypothesis_distribution(values: np.ndarray) -> np.ndarray:
-    probs = np.asarray(values, dtype=float).reshape(-1)
-    if not np.all(np.isfinite(probs)) or np.any(probs < 0):
-        return np.full(probs.shape[0], 1.0 / max(1, probs.shape[0]), dtype=float)
-    total = float(probs.sum())
-    if total <= 0.0:
-        return np.full(probs.shape[0], 1.0 / max(1, probs.shape[0]), dtype=float)
-    return probs / total
-
-
-def _readout_base_weights(dist: np.ndarray, config: Mapping[str, Any]) -> np.ndarray:
-    method = str(config.get("method", CHOICE_READOUT_EXPECTATION))
-    base = _normalize_hypothesis_distribution(dist)
-    if method == CHOICE_READOUT_SHARPENED:
-        floor = float(config.get("weight_floor", 0.0))
-        power = float(config.get("power", 1.0))
-        return _normalize_hypothesis_distribution(np.power(base + floor, power))
-    return base
-
-
-def _one_hot_hypothesis(index: int, size: int) -> np.ndarray:
-    out = np.zeros(size, dtype=float)
-    if 0 <= int(index) < size:
-        out[int(index)] = 1.0
-    elif size > 0:
-        out[:] = 1.0 / float(size)
-    return out
-
-
-def _choice_readout_weights(
-    dist: np.ndarray,
-    *,
-    trial_idx: int,
-    feedback: np.ndarray,
-    config: Mapping[str, Any],
-    rng: np.random.Generator,
-    sticky_state: Dict[str, Any],
-) -> tuple[np.ndarray, Dict[str, Any]]:
-    method = str(config.get("method", CHOICE_READOUT_EXPECTATION))
-    base = _readout_base_weights(dist, config)
-    size = int(base.size)
-    selected_arg = -1
-    switched = False
-    confidence = float(np.max(base)) if size else 0.0
-
-    if method in (CHOICE_READOUT_EXPECTATION, CHOICE_READOUT_SHARPENED):
-        return base, {
-            "method": method,
-            "selected_arg": selected_arg,
-            "switched": switched,
-            "confidence": confidence,
-        }
-
-    if method == CHOICE_READOUT_MAP:
-        selected_arg = int(np.argmax(base)) if size else -1
-        return _one_hot_hypothesis(selected_arg, size), {
-            "method": method,
-            "selected_arg": selected_arg,
-            "switched": True,
-            "confidence": confidence,
-        }
-
-    if method == CHOICE_READOUT_SAMPLE:
-        selected_arg = int(rng.choice(size, p=base)) if size else -1
-        return _one_hot_hypothesis(selected_arg, size), {
-            "method": method,
-            "selected_arg": selected_arg,
-            "switched": True,
-            "confidence": confidence,
-        }
-
-    if method in (CHOICE_READOUT_STICKY, CHOICE_READOUT_STUBBORN):
-        current = sticky_state.get("selected_arg")
-        force_switch = (
-            current is None
-            or int(current) < 0
-            or int(current) >= size
-            or base[int(current)] <= 0.0
-        )
-        prev_feedback = float(feedback[trial_idx - 1]) if trial_idx > 0 and np.isfinite(feedback[trial_idx - 1]) else 1.0
-        last_error = float(np.clip(1.0 - prev_feedback, 0.0, 1.0))
-        switch_prob = (
-            float(config.get("switch_probability", 0.15))
-            + float(config.get("post_error_switch_delta", 0.0)) * last_error
-            + float(config.get("low_confidence_switch_gain", 0.0)) * (1.0 - confidence)
-        )
-        switch_prob = float(np.clip(switch_prob, 0.0, 1.0))
-        if force_switch or bool(rng.random() < switch_prob):
-            selected_arg = int(rng.choice(size, p=base)) if size else -1
-            sticky_state["selected_arg"] = selected_arg
-            switched = True
-        else:
-            selected_arg = int(current)
-        return _one_hot_hypothesis(selected_arg, size), {
-            "method": method,
-            "selected_arg": selected_arg,
-            "switched": switched,
-            "confidence": confidence,
-            "switch_probability": switch_prob,
-        }
-
-    raise ValueError(f"Unsupported choice_readout method: {method!r}")
-
-
-def _compute_single_mode_metrics(
+def _build_single_mode_prediction_payload(
     mode: str,
     model,
     post_arr: np.ndarray,
@@ -1480,15 +497,6 @@ def _compute_single_mode_metrics(
                 f"{target_probs.shape[1]} vs {n_cats}"
             )
 
-    true_acc = (feedback == 1.0).astype(float)
-    has_categories = categories is not None
-    true_family_acc = (
-        _family_correct(categories, choices, n_cats)
-        if has_categories
-        else np.full(n_trials, np.nan, dtype=float)
-    )
-    pred_acc = np.full(n_trials, np.nan, dtype=float)
-    pred_family_acc = np.full(n_trials, np.nan, dtype=float)
     pred_category_probs = np.full((n_trials, n_cats), np.nan, dtype=float)
     output_lapse_values = np.zeros(n_trials, dtype=float)
     output_noise_config = output_noise_config or {"enabled": False}
@@ -1504,22 +512,6 @@ def _compute_single_mode_metrics(
         dtype=float,
     ).reshape(-1)
     post_error_lapse_state = 0.0
-    true_category_index = (
-        np.asarray(categories, dtype=int) - 1
-        if has_categories
-        else np.full(n_trials, -1, dtype=int)
-    )
-    target_prob_matrix = (
-        np.asarray(target_probs, dtype=float)
-        if target_probs is not None
-        else np.full((n_trials, n_cats), np.nan, dtype=float)
-    )
-    observed_choice_index = np.asarray(choices, dtype=int) - 1
-    target_majority_index = _target_majority_indices(target_prob_matrix)
-    if target_majority_index is None:
-        target_majority_index = np.full(n_trials, -1, dtype=int)
-    target_majority_acc = np.full(n_trials, np.nan, dtype=float)
-    pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
     beta_arr = np.asarray(engine_beta, dtype=float)
     if beta_arr.ndim == 1:
         if beta_arr.shape[0] != len(hypotheses):
@@ -1535,14 +527,6 @@ def _compute_single_mode_metrics(
             )
     else:
         raise ValueError(f"engine_beta must be 1-D or 2-D, got shape {beta_arr.shape}")
-    target_choice_valid = (
-        (target_majority_index >= 0)
-        & (observed_choice_index >= 0)
-        & (observed_choice_index < n_cats)
-    )
-    target_majority_acc[target_choice_valid] = (
-        observed_choice_index[target_choice_valid] == target_majority_index[target_choice_valid]
-    ).astype(float)
     valid_trial_mask = np.zeros(n_trials, dtype=bool)
 
     for trial_idx in range(1, n_trials):
@@ -1570,8 +554,6 @@ def _compute_single_mode_metrics(
             [choices[trial_idx]],
             [feedback[trial_idx]],
         )
-        category_idx = int(categories[trial_idx]) - 1 if has_categories else -1
-        family_idx = _family_indices(int(categories[trial_idx]), n_cats) if has_categories else np.asarray([], dtype=int)
         for hypo_arg, hypo in enumerate(hypotheses):
             beta_for_hypo = float(beta_for_trial[hypo]) if hypo < len(beta_for_trial) else 10.0
             prob = partition.get_category_probabilities(
@@ -1621,176 +603,33 @@ def _compute_single_mode_metrics(
             ),
         )
         output_lapse_values[trial_idx] = output_lapse
-        if has_categories:
-            if 0 <= category_idx < weighted_cat_prob.shape[0]:
-                pred_acc[trial_idx] = float(weighted_cat_prob[category_idx])
-            valid_family_idx = family_idx[family_idx < weighted_cat_prob.shape[0]]
-            if valid_family_idx.size:
-                pred_family_acc[trial_idx] = float(np.sum(weighted_cat_prob[valid_family_idx]))
-        else:
-            choice_idx = int(choices[trial_idx]) - 1
-            if 0 <= choice_idx < weighted_cat_prob.shape[0]:
-                pred_acc[trial_idx] = float(weighted_cat_prob[choice_idx])
-        majority_idx = int(target_majority_index[trial_idx])
-        if 0 <= majority_idx < weighted_cat_prob.shape[0]:
-            pred_target_majority_acc[trial_idx] = float(weighted_cat_prob[majority_idx])
         pred_category_probs[trial_idx, :] = weighted_cat_prob
         valid_trial_mask[trial_idx] = bool(resolved_score_mask[trial_idx])
 
-    sliding_true_acc: List[float] = []
-    sliding_pred_acc: List[float] = []
-    sliding_pred_std: List[float] = []
-    sliding_true_family_acc: List[float] = []
-    sliding_pred_family_acc: List[float] = []
-    sliding_pred_family_std: List[float] = []
-    sliding_target_majority_acc: List[float] = []
-    sliding_pred_target_majority_acc: List[float] = []
-    sliding_pred_target_majority_std: List[float] = []
-
-    for start in range(1, n_trials - window_size + 1):
-        end = start + window_size
-        if not bool(np.all(resolved_score_mask[start:end])):
-            sliding_true_acc.append(np.nan)
-            sliding_pred_acc.append(np.nan)
-            sliding_pred_std.append(np.nan)
-            sliding_true_family_acc.append(np.nan)
-            sliding_pred_family_acc.append(np.nan)
-            sliding_pred_family_std.append(np.nan)
-            sliding_target_majority_acc.append(np.nan)
-            sliding_pred_target_majority_acc.append(np.nan)
-            sliding_pred_target_majority_std.append(np.nan)
-            continue
-        true_window = true_acc[start:end]
-        pred_window = pred_acc[start:end]
-        true_family_window = true_family_acc[start:end]
-        pred_family_window = pred_family_acc[start:end]
-        target_majority_window = target_majority_acc[start:end]
-        pred_target_majority_window = pred_target_majority_acc[start:end]
-        sliding_true_acc.append(float(np.mean(true_window)))
-        sliding_pred_acc.append(float(np.nanmean(pred_window)))
-        valid = pred_window[~np.isnan(pred_window)]
-        if valid.size == 0:
-            sliding_pred_std.append(np.nan)
-        else:
-            sliding_pred_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / window_size))
-        sliding_true_family_acc.append(
-            float(np.nanmean(true_family_window))
-            if np.any(np.isfinite(true_family_window))
-            else np.nan
-        )
-        sliding_pred_family_acc.append(
-            float(np.nanmean(pred_family_window))
-            if np.any(np.isfinite(pred_family_window))
-            else np.nan
-        )
-        valid_family = pred_family_window[~np.isnan(pred_family_window)]
-        if valid_family.size == 0:
-            sliding_pred_family_std.append(np.nan)
-        else:
-            sliding_pred_family_std.append(
-                float(np.sqrt(np.sum(valid_family * (1 - valid_family))) / window_size)
-            )
-        sliding_target_majority_acc.append(_safe_nanmean(target_majority_window))
-        sliding_pred_target_majority_acc.append(_safe_nanmean(pred_target_majority_window))
-        valid_target_majority = pred_target_majority_window[np.isfinite(pred_target_majority_window)]
-        if valid_target_majority.size == 0:
-            sliding_pred_target_majority_std.append(np.nan)
-        else:
-            denom = max(1, int(valid_target_majority.size))
-            sliding_pred_target_majority_std.append(
-                float(np.sqrt(np.sum(valid_target_majority * (1 - valid_target_majority))) / denom)
-            )
-
-    exp_alpha = float(2.0 / (float(window_size) + 1.0))
-    chance_level = 1.0 / float(max(1, n_cats))
-    exp_true_acc = exponential_smooth_curve(true_acc, alpha=exp_alpha, init_value=chance_level)
-    exp_pred_acc = exponential_smooth_curve(pred_acc, alpha=exp_alpha, init_value=chance_level)
-    exp_true_family_acc = exponential_smooth_curve(true_family_acc, alpha=exp_alpha, init_value=chance_level)
-    exp_pred_family_acc = exponential_smooth_curve(pred_family_acc, alpha=exp_alpha, init_value=chance_level)
-    exp_target_majority_acc = exponential_smooth_curve(target_majority_acc, alpha=exp_alpha, init_value=chance_level)
-    exp_pred_target_majority_acc = exponential_smooth_curve(
-        pred_target_majority_acc,
-        alpha=exp_alpha,
-        init_value=chance_level,
+    return build_prediction_metric_bundle(
+        pred_category_probs,
+        choices=choices,
+        feedback=feedback,
+        categories=categories,
+        target_probabilities=target_probs,
+        window_size=window_size,
+        score_trial_mask=resolved_score_mask,
+        valid_trial_mask=valid_trial_mask,
+        diagnostics={
+            "choice_readout_method": str(
+                choice_readout_config.get("method", CHOICE_READOUT_EXPECTATION)
+            ),
+            "readout_selected_hypothesis": readout_selected_hypothesis,
+            "readout_switch": readout_switch,
+            "readout_confidence": readout_confidence,
+            "readout_switch_probability": readout_switch_probability,
+            "output_lapse": output_lapse_values,
+            "output_lapse_target": str(
+                output_noise_config.get("lapse_target", OUTPUT_NOISE_TARGET_UNIFORM)
+            ),
+            "latent_volatility": latent_volatility_values,
+        },
     )
-
-    family_error = np.abs(np.array(sliding_true_family_acc) - np.array(sliding_pred_family_acc))
-    finite_family_error = family_error[np.isfinite(family_error)]
-    family_mean_error = float(np.mean(finite_family_error)) if finite_family_error.size else float("nan")
-    target_prob_finite = (
-        valid_trial_mask
-        & np.all(np.isfinite(pred_category_probs), axis=1)
-        & np.all(np.isfinite(target_prob_matrix), axis=1)
-    )
-    if np.any(target_prob_finite):
-        target_prob_brier = float(
-            np.mean(np.sum(np.square(pred_category_probs[target_prob_finite] - target_prob_matrix[target_prob_finite]), axis=1))
-        )
-        target_prob_corr_by_cat = np.asarray(
-            [
-                _safe_pearson(
-                    pred_category_probs[target_prob_finite, cat_idx],
-                    target_prob_matrix[target_prob_finite, cat_idx],
-                )
-                for cat_idx in range(n_cats)
-            ],
-            dtype=float,
-        )
-    else:
-        target_prob_brier = float("nan")
-        target_prob_corr_by_cat = np.full(n_cats, np.nan, dtype=float)
-    latent_volatility_for_mean = latent_volatility_values[:n_trials]
-    latent_volatility_mean = _safe_nanmean(
-        latent_volatility_for_mean[valid_trial_mask[:latent_volatility_for_mean.size]]
-    )
-
-    return {
-        "true_acc": true_acc,
-        "pred_acc": pred_acc,
-        "true_family_acc": true_family_acc,
-        "pred_family_acc": pred_family_acc,
-        "sliding_true_acc": np.asarray(sliding_true_acc, dtype=float),
-        "sliding_pred_acc": np.asarray(sliding_pred_acc, dtype=float),
-        "sliding_pred_acc_std": np.asarray(sliding_pred_std, dtype=float),
-        "sliding_true_family_acc": np.asarray(sliding_true_family_acc, dtype=float),
-        "sliding_pred_family_acc": np.asarray(sliding_pred_family_acc, dtype=float),
-        "sliding_pred_family_acc_std": np.asarray(sliding_pred_family_std, dtype=float),
-        "exp_true_acc": exp_true_acc,
-        "exp_pred_acc": exp_pred_acc,
-        "exp_true_family_acc": exp_true_family_acc,
-        "exp_pred_family_acc": exp_pred_family_acc,
-        "exp_accuracy_alpha": float(exp_alpha),
-        "target_majority_acc": target_majority_acc,
-        "pred_target_majority_acc": pred_target_majority_acc,
-        "sliding_target_majority_acc": np.asarray(sliding_target_majority_acc, dtype=float),
-        "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
-        "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
-        "exp_target_majority_acc": exp_target_majority_acc,
-        "exp_pred_target_majority_acc": exp_pred_target_majority_acc,
-        "family_mean_error": family_mean_error,
-        "pred_category_probs": pred_category_probs,
-        "choice_readout_method": str(choice_readout_config.get("method", CHOICE_READOUT_EXPECTATION)),
-        "readout_selected_hypothesis": readout_selected_hypothesis,
-        "readout_switch": readout_switch,
-        "readout_confidence": readout_confidence,
-        "readout_switch_probability": readout_switch_probability,
-        "output_lapse": output_lapse_values,
-        "output_lapse_mean": _safe_nanmean(output_lapse_values[valid_trial_mask]),
-        "output_lapse_max": float(np.nanmax(output_lapse_values)) if output_lapse_values.size else float("nan"),
-        "output_lapse_target": str(output_noise_config.get("lapse_target", OUTPUT_NOISE_TARGET_UNIFORM)),
-        "latent_volatility": latent_volatility_values,
-        "latent_volatility_mean": latent_volatility_mean,
-        "latent_volatility_max": float(np.nanmax(latent_volatility_values)) if latent_volatility_values.size else float("nan"),
-        "target_probs": target_prob_matrix,
-        "target_prob_brier": target_prob_brier,
-        "target_prob_corr_by_cat": target_prob_corr_by_cat,
-        "target_prob_corr_cat1": float(target_prob_corr_by_cat[0]) if target_prob_corr_by_cat.size else float("nan"),
-        "true_category_index": true_category_index,
-        "observed_choice_index": observed_choice_index,
-        "target_majority_index": target_majority_index,
-        "valid_trial_mask": valid_trial_mask,
-        "score_trial_mask": resolved_score_mask,
-    }
 
 
 def compute_prediction_metrics(
@@ -1814,8 +653,6 @@ def compute_prediction_metrics(
     score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> Dict[str, Dict[str, np.ndarray | float]]:
     hypotheses = list(model.hypotheses_set)
-    loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
-
     engine_beta = beta_log if beta_log is not None else getattr(model.engine, "beta", None)
     if engine_beta is None:
         beta_param = 10.0
@@ -1875,7 +712,7 @@ def compute_prediction_metrics(
                 "mode": mode,
             }
         )
-        metrics = _compute_single_mode_metrics(
+        metrics = _build_single_mode_prediction_payload(
             mode=mode,
             model=model,
             post_arr=post_arr,
@@ -1894,18 +731,11 @@ def compute_prediction_metrics(
             readout_seed=mode_readout_seed,
             score_trial_mask=score_trial_mask,
         )
-        objective_error = float(loss_strategy.compute(metrics))
-        loss_values = compute_loss_values(metrics, loss_delta=loss_delta)
-        loss_values[loss_strategy.name] = objective_error
-        metrics["mean_error"] = objective_error
-        metrics["objective_error"] = objective_error
-        metrics["loss_metric"] = loss_strategy.name
-        metrics["loss_values"] = loss_values
-        for key, value in loss_values.items():
-            metrics[f"loss_{key}"] = value
-        if loss_delta is not None:
-            metrics["loss_delta"] = float(loss_delta)
-        metrics_by_mode[mode] = metrics
+        metrics_by_mode[mode] = attach_loss_metrics(
+            metrics,
+            loss_metric=loss_metric,
+            loss_delta=loss_delta,
+        )
     return metrics_by_mode
 
 
@@ -1934,66 +764,9 @@ def compute_metrics_from_category_probabilities(
         np.asarray(probabilities, dtype=float),
         context="particle marginal probabilities",
     )
-    observed_choices = np.asarray(choices, dtype=int).reshape(-1)
-    observed_feedback = np.asarray(feedback, dtype=float).reshape(-1)
-    n_trials, n_cats = probs.shape
-    if observed_choices.size != n_trials or observed_feedback.size != n_trials:
-        raise ValueError("particle probabilities, choices, and feedback must align.")
-    if int(window_size) <= 0 or n_trials < int(window_size) + 1:
-        raise ValueError(
-            "Not enough trials for particle-filter sliding metrics: "
-            f"need at least {int(window_size) + 1}, got {n_trials}."
-        )
-    if score_trial_mask is None:
-        score_mask = np.ones(n_trials, dtype=bool)
-    else:
-        score_mask = np.asarray(score_trial_mask, dtype=bool).reshape(-1)
-        if score_mask.size != n_trials:
-            raise ValueError("score_trial_mask length does not match particle trials.")
-
-    observed_choice_index = observed_choices - 1
-    true_acc = (observed_feedback == 1.0).astype(float)
-    valid_trial_mask = (
-        score_mask
-        & (observed_choice_index >= 0)
-        & (observed_choice_index < n_cats)
-        & np.all(np.isfinite(probs), axis=1)
-    )
-    # Match the established StateModel metric convention: trial 0 initializes
-    # the latent state and is not included in predictive scoring.
-    if n_trials:
-        valid_trial_mask[0] = False
-
-    if categories is None:
-        true_category_index = np.full(n_trials, -1, dtype=int)
-        true_family_acc = np.full(n_trials, np.nan, dtype=float)
-        pred_family_acc = np.full(n_trials, np.nan, dtype=float)
-        pred_acc = np.full(n_trials, np.nan, dtype=float)
-        rows = np.flatnonzero(valid_trial_mask)
-        pred_acc[rows] = probs[rows, observed_choice_index[rows]]
-    else:
-        category_values = np.asarray(categories, dtype=int).reshape(-1)
-        if category_values.size != n_trials:
-            raise ValueError("categories length does not match particle trials.")
-        true_category_index = category_values - 1
-        valid_category = (
-            (true_category_index >= 0) & (true_category_index < n_cats)
-        )
-        pred_acc = np.full(n_trials, np.nan, dtype=float)
-        rows = np.flatnonzero(valid_category)
-        pred_acc[rows] = probs[rows, true_category_index[rows]]
-        true_family_acc = _family_correct(
-            category_values, observed_choices, n_cats
-        )
-        pred_family_acc = np.full(n_trials, np.nan, dtype=float)
-        for trial_idx in rows:
-            family = _family_indices(int(category_values[trial_idx]), n_cats)
-            family = family[(family >= 0) & (family < n_cats)]
-            if family.size:
-                pred_family_acc[trial_idx] = float(np.sum(probs[trial_idx, family]))
-
+    n_trials, _ = probs.shape
     if target_probs is None:
-        target_prob_matrix = np.full((n_trials, n_cats), np.nan, dtype=float)
+        target_prob_matrix = None
     else:
         target_prob_matrix = _normalize_probability_rows(
             np.asarray(target_probs, dtype=float), context="target_probs"
@@ -2003,172 +776,36 @@ def compute_metrics_from_category_probabilities(
                 "target_probs shape does not match particle probabilities: "
                 f"{target_prob_matrix.shape} vs {probs.shape}."
             )
-    target_majority_index = _target_majority_indices(target_prob_matrix)
-    if target_majority_index is None:
-        target_majority_index = np.full(n_trials, -1, dtype=int)
-    target_majority_acc = np.full(n_trials, np.nan, dtype=float)
-    pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
-    valid_majority = (
-        (target_majority_index >= 0)
-        & (target_majority_index < n_cats)
-        & (observed_choice_index >= 0)
-        & (observed_choice_index < n_cats)
-    )
-    majority_rows = np.flatnonzero(valid_majority)
-    target_majority_acc[majority_rows] = (
-        observed_choice_index[majority_rows]
-        == target_majority_index[majority_rows]
-    ).astype(float)
-    pred_target_majority_acc[majority_rows] = probs[
-        majority_rows, target_majority_index[majority_rows]
-    ]
 
-    def sliding_pair(
-        true_values: np.ndarray,
-        predicted_values: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        true_curve: List[float] = []
-        predicted_curve: List[float] = []
-        predicted_std: List[float] = []
-        for start in range(1, n_trials - int(window_size) + 1):
-            end = start + int(window_size)
-            if not bool(np.all(score_mask[start:end])):
-                true_curve.append(float("nan"))
-                predicted_curve.append(float("nan"))
-                predicted_std.append(float("nan"))
-                continue
-            true_window = true_values[start:end]
-            predicted_window = predicted_values[start:end]
-            true_curve.append(_safe_nanmean(true_window))
-            predicted_curve.append(_safe_nanmean(predicted_window))
-            finite = predicted_window[np.isfinite(predicted_window)]
-            predicted_std.append(
-                float(np.sqrt(np.sum(finite * (1.0 - finite))) / int(window_size))
-                if finite.size
-                else float("nan")
-            )
-        return (
-            np.asarray(true_curve, dtype=float),
-            np.asarray(predicted_curve, dtype=float),
-            np.asarray(predicted_std, dtype=float),
-        )
-
-    sliding_true_acc, sliding_pred_acc, sliding_pred_acc_std = sliding_pair(
-        true_acc, pred_acc
-    )
-    (
-        sliding_true_family_acc,
-        sliding_pred_family_acc,
-        sliding_pred_family_acc_std,
-    ) = sliding_pair(true_family_acc, pred_family_acc)
-    (
-        sliding_target_majority_acc,
-        sliding_pred_target_majority_acc,
-        sliding_pred_target_majority_acc_std,
-    ) = sliding_pair(target_majority_acc, pred_target_majority_acc)
-
-    exp_alpha = float(2.0 / (float(window_size) + 1.0))
-    chance = 1.0 / float(n_cats)
-    target_prob_valid = valid_trial_mask & np.all(
-        np.isfinite(target_prob_matrix), axis=1
-    )
-    if np.any(target_prob_valid):
-        target_prob_brier = float(
-            np.mean(
-                np.sum(
-                    np.square(
-                        probs[target_prob_valid] - target_prob_matrix[target_prob_valid]
-                    ),
-                    axis=1,
-                )
-            )
-        )
-        target_prob_corr_by_cat = np.asarray(
-            [
-                _safe_pearson(
-                    probs[target_prob_valid, category_idx],
-                    target_prob_matrix[target_prob_valid, category_idx],
-                )
-                for category_idx in range(n_cats)
-            ],
-            dtype=float,
-        )
-    else:
-        target_prob_brier = float("nan")
-        target_prob_corr_by_cat = np.full(n_cats, np.nan, dtype=float)
-
-    metrics: Dict[str, Any] = {
-        "true_acc": true_acc,
-        "pred_acc": pred_acc,
-        "true_family_acc": true_family_acc,
-        "pred_family_acc": pred_family_acc,
-        "sliding_true_acc": sliding_true_acc,
-        "sliding_pred_acc": sliding_pred_acc,
-        "sliding_pred_acc_std": sliding_pred_acc_std,
-        "sliding_true_family_acc": sliding_true_family_acc,
-        "sliding_pred_family_acc": sliding_pred_family_acc,
-        "sliding_pred_family_acc_std": sliding_pred_family_acc_std,
-        "exp_true_acc": exponential_smooth_curve(true_acc, alpha=exp_alpha, init_value=chance),
-        "exp_pred_acc": exponential_smooth_curve(pred_acc, alpha=exp_alpha, init_value=chance),
-        "exp_true_family_acc": exponential_smooth_curve(
-            true_family_acc, alpha=exp_alpha, init_value=chance
-        ),
-        "exp_pred_family_acc": exponential_smooth_curve(
-            pred_family_acc, alpha=exp_alpha, init_value=chance
-        ),
-        "exp_accuracy_alpha": exp_alpha,
-        "target_majority_acc": target_majority_acc,
-        "pred_target_majority_acc": pred_target_majority_acc,
-        "sliding_target_majority_acc": sliding_target_majority_acc,
-        "sliding_pred_target_majority_acc": sliding_pred_target_majority_acc,
-        "sliding_pred_target_majority_acc_std": sliding_pred_target_majority_acc_std,
-        "exp_target_majority_acc": exponential_smooth_curve(
-            target_majority_acc, alpha=exp_alpha, init_value=chance
-        ),
-        "exp_pred_target_majority_acc": exponential_smooth_curve(
-            pred_target_majority_acc, alpha=exp_alpha, init_value=chance
-        ),
-        "family_mean_error": float(
-            np.nanmean(np.abs(sliding_true_family_acc - sliding_pred_family_acc))
-        ) if sliding_true_family_acc.size else float("nan"),
-        "pred_category_probs": probs,
+    metric_diagnostics: Dict[str, Any] = {
         "choice_readout_method": "particle_marginal",
         "readout_selected_hypothesis": np.full(n_trials, -1, dtype=int),
         "readout_switch": np.zeros(n_trials, dtype=bool),
         "readout_confidence": np.full(n_trials, np.nan, dtype=float),
         "readout_switch_probability": np.full(n_trials, np.nan, dtype=float),
         "output_lapse": np.zeros(n_trials, dtype=float),
-        "output_lapse_mean": 0.0,
-        "output_lapse_max": 0.0,
         "output_lapse_target": OUTPUT_NOISE_TARGET_UNIFORM,
         "latent_volatility": np.zeros(n_trials, dtype=float),
-        "latent_volatility_mean": 0.0,
-        "latent_volatility_max": 0.0,
-        "target_probs": target_prob_matrix,
-        "target_prob_brier": target_prob_brier,
-        "target_prob_corr_by_cat": target_prob_corr_by_cat,
-        "target_prob_corr_cat1": float(target_prob_corr_by_cat[0]),
-        "true_category_index": true_category_index,
-        "observed_choice_index": observed_choice_index,
-        "target_majority_index": target_majority_index,
-        "valid_trial_mask": valid_trial_mask,
-        "score_trial_mask": score_mask,
     }
     if diagnostics:
-        metrics.update(dict(diagnostics))
-    loss_strategy = build_loss_strategy(loss_metric, loss_delta=loss_delta)
-    objective_error = float(loss_strategy.compute(metrics))
-    loss_values = compute_loss_values(metrics, loss_delta=loss_delta)
-    loss_values[loss_strategy.name] = objective_error
-    metrics["mean_error"] = objective_error
-    metrics["objective_error"] = objective_error
-    metrics["loss_metric"] = loss_strategy.name
-    metrics["loss_values"] = loss_values
-    for key, value in loss_values.items():
-        metrics[f"loss_{key}"] = value
-    if loss_delta is not None:
-        metrics["loss_delta"] = float(loss_delta)
-    return metrics
+        metric_diagnostics.update(dict(diagnostics))
+    metrics = build_prediction_metric_bundle(
+        probs,
+        choices=choices,
+        feedback=feedback,
+        categories=categories,
+        target_probabilities=target_prob_matrix,
+        window_size=window_size,
+        score_trial_mask=score_trial_mask,
+        diagnostics=metric_diagnostics,
+        mask_choice_prediction_by_validity=True,
+        target_std_denominator="window",
+    )
+    return attach_loss_metrics(
+        metrics,
+        loss_metric=loss_metric,
+        loss_delta=loss_delta,
+    )
 
 
 def inject_params(config: Dict[str, Any], params: Dict[str, Any]) -> None:
@@ -2244,35 +881,6 @@ def get_hypothesis_transition_seed(engine_config: Mapping[str, Any]) -> int | No
     return None if seed is None else int(seed)
 
 
-def _particle_backend_config(engine_config: Mapping[str, Any]) -> Dict[str, Any] | None:
-    raw = engine_config.get("inference")
-    if raw is None:
-        return None
-    if not isinstance(raw, Mapping):
-        raise ValueError("engine_config.inference must be a mapping when provided.")
-    backend = str(raw.get("backend", "trajectory")).strip().lower()
-    if backend in {"trajectory", "single_trajectory", "simulation"}:
-        return None
-    if backend not in {"particle_filter", "bootstrap_particle_filter"}:
-        raise ValueError(
-            "engine_config.inference.backend must be 'trajectory' or "
-            f"'particle_filter', got {backend!r}."
-        )
-    config = dict(raw)
-    config["backend"] = "particle_filter"
-    config["particle_count"] = int(config.get("particle_count", 512))
-    config["resample_threshold_fraction"] = float(
-        config.get("resample_threshold_fraction", 0.5)
-    )
-    if config["particle_count"] < 2:
-        raise ValueError("particle-filter particle_count must be at least 2.")
-    if not 0.0 < config["resample_threshold_fraction"] <= 1.0:
-        raise ValueError(
-            "particle-filter resample_threshold_fraction must lie in (0, 1]."
-        )
-    return config
-
-
 def _evaluate_state_model_particle_filter_run(
     *,
     subject_id: int,
@@ -2292,7 +900,6 @@ def _evaluate_state_model_particle_filter_run(
     simulation_point_seed: int | None,
     seed_context: Optional[Mapping[str, Any]],
     score_trial_mask: Optional[Sequence[bool] | np.ndarray],
-    backend_config: Mapping[str, Any],
 ) -> SingleRunResult:
     if int(condition) != 1:
         raise ValueError("the current StateModel particle backend supports condition 1 only.")
@@ -2340,47 +947,55 @@ def _evaluate_state_model_particle_filter_run(
         else 0.0
     )
 
-    from .particle_filter import run_state_model_particle_filter
+    from ..inference_engine.dispatcher import (
+        BACKEND_PARTICLE_FILTER,
+        run_inference_backend,
+    )
 
     resolved_seed = int(filter_seed if filter_seed is not None else 20260806)
-    result = run_state_model_particle_filter(
+    result = run_inference_backend(
         engine_config=engine_config,
         subject_id=int(subject_id),
+        condition=int(condition),
         stimulus=trial_arrays.stimulus,
         choices=trial_arrays.choices,
         feedback=trial_arrays.feedback,
-        particle_count=int(backend_config["particle_count"]),
+        inference_seed=resolved_seed,
         choice_readout_power=readout_power,
         output_lapse=output_lapse,
-        filter_seed=resolved_seed,
-        resample_threshold_fraction=float(
-            backend_config["resample_threshold_fraction"]
-        ),
         valid_trial_mask=np.ones(trial_arrays.choices.size, dtype=bool),
         processed_data_dir=processed_data_dir,
         dataset_paths=dataset_paths,
     )
+    result.require_backend(BACKEND_PARTICLE_FILTER)
+    probabilities = np.asarray(
+        result.observation_probabilities[PREDICTION_MODE_PRIOR_T], dtype=float
+    )
+    state_probabilities = result.state_probabilities
+    latent = result.latent_summaries
+    diagnostics = result.diagnostics
     diagnostic_arrays = {
-        "particle_pre_choice_ess": result.pre_choice_ess,
-        "particle_post_choice_ess": result.post_choice_ess,
-        "particle_resampled": result.resampled,
-        "particle_unique_ancestors": result.resampling_unique_ancestors,
-        "particle_transition_rate": result.filtered_transition_rate,
-        "particle_replacement_count": result.filtered_replacement_count,
-        "particle_replacement_fraction": result.filtered_replacement_fraction,
-        "particle_removed_mass": result.filtered_removed_mass,
-        "particle_newcomer_distance": result.filtered_newcomer_distance,
-        "particle_feedback_surprise": result.filtered_feedback_surprise,
-        "particle_feedback_uncertainty": result.filtered_feedback_uncertainty,
-        "particle_count": int(result.particle_count),
-        "filter_seed": int(result.filter_seed),
+        "particle_pre_choice_ess": diagnostics["pre_choice_ess"],
+        "particle_post_choice_ess": diagnostics["post_choice_ess"],
+        "particle_resampled": diagnostics["resampled"],
+        "particle_unique_ancestors": diagnostics["resampling_unique_ancestors"],
+        "particle_transition_rate": latent["transition_rate"],
+        "particle_search_range": latent["search_range"],
+        "particle_replacement_count": latent["replacement_count"],
+        "particle_replacement_fraction": latent["replacement_fraction"],
+        "particle_removed_mass": latent["removed_mass"],
+        "particle_newcomer_distance": latent["newcomer_distance"],
+        "particle_feedback_surprise": latent["feedback_surprise"],
+        "particle_feedback_uncertainty": latent["feedback_uncertainty"],
+        "particle_count": int(result.metadata["particle_count"]),
+        "filter_seed": int(result.metadata["filter_seed"]),
         "choice_readout_method": method,
         "output_lapse": np.full(trial_arrays.choices.size, output_lapse, dtype=float),
         "output_lapse_mean": float(output_lapse),
         "output_lapse_max": float(output_lapse),
     }
     metrics = compute_metrics_from_category_probabilities(
-        result.marginal_probabilities,
+        probabilities,
         choices=trial_arrays.choices,
         feedback=trial_arrays.feedback,
         categories=trial_arrays.categories,
@@ -2398,40 +1013,42 @@ def _evaluate_state_model_particle_filter_run(
         transition_counts = [
             {
                 "trial_index": int(index),
-                "predictive_m": float(result.filtered_transition_rate[index]),
-                "replacement_count": float(result.filtered_replacement_count[index]),
+                "predictive_m": float(latent["transition_rate"][index]),
+                "predictive_g": float(latent["search_range"][index]),
+                "replacement_count": float(latent["replacement_count"][index]),
                 "replacement_fraction": float(
-                    result.filtered_replacement_fraction[index]
+                    latent["replacement_fraction"][index]
                 ),
-                "removed_mass": float(result.filtered_removed_mass[index]),
+                "removed_mass": float(latent["removed_mass"][index]),
                 "newcomer_distance": float(
-                    result.filtered_newcomer_distance[index]
+                    latent["newcomer_distance"][index]
                 ),
-                "feedback_surprise": float(result.filtered_feedback_surprise[index]),
-                "feedback_uncertainty": float(result.filtered_feedback_uncertainty[index]),
-                "pre_choice_ess": float(result.pre_choice_ess[index]),
-                "post_choice_ess": float(result.post_choice_ess[index]),
-                "resampled": bool(result.resampled[index]),
+                "feedback_surprise": float(latent["feedback_surprise"][index]),
+                "feedback_uncertainty": float(latent["feedback_uncertainty"][index]),
+                "pre_choice_ess": float(diagnostics["pre_choice_ess"][index]),
+                "post_choice_ess": float(diagnostics["post_choice_ess"][index]),
+                "resampled": bool(diagnostics["resampled"][index]),
                 "active_total": float(
-                    np.sum(result.marginal_active_probability[index])
+                    np.sum(state_probabilities["active_probability"][index])
                 ),
                 "strategies": [],
             }
             for index in range(trial_arrays.choices.size)
         ]
         state_log = {
-            "marginal_prior": result.marginal_hypothesis_prior,
-            "marginal_active_probability": result.marginal_active_probability,
-            "transition_rate": result.filtered_transition_rate,
-            "replacement_count": result.filtered_replacement_count,
-            "replacement_fraction": result.filtered_replacement_fraction,
-            "removed_mass": result.filtered_removed_mass,
-            "newcomer_distance": result.filtered_newcomer_distance,
-            "feedback_surprise": result.filtered_feedback_surprise,
-            "feedback_uncertainty": result.filtered_feedback_uncertainty,
-            "pre_choice_ess": result.pre_choice_ess,
-            "post_choice_ess": result.post_choice_ess,
-            "resampled": result.resampled,
+            "marginal_prior": state_probabilities["hypothesis_prior"],
+            "marginal_active_probability": state_probabilities["active_probability"],
+            "transition_rate": latent["transition_rate"],
+            "search_range": latent["search_range"],
+            "replacement_count": latent["replacement_count"],
+            "replacement_fraction": latent["replacement_fraction"],
+            "removed_mass": latent["removed_mass"],
+            "newcomer_distance": latent["newcomer_distance"],
+            "feedback_surprise": latent["feedback_surprise"],
+            "feedback_uncertainty": latent["feedback_uncertainty"],
+            "pre_choice_ess": diagnostics["pre_choice_ess"],
+            "post_choice_ess": diagnostics["post_choice_ess"],
+            "resampled": diagnostics["resampled"],
         }
 
     return SingleRunResult(
@@ -2450,8 +1067,8 @@ def _evaluate_state_model_particle_filter_run(
         trajectory_seed=resolved_seed,
         module_seed=resolved_seed,
         seed_context=dict(seed_context) if seed_context is not None else None,
-        posterior_log=result.marginal_hypothesis_prior if keep_logs else None,
-        prior_log=result.marginal_hypothesis_prior if keep_logs else None,
+        posterior_log=state_probabilities["hypothesis_prior"] if keep_logs else None,
+        prior_log=state_probabilities["hypothesis_prior"] if keep_logs else None,
         strategy_counts_log=transition_counts,
     )
 
@@ -2484,19 +1101,20 @@ def evaluate_state_model_run(
     feedback = trial_arrays.feedback
     categories = trial_arrays.categories
     target_probs = trial_arrays.target_probs
-    trial_sequence = prepare_trial_sequence(stimulus, choices, feedback)
-
-    from ..problems import StateModel
-
     engine_config = deepcopy(engine_config_template)
     inject_params(engine_config, params)
     effective_trajectory_seed = trajectory_seed if trajectory_seed is not None else run_seed
-    module_seed = inject_module_seed_from_trajectory(engine_config, effective_trajectory_seed)
     if effective_trajectory_seed is not None:
         # Keep legacy modules that still call global np.random reproducible per trajectory.
         np.random.seed(int(effective_trajectory_seed))
-    backend_config = _particle_backend_config(engine_config)
-    if backend_config is not None:
+    from ..inference_engine.dispatcher import (
+        BACKEND_PARTICLE_FILTER,
+        resolve_inference_backend,
+        run_inference_backend,
+    )
+
+    backend_config = resolve_inference_backend(engine_config)
+    if backend_config.backend == BACKEND_PARTICLE_FILTER:
         return _evaluate_state_model_particle_filter_run(
             subject_id=subject_id,
             condition=condition,
@@ -2515,34 +1133,28 @@ def evaluate_state_model_run(
             simulation_point_seed=simulation_point_seed,
             seed_context=seed_context,
             score_trial_mask=score_trial_mask,
-            backend_config=backend_config,
         )
-    model = StateModel(
-        engine_config,
+    inference_result = run_inference_backend(
+        engine_config=engine_config,
+        subject_id=int(subject_id),
         condition=condition,
-        subject_id=subject_id,
+        stimulus=stimulus,
+        choices=choices,
+        feedback=feedback,
+        inference_seed=effective_trajectory_seed,
         processed_data_dir=processed_data_dir,
         dataset_paths=dataset_paths,
     )
-
-    posterior_log, prior_log = model.fit_step_by_step(trial_sequence)
-    all_step_log = getattr(model, "step_log", None)
-    if all_step_log is None:
-        raise ValueError("StateModel.step_log is missing after fit_step_by_step")
+    inference_result.require_backend("trajectory")
+    model = inference_result.artifacts["model"]
+    posterior_log = inference_result.state_probabilities["hypothesis_posterior"]
+    prior_log = inference_result.state_probabilities["hypothesis_prior"]
+    all_step_log = inference_result.diagnostics["step_log"]
+    module_seed = inference_result.metadata.get("module_seed")
     trial_events = all_step_log if include_step_log else None
-
-    strategy_log = None
-    latent_volatility_log = None
-    hypo_mod = getattr(model.engine, "modules", {}).get("hypo_transitions_mod") if hasattr(model, "engine") else None
-    if hypo_mod is not None and hasattr(hypo_mod, "strategy_counts_log"):
-        strategy_log = getattr(hypo_mod, "strategy_counts_log")
-    if hypo_mod is not None and hasattr(hypo_mod, "latent_volatility_log"):
-        latent_volatility_log = getattr(hypo_mod, "latent_volatility_log")
-
-    beta_log = None
-    beta_mod = getattr(model.engine, "modules", {}).get("beta_mod") if hasattr(model, "engine") else None
-    if beta_mod is not None and hasattr(beta_mod, "beta_log"):
-        beta_log = getattr(beta_mod, "beta_log")
+    strategy_log = inference_result.latent_summaries.get("transition_events")
+    latent_volatility_log = inference_result.latent_summaries.get("latent_volatility")
+    beta_log = inference_result.latent_summaries.get("beta")
 
     output_noise_config = _extract_output_noise_config(params, engine_config)
     choice_readout_config = _extract_choice_readout_config(params, engine_config)

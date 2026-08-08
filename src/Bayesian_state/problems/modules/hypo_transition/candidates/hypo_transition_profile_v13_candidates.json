@@ -6,7 +6,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -18,7 +18,7 @@
           "activation": {
             "temperature": 0.85
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -84,7 +84,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -96,7 +96,7 @@
           "activation": {
             "temperature": 0.7
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -163,7 +163,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -175,7 +175,7 @@
           "activation": {
             "temperature": 0.65
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -243,7 +243,7 @@
         "init_num": 3,
         "init_pool": "label_permuted",
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -255,7 +255,7 @@
           "activation": {
             "temperature": 0.75
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -323,7 +323,7 @@
         "init_num": 5,
         "init_pool": "label_permuted",
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -335,7 +335,7 @@
           "activation": {
             "temperature": 0.8
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -401,7 +401,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -413,7 +413,7 @@
           "activation": {
             "temperature": 0.75
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -476,7 +476,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -488,7 +488,7 @@
           "activation": {
             "temperature": 1.25
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -552,7 +552,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -564,7 +564,7 @@
           "activation": {
             "temperature": 0.75
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -629,7 +629,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -641,7 +641,7 @@
           "activation": {
             "temperature": 0.65
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -706,7 +706,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -718,7 +718,7 @@
           "activation": {
             "temperature": 0.7
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -783,7 +783,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -795,7 +795,7 @@
           "activation": {
             "temperature": 0.65
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -891,11 +891,11 @@
     },
     {
       "id": "c1_v13_balanced",
-      "description": "Balanced stochastic profile activation baseline.",
+      "description": "Balanced stochastic strategy-state activation baseline.",
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -907,7 +907,7 @@
           "activation": {
             "temperature": 1.1
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -972,7 +972,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -984,7 +984,7 @@
           "activation": {
             "temperature": 0.55
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -1085,7 +1085,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -1097,7 +1097,7 @@
           "activation": {
             "temperature": 1.1
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -1195,7 +1195,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 5,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -1207,7 +1207,7 @@
           "activation": {
             "temperature": 0.75
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",
@@ -1307,7 +1307,7 @@
       "hypo_transitions_kwargs": {
         "init_num": 3,
         "max_active_hypotheses": 5,
-        "strategy_controller": {
+        "state_controller": {
           "method": "feedback_gated_softmax",
           "features": {
             "recent_accuracy_window": 8,
@@ -1319,7 +1319,7 @@
           "activation": {
             "temperature": 0.85
           },
-          "profiles": [
+          "states": [
             {
               "id": "conservative",
               "policy_method": "conservative",

@@ -35,22 +35,22 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     split_for_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.active_set.generation import (  # noqa: E402
+from src.Bayesian_state.simulation.trajectory_generation import (  # noqa: E402
     generate_condition1_trajectory,
 )
-from src.Bayesian_state.active_set.mechanism_variants import (  # noqa: E402
+from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.active_set.particle_filter import (  # noqa: E402
-    run_active_set_particle_filter,
+from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+    run_state_model_particle_filter,
 )
 from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.utils.seeding import stable_seed  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -231,15 +231,15 @@ def recover_one_dataset(
     )
     rows: list[dict[str, Any]] = []
     for fit_candidate in fit_candidates:
-        fitted = run_active_set_particle_filter(
+        fitted = run_state_model_particle_filter(
             engine_config=apply_candidate(base_engine, fit_candidate),
             subject_id=subject_id,
             stimulus=stimulus,
             choices=generated.choices,
             feedback=generated.feedback,
             particle_count=int(args.particle_count),
-            rho=float(args.rho),
-            epsilon=float(args.epsilon),
+            choice_readout_power=float(args.rho),
+            output_lapse=float(args.epsilon),
             filter_seed=int(paired_filter_seed),
             processed_data_dir=dataset_paths["processed_dir"],
             dataset_paths=dataset_paths,

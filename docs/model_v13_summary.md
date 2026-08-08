@@ -16,7 +16,7 @@ Cond1 的 hypothesis space 从原来的 19 个 hypotheses 扩展为 38 个 hypot
 
 ### 四种基础策略
 
-V13 用 4 种基础 profile policy 替代大量固定 strategy 组合。每个 trial 先动态选择一个 profile，再执行该 profile 对 active hypotheses 的更新。
+V13 用 4 种基础 strategy state 替代大量固定 strategy 组合。每个 trial 先动态选择一个 state，再执行该 state 对 active hypotheses 的更新。
 
 记号：
 
@@ -53,11 +53,11 @@ score_survivor(h)
 
 ### 动态策略配置
 
-旧版策略是固定的：一次 run 从头到尾使用同一组 strategy。V13 改成动态 profile controller：
+旧版策略是固定的：一次 run 从头到尾使用同一组 strategy。V13 改成 dynamic-discrete state controller：
 
 ```text
 s_k(t) = bias_k + w_k · x_t
-P(profile = k | history_t)
+P(state = k | history_t)
   = exp(s_k(t) / T) / sum_j exp(s_j(t) / T)
 ```
 
@@ -74,12 +74,12 @@ P(profile = k | history_t)
 
 ### Profile 与 Readout 分离
 
-本次修改后，profile candidate 只控制 transition 和 p2p，不再绑定 readout。Readout 作为独立 coordinate，与 profile 做直积：
+本次修改后，controller-profile candidate 只控制 transition 和 p2p，不再绑定 readout。Readout 作为独立 coordinate，与 candidate 做直积：
 
 ```yaml
 engine.modules.hypo_transitions_mod.kwargs:
   values_from_json:
-    path: ../../src/Bayesian_state/problems/modules/hypo_transition_strategies/hypo_transition_profile_v13_candidates.json
+    path: ../../src/Bayesian_state/problems/modules/hypo_transition/candidates/hypo_transition_profile_v13_candidates.json
     key: cond1_v13
     value_key: hypo_transitions_kwargs
 
@@ -89,7 +89,7 @@ engine.choice_readout.kwargs:
     - method: map_hypothesis
 ```
 
-当前 Cond1 v13 有 16 个 transition profile，因此会形成 `16 * 2 = 32` 个 profile-readout 组合。
+当前 Cond1 v13 有 16 个 controller candidates，因此会形成 `16 * 2 = 32` 个 candidate-readout 组合。
 
 ### 候选 Profile
 
@@ -101,7 +101,7 @@ engine.choice_readout.kwargs:
 | `c1_v13_low_capacity_stubborn` | 低容量 | active core 更小，更容易丢失正确 hypo |
 | `c1_v13_early_explore_late_stable` | 前探后稳 | 早期 aggressive/stable，后期 conservative |
 | `c1_v13_conservative_heavy` | 保守学习 | conservative 权重高，适合平滑上升型被试 |
-| `c1_v13_volatile_switch` | 经常切换 | softmax temperature 更高，profile 激活更随机 |
+| `c1_v13_volatile_switch` | 经常切换 | softmax temperature 更高，strategy-state 激活更随机 |
 | `c1_v13_low_accuracy_refresh` | 低正确率后刷新 | recent_error 和 negative accuracy_delta 触发 aggressive |
 | `c1_v13_low_accuracy_stubborn` | 低正确率后坚持 | recent_error 触发 stubborn，适合 extended below-chance |
 | `c1_v13_confidence_locked` | 高信心锁定 | posterior confidence 触发 conservative / stubborn |

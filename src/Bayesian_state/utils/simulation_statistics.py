@@ -1843,6 +1843,29 @@ def compute_simulation_statistics(
     return summary
 
 
+# Compatibility path: established callers still import these names from
+# ``utils.simulation_statistics``.  Rebinding them here makes the new low-level
+# metrics package canonical without changing existing result schemas or YAML
+# objective paths during the migration.
+from ..metrics.behavior import (  # noqa: E402
+    history_kernel_metrics as _shared_history_kernel_metrics,
+    switch_behavior_metrics as _shared_switch_behavior_metrics,
+)
+from ..metrics.learning_curves import (  # noqa: E402
+    accuracy_curve_metrics as _shared_accuracy_curve_metrics,
+    accuracy_scalar_metrics as _shared_accuracy_scalar_metrics,
+)
+from ..metrics.repeated_runs import (  # noqa: E402
+    marginal_prediction_metrics_from_runs as _shared_marginal_prediction_metrics_from_runs,
+)
+
+accuracy_curve_metrics = _shared_accuracy_curve_metrics
+accuracy_scalar_metrics = _shared_accuracy_scalar_metrics
+history_kernel_metrics = _shared_history_kernel_metrics
+marginal_prediction_metrics_from_runs = _shared_marginal_prediction_metrics_from_runs
+switch_behavior_metrics = _shared_switch_behavior_metrics
+
+
 __all__ = [
     "MULTIOBJECTIVE_WEIGHT_DEFAULTS",
     "SELECTION_METRIC_ALIASES",

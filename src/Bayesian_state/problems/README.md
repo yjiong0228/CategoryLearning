@@ -1,14 +1,15 @@
 # Bayesian_state Problems Architecture
 
-This package contains the model-side implementation of the Bayesian state model. It defines the hypothesis space, the trial-level inference engine wiring, and the modules that update perception, likelihood, memory, beta, and hypothesis transitions.
+This package contains the model-side implementation of the Bayesian state model. It defines the hypothesis space, the `StateModel` assembly layer, and the modules that update perception, likelihood, memory, beta, and hypothesis transitions. The actual scheduler class is defined in `../inference_engine/`; `base_problem.py` re-exports it for compatibility.
 
 If you are new to this code, read files in this order:
 
 1. `model.py`: how a `StateModel` is built and how trials are fed into the engine.
-2. `base_problem.py`: shared inference primitives such as `BaseSet`, `BaseEngine`, and probability utilities.
-3. `partitions.py`: the hypothesis space and category likelihood geometry.
-4. `modules/README.md`: detailed behavior of the pluggable engine modules.
-5. `modules/*.py`: implementation details for each module.
+2. `../inference_engine/README.md`: shared inference primitives and scheduler.
+3. `partitions.py`: the main continuous hypothesis space and category likelihood geometry.
+4. `discrete_partitions.py`: the compact discrete-rule alternative.
+5. `modules/README.md`: detailed behavior of the pluggable engine modules.
+6. `modules/*.py`: implementation details for each module.
 
 ## Core Objects
 
@@ -32,9 +33,9 @@ A trial normally enters the model as:
 
 Some evaluation utilities may additionally use true category labels, e.g. for predicted accuracy diagnostics.
 
-### `BaseEngine` in `base_problem.py`
+### `BaseEngine` in `../inference_engine/bayesian_engine.py`
 
-`BaseEngine` is the shared state container and scheduler. It owns the current observation, prior, posterior, likelihood, active hypothesis mask, partition, and module instances.
+`BaseEngine` is the shared state container and scheduler. It owns the current observation, prior, posterior, likelihood, active hypothesis mask, partition, and module instances. `base_problem.py` imports and re-exports this class so older imports continue to work.
 
 The engine processes one trial by following `agenda`, for example:
 
@@ -143,13 +144,16 @@ The shared feedback mapping then converts category probabilities into observed f
 The `modules/` folder contains pluggable inference steps. The usual PMH stack is:
 
 - `perception.py`: maps raw stimulus to perceived stimulus
-- `hypo_transitions.py`: selects active hypotheses and maps posterior to next prior
+- `hypo_transition/`: the complete H module package, including the common two-step contract,
+  subject-fixed strategies, discrete strategy-state dynamics, continuous controls, and versioned candidates
 - `likelihood.py`: computes `p(data_t | h)` using `Partition`
 - `memory.py`: integrates likelihood and prior/posterior memory
 - `beta.py`: updates per-hypothesis inverse temperature
-- `decision.py`: optional decision behavior utilities
+- `readout.py`: shared choice, output-noise, RT, and oral-report readouts
 
 See `modules/README.md` for formulas and per-module details.
+
+`discrete_partitions.py` defines `DiscreteRulePartition`, a small rule-table implementation with the same broad category-probability role. It is useful for compact tests or explicitly discrete model variants, but it is not the default PMH partition.
 
 ## Configuration Flow
 
@@ -177,8 +181,10 @@ A few implementation details are intentional:
 
 - `partition.prototypes` is numeric, not a list of dictionaries.
 - `partition.splits` stores internal split-spec objects, and `partition.regions` is generated from those split definitions for boundary distance.
-- `hypo_transitions.py` uses `partition.similarity_matrix`, which is lazy-loaded and cached on disk under `problems/cache/`.
-- `hypo_transitions.py` still has a local `cached_dist`; that cache is for center-to-center distances inside transition strategies, not for likelihood distance caching.
+- strategy-based transitions use `partition.similarity_matrix`, which is lazy-loaded and cached on disk under `problems/cache/`.
+- `hypo_transition/_internal/strategy_policy.py` has a local `cached_dist`; that private cache is for center-to-center distances inside transition policies, not for likelihood distance caching.
+- `cache/README.md` documents persisted similarity matrices and cache invalidation rules.
+- `modules/hypo_transition/candidates/README.md` documents versioned strategy resources loaded by Hyper-CD/Grid configs.
 
 ## Suggested Improvements
 

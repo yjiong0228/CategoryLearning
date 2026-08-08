@@ -1,4 +1,8 @@
-"""Simple fixed-number hypothesis module for the state-based engine."""
+"""Private strategy-policy implementation shared by public H modes.
+
+This is an internal strategy library, not a complete H module.  Public modes
+provide the lifecycle in :mod:`static` and :mod:`dynamic_discrete`.
+"""
 
 from __future__ import annotations
 
@@ -7,13 +11,13 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sequence, List, Dict, Set, Tuple, Callable, Any, Mapping
 from scipy.spatial.distance import cdist
-from ...utils import print, entropy, softmax
+from .....utils import print, entropy, softmax
 
-from .base_module import BaseModule
+from ...base_module import BaseModule
 import numpy as np
 
 
-class DynamicHypothesisModule(BaseModule):
+class StrategyPolicyRuntime(BaseModule):
     """
     Maintains a dynamic-size hypothesis mask based on entropy and other strategies.
     
@@ -49,7 +53,7 @@ class DynamicHypothesisModule(BaseModule):
         "recent_accuracy",
         "latent_volatility",
     )
-    VALID_PROFILE_POLICY_METHODS = (
+    VALID_STATE_POLICY_METHODS = (
         "conservative",
         "stable",
         "aggressive",
@@ -75,11 +79,11 @@ class DynamicHypothesisModule(BaseModule):
         self.module_seed = kwargs.get("module_seed", None)
         self.rng = np.random.default_rng(self.module_seed)
         
-        # Config: strategies is a list of dicts. A strategy_controller may
-        # provide per-trial profiles instead of a single static strategy list.
+        # Config: strategies is a list of dicts. A state_controller may
+        # provide per-trial states instead of a single static strategy list.
         strategies_input = kwargs.get("strategies", None)
-        self.strategy_controller_raw = kwargs.get("strategy_controller", None)
-        if strategies_input is None and self.strategy_controller_raw is None:
+        self.state_controller_raw = kwargs.get("state_controller", None)
+        if strategies_input is None and self.state_controller_raw is None:
             raise ValueError("Strategies configuration is required. Provide a non-empty list of strategy dicts.")
         if isinstance(strategies_input, str):
             raise ValueError(
@@ -329,11 +333,11 @@ class DynamicHypothesisModule(BaseModule):
             "low_posterior": self._select_low_posterior,
         }
         self.strategies = self._validate_strategies(self.strategies) if self.strategies else []
-        self.strategy_controller = self._validate_strategy_controller(self.strategy_controller_raw)
+        self.state_controller = self._validate_state_controller(self.state_controller_raw)
         if "history_maxlen" in kwargs:
             raise ValueError("history_maxlen is no longer a supported config key; set window on history-based strategies.")
         required_history = self._required_history_length(self._all_configured_strategies())
-        required_history = max(required_history, self._strategy_controller_required_history())
+        required_history = max(required_history, self._state_controller_required_history())
         if self.latent_volatility_enabled or self.prior_reset_enabled:
             required_history = max(required_history, self.prior_reset_window, 1)
         if self.latent_volatility_enabled:
@@ -354,16 +358,16 @@ class DynamicHypothesisModule(BaseModule):
 
     def _all_configured_strategies(self) -> List[Dict[str, Any]]:
         strategies = list(self.strategies)
-        if isinstance(getattr(self, "strategy_controller", None), dict):
-            for profile in self.strategy_controller.get("profiles", []):
-                strategies.extend(profile.get("strategies", []))
+        if isinstance(getattr(self, "state_controller", None), dict):
+            for state in self.state_controller.get("states", []):
+                strategies.extend(state.get("strategies", []))
         return strategies
 
     def _all_post_to_prior_configs(self) -> List[Dict[str, Any]]:
         configs = [self.post_to_prior_config]
-        if isinstance(getattr(self, "strategy_controller", None), dict):
-            for profile in self.strategy_controller.get("profiles", []):
-                configs.append(profile.get("post_to_prior", self.post_to_prior_config))
+        if isinstance(getattr(self, "state_controller", None), dict):
+            for state in self.state_controller.get("states", []):
+                configs.append(state.get("post_to_prior", self.post_to_prior_config))
         return configs
 
     def _validate_strategies(self, strategies: Any) -> List[Dict[str, Any]]:
@@ -411,108 +415,108 @@ class DynamicHypothesisModule(BaseModule):
             validated.append(strat)
         return validated
 
-    def _validate_strategy_controller(self, raw: Any) -> Dict[str, Any] | None:
+    def _validate_state_controller(self, raw: Any) -> Dict[str, Any] | None:
         if raw is None:
             return None
         if not isinstance(raw, dict):
-            raise ValueError("strategy_controller must be a dictionary when provided.")
+            raise ValueError("state_controller must be a dictionary when provided.")
         config = dict(raw)
         method = str(config.get("method", "feedback_gated_softmax"))
         if method != "feedback_gated_softmax":
-            raise ValueError("strategy_controller.method must be 'feedback_gated_softmax'.")
-        profiles = config.get("profiles")
-        if not isinstance(profiles, list) or not profiles:
-            raise ValueError("strategy_controller.profiles must be a non-empty list.")
+            raise ValueError("state_controller.method must be 'feedback_gated_softmax'.")
+        states = config.get("states")
+        if not isinstance(states, list) or not states:
+            raise ValueError("state_controller.states must be a non-empty list.")
 
         activation = config.get("activation", {}) or {}
         if not isinstance(activation, dict):
-            raise ValueError("strategy_controller.activation must be a dictionary when provided.")
+            raise ValueError("state_controller.activation must be a dictionary when provided.")
         temperature = self._validate_positive_float(
             activation.get("temperature", 1.0),
-            "strategy_controller.activation.temperature",
+            "state_controller.activation.temperature",
         )
-        weights_by_profile = activation.get("weights", {}) or {}
-        if not isinstance(weights_by_profile, dict):
-            raise ValueError("strategy_controller.activation.weights must be a mapping when provided.")
+        weights_by_state = activation.get("weights", {}) or {}
+        if not isinstance(weights_by_state, dict):
+            raise ValueError("state_controller.activation.weights must be a mapping when provided.")
 
         features = config.get("features", {}) or {}
         if not isinstance(features, dict):
-            raise ValueError("strategy_controller.features must be a dictionary when provided.")
+            raise ValueError("state_controller.features must be a dictionary when provided.")
         recent_window = self._validate_count(
             features.get("recent_accuracy_window", 8),
-            context="strategy_controller.features.recent_accuracy_window",
+            context="state_controller.features.recent_accuracy_window",
         )
         delta_window = self._validate_count(
             features.get("accuracy_delta_window", recent_window),
-            context="strategy_controller.features.accuracy_delta_window",
+            context="state_controller.features.accuracy_delta_window",
         )
         if recent_window <= 0 or delta_window <= 0:
-            raise ValueError("strategy_controller history windows must be positive.")
+            raise ValueError("state_controller history windows must be positive.")
         feedback_mode = str(features.get("feedback_mode", "exact"))
         if feedback_mode not in self.VALID_FEEDBACK_MODES:
             raise ValueError(
-                "strategy_controller.features.feedback_mode must be one of "
+                "state_controller.features.feedback_mode must be one of "
                 f"{self.VALID_FEEDBACK_MODES}, got {feedback_mode!r}."
             )
         padding = features.get("padding", "chance")
         if isinstance(padding, str):
             if padding not in self.VALID_PADDING_MODES:
                 raise ValueError(
-                    "strategy_controller.features.padding must be one of "
+                    "state_controller.features.padding must be one of "
                     f"{self.VALID_PADDING_MODES} or a numeric value, got {padding!r}."
                 )
             if padding == "chance":
                 self._chance_padding_value(require=True)
         else:
-            self._validate_float_range(padding, "strategy_controller.features.padding", 0.0, 1.0)
+            self._validate_float_range(padding, "state_controller.features.padding", 0.0, 1.0)
 
-        profile_ids: Set[str] = set()
-        validated_profiles: List[Dict[str, Any]] = []
-        for idx, raw_profile in enumerate(profiles):
-            if not isinstance(raw_profile, dict):
-                raise ValueError(f"strategy_controller.profiles[{idx}] must be a dictionary.")
-            profile = dict(raw_profile)
-            profile_id = str(profile.get("id", "")).strip()
-            if not profile_id:
-                raise ValueError(f"strategy_controller.profiles[{idx}].id must be non-empty.")
-            if profile_id in profile_ids:
-                raise ValueError(f"Duplicate strategy_controller profile id: {profile_id!r}.")
-            profile_ids.add(profile_id)
-            profile["id"] = profile_id
-            policy_method = profile.get("policy_method")
+        state_ids: Set[str] = set()
+        validated_states: List[Dict[str, Any]] = []
+        for idx, raw_state in enumerate(states):
+            if not isinstance(raw_state, dict):
+                raise ValueError(f"state_controller.states[{idx}] must be a dictionary.")
+            state = dict(raw_state)
+            state_id = str(state.get("id", "")).strip()
+            if not state_id:
+                raise ValueError(f"state_controller.states[{idx}].id must be non-empty.")
+            if state_id in state_ids:
+                raise ValueError(f"Duplicate state_controller state id: {state_id!r}.")
+            state_ids.add(state_id)
+            state["id"] = state_id
+            policy_method = state.get("policy_method")
             if policy_method is not None:
                 policy_method = str(policy_method)
-                if policy_method not in self.VALID_PROFILE_POLICY_METHODS:
+                if policy_method not in self.VALID_STATE_POLICY_METHODS:
                     raise ValueError(
-                        f"strategy_controller profile {profile_id!r} has unsupported policy_method "
-                        f"{policy_method!r}. Supported values: {', '.join(self.VALID_PROFILE_POLICY_METHODS)}."
+                        f"state_controller state {state_id!r} has unsupported policy_method "
+                        f"{policy_method!r}. Supported values: {', '.join(self.VALID_STATE_POLICY_METHODS)}."
                     )
-                if "strategies" in profile:
+                if "strategies" in state:
                     raise ValueError(
-                        f"strategy_controller profile {profile_id!r} cannot define both "
+                        f"state_controller state {state_id!r} cannot define both "
                         "policy_method and strategies."
                     )
-                profile["policy_method"] = policy_method
-                profile["strategies"] = []
-                self._validate_profile_policy_parameters(profile)
+                state["policy_method"] = policy_method
+                state["strategies"] = []
+                self._validate_state_policy_parameters(state)
             else:
-                profile["strategies"] = self._validate_strategies(profile.get("strategies"))
-            profile["post_to_prior"] = self._validate_post_to_prior_config(
-                profile.get("post_to_prior", self.post_to_prior_config)
+                state["strategies"] = self._validate_strategies(state.get("strategies"))
+            state["post_to_prior"] = self._validate_post_to_prior_config(
+                state.get("post_to_prior", self.post_to_prior_config)
             )
-            profile_activation = dict(weights_by_profile.get(profile_id, {}) or {})
-            if "activation" in profile:
-                if not isinstance(profile["activation"], dict):
-                    raise ValueError(f"strategy_controller profile {profile_id!r} activation must be a dictionary.")
-                profile_activation.update(dict(profile["activation"]))
-            for name, value in profile_activation.items():
-                self._validate_finite_float(value, f"strategy_controller profile {profile_id}.{name}")
-            profile["activation"] = profile_activation
-            validated_profiles.append(profile)
+            state_activation = dict(weights_by_state.get(state_id, {}) or {})
+            if "activation" in state:
+                if not isinstance(state["activation"], dict):
+                    raise ValueError(f"state_controller state {state_id!r} activation must be a dictionary.")
+                state_activation.update(dict(state["activation"]))
+            for name, value in state_activation.items():
+                self._validate_finite_float(value, f"state_controller state {state_id}.{name}")
+            state["activation"] = state_activation
+            validated_states.append(state)
 
         return {
             "method": method,
-            "profiles": validated_profiles,
+            "states": validated_states,
             "activation": {"temperature": temperature},
             "features": {
                 "recent_accuracy_window": recent_window,
@@ -521,97 +525,97 @@ class DynamicHypothesisModule(BaseModule):
                 "padding": padding,
                 "trial_progress_scale": self._validate_positive_float(
                     features.get("trial_progress_scale", 100.0),
-                    "strategy_controller.features.trial_progress_scale",
+                    "state_controller.features.trial_progress_scale",
                 ),
                 "mid_phase_center": self._validate_float_range(
                     features.get("mid_phase_center", 0.35),
-                    "strategy_controller.features.mid_phase_center",
+                    "state_controller.features.mid_phase_center",
                     0.0,
                     1.0,
                 ),
                 "mid_phase_width": self._validate_positive_float(
                     features.get("mid_phase_width", 0.12),
-                    "strategy_controller.features.mid_phase_width",
+                    "state_controller.features.mid_phase_width",
                 ),
             },
         }
 
-    def _validate_profile_policy_parameters(self, profile: Dict[str, Any]) -> None:
-        profile_id = str(profile.get("id", "<unknown>"))
-        prefix = f"strategy_controller profile {profile_id!r}"
-        active_limit = self._validate_count(profile.get("active_limit", 5), context=f"{prefix} active_limit")
+    def _validate_state_policy_parameters(self, state: Dict[str, Any]) -> None:
+        state_id = str(state.get("id", "<unknown>"))
+        prefix = f"state_controller state {state_id!r}"
+        active_limit = self._validate_count(state.get("active_limit", 5), context=f"{prefix} active_limit")
         if active_limit <= 0:
             raise ValueError(f"{prefix} active_limit must be positive.")
         if active_limit > self.total_hypo:
             raise ValueError(f"{prefix} active_limit cannot exceed hypothesis space size.")
 
-        policy_method = str(profile["policy_method"])
+        policy_method = str(state["policy_method"])
         if policy_method == "stable":
-            self._validate_positive_float(profile.get("retain_temperature", 1.0), f"{prefix} retain_temperature")
-            explore_count = self._validate_count(profile.get("explore_count", 1), context=f"{prefix} explore_count")
+            self._validate_positive_float(state.get("retain_temperature", 1.0), f"{prefix} retain_temperature")
+            explore_count = self._validate_count(state.get("explore_count", 1), context=f"{prefix} explore_count")
             if explore_count < 0:
                 raise ValueError(f"{prefix} explore_count must be non-negative.")
         elif policy_method == "aggressive":
-            max_newcomers = self._validate_count(profile.get("max_newcomers", active_limit - 1), context=f"{prefix} max_newcomers")
-            min_newcomers = self._validate_count(profile.get("min_newcomers", 0), context=f"{prefix} min_newcomers")
+            max_newcomers = self._validate_count(state.get("max_newcomers", active_limit - 1), context=f"{prefix} max_newcomers")
+            min_newcomers = self._validate_count(state.get("min_newcomers", 0), context=f"{prefix} min_newcomers")
             if min_newcomers < 0 or max_newcomers < 0 or min_newcomers > max_newcomers:
                 raise ValueError(f"{prefix} newcomer bounds must satisfy 0 <= min_newcomers <= max_newcomers.")
         elif policy_method == "stubborn":
-            retain_count = self._validate_count(profile.get("retain_count", 2), context=f"{prefix} retain_count")
+            retain_count = self._validate_count(state.get("retain_count", 2), context=f"{prefix} retain_count")
             if retain_count <= 0:
                 raise ValueError(f"{prefix} retain_count must be positive.")
-            self._validate_float_range(profile.get("base_explore_prob", 0.02), f"{prefix} base_explore_prob", 0.0, 1.0)
-            self._validate_float_range(profile.get("post_correct_explore_prob", 0.20), f"{prefix} post_correct_explore_prob", 0.0, 1.0)
-            self._validate_float_range(profile.get("post_error_explore_prob", 0.0), f"{prefix} post_error_explore_prob", 0.0, 1.0)
-            self._validate_float_range(profile.get("newcomer_mass", 0.02), f"{prefix} newcomer_mass", 0.0, 1.0)
-        survivor_score = str(profile.get("survivor_score", "posterior"))
+            self._validate_float_range(state.get("base_explore_prob", 0.02), f"{prefix} base_explore_prob", 0.0, 1.0)
+            self._validate_float_range(state.get("post_correct_explore_prob", 0.20), f"{prefix} post_correct_explore_prob", 0.0, 1.0)
+            self._validate_float_range(state.get("post_error_explore_prob", 0.0), f"{prefix} post_error_explore_prob", 0.0, 1.0)
+            self._validate_float_range(state.get("newcomer_mass", 0.02), f"{prefix} newcomer_mass", 0.0, 1.0)
+        survivor_score = str(state.get("survivor_score", "posterior"))
         if survivor_score not in ("posterior", "posterior_choice"):
             raise ValueError(f"{prefix} survivor_score must be 'posterior' or 'posterior_choice'.")
         self._validate_float_range(
-            profile.get("survivor_posterior_weight", 1.0),
+            state.get("survivor_posterior_weight", 1.0),
             f"{prefix} survivor_posterior_weight",
             0.0,
             10.0,
         )
         self._validate_float_range(
-            profile.get("survivor_choice_weight", 0.0),
+            state.get("survivor_choice_weight", 0.0),
             f"{prefix} survivor_choice_weight",
             0.0,
             10.0,
         )
         self._validate_positive_float(
-            profile.get("survivor_choice_floor", 1e-9),
+            state.get("survivor_choice_floor", 1e-9),
             f"{prefix} survivor_choice_floor",
         )
-        if "survivor_choice_beta" in profile:
-            self._validate_positive_float(profile["survivor_choice_beta"], f"{prefix} survivor_choice_beta")
-        newcomer_score = str(profile.get("newcomer_score", "random"))
+        if "survivor_choice_beta" in state:
+            self._validate_positive_float(state["survivor_choice_beta"], f"{prefix} survivor_choice_beta")
+        newcomer_score = str(state.get("newcomer_score", "random"))
         if newcomer_score not in self.VALID_NEWCOMER_SCORES:
             raise ValueError(
                 f"{prefix} newcomer_score must be one of {self.VALID_NEWCOMER_SCORES}, got {newcomer_score!r}."
             )
         newcomer_choice_window = self._validate_count(
-            profile.get("newcomer_choice_window", 8),
+            state.get("newcomer_choice_window", 8),
             context=f"{prefix} newcomer_choice_window",
         )
         if newcomer_choice_window <= 0:
             raise ValueError(f"{prefix} newcomer_choice_window must be positive.")
         self._validate_float_range(
-            profile.get("newcomer_choice_weight", 1.0),
+            state.get("newcomer_choice_weight", 1.0),
             f"{prefix} newcomer_choice_weight",
             0.0,
             10.0,
         )
         self._validate_positive_float(
-            profile.get("newcomer_choice_floor", 1e-9),
+            state.get("newcomer_choice_floor", 1e-9),
             f"{prefix} newcomer_choice_floor",
         )
         self._validate_positive_float(
-            profile.get("newcomer_choice_temperature", 1.0),
+            state.get("newcomer_choice_temperature", 1.0),
             f"{prefix} newcomer_choice_temperature",
         )
-        if "newcomer_choice_beta" in profile:
-            self._validate_positive_float(profile["newcomer_choice_beta"], f"{prefix} newcomer_choice_beta")
+        if "newcomer_choice_beta" in state:
+            self._validate_positive_float(state["newcomer_choice_beta"], f"{prefix} newcomer_choice_beta")
 
     def _validate_strategy_parameters(self, idx: int, strat: Dict[str, Any]) -> None:
         method = str(strat["method"])
@@ -796,18 +800,18 @@ class DynamicHypothesisModule(BaseModule):
             )
         return required
 
-    def _strategy_controller_required_history(self) -> int:
-        if not isinstance(getattr(self, "strategy_controller", None), dict):
+    def _state_controller_required_history(self) -> int:
+        if not isinstance(getattr(self, "state_controller", None), dict):
             return 0
-        features = self.strategy_controller["features"]
+        features = self.state_controller["features"]
         required = max(
             int(features.get("recent_accuracy_window", 0)),
             2 * int(features.get("accuracy_delta_window", 0)),
             1,
         )
-        for profile in self.strategy_controller.get("profiles", []):
-            if str(profile.get("newcomer_score", "random")) in ("recent_choice", "recent_error_choice"):
-                required = max(required, int(profile.get("newcomer_choice_window", 8)))
+        for state in self.state_controller.get("states", []):
+            if str(state.get("newcomer_score", "random")) in ("recent_choice", "recent_error_choice"):
+                required = max(required, int(state.get("newcomer_choice_window", 8)))
         return required
 
     @staticmethod
@@ -1275,8 +1279,8 @@ class DynamicHypothesisModule(BaseModule):
                 or config.get("confidence_source") == "recent_accuracy"
             ):
                 modes.add(str(config.get("feedback_mode", "exact")))
-        if isinstance(getattr(self, "strategy_controller", None), dict):
-            modes.add(str(self.strategy_controller["features"].get("feedback_mode", "exact")))
+        if isinstance(getattr(self, "state_controller", None), dict):
+            modes.add(str(self.state_controller["features"].get("feedback_mode", "exact")))
         if not modes:
             return "graded"
         if len(modes) > 1:
@@ -1485,9 +1489,9 @@ class DynamicHypothesisModule(BaseModule):
         return dist
 
     def _controller_history_config(self) -> Dict[str, Any]:
-        if not isinstance(getattr(self, "strategy_controller", None), dict):
+        if not isinstance(getattr(self, "state_controller", None), dict):
             return {}
-        features = self.strategy_controller["features"]
+        features = self.state_controller["features"]
         return {
             "padding": features.get("padding", "chance"),
             "feedback_mode": features.get("feedback_mode", "exact"),
@@ -1495,7 +1499,7 @@ class DynamicHypothesisModule(BaseModule):
 
     def _controller_activation_features(self, posterior: np.ndarray) -> Dict[str, float]:
         config = self._controller_history_config()
-        features_cfg = self.strategy_controller["features"]
+        features_cfg = self.state_controller["features"]
         recent_window = int(features_cfg["recent_accuracy_window"])
         delta_window = int(features_cfg["accuracy_delta_window"])
         recent_accuracy = self._recent_accuracy(recent_window, config)
@@ -1537,59 +1541,59 @@ class DynamicHypothesisModule(BaseModule):
             "mid_phase": mid_phase,
         }
 
-    def _select_strategy_profile(self, posterior: np.ndarray) -> Tuple[Dict[str, Any] | None, Dict[str, Any]]:
-        if not isinstance(getattr(self, "strategy_controller", None), dict):
+    def _select_strategy_state(self, posterior: np.ndarray) -> Tuple[Dict[str, Any] | None, Dict[str, Any]]:
+        if not isinstance(getattr(self, "state_controller", None), dict):
             return None, {}
         features = self._controller_activation_features(posterior)
-        profiles = self.strategy_controller["profiles"]
+        states = self.state_controller["states"]
         logits = []
-        for profile in profiles:
-            weights = profile.get("activation", {}) or {}
+        for state in states:
+            weights = state.get("activation", {}) or {}
             logit = 0.0
             for name, weight in weights.items():
                 if name not in features:
                     raise ValueError(
-                        f"strategy_controller profile {profile['id']!r} references unknown feature {name!r}."
+                        f"state_controller state {state['id']!r} references unknown feature {name!r}."
                     )
                 logit += float(weight) * float(features[name])
             logits.append(logit)
         logits_arr = np.asarray(logits, dtype=float)
         if not np.all(np.isfinite(logits_arr)):
-            raise ValueError("strategy_controller activation logits contain non-finite values.")
-        temperature = float(self.strategy_controller["activation"]["temperature"])
+            raise ValueError("state_controller activation logits contain non-finite values.")
+        temperature = float(self.state_controller["activation"]["temperature"])
         scaled = logits_arr / temperature
         scaled -= np.max(scaled)
         probs = np.exp(scaled)
-        probs = self._validate_probability_vector(probs, context="strategy_controller profile")
-        chosen_idx = int(self.rng.choice(len(profiles), p=probs))
+        probs = self._validate_probability_vector(probs, context="state_controller state")
+        chosen_idx = int(self.rng.choice(len(states), p=probs))
         probabilities = {
-            str(profile["id"]): float(prob)
-            for profile, prob in zip(profiles, probs)
+            str(state["id"]): float(prob)
+            for state, prob in zip(states, probs)
         }
-        profile_policy_methods = {
-            str(profile["id"]): str(profile.get("policy_method", profile["id"]))
-            for profile in profiles
+        state_policy_methods = {
+            str(state["id"]): str(state.get("policy_method", state["id"]))
+            for state in states
         }
         policy_probabilities: Dict[str, float] = {}
-        for profile, prob in zip(profiles, probs):
-            policy_method = str(profile.get("policy_method", profile["id"]))
+        for state, prob in zip(states, probs):
+            policy_method = str(state.get("policy_method", state["id"]))
             policy_probabilities[policy_method] = (
                 policy_probabilities.get(policy_method, 0.0) + float(prob)
             )
         selected_policy_method = str(
-            profiles[chosen_idx].get("policy_method", profiles[chosen_idx]["id"])
+            states[chosen_idx].get("policy_method", states[chosen_idx]["id"])
         )
-        return profiles[chosen_idx], {
-            "method": self.strategy_controller["method"],
+        return states[chosen_idx], {
+            "method": self.state_controller["method"],
             "features": {key: float(value) for key, value in features.items()},
-            "profile_logits": {
-                str(profile["id"]): float(logit)
-                for profile, logit in zip(profiles, logits_arr)
+            "state_logits": {
+                str(state["id"]): float(logit)
+                for state, logit in zip(states, logits_arr)
             },
-            "profile_probabilities": probabilities,
-            "profile_policy_methods": profile_policy_methods,
+            "state_probabilities": probabilities,
+            "state_policy_methods": state_policy_methods,
             "policy_probabilities": policy_probabilities,
-            "selected_profile": str(profiles[chosen_idx]["id"]),
+            "selected_state": str(states[chosen_idx]["id"]),
             "selected_policy_method": selected_policy_method,
         }
 
@@ -1667,8 +1671,8 @@ class DynamicHypothesisModule(BaseModule):
             step_counts[f"{method_type}"] = step_counts.get(f"{method_type}", 0) + len(selected)
         return new_active_set
 
-    def _profile_active_limit(self, profile: Dict[str, Any]) -> int:
-        configured = int(profile.get("active_limit", 5))
+    def _state_active_limit(self, state: Dict[str, Any]) -> int:
+        configured = int(state.get("active_limit", 5))
         if self.max_active_hypotheses is not None:
             configured = min(configured, int(self.max_active_hypotheses))
         return max(1, min(configured, self.total_hypo))
@@ -1687,16 +1691,16 @@ class DynamicHypothesisModule(BaseModule):
         actual = min(int(count), int(cand.size))
         raw = np.asarray(posterior[cand], dtype=float)
         if not np.all(np.isfinite(raw)) or np.any(raw < 0):
-            raise ValueError("profile policy posterior weights contain invalid values.")
+            raise ValueError("state policy posterior weights contain invalid values.")
         if float(raw.sum()) <= 0.0:
             return self._sample_from_pool(cand, actual)
         weights = np.power(raw + 1e-12, 1.0 / max(float(temperature), 1e-12))
-        prob = self._validate_probability_vector(weights, context="profile policy")
+        prob = self._validate_probability_vector(weights, context="state policy")
         return self.rng.choice(cand, size=actual, replace=False, p=prob)
 
-    def _current_beta_for_hypothesis(self, hypo: int, profile: Dict[str, Any]) -> float:
-        if "survivor_choice_beta" in profile:
-            return float(profile["survivor_choice_beta"])
+    def _current_beta_for_hypothesis(self, hypo: int, state: Dict[str, Any]) -> float:
+        if "survivor_choice_beta" in state:
+            return float(state["survivor_choice_beta"])
         beta = getattr(self.engine, "beta", 1.0)
         arr = np.asarray(beta, dtype=float).reshape(-1)
         if arr.size == self.total_hypo:
@@ -1708,7 +1712,7 @@ class DynamicHypothesisModule(BaseModule):
     def _previous_choice_likelihood(
         self,
         candidates: Sequence[int] | np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
     ) -> np.ndarray:
         cand = np.asarray(candidates, dtype=int)
         if cand.size == 0:
@@ -1728,14 +1732,14 @@ class DynamicHypothesisModule(BaseModule):
             prob = partition.get_category_probabilities(
                 int(hypo),
                 ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
-                beta=self._current_beta_for_hypothesis(int(hypo), profile),
+                beta=self._current_beta_for_hypothesis(int(hypo), state),
                 distance_mode=getattr(self.engine, "distance_mode", "prototype"),
             )
             prob = np.asarray(prob, dtype=float)
             if prob.ndim == 1:
                 prob = prob.reshape(-1, 1)
             likelihood[pos] = float(prob[choice_idx, 0])
-        floor = float(profile.get("survivor_choice_floor", 1e-9))
+        floor = float(state.get("survivor_choice_floor", 1e-9))
         likelihood = np.clip(likelihood, floor, 1.0)
         if not np.all(np.isfinite(likelihood)):
             raise ValueError("survivor choice likelihood contains non-finite values.")
@@ -1744,7 +1748,7 @@ class DynamicHypothesisModule(BaseModule):
     def _recent_choice_likelihood(
         self,
         candidates: Sequence[int] | np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
         *,
         errors_only: bool = False,
     ) -> np.ndarray:
@@ -1754,7 +1758,7 @@ class DynamicHypothesisModule(BaseModule):
         history = list(self.observation_history)
         if not history:
             return np.ones(cand.size, dtype=float)
-        window = int(profile.get("newcomer_choice_window", 8))
+        window = int(state.get("newcomer_choice_window", 8))
         recent = history[-window:]
         if errors_only:
             recent = [obs for obs in recent if float(obs[2]) < 1.0]
@@ -1764,8 +1768,8 @@ class DynamicHypothesisModule(BaseModule):
         if partition is None or not hasattr(partition, "get_category_probabilities"):
             return np.ones(cand.size, dtype=float)
         n_cats = int(getattr(partition, "n_cats", 0))
-        floor = float(profile.get("newcomer_choice_floor", 1e-9))
-        beta_override = profile.get("newcomer_choice_beta", None)
+        floor = float(state.get("newcomer_choice_floor", 1e-9))
+        beta_override = state.get("newcomer_choice_beta", None)
         log_likelihood = np.zeros(cand.size, dtype=float)
         count = 0
         for stimulus, choice, _feedback in recent:
@@ -1774,7 +1778,7 @@ class DynamicHypothesisModule(BaseModule):
                 continue
             count += 1
             for pos, hypo in enumerate(cand):
-                beta = float(beta_override) if beta_override is not None else self._current_beta_for_hypothesis(int(hypo), profile)
+                beta = float(beta_override) if beta_override is not None else self._current_beta_for_hypothesis(int(hypo), state)
                 prob = partition.get_category_probabilities(
                     int(hypo),
                     ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
@@ -1797,19 +1801,19 @@ class DynamicHypothesisModule(BaseModule):
     def _newcomer_scores(
         self,
         candidates: Sequence[int] | np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
     ) -> np.ndarray:
         cand = np.asarray(candidates, dtype=int)
         if cand.size == 0:
             return np.empty(0, dtype=float)
-        newcomer_score = str(profile.get("newcomer_score", "random"))
+        newcomer_score = str(state.get("newcomer_score", "random"))
         if newcomer_score == "random":
             return np.ones(cand.size, dtype=float)
-        floor = float(profile.get("newcomer_choice_floor", 1e-9))
-        weight = float(profile.get("newcomer_choice_weight", 1.0))
+        floor = float(state.get("newcomer_choice_floor", 1e-9))
+        weight = float(state.get("newcomer_choice_weight", 1.0))
         likelihood = self._recent_choice_likelihood(
             cand,
-            profile,
+            state,
             errors_only=(newcomer_score == "recent_error_choice"),
         )
         scores = np.power(np.clip(likelihood, floor, 1.0), weight)
@@ -1821,25 +1825,25 @@ class DynamicHypothesisModule(BaseModule):
         self,
         candidates: Sequence[int] | np.ndarray,
         count: int,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
     ) -> np.ndarray:
         cand = np.asarray(candidates, dtype=int)
         if count <= 0 or cand.size == 0:
             return np.empty(0, dtype=int)
         actual = min(int(count), int(cand.size))
-        raw = self._newcomer_scores(cand, profile)
+        raw = self._newcomer_scores(cand, state)
         if float(raw.sum()) <= 0.0:
             return self._sample_from_pool(cand, actual)
-        temperature = float(profile.get("newcomer_choice_temperature", 1.0))
+        temperature = float(state.get("newcomer_choice_temperature", 1.0))
         weights = np.power(raw + 1e-12, 1.0 / max(temperature, 1e-12))
-        prob = self._validate_probability_vector(weights, context="profile newcomer policy")
+        prob = self._validate_probability_vector(weights, context="state newcomer policy")
         return self.rng.choice(cand, size=actual, replace=False, p=prob)
 
     def _survivor_scores(
         self,
         candidates: Sequence[int] | np.ndarray,
         posterior: np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
     ) -> np.ndarray:
         cand = np.asarray(candidates, dtype=int)
         if cand.size == 0:
@@ -1847,12 +1851,12 @@ class DynamicHypothesisModule(BaseModule):
         raw_post = np.asarray(posterior[cand], dtype=float)
         if not np.all(np.isfinite(raw_post)) or np.any(raw_post < 0):
             raise ValueError("survivor posterior scores contain invalid values.")
-        if str(profile.get("survivor_score", "posterior")) == "posterior":
+        if str(state.get("survivor_score", "posterior")) == "posterior":
             return raw_post
-        floor = float(profile.get("survivor_choice_floor", 1e-9))
-        post_weight = float(profile.get("survivor_posterior_weight", 1.0))
-        choice_weight = float(profile.get("survivor_choice_weight", 1.0))
-        choice_like = self._previous_choice_likelihood(cand, profile)
+        floor = float(state.get("survivor_choice_floor", 1e-9))
+        post_weight = float(state.get("survivor_posterior_weight", 1.0))
+        choice_weight = float(state.get("survivor_choice_weight", 1.0))
+        choice_like = self._previous_choice_likelihood(cand, state)
         log_score = (
             post_weight * np.log(np.clip(raw_post, floor, 1.0))
             + choice_weight * np.log(np.clip(choice_like, floor, 1.0))
@@ -1868,7 +1872,7 @@ class DynamicHypothesisModule(BaseModule):
         candidates: Sequence[int] | np.ndarray,
         count: int,
         posterior: np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
         *,
         temperature: float = 1.0,
     ) -> np.ndarray:
@@ -1876,11 +1880,11 @@ class DynamicHypothesisModule(BaseModule):
         if count <= 0 or cand.size == 0:
             return np.empty(0, dtype=int)
         actual = min(int(count), int(cand.size))
-        raw = self._survivor_scores(cand, posterior, profile)
+        raw = self._survivor_scores(cand, posterior, state)
         if float(raw.sum()) <= 0.0:
             return self._sample_from_pool(cand, actual)
         weights = np.power(raw + 1e-12, 1.0 / max(float(temperature), 1e-12))
-        prob = self._validate_probability_vector(weights, context="profile survivor policy")
+        prob = self._validate_probability_vector(weights, context="state survivor policy")
         return self.rng.choice(cand, size=actual, replace=False, p=prob)
 
     def _top_survivor_indices(
@@ -1888,13 +1892,13 @@ class DynamicHypothesisModule(BaseModule):
         candidates: Sequence[int] | np.ndarray,
         count: int,
         posterior: np.ndarray,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
     ) -> np.ndarray:
         cand = np.asarray(candidates, dtype=int)
         if count <= 0 or cand.size == 0:
             return np.empty(0, dtype=int)
         actual = min(int(count), int(cand.size))
-        score = self._survivor_scores(cand, posterior, profile)
+        score = self._survivor_scores(cand, posterior, state)
         order = np.argsort(score)[-actual:]
         return np.sort(cand[order])
 
@@ -1941,14 +1945,14 @@ class DynamicHypothesisModule(BaseModule):
             prior[active_arr] = 1.0 / float(active_arr.size)
         self._post_to_prior_override = {"prior": prior, "log": dict(log)}
 
-    def _run_profile_policy(
+    def _run_state_policy(
         self,
-        profile: Dict[str, Any],
+        state: Dict[str, Any],
         posterior: np.ndarray,
         step_counts: Dict[str, Any],
     ) -> Set[int]:
-        method = str(profile["policy_method"])
-        limit = self._profile_active_limit(profile)
+        method = str(state["policy_method"])
+        limit = self._state_active_limit(state)
         old_active = (
             np.asarray(self.old_active, dtype=int)
             if self.old_active is not None
@@ -1960,11 +1964,11 @@ class DynamicHypothesisModule(BaseModule):
         if method == "conservative":
             active = old_active[:limit]
             if active.size == 0:
-                active = self._top_survivor_indices(self.full_indices, 1, posterior, profile)
-            step_counts["profile_policy"] = {
+                active = self._top_survivor_indices(self.full_indices, 1, posterior, state)
+            step_counts["state_policy"] = {
                 "policy_method": method,
-                "survivor_score": str(profile.get("survivor_score", "posterior")),
-                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "survivor_score": str(state.get("survivor_score", "posterior")),
+                "newcomer_score": str(state.get("newcomer_score", "random")),
                 "retained_count": int(active.size),
                 "dropped_count": int(max(0, old_active.size - active.size)),
                 "newcomer_count": 0,
@@ -1973,7 +1977,7 @@ class DynamicHypothesisModule(BaseModule):
             return {int(x) for x in active}
 
         if method == "stable":
-            explore_count = min(int(profile.get("explore_count", 1)), max(0, limit - 1))
+            explore_count = min(int(state.get("explore_count", 1)), max(0, limit - 1))
             has_inactive = self._policy_inactive_candidates(old_active).size > 0
             reserved_for_new = explore_count if has_inactive else 0
             retain_target = min(int(old_active.size), max(0, limit - reserved_for_new))
@@ -1984,16 +1988,16 @@ class DynamicHypothesisModule(BaseModule):
                 old_active,
                 retain_target,
                 posterior,
-                profile,
-                temperature=float(profile.get("retain_temperature", 1.0)),
+                state,
+                temperature=float(state.get("retain_temperature", 1.0)),
             )
             inactive = self._policy_inactive_candidates(retained)
-            newcomers = self._newcomer_sample(inactive, min(reserved_for_new, inactive.size), profile)
+            newcomers = self._newcomer_sample(inactive, min(reserved_for_new, inactive.size), state)
             active = np.sort(np.concatenate([retained, newcomers]).astype(int))
-            step_counts["profile_policy"] = {
+            step_counts["state_policy"] = {
                 "policy_method": method,
-                "survivor_score": str(profile.get("survivor_score", "posterior")),
-                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "survivor_score": str(state.get("survivor_score", "posterior")),
+                "newcomer_score": str(state.get("newcomer_score", "random")),
                 "retained_count": int(retained.size),
                 "dropped_count": int(max(0, old_active.size - retained.size)),
                 "newcomer_count": int(newcomers.size),
@@ -2004,14 +2008,14 @@ class DynamicHypothesisModule(BaseModule):
 
         if method == "aggressive":
             source_pool = old_active if old_active.size > 0 else self.full_indices
-            top = self._top_survivor_indices(source_pool, 1, posterior, profile)
+            top = self._top_survivor_indices(source_pool, 1, posterior, state)
             p_top = float(posterior[int(top[0])]) if top.size else 0.0
-            max_newcomers = min(int(profile.get("max_newcomers", limit - 1)), max(0, limit - 1))
-            min_newcomers = min(int(profile.get("min_newcomers", 0)), max_newcomers)
+            max_newcomers = min(int(state.get("max_newcomers", limit - 1)), max(0, limit - 1))
+            min_newcomers = min(int(state.get("min_newcomers", 0)), max_newcomers)
             requested = int(round((1.0 - p_top) * float(max_newcomers)))
             requested = max(min_newcomers, min(max_newcomers, requested))
             inactive = self._policy_inactive_candidates(top)
-            newcomers = self._newcomer_sample(inactive, min(requested, inactive.size), profile)
+            newcomers = self._newcomer_sample(inactive, min(requested, inactive.size), state)
             active = np.sort(np.concatenate([top, newcomers]).astype(int))
             newcomer_mass = (1.0 - p_top) if newcomers.size > 0 else 0.0
             self._policy_override_prior(
@@ -2026,14 +2030,14 @@ class DynamicHypothesisModule(BaseModule):
                     "policy_method": method,
                     "top_hypothesis": int(top[0]) if top.size else None,
                     "top_posterior": float(p_top),
-                    "newcomer_score": str(profile.get("newcomer_score", "random")),
+                    "newcomer_score": str(state.get("newcomer_score", "random")),
                     "newcomer_mass": float(newcomer_mass),
                 },
             )
-            step_counts["profile_policy"] = {
+            step_counts["state_policy"] = {
                 "policy_method": method,
-                "survivor_score": str(profile.get("survivor_score", "posterior")),
-                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "survivor_score": str(state.get("survivor_score", "posterior")),
+                "newcomer_score": str(state.get("newcomer_score", "random")),
                 "retained_count": int(top.size),
                 "dropped_count": int(max(0, old_active.size - top.size)),
                 "newcomer_count": int(newcomers.size),
@@ -2042,26 +2046,26 @@ class DynamicHypothesisModule(BaseModule):
             return {int(x) for x in active}
 
         if method == "stubborn":
-            retain_count = min(int(profile.get("retain_count", 2)), limit)
+            retain_count = min(int(state.get("retain_count", 2)), limit)
             source_pool = old_active if old_active.size > 0 else self.full_indices
-            retained = self._top_survivor_indices(source_pool, retain_count, posterior, profile)
+            retained = self._top_survivor_indices(source_pool, retain_count, posterior, state)
             previous_feedback = float(self.feedback_history[-1]) if self.feedback_history else 1.0
             last_error = float(np.clip(1.0 - previous_feedback, 0.0, 1.0))
             explore_prob = (
-                float(profile.get("base_explore_prob", 0.02))
-                + float(profile.get("post_correct_explore_prob", 0.20)) * (1.0 - last_error)
-                + float(profile.get("post_error_explore_prob", 0.0)) * last_error
+                float(state.get("base_explore_prob", 0.02))
+                + float(state.get("post_correct_explore_prob", 0.20)) * (1.0 - last_error)
+                + float(state.get("post_error_explore_prob", 0.0)) * last_error
             )
             explore_prob = float(np.clip(explore_prob, 0.0, 1.0))
             inactive = self._policy_inactive_candidates(retained)
             can_add = retained.size < limit and inactive.size > 0
             newcomers = (
-                self._newcomer_sample(inactive, 1, profile)
+                self._newcomer_sample(inactive, 1, state)
                 if can_add and bool(self.rng.random() < explore_prob)
                 else np.empty(0, dtype=int)
             )
             active = np.sort(np.concatenate([retained, newcomers]).astype(int))
-            newcomer_mass = float(profile.get("newcomer_mass", 0.02)) if newcomers.size > 0 else 0.0
+            newcomer_mass = float(state.get("newcomer_mass", 0.02)) if newcomers.size > 0 else 0.0
             self._policy_override_prior(
                 active,
                 retained,
@@ -2074,14 +2078,14 @@ class DynamicHypothesisModule(BaseModule):
                     "policy_method": method,
                     "last_error": float(last_error),
                     "explore_probability": float(explore_prob),
-                    "newcomer_score": str(profile.get("newcomer_score", "random")),
+                    "newcomer_score": str(state.get("newcomer_score", "random")),
                     "newcomer_mass": float(newcomer_mass),
                 },
             )
-            step_counts["profile_policy"] = {
+            step_counts["state_policy"] = {
                 "policy_method": method,
-                "survivor_score": str(profile.get("survivor_score", "posterior")),
-                "newcomer_score": str(profile.get("newcomer_score", "random")),
+                "survivor_score": str(state.get("survivor_score", "posterior")),
+                "newcomer_score": str(state.get("newcomer_score", "random")),
                 "retained_count": int(retained.size),
                 "dropped_count": int(max(0, old_active.size - retained.size)),
                 "newcomer_count": int(newcomers.size),
@@ -2090,16 +2094,7 @@ class DynamicHypothesisModule(BaseModule):
             }
             return {int(x) for x in active}
 
-        raise ValueError(f"Unsupported profile policy_method '{method}'.")
-
-    def process(self, **kwargs) -> None:
-        self._update_latent_volatility_state()
-        # Pass kwargs to transition (e.g. feedbacks)
-        self._transition(**kwargs)
-        self._apply_mask()
-        self._posterior_to_prior_transition()
-        self._record_feedback_from_observation()
-        self._record_previous_observation()
+        raise ValueError(f"Unsupported state policy_method '{method}'.")
 
     def _record_previous_observation(self) -> None:
         observation = getattr(self.engine, "observation", None)
@@ -2185,22 +2180,22 @@ class DynamicHypothesisModule(BaseModule):
             step_counts["latent_volatility_confidence"] = latest_volatility.get("confidence")
             step_counts["latent_volatility_signal"] = latest_volatility.get("signal")
 
-        profile, controller_log = self._select_strategy_profile(posterior)
-        if profile is None:
+        state, controller_log = self._select_strategy_state(posterior)
+        if state is None:
             active_strategies = self.strategies
             self._current_post_to_prior_config = self.post_to_prior_config
             self._post_to_prior_override = None
         else:
-            active_strategies = profile["strategies"]
-            self._current_post_to_prior_config = profile.get("post_to_prior", self.post_to_prior_config)
+            active_strategies = state["strategies"]
+            self._current_post_to_prior_config = state.get("post_to_prior", self.post_to_prior_config)
             self._post_to_prior_override = None
-            step_counts["strategy_controller"] = controller_log
-            step_counts["selected_profile"] = controller_log.get("selected_profile")
-            step_counts["profile_probabilities"] = controller_log.get("profile_probabilities", {})
+            step_counts["state_controller"] = controller_log
+            step_counts["selected_state"] = controller_log.get("selected_state")
+            step_counts["state_probabilities"] = controller_log.get("state_probabilities", {})
             step_counts["selected_policy_method"] = controller_log.get("selected_policy_method")
             step_counts["policy_probabilities"] = controller_log.get("policy_probabilities", {})
-        if profile is not None and "policy_method" in profile:
-            new_active_set = self._run_profile_policy(profile, posterior, step_counts)
+        if state is not None and "policy_method" in state:
+            new_active_set = self._run_state_policy(state, posterior, step_counts)
         else:
             new_active_set = self._run_strategy_chain(active_strategies, posterior, step_counts, **kwargs)
         
@@ -2229,7 +2224,7 @@ class DynamicHypothesisModule(BaseModule):
             self.strategy_counts_log = []
         self.strategy_counts_log.append(step_counts)
         if self.debug:
-            print(f"DynamicHypothesis: {len(self.old_active) if self.old_active is not None else 0} -> {len(self.active)} hypos")
+            print(f"StrategyChain: {len(self.old_active) if self.old_active is not None else 0} -> {len(self.active)} hypos")
             if 42 in self.active:
                 print(f"  Hypothesis 42 is ACTIVE. Post: {posterior[42]:.4f}")
             else:
@@ -2444,7 +2439,7 @@ class DynamicHypothesisModule(BaseModule):
         """Return pre-feedback confidence recorded at the previous transition."""
         if not self.strategy_counts_log:
             return 1.0
-        controller = self.strategy_counts_log[-1].get("strategy_controller")
+        controller = self.strategy_counts_log[-1].get("state_controller")
         if not isinstance(controller, dict):
             return 1.0
         features = controller.get("features")
@@ -2972,11 +2967,11 @@ class DynamicHypothesisModule(BaseModule):
             new_prior = np.asarray(override.get("prior"), dtype=float).copy()
             if new_prior.shape[0] != self.total_hypo:
                 raise ValueError(
-                    "profile policy prior override length does not match hypothesis space: "
+                    "state policy prior override length does not match hypothesis space: "
                     f"{new_prior.shape[0]} vs {self.total_hypo}."
                 )
             if not np.all(np.isfinite(new_prior)) or np.any(new_prior < 0):
-                raise ValueError("profile policy prior override contains invalid values.")
+                raise ValueError("state policy prior override contains invalid values.")
             log = dict(override.get("log", {}) or {})
             total_mass = float(new_prior.sum())
             if total_mass > 0.0:
@@ -3144,4 +3139,4 @@ class DynamicHypothesisModule(BaseModule):
         self.rng = np.random.default_rng(self.module_seed)
 
 
-# TODO: 现在有了similarity matrix，能不能简化dynamic hypothesis module的transition逻辑？
+__all__ = ["StrategyPolicyRuntime"]

@@ -639,7 +639,7 @@ def main() -> None:
                 )
             )
     selection = {
-        "analysis": "continuous_dynamic_rho_C0_C1",
+        "analysis": "dynamic_continuous_rho_C0_C1",
         "cohort": str(args.cohort),
         "subject_ids": sorted(
             int(value) for value in data["iSub"].unique()

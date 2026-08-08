@@ -14,7 +14,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .particle_filter import (
+from .backends.particle_filter import (
     _choice_probability,
     _future_seed,
     _normalize,
@@ -24,7 +24,7 @@ from .particle_filter import (
     effective_sample_size,
     systematic_resample,
 )
-from ..optimization.optimizer_common import stable_seed
+from ..utils.seeding import stable_seed
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Mapping, Sequence
 import numpy as np
 from joblib import Parallel, delayed
 
-from src.Bayesian_state.run_simulation import resolve_simulation_repeats
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.optimization.hyper_utils import (
@@ -34,6 +33,7 @@ from src.Bayesian_state.optimization.optimization_config import (
     resolve_loss_delta,
     resolve_loss_metric,
     resolve_prediction_modes,
+    resolve_simulation_repeats,
     resolve_window_size,
 )
 from src.Bayesian_state.optimization.optimizer_common import (

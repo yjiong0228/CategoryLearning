@@ -7,7 +7,7 @@
         "engine.modules.hypo_transitions_mod.kwargs": {
           "init_num": 3,
           "max_active_hypotheses": 6,
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 8,
@@ -19,7 +19,7 @@
             "activation": {
               "temperature": 0.8
             },
-            "profiles": [
+            "states": [
               {
                 "id": "exploit",
                 "activation": {
@@ -95,7 +95,7 @@
         "engine.modules.hypo_transitions_mod.kwargs": {
           "init_num": 4,
           "max_active_hypotheses": 7,
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 8,
@@ -107,7 +107,7 @@
             "activation": {
               "temperature": 0.7
             },
-            "profiles": [
+            "states": [
               {
                 "id": "explore",
                 "activation": {
@@ -223,7 +223,7 @@
           "latent_volatility_decay": 0.65,
           "latent_volatility_max": 1.0,
           "latent_volatility_feedback_mode": "exact",
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 8,
@@ -235,7 +235,7 @@
             "activation": {
               "temperature": 0.9
             },
-            "profiles": [
+            "states": [
               {
                 "id": "exploit",
                 "activation": {
@@ -312,7 +312,7 @@
         "engine.modules.hypo_transitions_mod.kwargs": {
           "init_num": 8,
           "max_active_hypotheses": 14,
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 16,
@@ -324,7 +324,7 @@
             "activation": {
               "temperature": 0.9
             },
-            "profiles": [
+            "states": [
               {
                 "id": "exploit",
                 "activation": {
@@ -400,7 +400,7 @@
         "engine.modules.hypo_transitions_mod.kwargs": {
           "init_num": 10,
           "max_active_hypotheses": 16,
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 16,
@@ -412,7 +412,7 @@
             "activation": {
               "temperature": 0.8
             },
-            "profiles": [
+            "states": [
               {
                 "id": "explore",
                 "activation": {
@@ -528,7 +528,7 @@
           "latent_volatility_decay": 0.70,
           "latent_volatility_max": 1.0,
           "latent_volatility_feedback_mode": "exact",
-          "strategy_controller": {
+          "state_controller": {
             "method": "feedback_gated_softmax",
             "features": {
               "recent_accuracy_window": 16,
@@ -540,7 +540,7 @@
             "activation": {
               "temperature": 0.9
             },
-            "profiles": [
+            "states": [
               {
                 "id": "exploit",
                 "activation": {

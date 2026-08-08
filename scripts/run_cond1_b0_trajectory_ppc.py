@@ -34,18 +34,18 @@ from src.Bayesian_state.run_simulation import (  # noqa: E402
 from src.Bayesian_state.utils.datasets import (  # noqa: E402
     resolve_dataset_paths,
 )
-from src.Bayesian_state.active_set.posterior_predictive import (  # noqa: E402
+from src.Bayesian_state.inference_engine.posterior_predictive import (  # noqa: E402
     DynamicRhoConfig,
     run_conditioned_condition1_rollouts,
 )
-from src.Bayesian_state.active_set.particle_filter import (  # noqa: E402
-    run_active_set_particle_filter,
+from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+    run_state_model_particle_filter,
 )
 from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
-from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.utils.seeding import stable_seed  # noqa: E402
 
 
 DEVELOPMENT_SUBJECTS = (103, 105, 111, 112, 117, 118, 127, 131)
@@ -707,15 +707,15 @@ def simulate_subject(
                     ): float(beta_additive)
                 },
             )
-            candidate = run_active_set_particle_filter(
+            candidate = run_state_model_particle_filter(
                 engine_config=candidate_engine,
                 subject_id=subject_id,
                 stimulus=stimulus[:split_index],
                 choices=choices[:split_index],
                 feedback=feedback[:split_index],
                 particle_count=int(args.selection_particle_count),
-                rho=float(args.rho),
-                epsilon_schedule=decaying_lapse_schedule(
+                choice_readout_power=float(args.rho),
+                output_lapse_schedule=decaying_lapse_schedule(
                     split_index,
                     initial_lapse=float(lapse_start),
                     half_life=float(args.lapse_half_life),
@@ -1627,7 +1627,7 @@ def main() -> None:
                 else "C1"
             )
             recommended_action = (
-                f"retain_continuous_dynamic_rho_{dynamic_label}"
+                f"retain_dynamic_continuous_rho_{dynamic_label}"
             )
             reason = (
                 "The frozen continuous readout-concentration process "
@@ -1711,9 +1711,9 @@ def main() -> None:
         "split_mode": str(args.split_mode),
         "model": (
             (
-                "B0_fullset_continuous_dynamic_rho_C0"
+                "B0_fullset_dynamic_continuous_rho_C0"
                 if np.isclose(args.dynamic_rho_volatility, 0.0)
-                else "B0_fullset_continuous_dynamic_rho_C1"
+                else "B0_fullset_dynamic_continuous_rho_C1"
             )
             if args.dynamic_rho_start is not None
             else (

@@ -29,7 +29,7 @@ modules:
       beta_update_mode: probabilistic_feedback
       probabilistic_feedback_lapse: 0.05
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transitions.DynamicHypothesisModule'
+    class: 'src.Bayesian_state.problems.modules.hypo_transition.static.StaticHypothesisTransitionModule'
     kwargs:
       strategies:
         - {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"}

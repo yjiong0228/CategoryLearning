@@ -28,7 +28,7 @@ FROZEN_ROWS = ROOT / "results/cond1_v14/frozen_confirmation/pilot_rows.csv"
 V13_BEST = ROOT / "results/zhuran/cond1_v13/cd/cond1_v13/best_hyperparams.json"
 V13_CANDIDATES = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition_strategies"
+    / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
     / "hypo_transition_profile_v13_candidates.json"
 )
 

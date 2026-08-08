@@ -37,7 +37,8 @@ DEFAULT_CANDIDATES_JSON = (
     / "Bayesian_state"
     / "problems"
     / "modules"
-    / "hypo_transition_strategies"
+    / "hypo_transition"
+    / "candidates"
     / "hypo_transition_strategy_candidates.json"
 )
 TRANSITION_SPACE_KEY = "engine.modules.hypo_transitions_mod.kwargs"

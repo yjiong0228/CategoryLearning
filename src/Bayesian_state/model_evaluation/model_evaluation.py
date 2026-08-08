@@ -39,8 +39,22 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from src.Bayesian_state.metrics import (
+    accuracy_curve_metrics,
+    accuracy_metrics_from_info,
+    behavior_ppc_group_metrics,
+    choice_brier_curve_metrics_from_info,
+    exponential_accuracy_metrics_from_info,
+    family_correct,
+    family_indices,
+    history_kernel_metrics,
+    predictive_accuracy_band_metrics,
+    sliding_binary_metrics,
+    switch_behavior_metrics,
+    target_majority_accuracy_metrics_from_info,
+    validate_exp_accuracy_alpha,
+)
 from src.Bayesian_state.model_evaluation.oral_model_alignment import OralModelAlignmentMixin
-from src.Bayesian_state.optimization.optimizer_common import exponential_smooth_curve
 from src.Bayesian_state.problems.partitions import Partition
 from src.Bayesian_state.utils.stream import StreamList
 
@@ -137,25 +151,6 @@ class ModelEval(OralModelAlignmentMixin):
         return out if np.isfinite(out) else default
 
     @staticmethod
-    def _safe_pearson(x, y):
-        x = np.asarray(x, dtype=float).reshape(-1)
-        y = np.asarray(y, dtype=float).reshape(-1)
-        mask = np.isfinite(x) & np.isfinite(y)
-        if int(mask.sum()) < 3:
-            return np.nan
-        x = x[mask]
-        y = y[mask]
-        if np.nanstd(x) <= 1e-12 or np.nanstd(y) <= 1e-12:
-            return np.nan
-        return float(np.corrcoef(x, y)[0, 1])
-
-    @staticmethod
-    def _safe_mean(values):
-        arr = np.asarray([ModelEval._safe_float(value) for value in values], dtype=float)
-        arr = arr[np.isfinite(arr)]
-        return float(np.mean(arr)) if arr.size else np.nan
-
-    @staticmethod
     def _extract_beta_log(info):
         beta_log = info.get("beta_log")
         if beta_log is not None:
@@ -213,252 +208,21 @@ class ModelEval(OralModelAlignmentMixin):
             return None, None, None
         return np.asarray(choices, dtype=int), np.asarray(categories, dtype=int), stimulus
 
-    @staticmethod
-    def _family_correct(categories, choices, n_cats):
-        if n_cats >= 4:
-            category_family = np.where(np.isin(categories, [1, 2]), 0, 1)
-            choice_family = np.where(np.isin(choices, [1, 2]), 0, 1)
-            return (category_family == choice_family).astype(float)
-        return (categories == choices).astype(float)
-
-    @staticmethod
-    def _family_indices(category, n_cats):
-        category_idx = int(category) - 1
-        if n_cats >= 4:
-            if category_idx in (0, 1):
-                return np.array([0, 1], dtype=int)
-            return np.array([2, 3], dtype=int)
-        return np.array([category_idx], dtype=int)
-
-    @staticmethod
-    def _safe_nanmean(values):
-        arr = np.asarray(values, dtype=float)
-        finite = arr[np.isfinite(arr)]
-        return float(np.mean(finite)) if finite.size else float("nan")
-
-    @staticmethod
-    def _has_finite_values(values):
-        if values is None:
-            return False
-        try:
-            arr = np.asarray(values, dtype=float)
-        except (TypeError, ValueError):
-            return False
-        return bool(arr.size and np.any(np.isfinite(arr)))
-
-    @classmethod
-    def _has_target_probability_data(cls, info):
-        return cls._has_finite_values(info.get("target_probs")) or cls._has_finite_values(
-            info.get("sliding_target_majority_acc")
-        )
-
-    @staticmethod
-    def _target_majority_indices(target_probs):
-        probs = np.asarray(target_probs, dtype=float)
-        if probs.ndim != 2 or probs.shape[0] == 0:
-            return None
-        finite = np.all(np.isfinite(probs), axis=1)
-        max_prob = np.full(probs.shape[0], np.nan, dtype=float)
-        max_prob[finite] = np.max(probs[finite], axis=1)
-        is_max = np.isclose(probs, max_prob[:, None], rtol=0.0, atol=1e-12)
-        unique = finite & (np.sum(is_max, axis=1) == 1)
-        majority = np.full(probs.shape[0], -1, dtype=int)
-        majority[unique] = np.argmax(probs[unique], axis=1)
-        return majority
-
     def compute_target_majority_accuracy_metrics(self, info, window_size=None):
         """Compute Exp4 choice accuracy against the higher-probability target option."""
-        target_probs = info.get("target_probs")
-        pred_category_probs = info.get("pred_category_probs")
-        observed_choice_index = info.get("observed_choice_index")
-        if target_probs is None or pred_category_probs is None or observed_choice_index is None:
-            return {}
-
-        target_probs = np.asarray(target_probs, dtype=float)
-        pred_category_probs = np.asarray(pred_category_probs, dtype=float)
-        observed_choice_index = np.asarray(observed_choice_index, dtype=int).reshape(-1)
-        if target_probs.ndim != 2 or pred_category_probs.ndim != 2:
-            return {}
-
-        n_trials = min(target_probs.shape[0], pred_category_probs.shape[0], observed_choice_index.size)
-        if n_trials <= 1:
-            return {}
-        n_cats = min(target_probs.shape[1], pred_category_probs.shape[1])
-        if n_cats <= 0:
-            return {}
-        target_probs = target_probs[:n_trials, :n_cats]
-        pred_category_probs = pred_category_probs[:n_trials, :n_cats]
-        observed_choice_index = observed_choice_index[:n_trials]
-
-        win = window_size if window_size is not None else info.get("window_size")
-        try:
-            win = int(win)
-        except (TypeError, ValueError):
-            win = 16
-        if win <= 0 or n_trials < win + 1:
-            return {}
-
-        majority_index = self._target_majority_indices(target_probs)
-        if majority_index is None:
-            return {}
-
-        target_majority_acc = np.full(n_trials, np.nan, dtype=float)
-        pred_target_majority_acc = np.full(n_trials, np.nan, dtype=float)
-        valid_choice = (
-            (majority_index >= 0)
-            & (observed_choice_index >= 0)
-            & (observed_choice_index < n_cats)
+        return target_majority_accuracy_metrics_from_info(
+            info, window_size=window_size
         )
-        target_majority_acc[valid_choice] = (
-            observed_choice_index[valid_choice] == majority_index[valid_choice]
-        ).astype(float)
-
-        for idx in range(n_trials):
-            majority = int(majority_index[idx])
-            if 0 <= majority < n_cats and np.all(np.isfinite(pred_category_probs[idx])):
-                pred_target_majority_acc[idx] = float(pred_category_probs[idx, majority])
-
-        sliding_target_majority_acc = []
-        sliding_pred_target_majority_acc = []
-        sliding_pred_target_majority_std = []
-        for start in range(1, n_trials - win + 1):
-            end = start + win
-            target_window = target_majority_acc[start:end]
-            pred_window = pred_target_majority_acc[start:end]
-            sliding_target_majority_acc.append(self._safe_nanmean(target_window))
-            sliding_pred_target_majority_acc.append(self._safe_nanmean(pred_window))
-            valid_pred = pred_window[np.isfinite(pred_window)]
-            if valid_pred.size:
-                denom = max(1, int(valid_pred.size))
-                sliding_pred_target_majority_std.append(
-                    float(np.sqrt(np.sum(valid_pred * (1 - valid_pred))) / denom)
-                )
-            else:
-                sliding_pred_target_majority_std.append(float("nan"))
-
-        return {
-            "target_majority_acc": target_majority_acc,
-            "pred_target_majority_acc": pred_target_majority_acc,
-            "target_majority_index": majority_index,
-            "sliding_target_majority_acc": np.asarray(sliding_target_majority_acc, dtype=float),
-            "sliding_pred_target_majority_acc": np.asarray(sliding_pred_target_majority_acc, dtype=float),
-            "sliding_pred_target_majority_acc_std": np.asarray(sliding_pred_target_majority_std, dtype=float),
-        }
 
     def compute_accuracy_metrics(self, info, window_size=None):
-        true_acc = info.get("true_acc")
-        pred_acc = info.get("pred_acc")
-        if true_acc is None or pred_acc is None:
-            return {}
-        try:
-            true_acc = np.asarray(true_acc, dtype=float).reshape(-1)
-            pred_acc = np.asarray(pred_acc, dtype=float).reshape(-1)
-        except (TypeError, ValueError):
-            return {}
-        n_trials = min(true_acc.size, pred_acc.size)
-        if n_trials <= 1:
-            return {}
-        true_acc = true_acc[:n_trials]
-        pred_acc = pred_acc[:n_trials]
+        return accuracy_metrics_from_info(info, window_size=window_size)
 
-        win = window_size if window_size is not None else info.get("window_size")
-        try:
-            win = int(win)
-        except (TypeError, ValueError):
-            win = 16
-        if win <= 0 or n_trials < win + 1:
-            return {}
-
-        sliding_true_acc = []
-        sliding_pred_acc = []
-        sliding_pred_std = []
-        for start in range(1, n_trials - win + 1):
-            end = start + win
-            true_window = true_acc[start:end]
-            pred_window = pred_acc[start:end]
-            sliding_true_acc.append(self._safe_nanmean(true_window))
-            sliding_pred_acc.append(self._safe_nanmean(pred_window))
-            valid = pred_window[np.isfinite(pred_window)]
-            if valid.size:
-                sliding_pred_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / win))
-            else:
-                sliding_pred_std.append(float("nan"))
-        return {
-            "sliding_true_acc": np.asarray(sliding_true_acc, dtype=float),
-            "sliding_pred_acc": np.asarray(sliding_pred_acc, dtype=float),
-            "sliding_pred_acc_std": np.asarray(sliding_pred_std, dtype=float),
-            "window_size": int(win),
-        }
-
-    @staticmethod
-    def _validate_exp_accuracy_alpha(alpha):
-        if alpha is None:
-            return None
-        try:
-            alpha_val = float(alpha)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"exp_accuracy_alpha must be a number in (0, 1], got {alpha!r}") from exc
-        if not np.isfinite(alpha_val) or alpha_val <= 0.0 or alpha_val > 1.0:
-            raise ValueError(f"exp_accuracy_alpha must be in (0, 1], got {alpha!r}")
-        return alpha_val
+    _validate_exp_accuracy_alpha = staticmethod(validate_exp_accuracy_alpha)
 
     def compute_exponential_accuracy_metrics(self, info, exp_accuracy_alpha=None):
-        alpha = self._validate_exp_accuracy_alpha(exp_accuracy_alpha)
-        if alpha is None:
-            alpha = info.get("exp_accuracy_alpha")
-        if alpha is None:
-            win = info.get("window_size")
-            try:
-                alpha = 2.0 / (float(win) + 1.0)
-            except (TypeError, ValueError):
-                alpha = None
-        alpha = self._validate_exp_accuracy_alpha(alpha)
-        if alpha is None:
-            return {}
-
-        condition = int(info.get("condition", 1))
-        n_cats = 2 if condition == 1 else 4
-        chance_level = 1.0 / float(max(1, n_cats))
-        out = {"exp_accuracy_alpha": float(alpha)}
-
-        true_acc = info.get("true_acc")
-        pred_acc = info.get("pred_acc")
-        if true_acc is not None and pred_acc is not None:
-            true_arr = np.asarray(true_acc, dtype=float).reshape(-1)
-            pred_arr = np.asarray(pred_acc, dtype=float).reshape(-1)
-            n = min(true_arr.size, pred_arr.size)
-            if n:
-                out["exp_true_acc"] = exponential_smooth_curve(
-                    true_arr[:n],
-                    alpha=alpha,
-                    init_value=chance_level,
-                )
-                out["exp_pred_acc"] = exponential_smooth_curve(
-                    pred_arr[:n],
-                    alpha=alpha,
-                    init_value=chance_level,
-                )
-
-        if self._has_target_probability_data(info):
-            target_metrics = self.compute_target_majority_accuracy_metrics(info, window_size=1)
-            target_acc = target_metrics.get("target_majority_acc")
-            pred_target_acc = target_metrics.get("pred_target_majority_acc")
-            if target_acc is not None and pred_target_acc is not None:
-                target_arr = np.asarray(target_acc, dtype=float).reshape(-1)
-                pred_target_arr = np.asarray(pred_target_acc, dtype=float).reshape(-1)
-                n = min(target_arr.size, pred_target_arr.size)
-                if n:
-                    out["exp_target_majority_acc"] = exponential_smooth_curve(
-                        target_arr[:n],
-                        alpha=alpha,
-                        init_value=chance_level,
-                    )
-                    out["exp_pred_target_majority_acc"] = exponential_smooth_curve(
-                        pred_target_arr[:n],
-                        alpha=alpha,
-                        init_value=chance_level,
-                    )
-        return out
+        return exponential_accuracy_metrics_from_info(
+            info, exp_accuracy_alpha=exp_accuracy_alpha
+        )
 
     @staticmethod
     def _resolve_beta_for_hypo(beta_vec, hypo, default_beta):
@@ -517,7 +281,7 @@ class ModelEval(OralModelAlignmentMixin):
 
         choices = choices[:n_trials]
         categories = categories[:n_trials]
-        true_family_acc = self._family_correct(categories, choices, n_cats)
+        true_family_acc = family_correct(categories, choices, n_cats)
         pred_family_acc = np.full(n_trials, np.nan, dtype=float)
 
         beta_arr = self._extract_beta_log(info)
@@ -549,7 +313,7 @@ class ModelEval(OralModelAlignmentMixin):
                 [float(true_family_acc[trial_idx])],
                 [int(categories[trial_idx])],
             )
-            family_idx = self._family_indices(int(categories[trial_idx]), n_cats)
+            family_idx = family_indices(int(categories[trial_idx]), n_cats)
             weighted_family_prob = 0.0
             for hypo, weight in enumerate(current_dist):
                 if weight <= 0:
@@ -568,27 +332,18 @@ class ModelEval(OralModelAlignmentMixin):
                     weighted_family_prob += float(weight) * float(np.sum(prob[valid_family_idx, 0]))
             pred_family_acc[trial_idx] = weighted_family_prob
 
-        sliding_true = []
-        sliding_pred = []
-        sliding_std = []
-        for start in range(1, n_trials - win + 1):
-            end = start + win
-            true_window = true_family_acc[start:end]
-            pred_window = pred_family_acc[start:end]
-            sliding_true.append(float(np.mean(true_window)))
-            sliding_pred.append(float(np.nanmean(pred_window)))
-            valid = pred_window[~np.isnan(pred_window)]
-            if valid.size:
-                sliding_std.append(float(np.sqrt(np.sum(valid * (1 - valid))) / win))
-            else:
-                sliding_std.append(np.nan)
+        sliding_true, sliding_pred, sliding_std = sliding_binary_metrics(
+            true_family_acc,
+            pred_family_acc,
+            window_size=win,
+        )
 
         return {
             "true_family_acc": true_family_acc,
             "pred_family_acc": pred_family_acc,
-            "sliding_true_family_acc": np.asarray(sliding_true, dtype=float),
-            "sliding_pred_family_acc": np.asarray(sliding_pred, dtype=float),
-            "sliding_pred_family_acc_std": np.asarray(sliding_std, dtype=float),
+            "sliding_true_family_acc": sliding_true,
+            "sliding_pred_family_acc": sliding_pred,
+            "sliding_pred_family_acc_std": sliding_std,
         }
 
     # posterior/prior ---------------------------------------------------------
@@ -1107,72 +862,7 @@ class ModelEval(OralModelAlignmentMixin):
 
     def compute_choice_brier_metrics(self, info, window_size=None):
         """Compute trial-level and sliding-window Brier loss for observed choices."""
-        probs = info.get("pred_category_probs")
-        observed_choice_index = info.get("observed_choice_index")
-        if probs is None or observed_choice_index is None:
-            return {}
-
-        try:
-            probs = np.asarray(probs, dtype=float)
-            observed_choice_index = np.asarray(observed_choice_index, dtype=int).reshape(-1)
-        except (TypeError, ValueError):
-            return {}
-        if probs.ndim != 2 or probs.shape[0] == 0 or probs.shape[1] == 0:
-            return {}
-
-        n_trials = min(probs.shape[0], observed_choice_index.size)
-        if n_trials == 0:
-            return {}
-        probs = probs[:n_trials]
-        observed_choice_index = observed_choice_index[:n_trials]
-        n_cats = int(probs.shape[1])
-
-        valid_mask = info.get("valid_trial_mask")
-        if valid_mask is None:
-            valid_mask = np.ones(n_trials, dtype=bool)
-        else:
-            try:
-                valid_mask = np.asarray(valid_mask, dtype=bool).reshape(-1)
-            except (TypeError, ValueError):
-                valid_mask = np.ones(n_trials, dtype=bool)
-            if valid_mask.size < n_trials:
-                padded = np.zeros(n_trials, dtype=bool)
-                padded[: valid_mask.size] = valid_mask
-                valid_mask = padded
-            else:
-                valid_mask = valid_mask[:n_trials]
-
-        choice_brier = np.full(n_trials, np.nan, dtype=float)
-        keep = (
-            valid_mask
-            & np.all(np.isfinite(probs), axis=1)
-            & (observed_choice_index >= 0)
-            & (observed_choice_index < n_cats)
-        )
-        rows = np.where(keep)[0]
-        if rows.size:
-            one_hot = np.zeros((rows.size, n_cats), dtype=float)
-            one_hot[np.arange(rows.size), observed_choice_index[rows]] = 1.0
-            choice_brier[rows] = np.sum(np.square(probs[rows] - one_hot), axis=1)
-
-        win = window_size if window_size is not None else info.get("window_size")
-        try:
-            win = int(win)
-        except (TypeError, ValueError):
-            win = 16
-
-        sliding_choice_brier = []
-        if win > 0 and n_trials >= win + 1:
-            for start in range(1, n_trials - win + 1):
-                end = start + win
-                sliding_choice_brier.append(self._safe_nanmean(choice_brier[start:end]))
-
-        return {
-            "choice_brier": choice_brier,
-            "sliding_choice_brier": np.asarray(sliding_choice_brier, dtype=float),
-            "choice_brier_window_size": int(win),
-            "choice_brier_chance": float(1.0 - 1.0 / n_cats),
-        }
+        return choice_brier_curve_metrics_from_info(info, window_size=window_size)
 
     def plot_choice_brier(self, results, subjects=None, save_path=None, window_size=None, **kwargs):
         def body(ax, condition, iSub, info):
@@ -1453,191 +1143,44 @@ class ModelEval(OralModelAlignmentMixin):
 
     @staticmethod
     def _accuracy_curve_summary(metrics: Mapping[str, Any]) -> dict[str, float]:
-        try:
-            true = ModelEval._as_float_1d(metrics.get("sliding_true_acc"), "sliding_true_acc")
-            pred = ModelEval._as_float_1d(metrics.get("sliding_pred_acc"), "sliding_pred_acc")
-        except (TypeError, ValueError):
-            return {
-                "acc_mae": np.nan,
-                "acc_rmse": np.nan,
-                "true_vol": np.nan,
-                "model_vol": np.nan,
-                "vol_ratio": np.nan,
-                "slope_agree": np.nan,
-            }
-        if true.shape != pred.shape:
-            return {
-                "acc_mae": np.nan,
-                "acc_rmse": np.nan,
-                "true_vol": np.nan,
-                "model_vol": np.nan,
-                "vol_ratio": np.nan,
-                "slope_agree": np.nan,
-            }
-        mask = np.isfinite(true) & np.isfinite(pred)
-        if not mask.any():
-            return {
-                "acc_mae": np.nan,
-                "acc_rmse": np.nan,
-                "true_vol": np.nan,
-                "model_vol": np.nan,
-                "vol_ratio": np.nan,
-                "slope_agree": np.nan,
-            }
-        true = true[mask]
-        pred = pred[mask]
-        diff = pred - true
-        true_vol = float(np.mean(np.abs(np.diff(true)))) if true.size > 1 else np.nan
-        model_vol = float(np.mean(np.abs(np.diff(pred)))) if pred.size > 1 else np.nan
-        d_true = np.diff(true)
-        d_pred = np.diff(pred)
-        slope_mask = (np.abs(d_true) > 1e-12) & (np.abs(d_pred) > 1e-12)
-        slope_agree = (
-            float(np.mean(np.sign(d_true[slope_mask]) == np.sign(d_pred[slope_mask])))
-            if slope_mask.any()
-            else np.nan
-        )
+        shared = accuracy_curve_metrics(metrics)
         return {
-            "acc_mae": float(np.mean(np.abs(diff))),
-            "acc_rmse": float(np.sqrt(np.mean(diff * diff))),
-            "true_vol": true_vol,
-            "model_vol": model_vol,
-            "vol_ratio": float(model_vol / true_vol) if true_vol > 0 else np.nan,
-            "slope_agree": slope_agree,
+            "acc_mae": shared["acc_mae"],
+            "acc_rmse": shared["acc_rmse"],
+            "true_vol": shared["true_vol"],
+            "model_vol": shared["pred_vol"],
+            "vol_ratio": shared["vol_ratio"],
+            "slope_agree": shared["slope_agree"],
         }
 
     @staticmethod
-    def _standardized_lag_kernel(x, y, ridge=1e-3):
-        x = np.asarray(x, dtype=float)
-        y = np.asarray(y, dtype=float)
-        if x.ndim != 2 or y.ndim != 1 or x.shape[0] != y.shape[0] or x.shape[0] <= x.shape[1]:
-            return np.full(x.shape[1] if x.ndim == 2 else 0, np.nan)
-        x = x - np.nanmean(x, axis=0, keepdims=True)
-        y = y - float(np.nanmean(y))
-        x_scale = np.nanstd(x, axis=0, keepdims=True)
-        x_scale = np.where(x_scale > 1e-12, x_scale, 1.0)
-        y_scale = float(np.nanstd(y))
-        x = x / x_scale
-        if y_scale > 1e-12:
-            y = y / y_scale
-        xtx = x.T @ x
-        penalty = max(0.0, float(ridge)) * np.eye(xtx.shape[0], dtype=float)
-        try:
-            return np.linalg.solve(xtx + penalty, x.T @ y)
-        except np.linalg.LinAlgError:
-            return np.linalg.pinv(xtx + penalty) @ (x.T @ y)
-
-    @staticmethod
     def _history_kernel_summary(metrics: Mapping[str, Any], max_lag=8) -> dict[str, Any]:
-        true_acc = np.asarray(metrics.get("true_acc"), dtype=float).reshape(-1)
-        pred_acc = np.asarray(metrics.get("pred_acc"), dtype=float).reshape(-1)
-        valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(true_acc, dtype=bool)), dtype=bool)
-        if true_acc.shape != pred_acc.shape or valid.shape != true_acc.shape or true_acc.size <= max_lag:
-            return {
-                "history_corr": np.nan,
-                "history_mse": np.nan,
-                "human_kernel": [],
-                "model_kernel": [],
-            }
-        rows = []
-        human_y = []
-        model_y = []
-        for trial_idx in range(int(max_lag), true_acc.size):
-            if not bool(valid[trial_idx]):
-                continue
-            y_h = ModelEval._safe_float(true_acc[trial_idx])
-            y_m = ModelEval._safe_float(pred_acc[trial_idx])
-            lags = [ModelEval._safe_float(true_acc[trial_idx - lag]) for lag in range(1, int(max_lag) + 1)]
-            if not (np.isfinite(y_h) and np.isfinite(y_m) and all(np.isfinite(v) for v in lags)):
-                continue
-            rows.append(lags)
-            human_y.append(y_h)
-            model_y.append(y_m)
-        if len(rows) <= max_lag:
-            return {
-                "history_corr": np.nan,
-                "history_mse": np.nan,
-                "human_kernel": [],
-                "model_kernel": [],
-            }
-        x = np.asarray(rows, dtype=float)
-        human = ModelEval._standardized_lag_kernel(x, np.asarray(human_y, dtype=float))
-        model = ModelEval._standardized_lag_kernel(x, np.asarray(model_y, dtype=float))
-        finite = np.isfinite(human) & np.isfinite(model)
-        if not finite.any():
-            return {
-                "history_corr": np.nan,
-                "history_mse": np.nan,
-                "human_kernel": [],
-                "model_kernel": [],
-            }
-        diff = model[finite] - human[finite]
+        shared = history_kernel_metrics(
+            metrics,
+            max_lag=int(max_lag),
+            ridge=1e-3,
+            standardize=True,
+        )
         return {
-            "history_corr": ModelEval._safe_pearson(human[finite], model[finite]),
-            "history_mse": float(np.mean(diff * diff)),
-            "human_kernel": [float(v) if np.isfinite(v) else np.nan for v in human],
-            "model_kernel": [float(v) if np.isfinite(v) else np.nan for v in model],
+            "history_corr": shared["kernel_corr"],
+            "history_mse": shared["kernel_mse"],
+            "human_kernel": shared["human_kernel"],
+            "model_kernel": shared["model_kernel"],
         }
 
     @staticmethod
     def _switch_summary(metrics: Mapping[str, Any]) -> dict[str, float]:
-        probs = np.asarray(metrics.get("pred_category_probs"), dtype=float)
-        choices = np.asarray(metrics.get("observed_choice_index"), dtype=float).reshape(-1)
-        true_acc = np.asarray(metrics.get("true_acc"), dtype=float).reshape(-1)
-        valid = np.asarray(metrics.get("valid_trial_mask", np.ones_like(choices, dtype=bool)), dtype=bool)
-        empty = {
-            "switch_human": np.nan,
-            "switch_model": np.nan,
-            "switch_abs_diff": np.nan,
-            "win_stay_abs_diff": np.nan,
-            "lose_shift_abs_diff": np.nan,
-            "switch_score": np.nan,
-        }
-        if probs.ndim != 2 or choices.size <= 1 or probs.shape[0] != choices.size or valid.size != choices.size:
-            return empty
-        prev_choice = choices[:-1]
-        next_choice = choices[1:]
-        pair_mask = (
-            valid[1:]
-            & np.isfinite(prev_choice)
-            & np.isfinite(next_choice)
-            & (prev_choice >= 0)
-            & (next_choice >= 0)
-            & (prev_choice < probs.shape[1])
-            & (next_choice < probs.shape[1])
-            & np.all(np.isfinite(probs[1:, :]), axis=1)
-        )
-        if not np.any(pair_mask):
-            return empty
-        rows = np.arange(1, choices.size)[pair_mask]
-        prev_idx = prev_choice[pair_mask].astype(int)
-        next_idx = next_choice[pair_mask].astype(int)
-        model_stay = np.clip(probs[rows, prev_idx], 0.0, 1.0)
-        model_switch = 1.0 - model_stay
-        human_stay = (next_idx == prev_idx).astype(float)
-        human_switch = 1.0 - human_stay
-        prev_acc = true_acc[:-1][pair_mask] if true_acc.size == choices.size else np.full(prev_idx.size, np.nan)
-        win_mask = np.isfinite(prev_acc) & (prev_acc >= 0.5)
-        loss_mask = np.isfinite(prev_acc) & (prev_acc < 0.5)
-        switch_abs = float(abs(np.mean(model_switch) - np.mean(human_switch)))
-        win_abs = (
-            float(abs(np.mean(model_stay[win_mask]) - np.mean(human_stay[win_mask])))
-            if win_mask.any()
-            else np.nan
-        )
-        loss_abs = (
-            float(abs(np.mean(model_switch[loss_mask]) - np.mean(human_switch[loss_mask])))
-            if loss_mask.any()
-            else np.nan
-        )
-        switch_score = ModelEval._safe_mean([switch_abs, win_abs, loss_abs])
+        shared = switch_behavior_metrics(metrics, min_trials=1)
         return {
-            "switch_human": float(np.mean(human_switch)),
-            "switch_model": float(np.mean(model_switch)),
-            "switch_abs_diff": switch_abs,
-            "win_stay_abs_diff": win_abs,
-            "lose_shift_abs_diff": loss_abs,
-            "switch_score": switch_score,
+            key: shared[key]
+            for key in (
+                "switch_human",
+                "switch_model",
+                "switch_abs_diff",
+                "win_stay_abs_diff",
+                "lose_shift_abs_diff",
+                "switch_score",
+            )
         }
 
     def _run_behavior_row(self, payload, subject_json_path, stream_index, run_obj, eval_prediction_mode=None):
@@ -1732,9 +1275,7 @@ class ModelEval(OralModelAlignmentMixin):
         if true_curve is None or not pred_curves:
             raise ValueError(f"No usable run accuracy curves found in {subject_json_path}")
         pred_stack = np.vstack(pred_curves)
-        q00 = np.nanmin(pred_stack, axis=0)
-        q05, q25, q50, q75, q95 = np.nanquantile(pred_stack, [0.05, 0.25, 0.5, 0.75, 0.95], axis=0)
-        q100 = np.nanmax(pred_stack, axis=0)
+        band_metrics = predictive_accuracy_band_metrics(pred_stack, true_curve)
 
         representative = payload.get("representative_run") or {}
         representative_metrics = representative.get("metrics_by_mode") or {}
@@ -1757,11 +1298,6 @@ class ModelEval(OralModelAlignmentMixin):
         sid = int(payload.get("subject_id", -1))
         condition = int(payload.get("condition", -1))
 
-        coverage_50 = float(np.mean((true_curve >= q25) & (true_curve <= q75)))
-        coverage_90 = float(np.mean((true_curve >= q05) & (true_curve <= q95)))
-        median_mae = float(np.mean(np.abs(q50 - true_curve)))
-        true_vol = float(np.mean(np.abs(np.diff(true_curve)))) if true_curve.size > 1 else np.nan
-        median_vol = float(np.mean(np.abs(np.diff(q50)))) if q50.size > 1 else np.nan
         return {
             "subject_id": sid,
             "condition": condition,
@@ -1772,17 +1308,7 @@ class ModelEval(OralModelAlignmentMixin):
             "best_curve": best_curve,
             "best_run_index": best_run_index,
             "best_error": float(best_error) if np.isfinite(best_error) else np.nan,
-            "q00": q00,
-            "q05": q05,
-            "q25": q25,
-            "q50": q50,
-            "q75": q75,
-            "q95": q95,
-            "q100": q100,
-            "median_curve_mae": median_mae,
-            "coverage_50": coverage_50,
-            "coverage_90": coverage_90,
-            "median_vol_ratio": float(median_vol / true_vol) if true_vol > 0 else np.nan,
+            **band_metrics,
         }
 
     @staticmethod
@@ -1988,24 +1514,22 @@ class ModelEval(OralModelAlignmentMixin):
 
         summary_rows = []
         for sid, group in run_df.groupby("subject_id", sort=True):
+            aggregated = behavior_ppc_group_metrics(group)
             summary_rows.append(
                 {
                     "subject_id": int(sid),
                     "n_runs": int(len(group)),
-                    "choice_error_mean": float(group["choice_error"].mean()),
-                    "acc_mae_mean": float(group["acc_mae"].mean()),
-                    "acc_mae_median": float(group["acc_mae"].median()),
-                    "vol_ratio_median": float(group["vol_ratio"].median()),
-                    "vol_ratio_q10": float(group["vol_ratio"].quantile(0.10)),
-                    "vol_ratio_q90": float(group["vol_ratio"].quantile(0.90)),
-                    "history_corr_mean": float(group["history_corr"].mean()),
-                    "history_corr_median": float(group["history_corr"].median()),
-                    "switch_score_mean": float(group["switch_score"].mean()),
-                    "switch_score_median": float(group["switch_score"].median()),
-                    "acc_mae_pass": bool(group["acc_mae"].mean() <= 0.10),
-                    "vol_ratio_pass": bool(0.60 <= group["vol_ratio"].median() <= 1.50),
-                    "history_corr_pass": bool(group["history_corr"].mean() >= 0.80),
-                    "switch_score_pass": bool(group["switch_score"].mean() <= 0.10),
+                    **aggregated,
+                    "acc_mae_pass": bool(aggregated["acc_mae_mean"] <= 0.10),
+                    "vol_ratio_pass": bool(
+                        0.60 <= aggregated["vol_ratio_median"] <= 1.50
+                    ),
+                    "history_corr_pass": bool(
+                        aggregated["history_corr_mean"] >= 0.80
+                    ),
+                    "switch_score_pass": bool(
+                        aggregated["switch_score_mean"] <= 0.10
+                    ),
                 }
             )
         summary_df = pd.DataFrame(summary_rows)
@@ -2424,10 +1948,10 @@ class ModelEval(OralModelAlignmentMixin):
                 continue
             probabilities = step.get("policy_probabilities")
             if not isinstance(probabilities, Mapping) or not probabilities:
-                controller = step.get("strategy_controller") or {}
+                controller = step.get("state_controller") or {}
                 probabilities = controller.get("policy_probabilities")
             if not isinstance(probabilities, Mapping) or not probabilities:
-                probabilities = step.get("profile_probabilities")
+                probabilities = step.get("state_probabilities")
             if not isinstance(probabilities, Mapping) or not probabilities:
                 continue
 
@@ -2444,7 +1968,7 @@ class ModelEval(OralModelAlignmentMixin):
             if policy is None:
                 policy = (step.get("profile_policy") or {}).get("policy_method")
             if policy is None:
-                policy = step.get("selected_profile")
+                policy = step.get("selected_state")
 
             trials.append(int(trial_idx))
             probability_rows.append(clean)
