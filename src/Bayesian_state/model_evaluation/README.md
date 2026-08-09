@@ -8,12 +8,14 @@ oral/model alignment 图表。它不参与模型拟合，也不改变 hyperparam
 
 | 文件 | 职责 |
 |---|---|
-| `model_evaluation.py` | `ModelEval`：accuracy、choice Brier、posterior/prior、beta、strategy、active-set 和 run-rank 图表 |
+| `model_evaluation.py` | `ModelEval` 通用评价门面：accuracy、choice Brier、posterior/prior、beta、行为 PPC 和 trajectory-rank 图表 |
+| `transition_evaluation.py` | 仅在相应日志存在时使用的 dynamic-discrete、dynamic-continuous、active-set 与 particle-marginal 诊断 |
 | `oral_model_alignment.py` | oral center/region 到 hypothesis space 的映射、分布相似性、coverage/target/hit alignment |
 | `__init__.py` | 包说明；正式 CLI 位于上一级 `run_model_evaluation.py` |
 
-`ModelEval` 继承 `OralModelAlignmentMixin`，所以公共行为评价与口述规则对齐使用同一个结果
-读取上下文。
+`ModelEval` 组合 `TransitionEvaluationMixin` 与 `OralModelAlignmentMixin`，所以公共行为评价、
+transition 特异诊断与口述规则对齐仍共享同一个结果读取上下文。调用方不需要按模型实例化不同的
+evaluator。
 
 ## 正式入口
 
@@ -36,12 +38,20 @@ cache/subject_<id>_raw_runs.gz   # optional
 
 - 基础 accuracy/Brier 图只需要 representative-run metrics。
 - posterior/prior/beta 图需要相应 state log。
+- dynamic-discrete profile 需要 `state_probabilities` 或 `policy_probabilities`；active-set 图需要
+  `active_total`、`strategies` 或 `profile_policy`。CLI 按这些日志字段判断能力，不按模型类名判断。
+- dynamic-continuous 的 `predictive_m`/`transition_rate`、`predictive_g`/`search_range`、
+  feedback surprise/uncertainty 会被识别为独立能力，并生成控制轨迹和反馈信号图。
+- particle state log 额外生成归一化 pre/post-choice ESS、重采样事件和
+  `marginal_active_probability` heatmap；顺序留出的切分点会画在这些 trial-level 图上。
 - trajectory rank、posterior rank 和 behavior PPC 的完整 run 分布需要 `raw_runs_ref`。
 - oral alignment 还需要 Task2/oral 数据与相同的 partition 定义。
 
-particle backend 当前保存的是 `marginal_prior`、`marginal_active_probability` 和 ESS/transition
-诊断，不是每个粒子的 posterior 轨迹。旧的 `posterior`/`prior` 绘图函数不会自动把这些字段
-解释成同一对象；粒子结果应使用专门的 marginal-state adapter 或图表。
+particle backend 保存的是 `marginal_prior`、`marginal_active_probability` 和 ESS/transition
+诊断，不是每个粒子的 posterior 轨迹。结果 adapter 将 `marginal_prior` 显式映射为通用
+`prior_log`，并以 `state_distribution_kind: particle_marginal` 标记其统计含义；它不会把该对象
+冒充 posterior。因而粒子结果可以复用 prior 图，并使用专门的 marginal active/ESS 图；不存在
+真实 posterior 或 beta 日志时，manifest 将对应步骤记为 `not_applicable`。
 
 因此，若后续计划画 run-level 图，最终 simulation 应设置：
 

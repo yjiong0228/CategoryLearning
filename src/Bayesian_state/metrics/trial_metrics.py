@@ -5,8 +5,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .learning_curves import exponential_smooth_curve
-from .numeric import nanmean_or_nan
+from .behavior_metrics import exponential_smooth_curve
+from ._numeric import nanmean_or_nan
 
 
 def family_correct(

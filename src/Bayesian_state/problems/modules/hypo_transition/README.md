@@ -383,6 +383,8 @@ kwargs:
 ```yaml
 class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule
 kwargs:
+  # May be supplied by a subject_overrides block. It remains fixed across all
+  # trials for that subject; this module does not implement a dynamic M_t.
   capacity: 3
   m: 0.15
   g: 0.35
@@ -406,6 +408,8 @@ kwargs:
 - dynamic-discrete 日志应记录 `selected_state` 和 `state_probabilities`。
 - dynamic-continuous 日志应记录 control trajectory，例如 `predictive_m`、`predictive_g`。
 - candidate/profile 是被试级配置资源，不应保存某次运行产生的 (z_{1:T}) 或 (c_{1:T})。
+- `capacity` 可以作为被试级候选由 Hyper-CD 选择；选定后必须在该被试内保持固定。若要实现
+  trial-varying capacity，应新增显式状态转移，而不是在运行中直接修改 `capacity`。
 - `_internal/` 中的类不是稳定 API，配置文件不得直接引用。
 
 本子包不提供重构前的 H class path 或兼容入口。新增 H 设计时，应先明确它改变的是 selection、

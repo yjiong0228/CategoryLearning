@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Mapping, Sequence
 import numpy as np
 from joblib import Parallel, delayed
 
-from src.Bayesian_state.utils.config_subjects import resolve_subject_config
-from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 from src.Bayesian_state.optimization.hyper_utils import (
     HYPER_RESULT_SCHEMA_VERSION,
     build_root_best_payload,
@@ -21,26 +19,20 @@ from src.Bayesian_state.optimization.hyper_utils import (
     build_subject_best_payload,
     combination_metrics_summary,
     compact_hyperparams,
-    expand_profile_candidate_hyperparams,
-    to_builtin,
-    validate_no_nested_hyperparam_paths,
-    values_from_json,
-    values_product,
+    to_builtin as _to_builtin,
 )
-from src.Bayesian_state.optimization.optimization_config import (
-    load_yaml,
-    resolve_engine_config,
+from src.Bayesian_state.optimization.hyper_search_common import HyperSearchRuntime
+from src.Bayesian_state.simulation.simulation_config import (
+    EVALUATION_ROLE_OPTIMIZATION,
+    resolve_evaluation_score_mask,
     resolve_loss_delta,
-    resolve_loss_metric,
-    resolve_prediction_modes,
     resolve_simulation_repeats,
-    resolve_window_size,
 )
-from src.Bayesian_state.optimization.optimizer_common import (
+from src.Bayesian_state.simulation.state_model_execution import evaluate_state_model_run
+from src.Bayesian_state.utils.seeding import (
     derive_hyper_candidate_seed,
     derive_simulation_point_seed,
     derive_trajectory_seed,
-    evaluate_state_model_run,
     stable_seed,
 )
 from src.Bayesian_state.optimization.hyper_objectives import (
@@ -55,8 +47,8 @@ from src.Bayesian_state.optimization.hyper_objectives import (
     select_best_by_objectives,
     update_anchor_values,
 )
-from src.Bayesian_state.utils.simulation_statistics import resolve_simulation_stat_config
-from src.Bayesian_state.optimization.optimizer_simulation import (
+from src.Bayesian_state.simulation.repeated_simulation import (
+    resolve_simulation_stat_config,
     StateModelSimulationRunner,
     aggregate_simulation_runs,
 )
@@ -113,6 +105,7 @@ def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
         simulation_point_seed=int(task["simulation_point_seed"]),
         trajectory_seed=int(task["trajectory_seed"]),
         seed_context=task.get("seed_context"),
+        score_trial_mask=task.get("score_trial_mask"),
     )
     return {
         "position": int(task["position"]),
@@ -121,13 +114,14 @@ def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
-class HyperCDOptimizer:
+class HyperCDOptimizer(HyperSearchRuntime):
     """Choose model hyperparameters with coordinate descent."""
 
+    backend_label = "Hyper-CD"
+    default_output_dir = "../../results/state-based-hyper-cd/default"
+
     def __init__(self, config: Mapping[str, Any], config_path: Path) -> None:
-        self.config = dict(config)
-        self.config_path = config_path
-        self.config_dir = config_path.parent
+        super().__init__(config, config_path)
 
         self.objective_order = resolve_objective_order(self.config)
         self.objective_order_config = objective_order_payload(self.objective_order)
@@ -135,28 +129,6 @@ class HyperCDOptimizer:
         # `hyperparam_selection_mode` config key is optional now; keep internal
         # default as per-subject selection (only mode currently implemented).
         self.hyperparam_selection_mode = "per_subject"
-
-        self.save_level = str(self.config.get("save_level", "compact")).strip().lower()
-        if self.save_level not in {"compact", "full"}:
-            raise ValueError("save_level must be 'compact' or 'full'")
-
-        if "hyper_base_seed" not in self.config:
-            raise ValueError("Hyper-CD config must include hyper_base_seed.")
-        self.hyper_base_seed = int(self.config["hyper_base_seed"])
-
-        base_sim = self.config.get("base_sim_config_path")
-        if not base_sim:
-            raise ValueError("base_sim_config_path is required")
-        base_path = Path(base_sim)
-        if not base_path.is_absolute():
-            base_path = (self.config_dir / base_path).resolve()
-        self.base_sim_config_path = base_path
-        self.base_sim_config = load_yaml(self.base_sim_config_path)
-
-        self.output_dir = self._resolve_path(
-            self.config.get("output_dir", "../../results/state-based-hyper-cd/default")
-        )
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         cd_cfg = dict(self.config.get("cd") or {})
         self.n_restarts = int(cd_cfg.get("n_restarts", 5))
@@ -196,78 +168,6 @@ class HyperCDOptimizer:
         if out <= 0:
             raise ValueError(f"{name} must be a positive integer, got {value!r}.")
         return out
-
-    def _resolve_path(self, maybe_path: Any) -> Path:
-        p = Path(maybe_path)
-        if not p.is_absolute():
-            p = (self.config_dir / p).resolve()
-        return p
-
-    def resolve_subjects(
-        self,
-        cli_subjects: Sequence[int] | None,
-        cli_subject_range: Sequence[int] | None,
-    ) -> List[int]:
-        if cli_subjects:
-            return [int(x) for x in cli_subjects]
-        if cli_subject_range:
-            start, end = [int(x) for x in cli_subject_range]
-            return list(range(start, end + 1))
-        if "subjects" in self.config and self.config["subjects"] is not None:
-            return [int(x) for x in self.config["subjects"]]
-        if "subject_range" in self.config and self.config["subject_range"] is not None:
-            start, end = [int(x) for x in self.config["subject_range"]]
-            return list(range(start, end + 1))
-
-        base = self.base_sim_config
-        if "subjects" in base and base["subjects"] is not None:
-            return [int(x) for x in base["subjects"]]
-        if "subject_range" in base and base["subject_range"] is not None:
-            start, end = [int(x) for x in base["subject_range"]]
-            return list(range(start, end + 1))
-        raise ValueError("Unable to resolve subjects from CLI/hyper-CD config/base simulation config")
-
-    def _linspace_values(self, spec: Mapping[str, Any]) -> List[float]:
-        start = float(spec["start"])
-        stop = float(spec["stop"])
-        num = int(spec["num"])
-        if num < 2:
-            return [start]
-        return [float(x) for x in np.linspace(start, stop, num=num, endpoint=True)]
-
-    def _hyperparam_values(self, spec: Mapping[str, Any]) -> List[Any]:
-        if "values" in spec:
-            vals = list(spec["values"])
-            if not vals:
-                raise ValueError("hyperparameter values cannot be empty")
-            return vals
-        if "values_from_json" in spec:
-            return values_from_json(spec, self.config_dir)
-        if "values_product" in spec:
-            return values_product(spec)
-        if all(k in spec for k in ("start", "stop", "num")):
-            return self._linspace_values(spec)
-        raise ValueError(
-            "Each hyperparameter spec must provide values, values_from_json, values_product, or (start, stop, num)"
-        )
-
-    def _param_specs_for_stage(self, stage_name: str) -> Dict[str, Dict[str, Any]]:
-        stages = self.config.get("stages") or {}
-        stage_cfg = stages.get(stage_name)
-        if not isinstance(stage_cfg, Mapping):
-            raise ValueError(f"Missing stage config: stages.{stage_name}")
-        if "hyperparam_space" in stage_cfg:
-            raw = stage_cfg["hyperparam_space"]
-            if not isinstance(raw, Mapping):
-                raise ValueError(f"stages.{stage_name}.hyperparam_space must be a mapping")
-            validate_no_nested_hyperparam_paths(raw)
-            return {k: dict(v) for k, v in raw.items()}
-
-        raw = self.config.get("hyperparam_space")
-        if not isinstance(raw, Mapping):
-            raise ValueError("hyperparam_space must be a mapping")
-        validate_no_nested_hyperparam_paths(raw)
-        return {k: dict(v) for k, v in raw.items()}
 
     def _top_k_combinations_from_coarse(self, coarse_combinations: Sequence[CombinationResult]) -> List[Dict[str, Any]]:
         policy = self.config.get("refine_policy") or {}
@@ -323,40 +223,6 @@ class HyperCDOptimizer:
             out[name] = unique
         return out
 
-    def _set_by_path(self, root: Dict[str, Any], path: str, value: Any) -> None:
-        curr = root
-        parts = path.split(".")
-        for part in parts[:-1]:
-            curr = curr.setdefault(part, {})
-        curr[parts[-1]] = deepcopy(value)
-
-    def _apply_single_hyperparam(
-        self,
-        key: str,
-        value: Any,
-        next_sim: Dict[str, Any],
-        next_engine: Dict[str, Any],
-    ) -> None:
-        if key.startswith("engine."):
-            self._set_by_path(next_engine, key[len("engine."):], value)
-        elif key.startswith("simulation."):
-            self._set_by_path(next_sim, key[len("simulation."):], value)
-        else:
-            raise ValueError(f"Hyperparameter key '{key}' must start with 'engine.' or 'simulation.'.")
-
-    def _apply_hyperparams(
-        self,
-        point: Dict[str, Any],
-        sim_cfg: Dict[str, Any],
-        engine_cfg: Dict[str, Any],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        next_sim = deepcopy(sim_cfg)
-        next_engine = deepcopy(engine_cfg)
-        for key, value in expand_profile_candidate_hyperparams(point).items():
-            self._apply_single_hyperparam(key, value, next_sim, next_engine)
-        next_sim["fixed_hyperparams"] = deepcopy(point)
-        return next_sim, next_engine
-
     def _hyper_candidate_seed(
         self,
         stage_name: str,
@@ -389,44 +255,6 @@ class HyperCDOptimizer:
         )
         return random.Random(seed)
 
-    def _prepare_stage_config(self, stage_name: str) -> Dict[str, Any]:
-        stage_cfg = (self.config.get("stages") or {}).get(stage_name)
-        if not isinstance(stage_cfg, Mapping):
-            raise ValueError(f"Missing stages.{stage_name}")
-        override = stage_cfg.get("simulation_overrides")
-        if override is not None and not isinstance(override, Mapping):
-            raise ValueError(f"stages.{stage_name}.simulation_overrides must be a mapping")
-        merged = deepcopy(self.base_sim_config)
-        if override is not None:
-            merged = _deep_update(merged, dict(override))
-        return merged
-
-    def _resolve_sim_components(
-        self,
-        sim_cfg: Dict[str, Any],
-        subject_id: int,
-        subjects: Sequence[int],
-    ):
-        subject_cfg = resolve_subject_config(sim_cfg, subject_id)
-        engine_cfg = resolve_engine_config(subject_cfg, self.base_sim_config_path.parent, subject_id=subject_id)
-        prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
-        loss_metric = resolve_loss_metric(subject_cfg)
-        loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
-        window_size = resolve_window_size(subject_cfg, subject_id, subjects)
-        n_jobs = int(subject_cfg.get("n_jobs", 1))
-        return subject_cfg, engine_cfg, prediction_mode, selection_prediction_mode, loss_metric, loss_delta, window_size, n_jobs
-
-    def _build_runner(self, sim_cfg: Dict[str, Any], engine_cfg: Dict[str, Any]):
-        dataset_paths = resolve_dataset_paths(sim_cfg, self.base_sim_config_path.parent)
-        runner = StateModelSimulationRunner(
-            engine_config=engine_cfg,
-            processed_data_dir=dataset_paths["processed_dir"],
-            dataset_paths=dataset_paths,
-            n_jobs=int(sim_cfg.get("n_jobs", 1)),
-        )
-        runner.prepare_data(dataset_paths["learning_data"])
-        return runner, dataset_paths
-
     def _simulate_runs_for_point(
         self,
         *,
@@ -445,11 +273,17 @@ class HyperCDOptimizer:
         loss_delta: float | None,
         hyper_candidate_seed: int,
         n_jobs: int,
+        evaluation_protocol: Mapping[str, Any] | None,
     ):
         subject_frame = runner._get_subject_frame(int(subject_id), float(stop_at))
         condition = runner._get_condition_value(subject_frame)
         max_trials_int = int(max_trials) if max_trials is not None else None
         arrays = runner._extract_arrays(subject_frame, max_trials_int)
+        score_trial_mask, score_context = resolve_evaluation_score_mask(
+            int(arrays.feedback.shape[0]),
+            evaluation_protocol,
+            role=EVALUATION_ROLE_OPTIMIZATION,
+        )
         simulation_point_seed = derive_simulation_point_seed(
             int(hyper_candidate_seed),
             int(subject_id),
@@ -496,11 +330,17 @@ class HyperCDOptimizer:
                         "phase": "hyper_cd",
                         "repeat_index": task["repeat_index"],
                     },
+                    score_trial_mask=score_trial_mask,
                 )
                 for task in tasks
             )
         )
-        return [run for run in runs if run is not None], int(condition), int(simulation_point_seed)
+        return (
+            [run for run in runs if run is not None],
+            int(condition),
+            int(simulation_point_seed),
+            score_context,
+        )
 
     def _select_final_combination(
         self,
@@ -578,7 +418,7 @@ class HyperCDOptimizer:
             effective_loss_metric = str(point_sim_cfg["loss_metric"])
             effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
 
-            runs, condition, simulation_point_seed = self._simulate_runs_for_point(
+            runs, condition, simulation_point_seed, score_context = self._simulate_runs_for_point(
                 runner=runner,
                 dataset_paths=dataset_paths,
                 subject_id=sid,
@@ -594,6 +434,7 @@ class HyperCDOptimizer:
                 loss_delta=effective_loss_delta,
                 hyper_candidate_seed=hyper_candidate_seed,
                 n_jobs=n_jobs,
+                evaluation_protocol=point_sim_cfg.get("evaluation_protocol"),
             )
             best = aggregate_simulation_runs(
                 runs,
@@ -641,6 +482,7 @@ class HyperCDOptimizer:
                 "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
                 "hyper_candidate_seed": int(hyper_candidate_seed),
                 "simulation_point_seed": int(simulation_point_seed),
+                "scoring": deepcopy(score_context),
             }
 
         aggregated_objectives = aggregate_objective_values(subject_objectives, self.objective_order)
@@ -713,6 +555,11 @@ class HyperCDOptimizer:
             subject_frame = runner._get_subject_frame(sid, float(point_sim_cfg.get("stop_at", 1.0)))
             condition = runner._get_condition_value(subject_frame)
             arrays = runner._extract_arrays(subject_frame, point_sim_cfg.get("max_trials"))
+            score_trial_mask, score_context = resolve_evaluation_score_mask(
+                int(arrays.feedback.shape[0]),
+                point_sim_cfg.get("evaluation_protocol"),
+                role=EVALUATION_ROLE_OPTIMIZATION,
+            )
             simulation_point_seed = derive_simulation_point_seed(
                 int(hyper_candidate_seed),
                 sid,
@@ -737,6 +584,7 @@ class HyperCDOptimizer:
                 "engine_config_template": deepcopy(runner._engine_config_template),
                 "processed_data_dir": runner._processed_data_dir,
                 "arrays": arrays,
+                "score_context": score_context,
             }
 
             for repeat_index in range(simulation_repeats):
@@ -771,6 +619,7 @@ class HyperCDOptimizer:
                             "phase": "simulation",
                             "repeat_index": int(repeat_index),
                         },
+                        "score_trial_mask": score_trial_mask,
                     }
                 )
 
@@ -843,6 +692,7 @@ class HyperCDOptimizer:
                     "dataset_paths": dict(meta["dataset_paths"]),
                     "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
                     "simulation_point_seed": int(meta["simulation_point_seed"]),
+                    "scoring": deepcopy(meta["score_context"]),
                 }
             }
             out.append(
@@ -909,11 +759,6 @@ class HyperCDOptimizer:
         out["n_jobs"] = int(repeat_jobs)
         return out
 
-    def _append_jsonl(self, path: Path, payload: Mapping[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(_to_builtin(payload), ensure_ascii=False, allow_nan=False) + "\n")
-
     def _serialize_combination_record(self, result: CombinationResult) -> Dict[str, Any]:
         data = {
             "schema_version": HYPER_RESULT_SCHEMA_VERSION,
@@ -937,30 +782,6 @@ class HyperCDOptimizer:
         if self.save_level == "full":
             data["subject_metrics"] = result.subject_metrics
         return data
-
-    def _load_jsonl_records(self, path: Path) -> List[Dict[str, Any]]:
-        if not path.is_file():
-            raise FileNotFoundError(f"Cannot resume fine stage; missing coarse combinations file: {path}")
-        records: List[Dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as f:
-            for line_no, line in enumerate(f, start=1):
-                text = line.strip()
-                if not text:
-                    continue
-                try:
-                    payload = json.loads(text)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f"Invalid JSONL at {path}:{line_no}") from exc
-                if not isinstance(payload, Mapping):
-                    raise ValueError(f"JSONL record must be a mapping at {path}:{line_no}")
-                records.append(dict(payload))
-        return records
-
-    def _write_jsonl_records(self, path: Path, records: Sequence[Mapping[str, Any]]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
-            for record in records:
-                f.write(json.dumps(_to_builtin(record), ensure_ascii=False, allow_nan=False) + "\n")
 
     def _trim_jsonl_to_stage(self, path: Path, stage: str) -> None:
         if not path.is_file():
@@ -1479,10 +1300,9 @@ class HyperCDOptimizer:
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
         for sid in subjects:
-            out = self._run_subject_pipeline(
+            out = self.run_subject(
                 int(sid),
                 stage,
-                self.output_dir,
                 resume_from_coarse=resume_from_coarse,
             )
             per_subject_outputs[str(int(sid))] = {
@@ -1516,20 +1336,6 @@ class HyperCDOptimizer:
             "best_hyperparams": str(best_path),
             "best": best_payload,
         }
-
-
-def _deep_update(base: Dict[str, Any], override: Mapping[str, Any]) -> Dict[str, Any]:
-    out = deepcopy(base)
-    for key, value in override.items():
-        if isinstance(value, Mapping) and isinstance(out.get(key), dict):
-            out[key] = _deep_update(out[key], value)
-        else:
-            out[key] = deepcopy(value)
-    return out
-
-
-def _to_builtin(obj: Any) -> Any:
-    return to_builtin(obj)
 
 
 __all__ = ["HyperCDOptimizer", "CombinationResult"]

@@ -405,28 +405,18 @@ def run_conditioned_condition1_rollouts(
             )
         predictions = np.zeros((n_particles, 2), dtype=float)
         for particle_index, model in enumerate(models):
-            engine = model.engine
-            if engine.posterior is not None:
-                engine.prior = np.asarray(engine.posterior, dtype=float).copy()
-            engine.observation = (
-                x[trial_index].copy(),
-                int(prefix_choices[trial_index]),
-                float(prefix_feedback[trial_index]),
-            )
-            engine.modules["perception_mod"].process()
-            perceived = np.asarray(engine.observation[0], dtype=float).copy()
-            engine.modules["hypo_transitions_mod"].process()
+            prepared = model.begin_trial(x[trial_index])
             if acquired[particle_index]:
                 predictions[particle_index] = _choice_probability(
                     model,
-                    perceived,
+                    prepared.perceived_stimulus,
                     rho=float(current_rho[particle_index]),
                     epsilon=float(epsilon_by_trial[trial_index]),
                 )
             else:
                 predictions[particle_index] = _choice_probability(
                     model,
-                    perceived,
+                    prepared.perceived_stimulus,
                     rho=float(current_rho[particle_index]),
                     epsilon=novice_lapse,
                 )
@@ -472,14 +462,11 @@ def run_conditioned_condition1_rollouts(
                 np.random.default_rng(update_seed).random()
                 < update_probability
             )
-            if update_occurs:
-                engine.modules["likelihood_mod"].process()
-                engine.modules["memory_mod"].process()
-                engine.modules["beta_mod"].process()
-            else:
-                engine.posterior = np.asarray(
-                    engine.prior, dtype=float
-                ).copy()
+            model.complete_trial(
+                int(prefix_choices[trial_index]),
+                float(prefix_feedback[trial_index]),
+                update_state=update_occurs,
+            )
             engine.modules["beta_mod"].beta_log.clear()
             engine.modules["hypo_transitions_mod"].transition_log.clear()
 
@@ -653,32 +640,23 @@ def run_conditioned_condition1_rollouts(
                     )
                 )
             engine = scratch.engine
-            if engine.posterior is not None:
-                engine.prior = np.asarray(engine.posterior, dtype=float).copy()
-            engine.observation = (x[trial_index].copy(), 1, 1.0)
-            engine.modules["perception_mod"].process()
-            perceived = np.asarray(engine.observation[0], dtype=float).copy()
-            engine.modules["hypo_transitions_mod"].process()
+            prepared = scratch.begin_trial(x[trial_index])
             if rollout_acquired:
                 probability = _choice_probability(
                     scratch,
-                    perceived,
+                    prepared.perceived_stimulus,
                     rho=trial_rho,
                     epsilon=float(epsilon_by_trial[trial_index]),
                 )
             else:
                 probability = _choice_probability(
                     scratch,
-                    perceived,
+                    prepared.perceived_stimulus,
                     rho=trial_rho,
                     epsilon=novice_lapse,
                 )
             choice = int(choice_rng.choice(2, p=probability)) + 1
             outcome = int(choice == int(y[trial_index]))
-            engine.observation = (perceived, choice, float(outcome))
-            engine.modules[
-                "hypo_transitions_mod"
-            ].record_outcome_feedback(float(outcome))
             update_seed = _future_seed(
                 int(trajectory_seed),
                 trial_index,
@@ -689,14 +667,11 @@ def run_conditioned_condition1_rollouts(
                 np.random.default_rng(update_seed).random()
                 < update_probability
             )
-            if update_occurs:
-                engine.modules["likelihood_mod"].process()
-                engine.modules["memory_mod"].process()
-                engine.modules["beta_mod"].process()
-            else:
-                engine.posterior = np.asarray(
-                    engine.prior, dtype=float
-                ).copy()
+            scratch.complete_trial(
+                choice,
+                float(outcome),
+                update_state=update_occurs,
+            )
             engine.modules["beta_mod"].beta_log.clear()
             engine.modules["hypo_transitions_mod"].transition_log.clear()
 

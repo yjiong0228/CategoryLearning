@@ -1,7 +1,4 @@
 import secrets
-import logging
-
-logging.basicConfig(level=logging.INFO)
 
 
 def gen_rand_str(n: int = 32):

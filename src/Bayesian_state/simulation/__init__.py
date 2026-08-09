@@ -1,8 +1,8 @@
-"""Simulation and synthetic trajectory generation utilities."""
+"""Observed and autonomous StateModel execution utilities."""
 
-from .trajectory_generation import (
-    GeneratedCondition1Trajectory,
-    generate_condition1_trajectory,
+from .autonomous_model_execution import (
+    AutonomousModelResult,
+    run_autonomous_category_learning,
 )
 
-__all__ = ["GeneratedCondition1Trajectory", "generate_condition1_trajectory"]
+__all__ = ["AutonomousModelResult", "run_autonomous_category_learning"]

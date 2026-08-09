@@ -11,31 +11,30 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence
 
-from src.Bayesian_state.optimization.optimization_config import (
+from src.Bayesian_state.simulation.simulation_config import (
     DEFAULT_DATA_PATH,
     DEFAULT_OUTPUT_DIR,
+    PROFILE_CANDIDATE_KEY,
+    dump_stream,
+    expand_profile_candidate_hyperparams,
     load_yaml,
+    recursive_to_builtin,
     resolve_engine_config,
     resolve_loss_delta,
     resolve_loss_metric,
+    resolve_path,
     resolve_prediction_modes,
     resolve_simulation_repeats,
     resolve_subjects,
     resolve_window_size,
     save_json,
-    _dump_stream,
-    _recursive_to_builtin,
-    _resolve_path,
-    _stream_ref_relative_to,
+    stream_ref_relative_to,
 )
 from src.Bayesian_state.utils.config_subjects import resolve_subject_config
+from src.Bayesian_state.utils.base import configure_logging
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
-from src.Bayesian_state.optimization.optimizer_common import derive_hyper_candidate_seed
-from src.Bayesian_state.optimization.optimizer_simulation import StateModelSimulationRunner
-from src.Bayesian_state.optimization.hyper_utils import (
-    PROFILE_CANDIDATE_KEY,
-    expand_profile_candidate_hyperparams,
-)
+from src.Bayesian_state.simulation.repeated_simulation import StateModelSimulationRunner
+from src.Bayesian_state.utils.seeding import derive_hyper_candidate_seed
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -204,9 +203,9 @@ def serialize_result(
     raw_runs = getattr(best, "raw_runs", None)
     raw_runs_ref = None
     if raw_runs:
-        raw_runs_ref = _dump_stream(raw_runs, output_dir, subject_id, "raw_runs")
+        raw_runs_ref = dump_stream(raw_runs, output_dir, subject_id, "raw_runs")
         subject_json_dir = subject_json_dir or (output_dir / "subjects")
-        raw_runs_ref = _stream_ref_relative_to(raw_runs_ref, output_dir, subject_json_dir)
+        raw_runs_ref = stream_ref_relative_to(raw_runs_ref, output_dir, subject_json_dir)
 
     metrics_by_mode = getattr(best, "metrics_by_mode", None) or {}
     selection_meta = result.get("selection_meta", {}) or {}
@@ -250,7 +249,7 @@ def serialize_result(
         },
         "raw_runs_ref": raw_runs_ref,
     }
-    return _recursive_to_builtin(data)
+    return recursive_to_builtin(data)
 
 
 def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
@@ -374,16 +373,22 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    cfg_path = args.config
+def run_simulation(
+    config_path: str | Path,
+    *,
+    subjects: Sequence[int] | None = None,
+    subject_range: Sequence[int] | None = None,
+) -> list[Path]:
+    """Run the configured fixed-hyperparameter simulations and return saved files."""
+    cfg_path = Path(config_path)
     if not cfg_path.is_absolute():
         cfg_path = (ROOT_DIR / cfg_path).resolve()
     cfg = load_yaml(cfg_path)
 
-    subjects = resolve_subjects(args.subjects, args.subject_range, cfg)
+    selected_subjects = resolve_subjects(subjects, subject_range, cfg)
+    saved_paths: list[Path] = []
 
-    for sid in subjects:
+    for sid in selected_subjects:
         subject_cfg = resolve_subject_config(cfg, sid)
         explicit_fixed_hyperparams = dict(subject_cfg.get("fixed_hyperparams") or {})
         subject_cfg = apply_fixed_hyperparams_to_subject_config(subject_cfg, explicit_fixed_hyperparams)
@@ -400,7 +405,7 @@ def main() -> None:
 
         dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
         data_path = dataset_paths["learning_data"]
-        output_dir = _resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
+        output_dir = resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         n_jobs = int(subject_cfg.get("n_jobs", 4))
@@ -416,7 +421,7 @@ def main() -> None:
         max_trials_val = subject_cfg.get("max_trials")
         max_trials = int(max_trials_val) if max_trials_val is not None else None
         keep_logs = bool(subject_cfg.get("keep_logs", False))
-        window_size = resolve_window_size(subject_cfg, sid, subjects)
+        window_size = resolve_window_size(subject_cfg, sid, selected_subjects)
         representative_run_selection = str(
             subject_cfg.get("representative_run_selection", "min_error")
         )
@@ -454,6 +459,8 @@ def main() -> None:
             representative_run_selection=representative_run_selection,
             representative_choice_fraction=representative_choice_fraction,
             statistics_config=statistics_config,
+            evaluation_protocol=subject_cfg.get("evaluation_protocol"),
+            evaluation_role="simulation",
         )
         result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
         if statistics_config is not None:
@@ -470,9 +477,21 @@ def main() -> None:
         payload = serialize_result(sid, int(result["condition"]), result, output_dir, subject_json_dir=subjects_dir)
         save_path = subjects_dir / f"subject_{sid}.json"
         save_json(payload, save_path)
+        saved_paths.append(save_path)
         print(f"  Saved -> {save_path}")
 
     print("\nAll subjects done.")
+    return saved_paths
+
+
+def main() -> None:
+    configure_logging()
+    args = parse_args()
+    run_simulation(
+        args.config,
+        subjects=args.subjects,
+        subject_range=args.subject_range,
+    )
 
 
 if __name__ == "__main__":

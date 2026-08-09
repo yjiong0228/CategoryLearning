@@ -11,9 +11,12 @@ from pathlib import Path
 import subprocess
 from typing import Any, List, Mapping, Sequence
 
+from src.Bayesian_state.simulation.simulation_config import (
+    PROFILE_CANDIDATE_KEY,
+    expand_profile_candidate_hyperparams,
+)
 
 HYPER_RESULT_SCHEMA_VERSION = "hyper_result.v2"
-PROFILE_CANDIDATE_KEY = "__profile_candidate__"
 
 
 def to_builtin(obj: Any) -> Any:
@@ -179,24 +182,6 @@ def validate_no_nested_hyperparam_paths(param_specs: Mapping[str, Any]) -> None:
                 )
 
 
-def expand_profile_candidate_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
-    expanded: dict[str, Any] = {}
-    for key, value in hyperparams.items():
-        key_text = str(key)
-        if key_text != PROFILE_CANDIDATE_KEY:
-            expanded[key_text] = deepcopy(value)
-            continue
-        if not isinstance(value, Mapping):
-            raise ValueError(f"{PROFILE_CANDIDATE_KEY} value must be a mapping of hyperparameter paths.")
-        for nested_key, nested_value in value.items():
-            if not isinstance(nested_key, str) or not nested_key:
-                raise ValueError(f"{PROFILE_CANDIDATE_KEY} nested keys must be non-empty strings.")
-            if nested_key == PROFILE_CANDIDATE_KEY:
-                raise ValueError(f"{PROFILE_CANDIDATE_KEY} cannot contain itself.")
-            expanded[nested_key] = deepcopy(nested_value)
-    return expanded
-
-
 def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
     expanded_hyperparams = expand_profile_candidate_hyperparams(hyperparams)
 
@@ -346,6 +331,7 @@ def compact_metric_summary(
         "fixed_hyperparams",
         "hyper_candidate_seed",
         "simulation_point_seed",
+        "scoring",
     ):
         if key in metrics:
             out[key] = deepcopy(metrics[key])

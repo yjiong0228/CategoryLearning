@@ -1,4 +1,4 @@
-"""Subject-level paired summaries for frozen model comparisons."""
+"""Group-level paired summaries for frozen model comparisons."""
 from __future__ import annotations
 
 from typing import Any, Sequence

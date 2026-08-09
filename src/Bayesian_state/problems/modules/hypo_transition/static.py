@@ -184,9 +184,9 @@ class StaticHypothesisTransitionModule(
         prior: np.ndarray,
         **kwargs,
     ) -> Mapping[str, Any]:
-        del context, selection, prior, kwargs
-        self._record_feedback_from_observation()
-        self._record_previous_observation()
+        del context, selection, prior
+        if not bool(kwargs.get("defer_outcome_recording", False)):
+            self.record_outcome(self.engine.observation)
         latest = self.strategy_counts_log[-1] if self.strategy_counts_log else {}
         latest["strategy_mode"] = self.strategy_mode
         return latest
@@ -500,6 +500,18 @@ class StaticFeedbackSwapHypothesisTransitionModule(
         if self.transition_log:
             self.transition_log[-1]["current_feedback_recorded"] = value
 
+    def record_outcome(
+        self,
+        observation: tuple[np.ndarray, int, float],
+    ) -> None:
+        """Record the completed outcome after an autonomous choice."""
+
+        if observation is None or len(observation) < 3:
+            raise ValueError(
+                "feedback_swap_one requires observation=(stimulus, choice, feedback)."
+            )
+        self.record_outcome_feedback(float(observation[2]))
+
     def _initialize_newcomer_beta(self, newcomer: int | None) -> None:
         if newcomer is None:
             return
@@ -517,13 +529,15 @@ class StaticFeedbackSwapHypothesisTransitionModule(
         prior: np.ndarray,
         **kwargs,
     ) -> Mapping[str, Any]:
-        del kwargs
         if self._pending_transition is None:
             raise RuntimeError("feedback swap has no pending state to log.")
         pending = self._pending_transition
         newcomer = pending["newcomer"]
         self._initialize_newcomer_beta(newcomer)
-        current_feedback = self._record_current_feedback()
+        defer_outcome = bool(kwargs.get("defer_outcome_recording", False))
+        current_feedback = (
+            None if defer_outcome else self._record_current_feedback()
+        )
         fallback_reason = pending["fallback_reason"]
         event: dict[str, Any] = {
             "trial_index": int(context.trial_index),
@@ -531,7 +545,9 @@ class StaticFeedbackSwapHypothesisTransitionModule(
             "transition_method": "feedback_swap_one",
             "theta": float(self.theta),
             "feedback_used": pending["feedback_used"],
-            "current_feedback_recorded": float(current_feedback),
+            "current_feedback_recorded": (
+                None if current_feedback is None else float(current_feedback)
+            ),
             "swap_probability": float(pending["swap_probability"]),
             "swap_event": bool(pending["swap_event"]),
             "random_uniform_swap": float(pending["u_swap"]),

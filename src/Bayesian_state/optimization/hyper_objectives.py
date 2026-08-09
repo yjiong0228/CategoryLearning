@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterable, Mapping, Sequence, TypeVar
 
 import numpy as np
 
-from src.Bayesian_state.utils.simulation_statistics import get_stat_value
+from src.Bayesian_state.simulation.repeated_simulation import get_stat_value
 
 
 LEGACY_HYPER_CONFIG_KEYS = (

@@ -4,7 +4,7 @@ Bayesian Engine
 from copy import deepcopy
 from typing import Dict, Tuple, List, Any
 import numpy as np
-from ..utils import LOGGER
+from ..utils.base import LOGGER
 import importlib # FIXME: 模块从config里的string转化为真正的class在哪里实现？
 
 EPS = 1e-15

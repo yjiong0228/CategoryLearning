@@ -1,7 +1,8 @@
 # optimization
 
-本目录是 `Bayesian_state` 的统一执行与模型选择层。它负责把 engine config、被试 trial 数据和
-hyperparameters 转换成可比较的 `SingleRunResult`/`SimulationResult`，但不定义具体认知机制。
+本目录是 `Bayesian_state` 的参数搜索与模型选择层。它调用 `simulation/`，把候选
+hyperparameters 对应的 `SingleRunResult`/`SimulationResult` 组成可比较的 objective，但不拥有
+固定参数运行时、结果契约、指标公式或具体认知机制。
 凡是会根据数据表现改变下一轮参数、候选权重或冻结配置的操作属于本目录；冻结模型的 PPC、
 留出验证和外部通道解释属于 `model_evaluation/`。
 
@@ -9,20 +10,22 @@ hyperparameters 转换成可比较的 `SingleRunResult`/`SimulationResult`，但
 
 | 文件 | 职责 |
 |---|---|
-| `optimizer_common.py` | trial arrays、模型概率构造、metrics 调用和单次 StateModel 评价适配 |
-| `optimizer_simulation.py` | 独立重复运行、representative run 选择和跨重复聚合 |
+| `optimizer_common.py` | 旧导入路径兼容层；正式实现位于 `simulation/state_model_execution.py` 和 `metrics/` |
+| `optimizer_simulation.py` | 旧导入路径兼容层；正式实现位于 `simulation/repeated_simulation.py` |
 | `mechanism_candidates.py` | condition-1 单机制候选空间与 engine-config 参数注入 |
-| `optimization_config.py` | YAML、subjects、prediction/loss、相对路径和 stream reference 解析 |
+| `optimization_config.py` | 旧导入路径兼容层；正式实现位于 `simulation/simulation_config.py` |
 | `hyper_objectives.py` | 有容差和 anchor guard 的有序多目标比较 |
 | `hyper_utils.py` | 候选展开、结果 schema、provenance、compact/full artifact 构建 |
+| `hyper_search_common.py` | Grid/CD 共用的配置解析、候选注入、runner 构造、单被试入口和 JSONL I/O |
 | `hyper_grid_optimizer.py` | 显式 joint grid 搜索 |
 | `hyper_cd_optimizer.py` | coarse/fine coordinate descent、多 restart 与 trace |
 | `hyper_cli.py` | grid/CD 统一 CLI |
-| `hyper_evaluation.py` | 已完成 hyper search 的收敛、plateau 和 selection diagnostics |
+| `hyper_search_evaluation.py` | 只读取既有搜索产物的收敛、plateau 和 selection diagnostics |
+| `hyper_predictive_evaluation.py` | 需要重新运行候选模型的 accuracy sampling 与 volatility diagnostics |
 
 ## 标准数据对象
 
-`TrialArrays`：
+这些对象的唯一实现位于 `simulation/state_model_execution.py`。`TrialArrays`：
 
 ```python
 TrialArrays(
@@ -70,7 +73,7 @@ Brier、NLL、CRPS、曲线和行为统计等其他纯数值定义也位于 `met
 
 ## 随机种子层级
 
-种子由 `utils/seeding.py` 通过稳定 hash 分层派生；`optimizer_common.py` 保留同名重导出以兼容
+种子由 `utils/seeding.py` 通过稳定 hash 分层派生；`optimizer_common.py` 只保留同名重导出以兼容
 已有调用：
 
 ```text
@@ -99,6 +102,16 @@ mapping-valued coordinate 会整体替换目标 mapping，适合把一个策略 
 
 Hyper-CD 的 `objective_order` 按顺序比较目标；只有前一目标落入容差集合时，后一目标才用于
 区分。coarse/fine stage 可分别覆盖 simulation repeats、particle count 或日志预算。
+
+Grid/CD 都继承 `HyperSearchRuntime`。外部 workflow 运行单被试时调用
+`optimizer.run_subject(subject_id, stage=...)`，批量运行调用 `optimizer.run(subjects, stage=...)`；
+`_run_subject_pipeline()` 是后端内部实现，不是 orchestration API。
+
+若基础 simulation config 声明 `evaluation_protocol.mode: sequential_holdout`，Grid 和 Hyper-CD
+统一以 `optimization` 角色解析评分掩码。主 loss、边际预测、accuracy shape、history kernel、
+switch behavior 与 distribution objectives 都从带该掩码的公共 metrics mapping 计算；完整序列
+只用于保持在线状态递推，不允许留出后缀进入候选比较。每个候选的结构化结果保存 `scoring`
+上下文，便于审计实际切分。
 
 ## 与推理后端的边界
 
@@ -135,3 +148,6 @@ python -m src.Bayesian_state.optimization.hyper_cli --backend grid --config <yam
 - `src.Bayesian_state.run_hyper_evaluation`
 
 负责。optimizer 本身应保持可由测试和 notebook 直接调用。
+
+`hyper_search_evaluation.py` 不启动模型，适合快速检查搜索产物；
+`hyper_predictive_evaluation.py` 会重新采样或运行模型，应显式控制 repeats、subjects 和 `n_jobs`。

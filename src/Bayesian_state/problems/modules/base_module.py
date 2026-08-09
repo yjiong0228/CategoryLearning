@@ -4,8 +4,6 @@ Base Module
 
 from abc import ABC
 from typing import Any, Mapping
-from ..partitions import *
-from ..base_problem import *
 
 
 class BaseModule(ABC):

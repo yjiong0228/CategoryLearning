@@ -63,6 +63,17 @@ CHOICE_READOUT_KWARG_KEYS = (
 )
 
 
+@dataclass(frozen=True)
+class ChoicePrediction:
+    """Pre-outcome choice readout for one prepared model trial."""
+
+    cognitive_probabilities: np.ndarray
+    observed_probabilities: np.ndarray
+    readout_details: Dict[str, Any]
+    output_lapse: float
+    post_error_lapse_state: float
+
+
 def _mapping_get_path(root: Mapping[str, Any] | None, path: str) -> Any:
     current: Any = root
     for part in path.split("."):
@@ -504,6 +515,99 @@ def read_choice_probabilities_from_model(
     )
 
 
+def predict_choice_from_model(
+    model: Any,
+    perceived_stimulus: Sequence[float] | np.ndarray,
+    *,
+    trial_idx: int,
+    choices: Sequence[int] | np.ndarray,
+    feedback: Sequence[float] | np.ndarray,
+    choice_readout_config: Mapping[str, Any],
+    output_noise_config: Mapping[str, Any],
+    rng: np.random.Generator,
+    sticky_state: Dict[str, Any],
+    post_error_lapse_state: float,
+    latent_volatility_value: float = 0.0,
+) -> ChoicePrediction:
+    """Read a choice distribution from the model before the outcome is known.
+
+    This is the live-model counterpart of the prediction calculation used for
+    saved trajectories.  It deliberately stops at the observable choice
+    distribution: sampling a choice and producing task feedback belong to the
+    autonomous execution layer.
+    """
+
+    engine = model.engine
+    hypotheses = list(model.hypotheses_set)
+    n_hypotheses = len(hypotheses)
+    n_categories = int(model.n_cats)
+    distribution = normalize_probability_vector(
+        np.asarray(engine.prior, dtype=float), n_hypotheses, strict=True
+    )
+    readout_weights, readout_details = choice_readout_weights(
+        distribution,
+        trial_idx=int(trial_idx),
+        feedback=feedback,
+        config=choice_readout_config,
+        rng=rng,
+        sticky_state=sticky_state,
+    )
+
+    beta = getattr(engine, "beta", None)
+    if beta is None:
+        likelihood_module = getattr(engine, "modules", {}).get("likelihood_mod")
+        default_beta = float(getattr(likelihood_module, "default_beta", 10.0))
+        beta_values = np.full(n_hypotheses, default_beta, dtype=float)
+    else:
+        beta_values = np.asarray(beta, dtype=float).reshape(-1)
+        if beta_values.size != n_hypotheses:
+            raise ValueError(
+                "engine.beta width does not match the hypothesis space: "
+                f"{beta_values.size} vs {n_hypotheses}."
+            )
+
+    hypothesis_category = np.zeros((n_hypotheses, n_categories), dtype=float)
+    stimulus = np.asarray(perceived_stimulus, dtype=float).reshape(-1)
+    for hypothesis_arg, hypothesis in enumerate(hypotheses):
+        if readout_weights[hypothesis_arg] <= 0.0:
+            continue
+        raw = model.partition_model.get_category_probabilities(
+            hypo=int(hypothesis),
+            data=([stimulus], [1], [1.0]),
+            beta=float(beta_values[hypothesis_arg]),
+            distance_mode=getattr(engine, "distance_mode", "prototype"),
+        )
+        probability = np.asarray(raw, dtype=float)
+        if probability.ndim == 2:
+            probability = probability[:, 0]
+        hypothesis_category[hypothesis_arg] = normalize_probability_vector(
+            probability, n_categories, strict=True
+        )
+
+    cognitive = normalize_probability_vector(
+        np.sum(readout_weights[:, None] * hypothesis_category, axis=0),
+        n_categories,
+        strict=True,
+    )
+    observed, output_lapse, next_post_error_state = apply_output_noise_to_category_prob(
+        cognitive,
+        trial_idx=int(trial_idx),
+        choices=choices,
+        feedback=feedback,
+        n_cats=n_categories,
+        output_noise_config=output_noise_config,
+        post_error_lapse_state=float(post_error_lapse_state),
+        latent_volatility_value=float(latent_volatility_value),
+    )
+    return ChoicePrediction(
+        cognitive_probabilities=cognitive.copy(),
+        observed_probabilities=observed.copy(),
+        readout_details=dict(readout_details),
+        output_lapse=float(output_lapse),
+        post_error_lapse_state=float(next_post_error_state),
+    )
+
+
 @dataclass(frozen=True)
 class ReactionTimeReadoutResult:
     """Student-t parameters for log reaction time."""
@@ -640,6 +744,7 @@ __all__ = [
     "CHOICE_READOUT_SHARPENED",
     "CHOICE_READOUT_STICKY",
     "CHOICE_READOUT_STUBBORN",
+    "ChoicePrediction",
     "Decision",
     "OUTPUT_NOISE_KWARG_KEYS",
     "OUTPUT_NOISE_TARGET_CHOICES",
@@ -651,6 +756,7 @@ __all__ = [
     "apply_output_noise_to_category_prob",
     "choice_readout_weights",
     "normalize_probability_vector",
+    "predict_choice_from_model",
     "read_choice_probabilities_from_model",
     "read_oral_report",
     "read_reaction_time",

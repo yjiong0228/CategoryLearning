@@ -4,8 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
-import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -14,18 +12,20 @@ import yaml
 
 from src.Bayesian_state.optimization.hyper_cd_optimizer import HyperCDOptimizer
 from src.Bayesian_state.optimization.hyper_grid_optimizer import HyperGridOptimizer
+from src.Bayesian_state.optimization.hyper_search_common import deep_update as _deep_update
 from src.Bayesian_state.run_simulation import (
     apply_fixed_hyperparams_to_subject_config,
     infer_fixed_hyperparams_from_engine_config,
     resolve_hyper_base_seed,
     resolve_hyper_candidate_seed as resolve_direct_hyper_candidate_seed,
+    run_simulation,
 )
 from src.Bayesian_state.utils.config_subjects import (
     SUBJECT_OVERRIDE_KEYS,
     resolve_subject_config,
     subject_override_for,
 )
-from src.Bayesian_state.optimization.optimization_config import (
+from src.Bayesian_state.simulation.simulation_config import (
     resolve_engine_config,
     resolve_loss_delta,
     resolve_loss_metric,
@@ -41,9 +41,10 @@ from src.Bayesian_state.optimization.hyper_utils import (
     subject_best_hyperparams,
     subject_best_stage,
     subject_hyper_candidate_seed,
-    to_builtin as hyper_to_builtin,
+    to_builtin as _to_builtin,
 )
 from src.Bayesian_state.utils.paths import ROOT_DIR
+from src.Bayesian_state.utils.base import configure_logging
 
 
 DEFAULT_HYPER_GRID_CONFIG = Path("configs/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml")
@@ -99,13 +100,6 @@ def rebase_config_relative_path(value: Any, source_yaml_dir: Path, target_yaml_d
         return path.as_posix()
     absolute = (source_yaml_dir / path).resolve()
     return relative_path_for_yaml(absolute, target_yaml_dir)
-
-
-def command_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(ROOT_DIR.resolve()))
-    except ValueError:
-        return str(path.resolve())
 
 
 def _strip_subject_override_blocks(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -461,11 +455,6 @@ def aggregate_per_subject_best(
     }
 
 
-def run_command(cmd: Sequence[str]) -> None:
-    print("\n$ " + " ".join(cmd))
-    subprocess.run(list(cmd), cwd=ROOT_DIR, check=True)
-
-
 def materialize_simulation_config_from_hyper_best(
     hyper_best_path: Path,
     generated_sim_config_path: Path,
@@ -499,27 +488,11 @@ def materialize_simulation_config_from_hyper_best(
 
 
 def run_simulation_for_subject(generated_sim_config_path: Path, subject_id: int) -> None:
-    sim_cmd = [
-        sys.executable,
-        "-m",
-        "src.Bayesian_state.run_simulation",
-        "--config",
-        command_path(generated_sim_config_path),
-        "--subjects",
-        str(int(subject_id)),
-    ]
-    run_command(sim_cmd)
+    run_simulation(generated_sim_config_path, subjects=[int(subject_id)])
 
 
 def run_simulation_for_all(generated_sim_config_path: Path) -> None:
-    sim_cmd = [
-        sys.executable,
-        "-m",
-        "src.Bayesian_state.run_simulation",
-        "--config",
-        command_path(generated_sim_config_path),
-    ]
-    run_command(sim_cmd)
+    run_simulation(generated_sim_config_path)
 
 
 def _hyper_stage_satisfies_request(best_stage: Any, requested_stage: str) -> bool:
@@ -592,6 +565,8 @@ def _expected_simulation_signature(
         "selection_prediction_mode": selection_prediction_mode,
         "loss_metric": loss_metric,
         "loss_delta": loss_delta,
+        "evaluation_protocol": subject_cfg.get("evaluation_protocol") or {},
+        "evaluation_role": "simulation",
     }
 
 
@@ -637,6 +612,8 @@ def _simulation_result_satisfies_signature(
         ),
         "loss_metric": selection.get("loss_metric", payload.get("loss_metric")),
         "loss_delta": selection.get("loss_delta", payload.get("loss_delta")),
+        "evaluation_protocol": selection_meta.get("evaluation_protocol") or {},
+        "evaluation_role": selection_meta.get("evaluation_role", "simulation"),
     }
     for key, observed in checks.items():
         if not _values_equal(observed, expected.get(key)):
@@ -670,10 +647,9 @@ def run_hyper_resumable(
             if best_path.is_file():
                 print(f"Existing {backend} result for subject {int(sid)} is not complete for {stage}: {reason}")
         print(f"Running {backend} optimization for subject {int(sid)}")
-        optimizer._run_subject_pipeline(
+        optimizer.run_subject(
             int(sid),
             stage,
-            optimizer.output_dir,
             resume_from_coarse=resume_from_coarse,
         )
         aggregate_per_subject_best(
@@ -734,17 +710,15 @@ def run_per_subject_workflow(
             else:
                 if subject_best_path.is_file():
                     print(f"Existing {backend} result for subject {sid} is not complete for {stage}: {reason}")
-                optimizer._run_subject_pipeline(
+                optimizer.run_subject(
                     sid,
                     stage,
-                    optimizer.output_dir,
                     resume_from_coarse=resume_from_coarse,
                 )
         else:
-            optimizer._run_subject_pipeline(
+            optimizer.run_subject(
                 sid,
                 stage,
-                optimizer.output_dir,
                 resume_from_coarse=resume_from_coarse,
             )
 
@@ -823,6 +797,7 @@ def _resolve_hyper_config_arg(args: argparse.Namespace) -> Path:
 
 
 def main() -> None:
+    configure_logging()
     args = parse_args()
     backend = str(args.backend)
     hyper_config_path = resolve_project_path(_resolve_hyper_config_arg(args))
@@ -900,20 +875,6 @@ def main() -> None:
             run_simulation_for_subject(generated_sim_config_path, sid)
         return
     run_simulation_for_all(generated_sim_config_path)
-
-
-def _deep_update(base: dict[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
-    out = deepcopy(base)
-    for key, value in override.items():
-        if isinstance(value, Mapping) and isinstance(out.get(key), dict):
-            out[key] = _deep_update(out[key], value)
-        else:
-            out[key] = deepcopy(value)
-    return out
-
-
-def _to_builtin(obj: Any) -> Any:
-    return hyper_to_builtin(obj)
 
 
 if __name__ == "__main__":

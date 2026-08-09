@@ -8,8 +8,9 @@ from pathlib import Path
 from src.Bayesian_state.optimization.hyper_cd_optimizer import HyperCDOptimizer
 from src.Bayesian_state.optimization.hyper_grid_optimizer import HyperGridOptimizer
 from src.Bayesian_state.optimization.hyper_utils import to_builtin
-from src.Bayesian_state.optimization.optimization_config import load_yaml
+from src.Bayesian_state.simulation.simulation_config import load_yaml
 from src.Bayesian_state.utils.paths import ROOT_DIR
+from src.Bayesian_state.utils.base import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,6 +29,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    configure_logging()
     args = parse_args()
     cfg_path = args.config
     if not cfg_path.is_absolute():

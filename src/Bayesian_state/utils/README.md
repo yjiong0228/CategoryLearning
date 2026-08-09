@@ -15,8 +15,8 @@
 | `stream.py` | `StreamList`：大体积 run log 的 gzip 流式存取 |
 | `basic_stat.py` | `softmax`、Euclidean distance、entropy 等小型数值函数 |
 | `classical_tools.py` | 保留的经典衰减工具 |
-| `load_config.py` | 轻量 YAML loader 与旧 `MODEL_STRUCT` 全局容器 |
-| `base.py` | logger 和旧路径容器 |
+| `load_config.py` | 轻量 YAML loader 与按首次访问加载的旧 `MODEL_STRUCT` 映射 |
+| `base.py` | import-safe logger、旧路径容器与显式 `configure_logging()` |
 | `console_styles.py` | 兼容旧代码的彩色 `print` |
 | `__init__.py` | 重导出部分 legacy utility API |
 
@@ -33,6 +33,12 @@ SIMULATION_RESULTS_DIR
 
 YAML 内的相对路径不要直接拼到 `ROOT_DIR`。它们由 `datasets.py` 或
 `optimization/optimization_config.py` 相对于声明该路径的 YAML 目录解析。
+
+## Import 行为
+
+导入 `src.Bayesian_state.utils` 不创建目录、日志文件，不配置 root logger，也不扫描 model YAML。
+CLI 在 `main()` 中显式调用 `configure_logging()`；库调用方可自行管理 logging。
+旧 `MODEL_STRUCT` API 仍可读取，但只在首次迭代、取值或查询长度时加载配置。
 
 ## Subject overrides
 
@@ -80,4 +86,4 @@ schema 变更，必须同步 configs、hyper evaluation 和 tests。
 - 新 plot/alignment：放 `model_evaluation/`
 - 论文专用冻结算法：放 `manuscript_models/`
 - 新 inference backend 或 posterior predictive：放 `inference_engine/`
-- synthetic trajectory generation：放 `simulation/`
+- autonomous behavior execution：放 `simulation/`

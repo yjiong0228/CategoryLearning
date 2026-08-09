@@ -1,16 +1,15 @@
 """Shared numerical metrics for optimization, simulation, and evaluation."""
 
-from .aggregation import behavior_ppc_group_metrics
-from .behavior import history_kernel_metrics, switch_behavior_metrics
-from .contracts import MetricResult, RunPrediction, TrialPrediction
-from .group_comparison import benjamini_hochberg, paired_metric_summary
-from .learning_curves import (
+from .behavior_metrics import (
     accuracy_curve_metrics,
     accuracy_scalar_metrics,
     centered_curve_metrics,
     curve_discrepancy_metrics,
     exponential_smooth_curve,
+    history_kernel_metrics,
+    switch_behavior_metrics,
 )
+from .group_statistics import benjamini_hochberg, paired_metric_summary
 from .losses import (
     ACCURACY_LOSS_METRIC_CHOICES,
     CHOICE_LOSS_METRIC_CHOICES,
@@ -65,7 +64,10 @@ from .losses import (
     target_prob_brier,
     wrong_choice_nll,
 )
-from .predictive import (
+from .prediction_metrics import (
+    MetricResult,
+    RunPrediction,
+    TrialPrediction,
     choice_brier,
     choice_nll,
     choice_probability_metrics,
@@ -73,7 +75,24 @@ from .predictive import (
     expected_calibration_error,
     predictive_interval_metrics,
 )
-from .repeated_runs import marginal_prediction_metrics_from_runs
+from .trajectory_statistics import (
+    accuracy_shape_metrics_from_runs,
+    behavior_ppc_group_metrics,
+    distribution_behavior_metrics_from_runs,
+    history_kernel_metrics_from_runs,
+    loss_metric_summary_from_runs,
+    simulation_error_summary,
+    switch_behavior_metrics_from_runs,
+    marginal_prediction_metrics_from_runs,
+)
+from .trajectory_selection import (
+    accuracy_shape_score,
+    history_kernel_score,
+    representative_accuracy_shape_score,
+    representative_behavior_score,
+    representative_switch_score,
+    switch_behavior_score,
+)
 from .trial_metrics import (
     accuracy_metrics_from_info,
     build_prediction_metric_bundle,
@@ -130,6 +149,8 @@ __all__ = [
     "ConditionalWrongChoiceNLLLoss",
     "TargetProbBrierLoss",
     "accuracy_curve_metrics",
+    "accuracy_shape_metrics_from_runs",
+    "accuracy_shape_score",
     "accuracy_curve_mae",
     "accuracy_curve_mse",
     "accuracy_curve_family_mse",
@@ -157,13 +178,22 @@ __all__ = [
     "family_correct",
     "family_indices",
     "history_kernel_metrics",
+    "history_kernel_metrics_from_runs",
+    "history_kernel_score",
+    "loss_metric_summary_from_runs",
     "marginal_prediction_metrics_from_runs",
     "paired_metric_summary",
     "predictive_accuracy_band_metrics",
     "predictive_interval_metrics",
+    "representative_accuracy_shape_score",
+    "representative_behavior_score",
+    "representative_switch_score",
     "safe_pearson",
+    "simulation_error_summary",
     "sliding_binary_metrics",
     "switch_behavior_metrics",
+    "switch_behavior_metrics_from_runs",
+    "switch_behavior_score",
     "target_majority_accuracy_metrics_from_info",
     "target_majority_indices",
     "validate_exp_accuracy_alpha",
@@ -174,4 +204,5 @@ __all__ = [
     "compute_loss_values",
     "attach_loss_metrics",
     "build_prediction_metric_bundle",
+    "distribution_behavior_metrics_from_runs",
 ]

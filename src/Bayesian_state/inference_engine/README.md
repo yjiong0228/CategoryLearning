@@ -65,13 +65,19 @@ inference:
 engine.build_modules(engine_config["modules"])
 ```
 
-每个 trial 调用：
+正式路径的每个 trial 调用：
 
 ```python
-posterior, prior_snapshot, log = engine.infer_single(observation)
+prepared = model.begin_trial(stimulus)
+prediction = model.predict_choice(...)
+posterior, prior_snapshot, log = model.complete_trial(choice, feedback)
 ```
 
-`infer_single()` 会：
+其中 `begin_trial()` 只运行 perception/transition；`complete_trial()` 在真实或模型生成的
+choice/feedback 已经出现后运行 likelihood/memory/beta。`fit_step_by_step()` 与自主
+`generate_step_by_step()` 共享这套生命周期。
+
+`engine.infer_single(observation)` 仍作为完整 observation 的兼容入口，它会：
 
 1. 将上一 posterior 复制为新 prior；
 2. 设置 observation；

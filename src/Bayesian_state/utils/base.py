@@ -1,72 +1,50 @@
+"""Legacy runtime helpers with import-safe defaults.
+
+Importing this module never creates directories, opens log files, or scans
+configuration.  Executable entry points may call :func:`configure_logging`
+explicitly when console logging is desired.
 """
-Root of the tree
-"""
-from logging import getLogger
-from datetime import datetime as dt
-from .console_styles import print
-from .paths import (
-    UTILS_DIR,
-    SRC_DIR,
-    ROOT_DIR,
-    CONFIGS_DIR,
-    LOGS_DIR,
-)
-# Useful Paths
+from __future__ import annotations
 
-PATHS = {}
+import logging
+from pathlib import Path
 
-PATHS["utils"] = UTILS_DIR
-PATHS["src"] = SRC_DIR
-PATHS["root"] = ROOT_DIR
-PATHS["configs"] = CONFIGS_DIR
-PATHS["logs"] = LOGS_DIR
+from .paths import CONFIGS_DIR, LOGS_DIR, ROOT_DIR, SRC_DIR, UTILS_DIR
 
-for k, v in PATHS.items():
-    v.mkdir(parents=True, exist_ok=True)
 
-log_filename = str(PATHS['logs'] /
-                   f'Run_{ dt.strftime(dt.now(), "%Y%m%d_%H%M%S")}.log')
-print(log_filename, s=1)
-config = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'standard': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-        },
-        'detailed': {
-            'format':
-            '%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s'
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'INFO',
-            'formatter': 'standard',
-            'stream': 'ext://sys.stdout',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'level': 'DEBUG',
-            'formatter': 'detailed',
-            'filename': log_filename,
-            'mode': 'a',
-        },
-    },
-    'loggers': {
-        'cat-learning': {
-            'level': 'DEBUG',
-            'handlers': ['console', 'file'],
-            'propagate': False
-        },
-    },
-    'root': {
-        'level': 'INFO',
-        'handlers': ['console']
-    }
+PATHS = {
+    "utils": UTILS_DIR,
+    "src": SRC_DIR,
+    "root": ROOT_DIR,
+    "configs": CONFIGS_DIR,
+    "logs": LOGS_DIR,
 }
 
-LOGGER = getLogger("cat-learning")
-LOGGER.info("logger is running normally.")
-__ALL__ = ["PATHS", "LOGGER"]
+LOGGER = logging.getLogger("cat-learning")
+
+
+def configure_logging(
+    *,
+    level: int = logging.INFO,
+    log_path: Path | str | None = None,
+    force: bool = False,
+) -> None:
+    """Configure runtime logging explicitly for a CLI or application.
+
+    A file handler is created only when ``log_path`` is provided.  Library
+    imports therefore remain free of filesystem side effects.
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_path is not None:
+        resolved = Path(log_path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(resolved, mode="a", encoding="utf-8"))
+    logging.basicConfig(
+        level=int(level),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=handlers,
+        force=bool(force),
+    )
+
+
+__all__ = ["LOGGER", "PATHS", "configure_logging"]

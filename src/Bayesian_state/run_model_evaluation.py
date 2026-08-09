@@ -109,11 +109,26 @@ def load_simulation_results(
         selection = payload.get("selection") or {}
         trial_events = representative.get("trial_events") or []
         transition_counts = representative.get("transition_counts")
+        selection_meta = selection.get("selection_meta") or {}
+        if not isinstance(selection_meta, Mapping):
+            selection_meta = {}
+
+        posterior_log = state_log.get("posterior")
+        prior_log = state_log.get("prior")
+        marginal_prior = state_log.get("marginal_prior")
+        marginal_active = state_log.get("marginal_active_probability")
+        if prior_log is None and marginal_prior is not None:
+            prior_log = marginal_prior
 
         info = dict(payload)
         info["metrics_by_mode"] = representative.get("metrics_by_mode") or {}
-        info["posterior_log"] = state_log.get("posterior")
-        info["prior_log"] = state_log.get("prior")
+        info["posterior_log"] = posterior_log
+        info["prior_log"] = prior_log
+        info["marginal_prior_log"] = marginal_prior
+        info["marginal_active_probability"] = marginal_active
+        info["state_distribution_kind"] = (
+            "particle_marginal" if marginal_prior is not None else "trajectory"
+        )
         info["beta_log"] = state_log.get("beta")
         info["trial_events"] = trial_events
         info["step_results"] = trial_events
@@ -127,13 +142,30 @@ def load_simulation_results(
         info["selection_prediction_mode"] = selection.get("selection_prediction_mode")
         info["available_prediction_modes"] = selection.get("available_prediction_modes")
         info["representative_run_index"] = selection.get("representative_run_index")
-        info["selection_meta"] = selection.get("selection_meta") or {}
+        info["selection_meta"] = dict(selection_meta)
+        score_context = selection_meta.get("score_context") or {}
+        info["score_context"] = dict(score_context) if isinstance(score_context, Mapping) else {}
         info["loss_metric"] = selection.get("loss_metric")
         info["loss_delta"] = selection.get("loss_delta")
         info["hyper_base_seed"] = selection.get("hyper_base_seed")
         info["hyper_candidate_seed"] = selection.get("hyper_candidate_seed")
         info["simulation_point_seed"] = selection.get("simulation_point_seed")
         info.update(dict(metrics))
+        for field in (
+            "transition_rate",
+            "search_range",
+            "replacement_count",
+            "replacement_fraction",
+            "removed_mass",
+            "newcomer_distance",
+            "feedback_surprise",
+            "feedback_uncertainty",
+            "pre_choice_ess",
+            "post_choice_ess",
+            "resampled",
+        ):
+            if state_log.get(field) is not None:
+                info[field] = state_log[field]
         info["subject_id"] = sid
         info["condition"] = int(info.get("condition", -1))
         info["subject_json_path"] = str(path)
@@ -258,60 +290,185 @@ def run_basic_plots(
             ),
             [basic_dir / "choice_brier.png"],
         )
-    run_step(
-        records,
-        "posterior_probabilities",
-        lambda: evaluator.plot_posterior_probabilities(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "posterior_probabilities.png",
-            limit=posterior_limit,
+    def has_log(field: str) -> bool:
+        for info in visible_results.values():
+            value = info.get(field)
+            if value is None:
+                continue
+            try:
+                if len(value) > 0:
+                    return True
+            except TypeError:
+                continue
+        return False
+
+    universal_state_plots = (
+        (
+            "posterior_probabilities",
+            "posterior_log",
+            lambda: evaluator.plot_posterior_probabilities(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "posterior_probabilities.png",
+                limit=posterior_limit,
+            ),
+            "No posterior distribution is persisted for these results.",
         ),
-        [basic_dir / "posterior_probabilities.png"],
-    )
-    run_step(
-        records,
-        "prior_probabilities",
-        lambda: evaluator.plot_prior_probabilities(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "prior_probabilities.png",
-            limit=posterior_limit,
+        (
+            "prior_probabilities",
+            "prior_log",
+            lambda: evaluator.plot_prior_probabilities(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "prior_probabilities.png",
+                limit=posterior_limit,
+            ),
+            "No prior or particle-marginal prior is persisted for these results.",
         ),
-        [basic_dir / "prior_probabilities.png"],
-    )
-    run_step(
-        records,
-        "beta_dynamics",
-        lambda: evaluator.plot_beta_dynamics(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "beta_dynamics.png",
+        (
+            "beta_dynamics",
+            "beta_log",
+            lambda: evaluator.plot_beta_dynamics(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "beta_dynamics.png",
+            ),
+            "No beta trajectory is persisted for these results.",
         ),
-        [basic_dir / "beta_dynamics.png"],
     )
-    run_step(
-        records,
-        "dynamic_strategy_profile",
-        lambda: evaluator.plot_dynamic_strategy_profile(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "dynamic_strategy_profile.png",
-            window_size=window_size,
-        ),
-        [basic_dir / "dynamic_strategy_profile.png"],
+    for name, field, plot, reason in universal_state_plots:
+        output = basic_dir / f"{name}.png"
+        if has_log(field):
+            run_step(records, name, plot, [output])
+        else:
+            records.append(
+                {
+                    "name": name,
+                    "status": "not_applicable",
+                    "reason": reason,
+                    "outputs": [],
+                }
+            )
+    transition_capabilities = set().union(
+        *(evaluator.transition_capabilities(info) for info in visible_results.values())
     )
-    run_step(
-        records,
-        "hypothesis_active_set_counts",
-        lambda: evaluator.plot_hypothesis_active_set_counts(
-            results,
-            subjects=subjects,
-            save_path=basic_dir / "hypothesis_active_set_counts.png",
-            window_size=window_size,
-        ),
-        [basic_dir / "hypothesis_active_set_counts.png"],
-    )
+    if "dynamic_discrete" in transition_capabilities:
+        run_step(
+            records,
+            "dynamic_strategy_profile",
+            lambda: evaluator.plot_dynamic_strategy_profile(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "dynamic_strategy_profile.png",
+                window_size=window_size,
+            ),
+            [basic_dir / "dynamic_strategy_profile.png"],
+        )
+    else:
+        records.append(
+            {
+                "name": "dynamic_strategy_profile",
+                "status": "not_applicable",
+                "reason": "No dynamic-discrete probability log is available.",
+                "outputs": [],
+            }
+        )
+    if "dynamic_continuous" in transition_capabilities:
+        for name, filename, plot in (
+            (
+                "dynamic_continuous_controls",
+                "dynamic_continuous_controls.png",
+                evaluator.plot_dynamic_continuous_controls,
+            ),
+            (
+                "dynamic_continuous_signals",
+                "dynamic_continuous_signals.png",
+                evaluator.plot_dynamic_continuous_signals,
+            ),
+        ):
+            output = basic_dir / filename
+            run_step(
+                records,
+                name,
+                lambda plot=plot, output=output: plot(
+                    results,
+                    subjects=subjects,
+                    save_path=output,
+                ),
+                [output],
+            )
+    else:
+        records.append(
+            {
+                "name": "dynamic_continuous_transition",
+                "status": "not_applicable",
+                "reason": "No dynamic-continuous transition log is available.",
+                "outputs": [],
+            }
+        )
+    if "particle_filter" in transition_capabilities:
+        output = basic_dir / "particle_filter_ess.png"
+        run_step(
+            records,
+            "particle_filter_ess",
+            lambda: evaluator.plot_particle_filter_ess(
+                results,
+                subjects=subjects,
+                save_path=output,
+            ),
+            [output],
+        )
+    else:
+        records.append(
+            {
+                "name": "particle_filter_ess",
+                "status": "not_applicable",
+                "reason": "No particle-filter ESS log is available.",
+                "outputs": [],
+            }
+        )
+    if "particle_marginal" in transition_capabilities:
+        output = basic_dir / "marginal_active_probabilities.png"
+        run_step(
+            records,
+            "marginal_active_probabilities",
+            lambda: evaluator.plot_marginal_active_probabilities(
+                results,
+                subjects=subjects,
+                save_path=output,
+            ),
+            [output],
+        )
+    else:
+        records.append(
+            {
+                "name": "marginal_active_probabilities",
+                "status": "not_applicable",
+                "reason": "No particle-marginal active-state log is available.",
+                "outputs": [],
+            }
+        )
+    if "active_set" in transition_capabilities:
+        run_step(
+            records,
+            "hypothesis_active_set_counts",
+            lambda: evaluator.plot_hypothesis_active_set_counts(
+                results,
+                subjects=subjects,
+                save_path=basic_dir / "hypothesis_active_set_counts.png",
+                window_size=window_size,
+            ),
+            [basic_dir / "hypothesis_active_set_counts.png"],
+        )
+    else:
+        records.append(
+            {
+                "name": "hypothesis_active_set_counts",
+                "status": "not_applicable",
+                "reason": "No active-set count log is available.",
+                "outputs": [],
+            }
+        )
 
 
 def run_trajectory_plots(

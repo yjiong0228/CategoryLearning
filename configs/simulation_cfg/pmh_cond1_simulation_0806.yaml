@@ -27,6 +27,18 @@ prediction_mode: prior_t
 selection_prediction_mode: prior_t
 loss_metric: choice_brier
 
+# Hyperparameter search scores the causal prefix.  Frozen simulation still
+# processes the complete observed sequence but reports metrics only on the
+# held-out suffix, so evaluation predictions can use preceding observed history
+# without using held-out outcomes to select subject-level parameters.
+evaluation_protocol:
+  mode: sequential_holdout
+  train_fraction: 0.50
+  min_train_trials: 16
+  min_evaluation_trials: 16
+  optimization_partition: train
+  simulation_partition: evaluation
+
 statistics_config:
   enabled: true
   mode: accuracy_shape

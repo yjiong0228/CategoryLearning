@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import yaml
 
-from src.Bayesian_state.optimization.optimizer_common import (
+from src.Bayesian_state.simulation.state_model_execution import (
     TrialArrays,
     evaluate_state_model_run,
 )
@@ -18,6 +18,10 @@ from src.Bayesian_state.inference_engine.results import (
     InferenceResult,
     TrajectoryInferenceResult,
 )
+from src.Bayesian_state.inference_engine.posterior_predictive import (
+    run_conditioned_condition1_rollouts,
+)
+from src.Bayesian_state.problems import StateModel
 from src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous import (
     DynamicContinuousHypothesisTransitionModule,
 )
@@ -32,6 +36,9 @@ from src.Bayesian_state.problems.modules.hypo_transition.static import (
 from src.Bayesian_state.problems.modules.readout import (
     read_oral_report,
     read_reaction_time,
+)
+from src.Bayesian_state.simulation.autonomous_model_execution import (
+    run_autonomous_category_learning,
 )
 
 
@@ -595,6 +602,8 @@ def test_standard_runner_dispatches_model_0806_to_particle_backend():
     assert not bool(np.asarray(metrics["valid_trial_mask"])[0])
     assert np.isfinite(result.mean_error)
     assert result.state_log is not None
+    assert result.posterior_log is None
+    assert np.asarray(result.prior_log).shape == (n_trials, 6)
     assert np.asarray(result.state_log["transition_rate"]).shape == (n_trials,)
     assert np.asarray(result.state_log["replacement_fraction"]).shape == (n_trials,)
     assert np.asarray(result.state_log["newcomer_distance"]).shape == (n_trials,)
@@ -730,3 +739,119 @@ def test_rt_and_oral_readouts_return_normalized_measurements():
     )
     assert np.all(oral.probabilities >= 0.0)
     assert np.isclose(np.sum(oral.probabilities), 1.0)
+
+
+def _feedback_swap_engine_config() -> dict:
+    config = _engine_config()
+    config["inference"] = {"backend": "trajectory"}
+    config["modules"]["perception_mod"]["kwargs"]["module_seed"] = 101
+    config["modules"]["hypo_transitions_mod"] = {
+        "class": (
+            "src.Bayesian_state.problems.modules.hypo_transition.static."
+            "StaticFeedbackSwapHypothesisTransitionModule"
+        ),
+        "kwargs": {
+            "capacity": 2,
+            "theta": 1.0,
+            "init_hypotheses": [0, 1],
+            "module_seed": 202,
+        },
+    }
+    return config
+
+
+def test_state_model_observed_path_matches_legacy_single_trial_scheduler():
+    stimulus = np.asarray([[0.15], [0.35], [0.65], [0.85]], dtype=float)
+    choices = np.asarray([1, 2, 2, 1], dtype=int)
+    feedback = np.asarray([1.0, 0.0, 1.0, 0.0], dtype=float)
+    trials = list(zip(stimulus, choices, feedback))
+
+    phased_model = StateModel(_feedback_swap_engine_config(), condition=1, subject_id=1)
+    phased_posterior, phased_prior = phased_model.fit_step_by_step(trials)
+
+    legacy_model = StateModel(_feedback_swap_engine_config(), condition=1, subject_id=1)
+    legacy_posterior = []
+    legacy_prior = []
+    for trial in trials:
+        posterior, prior, _ = legacy_model.engine.infer_single(trial)
+        legacy_posterior.append(posterior)
+        legacy_prior.append(prior)
+
+    assert np.allclose(phased_prior, legacy_prior)
+    assert np.allclose(phased_posterior, legacy_posterior)
+    phased_events = phased_model.engine.hypo_transitions_mod.transition_log
+    legacy_events = legacy_model.engine.hypo_transitions_mod.transition_log
+    assert [event["active_after"] for event in phased_events] == [
+        event["active_after"] for event in legacy_events
+    ]
+    assert [event["current_feedback_recorded"] for event in phased_events] == list(
+        feedback
+    )
+
+
+def test_autonomous_model_path_samples_before_task_feedback_and_is_reproducible():
+    stimulus = np.linspace(0.1, 0.9, 8)[:, None]
+    categories = np.where(stimulus[:, 0] <= 0.5, 1, 2)
+
+    first = run_autonomous_category_learning(
+        engine_config=_feedback_swap_engine_config(),
+        subject_id=1,
+        condition=1,
+        stimulus=stimulus,
+        categories=categories,
+        trajectory_seed=303,
+    )
+    second = run_autonomous_category_learning(
+        engine_config=_feedback_swap_engine_config(),
+        subject_id=1,
+        condition=1,
+        stimulus=stimulus,
+        categories=categories,
+        trajectory_seed=303,
+    )
+
+    trajectory = first.trajectory
+    assert np.array_equal(trajectory.choices, second.trajectory.choices)
+    assert np.array_equal(
+        trajectory.feedback,
+        (trajectory.choices == categories).astype(float),
+    )
+    assert np.allclose(trajectory.observed_probabilities.sum(axis=1), 1.0)
+    assert np.allclose(trajectory.cognitive_probabilities.sum(axis=1), 1.0)
+    assert trajectory.prior.shape == trajectory.posterior.shape == (8, 6)
+    assert trajectory.beta.shape == (8, 6)
+    assert [event["current_feedback_recorded"] for event in trajectory.transition_log] == list(
+        trajectory.feedback
+    )
+    assert trajectory.transition_log[0]["feedback_used"] is None
+    assert trajectory.transition_log[1]["feedback_used"] == trajectory.feedback[0]
+
+
+def test_conditioned_rollout_reuses_phased_state_model_lifecycle():
+    stimulus = np.linspace(0.1, 0.9, 6)[:, None]
+    categories = np.where(stimulus[:, 0] <= 0.5, 1, 2)
+    prefix_choices = categories[:3].copy()
+    prefix_feedback = np.ones(3, dtype=float)
+
+    result = run_conditioned_condition1_rollouts(
+        engine_config=_feedback_swap_engine_config(),
+        subject_id=1,
+        stimulus=stimulus,
+        categories=categories,
+        observed_prefix_choices=prefix_choices,
+        observed_prefix_feedback=prefix_feedback,
+        particle_count=2,
+        rollout_count=2,
+        rho=2.0,
+        epsilon=0.05,
+        filter_seed=404,
+        rollout_seed=405,
+        processed_data_dir=Path("."),
+    )
+
+    assert result.choices.shape == (2, 3)
+    assert np.array_equal(
+        result.feedback,
+        (result.choices == categories[3:][None, :]).astype(np.int8),
+    )
+    assert np.allclose(result.probabilities.sum(axis=2), 1.0)

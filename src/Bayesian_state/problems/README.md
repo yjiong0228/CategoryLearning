@@ -23,15 +23,33 @@ Main responsibilities:
 - create the partition hypothesis space
 - expose subject and dataset context to modules through `engine`
 - build modules according to `engine_config["modules"]`
-- run `fit_step_by_step(data)` and store posterior/prior logs
+- expose the shared `begin_trial() -> predict_choice() -> complete_trial()` lifecycle
+- run `fit_step_by_step(data)` for observed behavior
+- run `generate_step_by_step(stimulus, feedback_provider)` for autonomous behavior
+- store posterior/prior and trial logs
 
-A trial normally enters the model as:
+A completed observed trial is represented as:
 
 ```python
 (stimulus, choice, feedback)
 ```
 
 Some evaluation utilities may additionally use true category labels, e.g. for predicted accuracy diagnostics.
+For both observed and autonomous paths, the causal trial order is:
+
+```text
+begin_trial(stimulus)
+    perception + hypothesis transition
+predict_choice()
+    latent state -> observable choice distribution
+complete_trial(choice, feedback)
+    likelihood + memory/posterior + beta update
+```
+
+`fit_step_by_step()` injects the recorded subject choice/feedback at the third
+step. `generate_step_by_step()` samples the choice first and obtains feedback
+from a task callback. Correct categories therefore belong to the task
+environment, not to the model's pre-choice state.
 
 ### `BaseEngine` in `../inference_engine/bayesian_engine.py`
 

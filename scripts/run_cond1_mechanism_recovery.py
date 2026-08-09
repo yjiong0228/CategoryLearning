@@ -35,8 +35,8 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     split_for_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.simulation.trajectory_generation import (  # noqa: E402
-    generate_condition1_trajectory,
+from src.Bayesian_state.simulation.autonomous_model_execution import (  # noqa: E402
+    run_autonomous_category_learning,
 )
 from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
     MechanismCandidate,
@@ -207,17 +207,31 @@ def recover_one_dataset(
             "replicate": int(replicate),
         }
     )
-    generated = generate_condition1_trajectory(
+    generated_result = run_autonomous_category_learning(
         engine_config=apply_candidate(base_engine, true_candidate),
         subject_id=subject_id,
+        condition=1,
         stimulus=stimulus,
         categories=categories,
-        epsilon=float(args.epsilon),
-        rho=float(args.rho),
         trajectory_seed=int(generation_seed),
+        choice_readout_config={
+            "method": "sharpened_expectation",
+            "power": float(args.rho),
+            "weight_floor": 0.0,
+        },
+        output_noise_config={
+            "enabled": float(args.epsilon) > 0.0,
+            "base_lapse": float(args.epsilon),
+            "post_error_lapse": 0.0,
+            "low_accuracy_lapse": 0.0,
+            "latent_volatility_lapse": 0.0,
+            "max_lapse": 1.0,
+            "lapse_target": "uniform",
+        },
         processed_data_dir=dataset_paths["processed_dir"],
         dataset_paths=dataset_paths,
     )
+    generated = generated_result.trajectory
     paired_filter_seed = stable_seed(
         {
             "seed_role": "mechanism_recovery_paired_filter",

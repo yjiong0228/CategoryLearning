@@ -4,7 +4,9 @@
 
 ## 1. 整体推理链条（Module Pipeline）
 
-在 `StateModel` 初始化后，`BaseEngine.build_modules()` 按配置创建模块实例；每个 trial 由 `BaseEngine.infer_single()` 调度 `agenda` 顺序依次调用 `process()`。
+在 `StateModel` 初始化后，`BaseEngine.build_modules()` 按配置创建模块实例。兼容入口可由
+`BaseEngine.infer_single()` 一次调度完整 `agenda`；正式 `StateModel` 路径将同一 agenda 按
+choice 是否已经产生拆成前后两段。
 
 PMH 常用顺序：
 
@@ -16,9 +18,10 @@ PMH 常用顺序：
 
 对应的信息流：
 
-- 观测输入：`observation = (stimulus, choice, feedback)`
+- choice 前输入：`observation = (stimulus, None, None)`
 - `perception_mod`：把原始 stimulus 映射为感知 stimulus
 - `hypo_transitions_mod`：给出当前活跃假设集合（`hypotheses_mask`）并迁移 `prior`
+- choice/feedback 产生后：`observation = (perceived_stimulus, choice, feedback)`
 - `likelihood_mod`：计算 `p(data_t | h)`
 - `memory_mod`：融合历史记忆得到 `posterior_t`
 - `beta_mod`：依据 trial 结果更新每个假设的 `beta`
@@ -372,6 +375,10 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 `process()` 保持 no-op 仅用于旧 agenda 兼容。新代码直接调用 readout 函数；读出只读取
 latent state，不更新 posterior、memory 或 transition controller。RT/oral 的函数接口已经
 存在，但只有相应观测数据和评分协议接入 backend 后才参与拟合。
+
+自主执行使用 `predict_choice_from_model()` 生成 `ChoicePrediction`，同时保留认知 choice
+distribution、加入 output noise 后的可观测 distribution、readout 诊断和 lapse 状态。模型随后
+才采样 choice 并接收任务 feedback，category schedule 不参与这个 pre-outcome readout。
 
 ## 9. 参数层面的整体可辨识性建议
 

@@ -11,7 +11,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sequence, List, Dict, Set, Tuple, Callable, Any, Mapping
 from scipy.spatial.distance import cdist
-from .....utils import print, entropy, softmax
+from .....utils.basic_stat import entropy, softmax
+from .....utils.console_styles import print
 
 from ...base_module import BaseModule
 import numpy as np
@@ -1245,10 +1246,14 @@ class StrategyPolicyRuntime(BaseModule):
             raise ValueError(f"partition.n_cats must be positive for chance padding, got {n_cats}.")
         return 1.0 / float(n_cats)
 
-    def _record_feedback_from_observation(self) -> None:
+    def _record_feedback_from_observation(
+        self,
+        observation: tuple[np.ndarray, int, float] | None = None,
+    ) -> None:
         if not self.uses_feedback_history:
             return
-        observation = getattr(self.engine, "observation", None)
+        if observation is None:
+            observation = getattr(self.engine, "observation", None)
         if observation is None or len(observation) < 3:
             return
         feedback = observation[2]
@@ -2096,8 +2101,12 @@ class StrategyPolicyRuntime(BaseModule):
 
         raise ValueError(f"Unsupported state policy_method '{method}'.")
 
-    def _record_previous_observation(self) -> None:
-        observation = getattr(self.engine, "observation", None)
+    def _record_previous_observation(
+        self,
+        observation: tuple[np.ndarray, int, float] | None = None,
+    ) -> None:
+        if observation is None:
+            observation = getattr(self.engine, "observation", None)
         if observation is None or len(observation) < 3:
             return
         self.previous_observation = (
@@ -2106,6 +2115,15 @@ class StrategyPolicyRuntime(BaseModule):
             float(observation[2]),
         )
         self.observation_history.append(self.previous_observation)
+
+    def record_outcome(
+        self,
+        observation: tuple[np.ndarray, int, float],
+    ) -> None:
+        """Record one completed trial for the next pre-choice transition."""
+
+        self._record_feedback_from_observation(observation)
+        self._record_previous_observation(observation)
 
     def _init_pool_indices(self) -> np.ndarray:
         if self.init_pool == "all":

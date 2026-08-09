@@ -16,8 +16,9 @@ configs/*.yaml
     ▼
 run_* entrypoints
     │
-    ├── optimization/        配置解析、损失、重复评价、Hyper-CD/Grid
     ├── metrics/             共享 proper scores、曲线、行为和跨重复统计
+    ├── simulation/          观察数据执行、独立重复聚合与模型自主行为生成
+    ├── optimization/        候选搜索、objective、Hyper-CD/Grid
     │
     ▼
 inference_engine/dispatcher
@@ -48,9 +49,9 @@ results/subjects/*.json + optional compressed run streams
 | `inference_engine/` | backend dispatch、单轨迹/粒子推理、概率容器、trial scheduler 与状态快照 | 是 |
 | `problems/` | `StateModel`、hypothesis space、partition 几何 | 是 |
 | `problems/modules/` | 感知、transition、likelihood、memory、beta 等认知机制 | 是 |
-| `metrics/` | optimization、simulation 与 evaluation 共享的纯数值指标和数据契约 | 是，底层支持 |
-| `optimization/` | 推理结果标准化、损失、重复评价、机制候选与 Hyper-CD/Grid | 是 |
-| `simulation/` | 自主 choice/feedback trajectory 和 synthetic recovery 数据生成 | 按需 |
+| `metrics/` | optimization、simulation 与 evaluation 共享的纯数值指标 | 是，底层支持 |
+| `simulation/` | trial/run 结果、单次/重复固定参数运行、统计 schema 和自主行为生成 | 是 |
+| `optimization/` | 候选参数、objective、机制候选与 Hyper-CD/Grid | 是 |
 | `model_evaluation/` | 已完成仿真的统计、作图和 oral/model alignment | 是，属于后处理 |
 | `clustering/` | 对保存的 run-level trajectory 做 FFT 聚类 | 可选后处理 |
 | `manuscript_models/` | 论文阶段的独立数值实现、恢复和 oracle | 否；参考与复现用途 |
@@ -60,11 +61,25 @@ results/subjects/*.json + optional compressed run streams
 
 | 文件 | 作用 |
 |---|---|
-| `run_simulation.py` | 固定参数、逐被试重复 simulation 并序列化 |
-| `run_hyper_then_simulation.py` | Hyper 搜索、生成 subjectwise simulation YAML、再运行 simulation |
+| `run_simulation.py` | 固定参数、逐被试重复 simulation 并序列化；也提供公开 `run_simulation()` API |
+| `run_hyper_then_simulation.py` | Hyper 搜索、生成 subjectwise simulation YAML、再通过公开 API 运行 simulation |
 | `run_hyper_evaluation.py` | 已完成 Hyper-CD 输出的收敛和选择诊断 |
 | `run_model_evaluation.py` | 已完成 simulation 输出的统一后处理 |
 | `__init__.py` | package marker；公共对象应从职责明确的子包显式导入 |
+
+### 兼容导入
+
+以下旧路径只做显式 re-export，不再保存正式实现；现有外部调用可以继续工作，新代码应使用右侧
+路径：
+
+| 兼容路径 | 正式路径 |
+|---|---|
+| `optimization.optimizer_common` | `simulation.state_model_execution` 与 `metrics` |
+| `optimization.optimizer_simulation` | `simulation.repeated_simulation` |
+| `optimization.optimization_config` | `simulation.simulation_config` |
+| `utils.simulation_statistics` | `simulation.repeated_simulation` 与 `metrics` |
+
+兼容层不得新增计算、状态或配置逻辑；迁移调用点后再由维护者决定移除版本。
 
 更详细的说明见各目录 README：
 
@@ -93,10 +108,11 @@ results/subjects/*.json + optional compressed run streams
    `problems/modules/readout.py` 集中 choice、output-noise、RT 和 oral-report 读出。
 4. `inference_engine/dispatcher.py` 与 `inference_engine/backends/`：怎样选择和运行推理后端。
 5. `metrics/README.md`：共享指标的数据契约与依赖边界。
-6. `optimization/optimizer_common.py`：推理输出怎样转换为公共指标和损失。
-7. `optimization/optimizer_simulation.py`：独立随机重复怎样聚合。
-8. `optimization/hyper_cd_optimizer.py` 或 `optimization/hyper_grid_optimizer.py`：超参数搜索。
-9. `run_simulation.py`、`run_hyper_then_simulation.py`：顶层执行和序列化。
+6. `simulation/state_model_execution.py`：单次 StateModel 执行怎样转换为公共指标和损失。
+7. `simulation/autonomous_model_execution.py`：模型怎样自主采样 choice 并接收任务 feedback。
+8. `simulation/repeated_simulation.py`：独立随机重复怎样选择、聚合和生成统计 schema。
+9. `optimization/hyper_cd_optimizer.py` 或 `optimization/hyper_grid_optimizer.py`：超参数搜索。
+10. `run_simulation.py`、`run_hyper_then_simulation.py`：顶层执行和序列化。
 
 若只关心 0806，再阅读：
 
@@ -136,6 +152,16 @@ perception_mod
 在下一个 trial 开始时，engine 先执行 `prior <- posterior`，transition module 可再对其进行
 集合迁移。`prior_t` 因而表示看到 trial `t` 的 choice/feedback 之前的预测状态。
 
+`StateModel` 将这一过程显式拆为共享的三段生命周期：
+
+```text
+begin_trial(stimulus) -> predict_choice() -> complete_trial(choice, feedback)
+```
+
+观察数据路径 `fit_step_by_step()` 在最后一步注入被试 choice/feedback；自主路径
+`generate_step_by_step()` 先从预测分布采样 choice，再由任务环境产生 feedback。两条路径使用
+同一 perception、transition、likelihood、memory 和 beta 更新，不维护平行的生成模型公式。
+
 ## 5. 两种推理后端
 
 ### 5.1 单轨迹后端
@@ -149,7 +175,7 @@ inference:
 
 时，`inference_engine/backends/trajectory.py` 调用 `StateModel.fit_step_by_step()`，运行一条
 随机认知轨迹。重复仿真由
-`StateModelSimulationRunner` 生成独立 trajectory seeds。
+`simulation/repeated_simulation.py` 中的 `StateModelSimulationRunner` 生成独立 trajectory seeds。
 
 ### 5.2 粒子后端
 
@@ -187,11 +213,27 @@ model_struct
 ```
 
 - `model_struct/*.yaml`：partition、module class/kwargs、agenda、readout、output noise、inference backend。
-- `simulation_cfg/*.yaml`：subjects、dataset、repeats、prediction mode、loss、输出目录。
+- `simulation_cfg/*.yaml`：subjects、dataset、repeats、prediction mode、loss、评价切分、输出目录。
 - `hyper_*_cfg/*.yaml`：搜索空间、目标排序、coarse/fine 预算。
 
 相对路径永远相对于“声明该路径的 YAML 所在目录”解析。subject-specific 设置通过
 `subject_overrides` 合并；超参数路径必须以 `engine.` 或 `simulation.` 开头。
+
+需要按时间顺序冻结参数并评价时，在 simulation config 中声明：
+
+```yaml
+evaluation_protocol:
+  mode: sequential_holdout
+  train_fraction: 0.50       # 或 train_trials，二选一
+  optimization_partition: train
+  simulation_partition: evaluation
+```
+
+Grid/CD 仍执行完整观察序列，但只用前缀 trial 计算候选 objective；冻结参数后的 simulation
+仍执行同一完整序列，只用后缀 trial 报告 loss 和重复统计。后缀中的每个 one-step-ahead 预测可以
+因果地使用之前已经观察到的 trial，但任何后缀结果都不会参与参数选择。未配置该字段的旧 YAML
+继续对全部 trial 评分。实际切分点、角色和评分 trial 数写入结果的
+`selection.selection_meta.score_context`。
 
 ## 7. 正式入口
 
@@ -211,6 +253,29 @@ python -m src.Bayesian_state.optimization.hyper_cli \
 python -m src.Bayesian_state.run_hyper_then_simulation \
   --backend hyper_cd \
   --hyper-config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
+```
+
+Model 0809 的单被试完整序列试跑使用一份独立配置，不改写历史 0806 输出：
+
+```bash
+python -m src.Bayesian_state.run_hyper_then_simulation \
+  --backend hyper_cd \
+  --hyper-config configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_subject103.yaml \
+  --subjects 103 \
+  --stage coarse \
+  --skip-simulation \
+  --generated-sim-config configs/simulation_cfg/generated_from_hyper/model0809_subject103_best.yaml \
+  --sim-output-dir results/state-based-simulation/pmh/model0809_cond1_dynamic_continuous_subject103
+```
+
+该配置用全部 trial 的 `choice_nll` 搜索参数，并把 `capacity` 当作被试级坐标
+`[3, 5, 7]`。选中的容量会写入生成 YAML 的 `subject_overrides`，在同一被试的所有 trial
+保持固定。检查 coarse 结果后，将上面命令中的 `--stage coarse` 改成
+`--stage fine --resume-from-coarse` 运行 fine 搜索；最后对生成配置运行：
+
+```bash
+python -m src.Bayesian_state.run_simulation \
+  --config configs/simulation_cfg/generated_from_hyper/model0809_subject103_best.yaml
 ```
 
 ### 固定参数仿真
@@ -272,9 +337,10 @@ subject JSON 保存轻量 summary、representative run 和 stream reference；�
 - 粒子滤波由 `inference.backend` 选择；
 - choice Brier、NLL、accuracy curves、Hyper-CD 和结果序列化复用公共实现。
 
-尚保留在 `manuscript_models/model_0806.py` 的 RT emission、autonomous recovery 与旧 rolling
-实验属于参考工作流。把这些功能迁入正式框架时，应增加独立 module/adapter，而不是继续扩展
-一套平行的完整模型。
+正式 `StateModel` 已支持自主 choice/feedback trajectory；`simulation/autonomous_model_execution.py`
+提供类别学习任务入口。尚保留在 `manuscript_models/model_0806.py` 的 RT emission 和旧 rolling
+实验属于参考工作流。迁移这些额外观测模型时，应增加独立 module/adapter，而不是继续扩展一套
+平行的完整模型。
 
 ## 10. 扩展原则
 

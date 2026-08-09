@@ -87,9 +87,9 @@ class DynamicDiscreteHypothesisTransitionModule(
         prior: np.ndarray,
         **kwargs,
     ) -> Mapping[str, Any]:
-        del context, selection, prior, kwargs
-        self._record_feedback_from_observation()
-        self._record_previous_observation()
+        del context, selection, prior
+        if not bool(kwargs.get("defer_outcome_recording", False)):
+            self.record_outcome(self.engine.observation)
         latest = self.strategy_counts_log[-1] if self.strategy_counts_log else {}
         latest["strategy_mode"] = self.strategy_mode
         return latest
