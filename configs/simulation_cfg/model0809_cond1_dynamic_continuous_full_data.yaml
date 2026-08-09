@@ -1,0 +1,45 @@
+# One-subject, full-sequence pilot for the Model 0809 dynamic-continuous model.
+#
+# This is the base simulation config used by the matching Hyper-CD config.  The
+# model-structure YAML keeps capacity=3 only as a fallback; after Hyper-CD, the
+# generated simulation YAML stores the selected capacity under each subject's
+# subject_overrides block.
+
+engine_config_path: ../model_struct/pmh_model_cond1_0806.yaml
+subjects: [103]
+hyper_base_seed: 20260809
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/state-based-simulation/pmh/model0809_cond1_dynamic_continuous_subject103
+oral:
+  mode: center
+
+# Start with one subject. Particle-level parallelism is controlled internally;
+# increasing n_jobs here is mainly useful after extending to several subjects.
+n_jobs: 1
+simulation_repeats: 4
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+
+# Model 0809 currently uses the complete observed sequence for both parameter
+# selection and frozen-parameter reporting. This is not a held-out estimate.
+evaluation_protocol:
+  mode: all
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10

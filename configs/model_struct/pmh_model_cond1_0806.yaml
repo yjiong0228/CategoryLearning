@@ -1,8 +1,9 @@
 # Model 0806 inside the standard StateModel framework.
 #
-# The only model-specific mechanism is the fixed-capacity, trial-varying
-# hypothesis transition.  Perception, likelihood, dual memory, beta, choice
-# readout, output noise, and execution order remain standard modules.
+# The only model-specific mechanism is the within-subject fixed-capacity,
+# trial-varying hypothesis transition. Hyperparameter workflows may override
+# capacity separately for each subject. Perception, likelihood, dual memory,
+# beta, choice readout, output noise, and execution order remain standard.
 
 partition:
   class: src.Bayesian_state.problems.partitions.Partition
@@ -39,6 +40,8 @@ modules:
   hypo_transitions_mod:
     class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule
     kwargs:
+      # Fallback capacity. Model 0809 Hyper-CD selects a subject-specific M_s
+      # and writes it into the generated simulation config's subject_overrides.
       capacity: 3
       m: 0.15
       m_phi: 0.50

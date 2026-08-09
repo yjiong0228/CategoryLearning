@@ -1,0 +1,575 @@
+% model_0809.tex
+% 2026-08-09：依据当前 Bayesian_state / dynamic_continuous 正式实现撰写。
+% 本文是模型定义与前瞻性验证方案，不把尚未执行的分析写成已经得到的结果。
+
+\subsubsection{Model 0809：动态连续策略模型与可证伪的验证路线}
+
+\paragraph{先用一句话说明模型。}
+我们假设，人在类别学习中不会同时认真考虑所有可能规则，而是只在一个容量有限的“规则工作台”上保留少数候选；上一试次的反馈越出乎预料、或者当前几条规则越难分出高下，下一试次就可能更积极地更换规则，并可能从附近的小改动转向更远的全局搜索。Model 0809 把这个想法写成一个因果的逐试次模型，并要求它依次接受完整序列的复杂度校正模型比较、合成恢复、机制消融和独立行为指标检验。只有这些证据方向一致时，才能把相对拟合优势解释为动态规则搜索，而不能因为复杂模型在同一数据上拟合得更好就直接接受它。
+
+\paragraph{0809 的定位。}
+0809 不是再增加一套与主程序平行的专用模型，而是对当前
+\texttt{Bayesian\_state} 中
+\texttt{DynamicContinuousHypothesisTransitionModule} 的科学含义、数学定义和实施顺序作统一说明。它也不是一份结果报告：下面标为“待检验”的内容均是前瞻性计划，当前可执行配置只是实现起点，不构成科学假设已经得到支持的证据。
+
+
+\subsubsection{我们究竟想检验什么}
+
+\paragraph{核心科学问题。}
+观察到被试在反馈后改变选择，并不自动等于“更换了规则”。同一行为还可能来自规则权重更新、记忆衰减、选择噪声、知觉噪声，或者偶然的一次按键。因此 0809 不把“错误后容易换答案”直接当作规则搜索证据，而是比较一组逐层嵌套的解释。
+
+\paragraph{四个可分开的假设。}
+令“有限工作空间”表示被试每一试次只重点考虑少量规则；“动态策略”表示搜索控制量会随历史状态连续变化。我们要区分：
+\begin{enumerate}
+    \item \textbf{H1，有限工作空间假设：}有限活跃规则集合在校正模型复杂度后，比完整规则空间更能解释选择序列及学习轨迹；
+    \item \textbf{H2，动态替换量假设：}规则替换率 $m_t$ 不是常数，而会受到上一试次反馈惊讶度和/或规则不确定性的正向调节；
+    \item \textbf{H3，动态搜索范围假设：}全局搜索比例 $g_t$ 不是常数；某些反馈状态不仅使被试“换得更多”，还使其“换得更远”；
+    \item \textbf{H4，心理机制假设：}模型推断的替换量和新人规则距离，能够预测反应时、口头规则报告或其他未直接参与拟合的行为指标。
+\end{enumerate}
+
+这四项不能捆绑成一个模糊的“动态模型假设”。H1 失败时，有限工作空间本身就缺少支持；H2 通过而 H4 失败时，动态项最多是一个有用的预测结构，不能被强解释为有时间成本的规则搜索；H2 尚未通过时，不应依靠开放 H3 来补救。
+
+\paragraph{一句话论证链。}
+本文的中心论点是：\textbf{如果反馈驱动的规则搜索确实存在，那么动态模型应当在可恢复的前提下，相对静态父模型获得超过额外复杂度所能解释的完整序列似然优势；这种优势应当随着相应动态项的消融而消失，并在独立的搜索成本或规则内容指标上留下同方向痕迹。}
+
+\paragraph{什么结果会推翻它。}
+以下任一情形都要求缩小结论，而不是继续给模型加机制：动态家族在合成数据中无法被识别；似然改善可由增加自由参数本身解释；AIC/AICc、BIC 与参数化 bootstrap 没有给出一致或可解释的支持；优势只出现在单一粒子种子；Brier、学习曲线或校准系统性恶化；动态系数落在静态端点附近；推断的替换量与 RT 或口头报告方向相反。若不同合理评价标准给出不同排序，应如实报告标准依赖性，不能只保留对假设最有利的结果。
+
+
+\subsubsection{先统一术语：连续的是什么，离散的又是什么}
+
+\paragraph{规则与活跃集合。}
+一条“规则”或“假设” $h$ 是把刺激映射到类别概率的候选分类方式；全部候选组成 $\mathcal H=\{1,\ldots,J\}$。对被试 $s$，活跃集合 $A_{s,t}\subset\mathcal H$ 是第 $t$ 试次真正放在规则工作台上的规则。容量记为 $M_s$：它允许被试之间不同，但在同一被试的完整任务内保持不变。因此这里检验的是稳定的个体容量差异，而不是未经约束的逐试次容量波动。
+
+\paragraph{替换率与替换条数。}
+$m_t\in[0,1]$ 是每个槽位在第 $t$ 试次被替换的概率，回答“准备换多少”；实际替换条数 $K_t$ 是离散随机变量。因而 \texttt{dynamic\_continuous} 的“continuous”指 $m_t$ 和 $g_t$ 连续变化，不是说规则编号或替换事件本身连续。
+
+\paragraph{搜索范围。}
+$g_t\in[0,1]$ 是新人规则提议中全局搜索所占比例，回答“准备换多远”。$g_t=0$ 表示完全从现有规则附近搜索，$g_t=1$ 表示完全按照全局基础先验搜索。
+
+\paragraph{惊讶度与不确定性。}
+反馈惊讶度 $S_{t-1}$ 表示上一试次的反馈对反馈前信念有多意外；规则不确定性 $U_{t-1}$ 表示反馈后活跃规则权重有多分散。二者都只由已经发生的试次构造，因此只能影响下一试次，不能反过来改变同一试次的选择预测。
+
+\paragraph{潜在轨迹与粒子。}
+活跃集合如何初始化、哪条规则退出、哪条规则进入以及知觉噪声都不可直接观察。一组这样的历史叫作潜在轨迹。粒子只是对这些不可见轨迹进行数值积分的样本，不表示被试脑中真的并行存在几百个自己。
+
+
+\subsubsection{模型的基本对象与一个试次的因果顺序}
+
+\paragraph{规则怎样预测类别。}
+令 $\mathbf x_t$ 为第 $t$ 个刺激，$y_t\in\mathcal C$ 为被试选择，$r_t\in[0,1]$ 为反馈。知觉模块把外部刺激变为内部刺激 $\widetilde{\mathbf x}_t$。规则 $h$ 在自身类别敏感度 $\beta_h$ 下给出
+\begin{equation}
+q_{t,h}(c)
+=P\!\left(c\mid\widetilde{\mathbf x}_t,h,\beta_h\right),
+\qquad
+\sum_{c\in\mathcal C}q_{t,h}(c)=1.
+\label{eq:model0809-rule-category}
+\end{equation}
+当前 condition 1 配置使用四维、二类别、包含标签反转的 partition 规则空间，并在默认基线中把 $\beta_h$ 固定为 5，避免把规则搜索动态和类别敏感度动态混在第一次检验中。
+
+\paragraph{反馈证据。}
+先由规则对被试所选类别的概率和反馈编码得到原始支持 $\ell_t(h)$。在二类别、对错反馈的直观情形下，它可写为
+\begin{equation}
+\ell_t(h)
+=r_t q_{t,h}(y_t)+(1-r_t)\bigl[1-q_{t,h}(y_t)\bigr].
+\label{eq:model0809-raw-feedback-support}
+\end{equation}
+当前 likelihood 实现随后在同一试次的全部规则之间归一化：
+\begin{equation}
+L_t(h)=\frac{\ell_t(h)}{\sum_{u\in\mathcal H}\ell_t(u)}.
+\label{eq:model0809-normalized-likelihood}
+\end{equation}
+因此，下文由 $L_t$ 构造的 $S_t$ 更准确地说是\textbf{相对反馈惊讶度代理}，而不是未经条件化的真实反馈 surprisal。若未来要对惊讶度作绝对心理量解释，应另行比较使用原始 $\ell_t$ 的定义，并做恢复和模型比较，不能只改名称。
+
+\paragraph{被试特异、被试内固定的容量。}
+对每名被试，模型始终满足
+\begin{equation}
+A_{s,t}\subset\mathcal H,
+\qquad |A_{s,t}|=M_s,
+\qquad 1\leq M_s\leq \left\lfloor\frac{J}{2}\right\rfloor.
+\label{eq:model0809-capacity}
+\end{equation}
+最后一个约束来自当前“不放回地替换至多 $M_s$ 条规则”的实现：规则空间里必须至少还有 $M_s$ 条非活跃规则可供进入。它是当前算法边界，不应被误写成人类认知定律。当前试运行把 $M_s\in\{3,5,7\}$ 作为一个离散的被试级 Hyper-CD 坐标；参数选择结束后，生成的 subjectwise 配置把所选 $M_s$ 冻结到该被试的全部试次。若未来要允许 $M_{s,t}$ 随 trial 改变，需要另行定义容量转移机制、复杂度和恢复检验，不能把本模型的 $M_s$ 事后解释为 $M_{s,t}$。
+
+\paragraph{反馈前与反馈后权重。}
+记 $\pi^-_t(h)$ 为看到第 $t$ 试次选择和反馈之前的规则权重，$\pi^+_t(h)$ 为反馈更新后的权重。非活跃规则的在线权重为零。第一个试次的活跃集合按照基础先验 $p_0(h)$ 不放回抽取并归一化，而且不发生替换；从第二个试次开始，模型使用上一试次形成的状态更新 $m_t$ 和 $g_t$。
+
+\paragraph{严格的试次顺序。}
+每一试次按以下顺序运行：
+\begin{equation}
+\underbrace{\pi^+_{t-1},L_{t-1}}_{\text{过去信息}}
+\longrightarrow S_{t-1},U_{t-1}
+\longrightarrow m_t,g_t
+\longrightarrow A_t,\pi^-_t
+\longrightarrow p_t(y_t)
+\longrightarrow L_t
+\longrightarrow \pi^+_t.
+\label{eq:model0809-causal-order}
+\end{equation}
+这条箭头链是整个模型最重要的数据泄漏边界：$r_t$ 可以更新 $\pi^+_t$，但不能进入 $p_t(y_t)$；$S_t$ 和 $U_t$ 只能控制 $m_{t+1}$ 与 $g_{t+1}$。
+
+
+\subsubsection{动态控制器：反馈怎样改变下一步策略}
+
+\paragraph{反馈惊讶度。}
+当前实现保存上一试次反馈前的预测先验 $\pi^-_{t-1}$，并定义
+\begin{equation}
+S_{t-1}
+=-\log\max\!\left\{
+\sum_{h\in\mathcal H}\pi^-_{t-1}(h)L_{t-1}(h),
+\epsilon
+\right\}.
+\label{eq:model0809-surprise}
+\end{equation}
+通俗地说，如果反馈主要支持模型原先不看好的规则，括号内的重合程度较小，$S_{t-1}$ 就较大。
+
+\paragraph{规则不确定性。}
+反馈后的活跃规则权重被归一化后，其熵为
+\begin{equation}
+U_{t-1}
+=-\frac{\sum_{h\in A_{t-1}}
+\pi^+_{t-1}(h)\log\pi^+_{t-1}(h)}{\log M_s},
+\qquad 0\leq U_{t-1}\leq1.
+\label{eq:model0809-uncertainty}
+\end{equation}
+$U$ 接近 0 表示证据集中在少数规则上；$U$ 接近 1 表示工作台上的规则几乎难分高下。$M_s=1$ 时当前实现把 $U$ 定义为 0。
+
+\paragraph{标准化必须冻结。}
+两个信号的尺度不同，因此使用
+\begin{equation}
+z^S_{t-1}=\frac{S_{t-1}-\mu_S}{\sigma_S},
+\qquad
+z^U_{t-1}=\frac{U_{t-1}-\mu_U}{\sigma_U},
+\label{eq:model0809-standardization}
+\end{equation}
+其中 $\mu$ 和 $\sigma>0$ 可以来自独立模拟、预先冻结的参考样本，或在当前完整序列分析中作为所有候选共享的数据变换。无论采用哪一种方式，都必须固定定义并保存来源，不能为不同模型分别挑选最有利的中心和尺度。若以后重新启用 held-out 评价，中心和尺度才必须只由训练部分或外部参考确定。当前 YAML 已提供常数，但正式分析前仍需审计其 provenance。
+
+\paragraph{替换率控制器。}
+令 $a^m_t=\operatorname{logit}(m_t)$，$a^m_0=\operatorname{logit}(m_0)$。动态替换率为
+\begin{align}
+a^m_t
+=\;&a^m_0+\phi_m(a^m_{t-1}-a^m_0)
++\beta_{mS}z^S_{t-1}+\beta_{mU}z^U_{t-1},
+\nonumber\\
+m_t
+=\;&\operatorname{logit}^{-1}(a^m_t),
+\qquad |\phi_m|<1,
+\qquad \beta_{mS},\beta_{mU}\geq0.
+\label{eq:model0809-rate-controller}
+\end{align}
+$m_0$ 是基线替换率；$\phi_m$ 表示一次激进或保守搜索会持续多久；$\beta_{mS}$ 和 $\beta_{mU}$ 分别表示惊讶度、不确定性把下一试次替换率向上推多少。当前实现把两类 $\beta$ 限制为非负，所以它检验的是预先有方向的“越惊讶/不确定，越愿意换”假设。若真实效应为负，现有参数空间只能把它压到零，不能据此宣称不存在任何方向的效应。
+
+\paragraph{搜索范围控制器。}
+同理，令 $a^g_t=\operatorname{logit}(g_t)$，可写为
+\begin{align}
+a^g_t
+=\;&a^g_0+\phi_g(a^g_{t-1}-a^g_0)
++\beta_{gS}z^{S,g}_{t-1}+\beta_{gU}z^{U,g}_{t-1},
+\nonumber\\
+g_t
+=\;&\operatorname{logit}^{-1}(a^g_t),
+\qquad |\phi_g|<1,
+\qquad \beta_{gS},\beta_{gU}\geq0.
+\label{eq:model0809-range-controller}
+\end{align}
+范围控制器可以使用自己的信号中心和尺度。$m_t$ 与 $g_t$ 回答不同问题：前者控制换几条，后者控制新规则离旧规则多远。它们可能相关，但不能因为都由同一个反馈信号驱动就当成同一个机制。
+
+
+\subsubsection{有限工作空间怎样真正更换规则}
+
+\paragraph{第一步：决定换几条。}
+从第二个试次开始，实际替换条数为
+\begin{equation}
+K_{s,t}\sim\operatorname{Binomial}(M_s,m_{s,t}).
+\label{eq:model0809-replacement-count}
+\end{equation}
+因此 $E(K_{s,t}/M_s)=m_{s,t}$，但一次具体轨迹中的 $K_{s,t}/M_s$ 会围绕 $m_{s,t}$ 波动。为保持后续公式简洁，在只讨论一名被试时仍省略下标 $s$。选择切换、规则替换事件和控制器状态是三个不同变量，不能互相替代。
+
+\paragraph{第二步：让证据较弱的规则更容易退出。}
+模型从 $A_{t-1}$ 中不放回抽取 $K_t$ 条退出规则，权重满足
+\begin{equation}
+P(h\text{ 被抽中退出})
+\propto 1-\pi^+_{t-1}(h)+\epsilon,
+\qquad h\in A_{t-1}.
+\label{eq:model0809-drop}
+\end{equation}
+这不是简单删除最低权重规则：强规则更不容易退出，但仍保留随机性，因而同一参数可以产生不同潜在路径。
+
+\paragraph{第三步：构造局部与全局新人提议。}
+规则相似矩阵记为 $\operatorname{sim}(h,u)$，距离为
+\begin{equation}
+d(h,u)=\operatorname{clip}\!\left[1-\operatorname{sim}(h,u),0,1\right].
+\end{equation}
+局部核同时考虑距离和基础先验：
+\begin{equation}
+K_L(u\mid h)
+\propto p_0(u)\exp\!\left[-\frac{d(h,u)}{\tau_L}\right],
+\qquad u\neq h.
+\label{eq:model0809-local-kernel}
+\end{equation}
+若未显式给定 $\tau_L$，当前实现使用每条规则最近非自身距离的中位数。对非活跃集合 $I_{t-1}=\mathcal H\setminus A_{t-1}$，局部与全局提议分别为
+\begin{align}
+Q_{L,t}(u)
+&\propto \mathbb I(u\in I_{t-1})
+\sum_{h\in A_{t-1}}\pi^+_{t-1}(h)K_L(u\mid h),
+\nonumber\\
+Q_{G,t}(u)
+&\propto \mathbb I(u\in I_{t-1})p_0(u),
+\nonumber\\
+Q_t(u)
+&=(1-g_t)Q_{L,t}(u)+g_tQ_{G,t}(u).
+\label{eq:model0809-newcomer-proposal}
+\end{align}
+模型再从 $Q_t$ 中不放回抽取 $K_t$ 条新人规则。$g_t$ 较小意味着围绕当前较可信规则做局部修补；$g_t$ 较大意味着跳到更广的规则空间。
+
+\paragraph{第四步：成对转移概率质量。}
+每条退出规则 $d_j$ 与一条新人规则 $n_j$ 成对。当前
+\texttt{pairwise\_mass\_transfer} 规则为
+\begin{align}
+\pi^-_t(n_j)&=\pi^+_{t-1}(d_j),
+&\pi^-_t(d_j)&=0,
+\nonumber\\
+\pi^-_t(h)&=\pi^+_{t-1}(h),
+&&h\text{ 为保留规则},
+\label{eq:model0809-mass-transfer}
+\end{align}
+最后再作数值归一化。这样，转移过程只重新分配已有信念质量，不会因为新人进入而凭空增加总概率。需要注意的是，这是一项具体建模假设：新人继承退出槽位的质量，不等于人类真的把旧规则信念完整搬给新规则。以后若比较其他先验分配方式，应把它作为独立机制坐标，而不是暗中改动。
+
+
+\subsubsection{反馈以后怎样更新记忆与规则权重}
+
+\paragraph{双通道记忆。}
+每条活跃规则保存一个衰减通道 $F_t(h)$ 和一个累积通道 $C_t(h)$。转移后，记忆模块先把两条通道的组合对齐到 $\pi^-_t$，同时保留幸存规则原有的长期--短期差异；新人使用共同的基线差异初始化。随后反馈证据更新为
+\begin{align}
+F_t(h)
+&=\gamma F^-_t(h)+\alpha\log L_t(h),
+\nonumber\\
+C_t(h)
+&=C^-_t(h)+\alpha\log L_t(h),
+\label{eq:model0809-dual-memory}
+\end{align}
+其中 $0\leq\gamma\leq1$ 控制近期证据遗忘，$0\leq w_0\leq1$ 控制累积通道的权重，$\alpha\geq0$ 是反馈增益。反馈后规则权重为
+\begin{equation}
+\pi^+_t(h)
+=\frac{\mathbb I(h\in A_t)
+\exp\{w_0C_t(h)+(1-w_0)F_t(h)\}}
+{\sum_{u\in A_t}
+\exp\{w_0C_t(u)+(1-w_0)F_t(u)\}}.
+\label{eq:model0809-posterior}
+\end{equation}
+通俗地说，$F$ 更像会淡忘的近期记录，$C$ 更像不衰减的累积记录；$\pi^+_t$ 是两种记录折中后的规则可信度。
+
+\paragraph{为什么记忆必须和动态策略分开。}
+一个错误后改变选择，既可能因为旧规则证据下降，也可能因为搜索控制器提高了 $m_{t+1}$。如果同时只给动态模型更灵活的 $\gamma,w_0,\alpha$ 支持，就无法判断改进来自哪里。因此静态与动态父子模型必须共享记忆候选、读出候选和噪声候选；动态子模型唯一新增的自由度只能是预先声明的控制器项。
+
+
+\subsubsection{规则信念怎样变成可观察选择}
+
+\paragraph{先锐化规则权重，再平均类别预测。}
+当前 \texttt{sharpened\_expectation} 不是对最后的类别概率作幂变换，而是先对规则先验作锐化：
+\begin{align}
+\widetilde\pi^-_t(h)
+&=\frac{[\pi^-_t(h)]^{\rho}}
+{\sum_{u\in A_t}[\pi^-_t(u)]^{\rho}},
+\qquad \rho>0,
+\nonumber\\
+p^{\mathrm{cog}}_t(c)
+&=\sum_{h\in A_t}\widetilde\pi^-_t(h)q_{t,h}(c).
+\label{eq:model0809-choice-expectation}
+\end{align}
+$\rho=1$ 是普通期望读出，$\rho>1$ 让高权重规则在行为中占更大比例。当前示例配置使用 $\rho=2$。
+
+\paragraph{再加入可观察的均匀失误。}
+基础 lapse $\lambda$ 给出
+\begin{equation}
+p^{\mathrm{obs}}_t(c)
+=(1-\lambda)p^{\mathrm{cog}}_t(c)
++\frac{\lambda}{|\mathcal C|}.
+\label{eq:model0809-output-noise}
+\end{equation}
+当前粒子后端只支持 expectation 或 sharpened expectation，以及指向均匀分布的静态基础 lapse；历史依赖 lapse、其他条件和更复杂读出还不能被当作当前正式粒子分析已经支持的能力。
+
+\paragraph{拟合和自主生成是并列的两条线。}
+拟合观察行为时，程序依次执行
+\begin{equation}
+\operatorname{begin\_trial}(\mathbf x_t)
+\rightarrow p_t(y)
+\rightarrow
+\operatorname{complete\_trial}(y_t,r_t),
+\end{equation}
+其中 $y_t,r_t$ 来自被试。自主生成时，前两步完全相同，只是从 $p_t(y)$ 中抽样模型选择 $\widetilde y_t$，再由任务环境产生 $\widetilde r_t$，最后执行
+\begin{equation}
+\operatorname{complete\_trial}(\widetilde y_t,\widetilde r_t).
+\end{equation}
+因此参数恢复和模型恢复使用的是同一个认知模型，不需要另外手写一套生成方程。生成一份合成被试时保留一条真实潜在轨迹；回拟合时再用粒子滤波对未知轨迹积分。
+
+
+\subsubsection{为什么正式拟合要用粒子滤波}
+
+\paragraph{单轨迹只回答“这一次随机过程发生了什么”。}
+给定同一参数，活跃集合初始化、知觉噪声、退出规则和新人规则都可能不同。单轨迹 backend 适合自主生成、调试和展示一条可能的认知历程，但若在真实数据拟合中反复抽轨迹并挑选最像被试的那一条，就会把随机幸运当作模型能力。
+
+\paragraph{粒子滤波回答“平均所有仍然可能的轨迹后，模型预测什么”。}
+设共有 $R$ 个粒子，试次开始前权重为 $w^{(r)}_{t-1}$，第 $r$ 个粒子产生选择概率 $p^{(r)}_t(c)$。观察选择之前的正式预测为
+\begin{equation}
+\overline p_t(c)
+=\sum_{r=1}^{R}w^{(r)}_{t-1}p^{(r)}_t(c).
+\label{eq:model0809-particle-marginal}
+\end{equation}
+看到被试选择 $y_t$ 后，粒子权重更新为
+\begin{equation}
+w^{(r)}_t
+=\frac{w^{(r)}_{t-1}p^{(r)}_t(y_t)}
+{\sum_{j=1}^{R}w^{(j)}_{t-1}p^{(j)}_t(y_t)}.
+\label{eq:model0809-particle-weight}
+\end{equation}
+随后每个粒子接收相同的真实反馈并更新记忆。这样，同一试次的预测是在看见 $y_t$ 以前产生的，而 $y_t$ 只影响未来的潜在轨迹权重。
+
+\paragraph{有效粒子数与重采样。}
+权重过度集中时，数值近似会退化。定义
+\begin{equation}
+\operatorname{ESS}_t
+=\frac{1}{\sum_{r=1}^{R}(w^{(r)}_t)^2}.
+\label{eq:model0809-ess}
+\end{equation}
+当 $\operatorname{ESS}_t<\eta R$ 时，当前实现进行系统重采样并重置均匀权重，示例配置使用 $R=512$、$\eta=0.5$。重采样复制的是完整 engine/module 状态，再为未来随机过程重新播种；它不改变认知方程。
+
+\paragraph{粒子结果也必须接受数值复核。}
+正式结论至少要比较不同粒子数和独立 filter seed。若 $R=128,512,1024$ 时模型排序、个体参数或 $m_t/g_t$ 轨迹明显变化，就应先报告蒙特卡洛不稳定，而不是解释认知机制。独立 repeat 在粒子分析中代表独立数值近似，不代表额外被试，也不能扩大统计样本量。
+
+
+\subsubsection{模型家族：每次只问一个新增问题}
+
+\paragraph{共同基础。}
+所有直接比较共享相同的规则空间、知觉输入、容量候选、局部核、双记忆候选、choice readout、lapse 支持、粒子数、选择似然定义、参数计数规则和随机种子规则。建议依次比较：
+\begin{enumerate}
+    \item \textbf{FS：完整空间基线。}所有规则始终可用，用来检验有限工作空间本身；
+    \item \textbf{FA2：静态有限工作空间。}$m_t=m_0$、$g_t=g_0$，使用正式的
+    \texttt{StaticWorkspaceHypothesisTransitionModule}；
+    \item \textbf{FA3-M-S：惊讶度动态替换。}$\beta_{mS}>0,\beta_{mU}=0$；
+    \item \textbf{FA3-M-U：不确定性动态替换。}$\beta_{mS}=0,\beta_{mU}>0$；
+    \item \textbf{FA3-M-SU：联合动态替换。}只在两个单信号模型至少有一个通过后才开放；
+    \item \textbf{FA3-G 或 FA3-MG：动态搜索范围。}只在替换量或独立距离证据通过后，才分别开放 $g_t$ 或 $m_t+g_t$。
+\end{enumerate}
+
+\paragraph{静态端点必须由静态类实现。}
+当前 \texttt{DynamicContinuousHypothesisTransitionModule} 要求至少一个
+$m$ 或 $g$ 的动态系数非零；全零控制器应绑定
+\texttt{StaticWorkspaceHypothesisTransitionModule}。这避免把“参数恰好为零的动态类”误标为动态认知策略，也使静态父模型的随机过程成为清楚的嵌套端点。
+
+\paragraph{不要一开始搜索所有组合。}
+当前 Hyper-CD 配置具备枚举多种 rate/range profile 的能力，但“软件能够运行”不等于“科学上应当同时开放”。若在同一数据上先看完所有 $m$、$g$、惊讶度、不确定性及联合组合，再只报告最好者，拟合优势会被隐性多重选择放大。正式方案应冻结一条层级路线；离散 profile 应分别作为候选模型比较或进行模型平均，不能先在一个大动态家族内部挑最好点，再只按少数连续参数惩罚复杂度。
+
+
+\subsubsection{如何逐步实施：先看效果，再逐步增加证据}
+
+\paragraph{阶段 0：先做一名被试的完整序列试跑。}
+先按与模型结果无关的规则选择一名数据完整的被试，使用全部 trial 分别运行静态 FA2 和一个最简单的 dynamic-continuous 子模型，例如 S-only。完成数据读取、Hyper-CD、粒子拟合、结果保存和评价作图。此时的目标是看框架能否运行、动态轨迹是否合理以及计算成本是否可接受，不要求在看到效果以前完成整套恢复实验，也不把单被试胜负写成科学结论。
+
+\paragraph{阶段 1：同步完成最低限度的工程检查。}
+单被试运行至少同时确认：每一试次概率有限且归一化；$|A_{s,t}|=M_s$，且该被试所有 trial 的 $M_s$ 不变；新人不与旧活跃规则重复；先验质量转移后总和为 1；当前反馈不改变当前 choice probability；相同 seed 能够复现；粒子 ESS 和重采样记录可读取。这些检查可以与第一次试跑一起完成，不需要成为运行真实数据以前的独立大工程。
+
+\paragraph{阶段 2：用完整选择序列估计最大边际似然。}
+对每个预先指定候选使用全部 trial 搜索参数，并以粒子边际 \texttt{choice\_nll} 为优化目标。choice Brier、校准和 accuracy curve 继续作为描述与模型诊断，但不能用 Brier 选出的参数直接计算声称基于最大似然的 AIC 或 BIC。coarse 阶段可用较低粒子数筛选参数区域，fine 阶段再用正式粒子数和独立 seed 稳定估计似然。
+
+\paragraph{阶段 3：用信息准则比较候选模型。}
+在相同 trial、相同选择似然和相同粒子设置下，为每名被试计算 AIC、条件允许时的 AICc，以及 BIC。它们回答的是“增加动态参数以后，拟合改善是否足以抵消复杂度代价”。模型只能被称为“在预先比较的候选集中得到最强支持”，不能被称为绝对最优或真实认知机制已经得到证明。
+
+\paragraph{阶段 4：对静态--动态父子模型做参数化 bootstrap。}
+静态端点位于 $\beta_{mS}=\beta_{mU}=0$ 的边界，当前动态系数又被限制为非负，因此不直接套用普通卡方似然比检验。先从拟合后的静态 FA2 自主生成数据，再对每份合成数据重新拟合静态和动态模型，建立额外自由度在静态真值下能够产生的似然改善分布；真实数据的动态改善只有超过这一分布，才说明优势不容易由复杂度本身解释。
+
+\paragraph{阶段 5：再做参数恢复与模型恢复。}
+若单被试流程和完整数据模型比较值得继续，再分别从静态、S-only、U-only 及已获准的联合模型生成合成被试并回拟合。报告参数或派生轨迹的偏差、模型混淆矩阵和不同效应强度下的恢复率。恢复失败时，应把结论限制在能够恢复的模型家族或派生量上，而不是继续扩展更多动态分支。
+
+\paragraph{阶段 6：扩展到全样本的配对比较。}
+对每名被试只在相同 trial 内比较模型，计算 $\Delta$NLL、$\Delta$AIC/AICc、$\Delta$BIC 及每 trial 的效应。组水平报告模型胜出人数、被试等权的均值或中位数，并以被试为重采样单位给出不确定区间。trial、粒子和独立 filter seed 都是同一被试内部的重复或数值近似，不能扩大组水平样本量。
+
+\paragraph{阶段 7：检查学习轨迹和达标 block。}
+任务在一个 64-trial block 中的非模糊试次正确率超过 90\% 后结束，因此最终 block 可操作性地定义为 criterion-reaching 高表现阶段。模型除总体似然外，还应复现学习速度、错误后恢复、最终 block 的 choice probability 和规则稳定性。由于最终 block 的身份由其高正确率决定，这个正确率本身不是独立验证；有信息的是模型是否在完整生成和状态轨迹中自然产生相应的高表现与稳定化。极少数仅一个 block 即结束的 condition 1 被试应单独标记，避免把偶然达标和稳定学习混为一谈。
+
+\paragraph{阶段 8：做机制消融与独立行为约束。}
+若 dynamic continuous 在复杂度校正比较中得到支持，分别移除 $\beta_{mS}$、$\beta_{mU}$、$\beta_{gS}$ 和 $\beta_{gU}$，检查优势由哪个动态项贡献。随后检验未参与 choice 参数选择的 RT 或口头报告：例如在控制选择不确定性、练习和刺激难度后，$K_{s,t}/M_s$ 是否正向关联 RT，以及报告规则是否更可能位于粒子边际活跃集合中。
+
+\paragraph{阶段 9：做自主生成和后验预测检查。}
+用完整数据拟合得到的参数让模型自主产生 choice 和 feedback，比较真实与生成数据的学习速度、选择切换、长串重复选择、规则占用、替换比例和新人距离。自主生成用于检验“相对最优”的模型是否仍然存在明显绝对失配；信息准则最优但无法复现关键行为的模型，仍然是不充分的生成解释。
+
+\paragraph{阶段 10：检查粒子数与评价标准敏感性。}
+用不同粒子数和独立 filter seed 复核模型排序，并同时呈现 AIC/AICc、BIC、Brier 与轨迹指标。如果这些标准发生冲突，应报告它们回答的问题不同，而不是临时指定一个有利指标。固定 50\% 顺序留出或 block-ahead 预测可作为以后需要时的敏感性分析，但不再作为 0809 当前模型升级的必要门槛。
+
+\paragraph{阶段 11：保留独立确认的边界。}
+完整数据的复杂度校正比较能够说明哪个候选模型最受当前数据支持，却不能证明对新被试或未来实验的泛化能力。若论文最终要作强机制结论，仍应在独立被试、独立实验批次或预先锁定的新条件上复核；在完成以前，结论限定为“当前候选集与当前数据中的最佳支持模型”。
+
+
+\subsubsection{评价指标怎样对应不同科学问题}
+
+\paragraph{概率拟合诊断：choice Brier。}
+对 $T$ 个有效试次，当前共享实现计算多类别 Brier 分数
+\begin{equation}
+\operatorname{Brier}
+=\frac{1}{T}
+\sum_{t=1}^{T}
+\sum_{c\in\mathcal C}
+\left[\overline p_t(c)-\mathbb I(y_t=c)\right]^2.
+\label{eq:model0809-brier}
+\end{equation}
+越低越好。它同时惩罚错误方向和过度自信，是重要的 proper score；二类别均匀预测的期望基准为 $1-1/2=0.5$。但 AIC、AICc、BIC 和似然比要求以选择似然为基础，因此 0809 的完整数据模型选择使用 \texttt{choice\_nll} 优化，Brier 作为并列诊断而不是信息准则的输入。
+
+\paragraph{模型选择的基础：选择似然与 NLL。}
+总选择对数似然和平均负对数似然分别为
+\begin{align}
+\ell(\widehat\theta)
+&=\sum_{t=1}^{T}
+\log\max\{\overline p_t(y_t\mid\mathcal D_{1:t-1},\widehat\theta),\epsilon_p\},
+\nonumber\\
+\operatorname{NLL}
+&=-\frac{1}{T}\ell(\widehat\theta).
+\label{eq:model0809-nll}
+\end{align}
+$\mathcal D_{1:t-1}$ 表示当前试次以前已经观察到的选择和反馈；即使全部 trial 都用于参数估计，每一项概率仍必须在注入当前 $y_t,r_t$ 以前产生。NLL 对极端错误尤其敏感。Brier 改善而 NLL 恶化，常提示模型通过较温和的概率变化改善平均表现，却在少数试次过度自信；因此还应报告置信度分箱校准和极低真实选择概率的次数。
+
+\paragraph{复杂度校正：AIC、AICc 与 BIC。}
+令 $k$ 为该候选中由数据估计或选择的自由参数数量，则
+\begin{align}
+\operatorname{AIC}
+&=-2\ell(\widehat\theta)+2k,
+\nonumber\\
+\operatorname{AICc}
+&=\operatorname{AIC}
++\frac{2k(k+1)}{T-k-1},
+\qquad T>k+1,
+\nonumber\\
+\operatorname{BIC}
+&=-2\ell(\widehat\theta)+k\log T.
+\label{eq:model0809-information-criteria}
+\end{align}
+同一被试内数值越小表示相对支持越强。由数据挑选的 $m,g,\phi,\beta$、记忆、读出和 lapse 均应纳入 $k$；$M_s$ 也是由该被试数据选出的离散超参数，但它不是每个 trial 各增加一个参数。严格地说，把 $M_s\in\{3,5,7\}$ 当作三个预先指定的候选模型，与把容量搜索近似记作一个自由维度，并非完全相同的惩罚约定；正式比较前必须选定并对所有模型一致使用，参数化 bootstrap 应重复整个容量选择过程。粒子数和被边际化的潜在轨迹不作为逐 trial 的自由参数。若 Hyper-CD 只在离散粗网格上近似最大似然，信息准则也应标为近似结果，并由参数化 bootstrap 和粒子敏感性分析补充。
+
+\paragraph{静态--动态比较：参数化 bootstrap 似然比。}
+定义真实数据的改善为
+\begin{equation}
+\Delta_{\mathrm{LR}}^{\mathrm{obs}}
+=2\left[\ell_{\mathrm{dynamic}}-\ell_{\mathrm{static}}\right].
+\label{eq:model0809-likelihood-ratio}
+\end{equation}
+再从拟合静态模型生成合成数据，并对每份数据重新完成两种模型的全部搜索，得到静态真值下的 $\Delta_{\mathrm{LR}}$ 分布。由于动态系数的零点位于参数边界，这个经验参照比直接使用标准卡方近似更合适。它检验的是动态改善是否超过额外灵活性通常能够制造的幅度，不把一次较大的训练拟合差自动写成机制证据。
+
+\paragraph{学习轨迹指标。}
+概率分数回答逐试次预测是否可靠，滑动 accuracy curve 回答模型是否跟上学习过程。至少并列报告曲线 MAE、去掉平均水平后的 centered MAE、曲线相关、预测分布相对真实曲线的 CRPS，以及早期、中期、晚期和错误后区段。相关提高但平均水平明显偏离，或 MAE 降低但局部形状恶化，都不算完整通过。
+
+\paragraph{机制指标。}
+动态替换假设还要求报告 $m_{s,t}$、$K_{s,t}/M_s$、任意替换概率
+\begin{equation}
+P(K_{s,t}>0)=1-(1-m_{s,t})^{M_s},
+\label{eq:model0809-any-replacement}
+\end{equation}
+$g_t$、新人距离、$S_t$、$U_t$、活跃规则边际概率及其跨粒子不确定性。不能只展示一条最漂亮的粒子轨迹。
+
+\paragraph{数值指标。}
+每个正式模型同时报告 pre-choice ESS、post-choice ESS、重采样频率、独特祖先数、不同粒子数与 seed 下的指标差异。科学结论必须建立在数值近似已经稳定的前提上。
+
+
+\subsubsection{假设--证据--判定的对应关系}
+
+\paragraph{H1：有限工作空间。}
+必要证据是 FA2 相对 FS 在完整数据的最大边际似然比较中获得足以抵消复杂度惩罚的优势，且 AIC/AICc、BIC、Brier、校准与学习曲线没有形成无法解释的冲突；自主生成还应复现有限工作空间特有的规则占用和切换结构。若支持只来自一个未经惩罚的拟合指标，则只能说有限状态具有描述能力，不宣布 H1 成立。
+
+\paragraph{H2：动态替换量。}
+必要证据是 FA3-M 相对 FA2 的完整序列似然优势在复杂度校正后仍然存在，参数化 bootstrap 表明该优势不容易由额外自由度产生，合成模型恢复能够区分两者，对应 $\beta$ 的消融会消除优势，而且推断的 $m_t$ 在信号变化后按预注册方向改变。只有未经惩罚的拟合更好或个别被试改善，不足以支持 H2。
+
+\paragraph{惊讶度还是不确定性。}
+S-only 与 U-only 必须在相同父模型和相同参数预算下比较。若二者都能预测但相互混淆，就只能支持“存在历史依赖的动态控制”，不能断言具体信号来源；联合模型只有在恢复检验证明两项可区分时才有解释资格。
+
+\paragraph{H3：动态搜索范围。}
+除了相对固定 $g$ 的复杂度校正似然优势，还要求新人距离或规则内容证据随 $g_t$ 变化。若 $g_t$ 与 $m_t$ 严重补偿，或者 choice 不能区分“换更多”和“换更远”，应优先增加 RT/口头报告等测量，不把不稳定的 $g_t$ 参数作心理解释。
+
+\paragraph{H4：心理机制。}
+RT、口头报告或其他没有参与 choice 参数选择的指标应提供增量解释，并具有预注册方向。即便通过，也只能说明数据与搜索成本或规则内容解释一致；由于这些指标仍可能受注意、运动和一般困难影响，结论应使用“支持”而不是“证明”。
+
+\paragraph{统一升级标准。}
+一个动态机制只有在以下四层证据大体一致时才升级：
+\begin{enumerate}
+    \item \textbf{可计算：}工程不变量和无泄漏检查通过；
+    \item \textbf{有相对证据：}完整序列似然优势经信息准则和参数化 bootstrap 校正后仍支持动态模型；
+    \item \textbf{可识别：}参数恢复、模型恢复和粒子稳定性达到预先声明的标准；
+    \item \textbf{可解释：}消融和至少一种独立行为指标支持同一机制方向。
+\end{enumerate}
+前两层失败时不进入真实机制解释；前三层通过而第四层失败时，只保留为当前选择数据中得到较强支持的统计模型；四层都通过后，仍需在结论中注明尚未检验新数据泛化。
+
+
+\subsubsection{当前实现如何落到仓库中}
+
+\paragraph{模型装配。}
+当前可执行起点是
+\path{configs/model_struct/pmh_model_cond1_0806.yaml}。它装配 condition 1 的 partition、被试内固定容量的 dynamic-continuous transition、dual memory、sharpened expectation、uniform base lapse 和 particle filter；其中 \texttt{capacity: 3} 现在只是没有 subject override 时的回退值。0809 文稿没有另建一套 Python 模型，而是增加
+\path{configs/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml}
+和
+\path{configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_subject103.yaml}：前者明确使用全部 trial 和 \texttt{choice\_nll}，后者为被试 103 搜索 $M_s\in\{3,5,7\}$，并把选中的容量随其他超参数一起写入生成配置的 \texttt{subject\_overrides}。历史 0806 sequential-holdout 配置保持不变。
+
+\paragraph{正式模块对应。}
+两步 transition 生命周期位于
+\path{src/Bayesian_state/problems/modules/hypo_transition/process.py}；动态控制与有限工作空间运行时位于
+\path{src/Bayesian_state/problems/modules/hypo_transition/dynamic_continuous.py}
+和其内部 workspace policy；双记忆位于
+\path{src/Bayesian_state/problems/modules/memory.py}；choice/RT/oral readout 位于
+\path{src/Bayesian_state/problems/modules/readout.py}；粒子积分位于
+\path{src/Bayesian_state/inference_engine/backends/particle_filter.py}。
+
+\paragraph{拟合、生成与评价对应。}
+观察数据和自主模型都经由同一个 \texttt{StateModel} 生命周期执行；单次观察数据执行在
+\path{src/Bayesian_state/simulation/state_model_execution.py}，自主行为生成在
+\path{src/Bayesian_state/simulation/autonomous_model_execution.py}，独立重复与汇总在
+\path{src/Bayesian_state/simulation/repeated_simulation.py}。choice Brier、NLL 和轨迹统计由
+\path{src/Bayesian_state/metrics/} 提供；
+\path{src/Bayesian_state/model_evaluation/} 只消费已产生的结果并执行通用或 transition 专属后处理。
+
+\paragraph{当前轻量执行顺序。}
+在进入全样本前，推荐从仓库根目录依次运行：
+\begin{enumerate}
+    \item 对一名预先选定被试运行完整序列的静态与动态 coarse Hyper-CD；
+    \item 同步完成概率、活跃集合、因果顺序和 seed 的最低限度检查；
+    \item 对保留候选用 \texttt{choice\_nll} 和正式粒子数运行 fine 拟合；
+    \item 计算完整序列 NLL、AIC/AICc、BIC、Brier、学习曲线和粒子诊断；
+    \item 若值得继续，再用 autonomous execution 完成参数化 bootstrap、模型恢复和 PPC；
+    \item 最后扩展到全样本，并以被试为独立单位汇总配对模型差异。
+\end{enumerate}
+当前 CLI 入口分别是
+\texttt{python -m src.Bayesian\_state.optimization.hyper\_cli}、
+\texttt{python -m src.Bayesian\_state.run\_simulation} 和
+\texttt{python -m src.Bayesian\_state.run\_model\_evaluation}；具体参数以对应 YAML 和 README 为准。
+
+
+\subsubsection{必须主动报告的边界与风险}
+
+\paragraph{识别风险。}
+$m_0$、$\phi_m$、动态 $\beta$、记忆衰减、规则锐化和 lapse 都可能产生较平滑或较稳定的选择，$m_t$ 与 $g_t$ 也可能互相补偿。choice 单独无法区分时，正确做法是报告等价候选集合并增加独立测量，而不是强行选择唯一参数。
+
+\paragraph{定义风险。}
+当前 surprise 使用按规则归一化的 $L_t$，其绝对值会受规则空间和 likelihood 归一化影响；信号中心与尺度的来源也会改变动态幅度。正式稿必须把它称为当前实现下的代理量，并保存规则空间、中心和尺度。
+
+\paragraph{计算边界。}
+当前通用粒子入口只正式支持 condition 1、expectation/sharpened expectation 和 uniform base lapse。超出这些条件的运行需要先扩展并验证 backend，不能直接把单轨迹功能当成粒子功能。
+
+\paragraph{设计边界。}
+被试内固定容量、硬活跃掩码、退出规则不保留在线记忆、pairwise mass transfer、非负动态系数和局部核形式都是具体假设。允许 $M_s$ 在被试之间不同，只放松了“所有人共享同一个容量”，没有检验容量是否随学习阶段改变。数据支持 dynamic-continuous 家族，不等于这些细节都分别得到证明；要解释某一细节，必须为它构造直接竞争模型。
+
+\paragraph{统计边界。}
+个体 trial、重复 seed 和粒子都不能充当独立被试。组水平区间以被试为单位；不同任务长度的被试只在自身相同 trial 上计算模型差值，不能横向比较原始 AIC/BIC。多种 profile 的选择需要预先定义候选族、层级门控或模型平均。AIC/BIC 依赖最大似然和参数计数假设，离散 Hyper-CD 网格只能给出近似信息准则，因此需要参数化 bootstrap、恢复和数值敏感性共同约束结论。
+
+
+\subsubsection{0809 当前允许写下的结论}
+
+Model 0809 给出的是一套清楚、因果且可以被推翻的动态策略框架。它把有限规则工作空间中的两个问题分开：$m_t$ 决定换多少，$g_t$ 决定换多远；上一试次的相对反馈惊讶度和规则不确定性可以连续调节这两个控制量；实际规则替换仍通过离散随机过程发生；不可见轨迹由粒子滤波边际化；同一 \texttt{StateModel} 同时支持拟合被试和自主生成行为。
+
+现在还不能仅凭框架完整或代码可运行就宣称人类采用了这种机制。当前最小证据链改为：先完成一名被试的完整序列试跑；再以 choice likelihood 拟合预先指定的候选模型；使用 AIC/AICc、BIC 和静态--动态参数化 bootstrap 校正复杂度；通过恢复检验和粒子敏感性确认比较流程可识别且数值稳定；随后用机制消融、PPC、RT 或口头报告约束心理解释。若这些结果一致，允许写成“在当前候选集和当前数据中，dynamic continuous 得到最强支持”，但不写成绝对最优，也不声称已经证明对新被试或未来实验的泛化能力。
+
+
+\subsubsection{主张、证据与缺口清单}
+
+\paragraph{已经由代码定义的内容。}
+被试特异且被试内固定的有限容量活跃集合、连续 $m_t/g_t$ 控制器、二项替换、弱规则优先退出、局部--全局新人混合、成对质量转移、双记忆、choice readout、观察数据拟合、自主行为生成和粒子滤波均已有明确实现入口。
+
+\paragraph{仍需实证支持的内容。}
+有限工作空间是否优于完整空间；惊讶度或不确定性是否正向驱动替换率；搜索范围是否动态；推断的替换和距离是否对应 RT 或口头规则；动态效应是否能在独立数据复现。这些都是待检验主张，不是代码事实。
+
+\paragraph{正式运行前仍需冻结的决定。}
+候选模型开放顺序、signal center/scale 的来源、容量和参数支持、单被试选择规则、自由参数计数方式、离散 profile 的处理方式、参数化 bootstrap 预算、主要模型比较标准以及实质性失配阈值。冻结并记录这些决定以后，0809 才从一个完整模型框架变成一个可执行的模型比较方案。

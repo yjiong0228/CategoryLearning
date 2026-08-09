@@ -1,0 +1,98 @@
+# Focused Hyper-CD pilot for one condition-1 subject.
+#
+# Scientific scope: surprise-driven dynamic replacement (S-only), a
+# subject-specific but within-subject fixed workspace capacity, fixed g within
+# a subject, dual memory, choice readout, and uniform lapse.  This config fits
+# one dynamic model; it is not by itself a static-vs-dynamic model comparison.
+
+base_sim_config_path: ../simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml
+subjects: [103]
+output_dir: ../../results/state-based-hyper-cd/pmh/model0809_cond1_dynamic_continuous_subject103
+
+# Because loss_metric is choice_nll, simulation.mean_error is the mean
+# trial-wise choice NLL averaged across independent particle-filter repeats.
+objective_order:
+  - path: simulation.mean_error
+    rel_tolerance: 0.0
+    abs_tolerance: 0.0
+    scale_floor: 0.0
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 20260809
+loss_metric: choice_nll
+window_size: 16
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10
+
+cd:
+  n_restarts: 2
+  max_outer_iters: 4
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 1
+  min_delta: 0.0005
+  parallel_budget: 4
+
+hyperparam_space:
+  # Joint Cartesian memory coordinate. gamma and w0 retain distinct cognitive
+  # meanings and are therefore not tied into a few hand-picked profiles.
+  # feedback_gain remains fixed at 1 in every candidate.
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.50, 0.60, 0.70, 0.80]
+      w0: [0.03, 0.06, 0.10, 0.15]
+      feedback_gain: [1.0]
+
+  # M_s is selected independently for each subject, then held constant over
+  # that subject's complete trial sequence. It is not a trial-varying M_t.
+  engine.modules.hypo_transitions_mod.kwargs.capacity:
+    values: [3, 5, 7]
+
+  # Baseline replacement rate and fixed local/global search mixture.
+  engine.modules.hypo_transitions_mod.kwargs.m:
+    values: [0.05, 0.15, 0.30]
+  engine.modules.hypo_transitions_mod.kwargs.g:
+    values: [0.0, 0.35, 0.70]
+
+  # Minimal dynamic-continuous candidate: surprise drives m_t; uncertainty and
+  # dynamic g_t remain disabled. Center/scale come from the model-structure YAML.
+  engine.modules.hypo_transitions_mod.kwargs.rate_controller:
+    values:
+      - {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      - {m_phi: 0.20, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+      - {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+
+  engine.choice_readout.kwargs:
+    values:
+      - {method: expectation}
+      - {method: sharpened_expectation, power: 2.0}
+      - {method: sharpened_expectation, power: 4.0}
+
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.02, 0.05, 0.20]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 1
+    simulation_overrides:
+      simulation_repeats: 1
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 128
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 2
+    simulation_overrides:
+      simulation_repeats: 2
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 512
