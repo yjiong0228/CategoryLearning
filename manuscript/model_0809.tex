@@ -503,7 +503,7 @@ RT、口头报告或其他没有参与 choice 参数选择的指标应提供增�
 \path{configs/model_struct/pmh_model_cond1_0806.yaml}。它装配 condition 1 的 partition、被试内固定容量的 dynamic-continuous transition、dual memory、sharpened expectation、uniform base lapse 和 particle filter；其中 \texttt{capacity: 3} 现在只是没有 subject override 时的回退值。0809 文稿没有另建一套 Python 模型，而是增加
 \path{configs/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml}
 和
-\path{configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_subject103.yaml}：前者明确使用全部 trial 和 \texttt{choice\_nll}，后者为被试 103 搜索 $M_s\in\{3,5,7\}$，并把选中的容量随其他超参数一起写入生成配置的 \texttt{subject\_overrides}。历史 0806 sequential-holdout 配置保持不变。
+\path{configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml}：前者明确使用全部 trial 和 \texttt{choice\_nll}，后者为 8 名具有不同学习轨迹的 condition 1 被试（103、104、105、108、111、120、124、132）分别搜索 $M_s\in\{3,5,7\}$，并把选中的容量随其他超参数一起写入生成配置的 \texttt{subject\_overrides}。这 8 人覆盖单 block 高表现、快速突跃、平滑学习、初期回落后跃升、晚期学习、跨 session 非单调变化以及缓慢学习等开发情形；它们用于扩大工程试跑的轨迹覆盖，不构成随机抽样或确认性样本。历史 0806 sequential-holdout 配置保持不变。
 
 \paragraph{正式模块对应。}
 两步 transition 生命周期位于

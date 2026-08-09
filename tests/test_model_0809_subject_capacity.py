@@ -15,7 +15,7 @@ from src.Bayesian_state.simulation.simulation_config import (
 
 
 HYPER_CONFIG = Path(
-    "configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_subject103.yaml"
+    "configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml"
 )
 SIMULATION_CONFIG = Path(
     "configs/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml"
@@ -27,8 +27,11 @@ def test_model0809_pilot_searches_subject_capacity_on_the_full_sequence():
     hyper = yaml.safe_load(HYPER_CONFIG.read_text(encoding="utf-8"))
     simulation = yaml.safe_load(SIMULATION_CONFIG.read_text(encoding="utf-8"))
 
-    assert hyper["subjects"] == [103]
-    assert simulation["subjects"] == [103]
+    selected_subjects = [103, 104, 105, 108, 111, 120, 124, 132]
+    assert hyper["subjects"] == selected_subjects
+    assert simulation["subjects"] == selected_subjects
+    assert hyper["output_dir"] == "../../results/model_dynamic_continuous/hyper_cd"
+    assert simulation["output_dir"] == "../../results/model_dynamic_continuous/simulation"
     assert hyper["loss_metric"] == "choice_nll"
     assert simulation["loss_metric"] == "choice_nll"
     assert hyper["objective_order"][0]["path"] == "simulation.mean_error"

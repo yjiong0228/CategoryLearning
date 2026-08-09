@@ -1,13 +1,21 @@
-# Focused Hyper-CD pilot for one condition-1 subject.
+# Focused Hyper-CD pilot for eight condition-1 subjects with contrasting
+# learning trajectories.
 #
 # Scientific scope: surprise-driven dynamic replacement (S-only), a
 # subject-specific but within-subject fixed workspace capacity, fixed g within
-# a subject, dual memory, choice readout, and uniform lapse.  This config fits
+# a subject, dual memory, choice readout, and uniform lapse. This config fits
 # one dynamic model; it is not by itself a static-vs-dynamic model comparison.
+#
+# Selection strata based on non-ambiguous accuracy per (session, block):
+# 103 dip then late jump; 104 smooth three-block learning; 105 one-block high
+# performance; 108 very slow/noisy ten-block learning; 111 late five-block
+# jump; 120 gradual eight-block learning; 124 abrupt two-block learning; 132
+# cross-session non-monotonic learning. All have complete choice/feedback/stimuli
+# and subject-specific perception summaries.
 
 base_sim_config_path: ../simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml
-subjects: [103]
-output_dir: ../../results/state-based-hyper-cd/pmh/model0809_cond1_dynamic_continuous_subject103
+subjects: [103, 104, 105, 108, 111, 120, 124, 132]
+output_dir: ../../results/model_dynamic_continuous/hyper_cd
 
 # Because loss_metric is choice_nll, simulation.mean_error is the mean
 # trial-wise choice NLL averaged across independent particle-filter repeats.

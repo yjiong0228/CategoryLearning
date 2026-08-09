@@ -255,17 +255,17 @@ python -m src.Bayesian_state.run_hyper_then_simulation \
   --hyper-config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
 ```
 
-Model 0809 的单被试完整序列试跑使用一份独立配置，不改写历史 0806 输出：
+Model 0809 的 selected-eight 完整序列试跑使用一份独立配置，不改写历史 0806 输出：
 
 ```bash
 python -m src.Bayesian_state.run_hyper_then_simulation \
   --backend hyper_cd \
-  --hyper-config configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_subject103.yaml \
-  --subjects 103 \
+  --hyper-config configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml \
+  --subjects 103 104 105 108 111 120 124 132 \
   --stage coarse \
   --skip-simulation \
-  --generated-sim-config configs/simulation_cfg/generated_from_hyper/model0809_subject103_best.yaml \
-  --sim-output-dir results/state-based-simulation/pmh/model0809_cond1_dynamic_continuous_subject103
+  --generated-sim-config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
+  --sim-output-dir results/model_dynamic_continuous/simulation
 ```
 
 该配置用全部 trial 的 `choice_nll` 搜索参数，并把 `capacity` 当作被试级坐标
@@ -275,7 +275,7 @@ python -m src.Bayesian_state.run_hyper_then_simulation \
 
 ```bash
 python -m src.Bayesian_state.run_simulation \
-  --config configs/simulation_cfg/generated_from_hyper/model0809_subject103_best.yaml
+  --config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml
 ```
 
 ### 固定参数仿真
