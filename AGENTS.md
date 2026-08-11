@@ -43,6 +43,9 @@ changing its interfaces, configuration schema, or workflow.
    a small or targeted validation when possible.
 7. Never commit secrets, machine-specific absolute paths, large generated
    artifacts, or temporary files.
+8. Unless the user explicitly requests another format, generate and retain
+   plots as PNG only. Do not emit redundant PDF, SVG, or TIFF copies by
+   default.
 
 ## Python and configuration conventions
 
