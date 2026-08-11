@@ -16,7 +16,7 @@ dataset:
   perception_summary_72: Task1b_errorsummary_72.csv
   feature_order_data: Task2_processed.csv
 
-output_dir: ../../results/model_dynamic_continuous/simulation
+output_dir: ../../results/model_dynamic_continuous/0809_v1/simulation
 oral:
   mode: center
 

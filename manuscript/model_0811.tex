@@ -1,0 +1,694 @@
+% model_0811.tex
+% 2026-08-11：依据当前 Bayesian_state / failure_accumulator_v2 /
+% persistent execution / rule-specific beta / misconception capture 正式实现撰写。
+% 本文区分已实现模型、S103 筛查证据和尚未执行的确认性分析；
+% 不把单被试、4 repeats x 32 particles 的结果写成已经成立的群体机制结论。
+
+\subsubsection{Model 0811：动态连续策略、显式规则执行与自洽错误规则固着}
+
+\paragraph{一句话概括。}
+Model 0811 将类别学习刻画为三个彼此分开的过程：学习者在容量有限的规则工作空间中持续搜索候选规则，在任一时刻主要执行其中一条规则作答，并根据反馈更新这条执行规则的确信度；连续的失败压力和掌握证据决定何时从利用转向局部或全局探索，而近期选择若能被某条错误规则高度一致地解释，则可能形成一段短期错误规则固着。不可观察的感知、工作空间、执行规则和固着轨迹均由粒子滤波边际化。
+
+\paragraph{当前科学定位。}
+0811 是当前 \texttt{Bayesian\_state} 正式实现的模型说明，而不是为论文另写的一套平行算法。它保留 0809 的规则空间、知觉模块、双通道记忆、有限工作空间、局部--全局搜索和粒子滤波骨架，但用
+\texttt{failure\_accumulator\_v2} 取代当前主配置中旧的线性 surprise/uncertainty logit 控制器，并加入显式执行规则、规则特异动态 $\beta$ 和 history-supported misconception capture。旧控制器仍保留在代码中用于兼容和消融，但不再是 0811 当前工作候选的主要心理解释。
+
+\paragraph{当前允许的结论。}
+截至 2026 年 8 月 11 日，v2i-70 只应被称为\textbf{可解释的工作候选}。它相对无绝对相容度门槛的 capture 模型修复了过宽固着对学习末期的破坏，同时保留了比 v2f 更深的局部低谷；但是，它尚未在总体 NLL 或 accuracy-curve MAE 上稳定优于不含 misconception capture 的 v2f，且行为后验预测检查仍显示模型波动小于被试。因此，当前证据支持“绝对相容度门槛是必要的约束”，不支持“misconception capture 已经是最终充分机制”。
+
+
+\subsubsection{术语与模型层级}
+
+\paragraph{规则、工作空间与执行规则。}
+一条候选规则或有向假设记为 $h\in\mathcal H=\{1,\ldots,J\}$。第 $t$ 个试次开始时，模型只在容量为 $M_s$ 的活跃集合
+\begin{equation}
+A_{s,t}\subset\mathcal H,
+\qquad |A_{s,t}|=M_s
+\label{eq:model0811-active-set}
+\end{equation}
+中维持在线规则信念。$A_{s,t}$ 表示内部正在考虑的候选池，不表示这些规则被同时平均执行。开启 persistent execution 后，每个潜在轨迹另保存一条显式执行规则
+\begin{equation}
+e_{s,t}\in A_{s,t},
+\label{eq:model0811-executed-rule}
+\end{equation}
+当前选择只从 $e_{s,t}$ 读出。这样，“内部搜索到什么”和“当前真正按什么规则作答”成为两个可分辨状态。
+
+\paragraph{连续策略状态。}
+0811 中随试次连续变化的核心状态为失败压力 $F_t$、掌握证据 $M_t$、至少发生一次内部搜索的事件概率 $E_t$，以及全局搜索比例 $g_t$。其中 $E_t$ 回答“下一步是否搜索”，$g_t$ 回答“若搜索，新规则来自附近还是更远处”。实际规则替换数和显式切换事件仍是离散随机变量。因此，dynamic continuous 指的是控制状态连续变化，而不是规则编号或行为事件连续。
+
+\paragraph{规则特异确信度与选择相容度。}
+每条规则具有逆温度 $\beta_t(h)$，表示按该规则分类时有多确定。另有选择相容度 $\chi_t(h)$，表示该规则能解释近期被试选择的程度。二者含义不同：$\beta_t(h)$ 是执行规则内部的决策锐度，$\chi_t(h)$ 是整段近期行为与规则内容的一致性。不能把它们都笼统称为 confidence。
+
+\paragraph{粒子与被试。}
+粒子 $r=1,\ldots,R$ 是对感知噪声、规则集合、规则替换、执行规则和固着状态等潜在轨迹的数值样本。粒子不是额外被试，也不表示被试脑中真的存在 $R$ 条并行链。独立 PF repeats 是数值近似重复，同样不能扩大群体统计的样本量。
+
+
+\subsubsection{任务输入、规则空间与类别预测}
+
+\paragraph{逐试次观测。}
+对被试 $s$ 的第 $t$ 个试次，物理刺激记为 $\mathbf x_t\in[0,1]^4$，被试选择记为 $y_t\in\{1,2\}$，反馈记为 $r_t\in[0,1]$。当前 condition 1 数据主要使用二元正确/错误反馈。模型拟合使用刺激、选择和反馈；口头规则报告与反应时不参与当前 choice 参数拟合，只能作为后续外部约束。
+
+\paragraph{有向规则空间。}
+基础几何规则包括 4 个单维边界、6 个二维等值边界、6 个二维求和边界和 3 个四维混合边界，共 19 个几何划分。当前配置设置
+\texttt{include\_label\_reversals: true}，为每个划分保留两种类别标签方向，因此正式粒子结果中的有向假设数为
+\begin{equation}
+J=19\times 2=38.
+\label{eq:model0811-hypothesis-count}
+\end{equation}
+标签反转不是新几何边界，却是不同的可执行分类规则，因为同一划分的两侧可以对应相反类别。
+
+\paragraph{个体化知觉。}
+知觉模块先把刺激转换为内部表征
+\begin{equation}
+\widetilde x_{t,j}
+=\operatorname{clip}(x_{t,j}+\varepsilon_{s,t,j},0,1).
+\label{eq:model0811-perception}
+\end{equation}
+不同被试的噪声参数来自正式学习前的知觉校准数据，并按 Task2 的实际特征顺序重排。当前实现支持基于被试误差均值与标准差的正态噪声，以及基于判断阈限半宽的均匀噪声。该潜在感知抽样在粒子之间变化。
+
+\paragraph{规则条件类别概率。}
+给定感知刺激和规则 $h$，当前 v2i 配置采用 prototype distance。设刺激到规则 $h$ 下类别 $c$ 原型的距离为 $d_{t,h,c}$，则
+\begin{equation}
+q_{t,h}(c)
+=
+\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{c'=1}^{2}\exp[-\beta_t(h)d_{t,h,c'}]}.
+\label{eq:model0811-rule-choice}
+\end{equation}
+$\beta_t(h)$ 较大时，同一规则给出更尖锐的类别判断；$\beta_t(h)$ 较小时，靠近边界的选择更接近随机。
+
+\paragraph{反馈支持。}
+规则 $h$ 对当前选择--反馈组合的原始支持为
+\begin{equation}
+\ell_t(h)
+=r_tq_{t,h}(y_t)
++(1-r_t)\bigl[1-q_{t,h}(y_t)\bigr].
+\label{eq:model0811-feedback-support}
+\end{equation}
+当前 likelihood 模块再在规则空间内归一化，得到用于记忆更新的 $L_t(h)$。因而旧控制器日志中的 surprise 是当前归一化实现下的相对反馈惊讶度代理，不应被写成不依赖规则空间的绝对心理 surprisal。v2i 主配置保存 surprise 与 posterior uncertainty 作为诊断，但二者在当前控制器中的权重均冻结为零。
+
+
+\subsubsection{一个试次的严格因果顺序}
+
+\paragraph{choice 前与 outcome 后必须分开。}
+模型的正式生命周期为
+\begin{equation}
+\operatorname{begin\_trial}(\mathbf x_t)
+\longrightarrow p_t(y)
+\longrightarrow
+\operatorname{complete\_trial}(y_t,r_t).
+\label{eq:model0811-lifecycle}
+\end{equation}
+对每个粒子，更完整的因果链为
+\begin{equation}
+\begin{aligned}
+&\pi^+_{t-1},F_{t-1},M_{t-1},
+\chi_{t-1},e_{t-1},\beta_t
+\\
+&\quad\longrightarrow
+E_t,g_t,A_t,e_t,\pi^-_t
+\longrightarrow p_t(y)
+\\
+&\quad\longrightarrow
+\text{weight by }p_t(y_t)
+\longrightarrow
+L_t,\pi^+_t,\beta_{t+1},F_t,M_t,\chi_t.
+\end{aligned}
+\label{eq:model0811-causal-order}
+\end{equation}
+因此，$y_t$ 和 $r_t$ 不能进入同一试次的 $p_t(y)$。它们只更新粒子权重和下一试次可用的认知状态。这一边界同时适用于 failure/mastery controller、动态 $\beta$ 和 misconception capture。
+
+\paragraph{第一个试次。}
+初始活跃集合按照基础先验不放回抽取，初始执行规则再按该活跃集合上的先验抽取。第一个试次不进行规则替换，避免在没有任何行为证据时虚构反馈驱动的搜索事件。v2i 配置使用 $F_0=0$、$M_0=0.5$，所有选择相容度初始化为 $\chi_0(h)=0.5$。
+
+
+\subsubsection{双通道记忆与规则信念}
+
+\paragraph{近期与累积证据。}
+对活跃规则，模型在对数空间维护衰减通道 $D_t(h)$ 和累积通道 $C_t(h)$：
+\begin{align}
+D_t(h)
+&=\gamma D^-_t(h)+\alpha\log L_t(h),
+\nonumber\\
+C_t(h)
+&=C^-_t(h)+\alpha\log L_t(h).
+\label{eq:model0811-dual-memory}
+\end{align}
+当前 v2i 配置使用 $\gamma=0.80$、$\alpha=1$ 和累积通道权重 $w_0=0.15$。反馈后规则信念为
+\begin{equation}
+\pi^+_t(h)
+=
+\frac{\mathbb I(h\in A_t)
+\exp\{w_0C_t(h)+(1-w_0)D_t(h)\}}
+{\sum_{u\in A_t}
+\exp\{w_0C_t(u)+(1-w_0)D_t(u)\}}.
+\label{eq:model0811-memory-posterior}
+\end{equation}
+因此当前配置更重视近期衰减证据，同时保留较弱的长期累积通道。
+
+\paragraph{工作空间变化时的状态迁移。}
+当规则退出或进入时，记忆模块把新规则状态初始化到与 transition prior 一致的数值范围；非活跃规则不保留在线后验质量。这个设计避免 newcomer 仅因缺乏历史而得到任意极端的初始后验，但它仍是一项具体建模假设，不能被解释为已经证实的人类记忆过程。
+
+
+\subsubsection{Failure--mastery 动态策略控制器}
+
+\paragraph{为什么不用平滑 trial progress 直接控制策略。}
+动态策略必须由已发生的学习结果驱动，而不能因为试次序号增加就自动从探索变为利用。0811 因而使用一快一慢的反馈累积状态：失败压力快速追踪近期错误，掌握证据较慢地累积稳定正确。
+
+\paragraph{状态更新。}
+完成 trial $t-1$ 后，供 trial $t$ 使用的状态为
+\begin{align}
+F_{t-1}
+&=\delta_FF_{t-2}
++(1-\delta_F)(1-r_{t-1}),
+\nonumber\\
+M_{t-1}
+&=\delta_MM_{t-2}
++(1-\delta_M)r_{t-1}.
+\label{eq:model0811-failure-mastery}
+\end{align}
+当前配置使用 $\delta_F=0.60$ 和 $\delta_M=0.90$。因此连续错误可以较快推高 $F$，而连续正确需要更长时间才能建立并维持 $M$。
+
+\paragraph{探索目标。}
+定义 logistic 函数 $\sigma(a)=(1+\exp[-a])^{-1}$。一般的 v2 控制器允许 surprise 与 uncertainty 进入驱动力；当前 v2i 将其权重固定为零，因此实际探索驱动力简化为
+\begin{equation}
+d^E_t
+=k_E(F_{t-1}-\theta_E)-w_MM_{t-1},
+\label{eq:model0811-exploration-drive}
+\end{equation}
+并产生目标事件概率
+\begin{equation}
+E_t^\star
+=E_{\min}+(E_{\max}-E_{\min})\sigma(d^E_t).
+\label{eq:model0811-exploration-target}
+\end{equation}
+当前参数为 $E_{\min}=0.05$、$E_{\max}=0.65$、
+$\theta_E=0.55$、$k_E=10$ 和 $w_M=1$。
+
+\paragraph{非对称进入与恢复。}
+实际 $E_t$ 不立即跳到目标，而按目标方向使用不同速度：
+\begin{equation}
+E_t
+=E_{t-1}
++a^E_t(E_t^\star-E_{t-1}),
+\qquad
+a^E_t=
+\begin{cases}
+a_E^\uparrow,&E_t^\star>E_{t-1},\\
+a_E^\downarrow,&E_t^\star\le E_{t-1}.
+\end{cases}
+\label{eq:model0811-exploration-smoothing}
+\end{equation}
+v2i 使用 $a_E^\uparrow=0.80$、$a_E^\downarrow=0.20$，表示错误可快速启动探索，而恢复到利用相对缓慢。
+
+\paragraph{全局搜索目标。}
+搜索范围使用更高的失败门槛：
+\begin{align}
+d^G_t
+&=k_G(F_{t-1}-\theta_G),
+\nonumber\\
+g_t^\star
+&=g_{\min}+(g_{\max}-g_{\min})\sigma(d^G_t),
+\label{eq:model0811-global-target}
+\end{align}
+随后以同样的非对称更新得到 $g_t$。当前参数为
+$g_{\min}=0.05$、$g_{\max}=0.80$、$\theta_G=0.75$、
+$k_G=12$、$a_G^\uparrow=0.80$ 和 $a_G^\downarrow=0.20$。
+这使普通错误首先增加局部搜索，持续高失败才明显提高全局搜索比例。
+
+\paragraph{策略的可视化定义。}
+基于 pre-choice PF marginal，连续策略被分解为
+\begin{align}
+P_t(\text{exploit})&=1-E_t,
+\nonumber\\
+P_t(\text{local explore})&=E_t(1-g_t),
+\nonumber\\
+P_t(\text{global explore})&=E_tg_t.
+\label{eq:model0811-strategy-decomposition}
+\end{align}
+三项逐试次相加为 1。它们是策略控制概率，不是对 hypothesis posterior 的重新命名，也不是把连续状态强行分箱成旧模型的四种离散策略。
+
+
+\subsubsection{有限工作空间中的内部规则搜索}
+
+\paragraph{把事件概率转换为槽位替换率。}
+没有 persistent execution 时，容量 $M_s$ 的每个槽位替换率为
+\begin{equation}
+m_t=1-(1-E_t)^{1/M_s},
+\label{eq:model0811-event-to-slot}
+\end{equation}
+从而 $P(K_t>0)=E_t$。开启 persistent execution 后，执行规则占用一个受保护槽位，只在其余 $M_s-1$ 个槽位搜索：
+\begin{equation}
+m_t^{\mathrm{search}}
+=1-(1-E_t)^{1/(M_s-1)},
+\qquad
+K_t\sim\operatorname{Binomial}(M_s-1,m_t^{\mathrm{search}}).
+\label{eq:model0811-protected-search}
+\end{equation}
+这一换算保证不同容量下的 $E_t$ 都表示相同的“至少搜索一次”概率，而不是让容量较大的被试仅因槽位更多就机械地显得更爱探索。
+
+\paragraph{弱规则优先退出。}
+执行规则 $e_{t-1}$ 始终从退出池中排除。对其余活跃规则，退出权重满足
+\begin{equation}
+P(h\text{ 被抽中退出})
+\propto 1-\pi^+_{t-1}(h)+\epsilon.
+\label{eq:model0811-drop-rule}
+\end{equation}
+实际退出仍为不放回随机抽样，因此模型不会把一次后验差异机械地变成确定性删除。
+
+\paragraph{局部与全局 newcomer proposal。}
+设基础先验为 $p_0(u)$，规则距离为
+$d(h,u)=\operatorname{clip}[1-\operatorname{sim}(h,u),0,1]$。局部核为
+\begin{equation}
+K_L(u\mid h)
+\propto p_0(u)\exp[-d(h,u)/\tau_L],
+\qquad u\ne h.
+\label{eq:model0811-local-kernel}
+\end{equation}
+在当前非活跃集合 $I_{t-1}$ 上，
+\begin{align}
+Q_{L,t}(u)
+&\propto
+\mathbb I(u\in I_{t-1})
+\sum_{h\in A_{t-1}}\pi^+_{t-1}(h)K_L(u\mid h),
+\nonumber\\
+Q_{G,t}(u)
+&\propto\mathbb I(u\in I_{t-1})p_0(u),
+\nonumber\\
+Q_t(u)
+&=(1-g_t)Q_{L,t}(u)+g_tQ_{G,t}(u).
+\label{eq:model0811-newcomer-proposal}
+\end{align}
+模型从 $Q_t$ 中不放回抽取 $K_t$ 条 newcomer。
+
+\paragraph{成对质量转移。}
+每条退出规则 $d_j$ 与一条 newcomer $n_j$ 成对，当前 v2i 使用
+\begin{align}
+\pi^-_t(n_j)&=\pi^+_{t-1}(d_j),
+&
+\pi^-_t(d_j)&=0,
+\nonumber\\
+\pi^-_t(h)&=\pi^+_{t-1}(h),
+&&h\text{ 为幸存规则},
+\label{eq:model0811-pairwise-transfer}
+\end{align}
+最后作数值归一化。v2b 曾检验 global-search-dependent prior reset，但当前 v2i 配置的
+\texttt{prior\_reset.max\_strength}=0，故正式工作候选只有 pairwise mass transfer。
+
+
+\subsubsection{显式执行规则与策略惯性}
+
+\paragraph{内部候选池不等于当前行为策略。}
+若直接把 $A_t$ 中多条规则的类别预测加权平均，即使内部搜索剧烈，不同规则也可能互相抵消，使行为曲线过度平滑。persistent execution 因而维护 $e_t$，choice readout 只使用该规则。工作空间仍可在后台搜索，只有一部分内部搜索事件转化为外显规则切换。
+
+\paragraph{显式切换 hazard。}
+当 $K_t>0$、当前没有 capture dwell 且独立 Bernoulli 事件以
+$s_{\mathrm{exec}}$ 成功时，模型请求显式切换。由于 $P(K_t>0)=E_t$，pre-choice 边际 hazard 为
+\begin{equation}
+P(e_t\ne e_{t-1})=E_ts_{\mathrm{exec}}
+\label{eq:model0811-execution-hazard}
+\end{equation}
+（在没有 dwell 且不考虑候选偶然同一时）。当前配置使用
+$s_{\mathrm{exec}}=0.20$。普通切换从 $A_t\setminus\{e_{t-1}\}$ 按 transition 后 prior 抽取目标。
+
+\paragraph{认知含义。}
+该机制表达 task-set inertia、策略承诺和切换成本：学习者可以在内部考虑替代规则，但不会在每次内部搜索时立刻改变外显作答规则。它既可能维持正确规则形成高表现平台，也可能维持错误规则形成低谷。它不等于额外的选择 lapse，因为切换目标具有明确规则内容并继续接受后续反馈学习。
+
+
+\subsubsection{规则特异动态确信度}
+
+\paragraph{为什么 $\beta$ 必须属于执行规则。}
+若反馈同时强化工作空间中的所有候选规则，未实际用于作答的规则也会获得确信度，导致末期正确规则不够突出。v2f 以后将
+\texttt{update\_scope} 设置为 \texttt{executed\_hypothesis}：trial $t$ 的 outcome 只更新 $e_t$ 的 $\beta$，其他活跃候选保持原值。
+
+\paragraph{概率反馈证据。}
+令执行规则对实际选择的概率为
+$q_t=q_{t,e_t}(y_t)$，则 outcome 与该规则的一致证据为
+\begin{equation}
+b_t=r_tq_t+(1-r_t)(1-q_t),
+\qquad
+\kappa_t^\beta=2(b_t-0.5).
+\label{eq:model0811-beta-evidence}
+\end{equation}
+$\kappa_t^\beta>0$ 表示反馈与“按这条规则作答”相容，
+$\kappa_t^\beta<0$ 表示该执行规则受到反证。
+
+\paragraph{非对称 $\beta$ 更新。}
+对当前执行规则，
+\begin{equation}
+\beta_{t+1}(e_t)=
+\begin{cases}
+\min\!\left[
+\beta_t(e_t)
++\eta_+\kappa_t^\beta
+\displaystyle\frac{\beta_{\max}-\beta_t(e_t)}{\beta_{\max}},
+\beta_{\max}\right],
+&\kappa_t^\beta\ge0,
+\\[6pt]
+\max\!\left[
+\beta_t(e_t)
+-\eta_-\beta_t(e_t)
+\min(1,-\kappa_t^\beta),
+\beta_{\min}\right],
+&\kappa_t^\beta<0.
+\end{cases}
+\label{eq:model0811-beta-update}
+\end{equation}
+当前 v2i 参数为 $\beta_{\mathrm{init}}=5$、
+$\beta_{\min}=0.1$、$\beta_{\max}=25$、
+$\eta_+=1.0$ 和 $\eta_-=0.15$；newcomer 以 $\beta_{\mathrm{init}}$ 初始化，当前配置关闭 prior scaling。该更新发生在 outcome 后，因此 $\beta_{t+1}$ 最早影响 trial $t+1$。
+
+\paragraph{与 failure/mastery 的区别。}
+$F_t$ 和 $M_t$ 是控制是否搜索的总体反馈状态；$\beta_t(h)$ 是具体规则的执行锐度。掌握期可以同时表现为低 $F_t$、高 $M_t$、低 $E_t$ 和正确执行规则上的高 $\beta_t$。错误低谷则可能表现为高 $F_t$、高搜索驱动，但由于执行惯性或 capture 仍继续按错误规则作答。
+
+
+\subsubsection{History-supported misconception capture}
+
+\paragraph{机制动机。}
+单纯的随机执行惯性可以产生长串行为，却不能保证这串选择对应一条认知上自洽的错误规则。0811 因而为每条规则保存“它能否解释近期被试实际选择”的历史状态，并只在失败压力较高时允许这条历史约束 newcomer 搜索和显式切换。
+
+\paragraph{因果的选择相容度。}
+完成 trial $t$ 后，对所有规则更新
+\begin{equation}
+\chi_t(h)
+=\delta_\chi\chi_{t-1}(h)
++(1-\delta_\chi)
+\mathbb I\!\left[
+h(\widetilde{\mathbf x}_t)=y_t
+\right].
+\label{eq:model0811-choice-compatibility}
+\end{equation}
+当前配置使用 $\delta_\chi=0.85$，有效近期记忆长度约为
+$1/(1-\delta_\chi)\approx6.7$ 个试次。更新发生在预测以后，因此 $\chi_t$ 最早参与 trial $t+1$，不读取未来 choice。
+
+\paragraph{搜索偏置。}
+当累计观察数至少为 $n_{\min}=6$ 且
+$F_{t-1}\ge\theta_{\mathrm{cap}}=0.55$ 时，newcomer proposal 变为
+\begin{equation}
+Q_t^{\mathrm{cap}}(u)
+\propto Q_t(u)\,
+\operatorname{clip}\!\left[\chi_{t-1}(u),\epsilon,1\right].
+\label{eq:model0811-capture-search}
+\end{equation}
+这一步只让更能解释近期选择的规则更容易进入内部工作空间，并不自动强迫外显执行切换。
+
+\paragraph{绝对与相对双门槛。}
+显式切换被请求时，在 alternative rules 中取
+\begin{equation}
+h_t^\star
+=\arg\max_{h\in A_t\setminus\{e_{t-1}\}}
+\chi_{t-1}(h).
+\label{eq:model0811-capture-target}
+\end{equation}
+只有同时满足
+\begin{align}
+\chi_{t-1}(h_t^\star)-\chi_{t-1}(e_{t-1})
+&\ge\Delta_{\min}=0.05,
+\nonumber\\
+\chi_{t-1}(h_t^\star)
+&\ge\chi_{\min}=0.70
+\label{eq:model0811-capture-gates}
+\end{align}
+时，切换才被定向到 $h_t^\star$。第一条是相对优势门槛，避免切换到并不比当前规则更好的解释；第二条是 v2i 新增的绝对自洽门槛，避免候选规则只以 0.55 对 0.50 的微弱优势就形成固着。
+
+\paragraph{最短 dwell。}
+capture 后，模型在 $D_{\min}=8$ 个试次内保护新执行规则不发生再次显式切换，但其余工作空间槽位仍继续搜索。dwell 到期后，后续选择改变 $\chi_t(h)$，或普通切换事件发生，模型即可离开该规则。因此该机制是可逆的错误规则承诺，而不是永久吸收状态。
+
+\paragraph{随机数对齐。}
+为了公平比较不同 $\chi_{\min}$，每次显式切换都先消耗同一个普通目标抽样；capture 若满足门槛，只覆盖该目标的取值，而不跳过随机数。这样，$\chi_{\min}=0$ 与 $0.70$ 的配对运行在首次机制差异前共享相同 future RNG stream，避免把随机序列错位误写成门槛效应。
+
+
+\subsubsection{从执行规则到可观察选择}
+
+\paragraph{执行规则的类别概率。}
+开启 persistent execution 后，认知选择概率直接为
+\begin{equation}
+p_t^{\mathrm{rule}}(c)=q_{t,e_t}(c).
+\label{eq:model0811-executed-choice}
+\end{equation}
+配置中仍保存
+\texttt{sharpened\_expectation, power=4} 以兼容不含 persistent execution 的消融模型；但在 v2i 中，hypothesis readout 已是一条规则的 one-hot 权重，因此该 power 对当前正式概率没有额外作用。不能把它继续计作 v2i 的有效拟合机制。
+
+\paragraph{策略条件化选择精度。}
+掌握状态还可放大当前执行规则已经偏好的类别，而不读取正确答案。定义
+\begin{align}
+u_t&=\max(M_{t-1}-F_{t-1},0)^2,
+\nonumber\\
+\rho_t&=1+\lambda_{\mathrm{conf}}u_t,
+\nonumber\\
+p_t^{\mathrm{conf}}(c)
+&=
+\frac{[p_t^{\mathrm{rule}}(c)]^{\rho_t}}
+{\sum_{c'}[p_t^{\mathrm{rule}}(c')]^{\rho_t}}.
+\label{eq:model0811-strategy-confidence}
+\end{align}
+当前配置使用 $\lambda_{\mathrm{conf}}=2$。平方项抑制初始或很弱的 mastery advantage，只在掌握证据明显高于失败压力时使选择更确定。
+
+\paragraph{可观察 lapse。}
+最终 choice distribution 为
+\begin{equation}
+p_t^{\mathrm{obs}}(c)
+=(1-\lambda)p_t^{\mathrm{conf}}(c)
++\frac{\lambda}{2},
+\qquad \lambda=0.02.
+\label{eq:model0811-output-lapse}
+\end{equation}
+当前 v2i 将 post-error、low-accuracy 和 latent-volatility lapse 全部固定为零。因此当前深谷不能由临时提高输出噪声硬造出来，而必须来自规则状态、执行确信度或粒子分布。
+
+
+\subsubsection{粒子滤波：对潜在认知路径求边际}
+
+\paragraph{pre-choice 正式预测。}
+令试次开始前第 $r$ 个粒子权重为 $w^{(r)}_{t-1}$，其完整潜在状态产生
+$p_t^{(r)}(c)$。正式边际预测为
+\begin{equation}
+\overline p_t(c)
+=\sum_{r=1}^{R}w^{(r)}_{t-1}p_t^{(r)}(c).
+\label{eq:model0811-pf-marginal}
+\end{equation}
+这条曲线不是四条 PF repeats 的简单平均规则轨迹；它是在同一观察历史下，对仍可能的感知、工作空间、执行规则、$\beta$ 和 capture 状态求概率边际。
+
+\paragraph{choice conditioning。}
+观察被试选择 $y_t$ 后，粒子权重更新为
+\begin{equation}
+w^{(r)}_t
+=
+\frac{w^{(r)}_{t-1}p_t^{(r)}(y_t)}
+{\sum_jw^{(j)}_{t-1}p_t^{(j)}(y_t)}.
+\label{eq:model0811-pf-weight}
+\end{equation}
+随后每个粒子接收相同真实反馈，更新 likelihood、memory、执行规则 $\beta$、failure/mastery 和 choice compatibility。于是 choice 能够通过粒子权重逐步选择更符合被试行为的潜在规则轨迹，但不会回写同一试次的预测。
+
+\paragraph{ESS 与系统重采样。}
+粒子有效数为
+\begin{equation}
+\operatorname{ESS}_t
+=\frac{1}{\sum_r[w^{(r)}_t]^2}.
+\label{eq:model0811-ess}
+\end{equation}
+当 $\operatorname{ESS}_t<\eta R$ 时，当前实现按系统重采样复制完整 engine/module snapshot，并为未来随机过程重新播种；当前配置使用 $\eta=0.5$。snapshot 包括活跃集合、执行规则、动态 $\beta$、failure/mastery、choice compatibility 和 dwell 状态。
+
+\paragraph{PF 下怎样呈现合理范围。}
+正式
+\texttt{accuracy\_band.png} 先对相同参数和观测历史下的 PF repeats 求 trialwise 正确概率，再以该概率抽取 Bernoulli 行为序列并应用相同 rolling window。图中的 50\%/90\% 色带是固定参数、条件于真实观察历史的行为预测区间，不是 4 次 PF 数值重复之间的窄带，也不是 autonomous rollout 的群体分布。
+
+\paragraph{PF 下怎样呈现代表性轨迹。}
+若科学问题是“一条可能的规则历程长什么样”，不能逐 trial 独立挑选概率最高粒子，也不能把 hypothesis 编号求均值。应在保存父索引后回溯完整 ancestral paths，并在终点粒子混合中选择 posterior-weighted medoid 作为代表路径，同时给出完整路径的分位范围。常规 accuracy 图仍使用式
+\ref{eq:model0811-pf-marginal} 的边际预测；代表路径只用于解释潜在状态，不替代正式拟合概率。
+
+
+\subsubsection{统一评价图与指标语义}
+
+\paragraph{动态策略图。}
+PF dynamic-continuous 的 canonical 图为
+\texttt{basic/dynamic\_strategy\_profile.png}。它同时显示式
+\ref{eq:model0811-strategy-decomposition} 的利用、局部探索和全局探索概率，被试与模型 rolling accuracy，以及处于 capture dwell 的加权粒子比例
+\texttt{Wrong-rule lock-in}。该虚线是潜在策略状态，不是 hypothesis probability 的平均。
+
+\paragraph{Accuracy band。}
+唯一主图为
+\texttt{basic/accuracy\_band.png}；不再另建重复的
+\texttt{predictive\_accuracy\_band} 管线。PF 色带的覆盖率只说明观察曲线是否落入条件行为预测区间。很宽的区间可以获得高覆盖率，因此 coverage 必须和 expected-curve MAE、区间宽度及行为波动比一起解释。
+
+\paragraph{主要拟合指标。}
+观察选择的平均负对数似然为
+\begin{equation}
+\operatorname{NLL}
+=-\frac{1}{T}\sum_{t=1}^{T}
+\log\max\{\overline p_t(y_t),\epsilon_p\}.
+\label{eq:model0811-nll}
+\end{equation}
+NLL 是当前配置的主要 objective；choice Brier、accuracy-curve MAE、phase accuracy、校准、switch PPC、volatility PPC 和 sequential residual diagnostics 是并列诊断。模型不能因复现一个谷底而牺牲完整序列 likelihood 或最终掌握期。
+
+\paragraph{行为波动诊断。}
+behavior PPC 比较真实与条件生成行为的 rolling-accuracy MAE、局部波动、history correlation 和 switch structure。sequential residual diagnostics 进一步检验过去残差是否仍能预测当前残差，以及严格因果的 residual EWMA state 是否改善 chronological held-out NLL。这些诊断可以说明模型遗漏了时间结构，却不能单凭残差把遗漏机制命名为探索、固着或注意波动。
+
+
+\subsubsection{当前 v2i-70 冻结配置}
+
+\paragraph{模型与数值设置。}
+当前 S103 工作候选使用：4 维、2 类、38 条有向规则；容量 $M_{103}=3$；particle filter；
+$R=32$、ESS threshold fraction $0.5$；4 个 common-seed repeats；
+\texttt{prediction\_mode=prior\_t}；\texttt{loss\_metric=choice\_nll}；
+16-trial rolling window。$R=32$ 是机制筛查预算，不是最终数值稳定性设置。
+
+\paragraph{认知参数。}
+failure/mastery 使用 $(\delta_F,\delta_M)=(0.60,0.90)$；
+exploration 使用
+$(E_{\min},E_{\max},\theta_E,k_E,a_E^\uparrow,a_E^\downarrow)
+=(0.05,0.65,0.55,10,0.80,0.20)$；
+global search 使用
+$(g_{\min},g_{\max},\theta_G,k_G,a_G^\uparrow,a_G^\downarrow)
+=(0.05,0.80,0.75,12,0.80,0.20)$；
+execution switch scale 为 $0.20$；
+动态 $\beta$ 使用
+$(5,0.1,25,\eta_-,\eta_+)=(5,0.1,25,0.15,1.0)$；
+strategy confidence gain 为 2；uniform base lapse 为 0.02。
+
+\paragraph{Capture 参数。}
+choice decay 为 0.85，failure gate 为 0.55，最少历史为 6 个试次，相对优势门槛为 0.05，绝对相容度门槛为 0.70，最短 dwell 为 8 个试次。配置文件为
+\path{configs/simulation_cfg/generated_from_hyper/model0809_controller_v2i_rng_aligned_capture70_s103_probe.yaml}。
+
+
+\subsubsection{机制版本与消融关系}
+
+\paragraph{v2a：failure accumulator。}
+仅用 failure/mastery 控制 $E_t$ 和 $g_t$，仍在活跃规则之间做 expectation readout。它检验反馈驱动的连续探索是否比旧平滑控制器更接近行为阶段。
+
+\paragraph{v2b：global-search prior reset。}
+只在发生 replacement 时，将 pairwise-transfer prior 与 active-set base prior 混合。该分支用于检验远端 newcomer 是否因继承过小质量而无法真正竞争；它不是当前 v2i 的组成部分。
+
+\paragraph{v2c：surprise/uncertainty 增益。}
+在 failure/mastery 之外重新加入较小的 surprise 与 uncertainty 权重。该分支用于检验更多短时输入能否制造波动，但当前工作候选将这些权重冻结为零，以减少控制器之间的补偿。
+
+\paragraph{v2d：strategy-conditioned choice confidence。}
+加入式 \ref{eq:model0811-strategy-confidence}，主要改善掌握期类别概率的锐度。
+
+\paragraph{v2e：persistent execution。}
+把内部候选池与显式执行规则分离，使规则搜索不再等同于每试次的规则平均。
+
+\paragraph{v2f：rule-specific dynamic beta。}
+只让执行规则消费 outcome；它在当前筛查中改善了后期掌握平台，是 v2i 的直接无-capture 参照。
+
+\paragraph{v2g--v2i：misconception capture 与门槛校正。}
+v2g 加入近期选择相容度和固定 dwell；v2h 初次加入绝对门槛，但因 capture 与普通切换消耗不同随机数而混入 future RNG 错位，旧 v2h 结果不作为科学结论。v2i 修正共同随机数路径，并以
+$\chi_{\min}=0$ 对 $0.70$ 做严格配对。任何后续阈值筛查都必须沿用这一 RNG 对齐。
+
+
+\subsubsection{截至 0811 的 S103 筛查结果}
+
+\paragraph{比较协议。}
+下述数字均来自被试 103、全部 256 个试次、相同数据与 choice NLL 定义。v2i-0 与 v2i-70 使用相同的 4 个 simulation/filter seeds，每次 32 particles；v2f 使用相同 seed 列表。深谷定义为 trial 96--112，末期定义为 trial 225--256。它们是开发阶段的单被试数值筛查，不是群体统计。
+
+\paragraph{核心结果。}
+四次重复均值为
+\begin{equation}
+\begin{array}{lccc}
+\hline
+\text{Model}
+&\text{NLL}\downarrow
+&\text{Valley acc.}
+&\text{Last-32 acc.}
+\\
+\hline
+\text{v2f}
+&0.4852&0.4538&0.9256
+\\
+\text{v2i-0}
+&0.5297&0.4319&0.7503
+\\
+\text{v2i-70}
+&0.4878&0.4439&0.9146
+\\
+\text{Observed}
+&\text{--}&0.4118&0.9063
+\\
+\hline
+\end{array}
+\label{eq:model0811-s103-summary}
+\end{equation}
+相对 v2i-0，绝对门槛将平均 NLL 降低约 0.0418，4 个配对重复中有 3 个改善，并把末 32 试次预测从 0.7503 恢复到 0.9146。capture switch 的 PF 加权期望累计次数从每次运行约 1.245 降到 0.923，说明门槛确实过滤了一部分弱证据固着。
+
+\paragraph{仍未超过的参照。}
+v2i-70 的 NLL 仍略高于 v2f，canonical expected accuracy-curve MAE 也由 v2f 的 0.0749 增至 0.0826。v2i-70 的深谷比 v2f 更接近被试，但该局部改善尚不足以抵消全序列损失。因此当前不能写“capture 提高了总体拟合”，只能写“0.70 门槛修复了无门槛 capture 的主要失败模式，并在保持末期学习的同时保留较深低谷”。
+
+\paragraph{波动不足。}
+v2i-70 behavior PPC 的 median volatility ratio 约为 0.522，仍未通过当前波动诊断；v2f 也约为 0.522。换言之，错误规则固着门槛解决了末期被错误状态拖垮的问题，却没有让模型总体波动达到被试水平。这是 0811 当前最重要的剩余失配。
+
+
+\subsubsection{截至目前的建模建议}
+
+\paragraph{第一，冻结工作候选而非宣布最终模型。}
+保留 v2f 作为最重要的无-capture 参照，把 v2i-70 标记为机制候选。后续图和论文均并列呈现两者：v2f 代表当前较好的总体拟合，v2i-70 代表能够表达自洽错误低谷但尚未取得总体优势的扩展。不能只展示深谷更好看的 v2i-70。
+
+\paragraph{第二，先做数值稳定性和门槛敏感性。}
+在增加新机制前，以 common random numbers 提高 particle 数和独立 repeats，确认 v2f 与 v2i-70 的 NLL、谷底和末期差异不由 $R=32$ 的数值波动决定。随后只比较少量预先声明的绝对相容度，例如 0.65、0.70 和 0.75；主要判据仍是完整序列 NLL，深谷误差和末期正确率作为共同约束，不能用 S103 谷底单独挑阈值。
+
+\paragraph{第三，若稳定后仍缺少深谷，优先改造退出固着的条件。}
+当前 capture 使用固定 8-trial dwell，可能过于短且与反证强度无关。下一项最有认知含义的候选不是继续提高输出 sharpening，而是让错误规则的释放 hazard 取决于该规则累积的反证：弱反证维持规则，连续强反证才解除承诺。这能够产生有持续时间的低谷，同时允许模型在真正掌握后稳定维持正确规则。该机制尚未实现，必须作为 v2i 的单独消融坐标，不能写进当前模型方程或事后针对 trial 96--112 硬编码。
+
+\paragraph{第四，再扩展被试范围。}
+只有在数值稳定和小型门槛筛查后，才应回到预先选择的代表被试，检查机制是否同时适用于快速学习、晚期学习和平滑学习轨迹；随后再冻结候选集并扩展到全样本。组水平以被试为独立单位，报告配对 NLL、曲线误差、模型胜出人数和被试 bootstrap 区间。
+
+\paragraph{第五，心理解释必须依赖外部约束。}
+若 v2i 在 choice 上获得稳定优势，还需要检验执行规则切换、global search 和 capture dwell 是否预测反应时或口头规则内容。若只能改善 choice likelihood，而不能与独立行为指标对齐，应把模型称为潜在状态统计结构，不把它升级为已经证实的探索--利用认知机制。
+
+
+\subsubsection{实现、复现与评价入口}
+
+\paragraph{模型实现。}
+正式装配仍由 \texttt{StateModel} 和 YAML 完成。公开 dynamic-continuous 类位于
+\path{src/Bayesian_state/problems/modules/hypo_transition/dynamic_continuous.py}；
+failure/mastery、workspace、persistent execution 和 capture runtime 位于
+\path{src/Bayesian_state/problems/modules/hypo_transition/_internal/workspace_policy.py}；
+规则特异 $\beta$ 位于
+\path{src/Bayesian_state/problems/modules/beta.py}；
+choice confidence 与 output noise 位于
+\path{src/Bayesian_state/problems/modules/readout.py}。
+
+\paragraph{潜在路径积分。}
+粒子滤波位于
+\path{src/Bayesian_state/inference_engine/backends/particle_filter.py}。
+每个有状态模块均通过
+\texttt{state\_dict}/\texttt{load\_state\_dict} 随重采样传播；predictive 与 filtered 日志分开保存。随机数对齐和 threshold gate 均有回归测试。
+
+\paragraph{统一评价。}
+固定参数 simulation 使用
+\texttt{python -m src.Bayesian\_state.run\_simulation}；
+全部模型评价使用
+\texttt{python -m src.Bayesian\_state.run\_model\_evaluation}。
+PF 专用范围、ESS 和 active-state 诊断位于同一
+\path{src/Bayesian_state/model_evaluation} 框架，不建立独立绘图 pipeline。所有正式图只输出 PNG，数值摘要使用 CSV/JSON。
+
+\paragraph{当前结果。}
+v2i-70 的 simulation 与评价位于
+\path{results/model_dynamic_continuous/0811_controller_v2i_rng_aligned_capture70_s103_probe/}。
+正式主图为
+\path{model_evaluation/basic/accuracy_band.png}
+和
+\path{model_evaluation/basic/dynamic_strategy_profile.png}。
+
+
+\subsubsection{模型边界与可证伪性}
+
+\paragraph{识别边界。}
+failure/mastery、双通道记忆、动态 $\beta$、strategy confidence、persistent execution 和 capture dwell 都能改变选择的时间连续性。若同时自由搜索，它们可能互相补偿。正式优化必须采用嵌套消融和冻结参数路线，不能把所有机制一次性放开后仅报告最好组合。
+
+\paragraph{数据边界。}
+当前 v2i-70 证据只来自 S103 的开发性探针。深谷区间来自已知行为曲线，因此只能用于诊断，不应成为在同一被试上无限增加机制的目标函数。模型是否适用于其他被试、condition 或独立实验尚未得到验证。
+
+\paragraph{计算边界。}
+32 particles 和 4 repeats 足以发现明显失败模式，不足以证明模型排序稳定。accuracy band 的 Bernoulli draws 描述条件行为变异，不能替代 particle-count 和 filter-seed 敏感性分析。
+
+\paragraph{机制边界。}
+选择相容度高并不证明被试有意识地口述了该规则；capture dwell 也可能吸收注意状态、刺激序列难度或遗漏的 choice-history bias。只有规则内容、反应时或独立实验操纵与潜在状态一致时，才能强化其认知解释。
+
+\paragraph{可推翻条件。}
+以下结果均应阻止模型升级：v2i 的优势随 particle 数或 seed 消失；绝对门槛只在 S103 的已知谷底有效；v2i 在多数被试损害完整序列 NLL 或末期掌握；模型恢复无法区分 v2f 与 v2i；capture dwell 与口头规则或 RT 方向相反；或更简单的 residual-state/readout 模型取得同等拟合。遇到这些结果时，应缩小结论或回到 v2f，而不是继续堆叠机制。
+
+
+\subsubsection{0811 当前结论}
+
+Model 0811 已经形成一条因果清楚且可被逐项消融的计算链：个体化知觉产生潜在刺激；有限工作空间维持少量候选规则；failure/mastery controller 连续调节内部探索量和搜索范围；persistent execution 把内部候选与外显作答规则分开；反馈只更新执行规则的动态 $\beta$；近期选择与规则内容的一致性可以在双门槛约束下形成可逆的错误规则固着；粒子滤波对所有不可见轨迹求 pre-choice 边际预测；统一评价框架再用 choice NLL、accuracy band、continuous strategy profile 和 behavior PPC 检查相对拟合与绝对失配。
+
+当前证据最稳妥的解释是：规则特异动态确信度对末期掌握有帮助，而无门槛的 misconception capture 会造成过度固着；加入 0.70 的绝对相容度门槛后，这一失败得到缓解，但模型整体仍未稳定超过 v2f，且只解释了部分深谷而没有复现被试全部波动。因此，下一阶段应先完成数值稳定性与门槛敏感性，再决定是否加入反证依赖的 release hazard；在完成多被试、恢复与独立行为验证前，不把 v2i-70 写成最终认知机制。

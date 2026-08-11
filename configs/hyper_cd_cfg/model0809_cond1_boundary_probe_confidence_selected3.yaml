@@ -1,0 +1,94 @@
+# Targeted phase-1 boundary probe for subjects 103, 105, and 120.
+#
+# The completed selected-eight fit placed gamma, w0, readout power, m, and
+# lapse on search boundaries. This probe starts from that exact common anchor,
+# holds each subject's selected capacity/g/S-only controller fixed, and asks
+# whether stronger retention/readout plus less forced replacement/noise lowers
+# one-step-ahead choice NLL. Surprise scaling and beta dynamics are deliberately
+# held unchanged here so their effects can be tested in a separate phase.
+
+base_sim_config_path: ../simulation_cfg/model0809_cond1_boundary_probe_confidence_selected3.yaml
+subjects: [103, 105, 120]
+output_dir: ../../results/model_dynamic_continuous/boundary_probe_vonfidence_v2/hyper_cd
+
+objective_order:
+  - path: simulation.mean_error
+    rel_tolerance: 0.0
+    abs_tolerance: 0.0
+    scale_floor: 0.0
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 20260811
+loss_metric: choice_nll
+window_size: 16
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10
+
+cd:
+  n_restarts: 1
+  max_outer_iters: 2
+  init_strategy: anchor
+  coordinate_order: fixed
+  patience: 1
+  min_delta: 0.0005
+  parallel_budget: 16
+  anchor:
+    engine.modules.memory_mod.kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+    engine.modules.hypo_transitions_mod.kwargs.m: 0.05
+    engine.choice_readout.kwargs: {method: sharpened_expectation, power: 4.0}
+    engine.output_noise.kwargs.base_lapse: 0.02
+
+refine_policy:
+  top_k: 4
+
+hyperparam_space:
+  # Joint memory coordinate. The first value reproduces the selected-eight
+  # boundary winner and therefore serves as the paired anchor.
+  engine.modules.memory_mod.kwargs:
+    values_product:
+      gamma: [0.80, 0.90, 0.95]
+      w0: [0.15, 0.25, 0.40]
+      feedback_gain: [1.0]
+
+  # The dynamic module requires baseline m strictly inside (0, 1), so 0.005 is
+  # the lowest valid near-zero probe. A true static endpoint requires the
+  # separate static transition module and belongs in the phase-2 comparison.
+  engine.modules.hypo_transitions_mod.kwargs.m:
+    values: [0.05, 0.03, 0.01, 0.005]
+
+  engine.choice_readout.kwargs:
+    values:
+      - {method: sharpened_expectation, power: 4.0}
+      - {method: sharpened_expectation, power: 6.0}
+      - {method: sharpened_expectation, power: 8.0}
+
+  # A small non-zero floor avoids exact-probability singularities while testing
+  # whether the previous 0.02 lower bound imposed an artificial confidence cap.
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.02, 0.01, 0.005, 0.002]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 2
+    simulation_overrides:
+      simulation_repeats: 2
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 128
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 4
+    simulation_overrides:
+      simulation_repeats: 8
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 512

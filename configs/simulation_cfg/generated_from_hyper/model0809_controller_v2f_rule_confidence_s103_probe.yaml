@@ -1,0 +1,162 @@
+# Targeted probe for executed-rule-specific dynamic confidence (v2f).
+# It freezes the v2e persistent controller and strategy_confidence_gain=2.
+# Feedback changes only the beta of each particle's overtly executed rule;
+# S103 is used for the first causal check of the deep valley and late plateau.
+subjects: [103]
+hyper_base_seed: 20260809
+
+dataset:
+  processed_dir: ../../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../../results/model_dynamic_continuous/0811_controller_v2f_rule_confidence_s103_probe/simulation
+n_jobs: 4
+simulation_repeats: 4
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false
+
+engine_config:
+  partition:
+    class: src.Bayesian_state.problems.partitions.Partition
+    kwargs:
+      n_dims: 4
+      n_cats: 2
+      include_label_reversals: true
+  inference:
+    backend: particle_filter
+    particle_count: 32
+    resample_threshold_fraction: 0.5
+  modules:
+    perception_mod:
+      class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+    beta_mod:
+      class: src.Bayesian_state.problems.modules.beta.BetaModule
+      kwargs:
+        beta_init: 5.0
+        beta_min: 0.1
+        beta_max: 25.0
+        decrease_rate: 0.15
+        correct_additive: 1.0
+        beta_update_mode: probabilistic_feedback
+        update_scope: executed_hypothesis
+        probabilistic_feedback_lapse: 0.0
+        use_prior_scaling: false
+        prior_beta_scale: 0.0
+    hypo_transitions_mod:
+      class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule
+      kwargs:
+        capacity: 3
+        surprise_center: 2.56
+        surprise_scale: 4.58
+        uncertainty_center: 0.1332542767
+        uncertainty_scale: 0.0643078377
+        continuous_controller:
+          mode: failure_accumulator_v2
+          state:
+            failure_decay: 0.60
+            mastery_decay: 0.90
+            initial_failure: 0.0
+            initial_mastery: 0.50
+          exploration:
+            event_min: 0.05
+            event_max: 0.65
+            failure_threshold: 0.55
+            failure_gain: 10.0
+            uncertainty_weight: 0.0
+            mastery_weight: 1.0
+            surprise_weight: 0.0
+            rise_rate: 0.80
+            recovery_rate: 0.20
+          range:
+            global_min: 0.05
+            global_max: 0.80
+            failure_threshold: 0.75
+            failure_gain: 12.0
+            uncertainty_weight: 0.0
+            mastery_weight: 0.0
+            surprise_weight: 0.0
+            rise_rate: 0.80
+            recovery_rate: 0.20
+          execution:
+            enabled: true
+            # P(overt switch) = P(internal search event) * switch_scale.
+            switch_scale: 0.20
+        epsilon: 1.0e-12
+    likelihood_mod:
+      class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
+      kwargs:
+        distance_mode: prototype
+    memory_mod:
+      class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+      kwargs:
+        gamma: 0.80
+        w0: 0.15
+        feedback_gain: 1.0
+  choice_readout:
+    kwargs:
+      method: sharpened_expectation
+      power: 4.0
+      strategy_confidence_gain: 2.0
+  output_noise:
+    kwargs:
+      enabled: true
+      base_lapse: 0.02
+      post_error_lapse: 0.0
+      low_accuracy_lapse: 0.0
+      low_accuracy_threshold: 0.7
+      recent_accuracy_window: 8
+      lapse_decay: 0.0
+      max_lapse: 1.0
+      lapse_target: uniform
+      latent_volatility_lapse: 0.0
+      latent_volatility_power: 1.0
+  agenda:
+    - perception_mod
+    - hypo_transitions_mod
+    - likelihood_mod
+    - memory_mod
+    - beta_mod
+
+subject_overrides:
+  "103":
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 3
+    fixed_hyperparams:
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 3
+      engine.choice_readout.kwargs.strategy_confidence_gain: 2.0
+    hyper_candidate_seed: 3480600467
+  "120":
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 5
+    fixed_hyperparams:
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 5
+      engine.choice_readout.kwargs.strategy_confidence_gain: 2.0
+    hyper_candidate_seed: 1128689542
+  "124":
+    engine_config:
+      modules:
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 5
+    fixed_hyperparams:
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 5
+      engine.choice_readout.kwargs.strategy_confidence_gain: 2.0
+    hyper_candidate_seed: 3160676375

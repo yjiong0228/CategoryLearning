@@ -15,7 +15,7 @@
 
 base_sim_config_path: ../simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml
 subjects: [103, 104, 105, 108, 111, 120, 124, 132]
-output_dir: ../../results/model_dynamic_continuous/hyper_cd
+output_dir: ../../results/model_dynamic_continuous/0809_v1/hyper_cd
 
 # Because loss_metric is choice_nll, simulation.mean_error is the mean
 # trial-wise choice NLL averaged across independent particle-filter repeats.
@@ -45,7 +45,10 @@ cd:
   coordinate_order: shuffle_per_restart
   patience: 1
   min_delta: 0.0005
-  parallel_budget: 4
+  # The immediate-run launcher processes all eight subjects concurrently.
+  # Sixteen processes per subject therefore cap the machine-wide Hyper-CD
+  # workload at 8 * 16 = 128 logical CPUs.
+  parallel_budget: 16
 
 hyperparam_space:
   # Joint Cartesian memory coordinate. gamma and w0 retain distinct cognitive

@@ -1,0 +1,116 @@
+# Phase-1 boundary probe for the three diagnostic subjects identified after the
+# Model 0809 selected-eight run. This file snapshots the previously selected
+# capacity, search-range, and S-only controller settings, while Hyper-CD varies
+# only retention, memory weight, baseline replacement, choice sharpening, and
+# lapse. Keeping the non-probe settings subject-specific makes every candidate
+# directly comparable with that subject's completed Model 0809 fit.
+
+engine_config_path: ../model_struct/pmh_model_cond1_0806.yaml
+subjects: [103, 105, 120]
+hyper_base_seed: 20260811
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/model_dynamic_continuous/boundary_probe_vonfidence_v2/simulation
+oral:
+  mode: center
+
+n_jobs: 8
+simulation_repeats: 8
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+
+# This remains an in-sample model-development probe. Any winning configuration
+# must later be evaluated with frozen parameters and autonomous PPC.
+evaluation_protocol:
+  mode: all
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10
+
+subject_overrides:
+  103:
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 3
+            m: 0.05
+            g: 0.0
+            rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      choice_readout:
+        kwargs: {method: sharpened_expectation, power: 4.0}
+      output_noise:
+        kwargs: {base_lapse: 0.02}
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 3
+      engine.modules.hypo_transitions_mod.kwargs.m: 0.05
+      engine.modules.hypo_transitions_mod.kwargs.g: 0.0
+      engine.modules.hypo_transitions_mod.kwargs.rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      engine.choice_readout.kwargs: {method: sharpened_expectation, power: 4.0}
+      engine.output_noise.kwargs.base_lapse: 0.02
+
+  105:
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 5
+            m: 0.05
+            g: 0.35
+            rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      choice_readout:
+        kwargs: {method: sharpened_expectation, power: 4.0}
+      output_noise:
+        kwargs: {base_lapse: 0.02}
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 5
+      engine.modules.hypo_transitions_mod.kwargs.m: 0.05
+      engine.modules.hypo_transitions_mod.kwargs.g: 0.35
+      engine.modules.hypo_transitions_mod.kwargs.rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      engine.choice_readout.kwargs: {method: sharpened_expectation, power: 4.0}
+      engine.output_noise.kwargs.base_lapse: 0.02
+
+  120:
+    engine_config:
+      modules:
+        memory_mod:
+          kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+        hypo_transitions_mod:
+          kwargs:
+            capacity: 5
+            m: 0.05
+            g: 0.70
+            rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      choice_readout:
+        kwargs: {method: sharpened_expectation, power: 4.0}
+      output_noise:
+        kwargs: {base_lapse: 0.02}
+    fixed_hyperparams:
+      engine.modules.memory_mod.kwargs: {gamma: 0.80, w0: 0.15, feedback_gain: 1.0}
+      engine.modules.hypo_transitions_mod.kwargs.capacity: 5
+      engine.modules.hypo_transitions_mod.kwargs.m: 0.05
+      engine.modules.hypo_transitions_mod.kwargs.g: 0.70
+      engine.modules.hypo_transitions_mod.kwargs.rate_controller: {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+      engine.choice_readout.kwargs: {method: sharpened_expectation, power: 4.0}
+      engine.output_noise.kwargs.base_lapse: 0.02
