@@ -313,6 +313,130 @@ static prior assignment
 
 整体仍归入 `dynamic_continuous.py`，因为完整 H policy pair 已经随 trial 变化。
 
+### failure_accumulator_v2 controller
+
+`continuous_controller.mode: failure_accumulator_v2` 是保持上述 selection/prior 边界不变的
+Controller v2a。它只使用 trial `t-1` 已完成的 feedback，维护快速 failure pressure 与慢速
+mastery evidence；当前 trial 的 choice/feedback 不会进入 pre-choice controller。
+
+控制器直接产生“至少替换一个 hypothesis”的探索事件概率 `E_t`，再按 workspace capacity
+换算为 slot replacement rate：
+
+```text
+m_t = 1 - (1 - E_t) ** (1 / capacity)
+```
+
+因此相同 `E_t` 在不同 capacity 下具有相同的总体探索含义。`exploration.failure_threshold`
+控制局部探索开始上升的位置；更高的 `range.failure_threshold` 让 persistent failure 才启动
+global search。`rise_rate` 与 `recovery_rate` 分开，允许快速进入探索、较慢恢复利用。
+
+```yaml
+continuous_controller:
+  mode: failure_accumulator_v2
+  state:
+    failure_decay: 0.60
+    mastery_decay: 0.90
+  exploration:
+    event_min: 0.05
+    event_max: 0.65
+    failure_threshold: 0.55
+    failure_gain: 10.0
+    rise_rate: 0.80
+    recovery_rate: 0.20
+  range:
+    global_min: 0.05
+    global_max: 0.80
+    failure_threshold: 0.75
+    failure_gain: 12.0
+    rise_rate: 0.80
+    recovery_rate: 0.20
+```
+
+不配置 `prior_reset`（或将 `max_strength` 设为 0）就是 v2a，prior assignment 仍为
+`pairwise_mass_transfer`。v2b 可在同一 controller 下增加：
+
+```yaml
+  prior_reset:
+    max_strength: 0.35
+```
+
+只有当前 trial 确实替换了 hypothesis 时，v2b 才生效。实际混合强度由归一化后的 global-search
+状态从 0 连续增加到 `max_strength`；它把 pairwise-transfer prior 与当前 active set 上的基础先验
+混合，使 persistent failure 引入的远端新 hypothesis 不再只能继承被淘汰 hypothesis 的很小质量。
+没有 replacement、global search 位于基线或未配置该项时，prior assignment 与 v2a 完全相同。
+
+v2e 可在同一 controller 下加入 persistent overt execution：
+
+```yaml
+  execution:
+    enabled: true
+    switch_scale: 0.20
+```
+
+它把“工作空间里正在考虑的 hypotheses”和“当前真正用于作答的 hypothesis”分开。每个
+trajectory/particle 保存一个 `executed_hypothesis`，choice 只从该 rule 读出；一个 workspace
+slot 在本 trial 的内部搜索中保护该 rule，其余 `capacity - 1` 个 slot 继续替换。为维持
+`E_t` 的总体探索含义，搜索 slot rate 改写为：
+
+```text
+m_search,t = 1 - (1 - E_t) ** (1 / (capacity - 1))
+```
+
+只有确实发生内部搜索时才有机会切换 overt rule；条件切换率为 `switch_scale`，所以
+pre-choice 边际 hazard 为 `E_t * switch_scale`。切换后的 rule 从当前 active alternatives
+按 transition 后 prior 抽取，不读取当前正确答案。当前 choice 只在预测完成后用于粒子权重
+更新，因此一段一致的选择会逐步支持执行同一 rule 的粒子，不会造成 current-trial leakage。
+
+该机制表示 strategy commitment、task-set inertia、perseveration 与 switching cost；它既可能
+维持错误 rule 形成深谷，也可能维持正确 rule 形成 mastery。关闭 `execution.enabled` 时仍使用
+原来的 active-hypothesis average readout 和 capacity-slot replacement。
+
+v2g 可在 v2e 的 `execution` 下选择性加入 history-supported misconception capture：
+
+```yaml
+  execution:
+    enabled: true
+    switch_scale: 0.20
+    misconception_capture:
+      enabled: true
+      choice_decay: 0.85
+      failure_threshold: 0.55
+      min_evidence_trials: 6
+      min_advantage: 0.05
+      min_choice_compatibility: 0.70
+      min_dwell_trials: 8
+```
+
+每个 particle 为全部 hypotheses 保存“近期被试选择与该 rule 一致”的指数衰减比例。trial `t`
+结束后才用 choice 更新，因此 trial `t` 的 trace 最早在 trial `t+1` 参与决策。当 failure
+pressure 超过 `failure_threshold` 且历史长度足够时，这个 trace 会：
+
+1. 提高更能解释近期选择的 inactive rule 被搜索进 workspace 的概率；
+2. overt switch 发生时，若最佳 alternative 比当前 executed rule 至少高
+   `min_advantage`，且自身 choice compatibility 不低于
+   `min_choice_compatibility`，将切换定向到该 alternative；
+3. capture 后用 `min_dwell_trials` 抑制 overt switch，但内部 workspace search 仍继续。
+
+`min_choice_compatibility: 0` 是保持 v2g 行为的向后兼容默认值；提高它只收紧 capture，
+不改变 choice-trace 更新、failure controller 或普通 overt switch。
+
+dwell 到期后，后续选择改变 trace，或普通 overt switch 再次发生，模型即可恢复。该机制表示
+被试在连续失败后仍把近期选择组织成一条自洽但可能错误的规则，并短暂坚持它；它不读取目标
+类别、不使用未来 choice，也不硬编码任何被试或 trial 区间。关闭
+`misconception_capture.enabled` 时 v2e 行为不变。
+
+不得把 v2 controller 与 legacy
+`rate_controller`/`range_controller` 或顶层 `m_beta_*`/`g_beta_*` 同时配置。PF 日志保存
+`predictive_failure_pressure`、`predictive_mastery_evidence`、
+`predictive_exploration_target`、`predictive_global_target`、
+`predictive_prior_reset_strength` 和 `predictive_prior_reset_mass_shift`，用于验证触发信号、策略输出
+及先验重置的实际作用量。
+
+v2e 另外保存 `executed_hypothesis`、`execution_switch_probability`、
+`execution_switch_event` 和 `execution_dwell_trials`。
+v2g 还保存 capture eligibility/hold/switch 的 PF 边际概率，以及当前 executed rule 和最佳
+alternative 的 choice compatibility；这些都是 current-choice 之前的预测状态。
+
 ## 8. Optimization 与 inference 的分工
 
 optimization 和 trial-level inference 位于不同层级。

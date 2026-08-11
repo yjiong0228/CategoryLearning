@@ -6,6 +6,8 @@ with dynamic evolution rules that reflect learning behavior:
 - Beta is positively correlated with posterior (better hypotheses have higher beta)
 - Correct choices lead to small beta increases for consistent hypotheses
 - Incorrect choices lead to sharp beta decreases for inconsistent hypotheses
+- Updates can target either every active hypothesis or only the overtly executed
+  hypothesis, so confidence learning can be rule-specific.
 """
 
 from __future__ import annotations
@@ -47,6 +49,8 @@ class BetaModule(BaseModule):
             - beta_max: Maximum beta value (default: 100.0)
             - decrease_rate: Multiplicative factor for incorrect responses (default: 0.3)
             - correct_additive: Additive bonus for correct responses (default: 0.5)
+            - update_scope: ``active_hypotheses`` (legacy default) or
+              ``executed_hypothesis`` for rule-specific confidence learning
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
             - prior_beta_scale: Scaling factor for prior-based initialization (default: 10.0)
         """
@@ -62,6 +66,9 @@ class BetaModule(BaseModule):
         self.correct_additive = float(kwargs.get("correct_additive", 0.5))  # Small additive bonus
         self.beta_update_mode = self._resolve_beta_update_mode(
             kwargs.get("beta_update_mode", "inferred_correct_category")
+        )
+        self.update_scope = self._resolve_update_scope(
+            kwargs.get("update_scope", "active_hypotheses")
         )
         self.probabilistic_feedback_lapse = float(
             kwargs.get("probabilistic_feedback_lapse", kwargs.get("feedback_lapse", 0.0))
@@ -114,6 +121,55 @@ class BetaModule(BaseModule):
                 f"Expected one of: {sorted(valid)}."
             )
         return resolved
+
+    @staticmethod
+    def _resolve_update_scope(scope: str) -> str:
+        scope = str(scope).strip().lower()
+        aliases = {
+            "active": "active_hypotheses",
+            "all_active": "active_hypotheses",
+            "workspace": "active_hypotheses",
+            "executed": "executed_hypothesis",
+            "current_executed": "executed_hypothesis",
+            "overt": "executed_hypothesis",
+        }
+        resolved = aliases.get(scope, scope)
+        valid = {"active_hypotheses", "executed_hypothesis"}
+        if resolved not in valid:
+            raise ValueError(
+                f"Unsupported beta update_scope '{scope}'. "
+                f"Expected one of: {sorted(valid)}."
+            )
+        return resolved
+
+    def _resolve_update_indices(self, active_indices: np.ndarray) -> np.ndarray:
+        """Return the active rules whose confidence consumes this outcome."""
+        active_indices = np.asarray(active_indices, dtype=int)
+        if self.update_scope == "active_hypotheses":
+            return active_indices
+
+        transition = getattr(self.engine, "modules", {}).get(
+            "hypo_transitions_mod"
+        )
+        if transition is None or not bool(
+            getattr(transition, "persistent_execution_enabled", False)
+        ):
+            raise RuntimeError(
+                "beta update_scope='executed_hypothesis' requires the "
+                "hypothesis-transition persistent execution controller."
+            )
+        executed_hypothesis = getattr(transition, "executed_hypothesis", None)
+        if executed_hypothesis is None:
+            raise RuntimeError(
+                "The persistent execution controller has no executed_hypothesis."
+            )
+        executed_hypothesis = int(executed_hypothesis)
+        if executed_hypothesis not in set(active_indices.tolist()):
+            raise RuntimeError(
+                "The executed hypothesis must remain in the active workspace "
+                "during beta updating."
+            )
+        return np.asarray([executed_hypothesis], dtype=int)
         
     def _get_stimulus_category(self, stimulus: np.ndarray, hypo: int) -> int:
         """
@@ -203,10 +259,10 @@ class BetaModule(BaseModule):
         stimulus: np.ndarray,
         choice: int,
         feedback: float,
-        active_indices: np.ndarray,
+        update_indices: np.ndarray,
     ) -> None:
         feedback_value = float(np.clip(feedback, 0.0, 1.0))
-        for hypo_idx in active_indices:
+        for hypo_idx in update_indices:
             current_beta = self.beta[hypo_idx]
             p_choice = self._choice_probability_under_hypothesis(
                 stimulus=stimulus,
@@ -223,9 +279,6 @@ class BetaModule(BaseModule):
             else:
                 penalty = self.decrease_rate * current_beta * min(1.0, -centered)
                 self.beta[hypo_idx] = max(current_beta - penalty, self.beta_min)
-
-        self._zero_inactive_beta(active_indices)
-        self.engine.beta = self.beta
 
     def update_beta(self, 
                     stimulus: np.ndarray,
@@ -262,8 +315,16 @@ class BetaModule(BaseModule):
             active_mask = np.ones(len(self.beta), dtype=float)
         
         active_indices = np.where(active_mask > 0)[0]
+        update_indices = self._resolve_update_indices(active_indices)
         if self.beta_update_mode == "probabilistic_feedback":
-            self._update_beta_probabilistic_feedback(stimulus, choice, feedback, active_indices)
+            self._update_beta_probabilistic_feedback(
+                stimulus,
+                choice,
+                feedback,
+                update_indices,
+            )
+            self._zero_inactive_beta(active_indices)
+            self.engine.beta = self.beta
             return
 
         choice_0idx = int(choice) - 1  # Convert to 0-indexed
@@ -288,7 +349,7 @@ class BetaModule(BaseModule):
                 # Fall back to penalizing choice-consistent hypotheses
                 correct_category = None
         
-        for hypo_idx in active_indices:
+        for hypo_idx in update_indices:
             # Determine which category the stimulus belongs to under this hypothesis
             stim_category = self._get_stimulus_category(stimulus, hypo_idx)
             

@@ -26,6 +26,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from src.Bayesian_state.model_evaluation.model_evaluation import ModelEval
+from src.Bayesian_state.model_evaluation.particle_filter_strategy_audit import (
+    run_particle_filter_strategy_audit,
+)
+from src.Bayesian_state.model_evaluation.particle_filter_choice_transmission_audit import (
+    run_particle_filter_choice_transmission_audit,
+)
+from src.Bayesian_state.model_evaluation.particle_filter_residual_diagnostics import (
+    run_particle_filter_residual_diagnostics,
+)
 from src.Bayesian_state.utils.paths import PROCESSED_DATA_DIR, ROOT_DIR, SIMULATION_RESULTS_DIR
 
 
@@ -154,12 +163,41 @@ def load_simulation_results(
         for field in (
             "transition_rate",
             "search_range",
+            "swap_probability",
+            "swap_event_probability",
             "replacement_count",
             "replacement_fraction",
             "removed_mass",
             "newcomer_distance",
             "feedback_surprise",
             "feedback_uncertainty",
+            "predictive_transition_rate",
+            "predictive_search_range",
+            "predictive_swap_probability",
+            "predictive_swap_event_probability",
+            "predictive_replacement_fraction",
+            "predictive_newcomer_distance",
+            "predictive_strategy_exploit",
+            "predictive_strategy_local_explore",
+            "predictive_strategy_global_explore",
+            "predictive_failure_pressure",
+            "predictive_mastery_evidence",
+            "predictive_choice_confidence_signal",
+            "predictive_strategy_choice_precision",
+            "predictive_exploration_target",
+            "predictive_global_target",
+            "predictive_prior_reset_strength",
+            "predictive_prior_reset_mass_shift",
+            "predictive_execution_switch_probability",
+            "predictive_execution_switch_event_probability",
+            "predictive_execution_dwell_trials",
+            "predictive_misconception_capture_eligible_probability",
+            "predictive_misconception_capture_hold_probability",
+            "predictive_misconception_capture_switch_event_probability",
+            "predictive_executed_choice_compatibility",
+            "predictive_best_alternative_choice_compatibility",
+            "predictive_executed_beta",
+            "filtered_executed_beta",
             "pre_choice_ess",
             "post_choice_ess",
             "resampled",
@@ -352,6 +390,9 @@ def run_basic_plots(
     transition_capabilities = set().union(
         *(evaluator.transition_capabilities(info) for info in visible_results.values())
     )
+    particle_capabilities = set().union(
+        *(evaluator.particle_filter_capabilities(info) for info in visible_results.values())
+    )
     if "dynamic_discrete" in transition_capabilities:
         run_step(
             records,
@@ -364,28 +405,51 @@ def run_basic_plots(
             ),
             [basic_dir / "dynamic_strategy_profile.png"],
         )
+    elif "particle_continuous_strategy" in particle_capabilities:
+        profile_output = basic_dir / "dynamic_strategy_profile.png"
+        profile_summary = basic_dir / "dynamic_strategy_profile_summary.csv"
+        run_step(
+            records,
+            "dynamic_strategy_profile",
+            lambda: evaluator.plot_particle_filter_dynamic_strategy_profile(
+                results,
+                subjects=subjects,
+                save_path=profile_output,
+                summary_path=profile_summary,
+                window_size=window_size,
+            ),
+            [profile_output, profile_summary],
+        )
     else:
         records.append(
             {
                 "name": "dynamic_strategy_profile",
                 "status": "not_applicable",
-                "reason": "No dynamic-discrete probability log is available.",
+                "reason": (
+                    "No dynamic-discrete policy probabilities or particle-filter "
+                    "continuous strategy controls are available."
+                ),
                 "outputs": [],
             }
         )
     if "dynamic_continuous" in transition_capabilities:
-        for name, filename, plot in (
-            (
-                "dynamic_continuous_controls",
-                "dynamic_continuous_controls.png",
-                evaluator.plot_dynamic_continuous_controls,
-            ),
+        dynamic_plots = [
             (
                 "dynamic_continuous_signals",
                 "dynamic_continuous_signals.png",
                 evaluator.plot_dynamic_continuous_signals,
-            ),
-        ):
+            )
+        ]
+        if "particle_continuous_strategy" not in particle_capabilities:
+            dynamic_plots.insert(
+                0,
+                (
+                    "dynamic_continuous_controls",
+                    "dynamic_continuous_controls.png",
+                    evaluator.plot_dynamic_continuous_controls,
+                ),
+            )
+        for name, filename, plot in dynamic_plots:
             output = basic_dir / filename
             run_step(
                 records,
@@ -406,7 +470,7 @@ def run_basic_plots(
                 "outputs": [],
             }
         )
-    if "particle_filter" in transition_capabilities:
+    if "particle_filter" in particle_capabilities:
         output = basic_dir / "particle_filter_ess.png"
         run_step(
             records,
@@ -427,7 +491,7 @@ def run_basic_plots(
                 "outputs": [],
             }
         )
-    if "particle_marginal" in transition_capabilities:
+    if "particle_marginal" in particle_capabilities:
         output = basic_dir / "marginal_active_probabilities.png"
         run_step(
             records,
@@ -511,39 +575,63 @@ def run_trajectory_plots(
 
 def run_behavior_ppc_plots(
     evaluator: ModelEval,
+    results: Mapping[int, Mapping[str, Any]],
     input_dir: Path,
     output_dir: Path,
     records: list[dict[str, Any]],
     subjects: Sequence[int] | None,
     eval_prediction_mode: str | None,
     max_runs_per_subject: int | None,
+    accuracy_band_draws: int,
+    accuracy_band_seed: int,
 ) -> None:
     basic_dir = output_dir / "basic"
     ppc_dir = output_dir / "behavior_ppc"
-    band_dir = output_dir / "predictive_accuracy_band"
-    run_step(
-        records,
-        "accuracy_band",
-        lambda: evaluator.plot_predictive_accuracy_band_group(
-            input_dir,
-            basic_dir / "accuracy_band.png",
-            eval_prediction_mode=eval_prediction_mode,
-            max_runs_per_subject=max_runs_per_subject,
-            subjects=subjects,
-        ),
-        [basic_dir / "accuracy_band.png"],
+    band_output = basic_dir / "accuracy_band.png"
+    band_summary = basic_dir / "accuracy_band_summary.csv"
+    visible_results = evaluator._filter_results(results, subjects)
+    particle_flags = [
+        evaluator.is_particle_filter_result(info)
+        for info in visible_results.values()
+    ]
+
+    def render_accuracy_band():
+        if particle_flags and all(particle_flags):
+            return evaluator.plot_particle_filter_accuracy_band_group(
+                input_dir,
+                band_output,
+                summary_path=band_summary,
+                eval_prediction_mode=eval_prediction_mode,
+                max_runs_per_subject=max_runs_per_subject,
+                subjects=subjects,
+                n_draws=accuracy_band_draws,
+                seed=accuracy_band_seed,
+            )
+        if particle_flags and not any(particle_flags):
+            summary = evaluator.plot_trajectory_accuracy_band_group(
+                input_dir,
+                band_output,
+                eval_prediction_mode=eval_prediction_mode,
+                max_runs_per_subject=max_runs_per_subject,
+                subjects=subjects,
+            )
+            summary.to_csv(band_summary, index=False)
+            return summary
+        raise ValueError(
+            "accuracy-band evaluation requires one homogeneous inference backend; "
+            "particle-filter and trajectory results cannot share one input directory"
+        )
+
+    band_step_name = (
+        "particle_filter_accuracy_band"
+        if particle_flags and all(particle_flags)
+        else "trajectory_accuracy_band"
     )
     run_step(
         records,
-        "predictive_accuracy_band",
-        lambda: evaluator.save_predictive_accuracy_bands(
-            input_dir,
-            band_dir,
-            eval_prediction_mode=eval_prediction_mode,
-            max_runs_per_subject=max_runs_per_subject,
-            subjects=subjects,
-        ),
-        [band_dir],
+        band_step_name,
+        render_accuracy_band,
+        [band_output, band_summary],
     )
     run_step(
         records,
@@ -556,6 +644,139 @@ def run_behavior_ppc_plots(
             subjects=subjects,
         ),
         [ppc_dir],
+    )
+    if particle_flags and all(particle_flags):
+        residual_outputs = [
+            ppc_dir / "sequential_residual_trial_data.csv",
+            ppc_dir / "sequential_residual_lag_tests.csv",
+            ppc_dir / "sequential_residual_subject_summary.csv",
+            ppc_dir / "sequential_residual_diagnostics.png",
+        ]
+        run_step(
+            records,
+            "particle_filter_sequential_residual_diagnostics",
+            lambda: run_particle_filter_residual_diagnostics(
+                input_dir,
+                ppc_dir,
+                subjects=subjects,
+                eval_prediction_mode=eval_prediction_mode,
+                max_runs_per_subject=max_runs_per_subject,
+            ),
+            residual_outputs,
+        )
+    else:
+        records.append(
+            {
+                "name": "particle_filter_sequential_residual_diagnostics",
+                "status": "not_applicable",
+                "reason": (
+                    "Sequential residual diagnosis is currently defined for "
+                    "homogeneous binary PF results."
+                ),
+                "outputs": [],
+            }
+        )
+
+
+def run_strategy_audit(
+    *,
+    results: Mapping[int, Mapping[str, Any]],
+    output_dir: Path,
+    records: list[dict[str, Any]],
+    simulation_config_path: Path,
+    subjects: Sequence[int] | None,
+    common_seeds: Sequence[int],
+    n_jobs: int,
+    particle_count: int,
+    n_behavioral_draws: int,
+) -> None:
+    """Run the explicit PF strategy-freezing audit inside this framework."""
+    audit_dir = output_dir / "strategy_audit"
+    outputs = [
+        audit_dir / "strategy_audit_trial_data.csv",
+        audit_dir / "strategy_audit_summary.csv",
+        audit_dir / "strategy_audit_event_data.csv",
+        audit_dir / "strategy_audit_event_summary.csv",
+        audit_dir / "strategy_counterfactual_accuracy.png",
+        audit_dir / "strategy_contribution_summary.png",
+        audit_dir / "strategy_event_alignment.png",
+    ]
+    run_step(
+        records,
+        "particle_filter_strategy_audit",
+        lambda: run_particle_filter_strategy_audit(
+            results,
+            simulation_config_path=simulation_config_path,
+            output_dir=audit_dir,
+            subjects=subjects,
+            common_seeds=common_seeds,
+            n_jobs=n_jobs,
+            particle_count=particle_count,
+            n_behavioral_draws=n_behavioral_draws,
+        ),
+        outputs,
+    )
+
+
+def run_choice_transmission_audit(
+    *,
+    results: Mapping[int, Mapping[str, Any]],
+    output_dir: Path,
+    records: list[dict[str, Any]],
+    simulation_config_path: Path,
+    subjects: Sequence[int] | None,
+    common_seeds: Sequence[int],
+    n_jobs: int,
+    particle_count: int,
+    strategy_confidence_gain_values: Sequence[float] | None,
+    deep_valley_threshold: float,
+) -> None:
+    """Run PF alternative-readout diagnostics inside the shared framework."""
+
+    audit_dir = output_dir / "choice_transmission_audit"
+    output_stems = (
+        audit_dir / "choice_transmission_curves",
+        audit_dir / "choice_transmission_summary",
+        audit_dir / "ancestral_strategy_trajectories",
+        audit_dir / "error_transmission_layers",
+    )
+    outputs = [
+        audit_dir / "choice_transmission_trial_data.csv",
+        audit_dir / "choice_transmission_summary.csv",
+        audit_dir / "choice_transmission_event_data.csv",
+        audit_dir / "choice_transmission_event_summary.csv",
+        audit_dir / "ancestral_trajectory_trial_data.csv",
+        audit_dir / "ancestral_trajectory_paths.csv",
+        audit_dir / "ancestral_trajectory_summary.csv",
+        audit_dir / "error_transmission_trial_data.csv",
+        audit_dir / "error_transmission_phase_summary.csv",
+        *(stem.with_suffix(".png") for stem in output_stems),
+    ]
+    if strategy_confidence_gain_values is not None:
+        outputs.extend(
+            [
+                audit_dir / "strategy_confidence_gain_screen_trial_data.csv",
+                audit_dir / "strategy_confidence_gain_screen_summary.csv",
+                audit_dir / "strategy_confidence_gain_screen.png",
+            ]
+        )
+    run_step(
+        records,
+        "particle_filter_choice_transmission_audit",
+        lambda: run_particle_filter_choice_transmission_audit(
+            results,
+            simulation_config_path=simulation_config_path,
+            output_dir=audit_dir,
+            subjects=subjects,
+            common_seeds=common_seeds,
+            n_jobs=n_jobs,
+            particle_count=particle_count,
+            strategy_confidence_gain_values=(
+                strategy_confidence_gain_values
+            ),
+            deep_valley_threshold=float(deep_valley_threshold),
+        ),
+        outputs,
     )
 
 
@@ -801,6 +1022,105 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Limit raw runs per subject for behavior PPC; omit to use all runs",
     )
+    p.add_argument(
+        "--accuracy-band-draws",
+        type=int,
+        default=ModelEval.DEFAULT_BEHAVIORAL_BAND_DRAWS,
+        help=(
+            "Behavioral draws for particle-filter conditional accuracy intervals "
+            "(default: %(default)s)"
+        ),
+    )
+    p.add_argument(
+        "--accuracy-band-seed",
+        type=int,
+        default=ModelEval.DEFAULT_BEHAVIORAL_BAND_SEED,
+        help="Base seed for particle-filter behavioral accuracy intervals (default: %(default)s)",
+    )
+    p.add_argument(
+        "--strategy-audit-config",
+        type=Path,
+        help=(
+            "Simulation YAML used to run common-seed PF strategy-freezing "
+            "counterfactuals; omit to skip the audit"
+        ),
+    )
+    p.add_argument(
+        "--strategy-audit-seeds",
+        nargs="+",
+        type=int,
+        default=[20260821, 20260822, 20260823, 20260824],
+        help="Common PF seeds shared by all strategy-audit variants",
+    )
+    p.add_argument(
+        "--strategy-audit-jobs",
+        type=int,
+        default=1,
+        help=(
+            "Parallel PF runs within one strategy-audit variant; default 1 "
+            "avoids transferring large state logs between processes"
+        ),
+    )
+    p.add_argument(
+        "--strategy-audit-particles",
+        type=int,
+        default=32,
+        help=(
+            "Particles per common-seed audit run (default 32 for a screening "
+            "audit; fitted results are not overwritten)"
+        ),
+    )
+    p.add_argument(
+        "--strategy-audit-draws",
+        type=int,
+        default=3000,
+        help="Behavioral draws per subject/variant for audit intervals",
+    )
+    p.add_argument(
+        "--choice-transmission-audit-config",
+        type=Path,
+        help=(
+            "Simulation YAML used to replay common PF states and compare "
+            "alternative choice readouts; omit to skip the audit"
+        ),
+    )
+    p.add_argument(
+        "--choice-transmission-audit-seeds",
+        nargs="+",
+        type=int,
+        default=[20260821, 20260822, 20260823, 20260824],
+        help="Common PF seeds shared by all choice-transmission readouts",
+    )
+    p.add_argument(
+        "--choice-transmission-audit-jobs",
+        type=int,
+        default=1,
+        help="Parallel PF runs within the choice-transmission audit",
+    )
+    p.add_argument(
+        "--choice-transmission-audit-particles",
+        type=int,
+        default=32,
+        help="Particles per choice-transmission audit run (default: 32)",
+    )
+    p.add_argument(
+        "--choice-transmission-gain-screen",
+        nargs="+",
+        type=float,
+        help=(
+            "Optional common-seed strategy_confidence_gain values; include 0 "
+            "as the disabled ablation (for example: 0 1 2 3)"
+        ),
+    )
+    p.add_argument(
+        "--choice-transmission-deep-valley-threshold",
+        type=float,
+        default=0.40,
+        help=(
+            "Causal preceding-window accuracy threshold for the gain-screen "
+            "deep-valley stratum (default: 0.40)"
+        ),
+    )
     p.add_argument("--skip-oral", action="store_true", help="Skip oral/model alignment plots")
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
     p.add_argument("--oral-mode", choices=("center", "region"), default="center")
@@ -862,6 +1182,39 @@ def main() -> None:
             posterior_limit=bool(args.posterior_limit),
         )
 
+    if args.strategy_audit_config is not None:
+        run_strategy_audit(
+            results=results,
+            output_dir=output_dir,
+            records=records,
+            simulation_config_path=resolve_project_path(args.strategy_audit_config),
+            subjects=subjects,
+            common_seeds=args.strategy_audit_seeds,
+            n_jobs=int(args.strategy_audit_jobs),
+            particle_count=int(args.strategy_audit_particles),
+            n_behavioral_draws=int(args.strategy_audit_draws),
+        )
+
+    if args.choice_transmission_audit_config is not None:
+        run_choice_transmission_audit(
+            results=results,
+            output_dir=output_dir,
+            records=records,
+            simulation_config_path=resolve_project_path(
+                args.choice_transmission_audit_config
+            ),
+            subjects=subjects,
+            common_seeds=args.choice_transmission_audit_seeds,
+            n_jobs=int(args.choice_transmission_audit_jobs),
+            particle_count=int(args.choice_transmission_audit_particles),
+            strategy_confidence_gain_values=(
+                args.choice_transmission_gain_screen
+            ),
+            deep_valley_threshold=float(
+                args.choice_transmission_deep_valley_threshold
+            ),
+        )
+
     if not args.skip_trajectory:
         run_trajectory_plots(
             evaluator=evaluator,
@@ -877,12 +1230,15 @@ def main() -> None:
     if not args.skip_behavior_ppc:
         run_behavior_ppc_plots(
             evaluator=evaluator,
+            results=results,
             input_dir=input_dir,
             output_dir=output_dir,
             records=records,
             subjects=subjects,
             eval_prediction_mode=args.eval_prediction_mode,
             max_runs_per_subject=args.ppc_max_runs_per_subject,
+            accuracy_band_draws=args.accuracy_band_draws,
+            accuracy_band_seed=args.accuracy_band_seed,
         )
 
     oral_data = resolve_project_path(args.oral_data)

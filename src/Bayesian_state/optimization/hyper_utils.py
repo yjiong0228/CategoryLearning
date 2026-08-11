@@ -195,6 +195,7 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
         "engine.modules.beta_mod.kwargs.correct_additive": "correct_additive",
         "engine.modules.beta_mod.kwargs.beta_update_mode": "beta_update_mode",
+        "engine.modules.beta_mod.kwargs.update_scope": "beta_update_scope",
         "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse": "probabilistic_feedback_lapse",
         "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base": "prior_reset_base",
         "engine.modules.hypo_transitions_mod.kwargs.prior_reset_post_error": "prior_reset_post_error",
@@ -296,6 +297,7 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
             ("switch_probability", "choice_readout_switch_probability"),
             ("post_error_switch_delta", "choice_readout_post_error_switch_delta"),
             ("low_confidence_switch_gain", "choice_readout_low_confidence_switch_gain"),
+            ("strategy_confidence_gain", "strategy_confidence_gain"),
         ):
             if source in readout:
                 summary[target] = readout[source]

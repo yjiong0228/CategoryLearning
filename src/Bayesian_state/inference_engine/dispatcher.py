@@ -22,6 +22,7 @@ class InferenceBackendConfig:
     backend: str
     particle_count: int | None = None
     resample_threshold_fraction: float | None = None
+    choice_transmission_audit: bool = False
 
 
 def resolve_inference_backend(
@@ -43,6 +44,7 @@ def resolve_inference_backend(
         )
     particle_count = int(raw.get("particle_count", 512))
     threshold = float(raw.get("resample_threshold_fraction", 0.5))
+    choice_transmission_audit = bool(raw.get("choice_transmission_audit", False))
     if particle_count < 2:
         raise ValueError("particle-filter particle_count must be at least 2.")
     if not 0.0 < threshold <= 1.0:
@@ -53,6 +55,7 @@ def resolve_inference_backend(
         backend=BACKEND_PARTICLE_FILTER,
         particle_count=particle_count,
         resample_threshold_fraction=threshold,
+        choice_transmission_audit=choice_transmission_audit,
     )
 
 
@@ -66,6 +69,7 @@ def run_inference_backend(
     feedback: Sequence[float] | np.ndarray,
     inference_seed: int | None = None,
     choice_readout_power: float = 1.0,
+    strategy_confidence_gain: float = 0.0,
     output_lapse: float = 0.0,
     valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
     processed_data_dir: Path | str | None = None,
@@ -98,9 +102,11 @@ def run_inference_backend(
         feedback=feedback,
         particle_count=config.particle_count,
         choice_readout_power=float(choice_readout_power),
+        strategy_confidence_gain=float(strategy_confidence_gain),
         output_lapse=float(output_lapse),
         filter_seed=int(inference_seed if inference_seed is not None else 20260806),
         resample_threshold_fraction=config.resample_threshold_fraction,
+        choice_transmission_audit=config.choice_transmission_audit,
         valid_trial_mask=valid_trial_mask,
         processed_data_dir=processed_data_dir,
         dataset_paths=dataset_paths,

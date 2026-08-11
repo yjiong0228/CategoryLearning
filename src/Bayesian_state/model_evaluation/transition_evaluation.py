@@ -30,10 +30,6 @@ class TransitionEvaluationMixin:
         capabilities: set[str] = set()
         if any(info.get(field) is not None for field in ("transition_rate", "search_range")):
             capabilities.add("dynamic_continuous")
-        if info.get("marginal_active_probability") is not None:
-            capabilities.add("particle_marginal")
-        if any(info.get(field) is not None for field in ("pre_choice_ess", "post_choice_ess")):
-            capabilities.add("particle_filter")
         for step in info.get("strategy_counts_log") or []:
             if not isinstance(step, Mapping):
                 continue
@@ -313,7 +309,7 @@ class TransitionEvaluationMixin:
             **kwargs,
         )
 
-    # dynamic-continuous and particle-marginal diagnostics -----------------
+    # dynamic-continuous diagnostics ----------------------------------------
 
     @staticmethod
     def _transition_series(info: Mapping[str, Any], field: str) -> np.ndarray:
@@ -421,13 +417,15 @@ class TransitionEvaluationMixin:
         save_path=None,
         **kwargs,
     ):
-        """Plot filtered feedback surprise and uncertainty on separate axes."""
+        """Plot feedback signals and pre-choice executed-rule confidence."""
 
         def body(ax, condition, iSub, info):
             surprise = self._transition_series(info, "feedback_surprise")
             uncertainty = self._transition_series(info, "feedback_uncertainty")
+            executed_beta = self._transition_series(info, "predictive_executed_beta")
             surprise_ok = surprise.size and np.any(np.isfinite(surprise))
             uncertainty_ok = uncertainty.size and np.any(np.isfinite(uncertainty))
+            beta_ok = executed_beta.size and np.any(np.isfinite(executed_beta))
             lines = []
             labels = []
             if surprise_ok:
@@ -458,6 +456,24 @@ class TransitionEvaluationMixin:
                 right.set_ylabel("Uncertainty")
                 lines.append(line)
                 labels.append(line.get_label())
+            if beta_ok:
+                beta_axis = ax.twinx()
+                if uncertainty_ok:
+                    beta_axis.spines["right"].set_position(
+                        ("outward", 52)
+                    )
+                    beta_axis.spines["right"].set_visible(True)
+                line = beta_axis.plot(
+                    np.arange(1, executed_beta.size + 1),
+                    executed_beta,
+                    color="#009E73",
+                    linewidth=2.0,
+                    alpha=0.95,
+                    label="Executed-rule beta",
+                )[0]
+                beta_axis.set_ylabel("Executed-rule beta")
+                lines.append(line)
+                labels.append(line.get_label())
             self._add_holdout_split(ax, info)
             if lines:
                 ax.legend(lines, labels, fontsize=8, loc="best")
@@ -470,124 +486,6 @@ class TransitionEvaluationMixin:
             subjects,
             save_path,
             "Dynamic-Continuous Feedback Signals",
-            body,
-            **kwargs,
-        )
-
-    def plot_particle_filter_ess(
-        self,
-        results,
-        subjects=None,
-        save_path=None,
-        **kwargs,
-    ):
-        """Plot normalized pre/post-choice ESS and resampling events."""
-
-        def body(ax, condition, iSub, info):
-            pre = self._transition_series(info, "pre_choice_ess")
-            post = self._transition_series(info, "post_choice_ess")
-            resampled = self._transition_series(info, "resampled")
-            particle_count = self._safe_float(info.get("particle_count"), default=np.nan)
-            normalize = bool(np.isfinite(particle_count) and particle_count > 0)
-            plotted = False
-            for values, label, color in (
-                (pre, "Pre-choice ESS", "#0072B2"),
-                (post, "Post-choice ESS", "#D55E00"),
-            ):
-                if values.size and np.any(np.isfinite(values)):
-                    plotted_values = values / particle_count if normalize else values
-                    ax.plot(
-                        np.arange(1, values.size + 1),
-                        plotted_values,
-                        label=f"{label} / N" if normalize else label,
-                        color=color,
-                        linewidth=1.8,
-                    )
-                    plotted = True
-            if resampled.size:
-                trials = np.flatnonzero(np.asarray(resampled, dtype=bool)) + 1
-                if trials.size:
-                    ax.scatter(
-                        trials,
-                        np.full(trials.size, 0.03),
-                        marker="|",
-                        s=55,
-                        color="#000000",
-                        label="Resampled",
-                        zorder=5,
-                    )
-                    plotted = True
-            self._add_holdout_split(ax, info)
-            ax.set(
-                title=f"Subject {iSub} (Condition {condition})",
-                xlabel="Trial",
-                ylabel="Effective sample size / N" if normalize else "Effective sample size",
-            )
-            if normalize:
-                ax.set_ylim(-0.02, 1.02)
-            if plotted:
-                ax.legend(fontsize=8, loc="best")
-            else:
-                ax.text(0.5, 0.5, "No particle ESS log", ha="center", va="center", transform=ax.transAxes)
-            ax.grid(axis="y", alpha=0.2)
-
-        self._plot_by_condition(
-            results,
-            subjects,
-            save_path,
-            "Particle-Filter Effective Sample Size",
-            body,
-            **kwargs,
-        )
-
-    def plot_marginal_active_probabilities(
-        self,
-        results,
-        subjects=None,
-        save_path=None,
-        **kwargs,
-    ):
-        """Plot particle-marginal active-hypothesis probabilities by trial."""
-
-        def body(ax, condition, iSub, info):
-            raw = info.get("marginal_active_probability")
-            try:
-                values = np.asarray(raw, dtype=float)
-            except (TypeError, ValueError):
-                values = np.asarray([], dtype=float)
-            if values.ndim != 2 or values.size == 0:
-                ax.text(0.5, 0.5, "No marginal active-state data", ha="center", va="center", transform=ax.transAxes)
-                ax.set(title=f"Subject {iSub} (Condition {condition})")
-                return
-            image = ax.imshow(
-                values.T,
-                origin="lower",
-                aspect="auto",
-                interpolation="nearest",
-                vmin=0.0,
-                vmax=1.0,
-                cmap="viridis",
-            )
-            context = info.get("score_context") or {}
-            if isinstance(context, Mapping) and context.get("split_index") is not None:
-                ax.axvline(
-                    float(context["split_index"]) - 0.5,
-                    color="white",
-                    linestyle=":",
-                    linewidth=1.5,
-                )
-            ax.set(
-                title=f"Subject {iSub} (Condition {condition})",
-                xlabel="Trial",
-                ylabel="Hypothesis index",
-            )
-            ax.figure.colorbar(image, ax=ax, fraction=0.035, pad=0.02, label="P(active)")
-
-        self._plot_by_condition(
-            results,
-            subjects,
-            save_path,
-            "Particle-Marginal Active-Hypothesis Probability",
             body,
             **kwargs,
         )

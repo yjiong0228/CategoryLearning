@@ -191,12 +191,39 @@ inference:
 路径求边际预测。每个粒子仍然是正常的 `StateModel`，重采样依靠 engine/module 的
 `state_dict()` 与 `load_state_dict()`，没有另一套认知模型状态。
 
+粒子 transition 日志显式区分 pre-choice predictive 策略和 post-choice filtered 诊断。
+`predictive_strategy_exploit/local_explore/global_explore` 在当前 choice 进入权重更新之前求边缘，
+用于解释该 trial 的学习策略；filtered controls 保留用于事后状态诊断。
+
 两个 backend 均返回 `inference_engine/results.py` 定义的 `InferenceResult`。优化与评估层
 优先读取其中的公共 probability/state/latent/diagnostic mappings；旧 backend-specific 属性
 继续作为兼容入口。
 
 当前通用粒子入口支持 condition 1、`expectation`/`sharpened_expectation` readout，以及
-uniform `base_lapse`。历史依赖 lapse、RT emission 和其他 condition 尚未进入这一入口。
+uniform `base_lapse`。`choice_readout.kwargs.strategy_confidence_gain > 0` 还可在 hypothesis
+已汇总为 category probability 后、lapse 之前加入策略条件化执行确信度。它只使用 pre-choice
+controller state：令
+`signal_t = max(mastery_evidence_t - failure_pressure_t, 0)^2`，再以
+`precision_t = 1 + gain * signal_t` 对当前 category probability 做幂变换。该操作放大当前偏好，
+不读取正确答案，也不改变 hypothesis learning；默认 `gain=0` 时严格退化为旧行为。历史依赖
+lapse、RT emission 和其他 condition 尚未进入这一入口。
+
+`continuous_controller.execution.enabled: true` 可让每个 trajectory/particle 维护一个
+`executed_hypothesis`：active set 仍表示内部候选池，但 choice 只执行该 rule。执行 rule
+占用一个受保护 slot，内部搜索使用其余 slots；只有部分已实现的搜索事件按
+`execution.switch_scale` 转为 overt switch。该状态进入 engine/module snapshot 并随 PF
+重采样传播，当前 choice 只在 pre-choice prediction 之后更新粒子权重。未配置时保持原来的
+active-hypothesis marginal readout。
+
+若再设置 `beta_mod.kwargs.update_scope: executed_hypothesis`，每次反馈只改变 overt rule
+自己的 beta；配合非零 `correct_additive` 和 `decrease_rate`，成功会逐步强化当前规则的
+判别锐度，失败会降低它的确信度，未执行候选不会被同步强化。
+
+`continuous_controller.execution.misconception_capture.enabled: true` 可进一步维护严格
+history-only 的规则—选择相容度：failure pressure 高时优先搜索并执行更能解释近期选择的
+alternative rule，随后以最短 dwell 抑制立即反悔。它用于表达“自洽错误规则的短期固着”，
+与动态 beta 的“对当前执行规则有多确信”是两个不同状态；两者均随 particle snapshot 和 PF
+重采样传播。
 
 ## 6. 配置分层
 
@@ -265,7 +292,7 @@ python -m src.Bayesian_state.run_hyper_then_simulation \
   --stage coarse \
   --skip-simulation \
   --generated-sim-config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
-  --sim-output-dir results/model_dynamic_continuous/simulation
+  --sim-output-dir results/model_dynamic_continuous/0809_v1/simulation
 ```
 
 该配置用全部 trial 的 `choice_nll` 搜索参数，并把 `capacity` 当作被试级坐标

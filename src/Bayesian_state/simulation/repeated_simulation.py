@@ -120,6 +120,7 @@ def aggregate_simulation_runs(
     representative_run_selection: str = "min_error",
     representative_choice_fraction: float = 0.10,
     statistics_config: Mapping[str, Any] | None = None,
+    compute_statistics: bool = True,
 ) -> SimulationResult:
     """Aggregate repeated state-model runs using the standard simulation summary semantics."""
     runs = list(runs)
@@ -152,10 +153,14 @@ def aggregate_simulation_runs(
     ]
     if not keep_logs:
         raw_runs = []
-    statistics_summary = compute_simulation_statistics(
-        runs,
-        selection_prediction_mode=selection_prediction_mode,
-        config=statistics_config,
+    statistics_summary = (
+        compute_simulation_statistics(
+            runs,
+            selection_prediction_mode=selection_prediction_mode,
+            config=statistics_config,
+        )
+        if bool(compute_statistics)
+        else {}
     )
 
     return SimulationResult(
@@ -202,6 +207,8 @@ class StateModelSimulationRunner(BaseStateOptimizer):
         score_trial_mask: Sequence[bool] | np.ndarray | None = None,
         evaluation_protocol: Mapping[str, Any] | None = None,
         evaluation_role: str = EVALUATION_ROLE_SIMULATION,
+        trajectory_seeds: Sequence[int] | None = None,
+        compute_statistics: bool = True,
     ) -> Dict[str, object]:
         if simulation_repeats is None:
             raise ValueError("simulation_repeats is required.")
@@ -248,13 +255,30 @@ class StateModelSimulationRunner(BaseStateOptimizer):
             else None
         )
 
+        resolved_trajectory_seeds: list[int | None]
+        if trajectory_seeds is not None:
+            resolved_trajectory_seeds = [int(seed) for seed in trajectory_seeds]
+            if len(resolved_trajectory_seeds) != simulation_repeats:
+                raise ValueError(
+                    "trajectory_seeds length must equal simulation_repeats: "
+                    f"{len(resolved_trajectory_seeds)} vs {simulation_repeats}"
+                )
+        else:
+            resolved_trajectory_seeds = [
+                (
+                    derive_trajectory_seed(
+                        int(simulation_point_seed),
+                        "simulation",
+                        repeat_index,
+                    )
+                    if simulation_point_seed is not None
+                    else None
+                )
+                for repeat_index in range(simulation_repeats)
+            ]
+
         tasks = []
-        for repeat_index in range(simulation_repeats):
-            trajectory_seed = (
-                derive_trajectory_seed(int(simulation_point_seed), "simulation", repeat_index)
-                if simulation_point_seed is not None
-                else None
-            )
+        for repeat_index, trajectory_seed in enumerate(resolved_trajectory_seeds):
             tasks.append(
                 {
                     "repeat_index": int(repeat_index),
@@ -315,6 +339,7 @@ class StateModelSimulationRunner(BaseStateOptimizer):
             representative_run_selection=representative_run_selection,
             representative_choice_fraction=representative_choice_fraction,
             statistics_config=statistics_config,
+            compute_statistics=compute_statistics,
         )
 
         return {

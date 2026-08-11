@@ -172,6 +172,13 @@ updates.
 | `sticky_sample` | Keep a sampled hypothesis until confidence/error/inactivity triggers switching | `switch_probability`, `post_error_switch_delta`, `low_confidence_switch_gain` |
 | `stubborn_sticky` | Like sticky readout, but errors can reduce switching and create persistent wrong choices | `switch_probability`, `post_error_switch_delta` |
 
+For failure-accumulator controllers, any deterministic readout may additionally set
+`strategy_confidence_gain`. A positive value sharpens the already aggregated
+category probability using the squared positive pre-choice mastery advantage:
+`precision_t = 1 + gain * max(mastery_t - failure_t, 0)^2`. It amplifies the
+currently preferred action regardless of whether that action is correct, and
+defaults to zero for exact backward compatibility.
+
 V11 profile candidates are stored as multi-path model kwargs, so a YAML file can
 refer to a JSON candidate list with:
 

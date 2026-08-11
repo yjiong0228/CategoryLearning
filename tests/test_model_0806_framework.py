@@ -4,6 +4,7 @@ import importlib
 import math
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +15,9 @@ from src.Bayesian_state.simulation.state_model_execution import (
     evaluate_state_model_run,
 )
 from src.Bayesian_state.inference_engine.dispatcher import run_inference_backend
+from src.Bayesian_state.inference_engine.backends.particle_filter import (
+    _trace_ancestral_indices,
+)
 from src.Bayesian_state.inference_engine.results import (
     InferenceResult,
     TrajectoryInferenceResult,
@@ -22,8 +26,12 @@ from src.Bayesian_state.inference_engine.posterior_predictive import (
     run_conditioned_condition1_rollouts,
 )
 from src.Bayesian_state.problems import StateModel
+from src.Bayesian_state.problems.modules.beta import BetaModule
 from src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous import (
     DynamicContinuousHypothesisTransitionModule,
+)
+from src.Bayesian_state.problems.modules.hypo_transition.process import (
+    HypothesisSelection,
 )
 from src.Bayesian_state.problems.modules.hypo_transition.dynamic_discrete import (
     DynamicDiscreteHypothesisTransitionModule,
@@ -34,6 +42,7 @@ from src.Bayesian_state.problems.modules.hypo_transition.static import (
     StaticHypothesisTransitionModule,
 )
 from src.Bayesian_state.problems.modules.readout import (
+    apply_strategy_conditioned_choice_confidence,
     read_oral_report,
     read_reaction_time,
 )
@@ -63,6 +72,16 @@ class _TinyPartition:
         boundary = (int(hypo) + 1.0) / (self.length + 1.0)
         category_one = x <= boundary if int(hypo) % 2 == 0 else x > boundary
         return np.asarray([0.85, 0.15] if category_one else [0.15, 0.85])
+
+    def get_category_assignment(
+        self,
+        hypo,
+        stimulus,
+        distance_mode="prototype",
+        beta=1.0,
+    ):
+        del distance_mode, beta
+        return int(np.argmax(self._probability(int(hypo), np.asarray(stimulus))))
 
     def get_category_probabilities(self, hypo, data, beta, distance_mode, **kwargs):
         del beta, distance_mode, kwargs
@@ -209,6 +228,407 @@ def test_adaptive_rate_uses_previous_feedback_and_restores_state():
     module.load_state_dict(saved)
     assert np.array_equal(module.active, saved_active)
     assert module.trial_index == saved["trial_index"]
+
+
+def _failure_accumulator_module(
+    capacity: int,
+    seed: int,
+    prior_reset_max_strength: float = 0.0,
+    execution_switch_scale: float | None = None,
+    misconception_capture: dict | None = None,
+):
+    engine = _TinyEngine()
+    module = DynamicContinuousHypothesisTransitionModule(
+        engine,
+        capacity=capacity,
+        init_hypotheses=list(range(capacity)),
+        continuous_controller={
+            "mode": "failure_accumulator_v2",
+            "state": {
+                "failure_decay": 0.60,
+                "mastery_decay": 0.90,
+            },
+            "exploration": {
+                "event_min": 0.05,
+                "event_max": 0.65,
+                "failure_threshold": 0.55,
+                "failure_gain": 10.0,
+                "uncertainty_weight": 0.0,
+                "mastery_weight": 1.0,
+                "surprise_weight": 0.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+            "range": {
+                "global_min": 0.05,
+                "global_max": 0.80,
+                "failure_threshold": 0.75,
+                "failure_gain": 12.0,
+                "uncertainty_weight": 0.0,
+                "mastery_weight": 0.0,
+                "surprise_weight": 0.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+            "prior_reset": {
+                "max_strength": prior_reset_max_strength,
+            },
+            **(
+                {
+                    "execution": {
+                        "enabled": True,
+                        "switch_scale": execution_switch_scale,
+                        **({"misconception_capture": misconception_capture} if misconception_capture else {}),
+                    }
+                }
+                if execution_switch_scale is not None
+                else {}
+            ),
+        },
+        module_seed=seed,
+    )
+    module.process()
+    return engine, module
+
+
+def _advance_failure_controller(engine, module, feedback: float) -> tuple[float, float]:
+    module.record_outcome((np.asarray([0.2]), 1, feedback))
+    engine.likelihood = np.ones(engine.set_size, dtype=float)
+    engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+    module.process()
+    event = module.transition_log[-1]
+    return float(event["swap_probability"]), float(event["predictive_g"])
+
+
+def test_strategy_conditioned_choice_confidence_is_symmetric_and_bounded():
+    base = np.asarray([0.70, 0.30])
+    confident, details = apply_strategy_conditioned_choice_confidence(
+        base,
+        mastery_evidence=0.90,
+        failure_pressure=0.10,
+        gain=2.0,
+    )
+    reversed_confident, reversed_details = (
+        apply_strategy_conditioned_choice_confidence(
+            base[::-1],
+            mastery_evidence=0.90,
+            failure_pressure=0.10,
+            gain=2.0,
+        )
+    )
+    np.testing.assert_allclose(confident, reversed_confident[::-1])
+    assert confident[0] > base[0]
+    assert details["strategy_confidence_signal"] == pytest.approx(0.64)
+    assert details["strategy_choice_precision"] == pytest.approx(2.28)
+    assert details == reversed_details
+
+    unchanged, disabled = apply_strategy_conditioned_choice_confidence(
+        base,
+        mastery_evidence=np.nan,
+        failure_pressure=np.nan,
+        gain=0.0,
+    )
+    np.testing.assert_allclose(unchanged, base)
+    assert disabled["strategy_choice_precision"] == 1.0
+
+
+def test_failure_accumulator_v2_escalates_and_is_capacity_neutral():
+    engine2, module2 = _failure_accumulator_module(capacity=2, seed=21)
+    engine3, module3 = _failure_accumulator_module(capacity=3, seed=22)
+
+    trajectories = []
+    for engine, module in ((engine2, module2), (engine3, module3)):
+        after_correct = _advance_failure_controller(engine, module, 1.0)
+        after_one_error = _advance_failure_controller(engine, module, 0.0)
+        after_two_errors = _advance_failure_controller(engine, module, 0.0)
+        after_three_errors = _advance_failure_controller(engine, module, 0.0)
+        after_recovery = _advance_failure_controller(engine, module, 1.0)
+        trajectories.append(
+            (
+                after_correct,
+                after_one_error,
+                after_two_errors,
+                after_three_errors,
+                after_recovery,
+            )
+        )
+
+        assert after_two_errors[0] > after_one_error[0]
+        assert after_three_errors[1] > after_two_errors[1]
+        assert after_recovery[0] < after_three_errors[0]
+        assert module.failure_pressure < 0.784
+        assert module.mastery_evidence > 0.36
+
+        saved = module.state_dict()
+        _advance_failure_controller(engine, module, 0.0)
+        module.load_state_dict(saved)
+        assert module.failure_pressure == pytest.approx(saved["failure_pressure"])
+        assert module.mastery_evidence == pytest.approx(saved["mastery_evidence"])
+        assert module.outcome_pending == saved["outcome_pending"]
+
+    event_probabilities2 = [item[0] for item in trajectories[0]]
+    event_probabilities3 = [item[0] for item in trajectories[1]]
+    np.testing.assert_allclose(event_probabilities2, event_probabilities3)
+    assert module2.current_m != pytest.approx(module3.current_m)
+
+
+def test_persistent_execution_protects_switches_and_restores_state():
+    engine, module = _failure_accumulator_module(
+        capacity=3,
+        seed=31,
+        execution_switch_scale=1.0,
+    )
+    initial_executed = int(module.executed_hypothesis)
+    assert module.transition_log[0]["execution_dwell_trials"] == 1
+
+    # Isolate the execution contract: a certain search event replaces both
+    # non-executed slots, while the protected overt rule stays available until
+    # the explicit switch is completed.
+    module.dynamic_controls = False
+    module.current_event_probability = 1.0
+    module.current_m = 1.0
+    engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+    module.process()
+    event = module.transition_log[-1]
+
+    assert event["swap_probability"] == pytest.approx(1.0)
+    assert event["execution_search_slot_count"] == 2
+    assert event["replacement_count"] == 2
+    assert event["execution_switch_probability"] == pytest.approx(1.0)
+    assert event["execution_switch_event"] is True
+    assert initial_executed not in event["dropped_hypotheses"]
+    assert initial_executed in event["active_after"]
+    assert int(event["executed_hypothesis"]) != initial_executed
+    assert int(event["executed_hypothesis"]) in event["active_after"]
+    assert event["execution_dwell_trials"] == 1
+
+    saved = module.state_dict()
+    saved_active = module.active.copy()
+    saved_executed = int(module.executed_hypothesis)
+    engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+    module.process()
+    module.load_state_dict(saved)
+    assert np.array_equal(module.active, saved_active)
+    assert int(module.executed_hypothesis) == saved_executed
+    assert module.execution_dwell_trials == saved["execution_dwell_trials"]
+    assert module.execution_switch_count == saved["execution_switch_count"]
+
+
+def test_misconception_capture_uses_past_choices_and_enforces_minimum_dwell():
+    engine, module = _failure_accumulator_module(
+        capacity=3,
+        seed=37,
+        execution_switch_scale=1.0,
+        misconception_capture={
+            "enabled": True,
+            "choice_decay": 0.0,
+            "failure_threshold": 0.0,
+            "min_evidence_trials": 1,
+            "min_advantage": 0.05,
+            "min_dwell_trials": 3,
+        },
+    )
+    module.executed_hypothesis = 0
+    assert np.all(module.choice_compatibility == 0.5)
+
+    # The completed choice updates the rule-compatibility trace, but cannot
+    # alter the already logged trial-0 transition.
+    module.record_outcome((np.asarray([0.10]), 2, 0.0))
+    expected = np.asarray(
+        [
+            float(
+                engine.partition.get_category_assignment(
+                    hypothesis,
+                    np.asarray([0.10]),
+                )
+                == 1
+            )
+            for hypothesis in range(engine.set_size)
+        ]
+    )
+    np.testing.assert_allclose(module.choice_compatibility, expected)
+    assert module.transition_log[0]["choice_compatibility_observations"] == 0
+
+    # Force a search event.  The overt rule is captured by the active
+    # alternative that best explains the previous choice.
+    module.dynamic_controls = False
+    module.failure_pressure = 1.0
+    module.current_event_probability = 1.0
+    module.current_m = 1.0
+    engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+    module.process()
+    captured = module.transition_log[-1]
+
+    assert captured["misconception_capture_search_bias"] is True
+    assert captured["misconception_capture_eligible"] is True
+    assert captured["misconception_capture_switch_event"] is True
+    assert captured["execution_switch_event"] is True
+    assert captured["misconception_capture_hold_remaining"] == 2
+    assert captured["executed_hypothesis"] != 0
+    assert expected[int(captured["executed_hypothesis"])] == 1.0
+
+    saved = module.state_dict()
+    captured_hypothesis = int(module.executed_hypothesis)
+    engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+    module.process()
+    held = module.transition_log[-1]
+    assert held["execution_switch_probability"] == 0.0
+    assert held["execution_switch_event"] is False
+    assert int(held["executed_hypothesis"]) == captured_hypothesis
+    assert held["misconception_capture_hold_remaining"] == 1
+
+    module.choice_compatibility[:] = 0.5
+    module.misconception_capture_hold_remaining = 0
+    module.load_state_dict(saved)
+    np.testing.assert_allclose(
+        module.choice_compatibility,
+        saved["choice_compatibility"],
+    )
+    assert module.misconception_capture_hold_remaining == 2
+
+
+def test_misconception_capture_requires_absolute_choice_compatibility():
+    _, module = _failure_accumulator_module(
+        capacity=3,
+        seed=41,
+        execution_switch_scale=1.0,
+        misconception_capture={
+            "enabled": True,
+            "failure_threshold": 0.0,
+            "min_evidence_trials": 1,
+            "min_advantage": 0.05,
+            "min_choice_compatibility": 0.70,
+            "min_dwell_trials": 3,
+        },
+    )
+    module.executed_hypothesis = 0
+    module.failure_pressure = 1.0
+    module.choice_compatibility_observations = 8
+    module.choice_compatibility[:3] = [0.50, 0.60, 0.65]
+
+    target, current, best, advantage, eligible = (
+        module._misconception_capture_target(np.asarray([1, 2]))
+    )
+    assert target == 2
+    assert current == pytest.approx(0.50)
+    assert best == pytest.approx(0.65)
+    assert advantage == pytest.approx(0.15)
+    assert eligible is False
+
+    module.choice_compatibility[2] = 0.75
+    _, _, best, advantage, eligible = module._misconception_capture_target(
+        np.asarray([1, 2])
+    )
+    assert best == pytest.approx(0.75)
+    assert advantage == pytest.approx(0.25)
+    assert eligible is True
+
+
+def test_misconception_threshold_variants_preserve_future_execution_rng():
+    modules = []
+    for threshold in (0.0, 0.70):
+        engine, module = _failure_accumulator_module(
+            capacity=3,
+            seed=43,
+            execution_switch_scale=1.0,
+            misconception_capture={
+                "enabled": True,
+                "failure_threshold": 0.0,
+                "min_evidence_trials": 1,
+                "min_advantage": 0.05,
+                "min_choice_compatibility": threshold,
+                "min_dwell_trials": 3,
+            },
+        )
+        module.executed_hypothesis = 0
+        module.dynamic_controls = False
+        module.failure_pressure = 1.0
+        module.choice_compatibility_observations = 8
+        module.choice_compatibility[:] = 0.65
+        module.choice_compatibility[0] = 0.50
+        module.current_event_probability = 1.0
+        module.current_m = 1.0
+        engine.posterior = np.asarray(engine.prior, dtype=float).copy()
+        modules.append(module)
+
+    for module in modules:
+        module.process()
+
+    permissive_event = modules[0].transition_log[-1]
+    strict_event = modules[1].transition_log[-1]
+    assert permissive_event["misconception_capture_switch_event"] is True
+    assert strict_event["misconception_capture_switch_event"] is False
+    assert (
+        permissive_event["misconception_capture_target_hypothesis"]
+        == strict_event["misconception_capture_target_hypothesis"]
+    )
+    assert modules[0].execution_rng.random() == pytest.approx(
+        modules[1].execution_rng.random()
+    )
+
+
+def test_beta_executed_hypothesis_scope_updates_only_overt_rule():
+    engine = _TinyEngine()
+    engine.hypotheses_mask = np.asarray([1, 1, 0, 0, 0, 0], dtype=float)
+    engine.modules["hypo_transitions_mod"] = SimpleNamespace(
+        persistent_execution_enabled=True,
+        executed_hypothesis=1,
+    )
+    beta = BetaModule(
+        engine,
+        beta_init=5.0,
+        beta_min=0.1,
+        beta_max=25.0,
+        decrease_rate=0.2,
+        correct_additive=1.0,
+        beta_update_mode="probabilistic_feedback",
+        update_scope="executed_hypothesis",
+        use_prior_scaling=False,
+    )
+    before = beta.beta.copy()
+
+    beta.update_beta(
+        stimulus=np.asarray([0.1]),
+        choice=1,
+        feedback=1.0,
+        active_mask=engine.hypotheses_mask,
+    )
+
+    assert beta.beta[0] == pytest.approx(before[0])
+    assert beta.beta[1] != pytest.approx(before[1])
+    np.testing.assert_allclose(beta.beta[2:], 0.0)
+
+    with pytest.raises(ValueError, match="update_scope"):
+        BetaModule(_TinyEngine(), update_scope="not_a_scope")
+
+
+def test_failure_accumulator_v2_global_reset_broadens_newcomer_prior_only():
+    _, module = _failure_accumulator_module(
+        capacity=2,
+        seed=23,
+        prior_reset_max_strength=0.35,
+    )
+    posterior = np.asarray([0.9, 0.1, 0.0, 0.0, 0.0, 0.0])
+    module._pending_transition = {"posterior": posterior}
+    module.current_prior_reset_strength = 0.35
+    selection = HypothesisSelection.from_active_sets(
+        [0, 1],
+        [0, 2],
+        replacement_pairs=((1, 2),),
+    )
+
+    reset_prior = module.assign_prior(None, selection)
+
+    np.testing.assert_allclose(reset_prior, [0.76, 0.0, 0.24, 0.0, 0.0, 0.0])
+    assert reset_prior[2] > posterior[1]
+    assert module._pending_transition["prior_reset_strength"] == pytest.approx(0.35)
+    assert module._pending_transition["prior_reset_mass_shift"] == pytest.approx(0.14)
+
+    module._pending_transition = {"posterior": posterior}
+    no_replacement = HypothesisSelection.from_active_sets([0, 1], [0, 1])
+    unchanged_prior = module.assign_prior(None, no_replacement)
+    np.testing.assert_allclose(unchanged_prior, posterior)
+    assert module._pending_transition["prior_reset_strength"] == 0.0
 
 
 def test_dynamic_search_range_uses_previous_feedback_and_restores_state():
@@ -610,6 +1030,250 @@ def test_standard_runner_dispatches_model_0806_to_particle_backend():
     assert result.transition_counts is not None
     assert len(result.transition_counts) == n_trials
     assert np.asarray(result.state_log["search_range"]).shape == (n_trials,)
+    strategy = np.column_stack(
+        [
+            result.state_log["predictive_strategy_exploit"],
+            result.state_log["predictive_strategy_local_explore"],
+            result.state_log["predictive_strategy_global_explore"],
+        ]
+    )
+    assert strategy.shape == (n_trials, 3)
+    np.testing.assert_allclose(strategy.sum(axis=1), 1.0)
+    np.testing.assert_allclose(strategy[0], [1.0, 0.0, 0.0])
+    assert np.asarray(result.state_log["predictive_swap_probability"]).shape == (
+        n_trials,
+    )
+    assert result.state_log["predictive_swap_probability"][0] == 0.0
+
+
+def test_particle_filter_v2_uses_only_previous_feedback_for_controller_state():
+    feedback = np.asarray([1.0, 0.0, 0.0, 0.0, 1.0, 1.0])
+    stimulus = np.linspace(0.1, 0.9, feedback.size)[:, None]
+    categories = np.where(stimulus[:, 0] < 0.5, 1, 2)
+    choices = np.where(feedback > 0.5, categories, 3 - categories)
+    arrays = TrialArrays(
+        stimulus=stimulus,
+        choices=choices,
+        feedback=feedback,
+        categories=categories,
+        target_probs=np.eye(2, dtype=float)[categories - 1],
+    )
+    config = _engine_config()
+    config["modules"]["hypo_transitions_mod"]["kwargs"] = {
+        "capacity": 2,
+        "continuous_controller": {
+            "mode": "failure_accumulator_v2",
+            "state": {
+                "failure_decay": 0.60,
+                "mastery_decay": 0.90,
+            },
+            "exploration": {
+                "event_min": 0.05,
+                "event_max": 0.65,
+                "failure_threshold": 0.55,
+                "failure_gain": 10.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+            "range": {
+                "global_min": 0.05,
+                "global_max": 0.80,
+                "failure_threshold": 0.75,
+                "failure_gain": 12.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+        },
+    }
+    config["choice_readout"]["kwargs"]["strategy_confidence_gain"] = 2.0
+
+    result = evaluate_state_model_run(
+        subject_id=1,
+        condition=1,
+        arrays=arrays,
+        params={},
+        engine_config_template=config,
+        processed_data_dir=Path("."),
+        window_size=2,
+        keep_logs=True,
+        prediction_mode="prior_t",
+        selection_prediction_mode="prior_t",
+        loss_metric="choice_brier",
+        trajectory_seed=20260810,
+    )
+
+    state = result.state_log
+    assert state is not None
+    np.testing.assert_allclose(
+        state["predictive_failure_pressure"],
+        [0.0, 0.0, 0.4, 0.64, 0.784, 0.4704],
+    )
+    np.testing.assert_allclose(
+        state["predictive_mastery_evidence"],
+        [0.5, 0.55, 0.495, 0.4455, 0.40095, 0.460855],
+    )
+    expected_signal = np.square(
+        np.maximum(
+            np.asarray(state["predictive_mastery_evidence"])
+            - np.asarray(state["predictive_failure_pressure"]),
+            0.0,
+        )
+    )
+    np.testing.assert_allclose(
+        state["predictive_choice_confidence_signal"],
+        expected_signal,
+    )
+    np.testing.assert_allclose(
+        state["predictive_strategy_choice_precision"],
+        1.0 + 2.0 * expected_signal,
+    )
+    exploration = 1.0 - np.asarray(state["predictive_strategy_exploit"])
+    assert exploration[3] > exploration[2]
+    assert exploration[4] > exploration[3]
+    assert exploration[5] < exploration[4]
+    assert state["predictive_search_range"][4] > state["predictive_search_range"][3]
+    assert np.asarray(state["predictive_prior_reset_strength"]).shape == (
+        feedback.size,
+    )
+    assert np.all(np.asarray(state["predictive_prior_reset_strength"]) == 0.0)
+
+
+def test_particle_filter_persistent_execution_survives_resampling():
+    n_trials = 12
+    stimulus = np.linspace(0.1, 0.9, n_trials)[:, None]
+    categories = np.where(stimulus[:, 0] < 0.5, 1, 2)
+    feedback = np.asarray([1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1], dtype=float)
+    choices = np.where(feedback > 0.5, categories, 3 - categories)
+    config = _engine_config()
+    config["inference"]["choice_transmission_audit"] = True
+    config["modules"]["beta_mod"]["kwargs"].update(
+        {
+            "decrease_rate": 0.2,
+            "correct_additive": 1.0,
+            "update_scope": "executed_hypothesis",
+        }
+    )
+    config["modules"]["hypo_transitions_mod"]["kwargs"] = {
+        "capacity": 2,
+        "continuous_controller": {
+            "mode": "failure_accumulator_v2",
+            "state": {
+                "failure_decay": 0.60,
+                "mastery_decay": 0.90,
+            },
+            "exploration": {
+                "event_min": 0.50,
+                "event_max": 0.90,
+                "failure_threshold": 0.30,
+                "failure_gain": 10.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+            "range": {
+                "global_min": 0.05,
+                "global_max": 0.80,
+                "failure_threshold": 0.50,
+                "failure_gain": 12.0,
+                "rise_rate": 0.80,
+                "recovery_rate": 0.20,
+            },
+            "execution": {
+                "enabled": True,
+                "switch_scale": 1.0,
+                "misconception_capture": {
+                    "enabled": True,
+                    "choice_decay": 0.50,
+                    "failure_threshold": 0.0,
+                    "min_evidence_trials": 1,
+                    "min_advantage": 0.0,
+                    "min_dwell_trials": 3,
+                },
+            },
+        },
+    }
+
+    result = run_inference_backend(
+        engine_config=config,
+        subject_id=1,
+        condition=1,
+        stimulus=stimulus,
+        choices=choices,
+        feedback=feedback,
+        inference_seed=20260811,
+        choice_readout_power=2.0,
+        strategy_confidence_gain=2.0,
+        output_lapse=0.02,
+        processed_data_dir=Path("."),
+    )
+
+    executed = np.asarray(
+        result.state_probabilities["executed_probability"], dtype=float
+    )
+    filtered_executed = np.asarray(
+        result.state_probabilities["filtered_executed_probability"], dtype=float
+    )
+    assert executed.shape == filtered_executed.shape == (n_trials, 6)
+    np.testing.assert_allclose(executed.sum(axis=1), 1.0)
+    np.testing.assert_allclose(filtered_executed.sum(axis=1), 1.0)
+    switch_probability = np.asarray(
+        result.latent_summaries["predictive_execution_switch_probability"],
+        dtype=float,
+    )
+    swap_probability = np.asarray(
+        result.latent_summaries["predictive_swap_probability"], dtype=float
+    )
+    assert np.all(switch_probability <= swap_probability + 1e-12)
+    assert np.any(switch_probability < swap_probability - 1e-12)
+    executed_beta = np.asarray(
+        result.latent_summaries["predictive_executed_beta"],
+        dtype=float,
+    )
+    filtered_beta = np.asarray(
+        result.latent_summaries["filtered_executed_beta"],
+        dtype=float,
+    )
+    assert executed_beta.shape == filtered_beta.shape == (n_trials,)
+    assert np.all(np.isfinite(executed_beta))
+    assert executed_beta[0] == pytest.approx(5.0)
+    assert np.any(np.abs(np.diff(executed_beta)) > 1e-9)
+    capture_hold = np.asarray(
+        result.latent_summaries[
+            "predictive_misconception_capture_hold_probability"
+        ],
+        dtype=float,
+    )
+    capture_switch = np.asarray(
+        result.latent_summaries[
+            "predictive_misconception_capture_switch_event_probability"
+        ],
+        dtype=float,
+    )
+    assert capture_hold.shape == capture_switch.shape == (n_trials,)
+    assert np.all((capture_hold >= 0.0) & (capture_hold <= 1.0))
+    assert np.all((capture_switch >= 0.0) & (capture_switch <= 1.0))
+    assert np.any(capture_hold > 0.0)
+
+    persistent = np.asarray(
+        result.observation_probabilities[
+            "audit_persistent_execution_no_lapse"
+        ],
+        dtype=float,
+    )
+    assert persistent.shape == (n_trials, 2)
+    np.testing.assert_allclose(persistent.sum(axis=1), 1.0)
+
+    ancestral = result.artifacts["audit_ancestral_paths"]
+    executed_paths = np.asarray(ancestral["executed_hypothesis"], dtype=int)
+    switch_paths = np.asarray(ancestral["execution_switch_event"], dtype=float)
+    swap_paths = np.asarray(ancestral["swap_event"], dtype=float)
+    dwell_paths = np.asarray(ancestral["execution_dwell_trials"], dtype=float)
+    assert executed_paths.shape == switch_paths.shape == swap_paths.shape
+    assert dwell_paths.shape == executed_paths.shape
+    assert np.any(switch_paths[:, 1:] > 0.5)
+    assert np.all(switch_paths <= swap_paths)
+    changed = executed_paths[:, 1:] != executed_paths[:, :-1]
+    assert np.all(switch_paths[:, 1:][changed] > 0.5)
+    assert np.all(dwell_paths[switch_paths > 0.5] == 1.0)
 
 
 def test_dispatcher_runs_single_trajectory_backend():
@@ -683,6 +1347,7 @@ def test_particle_backend_uses_common_inference_result_contract():
     stimulus = np.linspace(0.1, 0.9, n_trials)[:, None]
     categories = np.where(stimulus[:, 0] < 0.5, 1, 2)
     config = _engine_config()
+    config["inference"]["choice_transmission_audit"] = True
     config["modules"]["hypo_transitions_mod"]["kwargs"]["range_controller"] = {
         "g_phi": 0.0,
         "g_beta_surprise": 0.5,
@@ -711,6 +1376,97 @@ def test_particle_backend_uses_common_inference_result_contract():
     assert np.isclose(search_range[0], 0.35)
     assert np.any(search_range[1:] > search_range[0])
     assert np.allclose(result.marginal_probabilities.sum(axis=1), 1.0)
+    np.testing.assert_allclose(
+        result.latent_summaries["predictive_strategy_choice_precision"],
+        1.0,
+    )
+    for key in (
+        "audit_hypothesis_map",
+        "audit_adaptive_sharpening",
+        "audit_exploration_lapse",
+        "audit_unsharpened_expectation",
+        "audit_sharpened_no_lapse",
+        "audit_strategy_confidence_no_lapse",
+    ):
+        probabilities = np.asarray(result.observation_probabilities[key], dtype=float)
+        assert probabilities.shape == (n_trials, 2)
+        np.testing.assert_allclose(probabilities.sum(axis=1), 1.0)
+    q10 = np.asarray(result.diagnostics["audit_particle_correct_q10"], dtype=float)
+    q50 = np.asarray(result.diagnostics["audit_particle_correct_q50"], dtype=float)
+    q90 = np.asarray(result.diagnostics["audit_particle_correct_q90"], dtype=float)
+    assert q10.shape == q50.shape == q90.shape == (n_trials,)
+    assert np.all(q10 <= q50)
+    assert np.all(q50 <= q90)
+    for key in (
+        "audit_correct_predicting_available_probability",
+        "audit_correct_predicting_prior_mass",
+        "audit_best_active_correct_probability",
+    ):
+        values = np.asarray(result.diagnostics[key], dtype=float)
+        assert values.shape == (n_trials,)
+        assert np.all((values >= 0.0) & (values <= 1.0))
+    ancestral = result.artifacts["audit_ancestral_paths"]
+    n_particles = int(result.metadata["particle_count"])
+    assert np.asarray(ancestral["particle_indices"]).shape == (
+        n_particles,
+        n_trials,
+    )
+    weights = np.asarray(ancestral["weights"], dtype=float)
+    assert weights.shape == (n_particles,)
+    assert np.isclose(np.sum(weights), 1.0)
+    for key in (
+        "correct_probability",
+        "strategy_exploit",
+        "strategy_local_explore",
+        "strategy_global_explore",
+        "swap_event",
+    ):
+        assert np.asarray(ancestral[key]).shape == (n_particles, n_trials)
+    np.testing.assert_allclose(
+        np.asarray(ancestral["strategy_exploit"])
+        + np.asarray(ancestral["strategy_local_explore"])
+        + np.asarray(ancestral["strategy_global_explore"]),
+        1.0,
+    )
+
+    config["inference"].pop("choice_transmission_audit")
+    baseline = run_inference_backend(
+        engine_config=config,
+        subject_id=1,
+        condition=1,
+        stimulus=stimulus,
+        choices=categories,
+        feedback=np.ones(n_trials, dtype=float),
+        inference_seed=20260806,
+        choice_readout_power=2.0,
+        output_lapse=0.05,
+        processed_data_dir=Path("."),
+    )
+    np.testing.assert_allclose(
+        result.marginal_probabilities,
+        baseline.marginal_probabilities,
+    )
+
+
+def test_particle_ancestral_indices_follow_resampling_parents():
+    parents = np.asarray(
+        [
+            [0, 0, 2],
+            [0, 1, 2],
+            [1, 1, 2],
+            [0, 1, 2],
+        ],
+        dtype=int,
+    )
+    traced = _trace_ancestral_indices(parents)
+    np.testing.assert_array_equal(
+        traced,
+        [
+            [0, 1, 1, 0],
+            [0, 1, 1, 1],
+            [2, 2, 2, 2],
+        ],
+    )
 
 
 def test_rt_and_oral_readouts_return_normalized_measurements():

@@ -213,6 +213,22 @@ class StateModel:
             log["active_indices"] = np.flatnonzero(
                 np.asarray(mask, dtype=float) > 0.0
             ).astype(int)
+        transition = engine.modules.get("hypo_transitions_mod")
+        if transition is not None and bool(
+            getattr(transition, "persistent_execution_enabled", False)
+        ):
+            log.update(
+                {
+                    "executed_hypothesis": int(transition.executed_hypothesis),
+                    "execution_switch_event": bool(
+                        transition.current_execution_switch_event
+                    ),
+                    "execution_switch_probability": float(
+                        transition.current_execution_switch_probability
+                    ),
+                    "execution_dwell_trials": int(transition.execution_dwell_trials),
+                }
+            )
         prepared = PreparedTrial(
             trial_index=int(self._completed_trial_count),
             stimulus=physical.copy(),

@@ -566,7 +566,12 @@ def predictive_accuracy_band_metrics(
     prediction_curves: np.ndarray,
     observed_curve: Sequence[float] | np.ndarray,
 ) -> dict[str, Any]:
-    """Compute quantile bands and scalar diagnostics across predictive runs."""
+    """Compute latent-run/Monte-Carlo bands across expected-accuracy curves.
+
+    This helper does not add observation-level behavioral variability.  It is
+    appropriate for trajectory ensembles or numerical stability diagnostics,
+    but not for a particle-filter behavioral predictive interval.
+    """
     predictions = np.asarray(prediction_curves, dtype=float)
     observed = np.asarray(observed_curve, dtype=float).reshape(-1)
     if predictions.ndim != 2 or predictions.shape[1] != observed.size:
@@ -602,6 +607,175 @@ def predictive_accuracy_band_metrics(
             if true_volatility > 0
             else float("nan")
         ),
+    }
+
+
+def conditional_behavioral_accuracy_band_metrics(
+    prediction_probabilities: np.ndarray,
+    observed_curve: Sequence[float] | np.ndarray,
+    *,
+    window_size: int,
+    n_draws: int = 5000,
+    seed: int = 20260810,
+    score_trial_mask: Sequence[bool] | np.ndarray | None = None,
+    start_index: int = 1,
+) -> dict[str, Any]:
+    """Simulate a rolling-accuracy band from trialwise correctness probabilities.
+
+    Rows of ``prediction_probabilities`` are independent particle-filter
+    repeats for the same observed history and fitted parameter setting.  They
+    are averaged first to reduce finite-particle Monte-Carlo error.  Bernoulli
+    correctness sequences are then sampled from that marginal probability
+    curve and transformed with the same rolling window as the observed curve.
+
+    The resulting intervals are pointwise, observed-history-conditional
+    behavioral predictive intervals.  They are not autonomous rollouts and do
+    not include fitted-parameter uncertainty.
+    """
+    probabilities = np.asarray(prediction_probabilities, dtype=float)
+    if probabilities.ndim == 1:
+        probabilities = probabilities.reshape(1, -1)
+    if probabilities.ndim != 2 or probabilities.shape[0] == 0:
+        raise ValueError(
+            "prediction_probabilities must have shape (run, trial) with at least one run"
+        )
+    n_runs, n_trials = probabilities.shape
+    window_size = int(window_size)
+    start_index = int(start_index)
+    n_draws = int(n_draws)
+    if window_size <= 0 or n_trials < window_size + start_index:
+        raise ValueError(
+            "Not enough trials for the requested rolling behavioral interval: "
+            f"n_trials={n_trials}, window_size={window_size}, start_index={start_index}"
+        )
+    if n_draws < 2:
+        raise ValueError("n_draws must be at least 2")
+
+    finite = np.isfinite(probabilities)
+    finite_values = probabilities[finite]
+    if finite_values.size and (
+        np.any(finite_values < 0.0) or np.any(finite_values > 1.0)
+    ):
+        raise ValueError("prediction probabilities must lie in [0, 1]")
+    finite_count = np.sum(finite, axis=0)
+    expected_trial = np.divide(
+        np.nansum(probabilities, axis=0),
+        finite_count,
+        out=np.full(n_trials, np.nan, dtype=float),
+        where=finite_count > 0,
+    )
+
+    if score_trial_mask is None:
+        score_mask = np.ones(n_trials, dtype=bool)
+    else:
+        score_mask = np.asarray(score_trial_mask, dtype=bool).reshape(-1)
+        if score_mask.size != n_trials:
+            raise ValueError(
+                "score_trial_mask length does not match prediction trials: "
+                f"{score_mask.size} vs {n_trials}"
+            )
+
+    starts = np.arange(
+        start_index,
+        n_trials - window_size + 1,
+        dtype=int,
+    )
+    observed = np.asarray(observed_curve, dtype=float).reshape(-1)
+    if observed.size != starts.size:
+        raise ValueError(
+            "observed_curve length does not match rolling prediction length: "
+            f"{observed.size} vs {starts.size}"
+        )
+
+    valid_trial = score_mask & np.isfinite(expected_trial)
+    valid_window = np.asarray(
+        [bool(np.all(valid_trial[start : start + window_size])) for start in starts],
+        dtype=bool,
+    )
+    expected_curve = np.full(starts.size, np.nan, dtype=float)
+    for curve_index, start in enumerate(starts):
+        if valid_window[curve_index]:
+            expected_curve[curve_index] = float(
+                np.mean(expected_trial[start : start + window_size])
+            )
+
+    rng = np.random.default_rng(int(seed))
+    draw_probability = np.where(np.isfinite(expected_trial), expected_trial, 0.0)
+    binary_draws = rng.random((n_draws, n_trials)) < draw_probability[None, :]
+    rolling_draws = np.full((n_draws, starts.size), np.nan, dtype=float)
+    for curve_index, start in enumerate(starts):
+        if valid_window[curve_index]:
+            rolling_draws[:, curve_index] = np.mean(
+                binary_draws[:, start : start + window_size],
+                axis=1,
+            )
+
+    quantile_arrays = {
+        key: np.full(starts.size, np.nan, dtype=float)
+        for key in ("q05", "q25", "q50", "q75", "q95")
+    }
+    if np.any(valid_window):
+        values = np.quantile(
+            rolling_draws[:, valid_window],
+            [0.05, 0.25, 0.50, 0.75, 0.95],
+            axis=0,
+        )
+        for row, key in enumerate(("q05", "q25", "q50", "q75", "q95")):
+            quantile_arrays[key][valid_window] = values[row]
+
+    evaluable = (
+        np.isfinite(observed)
+        & np.isfinite(quantile_arrays["q05"])
+        & np.isfinite(quantile_arrays["q95"])
+    )
+    if np.any(evaluable):
+        coverage_50 = float(
+            np.mean(
+                (observed[evaluable] >= quantile_arrays["q25"][evaluable])
+                & (observed[evaluable] <= quantile_arrays["q75"][evaluable])
+            )
+        )
+        coverage_90 = float(
+            np.mean(
+                (observed[evaluable] >= quantile_arrays["q05"][evaluable])
+                & (observed[evaluable] <= quantile_arrays["q95"][evaluable])
+            )
+        )
+        mean_width_50 = float(
+            np.mean(
+                quantile_arrays["q75"][evaluable]
+                - quantile_arrays["q25"][evaluable]
+            )
+        )
+        mean_width_90 = float(
+            np.mean(
+                quantile_arrays["q95"][evaluable]
+                - quantile_arrays["q05"][evaluable]
+            )
+        )
+        expected_curve_mae = float(
+            np.mean(np.abs(expected_curve[evaluable] - observed[evaluable]))
+        )
+    else:
+        coverage_50 = float("nan")
+        coverage_90 = float("nan")
+        mean_width_50 = float("nan")
+        mean_width_90 = float("nan")
+        expected_curve_mae = float("nan")
+
+    return {
+        "band_type": "observed_history_conditional_behavioral",
+        "n_runs": int(n_runs),
+        "n_draws": int(n_draws),
+        "seed": int(seed),
+        "expected_trial_probability": expected_trial,
+        "expected_curve": expected_curve,
+        "coverage_50": coverage_50,
+        "coverage_90": coverage_90,
+        "mean_width_50": mean_width_50,
+        "mean_width_90": mean_width_90,
+        "expected_curve_mae": expected_curve_mae,
+        **quantile_arrays,
     }
 
 
@@ -659,6 +833,7 @@ __all__ = [
     "accuracy_metrics_from_info",
     "build_prediction_metric_bundle",
     "choice_brier_curve_metrics_from_info",
+    "conditional_behavioral_accuracy_band_metrics",
     "exponential_accuracy_metrics_from_info",
     "family_correct",
     "family_indices",

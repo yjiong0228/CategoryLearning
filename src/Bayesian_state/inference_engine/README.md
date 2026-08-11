@@ -29,6 +29,13 @@ inference:
   resample_threshold_fraction: 0.5
 ```
 
+评价层需要定位 choice-transmission 瓶颈时，可在复制出的诊断配置中临时设置
+`choice_transmission_audit: true`。PF 会从相同 pre-choice 粒子状态旁路计算 MAP hypothesis、
+exploration-adaptive sharpening、exploration-gated choice uncertainty 和粒子预测分位数；正式
+particle weights 仍只由原 fitted readout 更新。审计还记录每次重采样的父粒子索引，并从最终
+posterior-weighted 粒子向前回溯完整的 prediction/strategy 祖先路径。该开关默认关闭，不应加入
+正式拟合配置。
+
 `resolve_inference_backend()` 负责规范化和验证配置，`run_inference_backend()` 负责执行。优化器
 只消费 backend 输出并计算 metrics/loss，不再包含 particle-filter 实现。
 
@@ -93,6 +100,10 @@ module 通过共享 engine 字段通信，不应互相维护重复的全局状�
 
 快照接口是认知状态协议，不是长期磁盘序列化格式。不要假定其 payload 跨代码版本稳定。
 
+dynamic-continuous persistent execution 开启时，快照还保存 executed hypothesis、dwell/switch
+计数和独立 execution RNG。重采样复制这些认知状态，再为子粒子的未来 transition/execution
+随机流重新设种；因此 overt strategy persistence 属于粒子状态，不是 filter 外部的绘图平滑。
+
 粒子滤波公共入口为：
 
 ```python
@@ -103,6 +114,18 @@ from src.Bayesian_state.inference_engine.backends.particle_filter import (
 
 当前正式入口支持 condition 1、expectation 类 readout 和 uniform output lapse。条件 posterior
 predictive 由 `posterior_predictive.py` 组合粒子状态与自主生成过程，不属于 optimizer。
+
+PF transition 诊断区分两种时间语义：已有 `transition_rate`、`search_range`、
+`swap_probability` 等字段是观察当前 choice 后的 filtered 边缘量；用于解释 trial `t` 所采取策略的
+`predictive_*` 字段则在当前 choice 更新粒子权重之前计算。连续策略进一步把每个粒子的理论
+swap 概率分解为 `predictive_strategy_exploit`、`predictive_strategy_local_explore` 和
+`predictive_strategy_global_explore`，随后用 pre-choice 权重求边缘；三者逐 trial 加和为 1。
+
+persistent execution 还返回 pre-choice `executed_probability`、post-choice
+`filtered_executed_probability`、`predictive_execution_switch_probability`、
+`predictive_execution_switch_event_probability`、`predictive_execution_dwell_trials`、
+`predictive_executed_beta` 和 `filtered_executed_beta`。
+choice-transmission audit 的 ancestral paths 可直接检查 executed rule 的驻留和切换。
 
 ## 扩展边界
 

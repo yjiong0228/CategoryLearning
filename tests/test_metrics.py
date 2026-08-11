@@ -18,13 +18,19 @@ from src.Bayesian_state.metrics import (
     accuracy_metrics_from_info,
     attach_loss_metrics,
     benjamini_hochberg,
+    bernoulli_calibration_test,
+    causal_residual_state_feature,
     centered_curve_metrics,
     choice_brier,
     choice_nll,
+    conditional_behavioral_accuracy_band_metrics,
     empirical_crps,
     expected_calibration_error,
     exponential_smooth_curve,
+    forward_residual_state_probe,
+    logit_intercept_recalibration,
     marginal_prediction_metrics_from_runs,
+    martingale_lag_tests,
     paired_metric_summary,
     predictive_interval_metrics,
     build_prediction_metric_bundle,
@@ -93,6 +99,67 @@ def test_choice_scores_and_ece_have_known_values():
     assert np.isclose(nll.value, -(math.log(0.8) + math.log(0.75)) / 2.0)
     assert np.isclose(calibration.value, 1.0 - np.mean([0.8, 0.75]))
     assert calibration.details["bins"][1]["count"] == 2
+
+
+def test_sequential_residual_tests_remove_level_bias_and_detect_memory():
+    observed = np.tile(
+        np.concatenate([np.zeros(12, dtype=float), np.ones(12, dtype=float)]),
+        8,
+    )
+    predicted = np.full(observed.size, 0.40, dtype=float)
+    valid = np.ones(observed.size, dtype=bool)
+    calibration = bernoulli_calibration_test(observed, predicted, valid)
+    assert calibration["mean_residual"] == pytest.approx(0.10)
+
+    recalibrated, intercept = logit_intercept_recalibration(
+        observed,
+        predicted,
+        valid,
+    )
+    assert intercept > 0.0
+    assert np.mean(recalibrated[valid]) == pytest.approx(np.mean(observed), abs=1e-10)
+    lag_tests = martingale_lag_tests(
+        observed,
+        recalibrated,
+        valid,
+        max_lag=4,
+    )
+    assert lag_tests[0]["z"] > 5.0
+    assert lag_tests[0]["familywise_p"] < 0.05
+
+
+def test_causal_residual_state_uses_only_past_trials_and_forward_folds():
+    observed = np.asarray(([0.0] * 16 + [1.0] * 16) * 4)
+    predicted = np.full(observed.size, 0.5, dtype=float)
+    valid = np.ones(observed.size, dtype=bool)
+    reference = causal_residual_state_feature(
+        observed,
+        predicted,
+        valid,
+        window_size=8,
+    )
+    modified = observed.copy()
+    modified[80:] = 1.0 - modified[80:]
+    changed = causal_residual_state_feature(
+        modified,
+        predicted,
+        valid,
+        window_size=8,
+    )
+    np.testing.assert_allclose(reference[:81], changed[:81])
+
+    probe = forward_residual_state_probe(
+        observed,
+        predicted,
+        valid,
+        window_size=8,
+        n_folds=4,
+        ridge=1.0,
+    )
+    assert probe["n_evaluation_trials"] == 96
+    assert np.all(probe["fold_index"][:32] == -1)
+    assert np.all(np.isfinite(probe["state_probability"][32:]))
+    assert np.isfinite(probe["state_minus_intercept_nll"])
 
 
 def test_learning_curve_helpers_are_shared_without_definition_drift():
@@ -187,6 +254,35 @@ def test_predictive_intervals_report_coverage_width_and_crps_together():
     assert np.isclose(summary["coverage"], 0.5)
     assert summary["mean_width"] > 0.0
     assert summary["mean_crps"] > 0.0
+
+
+def test_conditional_behavioral_accuracy_band_adds_observation_variability():
+    probabilities = np.full((4, 20), 0.5, dtype=float)
+    observed_curve = np.full(16, 0.5, dtype=float)
+
+    first = conditional_behavioral_accuracy_band_metrics(
+        probabilities,
+        observed_curve,
+        window_size=4,
+        n_draws=5000,
+        seed=17,
+    )
+    second = conditional_behavioral_accuracy_band_metrics(
+        probabilities,
+        observed_curve,
+        window_size=4,
+        n_draws=5000,
+        seed=17,
+    )
+
+    assert first["band_type"] == "observed_history_conditional_behavioral"
+    assert first["n_runs"] == 4
+    assert first["n_draws"] == 5000
+    np.testing.assert_allclose(first["expected_curve"], 0.5)
+    np.testing.assert_array_equal(first["q05"], second["q05"])
+    np.testing.assert_array_equal(first["q95"], second["q95"])
+    assert first["mean_width_90"] >= 0.75
+    assert first["coverage_90"] == 1.0
 
 
 def test_switch_metrics_preserve_trial_order_and_previous_outcome_alignment():
@@ -469,8 +565,9 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
         "behavior_metrics.py",
         "group_statistics.py",
         "losses.py",
-        "prediction_metrics.py",
-        "trajectory_selection.py",
+            "prediction_metrics.py",
+            "sequential_residuals.py",
+            "trajectory_selection.py",
         "trajectory_statistics.py",
         "trial_metrics.py",
     }
@@ -485,6 +582,11 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
             "src/Bayesian_state/model_evaluation/transition_evaluation.py"
         ).read_text(encoding="utf-8")
     )
+    particle_module = ast.parse(
+        Path(
+            "src/Bayesian_state/model_evaluation/particle_filter_evaluation.py"
+        ).read_text(encoding="utf-8")
+    )
     general_class = next(
         node
         for node in general_module.body
@@ -494,6 +596,12 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
         node
         for node in transition_module.body
         if isinstance(node, ast.ClassDef) and node.name == "TransitionEvaluationMixin"
+    )
+    particle_class = next(
+        node
+        for node in particle_module.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "ParticleFilterEvaluationMixin"
     )
     transition_methods = {
         "plot_dynamic_strategy_profile",
@@ -506,6 +614,18 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
     }
     assert transition_methods <= {
         node.name for node in transition_class.body if isinstance(node, ast.FunctionDef)
+    }
+    particle_methods = {
+        "plot_particle_filter_accuracy_band_group",
+        "plot_particle_filter_dynamic_strategy_profile",
+        "plot_particle_filter_ess",
+        "plot_marginal_active_probabilities",
+    }
+    assert not particle_methods & {
+        node.name for node in transition_class.body if isinstance(node, ast.FunctionDef)
+    }
+    assert particle_methods <= {
+        node.name for node in particle_class.body if isinstance(node, ast.FunctionDef)
     }
 
 
@@ -531,3 +651,19 @@ def test_transition_capabilities_follow_log_fields_not_model_names():
             ]
         }
     ) == {"dynamic_continuous"}
+
+
+def test_particle_filter_capabilities_are_separate_from_transition_features():
+    evaluator = ModelEval()
+    info = {
+        "state_distribution_kind": "particle_marginal",
+        "pre_choice_ess": [4.0, 3.0],
+        "marginal_active_probability": [[1.0, 0.0], [0.5, 0.5]],
+    }
+
+    assert evaluator.transition_capabilities(info) == set()
+    assert evaluator.is_particle_filter_result(info)
+    assert evaluator.particle_filter_capabilities(info) == {
+        "particle_filter",
+        "particle_marginal",
+    }

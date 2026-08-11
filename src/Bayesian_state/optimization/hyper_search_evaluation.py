@@ -55,6 +55,7 @@ DECREASE_RATE_KEY = "engine.modules.beta_mod.kwargs.decrease_rate"
 PRIOR_BETA_SCALE_KEY = "engine.modules.beta_mod.kwargs.prior_beta_scale"
 CORRECT_ADDITIVE_KEY = "engine.modules.beta_mod.kwargs.correct_additive"
 BETA_UPDATE_MODE_KEY = "engine.modules.beta_mod.kwargs.beta_update_mode"
+BETA_UPDATE_SCOPE_KEY = "engine.modules.beta_mod.kwargs.update_scope"
 PROBABILISTIC_FEEDBACK_LAPSE_KEY = "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse"
 DISTANCE_MODE_KEY = "engine.modules.likelihood_mod.kwargs.distance_mode"
 OUTPUT_NOISE_BASE_LAPSE_KEY = "engine.output_noise.kwargs.base_lapse"
@@ -104,6 +105,7 @@ NUMERIC_PARAM_COLUMNS = (
 CATEGORICAL_PARAM_COLUMNS = (
     "strategy_id",
     "beta_update_mode",
+    "beta_update_scope",
     "distance_mode",
     "prior_reset_target",
     "prior_reset_source",
@@ -609,6 +611,9 @@ def flatten_hyperparams(
             hp.get(CORRECT_ADDITIVE_KEY, hp.get("correct_additive"))
         ),
         "beta_update_mode": hp.get(BETA_UPDATE_MODE_KEY, hp.get("beta_update_mode")),
+        "beta_update_scope": hp.get(
+            BETA_UPDATE_SCOPE_KEY, hp.get("beta_update_scope", hp.get("update_scope"))
+        ),
         "probabilistic_feedback_lapse": _safe_float(
             hp.get(
                 PROBABILISTIC_FEEDBACK_LAPSE_KEY,

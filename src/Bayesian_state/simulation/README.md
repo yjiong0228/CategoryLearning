@@ -36,3 +36,20 @@ posterior-predictive validation 的生成基础，不在本文件中实现恢复
 `min_train_trials`/`min_evaluation_trials` 用于拒绝过小分区。未声明协议时保持原有的全序列评分。
 runner 将解析后的 `score_context`（切分点、角色、分区和评分 trial 数）写入
 `selection_meta`，后处理不需要重新猜测切分。
+
+particle-filter 的 `state_log` 同时保存 post-choice filtered transition 诊断和以
+`predictive_*` 命名的 pre-choice 策略边缘量。后者用于回答“当前 trial 做选择之前偏向利用还是
+探索”，不得与观察当前 choice 后重新加权得到的 filtered 状态混用。
+
+内部诊断可向 `StateModelSimulationRunner.simulate_subject()` 传入与 repeats 等长的
+`trajectory_seeds`，用于 common-random-number 反事实。默认调用仍按既有
+`hyper_candidate_seed -> simulation_point_seed -> trajectory_seed` 链生成 seeds；只有显式传入
+该参数时才覆盖。`compute_statistics=False` 可供不需要重复运行统计的诊断使用，默认保持 `True`。
+
+Controller v2a 的三被试结构探针配置是
+`configs/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml`。
+它继承 0809 已选中的 memory/readout/noise/capacity 设置，只替换 continuous controller，并写入
+新的 `results/model_dynamic_continuous/0810_controller_v2a_probe/`；它不是新的 Hyper-CD 拟合。
+v2b 的受限先验重置探针是
+`configs/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml`；除
+`prior_reset.max_strength: 0.35` 与独立输出目录外，它与 v2a 完全相同，便于直接归因比较。

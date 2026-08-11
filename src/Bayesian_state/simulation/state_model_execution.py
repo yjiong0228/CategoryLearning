@@ -537,6 +537,31 @@ def _build_single_mode_prediction_payload(
             rng=readout_rng,
             sticky_state=sticky_state,
         )
+        executed_hypothesis = step_item.get("executed_hypothesis")
+        if executed_hypothesis is not None:
+            executed_value = int(executed_hypothesis)
+            try:
+                selected_arg = [int(value) for value in hypotheses].index(
+                    executed_value
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "step-log executed_hypothesis is outside the hypothesis set."
+                ) from exc
+            readout_weights = np.zeros(len(hypotheses), dtype=float)
+            readout_weights[selected_arg] = 1.0
+            readout_log.update(
+                {
+                    "selected_arg": int(selected_arg),
+                    "switched": bool(
+                        step_item.get("execution_switch_event", False)
+                    ),
+                    "switch_probability": float(
+                        step_item.get("execution_switch_probability", 0.0)
+                    ),
+                    "persistent_execution_enabled": True,
+                }
+            )
         weighted_cat_prob = np.sum(readout_weights[:, None] * hypo_cat_probs, axis=0)
         selected_arg = int(readout_log.get("selected_arg", -1))
         if 0 <= selected_arg < len(hypotheses):
@@ -885,6 +910,9 @@ def _evaluate_state_model_particle_filter_run(
         if method == CHOICE_READOUT_SHARPENED
         else 1.0
     )
+    strategy_confidence_gain = float(
+        readout.get("strategy_confidence_gain", 0.0)
+    )
 
     output_noise = _extract_output_noise_config(params, engine_config)
     unsupported_lapse = (
@@ -920,6 +948,7 @@ def _evaluate_state_model_particle_filter_run(
         feedback=trial_arrays.feedback,
         inference_seed=resolved_seed,
         choice_readout_power=readout_power,
+        strategy_confidence_gain=strategy_confidence_gain,
         output_lapse=output_lapse,
         valid_trial_mask=np.ones(trial_arrays.choices.size, dtype=bool),
         processed_data_dir=processed_data_dir,
@@ -932,6 +961,34 @@ def _evaluate_state_model_particle_filter_run(
     state_probabilities = result.state_probabilities
     latent = result.latent_summaries
     diagnostics = result.diagnostics
+    audit_state_log: dict[str, Any] = {}
+    for key in (
+        "audit_hypothesis_map",
+        "audit_adaptive_sharpening",
+        "audit_exploration_lapse",
+        "audit_unsharpened_expectation",
+        "audit_sharpened_no_lapse",
+        "audit_strategy_confidence_no_lapse",
+        "audit_persistent_execution_no_lapse",
+    ):
+        value = result.observation_probabilities.get(key)
+        if value is not None:
+            audit_state_log[key] = value
+    for key in (
+        "audit_particle_correct_q10",
+        "audit_particle_correct_q50",
+        "audit_particle_correct_q90",
+        "audit_correct_predicting_available_probability",
+        "audit_correct_predicting_prior_mass",
+        "audit_best_active_correct_probability",
+    ):
+        value = diagnostics.get(key)
+        if value is not None:
+            audit_state_log[key] = value
+    ancestral_paths = result.artifacts.get("audit_ancestral_paths")
+    if isinstance(ancestral_paths, Mapping):
+        for key, value in ancestral_paths.items():
+            audit_state_log[f"audit_ancestral_{key}"] = value
     diagnostic_arrays = {
         "particle_pre_choice_ess": diagnostics["pre_choice_ess"],
         "particle_post_choice_ess": diagnostics["post_choice_ess"],
@@ -939,19 +996,110 @@ def _evaluate_state_model_particle_filter_run(
         "particle_unique_ancestors": diagnostics["resampling_unique_ancestors"],
         "particle_transition_rate": latent["transition_rate"],
         "particle_search_range": latent["search_range"],
+        "particle_swap_probability": latent["swap_probability"],
+        "particle_swap_event_probability": latent["swap_event_probability"],
         "particle_replacement_count": latent["replacement_count"],
         "particle_replacement_fraction": latent["replacement_fraction"],
         "particle_removed_mass": latent["removed_mass"],
         "particle_newcomer_distance": latent["newcomer_distance"],
         "particle_feedback_surprise": latent["feedback_surprise"],
         "particle_feedback_uncertainty": latent["feedback_uncertainty"],
+        "particle_predictive_transition_rate": latent["predictive_transition_rate"],
+        "particle_predictive_search_range": latent["predictive_search_range"],
+        "particle_predictive_swap_probability": latent["predictive_swap_probability"],
+        "particle_predictive_swap_event_probability": latent[
+            "predictive_swap_event_probability"
+        ],
+        "particle_predictive_replacement_fraction": latent[
+            "predictive_replacement_fraction"
+        ],
+        "particle_predictive_newcomer_distance": latent[
+            "predictive_newcomer_distance"
+        ],
+        "particle_predictive_strategy_exploit": latent[
+            "predictive_strategy_exploit"
+        ],
+        "particle_predictive_strategy_local_explore": latent[
+            "predictive_strategy_local_explore"
+        ],
+        "particle_predictive_strategy_global_explore": latent[
+            "predictive_strategy_global_explore"
+        ],
+        "particle_predictive_failure_pressure": latent[
+            "predictive_failure_pressure"
+        ],
+        "particle_predictive_mastery_evidence": latent[
+            "predictive_mastery_evidence"
+        ],
+        "particle_predictive_choice_confidence_signal": latent[
+            "predictive_choice_confidence_signal"
+        ],
+        "particle_predictive_strategy_choice_precision": latent[
+            "predictive_strategy_choice_precision"
+        ],
+        "particle_predictive_exploration_target": latent[
+            "predictive_exploration_target"
+        ],
+        "particle_predictive_global_target": latent[
+            "predictive_global_target"
+        ],
+        "particle_predictive_prior_reset_strength": latent[
+            "predictive_prior_reset_strength"
+        ],
+        "particle_predictive_prior_reset_mass_shift": latent[
+            "predictive_prior_reset_mass_shift"
+        ],
+        "particle_predictive_execution_switch_probability": latent[
+            "predictive_execution_switch_probability"
+        ],
+        "particle_predictive_execution_switch_event_probability": latent[
+            "predictive_execution_switch_event_probability"
+        ],
+        "particle_predictive_execution_dwell_trials": latent[
+            "predictive_execution_dwell_trials"
+        ],
+        "particle_predictive_misconception_capture_eligible_probability": latent[
+            "predictive_misconception_capture_eligible_probability"
+        ],
+        "particle_predictive_misconception_capture_hold_probability": latent[
+            "predictive_misconception_capture_hold_probability"
+        ],
+        "particle_predictive_misconception_capture_switch_event_probability": latent[
+            "predictive_misconception_capture_switch_event_probability"
+        ],
+        "particle_predictive_executed_choice_compatibility": latent[
+            "predictive_executed_choice_compatibility"
+        ],
+        "particle_predictive_best_alternative_choice_compatibility": latent[
+            "predictive_best_alternative_choice_compatibility"
+        ],
+        "particle_predictive_executed_beta": latent[
+            "predictive_executed_beta"
+        ],
+        "particle_filtered_executed_beta": latent[
+            "filtered_executed_beta"
+        ],
+        "particle_execution_switch_event_probability": latent[
+            "execution_switch_event_probability"
+        ],
+        "particle_execution_dwell_trials": latent[
+            "execution_dwell_trials"
+        ],
         "particle_count": int(result.metadata["particle_count"]),
         "filter_seed": int(result.metadata["filter_seed"]),
         "choice_readout_method": method,
+        "choice_readout_strategy_confidence_gain": strategy_confidence_gain,
         "output_lapse": np.full(trial_arrays.choices.size, output_lapse, dtype=float),
         "output_lapse_mean": float(output_lapse),
         "output_lapse_max": float(output_lapse),
     }
+    if "executed_probability" in state_probabilities:
+        diagnostic_arrays["particle_executed_probability"] = state_probabilities[
+            "executed_probability"
+        ]
+        diagnostic_arrays["particle_filtered_executed_probability"] = (
+            state_probabilities["filtered_executed_probability"]
+        )
     metrics = compute_metrics_from_category_probabilities(
         probabilities,
         choices=trial_arrays.choices,
@@ -971,8 +1119,87 @@ def _evaluate_state_model_particle_filter_run(
         transition_counts = [
             {
                 "trial_index": int(index),
-                "predictive_m": float(latent["transition_rate"][index]),
-                "predictive_g": float(latent["search_range"][index]),
+                "predictive_m": float(latent["predictive_transition_rate"][index]),
+                "predictive_g": float(latent["predictive_search_range"][index]),
+                "predictive_swap_probability": float(
+                    latent["predictive_swap_probability"][index]
+                ),
+                "predictive_swap_event_probability": float(
+                    latent["predictive_swap_event_probability"][index]
+                ),
+                "strategy_exploit": float(
+                    latent["predictive_strategy_exploit"][index]
+                ),
+                "strategy_local_explore": float(
+                    latent["predictive_strategy_local_explore"][index]
+                ),
+                "strategy_global_explore": float(
+                    latent["predictive_strategy_global_explore"][index]
+                ),
+                "failure_pressure": float(
+                    latent["predictive_failure_pressure"][index]
+                ),
+                "mastery_evidence": float(
+                    latent["predictive_mastery_evidence"][index]
+                ),
+                "strategy_confidence_signal": float(
+                    latent["predictive_choice_confidence_signal"][index]
+                ),
+                "strategy_choice_precision": float(
+                    latent["predictive_strategy_choice_precision"][index]
+                ),
+                "exploration_target": float(
+                    latent["predictive_exploration_target"][index]
+                ),
+                "global_target": float(
+                    latent["predictive_global_target"][index]
+                ),
+                "prior_reset_strength": float(
+                    latent["predictive_prior_reset_strength"][index]
+                ),
+                "prior_reset_mass_shift": float(
+                    latent["predictive_prior_reset_mass_shift"][index]
+                ),
+                "execution_switch_probability": float(
+                    latent["predictive_execution_switch_probability"][index]
+                ),
+                "execution_switch_event_probability": float(
+                    latent[
+                        "predictive_execution_switch_event_probability"
+                    ][index]
+                ),
+                "execution_dwell_trials": float(
+                    latent["predictive_execution_dwell_trials"][index]
+                ),
+                "misconception_capture_eligible_probability": float(
+                    latent[
+                        "predictive_misconception_capture_eligible_probability"
+                    ][index]
+                ),
+                "misconception_capture_hold_probability": float(
+                    latent[
+                        "predictive_misconception_capture_hold_probability"
+                    ][index]
+                ),
+                "misconception_capture_switch_event_probability": float(
+                    latent[
+                        "predictive_misconception_capture_switch_event_probability"
+                    ][index]
+                ),
+                "executed_choice_compatibility": float(
+                    latent["predictive_executed_choice_compatibility"][index]
+                ),
+                "best_alternative_choice_compatibility": float(
+                    latent["predictive_best_alternative_choice_compatibility"][index]
+                ),
+                "executed_beta": float(
+                    latent["predictive_executed_beta"][index]
+                ),
+                "executed_hypothesis_mode": (
+                    int(np.argmax(state_probabilities["executed_probability"][index]))
+                    if "executed_probability" in state_probabilities
+                    else -1
+                ),
                 "replacement_count": float(latent["replacement_count"][index]),
                 "replacement_fraction": float(
                     latent["replacement_fraction"][index]
@@ -998,16 +1225,103 @@ def _evaluate_state_model_particle_filter_run(
             "marginal_active_probability": state_probabilities["active_probability"],
             "transition_rate": latent["transition_rate"],
             "search_range": latent["search_range"],
+            "swap_probability": latent["swap_probability"],
+            "swap_event_probability": latent["swap_event_probability"],
             "replacement_count": latent["replacement_count"],
             "replacement_fraction": latent["replacement_fraction"],
             "removed_mass": latent["removed_mass"],
             "newcomer_distance": latent["newcomer_distance"],
             "feedback_surprise": latent["feedback_surprise"],
             "feedback_uncertainty": latent["feedback_uncertainty"],
+            "predictive_transition_rate": latent["predictive_transition_rate"],
+            "predictive_search_range": latent["predictive_search_range"],
+            "predictive_swap_probability": latent["predictive_swap_probability"],
+            "predictive_swap_event_probability": latent[
+                "predictive_swap_event_probability"
+            ],
+            "predictive_replacement_fraction": latent[
+                "predictive_replacement_fraction"
+            ],
+            "predictive_newcomer_distance": latent[
+                "predictive_newcomer_distance"
+            ],
+            "predictive_strategy_exploit": latent["predictive_strategy_exploit"],
+            "predictive_strategy_local_explore": latent[
+                "predictive_strategy_local_explore"
+            ],
+            "predictive_strategy_global_explore": latent[
+                "predictive_strategy_global_explore"
+            ],
+            "predictive_failure_pressure": latent[
+                "predictive_failure_pressure"
+            ],
+            "predictive_mastery_evidence": latent[
+                "predictive_mastery_evidence"
+            ],
+            "predictive_choice_confidence_signal": latent[
+                "predictive_choice_confidence_signal"
+            ],
+            "predictive_strategy_choice_precision": latent[
+                "predictive_strategy_choice_precision"
+            ],
+            "predictive_exploration_target": latent[
+                "predictive_exploration_target"
+            ],
+            "predictive_global_target": latent[
+                "predictive_global_target"
+            ],
+            "predictive_prior_reset_strength": latent[
+                "predictive_prior_reset_strength"
+            ],
+            "predictive_prior_reset_mass_shift": latent[
+                "predictive_prior_reset_mass_shift"
+            ],
+            "predictive_execution_switch_probability": latent[
+                "predictive_execution_switch_probability"
+            ],
+            "predictive_execution_switch_event_probability": latent[
+                "predictive_execution_switch_event_probability"
+            ],
+            "predictive_execution_dwell_trials": latent[
+                "predictive_execution_dwell_trials"
+            ],
+            "predictive_misconception_capture_eligible_probability": latent[
+                "predictive_misconception_capture_eligible_probability"
+            ],
+            "predictive_misconception_capture_hold_probability": latent[
+                "predictive_misconception_capture_hold_probability"
+            ],
+            "predictive_misconception_capture_switch_event_probability": latent[
+                "predictive_misconception_capture_switch_event_probability"
+            ],
+            "predictive_executed_choice_compatibility": latent[
+                "predictive_executed_choice_compatibility"
+            ],
+            "predictive_best_alternative_choice_compatibility": latent[
+                "predictive_best_alternative_choice_compatibility"
+            ],
+            "predictive_executed_beta": latent["predictive_executed_beta"],
+            "filtered_executed_beta": latent["filtered_executed_beta"],
+            "execution_switch_event_probability": latent[
+                "execution_switch_event_probability"
+            ],
+            "execution_dwell_trials": latent["execution_dwell_trials"],
             "pre_choice_ess": diagnostics["pre_choice_ess"],
             "post_choice_ess": diagnostics["post_choice_ess"],
             "resampled": diagnostics["resampled"],
+            **audit_state_log,
         }
+        if "executed_probability" in state_probabilities:
+            state_log.update(
+                {
+                    "marginal_executed_probability": state_probabilities[
+                        "executed_probability"
+                    ],
+                    "filtered_executed_probability": state_probabilities[
+                        "filtered_executed_probability"
+                    ],
+                }
+            )
 
     return SingleRunResult(
         params=dict(params),

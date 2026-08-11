@@ -142,6 +142,42 @@ class InferenceResult:
         return self.latent_summaries.get("feedback_uncertainty")
 
     @property
+    def predictive_swap_probability(self) -> Any:
+        return self.latent_summaries.get("predictive_swap_probability")
+
+    @property
+    def predictive_swap_event_probability(self) -> Any:
+        return self.latent_summaries.get("predictive_swap_event_probability")
+
+    @property
+    def predictive_transition_rate(self) -> Any:
+        return self.latent_summaries.get("predictive_transition_rate")
+
+    @property
+    def predictive_search_range(self) -> Any:
+        return self.latent_summaries.get("predictive_search_range")
+
+    @property
+    def predictive_replacement_fraction(self) -> Any:
+        return self.latent_summaries.get("predictive_replacement_fraction")
+
+    @property
+    def predictive_newcomer_distance(self) -> Any:
+        return self.latent_summaries.get("predictive_newcomer_distance")
+
+    @property
+    def predictive_strategy_exploit(self) -> Any:
+        return self.latent_summaries.get("predictive_strategy_exploit")
+
+    @property
+    def predictive_strategy_local_explore(self) -> Any:
+        return self.latent_summaries.get("predictive_strategy_local_explore")
+
+    @property
+    def predictive_strategy_global_explore(self) -> Any:
+        return self.latent_summaries.get("predictive_strategy_global_explore")
+
+    @property
     def final_weights(self) -> Any:
         return self.artifacts.get("final_weights")
 
@@ -230,13 +266,110 @@ class ParticleFilterResult(InferenceResult):
         resample_threshold_fraction: float,
         filter_seed: int,
         filtered_search_range: Any = None,
+        predictive_swap_probability: Any = None,
+        predictive_swap_event_probability: Any = None,
+        predictive_transition_rate: Any = None,
+        predictive_search_range: Any = None,
+        predictive_replacement_fraction: Any = None,
+        predictive_newcomer_distance: Any = None,
+        predictive_strategy_exploit: Any = None,
+        predictive_strategy_local_explore: Any = None,
+        predictive_strategy_global_explore: Any = None,
+        predictive_failure_pressure: Any = None,
+        predictive_mastery_evidence: Any = None,
+        predictive_choice_confidence_signal: Any = None,
+        predictive_strategy_choice_precision: Any = None,
+        predictive_exploration_target: Any = None,
+        predictive_global_target: Any = None,
+        predictive_prior_reset_strength: Any = None,
+        predictive_prior_reset_mass_shift: Any = None,
+        audit_hypothesis_map: Any = None,
+        audit_adaptive_sharpening: Any = None,
+        audit_exploration_lapse: Any = None,
+        audit_unsharpened_expectation: Any = None,
+        audit_sharpened_no_lapse: Any = None,
+        audit_strategy_confidence_no_lapse: Any = None,
+        audit_correct_predicting_available_probability: Any = None,
+        audit_correct_predicting_prior_mass: Any = None,
+        audit_best_active_correct_probability: Any = None,
+        audit_particle_correct_q10: Any = None,
+        audit_particle_correct_q50: Any = None,
+        audit_particle_correct_q90: Any = None,
+        audit_ancestral_paths: Mapping[str, Any] | None = None,
+        marginal_executed_probability: Any = None,
+        filtered_executed_probability: Any = None,
+        predictive_execution_switch_probability: Any = None,
+        predictive_execution_switch_event_probability: Any = None,
+        predictive_execution_dwell_trials: Any = None,
+        predictive_misconception_capture_eligible_probability: Any = None,
+        predictive_misconception_capture_hold_probability: Any = None,
+        predictive_misconception_capture_switch_event_probability: Any = None,
+        predictive_executed_choice_compatibility: Any = None,
+        predictive_best_alternative_choice_compatibility: Any = None,
+        predictive_executed_beta: Any = None,
+        filtered_executed_beta: Any = None,
+        filtered_execution_switch_event_probability: Any = None,
+        filtered_execution_dwell_trials: Any = None,
+        audit_persistent_execution_no_lapse: Any = None,
     ) -> None:
+        observation_probabilities = {"prior_t": marginal_probabilities}
+        for key, value in (
+            ("audit_hypothesis_map", audit_hypothesis_map),
+            ("audit_adaptive_sharpening", audit_adaptive_sharpening),
+            ("audit_exploration_lapse", audit_exploration_lapse),
+            ("audit_unsharpened_expectation", audit_unsharpened_expectation),
+            ("audit_sharpened_no_lapse", audit_sharpened_no_lapse),
+            (
+                "audit_strategy_confidence_no_lapse",
+                audit_strategy_confidence_no_lapse,
+            ),
+            (
+                "audit_persistent_execution_no_lapse",
+                audit_persistent_execution_no_lapse,
+            ),
+        ):
+            if value is not None:
+                observation_probabilities[key] = value
+        audit_diagnostics = {}
+        for key, value in (
+            ("audit_particle_correct_q10", audit_particle_correct_q10),
+            ("audit_particle_correct_q50", audit_particle_correct_q50),
+            ("audit_particle_correct_q90", audit_particle_correct_q90),
+            (
+                "audit_correct_predicting_available_probability",
+                audit_correct_predicting_available_probability,
+            ),
+            (
+                "audit_correct_predicting_prior_mass",
+                audit_correct_predicting_prior_mass,
+            ),
+            (
+                "audit_best_active_correct_probability",
+                audit_best_active_correct_probability,
+            ),
+        ):
+            if value is not None:
+                audit_diagnostics[key] = value
         super().__init__(
             backend="particle_filter",
-            observation_probabilities={"prior_t": marginal_probabilities},
+            observation_probabilities=observation_probabilities,
             state_probabilities={
                 "hypothesis_prior": marginal_hypothesis_prior,
                 "active_probability": marginal_active_probability,
+                **(
+                    {"executed_probability": marginal_executed_probability}
+                    if marginal_executed_probability is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "filtered_executed_probability": (
+                            filtered_executed_probability
+                        )
+                    }
+                    if filtered_executed_probability is not None
+                    else {}
+                ),
             },
             latent_summaries={
                 "swap_probability": filtered_swap_probability,
@@ -249,17 +382,74 @@ class ParticleFilterResult(InferenceResult):
                 "newcomer_distance": filtered_newcomer_distance,
                 "feedback_surprise": filtered_feedback_surprise,
                 "feedback_uncertainty": filtered_feedback_uncertainty,
+                "predictive_swap_probability": predictive_swap_probability,
+                "predictive_swap_event_probability": predictive_swap_event_probability,
+                "predictive_transition_rate": predictive_transition_rate,
+                "predictive_search_range": predictive_search_range,
+                "predictive_replacement_fraction": predictive_replacement_fraction,
+                "predictive_newcomer_distance": predictive_newcomer_distance,
+                "predictive_strategy_exploit": predictive_strategy_exploit,
+                "predictive_strategy_local_explore": predictive_strategy_local_explore,
+                "predictive_strategy_global_explore": predictive_strategy_global_explore,
+                "predictive_failure_pressure": predictive_failure_pressure,
+                "predictive_mastery_evidence": predictive_mastery_evidence,
+                "predictive_choice_confidence_signal": (
+                    predictive_choice_confidence_signal
+                ),
+                "predictive_strategy_choice_precision": (
+                    predictive_strategy_choice_precision
+                ),
+                "predictive_exploration_target": predictive_exploration_target,
+                "predictive_global_target": predictive_global_target,
+                "predictive_prior_reset_strength": predictive_prior_reset_strength,
+                "predictive_prior_reset_mass_shift": predictive_prior_reset_mass_shift,
+                "predictive_execution_switch_probability": (
+                    predictive_execution_switch_probability
+                ),
+                "predictive_execution_switch_event_probability": (
+                    predictive_execution_switch_event_probability
+                ),
+                "predictive_execution_dwell_trials": (
+                    predictive_execution_dwell_trials
+                ),
+                "predictive_misconception_capture_eligible_probability": (
+                    predictive_misconception_capture_eligible_probability
+                ),
+                "predictive_misconception_capture_hold_probability": (
+                    predictive_misconception_capture_hold_probability
+                ),
+                "predictive_misconception_capture_switch_event_probability": (
+                    predictive_misconception_capture_switch_event_probability
+                ),
+                "predictive_executed_choice_compatibility": (
+                    predictive_executed_choice_compatibility
+                ),
+                "predictive_best_alternative_choice_compatibility": (
+                    predictive_best_alternative_choice_compatibility
+                ),
+                "predictive_executed_beta": predictive_executed_beta,
+                "filtered_executed_beta": filtered_executed_beta,
+                "execution_switch_event_probability": (
+                    filtered_execution_switch_event_probability
+                ),
+                "execution_dwell_trials": filtered_execution_dwell_trials,
             },
             diagnostics={
                 "pre_choice_ess": pre_choice_ess,
                 "post_choice_ess": post_choice_ess,
                 "resampled": resampled,
                 "resampling_unique_ancestors": resampling_unique_ancestors,
+                **audit_diagnostics,
             },
             artifacts={
                 "final_weights": final_weights,
                 "particle_swap_counts": particle_swap_counts,
                 "resampling_log": resampling_log,
+                **(
+                    {"audit_ancestral_paths": dict(audit_ancestral_paths)}
+                    if audit_ancestral_paths is not None
+                    else {}
+                ),
             },
             metadata={
                 "particle_count": int(particle_count),

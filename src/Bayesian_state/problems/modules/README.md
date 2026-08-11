@@ -351,6 +351,17 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 
 再做边界截断。
 
+`beta_update_mode: probabilistic_feedback` 不先硬判“哪条规则正确”，而是用该规则对实际
+choice 的支持度与 feedback 联合形成连续证据，再决定 beta 上升或下降。
+
+`update_scope` 决定哪些规则消费当前反馈：
+
+- `active_hypotheses`：更新所有 active rules，是向后兼容的默认行为；
+- `executed_hypothesis`：只更新本 trial 实际执行的 rule，未执行候选的 beta 保持不变；
+  该模式要求开启 persistent execution。
+
+beta 在 outcome 后更新，因此 trial `t` 的反馈只影响 trial `t+1` 的预测。
+
 ### 7.5 与 Likelihood 耦合
 
 更新后的 `engine.beta` 在下一 trial 被 `LikelihoodModule` 读取，直接影响 softmax/距离映射的陡峭程度。

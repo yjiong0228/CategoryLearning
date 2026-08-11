@@ -60,6 +60,7 @@ CHOICE_READOUT_KWARG_KEYS = (
     "switch_probability",
     "post_error_switch_delta",
     "low_confidence_switch_gain",
+    "strategy_confidence_gain",
 )
 
 
@@ -258,6 +259,14 @@ def resolve_choice_readout_config(
         "low_confidence_switch_gain": _float_from_mapping(
             raw, "low_confidence_switch_gain", 0.0, min_value=0.0, max_value=1.0, context=context
         ),
+        "strategy_confidence_gain": _float_from_mapping(
+            raw,
+            "strategy_confidence_gain",
+            0.0,
+            min_value=0.0,
+            max_value=10.0,
+            context=context,
+        ),
     }
     if method == CHOICE_READOUT_STUBBORN and "post_error_switch_delta" not in raw:
         cfg["post_error_switch_delta"] = -0.10
@@ -289,6 +298,58 @@ def normalize_probability_vector(
             raise ValueError("Probability vector must have finite non-negative positive mass.")
         return np.full(expected, 1.0 / max(1, expected), dtype=float)
     return probabilities / float(np.sum(probabilities))
+
+
+def apply_strategy_conditioned_choice_confidence(
+    probabilities: Sequence[float] | np.ndarray,
+    *,
+    mastery_evidence: float,
+    failure_pressure: float,
+    gain: float,
+) -> tuple[np.ndarray, Dict[str, float]]:
+    """Sharpen choice commitment when mastery clearly exceeds failure.
+
+    The pre-choice controller state supplies a positive mastery advantage.
+    Squaring that advantage prevents weak or initial mastery signals from
+    producing premature confidence, while allowing a strong mastery state to
+    make the current policy more deterministic. The transformation amplifies
+    whichever category is currently preferred; it never uses the true answer.
+    """
+
+    base = normalize_probability_vector(probabilities, strict=True)
+    gain_value = float(gain)
+    if not np.isfinite(gain_value) or not 0.0 <= gain_value <= 10.0:
+        raise ValueError(
+            "strategy confidence gain must be finite and lie in [0, 10]."
+        )
+    if gain_value == 0.0:
+        return base.copy(), {
+            "strategy_confidence_signal": 0.0,
+            "strategy_choice_precision": 1.0,
+        }
+
+    mastery_value = float(mastery_evidence)
+    failure_value = float(failure_pressure)
+    if not np.isfinite(mastery_value) or not np.isfinite(failure_value):
+        raise ValueError(
+            "strategy-conditioned confidence requires finite pre-choice "
+            "mastery_evidence and failure_pressure."
+        )
+    mastery_value = float(np.clip(mastery_value, 0.0, 1.0))
+    failure_value = float(np.clip(failure_value, 0.0, 1.0))
+    advantage = max(mastery_value - failure_value, 0.0)
+    signal = float(advantage * advantage)
+    precision = float(1.0 + gain_value * signal)
+    log_probability = precision * np.log(np.clip(base, 1e-300, None))
+    log_probability -= float(np.max(log_probability))
+    sharpened = normalize_probability_vector(
+        np.exp(log_probability),
+        strict=True,
+    )
+    return sharpened, {
+        "strategy_confidence_signal": signal,
+        "strategy_choice_precision": precision,
+    }
 
 
 def _one_hot(index: int, size: int) -> np.ndarray:
@@ -470,6 +531,27 @@ def apply_output_noise_to_category_prob(
     )
 
 
+def resolve_executed_hypothesis(engine: Any) -> int | None:
+    """Return the protected overt rule when persistent execution is enabled."""
+    transition = getattr(engine, "modules", {}).get("hypo_transitions_mod")
+    if transition is None or not bool(
+        getattr(transition, "persistent_execution_enabled", False)
+    ):
+        return None
+    executed = getattr(transition, "executed_hypothesis", None)
+    if executed is None:
+        raise RuntimeError(
+            "persistent execution is enabled but executed_hypothesis is unset."
+        )
+    executed_index = int(executed)
+    mask = np.asarray(engine.hypotheses_mask, dtype=float).reshape(-1)
+    if not 0 <= executed_index < mask.size or mask[executed_index] <= 0.0:
+        raise RuntimeError(
+            "executed_hypothesis must identify an active hypothesis."
+        )
+    return executed_index
+
+
 def read_choice_probabilities_from_model(
     model: Any,
     perceived_stimulus: Sequence[float] | np.ndarray,
@@ -483,18 +565,26 @@ def read_choice_probabilities_from_model(
     n_categories = int(model.n_cats)
     prior = np.asarray(engine.prior, dtype=float)
     beta = np.asarray(engine.beta, dtype=float)
+    executed_hypothesis = resolve_executed_hypothesis(engine)
     active = np.flatnonzero(np.asarray(engine.hypotheses_mask, dtype=float) > 0.0)
     if active.size == 0:
         raise RuntimeError("Choice readout received an empty active hypothesis set.")
+    if executed_hypothesis is not None:
+        active = np.asarray([executed_hypothesis], dtype=int)
     power_value = float(power)
     lapse_value = float(lapse)
     if not np.isfinite(power_value) or power_value <= 0.0:
         raise ValueError("choice readout power must be finite and positive.")
     if not np.isfinite(lapse_value) or not 0.0 <= lapse_value <= 1.0:
         raise ValueError("choice lapse must lie in [0, 1].")
-    log_weights = power_value * np.log(np.clip(prior[active], 1e-300, None))
-    log_weights -= float(np.max(log_weights))
-    readout_weights = normalize_probability_vector(np.exp(log_weights), strict=True)
+    if executed_hypothesis is None:
+        log_weights = power_value * np.log(np.clip(prior[active], 1e-300, None))
+        log_weights -= float(np.max(log_weights))
+        readout_weights = normalize_probability_vector(
+            np.exp(log_weights), strict=True
+        )
+    else:
+        readout_weights = np.ones(1, dtype=float)
     cognitive = np.zeros(n_categories, dtype=float)
     stimulus = np.asarray(perceived_stimulus, dtype=float)
     for weight, hypothesis in zip(readout_weights, active):
@@ -544,14 +634,33 @@ def predict_choice_from_model(
     distribution = normalize_probability_vector(
         np.asarray(engine.prior, dtype=float), n_hypotheses, strict=True
     )
-    readout_weights, readout_details = choice_readout_weights(
-        distribution,
-        trial_idx=int(trial_idx),
-        feedback=feedback,
-        config=choice_readout_config,
-        rng=rng,
-        sticky_state=sticky_state,
-    )
+    executed_hypothesis = resolve_executed_hypothesis(engine)
+    if executed_hypothesis is None:
+        readout_weights, readout_details = choice_readout_weights(
+            distribution,
+            trial_idx=int(trial_idx),
+            feedback=feedback,
+            config=choice_readout_config,
+            rng=rng,
+            sticky_state=sticky_state,
+        )
+    else:
+        transition = engine.modules["hypo_transitions_mod"]
+        readout_weights = _one_hot(executed_hypothesis, n_hypotheses)
+        readout_details = {
+            "method": str(
+                choice_readout_config.get("method", CHOICE_READOUT_EXPECTATION)
+            ),
+            "selected_arg": int(executed_hypothesis),
+            "switched": bool(transition.current_execution_switch_event),
+            "confidence": float(distribution[executed_hypothesis]),
+            "persistent_execution_enabled": True,
+            "executed_hypothesis": int(executed_hypothesis),
+            "execution_switch_probability": float(
+                transition.current_execution_switch_probability
+            ),
+            "execution_dwell_trials": int(transition.execution_dwell_trials),
+        }
 
     beta = getattr(engine, "beta", None)
     if beta is None:
@@ -589,6 +698,26 @@ def predict_choice_from_model(
         n_categories,
         strict=True,
     )
+    strategy_gain = float(
+        choice_readout_config.get("strategy_confidence_gain", 0.0)
+    )
+    strategy_details = {
+        "strategy_confidence_signal": 0.0,
+        "strategy_choice_precision": 1.0,
+    }
+    if strategy_gain > 0.0:
+        transition = getattr(engine, "modules", {}).get("hypo_transitions_mod")
+        mastery_evidence = getattr(transition, "mastery_evidence", np.nan)
+        failure_pressure = getattr(transition, "failure_pressure", np.nan)
+        cognitive, strategy_details = (
+            apply_strategy_conditioned_choice_confidence(
+                cognitive,
+                mastery_evidence=float(mastery_evidence),
+                failure_pressure=float(failure_pressure),
+                gain=strategy_gain,
+            )
+        )
+    readout_details.update(strategy_details)
     observed, output_lapse, next_post_error_state = apply_output_noise_to_category_prob(
         cognitive,
         trial_idx=int(trial_idx),
@@ -754,10 +883,12 @@ __all__ = [
     "OralReportReadoutResult",
     "ReactionTimeReadoutResult",
     "apply_output_noise_to_category_prob",
+    "apply_strategy_conditioned_choice_confidence",
     "choice_readout_weights",
     "normalize_probability_vector",
     "predict_choice_from_model",
     "read_choice_probabilities_from_model",
+    "resolve_executed_hypothesis",
     "read_oral_report",
     "read_reaction_time",
     "resolve_choice_readout_config",

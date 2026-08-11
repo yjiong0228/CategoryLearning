@@ -30,24 +30,66 @@ class DynamicContinuousHypothesisTransitionModule(
         if continuous is not None:
             if not isinstance(continuous, Mapping):
                 raise ValueError("continuous_controller must be a mapping.")
-            unknown = set(continuous) - {"rate", "range"}
+            mode = str(continuous.get("mode", "legacy"))
+            if mode == "legacy":
+                unknown = set(continuous) - {"mode", "rate", "range"}
+            elif mode == "failure_accumulator_v2":
+                unknown = set(continuous) - {
+                    "mode",
+                    "state",
+                    "exploration",
+                    "range",
+                    "prior_reset",
+                    "execution",
+                }
+            else:
+                raise ValueError(
+                    "continuous_controller.mode must be 'legacy' or "
+                    f"'failure_accumulator_v2', got {mode!r}."
+                )
             if unknown:
                 raise ValueError(
-                    "continuous_controller supports only 'rate' and 'range'; "
+                    f"continuous_controller mode {mode!r} has unsupported keys; "
                     f"got {sorted(unknown)}."
                 )
-            if "rate" in continuous:
-                if "rate_controller" in resolved:
+            if mode == "legacy":
+                if "rate" in continuous:
+                    if "rate_controller" in resolved:
+                        raise ValueError(
+                            "Configure continuous_controller.rate or rate_controller, not both."
+                        )
+                    resolved["rate_controller"] = continuous["rate"]
+                if "range" in continuous:
+                    if "range_controller" in resolved:
+                        raise ValueError(
+                            "Configure continuous_controller.range or range_controller, not both."
+                        )
+                    resolved["range_controller"] = continuous["range"]
+            else:
+                legacy_controller_keys = {
+                    "rate_controller",
+                    "range_controller",
+                    "m_phi",
+                    "m_beta_surprise",
+                    "m_beta_uncertainty",
+                    "g_phi",
+                    "g_beta_surprise",
+                    "g_beta_uncertainty",
+                }
+                configured_legacy = sorted(legacy_controller_keys.intersection(resolved))
+                if configured_legacy:
                     raise ValueError(
-                        "Configure continuous_controller.rate or rate_controller, not both."
+                        "failure_accumulator_v2 cannot be combined with legacy "
+                        f"controller settings: {configured_legacy}."
                     )
-                resolved["rate_controller"] = continuous["rate"]
-            if "range" in continuous:
-                if "range_controller" in resolved:
-                    raise ValueError(
-                        "Configure continuous_controller.range or range_controller, not both."
-                    )
-                resolved["range_controller"] = continuous["range"]
+                resolved["controller_mode"] = mode
+                resolved["failure_accumulator_controller"] = {
+                    "state": continuous.get("state", {}),
+                    "exploration": continuous.get("exploration", {}),
+                    "range": continuous.get("range", {}),
+                    "prior_reset": continuous.get("prior_reset", {}),
+                }
+                resolved["persistent_execution"] = continuous.get("execution", {})
 
         prior_spec = resolved.pop("prior_assignment", None)
         if prior_spec is not None:

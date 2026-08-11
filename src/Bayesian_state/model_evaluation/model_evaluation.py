@@ -55,6 +55,9 @@ from src.Bayesian_state.metrics import (
     validate_exp_accuracy_alpha,
 )
 from src.Bayesian_state.model_evaluation.oral_model_alignment import OralModelAlignmentMixin
+from src.Bayesian_state.model_evaluation.particle_filter_evaluation import (
+    ParticleFilterEvaluationMixin,
+)
 from src.Bayesian_state.model_evaluation.transition_evaluation import TransitionEvaluationMixin
 from src.Bayesian_state.problems.partitions import Partition
 from src.Bayesian_state.utils.stream import StreamList
@@ -63,7 +66,11 @@ from src.Bayesian_state.utils.stream import StreamList
 logger = logging.getLogger(__name__)
 
 
-class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
+class ModelEval(
+    ParticleFilterEvaluationMixin,
+    TransitionEvaluationMixin,
+    OralModelAlignmentMixin,
+):
     """Evaluation and plotting entry point for state-based model results."""
 
     DEFAULT_TRAJECTORY_RANKS = (
@@ -88,6 +95,22 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
         for iSub, info in results.items():
             grouped[info["condition"]].append((iSub, info))
         return grouped
+
+    @staticmethod
+    def _has_target_probability_data(info: Mapping[str, Any]) -> bool:
+        target = info.get("target_probs")
+        if target is None:
+            return False
+        try:
+            values = np.asarray(target, dtype=float)
+        except (TypeError, ValueError):
+            return False
+        return bool(
+            values.ndim == 2
+            and values.shape[0] > 0
+            and values.shape[1] > 0
+            and np.any(np.all(np.isfinite(values), axis=1))
+        )
 
     @staticmethod
     def _layout_by_condition(grouped, kwargs):
@@ -1229,7 +1252,7 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
                     rows.append(row)
         return pd.DataFrame(rows)
 
-    def _predictive_accuracy_band_data(
+    def _trajectory_accuracy_band_data(
         self,
         subject_json_path,
         *,
@@ -1306,11 +1329,11 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
         }
 
     @staticmethod
-    def _draw_predictive_accuracy_band(ax, band, *, show_legend=True, compact_title=False):
+    def _draw_trajectory_accuracy_band(ax, band, *, show_legend=True, compact_title=False):
         x = band["x"]
-        ax.fill_between(x, band["q00"], band["q100"], color="#dce6f2", alpha=0.45, label="Model 100% band")
-        ax.fill_between(x, band["q05"], band["q95"], color="#9db9d8", alpha=0.45, label="Model 90% band")
-        ax.fill_between(x, band["q25"], band["q75"], color="#4f81b8", alpha=0.45, label="Model 50% band")
+        ax.fill_between(x, band["q00"], band["q100"], color="#dce6f2", alpha=0.45, label="Trajectory range")
+        ax.fill_between(x, band["q05"], band["q95"], color="#9db9d8", alpha=0.45, label="Trajectory 90% band")
+        ax.fill_between(x, band["q25"], band["q75"], color="#4f81b8", alpha=0.45, label="Trajectory 50% band")
         best_curve = band.get("best_curve")
         if best_curve is not None and len(best_curve) == len(x):
             ax.plot(x, best_curve, color="#E69F00", lw=2.0, alpha=0.95, label="Best run")
@@ -1322,47 +1345,14 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
             ax.set_title(f"S{band['subject_id']} | n={band['n_runs']}")
         else:
             ax.set_title(
-                f"Predictive Accuracy Band | Subject {band['subject_id']} | "
+                f"Latent-Trajectory Accuracy Ensemble | Subject {band['subject_id']} | "
                 f"n={band['n_runs']} runs"
             )
         ax.grid(alpha=0.25)
         if show_legend:
             ax.legend(loc="best")
 
-    def plot_predictive_accuracy_band(
-        self,
-        subject_json_path,
-        *,
-        save_path=None,
-        eval_prediction_mode=None,
-        max_runs=None,
-    ):
-        band = self._predictive_accuracy_band_data(
-            subject_json_path,
-            eval_prediction_mode=eval_prediction_mode,
-            max_runs=max_runs,
-        )
-
-        fig, ax = plt.subplots(figsize=(9, 5))
-        self._draw_predictive_accuracy_band(ax, band, show_legend=True)
-        fig.tight_layout()
-        if save_path:
-            save_path = Path(save_path)
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(save_path, dpi=300, bbox_inches="tight")
-            plt.close(fig)
-
-        return {
-            "subject_id": band["subject_id"],
-            "n_runs": band["n_runs"],
-            "median_curve_mae": band["median_curve_mae"],
-            "coverage_50": band["coverage_50"],
-            "coverage_90": band["coverage_90"],
-            "median_vol_ratio": band["median_vol_ratio"],
-            "plot_path": str(save_path) if save_path else "",
-        }
-
-    def plot_predictive_accuracy_band_group(
+    def plot_trajectory_accuracy_band_group(
         self,
         input_dir,
         save_path=None,
@@ -1382,7 +1372,7 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
                 continue
             try:
                 bands.append(
-                    self._predictive_accuracy_band_data(
+                    self._trajectory_accuracy_band_data(
                         subject_json,
                         eval_prediction_mode=eval_prediction_mode,
                         max_runs=max_runs_per_subject,
@@ -1412,7 +1402,7 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
                 col = idx % n_cols
                 ax = fig.add_subplot(n_rows, n_cols, (row_offset + local_row) * n_cols + col + 1)
                 show_legend = not legend_drawn
-                self._draw_predictive_accuracy_band(
+                self._draw_trajectory_accuracy_band(
                     ax,
                     band,
                     show_legend=show_legend,
@@ -1426,7 +1416,7 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
             ax = fig.add_subplot(n_rows, n_cols, idx + 1)
             ax.axis("off")
 
-        fig.suptitle("Predictive Accuracy Band by Subject", fontsize=16, y=0.99)
+        fig.suptitle("Latent-Trajectory Accuracy Ensemble by Subject", fontsize=16, y=0.99)
         fig.tight_layout()
         if save_path:
             save_path = Path(save_path)
@@ -1449,41 +1439,6 @@ class ModelEval(TransitionEvaluationMixin, OralModelAlignmentMixin):
                 for band in bands
             ]
         )
-
-    def save_predictive_accuracy_bands(
-        self,
-        input_dir,
-        output_dir,
-        *,
-        eval_prediction_mode=None,
-        max_runs_per_subject=None,
-        subjects=None,
-    ):
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        subject_set = {int(subject) for subject in subjects} if subjects is not None else None
-        rows = []
-        for subject_json in self._subject_json_files(input_dir):
-            sid = int(subject_json.stem.replace("subject_", ""))
-            if subject_set is not None and sid not in subject_set:
-                continue
-            save_path = output_dir / f"subject_{sid}_predictive_accuracy_band.png"
-            try:
-                rows.append(
-                    self.plot_predictive_accuracy_band(
-                        subject_json,
-                        save_path=save_path,
-                        eval_prediction_mode=eval_prediction_mode,
-                        max_runs=max_runs_per_subject,
-                    )
-                )
-            except (ValueError, FileNotFoundError, KeyError) as exc:
-                logger.warning("Skipping predictive band for %s: %s", subject_json, exc)
-        df = pd.DataFrame(rows)
-        if not df.empty:
-            df.to_csv(output_dir / "predictive_accuracy_band_summary.csv", index=False)
-        return df
 
     def save_behavior_ppc_outputs(
         self,
