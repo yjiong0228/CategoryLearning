@@ -90,7 +90,7 @@ python -m pip install -r requirements.txt
 Run the smallest relevant validation first. Examples:
 
 ```bash
-python -m pytest -q tests/test_model_0806_framework.py
+python -m pytest -q tests/bayesian_state/test_model_0806_framework.py
 python -m pytest -q
 ```
 
