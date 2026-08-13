@@ -10,7 +10,7 @@
 Model 0811 将类别学习刻画为三个彼此分开的过程：学习者在容量有限的规则工作空间中持续搜索候选规则，在任一时刻主要执行其中一条规则作答，并根据反馈更新这条执行规则的确信度；连续的失败压力和掌握证据决定何时从利用转向局部或全局探索，而近期选择若能被某条错误规则高度一致地解释，则可能形成一段短期错误规则固着。不可观察的感知、工作空间、执行规则和固着轨迹均由粒子滤波边际化。
 
 \paragraph{当前科学定位。}
-0811 是当前 \texttt{Bayesian\_state} 正式实现的模型说明，而不是为论文另写的一套平行算法。它保留 0809 的规则空间、知觉模块、双通道记忆、有限工作空间、局部--全局搜索和粒子滤波骨架，但用
+0811 是当前 \texttt{Bayesian\_state} 正式实现的模型说明，而不是为论文另写的一套平行算法。它保留 0809 的知觉模块、双通道记忆、有限工作空间、局部--全局搜索和粒子滤波骨架，并把二分类规则空间扩展为 29 条固定标签规则；同时用
 \texttt{failure\_accumulator\_v2} 取代当前主配置中旧的线性 surprise/uncertainty logit 控制器，并加入显式执行规则、规则特异动态 $\beta$ 和 history-supported misconception capture。旧控制器仍保留在代码中用于兼容和消融，但不再是 0811 当前工作候选的主要心理解释。
 
 \paragraph{当前允许的结论。}
@@ -20,7 +20,7 @@ Model 0811 将类别学习刻画为三个彼此分开的过程：学习者在容
 \subsubsection{术语与模型层级}
 
 \paragraph{规则、工作空间与执行规则。}
-一条候选规则或有向假设记为 $h\in\mathcal H=\{1,\ldots,J\}$。第 $t$ 个试次开始时，模型只在容量为 $M_s$ 的活跃集合
+一条候选规则记为 $h\in\mathcal H=\{1,\ldots,J\}$。每条规则同时规定几何划分及其固定任务类别标签；标签反转不再作为独立 hypothesis。第 $t$ 个试次开始时，模型只在容量为 $M_s$ 的活跃集合
 \begin{equation}
 A_{s,t}\subset\mathcal H,
 \qquad |A_{s,t}|=M_s
@@ -48,14 +48,41 @@ e_{s,t}\in A_{s,t},
 \paragraph{逐试次观测。}
 对被试 $s$ 的第 $t$ 个试次，物理刺激记为 $\mathbf x_t\in[0,1]^4$，被试选择记为 $y_t\in\{1,2\}$，反馈记为 $r_t\in[0,1]$。当前 condition 1 数据主要使用二元正确/错误反馈。模型拟合使用刺激、选择和反馈；口头规则报告与反应时不参与当前 choice 参数拟合，只能作为后续外部约束。
 
-\paragraph{有向规则空间。}
-基础几何规则包括 4 个单维边界、6 个二维等值边界、6 个二维求和边界和 3 个四维混合边界，共 19 个几何划分。当前配置设置
-\texttt{include\_label\_reversals: true}，为每个划分保留两种类别标签方向，因此正式粒子结果中的有向假设数为
+\paragraph{固定标签规则空间。}
+当前 condition 1 的二分类 hypothesis space 包含六类规则。原有 19 条规则保持原索引：4 条单维阈值规则 $x_i=0.5$（\texttt{univariate\_threshold}）、6 条成对顺序规则 $x_i=x_j$（\texttt{pairwise\_order}）、6 条成对和阈值规则 $x_i+x_j=1$（\texttt{pairwise\_sum\_threshold}），以及 3 条两组和顺序规则 $x_i+x_j=x_k+x_l$（\texttt{paired\_sum\_order}）。在其后新增 6 条成对近似带和 4 条单维中等值带，因此
 \begin{equation}
-J=19\times 2=38.
+J=4+6+6+3+6+4=29.
 \label{eq:model0811-hypothesis-count}
 \end{equation}
-标签反转不是新几何边界，却是不同的可执行分类规则，因为同一划分的两侧可以对应相反类别。
+所有规则使用任务给定的类别标签；模型不再复制标签反转版本，以免把反应映射错误与几何规则混为一谈。
+
+\paragraph{成对近似带与单维中等值带。}
+对任意维度对 $(i,j)$，成对近似规则（\texttt{pairwise\_similarity\_band}）定义为
+\begin{align}
+R_1^{\mathrm{pair}}(i,j)
+&=\{\mathbf x:|x_i-x_j|\leq\delta_{\mathrm{pair}}\},
+\nonumber\\
+R_2^{\mathrm{pair}}(i,j)
+&=[0,1]^4\setminus R_1^{\mathrm{pair}}(i,j).
+\label{eq:model0811-pair-similarity-band}
+\end{align}
+对任意维度 $i$，单维中等值规则（\texttt{univariate\_center\_band}）定义为
+\begin{align}
+R_1^{\mathrm{center}}(i)
+&=\{\mathbf x:|x_i-0.5|\leq\delta_{\mathrm{center}}\},
+\nonumber\\
+R_2^{\mathrm{center}}(i)
+&=[0,1]^4\setminus R_1^{\mathrm{center}}(i).
+\label{eq:model0811-center-band}
+\end{align}
+当前实现的两个半宽默认值均为 $\delta_{\mathrm{pair}}=\delta_{\mathrm{center}}=0.10$；二者可分别由 \texttt{pairwise\_similarity\_tolerance} 和 \texttt{center\_band\_tolerance} 配置。
+
+\paragraph{非等体积划分是有意保留的。}
+这两类 band 不把特征空间均分。若刺激在单位超立方体内均匀分布，成对近似区域的体积比例为
+$2\delta_{\mathrm{pair}}-\delta_{\mathrm{pair}}^2=0.19$，中等值区域的体积比例为 $2\delta_{\mathrm{center}}=0.20$；其补集分别占 0.81 和 0.80。模型没有通过放宽容差把它们强行调成 $0.5/0.5$，因为这些规则表达的是“一个特殊关系是否成立”，而不是等体积切分。空间不均衡可能使规则在类别均衡任务中产生系统性错误，但这正是需要被模型解释的被试假设，而不是排除它们的理由。
+
+\paragraph{口头报告对新增规则的约束。}
+口头报告不参与 choice 参数拟合，只用于判断候选关系是否确实出现在被试的显式描述中。在 condition 1 中，成对“相等/差不多”出现在 18/32 名被试，中等值描述出现在 21/32 名被试。按严格口径---一条报告中出现的全部结构关系都必须能由当前规则词汇表达---原 19 条规则覆盖 8087/9569（84.5\%）条结构化报告；加入成对近似带后覆盖 8231/9569（86.0\%），再加入中等值带后覆盖 8880/9569（92.8\%）。这些比例说明新增 primitive 提高了口述表达覆盖，但不证明被试在每次选择时实际执行了对应规则；后者仍需留出 choice prediction 检验。
 
 \paragraph{个体化知觉。}
 知觉模块先把刺激转换为内部表征
@@ -67,7 +94,7 @@ J=19\times 2=38.
 不同被试的噪声参数来自正式学习前的知觉校准数据，并按 Task2 的实际特征顺序重排。当前实现支持基于被试误差均值与标准差的正态噪声，以及基于判断阈限半宽的均匀噪声。该潜在感知抽样在粒子之间变化。
 
 \paragraph{规则条件类别概率。}
-给定感知刺激和规则 $h$，当前 v2i 配置采用 prototype distance。设刺激到规则 $h$ 下类别 $c$ 原型的距离为 $d_{t,h,c}$，则
+给定感知刺激和规则 $h$，prototype 与 boundary 是同一 hypothesis space 的两种 realization。boundary 模式直接计算刺激到类别区域的最短距离；prototype 模式不再逐条手写中心，而是对每个连通区域自动求单位特征空间内的体积质心，并把刺激到该类别所有 component prototypes 的最小距离记为 $d_{t,h,c}$。因此 \texttt{not near/not middle} 的两个不连通分量各有一个 prototype，不会被错误地平均成落在 band 内的单一点。两种 realization 共享规则及类别区域，但不被强制产生完全相同的软概率或硬分类。prototype 模式下
 \begin{equation}
 q_{t,h}(c)
 =
@@ -527,10 +554,10 @@ behavior PPC 比较真实与条件生成行为的 rolling-accuracy MAE、局部�
 \subsubsection{当前 v2i-70 冻结配置}
 
 \paragraph{模型与数值设置。}
-当前 S103 工作候选使用：4 维、2 类、38 条有向规则；容量 $M_{103}=3$；particle filter；
+本节报告的 S103 数值来自扩展 hypothesis space 及自动 prototype 构造之前的历史筛查配置：4 维、2 类、19 个几何划分及其标签反转，共 38 条有向规则，并使用当时逐条指定的 prototype 坐标；容量 $M_{103}=3$；particle filter；
 $R=32$、ESS threshold fraction $0.5$；4 个 common-seed repeats；
 \texttt{prediction\_mode=prior\_t}；\texttt{loss\_metric=choice\_nll}；
-16-trial rolling window。$R=32$ 是机制筛查预算，不是最终数值稳定性设置。
+16-trial rolling window。$R=32$ 是机制筛查预算，不是最终数值稳定性设置。当前 29-rule 固定标签空间尚未重跑这些 S103 比较，因此下述数值只能支持控制器和 capture 机制的历史筛查，不能作为新增 band 改善行为拟合的证据。
 
 \paragraph{认知参数。}
 failure/mastery 使用 $(\delta_F,\delta_M)=(0.60,0.90)$；
@@ -578,7 +605,7 @@ $\chi_{\min}=0$ 对 $0.70$ 做严格配对。任何后续阈值筛查都必须�
 \subsubsection{截至 0811 的 S103 筛查结果}
 
 \paragraph{比较协议。}
-下述数字均来自被试 103、全部 256 个试次、相同数据与 choice NLL 定义。v2i-0 与 v2i-70 使用相同的 4 个 simulation/filter seeds，每次 32 particles；v2f 使用相同 seed 列表。深谷定义为 trial 96--112，末期定义为 trial 225--256。它们是开发阶段的单被试数值筛查，不是群体统计。
+下述数字均来自被试 103、全部 256 个试次、相同数据与 choice NLL 定义。v2i-0 与 v2i-70 使用相同的 4 个 simulation/filter seeds，每次 32 particles；v2f 使用相同 seed 列表。深谷定义为 trial 96--112，末期定义为 trial 225--256。它们是旧 38-rule 空间上的开发阶段单被试筛查，不是群体统计，也不是当前 29-rule 空间的性能结果。
 
 \paragraph{核心结果。}
 四次重复均值为
@@ -621,8 +648,8 @@ v2i-70 behavior PPC 的 median volatility ratio 约为 0.522，仍未通过当�
 \paragraph{第一，冻结工作候选而非宣布最终模型。}
 保留 v2f 作为最重要的无-capture 参照，把 v2i-70 标记为机制候选。后续图和论文均并列呈现两者：v2f 代表当前较好的总体拟合，v2i-70 代表能够表达自洽错误低谷但尚未取得总体优势的扩展。不能只展示深谷更好看的 v2i-70。
 
-\paragraph{第二，先做数值稳定性和门槛敏感性。}
-在增加新机制前，以 common random numbers 提高 particle 数和独立 repeats，确认 v2f 与 v2i-70 的 NLL、谷底和末期差异不由 $R=32$ 的数值波动决定。随后只比较少量预先声明的绝对相容度，例如 0.65、0.70 和 0.75；主要判据仍是完整序列 NLL，深谷误差和末期正确率作为共同约束，不能用 S103 谷底单独挑阈值。
+\paragraph{第二，先在新规则空间上建立可比基线。}
+所有候选模型应先在相同的 29-rule 固定标签空间上重跑，使用 family-balanced prior，避免包含 6 条规则的 family 仅因候选数更多而获得额外先验质量。在此基础上，再以 common random numbers 提高 particle 数和独立 repeats，确认 v2f 与 v2i-70 的 NLL、谷底和末期差异不由 $R=32$ 的数值波动决定。随后只比较少量预先声明的绝对相容度，例如 0.65、0.70 和 0.75；主要判据仍是完整序列 NLL，深谷误差和末期正确率作为共同约束，不能用 S103 谷底单独挑阈值。
 
 \paragraph{第三，若稳定后仍缺少深谷，优先改造退出固着的条件。}
 当前 capture 使用固定 8-trial dwell，可能过于短且与反证强度无关。下一项最有认知含义的候选不是继续提高输出 sharpening，而是让错误规则的释放 hazard 取决于该规则累积的反证：弱反证维持规则，连续强反证才解除承诺。这能够产生有持续时间的低谷，同时允许模型在真正掌握后稳定维持正确规则。该机制尚未实现，必须作为 v2i 的单独消融坐标，不能写进当前模型方程或事后针对 trial 96--112 硬编码。
@@ -638,17 +665,17 @@ v2i-70 behavior PPC 的 median volatility ratio 约为 0.522，仍未通过当�
 
 \paragraph{模型实现。}
 正式装配仍由 \texttt{StateModel} 和 YAML 完成。公开 dynamic-continuous 类位于
-\path{src/Bayesian_state/problems/modules/hypo_transition/dynamic_continuous.py}；
+\path{src/Bayesian_state/model/modules/hypothesis_transition/dynamic_adaptive_control.py}；
 failure/mastery、workspace、persistent execution 和 capture runtime 位于
-\path{src/Bayesian_state/problems/modules/hypo_transition/_internal/workspace_policy.py}；
+\path{src/Bayesian_state/model/modules/hypothesis_transition/workspace.py}；
 规则特异 $\beta$ 位于
-\path{src/Bayesian_state/problems/modules/beta.py}；
+\path{src/Bayesian_state/model/modules/beta.py}；
 choice confidence 与 output noise 位于
-\path{src/Bayesian_state/problems/modules/readout.py}。
+\path{src/Bayesian_state/model/readout.py}。
 
 \paragraph{潜在路径积分。}
 粒子滤波位于
-\path{src/Bayesian_state/inference_engine/backends/particle_filter.py}。
+\path{src/Bayesian_state/inference/backends/particle_filter.py}。
 每个有状态模块均通过
 \texttt{state\_dict}/\texttt{load\_state\_dict} 随重采样传播；predictive 与 filtered 日志分开保存。随机数对齐和 threshold gate 均有回归测试。
 
@@ -658,15 +685,15 @@ choice confidence 与 output noise 位于
 全部模型评价使用
 \texttt{python -m src.Bayesian\_state.run\_model\_evaluation}。
 PF 专用范围、ESS 和 active-state 诊断位于同一
-\path{src/Bayesian_state/model_evaluation} 框架，不建立独立绘图 pipeline。所有正式图只输出 PNG，数值摘要使用 CSV/JSON。
+\path{src/Bayesian_state/evaluation} 框架，不建立独立绘图 pipeline。所有正式图只输出 PNG，数值摘要使用 CSV/JSON。
 
 \paragraph{当前结果。}
 v2i-70 的 simulation 与评价位于
 \path{results/model_dynamic_continuous/0811_controller_v2i_rng_aligned_capture70_s103_probe/}。
 正式主图为
-\path{model_evaluation/basic/accuracy_band.png}
+\path{evaluation/basic/accuracy_band.png}
 和
-\path{model_evaluation/basic/dynamic_strategy_profile.png}。
+\path{evaluation/basic/dynamic_strategy_profile.png}。
 
 
 \subsubsection{模型边界与可证伪性}
@@ -675,7 +702,7 @@ v2i-70 的 simulation 与评价位于
 failure/mastery、双通道记忆、动态 $\beta$、strategy confidence、persistent execution 和 capture dwell 都能改变选择的时间连续性。若同时自由搜索，它们可能互相补偿。正式优化必须采用嵌套消融和冻结参数路线，不能把所有机制一次性放开后仅报告最好组合。
 
 \paragraph{数据边界。}
-当前 v2i-70 证据只来自 S103 的开发性探针。深谷区间来自已知行为曲线，因此只能用于诊断，不应成为在同一被试上无限增加机制的目标函数。模型是否适用于其他被试、condition 或独立实验尚未得到验证。
+当前 v2i-70 证据只来自 S103 的开发性探针，而且该探针使用旧 38-rule 空间。深谷区间来自已知行为曲线，因此只能用于诊断，不应成为在同一被试上无限增加机制的目标函数。新增 band 目前只有口述覆盖证据，尚无新空间下的 choice 拟合结果；模型是否适用于其他被试、condition 或独立实验也尚未得到验证。
 
 \paragraph{计算边界。}
 32 particles 和 4 repeats 足以发现明显失败模式，不足以证明模型排序稳定。accuracy band 的 Bernoulli draws 描述条件行为变异，不能替代 particle-count 和 filter-seed 敏感性分析。
@@ -691,4 +718,4 @@ failure/mastery、双通道记忆、动态 $\beta$、strategy confidence、persi
 
 Model 0811 已经形成一条因果清楚且可被逐项消融的计算链：个体化知觉产生潜在刺激；有限工作空间维持少量候选规则；failure/mastery controller 连续调节内部探索量和搜索范围；persistent execution 把内部候选与外显作答规则分开；反馈只更新执行规则的动态 $\beta$；近期选择与规则内容的一致性可以在双门槛约束下形成可逆的错误规则固着；粒子滤波对所有不可见轨迹求 pre-choice 边际预测；统一评价框架再用 choice NLL、accuracy band、continuous strategy profile 和 behavior PPC 检查相对拟合与绝对失配。
 
-当前证据最稳妥的解释是：规则特异动态确信度对末期掌握有帮助，而无门槛的 misconception capture 会造成过度固着；加入 0.70 的绝对相容度门槛后，这一失败得到缓解，但模型整体仍未稳定超过 v2f，且只解释了部分深谷而没有复现被试全部波动。因此，下一阶段应先完成数值稳定性与门槛敏感性，再决定是否加入反证依赖的 release hazard；在完成多被试、恢复与独立行为验证前，不把 v2i-70 写成最终认知机制。
+当前证据最稳妥的解释是：规则特异动态确信度对末期掌握有帮助，而无门槛的 misconception capture 会造成过度固着；加入 0.70 的绝对相容度门槛后，这一失败得到缓解，但模型整体仍未稳定超过 v2f，且只解释了部分深谷而没有复现被试全部波动。新增的成对近似带和单维中等值带提高了 condition 1 口述规则的表达覆盖，但尚未在 choice 上验证。因此，下一阶段应先在统一的 29-rule 空间重跑基线，再完成数值稳定性与门槛敏感性，最后决定是否加入反证依赖的 release hazard；在完成多被试、恢复与独立行为验证前，不把 v2i-70 或新增 band 写成已经证实的最终认知机制。

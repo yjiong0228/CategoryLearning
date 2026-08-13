@@ -10,7 +10,7 @@
 \paragraph{0809 的定位。}
 0809 不是再增加一套与主程序平行的专用模型，而是对当前
 \texttt{Bayesian\_state} 中
-\texttt{DynamicContinuousHypothesisTransitionModule} 的科学含义、数学定义和实施顺序作统一说明。它也不是一份结果报告：下面标为“待检验”的内容均是前瞻性计划，当前可执行配置只是实现起点，不构成科学假设已经得到支持的证据。
+\texttt{DynamicAdaptiveControlHypothesisTransitionModule} 的科学含义、数学定义和实施顺序作统一说明。它也不是一份结果报告：下面标为“待检验”的内容均是前瞻性计划，当前可执行配置只是实现起点，不构成科学假设已经得到支持的证据。
 
 
 \subsubsection{我们究竟想检验什么}
@@ -345,7 +345,7 @@ w^{(r)}_t
 \begin{enumerate}
     \item \textbf{FS：完整空间基线。}所有规则始终可用，用来检验有限工作空间本身；
     \item \textbf{FA2：静态有限工作空间。}$m_t=m_0$、$g_t=g_0$，使用正式的
-    \texttt{StaticWorkspaceHypothesisTransitionModule}；
+    \texttt{FixedWorkspaceHypothesisTransitionModule}；
     \item \textbf{FA3-M-S：惊讶度动态替换。}$\beta_{mS}>0,\beta_{mU}=0$；
     \item \textbf{FA3-M-U：不确定性动态替换。}$\beta_{mS}=0,\beta_{mU}>0$；
     \item \textbf{FA3-M-SU：联合动态替换。}只在两个单信号模型至少有一个通过后才开放；
@@ -353,9 +353,9 @@ w^{(r)}_t
 \end{enumerate}
 
 \paragraph{静态端点必须由静态类实现。}
-当前 \texttt{DynamicContinuousHypothesisTransitionModule} 要求至少一个
+当前 \texttt{DynamicAdaptiveControlHypothesisTransitionModule} 要求至少一个
 $m$ 或 $g$ 的动态系数非零；全零控制器应绑定
-\texttt{StaticWorkspaceHypothesisTransitionModule}。这避免把“参数恰好为零的动态类”误标为动态认知策略，也使静态父模型的随机过程成为清楚的嵌套端点。
+\texttt{FixedWorkspaceHypothesisTransitionModule}。这避免把“参数恰好为零的动态类”误标为动态认知策略，也使静态父模型的随机过程成为清楚的嵌套端点。
 
 \paragraph{不要一开始搜索所有组合。}
 当前 Hyper-CD 配置具备枚举多种 rate/range profile 的能力，但“软件能够运行”不等于“科学上应当同时开放”。若在同一数据上先看完所有 $m$、$g$、惊讶度、不确定性及联合组合，再只报告最好者，拟合优势会被隐性多重选择放大。正式方案应冻结一条层级路线；离散 profile 应分别作为候选模型比较或进行模型平均，不能先在一个大动态家族内部挑最好点，再只按少数连续参数惩罚复杂度。
@@ -507,20 +507,20 @@ RT、口头报告或其他没有参与 choice 参数选择的指标应提供增�
 
 \paragraph{正式模块对应。}
 两步 transition 生命周期位于
-\path{src/Bayesian_state/problems/modules/hypo_transition/process.py}；动态控制与有限工作空间运行时位于
-\path{src/Bayesian_state/problems/modules/hypo_transition/dynamic_continuous.py}
+\path{src/Bayesian_state/model/modules/hypothesis_transition/contracts.py}；动态控制与有限工作空间实现位于
+\path{src/Bayesian_state/model/modules/hypothesis_transition/dynamic_adaptive_control.py}
 和其内部 workspace policy；双记忆位于
-\path{src/Bayesian_state/problems/modules/memory.py}；choice/RT/oral readout 位于
-\path{src/Bayesian_state/problems/modules/readout.py}；粒子积分位于
-\path{src/Bayesian_state/inference_engine/backends/particle_filter.py}。
+\path{src/Bayesian_state/model/modules/memory.py}；choice/RT/oral readout 位于
+\path{src/Bayesian_state/model/readout.py}；粒子积分位于
+\path{src/Bayesian_state/inference/backends/particle_filter.py}。
 
 \paragraph{拟合、生成与评价对应。}
 观察数据和自主模型都经由同一个 \texttt{StateModel} 生命周期执行；单次观察数据执行在
-\path{src/Bayesian_state/simulation/state_model_execution.py}，自主行为生成在
-\path{src/Bayesian_state/simulation/autonomous_model_execution.py}，独立重复与汇总在
-\path{src/Bayesian_state/simulation/repeated_simulation.py}。choice Brier、NLL 和轨迹统计由
+\path{src/Bayesian_state/simulation/execution.py}，自主行为生成在
+\path{src/Bayesian_state/simulation/autonomous.py}，独立重复与汇总在
+\path{src/Bayesian_state/simulation/runner.py}。choice Brier、NLL 和轨迹统计由
 \path{src/Bayesian_state/metrics/} 提供；
-\path{src/Bayesian_state/model_evaluation/} 只消费已产生的结果并执行通用或 transition 专属后处理。
+\path{src/Bayesian_state/evaluation/} 只消费已产生的结果并执行通用或 transition 专属后处理。
 
 \paragraph{当前轻量执行顺序。}
 在进入全样本前，推荐从仓库根目录依次运行：
