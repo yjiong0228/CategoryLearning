@@ -32,7 +32,7 @@ from scripts.run_model_0804_cond1_preflight import (  # noqa: E402
     _load_subject_arrays,
     _parameters,
 )
-from src.Bayesian_state.manuscript_models.model_0804_forgetting import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0804.forgetting import (  # noqa: E402
     couple_model0804_histories,
     sample_model0804_filtered_anchor_states,
 )
@@ -572,10 +572,10 @@ def main() -> None:
         "base_config_sha256": _sha256(base_path),
         "implementation_sha256": {
             "model_0804.py": _sha256(
-                ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
+                ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
             ),
-            "model_0804_forgetting.py": _sha256(
-                ROOT / "src/Bayesian_state/manuscript_models/model_0804_forgetting.py"
+            "model_0804/forgetting.py": _sha256(
+                ROOT / "src/Bayesian_state/reference_models/model_0804/forgetting.py"
             ),
             "diagnostic_runner": _sha256(Path(__file__).resolve()),
             "forgetting_tests": _sha256(

@@ -651,13 +651,13 @@ def main() -> None:
     kernels = kernels_by_prior[prior_id]
     candidate_lookup = _candidate_lookup(report)
     config_sha256 = _sha256(config_path)
-    model_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
-    recovery_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804_recovery.py"
+    model_path = ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
+    recovery_path = ROOT / "src/Bayesian_state/reference_models/model_0804/recovery.py"
     model_sha256 = _sha256(model_path)
     recovery_sha256 = _sha256(recovery_path)
     if model_sha256 != str(report["implementation_sha256"]["model_0804.py"]):
         raise ValueError("model implementation changed since source recovery")
-    if recovery_sha256 != str(report["implementation_sha256"]["model_0804_recovery.py"]):
+    if recovery_sha256 != str(report["implementation_sha256"]["model_0804/recovery.py"]):
         raise ValueError("recovery implementation changed since source recovery")
 
     workers = int(args.workers or config["execution"]["workers"])
@@ -829,7 +829,7 @@ def main() -> None:
         "config_sha256": config_sha256,
         "implementation_sha256": {
             "model_0804.py": model_sha256,
-            "model_0804_recovery.py": recovery_sha256,
+            "model_0804/recovery.py": recovery_sha256,
             "particle_stability_runner": _sha256(Path(__file__).resolve()),
         },
         "versions": {"python": platform.python_version(), "numpy": np.__version__},

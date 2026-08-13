@@ -1,4 +1,4 @@
-# simulation
+# 仿真
 
 本目录负责固定参数下的观察数据执行、独立重复运行与模型自主行为生成。
 它不搜索或选择超参数；optimization 通过调用这里的稳定运行接口比较候选参数。
@@ -7,23 +7,28 @@
 
 | 文件 | 职责 |
 |---|---|
-| `state_model_execution.py` | trial 数据、运行结果对象及单次 trajectory/particle StateModel 执行 |
-| `repeated_simulation.py` | 独立重复、representative run、聚合统计和稳定结果 schema |
-| `simulation_config.py` | YAML/路径/loss/顺序评价协议解析及 packed profile 参数展开 |
-| `autonomous_model_execution.py` | 在类别学习任务中运行模型自主选择并生成 feedback |
+| `data.py` | trial 数组、数据加载、被试切片与验证 |
+| `results.py` | 单次和重复运行的稳定结果契约 |
+| `execution.py` | 单次 trajectory/particle StateModel 执行 |
+| `runner.py` | 独立重复、representative run 与聚合统计 |
+| `config.py` | YAML/路径/loss/顺序评价协议解析及 packed profile 参数展开 |
+| `parameters.py` | 固定超参数的提取、覆盖与可复现 candidate seed 解析 |
+| `autonomous.py` | 在类别学习任务中运行模型自主选择并生成 feedback |
 
-`autonomous_model_execution.py` 提供 `run_autonomous_category_learning()`。物理
+`autonomous.py` 提供 `run_autonomous_category_learning()`。物理
 stimulus/category schedule 固定，但 category 只由任务环境在选择后用于产生 feedback，不会提前
 进入模型。模型内部调用 `StateModel.generate_step_by_step()`，因此自主生成和观察数据拟合共享
 `begin_trial() -> predict_choice() -> complete_trial()` 生命周期。这是参数恢复、模型恢复和自主
 posterior-predictive validation 的生成基础，不在本文件中实现恢复候选搜索。
 
-公共结果对象位于 `state_model_execution.py`。本目录不定义 loss、metric 公式或搜索策略：loss 和
+公共结果对象位于 `results.py`，trial 数据契约位于 `data.py`。本目录不定义 loss、metric 公式或搜索策略：loss 和
 统计定义属于 `metrics/`，候选比较、容差和 anchor guard 属于 `optimization/`。
 
 顶层 `run_simulation.py` 同时提供 CLI 和公开函数
 `run_simulation(config_path, subjects=..., subject_range=...)`。组合式 workflow 直接调用该函数，
 不再通过子进程重新进入 CLI；函数返回本次写出的 subject JSON 路径。
+固定参数工具属于仿真领域接口，调用方应从 `simulation.parameters` 导入，而不是反向依赖 CLI
+入口 `run_simulation.py`。
 
 ## 顺序训练/留出评价
 

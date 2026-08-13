@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 _PROJECT_TMP = Path(__file__).resolve().parents[2] / "tmp"
 _MPL_CACHE = _PROJECT_TMP / "matplotlib"
@@ -25,14 +25,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.Bayesian_state.model_evaluation.model_evaluation import ModelEval
-from src.Bayesian_state.model_evaluation.particle_filter_strategy_audit import (
+from src.Bayesian_state.evaluation.evaluator import ModelEvaluator
+from src.Bayesian_state.evaluation.particle_filter.strategy import (
     run_particle_filter_strategy_audit,
 )
-from src.Bayesian_state.model_evaluation.particle_filter_choice_transmission_audit import (
+from src.Bayesian_state.evaluation.particle_filter.choice_transmission import (
     run_particle_filter_choice_transmission_audit,
 )
-from src.Bayesian_state.model_evaluation.particle_filter_residual_diagnostics import (
+from src.Bayesian_state.evaluation.particle_filter.residuals import (
     run_particle_filter_residual_diagnostics,
 )
 from src.Bayesian_state.utils.paths import PROCESSED_DATA_DIR, ROOT_DIR, SIMULATION_RESULTS_DIR
@@ -182,6 +182,7 @@ def load_simulation_results(
             "predictive_strategy_global_explore",
             "predictive_failure_pressure",
             "predictive_mastery_evidence",
+            "predictive_peak_mastery_evidence",
             "predictive_choice_confidence_signal",
             "predictive_strategy_choice_precision",
             "predictive_exploration_target",
@@ -194,6 +195,15 @@ def load_simulation_results(
             "predictive_misconception_capture_eligible_probability",
             "predictive_misconception_capture_hold_probability",
             "predictive_misconception_capture_switch_event_probability",
+            "predictive_rule_commitment_probability",
+            "predictive_rule_commitment_eligible_probability",
+            "predictive_rule_commitment_entry_event_probability",
+            "predictive_rule_commitment_exit_event_probability",
+            "predictive_rule_commitment_age",
+            "predictive_rule_commitment_disconfirmation",
+            "predictive_rule_commitment_margin",
+            "predictive_rule_commitment_confidence_signal",
+            "predictive_rule_commitment_choice_precision",
             "predictive_executed_choice_compatibility",
             "predictive_best_alternative_choice_compatibility",
             "predictive_executed_beta",
@@ -268,7 +278,7 @@ def run_step(
 
 
 def run_basic_plots(
-    evaluator: ModelEval,
+    evaluator: ModelEvaluator,
     results: Mapping[int, Mapping[str, Any]],
     output_dir: Path,
     subjects: Sequence[int] | None,
@@ -513,10 +523,23 @@ def run_basic_plots(
             }
         )
     if "active_set" in transition_capabilities:
+        particle_flags = [
+            evaluator.is_particle_filter_result(info)
+            for info in visible_results.values()
+        ]
+        if particle_flags and all(particle_flags):
+            active_set_plot = evaluator.plot_particle_filter_active_set_counts
+        elif particle_flags and not any(particle_flags):
+            active_set_plot = evaluator.plot_hypothesis_active_set_counts
+        else:
+            raise ValueError(
+                "active-set evaluation requires one homogeneous inference backend; "
+                "particle-filter and trajectory results cannot share one input directory"
+            )
         run_step(
             records,
             "hypothesis_active_set_counts",
-            lambda: evaluator.plot_hypothesis_active_set_counts(
+            lambda: active_set_plot(
                 results,
                 subjects=subjects,
                 save_path=basic_dir / "hypothesis_active_set_counts.png",
@@ -536,7 +559,7 @@ def run_basic_plots(
 
 
 def run_trajectory_plots(
-    evaluator: ModelEval,
+    evaluator: ModelEvaluator,
     input_dir: Path,
     output_dir: Path,
     records: list[dict[str, Any]],
@@ -574,7 +597,7 @@ def run_trajectory_plots(
 
 
 def run_behavior_ppc_plots(
-    evaluator: ModelEval,
+    evaluator: ModelEvaluator,
     results: Mapping[int, Mapping[str, Any]],
     input_dir: Path,
     output_dir: Path,
@@ -781,7 +804,7 @@ def run_choice_transmission_audit(
 
 
 def run_oral_plots(
-    evaluator: ModelEval,
+    evaluator: ModelEvaluator,
     results: Mapping[int, Mapping[str, Any]],
     oral_data_path: Path,
     output_dir: Path,
@@ -789,6 +812,8 @@ def run_oral_plots(
     records: list[dict[str, Any]],
     oral_mode: str,
     window_size: int | None,
+    oral_center_sigma: float,
+    oral_region_temperature: float,
     region_n_samples: int,
     region_stimulus_sigma: float | None,
     distribution_model_distribution: str,
@@ -850,10 +875,16 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_center_sigma=oral_center_sigma,
+            oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
         ),
-        [oral_dir / "oral_mass_probabilities.npz", oral_dir / "oral_mass_probabilities.png"],
+        [
+            oral_dir / "oral_mass_probabilities.npz",
+            oral_dir / "oral_mass_diagnostics.csv",
+            oral_dir / "oral_mass_probabilities.png",
+        ],
     )
     if oral_mass:
         run_step(
@@ -864,13 +895,21 @@ def run_oral_plots(
                     oral_mass,
                     oral_dir / "oral_mass_probabilities.npz",
                 ),
+                evaluator.save_oral_mass_diagnostics(
+                    oral_mass,
+                    oral_dir / "oral_mass_diagnostics.csv",
+                ),
                 evaluator.plot_oral_mass_probabilities(
                     oral_mass,
                     subjects=oral_subjects,
                     save_path=oral_dir / "oral_mass_probabilities.png",
                 ),
             ),
-            [oral_dir / "oral_mass_probabilities.npz", oral_dir / "oral_mass_probabilities.png"],
+            [
+                oral_dir / "oral_mass_probabilities.npz",
+                oral_dir / "oral_mass_diagnostics.csv",
+                oral_dir / "oral_mass_probabilities.png",
+            ],
         )
 
     distribution_results = run_step(
@@ -881,6 +920,8 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_center_sigma=oral_center_sigma,
+            oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             model_distribution=distribution_model_distribution,
@@ -933,6 +974,8 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_center_sigma=oral_center_sigma,
+            oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -958,6 +1001,8 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_center_sigma=oral_center_sigma,
+            oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -983,6 +1028,8 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_center_sigma=oral_center_sigma,
+            oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
@@ -1025,7 +1072,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--accuracy-band-draws",
         type=int,
-        default=ModelEval.DEFAULT_BEHAVIORAL_BAND_DRAWS,
+        default=ModelEvaluator.DEFAULT_BEHAVIORAL_BAND_DRAWS,
         help=(
             "Behavioral draws for particle-filter conditional accuracy intervals "
             "(default: %(default)s)"
@@ -1034,7 +1081,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--accuracy-band-seed",
         type=int,
-        default=ModelEval.DEFAULT_BEHAVIORAL_BAND_SEED,
+        default=ModelEvaluator.DEFAULT_BEHAVIORAL_BAND_SEED,
         help="Base seed for particle-filter behavioral accuracy intervals (default: %(default)s)",
     )
     p.add_argument(
@@ -1124,6 +1171,24 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-oral", action="store_true", help="Skip oral/model alignment plots")
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
     p.add_argument("--oral-mode", choices=("center", "region"), default="center")
+    p.add_argument(
+        "--oral-center-sigma",
+        type=float,
+        default=ModelEvaluator.DEFAULT_ORAL_CENTER_SIGMA,
+        help=(
+            "Fixed per-coordinate Gaussian report-noise scale for center oral-to-hypothesis "
+            "encoding (default: 0.10)"
+        ),
+    )
+    p.add_argument(
+        "--oral-region-temperature",
+        type=float,
+        default=ModelEvaluator.DEFAULT_ORAL_REGION_TEMPERATURE,
+        help=(
+            "Fixed mismatch scale for region IoU oral-to-hypothesis encoding "
+            "(default: 0.10)"
+        ),
+    )
     p.add_argument("--region-n-samples", type=int, default=1000)
     p.add_argument(
         "--region-stimulus-sigma",
@@ -1158,7 +1223,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     subjects = resolve_subjects(args.subjects, args.subject_range)
-    evaluator = ModelEval()
+    evaluator = ModelEvaluator()
     records: list[dict[str, Any]] = []
 
     results = load_simulation_results(
@@ -1253,6 +1318,8 @@ def main() -> None:
                 records=records,
                 oral_mode=str(args.oral_mode),
                 window_size=args.window_size,
+                oral_center_sigma=float(args.oral_center_sigma),
+                oral_region_temperature=float(args.oral_region_temperature),
                 region_n_samples=int(args.region_n_samples),
                 region_stimulus_sigma=args.region_stimulus_sigma,
                 distribution_model_distribution=str(args.distribution_model_distribution),

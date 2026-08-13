@@ -25,8 +25,8 @@ GENERATED_CONFIG = (
 )
 CANDIDATES = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition/candidates/"
-    "hypo_transition_profile_v14_candidates.json"
+    / "configs/candidates/hypothesis_transition/"
+    "hypothesis_transition_profile_v14_candidates.json"
 )
 CONFIRM_ROWS = ROOT / "results/cond1_v14/confirm_gain_readout/pilot_rows.csv"
 OUTPUT_DIR = ROOT / "results/cond1_v14/fine_analysis"

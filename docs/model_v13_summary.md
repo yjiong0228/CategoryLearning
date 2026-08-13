@@ -79,7 +79,7 @@ P(state = k | history_t)
 ```yaml
 engine.modules.hypo_transitions_mod.kwargs:
   values_from_json:
-    path: ../../src/Bayesian_state/problems/modules/hypo_transition/candidates/hypo_transition_profile_v13_candidates.json
+    path: ../../configs/candidates/hypothesis_transition/hypothesis_transition_profile_v13_candidates.json
     key: cond1_v13
     value_key: hypo_transitions_kwargs
 

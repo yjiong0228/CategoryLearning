@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.problems.partitions import Partition  # noqa: E402
+from src.Bayesian_state.hypothesis_space import ContinuousPartition  # noqa: E402
 
 
 DEFAULT_DEVELOPMENT_SUBJECTS = (103, 105, 111, 112, 117, 118, 127, 131)
@@ -371,31 +371,23 @@ def plane_text(coefficients: Sequence[float], boundary: float) -> str:
     return "".join(terms) + f"={float(boundary):g}"
 
 
-def rule_names(partition: Partition) -> list[str]:
+def rule_names(partition: ContinuousPartition) -> list[str]:
     names: list[str] = []
-    for hypothesis, (split, metadata) in enumerate(
-        zip(partition.splits, partition.hypothesis_metadata)
-    ):
+    for hypothesis, split in enumerate(partition.hypothesis_space):
         planes = "&".join(
             plane_text(coefficients, boundary)
             for coefficients, boundary in split.hyperplanes
         )
-        permutation = "".join(
-            str(int(value) + 1) for value in metadata["label_permutation"]
-        )
-        names.append(
-            f"h{hypothesis}:{split.type}:{planes}:labels{permutation}"
-        )
+        names.append(f"h{hypothesis}:{split.family}:{planes}")
     return names
 
 
 def build_rule_predictions(
     frame: pd.DataFrame,
 ) -> tuple[dict[int, np.ndarray], list[str], dict[int, dict[str, Any]]]:
-    partition = Partition(
+    partition = ContinuousPartition(
         n_dims=4,
         n_cats=2,
-        include_label_reversals=True,
     )
     names = rule_names(partition)
     predictions: dict[int, np.ndarray] = {}
@@ -405,9 +397,7 @@ def build_rule_predictions(
         stimuli = subject_frame[feature_columns].to_numpy(dtype=float)
         matrix = np.vstack(
             [
-                partition._get_category_assignments_region(  # noqa: SLF001
-                    hypothesis, stimuli
-                )
+                partition.boundary_geometry.category_assignments(hypothesis, stimuli)
                 + 1
                 for hypothesis in range(partition.length)
             ]

@@ -598,13 +598,13 @@ def main() -> None:
     prior_id = str(base["rule_space"]["primary_prior"])
     prior = priors[prior_id]
     kernels = kernels_by_prior[prior_id]
-    model_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
-    recovery_impl_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804_recovery.py"
+    model_path = ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
+    recovery_impl_path = ROOT / "src/Bayesian_state/reference_models/model_0804/recovery.py"
     model_sha256 = _sha256(model_path)
     recovery_sha256 = _sha256(recovery_impl_path)
     if model_sha256 != source["implementation_sha256"]["model_0804.py"]:
         raise ValueError("model implementation changed since source recovery")
-    if recovery_sha256 != source["implementation_sha256"]["model_0804_recovery.py"]:
+    if recovery_sha256 != source["implementation_sha256"]["model_0804/recovery.py"]:
         raise ValueError("recovery implementation changed since source recovery")
 
     candidates = _restricted_grid(config)
@@ -771,7 +771,7 @@ def main() -> None:
         "source_stability_report_sha256": _sha256(stability_path),
         "implementation_sha256": {
             "model_0804.py": model_sha256,
-            "model_0804_recovery.py": recovery_sha256,
+            "model_0804/recovery.py": recovery_sha256,
             "fixed_g_runner": _sha256(Path(__file__).resolve()),
         },
         "versions": {"python": platform.python_version(), "numpy": np.__version__},

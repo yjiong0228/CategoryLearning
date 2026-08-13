@@ -1,4 +1,4 @@
-# Fixed-parameter simulation config for Cond1 v13 label-reversal model.
+# Fixed-parameter simulation config for the Cond1 v13 controller on 19 geometric rules.
 engine_config_path: ../model_struct/pmh_model_cond1_v13.yaml
 
 subject_range: [101, 132]

@@ -1,6 +1,11 @@
-modules: {}
+likelihood: {}
+
+modules:
+  memory_mod:
+    class: src.Bayesian_state.model.modules.memory.BayesianMemoryModule
+    kwargs: {}
 
 
 
 agenda:
-  - __self__
+  - memory_mod

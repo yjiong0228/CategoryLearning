@@ -1,6 +1,11 @@
+likelihood: {}
+
 modules:
+  memory_mod:
+    class: src.Bayesian_state.model.modules.memory.BayesianMemoryModule
+    kwargs: {}
   beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    class: 'src.Bayesian_state.model.modules.beta.BetaModule'
     kwargs: {
       beta_init: 3.0,
       beta_min: 0.1,
@@ -11,11 +16,7 @@ modules:
       use_prior_scaling: true,
       prior_beta_scale: 10.0
     }
-  likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {}
 
 agenda:
-  - likelihood_mod
-  - __self__
+  - memory_mod
   - beta_mod

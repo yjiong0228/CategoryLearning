@@ -1,12 +1,13 @@
-"""Small compatibility surface for historically package-level utilities.
+"""Public surface for small cross-package utilities.
 
-New code should import from the owning utility module directly.
+Feature code should prefer the owning utility module so dependencies stay
+visible at the import site.
 """
 
-from .base import LOGGER, PATHS, configure_logging
-from .basic_stat import cdist, entropy, euc_dist, softmax
-from .classical_tools import two_factor_decay
-from .console_styles import (
+from .logging import LOGGER, PATHS, configure_logging
+from .numeric import cdist, entropy, euc_dist, softmax
+from .decay import two_factor_decay
+from .console import (
     COMPOSITE_STYLES,
     PRINT_RESUME,
     PRINT_STYLES,
@@ -15,7 +16,7 @@ from .console_styles import (
     gen_rand_str,
     print,
 )
-from .load_config import MODEL_STRUCT, load_config
+from .config import MODEL_STRUCT, load_config
 from .paths import CONFIGS_DIR, LOGS_DIR, ROOT_DIR, SRC_DIR, UTILS_DIR
 from .seeding import (
     derive_hyper_candidate_seed,

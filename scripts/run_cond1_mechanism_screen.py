@@ -35,12 +35,12 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     simulate_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
+from src.Bayesian_state.optimization.candidates import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
@@ -922,10 +922,10 @@ def main() -> None:
     data = data.loc[data["iSub"].isin(subjects)].copy()
     grid = _candidate_grid(args)
     base_engine = load_yaml(args.engine_config)
-    simulation_config = load_yaml(args.simulation_config)
+    simulation_config = load_yaml(args.config)
     dataset_paths = resolve_dataset_paths(
         simulation_config,
-        args.simulation_config.parent,
+        args.config.parent,
         DEFAULT_DATA_PATH,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)

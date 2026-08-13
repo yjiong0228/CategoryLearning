@@ -1,8 +1,11 @@
+likelihood:
+  distance_mode: prototype   # prototype | boundary
+
 modules:
   perception_mod:
-    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    class: 'src.Bayesian_state.model.modules.perception.PerceptionModule'
   beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    class: 'src.Bayesian_state.model.modules.beta.BetaModule'
     kwargs: {
       beta_init: 1.0,
       beta_min: 0.1,
@@ -13,19 +16,15 @@ modules:
       prior_beta_scale: 10.0
       }
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transition.static.StaticHypothesisTransitionModule'
+    class: 'src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy.FixedStrategyHypothesisTransitionModule'
     kwargs:
       strategies:
         - {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"}
         - {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
       init_num: 2
       max_active_hypotheses: 3
-  likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs:
-      distance_mode: prototype   # prototype | boundary
   memory_mod:
-    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    class: 'src.Bayesian_state.model.modules.memory.DualMemoryModule'
     kwargs:
       w0: 0.02
       gamma: 0.2
@@ -33,7 +32,6 @@ modules:
 agenda:
   - perception_mod
   - hypo_transitions_mod
-  - likelihood_mod
   - memory_mod
   - beta_mod
 

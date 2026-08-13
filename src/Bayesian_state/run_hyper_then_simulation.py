@@ -10,22 +10,24 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from src.Bayesian_state.optimization.hyper_cd_optimizer import HyperCDOptimizer
-from src.Bayesian_state.optimization.hyper_grid_optimizer import HyperGridOptimizer
-from src.Bayesian_state.optimization.hyper_search_common import deep_update as _deep_update
-from src.Bayesian_state.run_simulation import (
+from src.Bayesian_state.optimization.search.coordinate_descent import HyperCDOptimizer
+from src.Bayesian_state.optimization.search.grid import HyperGridOptimizer
+from src.Bayesian_state.optimization.search.common import deep_update as _deep_update
+from src.Bayesian_state.simulation.parameters import (
     apply_fixed_hyperparams_to_subject_config,
     infer_fixed_hyperparams_from_engine_config,
     resolve_hyper_base_seed,
     resolve_hyper_candidate_seed as resolve_direct_hyper_candidate_seed,
+)
+from src.Bayesian_state.run_simulation import (
     run_simulation,
 )
-from src.Bayesian_state.utils.config_subjects import (
+from src.Bayesian_state.utils.subjects import (
     SUBJECT_OVERRIDE_KEYS,
     resolve_subject_config,
     subject_override_for,
 )
-from src.Bayesian_state.simulation.simulation_config import (
+from src.Bayesian_state.simulation.config import (
     resolve_engine_config,
     resolve_loss_delta,
     resolve_loss_metric,
@@ -33,7 +35,7 @@ from src.Bayesian_state.simulation.simulation_config import (
     resolve_simulation_repeats,
     resolve_window_size,
 )
-from src.Bayesian_state.optimization.hyper_utils import (
+from src.Bayesian_state.optimization.artifacts import (
     build_root_best_payload,
     expand_profile_candidate_hyperparams,
     root_base_sim_config_path,
@@ -44,7 +46,7 @@ from src.Bayesian_state.optimization.hyper_utils import (
     to_builtin as _to_builtin,
 )
 from src.Bayesian_state.utils.paths import ROOT_DIR
-from src.Bayesian_state.utils.base import configure_logging
+from src.Bayesian_state.utils.logging import configure_logging
 
 
 DEFAULT_HYPER_GRID_CONFIG = Path("configs/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml")

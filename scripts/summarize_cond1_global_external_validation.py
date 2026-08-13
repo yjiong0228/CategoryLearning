@@ -36,8 +36,8 @@ from scripts.run_cond1_mechanism_external_validation import (  # noqa: E402
     _paired_signflip_p,
     _safe_spearman,
 )
-from src.Bayesian_state.problems.partitions import Partition  # noqa: E402
-from src.Bayesian_state.optimization.optimizer_common import stable_seed  # noqa: E402
+from src.Bayesian_state.hypothesis_space import ContinuousPartition  # noqa: E402
+from src.Bayesian_state.utils.seeding import stable_seed  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,7 +62,7 @@ def _subject_row(
     args: argparse.Namespace,
     frame: pd.DataFrame,
     posterior: pd.DataFrame,
-    partition: Partition,
+    partition: ContinuousPartition,
 ) -> dict[str, Any]:
     subject_id = int(frame["iSub"].iloc[0])
     posterior = posterior.sort_values(
@@ -165,7 +165,7 @@ def main() -> None:
         .reset_index(drop=True)
     )
     frames = {subject: data.loc[data["iSub"].eq(subject)].copy() for subject in subjects}
-    partition = Partition(n_dims=4, n_cats=2, include_label_reversals=True)
+    partition = ContinuousPartition(n_dims=4, n_cats=2)
     subject_rows = [
         _subject_row(
             args=args,

@@ -32,7 +32,7 @@ hyperparam_space:
 
   engine.modules.hypo_transitions_mod.kwargs:
     values_from_json:
-      path: ../../src/Bayesian_state/problems/modules/hypo_transition/candidates/hypo_transition_strategy_candidates.json
+      path: ../../configs/candidates/hypothesis_transition/hypothesis_transition_strategy_candidates.json
       key: cond1
       value_key: hypo_transitions_kwargs
 
@@ -44,7 +44,7 @@ hyperparam_space:
     values: [0.0, 5.0, 10.0, 20.0]
   engine.modules.beta_mod.kwargs.correct_additive:
     values: [0.0, 0.25, 0.5, 1.0]
-  engine.modules.likelihood_mod.kwargs.distance_mode:
+  engine.likelihood.distance_mode:
     values: [prototype, boundary]
 
 # One-stage search. The stage is named "coarse" for compatibility with the

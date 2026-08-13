@@ -1,6 +1,8 @@
+likelihood: {}
+
 modules:
   beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    class: 'src.Bayesian_state.model.modules.beta.BetaModule'
     kwargs: {
       beta_init: 3.0,
       beta_min: 0.1,
@@ -8,20 +10,16 @@ modules:
       increase_rate: 1.15,
       decrease_rate: 0.3,
     }
-  likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs: {}
   memory_mod:
-    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    class: 'src.Bayesian_state.model.modules.memory.DualMemoryModule'
     kwargs: {
       w0: 0.1, 
       gamma: 0.2,
     }
   perception_mod:
-    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    class: 'src.Bayesian_state.model.modules.perception.PerceptionModule'
 
 agenda:
   - perception_mod
-  - likelihood_mod
   - memory_mod
   - beta_mod

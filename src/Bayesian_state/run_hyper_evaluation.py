@@ -17,17 +17,17 @@ import logging
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from src.Bayesian_state.optimization.hyper_predictive_evaluation import (
+from src.Bayesian_state.optimization.diagnostics.predictive import (
     diagnose_hyper_accuracy_sampling,
     evaluate_volatility_calibration,
 )
-from src.Bayesian_state.optimization.hyper_search_evaluation import (
+from src.Bayesian_state.optimization.diagnostics.search import (
     DEFAULT_BASE_SIM_CONFIG,
     evaluate_hyper_cd_convergence,
     evaluate_multiobjective_selection,
     evaluate_near_optimal_plateau,
 )
-from src.Bayesian_state.simulation.simulation_config import load_yaml
+from src.Bayesian_state.simulation.config import load_yaml
 from src.Bayesian_state.utils.paths import RESULTS_DIR, ROOT_DIR
 
 
@@ -37,11 +37,11 @@ DEFAULT_CANDIDATES_JSON = (
     ROOT_DIR
     / "src"
     / "Bayesian_state"
-    / "problems"
+    / "model"
     / "modules"
     / "hypo_transition"
     / "candidates"
-    / "hypo_transition_strategy_candidates.json"
+    / "hypothesis_transition_strategy_candidates.json"
 )
 TRANSITION_SPACE_KEY = "engine.modules.hypo_transitions_mod.kwargs"
 DEFAULT_SELECTION_OBJECTIVES = (

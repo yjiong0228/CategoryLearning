@@ -1,0 +1,2394 @@
+{
+  "schema_version": "hypothesis_transition_profile_candidates.v1",
+  "source": "hypothesis_transition_profile_v13_candidates.json",
+  "design": {
+    "controller_families": 6,
+    "state_settings_per_family": 4,
+    "inner_strategy_states": [
+      "conservative",
+      "stable",
+      "aggressive",
+      "stubborn"
+    ],
+    "note": "V13 controller structures are migrated to the fixed-label geometric-rule space. V14 searches six supported families and treats state gain as a within-family setting."
+  },
+  "cond1_v14": [
+    {
+      "id": "c1_v14_stable_dominant_state_off",
+      "family_id": "c1_v14_stable_dominant",
+      "state_mode": "off",
+      "description": "V14 core family stable_dominant; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.85
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 0.1,
+                "recent_accuracy": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 1.0,
+                "posterior_entropy": 0.5,
+                "recent_accuracy": 0.3
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -0.4,
+                "recent_error": 0.7,
+                "posterior_entropy": 0.6
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.03,
+              "post_correct_explore_prob": 0.18,
+              "newcomer_mass": 0.02
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_stable_dominant_state_g0p20",
+      "family_id": "c1_v14_stable_dominant",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family stable_dominant; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.85
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 0.1,
+                "recent_accuracy": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 1.0,
+                "posterior_entropy": 0.5,
+                "recent_accuracy": 0.3
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -0.4,
+                "posterior_entropy": 0.6,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.03,
+              "post_correct_explore_prob": 0.18,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_stable_dominant_state_g0p35",
+      "family_id": "c1_v14_stable_dominant",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family stable_dominant; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.85
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 0.1,
+                "recent_accuracy": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 1.0,
+                "posterior_entropy": 0.5,
+                "recent_accuracy": 0.3
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -0.4,
+                "posterior_entropy": 0.6,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.03,
+              "post_correct_explore_prob": 0.18,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_stable_dominant_state_g0p50",
+      "family_id": "c1_v14_stable_dominant",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family stable_dominant; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.85
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 0.1,
+                "recent_accuracy": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 1.0,
+                "posterior_entropy": 0.5,
+                "recent_accuracy": 0.3
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -0.4,
+                "posterior_entropy": 0.6,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.7,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.03,
+              "post_correct_explore_prob": 0.18,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_aggressive_state_off",
+      "family_id": "c1_v14_error_aggressive",
+      "state_mode": "off",
+      "description": "V14 core family error_aggressive; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.7
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "recent_accuracy": 0.9,
+                "posterior_confidence": 0.6
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.4,
+                "recent_accuracy": 0.4
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.0,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.3,
+                "last_error": 1.2,
+                "recent_error": 1.2,
+                "posterior_entropy": 0.8
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.5,
+                "last_error": 0.3,
+                "posterior_confidence": 0.4
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.2,
+              "newcomer_mass": 0.02
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_error_aggressive_state_g0p20",
+      "family_id": "c1_v14_error_aggressive",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family error_aggressive; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.7
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "recent_accuracy": 0.9,
+                "posterior_confidence": 0.6
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.4,
+                "recent_accuracy": 0.4
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.0,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.3,
+                "last_error": 1.2,
+                "posterior_entropy": 0.8,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.5,
+                "last_error": 0.3,
+                "posterior_confidence": 0.4
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.2,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_aggressive_state_g0p35",
+      "family_id": "c1_v14_error_aggressive",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family error_aggressive; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.7
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "recent_accuracy": 0.9,
+                "posterior_confidence": 0.6
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.4,
+                "recent_accuracy": 0.4
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.0,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.3,
+                "last_error": 1.2,
+                "posterior_entropy": 0.8,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.5,
+                "last_error": 0.3,
+                "posterior_confidence": 0.4
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.2,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_aggressive_state_g0p50",
+      "family_id": "c1_v14_error_aggressive",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family error_aggressive; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.7
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "recent_accuracy": 0.9,
+                "posterior_confidence": 0.6
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.4,
+                "recent_accuracy": 0.4
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.0,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.3,
+                "last_error": 1.2,
+                "posterior_entropy": 0.8,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.5,
+                "last_error": 0.3,
+                "posterior_confidence": 0.4
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.2,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_early_explore_late_stable_state_off",
+      "family_id": "c1_v14_early_explore_late_stable",
+      "state_mode": "off",
+      "description": "V14 core family early_explore_late_stable; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.8
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "trial_progress": 1.2,
+                "recent_accuracy": 0.8
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.3,
+                "trial_progress": 0.8,
+                "posterior_entropy": 0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.9,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.5,
+                "posterior_entropy": 1.0,
+                "trial_progress": -1.2
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.8,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.16,
+              "newcomer_mass": 0.02
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_early_explore_late_stable_state_g0p20",
+      "family_id": "c1_v14_early_explore_late_stable",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family early_explore_late_stable; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.8
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "trial_progress": 1.2,
+                "recent_accuracy": 0.8
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.3,
+                "trial_progress": 0.8,
+                "posterior_entropy": 0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.9,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.5,
+                "posterior_entropy": 1.0,
+                "trial_progress": -1.2,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.8,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.16,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_early_explore_late_stable_state_g0p35",
+      "family_id": "c1_v14_early_explore_late_stable",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family early_explore_late_stable; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.8
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "trial_progress": 1.2,
+                "recent_accuracy": 0.8
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.3,
+                "trial_progress": 0.8,
+                "posterior_entropy": 0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.9,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.5,
+                "posterior_entropy": 1.0,
+                "trial_progress": -1.2,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.8,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.16,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_early_explore_late_stable_state_g0p50",
+      "family_id": "c1_v14_early_explore_late_stable",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family early_explore_late_stable; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.8
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -0.2,
+                "trial_progress": 1.2,
+                "recent_accuracy": 0.8
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.3,
+                "trial_progress": 0.8,
+                "posterior_entropy": 0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.9,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.04
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.5,
+                "posterior_entropy": 1.0,
+                "trial_progress": -1.2,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.3,
+                "last_error": 0.8,
+                "posterior_confidence": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.16,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_conservative_heavy_state_off",
+      "family_id": "c1_v14_conservative_heavy",
+      "state_mode": "off",
+      "description": "V14 core family conservative_heavy; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.75
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 1.0,
+                "recent_accuracy": 1.0,
+                "posterior_confidence": 1.0
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.6
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.03
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.0,
+                "recent_error": 0.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.6,
+                "last_error": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.15,
+              "newcomer_mass": 0.02
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_conservative_heavy_state_g0p20",
+      "family_id": "c1_v14_conservative_heavy",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family conservative_heavy; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.75
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 1.0,
+                "recent_accuracy": 1.0,
+                "posterior_confidence": 1.0
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.6
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.03
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.6,
+                "last_error": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.15,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_conservative_heavy_state_g0p35",
+      "family_id": "c1_v14_conservative_heavy",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family conservative_heavy; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.75
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 1.0,
+                "recent_accuracy": 1.0,
+                "posterior_confidence": 1.0
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.6
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.03
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.6,
+                "last_error": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.15,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_conservative_heavy_state_g0p50",
+      "family_id": "c1_v14_conservative_heavy",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family conservative_heavy; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.75
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": 1.0,
+                "recent_accuracy": 1.0,
+                "posterior_confidence": 1.0
+              },
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": 0.2,
+                "posterior_entropy": 0.6
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.8,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.03
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 0
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.6,
+                "last_error": 0.5
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.02,
+              "post_correct_explore_prob": 0.15,
+              "newcomer_mass": 0.02
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_choice_newcomer_state_off",
+      "family_id": "c1_v14_error_choice_newcomer",
+      "state_mode": "off",
+      "description": "V14 core family error_choice_newcomer; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.65
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -1.0,
+                "recent_accuracy": 0.8,
+                "posterior_confidence": 0.4,
+                "posterior_entropy": -0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.7,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.2,
+                "last_error": 0.5,
+                "recent_error": 1.0,
+                "posterior_entropy": 1.0,
+                "posterior_confidence": -0.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.4,
+              "newcomer_choice_temperature": 0.6
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": 0.8,
+                "last_error": 0.7,
+                "recent_error": 0.4,
+                "posterior_confidence": 1.0
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.1,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.25,
+              "newcomer_mass": 0.25,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_error_choice_newcomer_state_g0p20",
+      "family_id": "c1_v14_error_choice_newcomer",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family error_choice_newcomer; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.65
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -1.0,
+                "recent_accuracy": 0.8,
+                "posterior_confidence": 0.4,
+                "posterior_entropy": -0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.7,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.2,
+                "last_error": 0.5,
+                "posterior_entropy": 1.0,
+                "posterior_confidence": -0.5,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.4,
+              "newcomer_choice_temperature": 0.6
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": 0.8,
+                "last_error": 0.7,
+                "recent_error": 0.4,
+                "posterior_confidence": 1.0
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.1,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.25,
+              "newcomer_mass": 0.25,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_choice_newcomer_state_g0p35",
+      "family_id": "c1_v14_error_choice_newcomer",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family error_choice_newcomer; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.65
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -1.0,
+                "recent_accuracy": 0.8,
+                "posterior_confidence": 0.4,
+                "posterior_entropy": -0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.7,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.2,
+                "last_error": 0.5,
+                "posterior_entropy": 1.0,
+                "posterior_confidence": -0.5,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.4,
+              "newcomer_choice_temperature": 0.6
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": 0.8,
+                "last_error": 0.7,
+                "recent_error": 0.4,
+                "posterior_confidence": 1.0
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.1,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.25,
+              "newcomer_mass": 0.25,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_error_choice_newcomer_state_g0p50",
+      "family_id": "c1_v14_error_choice_newcomer",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family error_choice_newcomer; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 0.65
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -1.0,
+                "recent_accuracy": 0.8,
+                "posterior_confidence": 0.4,
+                "posterior_entropy": -0.5
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 0.7,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": -1.2,
+                "last_error": 0.5,
+                "posterior_entropy": 1.0,
+                "posterior_confidence": -0.5,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 1,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.4,
+              "newcomer_choice_temperature": 0.6
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": 0.8,
+                "last_error": 0.7,
+                "recent_error": 0.4,
+                "posterior_confidence": 1.0
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.1,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.25,
+              "newcomer_mass": 0.25,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_choice_volatile_refresh_state_off",
+      "family_id": "c1_v14_choice_volatile_refresh",
+      "state_mode": "off",
+      "description": "V14 core family choice_volatile_refresh; exact V13 controller behavior, retained as the no-persistence ablation.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 1.1
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -0.2,
+                "posterior_entropy": 0.9,
+                "recent_accuracy": 0.2
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.5,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.0,
+                "last_error": 0.9,
+                "recent_error": 1.4,
+                "posterior_entropy": 1.0
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 2,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.2,
+              "newcomer_choice_temperature": 0.8
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.1,
+                "last_error": 0.8,
+                "recent_error": 0.4,
+                "posterior_confidence": 0.6
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.12,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.2,
+              "newcomer_mass": 0.12,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c1_v14_choice_volatile_refresh_state_g0p20",
+      "family_id": "c1_v14_choice_volatile_refresh",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.2,
+      "description": "V14 core family choice_volatile_refresh; persistent confidence-weighted belief instability with error gain 0.20.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 1.1
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -0.2,
+                "posterior_entropy": 0.9,
+                "recent_accuracy": 0.2
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.5,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.0,
+                "last_error": 0.9,
+                "posterior_entropy": 1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 2,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.2,
+              "newcomer_choice_temperature": 0.8
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.1,
+                "last_error": 0.8,
+                "recent_error": 0.4,
+                "posterior_confidence": 0.6
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.12,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.2,
+              "newcomer_mass": 0.12,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.2,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_choice_volatile_refresh_state_g0p35",
+      "family_id": "c1_v14_choice_volatile_refresh",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.35,
+      "description": "V14 core family choice_volatile_refresh; persistent confidence-weighted belief instability with error gain 0.35.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 1.1
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -0.2,
+                "posterior_entropy": 0.9,
+                "recent_accuracy": 0.2
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.5,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.0,
+                "last_error": 0.9,
+                "posterior_entropy": 1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 2,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.2,
+              "newcomer_choice_temperature": 0.8
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.1,
+                "last_error": 0.8,
+                "recent_error": 0.4,
+                "posterior_confidence": 0.6
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.12,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.2,
+              "newcomer_mass": 0.12,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.35,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    },
+    {
+      "id": "c1_v14_choice_volatile_refresh_state_g0p50",
+      "family_id": "c1_v14_choice_volatile_refresh",
+      "state_mode": "confidence_weighted_error",
+      "state_error_gain": 0.5,
+      "description": "V14 core family choice_volatile_refresh; persistent confidence-weighted belief instability with error gain 0.50.",
+      "hypo_transitions_kwargs": {
+        "init_num": 5,
+        "max_active_hypotheses": 5,
+        "state_controller": {
+          "method": "feedback_gated_softmax",
+          "features": {
+            "recent_accuracy_window": 8,
+            "accuracy_delta_window": 8,
+            "padding": "chance",
+            "feedback_mode": "exact",
+            "trial_progress_scale": 160
+          },
+          "activation": {
+            "temperature": 1.1
+          },
+          "states": [
+            {
+              "id": "conservative",
+              "policy_method": "conservative",
+              "activation": {
+                "bias": -1.5,
+                "recent_accuracy": 1.0,
+                "recent_error": -0.5,
+                "posterior_confidence": 0.8
+              },
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "conservative_carryover",
+                "newcomer_mass": 0.0
+              }
+            },
+            {
+              "id": "stable",
+              "policy_method": "stable",
+              "activation": {
+                "bias": -0.2,
+                "posterior_entropy": 0.9,
+                "recent_accuracy": 0.2
+              },
+              "active_limit": 5,
+              "explore_count": 1,
+              "retain_temperature": 1.5,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.8,
+              "survivor_choice_weight": 1.2,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.0,
+              "newcomer_choice_temperature": 0.7,
+              "post_to_prior": {
+                "method": "similarity_novelty",
+                "min_newcomer_scale": 0.05
+              }
+            },
+            {
+              "id": "aggressive",
+              "policy_method": "aggressive",
+              "activation": {
+                "bias": 0.0,
+                "last_error": 0.9,
+                "posterior_entropy": 1.0,
+                "latent_volatility_pressure": 1.5
+              },
+              "active_limit": 5,
+              "max_newcomers": 4,
+              "min_newcomers": 2,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.6,
+              "survivor_choice_weight": 1.4,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.2,
+              "newcomer_choice_temperature": 0.8
+            },
+            {
+              "id": "stubborn",
+              "policy_method": "stubborn",
+              "activation": {
+                "bias": -0.1,
+                "last_error": 0.8,
+                "recent_error": 0.4,
+                "posterior_confidence": 0.6
+              },
+              "active_limit": 5,
+              "retain_count": 2,
+              "base_explore_prob": 0.12,
+              "post_correct_explore_prob": 0.02,
+              "post_error_explore_prob": 0.2,
+              "newcomer_mass": 0.12,
+              "survivor_score": "posterior_choice",
+              "survivor_posterior_weight": 0.5,
+              "survivor_choice_weight": 1.5,
+              "newcomer_score": "recent_error_choice",
+              "newcomer_choice_window": 8,
+              "newcomer_choice_weight": 2.8,
+              "newcomer_choice_temperature": 0.5
+            }
+          ]
+        },
+        "latent_volatility_base": 0.0,
+        "latent_volatility_error_gain": 0.5,
+        "latent_volatility_low_accuracy_gain": 0.0,
+        "latent_volatility_threshold": 0.55,
+        "latent_volatility_window": 8,
+        "latent_volatility_decay": 0.8,
+        "latent_volatility_max": 1.0,
+        "latent_volatility_feedback_mode": "exact",
+        "latent_volatility_signal": "confidence_weighted_error",
+        "latent_volatility_pressure_slope": 8.0
+      }
+    }
+  ]
+}

@@ -16,13 +16,13 @@ from scripts.run_cond1_v14_pilot import CORE6, enable_v14_state  # noqa: E402
 
 SOURCE = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
-    / "hypo_transition_profile_v13_candidates.json"
+    / "configs/candidates/hypothesis_transition"
+    / "hypothesis_transition_profile_v13_candidates.json"
 )
 TARGET = (
     ROOT
-    / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
-    / "hypo_transition_profile_v14_candidates.json"
+    / "configs/candidates/hypothesis_transition"
+    / "hypothesis_transition_profile_v14_candidates.json"
 )
 GAINS = (0.20, 0.35, 0.50)
 
@@ -77,7 +77,7 @@ def main() -> None:
             )
 
     payload = {
-        "schema_version": "hypo_transition_profile_candidates.v1",
+        "schema_version": "hypothesis_transition_profile_candidates.v1",
         "source": SOURCE.name,
         "design": {
             "controller_families": 6,

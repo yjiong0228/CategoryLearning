@@ -31,20 +31,22 @@ statistics_config:
   run_choice_fraction: 0.1
 engine_config:
   partition:
-    class: src.Bayesian_state.problems.partitions.Partition
+    class: src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition
     kwargs:
       n_dims: 4
       n_cats: 2
-      include_label_reversals: true
   inference:
     backend: particle_filter
     particle_count: 512
     resample_threshold_fraction: 0.5
+  likelihood:
+    distance_mode: prototype
+
   modules:
     perception_mod:
-      class: src.Bayesian_state.problems.modules.perception.PerceptionModule
+      class: src.Bayesian_state.model.modules.perception.PerceptionModule
     beta_mod:
-      class: src.Bayesian_state.problems.modules.beta.BetaModule
+      class: src.Bayesian_state.model.modules.beta.BetaModule
       kwargs:
         beta_init: 5.0
         beta_min: 0.1
@@ -56,7 +58,7 @@ engine_config:
         use_prior_scaling: false
         prior_beta_scale: 0.0
     hypo_transitions_mod:
-      class: src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule
+      class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule
       kwargs:
         capacity: 3
         m: 0.15
@@ -73,12 +75,8 @@ engine_config:
           g_beta_surprise: 0.0
           g_beta_uncertainty: 0.0
         epsilon: 1.0e-12
-    likelihood_mod:
-      class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
-      kwargs:
-        distance_mode: prototype
     memory_mod:
-      class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+      class: src.Bayesian_state.model.modules.memory.DualMemoryModule
       kwargs: {}
   choice_readout:
     kwargs: {}
@@ -98,7 +96,6 @@ engine_config:
   agenda:
   - perception_mod
   - hypo_transitions_mod
-  - likelihood_mod
   - memory_mod
   - beta_mod
 subject_overrides:

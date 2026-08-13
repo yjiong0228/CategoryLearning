@@ -39,13 +39,13 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     simulate_subject,
     write_json,
 )
-from src.Bayesian_state.run_simulation import (  # noqa: E402
+from src.Bayesian_state.simulation.parameters import (  # noqa: E402
     apply_fixed_hyperparams_to_engine_config,
 )
 from src.Bayesian_state.utils.datasets import (  # noqa: E402
     resolve_dataset_paths,
 )
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )

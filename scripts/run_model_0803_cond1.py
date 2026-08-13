@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.manuscript_models.model_0803 import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0803 import (  # noqa: E402
     EPS,
     MEMORY_IDS,
     MODEL_IDS,
@@ -1650,7 +1650,7 @@ def main() -> None:
         "config_sha256": sha256_file(config_path),
         "script_sha256": sha256_file(Path(__file__).resolve()),
         "module_sha256": sha256_file(
-            ROOT / "src/Bayesian_state/manuscript_models/model_0803.py"
+            ROOT / "src/Bayesian_state/reference_models/model_0803.py"
         ),
         "git_commit": _git_commit(),
         "subjects": subjects,

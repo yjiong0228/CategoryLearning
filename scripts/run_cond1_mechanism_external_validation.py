@@ -35,24 +35,24 @@ from scripts.run_cond1_mechanism_screen import (  # noqa: E402
     _paired_signflip_p,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
+from src.Bayesian_state.optimization.candidates import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+from src.Bayesian_state.inference.backends.particle_filter import (  # noqa: E402
     run_state_model_particle_filter,
 )
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
 from src.Bayesian_state.utils.seeding import stable_seed  # noqa: E402
-from src.Bayesian_state.model_evaluation.oral_model_alignment import (  # noqa: E402
+from src.Bayesian_state.evaluation.oral.alignment import (  # noqa: E402
     OralModelAlignmentMixin,
-    Oral_center_mapping,
+    OralCenterMapper,
 )
-from src.Bayesian_state.problems.partitions import Partition  # noqa: E402
+from src.Bayesian_state.hypothesis_space import ContinuousPartition  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -212,7 +212,7 @@ def _load_cache(path: Path) -> dict[str, np.ndarray]:
 
 def _oral_center_similarity(
     *,
-    partition: Partition,
+    partition: ContinuousPartition,
     hypothesis_prior: np.ndarray,
     frame: pd.DataFrame,
     trial_indices: np.ndarray,
@@ -223,7 +223,7 @@ def _oral_center_similarity(
         report_text = frame.iloc[int(trial_index)].get("text")
         if pd.isna(report_text) or not str(report_text).strip():
             continue
-        oral_center = Oral_center_mapping._parse_center(
+        oral_center = OralCenterMapper._parse_center(
             frame.iloc[int(trial_index)]["oral_center"]
         )
         if np.isnan(oral_center).any():
@@ -261,7 +261,7 @@ def _subject_validation(
     family: str,
     candidates: Sequence[MechanismCandidate],
     posterior_frame: pd.DataFrame,
-    partition: Partition,
+    partition: ContinuousPartition,
 ) -> dict[str, Any]:
     subject_id = int(frame["iSub"].iloc[0])
     posterior = posterior_frame.set_index("candidate_id")["posterior_weight"]
@@ -389,9 +389,9 @@ def main() -> None:
     )
     data = data.loc[data["iSub"].isin(subjects)].copy()
     base_engine = load_yaml(args.engine_config)
-    simulation_config = load_yaml(args.simulation_config)
+    simulation_config = load_yaml(args.config)
     dataset_paths = resolve_dataset_paths(
-        simulation_config, args.simulation_config.parent, DEFAULT_DATA_PATH
+        simulation_config, args.config.parent, DEFAULT_DATA_PATH
     )
     grid = {
         family: candidates_for_family(
@@ -424,7 +424,7 @@ def main() -> None:
         for family, candidate, subject in jobs
     )
     pd.DataFrame(index).to_csv(args.output_dir / "candidate_filter_index.csv", index=False)
-    partition = Partition(n_dims=4, n_cats=2, include_label_reversals=True)
+    partition = ContinuousPartition(n_dims=4, n_cats=2)
     subject_rows = [
         _subject_validation(
             args=args,

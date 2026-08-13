@@ -35,18 +35,18 @@ from scripts.run_cond1_b0_trajectory_ppc import (  # noqa: E402
     split_for_subject,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.simulation.autonomous_model_execution import (  # noqa: E402
+from src.Bayesian_state.simulation.autonomous import (  # noqa: E402
     run_autonomous_category_learning,
 )
-from src.Bayesian_state.optimization.mechanism_candidates import (  # noqa: E402
+from src.Bayesian_state.optimization.candidates import (  # noqa: E402
     MechanismCandidate,
     apply_candidate,
     candidates_for_family,
 )
-from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+from src.Bayesian_state.inference.backends.particle_filter import (  # noqa: E402
     run_state_model_particle_filter,
 )
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
@@ -406,9 +406,9 @@ def main() -> None:
     if missing := sorted(set(subjects) - available):
         raise ValueError(f"Recovery subjects are absent from condition 1: {missing}")
     base_engine = load_yaml(args.engine_config)
-    simulation_config = load_yaml(args.simulation_config)
+    simulation_config = load_yaml(args.config)
     dataset_paths = resolve_dataset_paths(
-        simulation_config, args.simulation_config.parent, DEFAULT_DATA_PATH
+        simulation_config, args.config.parent, DEFAULT_DATA_PATH
     )
     grid = candidate_grid(args.families, shared_theta=float(args.shared_theta))
     if args.scope == "within":

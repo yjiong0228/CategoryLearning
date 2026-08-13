@@ -20,15 +20,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.run_simulation import apply_fixed_hyperparams_to_engine_config
+from src.Bayesian_state.simulation.parameters import apply_fixed_hyperparams_to_engine_config
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths
-from src.Bayesian_state.optimization.optimization_config import (
+from src.Bayesian_state.simulation.config import (
     DEFAULT_DATA_PATH,
     load_yaml,
     recursive_to_builtin,
     resolve_engine_config,
 )
-from src.Bayesian_state.optimization.optimizer_simulation import StateModelSimulationRunner
+from src.Bayesian_state.simulation.runner import StateModelSimulationRunner
 
 
 DEFAULT_SUBJECTS = (103, 105, 111, 112, 117, 118, 127, 131)
@@ -80,8 +80,8 @@ def load_inputs() -> tuple[dict[str, Any], list[dict[str, Any]], Path, dict[str,
     best_path = ROOT / "results/zhuran/cond1_v13/cd/cond1_v13/best_hyperparams.json"
     candidate_path = (
         ROOT
-        / "src/Bayesian_state/problems/modules/hypo_transition/candidates"
-        / "hypo_transition_profile_v13_candidates.json"
+        / "configs/candidates/hypothesis_transition"
+        / "hypothesis_transition_profile_v13_candidates.json"
     )
     sim_path = ROOT / "configs/simulation_cfg/pmh_cond1_simulation_v13.yaml"
     best = json.loads(best_path.read_text(encoding="utf-8"))

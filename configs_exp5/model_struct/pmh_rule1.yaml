@@ -6,15 +6,18 @@ data:
   target_type: hard
 
 partition:
-  class: src.Bayesian_state.problems.discrete_partitions.DiscreteRulePartition
+  class: src.Bayesian_state.hypothesis_space.observation_model.discrete_rule_partition.DiscreteRulePartition
   kwargs:
     n_dims: 5
     n_cats: 2
     include_intercept: false
 
+likelihood:
+  distance_mode: rule
+
 modules:
   beta_mod:
-    class: src.Bayesian_state.problems.modules.beta.BetaModule
+    class: src.Bayesian_state.model.modules.beta.BetaModule
     kwargs:
       beta_init: 2.0
       beta_min: 0.1
@@ -25,7 +28,7 @@ modules:
       prior_beta_scale: 8.0
 
   hypo_transitions_mod:
-    class: src.Bayesian_state.problems.modules.hypo_transition.static.StaticHypothesisTransitionModule
+    class: src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy.FixedStrategyHypothesisTransitionModule
     kwargs:
       strategies:
         - {label: retain_top, amount: fixed, method: top_posterior, pool: active, value: 8}
@@ -33,19 +36,13 @@ modules:
       init_num: 12
       max_active_hypotheses: 16
 
-  likelihood_mod:
-    class: src.Bayesian_state.problems.modules.likelihood.LikelihoodModule
-    kwargs:
-      distance_mode: rule
-
   memory_mod:
-    class: src.Bayesian_state.problems.modules.memory.DualMemoryModule
+    class: src.Bayesian_state.model.modules.memory.DualMemoryModule
     kwargs:
       gamma: 0.7
       w0: 0.05
 
 agenda:
   - hypo_transitions_mod
-  - likelihood_mod
   - memory_mod
   - beta_mod

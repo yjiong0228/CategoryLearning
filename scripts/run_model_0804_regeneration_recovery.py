@@ -38,11 +38,11 @@ from scripts.run_model_0803_cond1 import (  # noqa: E402
 from scripts.run_model_0804_cond1_preflight import (  # noqa: E402
     _load_subject_arrays,
 )
-from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0804.core import (  # noqa: E402
     Model0804Parameters,
     run_model0804_particle_filter,
 )
-from src.Bayesian_state.manuscript_models.model_0804_recovery import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0804.recovery import (  # noqa: E402
     infer_correct_choices,
     simulate_model0804_choices,
 )
@@ -1233,8 +1233,8 @@ def main() -> None:
     if not 1 <= top_k <= len(candidates):
         raise ValueError("top-k confirmation count is outside the candidate grid")
 
-    model_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
-    recovery_path = ROOT / "src/Bayesian_state/manuscript_models/model_0804_recovery.py"
+    model_path = ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
+    recovery_path = ROOT / "src/Bayesian_state/reference_models/model_0804/recovery.py"
     config_sha256 = _sha256(config_path)
     model_sha256 = _sha256(model_path)
     recovery_sha256 = _sha256(recovery_path)
@@ -1391,7 +1391,7 @@ def main() -> None:
         "base_config_sha256": _sha256(base_path),
         "implementation_sha256": {
             "model_0804.py": model_sha256,
-            "model_0804_recovery.py": recovery_sha256,
+            "model_0804/recovery.py": recovery_sha256,
             "recovery_runner": _sha256(Path(__file__).resolve()),
             "recovery_tests": _sha256(
                 ROOT / "tests/test_model_0804_recovery.py"

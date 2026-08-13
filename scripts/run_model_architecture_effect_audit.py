@@ -35,16 +35,16 @@ from scripts.run_cond1_v14_frozen_confirmation import (  # noqa: E402
     toggle_state,
 )
 from scripts.run_cond1_v14_pilot import result_row, write_json  # noqa: E402
-from src.Bayesian_state.run_simulation import (  # noqa: E402
+from src.Bayesian_state.simulation.parameters import (  # noqa: E402
     apply_fixed_hyperparams_to_engine_config,
 )
 from src.Bayesian_state.utils.datasets import resolve_dataset_paths  # noqa: E402
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
     resolve_engine_config,
 )
-from src.Bayesian_state.optimization.optimizer_simulation import (  # noqa: E402
+from src.Bayesian_state.simulation.runner import (  # noqa: E402
     StateModelSimulationRunner,
 )
 
@@ -181,13 +181,6 @@ def build_variants(params: Mapping[str, Any]) -> list[dict[str, Any]]:
             "engine_ablation": "perception_noise_off",
         },
         {
-            "variant_id": "label_reversals_off",
-            "model_family": "hypothesis_space_ablation",
-            "controller_id": "subject_frozen",
-            "hyperparams": baseline,
-            "engine_ablation": "label_reversals_off",
-        },
-        {
             "variant_id": "dynamic_hypothesis_selection_off",
             "model_family": "active_set_ablation",
             "controller_id": "full_hypothesis_set",
@@ -251,12 +244,6 @@ def apply_engine_ablation(
                 "std": [0.0, 0.0, 0.0, 0.0],
             }
         )
-        return out
-    if ablation == "label_reversals_off":
-        out["partition"]["kwargs"]["include_label_reversals"] = False
-        transition = out["modules"]["hypo_transitions_mod"].setdefault("kwargs", {})
-        if transition.get("init_pool") == "label_permuted":
-            transition["init_pool"] = "all"
         return out
     if ablation == "dynamic_hypothesis_selection_off":
         out["modules"].pop("hypo_transitions_mod", None)

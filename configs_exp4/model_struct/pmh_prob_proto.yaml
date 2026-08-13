@@ -6,18 +6,23 @@ data:
   probability_columns: [probCat1, probCat2]
 
 partition:
-  class: 'src.Bayesian_state.problems.partitions.Partition'
+  class: 'src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition'
   kwargs:
     n_dims: 4
     n_cats: 2
 
+likelihood:
+  distance_mode: prototype
+  feedback_likelihood_mode: bernoulli_choice
+  feedback_lapse: 0.05
+
 modules:
   perception_mod:
-    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    class: 'src.Bayesian_state.model.modules.perception.PerceptionModule'
     kwargs:
       noise_mode: uniform
   beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+    class: 'src.Bayesian_state.model.modules.beta.BetaModule'
     kwargs:
       beta_init: 3.0
       beta_min: 0.1
@@ -29,21 +34,15 @@ modules:
       beta_update_mode: probabilistic_feedback
       probabilistic_feedback_lapse: 0.05
   hypo_transitions_mod:
-    class: 'src.Bayesian_state.problems.modules.hypo_transition.static.StaticHypothesisTransitionModule'
+    class: 'src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy.FixedStrategyHypothesisTransitionModule'
     kwargs:
       strategies:
         - {label: "retain_random", amount: "random_4", method: "random_posterior", pool: "active"}
         - {label: "explore_random", amount: "opp_random_4", method: "random", pool: "inactive"}
       init_num: 4
       max_active_hypotheses: 8
-  likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
-    kwargs:
-      distance_mode: prototype
-      feedback_likelihood_mode: bernoulli_choice
-      feedback_lapse: 0.05
   memory_mod:
-    class: 'src.Bayesian_state.problems.modules.memory.DualMemoryModule'
+    class: 'src.Bayesian_state.model.modules.memory.DualMemoryModule'
     kwargs:
       w0: 0.45
       gamma: 0.96
@@ -51,6 +50,5 @@ modules:
 agenda:
   - perception_mod
   - hypo_transitions_mod
-  - likelihood_mod
   - memory_mod
   - beta_mod

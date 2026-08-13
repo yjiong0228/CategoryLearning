@@ -1,15 +1,16 @@
+likelihood: {}
+
 modules:
-  beta_mod:
-    class: 'src.Bayesian_state.problems.modules.beta.BetaModule'
+  memory_mod:
+    class: src.Bayesian_state.model.modules.memory.BayesianMemoryModule
     kwargs: {}
-  likelihood_mod:
-    class: 'src.Bayesian_state.problems.modules.likelihood.LikelihoodModule'
+  beta_mod:
+    class: 'src.Bayesian_state.model.modules.beta.BetaModule'
     kwargs: {}
   perception_mod:
-    class: 'src.Bayesian_state.problems.modules.perception.PerceptionModule'
+    class: 'src.Bayesian_state.model.modules.perception.PerceptionModule'
 
 agenda:
   - perception_mod
-  - likelihood_mod
-  - __self__
+  - memory_mod
   - beta_mod

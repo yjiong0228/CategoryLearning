@@ -7,9 +7,9 @@
 0806 必须继续使用仓库已经验证过的基础设施：
 
 1. choice Brier 和 accuracy curve 统一调用 `src.Bayesian_state.metrics`；
-   `ModelEval` 只消费这些共享结果并作图，不允许脚本各写一套定义。
+   `ModelEvaluator` 只消费这些共享结果并作图，不允许脚本各写一套定义。
 2. 超参数搜索继续使用
-   `src.Bayesian_state.optimization.hyper_cd_optimizer.HyperCDOptimizer` 的坐标下降框架。
+   `src.Bayesian_state.optimization.search.coordinate_descent.HyperCDOptimizer` 的坐标下降框架。
 3. 数据切分、被试级汇总、重复模拟、随机种子敏感性和模型评价，继续遵守
    `src/Bayesian_state` 的现有工作流。
 4. 0805 已冻结的知觉输入、规则空间、局部/全局核、双通道记忆、选择读出和
@@ -42,15 +42,15 @@
 - 固定参数仿真：`configs/simulation_cfg/pmh_cond1_simulation_0806.yaml`
 - Hyper-CD：`configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml`
 - 新机制模块：
-  `src.Bayesian_state.problems.modules.hypo_transition.dynamic_continuous.DynamicContinuousHypothesisTransitionModule`
-- 数值积分入口：`src.Bayesian_state.inference_engine.backends.particle_filter.run_state_model_particle_filter`
-- 单次模型执行入口：`src.Bayesian_state.simulation.state_model_execution.evaluate_state_model_run`
+  `src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule`
+- 数值积分入口：`src.Bayesian_state.inference.backends.particle_filter.run_state_model_particle_filter`
+- 单次模型执行入口：`src.Bayesian_state.simulation.execution.evaluate_state_model_run`
 - 已保存结果评价入口：`src.Bayesian_state.run_model_evaluation`
 
 运行命令：
 
 ```bash
-python -m src.Bayesian_state.optimization.hyper_cli \
+python -m src.Bayesian_state.optimization.cli \
   --backend cd \
   --config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
 
@@ -72,13 +72,13 @@ active-set 路径。每个 simulation repeat 只是独立的 filter seed，用�
 
 ## 旧 0806 代码的保留边界
 
-`src/Bayesian_state/manuscript_models/model_0806.py` 与原来的
+`src/Bayesian_state/reference_models/model_0806.py` 与原来的
 `scripts/run_model_0806_*.py` 只保留为恢复实验、历史结果复现和数值 oracle。它们不再是
 真实数据拟合的正式入口，也不应继续扩展新的 transition、评价或超参数搜索逻辑。
 
 联合 surprise+uncertainty 和单信号 FA3-M 由 continuous transition 的
 `rate_controller` 表达；可选 FA3-MG 用 `range_controller` 令 `g_t` 随上一试次信号变化。
 Hyper-CD 把 transition class 与两组 controller 绑定成同一个机制坐标：全零 controller 的
-静态 FA2 使用 `StaticWorkspaceHypothesisTransitionModule`，其余候选使用
-`DynamicContinuousHypothesisTransitionModule`。因此静态/动态的认知解释不会依赖运行后再
+静态 FA2 使用 `FixedWorkspaceHypothesisTransitionModule`，其余候选使用
+`DynamicAdaptiveControlHypothesisTransitionModule`。因此静态/动态的认知解释不会依赖运行后再
 猜测参数是否恰好为零。

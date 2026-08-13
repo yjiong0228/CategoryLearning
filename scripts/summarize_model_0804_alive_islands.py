@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0804.core import (  # noqa: E402
     combine_model0804_alive_islands,
 )
 
@@ -184,7 +184,7 @@ def main() -> None:
                 }
             )
 
-    implementation = ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
+    implementation = ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
     payload = {
         "status": "alive_island_ensemble_complete",
         "scope": "numerical_diagnostic_not_model_comparison",

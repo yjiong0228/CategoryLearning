@@ -33,12 +33,12 @@ from scripts.run_model_0803_cond1 import (  # noqa: E402
     validate_and_load_inputs,
     validate_subject_cache,
 )
-from src.Bayesian_state.manuscript_models.model_0803 import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0803 import (  # noqa: E402
     FeatureScaling,
     run_model0803,
     score_choice_predictions,
 )
-from src.Bayesian_state.manuscript_models.model_0804 import (  # noqa: E402
+from src.Bayesian_state.reference_models.model_0804.core import (  # noqa: E402
     FA_MODEL_IDS,
     Model0804Parameters,
     fit_model0804,
@@ -176,7 +176,7 @@ def _segment_scores(
 def _synthetic_exact_check(
     config: Mapping[str, Any],
 ) -> dict[str, Any]:
-    from src.Bayesian_state.manuscript_models.model_0803 import build_transition_kernels
+    from src.Bayesian_state.reference_models.model_0803 import build_transition_kernels
 
     rng = np.random.default_rng(804)
     raw = rng.uniform(0.05, 1.0, size=(3, 3, 2))
@@ -736,7 +736,7 @@ def main() -> None:
         "config_sha256": _sha256(config_path),
         "implementation_sha256": {
             "model_0804.py": _sha256(
-                ROOT / "src/Bayesian_state/manuscript_models/model_0804.py"
+                ROOT / "src/Bayesian_state/reference_models/model_0804/core.py"
             ),
             "preflight_runner": _sha256(Path(__file__).resolve()),
             "model_0804_tests": _sha256(ROOT / "tests/test_model_0804.py"),

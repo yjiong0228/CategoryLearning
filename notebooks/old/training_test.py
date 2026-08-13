@@ -27,7 +27,7 @@ from src.Bayesian import *
 from src.Bayesian.problems.config import config_fgt
 from src.Bayesian.problems import *
 from src.Bayesian.utils.optimizer import Optimizer
-from src.Bayesian.utils.model_evaluation import ModelEval
+from src.Bayesian.utils.evaluator import ModelEval
 
 
 # model_name = 'M0_Base'

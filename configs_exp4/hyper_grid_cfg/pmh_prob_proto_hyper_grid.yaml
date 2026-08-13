@@ -14,7 +14,7 @@ hyperparam_space:
   engine.modules.memory_mod.kwargs.w0:
     values: [0.02, 0.06, 0.2, 0.8]
 
-  engine.modules.likelihood_mod.kwargs.feedback_lapse:
+  engine.likelihood.feedback_lapse:
     values: [0.0, 0.03, 0.05, 0.1]
   engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse:
     values: [0.0, 0.03, 0.05, 0.1]

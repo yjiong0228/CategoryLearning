@@ -28,20 +28,20 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.Bayesian_state.run_simulation import (  # noqa: E402
+from src.Bayesian_state.simulation.parameters import (  # noqa: E402
     apply_fixed_hyperparams_to_engine_config,
 )
 from src.Bayesian_state.utils.datasets import (  # noqa: E402
     resolve_dataset_paths,
 )
-from src.Bayesian_state.inference_engine.posterior_predictive import (  # noqa: E402
+from src.Bayesian_state.inference.posterior_predictive import (  # noqa: E402
     DynamicRhoConfig,
     run_conditioned_condition1_rollouts,
 )
-from src.Bayesian_state.inference_engine.backends.particle_filter import (  # noqa: E402
+from src.Bayesian_state.inference.backends.particle_filter import (  # noqa: E402
     run_state_model_particle_filter,
 )
-from src.Bayesian_state.optimization.optimization_config import (  # noqa: E402
+from src.Bayesian_state.simulation.config import (  # noqa: E402
     DEFAULT_DATA_PATH,
     load_yaml,
 )
