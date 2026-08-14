@@ -15,6 +15,7 @@ from src.Bayesian_state.simulation.execution import evaluate_state_model_run
 from src.Bayesian_state.inference.dispatcher import run_inference_backend
 from src.Bayesian_state.inference.backends.particle_filter import (
     _trace_ancestral_indices,
+    run_state_model_particle_filter,
 )
 from src.Bayesian_state.inference.results import (
     InferenceResult,
@@ -1590,6 +1591,17 @@ def test_particle_filter_persistent_execution_survives_resampling():
     )
     assert persistent.shape == (n_trials, 2)
     np.testing.assert_allclose(persistent.sum(axis=1), 1.0)
+    persistent_without_strategy = np.asarray(
+        result.observation_probabilities[
+            "audit_persistent_execution_no_strategy_no_lapse"
+        ],
+        dtype=float,
+    )
+    assert persistent_without_strategy.shape == (n_trials, 2)
+    np.testing.assert_allclose(
+        persistent_without_strategy.sum(axis=1),
+        1.0,
+    )
 
     ancestral = result.artifacts["audit_ancestral_paths"]
     executed_paths = np.asarray(ancestral["executed_hypothesis"], dtype=int)
@@ -1775,6 +1787,51 @@ def test_particle_backend_uses_common_inference_result_contract():
         result.marginal_probabilities,
         baseline.marginal_probabilities,
     )
+
+
+def test_particle_filter_analysis_controls_separate_weighting_and_resampling():
+    n_trials = 18
+    stimulus = np.linspace(0.05, 0.95, n_trials)[:, None]
+    categories = np.where(stimulus[:, 0] < 0.5, 1, 2)
+    choices = np.where(np.arange(n_trials) % 4 == 0, 3 - categories, categories)
+    feedback = (choices == categories).astype(float)
+    common = {
+        "engine_config": _engine_config(),
+        "subject_id": 1,
+        "stimulus": stimulus,
+        "choices": choices,
+        "feedback": feedback,
+        "particle_count": 8,
+        "choice_readout_power": 2.0,
+        "output_lapse": 0.05,
+        "filter_seed": 20260814,
+        "resample_threshold_fraction": 0.0,
+        "processed_data_dir": Path("."),
+    }
+    unweighted = run_state_model_particle_filter(
+        **common,
+        condition_on_observed_choice=False,
+    )
+    weighted = run_state_model_particle_filter(
+        **common,
+        condition_on_observed_choice=True,
+    )
+
+    assert unweighted.condition_on_observed_choice is False
+    np.testing.assert_allclose(unweighted.pre_choice_ess, 8.0)
+    np.testing.assert_allclose(unweighted.post_choice_ess, 8.0)
+    np.testing.assert_allclose(unweighted.final_weights, 1.0 / 8.0)
+    assert not np.any(unweighted.resampled)
+
+    assert weighted.condition_on_observed_choice is True
+    assert not np.any(weighted.resampled)
+    assert np.any(np.asarray(weighted.post_choice_ess) < 8.0)
+    assert np.isclose(np.sum(weighted.final_weights), 1.0)
+
+    with pytest.raises(ValueError, match="must lie in"):
+        run_state_model_particle_filter(
+            **{**common, "resample_threshold_fraction": -0.1}
+        )
 
 
 def test_particle_ancestral_indices_follow_resampling_parents():

@@ -1,0 +1,58 @@
+analysis_id: model_0813_pf_joint_parameter_recovery_20260813_v1
+scope: balanced_three_factor_joint_profile_recovery
+
+# The authoritative fixed-parameter v2f particle-filter configuration.  The
+# recovery runner resolves the same subject-specific engine configuration, then
+# changes only the three parameter paths declared below.
+base_simulation_config: configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml
+output_dir: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery
+
+design:
+  # Four real condition-1 schedules, all with at least 128 trials and the
+  # baseline capacity of three.  Each stochastic trajectory is an independent
+  # simulation replicate conditional on one of these fixed schedules.
+  template_subjects: [103, 111, 118, 127]
+  trials_per_dataset: 128
+  datasets_per_profile_per_subject: 2
+  particle_count: 32
+  resample_threshold_fraction: 0.5
+  n_jobs: 16
+  base_seed: 20260813
+  near_best_delta_nll: 2.0
+
+# A balanced L9 orthogonal array is constructed from these ordered levels.
+# It contains the all-centre profile and makes every pair of factor levels occur
+# exactly once.  This is a targeted joint-identifiability audit, not a full
+# search over all fixed v2f parameters.
+factors:
+  memory_gamma:
+    label: Memory gamma
+    path: engine.modules.memory_mod.kwargs.gamma
+    levels: [0.60, 0.80, 0.95]
+  exploration_failure_threshold:
+    label: Exploration failure threshold
+    path: engine.modules.hypo_transitions_mod.kwargs.continuous_controller.exploration.failure_threshold
+    levels: [0.40, 0.55, 0.70]
+  execution_switch_scale:
+    label: Execution switch scale
+    path: engine.modules.hypo_transitions_mod.kwargs.continuous_controller.execution.switch_scale
+    levels: [0.10, 0.20, 0.40]
+
+numerical_stability:
+  enabled: true
+  # Low, baseline, and high-contrast generating profiles are rescored under
+  # independent PF seeds and two particle counts.  These runs diagnose the
+  # numerical approximation; they do not increase the parameter-recovery n.
+  profile_ids: [P01, P05, P09]
+  subject_id: 103
+  replicate: 0
+  particle_counts: [32, 64]
+  filter_seed_repeats: 2
+
+report:
+  confidence_level: 0.95
+  language: zh-CN
+  output_png: parameter_recovery_overview.png
+  output_notebook: parameter_recovery_analysis.ipynb
+  output_artifact: artifact.json
+  output_html: report.html

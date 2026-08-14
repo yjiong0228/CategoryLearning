@@ -1,0 +1,24 @@
+analysis_id: model_0813_pf_mechanism_reachability_20260814_v1
+scope: phase0_configuration_reachability_and_equivalence
+
+base_simulation_config: configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml
+mechanism_registry: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/mechanism_registry.csv
+output_dir: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/00_reachability
+
+design:
+  # These subjects cover the two perception-noise branches and the only
+  # capacity-5 override in the retained full-cohort configuration.
+  subjects: [103, 120, 127]
+  default_variant_subject: 103
+  perception_variant_subjects: [103, 127]
+  trials_per_subject: 128
+  particle_count: 8
+  resample_threshold_fraction: 0.5
+  base_seed: 20260814
+  change_tolerance: 1.0e-12
+
+interpretation:
+  independent_unit: none_phase0_is_a_deterministic_technical_probe
+  exact_equivalence_required_for_inactive: true
+  active_means: the_setting_changes_saved_predictions_or_latent_outputs_under_the_probe
+  active_does_not_mean: the_mechanism_improves_fit_or_should_be_retained

@@ -323,6 +323,7 @@ def _choice_layer_audit(
         )
     )
     executed_hypothesis = resolve_executed_hypothesis(engine)
+    persistent_execution_no_strategy_no_lapse = sharpened_no_lapse
     persistent_execution_no_lapse = strategy_confidence_no_lapse
     if executed_hypothesis is not None:
         active_lookup = {
@@ -330,9 +331,12 @@ def _choice_layer_audit(
             for index, hypothesis in enumerate(active)
         }
         executed_arg = active_lookup[int(executed_hypothesis)]
+        persistent_execution_no_strategy_no_lapse = (
+            category_by_hypothesis[executed_arg].copy()
+        )
         persistent_execution_no_lapse, _ = (
             apply_strategy_conditioned_choice_confidence(
-                category_by_hypothesis[executed_arg],
+                persistent_execution_no_strategy_no_lapse,
                 mastery_evidence=float(mastery_evidence),
                 failure_pressure=float(failure_pressure),
                 gain=float(strategy_confidence_gain),
@@ -381,6 +385,9 @@ def _choice_layer_audit(
         "unsharpened": unsharpened,
         "sharpened_no_lapse": sharpened_no_lapse,
         "strategy_confidence_no_lapse": strategy_confidence_no_lapse,
+        "persistent_execution_no_strategy_no_lapse": (
+            persistent_execution_no_strategy_no_lapse
+        ),
         "persistent_execution_no_lapse": persistent_execution_no_lapse,
         "commitment_confidence_no_lapse": commitment_confidence_no_lapse,
         "commitment_confidence_signal": float(
@@ -471,12 +478,19 @@ def run_state_model_particle_filter(
     learning_update_probability: float = 1.0,
     filter_seed: int = 20260730,
     resample_threshold_fraction: float = 0.5,
+    condition_on_observed_choice: bool = True,
     choice_transmission_audit: bool = False,
     valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
 ) -> InferenceResult:
-    """Filter one observed condition-1 trajectory using bootstrap particles."""
+    """Filter one observed condition-1 trajectory using bootstrap particles.
+
+    ``condition_on_observed_choice=False`` and
+    ``resample_threshold_fraction=0`` are analysis-only controls for separating
+    uniform trajectory mixing, importance weighting, and resampling.  The
+    ordinary bootstrap filter keeps both defaults unchanged.
+    """
 
     from ...model import StateModel
 
@@ -502,6 +516,7 @@ def run_state_model_particle_filter(
     commitment_gain_value = float(rule_commitment_confidence_gain)
     epsilon_value = float(output_lapse)
     threshold_fraction = float(resample_threshold_fraction)
+    choice_conditioning = bool(condition_on_observed_choice)
     update_probability = float(learning_update_probability)
     audit_choice_transmission = bool(choice_transmission_audit)
     if not np.isfinite(rho_value) or rho_value <= 0.0:
@@ -538,9 +553,9 @@ def run_state_model_particle_filter(
             raise ValueError("output_lapse_schedule values must lie in [0, 1].")
     if (
         not np.isfinite(threshold_fraction)
-        or not 0.0 < threshold_fraction <= 1.0
+        or not 0.0 <= threshold_fraction <= 1.0
     ):
-        raise ValueError("resample_threshold_fraction must lie in (0, 1].")
+        raise ValueError("resample_threshold_fraction must lie in [0, 1].")
     if (
         not np.isfinite(update_probability)
         or not 0.0 <= update_probability <= 1.0
@@ -703,6 +718,11 @@ def run_state_model_particle_filter(
         if audit_choice_transmission and persistent_execution_enabled
         else None
     )
+    audit_persistent_execution_no_strategy_no_lapse = (
+        np.zeros((n_trials, 2), dtype=float)
+        if audit_choice_transmission and persistent_execution_enabled
+        else None
+    )
     audit_correct_predicting_available_probability = (
         np.zeros(n_trials, dtype=float) if audit_choice_transmission else None
     )
@@ -846,6 +866,9 @@ def run_state_model_particle_filter(
                 (n_particles, 2), dtype=float
             )
             particle_persistent_execution_no_lapse = np.zeros(
+                (n_particles, 2), dtype=float
+            )
+            particle_persistent_execution_no_strategy_no_lapse = np.zeros(
                 (n_particles, 2), dtype=float
             )
             particle_correct_predicting_available = np.zeros(
@@ -1047,6 +1070,11 @@ def run_state_model_particle_filter(
                 particle_persistent_execution_no_lapse[particle_index] = (
                     layer_audit["persistent_execution_no_lapse"]
                 )
+                particle_persistent_execution_no_strategy_no_lapse[
+                    particle_index
+                ] = layer_audit[
+                    "persistent_execution_no_strategy_no_lapse"
+                ]
                 particle_correct_predicting_available[particle_index] = float(
                     layer_audit["correct_predicting_available"]
                 )
@@ -1152,6 +1180,16 @@ def run_state_model_particle_filter(
                     np.sum(
                         weights[:, None]
                         * particle_persistent_execution_no_lapse,
+                        axis=0,
+                    )
+                )
+            if audit_persistent_execution_no_strategy_no_lapse is not None:
+                audit_persistent_execution_no_strategy_no_lapse[
+                    trial_index
+                ] = _normalize(
+                    np.sum(
+                        weights[:, None]
+                        * particle_persistent_execution_no_strategy_no_lapse,
                         axis=0,
                     )
                 )
@@ -1325,7 +1363,7 @@ def run_state_model_particle_filter(
                 )
 
         choice_index = int(observed_choices[trial_index]) - 1
-        if valid[trial_index]:
+        if valid[trial_index] and choice_conditioning:
             weights *= np.clip(
                 particle_predictions[:, choice_index],
                 1e-12,
@@ -1604,6 +1642,9 @@ def run_state_model_particle_filter(
         audit_persistent_execution_no_lapse=(
             audit_persistent_execution_no_lapse
         ),
+        audit_persistent_execution_no_strategy_no_lapse=(
+            audit_persistent_execution_no_strategy_no_lapse
+        ),
         audit_correct_predicting_available_probability=(
             audit_correct_predicting_available_probability
         ),
@@ -1622,6 +1663,7 @@ def run_state_model_particle_filter(
         resampling_log=resampling_log,
         particle_count=n_particles,
         resample_threshold_fraction=threshold_fraction,
+        condition_on_observed_choice=choice_conditioning,
         filter_seed=int(filter_seed),
     )
 

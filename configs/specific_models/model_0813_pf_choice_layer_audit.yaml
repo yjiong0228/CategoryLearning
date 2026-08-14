@@ -1,0 +1,82 @@
+analysis_id: model_0813_pf_choice_layer_audit_20260814_v1
+scope: phase1c_common_state_choice_layer_paired_audit
+
+base_simulation_config: configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml
+phase0_probe_summary: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/00_reachability/probe_summary.csv
+output_dir: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/02_choice_layer
+
+design:
+  # Frozen pilot subjects from the mechanism-audit plan. They span documented
+  # trajectory heterogeneity and include both capacity-5 overrides.
+  subjects: [103, 104, 105, 108, 111, 120, 124, 132]
+  # The initially planned 128-trial window was reduced before any formal
+  # effect was computed because predeclared pilot subject 105 has only 64
+  # condition-1 trials. Keeping the first 64 trials retains all eight subjects
+  # at a common observation length.
+  trials_per_subject: 64
+  particle_count: 128
+  total_filter_seed_repeats: 8
+  training_seed_indices: [0, 1, 2, 3]
+  validation_seed_indices: [4, 5, 6, 7]
+  resample_threshold_fraction: 0.5
+  base_seed: 20260814
+  n_jobs: 16
+  bootstrap_repeats: 2000
+  bootstrap_confidence: 0.95
+
+  # Positive delta_mean_nll means the mechanism-side readout predicts the
+  # observed choice better than its comparator on the same particle states.
+  comparisons:
+    - contrast_id: active_weight_sharpening
+      mechanism_id: OBS-01
+      comparator_layer: active_unsharpened
+      mechanism_layer: active_sharpened
+      interpretation_role: execution_off_interaction_diagnostic
+    - contrast_id: active_strategy_confidence
+      mechanism_id: OBS-02
+      comparator_layer: active_sharpened
+      mechanism_layer: active_strategy_confidence
+      interpretation_role: execution_off_interaction_diagnostic
+    - contrast_id: persistent_execution
+      mechanism_id: COG-09
+      comparator_layer: active_strategy_confidence
+      mechanism_layer: executed_strategy
+      interpretation_role: primary_conditional_readout
+    - contrast_id: strategy_confidence_under_execution
+      mechanism_id: OBS-02
+      comparator_layer: executed_no_strategy
+      mechanism_layer: executed_strategy
+      interpretation_role: primary_conditional_readout
+    - contrast_id: uniform_output_lapse
+      mechanism_id: OBS-03
+      comparator_layer: executed_strategy
+      mechanism_layer: fitted_with_lapse
+      interpretation_role: primary_conditional_readout
+
+  # Frozen before the formal eight-seed run. These gates assess whether a
+  # paired effect is numerically repeatable, not whether it is psychologically
+  # necessary or population-generalizable.
+  stability_gates:
+    minimum_train_validation_subject_spearman: 0.70
+    minimum_subject_sign_agreement: 0.75
+    require_aggregate_sign_agreement: true
+    maximum_median_paired_mean_nll_mcse: 0.001
+
+  # Previously frozen mechanism-audit practical threshold. It is evaluated
+  # per contrast after paired Monte Carlo variability is measured.
+  practical_effect_rule:
+    baseline_mean_nll_fraction: 0.01
+    paired_seed_sd_multiplier: 2.0
+
+interpretation:
+  primary_estimand: instantaneous choice-readout delta NLL on identical pre-choice baseline PF states
+  positive_effect: comparator mean NLL minus mechanism mean NLL
+  not_a_full_counterfactual: alternative readouts do not update subsequent particle weights or cognitive states
+  independent_unit: subject_for_descriptive_pilot_heterogeneity_pf_seeds_are_technical_repeats
+  current_obs01_status: exact_noop_under_persistent_execution_from_phase0
+
+report:
+  language: zh-CN
+  figure_png: choice_layer_paired_audit.png
+  html_artifact: artifact.json
+  html_report: report.html

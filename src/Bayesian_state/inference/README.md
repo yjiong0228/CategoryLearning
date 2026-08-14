@@ -35,6 +35,10 @@ particle weights 仍只由原 fitted readout 更新。审计还记录每次重�
 posterior-weighted 粒子向前回溯完整的 prediction/strategy 祖先路径。该开关默认关闭，不应加入
 正式拟合配置。
 
+当 persistent execution 已启用时，审计同时返回执行规则在 strategy confidence 变换前后的
+choice probability。两者共享完全相同的 pre-choice 粒子状态和权重，可用于估计纯读出层的即时
+配对贡献；由于替代读出没有反过来更新后续粒子权重，这仍是条件分解，不是完整反事实模型拟合。
+
 `resolve_inference_backend()` 负责规范化和验证配置，`run_inference_backend()` 负责执行。优化器
 只消费 backend 输出并计算 metrics/loss，不再包含 particle-filter 实现。
 
@@ -111,6 +115,12 @@ from src.Bayesian_state.inference.backends.particle_filter import (
 
 当前正式入口支持 condition 1、expectation 类 readout 和 uniform output lapse。条件 posterior
 predictive 由 `posterior_predictive.py` 组合粒子状态与自主生成过程，不属于 optimizer。
+
+机制审计可直接调用 PF 公共函数，用
+`condition_on_observed_choice=false` 得到不做外层 choice importance weighting 的均匀轨迹
+混合，并用 `resample_threshold_fraction=0` 明确关闭重采样。两项都是推断分解用的分析对照；
+正式 dispatcher 配置仍要求 choice-conditioned filtering 和 `(0, 1]` 内的重采样阈值，默认行为
+没有改变。
 
 PF transition 诊断区分两种时间语义：已有 `transition_rate`、`search_range`、
 `swap_probability` 等字段是观察当前 choice 后的 filtered 边缘量；用于解释 trial `t` 所采取策略的

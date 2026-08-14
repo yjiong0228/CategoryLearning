@@ -204,6 +204,11 @@ class InferenceResult:
         value = self.metadata.get("filter_seed")
         return None if value is None else int(value)
 
+    @property
+    def condition_on_observed_choice(self) -> Optional[bool]:
+        value = self.metadata.get("condition_on_observed_choice")
+        return None if value is None else bool(value)
+
 
 class TrajectoryInferenceResult(InferenceResult):
     """Compatibility constructor for one realized latent trajectory."""
@@ -265,6 +270,7 @@ class ParticleFilterResult(InferenceResult):
         particle_count: int,
         resample_threshold_fraction: float,
         filter_seed: int,
+        condition_on_observed_choice: bool = True,
         filtered_search_range: Any = None,
         predictive_swap_probability: Any = None,
         predictive_swap_event_probability: Any = None,
@@ -321,6 +327,7 @@ class ParticleFilterResult(InferenceResult):
         filtered_execution_switch_event_probability: Any = None,
         filtered_execution_dwell_trials: Any = None,
         audit_persistent_execution_no_lapse: Any = None,
+        audit_persistent_execution_no_strategy_no_lapse: Any = None,
     ) -> None:
         observation_probabilities = {"prior_t": marginal_probabilities}
         for key, value in (
@@ -336,6 +343,10 @@ class ParticleFilterResult(InferenceResult):
             (
                 "audit_persistent_execution_no_lapse",
                 audit_persistent_execution_no_lapse,
+            ),
+            (
+                "audit_persistent_execution_no_strategy_no_lapse",
+                audit_persistent_execution_no_strategy_no_lapse,
             ),
         ):
             if value is not None:
@@ -494,6 +505,9 @@ class ParticleFilterResult(InferenceResult):
             metadata={
                 "particle_count": int(particle_count),
                 "resample_threshold_fraction": float(resample_threshold_fraction),
+                "condition_on_observed_choice": bool(
+                    condition_on_observed_choice
+                ),
                 "filter_seed": int(filter_seed),
             },
         )

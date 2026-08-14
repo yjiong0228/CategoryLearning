@@ -1,0 +1,59 @@
+analysis_id: model_0813_pf_calibration_20260814_v1
+scope: phase1_pf_numerical_calibration_and_filter_decomposition
+
+base_simulation_config: configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml
+parameter_recovery_config: configs/specific_models/model_0813_pf_parameter_recovery.yaml
+candidate_profiles: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery/candidate_profiles.json
+synthetic_dir: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery/synthetic
+legacy_stability_scores: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery/stability_scores.csv
+output_dir: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/01_pf_calibration
+
+ranking_calibration:
+  # Reuse the complete 32/64-particle results; only the larger stages are new.
+  dataset_ids:
+    - P01_subject_103_replicate_00
+    - P05_subject_103_replicate_00
+    - P09_subject_103_replicate_00
+  candidate_profile_ids: [P01, P02, P03, P04, P05, P06, P07, P08, P09]
+  legacy_particle_counts: [32, 64]
+  progressive_particle_counts: [128, 256]
+  filter_seed_repeats: 3
+  resample_threshold_fraction: 0.5
+  base_seed: 20260814
+  n_jobs: 16
+  stop_thresholds:
+    required_seed_repeats: 3
+    median_seed_rank_spearman: 0.80
+    minimum_seed_rank_spearman: 0.50
+    mean_modal_winner_agreement: 0.75
+    median_candidate_total_nll_sd: 0.50
+    maximum_noise_to_signal_ratio: 0.20
+    median_cross_count_rank_spearman: 0.90
+    cross_count_winner_agreement: 1.00
+
+filter_decomposition:
+  subjects: [103, 120, 127]
+  trials_per_subject: 128
+  particle_count: 128
+  filter_seed_repeats: 3
+  base_seed: 20260814
+  n_jobs: 16
+  modes:
+    - id: unweighted_mixture
+      label: Uniform trajectory mixture
+      condition_on_observed_choice: false
+      resample_threshold_fraction: 0.0
+    - id: importance_no_resampling
+      label: Choice weighting, no resampling
+      condition_on_observed_choice: true
+      resample_threshold_fraction: 0.0
+    - id: full_particle_filter
+      label: Choice weighting + resampling
+      condition_on_observed_choice: true
+      resample_threshold_fraction: 0.5
+
+report:
+  language: zh-CN
+  figure_png: pf_calibration_overview.png
+  html_artifact: artifact.json
+  html_report: report.html

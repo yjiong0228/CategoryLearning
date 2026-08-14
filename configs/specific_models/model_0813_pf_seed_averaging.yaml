@@ -1,0 +1,46 @@
+analysis_id: model_0813_pf_seed_averaging_20260814_v1
+scope: phase1b_replicated_pf_likelihood_calibration
+
+base_simulation_config: configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml
+candidate_profiles: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery/candidate_profiles.json
+synthetic_dir: results/model_dynamic_adaptive_control/0813_pf/parameter_recovery/synthetic
+existing_ranking_scores: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/01_pf_calibration/ranking_scores.csv
+output_dir: results/model_dynamic_adaptive_control/0813_pf/mechanism_audit/01_pf_calibration/seed_averaging
+
+calibration:
+  dataset_ids:
+    - P01_subject_103_replicate_00
+    - P05_subject_103_replicate_00
+    - P09_subject_103_replicate_00
+  candidate_profile_ids: [P01, P02, P03, P04, P05, P06, P07, P08, P09]
+  particle_count: 128
+  total_filter_seed_repeats: 16
+  aggregation_seed_counts: [2, 4, 8, 16]
+  training_seed_indices: [0, 1, 2, 3, 4, 5, 6, 7]
+  validation_seed_indices: [8, 9, 10, 11, 12, 13, 14, 15]
+  resample_threshold_fraction: 0.5
+  base_seed: 20260814
+  n_jobs: 16
+  bootstrap_repeats: 2000
+  bootstrap_confidence: 0.95
+  equivalence_rule: paired_bootstrap_delta_nll_interval_includes_zero
+  top_k: 3
+
+  # Frozen before inspecting seeds 3-15. All conditions must pass before the
+  # 16-seed objective can be used for candidate selection or recovery.
+  stability_gates:
+    final_split_median_rank_spearman: 0.80
+    final_split_minimum_rank_spearman: 0.50
+    final_split_winner_agreement: 0.75
+    final_split_mean_top_k_jaccard: 0.75
+    running_8_to_16_median_rank_spearman: 0.90
+    running_8_to_16_winner_agreement: 1.00
+    median_effective_seed_fraction: 0.50
+    median_aggregate_log_likelihood_mcse: 0.50
+    maximum_noise_to_signal_ratio: 0.20
+
+report:
+  language: zh-CN
+  figure_png: seed_averaging_overview.png
+  html_artifact: artifact.json
+  html_report: report.html
