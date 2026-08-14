@@ -1,0 +1,230 @@
+\section{Model details}
+\label{sec: model}
+
+\subsection{Geometrically regular partitions}
+
+In our framework, categorization is geometrically formalized as partitioning the continuous feature space $\mathbf{X}$ into $N$ distinct regions, such that all stimuli within a region are assigned to the same category. 
+Furthermore, motivated by both the structure of the original verbal report data and the need to ensure cognitive interpretability, we restrict the parametric partition $k\in\mathbf{X}^N$ to a finite set $\mathcal{K}$ of geometrically regular partitions (see Table \ref{tab:2} for the two-category partitions and Table \ref{tab:3} for the four-category partitions). Each partition $k\in\mathcal{K}$ must satisfy the following properties:
+
+\textbf{(Symmetric)} Given that the $N$ categories are treated symmetrically, the partition regions must be invariant under permutations of the category labels. Specifically:
+
+\begin{enumerate}
+    \item The regions are isomorphic: they share identical shape and volume. Moreover, for any pair of regions, there exists a rigid transformation (i.e., rotation, translation, and reflection) that maps one onto the other.
+    \item The center of $\mathbf{X}$ lies on the shared boundary of all regions.
+\end{enumerate}
+
+\textbf{(Connected)} Each category region in $\mathbf{X}$ is connected and star-shaped, hence simply connected.
+
+\textbf{(Linear)} The boundary of each region is piecewise linear, composed of facets that lie within hyperplanes.
+
+\textbf{(Non-isotropic)} We further prefer partitions whose boundaries align with salient geometric features of $\mathbf{X}$--for example, boundaries that coincide with its edges or intersect its vertices.
+
+Based on the boundaries and regions defined by each partition, we further assume that participants represent each category using the geometric centroid of its corresponding region, effectively forming a \textit{Voronoi}-like partition. Each partition $k \in \mathcal{K}$ consists of $N$ \textit{Voronoi} centroids that serve as category prototypes. For any stimulus $\mathbf{x}$ in the feature space, its probability of belonging to each category $C_i$ is then computed as a softmax over the (negative) Euclidean distances to all category prototypes, modulated by an optimizable softness parameter $\beta$:
+\begin{equation}
+p(C_i | \mathbf{x},k) = \frac{e^{-\beta d(\mathbf{x},C_i|k)}}{\sum_{j=1}^{N} e^{-\beta d(\mathbf{x},C_j|k)}}. \tag{1}
+\end{equation}
+
+As a remark, the procedure of partition$\rightarrow$centroids$\rightarrow$centroid-determined \textit{Voronoi} partition
+is NOT an identity map on partitions, even for those satisfying the above 4 properties. But the properties help the above procedure not be too far away from identity.
+
+% \newpage
+% \begin{landscape}
+\begin{table}[H]
+\centering
+\begin{threeparttable}
+\caption{Two-category partitions: Restricted partition types}
+\begin{tabularx}{\textwidth}{X p{3cm} p{3.5cm} p{2.5cm}}
+\toprule
+\textbf{\# of dims. involved} & \textbf{Partition type} & \textbf{Boundary} & \textbf{\# of partitions} \\
+\midrule
+1 & \texttt{axis-aligned}\textsuperscript{*} & $x_i = 0.5$ & 4\\
+2 & \texttt{equality} & $x_i = x_j$ & 6\\
+2 & \texttt{sum} & $x_i + x_j = 1$ & 6 \\
+4 & \texttt{mixed} & $x_i + x_j = x_k + x_l$  & 3\\
+\bottomrule
+\end{tabularx}
+\begin{tablenotes}[para,flushleft]
+\footnotesize
+\textsuperscript{*} Indicates the ground-truth partition type used in the task design.\\
+\textit{Note:} $i$, $j$, $k$, and $l$ denote distinct feature dimensions.
+\end{tablenotes}
+\label{tab:2}
+\end{threeparttable}
+\end{table}
+
+
+\begin{table}[H]
+\centering
+\begin{threeparttable}
+\caption{Four-category partitions: Restricted partition types}
+\begin{tabularx}{\textwidth}{l l l l}
+\toprule
+\makecell[l]{\textbf{\# of dims.}\\ \textbf{involved}}
+ & \textbf{Partition type} & \textbf{Boundaries} & 
+ \makecell[l]{\textbf{\# of}\\\textbf{partitions}} \\
+\midrule
+2 & \texttt{axis-aligned * 2} & \makecell[l]{$\text{(1) } x_i = 0.5$,\\ $\text{(2) } x_j = 0.5.$} & 6\\
+2 & \texttt{equality + sum} & \makecell[l]{$\text{(1) } x_i = x_j$,\\ $\text{(2) } x_i + x_j = 1.$} & 6\\
+3 & \texttt{axis-aligned + equality} & \makecell[l]{$\text{(1) } x_i = 0.5$,\\ $\text{(2) } x_j = x_k.$} & 12\\
+3 & \texttt{axis-aligned + sum} & \makecell[l]{$\text{(1) } x_i = 0.5$,\\ $\text{(2) } x_j + x_k = 1.$} & 12\\
+4 & \texttt{equality * 2} & \makecell[l]{$\text{(1) } x_i = x_j$,\\ $\text{(2) } x_k = x_l.$} & 3\\
+4 & \texttt{sum * 2} & \makecell[l]{$\text{(1) } x_i + x_j = 1$, \\ $ \text{(2) } x_k + x_l = 1.$} & 3\\
+3 & \texttt{axis-aligned * 3}\textsuperscript{*} & \makecell[l]{$\text{(1) } x_i = 0.5$,\\ $\text{(2) } x_j = 0.5$ and $x_i < 0.5$,\\ $\text{(3) } x_k = 0.5$ and $x_i \geq 0.5.$} & 24\\
+3 & \texttt{axis-aligned + equality + sum} & \makecell[l]{$\text{(1) } x_i = 0.5$,\\ $\text{(2) } x_j = x_k$ and $x_i < 0.5$,\\ $\text{(3) } x_j + x_k = 1$ and $x_i \geq 0.5.$} & 24\\
+4 & \texttt{equality + axis-aligned * 2} & \makecell[l]{$\text{(1) } x_i = x_j$,\\ $\text{(2) } x_k = 0.5$ and $x_i < x_j$,\\ $\text{(3) } x_l = 0.5$ and $x_i \geq x_j.$} & 12\\
+4 & \texttt{sum + axis-aligned * 2} & \makecell[l]{$\text{(1) } x_i + x_j = 1$,\\ $\text{(2) } x_k = 0.5$ and $x_i + x_j < 1$,\\ $\text{(3) } x_l = 0.5$ and $x_i + x_j \geq 1.$} & 12\\
+4 & \texttt{Superlative} & $\{x_i = x_j\}$ for all $i \neq j$ & 2\\
+
+\bottomrule
+\end{tabularx}
+\begin{tablenotes}[para,flushleft]
+\footnotesize
+\textsuperscript{*} Indicates the ground-truth partition type used in the task design.\\
+\textit{Note:} $i$, $j$, $k$, and $l$ denote distinct feature dimensions.
+\end{tablenotes}
+\label{tab:3}
+\end{threeparttable}
+\end{table}
+% \end{landscape}
+% \newpage
+
+
+
+\subsection{Hypothesis generator module} 
+
+The hypothesis generator, as a core module, is implemented using pre-defined sampling strategies and a dynamically adjusted hypothesis set size to balance exploration and computational efficiency.
+
+Specifically, we define three strategies for hypothesis selection: \textit{posterior-based exploitation} ($S_1$), \textit{cue-driven associative recall} ($S_2$), and \textit{stochastic exploration} ($S_3$). At every trial $t$ the learner firstly decides the amount of hypotheses to draw from each strategy, $(m_1^{(t)}, m_2^{(t)}, m_3^{(t)})$, then generates the next working hypothesis set $\mathcal H_{t+1}=\bigcup_{i=1}^3S_i^{(t)}$ from
+\addtocounter{equation}{1}
+\begin{eqnarray}
+    S_1^{(t)} &\in&\left\{(\text{Top-}m_1^{(t)})(q_t(k);\mathcal{H}_{t}),\quad \text{No-Rep}(\pi(q_t(k)); m_1^{(t)})\right\}\\
+   S_2^{(t)} &\in&\left\{(\text{Top-}m_2^{(t)})(s_t(k|\mathbf{x}_{t+1});\mathcal{K}\backslash{S_1^{(t)}}),\quad \text{No-Rep}(\pi(s_t(k|\mathbf{x}_{t+1})); m_2^{(t)})\right\}\\
+   S_3^{(t)} &\sim&\text{Uniform}\!\left(\mathcal K\setminus(S_1^{(t)}\cup S_2^{(t)}),\;m_3^{(t)}\right) 
+\end{eqnarray}
+where $q_t(k)$ is the current posterior,  $s_t(k|\mathbf{x}_{t+1})$ denotes the associative similarity between the next stimulus $\mathbf x_{t+1}$ and partition $k$, and $\pi(\cdot)$ denotes a probabilistic transformation over input scores, mapping them into a distribution suitable for stochastic sampling without replacement.
+
+
+\paragraph{Posterior-based exploitation.} As participants tend to exhibit a general consistency in their learning behavior, we incorporate an exploitation strategy $S_1$ based on the posterior over the hypothesis set from the previous trial, i.e., $S_1^{(t)}\subset{H_{t}}$. The posterior encodes information about the basic correctness of each hypothesis, serving as a principled guide for selecting promising candidates in the next trial. This selection process involves first determining the number of hypotheses to retain, $m_1^{(t)}$, followed by either selecting the top-$k$ based on posterior scores or sampling from the posterior distribution.
+
+
+\paragraph{Cue-driven associative recall.} In this strategy, we assume that upon observing the next stimulus $\mathbf x_{t+1}$, participants may engage in associative recall, retrieving hypotheses whose category centroids closely resemble the stimulus, as if the stimulus serves as a cue that reactivates relevant prior structure. This process occurs before participants make the observable choice $c_{t+1}$, and can therefore be considered part of their internal inference during trial $t$.
+
+Practically, the agent applies the current most probable hypothesis $h = \arg\max_{k'} p_{\text{post}}^{(t)}(k')$ to the new stimulus $\mathbf{x}_{t+1}$ and identifies the most relevant Voronoi centroid $\hat{j}$ in $h$ as:
+\begin{equation}
+\hat{j} := \arg\min_{j} \, d\left( \mathbf{x}_{t+1}, h_j \right), \tag{5}
+\end{equation}
+where $d(\cdot, \cdot)$ denotes the Euclidean distance in feature space.
+Then, It selects (or samples) a subset of $m_2^{(t)}$ available hypotheses according to a similarity function $s_t(k \mid \mathbf{x}_{t+1})$, which measures the proximity between $h_{\hat{j}}$ and the centroids of the candidate hypothesis $k\in \mathcal{K}$:
+\begin{equation}
+s_t(k \mid \mathbf{x}_{t+1}) = \min_{i < N} \, d(h_{\hat{j}}, k_i). \tag{6}
+\end{equation}
+
+
+\paragraph{Stochastic exploration.} 
+To model exploratory behavior, we introduce a stochastic mechanism that selects $m_3^{(t)}$ hypotheses uniformly at random from the hypothesis space 
+$\mathcal{K}$, independent of past inference or current observations.
+
+Notably, the above three strategies for $S_1$, $S_2$, and $S_3$ are executed sequentially to ensure that the resulting sets are disjoint.
+
+\paragraph{Balancing exploration and exploitation.}
+By rebalancing the amounts of hypotheses assigned to $S_1$, $S_2$, and $S_3$, the model dynamically controls the trade-off between exploitation and exploration. The general principle we follow is that stronger and more confident conclusions favor exploitation, while greater uncertainty calls for increased exploration. In practice, our model uses the \textit{entropy} of the posterior distribution as a measure of concludedness to adaptively adjust the proportion of hypotheses dedicated to each strategy, since the posteriors concentrated on one or two hypotheses (representing the state of being confident) have lower entropy and posteriors closer to uniform distribution have higher entropy.
+
+\subsection{Optimization algorithms}
+
+We illustrate the optimization procedure below using the full model (PMH-model), which integrates all three modules: perception, memory, and hypothesis generator. The same procedure is applied to all reduced model variants, with the corresponding cognitive module(s) omitted during optimization.
+
+For each participant, we first perform a grid search over the memory parameters $(\gamma, w_0)$ to identify the setting that best accounts for their observed behavior. Specifically, for each candidate pair $(\gamma, w_0)$ in the discretized grid $(\Gamma^\sharp, W_0^\sharp)$, we apply Algorithm~\ref{alg:1} multiple times to simulate the learning process under a simplified base model $PM_0H_0$. Each simulation produces a sequence of predicted choices ${(\hat{c_t})_{t=1}^T}$ and posterior distributions $\left\{p_{post}^{(t)}(k)\right\}_{t=1}^T$ over hypotheses. For each simulated trajectory, we evaluate how closely the expected model-predicted performance (i.e., $\sum_t \mathbb{E}_{k\sim p_{\text{post}}^{(t)}}[p(c_t^\ast \mid \mathbf{x}_t, k)]$) matches the participant’s actual feedback trajectory $(r_t)_{t=1}^T$. The error-minimizing parameter pair $(\gamma^\ast, w_0^\ast)$ is selected as optimal. Using this optimal pair, we then simulate 1000 behavioral trajectories with the full $PMH$ model (Algorithm~\ref{alg:2}). Among these, the trajectory whose predicted performance best aligns with the observed behavioral profile is selected as the representative simulation for that participant. Here, Algorithm~\ref{alg:1} defines the generative process of learning under fixed memory parameters, while Algorithm~\ref{alg:2} wraps this procedure into a model selection and trajectory matching pipeline across the entire parameter grid.
+
+\begin{algorithm}[htp]
+\caption{$PM_0H_0$ Model as a Random Variable-valued Function}\label{alg:1}
+\begin{algorithmic}[1]
+\Statex \textbf{Input:} $\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H},\gamma,w_0$, $\sigma:X\rightarrow \mathbb{R}^N$ the error standard deviation
+\Statex \textbf{Output:} ${(\hat{c_t})_{t=1}^T}, \left\{p_{post}^{(t)}(k)\right\}_{t=1}^T$
+\Statex \textbf{Initialize:} $p_{post}^{(0)}(k) = \frac{1}{\left |\mathcal{H} \right |}$
+\For{$t\gets1$ to $T_{max}$}
+    \State $\boldsymbol{\varepsilon} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$\rule{0pt}{13pt}
+    \State $\hat{\mathbf x} \gets \mathbf x + \boldsymbol\varepsilon$\rule{0pt}{13pt}
+    \State $p_{post}^{(t)}(k)\gets BayesianWithMemory(p_{post}^{(t-1)}(k),\mathcal{H},\gamma,w_0)$\rule{0pt}{13pt}
+    \State $\hat{(c)}_{t} \sim \mathbb{E}_{p_{\text{post}}^{(t)}(k)} \left( p(C \mid \hat{\mathbf x}, k) \right)$\rule{0pt}{13pt}
+    \State $\mathcal{H} \gets$ $\mathcal{H_{\text{new}}}=S_1^{(t)}\cup S_2^{(t)}\cup S_3^{(t)}$\rule{0pt}{13pt}
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\begin{algorithm}[htp!]
+\caption{$PMH$ Model}\label{alg:2}
+\begin{algorithmic}[1]
+\Statex \textbf{Input:} $\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T}$, $\mathcal{H},\gamma,w_0$, $(c_t^\ast)_{t=1}^T$ the correct class labels of data, $(\Gamma^\sharp, W_0^\sharp)$ discretization of $(\Gamma, W_0)$
+\Statex \textbf{Output:} ${(\hat{c_t})_{t=1}^T}, \left\{p_{post}^{(t)}\right\}_{t=1}^T$
+\Statex \textbf{Initialize:} $p_{post}^{(0)}(k) = \frac{1}{\left |\mathcal{H}_0 \right |},\mathcal{H}_0 $
+\For{each $(\gamma^i, w_0^i) \in \Gamma^\sharp \times W_0^\sharp$}
+    \For{$j \gets 1$ to $5$ (monte-carlo of size 5)}
+        \State $\{^{{j}}\!c_t\}_{t=1}^T,\{^{{j}}\!p^{(t)}_{post}\}_{t=1}^T\sim PM_0H_0(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^T, \mathcal{H}, \gamma,w_0)$
+%         \State $e^{i,j} \gets error(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H}_0,\gamma^{i,j},w_0^{i,j})$
+    \EndFor
+        \State $E(\gamma,w_0)\gets\min\limits_{j\in\{1,...,5\}}\left|\sum\limits_{t=1}^T{\expect\limits
+        _{k\sim^{j}\!p_{post}^t}p(c^\ast_t|\mathbf x_t,k)}-\sum\limits_{t=1}^Tr_t\right|$
+%     \State $e^i \gets \sum_{j=1}^{5} e^{i,j}$
+%     \State $\gamma^*,w_0^* \gets \arg\min_{\gamma,w_0}e^i$    
+\EndFor
+\State $\gamma^\ast, w_0^\ast \gets \argmin\limits_{(\gamma,w_0)\in\Gamma^\sharp\times W_0^\sharp} E(\gamma,w_0)$
+% \State $\gamma^\ast, w_0^\ast = \argmin\limits_{(\gamma,w_0)\in\Gamma\times W_0}
+% \left\{\expect\limits_{\{C_t\}_{t=1}^T,P\sim PH_0M_0(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^T, \mathcal{H}, \gamma,w_0)}\left|\sum\limits_{i=1}^T{\mathbbm{1}(C_t, c^\ast_t)}-\sum\limits_{i=1}^T{r_t}\right|\right\}$
+\For{$\alpha \gets1$ to $1000$}\rule{0pt}{13pt}
+    \State $(\{^\alpha\!c_t\}, \{^\alpha\!p_{post}^{(t)}\})  \sim PM_0H_0(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H}_0,\gamma^*,w_0^*)$
+\EndFor
+
+
+\State $\left ( \hat{c},p_{post}  \right)_{best} \gets \argmin\limits_{\{^\alpha\!c_t\} ,\{^\alpha\!p_{post}^{(t)}\} }
+\left|\sum\limits_{t=1}^T{\expect\limits
+        _{k\sim^{\alpha}\!p_{post}^{(t)}}p(c^\ast_t|\mathbf x_t,k)}-\sum\limits_{i=1}^Tr_t\right|
+$
+\Statex \textbf{Return: } $ \left ( \hat{c},p_{post}  \right)_{best} $
+\end{algorithmic}
+\end{algorithm}
+
+
+
+
+
+
+
+
+
+% \begin{algorithm}[htp]
+% \caption{Compute $error$}
+% \begin{algorithmic}[1]
+% \Statex \textbf{Input:}  $\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H},\gamma,w_0$
+% \Statex \textbf{Output:} $error$
+% \State $ {(\hat{c_t})_{t=1}^T}, \left\{p_{post}^{(t)}(k)\right\}_{t=1}^T   \gets PH_0M_0(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H},\gamma,w_0 )$
+% \State $acc_{true}^t \gets \mathbb{I}[r_t = 1], \quad t = 1, \dots, T$
+% \State $ acc_{pred}^t \gets \sum_{k} p_{post}^{(t)}(k) \cdot p_{true}^{(t)}(k), \quad t = 1, \dots, T$
+% \State $error \gets \sum_{t=1}^{T} \left |  acc_{pred}^t - acc_{true}^t  \right | $
+% \Statex \textbf{Return: } $ error$
+% \end{algorithmic}
+% \end{algorithm}
+
+
+% \begin{algorithm}[htp!]
+% \caption{$PHM$ Model}
+% \begin{algorithmic}[1]
+% \Statex \textbf{Input:} $\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T}$
+% \Statex \textbf{Output:} ${(\hat{c_t})_{t=1}^T}, \left\{p_{post}^{(t)}\right\}_{t=1}^T$
+% \Statex \textbf{Initialize:} $p_{post}^{(0)}(k) = \frac{1}{\left |\mathcal{H}_0 \right |},\mathcal{H}_0 $
+% \For{each $(\gamma^i, w_0^i) \in \Gamma \times W_0$}
+%     \For{$j \gets 1$ to $5$}
+%         \State $e^{i,j} \gets error(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H}_0,\gamma^{i,j},w_0^{i,j})$
+%     \EndFor
+%     \State $e^i \gets \sum_{j=1}^{5} e^{i,j}$
+%     \State $\gamma^*,w_0^* \gets \arg\min_{\gamma,w_0}e^i$    
+% \EndFor
+
+% \For{$\alpha \gets1$ to $1000$}
+%     \State $e^\alpha  \gets error(\left\{(\mathbf x_t,c_t,r_t)\right\}_{t=1}^{T},\mathcal{H}_0,\gamma^*,w_0^*)$
+% \EndFor
+% \State $\left ( \hat{c},P_{post}  \right)_{best} \gets \arg \min_{(\hat{c})^\alpha ,P_{post}^\alpha }e^\alpha $
+% \Statex \textbf{Return: } $ \left ( \hat{c},P_{post}  \right)_{best} $
+% \end{algorithmic}
+% \end{algorithm}

@@ -24,3 +24,10 @@ reports/
 logs/
 **/.vscode/
 tmp/
+
+# Local LaTeX build state for the imported paper tree.
+CategoryLearning_paper/**/*.aux
+CategoryLearning_paper/**/*.blg
+CategoryLearning_paper/**/*.fdb_latexmk
+CategoryLearning_paper/**/*.fls
+CategoryLearning_paper/**/*.out

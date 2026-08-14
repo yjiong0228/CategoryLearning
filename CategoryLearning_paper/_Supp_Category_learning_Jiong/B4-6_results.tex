@@ -1,0 +1,20 @@
+\subsection{Model assessments}
+As described in Section 3.3 of the main text, we assess model performance using two metrics: (1) the mean absolute error between model-predicted and observed learning performance, quantified via sliding-window accuracy, and (2) the mean absolute error between the model-predicted and verbally derived probability of the true hypothesis. To derive the latter, we first map participants’ verbal reports to prototypical internal representations (see Section \ref{sec: A.4}). For each hypothesis $k$, we compute the Euclidean distance between this internal representation and the category centroids defined by $k$. The probability assigned to the true hypothesis is then estimated based on its ranking among hypotheses with the smallest distances--reflecting its plausibility within the inferred posterior distribution.
+
+In addition, we compute standard model fit indices including the Bayesian Information Criterion (BIC), defined as $\mathrm{BIC} = \log(n) \cdot q - 2 \log L$, where $q$ is the number of free parameters in the model, $n$ is the number of data points (e.g., trials), and $\log L$ is the log-likelihood of the observed data under the model. We extract the log-likelihood from each model and apply the complexity penalty accordingly. BIC demonstrates a pattern similar to that of the absolute error (Fig. 3A in main text), again showing that traditional behavior-based fit indices fail to distinguish the PMH-model from the reduced variants (M, PM, and MH) (Fig. \ref{fig:S3}), despite only the PMH-model accurately capturing internal learning states. The Akaike Information Criterion (AIC), defined as $\mathrm{AIC} = 2q - 2 \log L$, yields qualitatively similar results.
+
+\begin{figure}[htbp]
+  \centering
+  \includesvg[width=0.5\textwidth]{figs/Fig3A_bic.svg}  
+  \caption{Model comparison using BIC. Error bar denotes 1 sem over participants. Significance after FDR correction: *** $p < 0.001$, * $p < 0.05$, n.s. not significant.}
+  \label{fig:S3}
+\end{figure}
+
+
+\subsection{Individual results of models}
+
+Fig. \ref{fig:S4} displays the prediction results of the PMH-model (i.e., the full model) for each individual participant, following the same format as Fig. 3 in the main text. It shows the best alignment to both external behavioral choices and internal verbal reports, compared to other reduced model variants (Figs.\ref{fig:S6}–\ref{fig:S12}), which exhibit varying degrees of inferiority across both model assessment metrics.
+
+The full PMH-model grid search results of memory parameter errors and the temporal dynamics of the exploration–exploitation strategy across participants are shown in Fig. \ref{fig:S5}.
+
+

@@ -1,0 +1,36 @@
+% Modular working manuscript based on the Springer Nature article template
+% (version 3.1, December 2024).
+%
+% Keep the manuscript split while drafting.  Springer Nature requests a
+% single self-contained .tex file at submission, so flatten these inputs only
+% when the scientific text is final.
+
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}
+
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathrsfs}
+\usepackage{xcolor}
+\usepackage{textcomp}
+\usepackage{booktabs}
+
+\raggedbottom
+
+\begin{document}
+
+% Front matter, abstract, and Introduction.
+\input{sections/opening}
+
+% Empirical findings: model fit, backend comparison, oral alignment, and
+% autonomous parameter-recovery simulations.
+\input{sections/results}
+
+% Participants, task, model, inference, evaluation, and simulation details.
+\input{sections/methods}
+
+\backmatter
+
+\bibliography{sn-bibliography}
+
+\end{document}

@@ -1,0 +1,78 @@
+\documentclass{article}
+
+
+% ready for submission
+\usepackage{neurips_2025}
+
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{caption}
+\usepackage{svg}
+\usepackage{tikz}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{threeparttable}
+\usepackage{makecell} 
+\usepackage{pdflscape}
+\usepackage{float}
+\usepackage{verbatim}
+\usepackage{tocloft}  % 控制目录样式
+
+\usepackage{bbm}
+
+\setlength{\cftsecindent}{1.5em}
+\setlength{\cftsubsecindent}{3em} 
+\setlength{\cftsubsubsecindent}{4.5em}
+
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\Hugeexpect}{\resizebox{12pt}{!}{$\mathbb{E}$}}
+\DeclareMathOperator*{\expect}{\mathbb{E}}
+
+
+
+\begin{document}
+
+\begin{center}
+    \LARGE \textbf{Supplementary Materials}
+\end{center}
+
+\vspace{1em}
+
+
+\tableofcontents
+
+\renewcommand{\thefigure}{S\arabic{figure}}
+\setcounter{figure}{0}
+\renewcommand{\thetable}{S\arabic{table}}
+\setcounter{table}{0}
+
+\appendix
+
+\input{A_experiment}
+
+\input{B1-3_model}
+
+\input{B4-6_results}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\input{Figs}
+
+\end{document}
