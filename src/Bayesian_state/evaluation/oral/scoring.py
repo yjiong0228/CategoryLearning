@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Tuple
 
 import numpy as np
 import pandas as pd
@@ -18,15 +19,29 @@ _ORAL_EQUIVALENCE_GROUP_CACHE: Dict[Tuple[Any, ...], Tuple[np.ndarray, Tuple[str
 class OralAlignmentScoringMixin:
     """不负责写盘和绘图的口述—模型对齐计算。"""
 
-    ORAL_ENCODER_VERSION = "fixed_likelihood_v1"
+    ORAL_ENCODER_VERSION = "fixed_likelihood_category_state_v2"
     ORAL_HYPOTHESIS_PRIOR = "uniform_hypothesis"
     CENTER_ORAL_DISTRIBUTION_METHOD = "gaussian_component_mixture"
     REGION_ORAL_DISTRIBUTION_METHOD = "fixed_iou_energy"
+    DEFAULT_ORAL_STATE_MODE = "latest_by_category"
+    VALID_ORAL_STATE_MODES = ("latest_by_category", "instantaneous")
+    ORAL_AGGREGATION_METHODS = {
+        "latest_by_category": "latest_by_category_likelihood_product",
+        "instantaneous": "current_report_only",
+    }
     DEFAULT_ORAL_CENTER_SIGMA = 0.10
     DEFAULT_ORAL_REGION_TEMPERATURE = 0.10
+    DEFAULT_TARGET_BAND_DRAWS = 5000
+    DEFAULT_TARGET_BAND_SEED = 20260810
+    TARGET_BAND_TYPE = "observed_history_conditional_latent_target_occupancy"
+    TRAJECTORY_TARGET_BAND_TYPE = (
+        "observed_history_conditional_trajectory_repeat_target_mass"
+    )
     ORAL_ENCODER_METADATA_FIELDS = (
         "oral_encoder_version",
         "oral_distribution_method",
+        "oral_state_mode",
+        "oral_aggregation_method",
         "oral_hypothesis_prior",
         "oral_center_sigma",
         "oral_region_temperature",
@@ -40,6 +55,16 @@ class OralAlignmentScoringMixin:
         "oral_effective_hypotheses",
         "oral_max_probability",
         "oral_fit_score",
+        "oral_state_observed_categories",
+        "oral_state_category_mask",
+        "oral_state_update_category",
+        "oral_state_update_valid",
+        "instantaneous_oral_min_distance",
+        "instantaneous_oral_log_evidence",
+        "instantaneous_oral_distribution_entropy",
+        "instantaneous_oral_effective_hypotheses",
+        "instantaneous_oral_max_probability",
+        "instantaneous_oral_fit_score",
     )
 
     SUBJECTWISE_SUPTITLE_FONTSIZE = 16
@@ -93,8 +118,14 @@ class OralAlignmentScoringMixin:
         "cosine_similarity": "#7f8c8d",
     }
     TARGET_BASED_LINE_COLORS = {
-        "model": "#8e44ad",
-        "oral": "#c0392b",
+        # Match the canonical particle-filter accuracy-band palette:
+        # model expectation is orange and the observed comparator is black.
+        "model": "#E69F00",
+        "oral": "#111111",
+    }
+    TARGET_BASED_BAND_COLORS = {
+        "q05_q95": "#9DB9D8",
+        "q25_q75": "#4F81B8",
     }
     TARGET_ALIGNMENT_SPACES = ("full", "active", "union_topn")
     TARGET_ALIGNMENT_LABELS = {
@@ -148,12 +179,37 @@ class OralAlignmentScoringMixin:
         return arr / total
 
     @staticmethod
+    def _normalize_distribution_rows(values):
+        """Vectorized row-wise counterpart of ``_normalize_distribution``."""
+        arr = np.asarray(values, dtype=float)
+        if arr.ndim != 2:
+            raise ValueError("Probability rows must form a 2-D matrix.")
+        clean = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        clean = np.clip(clean, 0.0, None)
+        totals = clean.sum(axis=1, keepdims=True)
+        out = np.full(clean.shape, np.nan, dtype=float)
+        valid = totals[:, 0] > 0.0
+        out[valid] = clean[valid] / totals[valid]
+        return out
+
+    @staticmethod
     def _validate_positive_scale(value, name):
         """Return a finite positive observation scale."""
         scale = float(value)
         if not np.isfinite(scale) or scale <= 0.0:
             raise ValueError(f"{name} must be finite and positive, got {value!r}.")
         return scale
+
+    @classmethod
+    def _validate_oral_state_mode(cls, value):
+        """Return a supported oral evidence aggregation mode."""
+        mode = str(value).strip().lower()
+        if mode not in cls.VALID_ORAL_STATE_MODES:
+            raise ValueError(
+                f"oral_state_mode must be one of {cls.VALID_ORAL_STATE_MODES}, "
+                f"got {value!r}."
+            )
+        return mode
 
     @staticmethod
     def _logsumexp(values):
@@ -184,6 +240,7 @@ class OralAlignmentScoringMixin:
         *,
         center_sigma=None,
         region_temperature=None,
+        oral_state_mode="instantaneous",
     ):
         """Return reproducibility metadata for one oral encoder."""
         mode = str(oral_mode).strip().lower()
@@ -204,10 +261,13 @@ class OralAlignmentScoringMixin:
         else:
             raise ValueError(f"Unsupported oral_mode: {oral_mode}")
 
+        state_mode = cls._validate_oral_state_mode(oral_state_mode)
         space = partition.hypothesis_space
         return {
             "oral_encoder_version": cls.ORAL_ENCODER_VERSION,
             "oral_distribution_method": method,
+            "oral_state_mode": state_mode,
+            "oral_aggregation_method": cls.ORAL_AGGREGATION_METHODS[state_mode],
             "oral_hypothesis_prior": cls.ORAL_HYPOTHESIS_PRIOR,
             "oral_center_sigma": float(center_value),
             "oral_region_temperature": float(region_value),
@@ -223,6 +283,7 @@ class OralAlignmentScoringMixin:
         *,
         center_sigma=None,
         region_temperature=None,
+        oral_state_mode="instantaneous",
     ):
         """Return encoder metadata plus missing trial-level diagnostics."""
         return {
@@ -231,6 +292,7 @@ class OralAlignmentScoringMixin:
                 oral_mode,
                 center_sigma=center_sigma,
                 region_temperature=region_temperature,
+                oral_state_mode=oral_state_mode,
             ),
             **{field: np.nan for field in cls.ORAL_TRIAL_DIAGNOSTIC_FIELDS},
         }
@@ -263,6 +325,96 @@ class OralAlignmentScoringMixin:
             "oral_max_probability": float(np.max(prob)),
             "oral_fit_score": float(fit_score),
         }
+
+    @classmethod
+    def _category_state_distribution(
+        cls,
+        latest_by_category,
+        partition,
+        oral_mode,
+        *,
+        center_sigma=None,
+        region_temperature=None,
+    ):
+        """Combine the latest valid likelihood from every observed category.
+
+        Each category contributes at most once. Updating a category replaces
+        its previous likelihood, so repeated reports are not treated as
+        independent evidence. The uniform hypothesis prior is applied once
+        after the category log likelihoods are summed.
+        """
+        mode = str(oral_mode).strip().lower()
+        metadata = cls._oral_encoder_metadata(
+            partition,
+            mode,
+            center_sigma=center_sigma,
+            region_temperature=region_temperature,
+            oral_state_mode="latest_by_category",
+        )
+        if not latest_by_category:
+            probability = np.full(int(partition.length), np.nan, dtype=float)
+            return probability, {
+                **metadata,
+                **{field: np.nan for field in cls.ORAL_TRIAL_DIAGNOSTIC_FIELDS},
+            }
+
+        n_hypotheses = int(partition.length)
+        log_prior = -np.log(float(n_hypotheses))
+        joint_log_likelihood = np.zeros(n_hypotheses, dtype=float)
+        for entry in latest_by_category.values():
+            distribution = np.asarray(entry["distribution"], dtype=float).reshape(-1)
+            log_evidence = float(entry["diagnostics"].get("oral_log_evidence", np.nan))
+            if (
+                distribution.size != n_hypotheses
+                or np.isnan(distribution).any()
+                or not np.isfinite(log_evidence)
+            ):
+                probability = np.full(n_hypotheses, np.nan, dtype=float)
+                return probability, {
+                    **metadata,
+                    **{field: np.nan for field in cls.ORAL_TRIAL_DIAGNOSTIC_FIELDS},
+                }
+            with np.errstate(divide="ignore"):
+                # q_k(h) = L_k(h) * pi(h) / Z_k. Recover log L_k so
+                # the uniform hypothesis prior is applied only once jointly.
+                joint_log_likelihood += np.log(distribution) + log_evidence - log_prior
+
+        probability, log_evidence = cls._normalize_log_weights(
+            joint_log_likelihood + log_prior
+        )
+        n_observed = int(len(latest_by_category))
+        maximum_log_likelihood = float(np.max(joint_log_likelihood))
+        if mode == "center":
+            sigma = cls._validate_positive_scale(
+                cls.DEFAULT_ORAL_CENTER_SIGMA if center_sigma is None else center_sigma,
+                "oral_center_sigma",
+            )
+            gaussian_log_normalizer = -int(partition.n_dims) * np.log(
+                sigma * np.sqrt(2.0 * np.pi)
+            )
+            ideal_log_likelihood = n_observed * gaussian_log_normalizer
+            log_fit = min(0.0, maximum_log_likelihood - ideal_log_likelihood)
+            effective_distance = np.sqrt(max(0.0, -2.0 * sigma ** 2 * log_fit))
+        elif mode == "region":
+            temperature = cls._validate_positive_scale(
+                cls.DEFAULT_ORAL_REGION_TEMPERATURE
+                if region_temperature is None
+                else region_temperature,
+                "oral_region_temperature",
+            )
+            log_fit = min(0.0, maximum_log_likelihood)
+            effective_distance = -temperature * maximum_log_likelihood
+        else:
+            raise ValueError(f"Unsupported oral_mode: {oral_mode}")
+
+        diagnostics = cls._complete_oral_diagnostics(
+            probability,
+            metadata=metadata,
+            min_distance=effective_distance,
+            log_evidence=log_evidence,
+            fit_score=np.exp(log_fit),
+        )
+        return probability, diagnostics
 
     @staticmethod
     def _js_similarity(p, q):
@@ -544,6 +696,31 @@ class OralAlignmentScoringMixin:
         return float(p[int(loc[0])])
 
     @staticmethod
+    def _repeat_target_probabilities_in_space(
+        repeat_priors,
+        compare_idx,
+        target_hypo,
+    ):
+        """Project all repeat priors into one comparison space at once."""
+        priors = np.asarray(repeat_priors, dtype=float)
+        idx = np.asarray(compare_idx, dtype=int).reshape(-1)
+        if priors.ndim != 2:
+            raise ValueError("repeat_priors must be a 2-D matrix.")
+        if idx.size == 0:
+            return np.full(priors.shape[0], np.nan, dtype=float)
+        idx = idx[(idx >= 0) & (idx < priors.shape[1])]
+        if idx.size == 0:
+            return np.full(priors.shape[0], np.nan, dtype=float)
+        denominator = np.sum(priors[:, idx], axis=1)
+        out = np.full(priors.shape[0], np.nan, dtype=float)
+        valid = np.isfinite(denominator) & (denominator > 0.0)
+        if int(target_hypo) in set(idx.tolist()):
+            out[valid] = priors[valid, int(target_hypo)] / denominator[valid]
+        else:
+            out[valid] = 0.0
+        return out
+
+    @staticmethod
     def _extract_prior_log(info):
         """Use prior_t as the model state aligned with oral_t."""
         prior_log = info.get("prior_log") or []
@@ -557,6 +734,231 @@ class OralAlignmentScoringMixin:
                 return []
             priors.append(np.asarray(prior, dtype=float))
         return priors
+
+    def _extract_prior_repeat_logs(self, info):
+        """Return persisted repeat priors or a transparent single-run fallback.
+
+        Particle-filter repeats target the same observed-history-conditional
+        marginal distribution.  Averaging their saved ``marginal_prior``
+        arrays reduces finite-particle Monte-Carlo noise before latent-state
+        sampling, matching the aggregation used by the behavioral accuracy
+        band.  Trajectory repeats retain distinct realized latent paths and
+        are used as an ensemble, matching the trajectory behavioral band.
+        Lightweight/unit-test inputs without a persisted run stream retain
+        the existing single-prior behavior.
+        """
+        fallback = self._extract_prior_log(info)
+        fallback_arrays = [np.asarray(fallback, dtype=float)] if fallback else []
+        state_kind = str(info.get("state_distribution_kind", "")).lower()
+        is_particle = state_kind == "particle_marginal"
+        fallback_source = (
+            "representative_pf_marginal_prior"
+            if is_particle
+            else "representative_trajectory_prior"
+        )
+
+        subject_json_path = info.get("_subject_json_path")
+        raw_ref = info.get("raw_runs_ref") or {}
+        if not subject_json_path or not raw_ref.get("path"):
+            return fallback_arrays, fallback_source
+
+        loader = getattr(self, "_load_run_stream", None)
+        if loader is None:
+            return fallback_arrays, fallback_source
+
+        stream = loader(info, Path(subject_json_path))
+        repeat_priors = []
+        for run_obj in stream:
+            if not isinstance(run_obj, Mapping):
+                continue
+            state_log = run_obj.get("state_log") or {}
+            raw = state_log.get("marginal_prior" if is_particle else "prior")
+            if raw is None:
+                continue
+            try:
+                arr = np.asarray(raw, dtype=float)
+            except (TypeError, ValueError):
+                continue
+            if arr.ndim != 2 or arr.shape[0] == 0 or arr.shape[1] == 0:
+                continue
+            normalized = self._normalize_distribution_rows(arr)
+            if np.isnan(normalized).any():
+                continue
+            repeat_priors.append(normalized)
+
+        if not repeat_priors:
+            return fallback_arrays, fallback_source
+
+        n_hypotheses = {arr.shape[1] for arr in repeat_priors}
+        if len(n_hypotheses) != 1:
+            raise ValueError("Repeat priors disagree on hypothesis-space size.")
+        min_trials = min(arr.shape[0] for arr in repeat_priors)
+        return (
+            [arr[:min_trials].copy() for arr in repeat_priors],
+            (
+                "pf_repeat_mean_marginal_prior"
+                if is_particle
+                else "trajectory_repeat_prior_ensemble"
+            ),
+        )
+
+    @classmethod
+    def compute_target_sampling_band(
+        cls,
+        probabilities,
+        *,
+        window_size=16,
+        n_draws=DEFAULT_TARGET_BAND_DRAWS,
+        seed=DEFAULT_TARGET_BAND_SEED,
+    ):
+        """Sample a pointwise rolling target-occupancy interval.
+
+        ``probabilities[t]`` is the PF marginal probability that the latent
+        hypothesis at trial ``t`` is the target.  Each draw samples the
+        corresponding Bernoulli target indicator and applies a complete
+        rolling window.  This is the latent-state analogue of the behavioral
+        accuracy band, not a confidence interval for the probability itself.
+        """
+        values = np.asarray(probabilities, dtype=float).reshape(-1)
+        window = int(window_size)
+        draws = int(n_draws)
+        if window <= 0 or values.size < window:
+            raise ValueError(
+                "Not enough target probabilities for the requested rolling interval: "
+                f"n_trials={values.size}, window_size={window}."
+            )
+        if draws < 2:
+            raise ValueError("n_draws must be at least 2.")
+        finite = np.isfinite(values)
+        if np.any(values[finite] < 0.0) or np.any(values[finite] > 1.0):
+            raise ValueError("Target probabilities must lie in [0, 1].")
+
+        n_trials = values.size
+        valid_window = np.convolve(
+            finite.astype(int),
+            np.ones(window, dtype=int),
+            mode="valid",
+        ) == window
+        expected = np.full(n_trials, np.nan, dtype=float)
+        if np.any(valid_window):
+            rolling_expected = np.convolve(
+                np.where(finite, values, 0.0),
+                np.ones(window, dtype=float) / float(window),
+                mode="valid",
+            )
+            expected[window - 1 :][valid_window] = rolling_expected[valid_window]
+
+        rng = np.random.default_rng(int(seed))
+        uniforms = rng.random((draws, n_trials))
+        sampled = uniforms < np.where(finite, values, 0.0)[None, :]
+        cumulative = np.concatenate(
+            [
+                np.zeros((draws, 1), dtype=np.int32),
+                np.cumsum(sampled, axis=1, dtype=np.int32),
+            ],
+            axis=1,
+        )
+        rolling_samples = (
+            cumulative[:, window:] - cumulative[:, :-window]
+        ) / float(window)
+
+        quantile_arrays = {
+            key: np.full(n_trials, np.nan, dtype=float)
+            for key in ("q05", "q25", "q50", "q75", "q95")
+        }
+        if np.any(valid_window):
+            quantiles = np.quantile(
+                rolling_samples[:, valid_window],
+                [0.05, 0.25, 0.50, 0.75, 0.95],
+                axis=0,
+            )
+            for row, key in enumerate(("q05", "q25", "q50", "q75", "q95")):
+                target = quantile_arrays[key][window - 1 :]
+                target[valid_window] = quantiles[row]
+
+        return {
+            "band_type": cls.TARGET_BAND_TYPE,
+            "n_draws": draws,
+            "seed": int(seed),
+            "window_size": window,
+            "expected": expected,
+            **quantile_arrays,
+        }
+
+    @classmethod
+    def compute_trajectory_target_band(
+        cls,
+        probability_runs,
+        *,
+        window_size=16,
+    ):
+        """Summarize rolling target mass across realized trajectory repeats."""
+        values = np.asarray(probability_runs, dtype=float)
+        if values.ndim != 2 or values.shape[0] < 1:
+            raise ValueError(
+                "probability_runs must be a non-empty (runs, trials) matrix."
+            )
+        window = int(window_size)
+        if window <= 0 or values.shape[1] < window:
+            raise ValueError(
+                "Not enough target probabilities for the requested rolling interval: "
+                f"n_trials={values.shape[1]}, window_size={window}."
+            )
+        finite = np.isfinite(values)
+        if np.any(values[finite] < 0.0) or np.any(values[finite] > 1.0):
+            raise ValueError("Target probabilities must lie in [0, 1].")
+
+        n_runs, n_trials = values.shape
+        rolling = np.full((n_runs, n_trials), np.nan, dtype=float)
+        valid_cumulative = np.concatenate(
+            [
+                np.zeros((n_runs, 1), dtype=np.int32),
+                np.cumsum(finite, axis=1, dtype=np.int32),
+            ],
+            axis=1,
+        )
+        value_cumulative = np.concatenate(
+            [
+                np.zeros((n_runs, 1), dtype=float),
+                np.cumsum(np.where(finite, values, 0.0), axis=1),
+            ],
+            axis=1,
+        )
+        valid_window = (
+            valid_cumulative[:, window:] - valid_cumulative[:, :-window]
+        ) == window
+        rolling_values = (
+            value_cumulative[:, window:] - value_cumulative[:, :-window]
+        ) / float(window)
+        rolling[:, window - 1 :] = np.where(
+            valid_window,
+            rolling_values,
+            np.nan,
+        )
+
+        complete = np.all(np.isfinite(rolling), axis=0)
+        expected = np.full(n_trials, np.nan, dtype=float)
+        quantile_arrays = {
+            key: np.full(n_trials, np.nan, dtype=float)
+            for key in ("q05", "q25", "q50", "q75", "q95")
+        }
+        if np.any(complete):
+            expected[complete] = np.mean(rolling[:, complete], axis=0)
+            quantiles = np.quantile(
+                rolling[:, complete],
+                [0.05, 0.25, 0.50, 0.75, 0.95],
+                axis=0,
+            )
+            for row, key in enumerate(("q05", "q25", "q50", "q75", "q95")):
+                quantile_arrays[key][complete] = quantiles[row]
+
+        return {
+            "band_type": cls.TRAJECTORY_TARGET_BAND_TYPE,
+            "n_runs": int(n_runs),
+            "window_size": window,
+            "expected": expected,
+            **quantile_arrays,
+        }
 
     @staticmethod
     def _extract_model_distribution_log(info, model_distribution="prior"):
@@ -1108,13 +1510,21 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
         region_stimulus_sigma=None,
     ):
-        """Compute fixed-likelihood oral hypothesis distributions per subject."""
+        """Compute fixed-likelihood oral hypothesis distributions per subject.
+
+        The default primary ``oral_mass`` keeps the latest valid report for
+        every category and jointly normalizes their likelihood product. The
+        current report's one-category distribution is retained separately as
+        ``instantaneous_oral_mass`` for audit and legacy comparisons.
+        """
         mode = str(oral_mode).strip().lower()
+        state_mode = self._validate_oral_state_mode(oral_state_mode)
         if mode == "center":
             oral_center_sigma = self._validate_positive_scale(
                 oral_center_sigma,
@@ -1145,7 +1555,13 @@ class OralAlignmentScoringMixin:
             partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
             n_trials = len(subj_df)
             oral_mass = np.full((n_trials, partition.length), np.nan, dtype=float)
+            instantaneous_oral_mass = np.full(
+                (n_trials, partition.length),
+                np.nan,
+                dtype=float,
+            )
             valid_oral = []
+            valid_oral_report = []
             diagnostic_arrays = {
                 field: np.full(n_trials, np.nan, dtype=float)
                 for field in self.ORAL_TRIAL_DIAGNOSTIC_FIELDS
@@ -1155,10 +1571,12 @@ class OralAlignmentScoringMixin:
                 mode,
                 center_sigma=oral_center_sigma,
                 region_temperature=oral_region_temperature,
+                oral_state_mode=state_mode,
             )
+            latest_by_category = {}
 
             for trial_idx in range(n_trials):
-                oral_dist, diagnostics = self._oral_distribution_for_trial(
+                report_dist, report_diagnostics = self._oral_distribution_for_trial(
                     subj_df.loc[trial_idx],
                     partition,
                     mode,
@@ -1168,12 +1586,68 @@ class OralAlignmentScoringMixin:
                     return_diagnostics=True,
                 )
 
-                valid = not np.isnan(oral_dist).any()
-                valid_oral.append(bool(valid))
-                if valid:
-                    oral_mass[trial_idx, : len(oral_dist)] = oral_dist
+                report_valid = not np.isnan(report_dist).any()
+                valid_oral_report.append(bool(report_valid))
+                if report_valid:
+                    instantaneous_oral_mass[trial_idx, : len(report_dist)] = report_dist
+                    category = int(subj_df.loc[trial_idx, "choice"])
+                    latest_by_category[category] = {
+                        "distribution": report_dist.copy(),
+                        "diagnostics": dict(report_diagnostics),
+                    }
+
+                if state_mode == "latest_by_category":
+                    state_dist, state_diagnostics = self._category_state_distribution(
+                        latest_by_category,
+                        partition,
+                        mode,
+                        center_sigma=oral_center_sigma,
+                        region_temperature=oral_region_temperature,
+                    )
+                    observed_categories = len(latest_by_category)
+                    category_mask = sum(
+                        1 << (int(category) - 1)
+                        for category in latest_by_category
+                        if 1 <= int(category) <= n_cats
+                    )
+                else:
+                    state_dist = report_dist
+                    state_diagnostics = {
+                        **report_diagnostics,
+                        **encoder_metadata,
+                    }
+                    observed_categories = int(report_valid)
+                    category = int(subj_df.loc[trial_idx, "choice"])
+                    category_mask = (
+                        1 << (category - 1)
+                        if report_valid and 1 <= category <= n_cats
+                        else 0
+                    )
+
+                state_valid = not np.isnan(state_dist).any()
+                valid_oral.append(bool(state_valid))
+                if state_valid:
+                    oral_mass[trial_idx, : len(state_dist)] = state_dist
+
                 for field in self.ORAL_TRIAL_DIAGNOSTIC_FIELDS:
-                    diagnostic_arrays[field][trial_idx] = float(diagnostics.get(field, np.nan))
+                    if field.startswith("instantaneous_"):
+                        source_field = field.removeprefix("instantaneous_")
+                        value = report_diagnostics.get(source_field, np.nan)
+                    else:
+                        value = state_diagnostics.get(field, np.nan)
+                    diagnostic_arrays[field][trial_idx] = float(value)
+                diagnostic_arrays["oral_state_observed_categories"][trial_idx] = float(
+                    observed_categories
+                )
+                diagnostic_arrays["oral_state_category_mask"][trial_idx] = float(
+                    category_mask
+                )
+                diagnostic_arrays["oral_state_update_category"][trial_idx] = float(
+                    int(subj_df.loc[trial_idx, "choice"])
+                )
+                diagnostic_arrays["oral_state_update_valid"][trial_idx] = float(
+                    report_valid
+                )
 
             out[int(iSub)] = {
                 "iSub": int(iSub),
@@ -1185,6 +1659,8 @@ class OralAlignmentScoringMixin:
                 **diagnostic_arrays,
                 "oral_mass": oral_mass,
                 "valid_oral": valid_oral,
+                "instantaneous_oral_mass": instantaneous_oral_mass,
+                "valid_oral_report": valid_oral_report,
             }
 
         return out
@@ -1239,6 +1715,7 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
@@ -1256,6 +1733,17 @@ class OralAlignmentScoringMixin:
         """
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
+        if oral_mass_results is None:
+            oral_mass_results = self.compute_oral_mass_probabilities(
+                oral_df,
+                oral_mode=oral_mode,
+                subjects=sorted(int(sid) for sid in model_res),
+                oral_state_mode=oral_state_mode,
+                oral_center_sigma=oral_center_sigma,
+                oral_region_temperature=oral_region_temperature,
+                region_n_samples=region_n_samples,
+                region_stimulus_sigma=region_stimulus_sigma,
+            )
         state = str(model_distribution).strip().lower()
         model_mass_key = f"{state}_mass"
         oral_out = {}
@@ -1347,6 +1835,7 @@ class OralAlignmentScoringMixin:
                     oral_mode,
                     center_sigma=oral_center_sigma,
                     region_temperature=oral_region_temperature,
+                    oral_state_mode=oral_state_mode,
                 ),
             }
             oral_out[sid] = {
@@ -1612,6 +2101,7 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
@@ -1648,6 +2138,17 @@ class OralAlignmentScoringMixin:
 
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
+        if oral_mass_results is None:
+            oral_mass_results = self.compute_oral_mass_probabilities(
+                oral_df,
+                oral_mode=oral_mode,
+                subjects=sorted(int(sid) for sid in model_res),
+                oral_state_mode=oral_state_mode,
+                oral_center_sigma=oral_center_sigma,
+                oral_region_temperature=oral_region_temperature,
+                region_n_samples=region_n_samples,
+                region_stimulus_sigma=region_stimulus_sigma,
+            )
         rows = []
 
         for iSub, info in model_res.items():
@@ -1866,6 +2367,7 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
@@ -1873,6 +2375,7 @@ class OralAlignmentScoringMixin:
         oral_mass_results=None,
         alignment_spaces=None,
         active_threshold=1e-12,
+        trajectory_band_window_size=16,
     ):
         """Extract target-hypothesis mass on full, active, and union spaces.
 
@@ -1883,6 +2386,17 @@ class OralAlignmentScoringMixin:
         """
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
+        if oral_mass_results is None:
+            oral_mass_results = self.compute_oral_mass_probabilities(
+                oral_df,
+                oral_mode=oral_mode,
+                subjects=sorted(int(sid) for sid in model_res),
+                oral_state_mode=oral_state_mode,
+                oral_center_sigma=oral_center_sigma,
+                oral_region_temperature=oral_region_temperature,
+                region_n_samples=region_n_samples,
+                region_stimulus_sigma=region_stimulus_sigma,
+            )
         rows = []
         spaces = tuple(alignment_spaces or self.TARGET_ALIGNMENT_SPACES)
         unsupported = set(spaces) - set(self.TARGET_ALIGNMENT_SPACES)
@@ -1904,14 +2418,40 @@ class OralAlignmentScoringMixin:
                 else (0 if condition == 1 else 42)
             )
             partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
-            prior_log = self._extract_prior_log(info)
-            n_trials = min(len(subj_df), len(prior_log))
+            prior_repeat_logs, model_state_source = self._extract_prior_repeat_logs(info)
+            if not prior_repeat_logs:
+                continue
+            model_inference_backend = (
+                "particle_filter"
+                if str(info.get("state_distribution_kind", "")).lower()
+                == "particle_marginal"
+                else "trajectory"
+            )
+            n_trials = min(
+                len(subj_df),
+                *(arr.shape[0] for arr in prior_repeat_logs),
+            )
+            n_model_runs = int(len(prior_repeat_logs))
+            trajectory_probability_runs = (
+                {
+                    space: np.full((n_model_runs, n_trials), np.nan, dtype=float)
+                    for space in spaces
+                }
+                if model_inference_backend == "trajectory"
+                else None
+            )
+            subject_rows_by_space = {space: [] for space in spaces}
 
             for trial_idx in range(n_trials):
                 choice = int(subj_df.loc[trial_idx, "choice"])
-                raw_prior = np.asarray(prior_log[trial_idx], dtype=float).reshape(-1)
-                prior = self._normalize_distribution(raw_prior)
-                active_idx = self._active_hypothesis_indices(raw_prior, active_threshold=active_threshold)
+                repeat_priors = self._normalize_distribution_rows(
+                    np.vstack([run[trial_idx] for run in prior_repeat_logs])
+                )
+                prior = self._normalize_distribution(np.mean(repeat_priors, axis=0))
+                active_idx = self._active_hypothesis_indices(
+                    prior,
+                    active_threshold=active_threshold,
+                )
 
                 oral_dist, oral_diagnostics = self._resolve_oral_distribution(
                     oral_mass_results,
@@ -1932,15 +2472,34 @@ class OralAlignmentScoringMixin:
                         alignment_space=space,
                         active_idx=active_idx,
                     )
-                    model_target_prior = self._target_probability_in_space(compare_prior, compare_idx, target_hypo)
+                    repeat_target_probabilities = (
+                        self._repeat_target_probabilities_in_space(
+                            repeat_priors,
+                            compare_idx,
+                            target_hypo,
+                        )
+                    )
+                    if trajectory_probability_runs is not None:
+                        trajectory_probability_runs[space][:, trial_idx] = (
+                            repeat_target_probabilities
+                        )
+                    model_target_prior = (
+                        float(np.nanmean(repeat_target_probabilities))
+                        if np.any(np.isfinite(repeat_target_probabilities))
+                        else np.nan
+                    )
+                    model_target_repeat_sd = (
+                        float(np.nanstd(repeat_target_probabilities, ddof=1))
+                        if np.sum(np.isfinite(repeat_target_probabilities)) > 1
+                        else 0.0
+                    )
                     oral_target_mass = self._target_probability_in_space(compare_oral, compare_idx, target_hypo)
                     if len(compare_idx) and not np.isnan(oral_dist).any():
                         oral_mass_in_comparison = float(np.sum(np.asarray(oral_dist, dtype=float)[compare_idx]))
                     else:
                         oral_mass_in_comparison = np.nan
 
-                    rows.append(
-                        {
+                    row = {
                             "iSub": sid,
                             "subject": sid,
                             "condition": condition,
@@ -1948,6 +2507,15 @@ class OralAlignmentScoringMixin:
                             "trial_pct": (trial_idx + 1) / float(n_trials) if n_trials else np.nan,
                             "oral_mode": oral_mode,
                             "model_distribution": "prior",
+                            "model_state_source": model_state_source,
+                            "model_inference_backend": model_inference_backend,
+                            "model_target_n_runs": n_model_runs,
+                            "model_target_n_pf_runs": (
+                                n_model_runs
+                                if model_inference_backend == "particle_filter"
+                                else np.nan
+                            ),
+                            "model_target_repeat_sd": model_target_repeat_sd,
                             "alignment_space": space,
                             "alignment_label": self.TARGET_ALIGNMENT_LABELS.get(space, space),
                             "target_hypo": target_hypo,
@@ -1959,7 +2527,35 @@ class OralAlignmentScoringMixin:
                             "valid": bool(np.isfinite(model_target_prior) and np.isfinite(oral_target_mass)),
                             **oral_diagnostics,
                         }
+                    rows.append(row)
+                    subject_rows_by_space[space].append(row)
+
+            if (
+                trajectory_probability_runs is not None
+                and n_trials >= int(trajectory_band_window_size)
+            ):
+                for space in spaces:
+                    band = self.compute_trajectory_target_band(
+                        trajectory_probability_runs[space],
+                        window_size=trajectory_band_window_size,
                     )
+                    for trial_idx, row in enumerate(subject_rows_by_space[space]):
+                        row.update(
+                            {
+                                "model_target_expected_rolling": band["expected"][trial_idx],
+                                "model_target_q05_rolling": band["q05"][trial_idx],
+                                "model_target_q25_rolling": band["q25"][trial_idx],
+                                "model_target_q50_rolling": band["q50"][trial_idx],
+                                "model_target_q75_rolling": band["q75"][trial_idx],
+                                "model_target_q95_rolling": band["q95"][trial_idx],
+                                "model_target_band_type": band["band_type"],
+                                "model_target_band_n_draws": np.nan,
+                                "model_target_band_n_runs": band["n_runs"],
+                                "model_target_band_base_seed": np.nan,
+                                "model_target_band_subject_seed": np.nan,
+                                "model_target_band_window_size": band["window_size"],
+                            }
+                        )
 
         return pd.DataFrame(rows)
 
@@ -1969,6 +2565,7 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
@@ -1988,6 +2585,17 @@ class OralAlignmentScoringMixin:
         """
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
+        if oral_mass_results is None:
+            oral_mass_results = self.compute_oral_mass_probabilities(
+                oral_df,
+                oral_mode=oral_mode,
+                subjects=sorted(int(sid) for sid in model_res),
+                oral_state_mode=oral_state_mode,
+                oral_center_sigma=oral_center_sigma,
+                oral_region_temperature=oral_region_temperature,
+                region_n_samples=region_n_samples,
+                region_stimulus_sigma=region_stimulus_sigma,
+            )
         rows = []
 
         for iSub, info in model_res.items():
@@ -2116,6 +2724,7 @@ class OralAlignmentScoringMixin:
         oral_df,
         oral_mode="center",
         subjects=None,
+        oral_state_mode=DEFAULT_ORAL_STATE_MODE,
         oral_center_sigma=DEFAULT_ORAL_CENTER_SIGMA,
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
@@ -2131,6 +2740,17 @@ class OralAlignmentScoringMixin:
         """
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
+        if oral_mass_results is None:
+            oral_mass_results = self.compute_oral_mass_probabilities(
+                oral_df,
+                oral_mode=oral_mode,
+                subjects=sorted(int(sid) for sid in model_res),
+                oral_state_mode=oral_state_mode,
+                oral_center_sigma=oral_center_sigma,
+                oral_region_temperature=oral_region_temperature,
+                region_n_samples=region_n_samples,
+                region_stimulus_sigma=region_stimulus_sigma,
+            )
         rows = []
 
         for iSub, info in model_res.items():

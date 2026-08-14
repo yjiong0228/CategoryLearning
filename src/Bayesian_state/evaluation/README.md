@@ -12,7 +12,7 @@ oral/model alignment 图表。它不参与模型拟合，也不改变 hyperparam
 | `transition.py` | 仅在相应日志存在时使用的 dynamic-discrete、dynamic-continuous 与 active-set 诊断 |
 | `fft_clustering.py` | 保存后的 run-level 轨迹 FFT 聚类 |
 | `oral/mapping.py` | oral center/region 到共享 hypothesis space 的映射 |
-| `oral/scoring.py` | oral/model 分布构造及 distribution/oral/target/hit/coverage 对齐计算 |
+| `oral/scoring.py` | latest-by-category oral state、oral/model 分布构造及五类对齐计算 |
 | `oral/reporting.py` | 对齐结果汇总、CSV 保存与绘图 |
 | `oral/alignment.py` | 组合上述能力并保持 `OralModelAlignmentMixin` 公共接口 |
 | `particle_filter/summary.py` | PF 条件行为预测区间、ESS 与粒子边际 active-state 诊断 |
@@ -82,6 +82,12 @@ particle backend 保存的是 `marginal_prior`、`marginal_active_probability` �
 
 PF 行为抽样数量和固定随机种子可通过 `--accuracy-band-draws` 与
 `--accuracy-band-seed` 设置，并记录在 summary CSV 中。
+
+`oral_alignment_*/target_based_alignment` 对 PF 使用同构但不同观测量的抽样：先跨 raw-run
+PF repeats 平均 trialwise target-hypothesis marginal mass，再抽取 latent target/non-target
+Bernoulli 序列并计算 rolling 50%/90% interval。其中心线是 expected target mass，色带是
+observed-history-conditional latent target occupancy；它不是行为区间，也不是粒子数值误差。
+target interval 复用上述 draws/seed CLI 设置，并将完整分位数与 provenance 写入 trial CSV。
 
 ## 连续策略概况
 

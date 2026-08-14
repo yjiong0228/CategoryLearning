@@ -67,6 +67,111 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         min_periods = max(1, window // 4)
         return pd.Series(values, dtype=float).rolling(window=window, min_periods=min_periods).mean().to_numpy()
 
+    def _attach_target_sampling_bands(
+        self,
+        target_based_results,
+        *,
+        window_size=16,
+        n_draws=OralAlignmentScoringMixin.DEFAULT_TARGET_BAND_DRAWS,
+        base_seed=OralAlignmentScoringMixin.DEFAULT_TARGET_BAND_SEED,
+    ):
+        """Attach backend-appropriate rolling target intervals to trial rows."""
+        df = target_based_results.copy()
+        band_columns = (
+            "model_target_expected_rolling",
+            "model_target_q05_rolling",
+            "model_target_q25_rolling",
+            "model_target_q50_rolling",
+            "model_target_q75_rolling",
+            "model_target_q95_rolling",
+        )
+        for column in band_columns:
+            if column not in df:
+                df[column] = np.nan
+        metadata_defaults = {
+            "model_target_band_type": "",
+            "model_target_band_n_draws": np.nan,
+            "model_target_band_n_runs": np.nan,
+            "model_target_band_base_seed": np.nan,
+            "model_target_band_subject_seed": np.nan,
+            "model_target_band_window_size": int(window_size),
+        }
+        for column, default in metadata_defaults.items():
+            if column not in df:
+                df[column] = default
+
+        group_fields = ["subject"]
+        if "alignment_space" in df.columns:
+            group_fields.append("alignment_space")
+        for group_key, group in df.groupby(group_fields, sort=True):
+            sid = int(group_key[0] if isinstance(group_key, tuple) else group_key)
+            subject_seed = int(
+                np.random.SeedSequence([int(base_seed), sid]).generate_state(1)[0]
+            )
+            ordered = group.sort_values("trial")
+            backend = (
+                str(ordered["model_inference_backend"].dropna().iloc[0])
+                if "model_inference_backend" in ordered
+                and not ordered["model_inference_backend"].dropna().empty
+                else "particle_filter"
+            )
+            if backend == "trajectory":
+                precomputed_type = ordered["model_target_band_type"].astype(str)
+                precomputed_window = pd.to_numeric(
+                    ordered["model_target_band_window_size"],
+                    errors="coerce",
+                )
+                has_precomputed_band = (
+                    precomputed_type.eq(self.TRAJECTORY_TARGET_BAND_TYPE).all()
+                    and precomputed_window.eq(int(window_size)).all()
+                    and pd.to_numeric(
+                        ordered["model_target_band_n_runs"],
+                        errors="coerce",
+                    ).notna().all()
+                )
+                if has_precomputed_band:
+                    continue
+                if "model_target_repeat_probabilities" in ordered:
+                    repeat_rows = [
+                        np.asarray(values, dtype=float).reshape(-1)
+                        for values in ordered[
+                            "model_target_repeat_probabilities"
+                        ].tolist()
+                    ]
+                    run_counts = {row.size for row in repeat_rows}
+                    if len(run_counts) != 1 or not run_counts or 0 in run_counts:
+                        raise ValueError(
+                            "Trajectory target repeats disagree on run count."
+                        )
+                    probability_runs = np.vstack(repeat_rows).T
+                else:
+                    probability_runs = ordered[
+                        "model_target_prior"
+                    ].to_numpy(dtype=float)[None, :]
+                band = self.compute_trajectory_target_band(
+                    probability_runs,
+                    window_size=window_size,
+                )
+            else:
+                band = self.compute_target_sampling_band(
+                    ordered["model_target_prior"].to_numpy(dtype=float),
+                    window_size=window_size,
+                    n_draws=n_draws,
+                    seed=subject_seed,
+                )
+            index = ordered.index
+            df.loc[index, "model_target_expected_rolling"] = band["expected"]
+            for quantile in ("q05", "q25", "q50", "q75", "q95"):
+                df.loc[index, f"model_target_{quantile}_rolling"] = band[quantile]
+            df.loc[index, "model_target_band_type"] = band["band_type"]
+            if backend == "trajectory":
+                df.loc[index, "model_target_band_n_runs"] = band["n_runs"]
+            else:
+                df.loc[index, "model_target_band_n_draws"] = band["n_draws"]
+                df.loc[index, "model_target_band_base_seed"] = int(base_seed)
+                df.loc[index, "model_target_band_subject_seed"] = subject_seed
+        return df
+
     @staticmethod
     def _format_p_value(p_value):
         try:
@@ -89,16 +194,26 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         if methods.empty:
             return ""
         method = str(methods.iloc[0])
+        aggregation = ""
+        if "oral_aggregation_method" in df:
+            aggregations = df["oral_aggregation_method"].dropna()
+            if not aggregations.empty:
+                aggregation = str(aggregations.iloc[0])
+        aggregation = {
+            "latest_by_category_likelihood_product": "latest-category joint",
+            "current_report_only": "current-report only",
+        }.get(aggregation, aggregation)
         modes = df["oral_mode"].dropna() if "oral_mode" in df else pd.Series(dtype=str)
         mode = str(modes.iloc[0]) if not modes.empty else ""
         scale_column = "oral_center_sigma" if mode == "center" else "oral_region_temperature"
         scale_name = "sigma" if mode == "center" else "temperature"
         if scale_column not in df:
-            return method
+            return f"{aggregation}; {method}" if aggregation else method
         values = pd.to_numeric(df[scale_column], errors="coerce").dropna()
         if values.empty:
-            return method
-        return f"{method}, {scale_name}={float(values.iloc[0]):g}"
+            return f"{aggregation}; {method}" if aggregation else method
+        encoder = f"{method}, {scale_name}={float(values.iloc[0]):g}"
+        return f"{aggregation}; {encoder}" if aggregation else encoder
 
     @staticmethod
     def _safe_pearson(x, y):
@@ -308,7 +423,13 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         max_trials = max(np.asarray(results[sid]["oral_mass"]).shape[0] for sid in subjects)
         max_hypos = max(np.asarray(results[sid]["oral_mass"]).shape[1] for sid in subjects)
         oral_mass = np.full((len(subjects), max_trials, max_hypos), np.nan, dtype=float)
+        instantaneous_oral_mass = np.full(
+            (len(subjects), max_trials, max_hypos),
+            np.nan,
+            dtype=float,
+        )
         valid_oral = np.zeros((len(subjects), max_trials), dtype=bool)
+        valid_oral_report = np.zeros((len(subjects), max_trials), dtype=bool)
         n_trials = np.zeros(len(subjects), dtype=int)
         n_hypos = np.zeros(len(subjects), dtype=int)
         conditions = np.zeros(len(subjects), dtype=int)
@@ -329,8 +450,28 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
             arr = np.asarray(info["oral_mass"], dtype=float)
             trials, hypos = arr.shape
             oral_mass[row_idx, :trials, :hypos] = arr
+            instantaneous = np.asarray(
+                info.get("instantaneous_oral_mass", arr),
+                dtype=float,
+            )
+            if instantaneous.ndim == 2:
+                inst_trials = min(trials, instantaneous.shape[0])
+                inst_hypos = min(hypos, instantaneous.shape[1])
+                instantaneous_oral_mass[
+                    row_idx,
+                    :inst_trials,
+                    :inst_hypos,
+                ] = instantaneous[:inst_trials, :inst_hypos]
             valid = np.asarray(info.get("valid_oral", []), dtype=bool).reshape(-1)
             valid_oral[row_idx, : min(trials, valid.size)] = valid[:trials]
+            report_valid = np.asarray(
+                info.get("valid_oral_report", valid),
+                dtype=bool,
+            ).reshape(-1)
+            valid_oral_report[
+                row_idx,
+                : min(trials, report_valid.size),
+            ] = report_valid[:trials]
             n_trials[row_idx] = trials
             n_hypos[row_idx] = hypos
             conditions[row_idx] = int(info.get("condition"))
@@ -356,7 +497,9 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
             n_trials=n_trials,
             n_hypos=n_hypos,
             valid_oral=valid_oral,
+            valid_oral_report=valid_oral_report,
             oral_mass=oral_mass,
+            instantaneous_oral_mass=instantaneous_oral_mass,
             oral_modes=np.asarray(oral_modes, dtype=str),
             region_stimulus_sigmas=region_stimulus_sigmas,
             **{
@@ -384,6 +527,16 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
             n_hypos = data["n_hypos"].astype(int)
             valid_oral = data["valid_oral"].astype(bool)
             oral_mass = data["oral_mass"].astype(float)
+            valid_oral_report = (
+                data["valid_oral_report"].astype(bool)
+                if "valid_oral_report" in data.files
+                else valid_oral.copy()
+            )
+            instantaneous_oral_mass = (
+                data["instantaneous_oral_mass"].astype(float)
+                if "instantaneous_oral_mass" in data.files
+                else oral_mass.copy()
+            )
             oral_modes = data["oral_modes"].astype(str) if "oral_modes" in data.files else np.asarray([""] * len(subjects))
             region_stimulus_sigmas = (
                 data["region_stimulus_sigmas"].astype(float)
@@ -431,6 +584,15 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
                     },
                     "oral_mass": oral_mass[row_idx, :trials, :hypos].copy(),
                     "valid_oral": valid_oral[row_idx, :trials].tolist(),
+                    "instantaneous_oral_mass": instantaneous_oral_mass[
+                        row_idx,
+                        :trials,
+                        :hypos,
+                    ].copy(),
+                    "valid_oral_report": valid_oral_report[
+                        row_idx,
+                        :trials,
+                    ].tolist(),
                 }
         return out
 
@@ -441,6 +603,14 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         for sid, info in sorted((int(k), v) for k, v in oral_mass_results.items()):
             mass = np.asarray(info.get("oral_mass"), dtype=float)
             valid = np.asarray(info.get("valid_oral", []), dtype=bool).reshape(-1)
+            instantaneous = np.asarray(
+                info.get("instantaneous_oral_mass", mass),
+                dtype=float,
+            )
+            report_valid = np.asarray(
+                info.get("valid_oral_report", valid),
+                dtype=bool,
+            ).reshape(-1)
             target_hypo = int(info.get("target_hypo", -1))
             for trial_idx in range(mass.shape[0]):
                 row = {
@@ -451,9 +621,27 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
                     "oral_mode": str(info.get("oral_mode", "")),
                     "target_hypo": target_hypo,
                     "valid_oral": bool(valid[trial_idx]) if trial_idx < valid.size else False,
+                    "valid_oral_state": (
+                        bool(valid[trial_idx]) if trial_idx < valid.size else False
+                    ),
+                    "valid_oral_report": (
+                        bool(report_valid[trial_idx])
+                        if trial_idx < report_valid.size
+                        else False
+                    ),
                     "oral_target_mass": (
                         float(mass[trial_idx, target_hypo])
                         if 0 <= target_hypo < mass.shape[1] and np.isfinite(mass[trial_idx, target_hypo])
+                        else np.nan
+                    ),
+                    "instantaneous_oral_target_mass": (
+                        float(instantaneous[trial_idx, target_hypo])
+                        if (
+                            instantaneous.ndim == 2
+                            and trial_idx < instantaneous.shape[0]
+                            and 0 <= target_hypo < instantaneous.shape[1]
+                            and np.isfinite(instantaneous[trial_idx, target_hypo])
+                        )
                         else np.nan
                     ),
                 }
@@ -558,7 +746,7 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         save_path=None,
         limit=True,
         mass_key="oral_mass",
-        title="Oral Hypothesis Probability by Subject",
+        title="Oral Category-State Hypothesis Probability by Subject",
         ylabel="Oral Hypothesis Probability",
         target_label="target",
         **kwargs,
@@ -575,6 +763,11 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         first_info = next(iter(results.values()))
         if mass_key == "oral_mass" and "oral_distribution_method" in first_info:
             method = str(first_info.get("oral_distribution_method", ""))
+            aggregation = str(first_info.get("oral_aggregation_method", ""))
+            aggregation = {
+                "latest_by_category_likelihood_product": "latest-category joint",
+                "current_report_only": "current-report only",
+            }.get(aggregation, aggregation)
             mode = str(first_info.get("oral_mode", ""))
             if mode == "center":
                 scale_label = f"sigma={float(first_info.get('oral_center_sigma', np.nan)):g}"
@@ -582,7 +775,10 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
                 scale_label = (
                     f"temperature={float(first_info.get('oral_region_temperature', np.nan)):g}"
                 )
-            title = f"{title} ({method}, {scale_label})"
+            method_label = f"{method}, {scale_label}"
+            if aggregation:
+                method_label = f"{aggregation}; {method_label}"
+            title = f"{title} ({method_label})"
 
         n_rows, n_cols, rows_by_condition = self._layout_by_condition(grouped, kwargs)
         fig = plt.figure(figsize=(n_cols * 8, n_rows * 5))
@@ -1530,6 +1726,19 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
             logger.info("Target-based alignment group plot saved to %s", save_path)
         return fig
 
+    @plt.rc_context(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "sans-serif"],
+            "font.size": 8,
+            "svg.fonttype": "none",
+            "pdf.fonttype": 42,
+            "axes.spines.right": False,
+            "axes.spines.top": False,
+            "axes.linewidth": 0.8,
+            "legend.frameon": False,
+        }
+    )
     def plot_target_based_alignment_subjectwise(
         self,
         target_based_results,
@@ -1541,7 +1750,7 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         title=None,
         alignment_space="full",
     ):
-        """Plot model target prior and oral target probability in each subject panel."""
+        """Plot expected model target mass, latent-state bands, and oral mass."""
         df = target_based_results.copy()
         if "alignment_space" not in df.columns:
             df["alignment_space"] = "full"
@@ -1553,102 +1762,171 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         if df.empty:
             raise RuntimeError("No target-based trial metrics to plot.")
 
-        if target_subject_metrics is None:
-            target_subject_metrics = self.summarize_target_based_alignment(df)
-        else:
-            target_subject_metrics = target_subject_metrics.copy()
-            if "alignment_space" not in target_subject_metrics.columns:
-                target_subject_metrics["alignment_space"] = "full"
-            if alignment_space is not None:
-                target_subject_metrics = target_subject_metrics[
-                    target_subject_metrics["alignment_space"] == alignment_space
-                ]
-        metric_lookup = {
-            int(row["subject"]): row
-            for _, row in target_subject_metrics.iterrows()
-        }
+        # Subject-level association metrics remain in the group plot and CSV.
+        # The trajectory panels mirror the canonical PF accuracy-band layout.
+        del target_subject_metrics
 
         subjects_sorted = sorted(df["subject"].dropna().astype(int).unique())
-        n_rows, n_cols, figsize = self._subjectwise_grid_layout(subjects_sorted, n_cols)
+        n_rows, n_cols, figsize = self._subjectwise_grid_layout(
+            subjects_sorted,
+            n_cols,
+            panel_width=4.2,
+            panel_height=3.1,
+        )
         fig, axes = plt.subplots(
             n_rows,
             n_cols,
             figsize=figsize,
-            dpi=170,
-            sharex=True,
-            sharey=True,
+            sharex=False,
+            sharey=False,
         )
         axes = np.asarray(axes).reshape(n_rows, n_cols)
-        condition_label = ",".join(str(int(c)) for c in sorted(df["condition"].dropna().unique()))
         oral_mode = str(df["oral_mode"].dropna().iloc[0])
         space = str(df["alignment_space"].dropna().iloc[0])
         space_label = self.TARGET_ALIGNMENT_LABELS.get(space, space)
-        fig_title = title or f"Condition {condition_label}: target-based alignment ({oral_mode})"
-        encoder_label = self._oral_encoder_label(df)
-        fig.suptitle(
-            f"{fig_title} - {space_label}",
-            fontsize=self.SUBJECTWISE_SUPTITLE_FONTSIZE,
-            y=0.995,
+        backend = (
+            str(df["model_inference_backend"].dropna().iloc[0])
+            if "model_inference_backend" in df
+            and not df["model_inference_backend"].dropna().empty
+            else "particle_filter"
         )
-        if encoder_label:
-            fig.text(
-                0.995,
-                0.006,
-                f"Oral encoder: {encoder_label}",
-                ha="right",
-                va="bottom",
-                fontsize=self.SUBJECTWISE_TICK_FONTSIZE,
-            )
-
+        is_trajectory = backend == "trajectory"
+        n_draws = (
+            int(df["model_target_band_n_draws"].dropna().iloc[0])
+            if "model_target_band_n_draws" in df.columns
+            and not df["model_target_band_n_draws"].dropna().empty
+            else self.DEFAULT_TARGET_BAND_DRAWS
+        )
+        n_runs = (
+            int(df["model_target_band_n_runs"].dropna().iloc[0])
+            if "model_target_band_n_runs" in df
+            and not df["model_target_band_n_runs"].dropna().empty
+            else None
+        )
+        legend_drawn = False
         for ax, sid in zip(axes.flat, subjects_sorted):
             sub = df[df["subject"] == sid].sort_values("trial")
-            x = sub["trial_pct"].to_numpy(dtype=float)
-            ax.plot(
-                x,
-                self._rolling_mean(sub["model_target_prior"].to_numpy(dtype=float), window_size=window_size),
-                lw=1.0,
-                alpha=0.86,
-                color=self.TARGET_BASED_LINE_COLORS["model"],
-                label="Model target prior",
+            x = sub["trial"].to_numpy(dtype=float)
+            has_band = all(
+                column in sub
+                for column in (
+                    "model_target_expected_rolling",
+                    "model_target_q05_rolling",
+                    "model_target_q25_rolling",
+                    "model_target_q75_rolling",
+                    "model_target_q95_rolling",
+                )
             )
-            ax.plot(
-                x,
-                self._rolling_mean(sub["oral_target_mass"].to_numpy(dtype=float), window_size=window_size),
-                lw=1.0,
-                alpha=0.86,
-                color=self.TARGET_BASED_LINE_COLORS["oral"],
-                label="Oral target probability",
-            )
-            metrics = metric_lookup.get(int(sid))
-            if metrics is not None:
-                ax.set_title(
-                    f"S{int(sid)}  r={metrics.get('pearson_r', np.nan):.2f}, "
-                    f"cos={metrics.get('cosine_similarity', np.nan):.2f}",
-                    fontsize=self.SUBJECTWISE_TITLE_FONTSIZE,
+            if has_band:
+                ax.fill_between(
+                    x,
+                    sub["model_target_q05_rolling"].to_numpy(dtype=float),
+                    sub["model_target_q95_rolling"].to_numpy(dtype=float),
+                    color=self.TARGET_BASED_BAND_COLORS["q05_q95"],
+                    alpha=0.38,
+                    linewidth=0,
+                    label=(
+                        "Trajectory 90% band"
+                        if is_trajectory
+                        else "90% latent-state PI"
+                    ),
+                )
+                ax.fill_between(
+                    x,
+                    sub["model_target_q25_rolling"].to_numpy(dtype=float),
+                    sub["model_target_q75_rolling"].to_numpy(dtype=float),
+                    color=self.TARGET_BASED_BAND_COLORS["q25_q75"],
+                    alpha=0.50,
+                    linewidth=0,
+                    label=(
+                        "Trajectory 50% band"
+                        if is_trajectory
+                        else "50% latent-state PI"
+                    ),
+                )
+                model_curve = sub["model_target_expected_rolling"].to_numpy(dtype=float)
+                oral_curve = (
+                    pd.Series(sub["oral_target_mass"].to_numpy(dtype=float))
+                    .rolling(window=max(1, int(window_size)), min_periods=max(1, int(window_size)))
+                    .mean()
+                    .to_numpy()
                 )
             else:
-                ax.set_title(f"S{int(sid)}", fontsize=self.SUBJECTWISE_TITLE_FONTSIZE)
-            ax.set_ylim(0, 1)
-            ax.set_xlim(0, 1)
-            ax.grid(alpha=0.18, linewidth=0.6)
+                model_curve = self._rolling_mean(
+                    sub["model_target_prior"].to_numpy(dtype=float),
+                    window_size=window_size,
+                )
+                oral_curve = self._rolling_mean(
+                    sub["oral_target_mass"].to_numpy(dtype=float),
+                    window_size=window_size,
+                )
+            ax.plot(
+                x,
+                model_curve,
+                linewidth=2.0,
+                color=self.TARGET_BASED_LINE_COLORS["model"],
+                label=(
+                    "Trajectory mean target mass"
+                    if is_trajectory
+                    else "PF expected target mass"
+                ),
+                zorder=4,
+            )
+            ax.plot(
+                x,
+                oral_curve,
+                linewidth=2.1,
+                color=self.TARGET_BASED_LINE_COLORS["oral"],
+                label="Oral target probability",
+                zorder=5,
+            )
+            run_count = (
+                int(sub["model_target_n_runs"].dropna().iloc[0])
+                if "model_target_n_runs" in sub.columns
+                and not sub["model_target_n_runs"].dropna().empty
+                else int(sub["model_target_n_pf_runs"].dropna().iloc[0])
+                if "model_target_n_pf_runs" in sub.columns
+                and not sub["model_target_n_pf_runs"].dropna().empty
+                else 1
+            )
+            ax.set(
+                title=(
+                    f"Subject {int(sid)} | Trajectory runs={run_count}"
+                    if is_trajectory
+                    else f"Subject {int(sid)} | PF runs={run_count}"
+                ),
+                xlabel="Trial",
+                ylabel="Rolling target probability",
+                ylim=(0.0, 1.0),
+            )
+            ax.grid(axis="y", alpha=0.20)
+            if not legend_drawn:
+                ax.legend(loc="best", fontsize=8, frameon=False)
+                legend_drawn = True
 
         for ax in list(axes.flat)[len(subjects_sorted):]:
             ax.axis("off")
-        self._style_subjectwise_grid_axes(axes, n_rows, n_cols, "Target probability")
-
-        handles, labels = axes.flat[0].get_legend_handles_labels()
-        fig.legend(
-            handles,
-            labels,
-            loc="upper center",
-            ncol=2,
-            frameon=False,
-            bbox_to_anchor=(0.5, 0.965),
-            fontsize=self.SUBJECTWISE_LEGEND_FONTSIZE,
+        fig_title = title or (
+            (
+                "Latent-trajectory target-mass ensemble"
+                if is_trajectory
+                else "Particle-filter conditional latent target occupancy"
+            )
+            + f" ({oral_mode}; {space_label})"
         )
-        fig.tight_layout(rect=[0, 0, 1, 0.94])
+        interval_note = (
+            f"50% and 90% pointwise bands | {int(n_runs or 1):,} trajectory runs"
+            if is_trajectory
+            else f"50% and 90% pointwise intervals | {n_draws:,} draws"
+        )
+        fig.suptitle(
+            f"{fig_title}\n{interval_note}",
+            fontsize=12,
+            y=1.01,
+        )
+        fig.tight_layout()
         if save_path:
-            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            fig.savefig(save_path, dpi=600, bbox_inches="tight")
             logger.info("Target-based alignment subject-wise plot saved to %s", save_path)
         return fig
 
@@ -1661,11 +1939,18 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
         subjectwise_plot_path=None,
         window_size=16,
         title_prefix=None,
+        target_band_draws=OralAlignmentScoringMixin.DEFAULT_TARGET_BAND_DRAWS,
+        target_band_seed=OralAlignmentScoringMixin.DEFAULT_TARGET_BAND_SEED,
     ):
         """Write target-based alignment CSVs and group/subject plots."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        df = target_based_results.copy()
+        df = self._attach_target_sampling_bands(
+            target_based_results,
+            window_size=window_size,
+            n_draws=target_band_draws,
+            base_seed=target_band_seed,
+        )
         if df.empty:
             raise RuntimeError("No target-based alignment results to save.")
 
@@ -1707,7 +1992,7 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
                 target_subject_metrics=subject_metrics,
                 save_path=str(subjectwise_plot),
                 window_size=window_size,
-                title=f"{prefix_title}: target-based alignment ({oral_mode})",
+                title=title_prefix,
                 alignment_space=space,
             )
             plt.close(fig)

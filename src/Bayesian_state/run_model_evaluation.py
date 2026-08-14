@@ -130,6 +130,10 @@ def load_simulation_results(
             prior_log = marginal_prior
 
         info = dict(payload)
+        # Keep the local provenance needed by evaluation routines that lazily
+        # inspect the persisted PF repeat stream.  This is runtime-only
+        # metadata and is not written back into the simulation payload.
+        info["_subject_json_path"] = str(path.resolve())
         info["metrics_by_mode"] = representative.get("metrics_by_mode") or {}
         info["posterior_log"] = posterior_log
         info["prior_log"] = prior_log
@@ -812,8 +816,11 @@ def run_oral_plots(
     records: list[dict[str, Any]],
     oral_mode: str,
     window_size: int | None,
+    oral_state_mode: str,
     oral_center_sigma: float,
     oral_region_temperature: float,
+    target_band_draws: int,
+    target_band_seed: int,
     region_n_samples: int,
     region_stimulus_sigma: float | None,
     distribution_model_distribution: str,
@@ -875,6 +882,7 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_state_mode=oral_state_mode,
             oral_center_sigma=oral_center_sigma,
             oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
@@ -920,6 +928,7 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_state_mode=oral_state_mode,
             oral_center_sigma=oral_center_sigma,
             oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
@@ -974,11 +983,13 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_state_mode=oral_state_mode,
             oral_center_sigma=oral_center_sigma,
             oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
             region_stimulus_sigma=region_stimulus_sigma,
             oral_mass_results=oral_mass,
+            trajectory_band_window_size=window_size or 16,
         ),
     )
     if target_results is not None:
@@ -989,6 +1000,8 @@ def run_oral_plots(
                 target_results,
                 oral_dir / "target_based_alignment",
                 window_size=window_size or 16,
+                target_band_draws=target_band_draws,
+                target_band_seed=target_band_seed,
             ),
             [oral_dir / "target_based_alignment"],
         )
@@ -1001,6 +1014,7 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_state_mode=oral_state_mode,
             oral_center_sigma=oral_center_sigma,
             oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
@@ -1028,6 +1042,7 @@ def run_oral_plots(
             oral_df,
             oral_mode=oral_mode,
             subjects=oral_subjects,
+            oral_state_mode=oral_state_mode,
             oral_center_sigma=oral_center_sigma,
             oral_region_temperature=oral_region_temperature,
             region_n_samples=region_n_samples,
@@ -1171,6 +1186,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-oral", action="store_true", help="Skip oral/model alignment plots")
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
     p.add_argument("--oral-mode", choices=("center", "region"), default="center")
+    p.add_argument(
+        "--oral-state-mode",
+        choices=ModelEvaluator.VALID_ORAL_STATE_MODES,
+        default=ModelEvaluator.DEFAULT_ORAL_STATE_MODE,
+        help=(
+            "Aggregate oral evidence using each category's latest valid report "
+            "(default), or reproduce legacy current-report-only distributions"
+        ),
+    )
     p.add_argument(
         "--oral-center-sigma",
         type=float,
@@ -1318,8 +1342,11 @@ def main() -> None:
                 records=records,
                 oral_mode=str(args.oral_mode),
                 window_size=args.window_size,
+                oral_state_mode=str(args.oral_state_mode),
                 oral_center_sigma=float(args.oral_center_sigma),
                 oral_region_temperature=float(args.oral_region_temperature),
+                target_band_draws=int(args.accuracy_band_draws),
+                target_band_seed=int(args.accuracy_band_seed),
                 region_n_samples=int(args.region_n_samples),
                 region_stimulus_sigma=args.region_stimulus_sigma,
                 distribution_model_distribution=str(args.distribution_model_distribution),
