@@ -253,6 +253,56 @@ def test_observation_likelihood_is_fixed_runtime_infrastructure() -> None:
         evaluator.process((observation[0], None, None), hypotheses)
 
 
+def test_observation_likelihood_can_decouple_evidence_from_action_beta() -> None:
+    from src.Bayesian_state.hypothesis_space.observation_model import (
+        ContinuousPartition,
+        ObservationLikelihood,
+    )
+
+    partition = ContinuousPartition(4, 2)
+    observation = (np.asarray([0.39, 0.50, 0.50, 0.50]), 1, 1.0)
+    hypotheses = [0, 25]
+    fixed_evidence_beta = 5.0
+    supplied_action_beta = np.asarray([0.2, 25.0])
+
+    fixed = ObservationLikelihood(
+        partition,
+        distance_mode="boundary",
+        default_beta=fixed_evidence_beta,
+        beta_source="fixed",
+    )
+    actual = fixed.process(
+        observation,
+        hypotheses,
+        beta=supplied_action_beta,
+    )
+    expected = partition.calc_likelihood(
+        hypotheses,
+        ([observation[0]], [1], [1.0]),
+        beta=fixed_evidence_beta,
+        distance_mode="boundary",
+        normalized=True,
+        feedback_likelihood_mode="category_feedback",
+        feedback_lapse=0.0,
+    )[0]
+    assert np.allclose(actual, expected)
+
+    coupled = ObservationLikelihood(
+        partition,
+        distance_mode="boundary",
+        default_beta=fixed_evidence_beta,
+        beta_source="action",
+    ).process(observation, hypotheses, beta=supplied_action_beta)
+    assert not np.allclose(coupled, actual)
+
+    with pytest.raises(ValueError, match="beta_source"):
+        ObservationLikelihood(
+            partition,
+            distance_mode="boundary",
+            beta_source="unknown",
+        )
+
+
 @pytest.mark.parametrize("n_cats", [2, 4])
 def test_continuous_similarity_uses_versioned_boundary_label_resources(
     n_cats: int,

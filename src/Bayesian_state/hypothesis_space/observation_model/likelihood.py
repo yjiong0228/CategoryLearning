@@ -18,6 +18,9 @@ class ObservationLikelihood:
     """Process ``p(observation | hypothesis)`` through a runtime partition."""
 
     DEFAULT_BETA = 10.0
+    BETA_SOURCE_ACTION = "action"
+    BETA_SOURCE_FIXED = "fixed"
+    VALID_BETA_SOURCES = (BETA_SOURCE_ACTION, BETA_SOURCE_FIXED)
 
     def __init__(
         self,
@@ -25,6 +28,7 @@ class ObservationLikelihood:
         *,
         distance_mode: str | None = None,
         default_beta: float = DEFAULT_BETA,
+        beta_source: str = BETA_SOURCE_ACTION,
         feedback_likelihood_mode: str = "category_feedback",
         feedback_lapse: float = 0.0,
     ) -> None:
@@ -52,6 +56,24 @@ class ObservationLikelihood:
         if not np.isfinite(beta_value):
             raise ValueError("default_beta must be finite.")
 
+        resolved_beta_source = str(beta_source).strip().lower()
+        beta_source_aliases = {
+            "choice": self.BETA_SOURCE_ACTION,
+            "dynamic": self.BETA_SOURCE_ACTION,
+            "dynamic_action": self.BETA_SOURCE_ACTION,
+            "evidence": self.BETA_SOURCE_FIXED,
+            "fixed_evidence": self.BETA_SOURCE_FIXED,
+        }
+        resolved_beta_source = beta_source_aliases.get(
+            resolved_beta_source,
+            resolved_beta_source,
+        )
+        if resolved_beta_source not in self.VALID_BETA_SOURCES:
+            raise ValueError(
+                f"Unsupported beta_source '{beta_source}'. Expected one of: "
+                f"{self.VALID_BETA_SOURCES}."
+            )
+
         lapse_value = float(feedback_lapse)
         if not np.isfinite(lapse_value) or lapse_value < 0.0 or lapse_value >= 1.0:
             raise ValueError(
@@ -70,6 +92,7 @@ class ObservationLikelihood:
         self.partition = partition
         self.distance_mode = resolved_mode
         self.default_beta = beta_value
+        self.beta_source = resolved_beta_source
         self.feedback_likelihood_mode = feedback_mode
         self.feedback_lapse = lapse_value
 
@@ -95,7 +118,16 @@ class ObservationLikelihood:
         if not hypothesis_args:
             raise ValueError("at least one hypothesis is required.")
 
-        beta_value = self.default_beta if beta is None else beta
+        # ``fixed`` gives rule evidence its own stationary scale.  The engine
+        # may still pass the action-policy beta vector, but it is deliberately
+        # ignored so changes in response confidence cannot also sharpen the
+        # evidence used to rank hypotheses.  ``action`` preserves the legacy
+        # coupled behavior for existing configurations.
+        beta_value = (
+            self.default_beta
+            if self.beta_source == self.BETA_SOURCE_FIXED or beta is None
+            else beta
+        )
         single_trial_data = ([stimulus], [choice], [feedback])
         matrix = np.asarray(
             self.partition.calc_likelihood(
