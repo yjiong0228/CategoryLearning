@@ -12,7 +12,7 @@
 
 | 被试数 | trial数 | 非空文本 | fidelity可评分率 | 平均fidelity | 完全忠实率 |
 | --- | --- | --- | --- | --- | --- |
-| 96.000 | 62736.000 | 62071.000 | 0.970 | 0.897 | 0.771 |
+| 96.000 | 62720.000 | 62056.000 | 0.970 | 0.897 | 0.770 |
 
 ## 被试摘要表
 
@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 101 | 320 | 320 | 1.000 | 0.885 | 0.841 | 0.078 | 1.000 | 0.000 | direct_absolute:320, comparison:23, equality:3, body_ref:2 |
 | 102 | 448 | 448 | 0.993 | 0.950 | 0.882 | 0.018 | 0.993 | 0.109 | direct_absolute:413, comparison:274, ranking:26, superlative:24, equality:6 |
-| 103 | 256 | 256 | 1.000 | 0.953 | 0.832 | 0.000 | 1.000 | 0.047 | direct_absolute:256, comparison:149, body_ref:70 |
+| 103 | 256 | 256 | 1.000 | 0.953 | 0.828 | 0.000 | 1.000 | 0.047 | direct_absolute:256, comparison:149, body_ref:70 |
 | 104 | 192 | 192 | 0.995 | 0.840 | 0.812 | 0.135 | 0.995 | 0.010 | direct_absolute:177, comparison:22, equality:18 |
 | 105 | 64 | 64 | 0.984 | 0.952 | 0.938 | 0.047 | 0.984 | 0.016 | direct_absolute:64, comparison:24, body_ref:1 |
 | 106 | 192 | 191 | 0.854 | 0.918 | 0.766 | 0.057 | 0.854 | 0.146 | direct_absolute:167, comparison:121, body_ref:20, superlative:19, equality:9 |
@@ -31,13 +31,13 @@
 | 111 | 320 | 320 | 1.000 | 0.937 | 0.884 | 0.022 | 1.000 | 0.003 | direct_absolute:320, comparison:78, superlative:3, equality:3 |
 | 112 | 384 | 379 | 0.974 | 0.903 | 0.839 | 0.073 | 0.974 | 0.016 | direct_absolute:374, comparison:302, empty:5, equality:5, other:4 |
 | 113 | 384 | 383 | 0.987 | 0.925 | 0.857 | 0.047 | 0.987 | 0.068 | direct_absolute:375, comparison:216, superlative:41, equality:33, ranking:5 |
-| 114 | 512 | 512 | 0.994 | 0.917 | 0.873 | 0.066 | 0.994 | 0.006 | direct_absolute:512, comparison:203, equality:35, superlative:8, negation:1 |
+| 114 | 512 | 512 | 0.994 | 0.918 | 0.875 | 0.066 | 0.994 | 0.006 | direct_absolute:512, comparison:203, equality:35, superlative:8, negation:1 |
 | 115 | 128 | 128 | 1.000 | 0.916 | 0.883 | 0.062 | 1.000 | 0.000 | direct_absolute:128, comparison:34, count_abstract:2 |
 | 116 | 128 | 128 | 0.984 | 0.894 | 0.750 | 0.031 | 0.984 | 0.039 | direct_absolute:128, comparison:27 |
 | 117 | 128 | 128 | 1.000 | 0.988 | 0.977 | 0.008 | 1.000 | 0.000 | direct_absolute:128, count_abstract:8 |
 | 118 | 256 | 256 | 0.801 | 0.915 | 0.613 | 0.031 | 0.801 | 0.254 | direct_absolute:254, comparison:123, count_abstract:50, superlative:35, equality:15 |
 | 119 | 768 | 762 | 0.725 | 0.925 | 0.661 | 0.048 | 0.725 | 0.267 | direct_absolute:755, comparison:556, superlative:80, body_ref:55, count_abstract:49 |
-| 120 | 528 | 526 | 0.955 | 0.873 | 0.746 | 0.049 | 0.955 | 0.055 | direct_absolute:519, comparison:489, body_ref:358, equality:28, superlative:15 |
+| 120 | 512 | 511 | 0.955 | 0.883 | 0.756 | 0.041 | 0.955 | 0.057 | direct_absolute:504, comparison:474, body_ref:344, equality:28, superlative:15 |
 | 121 | 448 | 446 | 0.971 | 0.910 | 0.799 | 0.040 | 0.971 | 0.060 | direct_absolute:439, comparison:306, equality:42, group_sum:36, superlative:19 |
 | 122 | 256 | 256 | 1.000 | 0.766 | 0.559 | 0.148 | 1.000 | 0.000 | direct_absolute:256, comparison:75, group_sum:75, body_ref:1 |
 | 123 | 512 | 510 | 0.994 | 0.908 | 0.781 | 0.029 | 0.994 | 0.014 | direct_absolute:509, superlative:75, comparison:71, equality:15, ranking:3 |
@@ -52,14 +52,14 @@
 | 132 | 384 | 361 | 0.904 | 0.968 | 0.875 | 0.029 | 0.904 | 0.036 | direct_absolute:361, comparison:259, empty:23, superlative:23, negation:11 |
 | 201 | 640 | 640 | 1.000 | 0.871 | 0.759 | 0.077 | 1.000 | 0.000 | direct_absolute:640, comparison:190, equality:30 |
 | 202 | 256 | 255 | 0.992 | 0.949 | 0.895 | 0.008 | 0.992 | 0.004 | direct_absolute:254, comparison:38, empty:1, meta:1 |
-| 203 | 832 | 807 | 0.968 | 0.937 | 0.778 | 0.008 | 0.968 | 0.013 | direct_absolute:805, superlative:86, comparison:60, empty:25, ranking:15 |
+| 203 | 832 | 807 | 0.968 | 0.937 | 0.778 | 0.008 | 0.968 | 0.012 | direct_absolute:805, superlative:86, comparison:60, empty:25, ranking:15 |
 | 204 | 512 | 512 | 0.996 | 0.914 | 0.834 | 0.033 | 0.996 | 0.027 | direct_absolute:511, comparison:104, negation:39, equality:29, superlative:11 |
 | 205 | 704 | 704 | 0.999 | 0.839 | 0.716 | 0.114 | 0.999 | 0.006 | direct_absolute:703, superlative:522, equality:129, body_ref:30, comparison:3 |
 | 206 | 1408 | 1408 | 0.994 | 0.892 | 0.789 | 0.035 | 0.994 | 0.016 | direct_absolute:1403, comparison:573, superlative:72, body_ref:31, equality:11 |
 | 207 | 960 | 959 | 0.996 | 0.891 | 0.775 | 0.056 | 0.996 | 0.028 | direct_absolute:959, superlative:474, comparison:131, equality:23, ranking:14 |
 | 208 | 576 | 571 | 0.964 | 0.933 | 0.811 | 0.023 | 0.964 | 0.038 | direct_absolute:570, comparison:101, superlative:77, equality:27, empty:5 |
 | 209 | 512 | 512 | 1.000 | 0.969 | 0.885 | 0.006 | 1.000 | 0.055 | direct_absolute:512, superlative:87, comparison:77, equality:32 |
-| 210 | 1728 | 1703 | 0.922 | 0.932 | 0.785 | 0.035 | 0.922 | 0.070 | direct_absolute:1693, superlative:677, comparison:420, equality:309, count_abstract:89 |
+| 210 | 1728 | 1703 | 0.922 | 0.921 | 0.740 | 0.035 | 0.922 | 0.069 | direct_absolute:1693, superlative:677, comparison:420, equality:309, count_abstract:89 |
 | 211 | 960 | 959 | 0.998 | 0.897 | 0.818 | 0.064 | 0.998 | 0.006 | direct_absolute:959, superlative:287, equality:127, comparison:38, ranking:8 |
 | 212 | 1792 | 1782 | 0.975 | 0.912 | 0.816 | 0.028 | 0.975 | 0.076 | direct_absolute:1748, comparison:751, body_ref:211, superlative:188, equality:35 |
 | 213 | 1536 | 1535 | 0.986 | 0.911 | 0.783 | 0.028 | 0.986 | 0.020 | direct_absolute:1534, comparison:956, body_ref:36, equality:31, count_abstract:24 |
@@ -67,9 +67,9 @@
 | 215 | 768 | 763 | 0.947 | 0.910 | 0.773 | 0.016 | 0.947 | 0.051 | direct_absolute:763, comparison:52, superlative:45, count_abstract:34, equality:19 |
 | 216 | 768 | 765 | 0.988 | 0.901 | 0.732 | 0.025 | 0.988 | 0.023 | direct_absolute:764, comparison:130, superlative:104, equality:45, negation:4 |
 | 217 | 1408 | 1407 | 0.998 | 0.853 | 0.712 | 0.060 | 0.998 | 0.004 | direct_absolute:1407, comparison:158, superlative:58, body_ref:34, equality:5 |
-| 218 | 1664 | 1658 | 0.978 | 0.923 | 0.773 | 0.019 | 0.978 | 0.065 | direct_absolute:1656, superlative:570, comparison:502, equality:39, body_ref:7 |
+| 218 | 1664 | 1658 | 0.978 | 0.923 | 0.772 | 0.019 | 0.978 | 0.065 | direct_absolute:1656, superlative:570, comparison:502, equality:39, body_ref:7 |
 | 219 | 1024 | 1021 | 0.959 | 0.904 | 0.789 | 0.044 | 0.959 | 0.050 | direct_absolute:980, comparison:196, equality:49, superlative:16, group_sum:11 |
-| 220 | 1408 | 1406 | 0.984 | 0.885 | 0.771 | 0.067 | 0.984 | 0.058 | direct_absolute:1397, comparison:487, equality:249, superlative:245, count_abstract:85 |
+| 220 | 1408 | 1406 | 0.984 | 0.885 | 0.770 | 0.067 | 0.984 | 0.058 | direct_absolute:1397, comparison:487, equality:249, superlative:245, count_abstract:85 |
 | 221 | 832 | 830 | 0.993 | 0.864 | 0.769 | 0.069 | 0.993 | 0.005 | direct_absolute:823, comparison:299, equality:39, superlative:21, group_sum:3 |
 | 222 | 832 | 665 | 0.770 | 0.851 | 0.588 | 0.079 | 0.770 | 0.132 | direct_absolute:627, comparison:188, empty:167, superlative:129, equality:117 |
 | 223 | 1280 | 1278 | 0.998 | 0.910 | 0.673 | 0.009 | 0.998 | 0.002 | direct_absolute:1278, superlative:125, comparison:39, empty:2, equality:1 |
@@ -82,20 +82,20 @@
 | 230 | 640 | 638 | 0.997 | 0.894 | 0.816 | 0.045 | 0.997 | 0.000 | direct_absolute:630, superlative:74, equality:15, comparison:7, empty:2 |
 | 231 | 1344 | 1342 | 0.995 | 0.957 | 0.902 | 0.012 | 0.995 | 0.017 | direct_absolute:1340, comparison:300, superlative:238, equality:96, ranking:6 |
 | 232 | 512 | 504 | 0.984 | 0.931 | 0.758 | 0.004 | 0.984 | 0.000 | direct_absolute:504, comparison:222, empty:8, equality:1 |
-| 301 | 640 | 640 | 1.000 | 0.895 | 0.759 | 0.022 | 1.000 | 0.056 | direct_absolute:640, comparison:156, equality:37, count_abstract:13, superlative:6 |
+| 301 | 640 | 640 | 1.000 | 0.895 | 0.759 | 0.022 | 1.000 | 0.052 | direct_absolute:640, comparison:156, equality:37, count_abstract:13, superlative:6 |
 | 302 | 448 | 446 | 0.993 | 0.940 | 0.846 | 0.007 | 0.993 | 0.029 | direct_absolute:446, comparison:41, negation:9, equality:2, empty:2 |
 | 303 | 192 | 191 | 0.995 | 0.932 | 0.755 | 0.000 | 0.995 | 0.005 | direct_absolute:191, comparison:6, superlative:1, empty:1 |
 | 304 | 320 | 319 | 0.988 | 0.931 | 0.903 | 0.059 | 0.988 | 0.009 | direct_absolute:318, equality:16, body_ref:14, empty:1 |
 | 305 | 192 | 192 | 0.875 | 0.908 | 0.667 | 0.010 | 0.875 | 0.172 | direct_absolute:168, other:22, comparison:2, negation:1, count_abstract:1 |
-| 306 | 768 | 768 | 1.000 | 0.916 | 0.809 | 0.016 | 1.000 | 0.048 | direct_absolute:768, comparison:197, equality:81, superlative:19, body_ref:14 |
-| 307 | 704 | 702 | 0.996 | 0.932 | 0.817 | 0.007 | 0.996 | 0.013 | direct_absolute:700, comparison:416, body_ref:173, equality:42, empty:2 |
-| 308 | 896 | 889 | 0.978 | 0.905 | 0.768 | 0.028 | 0.978 | 0.030 | direct_absolute:889, comparison:560, superlative:292, body_ref:160, equality:156 |
+| 306 | 768 | 768 | 1.000 | 0.916 | 0.809 | 0.016 | 1.000 | 0.047 | direct_absolute:768, comparison:197, equality:81, superlative:19, body_ref:14 |
+| 307 | 704 | 702 | 0.996 | 0.928 | 0.795 | 0.011 | 0.996 | 0.013 | direct_absolute:700, comparison:416, body_ref:173, equality:42, empty:2 |
+| 308 | 896 | 889 | 0.978 | 0.904 | 0.767 | 0.028 | 0.978 | 0.030 | direct_absolute:889, comparison:560, superlative:292, body_ref:160, equality:156 |
 | 309 | 768 | 768 | 0.990 | 0.927 | 0.833 | 0.009 | 0.990 | 0.013 | direct_absolute:755, comparison:84, superlative:38, equality:18, meta:1 |
 | 310 | 1088 | 1085 | 0.996 | 0.913 | 0.756 | 0.023 | 0.996 | 0.034 | direct_absolute:1081, superlative:544, equality:133, comparison:125, body_ref:100 |
 | 311 | 1024 | 1023 | 0.998 | 0.923 | 0.848 | 0.032 | 0.998 | 0.043 | direct_absolute:1021, comparison:369, superlative:306, ranking:99, equality:16 |
 | 312 | 1344 | 1336 | 0.991 | 0.895 | 0.818 | 0.062 | 0.991 | 0.007 | direct_absolute:1335, comparison:102, equality:88, superlative:18, empty:8 |
 | 313 | 960 | 959 | 0.998 | 0.862 | 0.626 | 0.027 | 0.998 | 0.007 | direct_absolute:928, comparison:192, body_ref:142, equality:76, superlative:3 |
-| 314 | 832 | 828 | 0.981 | 0.369 | 0.150 | 0.411 | 0.981 | 0.028 | direct_absolute:822, comparison:818, body_ref:722, other:6, empty:4 |
+| 314 | 832 | 828 | 0.981 | 0.372 | 0.149 | 0.410 | 0.981 | 0.026 | direct_absolute:822, comparison:818, body_ref:722, other:6, empty:4 |
 | 315 | 704 | 703 | 0.997 | 0.893 | 0.797 | 0.037 | 0.997 | 0.001 | direct_absolute:701, empty:1, equality:1, other:1 |
 | 316 | 384 | 383 | 0.995 | 0.943 | 0.854 | 0.010 | 0.995 | 0.135 | direct_absolute:383, comparison:111, superlative:67, negation:33, equality:10 |
 | 317 | 1024 | 1024 | 0.940 | 0.847 | 0.725 | 0.081 | 0.940 | 0.061 | comparison:785, direct_absolute:619, body_ref:400, equality:163, superlative:90 |
@@ -261,7 +261,7 @@
 
 ### S103
 
-- trial 数: 256; 非空文本: 256; fidelity 可评分率: 1.000; 平均 fidelity: 0.953; 完全忠实率: 0.832; 低 fidelity 率: 0.000.
+- trial 数: 256; 非空文本: 256; fidelity 可评分率: 1.000; 平均 fidelity: 0.953; 完全忠实率: 0.828; 低 fidelity 率: 0.000.
 - 旧版 region 覆盖率: 1.000; 旧版 region 有未处理片段率: 0.047.
 
 汇报风格标签：
@@ -1020,7 +1020,7 @@
 
 ### S114
 
-- trial 数: 512; 非空文本: 512; fidelity 可评分率: 0.994; 平均 fidelity: 0.917; 完全忠实率: 0.873; 低 fidelity 率: 0.066.
+- trial 数: 512; 非空文本: 512; fidelity 可评分率: 0.994; 平均 fidelity: 0.918; 完全忠实率: 0.875; 低 fidelity 率: 0.066.
 - 旧版 region 覆盖率: 0.994; 旧版 region 有未处理片段率: 0.006.
 
 汇报风格标签：
@@ -1429,61 +1429,61 @@
 
 ### S120
 
-- trial 数: 528; 非空文本: 526; fidelity 可评分率: 0.955; 平均 fidelity: 0.873; 完全忠实率: 0.746; 低 fidelity 率: 0.049.
-- 旧版 region 覆盖率: 0.955; 旧版 region 有未处理片段率: 0.055.
+- trial 数: 512; 非空文本: 511; fidelity 可评分率: 0.955; 平均 fidelity: 0.883; 完全忠实率: 0.756; 低 fidelity 率: 0.041.
+- 旧版 region 覆盖率: 0.955; 旧版 region 有未处理片段率: 0.057.
 
 汇报风格标签：
 | style | count | rate |
 | --- | --- | --- |
-| direct_absolute | 519 | 0.983 |
-| comparison | 489 | 0.926 |
-| body_ref | 358 | 0.678 |
-| equality | 28 | 0.053 |
-| superlative | 15 | 0.028 |
-| count_abstract | 8 | 0.015 |
+| direct_absolute | 504 | 0.984 |
+| comparison | 474 | 0.926 |
+| body_ref | 344 | 0.672 |
+| equality | 28 | 0.055 |
+| superlative | 15 | 0.029 |
+| count_abstract | 8 | 0.016 |
 | group_sum | 4 | 0.008 |
 | negation | 3 | 0.006 |
-| empty | 2 | 0.004 |
 | other | 1 | 0.002 |
+| empty | 1 | 0.002 |
 
 典型说法 Top 20：
 | text | count |
 | --- | --- |
-| 头和腿都短于躯干。 | 96 |
-| 头长于腿，头长于躯干。 | 67 |
+| 头和腿都短于躯干。 | 93 |
+| 头长于腿，头长于躯干。 | 62 |
 | 头长于躯干。 | 47 |
-| 头短于腿。 | 22 |
-| 头和腿短于躯干。 | 16 |
-| 腿长于躯干。 | 14 |
+| 头短于腿。 | 21 |
+| 头和腿短于躯干。 | 15 |
 | 头长于腿，头短于躯干。 | 14 |
-| 头短于躯干。 | 13 |
+| 腿长于躯干。 | 14 |
 | 头和腿都长于躯干。 | 10 |
+| 头短于躯干。 | 10 |
 | 头长于腿，脖子长于尾巴。 | 9 |
 | 头短于腿，腿长于躯干。 | 9 |
 | 脖子最长。 | 5 |
 | 头短于腿，脖子长于尾巴。 | 5 |
 | 尾巴最长。 | 5 |
-| 有奇数个部位长于躯干。 | 4 |
 | 头长于脖子，尾巴长于腿。 | 4 |
 | 头长于脖子，腿长于尾巴。 | 4 |
+| 有奇数个部位长于躯干。 | 4 |
 | 头长于尾巴，脖子长于腿。 | 4 |
-| 脖子长于其他部位。 | 3 |
+| 脖子长于尾巴。 | 3 |
 | 头最长。 | 3 |
 
 非常规风格对应试次：
 | text | count | nonstandard_styles | sample_trials |
 | --- | --- | --- | --- |
-| 头和腿都短于躯干。 | 96 | body_ref | S1T251, S1T252, S1T253, S1T254, S1T255, S1T266, S1T272, S1T285 |
-| 头长于腿，头长于躯干。 | 67 | body_ref | S1T198, S1T203, S1T206, S1T208, S1T210, S1T212, S1T213, S1T214 |
-| 头长于躯干。 | 47 | body_ref | S1T149, S2T84, S2T85, S2T87, S2T90, S2T106, S2T108, S2T110 |
-| 头和腿短于躯干。 | 16 | body_ref | S1T258, S1T259, S1T260, S1T273, S1T274, S1T275, S1T276, S1T277 |
+| 头和腿都短于躯干。 | 93 | body_ref | S1T251, S1T252, S1T253, S1T254, S1T255, S1T266, S1T272, S1T285 |
+| 头长于腿，头长于躯干。 | 62 | body_ref | S1T198, S1T203, S1T206, S1T208, S1T210, S1T212, S1T213, S1T214 |
+| 头长于躯干。 | 47 | body_ref | S1T149, S2T68, S2T69, S2T71, S2T74, S2T90, S2T92, S2T94 |
+| 头和腿短于躯干。 | 15 | body_ref | S1T258, S1T259, S1T260, S1T273, S1T274, S1T275, S1T276, S1T277 |
 | 头长于腿，头短于躯干。 | 14 | body_ref | S1T201, S1T202, S1T205, S1T209, S1T217, S1T224, S1T225, S1T229 |
-| 腿长于躯干。 | 14 | body_ref | S1T146, S1T262, S1T313, S2T48, S2T81, S2T86, S2T88, S2T93 |
-| 头短于躯干。 | 13 | body_ref | S2T68, S2T69, S2T71, S2T114, S2T193, S2T194, S2T195, S2T196 |
-| 头和腿都长于躯干。 | 10 | body_ref | S2T25, S2T34, S2T41, S2T55, S2T96, S2T105, S2T135, S2T167 |
+| 腿长于躯干。 | 14 | body_ref | S1T146, S1T262, S1T313, S2T48, S2T65, S2T70, S2T72, S2T77 |
+| 头和腿都长于躯干。 | 10 | body_ref | S2T25, S2T34, S2T41, S2T55, S2T80, S2T89, S2T119, S2T151 |
+| 头短于躯干。 | 10 | body_ref | S2T98, S2T177, S2T178, S2T179, S2T180, S2T182, S2T183, S2T186 |
 | 头短于腿，腿长于躯干。 | 9 | body_ref | S1T244, S1T245, S1T247, S1T250, S1T265, S1T282, S1T286, S2T6 |
 | 有奇数个部位长于躯干。 | 4 | body_ref, count_abstract | S1T153, S1T154, S1T155, S1T159 |
-| 只有腿长于躯干。 | 3 | body_ref | S2T149, S2T154, S2T162 |
+| 只有腿长于躯干。 | 3 | body_ref | S2T133, S2T138, S2T146 |
 | 有偶数个部位长于躯干。 | 3 | body_ref, count_abstract | S1T156, S1T157, S1T158 |
 | 只有头比躯干长。 | 2 | body_ref | S1T81, S1T84 |
 | 四个部位都短于躯干。 | 2 | body_ref | S1T96, S1T140 |
@@ -1492,9 +1492,8 @@
 | 头和腿长于躯干，脖子和尾巴短于躯干。 | 2 | body_ref | S1T105, S1T139 |
 | 头短于腿，头短于躯干。 | 2 | body_ref | S1T211, S1T264 |
 | 头短于腿，脖子和尾巴差不多。 | 2 | equality | S1T167, S1T177 |
-| 头短于躯干，腿长于躯干。 | 2 | body_ref | S2T180, S2T188 |
+| 头短于躯干，腿长于躯干。 | 2 | body_ref | S2T164, S2T172 |
 | 头长于腿，腿长于躯干。 | 2 | body_ref | S2T20, S2T54 |
-| 头长于躯干，头长于腿。 | 2 | body_ref | S2T66, S2T67 |
 | 脖子和尾巴的长度不一样。 | 2 | equality, negation | S1T42, S1T43 |
 | 脖子和尾巴长于躯干。 | 2 | body_ref | S1T106, S1T151 |
 | 五个部位的长度都差不多。 | 1 | equality | S1T25 |
@@ -1511,7 +1510,7 @@
 | 头、尾巴、腿差不多，脖子长于尾巴。 | 1 | equality | S1T196 |
 | 头、尾巴和腿长于躯干。 | 1 | body_ref | S1T93 |
 | 头、脖子长于躯干。 | 1 | body_ref | S1T92 |
-| 头与腿相等。 | 1 | equality | S2T94 |
+| 头与腿相等。 | 1 | equality | S2T78 |
 | 头和尾巴一样长，脖子长于腿。 | 1 | equality | S1T73 |
 | 头和尾巴加起来短于脖子和躯干，也短于脖子和腿。 | 1 | body_ref, group_sum | S1T58 |
 | 头和尾巴差不多，腿和脖子差不多。 | 1 | equality | S1T54 |
@@ -1522,7 +1521,7 @@
 | 头和脖子比躯干长。 | 1 | body_ref | S1T87 |
 | 头和脖子短于尾巴和躯干和腿。 | 1 | body_ref | S1T20 |
 | 头和腿差不多，尾巴和脖子差不多。 | 1 | equality | S1T193 |
-| 头和腿是短于躯干的。 | 1 | body_ref | S2T187 |
+| 头和腿是短于躯干的。 | 1 | body_ref | S2T171 |
 | 头和腿短于躯干，脖子和尾巴长于躯干。 | 1 | body_ref | S1T143 |
 | 头和腿短于躯干，脖子长于躯干。 | 1 | body_ref | S1T141 |
 | 头和腿长度差不多，脖子和尾巴长度差不多。 | 1 | equality | S1T64 |
@@ -1566,14 +1565,13 @@
 低忠实率对应试次（fidelity < 0.5）：
 | text | count | mean_fidelity | sample_failed_claims | sample_trials |
 | --- | --- | --- | --- | --- |
-| 头和腿都短于躯干。 | 8 | 0.000 | body_ref:头 < 0.50; body_ref:腿 < 0.50 | S1T252, S1T307, S1T308, S1T318, S2T39, S2T75, S2T119, S2T130 |
-| 头长于腿，头长于躯干。 | 3 | 0.000 | comparison:头 > 腿; body_ref:头 > 0.50 | S2T72, S2T73, S2T77 |
-| 头短于躯干。 | 2 | 0.000 | body_ref:头 < 0.50 | S2T68, S2T114 |
-| 头与腿相等。 | 1 | 0.000 | equality_range:头+腿 = | S2T94 |
+| 头和腿都短于躯干。 | 7 | 0.000 | body_ref:头 < 0.50; body_ref:腿 < 0.50 | S1T252, S1T307, S1T308, S1T318, S2T39, S2T103, S2T114 |
+| 头与腿相等。 | 1 | 0.000 | equality_range:头+腿 = | S2T78 |
 | 头和脖子差不多。 | 1 | 0.000 | equality_range:头+脖子 = | S1T39 |
 | 头和腿短于躯干。 | 1 | 0.000 | body_ref:头 < 0.50; body_ref:腿 < 0.50 | S2T60 |
 | 头比脖子短。 | 1 | 0.000 | comparison:头 < 脖子 | S1T77 |
 | 头短于其他部位。 | 1 | 0.000 | comparison:头 < 脖子+腿+尾巴 | S1T112 |
+| 头短于躯干。 | 1 | 0.000 | body_ref:头 < 0.50 | S2T98 |
 | 头长于腿，头短于躯干。 | 1 | 0.000 | comparison:头 > 腿; body_ref:头 < 0.50 | S1T234 |
 | 脖子比较长。 | 1 | 0.000 | absolute_long:脖子 > 0.50 | S1T11 |
 | 脖子比较长，跟腿差不多，也跟躯干差不多。 | 1 | 0.000 | absolute_long:脖子 > 0.50 | S1T9 |
@@ -2529,7 +2527,7 @@
 ### S203
 
 - trial 数: 832; 非空文本: 807; fidelity 可评分率: 0.968; 平均 fidelity: 0.937; 完全忠实率: 0.778; 低 fidelity 率: 0.008.
-- 旧版 region 覆盖率: 0.968; 旧版 region 有未处理片段率: 0.013.
+- 旧版 region 覆盖率: 0.968; 旧版 region 有未处理片段率: 0.012.
 
 汇报风格标签：
 | style | count | rate |
@@ -3245,8 +3243,8 @@
 
 ### S210
 
-- trial 数: 1728; 非空文本: 1703; fidelity 可评分率: 0.922; 平均 fidelity: 0.932; 完全忠实率: 0.785; 低 fidelity 率: 0.035.
-- 旧版 region 覆盖率: 0.922; 旧版 region 有未处理片段率: 0.070.
+- trial 数: 1728; 非空文本: 1703; fidelity 可评分率: 0.922; 平均 fidelity: 0.921; 完全忠实率: 0.740; 低 fidelity 率: 0.035.
+- 旧版 region 覆盖率: 0.922; 旧版 region 有未处理片段率: 0.069.
 
 汇报风格标签：
 | style | count | rate |
@@ -3503,6 +3501,7 @@
 | 头，尾巴最短。 | 1 | 0.333 | superlative:尾巴 < 脖子; superlative:尾巴 < 腿 | S3T168 |
 | 尾巴最短，头最长。 | 1 | 0.333 | superlative:尾巴 < 脖子; superlative:尾巴 < 头; superlative:尾巴 < 腿; superlative:头 > 尾巴 | S4T21 |
 | 腿是最长。 | 1 | 0.333 | superlative:腿 > 脖子; superlative:腿 > 头 | S1T199 |
+| 头长于脖子、长于尾巴、长于腿。 | 1 | 0.400 | absolute_long:头 > 0.50; absolute_long:脖子 > 0.50; comparison:头+脖子 > 尾巴; absolute_long:尾巴 > 0.50 | S4T28 |
 
 ### S211
 
@@ -4375,7 +4374,7 @@
 
 ### S218
 
-- trial 数: 1664; 非空文本: 1658; fidelity 可评分率: 0.978; 平均 fidelity: 0.923; 完全忠实率: 0.773; 低 fidelity 率: 0.019.
+- trial 数: 1664; 非空文本: 1658; fidelity 可评分率: 0.978; 平均 fidelity: 0.923; 完全忠实率: 0.772; 低 fidelity 率: 0.019.
 - 旧版 region 覆盖率: 0.978; 旧版 region 有未处理片段率: 0.065.
 
 汇报风格标签：
@@ -4607,7 +4606,7 @@
 
 ### S220
 
-- trial 数: 1408; 非空文本: 1406; fidelity 可评分率: 0.984; 平均 fidelity: 0.885; 完全忠实率: 0.771; 低 fidelity 率: 0.067.
+- trial 数: 1408; 非空文本: 1406; fidelity 可评分率: 0.984; 平均 fidelity: 0.885; 完全忠实率: 0.770; 低 fidelity 率: 0.067.
 - 旧版 region 覆盖率: 0.984; 旧版 region 有未处理片段率: 0.058.
 
 汇报风格标签：
@@ -6196,7 +6195,7 @@
 ### S301
 
 - trial 数: 640; 非空文本: 640; fidelity 可评分率: 1.000; 平均 fidelity: 0.895; 完全忠实率: 0.759; 低 fidelity 率: 0.022.
-- 旧版 region 覆盖率: 1.000; 旧版 region 有未处理片段率: 0.056.
+- 旧版 region 覆盖率: 1.000; 旧版 region 有未处理片段率: 0.052.
 
 汇报风格标签：
 | style | count | rate |
@@ -6531,7 +6530,7 @@
 ### S306
 
 - trial 数: 768; 非空文本: 768; fidelity 可评分率: 1.000; 平均 fidelity: 0.916; 完全忠实率: 0.809; 低 fidelity 率: 0.016.
-- 旧版 region 覆盖率: 1.000; 旧版 region 有未处理片段率: 0.048.
+- 旧版 region 覆盖率: 1.000; 旧版 region 有未处理片段率: 0.047.
 
 汇报风格标签：
 | style | count | rate |
@@ -6674,7 +6673,7 @@
 
 ### S307
 
-- trial 数: 704; 非空文本: 702; fidelity 可评分率: 0.996; 平均 fidelity: 0.932; 完全忠实率: 0.817; 低 fidelity 率: 0.007.
+- trial 数: 704; 非空文本: 702; fidelity 可评分率: 0.996; 平均 fidelity: 0.928; 完全忠实率: 0.795; 低 fidelity 率: 0.011.
 - 旧版 region 覆盖率: 0.996; 旧版 region 有未处理片段率: 0.013.
 
 汇报风格标签：
@@ -6762,13 +6761,15 @@
 | text | count | mean_fidelity | sample_failed_claims | sample_trials |
 | --- | --- | --- | --- | --- |
 | 脖子和头差不多长。 | 2 | 0.000 | equality_range:脖子+头 = | S1T34, S1T35 |
+| 脖子短于头、等于尾巴。 | 2 | 0.400 | chained_comparison:脖子 = 尾巴; absolute_short:头 < 0.50; comparison:脖子+头 = 尾巴 | S1T291, S1T316 |
 | 头和脖子差不多长。 | 1 | 0.000 | equality_range:头+脖子 = | S1T51 |
 | 头比脖子长一点。 | 1 | 0.000 | comparison:头 > 脖子 | S1T142 |
+| 尾巴短于脖子、短于头。 | 1 | 0.400 | comparison:尾巴 < 脖子; absolute_short:尾巴 < 0.50; absolute_short:脖子 < 0.50 | S1T319 |
 | 脖子中等，头较长，尾巴较长，腿较长。 | 1 | 0.400 | absolute:脖子 middle_lower; absolute_long:头 > 0.50; absolute_long:腿 > 0.50 | S2T190 |
 
 ### S308
 
-- trial 数: 896; 非空文本: 889; fidelity 可评分率: 0.978; 平均 fidelity: 0.905; 完全忠实率: 0.768; 低 fidelity 率: 0.028.
+- trial 数: 896; 非空文本: 889; fidelity 可评分率: 0.978; 平均 fidelity: 0.904; 完全忠实率: 0.767; 低 fidelity 率: 0.028.
 - 旧版 region 覆盖率: 0.978; 旧版 region 有未处理片段率: 0.030.
 
 汇报风格标签：
@@ -7853,8 +7854,8 @@
 
 ### S314
 
-- trial 数: 832; 非空文本: 828; fidelity 可评分率: 0.981; 平均 fidelity: 0.369; 完全忠实率: 0.150; 低 fidelity 率: 0.411.
-- 旧版 region 覆盖率: 0.981; 旧版 region 有未处理片段率: 0.028.
+- trial 数: 832; 非空文本: 828; fidelity 可评分率: 0.981; 平均 fidelity: 0.372; 完全忠实率: 0.149; 低 fidelity 率: 0.410.
+- 旧版 region 覆盖率: 0.981; 旧版 region 有未处理片段率: 0.026.
 
 汇报风格标签：
 | style | count | rate |
@@ -7987,9 +7988,9 @@
 | 躯干短于脖子，且头长于尾巴。 | 2 | 0.000 | body_ref:脖子 < 0.50; comparison:头 > 尾巴 | S1T195, S2T68 |
 | 躯干短于脖子，且长于尾巴。 | 2 | 0.000 | body_ref:脖子 < 0.50 | S3T136, S3T140 |
 | 躯干长于尾巴。 | 2 | 0.000 | body_ref:尾巴 > 0.50 | S1T131, S1T132 |
-| 躯干长于脖子、短于腿。 | 2 | 0.000 | body_ref:脖子 > 0.50; body_ref:腿 > 0.50 | S3T159, S3T186 |
 | 躯干长于脖子，且脖子短于尾巴。 | 2 | 0.000 | body_ref:脖子 > 0.50; comparison:脖子 < 尾巴 | S2T252, S2T272 |
 | 躯干长于脖子，且躯干长于尾巴。 | 2 | 0.000 | body_ref:脖子 > 0.50; body_ref:尾巴 > 0.50 | S2T119, S2T121 |
+| 躯干长于脖子、短于腿。 | 2 | 0.250 | body_ref:脖子 > 0.50; body_ref:腿 > 0.50; absolute_long:脖子 > 0.50 | S3T159, S3T186 |
 | 头长于腿，脖子短于尾巴。 | 1 | 0.000 | comparison:头 > 腿; comparison:脖子 < 尾巴 | S1T119 |
 | 腿比躯干短。 | 1 | 0.000 | body_ref:腿 < 0.50 | S1T52 |
 | 躯干短于脖子，且头短于尾巴。 | 1 | 0.000 | body_ref:脖子 < 0.50; comparison:头 < 尾巴 | S3T19 |
@@ -7999,7 +8000,6 @@
 | 躯干短于脖子，且腿短于尾巴。 | 1 | 0.000 | body_ref:脖子 < 0.50; comparison:腿 < 尾巴 | S1T218 |
 | 躯干短于脖子，且躯干长短于尾巴。 | 1 | 0.000 | body_ref:脖子 < 0.50; body_ref:尾巴 < 0.50 | S3T118 |
 | 躯干短脖子和尾巴。 | 1 | 0.000 | absolute_short:脖子 < 0.50; absolute_short:尾巴 < 0.50 | S3T150 |
-| 躯干长于脖子、长于腿。 | 1 | 0.000 | body_ref:脖子 > 0.50; body_ref:腿 > 0.50 | S1T55 |
 | 躯干长于脖子，且头短于尾巴。 | 1 | 0.000 | body_ref:脖子 > 0.50; comparison:头 < 尾巴 | S1T214 |
 | 躯干长于脖子，且头长于尾巴。 | 1 | 0.000 | body_ref:脖子 > 0.50; comparison:头 > 尾巴 | S1T212 |
 | 躯干长于脖子，且脖子长于腿。 | 1 | 0.000 | body_ref:脖子 > 0.50; comparison:脖子 > 腿 | S2T14 |
@@ -8007,8 +8007,8 @@
 | 躯干长于脖子，且躯干短于尾巴。 | 1 | 0.000 | body_ref:脖子 > 0.50; body_ref:尾巴 < 0.50 | S3T103 |
 | 躯干长于脖子，且躯干长于尾盘。 | 1 | 0.000 | body_ref:脖子 > 0.50; body_ref:尾巴 > 0.50 | S2T120 |
 | 躯干长于脖子，躯干长于腿。 | 1 | 0.000 | body_ref:脖子 > 0.50; body_ref:腿 > 0.50 | S3T109 |
+| 躯干长于脖子、长于腿。 | 1 | 0.250 | body_ref:脖子 > 0.50; body_ref:腿 > 0.50; absolute_long:脖子 > 0.50 | S1T55 |
 | 脖子长于腿，且头长约尾巴。 | 1 | 0.333 | absolute_long:头 > 0.50; absolute_long:尾巴 > 0.50 | S1T8 |
-| 脖子长于躯干、长于头、长于腿。 | 1 | 0.333 | body_ref:头 > 0.50; body_ref:腿 > 0.50 | S1T65 |
 | 躯干长于脖子，且脖躯干短于腿。 | 1 | 0.333 | body_ref:脖子 > 0.50; body_ref:腿 < 0.50 | S2T308 |
 
 ### S315
@@ -8354,12 +8354,12 @@
 | 脖子短，尾巴长。 | 1 | 0.000 | absolute_short:脖子 < 0.50; absolute_long:尾巴 > 0.50 | S2T64 |
 | 腿和尾巴长度相等。 | 1 | 0.000 | equality_range:腿+尾巴 = | S2T73 |
 | 腿等于躯干。 | 1 | 0.000 | body_ref:腿 = 0.50 | S2T157 |
-| 尾巴小于头、小于脖子、小于腿。 | 1 | 0.333 | comparison:尾巴 < 头; chained_comparison:尾巴 < 脖子 | S1T2 |
-| 尾巴小于头、等于脖子、等于腿。 | 1 | 0.333 | chained_comparison:尾巴 = 脖子; chained_comparison:尾巴 = 腿 | S1T7 |
-| 尾巴等于脖子、等于头、等于腿。 | 1 | 0.333 | comparison:尾巴 = 脖子; chained_comparison:尾巴 = 腿 | S1T217 |
+| 尾巴小于头、等于脖子、等于腿。 | 1 | 0.200 | chained_comparison:尾巴 = 脖子; chained_comparison:尾巴 = 腿; comparison:尾巴+头 = 脖子; comparison:尾巴+头+脖子 = 腿 | S1T7 |
+| 尾巴等于脖子、等于头、等于腿。 | 1 | 0.200 | comparison:尾巴 = 脖子; chained_comparison:尾巴 = 腿; comparison:尾巴+脖子 = 头; comparison:尾巴+脖子+头 = 腿 | S1T217 |
 | 脖子和腿短于躯干，头长于躯干。 | 1 | 0.333 | body_ref:脖子 < 0.50; body_ref:腿 < 0.50 | S3T101 |
 | 脖子是最长的部位。 | 1 | 0.333 | superlative:脖子 > 腿; superlative:脖子 > 尾巴 | S2T180 |
 | 腿最短。 | 1 | 0.333 | superlative:腿 < 脖子; superlative:腿 < 尾巴 | S2T169 |
+| 尾巴小于头、小于脖子、小于腿。 | 1 | 0.400 | comparison:尾巴 < 头; chained_comparison:尾巴 < 脖子; comparison:尾巴+头 < 脖子 | S1T2 |
 
 ### S318
 

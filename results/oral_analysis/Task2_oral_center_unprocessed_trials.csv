@@ -670,7 +670,6 @@ center,203,1,15,身体各个部位都很匀称。,['身体各个部位都很匀�
 center,203,1,30,腿很长，颈部也很短。,['颈部也很短'],颈部也很短,1,other_unparsed,"[0.5, 0.5, 0.75, 0.5]",1.0,ok,['direct_absolute']
 center,203,1,37,腿很长，头很短，脖子和尾巴长度对称。,['脖子和尾巴长度对称'],脖子和尾巴长度对称,1,other_unparsed,"[0.5, 0.25, 0.75, 0.5]",1.0,ok,['direct_absolute']
 center,203,1,97,头和尾巴均长于脖子，腿很短。,['头和尾巴均长于脖子'],头和尾巴均长于脖子,1,other_unparsed,"[0.5, 0.5, 0.25, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
-center,203,1,107,头显著短、短于脖子，尾巴很长，腿很短。,['头显著短、短于脖子'],头显著短、短于脖子,1,other_unparsed,"[0.5, 0.5, 0.25, 0.75]",0.5,mismatch,"['direct_absolute', 'comparison']"
 center,203,1,109,脖子长于头和尾巴，但都它们都很长，腿很短。,['但都它们都很长'],但都它们都很长,1,other_unparsed,"[0.6666666666666666, 0.3333333333333333, 0.25, 0.3333333333333333]",1.0,ok,"['direct_absolute', 'comparison']"
 center,203,1,137,头和尾巴很长，长于脖子，长于腿。,"['长于脖子', '长于腿']",长于脖子；长于腿,2,other_unparsed,"[0.5, 0.75, 0.5, 0.75]",1.0,ok,"['direct_absolute', 'comparison']"
 center,203,1,155,尾巴很长，头最短，躯干中等。,['躯干中等'],躯干中等,1,body_geometry,"[0.8, 0.4000000000000001, 0.8, 0.775]",1.0,ok,"['direct_absolute', 'superlative', 'body_ref']"
@@ -896,7 +895,6 @@ center,210,3,216,有三个部位长度一样。,['有三个部位长度一样'],
 center,210,3,229,长度差不多。,['长度差不多'],长度差不多,1,global_balance,"[None, None, None, None]",,unsupported,"['direct_absolute', 'equality']"
 center,210,3,236,有三个部位长度一样。,['有三个部位长度一样'],有三个部位长度一样,1,count_abstract,"[None, None, None, None]",,unsupported,"['direct_absolute', 'equality', 'count_abstract']"
 center,210,4,9,头和尾巴长度一样，都最短，腿第二短，脖子很长。,['都最短'],都最短,1,other_unparsed,"[0.75, 0.5, 0.5, 0.5]",1.0,ok,"['direct_absolute', 'superlative', 'equality', 'ranking']"
-center,210,4,30,头和脖子最长，长于腿、长于尾巴。,['长于腿、长于尾巴'],长于腿、长于尾巴,1,other_unparsed,"[0.8000000000000002, 0.4, 0.4, 0.4]",0.6666666666666666,mismatch,"['direct_absolute', 'superlative', 'comparison']"
 center,210,4,51,三个部位长度相似。,['三个部位长度相似'],三个部位长度相似,1,count_abstract,"[None, None, None, None]",,unsupported,"['direct_absolute', 'equality', 'count_abstract']"
 center,210,4,79,长度相似，脖子最短。,['长度相似'],长度相似,1,other_unparsed,"[0.4000000000000001, 0.8, 0.8, 0.8]",1.0,ok,"['direct_absolute', 'superlative', 'equality']"
 center,210,4,82,三个部位，长最长，尾巴最短。,"['三个部位', '长最长']",三个部位；长最长,2,count_abstract,"[0.8, 0.8, 0.8, 0.4000000000000001]",1.0,ok,"['direct_absolute', 'superlative', 'count_abstract']"
@@ -1770,11 +1768,8 @@ center,301,1,72,腿很长，头和脖子相近，也都比较长。,['也都比�
 center,301,1,78,头和脖子非常长，均比腿长。,['均比腿长'],均比腿长,1,other_unparsed,"[0.75, 0.75, 0.5, 0.5]",0.5,mismatch,"['direct_absolute', 'comparison']"
 center,301,1,94,腿很长，其余三个部位较长，长度相近。,['长度相近'],长度相近,1,other_unparsed,"[0.75, 0.75, 0.75, 0.75]",0.5,mismatch,"['direct_absolute', 'equality', 'count_abstract']"
 center,301,1,97,头和脖子较长，均比腿长，尾巴较短。,['均比腿长'],均比腿长,1,other_unparsed,"[0.75, 0.75, 0.5, 0.25]",0.6666666666666666,mismatch,"['direct_absolute', 'comparison']"
-center,301,1,100,脖子非常长、长于尾巴，头极短，腿极短。,['脖子非常长、长于尾巴'],脖子非常长、长于尾巴,1,other_unparsed,"[0.5, 0.25, 0.25, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
 center,301,1,102,腿较长，脖子相对较长、比头长。,['脖子相对较长、比头长'],脖子相对较长、比头长,1,other_unparsed,"[0.5, 0.5, 0.75, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
-center,301,1,105,脖子非常长、长于头，腿较长，尾巴较短。,['脖子非常长、长于头'],脖子非常长、长于头,1,other_unparsed,"[0.5, 0.5, 0.75, 0.25]",1.0,ok,"['direct_absolute', 'comparison']"
 center,301,1,110,头和脖子很长，腿也很长，三者长度相近。,['三者长度相近'],三者长度相近,1,other_unparsed,"[0.75, 0.75, 0.75, 0.5]",1.0,ok,"['direct_absolute', 'equality']"
-center,301,1,112,脖子很长、长于头，腿较长。,['脖子很长、长于头'],脖子很长、长于头,1,other_unparsed,"[0.5, 0.5, 0.75, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
 center,301,1,114,脖子非常长，其余三个部位较长，长度相近。,['长度相近'],长度相近,1,other_unparsed,"[0.75, 0.75, 0.75, 0.75]",0.75,mismatch,"['direct_absolute', 'equality', 'count_abstract']"
 center,301,1,133,头很长、比脖子长一些，尾巴和腿相对中等。,['头很长、比脖子长一些'],头很长、比脖子长一些,1,other_unparsed,"[0.5, 0.5, 0.5, 0.5]",0.75,mismatch,"['direct_absolute', 'comparison']"
 center,301,1,138,尾巴很长，头很长，两者长度相近，腿很短。,['两者长度相近'],两者长度相近,1,other_unparsed,"[0.5, 0.75, 0.25, 0.75]",1.0,ok,"['direct_absolute', 'equality']"
@@ -1881,8 +1876,7 @@ center,306,2,18,腿较长，尾巴较短，头和脖子长度接近，较长。,
 center,306,2,22,腿较短，尾巴短，头，和脖子较长，脖子比头长一些。,['头'],头,1,other_unparsed,"[0.7083333333333333, 0.3333333333333333, 0.25, 0.25]",0.75,mismatch,"['direct_absolute', 'comparison']"
 center,306,2,36,腿较短，其他三者较长，且长度接近。,['且长度接近'],且长度接近,1,other_unparsed,"[0.75, 0.75, 0.25, 0.75]",1.0,ok,"['direct_absolute', 'equality']"
 center,306,2,37,腿较短，脖子较短，头和尾巴长度接近，较长。,['较长'],较长,1,other_unparsed,"[0.25, 0.5, 0.25, 0.5]",1.0,ok,"['direct_absolute', 'equality']"
-center,306,2,42,腿较长，头较长、略长于脖子，脖子长度略短于尾巴。,"['头较长、略长于脖子', '脖子长度略短于尾巴']",头较长、略长于脖子；脖子长度略短于尾巴,2,other_unparsed,"[0.5, 0.5, 0.75, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
-center,306,2,43,腿较短，头较长、略长于尾巴，脖子较短。,['头较长、略长于尾巴'],头较长、略长于尾巴,1,other_unparsed,"[0.25, 0.5, 0.25, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
+center,306,2,42,腿较长，头较长、略长于脖子，脖子长度略短于尾巴。,['脖子长度略短于尾巴'],脖子长度略短于尾巴,1,other_unparsed,"[0.3333333333333333, 0.7083333333333333, 0.75, 0.5]",1.0,ok,"['direct_absolute', 'comparison']"
 center,306,2,66,腿短，尾巴长，头和脖子，也都很长。,"['头和脖子', '也都很长']",头和脖子；也都很长,2,other_unparsed,"[0.5, 0.5, 0.25, 0.75]",1.0,ok,['direct_absolute']
 center,306,2,83,腿很长，脖子，头较短，尾巴适中。,['脖子'],脖子,1,other_unparsed,"[0.5, 0.25, 0.75, 0.5]",1.0,ok,['direct_absolute']
 center,306,2,95,腿长，头，较长。,"['头', '较长']",头；较长,2,other_unparsed,"[0.5, 0.5, 0.75, 0.5]",1.0,ok,['direct_absolute']
@@ -2038,7 +2032,6 @@ center,314,1,42,朝向向左。,['朝向向左'],朝向向左,1,other_unparsed,"
 center,314,1,43,有一个部位比躯干长。,['有一个部位比躯干长'],有一个部位比躯干长,1,"count_abstract, body_geometry","[None, None, None, None]",,unsupported,"['direct_absolute', 'comparison', 'body_ref', 'count_abstract']"
 center,314,1,44,有一个部位比躯干长。,['有一个部位比躯干长'],有一个部位比躯干长,1,"count_abstract, body_geometry","[None, None, None, None]",,unsupported,"['direct_absolute', 'comparison', 'body_ref', 'count_abstract']"
 center,314,1,45,有一个部位比躯干长。,['有一个部位比躯干长'],有一个部位比躯干长,1,"count_abstract, body_geometry","[None, None, None, None]",,unsupported,"['direct_absolute', 'comparison', 'body_ref', 'count_abstract']"
-center,314,1,67,脖子长于头、长于躯干，长于尾巴、长于腿。,['长于尾巴、长于腿'],长于尾巴、长于腿,1,other_unparsed,"[0.7083333333333333, 0.5416666666666666, 0.5, 0.5]",1.0,ok,"['direct_absolute', 'comparison', 'body_ref']"
 center,314,1,68,腿长于头、长于躯干，长于脖子。,['长于脖子'],长于脖子,1,other_unparsed,"[0.5, 0.5416666666666666, 0.7083333333333333, 0.5]",1.0,ok,"['direct_absolute', 'comparison', 'body_ref']"
 center,314,2,290,去干长于脖子，且去干长于腿。,"['去干长于脖子', '且去干长于腿']",去干长于脖子；且去干长于腿,2,other_unparsed,"[None, None, None, None]",,unsupported,"['direct_absolute', 'comparison']"
 center,314,3,84,去干短于脖子，且去干短于尾巴。,"['去干短于脖子', '且去干短于尾巴']",去干短于脖子；且去干短于尾巴,2,other_unparsed,"[None, None, None, None]",,unsupported,"['direct_absolute', 'comparison']"
