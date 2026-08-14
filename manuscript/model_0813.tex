@@ -1,0 +1,438 @@
+% 这一文件是一段可嵌入主文稿的中文模型说明。
+% 公式和参数均对应固定标签规则空间上的正式实现；正文不使用开发代号。
+
+\subsubsection{动态规则学习模型}
+
+模型把每一次分类选择看成一条规则的执行结果。学习者不会同时比较所有可能规则，而是在一个容量有限的工作空间中保留少量候选规则，并从中选出一条规则实际作答。反馈一方面改变模型对候选规则的信念，另一方面改变执行规则的确信度；连续的错误会推动规则搜索，连续的正确则会抑制搜索并稳定当前选择。同一个外显选择可能由不同的内部知觉、候选规则和执行规则产生，而这些隐藏状态还会随试次累积成许多可能的历史。只保留一条随机生成的历史，会把未知状态误当成已知；穷举所有历史，计算量又会随试次迅速增长。因此，我们用粒子滤波保留一组有代表性的潜在轨迹，并对它们的预测求平均，得到每个试次的选择概率。完整的逐试次流程见图 \ref{fig:dynamic-rule-framework}。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{figures/model_0813_framework.png}
+    \caption{动态规则学习模型的逐试次框架。上半部分表示作答前的生成过程：物理刺激经过个体化知觉后，每个粒子依据历史状态调节规则搜索，在有限工作空间中保留候选规则，并由一条执行规则产生选择概率。粒子滤波对这些潜在路径求边际，得到可观察的选择预测。下半部分表示观察选择与反馈后的更新：反馈支持进入双通道记忆，同时更新失败压力、掌握证据和执行规则的确信度，所有更新从下一试次开始生效。实线表示试次内流程，虚线表示跨试次递归。}
+    \label{fig:dynamic-rule-framework}
+\end{figure}
+
+
+\subsubsection{任务输入与规则表示}
+
+\paragraph{逐试次输入。}
+对被试 $s$ 的第 $t$ 个试次，物理刺激记为
+$\mathbf x_t\in[0,1]^4$，被试选择记为 $y_t\in\{1,2\}$，反馈记为
+$r_t\in\{0,1\}$。模型拟合只使用刺激、选择和反馈。口头报告不进入参数拟合，而是在拟合完成后用于检验模型内部规则是否与被试报告的规则相符。
+
+\paragraph{候选规则空间。}
+全部候选规则组成集合
+\begin{equation}
+\mathcal H=\{1,\ldots,J\},
+\qquad J=4+6+6+3+6+4=29.
+\label{eq:dynamic-rule-space}
+\end{equation}
+这 29 条规则包括 4 条单维阈值规则 $x_i=0.5$、6 条成对顺序规则
+$x_i=x_j$、6 条成对和阈值规则 $x_i+x_j=1$、3 条两组和顺序规则
+$x_i+x_j=x_k+x_l$、6 条成对近似规则，以及 4 条单维中等值规则。每条规则都带有任务给定的固定类别标签，因此同一个几何划分不会再复制一条标签反转规则。
+
+成对近似规则把“两项特征足够接近”分到第一类：
+\begin{align}
+R_1^{\mathrm{pair}}(i,j)
+&=\{\mathbf x:|x_i-x_j|\leq\delta_{\mathrm{pair}}\},
+\nonumber\\
+R_2^{\mathrm{pair}}(i,j)
+&=[0,1]^4\setminus R_1^{\mathrm{pair}}(i,j).
+\label{eq:dynamic-pair-band}
+\end{align}
+单维中等值规则把“某项特征接近中点”分到第一类：
+\begin{align}
+R_1^{\mathrm{center}}(i)
+&=\{\mathbf x:|x_i-0.5|\leq\delta_{\mathrm{center}}\},
+\nonumber\\
+R_2^{\mathrm{center}}(i)
+&=[0,1]^4\setminus R_1^{\mathrm{center}}(i).
+\label{eq:dynamic-center-band}
+\end{align}
+两个半宽都设为 $0.10$。这些规则表达的是一个特殊关系是否成立，所以两侧区域不必具有相同体积。
+
+\paragraph{有限工作空间与执行规则。}
+第 $t$ 个试次开始时，模型只保留一个容量为 $M_s$ 的活跃工作空间
+\begin{equation}
+A_{s,t}\subset\mathcal H,
+\qquad |A_{s,t}|=M_s.
+\label{eq:dynamic-active-set}
+\end{equation}
+$A_{s,t}$ 是模型正在考虑的候选池。它并不表示这些规则被同时用于作答。每条潜在轨迹还保存一条执行规则
+\begin{equation}
+e_{s,t}\in A_{s,t},
+\label{eq:dynamic-executed-rule}
+\end{equation}
+而当前选择只由 $e_{s,t}$ 产生。这个区分很重要：学习者可以在内部搜索其他规则，同时继续按原有规则作答。
+
+
+\subsubsection{从刺激到规则条件选择概率}
+
+\paragraph{个体化知觉。}
+模型先把物理刺激转换为内部感知刺激：
+\begin{equation}
+\widetilde x_{t,j}
+=\operatorname{clip}(x_{t,j}+\varepsilon_{s,t,j},0,1).
+\label{eq:dynamic-perception}
+\end{equation}
+噪声参数来自正式学习前的知觉校准，并按照每名被试在学习任务中实际看到的特征顺序重排。根据校准任务，$\varepsilon_{s,t,j}$ 可以服从带有个体化均值和标准差的正态分布，也可以服从由个体判断阈限决定的均匀分布。这样，同一个物理刺激在不同被试或不同粒子中可以产生略有差异的内部表征。
+
+\paragraph{类别距离与选择概率。}
+每条规则把四维特征空间分成两个类别区域。正式拟合采用原型距离：每个连通类别区域的原型由该区域的体积质心自动得到；如果一个类别区域由多个不连通部分组成，每个部分都有自己的原型。令 $d_{t,h,c}$ 表示感知刺激到规则 $h$ 下类别 $c$ 最近原型的距离，则规则条件类别概率为
+\begin{equation}
+q_{t,h}(c)
+=
+\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{c'=1}^{2}\exp[-\beta_t(h)d_{t,h,c'}]}.
+\label{eq:dynamic-rule-choice}
+\end{equation}
+$\beta_t(h)$ 是规则 $h$ 的逆温度，也就是该规则的确信度。$\beta_t(h)$ 越大，模型越倾向于选择距离更近的类别；$\beta_t(h)$ 越小，两个类别的概率越接近。
+
+\paragraph{反馈对规则的支持。}
+规则 $h$ 对当前选择与反馈的支持程度为
+\begin{equation}
+\ell_t(h)
+=r_tq_{t,h}(y_t)
++(1-r_t)\bigl[1-q_{t,h}(y_t)\bigr].
+\label{eq:dynamic-feedback-support}
+\end{equation}
+如果反馈正确，能够预测被选类别的规则得到较高支持；如果反馈错误，倾向于预测另一个类别的规则得到较高支持。模型再在规则空间中归一化这一支持，得到供记忆模块使用的似然 $L_t(h)$。
+
+
+\subsubsection{双通道记忆与规则信念}
+
+单纯累积全部历史证据会让早期经验长期占据过大权重，只看最近几个试次又会使信念过于不稳定。因此，模型同时维护近期证据和长期证据。对活跃规则 $h$，两条对数记忆轨道更新为
+\begin{align}
+D_t(h)
+&=\gamma D_t^{-}(h)+\alpha\log L_t(h),
+\nonumber\\
+C_t(h)
+&=C_t^{-}(h)+\alpha\log L_t(h).
+\label{eq:dynamic-dual-memory}
+\end{align}
+$D_t(h)$ 会以比例 $\gamma$ 衰减，因此更重视近期反馈；$C_t(h)$ 不衰减，因此保留累积证据。两条轨道合并后，反馈后的规则信念为
+\begin{equation}
+\pi_t^{+}(h)
+=
+\frac{\mathbb I(h\in A_t)
+\exp\{w_0C_t(h)+(1-w_0)D_t(h)\}}
+{\sum_{u\in A_t}
+\exp\{w_0C_t(u)+(1-w_0)D_t(u)\}}.
+\label{eq:dynamic-memory-posterior}
+\end{equation}
+拟合中使用 $\gamma=0.80$、$\alpha=1$ 和 $w_0=0.15$。因此，模型主要依赖近期证据，同时保留一条权重较小的长期轨道。规则进入或离开工作空间时，记忆状态会与迁移后的先验对齐，避免新规则只因没有历史记录就获得极端高或极端低的初始信念。
+
+
+\subsubsection{反馈如何控制规则搜索}
+
+\paragraph{失败压力与掌握证据。}
+模型用两个简单状态概括已经发生的反馈。失败压力 $F_t$ 较快地跟踪近期错误，掌握证据 $M_t$ 较慢地累积正确反馈：
+\begin{align}
+F_{t-1}
+&=\delta_FF_{t-2}+(1-\delta_F)(1-r_{t-1}),
+\nonumber\\
+M_{t-1}
+&=\delta_MM_{t-2}+(1-\delta_M)r_{t-1}.
+\label{eq:dynamic-failure-mastery}
+\end{align}
+参数设为 $\delta_F=0.60$ 和 $\delta_M=0.90$。因此，连续错误可以迅速提高失败压力，而稳定掌握需要较长的正确序列。
+
+\paragraph{是否搜索。}
+令 $\sigma(a)=(1+\exp[-a])^{-1}$。第 $t$ 个试次的搜索驱动力和目标搜索概率为
+\begin{align}
+d_t^E
+&=k_E(F_{t-1}-\theta_E)-w_MM_{t-1},
+\nonumber\\
+E_t^{\star}
+&=E_{\min}+(E_{\max}-E_{\min})\sigma(d_t^E).
+\label{eq:dynamic-exploration-target}
+\end{align}
+其中 $E_t$ 表示“至少搜索一次”的概率。模型使用
+$E_{\min}=0.05$、$E_{\max}=0.65$、$\theta_E=0.55$、
+$k_E=10$ 和 $w_M=1$。错误越多，$E_t^{\star}$ 越高；掌握证据越强，$E_t^{\star}$ 越低。
+
+实际搜索概率不会瞬间跳到目标值，而是平滑变化：
+\begin{equation}
+E_t=E_{t-1}+a_t^E(E_t^{\star}-E_{t-1}),
+\qquad
+a_t^E=
+\begin{cases}
+a_E^{\uparrow},&E_t^{\star}>E_{t-1},\\
+a_E^{\downarrow},&E_t^{\star}\leq E_{t-1}.
+\end{cases}
+\label{eq:dynamic-exploration-smoothing}
+\end{equation}
+$a_E^{\uparrow}=0.80$、$a_E^{\downarrow}=0.20$，所以模型会较快进入探索，但会较慢地恢复到稳定利用。
+
+\paragraph{搜索多远。}
+如果模型决定搜索，还要决定主要寻找相近规则还是较远规则。全局搜索比例 $g_t$ 的目标值为
+\begin{align}
+d_t^G
+&=k_G(F_{t-1}-\theta_G),
+\nonumber\\
+g_t^{\star}
+&=g_{\min}+(g_{\max}-g_{\min})\sigma(d_t^G).
+\label{eq:dynamic-global-target}
+\end{align}
+$g_t$ 使用与式 \ref{eq:dynamic-exploration-smoothing} 相同的非对称平滑更新。参数为
+$g_{\min}=0.05$、$g_{\max}=0.80$、$\theta_G=0.75$、$k_G=12$，进入和恢复速率分别为 $0.80$ 与 $0.20$。因为全局搜索的失败门槛更高，少量错误通常只增加局部搜索，持续错误才会明显扩大搜索范围。
+
+这两个控制量可以直接写成三个互斥策略的概率：
+\begin{align}
+P_t(\text{利用})&=1-E_t,
+\nonumber\\
+P_t(\text{局部探索})&=E_t(1-g_t),
+\nonumber\\
+P_t(\text{全局探索})&=E_tg_t.
+\label{eq:dynamic-strategy-decomposition}
+\end{align}
+三项之和始终为 1。这里的“利用”和“探索”是连续变化的控制概率，而不是几个固定阶段标签。
+
+
+\subsubsection{有限工作空间中的规则替换}
+
+\paragraph{从搜索概率到替换数量。}
+执行规则占用并保护一个工作空间槽位，搜索只发生在其余 $M_s-1$ 个槽位。每个可搜索槽位的替换率为
+\begin{equation}
+m_t^{\mathrm{search}}
+=1-(1-E_t)^{1/(M_s-1)},
+\qquad
+K_t\sim\operatorname{Binomial}(M_s-1,m_t^{\mathrm{search}}).
+\label{eq:dynamic-protected-search}
+\end{equation}
+这一换算保证无论工作空间容量是多少，发生至少一次替换的概率都等于 $E_t$。因此，容量较大的工作空间不会仅仅因为槽位更多就显得更爱探索。
+
+\paragraph{哪些规则离开。}
+执行规则不会被内部搜索直接删除。对其余活跃规则，后验较低的规则更容易离开：
+\begin{equation}
+P(h\text{ 被选中离开})
+\propto 1-\pi_{t-1}^{+}(h)+\epsilon.
+\label{eq:dynamic-drop-rule}
+\end{equation}
+模型按这个权重进行不放回抽样，而不是确定性地删除后验最低的规则。
+
+\paragraph{新规则从哪里来。}
+设基础先验为 $p_0(u)$，两条规则的距离为
+$d(h,u)=\operatorname{clip}[1-\operatorname{sim}(h,u),0,1]$。相似度由两条固定标签规则在特征空间中的分类一致程度得到。以旧规则 $h$ 为中心的局部搜索核为
+\begin{equation}
+K_L(u\mid h)
+\propto p_0(u)\exp[-d(h,u)/\tau_L],
+\qquad u\ne h.
+\label{eq:dynamic-local-kernel}
+\end{equation}
+在非活跃规则集合 $I_{t-1}$ 上，局部候选分布、全局候选分布及两者的混合分别为
+\begin{align}
+Q_{L,t}(u)
+&\propto
+\mathbb I(u\in I_{t-1})
+\sum_{h\in A_{t-1}}\pi_{t-1}^{+}(h)K_L(u\mid h),
+\nonumber\\
+Q_{G,t}(u)
+&\propto\mathbb I(u\in I_{t-1})p_0(u),
+\nonumber\\
+Q_t(u)
+&=(1-g_t)Q_{L,t}(u)+g_tQ_{G,t}(u).
+\label{eq:dynamic-newcomer-proposal}
+\end{align}
+模型从 $Q_t$ 中不放回抽取 $K_t$ 条新规则。$g_t$ 较小时，新规则通常与高信念旧规则相近；$g_t$ 较大时，搜索更接近整个规则空间上的基础先验。
+
+\paragraph{新旧规则之间的信念迁移。}
+每条离开的规则 $d_j$ 与一条新规则 $n_j$ 配对。新规则继承离开规则的先验质量：
+\begin{align}
+\pi_t^{-}(n_j)&=\pi_{t-1}^{+}(d_j),
+&
+\pi_t^{-}(d_j)&=0,
+\nonumber\\
+\pi_t^{-}(h)&=\pi_{t-1}^{+}(h),
+&&h\text{ 为保留规则}.
+\label{eq:dynamic-pairwise-transfer}
+\end{align}
+最后再把 $\pi_t^{-}$ 归一化。这样，内部搜索改变候选规则的内容，但不会凭空增加或删除总信念质量。
+
+
+\subsubsection{显式规则执行与切换惯性}
+
+工作空间中的搜索不会自动变成外显策略切换。只有当 $K_t>0$，并且一个独立的切换事件以概率 $s_{\mathrm{exec}}$ 发生时，执行规则才会改变。因此，试次开始前的执行规则切换概率为
+\begin{equation}
+P(e_t\ne e_{t-1})=E_ts_{\mathrm{exec}},
+\qquad s_{\mathrm{exec}}=0.20.
+\label{eq:dynamic-execution-hazard}
+\end{equation}
+发生切换时，模型从除旧执行规则之外的活跃规则中，按照迁移后的规则信念抽取新执行规则。这个机制表达的是规则执行的惯性：学习者可以已经开始考虑替代解释，但仍暂时沿用原规则。它与随机按错键不同，因为执行规则具有明确的分类内容，并会继续接受后续反馈。
+
+
+\subsubsection{反馈如何改变执行规则的确信度}
+
+每条规则都有自己的 $\beta_t(h)$，但一次反馈只更新本试次实际使用的执行规则 $e_t$。未用于作答的候选规则不会因同一个结果而同时变得更确信。
+
+令执行规则赋给实际选择的概率为
+$q_t=q_{t,e_t}(y_t)$。反馈与这条规则的一致程度为
+\begin{equation}
+b_t=r_tq_t+(1-r_t)(1-q_t),
+\qquad
+\kappa_t^{\beta}=2(b_t-0.5).
+\label{eq:dynamic-beta-evidence}
+\end{equation}
+$\kappa_t^{\beta}>0$ 表示结果支持当前规则，$\kappa_t^{\beta}<0$ 表示结果反驳当前规则。执行规则的确信度按下式更新：
+\begin{equation}
+\beta_{t+1}(e_t)=
+\begin{cases}
+\min\!\left[
+\beta_t(e_t)+\eta_+\kappa_t^{\beta}
+\dfrac{\beta_{\max}-\beta_t(e_t)}{\beta_{\max}},
+\beta_{\max}\right],
+&\kappa_t^{\beta}\geq0,
+\\[7pt]
+\max\!\left[
+\beta_t(e_t)-\eta_-\beta_t(e_t)
+\min(1,-\kappa_t^{\beta}),
+\beta_{\min}\right],
+&\kappa_t^{\beta}<0.
+\end{cases}
+\label{eq:dynamic-beta-update}
+\end{equation}
+参数设为 $\beta_{\mathrm{init}}=5$、$\beta_{\min}=0.1$、
+$\beta_{\max}=25$、$\eta_+=1.0$ 和 $\eta_-=0.15$。新进入的规则从
+$\beta_{\mathrm{init}}$ 开始。正反馈的增益随 $\beta$ 接近上限而减小，负反馈则按当前 $\beta$ 的比例降低确信度。更新发生在反馈之后，所以 $\beta_{t+1}$ 最早只能影响下一个试次。
+
+失败压力和规则确信度解决的是不同问题。$F_t$ 与 $M_t$ 决定是否搜索以及搜索多远；$\beta_t(h)$ 决定按某一条具体规则作答时有多确定。稳定掌握通常对应低失败压力、高掌握证据、低搜索概率和正确执行规则上的高 $\beta$。
+
+
+\subsubsection{从执行规则到可观察选择}
+
+\paragraph{执行规则的类别概率。}
+给定执行规则，认知层的基础选择概率就是
+\begin{equation}
+p_t^{\mathrm{rule}}(c)=q_{t,e_t}(c).
+\label{eq:dynamic-executed-choice}
+\end{equation}
+因为这里只有一条执行规则，工作空间中其他规则的后验不会在同一试次被平均进选择概率。
+
+\paragraph{掌握状态下的选择精度。}
+当掌握证据明显高于失败压力时，模型进一步放大执行规则已经偏好的类别。定义
+\begin{align}
+u_t&=\max(M_{t-1}-F_{t-1},0)^2,
+\nonumber\\
+\rho_t&=1+\lambda_{\mathrm{conf}}u_t,
+\nonumber\\
+p_t^{\mathrm{conf}}(c)
+&=
+\frac{[p_t^{\mathrm{rule}}(c)]^{\rho_t}}
+{\sum_{c'}[p_t^{\mathrm{rule}}(c')]^{\rho_t}},
+\qquad \lambda_{\mathrm{conf}}=2.
+\label{eq:dynamic-strategy-confidence}
+\end{align}
+这个变换不读取正确答案，只增强当前规则本来就偏好的类别。平方项使较弱的初始掌握信号几乎不起作用，只有稳定掌握时选择才会明显变得更确定。
+
+\paragraph{反应噪声。}
+最后，模型加入很小的均匀反应噪声：
+\begin{equation}
+p_t^{\mathrm{obs}}(c)
+=(1-\lambda)p_t^{\mathrm{conf}}(c)+\frac{\lambda}{2},
+\qquad \lambda=0.02.
+\label{eq:dynamic-output-lapse}
+\end{equation}
+这允许偶发的非规则性选择，但噪声比例不会随错误、近期正确率或潜在波动改变。因此，行为曲线中的持续变化必须主要来自规则搜索、规则执行和确信度更新，而不能由临时增大输出噪声直接产生。
+
+
+\subsubsection{试次内的因果顺序}
+
+模型严格区分作答前状态与反馈后更新。一次试次的生命周期为
+\begin{equation}
+\operatorname{begin\_trial}(\mathbf x_t)
+\longrightarrow p_t^{\mathrm{obs}}(y)
+\longrightarrow
+\operatorname{complete\_trial}(y_t,r_t).
+\label{eq:dynamic-lifecycle}
+\end{equation}
+更完整地说，每个潜在轨迹按以下顺序演化：
+\begin{equation}
+\begin{aligned}
+&\pi_{t-1}^{+},F_{t-1},M_{t-1},e_{t-1},\beta_t
+\\
+&\quad\longrightarrow
+E_t,g_t,A_t,e_t,\pi_t^{-}
+\longrightarrow p_t^{\mathrm{obs}}(y)
+\\
+&\quad\longrightarrow
+\text{用 }p_t^{\mathrm{obs}}(y_t)\text{ 更新粒子权重}
+\longrightarrow L_t,\pi_t^{+},\beta_{t+1},F_t,M_t.
+\end{aligned}
+\label{eq:dynamic-causal-order}
+\end{equation}
+因此，第 $t$ 个试次的真实选择和反馈不能进入同一试次的预测；它们只能改变粒子权重和下一试次可用的状态。第一个试次只初始化工作空间和执行规则，不进行反馈驱动的规则替换。
+
+
+\subsubsection{粒子滤波}
+
+\paragraph{为什么需要粒子滤波。}
+行为数据只告诉我们被试看到了什么刺激、做了什么选择以及收到了什么反馈，却不直接告诉我们被试当时感知到了什么、正在考虑哪些规则或实际执行了哪条规则。同一个选择可能由多种潜在状态产生；随着试次推进，每一种状态又可能继续发生不同的规则保留、替换和执行，因而可能的完整历史会快速增多。任意选定一条历史会使预测过度依赖一次随机抽样，而精确枚举并加总所有历史通常又不可行。粒子滤波在两者之间提供数值近似：它用 $R$ 条带权重的潜在轨迹代表当前仍与既往行为相容的不同解释。
+
+\paragraph{作答前预测。}
+可把每个粒子看作一份关于被试当前内部状态的候选解释。若第 $r$ 个粒子在试次开始前的权重为 $w_{t-1}^{(r)}$，它给出的选择概率为 $p_t^{(r)}(c)$，则正式的试次预测为
+\begin{equation}
+\overline p_t(c)
+=\sum_{r=1}^{R}w_{t-1}^{(r)}p_t^{(r)}(c).
+\label{eq:dynamic-pf-marginal}
+\end{equation}
+这相当于在看到被试作答之前，先让每份候选解释独立给出预测，再按其已有可信度求平均。因此，$\overline p_t(c)$ 已经包含了模型对潜在状态不确定性的考虑，而不是依赖某一条被任意选中的内部路径。
+
+\paragraph{观察选择后的校正。}
+观察到真实选择 $y_t$ 后，粒子权重更新为
+\begin{equation}
+w_t^{(r)}
+=
+\frac{w_{t-1}^{(r)}p_t^{(r)}(y_t)}
+{\sum_jw_{t-1}^{(j)}p_t^{(j)}(y_t)}.
+\label{eq:dynamic-pf-weight}
+\end{equation}
+其中，$p_t^{(r)}(y_t)$ 衡量第 $r$ 条轨迹在作答前对真实选择赋予了多大概率。原本就认为该选择较可能的轨迹会获得更高的相对权重，认为该选择较不可能的轨迹则会降低相对权重。从贝叶斯角度看，$w_{t-1}^{(r)}$ 是观察选择前的可信度，$p_t^{(r)}(y_t)$ 是选择提供的似然，而 $w_t^{(r)}$ 是观察选择后的可信度。
+
+所有粒子都在看到选择之前给出了概率，选择只用于判断哪些既有解释更可信，并影响后续试次。随后，各粒子接收同一个真实反馈，并分别更新记忆、失败压力、掌握证据和执行规则的 $\beta$。本试次的预测 $\overline p_t(y_t)$ 不会被事后改写。
+
+粒子有效数为
+\begin{equation}
+\operatorname{ESS}_t
+=\frac{1}{\sum_r[w_t^{(r)}]^2}.
+\label{eq:dynamic-ess}
+\end{equation}
+当 $\operatorname{ESS}_t<0.5R$ 时，模型进行系统重采样，并复制每个被选粒子的完整状态。正式运行使用 $R=32$ 个粒子和 4 次独立数值重复。粒子只是对不可见路径的数值近似，不代表被试脑中存在多条并行思维链；4 次重复也不能被当成额外被试。
+
+
+\subsubsection{参数设置与模型评价}
+
+\paragraph{固定参数设置。}
+条件 1 的全样本运行包含 32 名被试和 10,048 个试次。30 名被试的工作空间容量为 $M_s=3$，两名被试的容量为 $M_s=5$。其余被试共享前述控制器、记忆、规则确信度、反应噪声和粒子滤波参数。参数在这一全样本运行中保持固定，没有根据全样本结果重新进行超参数搜索。
+
+\paragraph{主要拟合指标。}
+模型以逐试次选择负对数似然为主要指标：
+\begin{equation}
+\operatorname{NLL}_s
+=-\frac{1}{T_s}\sum_{t=1}^{T_s}
+\log\max\{\overline p_t(y_t),\epsilon_p\}.
+\label{eq:dynamic-nll}
+\end{equation}
+NLL 使用式 \ref{eq:dynamic-pf-marginal} 的作答前预测，因此不会把反馈后的状态用于解释同一试次。模型还用 16 试次滑动正确率、选择 Brier 分数、校准、策略切换、行为波动和序列残差检查拟合的不同方面。
+
+\paragraph{总体选择预测。}
+先对每名被试的 4 次数值重复求平均，再在 32 名被试间平均，得到的 NLL 为 $0.4624$。试次加权的实际正确率为 $0.7591$，模型预测正确率为 $0.7302$，平均低估 $0.0289$；32 名被试中有 31 名出现低估。16 试次滑动正确率曲线的被试平均绝对误差为 $0.0816$。条件行为模拟得到的 90\% 区间平均覆盖率为 $0.9353$，但覆盖率必须与区间宽度和曲线误差共同解释，不能单独视为拟合充分。
+
+\paragraph{后验预测检查。}
+在 32 名被试中，正确率曲线误差检验有 25 名通过，局部波动检验有 17 名通过，策略切换检验有 31 名通过，而选择历史相关检验只有 1 名通过。被试层面的中位波动比再取中位数为 $0.614$，说明生成行为通常比真实行为平滑。模型能够较好地描述整体学习水平和规则切换，但仍遗漏了选择历史中的时间依赖。
+
+\paragraph{未参与拟合的口头报告。}
+在有效口头报告试次中，模型活跃规则与口头报告的命中一致率平均为 $0.9052$，有效报告试次比例平均为 $0.9555$。活跃工作空间内的模型分布与口头报告目标分布之间，平均 Pearson 相关为 $0.5580$，平均 Spearman 相关为 $0.4812$，平均余弦相似度为 $0.8267$。这些结果说明潜在规则与被试报告具有一致性，但口头报告没有参与拟合，因此这里只能把它看作外部支持，不能据此认定模型状态就是被试完整的主观规则。
+
+
+\subsubsection{解释范围与限制}
+
+这个模型提供的是一条可检验的计算解释：学习者在有限规则集合中搜索，用一条规则作答，并根据反馈分别调整规则信念、搜索倾向和执行确信度。它不要求把低正确率简单解释为随机猜测，也不要求把高正确率等同于对正确规则的完全确定。
+
+不过，几种机制都能改变行为的时间连续性。双通道记忆决定旧证据保留多久，执行惯性决定规则多久切换，动态 $\beta$ 决定按当前规则作答有多稳定，掌握状态还会进一步提高选择精度。若同时自由拟合，这些机制可能相互补偿，因此需要通过嵌套消融和模型恢复分别检验其必要性与可辨识性。
+
+数值上，32 个粒子和 4 次重复足以完成全样本固定参数评估，但仍需用更多粒子和独立随机种子检查模型排序是否稳定。行为上，模型普遍低估正确率，并且没有充分复现真实选择的波动和历史相关。心理解释上，粒子滤波得到的执行规则和工作空间只是与行为相容的潜在状态；只有当这些状态还能稳定预测独立的口头报告、反应时或实验操纵效应时，才能把它们更强地解释为学习者实际采用的认知规则。
+
+
+\subsubsection{小结}
+
+模型用一条清楚的因果链连接刺激、规则和选择：个体化知觉产生内部刺激；有限工作空间保留少量候选规则；失败压力和掌握证据控制是否搜索以及搜索多远；一条受保护的执行规则直接产生当前选择；反馈通过双通道记忆更新规则信念，并只改变执行规则的确信度；粒子滤波最后对所有不可见路径求作答前的边际预测。全样本结果表明，这一模型能够描述总体学习水平、策略变化和部分口头规则结构，但对正确率略有低估，也未充分解释被试选择的时间波动。因此，它适合作为可解释的动态规则学习模型，而不是对全部行为变化的最终解释。
