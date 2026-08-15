@@ -1,0 +1,63 @@
+# Low-budget range screening for the P0 boundary-distance precision terms.
+# This stage may remove clearly unsuitable ranges, but its selected point must
+# not be treated as the final calibrated model.
+
+base_sim_config_path: ../simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml
+subjects: [103, 104, 105, 108, 111, 120, 124, 132]
+output_dir: ../../results/model_dynamic_adaptive_control/0815_p0/beta_recalibration/screening
+hyperparam_selection_mode: shared
+
+objective_order:
+  - path: simulation.mean_error
+    rel_tolerance: 0.0
+    abs_tolerance: 0.0005
+    scale_floor: 0.0
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 20260815
+loss_metric: choice_nll
+window_size: 16
+
+cd:
+  n_restarts: 1
+  max_outer_iters: 2
+  init_strategy: anchor
+  coordinate_order: fixed
+  patience: 1
+  min_delta: 0.0005
+  parallel_budget: 16
+  anchor:
+    engine.likelihood.default_beta: 5.0
+    engine.modules.beta_mod.kwargs.beta_init: 5.0
+    engine.modules.beta_mod.kwargs.beta_max: 25.0
+    engine.modules.beta_mod.kwargs.decrease_rate: 0.15
+    engine.modules.beta_mod.kwargs.correct_additive: 1.0
+
+refine_policy:
+  top_k: 6
+
+hyperparam_space:
+  engine.likelihood.default_beta:
+    values: [2.5, 5.0, 10.0]
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [2.5, 5.0, 10.0]
+  engine.modules.beta_mod.kwargs.beta_max:
+    values: [12.5, 25.0, 50.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.075, 0.15, 0.30]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.25, 0.50, 1.0]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 2
+    simulation_overrides:
+      simulation_repeats: 2
+      repeat_aggregation: mean_probability
+      max_trials: 64
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 16

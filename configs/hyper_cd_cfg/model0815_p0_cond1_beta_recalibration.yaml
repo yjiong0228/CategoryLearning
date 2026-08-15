@@ -1,0 +1,79 @@
+# Targeted P0 calibration. Only evidence precision and dynamic action-beta
+# parameters vary; workspace, controller, memory, lapse, and rho=1 remain fixed.
+# Candidate ranges are shifted from the low-budget screening result while
+# retaining one lower and one higher value around its selected point.
+
+base_sim_config_path: ../simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml
+subjects: [103, 104, 105, 108, 111, 120, 124, 132]
+output_dir: ../../results/model_dynamic_adaptive_control/0815_p0/beta_recalibration/hyper_cd
+hyperparam_selection_mode: shared
+
+objective_order:
+  - path: simulation.mean_error
+    rel_tolerance: 0.0
+    abs_tolerance: 0.0005
+    scale_floor: 0.0
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 20260815
+loss_metric: choice_nll
+window_size: 16
+
+cd:
+  # With an anchored start and fixed coordinate order, extra restarts would
+  # duplicate the same path rather than probe a new basin.
+  n_restarts: 1
+  max_outer_iters: 3
+  init_strategy: anchor
+  coordinate_order: fixed
+  patience: 1
+  min_delta: 0.0005
+  parallel_budget: 16
+  anchor:
+    engine.likelihood.default_beta: 10.0
+    engine.modules.beta_mod.kwargs.beta_init: 5.0
+    engine.modules.beta_mod.kwargs.beta_max: 50.0
+    engine.modules.beta_mod.kwargs.decrease_rate: 0.15
+    engine.modules.beta_mod.kwargs.correct_additive: 1.0
+
+refine_policy:
+  top_k: 4
+
+hyperparam_space:
+  # Fixed across trials: how strongly feedback distinguishes candidate rules.
+  engine.likelihood.default_beta:
+    values: [5.0, 10.0, 20.0]
+
+  # Trial-varying action confidence. Bounds and update rates are recalibrated
+  # because boundary distances have a different numerical scale.
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [2.5, 5.0, 7.5]
+  engine.modules.beta_mod.kwargs.beta_max:
+    values: [25.0, 50.0, 100.0]
+  engine.modules.beta_mod.kwargs.decrease_rate:
+    values: [0.075, 0.15, 0.30]
+  engine.modules.beta_mod.kwargs.correct_additive:
+    values: [0.50, 1.0, 2.0]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 4
+    simulation_overrides:
+      simulation_repeats: 4
+      repeat_aggregation: mean_probability
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 64
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 8
+    simulation_overrides:
+      simulation_repeats: 8
+      repeat_aggregation: mean_probability
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 128

@@ -377,6 +377,26 @@ subject JSON 保存轻量 summary、representative run 和 stream reference；�
 `utils.streaming.StreamList` 压缩存储，避免 JSON 无限膨胀。需要 trajectory-rank、posterior-rank
 或 FFT clustering 时，最终仿真必须保留相应日志。
 
+当 `repeat_aggregation: mean_probability` 时，subject JSON 的 `simulation.mean_error` 来自逐试次
+平均 repeat 概率后计算的 proper score；`sample_errors` 只是 PF seed 噪声诊断。结果同时保存
+`model_provenance`，明确 resolved 配置哈希、容量、初始化策略和数值积分预算。
+
+Model 0815 P0 的未拟合结构、precision 标定和 PF 收敛入口分别为：
+
+```text
+configs/model_struct/pmh_model_cond1_0815_p0.yaml
+configs/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml
+configs/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml
+configs/specific_models/model_0815_p0_pf_convergence.yaml
+```
+
+其中 `beta_screening` 只用 8 人各 64 个早期 trial 和低粒子预算排除明显不合适的尺度，不能作为
+最终参数或论文结果。P0 不覆盖 0813 输出。先完成正式 beta recalibration 并冻结生成的 simulation config，再把该 config
+填入 PF convergence 配置；收敛门槛通过后才能启动新的全样本拟合/评价。
+该 calibration 配置使用 `hyperparam_selection_mode: shared`：selected-eight 仅共同校准一套
+boundary-distance precision 参数，每位被试先得到自己的 choice NLL，再在被试间等权平均；
+它不是为每位被试增加五个新的自由参数。
+
 ## 9. 0806 在当前架构中的位置
 
 0806 的 choice 主路径已经主框架化：

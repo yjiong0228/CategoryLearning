@@ -134,6 +134,12 @@ persistent execution 还返回 pre-choice `executed_probability`、post-choice
 `predictive_executed_beta` 和 `filtered_executed_beta`。
 choice-transmission audit 的 ancestral paths 可直接检查 executed rule 的驻留和切换。
 
+PF 是否“粒子足够”不能只看单次运行是否完成。`scripts/run_model_0815_p0_pf_convergence.py`
+用独立 filter seeds 比较相邻 particle counts，同时检查 probability-averaged choice NLL、逐 trial
+choice-probability RMSE、executed-rule posterior 的 Jensen--Shannon divergence、repeat split-half
+稳定性和 post-choice ESS fraction。只有预先声明的门槛同时通过，较小 particle count 才可作为
+正式预算；smoke 模式只验证工作流，不构成收敛证据。
+
 ## 扩展边界
 
 - 新认知机制应实现为 `BaseModule`，放在 `model/modules/`。
