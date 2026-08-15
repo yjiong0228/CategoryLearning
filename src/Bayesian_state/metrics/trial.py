@@ -553,9 +553,16 @@ def build_prediction_metric_bundle(
         ),
         "true_category_index": true_category_index,
         "observed_choice_index": choice_index,
+        # Retain the source observations so independent stochastic repeats can
+        # be combined at the probability level and all derived metrics rebuilt
+        # without reverse-engineering feedback/category codes.
+        "observed_choice": observed_choices,
+        "observed_feedback": observed_feedback,
+        "observed_category": category_values,
         "target_majority_index": majority_index,
         "valid_trial_mask": valid,
         "score_trial_mask": score_mask,
+        "window_size": int(window_size),
     }
     output.update(dict(diagnostics or {}))
     _attach_diagnostic_summaries(output, valid)

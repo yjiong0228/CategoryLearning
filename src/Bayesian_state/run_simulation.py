@@ -24,6 +24,7 @@ from src.Bayesian_state.simulation.config import (
     resolve_loss_metric,
     resolve_path,
     resolve_prediction_modes,
+    resolve_repeat_aggregation,
     resolve_simulation_repeats,
     resolve_subjects,
     resolve_window_size,
@@ -41,6 +42,7 @@ from src.Bayesian_state.simulation.parameters import (
     resolve_hyper_base_seed,
     resolve_hyper_candidate_seed,
 )
+from src.Bayesian_state.simulation.provenance import build_model_provenance
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -79,6 +81,10 @@ def serialize_result(
         "simulation_repeats": int(selection_meta.get("simulation_repeats", getattr(best, "simulation_repeats", 0))),
         "window_size": selection_meta.get("window_size"),
         "sample_errors": sample_errors,
+        "repeat_aggregation": getattr(best, "repeat_aggregation", "mean_loss"),
+        "aggregation_diagnostics": dict(
+            getattr(best, "aggregation_diagnostics", {}) or {}
+        ),
     }
 
     data = {
@@ -101,6 +107,9 @@ def serialize_result(
             "simulation_point_seed": selection_meta.get("simulation_point_seed"),
             "selection_meta": selection_meta,
         },
+        "model_provenance": dict(
+            getattr(best, "model_provenance", {}) or {}
+        ),
         "representative_run": {
             "metrics_by_mode": metrics_by_mode,
             "state_log": getattr(best, "state_log", None),
@@ -121,12 +130,17 @@ def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
         "engine.modules.memory_mod.kwargs.gamma": "gamma",
         "engine.modules.memory_mod.kwargs.w0": "w0",
         "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
+        "engine.modules.beta_mod.kwargs.beta_min": "beta_min",
+        "engine.modules.beta_mod.kwargs.beta_max": "beta_max",
         "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
         "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
         "engine.modules.beta_mod.kwargs.correct_additive": "correct_additive",
         "engine.modules.beta_mod.kwargs.beta_update_mode": "beta_update_mode",
         "engine.modules.beta_mod.kwargs.update_scope": "beta_update_scope",
         "engine.modules.beta_mod.kwargs.probabilistic_feedback_lapse": "probabilistic_feedback_lapse",
+        "engine.likelihood.default_beta": "evidence_beta",
+        "engine.likelihood.beta_source": "evidence_beta_source",
+        "engine.likelihood.distance_mode": "distance_mode",
         "engine.modules.hypo_transitions_mod.kwargs.prior_reset_base": "prior_reset_base",
         "engine.modules.hypo_transitions_mod.kwargs.prior_reset_post_error": "prior_reset_post_error",
         "engine.modules.hypo_transitions_mod.kwargs.prior_reset_low_accuracy": "prior_reset_low_accuracy",
@@ -276,6 +290,7 @@ def run_simulation(
 
         n_jobs = int(subject_cfg.get("n_jobs", 4))
         simulation_repeats = resolve_simulation_repeats(subject_cfg)
+        repeat_aggregation = resolve_repeat_aggregation(subject_cfg)
         hyper_base_seed = resolve_hyper_base_seed(subject_cfg)
         hyper_candidate_seed = resolve_hyper_candidate_seed(
             subject_cfg,
@@ -303,6 +318,10 @@ def run_simulation(
             n_jobs=n_jobs,
         )
         runner.prepare_data(data_path)
+        model_provenance = build_model_provenance(
+            engine_config,
+            repeat_aggregation=repeat_aggregation,
+        )
 
         print(f"\n{'=' * 60}")
         print(f"Subject {sid}")
@@ -327,6 +346,8 @@ def run_simulation(
             statistics_config=statistics_config,
             evaluation_protocol=subject_cfg.get("evaluation_protocol"),
             evaluation_role="simulation",
+            repeat_aggregation=repeat_aggregation,
+            model_provenance=model_provenance,
         )
         result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
         if statistics_config is not None:
@@ -337,6 +358,7 @@ def run_simulation(
         print(f"  Mean error ({selection_prediction_mode}): {float(best.mean_error):.6f} +/- {float(best.std_error):.6f}")
         print(f"  Best run error ({selection_prediction_mode}): {float(best.best_error):.6f}")
         print(f"  Loss metric: {loss_metric}")
+        print(f"  Repeat aggregation: {repeat_aggregation}")
         print(f"  Seeds: hyper_base_seed={hyper_base_seed}, hyper_candidate_seed={hyper_candidate_seed}")
 
         subjects_dir = output_dir / "subjects"

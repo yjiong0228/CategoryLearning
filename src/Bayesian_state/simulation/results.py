@@ -27,6 +27,9 @@ class SimulationResult:
     simulation_point_seed: Optional[int] = None
     std_error: float = 0.0
     statistics_summary: Optional[Dict[str, Any]] = None
+    repeat_aggregation: str = "mean_loss"
+    aggregation_diagnostics: Optional[Dict[str, Any]] = None
+    model_provenance: Optional[Dict[str, Any]] = None
 
     @property
     def gamma(self) -> float:

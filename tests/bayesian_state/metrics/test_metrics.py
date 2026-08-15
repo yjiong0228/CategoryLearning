@@ -416,6 +416,7 @@ def test_simulation_ownership_and_removed_facades_are_enforced():
         "autonomous.py",
         "data.py",
         "parameters.py",
+        "provenance.py",
         "results.py",
     }
 

@@ -23,12 +23,15 @@ from ..utils.logging import LOGGER
 from ..utils.seeding import derive_simulation_point_seed, derive_trajectory_seed
 from .execution import (
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
+    compute_metrics_from_category_probabilities,
     evaluate_state_model_run,
 )
 from .data import SubjectTrialDataLoader
 from .results import SimulationResult, SingleRunResult
 from .config import (
     EVALUATION_ROLE_SIMULATION,
+    REPEAT_AGGREGATION_MEAN_LOSS,
+    REPEAT_AGGREGATION_MEAN_PROBABILITY,
     resolve_evaluation_score_mask,
 )
 
@@ -105,6 +108,166 @@ def _build_run_record(
     }
 
 
+def _shared_observation_array(
+    metrics: Sequence[Mapping[str, Any]],
+    key: str,
+    *,
+    fallback_key: str | None = None,
+) -> np.ndarray | None:
+    """Return one repeat-invariant observation array and verify alignment."""
+
+    values: list[np.ndarray] = []
+    for mapping in metrics:
+        raw = mapping.get(key)
+        if raw is None and fallback_key is not None:
+            raw = mapping.get(fallback_key)
+        if raw is None:
+            return None
+        values.append(np.asarray(raw))
+    reference = values[0]
+    for value in values[1:]:
+        if reference.shape != value.shape or not np.array_equal(
+            reference,
+            value,
+            equal_nan=True,
+        ):
+            raise ValueError(
+                f"Repeat metric field {key!r} is not invariant across runs."
+            )
+    return reference.copy()
+
+
+def _mean_probability_metrics_by_mode(
+    runs: Sequence[SingleRunResult],
+) -> Dict[str, Dict[str, Any]]:
+    """Average trial-wise repeat probabilities and rebuild proper scores."""
+
+    if not runs:
+        raise ValueError("runs cannot be empty")
+    common_modes = set(runs[0].metrics_by_mode)
+    for run in runs[1:]:
+        common_modes.intersection_update(run.metrics_by_mode)
+    if not common_modes:
+        raise ValueError("Runs do not share a prediction mode for aggregation.")
+
+    output: Dict[str, Dict[str, Any]] = {}
+    for mode in sorted(common_modes):
+        mode_metrics = [run.metrics_by_mode[mode] for run in runs]
+        probabilities = [
+            np.asarray(metrics.get("pred_category_probs"), dtype=float)
+            for metrics in mode_metrics
+        ]
+        reference_shape = probabilities[0].shape
+        if len(reference_shape) != 2 or reference_shape[1] == 0:
+            raise ValueError(
+                f"pred_category_probs for {mode!r} must be a non-empty matrix."
+            )
+        if any(values.shape != reference_shape for values in probabilities):
+            raise ValueError(
+                f"pred_category_probs shapes differ across repeats for {mode!r}."
+            )
+        stack = np.stack(probabilities, axis=0)
+        if not np.all(np.isfinite(stack)) or np.any(stack < 0.0):
+            raise ValueError(
+                f"pred_category_probs for {mode!r} must be finite and non-negative."
+            )
+        row_sums = np.sum(stack, axis=2)
+        if np.any(row_sums <= 0.0):
+            raise ValueError(
+                f"pred_category_probs for {mode!r} contain zero-mass rows."
+            )
+        stack = stack / row_sums[:, :, None]
+        mean_probability = np.mean(stack, axis=0)
+
+        choices = _shared_observation_array(
+            mode_metrics,
+            "observed_choice",
+        )
+        if choices is None:
+            choice_index = _shared_observation_array(
+                mode_metrics,
+                "observed_choice_index",
+            )
+            if choice_index is None:
+                raise ValueError("Repeat metrics do not contain observed choices.")
+            choices = np.asarray(choice_index, dtype=int) + 1
+        feedback = _shared_observation_array(
+            mode_metrics,
+            "observed_feedback",
+            fallback_key="true_acc",
+        )
+        if feedback is None:
+            raise ValueError("Repeat metrics do not contain observed feedback.")
+        categories = _shared_observation_array(
+            mode_metrics,
+            "observed_category",
+        )
+        if categories is None:
+            category_index = _shared_observation_array(
+                mode_metrics,
+                "true_category_index",
+            )
+            if category_index is not None and np.all(category_index >= 0):
+                categories = np.asarray(category_index, dtype=int) + 1
+
+        target = _shared_observation_array(mode_metrics, "target_probs")
+        if target is not None:
+            target = np.asarray(target, dtype=float)
+            if target.shape != mean_probability.shape or not np.all(
+                np.isfinite(target)
+            ):
+                target = None
+        score_mask = _shared_observation_array(mode_metrics, "score_trial_mask")
+        window_size = int(
+            mode_metrics[0].get(
+                "window_size",
+                len(np.asarray(mode_metrics[0].get("sliding_true_acc", ())))
+                and reference_shape[0]
+                - len(np.asarray(mode_metrics[0]["sliding_true_acc"]))
+            )
+        )
+        if window_size <= 0:
+            raise ValueError(
+                "Probability-level repeat aggregation requires a positive window_size."
+            )
+        loss_metrics = {str(run.loss_metric).lower() for run in runs}
+        loss_deltas = {run.loss_delta for run in runs}
+        if len(loss_metrics) != 1 or len(loss_deltas) != 1:
+            raise ValueError("Repeat runs disagree on the loss definition.")
+        repeat_sd = (
+            np.std(stack, axis=0, ddof=1)
+            if len(runs) > 1
+            else np.zeros_like(mean_probability)
+        )
+        diagnostics = {
+            "repeat_aggregation": REPEAT_AGGREGATION_MEAN_PROBABILITY,
+            "repeat_count": int(len(runs)),
+            "repeat_probability_sd": repeat_sd,
+            "repeat_probability_mcse": repeat_sd / np.sqrt(float(len(runs))),
+        }
+        output[mode] = compute_metrics_from_category_probabilities(
+            mean_probability,
+            choices=np.asarray(choices, dtype=int),
+            feedback=np.asarray(feedback, dtype=float),
+            categories=(
+                None
+                if categories is None
+                else np.asarray(categories, dtype=int)
+            ),
+            target_probs=target,
+            window_size=window_size,
+            loss_metric=next(iter(loss_metrics)),
+            loss_delta=next(iter(loss_deltas)),
+            score_trial_mask=(
+                None
+                if score_mask is None
+                else np.asarray(score_mask, dtype=bool)
+            ),
+            diagnostics=diagnostics,
+        )
+    return output
+
+
 def aggregate_simulation_runs(
     runs: Sequence[SingleRunResult],
     *,
@@ -120,6 +283,8 @@ def aggregate_simulation_runs(
     representative_choice_fraction: float = 0.10,
     statistics_config: Mapping[str, Any] | None = None,
     compute_statistics: bool = True,
+    repeat_aggregation: str = REPEAT_AGGREGATION_MEAN_LOSS,
+    model_provenance: Mapping[str, Any] | None = None,
 ) -> SimulationResult:
     """Aggregate repeated state-model runs using the standard simulation summary semantics."""
     runs = list(runs)
@@ -139,6 +304,37 @@ def aggregate_simulation_runs(
         representative_choice_fraction=representative_choice_fraction,
     )
     representative_run = runs[representative_run_idx]
+    aggregation_method = str(repeat_aggregation).strip().lower()
+    if aggregation_method not in {
+        REPEAT_AGGREGATION_MEAN_LOSS,
+        REPEAT_AGGREGATION_MEAN_PROBABILITY,
+    }:
+        raise ValueError(
+            "repeat_aggregation must be 'mean_loss' or 'mean_probability'."
+        )
+    if aggregation_method == REPEAT_AGGREGATION_MEAN_PROBABILITY:
+        aggregate_metrics = _mean_probability_metrics_by_mode(runs)
+        if selection_prediction_mode not in aggregate_metrics:
+            raise ValueError(
+                "selection_prediction_mode is unavailable after repeat aggregation: "
+                f"{selection_prediction_mode!r}."
+            )
+        primary_error = float(
+            aggregate_metrics[selection_prediction_mode]["mean_error"]
+        )
+    else:
+        aggregate_metrics = representative_run.metrics_by_mode
+        primary_error = float(error_summary["mean_error"])
+
+    run_error_sd = float(error_summary["std_error"])
+    aggregation_diagnostics = {
+        "method": aggregation_method,
+        "repeat_count": int(len(runs)),
+        "aggregate_error": primary_error,
+        "mean_run_error": float(error_summary["mean_error"]),
+        "run_error_sd": run_error_sd,
+        "mean_run_error_mcse": run_error_sd / np.sqrt(float(len(runs))),
+    }
 
     raw_runs = [
         _build_run_record(
@@ -164,8 +360,8 @@ def aggregate_simulation_runs(
 
     return SimulationResult(
         params=dict(params),
-        mean_error=error_summary["mean_error"],
-        metrics_by_mode=representative_run.metrics_by_mode,
+        mean_error=primary_error,
+        metrics_by_mode=aggregate_metrics,
         selection_prediction_mode=selection_prediction_mode,
         state_log=representative_run.state_log,
         trial_events=representative_run.trial_events,
@@ -178,6 +374,9 @@ def aggregate_simulation_runs(
         simulation_point_seed=simulation_point_seed,
         std_error=error_summary["std_error"],
         statistics_summary=statistics_summary,
+        repeat_aggregation=aggregation_method,
+        aggregation_diagnostics=aggregation_diagnostics,
+        model_provenance=dict(model_provenance or {}),
     )
 
 
@@ -208,6 +407,8 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
         evaluation_role: str = EVALUATION_ROLE_SIMULATION,
         trajectory_seeds: Sequence[int] | None = None,
         compute_statistics: bool = True,
+        repeat_aggregation: str = REPEAT_AGGREGATION_MEAN_LOSS,
+        model_provenance: Mapping[str, Any] | None = None,
     ) -> Dict[str, object]:
         if simulation_repeats is None:
             raise ValueError("simulation_repeats is required.")
@@ -339,6 +540,8 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
             representative_choice_fraction=representative_choice_fraction,
             statistics_config=statistics_config,
             compute_statistics=compute_statistics,
+            repeat_aggregation=repeat_aggregation,
+            model_provenance=model_provenance,
         )
 
         return {
@@ -360,6 +563,7 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
                 "simulation_point_seed": simulation_point_seed,
                 "seed_hyperparams": seed_params,
                 "simulation_repeats": simulation_repeats,
+                "repeat_aggregation": str(repeat_aggregation),
                 "window_size": int(window_size),
                 "statistics_config": statistics_config,
                 "evaluation_protocol": dict(evaluation_protocol or {}),

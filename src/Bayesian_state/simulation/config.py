@@ -38,6 +38,12 @@ EVALUATION_ROLES = (
     EVALUATION_ROLE_OPTIMIZATION,
     EVALUATION_ROLE_SIMULATION,
 )
+REPEAT_AGGREGATION_MEAN_LOSS = "mean_loss"
+REPEAT_AGGREGATION_MEAN_PROBABILITY = "mean_probability"
+REPEAT_AGGREGATION_CHOICES = (
+    REPEAT_AGGREGATION_MEAN_LOSS,
+    REPEAT_AGGREGATION_MEAN_PROBABILITY,
+)
 
 
 # Parameter payloads
@@ -77,6 +83,33 @@ def resolve_simulation_repeats(cfg: Mapping[str, Any]) -> int:
     if repeats <= 0:
         raise ValueError(f"simulation_repeats must be positive, got {repeats}")
     return repeats
+
+
+def resolve_repeat_aggregation(cfg: Mapping[str, Any]) -> str:
+    """Resolve how independent stochastic repeats define the primary score.
+
+    ``mean_loss`` preserves the historical behavior: score each repeat and
+    average the scalar losses. ``mean_probability`` first averages trial-wise
+    category probabilities and then applies the configured proper score.
+    """
+
+    raw = str(
+        cfg.get("repeat_aggregation", REPEAT_AGGREGATION_MEAN_LOSS)
+    ).strip().lower()
+    aliases = {
+        "loss_mean": REPEAT_AGGREGATION_MEAN_LOSS,
+        "mean_error": REPEAT_AGGREGATION_MEAN_LOSS,
+        "probability_mean": REPEAT_AGGREGATION_MEAN_PROBABILITY,
+        "probability_mixture": REPEAT_AGGREGATION_MEAN_PROBABILITY,
+        "mixture": REPEAT_AGGREGATION_MEAN_PROBABILITY,
+    }
+    resolved = aliases.get(raw, raw)
+    if resolved not in REPEAT_AGGREGATION_CHOICES:
+        raise ValueError(
+            "repeat_aggregation must be one of "
+            f"{REPEAT_AGGREGATION_CHOICES}, got {raw!r}."
+        )
+    return resolved
 
 
 def resolve_evaluation_score_mask(
@@ -379,6 +412,9 @@ __all__ = [
     "EVALUATION_ROLE_SIMULATION",
     "EVALUATION_ROLES",
     "PROFILE_CANDIDATE_KEY",
+    "REPEAT_AGGREGATION_CHOICES",
+    "REPEAT_AGGREGATION_MEAN_LOSS",
+    "REPEAT_AGGREGATION_MEAN_PROBABILITY",
     "dump_stream",
     "expand_profile_candidate_hyperparams",
     "load_yaml",
@@ -389,6 +425,7 @@ __all__ = [
     "resolve_loss_metric",
     "resolve_path",
     "resolve_prediction_modes",
+    "resolve_repeat_aggregation",
     "resolve_simulation_repeats",
     "resolve_subjects",
     "resolve_window_size",

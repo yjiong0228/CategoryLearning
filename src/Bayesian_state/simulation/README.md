@@ -13,6 +13,7 @@
 | `runner.py` | 独立重复、representative run 与聚合统计 |
 | `config.py` | YAML/路径/loss/顺序评价协议解析及 packed profile 参数展开 |
 | `parameters.py` | 固定超参数的提取、覆盖与可复现 candidate seed 解析 |
+| `provenance.py` | 结构配置哈希、容量、初始化、precision/readout 与 repeat 聚合溯源 |
 | `autonomous.py` | 在类别学习任务中运行模型自主选择并生成 feedback |
 
 `autonomous.py` 提供 `run_autonomous_category_learning()`。物理
@@ -50,6 +51,26 @@ particle-filter 的 `state_log` 同时保存 post-choice filtered transition 诊
 `trajectory_seeds`，用于 common-random-number 反事实。默认调用仍按既有
 `hyper_candidate_seed -> simulation_point_seed -> trajectory_seed` 链生成 seeds；只有显式传入
 该参数时才覆盖。`compute_statistics=False` 可供不需要重复运行统计的诊断使用，默认保持 `True`。
+
+## 独立重复的主分数
+
+历史配置默认使用 `repeat_aggregation: mean_loss`：每个随机 repeat 先计算 loss，再平均标量。
+需要把多次 PF 当作同一潜路径积分的独立数值近似时，应显式设置：
+
+```yaml
+simulation_repeats: 8
+repeat_aggregation: mean_probability
+```
+
+此时 runner 先逐 trial、逐 category 平均所有 repeat 的预测概率，再从这个平均分布计算一次
+choice NLL/Brier。`simulation.mean_error` 是这个 probability-mixture score；各 repeat 的原始 loss、
+均值、标准差和 MCSE 仍保存在 `sample_errors` 与 `aggregation_diagnostics`，不能用 best repeat
+替代主结果。Grid、Hyper-CD 和固定参数 simulation 共用同一定义。
+
+固定仿真还把 `model_provenance` 写入 subject JSON。它包括完整 resolved engine config 的 SHA-256、
+共同/被试级容量、初始 active set 是固定还是按 prior 无放回抽样、PF 粒子数、规则证据 precision、
+动作 beta 配置及 repeat 聚合方式。声明性解释来自 engine YAML 的 `provenance` 字段；该字段不参与
+认知计算。
 
 Controller v2a 的三被试结构探针配置是
 `configs/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml`。

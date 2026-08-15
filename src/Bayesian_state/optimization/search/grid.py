@@ -13,6 +13,7 @@ from joblib import Parallel, delayed
 
 from src.Bayesian_state.simulation.config import (
     resolve_loss_delta,
+    resolve_repeat_aggregation,
     resolve_simulation_repeats,
 )
 from src.Bayesian_state.utils.seeding import derive_hyper_candidate_seed
@@ -226,6 +227,9 @@ class HyperGridOptimizer(HyperSearchBase):
                 statistics_config=statistics_config,
                 evaluation_protocol=combination_sim_cfg.get("evaluation_protocol"),
                 evaluation_role="optimization",
+                repeat_aggregation=resolve_repeat_aggregation(
+                    combination_sim_cfg
+                ),
             )
 
             best = result["best"]
@@ -244,6 +248,10 @@ class HyperGridOptimizer(HyperSearchBase):
                 "std_error": float(getattr(best, "std_error", 0.0)),
                 "sample_errors": sample_errors,
                 "simulation_repeats": simulation_repeats,
+                "repeat_aggregation": str(best.repeat_aggregation),
+                "aggregation_diagnostics": dict(
+                    best.aggregation_diagnostics or {}
+                ),
             }
             subject_record = {
                 "simulation": simulation_summary,
