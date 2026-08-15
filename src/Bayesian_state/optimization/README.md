@@ -103,6 +103,13 @@ Grid/CD 都继承 `HyperSearchBase`。外部 workflow 运行单被试时调用
 `optimizer.run_subject(subject_id, stage=...)`，批量运行调用 `optimizer.run(subjects, stage=...)`；
 `_run_subject_pipeline()` 是后端内部实现，不是 orchestration API。
 
+Hyper-CD 默认 `hyperparam_selection_mode: per_subject`，即每位被试各选一套参数。若某次分析的
+目的只是为新数值尺度校准一套共享参数，可显式设置
+`hyperparam_selection_mode: shared`。此时每个候选在全部指定被试上运行，先分别计算被试级
+objective，再对被试等权平均后选择同一候选；不会因不同被试的 trial 数不同而让长序列被试
+自动获得更高权重。共享模式的 `best_hyperparams.json` 用 `subject_id: -1` 表示群组结果，并在
+`search_context.subjects` 保存实际开发集。
+
 若基础 simulation config 声明 `evaluation_protocol.mode: sequential_holdout`，Grid 和 Hyper-CD
 统一以 `optimization` 角色解析评分掩码。主 loss、边际预测、accuracy shape、history kernel、
 switch behavior 与 distribution objectives 都从带该掩码的公共 metrics mapping 计算；完整序列

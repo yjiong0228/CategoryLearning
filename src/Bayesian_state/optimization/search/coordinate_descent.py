@@ -26,6 +26,7 @@ from src.Bayesian_state.simulation.config import (
     EVALUATION_ROLE_OPTIMIZATION,
     resolve_evaluation_score_mask,
     resolve_loss_delta,
+    resolve_repeat_aggregation,
     resolve_simulation_repeats,
 )
 from src.Bayesian_state.simulation.execution import evaluate_state_model_run
@@ -109,6 +110,7 @@ def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
     )
     return {
         "position": int(task["position"]),
+        "subject_id": int(task["subject_id"]),
         "repeat_index": int(task["repeat_index"]),
         "run": run,
     }
@@ -126,9 +128,13 @@ class HyperCDOptimizer(HyperSearchBase):
         self.objective_order = resolve_objective_order(self.config)
         self.objective_order_config = objective_order_payload(self.objective_order)
 
-        # `hyperparam_selection_mode` config key is optional now; keep internal
-        # default as per-subject selection (only mode currently implemented).
-        self.hyperparam_selection_mode = "per_subject"
+        self.hyperparam_selection_mode = str(
+            self.config.get("hyperparam_selection_mode", "per_subject")
+        ).strip().lower()
+        if self.hyperparam_selection_mode not in {"per_subject", "shared"}:
+            raise ValueError(
+                "hyperparam_selection_mode must be one of: per_subject, shared."
+            )
 
         cd_cfg = dict(self.config.get("cd") or {})
         self.n_restarts = int(cd_cfg.get("n_restarts", 5))
@@ -447,6 +453,7 @@ class HyperCDOptimizer(HyperSearchBase):
                 simulation_point_seed=simulation_point_seed,
                 keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
                 statistics_config=self.statistics_config,
+                repeat_aggregation=resolve_repeat_aggregation(point_sim_cfg),
             )
 
             mean_err = float(getattr(best, "mean_error"))
@@ -461,6 +468,10 @@ class HyperCDOptimizer(HyperSearchBase):
                 "std_error": float(getattr(best, "std_error", 0.0)),
                 "sample_errors": sample_errors,
                 "simulation_repeats": simulation_repeats,
+                "repeat_aggregation": str(best.repeat_aggregation),
+                "aggregation_diagnostics": dict(
+                    best.aggregation_diagnostics or {}
+                ),
             }
             subject_record = {
                 "simulation": simulation_summary,
@@ -519,10 +530,6 @@ class HyperCDOptimizer(HyperSearchBase):
                 "flat_jobs": 0,
                 "parallel_backend": "flat_value_repeat_processes",
             }
-        if len(subjects) != 1:
-            raise ValueError("Flat CD coordinate evaluation expects exactly one subject.")
-
-        sid = int(subjects[0])
         flat_tasks: List[Dict[str, Any]] = []
         candidate_meta: Dict[int, Dict[str, Any]] = {}
 
@@ -539,89 +546,103 @@ class HyperCDOptimizer(HyperSearchBase):
                 coordinate,
             )
 
-            subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, _ = self._resolve_sim_components(
-                stage_sim_cfg,
-                sid,
-                subjects,
-            )
-            point_sim_cfg, point_engine_cfg = self._apply_hyperparams(point, subject_cfg, base_engine_cfg)
-            runner, dataset_paths = self._build_runner(point_sim_cfg, point_engine_cfg)
-            simulation_repeats = resolve_simulation_repeats(point_sim_cfg)
-            effective_loss_metric = str(point_sim_cfg["loss_metric"])
-            effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
-            effective_window_size = int(point_sim_cfg.get("window_size", window_size))
-            keep_logs = bool(point_sim_cfg.get("keep_logs", False))
-
-            subject_frame = runner._get_subject_frame(sid, float(point_sim_cfg.get("stop_at", 1.0)))
-            condition = runner._get_condition_value(subject_frame)
-            arrays = runner._extract_arrays(subject_frame, point_sim_cfg.get("max_trials"))
-            score_trial_mask, score_context = resolve_evaluation_score_mask(
-                int(arrays.feedback.shape[0]),
-                point_sim_cfg.get("evaluation_protocol"),
-                role=EVALUATION_ROLE_OPTIMIZATION,
-            )
-            simulation_point_seed = derive_simulation_point_seed(
-                int(hyper_candidate_seed),
-                sid,
-                point,
-            )
-
             candidate_meta[position] = {
                 "point": point,
                 "combination_index": combination_index,
                 "hyper_candidate_seed": int(hyper_candidate_seed),
-                "simulation_point_seed": int(simulation_point_seed),
-                "subject_id": sid,
-                "condition": int(condition),
-                "window_size": effective_window_size,
-                "selection_prediction_mode": str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
-                "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
-                "loss_metric": effective_loss_metric,
-                "loss_delta": effective_loss_delta,
-                "simulation_repeats": simulation_repeats,
-                "keep_logs": keep_logs,
-                "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
-                "engine_config_template": deepcopy(runner._engine_config_template),
-                "processed_data_dir": runner._processed_data_dir,
-                "arrays": arrays,
-                "score_context": score_context,
+                "subjects": {},
             }
 
-            for repeat_index in range(simulation_repeats):
-                trajectory_seed = derive_trajectory_seed(
-                    int(simulation_point_seed),
-                    "simulation",
-                    repeat_index,
+            for raw_subject_id in subjects:
+                sid = int(raw_subject_id)
+                subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, _ = self._resolve_sim_components(
+                    stage_sim_cfg,
+                    sid,
+                    subjects,
                 )
-                flat_tasks.append(
-                    {
-                        "position": position,
-                        "repeat_index": int(repeat_index),
-                        "subject_id": sid,
-                        "condition": int(condition),
-                        "arrays": arrays,
-                        "params": point,
-                        "engine_config_template": runner._engine_config_template,
-                        "processed_data_dir": runner._processed_data_dir,
-                        "window_size": effective_window_size,
-                        "dataset_paths": dataset_paths,
-                        "keep_logs": keep_logs,
-                        "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
-                        "selection_prediction_mode": str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
-                        "loss_metric": effective_loss_metric,
-                        "loss_delta": effective_loss_delta,
-                        "simulation_point_seed": int(simulation_point_seed),
-                        "trajectory_seed": trajectory_seed,
-                        "seed_context": {
-                            "hyper_candidate_seed": int(hyper_candidate_seed),
+                point_sim_cfg, point_engine_cfg = self._apply_hyperparams(
+                    point,
+                    subject_cfg,
+                    base_engine_cfg,
+                )
+                runner, dataset_paths = self._build_runner(point_sim_cfg, point_engine_cfg)
+                simulation_repeats = resolve_simulation_repeats(point_sim_cfg)
+                effective_loss_metric = str(point_sim_cfg["loss_metric"])
+                effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
+                effective_window_size = int(point_sim_cfg.get("window_size", window_size))
+                keep_logs = bool(point_sim_cfg.get("keep_logs", False))
+
+                subject_frame = runner._get_subject_frame(
+                    sid,
+                    float(point_sim_cfg.get("stop_at", 1.0)),
+                )
+                condition = runner._get_condition_value(subject_frame)
+                arrays = runner._extract_arrays(subject_frame, point_sim_cfg.get("max_trials"))
+                score_trial_mask, score_context = resolve_evaluation_score_mask(
+                    int(arrays.feedback.shape[0]),
+                    point_sim_cfg.get("evaluation_protocol"),
+                    role=EVALUATION_ROLE_OPTIMIZATION,
+                )
+                simulation_point_seed = derive_simulation_point_seed(
+                    int(hyper_candidate_seed),
+                    sid,
+                    point,
+                )
+
+                candidate_meta[position]["subjects"][sid] = {
+                    "simulation_point_seed": int(simulation_point_seed),
+                    "condition": int(condition),
+                    "window_size": effective_window_size,
+                    "selection_prediction_mode": str(
+                        point_sim_cfg.get("selection_prediction_mode", sel_mode)
+                    ),
+                    "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                    "loss_metric": effective_loss_metric,
+                    "loss_delta": effective_loss_delta,
+                    "simulation_repeats": simulation_repeats,
+                    "repeat_aggregation": resolve_repeat_aggregation(point_sim_cfg),
+                    "keep_logs": keep_logs,
+                    "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
+                    "score_context": score_context,
+                }
+
+                for repeat_index in range(simulation_repeats):
+                    trajectory_seed = derive_trajectory_seed(
+                        int(simulation_point_seed),
+                        "simulation",
+                        repeat_index,
+                    )
+                    flat_tasks.append(
+                        {
+                            "position": position,
+                            "repeat_index": int(repeat_index),
+                            "subject_id": sid,
+                            "condition": int(condition),
+                            "arrays": arrays,
+                            "params": point,
+                            "engine_config_template": runner._engine_config_template,
+                            "processed_data_dir": runner._processed_data_dir,
+                            "window_size": effective_window_size,
+                            "dataset_paths": dataset_paths,
+                            "keep_logs": keep_logs,
+                            "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                            "selection_prediction_mode": str(
+                                point_sim_cfg.get("selection_prediction_mode", sel_mode)
+                            ),
+                            "loss_metric": effective_loss_metric,
+                            "loss_delta": effective_loss_delta,
                             "simulation_point_seed": int(simulation_point_seed),
                             "trajectory_seed": trajectory_seed,
-                            "phase": "simulation",
-                            "repeat_index": int(repeat_index),
-                        },
-                        "score_trial_mask": score_trial_mask,
-                    }
-                )
+                            "seed_context": {
+                                "hyper_candidate_seed": int(hyper_candidate_seed),
+                                "simulation_point_seed": int(simulation_point_seed),
+                                "trajectory_seed": trajectory_seed,
+                                "phase": "simulation",
+                                "repeat_index": int(repeat_index),
+                            },
+                            "score_trial_mask": score_trial_mask,
+                        }
+                    )
 
         flat_task_count = len(flat_tasks)
         flat_jobs = min(self.parallel_budget, flat_task_count)
@@ -632,69 +653,92 @@ class HyperCDOptimizer(HyperSearchBase):
             )
         )
 
-        runs_by_position: Dict[int, Dict[int, Any]] = {
-            position: {} for position in candidate_meta
+        runs_by_position: Dict[int, Dict[int, Dict[int, Any]]] = {
+            position: {
+                int(subject_id): {}
+                for subject_id in meta["subjects"]
+            }
+            for position, meta in candidate_meta.items()
         }
         for result in flat_results:
-            runs_by_position[int(result["position"])][int(result["repeat_index"])] = result["run"]
+            runs_by_position[int(result["position"])][int(result["subject_id"])][
+                int(result["repeat_index"])
+            ] = result["run"]
 
         out: List[CombinationResult] = []
         for entry in missing_entries:
             position = int(entry["position"])
             meta = candidate_meta[position]
-            simulation_repeats = int(meta["simulation_repeats"])
-            runs_by_repeat = runs_by_position[position]
-            runs = [runs_by_repeat[idx] for idx in range(simulation_repeats)]
-            best = aggregate_simulation_runs(
-                runs,
-                params=meta["point"],
-                subject_id=sid,
-                condition=int(meta["condition"]),
-                window_size=int(meta["window_size"]),
-                selection_prediction_mode=str(meta["selection_prediction_mode"]),
-                simulation_repeats=simulation_repeats,
-                simulation_point_seed=int(meta["simulation_point_seed"]),
-                keep_logs=bool(meta["keep_logs"]),
-                statistics_config=self.statistics_config,
-            )
-            mean_error = float(best.mean_error)
-            best_error = float(best.best_error if best.best_error is not None else mean_error)
-            sample_errors = list(best.sample_errors or [])
-            tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
-            statistics_summary = dict(best.statistics_summary or {})
-            simulation_summary = {
-                "mean_error": mean_error,
-                "best_error": best_error,
-                **tail_metrics,
-                "std_error": float(best.std_error),
-                "sample_errors": sample_errors,
-                "simulation_repeats": simulation_repeats,
-            }
-            subject_record = {
-                "simulation": simulation_summary,
-                "statistics": statistics_summary,
-            }
-            objective_values = extract_subject_objective_values(
-                subject_record,
-                self.objective_order,
-            )
-            aggregated_objectives = aggregate_objective_values([objective_values], self.objective_order)
-            selection_error = first_objective_value(aggregated_objectives, self.objective_order)
-            subject_metrics = {
-                sid: {
+            subject_metrics: Dict[int, Dict[str, Any]] = {}
+            subject_objectives: List[Dict[str, float]] = []
+            for subject_id, subject_meta in meta["subjects"].items():
+                sid = int(subject_id)
+                simulation_repeats = int(subject_meta["simulation_repeats"])
+                runs_by_repeat = runs_by_position[position][sid]
+                runs = [runs_by_repeat[idx] for idx in range(simulation_repeats)]
+                best = aggregate_simulation_runs(
+                    runs,
+                    params=meta["point"],
+                    subject_id=sid,
+                    condition=int(subject_meta["condition"]),
+                    window_size=int(subject_meta["window_size"]),
+                    selection_prediction_mode=str(subject_meta["selection_prediction_mode"]),
+                    simulation_repeats=simulation_repeats,
+                    simulation_point_seed=int(subject_meta["simulation_point_seed"]),
+                    keep_logs=bool(subject_meta["keep_logs"]),
+                    statistics_config=self.statistics_config,
+                    repeat_aggregation=str(subject_meta["repeat_aggregation"]),
+                )
+                mean_error = float(best.mean_error)
+                best_error = float(
+                    best.best_error if best.best_error is not None else mean_error
+                )
+                sample_errors = list(best.sample_errors or [])
+                tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
+                statistics_summary = dict(best.statistics_summary or {})
+                simulation_summary = {
+                    "mean_error": mean_error,
+                    "best_error": best_error,
+                    **tail_metrics,
+                    "std_error": float(best.std_error),
+                    "sample_errors": sample_errors,
+                    "simulation_repeats": simulation_repeats,
+                    "repeat_aggregation": str(best.repeat_aggregation),
+                    "aggregation_diagnostics": dict(
+                        best.aggregation_diagnostics or {}
+                    ),
+                }
+                subject_record = {
+                    "simulation": simulation_summary,
+                    "statistics": statistics_summary,
+                }
+                objective_values = extract_subject_objective_values(
+                    subject_record,
+                    self.objective_order,
+                )
+                subject_objectives.append(objective_values)
+                subject_metrics[sid] = {
                     "simulation": simulation_summary,
                     "statistics": statistics_summary,
                     "objectives": {
                         "values": objective_values,
                     },
                     "fixed_hyperparams": deepcopy(meta["point"]),
-                    "condition": int(meta["condition"]),
-                    "dataset_paths": dict(meta["dataset_paths"]),
+                    "condition": int(subject_meta["condition"]),
+                    "dataset_paths": dict(subject_meta["dataset_paths"]),
                     "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
-                    "simulation_point_seed": int(meta["simulation_point_seed"]),
-                    "scoring": deepcopy(meta["score_context"]),
+                    "simulation_point_seed": int(subject_meta["simulation_point_seed"]),
+                    "scoring": deepcopy(subject_meta["score_context"]),
                 }
-            }
+
+            aggregated_objectives = aggregate_objective_values(
+                subject_objectives,
+                self.objective_order,
+            )
+            selection_error = first_objective_value(
+                aggregated_objectives,
+                self.objective_order,
+            )
             out.append(
                 CombinationResult(
                     stage=stage_name,
@@ -714,7 +758,7 @@ class HyperCDOptimizer(HyperSearchBase):
             "flat_task_count": flat_task_count,
             "flat_jobs": flat_jobs,
             "parallel_backend": "flat_value_repeat_processes",
-            "planned_total_jobs": value_jobs * repeat_jobs,
+            "planned_total_jobs": value_jobs * repeat_jobs * len(subjects),
         }
 
     def _next_combination_index(self) -> int:
@@ -867,16 +911,24 @@ class HyperCDOptimizer(HyperSearchBase):
             key = json.dumps(_to_builtin(point), sort_keys=True)
             if key in cache:
                 return cache[key], False
-            result = self._evaluate_point_with_index(
+            evaluated, _ = self._evaluate_missing_entries_flat(
                 stage_name=stage_name,
-                point=point,
-                stage_sim_cfg=self._stage_sim_cfg_with_n_jobs(stage_sim_cfg, repeat_jobs),
+                stage_sim_cfg=stage_sim_cfg,
                 subjects=subjects,
                 restart_id=restart_id,
                 iter_id=iter_id,
                 coordinate=coordinate,
-                combination_index=self._next_combination_index(),
+                missing_entries=[
+                    {
+                        "position": 0,
+                        "point": deepcopy(point),
+                        "combination_index": self._next_combination_index(),
+                    }
+                ],
+                value_jobs=1,
+                repeat_jobs=repeat_jobs,
             )
+            result = evaluated[0]
             cache[key] = result
             self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
             return result, True
@@ -1229,6 +1281,8 @@ class HyperCDOptimizer(HyperSearchBase):
             hyper_candidate_seed=best_combination.hyper_candidate_seed,
             metrics=metrics,
             search_context={
+                "hyperparam_selection_mode": self.hyperparam_selection_mode,
+                "subjects": [int(subject_id) for subject_id in subjects],
                 "restart_id": best_combination.restart_id,
                 "iter_id": best_combination.iter_id,
                 "coordinate": best_combination.coordinate,
@@ -1296,6 +1350,22 @@ class HyperCDOptimizer(HyperSearchBase):
             raise ValueError("stage must be one of: coarse, fine, all")
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
+
+        if self.hyperparam_selection_mode == "shared":
+            shared = self._run_pipeline(
+                subjects=[int(subject_id) for subject_id in subjects],
+                stage=stage,
+                output_dir=self.output_dir,
+                resume_from_coarse=resume_from_coarse,
+            )
+            return {
+                "output_dir": shared["output_dir"],
+                "hyperparam_selection_mode": "shared",
+                "subjects": [int(subject_id) for subject_id in subjects],
+                "shared_output": shared,
+                "best_hyperparams": shared["best_hyperparams"],
+                "best": shared["best"],
+            }
 
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
