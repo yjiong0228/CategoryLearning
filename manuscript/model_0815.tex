@@ -1,0 +1,647 @@
+% 这一文件是一段可嵌入主文稿的中文模型说明。
+% 它描述 Model 0815 P0 的待验证架构、校准协议与解释边界。
+% 0813 的既有结果不属于本模型；正文不把开发代号写成经验结论。
+% H5 修订把 P0/H4 的 pairwise mass transfer 替换为 similarity transport。
+
+\subsubsection{模型 0815：待验证的生成式有限规则搜索模型}
+
+\paragraph{版本边界与中心命题。}
+模型 0815 是在模型 0813 审计后形成的新候选，而不是对旧结果的重新命名。它改变了规则的概率发射、规则证据的精度来源、选择读出、工作空间容量设定和粒子滤波的数值评价方式。因此，0813 的负对数似然、后验预测检查、口头报告对应率和潜状态轨迹均不能直接移植到本模型。
+
+本模型只保留一个需要检验的中心命题：学习者是否在容量有限的规则工作空间中进行错误驱动的局部或全局搜索，并由一条具有持续性的执行规则产生当前选择。双通道记忆、动态动作确信度和个体化知觉是支持这一生成过程的机制；粒子滤波（particle filtering, PF）只是研究者对不可见随机路径求积分的数值方法，不是被试脑内的额外认知机制。当前版本尚未完成正式参数校准和 PF 收敛检验，因而只能称为待验证模型，不能称为已经恢复了被试内部状态的模型。
+
+模型 0815 相对于 0813 的关键变化概括如下：
+\begin{table}[htbp]
+\centering
+\small
+\caption{从模型 0813 到模型 0815 P0 的结构变化。}
+\label{tab:m0815-changes}
+\begin{tabular}{p{0.22\linewidth}p{0.32\linewidth}p{0.36\linewidth}}
+\hline
+问题 & 0813 做法 & 0815 P0 做法 \\
+\hline
+规则几何 & 到类别原型或分量质心的距离 & 到规则所定义类别区域的投影距离 \\
+规则证据 & 与动态动作 $\beta_t(h)$ 共用精度 & 使用跨试次固定的证据精度 $\beta_{\mathrm{ev}}$ \\
+选择精度 & 动态 $\beta_t(h)$ 后再乘掌握幂次 $\rho_t$ & 保留动态 $\beta_t(h)$，固定 $\rho_t=1$ \\
+工作空间容量 & 大多数被试为 3，少数被试为 5 & 所有被试预先固定为 $M=3$ \\
+规则集间信念迁移 & newcomer 继承随机配对的 dropped-rule mass & 按实际替换比例和规则相似度把旧 posterior 投影到新集合 \\
+类别标签 & 固定任务标签，遗漏未被单独检验 & 主模型仍固定标签，但显式安排二元 mapping 敏感性分析 \\
+PF 重复聚合 & 先算每个 seed 的 NLL，再平均 NLL & 先平均逐试次选择概率，再计算 NLL \\
+粒子数 & 直接使用 32 个粒子 & 在 32--512 个粒子间通过冻结门槛选择 \\
+参数校准 & 混入被试级结构差异 & 8 名开发被试共同校准一套 $\beta$ 参数 \\
+\hline
+\end{tabular}
+\end{table}
+
+完整的试次内因果结构见图 \ref{fig:model-0815-framework}。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{figures/model_0815_framework.png}
+    \caption{模型 0815 P0 的逐试次生成过程。作答前，每个粒子依次产生个体化知觉、错误驱动的搜索控制、固定容量的候选工作空间和唯一执行规则；语义边界距离与动态动作确信度生成该粒子的选择概率，PF 再对粒子路径求边际。观察选择后，PF 只用选择似然校正粒子权重；随后选择与反馈通过固定证据精度更新规则后验，并更新失败压力、掌握证据和执行规则的动作确信度。所有认知状态更新从下一试次开始影响预测。当前后端只进行在线过滤，不利用未来试次平滑早期状态。}
+    \label{fig:model-0815-framework}
+\end{figure}
+
+
+\subsubsection{任务输入、规则空间与潜在状态}
+
+\paragraph{逐试次观测。}
+对被试 $s$ 的第 $t$ 个试次，物理刺激记为
+$\mathbf x_{s,t}\in[0,1]^4$，被试选择记为
+$y_{s,t}\in\{1,2\}$，反馈记为 $r_{s,t}\in\{0,1\}$。为简化符号，以下省略被试下标。模型拟合只使用刺激、选择和反馈。口头报告与反应时不进入 P0 参数选择；它们只能在模型冻结后作为外部验证变量。
+
+\paragraph{固定标签规则目录。}
+全部候选规则组成集合
+\begin{equation}
+\mathcal H=\{1,\ldots,J\},
+\qquad J=4+6+6+3+6+4=29.
+\label{eq:m0815-rule-space}
+\end{equation}
+29 条规则包括 4 条单维阈值规则 $x_i=0.5$、6 条成对顺序规则
+$x_i=x_j$、6 条成对和阈值规则 $x_i+x_j=1$、3 条两组和顺序规则
+$x_i+x_j=x_k+x_l$、6 条成对近似规则，以及 4 条单维中等值规则。成对近似规则和中等值规则分别定义为
+\begin{align}
+R_{h,1}^{\mathrm{pair}}
+&=\{\mathbf x:|x_i-x_j|\leq0.10\},
+&
+R_{h,2}^{\mathrm{pair}}
+&=[0,1]^4\setminus R_{h,1}^{\mathrm{pair}},
+\nonumber\\
+R_{h,1}^{\mathrm{center}}
+&=\{\mathbf x:|x_i-0.5|\leq0.10\},
+&
+R_{h,2}^{\mathrm{center}}
+&=[0,1]^4\setminus R_{h,1}^{\mathrm{center}}.
+\label{eq:m0815-band-rules}
+\end{align}
+每条规则当前只带有一个任务标签方向，同一几何划分不会复制一条标签反转规则。这是 P0 为限制状态空间而采用的简化，不是“被试不需要学习 A/B mapping”的心理结论。
+
+\paragraph{工作空间和执行规则。}
+每个粒子保存容量固定的活跃工作空间
+\begin{equation}
+A_t\subset\mathcal H,
+\qquad |A_t|=M,
+\qquad M=3,
+\label{eq:m0815-active-set}
+\end{equation}
+以及一条唯一执行规则
+\begin{equation}
+e_t\in A_t.
+\label{eq:m0815-executed-rule}
+\end{equation}
+$A_t$ 表示学习者正在考虑的候选池，$e_t$ 表示当前实际用于作答的规则。二者分开后，模型允许内部候选已经变化而外显作答仍保持不变。所有被试共享 $M=3$；P0 不逐人拟合容量，也不保留 0813 中未经当前结构恢复验证的 3/5 容量标签。
+
+第一试次的三条候选规则从 29 条固定标签规则的均匀基础先验中不放回抽取，执行规则再从活跃集合中抽取。不同粒子使用独立且可复现的随机种子，因此 PF 会对初始规则不确定性求积分，而不是把某一组手工指定规则当成已知起点。
+
+\paragraph{潜在状态。}
+在给定固定参数 $\theta$ 后，第 $t$ 个试次的粒子状态可概括为
+\begin{equation}
+z_t=
+\bigl(A_t,e_t,\pi_t,D_t,C_t,F_t,M_t,\boldsymbol\beta_t\bigr),
+\label{eq:m0815-latent-state}
+\end{equation}
+其中 $\pi_t$ 是活跃工作空间内的规则后验，$D_t$ 与 $C_t$ 是近期和长期记忆轨道，$F_t$ 与 $M_t$ 分别是失败压力和掌握证据，$\boldsymbol\beta_t$ 保存规则特异的动作确信度。PF 近似的是固定 $\theta$ 下 $z_t$ 的路径不确定性；它不同时估计参数后验。
+
+
+\subsubsection{从刺激到规则条件概率}
+
+\paragraph{个体化知觉。}
+模型先把物理刺激转换为内部感知刺激：
+\begin{equation}
+\widetilde x_{t,j}
+=\operatorname{clip}(x_{t,j}+\varepsilon_{s,t,j},0,1).
+\label{eq:m0815-perception}
+\end{equation}
+感知噪声参数来自正式学习前的知觉校准，并按照每名被试在学习任务中的实际特征顺序重排。对具有误差均值和标准差估计的被试，$\varepsilon_{s,t,j}$ 从相应的正态分布抽取；对以阈限范围刻画的被试，则从以 0 为中心、半宽由阈限确定的均匀分布抽取。因而，同一个物理刺激可以在不同被试或不同粒子中产生略有差异的内部表征。
+
+\paragraph{语义边界距离。}
+每条规则 $h$ 把特征空间分成两个预先定义的类别区域 $R_{h,1}$ 与
+$R_{h,2}$。模型 0815 不再以区域质心作为概率原型，而使用感知刺激到类别区域的欧氏投影距离
+\begin{equation}
+d_{t,h,c}
+=\inf_{\mathbf z\in R_{h,c}}
+\lVert\widetilde{\mathbf x}_t-\mathbf z\rVert_2.
+\label{eq:m0815-boundary-distance}
+\end{equation}
+若刺激位于类别区域内，该类别距离为 0；到另一个类别区域的距离反映刺激跨越语义边界的间隔。对于由多个不连通部分组成的类别，距离取到所有部分的最小值。这样，软概率只表达边界附近的不确定性，不会把规则本身的分类边界移动到原型 Voronoi 边界。
+
+\paragraph{动作通道。}
+给定规则 $h$，动态动作确信度 $\beta_t(h)$ 把边界距离转换为规则条件选择概率：
+\begin{equation}
+p^{\mathrm{act}}_{t,h}(c)
+=
+\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{c'=1}^{2}\exp[-\beta_t(h)d_{t,h,c'}]}.
+\label{eq:m0815-action-emission}
+\end{equation}
+$\beta_t(h)$ 越大，模型越稳定地执行规则 $h$ 所支持的类别；$\beta_t(h)$ 越小，两个动作概率越接近。这里的 $\beta_t(h)$ 描述“按这条规则作答有多确定”，不决定同一反馈对规则身份提供多少证据。
+
+\paragraph{规则证据通道。}
+规则身份的证据使用独立且跨试次固定的精度 $\beta_{\mathrm{ev}}$：
+\begin{equation}
+p^{\mathrm{ev}}_{t,h}(c)
+=
+\frac{\exp[-\beta_{\mathrm{ev}}d_{t,h,c}]}
+{\sum_{c'=1}^{2}\exp[-\beta_{\mathrm{ev}}d_{t,h,c'}]}.
+\label{eq:m0815-evidence-emission}
+\end{equation}
+选择与反馈对规则 $h$ 的支持为
+\begin{equation}
+\ell_t(h)
+=r_tp^{\mathrm{ev}}_{t,h}(y_t)
++(1-r_t)\bigl[1-p^{\mathrm{ev}}_{t,h}(y_t)\bigr].
+\label{eq:m0815-feedback-support}
+\end{equation}
+在活跃规则间归一化后得到
+\begin{equation}
+L_t(h)=
+\frac{\mathbb I(h\in A_t)\ell_t(h)}
+{\sum_{u\in A_t}\ell_t(u)}.
+\label{eq:m0815-normalized-evidence}
+\end{equation}
+因此，一个规则即使当前动作 $\beta_t(h)$ 很低，也不会仅因为动作不确定而自动获得更弱的规则证据；反之，高动作确信度也不会把同一个反馈重复放大为更强的规则学习信号。
+
+
+\subsubsection{双通道记忆与规则后验}
+
+只累积全部历史会让早期经验长期占据过大权重，只看最近试次又会使规则后验过于不稳定。模型因此同时维护近期证据和长期证据：
+\begin{align}
+D_t(h)
+&=\gamma D_t^{-}(h)+\alpha\log L_t(h),
+\nonumber\\
+C_t(h)
+&=C_t^{-}(h)+\alpha\log L_t(h).
+\label{eq:m0815-dual-memory}
+\end{align}
+$D_t(h)$ 以比例 $\gamma=0.80$ 衰减，$C_t(h)$ 不衰减，反馈增益为
+$\alpha=1$。两条轨道合并为活跃工作空间内的规则后验
+\begin{equation}
+\pi_t^{+}(h)
+=
+\frac{\mathbb I(h\in A_t)
+\exp\{w_0C_t(h)+(1-w_0)D_t(h)\}}
+{\sum_{u\in A_t}
+\exp\{w_0C_t(u)+(1-w_0)D_t(u)\}},
+\qquad w_0=0.15.
+\label{eq:m0815-rule-posterior}
+\end{equation}
+本文保留“规则后验”这一名称，但它的归一化范围是当前活跃工作空间，而不是完整 29 条规则；离开工作空间的规则在该试次不获得正后验质量。规则进入或离开工作空间时，记忆轨道与迁移后的先验对齐，避免新人仅因缺少历史记录而获得极端权重。
+
+
+\subsubsection{错误驱动的局部与全局搜索}
+
+\paragraph{失败压力与掌握证据。}
+模型用两个历史状态概括已经发生的反馈：
+\begin{align}
+F_{t-1}
+&=\delta_FF_{t-2}+(1-\delta_F)(1-r_{t-1}),
+\nonumber\\
+M_{t-1}
+&=\delta_MM_{t-2}+(1-\delta_M)r_{t-1},
+\label{eq:m0815-failure-mastery}
+\end{align}
+其中 $\delta_F=0.60$、$\delta_M=0.90$。失败压力较快跟踪近期错误，掌握证据较慢累积正确反馈。初始状态为 $F_0=0$、$M_0=0.50$。
+
+\paragraph{是否搜索。}
+令 $\sigma(a)=(1+\exp[-a])^{-1}$。试次 $t$ 的目标搜索概率为
+\begin{align}
+d_t^E
+&=k_E(F_{t-1}-\theta_E)-w_MM_{t-1},
+\nonumber\\
+E_t^{\star}
+&=E_{\min}+(E_{\max}-E_{\min})\sigma(d_t^E),
+\label{eq:m0815-exploration-target}
+\end{align}
+其中 $E_{\min}=0.05$、$E_{\max}=0.65$、$\theta_E=0.55$、
+$k_E=10$、$w_M=1$。实际搜索概率用非对称速率平滑：
+\begin{equation}
+E_t=E_{t-1}+a_t^E(E_t^{\star}-E_{t-1}),
+\qquad
+a_t^E=
+\begin{cases}
+0.80,&E_t^{\star}>E_{t-1},\\
+0.20,&E_t^{\star}\leq E_{t-1}.
+\end{cases}
+\label{eq:m0815-exploration-smoothing}
+\end{equation}
+因此，模型会较快进入探索，但较慢恢复为稳定利用。
+
+\paragraph{搜索多远。}
+发生搜索时，全局搜索比例由更高的失败门槛控制：
+\begin{align}
+d_t^G
+&=k_G(F_{t-1}-\theta_G),
+\nonumber\\
+g_t^{\star}
+&=g_{\min}+(g_{\max}-g_{\min})\sigma(d_t^G),
+\label{eq:m0815-global-target}
+\end{align}
+其中 $g_{\min}=0.05$、$g_{\max}=0.80$、$\theta_G=0.75$、
+$k_G=12$；$g_t$ 同样用 0.80/0.20 的进入和恢复速率平滑。三个互斥策略概率为
+\begin{align}
+P_t(\text{利用})&=1-E_t,
+\nonumber\\
+P_t(\text{局部探索})&=E_t(1-g_t),
+\nonumber\\
+P_t(\text{全局探索})&=E_tg_t.
+\label{eq:m0815-strategy-decomposition}
+\end{align}
+这些量是由反馈历史确定的连续控制概率，不是事后把试次硬分成三个阶段的标签。
+
+
+\subsubsection{有限工作空间中的规则替换}
+
+\paragraph{替换数量。}
+执行规则占用并保护一个槽位，搜索只发生在其余 $M-1$ 个槽位。每个可搜索槽位的替换率为
+\begin{equation}
+m_t^{\mathrm{search}}
+=1-(1-E_t)^{1/(M-1)},
+\qquad
+K_t\sim\operatorname{Binomial}(M-1,m_t^{\mathrm{search}}).
+\label{eq:m0815-protected-search}
+\end{equation}
+这一换算保证 $P(K_t>0)=E_t$，避免容量较大时仅因槽位更多而机械地产生更高搜索概率。
+
+\paragraph{离开规则。}
+执行规则不会被内部搜索直接删除。其余活跃规则按
+\begin{equation}
+P(h\text{ 被选中离开})
+\propto1-\pi_{t-1}^{+}(h)+\epsilon,
+\qquad \epsilon=10^{-12},
+\label{eq:m0815-drop-rule}
+\end{equation}
+进行不放回抽样。$\epsilon$ 只用于避免全零抽样权重，不表示新的心理 lapse。
+
+\paragraph{新规则提议。}
+设基础先验为均匀分布 $p_0(u)=1/29$，规则距离为
+$d(h,u)=\operatorname{clip}[1-\operatorname{sim}(h,u),0,1]$。相似度由两条固定标签规则在特征空间中的分类一致程度预先计算。局部搜索核为
+\begin{equation}
+K_L(u\mid h)
+\propto p_0(u)\exp[-d(h,u)/\tau_L],
+\qquad u\neq h.
+\label{eq:m0815-local-kernel}
+\end{equation}
+在非活跃规则集合 $I_{t-1}$ 上，局部、全局及混合提议分别为
+\begin{align}
+Q_{L,t}(u)
+&\propto
+\mathbb I(u\in I_{t-1})
+\sum_{h\in A_{t-1}}\pi_{t-1}^{+}(h)K_L(u\mid h),
+\nonumber\\
+Q_{G,t}(u)
+&\propto\mathbb I(u\in I_{t-1})p_0(u),
+\nonumber\\
+Q_t(u)
+&=(1-g_t)Q_{L,t}(u)+g_tQ_{G,t}(u).
+\label{eq:m0815-newcomer-proposal}
+\end{align}
+模型从 $Q_t$ 中不放回抽取 $K_t$ 条新规则。局部核尺度由带版本的规则相似度资源固定，不在本次 $\beta$ 校准中重新拟合。
+当前架构固定 $\tau_L=0.10$，并在全部被试间共享；它不进入被试级优化，避免与 $g_t$ 重复控制
+局部提议向全局提议展宽的程度。这里的相似度专指固定标签规则的功能一致率，而不声称等同于
+被试口头或心理表征中的结构距离。
+
+\paragraph{基于相似度的集合间信念迁移。}
+P0/H4 曾令 newcomer 原样继承与其随机配对的离开规则质量；这一做法虽然守恒总质量，却把新规则的初始可信度绑定到没有认知含义的配对。H5 改为无新增自由参数的 similarity transport。令 survivor 和 newcomer 集合分别为
+\begin{equation}
+\mathcal S_t=A_{t-1}\cap A_t,
+\qquad
+\mathcal N_t=A_t\setminus A_{t-1},
+\qquad
+r_t=\frac{|\mathcal N_t|}{M}=\frac{K_t}{M}.
+\label{eq:m0815-transport-fraction}
+\end{equation}
+保留分量在 survivors 上维持旧 posterior 的相对比例：
+\begin{equation}
+\Gamma_t(u)
+=
+\frac{\mathbb I(u\in\mathcal S_t)\pi_{t-1}^{+}(u)}
+{\sum_{v\in\mathcal S_t}\pi_{t-1}^{+}(v)}.
+\label{eq:m0815-survivor-carryover}
+\end{equation}
+局部和全局语义投影先分别在新 active set 上归一化：
+\begin{align}
+Z_{L,t}(u)
+&\propto
+\mathbb I(u\in A_t)
+\sum_{h\in A_{t-1}}\pi_{t-1}^{+}(h)K_L(u\mid h),
+\nonumber\\
+Z_{G,t}(u)
+&\propto
+\mathbb I(u\in A_t)p_0(u),
+\nonumber\\
+Z_t(u)
+&=(1-g_t)Z_{L,t}(u)+g_tZ_{G,t}(u).
+\label{eq:m0815-semantic-projection}
+\end{align}
+最终的新集合 prior 为
+\begin{equation}
+\boxed{
+\pi_t^{-}(u)
+=(1-r_t)\Gamma_t(u)+r_tZ_t(u)
+}.
+\label{eq:m0815-similarity-transport}
+\end{equation}
+若 $K_t=0$，实现直接令 $\pi_t^{-}=\pi_{t-1}^{+}$；若全部槽位被替换，则 prior 完全由语义投影决定。因此，$E_t$ 通过实际实现的 $K_t$ 控制重构比例，$g_t$ 控制概率迁移的局部或全局范围，固定的 $\tau_L$ 控制局部相似度尺度；prior assignment 本身不再增加新的待拟合参数。
+
+
+\subsubsection{唯一执行规则及其动态动作确信度}
+
+\paragraph{执行惯性。}
+工作空间搜索不会自动成为外显规则切换。只有 $K_t>0$ 且一个独立切换事件以概率
+$s_{\mathrm{exec}}=0.20$ 发生时，执行规则才会改变。由于
+$P(K_t>0)=E_t$，有
+\begin{equation}
+P(e_t\neq e_{t-1})=E_ts_{\mathrm{exec}}.
+\label{eq:m0815-execution-hazard}
+\end{equation}
+发生切换后，新执行规则从除旧规则外的活跃规则中按迁移后的规则后验抽取。这个机制允许学习者已经考虑替代规则，却仍暂时沿用原有规则作答。
+
+\paragraph{规则特异动作确信度。}
+每条规则都有自己的 $\beta_t(h)$，但一个试次只更新实际执行规则 $e_t$。令
+\begin{equation}
+q_t^{\mathrm{act}}
+=p^{\mathrm{act}}_{t,e_t}(y_t),
+\qquad
+b_t=r_tq_t^{\mathrm{act}}+(1-r_t)(1-q_t^{\mathrm{act}}),
+\qquad
+\kappa_t^{\beta}=2(b_t-0.5).
+\label{eq:m0815-beta-evidence}
+\end{equation}
+$\kappa_t^{\beta}>0$ 表示结果支持当前动作策略，$\kappa_t^{\beta}<0$ 表示结果反驳它。更新为
+\begin{equation}
+\beta_{t+1}(e_t)=
+\begin{cases}
+\min\!\left[
+\beta_t(e_t)+\eta_+\kappa_t^{\beta}
+\dfrac{\beta_{\max}-\beta_t(e_t)}{\beta_{\max}},
+\beta_{\max}\right],
+&\kappa_t^{\beta}\geq0,
+\\[7pt]
+\max\!\left[
+\beta_t(e_t)-\eta_-\beta_t(e_t)
+\min(1,-\kappa_t^{\beta}),
+\beta_{\min}\right],
+&\kappa_t^{\beta}<0.
+\end{cases}
+\label{eq:m0815-beta-update}
+\end{equation}
+其中 $\beta_{\min}=0.1$ 固定；$\beta_{\mathrm{init}}$、
+$\beta_{\max}$、$\eta_-$ 和 $\eta_+$ 在开发集上共同校准。未执行规则不会因同一个反馈同步改变确信度。失败压力 $F_t$ 决定是否搜索，动态 $\beta_t(h)$ 决定按某条具体规则作答有多确定，二者承担不同功能。
+
+
+\subsubsection{从执行规则到可观察选择}
+
+给定唯一执行规则，认知层的选择概率为
+\begin{equation}
+p_t^{\mathrm{rule}}(c)=p^{\mathrm{act}}_{t,e_t}(c).
+\label{eq:m0815-executed-choice}
+\end{equation}
+活跃工作空间中其他规则的后验不会在同一试次再平均进动作概率；它们只影响后续保留、替换和执行切换。
+
+0813 曾根据掌握状态构造幂次 $\rho_t$，再锐化
+$p_t^{\mathrm{rule}}$。但对式 \ref{eq:m0815-action-emission} 有
+\begin{equation}
+\frac{[p_t^{\mathrm{rule}}(c)]^{\rho_t}}
+{\sum_{c'}[p_t^{\mathrm{rule}}(c')]^{\rho_t}}
+=\operatorname{softmax}_{c}
+\{-\rho_t\beta_t(e_t)d_{t,e_t,c}\}.
+\label{eq:m0815-redundant-precision}
+\end{equation}
+观测选择只能看到 $\rho_t\beta_t(e_t)$ 的乘积，无法把两者识别为独立的精度机制。因此，0815 保留规则特异的动态 $\beta_t$，并固定 $\rho_t=1$。掌握证据仍可抑制搜索，但不再第二次锐化同一选择概率。
+
+最后加入固定的均匀反应噪声：
+\begin{equation}
+p_t^{\mathrm{obs}}(c)
+=(1-\lambda)p_t^{\mathrm{rule}}(c)+\frac{\lambda}{2},
+\qquad \lambda=0.02.
+\label{eq:m0815-output-lapse}
+\end{equation}
+P0 不使用错误后 lapse、低正确率 lapse 或随潜在波动变化的 lapse。因而，持续行为变化必须来自规则、搜索、记忆和动作确信度，而不能由灵活的输出噪声吸收。
+
+
+\subsubsection{试次内因果顺序}
+
+模型把一次试次拆成
+\begin{equation}
+\operatorname{begin\_trial}(\mathbf x_t)
+\longrightarrow p_t^{\mathrm{obs}}(y)
+\longrightarrow
+\operatorname{complete\_trial}(y_t,r_t).
+\label{eq:m0815-lifecycle}
+\end{equation}
+每个粒子的完整顺序为
+\begin{equation}
+\begin{aligned}
+&\pi_{t-1}^{+},F_{t-1},M_{t-1},e_{t-1},\boldsymbol\beta_t
+\\
+&\quad\longrightarrow
+E_t,g_t,A_t,e_t,\pi_t^{-}
+\longrightarrow p_t^{\mathrm{obs}}(y)
+\\
+&\quad\longrightarrow
+\text{用 }p_t^{\mathrm{obs}}(y_t)\text{ 更新 PF 权重}
+\longrightarrow L_t,\pi_t^{+},\boldsymbol\beta_{t+1},F_t,M_t.
+\end{aligned}
+\label{eq:m0815-causal-order}
+\end{equation}
+因此，本试次选择和反馈不能进入同一试次的预测。选择只在预测完成后校正粒子权重；选择与反馈随后更新认知状态，并从试次 $t+1$ 开始影响行为。第一试次只初始化工作空间和执行规则，不进行反馈驱动的规则替换。
+
+
+\subsubsection{粒子滤波：路径积分而非认知机制}
+
+\paragraph{为什么使用 PF。}
+刺激、选择和反馈并不直接揭示感知噪声、活跃工作空间、执行规则及其完整历史。单条随机轨迹会把未知状态误当成已知，而完整枚举的路径数随试次快速增长。PF 用 $R$ 条带权轨迹近似固定参数 $\theta$ 下的在线状态分布。
+
+\paragraph{作答前边际预测。}
+若第 $r$ 个粒子在试次开始前的权重为 $w_{t-1}^{(r)}$，它给出的选择概率为 $p_t^{(r)}(c)$，则正式的一步预测为
+\begin{equation}
+\overline p_t(c)
+=\sum_{r=1}^{R}w_{t-1}^{(r)}p_t^{(r)}(c).
+\label{eq:m0815-pf-marginal}
+\end{equation}
+该量只条件于当前刺激和已经完成的历史。所有粒子必须先给出概率，才能观察被试本试次的选择。
+
+\paragraph{观察选择后的过滤。}
+观察到 $y_t$ 后，权重更新为
+\begin{equation}
+w_t^{(r)}
+=
+\frac{w_{t-1}^{(r)}p_t^{(r)}(y_t)}
+{\sum_jw_{t-1}^{(j)}p_t^{(j)}(y_t)}.
+\label{eq:m0815-pf-weight}
+\end{equation}
+选择较可能由某条轨迹产生时，该轨迹获得更高权重。本试次的边际预测
+$\overline p_t(y_t)$ 不会被事后重算。随后，各粒子接收同一个真实反馈，并独立更新内部状态。
+
+粒子有效数为
+\begin{equation}
+\operatorname{ESS}_t
+=\frac{1}{\sum_r[w_t^{(r)}]^2}.
+\label{eq:m0815-ess}
+\end{equation}
+当 $\operatorname{ESS}_t<0.5R$ 时，模型进行系统重采样，复制被选粒子的 engine 核心字段与全部有状态模块，并把权重重置为 $1/R$。
+实现中先让每个粒子用本试次的选择与反馈完成认知状态更新，再在 ESS 过低时复制更新后的完整状态；复制得到的状态用于试次 $t+1$。这一顺序不改变已经保存的本试次作答前预测。
+
+\paragraph{ancestry 是什么。}
+每次重采样都会记录“新粒子由哪个旧粒子复制而来”的父索引。沿这些父索引向前追溯得到粒子 ancestry，即终点粒子的家谱。它能检查重采样后是否只剩少数祖先、以及一条显示出来的状态轨迹是否在时间上连贯。ancestry 是数值审计信息，不是新的心理变量，也不等同于已经完成了可靠的平滑。
+
+\paragraph{filtering 与 smoothing。}
+当前实现只做 filtering。作答前预测近似
+\begin{equation}
+p(z_t\mid \mathbf x_{1:t},y_{1:t-1},r_{1:t-1},\theta),
+\label{eq:m0815-predictive-filter}
+\end{equation}
+观察当前选择后的过滤状态近似
+\begin{equation}
+p(z_t\mid \mathbf x_{1:t},y_{1:t},r_{1:t-1},\theta).
+\label{eq:m0815-filtered-state}
+\end{equation}
+直观地说，filtering 只能用“当时已经发生的事情”判断被试此刻可能在执行什么规则。smoothing 则在实验结束后利用未来选择重估较早状态，目标为
+\begin{equation}
+p(z_t\mid \mathbf x_{1:T},y_{1:T},r_{1:T},\theta),
+\qquad T>t.
+\label{eq:m0815-smoothed-state}
+\end{equation}
+FFBSi 会先向前运行 PF，再从终点按后向概率反复抽取完整路径；PGAS 则在条件粒子 MCMC 中更新整条轨迹并用祖先采样缓解路径退化。P0 暂不实现 FFBSi 或 PGAS。因此，同时发生的口头报告只能与过滤量比较；若以后利用完整实验序列重建早期规则，必须明确标为平滑分析，不能把 ancestry 回溯直接称为 smoothing。
+
+
+\subsubsection{独立 PF 重复的概率聚合}
+
+PF 是随机数值算法。同一被试、参数和粒子数下运行 $B$ 个独立 seeds，先对逐试次概率求平均：
+\begin{equation}
+\widetilde p_{s,t}(c;\theta)
+=\frac{1}{B}\sum_{b=1}^{B}
+\overline p_{s,t}^{(b)}(c;\theta).
+\label{eq:m0815-repeat-probability}
+\end{equation}
+被试级选择负对数似然为
+\begin{equation}
+\operatorname{NLL}_s(\theta)
+=-\frac{1}{T_s}\sum_{t=1}^{T_s}
+\log\max\{\widetilde p_{s,t}(y_{s,t};\theta),\epsilon_p\}.
+\label{eq:m0815-nll}
+\end{equation}
+这种顺序近似先对 PF 数值随机性边际化、再使用 proper score。各 seed 单独的 NLL 仍保存为 Monte Carlo 离散程度诊断，但不再把“先评分再平均”当成正式聚合预测。
+
+
+\subsubsection{参数分层与共享精度校准}
+
+\paragraph{结构参数、待校准参数与数值参数。}
+P0 有意限制本轮自由度：
+\begin{table}[htbp]
+\centering
+\small
+\caption{模型 0815 P0 的参数分层。}
+\label{tab:m0815-parameter-layers}
+\begin{tabular}{p{0.20\linewidth}p{0.42\linewidth}p{0.28\linewidth}}
+\hline
+层级 & 内容 & P0 处理 \\
+\hline
+结构固定 & 29 条固定标签规则、$M=3$、唯一执行规则、双通道记忆、原控制器、$\rho=1$、$\lambda=0.02$ & 不在本轮搜索 \\
+共享校准 & $\beta_{\mathrm{ev}}$、$\beta_{\mathrm{init}}$、$\beta_{\max}$、错误下降率 $\eta_-$、正确增量 $\eta_+$ & 8 名开发被试共同选择一套值 \\
+个体输入 & 知觉校准参数、特征呈现顺序、逐试次刺激与行为 & 由被试数据给定 \\
+数值积分 & 粒子数 $R$、PF seeds 数 $B$、ESS 重采样阈值 & 用独立收敛门槛选择 \\
+\hline
+\end{tabular}
+\end{table}
+
+共享校准的群组目标为
+\begin{equation}
+\mathcal J(\theta)
+=\frac{1}{S}\sum_{s=1}^{S}\operatorname{NLL}_s(\theta),
+\qquad S=8.
+\label{eq:m0815-shared-objective}
+\end{equation}
+每名开发被试先得到自己的平均 trial NLL，再在被试间等权平均。这样，试次数更多的被试不会仅因序列更长而支配参数选择。更重要的是，五个 $\beta$ 相关量是群组共享参数，而不是每名被试各自增加五个自由参数。
+
+\paragraph{低预算范围筛选。}
+正式校准前先在 8 名开发被试的前 64 个试次上运行范围筛选，使用 16 个粒子和 2 个独立 PF seeds。该筛选从
+$(\beta_{\mathrm{ev}},\beta_{\mathrm{init}},\beta_{\max},\eta_-,\eta_+)
+=(5,5,25,0.15,1)$ 出发，低预算选中的组合为
+$(10,5,50,0.15,1)$；等权平均 NLL 从 0.5582 降至 0.5368。由于粒子数、seeds 数和试次数均被有意压低，而且改善并非在每名被试上方向一致，这一结果只用于移动正式候选范围，不是模型拟合结果或科学证据。
+
+\paragraph{正式候选范围与预算。}
+coarse 阶段搜索
+\begin{align}
+\beta_{\mathrm{ev}}&\in\{5,10,20\},
+&
+\beta_{\mathrm{init}}&\in\{2.5,5,7.5\},
+\nonumber\\
+\beta_{\max}&\in\{25,50,100\},
+&
+\eta_-&\in\{0.075,0.15,0.30\},
+\nonumber\\
+\eta_+&\in\{0.5,1,2\}.
+\label{eq:m0815-beta-grid}
+\end{align}
+coarse 使用完整开发序列、64 个粒子和 4 个 PF seeds；fine 对 coarse 最优区域使用 128 个粒子和 8 个 seeds。坐标下降从 screening 中心点
+$(10,5,50,0.15,1)$ 开始，固定坐标顺序并运行一个 restart；在相同 anchor 和固定顺序下增加 restart 只会复制同一路径，而不会探索新的初值盆地。
+
+这项校准使用全部开发 trial，因此其 NLL 是参数选择目标，不是留出预测性能。selected-eight 也只是开发集，不构成全样本结论。模型正式比较必须在参数冻结后另行评价。若 PF 收敛检验选出的正式粒子数使候选排序发生变化，则需要在所选数值预算下重新评价 coarse/fine finalists，不能假定低预算排序自动保持。
+
+
+\subsubsection{粒子数的冻结收敛检验}
+
+完成共享 $\beta$ 校准并冻结生成配置后，模型在三名校准被试上比较
+\begin{equation}
+R\in\{32,64,128,256,512\},
+\qquad B=8\text{ 个独立 PF seeds}.
+\label{eq:m0815-particle-panel}
+\end{equation}
+32 被保留为诊断下界，以直接回答“32 个粒子是否足够”；它不会被预设为正式配置。对相邻的 $R$ 与 $2R$，只有以下门槛在全部三名被试上同时通过，较小粒子数才可视为稳定候选：
+\begin{align}
+|\Delta\operatorname{NLL}|&\leq0.002,
+\nonumber\\
+\operatorname{RMSE}(\widetilde{\mathbf p}_{R},
+\widetilde{\mathbf p}_{2R})&\leq0.010,
+\nonumber\\
+\operatorname{JS}(\widetilde{\mathbf q}^{\,e}_{R},
+\widetilde{\mathbf q}^{\,e}_{2R})&\leq0.020,
+\nonumber\\
+\operatorname{RMSE}(\widetilde{\mathbf p}_{\mathrm{seed\ half\ 1}},
+\widetilde{\mathbf p}_{\mathrm{seed\ half\ 2}})&\leq0.010,
+\nonumber\\
+\operatorname{median}(\operatorname{ESS}_t/R)&\geq0.20.
+\label{eq:m0815-pf-gates}
+\end{align}
+$\widetilde{\mathbf q}^{\,e}$ 表示跨 seeds 平均的过滤执行规则分布。因而，低粒子数不能只因总体 NLL 接近就通过；如果逐试次选择概率或核心执行规则后验仍不稳定，它仍然失败。若没有任何相邻粒子对通过全部冻结门槛，本轮不选择正式粒子数，而是增加数值预算或检查退化来源。
+
+
+\subsubsection{主模型之外的最小 mapping 敏感性分析}
+
+二分类任务中，被试可能已经找到正确几何划分，却尚未学会哪一侧对应类别 A 或 B。固定标签主模型没有这一状态，因而可能把“几何正确、标签方向相反”误解释成规则切换、低 $\beta$、知觉误差或 lapse。
+
+P0 不把完整的 mapping 学习模块加入主模型，而只安排一个二元方向敏感性模型。对每条活跃几何规则 $h$，额外维护
+\begin{equation}
+m_t(h)=P(R_{h,1}\rightarrow A\mid\mathcal H_t,h),
+\label{eq:m0815-mapping-belief}
+\end{equation}
+另一方向的概率自动为 $1-m_t(h)$。新规则从 $m_0(h)=0.5$ 开始，反馈按固定更新规则改变这一标量；预测时直接边际化两个方向，而不是把 29 条几何规则扩展为 58 条独立规则。若更新规则固定，该诊断不增加新的自由参数。
+
+比较的重点不是总体 NLL 是否略降，而是固定标签模型是否把“类别方向混淆”错判为几何规则切换。具体检查包括：早期留出 NLL、执行规则轨迹与切换时点的改变、口头报告中“几何一致但类别方向相反”的连续片段，以及用带 mapping 数据生成后由固定标签模型拟合时的虚假规则切换率。若预测和规则轨迹均未发生实质变化，则最终保留较简单的固定标签模型，并把该结果报告为敏感性分析。四分类 mapping 不在 P0 范围内。
+
+
+\subsubsection{恢复实验与验证边界}
+
+\paragraph{二分类恢复，不提前扩展四分类。}
+参数与状态恢复先严格限制在当前二分类、29 条固定标签规则和 $M=3$ 的结构中。参数层至少报告共享 $\beta$ 的偏差和候选识别率；状态层报告执行规则概率的 log score/Brier、最大后验执行规则准确率、切换时点误差和工作空间 inclusion recovery。另用 mapping 敏感性生成数据检验固定标签模型是否产生虚假切换。P0 不提前构造四分类的 24 排列 mapping，也不把四分类容量问题塞入当前潜状态。
+
+\paragraph{当前明确暂缓的扩展。}
+本轮不加入 HMM/HSMM 竞争模型，不使用 SBI、PMCMC 或 SMC$^2$ 传播参数不确定性，不实现 FFBSi/PGAS smoothing，不简化现有搜索控制器，也不新增一套时间结构 PPC。暂缓不等于这些问题已经解决，而是为了先把当前生成模型、共享精度校准和 PF 数值稳定性分开验证，避免同时开放过多机制。
+
+\paragraph{可解释性边界。}
+failure pressure、mastery evidence、$E_t$ 和 $g_t$ 是由反馈历史递推得到的模型控制量；执行规则 $e_t$ 与工作空间 $A_t$ 是由行为间接约束的离散潜状态。过滤后验只能表示“在当前模型与固定参数下，哪些路径与截至当时的行为更相容”。在完成 PF 收敛、恢复实验、mapping 敏感性分析以及冻结模型对未拟合口头报告或反应时的增量预测之前，不能把高后验规则直接表述为被试真实想法。
+
+
+\subsubsection{启动正式计算前的判定顺序}
+
+模型 0815 的计算顺序固定为：首先完成 8 名开发被试的共享 $\beta$ coarse 校准；其次检查候选是否命中搜索边界、被试间方向是否一致以及 PF seed 离散程度；再次运行 128 粒子、8 seeds 的 fine 评价并冻结参数；随后在 32--512 粒子面板上选择满足全部门槛的最小粒子数；最后才允许启动新的全样本拟合、状态恢复和外部验证。
+
+这一顺序把三个问题分开：模型的认知结构是否清楚、随机数值积分是否稳定、行为数据是否支持该结构。当前文稿只完成了第一项的形式化定义以及低预算范围筛选。正式计算尚未开始，因而模型 0815 目前没有可报告的全样本拟合优度、潜状态结论或相对于竞争模型的优势。
+
+
+\subsubsection{小结}
+
+模型 0815 P0 用一条明确的因果链连接刺激、规则和选择：个体化知觉产生内部刺激；固定容量的工作空间保留三条候选规则；失败压力和掌握证据控制是否搜索以及搜索多远；唯一执行规则通过语义边界距离和动态动作确信度产生选择；固定证据精度把反馈转换为规则证据；双通道记忆更新规则后验；PF 最后对所有不可见路径给出作答前边际预测。相对于 0813，当前结构修复了原型发射改变规则语义、规则证据与动作确信度耦合、$\rho_t$ 与动态 $\beta_t$ 冗余、容量标签不统一以及 PF 重复聚合不当等问题，同时把 mapping 遗漏保留为一个最小、可证伪的敏感性分析。
+
+这一模型的价值不在于机制数量，而在于能否在数值稳定的前提下区分“规则几何改变”“执行确信度改变”和“类别方向尚未学会”三种竞争解释。只有后续校准、PF 收敛、恢复和外部验证均支持这一点，才能把它用于更强的认知叙事。

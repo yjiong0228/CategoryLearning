@@ -1,0 +1,579 @@
+% !TeX program = xelatex
+\documentclass[12pt]{article}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs,tabularx,array}
+\usepackage{graphicx}
+\usepackage{fontspec}
+\usepackage[unicode,hidelinks]{hyperref}
+
+\defaultfontfeatures{Ligatures=TeX}
+\setmainfont[AutoFakeSlant=0.2]{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip=0pt plus 1pt minus 0.1pt
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.25em}
+\setlength{\emergencystretch}{3em}
+\allowdisplaybreaks
+\graphicspath{{manuscript/figures/}{figures/}}
+
+\newcommand{\ind}{\mathbb I}
+\newcommand{\softmax}{\operatorname{softmax}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\sigmoid}{\operatorname{sigmoid}}
+
+\title{生成式有限规则搜索模型}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{模型概述}
+
+模型把类别学习表示为一个容量有限、随反馈更新的规则搜索过程。学习者在每个试次只保留少量候选规则，利用近期错误决定是否替换候选，并在局部相似规则与全局规则空间之间调节搜索范围。每条活跃规则具有随经验变化的动作确信度；规则条件选择概率由刺激到规则类别区域的边界距离产生。选择与反馈随后更新活跃规则的相对信念、记忆状态、搜索控制状态和动作确信度。
+
+模型允许两种被试层执行结构。若不设置持续执行规则，选择由活跃规则的作答前信念加权平均产生；若设置持续执行规则，工作空间仍保存多个候选，但只有一条被保护的执行规则直接产生选择。两种结构共用相同的规则空间、搜索控制、记忆更新和动态确信度，仅在可替换槽位与选择读出上不同。
+
+粒子滤波（particle filtering, PF）用于对知觉噪声、初始工作空间、规则替换和执行切换等不可见随机路径进行在线边缘化。PF 是研究者的数值推断方法，不是额外的被试认知机制。
+
+\section{任务、规则空间与潜在状态}
+
+\subsection{逐试次观测}
+
+对被试 $s$ 的第 $t$ 个试次，物理刺激、选择和反馈分别记为
+\begin{equation}
+\bm x_{s,t}\in[0,1]^4,
+\qquad
+y_{s,t}\in\{1,2\},
+\qquad
+r_{s,t}\in\{0,1\}.
+\label{eq:observations}
+\end{equation}
+以下省略被试下标。模型拟合使用刺激、选择和确定性的正确/错误反馈；口头报告与反应时不参与选择概率的计算，可在模型拟合后作为外部验证变量。
+
+\subsection{固定类别标签的规则目录}
+
+候选规则集合为
+\begin{equation}
+\mathcal H=\{1,\ldots,J\},
+\qquad
+J=4+6+6+3+6+4=29.
+\label{eq:rule-space}
+\end{equation}
+其中包括 4 条单维阈值规则 $x_i=0.5$、6 条成对顺序规则 $x_i=x_j$、6 条成对和阈值规则 $x_i+x_j=1$、3 条两组和顺序规则 $x_i+x_j=x_k+x_l$、6 条成对近似规则，以及 4 条单维中等值规则。后两类带状规则分别定义为
+\begin{align}
+R_{h,1}^{\mathrm{pair}}
+&=\{\bm x:|x_i-x_j|\leq0.10\},
+&
+R_{h,2}^{\mathrm{pair}}
+&=[0,1]^4\setminus R_{h,1}^{\mathrm{pair}},
+\nonumber\\
+R_{h,1}^{\mathrm{center}}
+&=\{\bm x:|x_i-0.5|\leq0.10\},
+&
+R_{h,2}^{\mathrm{center}}
+&=[0,1]^4\setminus R_{h,1}^{\mathrm{center}}.
+\label{eq:band-rules}
+\end{align}
+每个几何划分只对应一条具有任务类别方向的规则。模型不额外设置类别标签方向潜变量，也不把同一几何划分复制为标签相反的两条规则。29 条规则的基础先验为均匀分布
+\begin{equation}
+p_0(h)=\frac{1}{29}.
+\label{eq:base-prior}
+\end{equation}
+
+\subsection{固定槽位的有限工作空间}
+
+被试 $s$ 的工作空间容量 $M_s$ 是一个离散的被试层参数，在该被试的全部试次中保持固定。第 $t$ 个试次的活跃规则集合满足
+\begin{equation}
+A_t\subset\mathcal H,
+\qquad
+|A_t|=M_s.
+\label{eq:active-set}
+\end{equation}
+因此，$M_s$ 是固定槽位数，而不是每个试次实际规则数的上限；工作空间始终填满，搜索通过用新规则替换旧规则实现。第一试次的 $M_s$ 条规则按 $p_0$ 不放回抽取，并在抽中的集合内归一化基础先验。基准配置使用 $M_s=3$，正式拟合可在预先规定的离散候选中为不同被试选择容量。
+
+令 $\chi_s\in\{0,1\}$ 表示被试是否使用持续执行规则。当 $\chi_s=1$ 时，粒子还保存
+\begin{equation}
+e_t\in A_t,
+\label{eq:executed-rule}
+\end{equation}
+其中 $e_t$ 是直接控制当前作答的规则；当 $\chi_s=0$ 时，不定义额外执行规则，所有活跃规则按照作答前信念共同参与选择。$\chi_s$ 是被试层二元结构参数，不要求所有被试采用相同执行方式。
+
+给定被试参数 $\theta_s$，一个粒子的试次级潜在状态可写为
+\begin{equation}
+z_t=
+\bigl(
+\widetilde{\bm x}_t,
+A_t,
+\pi_t^{-},
+F_t,
+\bm\beta_t,
+e_t\ind(\chi_s=1)
+\bigr),
+\label{eq:latent-state}
+\end{equation}
+其中 $\widetilde{\bm x}_t$ 是内部感知刺激，$\pi_t^{-}$ 是看到当前选择之前、定义在 $A_t$ 上的规则信念，$F_t$ 是失败累积量，$\bm\beta_t$ 是规则特异的动作确信度。
+
+
+\section{从刺激到规则条件选择概率}
+
+\subsection{被试特异的知觉噪声}
+
+物理刺激首先转换为内部感知刺激：
+\begin{equation}
+\widetilde x_{t,j}
+=\operatorname{clip}(x_{t,j}+\varepsilon_{s,t,j},0,1).
+\label{eq:perception}
+\end{equation}
+知觉噪声参数由正式学习任务之前的被试特异知觉测量给定，并按照学习任务中的实际特征顺序排列。具有误差均值和标准差估计的被试使用逐维正态噪声；以阈限范围刻画的被试使用以 0 为中心、半宽由阈限决定的逐维均匀噪声。不同粒子使用独立、可复现的噪声流，因而 PF 会对不可见的内部刺激进行边缘化。
+
+\subsection{保持规则语义的边界发射}
+
+规则 $h$ 将特征空间划分为类别区域 $R_{h,1}$ 与 $R_{h,2}$。内部刺激到类别 $c$ 的距离定义为到该类别区域的欧氏投影距离
+\begin{equation}
+d_{t,h,c}
+=\inf_{\bm z\in R_{h,c}}
+\lVert\widetilde{\bm x}_t-\bm z\rVert_2.
+\label{eq:boundary-distance}
+\end{equation}
+刺激位于某类别区域内时，到该区域的距离为 0；若一个类别由多个不连通区域组成，则取到所有区域分量的最小距离。该定义使概率软化发生在规则原有边界附近，而不改变规则所规定的硬分类语义。
+
+动态确信度 $\beta_t(h)$ 将边界距离转换为规则条件类别概率：
+\begin{equation}
+p_{t,h}(c)
+=
+\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{c'=1}^{2}\exp[-\beta_t(h)d_{t,h,c'}]}.
+\label{eq:rule-emission}
+\end{equation}
+$\beta_t(h)$ 越高，规则 $h$ 所支持的选择越接近确定性；$\beta_t(h)$ 越低，选择越接近均匀。模型只使用这一套动态 $\beta_t(h)$：同一数值既控制按规则作答的锐度，也控制当前反馈在该规则下的证据强度，不再设置第二个独立证据精度或额外选择锐化幂次。
+
+\subsection{选择与反馈给出的规则证据}
+
+给定观察到的选择 $y_t$ 和反馈 $r_t$，规则 $h$ 对该结果的未归一化支持为
+\begin{equation}
+\ell_t(h)
+=r_t p_{t,h}(y_t)
++(1-r_t)\bigl[1-p_{t,h}(y_t)\bigr].
+\label{eq:feedback-support}
+\end{equation}
+正确反馈支持能产生已选类别的规则，错误反馈支持不产生已选类别的规则。活跃规则内的似然向量为
+\begin{equation}
+L_t(h)
+=
+\frac{\ind(h\in A_t)\ell_t(h)}
+{\sum_{u\in A_t}\ell_t(u)}.
+\label{eq:normalized-likelihood}
+\end{equation}
+该归一化不改变活跃规则间的似然比，只保证后续数值更新稳定。
+
+
+\section{有限记忆与规则信念更新}
+
+规则信念只在当前工作空间内归一化。为表达有限认知资源，模型使用一条指数衰减的证据记忆，而不保留具有独立权重的永久累积通道。给定搜索和信念迁移产生的作答前信念 $\pi_t^{-}$，反馈后的规则信念为
+\begin{equation}
+\pi_t^{+}(h)
+=
+\frac{
+\ind(h\in A_t)
+[\pi_t^{-}(h)]^{\gamma_s}
+[L_t(h)]^{\alpha}
+}{
+\sum_{u\in A_t}
+[\pi_t^{-}(u)]^{\gamma_s}
+[L_t(u)]^{\alpha}
+},
+\qquad
+\alpha=1.
+\label{eq:fading-memory}
+\end{equation}
+等价的对数形式为
+\begin{equation}
+\log\pi_t^{+}(h)
+=\gamma_s\log\pi_t^{-}(h)+\alpha\log L_t(h)-\log Z_t.
+\label{eq:fading-memory-log}
+\end{equation}
+$\gamma_s\in[0,1]$ 是被试层记忆保持参数。较小的 $\gamma_s$ 更快压缩旧规则信念之间的差异，较大的 $\gamma_s$ 更长久地保留过去证据；$\gamma_s=1$ 退化为不额外遗忘的顺序 Bayes 更新。实现中的静态记忆权重固定为 0，反馈增益固定为 $\alpha=1$，因而不会再用第二条记忆通道吸收规则后验变化。
+
+当工作空间发生变化时，先按下一节的相似度迁移构造 $\pi_t^{-}$，再执行式 \eqref{eq:fading-memory}。这保证新进入规则的初始质量来自规则间的结构关系，而不是来自缺失或任意初始化的记忆轨道。
+
+
+\section{反馈反应与失败累积共同控制搜索}
+
+\subsection{失败累积量}
+
+搜索控制只使用已经完成的试次。令 $F_t$ 表示进入试次 $t$ 之前可用的失败累积量：
+\begin{equation}
+F_t
+=\delta_F F_{t-1}+(1-\delta_F)(1-r_{t-1}),
+\qquad
+F_1=0,
+\qquad
+\delta_F=0.60.
+\label{eq:failure-accumulator}
+\end{equation}
+一次错误会立即提高 $F_t$，连续错误会使其逐步积累，随后正确反馈使其按 $\delta_F$ 衰减。模型只维护这一条反馈历史状态，不再增加独立的掌握累积量。
+
+\subsection{是否搜索}
+
+上一试次反馈首先给出一步反应式搜索基线
+\begin{equation}
+E_t^{\mathrm R}
+=
+\begin{cases}
+E_{C,s}, & r_{t-1}=1,\\
+E_{E,s}, & r_{t-1}=0,
+\end{cases}
+\qquad
+E_{E,s}\geq E_{C,s},
+\label{eq:reactive-event}
+\end{equation}
+其中 $E_{C,s}$ 和 $E_{E,s}$ 分别表示正确与错误之后至少替换一个工作空间槽位的基线概率。第一试次令 $E_1^{\mathrm R}=E_{C,s}$，避免增加单独的初始搜索参数。实际搜索事件概率在 logit 尺度上加入累积失败效应：
+\begin{equation}
+E_t
+=\sigmoid\!\left[
+\logit(E_t^{\mathrm R})+c_{A,s}F_t
+\right],
+\qquad
+c_{A,s}\geq0.
+\label{eq:accumulated-event}
+\end{equation}
+因此，$c_{A,s}=0$ 时模型严格退化为只依赖上一试次反馈的反应式控制器；$c_{A,s}>0$ 时，连续错误会在单次错误效应之上进一步提高搜索概率。若 $E_{E,s}=E_{C,s}$，一步反馈反应本身也退化为常数基线。
+
+\subsection{搜索范围}
+
+发生搜索时，全局规则提议的混合比例为
+\begin{equation}
+g_t
+=g_{0,s}+(1-g_{0,s})c_{G,s}F_t,
+\qquad
+0\leq g_{0,s},c_{G,s}\leq1.
+\label{eq:global-search}
+\end{equation}
+$g_{0,s}$ 是无累积失败时的全局搜索基线，$c_{G,s}$ 控制失败累积对搜索范围的扩张。$c_{G,s}=0$ 时，全局比例在被试内固定为 $g_{0,s}$；正值允许持续失败逐渐把局部搜索推向全局搜索。由此可将三个作答前策略量写为
+\begin{align}
+P_t(\mathrm{exploit})&=1-E_t,
+\nonumber\\
+P_t(\mathrm{local\ explore})&=E_t(1-g_t),
+\nonumber\\
+P_t(\mathrm{global\ explore})&=E_tg_t.
+\label{eq:strategy-probabilities}
+\end{align}
+这些量是由历史反馈生成的连续控制概率，不是根据行为曲线事后划分的阶段标签。
+
+
+\section{有限工作空间中的规则替换}
+
+\subsection{替换数量与离开规则}
+
+令可搜索槽位数为
+\begin{equation}
+S_s=M_s-\chi_s.
+\label{eq:searchable-slots}
+\end{equation}
+执行结构关闭时，全部 $M_s$ 个槽位均可被替换；执行结构开启时，$e_t$ 占用并保护一个槽位，只搜索其余 $M_s-1$ 个槽位。槽位级替换率定义为
+\begin{equation}
+m_t=1-(1-E_t)^{1/S_s},
+\qquad
+K_t\sim\operatorname{Binomial}(S_s,m_t).
+\label{eq:replacement-count}
+\end{equation}
+于是 $P(K_t>0)=E_t$，避免仅因容量或可搜索槽位数不同而机械改变“是否搜索”的含义。
+
+需要离开的 $K_t$ 条规则从可替换的活跃规则中不放回抽取，权重为
+\begin{equation}
+P(h\text{ 被移出}\mid A_{t-1})
+\propto
+1-\pi_{t-1}^{+}(h)+\epsilon,
+\qquad
+\epsilon=10^{-12}.
+\label{eq:drop-probability}
+\end{equation}
+因此，反馈后信念较低的规则更容易离开；$\epsilon$ 只用于避免全零抽样权重。若 $\chi_s=1$，执行规则不进入离开候选池。
+
+\subsection{局部与全局新人提议}
+
+规则相似度定义为两条固定标签规则在均匀特征空间中的分类一致概率：
+\begin{equation}
+\operatorname{sim}(h,u)
+=P_{\bm x\sim\operatorname{Unif}([0,1]^4)}
+\bigl[c_h(\bm x)=c_u(\bm x)\bigr].
+\label{eq:functional-similarity}
+\end{equation}
+实现使用 $100{,}000$ 个均匀样本预计算并冻结该矩阵。令
+$d(h,u)=\operatorname{clip}[1-\operatorname{sim}(h,u),0,1]$，局部转移核为
+\begin{equation}
+K_L(u\mid h)
+\propto
+p_0(u)\exp[-d(h,u)/\tau_L],
+\qquad
+u\neq h,
+\qquad
+\tau_L=0.10.
+\label{eq:local-kernel}
+\end{equation}
+$\tau_L$ 在所有被试间固定，不与 $g_t$ 同时作为被试层搜索宽度参数。该相似度表示规则在任务类别输出上的功能一致性，不等同于被试口头描述或心理表征中的语义距离。
+
+设 $I_{t-1}=\mathcal H\setminus A_{t-1}$ 为非活跃规则集合。局部、全局和混合新人提议为
+\begin{align}
+Q_{L,t}(u)
+&\propto
+\ind(u\in I_{t-1})
+\sum_{h\in A_{t-1}}
+\pi_{t-1}^{+}(h)K_L(u\mid h),
+\nonumber\\
+Q_{G,t}(u)
+&\propto
+\ind(u\in I_{t-1})p_0(u),
+\nonumber\\
+Q_t(u)
+&=(1-g_t)Q_{L,t}(u)+g_tQ_{G,t}(u).
+\label{eq:newcomer-proposal}
+\end{align}
+模型从 $Q_t$ 中不放回抽取 $K_t$ 条新人。局部提议以完整工作空间的反馈后信念为中心，而不是只围绕单条最高信念规则；全局提议则回到 29 条规则的均匀基础先验。
+
+\subsection{基于相似度的规则信念迁移}
+
+工作空间改变后，规则信念不按离开规则与新人之间的任意抽样配对进行复制。令 survivor 和 newcomer 集合为
+\begin{equation}
+\mathcal S_t=A_{t-1}\cap A_t,
+\qquad
+\mathcal N_t=A_t\setminus A_{t-1},
+\qquad
+q_t=\frac{|\mathcal N_t|}{M_s}=\frac{K_t}{M_s}.
+\label{eq:transport-fraction}
+\end{equation}
+旧信念在 survivors 上的归一化保留分量为
+\begin{equation}
+\Gamma_t(u)
+=
+\frac{
+\ind(u\in\mathcal S_t)\pi_{t-1}^{+}(u)
+}{
+\sum_{v\in\mathcal S_t}\pi_{t-1}^{+}(v)
+}.
+\label{eq:survivor-carryover}
+\end{equation}
+若 $\mathcal S_t$ 为空，则定义 $\Gamma_t(u)=0$。
+旧工作空间信念向新工作空间的局部投影、全局投影和混合投影分别为
+\begin{align}
+Z_{L,t}(u)
+&\propto
+\ind(u\in A_t)
+\sum_{h\in A_{t-1}}
+\pi_{t-1}^{+}(h)K_L(u\mid h),
+\nonumber\\
+Z_{G,t}(u)
+&\propto
+\ind(u\in A_t)p_0(u),
+\nonumber\\
+Z_t(u)
+&=(1-g_t)Z_{L,t}(u)+g_tZ_{G,t}(u).
+\label{eq:semantic-projection}
+\end{align}
+新的作答前信念为
+\begin{equation}
+\boxed{
+\pi_t^{-}(u)
+=(1-q_t)\Gamma_t(u)+q_tZ_t(u)
+}.
+\label{eq:similarity-transport}
+\end{equation}
+迁移强度由实际发生的替换比例 $K_t/M_s$ 决定，不引入额外待拟合参数。若 $K_t=0$，直接令 $\pi_t^{-}=\pi_{t-1}^{+}$；若整个工作空间都被替换，$\pi_t^{-}$ 完全由新集合上的相似度投影决定。
+
+\subsection{持续执行规则的嵌套结构}
+
+当 $\chi_s=1$ 时，工作空间搜索不自动等于外显规则切换。只有 $K_t>0$ 且独立切换事件发生时，执行规则才改变：
+\begin{equation}
+P(e_t\neq e_{t-1}\mid K_t>0)=s_{\mathrm{exec}},
+\qquad
+s_{\mathrm{exec}}=0.20.
+\label{eq:execution-switch}
+\end{equation}
+在未启用其他执行门控的条件下，其边际切换概率为 $E_t s_{\mathrm{exec}}$。发生切换后，新执行规则从 $A_t\setminus\{e_{t-1}\}$ 中按照迁移后的作答前信念抽取。$s_{\mathrm{exec}}$ 在被试间固定，使执行结构只增加一个二元被试层选择 $\chi_s$，而不再增加连续的执行灵活性参数。
+
+
+\section{统一动态确信度}
+
+每条活跃规则维护一个动态确信度 $\beta_t(h)$。对当前选择，先计算
+\begin{equation}
+b_t(h)
+=r_t p_{t,h}(y_t)
++(1-r_t)[1-p_{t,h}(y_t)],
+\qquad
+\kappa_t(h)=2[b_t(h)-0.5].
+\label{eq:beta-evidence}
+\end{equation}
+$\kappa_t(h)>0$ 表示当前选择与反馈支持规则 $h$，$\kappa_t(h)<0$ 表示当前结果反驳该规则。所有活跃规则均按同一反馈更新：
+\begin{equation}
+\beta_{t+1}(h)=
+\begin{cases}
+\min\!\left\{
+\beta_t(h)+\eta_{+,s}\kappa_t(h)
+[\beta_{\max}-\beta_t(h)],
+\beta_{\max}
+\right\},
+&\kappa_t(h)\geq0,\\[6pt]
+\max\!\left\{
+\beta_t(h)-\eta_{-,s}\beta_t(h)
+\min[1,-\kappa_t(h)],
+\beta_{\min}
+\right\},
+&\kappa_t(h)<0,
+\end{cases}
+\label{eq:beta-update}
+\end{equation}
+其中
+\begin{equation}
+\beta_{\min}=0.1,
+\qquad
+\beta_{\max}=25.
+\label{eq:beta-bounds}
+\end{equation}
+$\beta_{0,s}$、$\eta_{+,s}$ 和 $\eta_{-,s}$ 是被试层参数。正向更新获得剩余上限空间的一定比例，因此接近 $\beta_{\max}$ 时自然减速；负向更新按当前确信度的比例下降。更新范围固定为 $A_t$ 中的全部活跃规则，而不是只更新 $e_t$。新人和重新进入工作空间的规则均重置为 $\beta_{0,s}$；离开工作空间的规则不保存可供以后恢复的 $\beta$ 状态，也不根据新人先验额外缩放初值。
+
+
+\section{从规则状态到可观察选择}
+
+\subsection{执行结构关闭}
+
+当 $\chi_s=0$ 时，选择概率是活跃规则条件概率的作答前信念期望：
+\begin{equation}
+p_t^{\mathrm{choice}}(c)
+=\sum_{h\in A_t}\pi_t^{-}(h)p_{t,h}(c).
+\label{eq:choice-execution-off}
+\end{equation}
+这里直接使用 $\pi_t^{-}$，不对规则权重取幂、不选择最大后验规则，也不额外抽样一条瞬时规则。
+
+\subsection{执行结构开启}
+
+当 $\chi_s=1$ 时，只有持续执行规则直接产生选择：
+\begin{equation}
+p_t^{\mathrm{choice}}(c)=p_{t,e_t}(c).
+\label{eq:choice-execution-on}
+\end{equation}
+其余活跃规则仍影响离开概率、新人提议、相似度信念迁移和后续执行切换，但不会在同一试次再次平均进动作概率。
+
+两条路径均固定选择锐化幂次为 1，并关闭策略确信度锐化、规则承诺锐化和输出 lapse：
+\begin{equation}
+p_t^{\mathrm{obs}}(c)=p_t^{\mathrm{choice}}(c).
+\label{eq:no-output-noise}
+\end{equation}
+因此，预测变化必须来自知觉、规则信念、工作空间搜索、执行结构或动态 $\beta$，而不能由独立的输出噪声机制吸收。
+
+
+\section{试次内因果顺序}
+
+一个试次分为作答前预测和作答后学习两部分：
+\begin{equation}
+\operatorname{begin\_trial}(\bm x_t)
+\longrightarrow
+p_t^{\mathrm{obs}}(y)
+\longrightarrow
+\operatorname{complete\_trial}(y_t,r_t).
+\label{eq:lifecycle}
+\end{equation}
+对每个粒子，具体顺序为
+\begin{equation}
+\begin{aligned}
+&\pi_{t-1}^{+},F_{t-1},\bm\beta_t,A_{t-1},e_{t-1}
+\\
+&\quad\longrightarrow
+\widetilde{\bm x}_t,F_t,E_t,g_t,K_t,A_t,\pi_t^{-},e_t
+\\
+&\quad\longrightarrow
+p_t^{\mathrm{obs}}(y)
+\\
+&\quad\longrightarrow
+\text{观察 }(y_t,r_t)
+\longrightarrow
+L_t,\pi_t^{+},\bm\beta_{t+1}.
+\end{aligned}
+\label{eq:causal-order}
+\end{equation}
+当前试次的 $y_t$ 和 $r_t$ 只进入作答后的规则信念和确信度更新；它们不能反向改变同一试次已经输出的预测。$r_t$ 对搜索控制器的影响从试次 $t+1$ 开始。
+
+
+\section{粒子滤波与在线状态估计}
+
+设 PF 使用 $R$ 个粒子，试次 $t$ 作答前的粒子权重为 $w_{t-1}^{(i)}$。每个粒子独立运行上述生成过程并得到
+$p_t^{(i)}(c)$，PF 的作答前边际预测为
+\begin{equation}
+\widehat p_t(c)
+=\sum_{i=1}^{R}w_{t-1}^{(i)}p_t^{(i)}(c).
+\label{eq:pf-predictive}
+\end{equation}
+观察到选择后，粒子权重按选择似然更新：
+\begin{equation}
+\widetilde w_t^{(i)}
+\propto
+w_{t-1}^{(i)}p_t^{(i)}(y_t),
+\qquad
+\sum_i\widetilde w_t^{(i)}=1.
+\label{eq:pf-weight-update}
+\end{equation}
+随后每个粒子使用观察到的选择和反馈执行式 \eqref{eq:normalized-likelihood}、\eqref{eq:fading-memory} 与 \eqref{eq:beta-update}。有效样本量为
+\begin{equation}
+\operatorname{ESS}_t
+=\frac{1}{\sum_i(\widetilde w_t^{(i)})^2}.
+\label{eq:ess}
+\end{equation}
+当 $\operatorname{ESS}_t<R/2$ 时进行系统重采样，并为复制后的粒子重新分配独立的未来随机数流。重采样复制完整认知状态，包括工作空间、规则信念、记忆、动态 $\beta$ 以及可选执行规则。
+
+PF 输出区分两类量：作答前 predictive 量只使用截至 $t-1$ 的行为历史；filtered 量在观察 $y_t$ 后重新加权。两者都是在线过滤结果，不利用未来试次重新解释较早状态，因此不属于 smoothing。给定固定的被试参数 $\theta_s$，PF 近似的是潜在路径不确定性，而不是 $\theta_s$ 的参数后验。
+
+若同一参数点使用多个 PF 随机种子，先逐试次平均边际选择概率
+\begin{equation}
+\overline p_t(c)=\frac{1}{B}\sum_{b=1}^{B}\widehat p_t^{(b)}(c),
+\label{eq:seed-aggregation}
+\end{equation}
+再由 $\overline p_t(y_t)$ 计算选择负对数似然。粒子数 $R$、随机种子数 $B$ 与重采样阈值属于数值精度设置，不解释为被试层认知参数。
+
+
+\section{参数层级与结构边界}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{模型参数的层级、作用和基准设置。基准值是拟合前的配置起点，不等于所有被试的最终估计。}
+\label{tab:parameter-scope}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.19\textwidth}>{\raggedright\arraybackslash}p{0.21\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.17\textwidth}}
+\toprule
+参数 & 层级 & 作用 & 基准/约束 \\
+\midrule
+$M_s$ & 被试层离散 & 固定工作空间槽位数 & 基准为 3 \\
+$\chi_s$ & 被试层二元 & 选择信念平均或持续执行规则 & $0$ 或 $1$ \\
+$\gamma_s$ & 被试层连续 & 旧规则信念的保持程度 & 基准为 0.80 \\
+$E_{C,s}$、$E_{E,s}$ & 被试层连续 & 正确/错误后的反应式搜索概率 & $0<E_C\leq E_E<1$ \\
+$g_{0,s}$ & 被试层连续 & 全局新人提议的基线比例 & $[0,1]$ \\
+$c_{A,s}$ & 被试层连续，含零边界 & 失败累积对搜索事件的增益 & $c_A\geq0$ \\
+$c_{G,s}$ & 被试层连续，含零边界 & 失败累积对全局搜索的增益 & $[0,1]$ \\
+$\beta_{0,s}$ & 被试层连续 & 初始及新人规则的动作确信度 & 基准为 5 \\
+$\eta_{+,s}$、$\eta_{-,s}$ & 被试层连续 & 支持/反驳反馈后的 $\beta$ 更新率 & 基准为 0.04/0.15 \\
+$\delta_F$ & 共同固定 & 失败累积的保持率 & 0.60 \\
+$\tau_L$ & 共同固定 & 局部规则相似度尺度 & 0.10 \\
+$s_{\mathrm{exec}}$ & 共同固定 & 搜索发生后执行规则的切换比例 & 0.20 \\
+$\beta_{\min},\beta_{\max}$ & 共同固定 & 动态确信度的数值边界 & 0.1/25 \\
+$\alpha,w_0$ & 共同固定 & 反馈增益与静态记忆权重 & 1/0 \\
+$R,B$ & 数值设置 & PF 粒子数与独立随机种子数 & 由数值收敛确定 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+模型不包含类别标签方向学习、独立静态记忆通道、规则权重锐化、策略确信度锐化、输出 lapse、错误规则捕获或额外规则承诺机制。四分类类别排列、事后平滑、引导式粒子滤波以及替代的 HMM 或 simulation-based inference 也不属于上述生成过程。
+
+模型对潜在规则的解释以结构和数值条件为边界。$\pi_t^{-}$ 与 $\pi_t^{+}$ 都是在当前粒子的有限工作空间内归一化的规则信念，并非 29 条规则上的无条件完整后验；跨粒子的 filtered 规则概率则表示在固定模型和参数下，与截至当前试次的选择历史相容的在线状态分布。只有在粒子数与随机种子收敛、参数和状态恢复、生成数据检验以及独立行为指标验证均通过后，才能把这些状态用于关于被试策略形成、保持与切换的实质性推断。
+
+\clearpage
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{model_0818_framework.png}
+\caption{生成式有限规则搜索模型的逐试次因果结构。作答前，每个粒子依次生成被试特异的内部知觉、反馈驱动的搜索控制、固定槽位工作空间及其作答前信念，并以统一的动态确信度计算边界发射。选择读出由被试层执行结构决定：无持续执行规则时对活跃规则加权平均，有持续执行规则时由受保护的执行规则直接控制作答。PF 对这些不可见路径在线边缘化，得到边际预测选择概率。观察选择后，PF 首先校正粒子权重；随后选择与反馈共同更新规则证据、衰减记忆、所有活跃规则的动态确信度和下一试次搜索状态。当前反馈不反向参与本试次作答，图中虚线表示跨试次递归。}
+\label{fig:model-framework}
+\end{figure}
+
+\end{document}
