@@ -271,6 +271,8 @@ class ParticleFilterResult(InferenceResult):
         resample_threshold_fraction: float,
         filter_seed: int,
         condition_on_observed_choice: bool = True,
+        orientation_oracle_conditioned: bool = False,
+        choice_transmission_counterfactual_gain: float | None = None,
         filtered_search_range: Any = None,
         predictive_swap_probability: Any = None,
         predictive_swap_event_probability: Any = None,
@@ -305,6 +307,8 @@ class ParticleFilterResult(InferenceResult):
         audit_ancestral_paths: Mapping[str, Any] | None = None,
         marginal_executed_probability: Any = None,
         filtered_executed_probability: Any = None,
+        marginal_executed_orientation_joint: Any = None,
+        filtered_executed_orientation_joint: Any = None,
         predictive_execution_switch_probability: Any = None,
         predictive_execution_switch_event_probability: Any = None,
         predictive_execution_dwell_trials: Any = None,
@@ -326,8 +330,11 @@ class ParticleFilterResult(InferenceResult):
         filtered_executed_beta: Any = None,
         filtered_execution_switch_event_probability: Any = None,
         filtered_execution_dwell_trials: Any = None,
+        predictive_executed_orientation_probability: Any = None,
+        filtered_executed_orientation_probability: Any = None,
         audit_persistent_execution_no_lapse: Any = None,
         audit_persistent_execution_no_strategy_no_lapse: Any = None,
+        audit_persistent_execution_counterfactual_strategy_no_lapse: Any = None,
     ) -> None:
         observation_probabilities = {"prior_t": marginal_probabilities}
         for key, value in (
@@ -347,6 +354,10 @@ class ParticleFilterResult(InferenceResult):
             (
                 "audit_persistent_execution_no_strategy_no_lapse",
                 audit_persistent_execution_no_strategy_no_lapse,
+            ),
+            (
+                "audit_persistent_execution_counterfactual_strategy_no_lapse",
+                audit_persistent_execution_counterfactual_strategy_no_lapse,
             ),
         ):
             if value is not None:
@@ -389,6 +400,24 @@ class ParticleFilterResult(InferenceResult):
                         )
                     }
                     if filtered_executed_probability is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "executed_orientation_joint": (
+                            marginal_executed_orientation_joint
+                        )
+                    }
+                    if marginal_executed_orientation_joint is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "filtered_executed_orientation_joint": (
+                            filtered_executed_orientation_joint
+                        )
+                    }
+                    if filtered_executed_orientation_joint is not None
                     else {}
                 ),
             },
@@ -484,6 +513,12 @@ class ParticleFilterResult(InferenceResult):
                     filtered_execution_switch_event_probability
                 ),
                 "execution_dwell_trials": filtered_execution_dwell_trials,
+                "predictive_executed_orientation_probability": (
+                    predictive_executed_orientation_probability
+                ),
+                "filtered_executed_orientation_probability": (
+                    filtered_executed_orientation_probability
+                ),
             },
             diagnostics={
                 "pre_choice_ess": pre_choice_ess,
@@ -507,6 +542,14 @@ class ParticleFilterResult(InferenceResult):
                 "resample_threshold_fraction": float(resample_threshold_fraction),
                 "condition_on_observed_choice": bool(
                     condition_on_observed_choice
+                ),
+                "orientation_oracle_conditioned": bool(
+                    orientation_oracle_conditioned
+                ),
+                "choice_transmission_counterfactual_gain": (
+                    None
+                    if choice_transmission_counterfactual_gain is None
+                    else float(choice_transmission_counterfactual_gain)
                 ),
                 "filter_seed": int(filter_seed),
             },

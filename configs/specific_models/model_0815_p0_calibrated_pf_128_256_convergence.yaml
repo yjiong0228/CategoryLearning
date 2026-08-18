@@ -1,0 +1,23 @@
+analysis_id: model_0815_p0_calibrated_pf_128_256_convergence_v1
+scope: calibrated_p0_probability_and_executed_state_numerical_convergence
+
+base_simulation_config: configs/simulation_cfg/model0815_p0_cond1_calibrated.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_p0/pf_convergence/calibrated_128_256_v1
+
+calibration:
+  # Frozen before this comparison; 103 and 120 were already used in the
+  # acceptance panel, while 127 supplies the third predeclared trajectory.
+  subjects: [103, 120, 127]
+  particle_counts: [128, 256]
+  filter_seed_repeats: 8
+  max_trials: 64
+  base_seed: 20260816
+  n_jobs: 8
+
+  # Copied unchanged from the prespecified full P0 convergence design.
+  stability_gates:
+    maximum_successive_choice_nll_change: 0.002
+    maximum_successive_choice_probability_rmse: 0.010
+    maximum_successive_executed_posterior_js: 0.020
+    maximum_split_half_choice_probability_rmse: 0.010
+    minimum_median_post_choice_ess_fraction: 0.20

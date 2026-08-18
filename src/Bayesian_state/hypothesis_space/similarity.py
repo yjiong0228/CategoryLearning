@@ -12,6 +12,7 @@ from .geometry import BoundaryGeometry, PrototypeGeometry
 
 SIMILARITY_BASIS = "boundary_fixed_labels"
 SIMILARITY_VERSION = "shared_hypothesis_space_v1"
+SIMILARITY_COMPUTATION_SEED = 0
 
 
 class ContinuousSimilarity:
@@ -23,6 +24,7 @@ class ContinuousSimilarity:
     """
 
     DEFAULT_N_SAMPLES = 100_000
+    DEFAULT_RANDOM_STATE = SIMILARITY_COMPUTATION_SEED
     RESOURCE_DIR = Path(__file__).resolve().parent / "resources" / "similarity"
     RUNTIME_CACHE_DIR = Path(__file__).resolve().parents[3] / "results" / "cache" / "hypothesis_space"
     _memory_cache: dict[tuple, np.ndarray] = {}
@@ -46,6 +48,7 @@ class ContinuousSimilarity:
             else Path(runtime_cache_dir)
         )
         self.filename = self._build_filename()
+        self.runtime_filename = self._build_runtime_filename()
         self._matrix: np.ndarray | None = None
 
     @property
@@ -68,12 +71,18 @@ class ContinuousSimilarity:
             f"{tolerance_suffix}.npy"
         )
 
+    def _build_runtime_filename(self) -> str:
+        """Keep deterministic caches separate from historical unseeded files."""
+        source = Path(self.filename)
+        return f"{source.stem}_seed{self.DEFAULT_RANDOM_STATE}{source.suffix}"
+
     def _load_or_compute(self) -> np.ndarray:
         cache_key = (
             self.space.signature,
             self.n_samples,
             SIMILARITY_BASIS,
             SIMILARITY_VERSION,
+            self.DEFAULT_RANDOM_STATE,
         )
         cached = self._memory_cache.get(cache_key)
         if cached is not None:
@@ -81,15 +90,18 @@ class ContinuousSimilarity:
 
         for path in (
             self.RESOURCE_DIR / self.filename,
-            self.runtime_cache_dir / self.filename,
+            self.runtime_cache_dir / self.runtime_filename,
         ):
             matrix = self._load_valid_matrix(path)
             if matrix is not None:
                 self._memory_cache[cache_key] = matrix
                 return matrix
 
-        matrix = self.compute(n_samples=self.n_samples)
-        output_path = self.runtime_cache_dir / self.filename
+        matrix = self.compute(
+            n_samples=self.n_samples,
+            random_state=self.DEFAULT_RANDOM_STATE,
+        )
+        output_path = self.runtime_cache_dir / self.runtime_filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(output_path, matrix)
         self._memory_cache[cache_key] = matrix
@@ -99,18 +111,37 @@ class ContinuousSimilarity:
         if not path.exists():
             return None
         try:
-            matrix = np.load(path)
+            matrix = np.load(path, allow_pickle=False)
         except (OSError, ValueError):
             return None
         expected = (len(self.space), len(self.space))
-        return matrix if matrix.shape == expected else None
+        if matrix.shape != expected:
+            return None
+        if not np.issubdtype(matrix.dtype, np.number):
+            return None
+        matrix = np.asarray(matrix, dtype=float)
+        if not np.all(np.isfinite(matrix)):
+            return None
+        tolerance = 1e-12
+        if np.any(matrix < -tolerance) or np.any(matrix > 1.0 + tolerance):
+            return None
+        if not np.allclose(matrix, matrix.T, rtol=0.0, atol=tolerance):
+            return None
+        if not np.allclose(
+            np.diag(matrix),
+            np.ones(len(self.space), dtype=float),
+            rtol=0.0,
+            atol=tolerance,
+        ):
+            return None
+        return matrix
 
     def compute(
         self,
         *,
         n_samples: int | None = None,
         tol: float = 1e-9,
-        random_state: int | None = None,
+        random_state: int | None = SIMILARITY_COMPUTATION_SEED,
     ) -> np.ndarray:
         """Return pairwise fixed-label agreement on uniform unit-cube samples."""
         if len(self.space) == 0:
@@ -166,6 +197,7 @@ def prototype_boundary_agreement(
 __all__ = [
     "ContinuousSimilarity",
     "SIMILARITY_BASIS",
+    "SIMILARITY_COMPUTATION_SEED",
     "SIMILARITY_VERSION",
     "prototype_boundary_agreement",
 ]

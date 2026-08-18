@@ -1,0 +1,27 @@
+engine_config_path: ../model_struct/pmh_model_cond1_0815_b0_adaptive_controller.yaml
+
+subjects: [103, 104, 105, 108, 111]
+hyper_base_seed: 20260818
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/model_dynamic_adaptive_control/0815_b0/controller_pilot/base_simulation
+n_jobs: 5
+simulation_repeats: 4
+repeat_aggregation: mean_probability
+window_size: 16
+stop_at: 1.0
+max_trials: 64
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

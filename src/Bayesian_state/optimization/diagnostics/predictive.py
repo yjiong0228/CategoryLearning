@@ -635,6 +635,7 @@ def diagnose_hyper_accuracy_sampling(
             "init_num",
             "beta_init",
             "decrease_rate",
+            "increase_rate",
             "prior_beta_scale",
             "correct_additive",
         ]

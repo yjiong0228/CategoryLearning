@@ -40,6 +40,9 @@ from src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy impor
     FixedWorkspaceHypothesisTransitionModule,
     FixedStrategyHypothesisTransitionModule,
 )
+from src.Bayesian_state.model.modules.hypothesis_transition.feedback_reactive import (
+    FeedbackReactiveHypothesisTransitionModule,
+)
 from src.Bayesian_state.model.readout import (
     apply_rule_commitment_choice_confidence,
     apply_strategy_conditioned_choice_confidence,
@@ -830,6 +833,58 @@ def test_beta_executed_hypothesis_scope_updates_only_overt_rule():
         BetaModule(_TinyEngine(), update_scope="not_a_scope")
 
 
+def test_beta_increase_rate_is_exact_legacy_reparameterization():
+    legacy = BetaModule(
+        _TinyEngine(),
+        beta_init=5.0,
+        beta_min=0.1,
+        beta_max=25.0,
+        decrease_rate=0.15,
+        correct_additive=1.0,
+        beta_update_mode="probabilistic_feedback",
+        use_prior_scaling=False,
+    )
+    canonical = BetaModule(
+        _TinyEngine(),
+        beta_init=5.0,
+        beta_min=0.1,
+        beta_max=25.0,
+        decrease_rate=0.15,
+        increase_rate=0.04,
+        beta_update_mode="probabilistic_feedback",
+        use_prior_scaling=False,
+    )
+    active = np.asarray([1, 1, 1, 0, 0, 0], dtype=float)
+
+    for stimulus, choice, feedback in (
+        (np.asarray([0.10]), 1, 1.0),
+        (np.asarray([0.80]), 1, 0.0),
+        (np.asarray([0.35]), 2, 1.0),
+        (np.asarray([0.60]), 2, 0.0),
+    ):
+        legacy.update_beta(stimulus, choice, feedback, active)
+        canonical.update_beta(stimulus, choice, feedback, active)
+        np.testing.assert_allclose(canonical.beta, legacy.beta, atol=0.0, rtol=0.0)
+
+    assert canonical.increase_rate == pytest.approx(0.04)
+    assert canonical.correct_additive == pytest.approx(1.0)
+    assert canonical.increase_parameterization == "increase_rate"
+    assert legacy.increase_parameterization == "correct_additive_legacy"
+
+
+def test_beta_increase_parameterization_rejects_ambiguous_or_invalid_rates():
+    with pytest.raises(ValueError, match="increase_rate or legacy"):
+        BetaModule(
+            _TinyEngine(),
+            beta_max=25.0,
+            increase_rate=0.04,
+            correct_additive=1.0,
+        )
+    for invalid in (-0.01, 1.01, np.inf):
+        with pytest.raises(ValueError, match="increase_rate"):
+            BetaModule(_TinyEngine(), increase_rate=invalid)
+
+
 def test_failure_accumulator_v2_global_reset_broadens_newcomer_prior_only():
     _, module = _failure_accumulator_module(
         capacity=2,
@@ -915,6 +970,56 @@ def test_static_bounded_workspace_uses_common_transition_contract():
     assert np.isclose(np.sum(engine.prior), 1.0)
     assert module.last_transition_result is not None
     assert module.last_transition_result.diagnostics["strategy_mode"] == "static"
+
+
+def test_feedback_reactive_workspace_uses_only_previous_outcome_and_restores_state():
+    engine = _TinyEngine()
+    module = FeedbackReactiveHypothesisTransitionModule(
+        engine,
+        capacity=2,
+        init_hypotheses=[0, 1],
+        feedback_reactive_controller={
+            "event_after_correct": 0.10,
+            "event_after_error": 0.70,
+            "initial_event_probability": 0.10,
+            "global_search": 0.25,
+        },
+        module_seed=17,
+    )
+
+    module.process()
+    assert module.transition_log[-1]["swap_probability"] == pytest.approx(0.0)
+
+    module.record_outcome((np.asarray([0.2]), 1, 1.0))
+    module.process()
+    assert module.transition_log[-1]["previous_feedback"] == pytest.approx(1.0)
+    assert module.transition_log[-1]["swap_probability"] == pytest.approx(0.10)
+    assert module.transition_log[-1]["predictive_g"] == pytest.approx(0.25)
+
+    module.record_outcome((np.asarray([0.4]), 1, 0.0))
+    saved = module.state_dict()
+    module.process()
+    assert module.transition_log[-1]["previous_feedback"] == pytest.approx(0.0)
+    assert module.transition_log[-1]["swap_probability"] == pytest.approx(0.70)
+
+    module.load_state_dict(saved)
+    assert module.controller_mode == "feedback_reactive_v1"
+    assert module.outcome_pending is True
+    module.process()
+    assert module.transition_log[-1]["swap_probability"] == pytest.approx(0.70)
+
+
+def test_feedback_reactive_workspace_requires_more_exploration_after_error():
+    with pytest.raises(ValueError, match="event_after_error"):
+        FeedbackReactiveHypothesisTransitionModule(
+            _TinyEngine(),
+            capacity=2,
+            feedback_reactive_controller={
+                "event_after_correct": 0.60,
+                "event_after_error": 0.20,
+                "global_search": 0.30,
+            },
+        )
 
 
 def test_static_strategy_uses_common_selection_then_prior_contract():
@@ -1432,7 +1537,6 @@ def test_particle_filter_rule_commitment_and_confidence_are_marginalized():
         output_lapse=0.02,
         processed_data_dir=Path("."),
     )
-
     commitment = np.asarray(
         result.latent_summaries["predictive_rule_commitment_probability"],
         dtype=float,
@@ -1531,9 +1635,31 @@ def test_particle_filter_persistent_execution_survives_resampling():
         feedback=feedback,
         inference_seed=20260811,
         choice_readout_power=2.0,
-        strategy_confidence_gain=2.0,
+        strategy_confidence_gain=0.0,
         output_lapse=0.02,
         processed_data_dir=Path("."),
+    )
+    counterfactual = run_state_model_particle_filter(
+        engine_config=config,
+        subject_id=1,
+        stimulus=stimulus,
+        choices=choices,
+        feedback=feedback,
+        particle_count=8,
+        choice_readout_power=2.0,
+        strategy_confidence_gain=0.0,
+        output_lapse=0.02,
+        filter_seed=20260811,
+        resample_threshold_fraction=0.95,
+        choice_transmission_audit=True,
+        choice_transmission_counterfactual_gain=2.0,
+        processed_data_dir=Path("."),
+    )
+    np.testing.assert_allclose(
+        counterfactual.observation_probabilities["prior_t"],
+        result.observation_probabilities["prior_t"],
+        rtol=0.0,
+        atol=0.0,
     )
 
     executed = np.asarray(
@@ -1601,6 +1727,18 @@ def test_particle_filter_persistent_execution_survives_resampling():
     np.testing.assert_allclose(
         persistent_without_strategy.sum(axis=1),
         1.0,
+    )
+    np.testing.assert_allclose(persistent, persistent_without_strategy)
+    counterfactual_strategy = np.asarray(
+        counterfactual.observation_probabilities[
+            "audit_persistent_execution_counterfactual_strategy_no_lapse"
+        ],
+        dtype=float,
+    )
+    assert counterfactual_strategy.shape == (n_trials, 2)
+    np.testing.assert_allclose(counterfactual_strategy.sum(axis=1), 1.0)
+    assert np.any(
+        np.abs(counterfactual_strategy - persistent_without_strategy) > 1e-9
     )
 
     ancestral = result.artifacts["audit_ancestral_paths"]

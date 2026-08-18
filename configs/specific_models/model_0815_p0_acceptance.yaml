@@ -1,0 +1,22 @@
+analysis_id: model_0815_p0_acceptance_v1
+scope: engineering_acceptance_not_model_selection
+
+base_simulation_config: configs/simulation_cfg/model0815_p0_cond1_acceptance.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_p0/acceptance/pf_panel
+
+calibration:
+  subjects: [103, 120, 127]
+  particle_counts: [32, 64]
+  filter_seed_repeats: 2
+  max_trials: 64
+  base_seed: 20260815
+  n_jobs: 4
+
+  # These are diagnostic flags only. The formal count is selected later with
+  # the frozen 32--512 panel and eight seeds.
+  stability_gates:
+    maximum_successive_choice_nll_change: 0.010
+    maximum_successive_choice_probability_rmse: 0.030
+    maximum_successive_executed_posterior_js: 0.050
+    maximum_split_half_choice_probability_rmse: 0.050
+    minimum_median_post_choice_ess_fraction: 0.10

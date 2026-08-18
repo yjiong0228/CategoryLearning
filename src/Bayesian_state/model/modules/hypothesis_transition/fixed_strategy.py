@@ -150,6 +150,10 @@ class FixedStrategyHypothesisTransitionModule(
             resolved["post_to_prior"] = prior_config
 
         super().__init__(engine, **resolved)
+        # Keep the legacy log object while exposing the common name consumed
+        # by inference backends.  Both attributes intentionally reference the
+        # same list.
+        self.transition_log = self.strategy_counts_log
 
     def select_hypotheses(
         self,
@@ -183,6 +187,46 @@ class FixedStrategyHypothesisTransitionModule(
     ) -> Mapping[str, Any]:
         del context, selection, prior, kwargs
         latest = self.strategy_counts_log[-1] if self.strategy_counts_log else {}
+        # The strategy-chain implementation predates the particle-filter
+        # diagnostics contract.  Expose the realized transition through the
+        # same descriptive fields used by newer workspace controllers.  These
+        # values only annotate an already completed transition; they do not
+        # affect selection, prior assignment, or choice probabilities.
+        strategies = list(latest.get("strategies", ()))
+        retained_count = int(
+            sum(
+                int(step.get("selected_count", 0))
+                for step in strategies
+                if str(step.get("pool")) == "active"
+            )
+        )
+        explored_count = int(
+            sum(
+                int(step.get("selected_count", 0))
+                for step in strategies
+                if str(step.get("pool")) == "inactive"
+            )
+        )
+        active_before = np.asarray(self.old_active, dtype=int).reshape(-1)
+        active_after = np.asarray(self.active, dtype=int).reshape(-1)
+        newcomer_count = int(np.sum(~np.isin(active_after, active_before)))
+        changed = not np.array_equal(np.sort(active_before), np.sort(active_after))
+        denominator = max(int(active_before.size), 1)
+        replacement_fraction = float(newcomer_count / denominator)
+        realized_indicator = float(changed)
+        latest.update(
+            {
+                "swap_probability": realized_indicator,
+                "swap_event": bool(changed),
+                "predictive_m": replacement_fraction,
+                "predictive_g": float(explored_count > 0),
+                "replacement_count": newcomer_count,
+                "replacement_fraction": replacement_fraction,
+                "retained_count": retained_count,
+                "explored_count": explored_count,
+                "diagnostic_probability_semantics": "realized_particle_indicator",
+            }
+        )
         latest["strategy_mode"] = self.strategy_mode
         return latest
 
@@ -213,15 +257,15 @@ class FixedWorkspaceHypothesisTransitionModule(
                 if key != "method":
                     resolved[key] = value
 
-        prior_spec = resolved.pop("prior_assignment", None)
+        prior_spec = resolved.get("prior_assignment")
         if prior_spec is not None:
             if not isinstance(prior_spec, Mapping):
                 raise ValueError("prior_assignment must be a mapping.")
             method = str(prior_spec.get("method", ""))
-            if method != "pairwise_mass_transfer":
+            if method not in self.VALID_PRIOR_ASSIGNMENTS:
                 raise ValueError(
-                    "The bounded-workspace strategy currently supports "
-                    "only prior_assignment.method='pairwise_mass_transfer'."
+                    "The bounded-workspace strategy requires a supported "
+                    "bounded-workspace prior_assignment method."
                 )
 
         super().__init__(engine, **resolved)

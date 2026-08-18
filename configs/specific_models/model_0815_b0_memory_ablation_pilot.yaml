@@ -1,0 +1,70 @@
+analysis_id: model_0815_b0_memory_ablation_pilot_v1
+scope: nested_M_off_vs_single_leaky_vs_dual_timescale_memory
+
+base_simulation_config: configs/simulation_cfg/model0815_b0_cond1_controller_pilot.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_b0/mechanism_audit/02_memory_ablation_pilot
+
+design:
+  subjects: [103, 104, 105, 108, 111]
+  trials_per_subject: 64
+  train_trials: 32
+  # Deliberately cheap architecture-screen budget. No PF-count conclusion is
+  # drawn from this stage.
+  particle_count: 16
+  seed_count: 2
+  base_seed: 20260819
+  n_jobs: 5
+
+memory_families:
+  m_off:
+    interpretation: Bayes_only_update_no_additional_M_mechanism
+  m_leaky:
+    interpretation: one_fading_channel_with_gamma
+    gamma_values: [0.50, 0.80, 0.95]
+    w0: 0.0
+  m_dual:
+    interpretation: fading_plus_static_channels
+    gamma_values: [0.50, 0.80, 0.95]
+    w0_values: [0.15, 0.40]
+  feedback_gain: 1.0
+
+selection:
+  scope: subject_specific_train_only
+  criterion: ensemble_choice_nll
+  tie_break: lexicographic_candidate_id
+  heldout_trials_used_for_selection: false
+
+contrasts:
+  - contrast_id: leaky_memory_vs_M_off
+    comparator_family: m_off
+    mechanism_family: m_leaky
+    scientific_question: does_any_forgetting_mechanism_help
+  - contrast_id: dual_vs_leaky_memory
+    comparator_family: m_leaky
+    mechanism_family: m_dual
+    scientific_question: does_a_second_static_timescale_help_beyond_forgetting
+  - contrast_id: dual_memory_vs_M_off
+    comparator_family: m_off
+    mechanism_family: m_dual
+    scientific_question: total_effect_of_the_original_M_family
+
+screening_rule:
+  practical_fraction_of_comparator_heldout_nll: 0.01
+
+interpretation:
+  positive_delta: comparator_mean_nll_minus_mechanism_mean_nll
+  primary_estimand: heldout_paired_choice_nll_difference_after_train_only_selection
+  controller_status: adaptive_search_used_as_provisional_working_anchor
+  fixed_components:
+    - boundary_emission
+    - fixed_task_mapping
+    - measured_perception_noise
+    - capacity_3
+    - fixed_action_beta
+    - execution_off
+    - strategy_confidence_off
+    - lapse_off
+  not_claimed:
+    - final_M_decision
+    - final_memory_parameters
+    - final_PF_budget

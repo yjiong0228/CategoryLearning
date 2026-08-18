@@ -21,6 +21,8 @@ hypothesis_transition/
 ├── fixed_strategy.py
 ├── dynamic_discrete_strategy.py
 ├── dynamic_adaptive_control.py
+├── feedback_reactive.py
+├── nested_feedback_accumulator.py
 ├── selection.py
 ├── prior_assignment.py
 ├── workspace.py
@@ -35,10 +37,12 @@ hypothesis_transition/
 | `fixed_strategy.py` | 被试内部不随 trial 改变的 selection/prior policy |
 | `dynamic_discrete_strategy.py` | 随 trial 改变的离散 strategy state (z_t) |
 | `dynamic_adaptive_control.py` | 随 trial 改变的连续 adaptive control state (c_t) |
+| `feedback_reactive.py` | 只读取上一 feedback 的一步反应 H3 参照模式 |
+| `nested_feedback_accumulator.py` | 严格嵌套 constant/reactive/accumulator 的 H4 模式 |
 | `selection.py` / `prior_assignment.py` | 选择和 prior 分配的共享机制 |
 | `workspace.py` / `execution.py` | bounded workspace 状态与执行逻辑 |
 
-只有前四个文件定义认知模式或公共契约；后四个是共享机制，不能在
+只有表中前六个文件定义认知模式或公共契约；后四个是共享机制，不能在
 model YAML 中当作独立 H 模式配置。被试级 candidate 资源位于
 `configs/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
 
@@ -566,6 +570,122 @@ kwargs:
       g_beta_surprise: 0.40
       g_beta_uncertainty: 0.00
 ```
+
+### 9.4 一步反馈反应控制
+
+```yaml
+class: src.Bayesian_state.model.modules.hypothesis_transition.feedback_reactive.FeedbackReactiveHypothesisTransitionModule
+kwargs:
+  capacity: 3
+  feedback_reactive_controller:
+    event_after_correct: 0.20
+    event_after_error: 0.50
+    initial_event_probability: 0.20
+    global_search: 0.30
+  prior_assignment: {method: pairwise_mass_transfer}
+```
+
+该模式在 trial `t` 开始前消费 trial `t-1` 已完成的 feedback；当前 trial outcome 不会进入
+同一 trial 的 transition。`event_after_*` 表示“至少替换一个 workspace slot”的概率，模块会
+按 capacity 转换为 binomial slot rate。selection、newcomer proposal 与 prior transfer 和其他
+bounded-workspace 模式完全相同。
+
+### 9.5 嵌套式一步反应 + failure accumulator
+
+```yaml
+class: src.Bayesian_state.model.modules.hypothesis_transition.nested_feedback_accumulator.NestedFeedbackAccumulatorHypothesisTransitionModule
+kwargs:
+  capacity: 3
+  nested_feedback_accumulator_controller:
+    event_after_correct: 0.20
+    event_after_error: 0.50
+    initial_event_probability: 0.20
+    global_search: 0.30
+    accumulator_decay: 0.60
+    accumulator_logit_gain: 0.00
+    global_search_failure_gain: 0.00
+    initial_failure: 0.00
+  prior_assignment: {method: pairwise_mass_transfer}
+```
+
+令 `e_(t-1) = 1 - feedback_(t-1)`，该模式只维护一个历史状态：
+
+```text
+F_t = accumulator_decay * F_(t-1)
+      + (1 - accumulator_decay) * e_(t-1)
+logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * F_t
+g_t = global_search
+      + (1 - global_search) * global_search_failure_gain * F_t
+```
+
+`E_reactive,t` 在正确后等于 `event_after_correct`，错误后等于
+`event_after_error`。边界关系是：
+
+```text
+accumulator_logit_gain = 0
+and global_search_failure_gain = 0
+    -> 与 feedback-reactive 逐 trial 严格相同
+
+accumulator_logit_gain = 0
+and global_search_failure_gain = 0
+and event_after_correct = event_after_error
+    -> constant-event bounded workspace
+```
+
+两个 gain 都为零时 `accumulator_decay` 不可辨识，因此优化器必须把精确的零作为显式候选，而不能期待
+连续优化自动落在该边界。`global_search_failure_gain=0` 保持固定 global mixture；正值只复用同一
+`F_t` 增大全局 newcomer proposal 的比例，不增加第二套 range accumulator。独立 mastery state、
+阈值和额外 rise/recovery smoothing 仍不属于这个精简控制器。完整模板见
+`configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml`。
+
+H3 继续作为纯 execution-off 参照。H4/H5 则允许在同一个 nested controller 下配置：
+
+```yaml
+persistent_execution:
+  enabled: false
+  switch_scale: 0.20
+```
+
+`enabled` 是被试级二元结构坐标；关闭时不保存 executed rule，选择继续对 workspace posterior
+求边际，并与未写该配置的路径严格相同。开启时每个 trajectory/particle 保存一条
+`executed_hypothesis`，保护它不被普通 workspace replacement 淘汰，并由该规则单独产生当前选择；
+只有发生搜索事件时才可能按固定 `switch_scale` 转向另一条 active rule。`switch_scale` 在当前架构中
+固定，不作为第二个被试级连续自由度。execution 状态随 module snapshot 和 PF resampling 一起传播。
+这一扩展不改变 accumulator 的零边界：execution-off 且两个 accumulator gain 为零时仍与 H3
+逐 trial 严格相同。
+
+历史低维筛选入口为 `scripts/run_model_0815_h4_nested_subject_screen.py`。它先在训练 trials 上
+顺序校准 `event_after_correct`、即时错误 logit gain 与固定 `global_search`，再在三种共同 decay
+下 profile 包含精确 0 的 subject gain。正 gain 必须同时越过训练实用阈值和配对 PF seed-noise
+门槛，否则保留 0。最终留出评估使用不同的 seed role，不能反向参与参数选择。对应预声明配置为
+`configs/specific_models/model_0815_h4_nested_subject_screen.yaml`。该入口不包含新加入的动态 global
+gain，且其 32/32 切分结果只保留为历史技术产物，不再用于当前架构去留决定。
+
+### 9.6 H5 similarity-transport prior assignment
+
+H4 的历史配置把每条 dropped hypothesis 的 posterior mass 原样交给与之随机配对的 newcomer。
+H5 保留这一方法作为兼容路径，但当前架构改用：
+
+```yaml
+prior_assignment: {method: similarity_transport}
+```
+
+令 `K_t` 为本 trial 实际替换数、`C` 为固定 capacity、`r_t=K_t/C`。`c_t` 是 survivors 上按旧
+posterior 归一化的 carry-over distribution；`z_t` 则把完整旧 posterior 通过当前
+`(1-g_t) local + g_t global` kernel 投影到新 active set。最终
+
+```text
+prior_t = (1 - r_t) * c_t + r_t * z_t
+```
+
+`K_t=0` 时严格返回旧 posterior；全部槽位替换时完全使用 semantic projection。该方法没有
+prior-specific 拟合参数：`E_t` 通过 realized `K_t` 决定更新比例，`g_t` 决定概率转移的局部/全局
+范围。H5 将 `tau_local=0.10` 固定为公共架构尺度，不允许它与 `g_t` 一起成为被试级的两个
+搜索宽度补偿参数。该核表示固定标签规则的功能一致性，而不是另行假定的口头/心理结构距离。
+它不与 failure-accumulator `prior_reset` 叠加。新模板为
+`configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml`；H4 配置和既有结果保持不变。
+该 H5 模板同时暴露默认关闭的 `persistent_execution.enabled`；被试级拟合只枚举 false/true，
+不改变 similarity transport、workspace capacity 或固定的 execution switch scale。
 
 ## 10. 因果性、日志与扩展约束
 

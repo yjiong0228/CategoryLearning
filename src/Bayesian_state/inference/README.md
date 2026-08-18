@@ -38,6 +38,9 @@ posterior-weighted 粒子向前回溯完整的 prediction/strategy 祖先路径�
 当 persistent execution 已启用时，审计同时返回执行规则在 strategy confidence 变换前后的
 choice probability。两者共享完全相同的 pre-choice 粒子状态和权重，可用于估计纯读出层的即时
 配对贡献；由于替代读出没有反过来更新后续粒子权重，这仍是条件分解，不是完整反事实模型拟合。
+公共 PF 入口还可设置 analysis-only 的
+`choice_transmission_counterfactual_gain`，在同一批粒子上额外重读指定 strategy-confidence gain；
+该值不参与正式 choice likelihood、importance weighting、resampling 或后续状态更新。
 
 `resolve_inference_backend()` 负责规范化和验证配置，`run_inference_backend()` 负责执行。优化器
 只消费 backend 输出并计算 metrics/loss，不再包含 particle-filter 实现。
@@ -133,6 +136,10 @@ persistent execution 还返回 pre-choice `executed_probability`、post-choice
 `predictive_execution_switch_event_probability`、`predictive_execution_dwell_trials`、
 `predictive_executed_beta` 和 `filtered_executed_beta`。
 choice-transmission audit 的 ancestral paths 可直接检查 executed rule 的驻留和切换。
+它还保存每条连贯 ancestry 对实际 observed choice 给出的逐 trial probability，供 true-path
+likelihood replay 使用。`orientation_oracle_schedule` 是 PF 公共函数的显式 analysis-only
+参数：它在每个 particle 完成 workspace transition 后固定完整的 pre-choice orientation belief
+vector；常规模型拟合必须保持未设置，且结果 metadata 会标记是否启用。
 
 PF 是否“粒子足够”不能只看单次运行是否完成。`scripts/run_model_0815_p0_pf_convergence.py`
 用独立 filter seeds 比较相邻 particle counts，同时检查 probability-averaged choice NLL、逐 trial

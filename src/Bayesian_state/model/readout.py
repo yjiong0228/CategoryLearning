@@ -605,6 +605,33 @@ def resolve_executed_hypothesis(engine: Any) -> int | None:
     return executed_index
 
 
+def apply_hypothesis_mapping(
+    engine: Any,
+    hypothesis: int,
+    probabilities: Sequence[float] | np.ndarray,
+    *,
+    use_predictive_snapshot: bool = False,
+) -> np.ndarray:
+    """Apply an optional category-mapping state to one rule emission."""
+
+    base = normalize_probability_vector(probabilities, strict=True)
+    mapping = engine.get_module(ModuleRole.MAPPING)
+    if mapping is None:
+        return base
+    orient = getattr(mapping, "orient_category_probabilities", None)
+    if not callable(orient):
+        raise TypeError("mapping module must provide orient_category_probabilities().")
+    return normalize_probability_vector(
+        orient(
+            int(hypothesis),
+            base,
+            use_predictive_snapshot=bool(use_predictive_snapshot),
+        ),
+        size=base.size,
+        strict=True,
+    )
+
+
 def read_choice_probabilities_from_model(
     model: Any,
     perceived_stimulus: Sequence[float] | np.ndarray,
@@ -649,6 +676,11 @@ def read_choice_probabilities_from_model(
         )
         probability = normalize_probability_vector(
             np.asarray(raw[:, 0], dtype=float), strict=True
+        )
+        probability = apply_hypothesis_mapping(
+            engine,
+            int(hypothesis),
+            probability,
         )
         cognitive += float(weight) * probability
     cognitive = normalize_probability_vector(cognitive, strict=True)
@@ -745,8 +777,12 @@ def predict_choice_from_model(
         probability = np.asarray(raw, dtype=float)
         if probability.ndim == 2:
             probability = probability[:, 0]
-        hypothesis_category[hypothesis_arg] = normalize_probability_vector(
-            probability, n_categories, strict=True
+        hypothesis_category[hypothesis_arg] = apply_hypothesis_mapping(
+            engine,
+            int(hypothesis),
+            normalize_probability_vector(
+                probability, n_categories, strict=True
+            ),
         )
 
     cognitive = normalize_probability_vector(
@@ -938,6 +974,7 @@ __all__ = [
     "OralReportReadoutResult",
     "ReactionTimeReadoutResult",
     "apply_output_noise_to_category_prob",
+    "apply_hypothesis_mapping",
     "apply_rule_commitment_choice_confidence",
     "apply_strategy_conditioned_choice_confidence",
     "choice_readout_weights",

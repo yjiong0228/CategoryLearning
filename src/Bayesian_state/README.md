@@ -143,6 +143,7 @@ results/subjects/*.json + optional compressed run streams
 ```text
 perception_mod
   → hypo_transitions_mod
+  → [optional mapping_mod after fixed likelihood]
   → memory_mod
   → beta_mod
 ```
@@ -152,8 +153,9 @@ perception_mod
 1. `perception_mod` 产生内部感知刺激并写回 `engine.observation`。
 2. `hypo_transitions_mod` 决定当前 active hypotheses，并把上一 posterior 映射为当前 prior。
 3. choice/feedback 出现后，engine 固定调用 `observation_likelihood.process()`。
-4. `memory_mod` 融合短期/长期证据，写入 `engine.posterior`。
-5. `beta_mod` 更新下一 trial 使用的 hypothesis-specific inverse temperature。
+4. 可选 `mapping_mod` 对二分类 fixed/reversed label orientation 做解析边缘化并更新 belief。
+5. `memory_mod` 融合短期/长期证据，写入 `engine.posterior`。
+6. `beta_mod` 更新下一 trial 使用的 hypothesis-specific inverse temperature。
 
 模块的配置实例名不参与运行时语义判断。每个模块用 `ModulePhase` 声明执行时点，用
 `ModuleRole` 声明唯一职责；需要模块间协作时，engine 按 role 查找。完成 choice/feedback 后，
@@ -165,6 +167,11 @@ Likelihood 不在 `agenda` 中：它是每次 Bayesian learning 必须执行的�
 
 在下一个 trial 开始时，engine 先执行 `prior <- posterior`，transition module 可再对其进行
 集合迁移。`prior_t` 因而表示看到 trial `t` 的 choice/feedback 之前的预测状态。
+Model 0815 H5 将这一步显式拆为 active-set selection 与 `similarity_transport` prior assignment：
+实际替换比例控制信念重构强度，当前 local/global kernel 把旧 posterior 按规则相似度投影到新
+workspace。H5 把固定标签的功能一致率解释为 functional similarity，并将共同
+`tau_local=0.10` 同时用于 newcomer proposal 与 belief transport；该尺度不作为被试级坐标，
+避免与 `global_search` 重复控制搜索宽度。历史 `pairwise_mass_transfer` 仍可配置，但不再是 H5 默认。
 
 `StateModel` 将这一过程显式拆为共享的三段生命周期：
 
@@ -213,6 +220,10 @@ inference:
 优先读取其中的公共 probability/state/latent/diagnostic mappings；旧 backend-specific 属性
 继续作为兼容入口。
 
+Model 0815 的 M1 sensitivity 配置可选加入 parameter-free binary orientation state。PF 会同时
+返回 predictive/filtered `executed_orientation_joint`（geometry × 两种方向）；这仍是 online
+filtering 输出，不是事后 smoothing。M0 不配置该 module，因而与原 fixed-label 路径保持严格兼容。
+
 当前通用粒子入口支持 condition 1、`expectation`/`sharpened_expectation` readout，以及
 uniform `base_lapse`。`choice_readout.kwargs.strategy_confidence_gain > 0` 还可在 hypothesis
 已汇总为 category probability 后、lapse 之前加入策略条件化执行确信度。它只使用 pre-choice
@@ -230,8 +241,12 @@ lapse、RT emission 和其他 condition 尚未进入这一入口。
 active-hypothesis 边际读出。
 
 若再设置 `beta_mod.kwargs.update_scope: executed_hypothesis`，每次反馈只改变 overt rule
-自己的 beta；配合非零 `correct_additive` 和 `decrease_rate`，成功会逐步强化当前规则的
+自己的 beta；配合非零 `increase_rate` 和 `decrease_rate`，成功会逐步强化当前规则的
 判别锐度，失败会降低它的确信度，未执行候选不会被同步强化。
+`increase_rate` 表示一次完全支持性反馈所获得的剩余 beta headroom 比例；旧
+`correct_additive` 继续作为严格等价的兼容入口。Model 0815 H5 使用统一动态 beta、
+`update_scope: active_hypotheses`、固定 `beta_min=0.1`/`beta_max=25`，并以
+`increase_rate=0.04` 替代旧的 `correct_additive=1`。
 
 `continuous_controller.execution.misconception_capture.enabled: true` 可进一步维护严格
 history-only 的规则—选择相容度：failure pressure 高时优先搜索并执行更能解释近期选择的
@@ -388,6 +403,12 @@ configs/model_struct/pmh_model_cond1_0815_p0.yaml
 configs/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml
 configs/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml
 configs/specific_models/model_0815_p0_pf_convergence.yaml
+configs/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml
+configs/specific_models/model_0815_p1_mapping_sensitivity.yaml
+configs/specific_models/model_0815_p1_state_identifiability.yaml
+configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml
+configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml
+configs/specific_models/model_0815_h4_nested_subject_screen.yaml
 ```
 
 其中 `beta_screening` 只用 8 人各 64 个早期 trial 和低粒子预算排除明显不合适的尺度，不能作为
@@ -396,6 +417,39 @@ configs/specific_models/model_0815_p0_pf_convergence.yaml
 该 calibration 配置使用 `hyperparam_selection_mode: shared`：selected-eight 仅共同校准一套
 boundary-distance precision 参数，每位被试先得到自己的 choice NLL，再在被试间等权平均；
 它不是为每位被试增加五个新的自由参数。
+
+P1 mapping 入口 `scripts/run_model_0815_p1_mapping_sensitivity.py` 严格配对 M0/M1 的 PF seeds，
+先对 seed 重复的预测概率求平均再计分，并统一输出双向 fixed-parameter recovery、geometry/orientation state
+recovery、early predictive NLL、执行规则轨迹敏感性以及 mapping effect/PF seed noise 比值。该小样本
+pilot 只用于决定 mapping omission 是否会污染核心 strategy inference，不能单独用来选择最终模型；
+
+当 pilot 的 M1 geometry recovery 较差时，
+`scripts/run_model_0815_p1_state_identifiability.py` 在固定的 M1 synthetic paths 上比较
+R=64/128/256，并以四个共同 PF seeds 同时检查 choice probability、geometry、
+geometry×orientation joint、后验期望 switch、ancestral support 与 true-path choice-likelihood
+replay。最高粒子数另跑 O1 oracle：只把生成器完整的 pre-choice orientation belief vector
+提供给 PF，不固定 geometry。这个 oracle 是 identifiability upper control，不是候选模型；
+terminal ancestry 也只是 genealogy diagnostic，不等同于 FFBSi/PGAS smoothing。相邻粒子数和
+seed-noise 门槛预先写在配置中，未通过时只在同一批冻结轨迹上升级粒子数。
+升级轮可用 `--reference-cache-dir` 只读复用上一轮中匹配的低粒子数 cache；runner 会先核对
+base seed、trial 数、被试和 model path，并把新粒子数结果写入新的 output directory，不覆盖
+上一轮结果。
+其他参数重新优化后的 recovery 必须等 P0 calibration 与 PF budget 冻结后再运行。
+
+Model 0815 H4 把 constant、一步 feedback-reactive 与 accumulated-failure search 写成一个严格
+嵌套的 bounded-workspace controller。`accumulator_logit_gain: 0` 直接走 H3 reactive 更新路径；
+`global_search_failure_gain: 0` 则保留固定的 local/global mixture；两个 gain 都为 0 且 correct/error
+event probability 相等时得到 constant 边界。正的 global gain 使用同一个 failure state：
+`g_t = g_0 + (1-g_0)c_gF_t`，不会增加第二套 range accumulator、阈值或 rise/recovery controller。
+当前模板在两个 gain 的精确零边界提供独立接口，尚未进行最终被试级参数估计。
+历史入口 `scripts/run_model_0815_h4_nested_subject_screen.py` 只用前32 trials和独立 training PF seeds选择
+reactive 基线、共同 decay 与被试 gain；后32 trials及另一组 PF seeds 只用于最终预测比较。训练搜索
+使用较低粒子预算，锁定参数后的效应估计恢复到32粒子×4 seeds。该切分结果现仅作为历史技术
+产物保留，不再用于 accumulator 或动态 global search 的当前架构去留决定。
+H5 不改动上述 nested controller，只把 prior assignment 换成 parameter-free similarity transport；
+H4 配置继续保留为既有审计结果的生成来源。当前 H5 模板还把 persistent execution 接成默认关闭的
+被试级二元结构坐标：关闭时严格保持原 H5 workspace-mixture readout，开启时每个 PF particle
+维护并执行一条受保护规则；`switch_scale` 继续固定，避免把二元结构选择扩展成新的连续补偿参数。
 
 ## 9. 0806 在当前架构中的位置
 

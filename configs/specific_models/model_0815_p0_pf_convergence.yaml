@@ -8,7 +8,7 @@ output_dir: results/model_dynamic_adaptive_control/0815_p0/pf_convergence
 
 calibration:
   subjects: [103, 120, 127]
-  particle_counts: [64, 128, 256, 512]
+  particle_counts: [32, 64, 128, 256, 512]
   filter_seed_repeats: 8
   max_trials: null
   base_seed: 20260815

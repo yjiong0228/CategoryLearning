@@ -7,7 +7,9 @@ modules:
       beta_init: 3.0,
       beta_min: 0.1,
       beta_max: 100.0,
-      increase_rate: 1.15,
+      # Preserve the previously effective BetaModule default explicitly; the
+      # historical increase_rate key was not consumed by the implementation.
+      correct_additive: 0.5,
       decrease_rate: 0.3,
     }
   memory_mod:

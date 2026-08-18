@@ -12,10 +12,13 @@ from .hypothesis_transition import (
     FixedHypothesisStrategySpace,
     FixedStrategyHypothesisTransitionModule,
     FixedWorkspaceHypothesisTransitionModule,
+    FeedbackReactiveHypothesisTransitionModule,
+    NestedFeedbackAccumulatorHypothesisTransitionModule,
     TransitionContext,
     TwoStepHypothesisTransitionMixin,
 )
 from .memory import BayesianMemoryModule, DualMemoryModule
+from .mapping import BinaryOrientationMappingModule
 from .perception import (
     DEFAULT_NORMAL_SUBJECT_IDS,
     DEFAULT_UNIFORM_SUBJECT_IDS,
@@ -30,6 +33,7 @@ __all__ = [
     "BaseModule",
     "BayesianMemoryModule",
     "BetaModule",
+    "BinaryOrientationMappingModule",
     "DEFAULT_NORMAL_SUBJECT_IDS",
     "DEFAULT_UNIFORM_SUBJECT_IDS",
     "DualMemoryModule",
@@ -42,10 +46,12 @@ __all__ = [
     "FixedHypothesisStrategySpace",
     "FixedStrategyHypothesisTransitionModule",
     "FixedWorkspaceHypothesisTransitionModule",
+    "FeedbackReactiveHypothesisTransitionModule",
     "HypothesisSelection",
     "HypothesisTransitionResult",
     "ModulePhase",
     "ModuleRole",
+    "NestedFeedbackAccumulatorHypothesisTransitionModule",
     "PerceptionModule",
     "SUMMARY72_REQUIRED_COLUMNS",
     "SUMMARY_REQUIRED_COLUMNS",

@@ -59,7 +59,9 @@ spaces  →  geometry  →  observation_model
 geometry 下固定类别标签的一致率。实现位于 `similarity.py`。
 
 随模型发布的带版本矩阵位于 `resources/similarity/`。非标准矩阵写入
-`results/cache/hypothesis_space/`，绝不写入 `src/`。
+`results/cache/hypothesis_space/`，绝不写入 `src/`。运行时计算固定使用 seed 0，
+并用带 seed 的文件名与历史未记录种子的缓存隔离；载入时检查 shape、有限性、
+概率范围、对称性和单位对角线。
 
 ## 扩展假设空间
 

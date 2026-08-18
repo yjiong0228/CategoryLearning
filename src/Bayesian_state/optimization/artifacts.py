@@ -192,6 +192,7 @@ def compact_hyperparams(hyperparams: Mapping[str, Any]) -> dict[str, Any]:
         "engine.modules.memory_mod.kwargs.feedback_gain": "feedback_gain",
         "engine.modules.beta_mod.kwargs.beta_init": "beta_init",
         "engine.modules.beta_mod.kwargs.decrease_rate": "decrease_rate",
+        "engine.modules.beta_mod.kwargs.increase_rate": "increase_rate",
         "engine.modules.beta_mod.kwargs.prior_beta_scale": "prior_beta_scale",
         "engine.modules.beta_mod.kwargs.correct_additive": "correct_additive",
         "engine.modules.beta_mod.kwargs.beta_update_mode": "beta_update_mode",

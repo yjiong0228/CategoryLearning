@@ -52,6 +52,7 @@ LATENT_VOLATILITY_MAX_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_v
 LATENT_VOLATILITY_FEEDBACK_MODE_KEY = "engine.modules.hypo_transitions_mod.kwargs.latent_volatility_feedback_mode"
 BETA_INIT_KEY = "engine.modules.beta_mod.kwargs.beta_init"
 DECREASE_RATE_KEY = "engine.modules.beta_mod.kwargs.decrease_rate"
+INCREASE_RATE_KEY = "engine.modules.beta_mod.kwargs.increase_rate"
 PRIOR_BETA_SCALE_KEY = "engine.modules.beta_mod.kwargs.prior_beta_scale"
 CORRECT_ADDITIVE_KEY = "engine.modules.beta_mod.kwargs.correct_additive"
 BETA_UPDATE_MODE_KEY = "engine.modules.beta_mod.kwargs.beta_update_mode"
@@ -74,6 +75,7 @@ NUMERIC_PARAM_COLUMNS = (
     "w0",
     "beta_init",
     "decrease_rate",
+    "increase_rate",
     "prior_beta_scale",
     "correct_additive",
     "probabilistic_feedback_lapse",
@@ -604,6 +606,7 @@ def flatten_hyperparams(
         "init_num": transition.get("init_num"),
         "beta_init": _safe_float(hp.get(BETA_INIT_KEY, hp.get("beta_init"))),
         "decrease_rate": _safe_float(hp.get(DECREASE_RATE_KEY, hp.get("decrease_rate"))),
+        "increase_rate": _safe_float(hp.get(INCREASE_RATE_KEY, hp.get("increase_rate"))),
         "prior_beta_scale": _safe_float(
             hp.get(PRIOR_BETA_SCALE_KEY, hp.get("prior_beta_scale"))
         ),
@@ -946,6 +949,7 @@ def build_best_error_trajectory(restart_df: pd.DataFrame, trace_df: pd.DataFrame
                     "current_strategy_id": row.get("initial_strategy_id"),
                     "current_beta_init": row.get("initial_beta_init"),
                     "current_decrease_rate": row.get("initial_decrease_rate"),
+                    "current_increase_rate": row.get("initial_increase_rate"),
                     "current_prior_beta_scale": row.get("initial_prior_beta_scale"),
                     "current_correct_additive": row.get("initial_correct_additive"),
                 }
@@ -967,6 +971,7 @@ def build_best_error_trajectory(restart_df: pd.DataFrame, trace_df: pd.DataFrame
                 "strategy_id",
                 "beta_init",
                 "decrease_rate",
+                "increase_rate",
                 "prior_beta_scale",
                 "correct_additive",
             ):
@@ -1053,6 +1058,7 @@ def summarize_restart_convergence(restart_df: pd.DataFrame) -> pd.DataFrame:
                 "best_strategy_id": group.loc[best_idx].get("final_strategy_id"),
                 "best_beta_init": group.loc[best_idx].get("final_beta_init"),
                 "best_decrease_rate": group.loc[best_idx].get("final_decrease_rate"),
+                "best_increase_rate": group.loc[best_idx].get("final_increase_rate"),
                 "best_prior_beta_scale": group.loc[best_idx].get("final_prior_beta_scale"),
                 "best_correct_additive": group.loc[best_idx].get("final_correct_additive"),
             }

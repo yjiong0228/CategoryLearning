@@ -34,6 +34,12 @@ class AdaptiveWorkspaceController(BaseModule):
 
     LEGACY_CONTROLLER_MODE = "legacy"
     FAILURE_ACCUMULATOR_MODE = "failure_accumulator_v2"
+    PAIRWISE_PRIOR_ASSIGNMENT = "pairwise_mass_transfer"
+    SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT = "similarity_transport"
+    VALID_PRIOR_ASSIGNMENTS = {
+        PAIRWISE_PRIOR_ASSIGNMENT,
+        SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT,
+    }
 
     def __init__(self, engine, **kwargs):
         super().__init__(engine, **kwargs)
@@ -62,6 +68,10 @@ class AdaptiveWorkspaceController(BaseModule):
         for alias in ("init_num", "max_active_hypotheses"):
             if alias in kwargs and self._validate_int(kwargs[alias], alias) != self.capacity:
                 raise ValueError(f"{alias} must equal capacity for a fixed workspace.")
+
+        self.prior_assignment_method = self._parse_prior_assignment(
+            kwargs.get("prior_assignment")
+        )
 
         controller = kwargs.get("rate_controller", {}) or {}
         if not isinstance(controller, Mapping):
@@ -162,6 +172,15 @@ class AdaptiveWorkspaceController(BaseModule):
         self._configure_failure_accumulator_controller(
             kwargs.get("failure_accumulator_controller", {})
         )
+        if (
+            self.prior_assignment_method
+            == self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+            and self.prior_reset_max_strength > 0.0
+        ):
+            raise ValueError(
+                "similarity_transport already defines the transition prior and "
+                "cannot be combined with failure-accumulator prior_reset."
+            )
         if self.failure_accumulator_enabled:
             self.dynamic_rate = True
             self.dynamic_range = bool(self.global_max > self.global_min)
@@ -272,6 +291,33 @@ class AdaptiveWorkspaceController(BaseModule):
         if float(value) != float(parsed):
             raise ValueError(f"{name} must be an integer, got {value!r}.")
         return parsed
+
+    @classmethod
+    def _parse_prior_assignment(cls, raw: Any) -> str:
+        """Resolve the bounded-workspace posterior-to-prior mapping.
+
+        ``similarity_transport`` deliberately has no method-specific fitted
+        parameters.  Its transport strength is the realized replacement
+        fraction, and it reuses the already configured local/global kernel.
+        """
+
+        if raw is None:
+            return cls.PAIRWISE_PRIOR_ASSIGNMENT
+        if not isinstance(raw, Mapping):
+            raise ValueError("prior_assignment must be a mapping.")
+        unknown = set(raw) - {"method"}
+        if unknown:
+            raise ValueError(
+                "bounded-workspace prior_assignment supports only the method "
+                f"key; got unsupported keys {sorted(unknown)}."
+            )
+        method = str(raw.get("method", ""))
+        if method not in cls.VALID_PRIOR_ASSIGNMENTS:
+            raise ValueError(
+                "bounded-workspace prior_assignment.method must be one of "
+                f"{sorted(cls.VALID_PRIOR_ASSIGNMENTS)}, got {method!r}."
+            )
+        return method
 
     @staticmethod
     def _validate_finite(value: Any, name: str) -> float:
@@ -664,7 +710,13 @@ class AdaptiveWorkspaceController(BaseModule):
             raise ValueError(
                 "Configure misconception_capture or rule_commitment, not both."
             )
-        if self.persistent_execution_enabled and not self.failure_accumulator_enabled:
+        if (
+            self.persistent_execution_enabled
+            and not self.failure_accumulator_enabled
+            and not bool(
+                getattr(self, "allows_legacy_persistent_execution", False)
+            )
+        ):
             raise ValueError(
                 "persistent execution currently requires "
                 "controller_mode='failure_accumulator_v2'."
@@ -1242,6 +1294,22 @@ class AdaptiveWorkspaceController(BaseModule):
         beta_mod = self.engine.get_module(ModuleRole.BETA)
         if beta_mod is not None and hasattr(beta_mod, "initialize_beta_for_hypotheses"):
             beta_mod.initialize_beta_for_hypotheses(newcomers, priors=None)
+
+    def _initialize_newcomer_mapping(self, newcomers: np.ndarray) -> None:
+        """Reset label orientation when a geometry enters the workspace."""
+
+        if newcomers.size == 0:
+            return
+        try:
+            mapping_mod = self.engine.get_module(ModuleRole.MAPPING)
+        except KeyError:
+            # Lightweight test/legacy engines may expose only the original
+            # module roles.  Mapping is an optional M1 extension.
+            mapping_mod = None
+        if mapping_mod is not None and hasattr(
+            mapping_mod, "initialize_orientation_for_hypotheses"
+        ):
+            mapping_mod.initialize_orientation_for_hypotheses(newcomers)
 
     def reseed_future(self, module_seed: int) -> None:
         self.module_seed = int(module_seed)

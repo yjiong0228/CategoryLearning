@@ -197,6 +197,101 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
             },
         )
 
+    def _pairwise_mass_transfer_prior(
+        self,
+        posterior: np.ndarray,
+        selection: HypothesisSelection,
+    ) -> tuple[np.ndarray, dict[str, float | str]]:
+        prior = np.asarray(posterior, dtype=float).copy()
+        for dropped_hypothesis, newcomer in selection.replacement_pairs:
+            prior[newcomer] = prior[dropped_hypothesis]
+            prior[dropped_hypothesis] = 0.0
+        prior = self._normalize(prior, "pairwise post-transition prior")
+        return prior, {
+            "prior_assignment_method": self.PAIRWISE_PRIOR_ASSIGNMENT,
+            "prior_transport_fraction": float(selection.newcomers.size)
+            / float(self.capacity),
+            "semantic_newcomer_mass": float("nan"),
+        }
+
+    def _similarity_transport_prior(
+        self,
+        posterior: np.ndarray,
+        selection: HypothesisSelection,
+    ) -> tuple[np.ndarray, dict[str, float | str]]:
+        """Project old belief onto the realized workspace through rule similarity.
+
+        The exact carry-over boundary is used when no slot changed.  Otherwise
+        the fraction of renewed slots, ``K_t / capacity``, mixes survivor
+        carry-over with a semantic local/global projection of the complete old
+        posterior.  The method therefore adds no prior-specific fitted
+        parameter and does not attach a newcomer's mass to an arbitrary
+        dropped-newcomer pairing.
+        """
+
+        active_after = np.asarray(selection.active_after, dtype=int)
+        survivors = np.asarray(selection.survivors, dtype=int)
+        newcomers = np.asarray(selection.newcomers, dtype=int)
+        replacement_fraction = float(newcomers.size) / float(self.capacity)
+
+        if newcomers.size == 0:
+            unchanged = np.zeros(self.total_hypo, dtype=float)
+            unchanged[active_after] = posterior[active_after]
+            unchanged = self._normalize(
+                unchanged,
+                "unchanged similarity-transport prior",
+            )
+            return unchanged, {
+                "prior_assignment_method": (
+                    self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+                ),
+                "prior_transport_fraction": 0.0,
+                "semantic_newcomer_mass": 0.0,
+            }
+
+        carryover = np.zeros(self.total_hypo, dtype=float)
+        if survivors.size > 0:
+            carryover[survivors] = self._normalize(
+                posterior[survivors],
+                "similarity-transport survivor carry-over",
+            )
+        elif replacement_fraction < 1.0 - 1e-12:
+            raise RuntimeError(
+                "similarity transport has residual carry-over mass but no survivors."
+            )
+
+        self._ensure_geometry()
+        assert self._local_kernel is not None
+        local_full = np.asarray(posterior @ self._local_kernel, dtype=float)
+        local_active = self._normalize(
+            local_full[active_after],
+            "similarity-transport local projection",
+        )
+        global_active = self._normalize(
+            self.base_prior[active_after],
+            "similarity-transport global projection",
+        )
+        semantic_active = self._normalize(
+            (1.0 - float(self.current_g)) * local_active
+            + float(self.current_g) * global_active,
+            "similarity-transport semantic projection",
+        )
+        semantic = np.zeros(self.total_hypo, dtype=float)
+        semantic[active_after] = semantic_active
+
+        prior = self._normalize(
+            (1.0 - replacement_fraction) * carryover
+            + replacement_fraction * semantic,
+            "similarity-transport post-transition prior",
+        )
+        return prior, {
+            "prior_assignment_method": (
+                self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+            ),
+            "prior_transport_fraction": replacement_fraction,
+            "semantic_newcomer_mass": float(np.sum(semantic[newcomers])),
+        }
+
     def assign_prior(
         self,
         context: TransitionContext,
@@ -207,11 +302,21 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         if self._pending_transition is None:
             raise RuntimeError("bounded-workspace transition has no pending selection.")
         posterior = np.asarray(self._pending_transition["posterior"], dtype=float)
-        prior = posterior.copy()
-        for dropped_hypothesis, newcomer in selection.replacement_pairs:
-            prior[newcomer] = prior[dropped_hypothesis]
-            prior[dropped_hypothesis] = 0.0
-        pairwise_prior = self._normalize(prior, "pairwise post-transition prior")
+        if self.prior_assignment_method == self.PAIRWISE_PRIOR_ASSIGNMENT:
+            transition_prior, assignment_diagnostics = (
+                self._pairwise_mass_transfer_prior(posterior, selection)
+            )
+        elif (
+            self.prior_assignment_method
+            == self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+        ):
+            transition_prior, assignment_diagnostics = (
+                self._similarity_transport_prior(posterior, selection)
+            )
+        else:  # pragma: no cover - constructor validation owns this invariant.
+            raise RuntimeError(
+                f"unsupported prior assignment {self.prior_assignment_method!r}."
+            )
 
         reset_strength = 0.0
         reset_mass_shift = 0.0
@@ -226,16 +331,22 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
                 "active-set base prior for global reset",
             )
             prior = self._normalize(
-                (1.0 - reset_strength) * pairwise_prior
+                (1.0 - reset_strength) * transition_prior
                 + reset_strength * broad_prior,
                 "globally reset post-transition prior",
             )
-            reset_mass_shift = float(0.5 * np.sum(np.abs(prior - pairwise_prior)))
+            reset_mass_shift = float(
+                0.5 * np.sum(np.abs(prior - transition_prior))
+            )
         else:
-            prior = pairwise_prior
+            prior = transition_prior
 
+        self._pending_transition.update(assignment_diagnostics)
         self._pending_transition["prior_reset_strength"] = reset_strength
         self._pending_transition["prior_reset_mass_shift"] = reset_mass_shift
+        self._pending_transition["newcomer_prior_mass"] = float(
+            np.sum(prior[selection.newcomers])
+        )
         return prior
 
     def _finish_hypothesis_transition(
@@ -255,6 +366,13 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         replacement_count = int(pending["replacement_count"])
         prior_reset_strength = float(pending.get("prior_reset_strength", 0.0))
         prior_reset_mass_shift = float(pending.get("prior_reset_mass_shift", 0.0))
+        prior_transport_fraction = float(
+            pending.get("prior_transport_fraction", 0.0)
+        )
+        semantic_newcomer_mass = float(
+            pending.get("semantic_newcomer_mass", float("nan"))
+        )
+        newcomer_prior_mass = float(pending.get("newcomer_prior_mass", 0.0))
         previous_executed_hypothesis = self.executed_hypothesis
         execution_switched = False
         capture_switched = False
@@ -386,6 +504,7 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         )
         removed_mass = float(np.sum(posterior[dropped])) if dropped.size else 0.0
         self.predictive_prior = prior.copy()
+        self._initialize_newcomer_mapping(newcomers)
         self._initialize_newcomer_beta(newcomers)
 
         # Trial 0 initializes the workspace and never executes the binomial
@@ -428,6 +547,15 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
             "prior_reset_strength": prior_reset_strength,
             "prior_reset_mass_shift": prior_reset_mass_shift,
             "prior_reset_applied": bool(prior_reset_strength > 0.0),
+            "prior_assignment_method": str(
+                pending.get(
+                    "prior_assignment_method",
+                    self.prior_assignment_method,
+                )
+            ),
+            "prior_transport_fraction": prior_transport_fraction,
+            "semantic_newcomer_mass": semantic_newcomer_mass,
+            "newcomer_prior_mass": newcomer_prior_mass,
             "feedback_surprise": float(self.feedback_surprise),
             "feedback_uncertainty": float(self.feedback_uncertainty),
             "standardized_surprise": float(pending["z_surprise"]),

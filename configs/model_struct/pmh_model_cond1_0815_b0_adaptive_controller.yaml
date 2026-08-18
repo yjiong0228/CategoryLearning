@@ -1,0 +1,133 @@
+# Minimal common-state baseline for the first Model 0815 mechanism screen.
+#
+# The only optional mechanism enabled here is the failure/mastery/global
+# adaptive search controller.  Its matched comparator is constructed by the
+# audit runner and differs only in the hypothesis-transition controller.
+
+provenance:
+  model_id: model0815_b0_adaptive_controller
+  parent_model_id: model0815_p0
+  scientific_status: provisional_minimal_architecture_screen
+  label_mapping:
+    mode: fixed_task_labels
+  workspace_capacity:
+    value: 3
+    scope: cohort_common_prespecified
+  optional_mechanisms:
+    adaptive_search_controller: enabled_for_screen
+    dual_memory: disabled
+    dynamic_action_beta: disabled
+    persistent_execution: disabled
+    strategy_confidence: disabled
+    output_lapse: disabled
+
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+
+inference:
+  backend: particle_filter
+  # Architecture-screen budget only; this is not the final PF count.
+  particle_count: 32
+  resample_threshold_fraction: 0.5
+
+likelihood:
+  distance_mode: boundary
+  beta_source: fixed
+  # Retain the P0 evidence-precision anchor while optional mechanisms are
+  # removed.  It is common to both controller variants.
+  default_beta: 10.0
+
+modules:
+  perception_mod:
+    class: src.Bayesian_state.model.modules.perception.PerceptionModule
+
+  # A zero-update BetaModule supplies a fixed hypothesis-level action beta.
+  # It remains a module so newcomer hypotheses receive the same value.
+  beta_mod:
+    class: src.Bayesian_state.model.modules.beta.BetaModule
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 50.0
+      decrease_rate: 0.0
+      correct_additive: 0.0
+      beta_update_mode: probabilistic_feedback
+      update_scope: active_hypotheses
+      probabilistic_feedback_lapse: 0.0
+      use_prior_scaling: false
+      prior_beta_scale: 0.0
+
+  hypo_transitions_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule
+    kwargs:
+      capacity: 3
+      surprise_center: 2.56
+      surprise_scale: 4.58
+      uncertainty_center: 0.1332542767
+      uncertainty_scale: 0.0643078377
+      continuous_controller:
+        mode: failure_accumulator_v2
+        state:
+          failure_decay: 0.60
+          mastery_decay: 0.90
+          initial_failure: 0.0
+          initial_mastery: 0.50
+        exploration:
+          event_min: 0.05
+          event_max: 0.65
+          failure_threshold: 0.55
+          failure_gain: 10.0
+          uncertainty_weight: 0.0
+          mastery_weight: 1.0
+          surprise_weight: 0.0
+          rise_rate: 0.80
+          recovery_rate: 0.20
+        range:
+          global_min: 0.05
+          global_max: 0.80
+          failure_threshold: 0.75
+          failure_gain: 12.0
+          uncertainty_weight: 0.0
+          mastery_weight: 0.0
+          surprise_weight: 0.0
+          rise_rate: 0.80
+          recovery_rate: 0.20
+        execution:
+          enabled: false
+          switch_scale: 0.20
+      epsilon: 1.0e-12
+
+  # M-off baseline: mandatory Bayes-only posterior updating, with no
+  # additional forgetting or multi-timescale memory mechanism.
+  memory_mod:
+    class: src.Bayesian_state.model.modules.memory.BayesianMemoryModule
+    kwargs: {}
+
+choice_readout:
+  kwargs:
+    method: expectation
+    power: 1.0
+    strategy_confidence_gain: 0.0
+
+output_noise:
+  kwargs:
+    enabled: true
+    base_lapse: 0.0
+    post_error_lapse: 0.0
+    low_accuracy_lapse: 0.0
+    low_accuracy_threshold: 0.7
+    recent_accuracy_window: 8
+    lapse_decay: 0.0
+    max_lapse: 1.0
+    lapse_target: uniform
+    latent_volatility_lapse: 0.0
+    latent_volatility_power: 1.0
+
+agenda:
+  - perception_mod
+  - hypo_transitions_mod
+  - memory_mod
+  - beta_mod

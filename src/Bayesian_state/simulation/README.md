@@ -69,8 +69,9 @@ choice NLL/Brier。`simulation.mean_error` 是这个 probability-mixture score�
 
 固定仿真还把 `model_provenance` 写入 subject JSON。它包括完整 resolved engine config 的 SHA-256、
 共同/被试级容量、初始 active set 是固定还是按 prior 无放回抽样、PF 粒子数、规则证据 precision、
-动作 beta 配置及 repeat 聚合方式。声明性解释来自 engine YAML 的 `provenance` 字段；该字段不参与
-认知计算。
+动作 beta 配置及 repeat 聚合方式。若模型声明 hypothesis similarity，还会记录 basis、version、
+已冻结资源的生成种子状态、运行时 fallback seed、资源文件 hash、解析后的 `tau_local` 及其作用域。
+声明性解释来自 engine YAML 的 `provenance` 字段；该字段不参与认知计算。
 
 Controller v2a 的三被试结构探针配置是
 `configs/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml`。

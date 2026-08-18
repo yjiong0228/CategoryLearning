@@ -89,14 +89,17 @@ class DynamicAdaptiveControlHypothesisTransitionModule(
                 }
                 resolved["persistent_execution"] = continuous.get("execution", {})
 
-        prior_spec = resolved.pop("prior_assignment", None)
+        prior_spec = resolved.get("prior_assignment")
         if prior_spec is not None:
             if not isinstance(prior_spec, Mapping):
                 raise ValueError("prior_assignment must be a mapping.")
-            if str(prior_spec.get("method", "")) != "pairwise_mass_transfer":
+            if (
+                str(prior_spec.get("method", ""))
+                not in self.VALID_PRIOR_ASSIGNMENTS
+            ):
                 raise ValueError(
-                    "Continuous bounded-workspace control currently supports only "
-                    "prior_assignment.method='pairwise_mass_transfer'."
+                    "Continuous bounded-workspace control requires a supported "
+                    "bounded-workspace prior_assignment method."
                 )
 
         selection_spec = resolved.pop("selection_strategy", None)

@@ -101,6 +101,8 @@ def test_transition_modes_and_shared_mechanisms_are_separate() -> None:
         "fixed_strategy.py",
         "dynamic_discrete_strategy.py",
         "dynamic_adaptive_control.py",
+        "feedback_reactive.py",
+        "nested_feedback_accumulator.py",
     }
     shared_mechanisms = {
         "contracts.py",
@@ -317,6 +319,63 @@ def test_continuous_similarity_uses_versioned_boundary_label_resources(
     assert SIMILARITY_BASIS == "boundary_fixed_labels"
     assert (partition.similarity.RESOURCE_DIR / partition.similarity.filename).is_file()
     assert partition.similarity_matrix.shape == (partition.length, partition.length)
+
+
+def test_continuous_similarity_runtime_computation_is_seeded_and_validated(
+    tmp_path: Path,
+) -> None:
+    from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPartition
+    from src.Bayesian_state.hypothesis_space.similarity import (
+        SIMILARITY_COMPUTATION_SEED,
+    )
+
+    partition = ContinuousPartition(4, 2)
+    similarity = partition.similarity
+    assert SIMILARITY_COMPUTATION_SEED == 0
+    assert similarity.runtime_filename.endswith("_seed0.npy")
+    np.testing.assert_array_equal(
+        similarity.compute(n_samples=256),
+        similarity.compute(n_samples=256),
+    )
+
+    runtime_partition = ContinuousPartition(
+        4,
+        2,
+        similarity_n_samples=256,
+        similarity_cache_dir=tmp_path,
+    )
+    runtime_matrix = runtime_partition.similarity_matrix
+    assert runtime_matrix.shape == (runtime_partition.length, runtime_partition.length)
+    assert (
+        tmp_path / runtime_partition.similarity.runtime_filename
+    ).is_file()
+    assert not (tmp_path / runtime_partition.similarity.filename).exists()
+
+    valid = np.asarray(partition.similarity_matrix, dtype=float)
+    invalid_matrices = []
+
+    invalid_matrices.append(valid[:-1])
+
+    nonfinite = valid.copy()
+    nonfinite[0, 1] = nonfinite[1, 0] = np.nan
+    invalid_matrices.append(nonfinite)
+
+    outside_probability_range = valid.copy()
+    outside_probability_range[0, 1] = outside_probability_range[1, 0] = 1.01
+    invalid_matrices.append(outside_probability_range)
+
+    asymmetric = valid.copy()
+    asymmetric[0, 1] += 0.01
+    invalid_matrices.append(asymmetric)
+
+    wrong_diagonal = valid.copy()
+    wrong_diagonal[0, 0] = 0.99
+    invalid_matrices.append(wrong_diagonal)
+
+    for index, matrix in enumerate(invalid_matrices):
+        path = tmp_path / f"invalid_similarity_{index}.npy"
+        np.save(path, matrix)
+        assert similarity._load_valid_matrix(path) is None
 
 
 def test_partition_rejects_unknown_prototype_construction_method() -> None:

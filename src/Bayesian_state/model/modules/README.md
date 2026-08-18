@@ -13,8 +13,9 @@ PMH 常用顺序：
 1. `perception_mod`
 2. `hypo_transitions_mod`
 3. engine 固定 likelihood 阶段（不属于 module/agenda）
-4. `memory_mod`
-5. `beta_mod`
+4. 可选 `mapping_mod`（仅二分类 M1 sensitivity）
+5. `memory_mod`
+6. `beta_mod`
 
 对应的信息流：
 
@@ -23,6 +24,7 @@ PMH 常用顺序：
 - `hypo_transitions_mod`：给出当前活跃假设集合（`hypotheses_mask`）并迁移 `prior`
 - choice/feedback 产生后：`observation = (perceived_stimulus, choice, feedback)`
 - `engine.compute_likelihood()`：调用固定 observation model 计算 `p(data_t | h)`
+- 可选 `mapping_mod`：对固定与反向类别标签解析边缘化，并更新 orientation belief
 - `memory_mod`：融合历史记忆得到 `posterior_t`
 - `beta_mod`：依据 trial 结果更新每个假设的 `beta`
 
@@ -133,6 +135,8 @@ Hypothesis transition 只有一个公共认知过程，但有三种不同的策�
 | `hypothesis_transition/fixed_strategy.py` | `FixedStrategyHypothesisTransitionModule` | 策略固定；只改变输入和选择结果 |
 | `hypothesis_transition/dynamic_discrete_strategy.py` | `DynamicDiscreteStrategyHypothesisTransitionModule` | 离散 strategy state `z_t` 变化 |
 | `hypothesis_transition/dynamic_adaptive_control.py` | `DynamicAdaptiveControlHypothesisTransitionModule` | 连续 control state（如 `m_t/g_t`）变化 |
+| `hypothesis_transition/feedback_reactive.py` | `FeedbackReactiveHypothesisTransitionModule` | 上一 trial feedback 决定一步探索率（H3 参照） |
+| `hypothesis_transition/nested_feedback_accumulator.py` | `NestedFeedbackAccumulatorHypothesisTransitionModule` | 一步反应加可归零的累计失败效应（H4） |
 
 H 模块已经收拢到 `hypothesis_transition/` 子包，不再提供重构前的 H 类或兼容 class path。
 
@@ -177,8 +181,27 @@ Static 表示同一被试在全部 trials 中使用固定的 `selection strategy
 - prior assignment：相似度新颖性、保守继承、错误增强、随机重置和成对质量转移。
 
 `FixedStrategyHypothesisTransitionModule` 执行固定 strategy chain；
-`FixedWorkspaceHypothesisTransitionModule` 表示 `m/g` 均固定的 bounded-workspace policy。后者目前
-只和 `pairwise_mass_transfer` 组合，其他不兼容组合会在初始化时失败。
+`FixedWorkspaceHypothesisTransitionModule` 表示 `m/g` 均固定的 bounded-workspace policy。bounded
+workspace 支持历史兼容的 `pairwise_mass_transfer`，以及 Model 0815 H5 使用的无额外参数
+`similarity_transport`；其他 prior-assignment 方法会在初始化时失败。
+
+`FeedbackReactiveHypothesisTransitionModule` 复用同一 bounded-workspace selection、local/global
+proposal 与所配置的 bounded-workspace prior assignment，但让下一 trial 的 replacement-event probability 只取决于
+上一 trial 已完成的 feedback：正确后使用 `event_after_correct`，错误后使用
+`event_after_error`，并要求后者不小于前者。`global_search` 在被试内保持固定。该模式不维护
+failure/mastery accumulator，也不允许 persistent execution；它用于检验一步反馈反应能否替代
+更复杂的连续 controller。
+
+`NestedFeedbackAccumulatorHypothesisTransitionModule` 是 Model 0815 后续使用的嵌套 controller。它保留
+上述一步反馈反应，并维护唯一的 exponentially weighted failure state；累计增益精确等于 0 时
+直接执行 `FeedbackReactiveHypothesisTransitionModule` 的更新路径。若此时
+`event_after_correct == event_after_error`，又进一步退化为 constant-event bounded workspace。
+因此 constant、reactive 和 accumulator 可以由同一实现的被试级参数表达，而不需要为被试硬选
+三个互不嵌套的 H 类。H4 历史筛选固定使用 pairwise transfer；H5 保持同一 controller，但改用
+`similarity_transport`，并允许同一 failure state 通过可归零 gain 扩大 global-search 比例。
+H4/H5 还可把 `persistent_execution.enabled` 作为被试级 false/true 坐标：false 时按 workspace
+posterior 边际作答，true 时由一条受保护且可持续的 executed rule 作答。当前 switch scale 固定，
+不随被试另行优化；H3 仍明确限制为 execution-off。
 
 ### 4.3 动态离散策略状态
 
@@ -196,7 +219,8 @@ entropy/confidence、trial progress 和 latent-volatility feature。选中的 st
 ### 4.4 连续控制动力学
 
 `DynamicAdaptiveControlHypothesisTransitionModule` 不切换策略类型。当前实现固定使用 bounded-workspace
-selection 和 pairwise mass transfer，但让显式 control state 随 trial 演化：
+selection，并在 pairwise compatibility 或 similarity transport 两种 prior assignment 中固定选择一种；
+显式 control state 随 trial 演化：
 
 \[
 \operatorname{logit}(m_t)=\operatorname{logit}(m_0)
@@ -209,7 +233,8 @@ selection 和 pairwise mass transfer，但让显式 control state 随 trial 演�
 1. 抽取 `K_t ~ Binomial(C, m_t)`；
 2. 按 `1-posterior` 权重移除 `K_t` 个 active hypotheses；
 3. 从 `(1-g_t) local + g_t global` proposal 无放回抽取同数 newcomer；
-4. 按 `replacement_pairs` 将 dropped posterior mass 转移给 newcomers。
+4. 按固定 prior-assignment policy 产生新 prior：pairwise compatibility path 搬运 dropped mass；
+   H5 similarity transport 则按替换比例混合 survivor carry-over 与 local/global semantic projection。
 
 新配置可将两组 controller 写成：
 
@@ -237,7 +262,8 @@ context_t + controls_(t-1) -> controls_t -> fixed strategy -> transition result
 
 所有模式都只管理 hypothesis transition。感知、memory、beta 由各自 module 负责；
 likelihood 由 engine 的固定观测模型阶段负责。新加入 hypotheses 会继续调用
-`beta_mod.initialize_beta_for_hypotheses()`。
+`beta_mod.initialize_beta_for_hypotheses()`；配置了可选 mapping 时，还会调用
+`mapping_mod.initialize_orientation_for_hypotheses()`。
 
 ## 5. 固定 observation-likelihood 阶段
 
@@ -267,6 +293,32 @@ L_t(h)=p(y_t\mid \tilde{x}_t,h,\beta_h)
 \]
 
 其中 `\beta_h` 可为 per-hypothesis，也可退化为全局常数。代码层面最终写入 `engine.likelihood` 的是向量 `\mathbf{L}_t`。
+
+### 5.5 可选二元 orientation 边缘化
+
+`mapping.py` 的 `BinaryOrientationMappingModule` 只用于 M0/M1 mapping sensitivity。
+它不扩大 geometry hypothesis space，也不抽样额外粒子。对每个 active geometry (h)，维护
+
+\[
+m_t(h)=P(o_h=\mathrm{fixed}\mid y_{1:t},f_{1:t},h),
+\]
+
+另一个方向的概率自动为 (1-m_t(h))。在 choice 前，固定标签 emission
+\(q_t(y\mid h)\) 被解析边缘化为
+
+\[
+p_t(y\mid h)=m_{t-1}(h)q_t(y\mid h)
+ +[1-m_{t-1}(h)]q_t(\operatorname{reverse}(y)\mid h).
+\]
+
+feedback 到来后，用同一个 fixed-label likelihood 进行两状态 Bayes 更新；随后 memory 接收已经
+边缘化的 geometry likelihood。新进入 workspace 的 geometry 从 (m=.5) 重新开始。该更新固定、
+Rao--Blackwellized，新增 latent state 但不新增自由参数。`predictive_orientation_probability`
+保留产生当前 choice 的 pre-feedback belief，确保后执行的 beta 更新不会使用已经看到当前反馈的
+orientation posterior。
+
+M0 没有该 module，行为保持 fixed mapping。当前实现刻意只支持二分类；四分类 permutation、
+完整 mapping learner 和 label-invariant similarity 均不在此模块范围内。
 
 ## 6. `memory.py`：双通道记忆后验模块（DualMemoryModule）
 
@@ -350,9 +402,9 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 
 先根据 `(choice, feedback)` 推断正确类别（2 类情形下错误时取另一类）。
 
-- 若假设预测正确类别：加性上调
+- 若假设预测正确类别：获取剩余 headroom 的一部分
 \[
-\beta_h \leftarrow \beta_h + \eta_+\cdot\frac{\beta_{max}-\beta_h}{\beta_{max}}
+\beta_h \leftarrow \beta_h + \alpha_+(\beta_{max}-\beta_h)
 \]
 
 - 若假设预测错误类别：按当前 beta 比例惩罚
@@ -361,6 +413,17 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 \]
 
 再做边界截断。
+
+`increase_rate` 是当前推荐的无量纲参数 \(\alpha_+\in[0,1]\)。历史
+`correct_additive` 仍可读取，并严格换算为
+
+\[
+\alpha_+=\frac{\texttt{correct\_additive}}{\beta_{max}}.
+\]
+
+两个键不能同时配置。Model 0815 H5 固定 \(\beta_{min}=0.1\)、
+\(\beta_{max}=25\)，并用 `increase_rate=0.04` 精确替代原来的
+`correct_additive=1`；因此这次迁移只改变参数含义和优化坐标，不改变既有 beta 轨迹。
 
 `beta_update_mode: probabilistic_feedback` 不先硬判“哪条规则正确”，而是用该规则对实际
 choice 的支持度与 feedback 联合形成连续证据，再决定 beta 上升或下降。
@@ -381,8 +444,9 @@ choice-compatible rule，并可要求历史 `peak_mastery_evidence` 达标；rel
 
 ### 7.5 与 likelihood 耦合
 
-更新后的 `engine.beta` 在下一 trial 被固定 `ObservationLikelihood` 阶段使用，
-直接影响 softmax/距离映射的陡峭程度。
+更新后的 `engine.beta` 在下一 trial 同时进入 choice readout 与配置为
+`beta_source: action` 的 `ObservationLikelihood`，直接影响 softmax/距离映射的陡峭程度。
+H5 因而使用一个统一的动态 beta，而不是相互独立的 choice/evidence beta。
 
 ## 8. `readout.py`：可观测读出
 
@@ -416,7 +480,7 @@ distribution、加入 output noise 后的可观测 distribution、readout 诊断
 当拟合不稳定时，建议按以下顺序调参，避免模块间混淆归因：
 
 1. 先固定 `hypo_transitions` 策略结构，只调 `memory (w0, gamma)`
-2. 再放开 `beta` 动态（`decrease_rate`, `correct_additive`）
+2. 再放开 `beta` 动态（`decrease_rate`, `increase_rate`）
 3. 最后微调 perception 噪声来源与被试分组
 
 原因：

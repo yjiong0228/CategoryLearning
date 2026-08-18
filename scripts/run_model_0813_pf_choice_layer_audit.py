@@ -63,6 +63,9 @@ LAYER_KEYS = {
         "audit_persistent_execution_no_strategy_no_lapse"
     ),
     "executed_strategy": "audit_persistent_execution_no_lapse",
+    "executed_counterfactual_strategy": (
+        "audit_persistent_execution_counterfactual_strategy_no_lapse"
+    ),
     "fitted_with_lapse": "prior_t",
 }
 
@@ -153,10 +156,12 @@ def _cache_paths(output: Path, subject_id: int, repeat: int) -> tuple[Path, Path
     return folder / f"{stem}.json", folder / f"{stem}.npz"
 
 
-def _filter_seed(base_seed: int, subject_id: int, repeat: int) -> int:
+def _filter_seed(
+    base_seed: int, subject_id: int, repeat: int, *, seed_role: str
+) -> int:
     return stable_seed(
         {
-            "seed_role": "model0813_phase1c_choice_layer_audit",
+            "seed_role": str(seed_role),
             "base_seed": int(base_seed),
             "subject_id": int(subject_id),
             "filter_repeat": int(repeat),
@@ -218,6 +223,8 @@ def _score_subject_seed(
     resample_threshold_fraction: float,
     filter_repeat: int,
     base_seed: int,
+    filter_seed_role: str,
+    counterfactual_strategy_confidence_gain: float | None,
     force: bool,
 ) -> dict[str, Any]:
     json_path, npz_path = _cache_paths(output, subject_id, filter_repeat)
@@ -227,7 +234,12 @@ def _score_subject_seed(
     engine = _subject_engine(base_config, base_path, int(subject_id))
     readout_args = _readout_args(engine)
     choices = frame["choice"].to_numpy(dtype=int)
-    filter_seed = _filter_seed(base_seed, subject_id, filter_repeat)
+    filter_seed = _filter_seed(
+        base_seed,
+        subject_id,
+        filter_repeat,
+        seed_role=filter_seed_role,
+    )
     started = time.perf_counter()
     result = run_state_model_particle_filter(
         engine_config=engine,
@@ -239,10 +251,23 @@ def _score_subject_seed(
         filter_seed=int(filter_seed),
         resample_threshold_fraction=float(resample_threshold_fraction),
         choice_transmission_audit=True,
+        choice_transmission_counterfactual_gain=(
+            counterfactual_strategy_confidence_gain
+        ),
         processed_data_dir=dataset_paths["processed_dir"],
         dataset_paths=dataset_paths,
         **readout_args,
     )
+    requested_layer_ids = sorted(
+        {
+            str(comparison[layer_key])
+            for comparison in comparisons
+            for layer_key in ("comparator_layer", "mechanism_layer")
+        }
+    )
+    unknown_layers = set(requested_layer_ids) - set(LAYER_KEYS)
+    if unknown_layers:
+        raise ValueError(f"unknown audit layers: {sorted(unknown_layers)}")
     layer_probabilities = {
         layer_id: _validate_probabilities(
             result.observation_probabilities[source_key],
@@ -250,6 +275,7 @@ def _score_subject_seed(
             trial_count=len(frame),
         )
         for layer_id, source_key in LAYER_KEYS.items()
+        if layer_id in requested_layer_ids
     }
     layer_scores = {
         layer_id: _layer_metrics(probability, choices)
@@ -673,6 +699,10 @@ def _write_figure(
         "strategy_confidence_under_execution": "Strategy confidence | execution",
         "uniform_output_lapse": "Uniform output lapse",
     }
+    labels = {
+        contrast_id: labels.get(contrast_id, contrast_id.replace("_", " "))
+        for contrast_id in order
+    }
     palette = {
         contrast_id: color
         for contrast_id, color in zip(
@@ -844,7 +874,7 @@ def _write_figure(
             va="top",
         )
     fig.suptitle(
-        "0813 common-state choice-layer mechanism audit",
+        "Common-state choice-layer mechanism audit",
         x=0.01,
         ha="left",
         fontsize=12,
@@ -872,9 +902,11 @@ def _write_readme(
     output: Path,
     summary: Mapping[str, Any],
     contrast_summary: pd.DataFrame,
+    *,
+    title: str = "Phase 1c / 2：common-state choice-layer 配对审计",
 ) -> None:
     lines = [
-        "# Phase 1c / 2：common-state choice-layer 配对审计",
+        f"# {title}",
         "",
         "## 技术结论",
         "",
@@ -920,8 +952,8 @@ def _write_readme(
             "## 文件",
             "",
             "- `run_summary.csv`：每个 subject–seed baseline PF 运行与 ESS 诊断。",
-            "- `layer_scores.csv`：六个共享状态 readout 的逐 subject–seed NLL/Brier。",
-            "- `contrast_seed_scores.csv`：五个冻结配对的逐 seed delta NLL。",
+            "- `layer_scores.csv`：本次共享状态 readout 的逐 subject–seed NLL/Brier。",
+            "- `contrast_seed_scores.csv`：预声明配对的逐 seed delta NLL。",
             "- `subject_contrast_summary.csv`、`contrast_summary.csv`：独立 seed 面板、MCSE、区间和条件 triage。",
             "- `choice_layer_paired_audit.png`、`chart_map.md`：结果图和图形契约。",
             "- `summary.json`、`analysis_manifest.json`、`analysis_config_snapshot.json`：机器可读结论与 provenance。",
@@ -948,6 +980,22 @@ def run_analysis(args: argparse.Namespace) -> None:
         raise ValueError("contrast ids must be unique")
     if not _phase0_obs01_exact_noop(phase0_path):
         raise ValueError("Phase-0 OBS-01 exact-noop prerequisite did not pass")
+    counterfactual_gain = design.get(
+        "counterfactual_strategy_confidence_gain"
+    )
+    if counterfactual_gain is not None:
+        counterfactual_gain = float(counterfactual_gain)
+    filter_seed_role = str(
+        design.get(
+            "filter_seed_role",
+            "model0813_phase1c_choice_layer_audit",
+        )
+    )
+    requested_layer_ids = {
+        str(comparison[layer_key])
+        for comparison in comparisons
+        for layer_key in ("comparator_layer", "mechanism_layer")
+    }
 
     base_config = load_yaml(base_path)
     subject_frames, dataset_paths = _load_subject_frames(
@@ -977,6 +1025,8 @@ def run_analysis(args: argparse.Namespace) -> None:
                 ),
                 filter_repeat=repeat,
                 base_seed=int(design["base_seed"]),
+                filter_seed_role=filter_seed_role,
+                counterfactual_strategy_confidence_gain=counterfactual_gain,
                 force=bool(args.force),
             )
             for subject_id in runtime.subjects
@@ -994,12 +1044,15 @@ def run_analysis(args: argparse.Namespace) -> None:
         layers = pd.read_csv(output / "layer_scores.csv")
         contrasts = pd.read_csv(output / "contrast_seed_scores.csv")
         _require_complete_design(runs, runtime.subjects, runtime.seed_indices)
-        expected_layer_rows = len(runs) * len(LAYER_KEYS)
+        expected_layer_rows = len(runs) * len(requested_layer_ids)
         expected_contrast_rows = len(runs) * len(comparisons)
         if len(layers) != expected_layer_rows or len(contrasts) != expected_contrast_rows:
             raise ValueError("layer or contrast score table is incomplete")
         subject_summary, contrast_summary, summary = summarize_effects(
             contrasts, comparisons, runtime, design
+        )
+        summary["counterfactual_strategy_confidence_gain"] = (
+            counterfactual_gain
         )
         _atomic_csv(output / "subject_contrast_summary.csv", subject_summary)
         _atomic_csv(output / "contrast_summary.csv", contrast_summary)
@@ -1014,7 +1067,17 @@ def run_analysis(args: argparse.Namespace) -> None:
             design["stability_gates"],
             str(config["report"]["figure_png"]),
         )
-        _write_readme(output, summary, contrast_summary)
+        _write_readme(
+            output,
+            summary,
+            contrast_summary,
+            title=str(
+                config.get("report", {}).get(
+                    "readme_title",
+                    "Phase 1c / 2：common-state choice-layer 配对审计",
+                )
+            ),
+        )
         manifest = {
             "analysis_id": str(config["analysis_id"]),
             "scope": str(config["scope"]),
@@ -1043,6 +1106,9 @@ def run_analysis(args: argparse.Namespace) -> None:
                 "comparisons": list(comparisons),
                 "stability_gates": dict(design["stability_gates"]),
                 "practical_effect_rule": dict(design["practical_effect_rule"]),
+                "counterfactual_strategy_confidence_gain": (
+                    counterfactual_gain
+                ),
             },
             "run_row_count": int(len(runs)),
             "layer_score_row_count": int(len(layers)),

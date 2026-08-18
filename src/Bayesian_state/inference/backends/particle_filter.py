@@ -19,6 +19,10 @@ import numpy as np
 from ..results import InferenceResult, ParticleFilterResult
 from ...model.config import ModelContext
 from ...model.modules.base_module import ModuleRole
+from ...model.readout import (
+    apply_hypothesis_mapping,
+    apply_strategy_conditioned_choice_confidence,
+)
 from ...utils.seeding import stable_seed
 
 
@@ -249,7 +253,11 @@ def _map_hypothesis_choice_probability(
         beta=float(beta[hypothesis]),
         distance_mode=getattr(engine, "distance_mode", "prototype"),
     )
-    cognitive = _normalize(np.asarray(raw[:, 0], dtype=float))
+    cognitive = apply_hypothesis_mapping(
+        engine,
+        hypothesis,
+        _normalize(np.asarray(raw[:, 0], dtype=float)),
+    )
     n_categories = int(cognitive.size)
     return _normalize(
         (1.0 - float(lapse)) * cognitive
@@ -301,8 +309,10 @@ def _choice_layer_audit(
             beta=float(beta[hypothesis]),
             distance_mode=getattr(engine, "distance_mode", "prototype"),
         )
-        category_by_hypothesis[active_arg] = _normalize(
-            np.asarray(raw[:, 0], dtype=float)
+        category_by_hypothesis[active_arg] = apply_hypothesis_mapping(
+            engine,
+            int(hypothesis),
+            _normalize(np.asarray(raw[:, 0], dtype=float)),
         )
     unsharpened = _normalize(base_weights @ category_by_hypothesis)
     sharpened_no_lapse = _normalize(
@@ -480,6 +490,8 @@ def run_state_model_particle_filter(
     resample_threshold_fraction: float = 0.5,
     condition_on_observed_choice: bool = True,
     choice_transmission_audit: bool = False,
+    choice_transmission_counterfactual_gain: float | None = None,
+    orientation_oracle_schedule: Sequence[Sequence[float]] | np.ndarray | None = None,
     valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
@@ -490,6 +502,17 @@ def run_state_model_particle_filter(
     ``resample_threshold_fraction=0`` are analysis-only controls for separating
     uniform trajectory mixing, importance weighting, and resampling.  The
     ordinary bootstrap filter keeps both defaults unchanged.
+
+    ``orientation_oracle_schedule`` is an analysis-only identifiability
+    control.  When supplied, it must contain one complete orientation-belief
+    vector per trial and clamps every particle to that pre-choice state after
+    its workspace transition.  Ordinary model fitting must leave it unset.
+
+    ``choice_transmission_counterfactual_gain`` is also analysis-only.  When
+    the choice-transmission audit is enabled, it rereads the persistent
+    executed-rule prediction with the supplied strategy-confidence gain on
+    exactly the same pre-choice particles and weights.  It never changes the
+    fitted likelihood, particle weights, resampling, or later cognitive state.
     """
 
     from ...model import StateModel
@@ -519,6 +542,11 @@ def run_state_model_particle_filter(
     choice_conditioning = bool(condition_on_observed_choice)
     update_probability = float(learning_update_probability)
     audit_choice_transmission = bool(choice_transmission_audit)
+    counterfactual_gain_value = (
+        None
+        if choice_transmission_counterfactual_gain is None
+        else float(choice_transmission_counterfactual_gain)
+    )
     if not np.isfinite(rho_value) or rho_value <= 0.0:
         raise ValueError("choice_readout_power must be finite and positive.")
     if (
@@ -526,6 +554,15 @@ def run_state_model_particle_filter(
         or not 0.0 <= confidence_gain_value <= 10.0
     ):
         raise ValueError("strategy_confidence_gain must lie in [0, 10].")
+    if counterfactual_gain_value is not None and (
+        not audit_choice_transmission
+        or not np.isfinite(counterfactual_gain_value)
+        or not 0.0 <= counterfactual_gain_value <= 10.0
+    ):
+        raise ValueError(
+            "choice_transmission_counterfactual_gain requires the choice "
+            "audit and must lie in [0, 10]."
+        )
     if (
         not np.isfinite(commitment_gain_value)
         or not 0.0 <= commitment_gain_value <= 10.0
@@ -609,6 +646,37 @@ def run_state_model_particle_filter(
     if any(execution_flags) and not all(execution_flags):
         raise RuntimeError("persistent execution must be configured for every particle.")
     persistent_execution_enabled = bool(all(execution_flags))
+    mapping_flags = [
+        model.engine.get_module(ModuleRole.MAPPING) is not None for model in models
+    ]
+    if any(mapping_flags) and not all(mapping_flags):
+        raise RuntimeError("binary mapping must be configured for every particle.")
+    orientation_enabled = bool(all(mapping_flags))
+    if orientation_enabled and not persistent_execution_enabled:
+        raise RuntimeError(
+            "orientation-state summaries currently require persistent execution."
+        )
+    orientation_oracle = None
+    if orientation_oracle_schedule is not None:
+        if not orientation_enabled:
+            raise ValueError(
+                "orientation_oracle_schedule requires a configured mapping module."
+            )
+        orientation_oracle = np.asarray(
+            orientation_oracle_schedule, dtype=float
+        )
+        expected_shape = (n_trials, n_hypotheses)
+        if orientation_oracle.shape != expected_shape:
+            raise ValueError(
+                "orientation_oracle_schedule must have shape "
+                f"{expected_shape}, got {orientation_oracle.shape}."
+            )
+        if not np.all(np.isfinite(orientation_oracle)) or np.any(
+            (orientation_oracle <= 0.0) | (orientation_oracle >= 1.0)
+        ):
+            raise ValueError(
+                "orientation_oracle_schedule values must lie strictly between 0 and 1."
+            )
     marginal_executed_probability = (
         np.zeros((n_trials, n_hypotheses), dtype=float)
         if persistent_execution_enabled
@@ -617,6 +685,16 @@ def run_state_model_particle_filter(
     filtered_executed_probability = (
         np.zeros((n_trials, n_hypotheses), dtype=float)
         if persistent_execution_enabled
+        else None
+    )
+    marginal_executed_orientation_joint = (
+        np.zeros((n_trials, n_hypotheses, 2), dtype=float)
+        if orientation_enabled
+        else None
+    )
+    filtered_executed_orientation_joint = (
+        np.zeros((n_trials, n_hypotheses, 2), dtype=float)
+        if orientation_enabled
         else None
     )
 
@@ -660,6 +738,12 @@ def run_state_model_particle_filter(
     predictive_execution_dwell_trials = np.zeros(n_trials, dtype=float)
     predictive_executed_beta = np.full(n_trials, np.nan, dtype=float)
     filtered_executed_beta = np.full(n_trials, np.nan, dtype=float)
+    predictive_executed_orientation_probability = np.full(
+        n_trials, np.nan, dtype=float
+    )
+    filtered_executed_orientation_probability = np.full(
+        n_trials, np.nan, dtype=float
+    )
     filtered_execution_switch_event_probability = np.zeros(n_trials, dtype=float)
     filtered_execution_dwell_trials = np.zeros(n_trials, dtype=float)
     predictive_misconception_capture_eligible_probability = np.zeros(
@@ -723,6 +807,13 @@ def run_state_model_particle_filter(
         if audit_choice_transmission and persistent_execution_enabled
         else None
     )
+    audit_persistent_execution_counterfactual_strategy_no_lapse = (
+        np.zeros((n_trials, 2), dtype=float)
+        if audit_choice_transmission
+        and persistent_execution_enabled
+        and counterfactual_gain_value is not None
+        else None
+    )
     audit_correct_predicting_available_probability = (
         np.zeros(n_trials, dtype=float) if audit_choice_transmission else None
     )
@@ -747,6 +838,11 @@ def run_state_model_particle_filter(
         else None
     )
     audit_particle_correct_probability = (
+        np.zeros((n_trials, n_particles), dtype=float)
+        if audit_choice_transmission
+        else None
+    )
+    audit_particle_observed_choice_probability = (
         np.zeros((n_trials, n_particles), dtype=float)
         if audit_choice_transmission
         else None
@@ -833,6 +929,12 @@ def run_state_model_particle_filter(
         prior_reset_strengths = np.zeros(n_particles, dtype=float)
         prior_reset_mass_shifts = np.zeros(n_particles, dtype=float)
         particle_executed = np.zeros((n_particles, n_hypotheses), dtype=float)
+        particle_executed_orientation_joint = np.zeros(
+            (n_particles, n_hypotheses, 2), dtype=float
+        )
+        executed_orientation_probabilities = np.full(
+            n_particles, np.nan, dtype=float
+        )
         executed_betas = np.full(n_particles, np.nan, dtype=float)
         execution_switch_probabilities = np.zeros(n_particles, dtype=float)
         execution_switch_events = np.zeros(n_particles, dtype=float)
@@ -871,6 +973,11 @@ def run_state_model_particle_filter(
             particle_persistent_execution_no_strategy_no_lapse = np.zeros(
                 (n_particles, 2), dtype=float
             )
+            particle_persistent_execution_counterfactual_strategy_no_lapse = (
+                np.zeros((n_particles, 2), dtype=float)
+                if counterfactual_gain_value is not None
+                else None
+            )
             particle_correct_predicting_available = np.zeros(
                 n_particles, dtype=float
             )
@@ -891,6 +998,11 @@ def run_state_model_particle_filter(
         for particle_index, model in enumerate(models):
             engine = model.engine
             prepared = model.begin_trial(x[trial_index])
+            if orientation_oracle is not None:
+                mapping = engine.get_module(ModuleRole.MAPPING, required=True)
+                mapping.condition_on_orientation_probability(
+                    orientation_oracle[trial_index]
+                )
             perceived = prepared.perceived_stimulus
             transition = engine.get_module(
                 ModuleRole.HYPOTHESIS_TRANSITION,
@@ -1008,6 +1120,17 @@ def run_state_model_particle_filter(
                 executed_betas[particle_index] = float(
                     engine.beta[executed_hypothesis]
                 )
+                if orientation_enabled:
+                    mapping = engine.get_module(ModuleRole.MAPPING, required=True)
+                    orientation = float(
+                        np.asarray(
+                            mapping.orientation_probability, dtype=float
+                        )[executed_hypothesis]
+                    )
+                    executed_orientation_probabilities[particle_index] = orientation
+                    particle_executed_orientation_joint[
+                        particle_index, executed_hypothesis
+                    ] = (orientation, 1.0 - orientation)
             particle_predictions[particle_index], confidence_details = (
                 _choice_probability(
                     model,
@@ -1075,6 +1198,27 @@ def run_state_model_particle_filter(
                 ] = layer_audit[
                     "persistent_execution_no_strategy_no_lapse"
                 ]
+                if (
+                    particle_persistent_execution_counterfactual_strategy_no_lapse
+                    is not None
+                ):
+                    counterfactual_probability, _ = (
+                        apply_strategy_conditioned_choice_confidence(
+                            layer_audit[
+                                "persistent_execution_no_strategy_no_lapse"
+                            ],
+                            mastery_evidence=float(
+                                mastery_evidences[particle_index]
+                            ),
+                            failure_pressure=float(
+                                failure_pressures[particle_index]
+                            ),
+                            gain=counterfactual_gain_value,
+                        )
+                    )
+                    particle_persistent_execution_counterfactual_strategy_no_lapse[
+                        particle_index
+                    ] = counterfactual_probability
                 particle_correct_predicting_available[particle_index] = float(
                     layer_audit["correct_predicting_available"]
                 )
@@ -1119,6 +1263,17 @@ def run_state_model_particle_filter(
         if marginal_executed_probability is not None:
             marginal_executed_probability[trial_index] = _normalize(
                 np.sum(weights[:, None] * particle_executed, axis=0)
+            )
+        if marginal_executed_orientation_joint is not None:
+            joint = np.sum(
+                weights[:, None, None] * particle_executed_orientation_joint,
+                axis=0,
+            )
+            marginal_executed_orientation_joint[trial_index] = (
+                joint / float(np.sum(joint))
+            )
+            predictive_executed_orientation_probability[trial_index] = float(
+                np.sum(weights * executed_orientation_probabilities)
             )
         marginal[trial_index] = np.sum(
             weights[:, None] * particle_predictions,
@@ -1193,6 +1348,23 @@ def run_state_model_particle_filter(
                         axis=0,
                     )
                 )
+            if (
+                audit_persistent_execution_counterfactual_strategy_no_lapse
+                is not None
+            ):
+                assert (
+                    particle_persistent_execution_counterfactual_strategy_no_lapse
+                    is not None
+                )
+                audit_persistent_execution_counterfactual_strategy_no_lapse[
+                    trial_index
+                ] = _normalize(
+                    np.sum(
+                        weights[:, None]
+                        * particle_persistent_execution_counterfactual_strategy_no_lapse,
+                        axis=0,
+                    )
+                )
             audit_correct_predicting_available_probability[trial_index] = float(
                 np.sum(weights * particle_correct_predicting_available)
             )
@@ -1212,6 +1384,9 @@ def run_state_model_particle_filter(
             audit_particle_correct_q90[trial_index] = float(q90)
             audit_particle_correct_probability[trial_index] = (
                 particle_predictions[:, correct_category_index]
+            )
+            audit_particle_observed_choice_probability[trial_index] = (
+                particle_predictions[:, observed_choice_index]
             )
             audit_particle_strategy_exploit[trial_index] = 1.0 - swap_probabilities
             audit_particle_strategy_local_explore[trial_index] = (
@@ -1431,6 +1606,14 @@ def run_state_model_particle_filter(
             )
         particle_swap_counts += swap_events.astype(int)
 
+        post_orientation_joint = (
+            np.zeros_like(particle_executed_orientation_joint)
+            if orientation_enabled
+            else None
+        )
+        post_orientation_probability = (
+            np.zeros(n_particles, dtype=float) if orientation_enabled else None
+        )
         for particle_index, model in enumerate(models):
             engine = model.engine
             update_seed = _future_seed(
@@ -1448,8 +1631,38 @@ def run_state_model_particle_filter(
                 float(observed_feedback[trial_index]),
                 update_state=update_occurs,
             )
+            if orientation_enabled:
+                assert post_orientation_joint is not None
+                assert post_orientation_probability is not None
+                executed_hypothesis = int(
+                    np.argmax(particle_executed[particle_index])
+                )
+                mapping = engine.get_module(ModuleRole.MAPPING, required=True)
+                orientation = float(
+                    np.asarray(mapping.orientation_probability, dtype=float)[
+                        executed_hypothesis
+                    ]
+                )
+                post_orientation_probability[particle_index] = orientation
+                post_orientation_joint[
+                    particle_index, executed_hypothesis
+                ] = (orientation, 1.0 - orientation)
             if hasattr(engine, "clear_module_logs"):
                 engine.clear_module_logs()
+
+        if filtered_executed_orientation_joint is not None:
+            assert post_orientation_joint is not None
+            assert post_orientation_probability is not None
+            joint = np.sum(
+                weights[:, None, None] * post_orientation_joint,
+                axis=0,
+            )
+            filtered_executed_orientation_joint[trial_index] = (
+                joint / float(np.sum(joint))
+            )
+            filtered_executed_orientation_probability[trial_index] = float(
+                np.sum(weights * post_orientation_probability)
+            )
 
         if post_ess[trial_index] < threshold_fraction * float(n_particles):
             resampling_seed = _future_seed(
@@ -1492,6 +1705,7 @@ def run_state_model_particle_filter(
         assert audit_parent_indices is not None
         assert audit_terminal_weights is not None
         assert audit_particle_correct_probability is not None
+        assert audit_particle_observed_choice_probability is not None
         assert audit_particle_strategy_exploit is not None
         assert audit_particle_strategy_local_explore is not None
         assert audit_particle_strategy_global_explore is not None
@@ -1510,6 +1724,9 @@ def run_state_model_particle_filter(
             "particle_indices": path_indices,
             "weights": _normalize(audit_terminal_weights),
             "correct_probability": trace(audit_particle_correct_probability),
+            "observed_choice_probability": trace(
+                audit_particle_observed_choice_probability
+            ),
             "strategy_exploit": trace(audit_particle_strategy_exploit),
             "strategy_local_explore": trace(
                 audit_particle_strategy_local_explore
@@ -1544,6 +1761,12 @@ def run_state_model_particle_filter(
         marginal_active_probability=marginal_active_probability,
         marginal_executed_probability=marginal_executed_probability,
         filtered_executed_probability=filtered_executed_probability,
+        marginal_executed_orientation_joint=(
+            marginal_executed_orientation_joint
+        ),
+        filtered_executed_orientation_joint=(
+            filtered_executed_orientation_joint
+        ),
         pre_choice_ess=pre_ess,
         post_choice_ess=post_ess,
         resampled=resampled,
@@ -1631,6 +1854,16 @@ def run_state_model_particle_filter(
             filtered_execution_switch_event_probability
         ),
         filtered_execution_dwell_trials=filtered_execution_dwell_trials,
+        predictive_executed_orientation_probability=(
+            predictive_executed_orientation_probability
+            if orientation_enabled
+            else None
+        ),
+        filtered_executed_orientation_probability=(
+            filtered_executed_orientation_probability
+            if orientation_enabled
+            else None
+        ),
         audit_hypothesis_map=audit_hypothesis_map,
         audit_adaptive_sharpening=audit_adaptive_sharpening,
         audit_exploration_lapse=audit_exploration_lapse,
@@ -1644,6 +1877,9 @@ def run_state_model_particle_filter(
         ),
         audit_persistent_execution_no_strategy_no_lapse=(
             audit_persistent_execution_no_strategy_no_lapse
+        ),
+        audit_persistent_execution_counterfactual_strategy_no_lapse=(
+            audit_persistent_execution_counterfactual_strategy_no_lapse
         ),
         audit_correct_predicting_available_probability=(
             audit_correct_predicting_available_probability
@@ -1664,6 +1900,8 @@ def run_state_model_particle_filter(
         particle_count=n_particles,
         resample_threshold_fraction=threshold_fraction,
         condition_on_observed_choice=choice_conditioning,
+        orientation_oracle_conditioned=orientation_oracle is not None,
+        choice_transmission_counterfactual_gain=counterfactual_gain_value,
         filter_seed=int(filter_seed),
     )
 

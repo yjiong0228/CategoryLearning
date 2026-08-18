@@ -1,0 +1,47 @@
+analysis_id: model_0815_b0_adaptive_controller_pilot_v1
+scope: minimal_baseline_adaptive_vs_training_matched_fixed_search
+
+base_simulation_config: configs/simulation_cfg/model0815_b0_cond1_controller_pilot.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_b0/mechanism_audit/01_adaptive_controller_pilot
+
+design:
+  # First five prespecified calibrated-panel IDs; not selected from this
+  # contrast.  Every subject uses the first 64 valid trials.
+  subjects: [103, 104, 105, 108, 111]
+  trials_per_subject: 64
+  train_trials: 32
+  particle_count: 32
+  seed_count: 4
+  base_seed: 20260818
+  n_jobs: 5
+
+  adaptive_variant_id: adaptive_controller
+  fixed_variant_id: training_matched_fixed_search
+
+matching:
+  # Trial 0 initializes the workspace and performs no search; it is excluded
+  # from the controller-intensity match.
+  exclude_initialization_trial: true
+  event_statistic: mean_predictive_probability_any_replacement
+  range_statistic: mean_predictive_global_search_mixture
+  scope: subject_specific_train_only_seed_averaged
+
+interpretation:
+  positive_delta: fixed_mean_nll_minus_adaptive_mean_nll
+  primary_estimand: heldout_paired_choice_nll_difference
+  secondary_estimands:
+    - train_paired_choice_nll_difference
+    - early_heldout_paired_choice_nll_difference
+    - heldout_choice_probability_rmse
+    - heldout_predictive_geometry_prior_js
+  architecture_status: low_cost_screen_not_final_mechanism_decision
+  parameter_policy: no_search_fixed_action_beta_5_and_evidence_beta_10
+  mapping: fixed_task_labels
+  pf_budget_status: provisional_shared_screen_budget
+
+screening_rule:
+  practical_fraction_of_fixed_heldout_nll: 0.01
+  require_positive_cohort_mean: true
+  # With four seeds this is descriptive only; a promising mechanism receives
+  # a larger paired-seed audit before retention.
+  seed_noise_multiplier: 2.0

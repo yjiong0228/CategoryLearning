@@ -180,6 +180,17 @@ class StateModel:
                     "execution_dwell_trials": int(transition.execution_dwell_trials),
                 }
             )
+        mapping = engine.get_module(ModuleRole.MAPPING)
+        if mapping is not None:
+            orientation = np.asarray(
+                getattr(mapping, "orientation_probability"), dtype=float
+            ).copy()
+            log["orientation_probability"] = orientation
+            executed = log.get("executed_hypothesis")
+            if executed is not None:
+                log["executed_orientation_probability"] = float(
+                    orientation[int(executed)]
+                )
         prepared = PreparedTrial(
             trial_index=int(self._completed_trial_count),
             stimulus=physical.copy(),
@@ -268,6 +279,17 @@ class StateModel:
         log = dict(prepared.log)
         log["choice"] = choice_value
         log["feedback"] = feedback_value
+        mapping = self.engine.get_module(ModuleRole.MAPPING)
+        if mapping is not None:
+            orientation = np.asarray(
+                getattr(mapping, "orientation_probability"), dtype=float
+            ).copy()
+            log["orientation_probability_post"] = orientation
+            executed = log.get("executed_hypothesis")
+            if executed is not None:
+                log["executed_orientation_probability_post"] = float(
+                    orientation[int(executed)]
+                )
         self._pending_trial = None
         self._completed_trial_count += 1
         return posterior_snapshot, prepared.prior.copy(), log

@@ -1,0 +1,51 @@
+analysis_id: model_0815_h1_adaptive_controller_pilot_v1
+scope: adaptive_vs_training_matched_fixed_search_under_leaky_M_and_unified_dynamic_beta
+
+base_simulation_config: configs/simulation_cfg/model0815_h1_cond1_controller_pilot.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_h1/mechanism_audit/01_adaptive_controller_pilot
+
+design:
+  subjects: [103, 104, 105, 108, 111]
+  trials_per_subject: 64
+  train_trials: 32
+  # Deliberately cheap paired architecture screen, not a PF-budget decision.
+  particle_count: 32
+  seed_count: 4
+  base_seed: 20260820
+  n_jobs: 5
+
+  adaptive_variant_id: adaptive_controller
+  fixed_variant_id: training_matched_fixed_search
+
+matching:
+  exclude_initialization_trial: true
+  event_statistic: mean_predictive_probability_any_replacement
+  range_statistic: mean_predictive_global_search_mixture
+  scope: subject_specific_train_only_seed_averaged
+
+interpretation:
+  positive_delta: fixed_mean_nll_minus_adaptive_mean_nll
+  primary_estimand: heldout_paired_choice_nll_difference
+  secondary_estimands:
+    - train_paired_choice_nll_difference
+    - early_heldout_paired_choice_nll_difference
+    - heldout_choice_probability_rmse
+    - heldout_predictive_geometry_prior_js
+  architecture_status: low_cost_screen_not_final_mechanism_decision
+  parameter_policy: unified_dynamic_beta_5_to_25_and_single_fading_memory_gamma_080
+  mapping: fixed_task_labels
+  pf_budget_status: provisional_shared_screen_budget
+
+report:
+  title: Model 0815 H1 adaptive-controller pilot
+  common_architecture: >-
+    Both variants use boundary emission, fixed task labels, measured perception
+    noise, capacity 3, one fading memory channel (gamma=0.80, w0=0), and the
+    original unified dynamic beta shared by rule evidence and category choice.
+    Expectation readout, execution off, strategy confidence off, and zero lapse
+    are common to both variants.
+
+screening_rule:
+  practical_fraction_of_fixed_heldout_nll: 0.01
+  require_positive_cohort_mean: true
+  seed_noise_multiplier: 2.0

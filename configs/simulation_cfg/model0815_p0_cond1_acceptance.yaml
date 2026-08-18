@@ -1,0 +1,40 @@
+# Low-budget engineering acceptance for the unfitted Model 0815 P0 base.
+# The inline precision values are the range-screen centre, not a fitted result.
+
+engine_config_path: ../model_struct/pmh_model_cond1_0815_p0.yaml
+engine_config:
+  likelihood:
+    default_beta: 10.0
+  modules:
+    beta_mod:
+      kwargs:
+        beta_init: 5.0
+        beta_max: 50.0
+        decrease_rate: 0.15
+        correct_additive: 1.0
+
+subjects: [103, 120, 127]
+hyper_base_seed: 20260815
+
+dataset:
+  processed_dir: ../../data/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../results/model_dynamic_adaptive_control/0815_p0/acceptance/simulation
+n_jobs: 4
+simulation_repeats: 2
+repeat_aggregation: mean_probability
+window_size: 16
+stop_at: 1.0
+max_trials: 64
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

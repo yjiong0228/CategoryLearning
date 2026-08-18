@@ -882,6 +882,19 @@ def _evaluate_state_model_particle_filter_run(
         diagnostic_arrays["particle_filtered_executed_probability"] = (
             state_probabilities["filtered_executed_probability"]
         )
+    if "executed_orientation_joint" in state_probabilities:
+        diagnostic_arrays["particle_executed_orientation_joint"] = (
+            state_probabilities["executed_orientation_joint"]
+        )
+        diagnostic_arrays["particle_filtered_executed_orientation_joint"] = (
+            state_probabilities["filtered_executed_orientation_joint"]
+        )
+        diagnostic_arrays["particle_predictive_executed_orientation_probability"] = (
+            latent["predictive_executed_orientation_probability"]
+        )
+        diagnostic_arrays["particle_filtered_executed_orientation_probability"] = (
+            latent["filtered_executed_orientation_probability"]
+        )
     metrics = compute_metrics_from_category_probabilities(
         probabilities,
         choices=trial_arrays.choices,
@@ -1173,6 +1186,25 @@ def _evaluate_state_model_particle_filter_run(
                     ],
                     "filtered_executed_probability": state_probabilities[
                         "filtered_executed_probability"
+                    ],
+                }
+            )
+        if "executed_orientation_joint" in state_probabilities:
+            state_log.update(
+                {
+                    "marginal_executed_orientation_joint": (
+                        state_probabilities["executed_orientation_joint"]
+                    ),
+                    "filtered_executed_orientation_joint": (
+                        state_probabilities[
+                            "filtered_executed_orientation_joint"
+                        ]
+                    ),
+                    "predictive_executed_orientation_probability": latent[
+                        "predictive_executed_orientation_probability"
+                    ],
+                    "filtered_executed_orientation_probability": latent[
+                        "filtered_executed_orientation_probability"
                     ],
                 }
             )

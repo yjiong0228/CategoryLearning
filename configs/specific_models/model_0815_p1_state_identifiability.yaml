@@ -1,0 +1,55 @@
+# Frozen first-round diagnostic for the poor M1 latent-geometry recovery seen in
+# the mapping-sensitivity pilot.  This is a synthetic identifiability and PF
+# convergence experiment, not a participant-level model comparison.
+
+model:
+  label: minimal_binary_orientation
+  engine_config_path: ../model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml
+
+simulation_config_path: ../simulation_cfg/model0815_p0_cond1_acceptance.yaml
+
+subjects: [103, 120, 127]
+max_trials: 64
+synthetic_repeats: 1
+particle_counts: [64, 128, 256]
+oracle_particle_counts: [256]
+filter_seed_repeats: 4
+n_jobs: 4
+base_seed: 20260816
+
+choice_readout_power: 1.0
+output_lapse: 0.02
+resample_threshold_fraction: 0.5
+
+output_dir: ../../results/model_dynamic_adaptive_control/0815_p1/state_identifiability_round1
+
+# These gates are declared before looking at the new results.  Every subject
+# must pass every convergence gate on the largest adjacent particle-count step.
+decision_thresholds:
+  maximum_escalation_particle_count: 1024
+  choice_probability_rmse_max: 0.015
+  predictive_geometry_js_max: 0.030
+  filtered_geometry_js_max: 0.030
+  predictive_geometry_orientation_js_max: 0.030
+  filtered_geometry_orientation_js_max: 0.030
+  filtered_true_mass_abs_change_max: 0.030
+  expected_switch_count_abs_change_max: 3.0
+  highest_count_seed_choice_rmse_max: 0.015
+  highest_count_seed_filtered_geometry_js_max: 0.030
+  highest_count_seed_filtered_geometry_orientation_js_max: 0.030
+  orientation_rescue_true_mass_gain_min: 0.100
+  orientation_rescue_map_accuracy_gain_min: 0.100
+  orientation_rescue_state_nll_drop_min: 0.250
+
+analysis_contract:
+  fixed_synthetic_paths_across_particle_counts: true
+  common_filter_seeds_across_particle_counts: true
+  probability_average_before_scoring: true
+  map_switch_count_role: secondary_only
+  primary_switch_quantity: filtered_posterior_expected_switch_event
+  oracle_o1: full_generator_orientation_belief_vector
+  true_path_replay: terminal_particle_ancestry_choice_likelihood_rank
+  adaptive_next_step:
+    unstable: escalate_same_paths_to_512_then_1024_only_if_needed
+    stable_orientation_rescue: diagnose_geometry_orientation_confounding
+    stable_no_orientation_rescue: proceed_to_workspace_oracle_o2

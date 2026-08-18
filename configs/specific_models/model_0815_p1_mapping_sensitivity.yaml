@@ -1,0 +1,50 @@
+# Small-subject P1 diagnostic.  This is a mechanism sensitivity analysis,
+# not a confirmatory fit and not evidence that either model is final.
+
+models:
+  m0:
+    label: fixed_mapping
+    engine_config_path: ../model_struct/pmh_model_cond1_0815_p0.yaml
+  m1:
+    label: minimal_binary_orientation
+    engine_config_path: ../model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml
+
+# Supplies the dataset paths and the same unfitted range-screen-centre precision
+# values used in the P0 engineering check.  Both models receive exactly the
+# same overrides.
+simulation_config_path: ../simulation_cfg/model0815_p0_cond1_acceptance.yaml
+
+subjects: [103, 120, 127]
+max_trials: 64
+early_trials: 24
+synthetic_repeats: 1
+# P0's 32->64 acceptance comparison failed its probability and state gates.
+# Use 64 as the smallest defensible pilot budget, while still treating the
+# seed-noise comparison below as mandatory rather than assuming convergence.
+filter_particle_count: 64
+filter_seed_repeats: 2
+n_jobs: 4
+base_seed: 20260815
+
+choice_readout_power: 1.0
+output_lapse: 0.02
+resample_threshold_fraction: 0.5
+
+output_dir: ../../results/model_dynamic_adaptive_control/0815_p1/mapping_sensitivity_pilot
+
+analysis_contract:
+  paired_filter_seeds: true
+  aggregate_repeats: mean_probability_before_scoring
+  recovery_scope: fixed_shared_parameters_first_stage
+  compare:
+    - bidirectional_fixed_parameter_model_recovery
+    - geometry_state_recovery
+    - orientation_state_recovery
+    - early_predictive_nll
+    - executed_geometry_trajectory_sensitivity
+    - mapping_effect_vs_pf_seed_noise
+  interpretation:
+    - This pilot can reveal implementation failures or large omitted-state effects.
+    - Recovery is conditional on the same frozen screening-centre parameters; re-optimized recovery follows calibration.
+    - It cannot select a final model or particle count.
+    - Formal claims require a larger preregistered or frozen validation panel.

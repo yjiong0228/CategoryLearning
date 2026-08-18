@@ -1,0 +1,40 @@
+analysis_id: model_0815_h3_const_reactive_accumulator_v1
+scope: nested_H_controller_compression_under_common_bounded_workspace
+
+reactive_simulation_config: configs/simulation_cfg/model0815_h3_cond1_feedback_reactive_pilot.yaml
+source_analysis_dir: results/model_dynamic_adaptive_control/0815_h1/mechanism_audit/01_adaptive_controller_pilot
+output_dir: results/model_dynamic_adaptive_control/0815_h3/mechanism_audit/01_const_reactive_accumulator
+
+design:
+  subjects: [103, 104, 105, 108, 111]
+  trials_per_subject: 64
+  train_trials: 32
+  particle_count: 32
+  seed_count: 4
+  base_seed: 20260820
+  n_jobs: 4
+  const_variant_id: training_matched_fixed_search
+  reactive_variant_id: feedback_reactive
+  accumulator_variant_id: adaptive_controller
+
+projection:
+  exclude_initialization_trial: true
+  event_after_correct: mean_adaptive_predictive_event_probability_conditioned_on_previous_correct
+  event_after_error: mean_adaptive_predictive_event_probability_conditioned_on_previous_error
+  global_search: mean_adaptive_predictive_global_mixture
+  enforce_event_after_error_not_less_than_correct: true
+  uses_choice_nll_for_projection: false
+  heldout_information_used: false
+
+interpretation:
+  primary_estimand: heldout_paired_choice_nll_difference
+  comparison_order:
+    - const_vs_reactive
+    - reactive_vs_accumulator
+  common_architecture: boundary_emission_fixed_mapping_leaky_M_gamma_080_unified_dynamic_beta_execution_off
+  pf_budget_status: provisional_shared_screen_budget
+
+screening_rule:
+  practical_fraction_of_simpler_heldout_nll: 0.01
+  seed_noise_multiplier: 2.0
+  majority_subjects: 3

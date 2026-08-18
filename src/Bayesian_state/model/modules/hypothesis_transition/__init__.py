@@ -19,6 +19,10 @@ from .fixed_strategy import (
 )
 from .dynamic_discrete_strategy import DynamicDiscreteStrategyHypothesisTransitionModule
 from .dynamic_adaptive_control import DynamicAdaptiveControlHypothesisTransitionModule
+from .feedback_reactive import FeedbackReactiveHypothesisTransitionModule
+from .nested_feedback_accumulator import (
+    NestedFeedbackAccumulatorHypothesisTransitionModule,
+)
 
 __all__ = [
     "DynamicAdaptiveControlHypothesisTransitionModule",
@@ -30,6 +34,8 @@ __all__ = [
     "FixedWorkspaceHypothesisTransitionModule",
     "FixedHypothesisStrategySpace",
     "FixedStrategyHypothesisTransitionModule",
+    "FeedbackReactiveHypothesisTransitionModule",
+    "NestedFeedbackAccumulatorHypothesisTransitionModule",
     "TransitionContext",
     "TwoStepHypothesisTransitionMixin",
 ]

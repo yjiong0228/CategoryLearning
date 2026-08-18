@@ -62,6 +62,19 @@ def build_model_provenance(
         ),
         "seed_policy": "deterministic_per_filter_seed_and_particle",
     }
+    declared = config.get("provenance", {})
+    if declared is not None and not isinstance(declared, Mapping):
+        raise ValueError("engine_config.provenance must be a mapping when provided.")
+    declared = dict(declared or {})
+    declared_similarity = declared.get("hypothesis_similarity", {})
+    if declared_similarity is not None and not isinstance(
+        declared_similarity, Mapping
+    ):
+        raise ValueError(
+            "engine_config.provenance.hypothesis_similarity must be a mapping "
+            "when provided."
+        )
+
     resolved = {
         "partition": deepcopy(config.get("partition", {})),
         "likelihood": deepcopy(config.get("likelihood", {})),
@@ -74,13 +87,16 @@ def build_model_provenance(
         "choice_readout": deepcopy(config.get("choice_readout", {})),
         "repeat_aggregation": str(repeat_aggregation),
     }
-    declared = config.get("provenance", {})
-    if declared is not None and not isinstance(declared, Mapping):
-        raise ValueError("engine_config.provenance must be a mapping when provided.")
+    tau_local = transition.get("tau_local")
+    if declared_similarity or tau_local is not None:
+        resolved["hypothesis_similarity"] = {
+            **deepcopy(dict(declared_similarity or {})),
+            "tau_local": tau_local,
+        }
     return {
         "schema_version": 1,
         "model_config_sha256": _canonical_sha256(config),
-        "declared": deepcopy(dict(declared or {})),
+        "declared": deepcopy(declared),
         "resolved": resolved,
     }
 

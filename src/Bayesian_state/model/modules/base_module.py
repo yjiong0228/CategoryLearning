@@ -19,6 +19,7 @@ class ModuleRole(str, Enum):
 
     PERCEPTION = "perception"
     HYPOTHESIS_TRANSITION = "hypothesis_transition"
+    MAPPING = "mapping"
     MEMORY = "memory"
     BETA = "beta"
 

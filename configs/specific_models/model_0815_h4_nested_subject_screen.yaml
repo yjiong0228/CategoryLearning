@@ -1,0 +1,61 @@
+analysis_id: model_0815_h4_nested_subject_parameter_screen_v1
+scope: subject_level_reactive_plus_optional_accumulation_under_common_decay
+
+simulation_config: configs/simulation_cfg/model0815_h4_cond1_nested_feedback_accumulator_pilot.yaml
+output_dir: results/model_dynamic_adaptive_control/0815_h4/mechanism_audit/02_nested_subject_screen_coarse
+
+design:
+  subjects: [103, 104, 105, 108, 111]
+  trials_per_subject: 64
+  train_trials: 32
+  training_particle_count: 16
+  evaluation_particle_count: 32
+  training_seed_count: 4
+  evaluation_seed_count: 4
+  base_seed: 20260824
+  training_n_jobs: 4
+  evaluation_n_jobs: 4
+  training_seed_role: model0815_h4_nested_subject_screen_training
+  evaluation_seed_role: model0815_h4_nested_subject_screen_evaluation
+
+# Sequential coordinate calibration of the one-step reactive baseline.  It is
+# deliberately smaller than a Cartesian grid and never reads held-out NLL.
+reactive_calibration:
+  coordinate_order:
+    - event_after_correct
+    - immediate_error_logit_gain
+    - global_search
+  passes: 1
+  anchor:
+    event_after_correct: 0.25
+    immediate_error_logit_gain: 0.80
+    global_search: 0.08
+  candidates:
+    event_after_correct: [0.10, 0.25, 0.40]
+    immediate_error_logit_gain: [0.00, 0.80, 1.60]
+    global_search: [0.08, 0.30]
+
+# The exact zero is a spike candidate, not the lower end of a positive-only
+# optimizer.  Decay is common across subjects; gain is subject-specific.
+accumulator_profile:
+  common_decay_candidates: [0.30, 0.60, 0.85]
+  common_decay_anchor: 0.60
+  subject_gain_candidates: [0.00, 1.00, 2.50]
+  initial_failure: 0.00
+
+selection_rule:
+  # Positive gain must clear both gates on training trials.  Otherwise the
+  # simpler c_acc=0 boundary is selected even if raw NLL is microscopically lower.
+  subject_train_practical_fraction_of_boundary_nll: 0.005
+  subject_train_seed_noise_multiplier: 1.0
+  common_decay_practical_fraction_of_boundary_nll: 0.0025
+  heldout_practical_fraction_of_boundary_nll: 0.01
+  heldout_seed_noise_multiplier: 2.0
+
+interpretation:
+  primary_estimand: heldout_paired_choice_nll_boundary_minus_selected_supermodel
+  common_architecture: boundary_emission_fixed_mapping_leaky_M_gamma_080_unified_dynamic_beta_execution_off
+  parameter_status: low_dimensional_subject_screen_not_final_fit
+  dynamic_global_search: false
+  independent_mastery_accumulator: false
+  heldout_information_used_for_parameter_selection: false

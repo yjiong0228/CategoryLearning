@@ -50,7 +50,11 @@ class BetaModule(BaseModule):
             - beta_min: Minimum beta value (default: 0.1)
             - beta_max: Maximum beta value (default: 100.0)
             - decrease_rate: Multiplicative factor for incorrect responses (default: 0.3)
-            - correct_additive: Additive bonus for correct responses (default: 0.5)
+            - increase_rate: Fraction of remaining beta headroom acquired from
+              fully supportive feedback.  This is the preferred dimensionless
+              parameterization.
+            - correct_additive: Legacy additive-scale alias.  It is converted
+              exactly as ``increase_rate = correct_additive / beta_max``.
             - update_scope: ``active_hypotheses`` (legacy default) or
               ``executed_hypothesis`` for rule-specific confidence learning
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
@@ -62,10 +66,55 @@ class BetaModule(BaseModule):
         self.beta_init = float(kwargs.get("beta_init", self.BETA_DEFAULT))
         self.beta_min = float(kwargs.get("beta_min", self.BETA_MIN))
         self.beta_max = float(kwargs.get("beta_max", self.BETA_MAX))
+        if (
+            not np.isfinite(self.beta_min)
+            or not np.isfinite(self.beta_max)
+            or self.beta_min <= 0.0
+            or self.beta_max <= self.beta_min
+        ):
+            raise ValueError(
+                "beta bounds must be finite with 0 < beta_min < beta_max."
+            )
+        if (
+            not np.isfinite(self.beta_init)
+            or not self.beta_min <= self.beta_init <= self.beta_max
+        ):
+            raise ValueError("beta_init must lie within [beta_min, beta_max].")
         
         # Evolution parameters (nonlinear dynamics)
-        self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))   # Multiplicative (sharp drop)
-        self.correct_additive = float(kwargs.get("correct_additive", 0.5))  # Small additive bonus
+        self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))
+        if (
+            not np.isfinite(self.decrease_rate)
+            or not 0.0 <= self.decrease_rate <= 1.0
+        ):
+            raise ValueError("decrease_rate must be a finite rate in [0, 1].")
+        has_increase_rate = "increase_rate" in kwargs
+        has_correct_additive = "correct_additive" in kwargs
+        if has_increase_rate and has_correct_additive:
+            raise ValueError(
+                "Configure increase_rate or legacy correct_additive, not both."
+            )
+        if has_increase_rate:
+            self.increase_rate = float(kwargs["increase_rate"])
+            if (
+                not np.isfinite(self.increase_rate)
+                or not 0.0 <= self.increase_rate <= 1.0
+            ):
+                raise ValueError(
+                    "increase_rate must be a finite rate in [0, 1]."
+                )
+            # Retain a derived compatibility attribute for historical reports
+            # and scripts that inspect the module rather than its config.
+            self.correct_additive = self.increase_rate * self.beta_max
+            self.increase_parameterization = "increase_rate"
+        else:
+            self.correct_additive = float(kwargs.get("correct_additive", 0.5))
+            if not np.isfinite(self.correct_additive) or self.correct_additive < 0.0:
+                raise ValueError(
+                    "correct_additive must be finite and non-negative."
+                )
+            self.increase_rate = self.correct_additive / self.beta_max
+            self.increase_parameterization = "correct_additive_legacy"
         self.beta_update_mode = self._resolve_beta_update_mode(
             kwargs.get("beta_update_mode", "inferred_correct_category")
         )
@@ -245,6 +294,27 @@ class BetaModule(BaseModule):
         )
         if prob.ndim == 1:
             prob = prob.reshape(-1, 1)
+        try:
+            mapping_mod = self.engine.get_module(ModuleRole.MAPPING)
+        except KeyError:
+            # Mapping is absent from the fixed-label M0 model and from
+            # lightweight engines used by the legacy compatibility tests.
+            mapping_mod = None
+        if mapping_mod is not None:
+            orient = getattr(mapping_mod, "orient_category_probabilities", None)
+            if not callable(orient):
+                raise TypeError(
+                    "mapping module must provide orient_category_probabilities()."
+                )
+            oriented = np.asarray(
+                orient(
+                    int(hypo),
+                    prob[:, 0],
+                    use_predictive_snapshot=True,
+                ),
+                dtype=float,
+            ).reshape(-1)
+            prob = oriented[:, np.newaxis]
         choice_idx = int(choice) - 1
         if choice_idx < 0 or choice_idx >= prob.shape[0]:
             return 0.0
@@ -274,7 +344,7 @@ class BetaModule(BaseModule):
             centered = 2.0 * (evidence - 0.5)
             if centered >= 0:
                 headroom = self.beta_max - current_beta
-                increment = self.correct_additive * centered * (headroom / self.beta_max)
+                increment = self.increase_rate * centered * headroom
                 self.beta[hypo_idx] = min(current_beta + increment, self.beta_max)
             else:
                 penalty = self.decrease_rate * current_beta * min(1.0, -centered)
@@ -360,10 +430,10 @@ class BetaModule(BaseModule):
                 
                 if hypo_is_correct:
                     # Hypothesis predicts the CORRECT category -> reward
-                    # Use additive increase for stability: β_new = β + increment
-                    # Increment scales with how far from beta_max we are (diminishing returns)
+                    # Acquire a fraction of the remaining headroom, giving
+                    # diminishing returns as beta approaches beta_max.
                     headroom = self.beta_max - current_beta
-                    increment = self.correct_additive * (headroom / self.beta_max)
+                    increment = self.increase_rate * headroom
                     new_beta = current_beta + increment
                     self.beta[hypo_idx] = min(new_beta, self.beta_max)
                 else:
