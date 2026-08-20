@@ -39,12 +39,13 @@ class ObservationLikelihood:
 
         valid_modes = tuple(getattr(partition, "VALID_DISTANCE_MODES", ()))
         resolved_mode = distance_mode
-        if resolved_mode is None:
-            resolved_mode = getattr(partition, "DEFAULT_DISTANCE_MODE", None)
         if resolved_mode is None and len(valid_modes) == 1:
             resolved_mode = valid_modes[0]
         if resolved_mode is None:
-            raise ValueError("distance_mode is required for this partition.")
+            raise ValueError(
+                "distance_mode must be explicitly configured when a partition "
+                "supports multiple encoding modes."
+            )
         resolved_mode = str(resolved_mode)
         if valid_modes and resolved_mode not in valid_modes:
             raise ValueError(

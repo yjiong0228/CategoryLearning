@@ -10,7 +10,11 @@ from pathlib import Path
 
 import numpy as np
 
-from ..spaces import ContinuousHypothesisSpace, build_continuous_hypothesis_space
+from ..spaces import (
+    LABEL_PERMUTATION_IDENTITY,
+    ContinuousHypothesisSpace,
+    build_continuous_hypothesis_space,
+)
 from ..geometry import BoundaryGeometry, PrototypeGeometry
 from .base_partition import BasePartition
 from ..similarity import ContinuousSimilarity, prototype_boundary_agreement
@@ -32,6 +36,10 @@ class ContinuousPartition(BasePartition):
         pairwise_similarity_tolerance: float = 0.10,
         center_band_tolerance: float = 0.10,
         prototype_method: str = PrototypeGeometry.METHOD_COMPONENT_VOLUME_CENTROID,
+        boundary_distance_method: str = BoundaryGeometry.METHOD_DYKSTRA,
+        boundary_distance_tolerance: float = 1e-9,
+        boundary_projection_iterations: int = 100,
+        label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
         similarity_n_samples: int = ContinuousSimilarity.DEFAULT_N_SAMPLES,
         similarity_cache_dir: str | Path | None = None,
     ) -> None:
@@ -43,13 +51,27 @@ class ContinuousPartition(BasePartition):
                 n_cats,
                 pairwise_similarity_tolerance=pair_tolerance,
                 center_band_tolerance=center_tolerance,
+                label_permutation_policy=label_permutation_policy,
             )
         )
         super().__init__(n_dims, n_cats)
         self.pairwise_similarity_tolerance = pair_tolerance
         self.center_band_tolerance = center_tolerance
 
-        self.boundary_geometry = BoundaryGeometry(self.hypothesis_space)
+        self.boundary_geometry = BoundaryGeometry(
+            self.hypothesis_space,
+            method=boundary_distance_method,
+            tolerance=boundary_distance_tolerance,
+            projection_iterations=boundary_projection_iterations,
+        )
+        self.boundary_distance_method = self.boundary_geometry.method
+        self.boundary_distance_tolerance = self.boundary_geometry.tolerance
+        self.boundary_projection_iterations = (
+            self.boundary_geometry.projection_iterations
+        )
+        self.label_permutation_policy = str(
+            self.hypothesis_space.parameters["label_permutation_policy"]
+        )
         self.prototype_geometry = PrototypeGeometry(
             self.hypothesis_space,
             method=prototype_method,
@@ -59,6 +81,7 @@ class ContinuousPartition(BasePartition):
         self.similarity = ContinuousSimilarity(
             self.hypothesis_space,
             self.boundary_geometry,
+            self.prototype_geometry,
             n_samples=similarity_n_samples,
             runtime_cache_dir=similarity_cache_dir,
         )
@@ -69,7 +92,42 @@ class ContinuousPartition(BasePartition):
 
     @property
     def similarity_matrix(self) -> np.ndarray:
+        """Deprecated boundary-assignment agreement adapter."""
         return self.similarity.matrix
+
+    def get_similarity_matrix(
+        self,
+        *,
+        kind: str = "assignment_agreement",
+        distance_mode: str,
+        n_samples: int | None = None,
+        random_state: int = 0,
+        stimuli: np.ndarray | None = None,
+        sample_distribution: str = "uniform",
+    ) -> np.ndarray:
+        if kind != "assignment_agreement":
+            raise ValueError(
+                f"Unsupported continuous similarity kind '{kind}'."
+            )
+        mode = self._resolve_distance_mode(distance_mode)
+        return self.similarity.get_matrix(
+            distance_mode=mode,
+            n_samples=n_samples,
+            random_state=random_state,
+            stimuli=stimuli,
+            sample_distribution=sample_distribution,
+        )
+
+    @property
+    def hypothesis_metadata(self) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "base_hypothesis_index": item.base_hypothesis_index,
+                "label_permutation": item.label_permutation,
+                "is_label_permuted": item.is_label_permuted,
+            }
+            for item in self.hypothesis_space
+        )
 
     def get_category_prototypes(self, hypo: int, category: int) -> np.ndarray:
         """Return all automatically derived prototypes for one category."""
@@ -87,6 +145,48 @@ class ContinuousPartition(BasePartition):
         if mode == self.DISTANCE_MODE_PROTOTYPE:
             return self.prototype_geometry.category_probabilities(hypo, data[0], beta)
         return self.boundary_geometry.category_probabilities(hypo, data[0], beta)
+
+    def get_category_assignments(
+        self,
+        hypo: int,
+        stimuli: np.ndarray,
+        *,
+        distance_mode: str,
+    ) -> np.ndarray:
+        mode = self._resolve_distance_mode(distance_mode)
+        if mode == self.DISTANCE_MODE_PROTOTYPE:
+            return self.prototype_geometry.category_assignments(hypo, stimuli)
+        return self.boundary_geometry.category_assignments(hypo, stimuli)
+
+    def get_category_assignment(
+        self,
+        hypo: int,
+        stimulus: np.ndarray,
+        distance_mode: str | None = None,
+        **kwargs,
+    ) -> int:
+        mode = self._resolve_distance_mode(distance_mode)
+        return int(
+            self.get_category_assignments(
+                hypo,
+                np.asarray(stimulus, dtype=float).reshape(1, -1),
+                distance_mode=mode,
+            )[0]
+        )
+
+    def get_category_neighbors(
+        self,
+        hypo: int,
+        category: int,
+        *,
+        kind: str = "prototype_center",
+    ) -> list[int]:
+        if kind != "prototype_center":
+            raise ValueError(
+                "Only prototype_center connectivity is currently implemented."
+            )
+        # TODO: add boundary-region adjacency as a separate topology kind.
+        return list(self.connectivity_map[int(hypo)][int(category)])
 
     def prototype_boundary_agreement(
         self,
@@ -124,7 +224,11 @@ class ContinuousPartition(BasePartition):
         family_probability = np.zeros(n_trials)
         mask = np.zeros_like(prob, dtype=bool)
         for trial_index in range(n_trials):
-            alternatives = self.connectivity_map[hypo][choices[trial_index]]
+            alternatives = self.get_category_neighbors(
+                hypo,
+                choices[trial_index],
+                kind="prototype_center",
+            )
             mask[alternatives, trial_index] = True
         family_probability = (prob * mask).sum(axis=0)
         return np.where(

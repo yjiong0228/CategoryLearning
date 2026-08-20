@@ -310,15 +310,16 @@ def test_continuous_similarity_uses_versioned_boundary_label_resources(
     n_cats: int,
 ) -> None:
     from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPartition
-    from src.Bayesian_state.hypothesis_space.similarity import (
-        SIMILARITY_BASIS,
-    )
+    from src.Bayesian_state.hypothesis_space.similarity import SIMILARITY_VERSION
 
     partition = ContinuousPartition(4, n_cats)
 
-    assert SIMILARITY_BASIS == "boundary_fixed_labels"
-    assert (partition.similarity.RESOURCE_DIR / partition.similarity.filename).is_file()
-    assert partition.similarity_matrix.shape == (partition.length, partition.length)
+    assert SIMILARITY_VERSION == "mode_aware_assignment_agreement_v2"
+    matrix = partition.get_similarity_matrix(
+        kind="assignment_agreement",
+        distance_mode="boundary",
+    )
+    assert matrix.shape == (partition.length, partition.length)
 
 
 def test_continuous_similarity_runtime_computation_is_seeded_and_validated(
@@ -332,10 +333,9 @@ def test_continuous_similarity_runtime_computation_is_seeded_and_validated(
     partition = ContinuousPartition(4, 2)
     similarity = partition.similarity
     assert SIMILARITY_COMPUTATION_SEED == 0
-    assert similarity.runtime_filename.endswith("_seed0.npy")
     np.testing.assert_array_equal(
-        similarity.compute(n_samples=256),
-        similarity.compute(n_samples=256),
+        similarity.compute(distance_mode="boundary", n_samples=256),
+        similarity.compute(distance_mode="boundary", n_samples=256),
     )
 
     runtime_partition = ContinuousPartition(
@@ -344,14 +344,15 @@ def test_continuous_similarity_runtime_computation_is_seeded_and_validated(
         similarity_n_samples=256,
         similarity_cache_dir=tmp_path,
     )
-    runtime_matrix = runtime_partition.similarity_matrix
+    runtime_matrix = runtime_partition.get_similarity_matrix(
+        distance_mode="boundary"
+    )
     assert runtime_matrix.shape == (runtime_partition.length, runtime_partition.length)
-    assert (
-        tmp_path / runtime_partition.similarity.runtime_filename
-    ).is_file()
-    assert not (tmp_path / runtime_partition.similarity.filename).exists()
+    assert len(list(tmp_path.glob("similarity_*.npy"))) == 1
 
-    valid = np.asarray(partition.similarity_matrix, dtype=float)
+    valid = np.asarray(
+        partition.get_similarity_matrix(distance_mode="boundary"), dtype=float
+    )
     invalid_matrices = []
 
     invalid_matrices.append(valid[:-1])
@@ -411,7 +412,14 @@ def test_binary_partition_contains_29_fixed_label_hypotheses() -> None:
     assert partition.prototype_geometry.prototypes.shape == (29, 2, 2, 4)
     assert partition.prototype_geometry.prototype_mask.shape == (29, 2, 2)
     assert np.isfinite(partition.prototype_geometry.prototypes).all()
-    assert not hasattr(partition, "hypothesis_metadata")
+    assert all(
+        metadata == {
+            "base_hypothesis_index": index,
+            "label_permutation": (0, 1),
+            "is_label_permuted": False,
+        }
+        for index, metadata in enumerate(partition.hypothesis_metadata)
+    )
 
     family_counts = {
         family: sum(split.family == family for split in partition.hypothesis_space)
@@ -608,7 +616,7 @@ def test_discrete_partition_refactor_preserves_predictions_and_feedback() -> Non
     # binary incorrect feedback rather than Task2's related-family feedback.
     assert np.allclose(partition.calc_likelihood_entry(3, data, 1.7), high)
     assert np.allclose(
-        partition.similarity_matrix[:4, :4],
+        partition.get_similarity_matrix(distance_mode="rule")[:4, :4],
         [
             [1.0, 0.0, 0.5, 0.5],
             [0.0, 1.0, 0.5, 0.5],

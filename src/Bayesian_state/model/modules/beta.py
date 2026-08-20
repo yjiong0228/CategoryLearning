@@ -230,7 +230,7 @@ class BetaModule(BaseModule):
         partition = getattr(self.engine, "partition", None)
         if partition is None or not hasattr(partition, "get_category_assignment"):
             return 0
-        distance_mode = getattr(self.engine, "distance_mode", "prototype")
+        distance_mode = self.engine.distance_mode
         return partition.get_category_assignment(
             hypo=hypo,
             stimulus=np.asarray(stimulus, dtype=float),
@@ -284,7 +284,7 @@ class BetaModule(BaseModule):
         partition = getattr(self.engine, "partition", None)
         if partition is None or not hasattr(partition, "get_category_probabilities"):
             return 0.5
-        distance_mode = getattr(self.engine, "distance_mode", "prototype")
+        distance_mode = self.engine.distance_mode
         trial_data = ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0])
         prob = partition.get_category_probabilities(
             hypo=int(hypo),

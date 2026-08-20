@@ -16,7 +16,7 @@ from .regions import CategoryRegion, Hyperplane, Polytope
 
 @dataclass(frozen=True, eq=False)
 class ContinuousHypothesisSpec:
-    """One rule with fixed category labels and complete category geometry."""
+    """One rule with explicit category labels and complete category geometry."""
 
     index: int
     family: str
@@ -24,8 +24,19 @@ class ContinuousHypothesisSpec:
     categories: tuple[CategoryRegion, ...]
     parameters: Mapping[str, object]
     feedback_neighbors: tuple[tuple[int, ...], ...]
+    base_hypothesis_index: int | None = None
+    label_permutation: tuple[int, ...] = ()
+    is_label_permuted: bool = False
 
     def __post_init__(self) -> None:
+        if self.base_hypothesis_index is None:
+            object.__setattr__(self, "base_hypothesis_index", int(self.index))
+        if not self.label_permutation:
+            object.__setattr__(
+                self,
+                "label_permutation",
+                tuple(range(len(self.categories))),
+            )
         if not isinstance(self.parameters, FrozenParameters):
             object.__setattr__(
                 self,
@@ -104,6 +115,12 @@ BINARY_FAMILY_LABELS = {
 }
 
 SPACE_VERSION = "continuous_fixed_labels_v1"
+LABEL_PERMUTATION_IDENTITY = "identity_only"
+LABEL_PERMUTATION_BINARY_REVERSE = "binary_identity_and_reverse"
+VALID_LABEL_PERMUTATION_POLICIES = (
+    LABEL_PERMUTATION_IDENTITY,
+    LABEL_PERMUTATION_BINARY_REVERSE,
+)
 
 
 def _plane(coefficients: Sequence[float], intercept: float) -> Hyperplane:
@@ -487,14 +504,28 @@ def build_continuous_hypothesis_space(
     *,
     pairwise_similarity_tolerance: float = 0.10,
     center_band_tolerance: float = 0.10,
+    label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
 ) -> ContinuousHypothesisSpace:
-    """Build the ordered, fixed-label continuous hypothesis space."""
+    """Build the ordered continuous space under one label-permutation policy."""
     n_dims = int(n_dims)
     n_cats = int(n_cats)
     if n_dims <= 0:
         raise ValueError(f"n_dims must be positive, got {n_dims}.")
     if n_cats not in {2, 4}:
         raise ValueError(f"Continuous hypothesis space supports 2 or 4 categories, got {n_cats}.")
+    permutation_policy = str(label_permutation_policy).strip().lower()
+    if permutation_policy not in VALID_LABEL_PERMUTATION_POLICIES:
+        raise ValueError(
+            f"Unsupported label_permutation_policy '{label_permutation_policy}'. "
+            f"Expected one of: {VALID_LABEL_PERMUTATION_POLICIES}."
+        )
+    if (
+        permutation_policy == LABEL_PERMUTATION_BINARY_REVERSE
+        and n_cats != 2
+    ):
+        raise ValueError(
+            "binary_identity_and_reverse requires exactly two categories."
+        )
 
     pair_tolerance = float(pairwise_similarity_tolerance)
     if not np.isfinite(pair_tolerance) or not 0.0 < pair_tolerance < 1.0:
@@ -515,13 +546,35 @@ def build_continuous_hypothesis_space(
     else:
         _build_four_category_space(builder)
 
+    hypotheses = list(builder.hypotheses)
+    if permutation_policy == LABEL_PERMUTATION_BINARY_REVERSE:
+        reverse = (1, 0)
+        for base in tuple(hypotheses):
+            hypotheses.append(
+                ContinuousHypothesisSpec(
+                    index=len(hypotheses),
+                    family=base.family,
+                    hyperplanes=base.hyperplanes,
+                    categories=tuple(base.categories[index] for index in reverse),
+                    parameters=base.parameters,
+                    feedback_neighbors=tuple(
+                        tuple(reverse.index(neighbor) for neighbor in base.feedback_neighbors[index])
+                        for index in reverse
+                    ),
+                    base_hypothesis_index=base.index,
+                    label_permutation=reverse,
+                    is_label_permuted=True,
+                )
+            )
+
     return ContinuousHypothesisSpace(
         n_dims=n_dims,
         n_cats=n_cats,
-        hypotheses=tuple(builder.hypotheses),
+        hypotheses=tuple(hypotheses),
         version=SPACE_VERSION,
         parameters={
             "pairwise_similarity_tolerance": pair_tolerance if n_cats == 2 else None,
             "center_band_tolerance": center_tolerance if n_cats == 2 else None,
+            "label_permutation_policy": permutation_policy,
         },
     )

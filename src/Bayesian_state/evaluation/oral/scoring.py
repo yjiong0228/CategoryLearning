@@ -99,6 +99,59 @@ class OralAlignmentScoringMixin:
         "model_mass_inside_oral": "Model mass inside oral region",
         "oral_region_covered_by_model": "Oral region covered by model",
     }
+
+    @staticmethod
+    def _partition_for_model_result(info, expected_n_cats=None):
+        """Rebuild the continuous hypothesis space saved with a model result."""
+        provenance = info.get("model_provenance") or {}
+        resolved = provenance.get("resolved") if isinstance(provenance, Mapping) else None
+        partition_config = (
+            resolved.get("partition") if isinstance(resolved, Mapping) else None
+        )
+        likelihood_config = (
+            resolved.get("likelihood") if isinstance(resolved, Mapping) else None
+        )
+        if not isinstance(partition_config, Mapping):
+            raise ValueError(
+                "Oral/model alignment requires saved partition provenance."
+            )
+        class_path = str(partition_config.get("class", ""))
+        if not class_path.endswith("ContinuousPartition"):
+            raise ValueError(
+                "Oral/model alignment currently requires ContinuousPartition "
+                f"provenance, got {class_path!r}."
+            )
+        kwargs = partition_config.get("kwargs", {})
+        if not isinstance(kwargs, Mapping):
+            raise ValueError("Saved partition kwargs must be a mapping.")
+        if not isinstance(likelihood_config, Mapping):
+            raise ValueError(
+                "Oral/model alignment requires saved likelihood provenance."
+            )
+        distance_mode = likelihood_config.get("distance_mode")
+        if distance_mode is None:
+            raise ValueError(
+                "Oral/model alignment requires saved likelihood.distance_mode."
+            )
+        partition = ContinuousPartition(**dict(kwargs))
+        if expected_n_cats is not None and partition.n_cats != int(expected_n_cats):
+            raise ValueError(
+                "Saved partition category count does not match result condition: "
+                f"{partition.n_cats} vs {int(expected_n_cats)}."
+            )
+        return partition, str(distance_mode)
+
+    @classmethod
+    def _partitions_for_model_results(cls, model_results):
+        partitions = {}
+        for subject, info in model_results.items():
+            condition = int(info.get("condition", 1))
+            n_cats = 2 if condition == 1 else 4
+            partitions[int(subject)] = cls._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )[0]
+        return partitions
     ORAL_BASED_METRIC_COLORS = {
         "expected_center_similarity": "#4c78a8",
         "fuzzy_iou_similarity": "#54a24b",
@@ -1258,7 +1311,15 @@ class OralAlignmentScoringMixin:
         raise ValueError(f"Unsupported oral_mode: {oral_mode}")
 
     @staticmethod
-    def _choice_conditioned_prior(partition, prior, stimulus, choice, beta=10.0):
+    def _choice_conditioned_prior(
+        partition,
+        prior,
+        stimulus,
+        choice,
+        *,
+        distance_mode,
+        beta=10.0,
+    ):
         """Condition prior_t on the category choice made before oral report."""
         prior = OralAlignmentScoringMixin._normalize_distribution(prior)
         if np.isnan(prior).any():
@@ -1274,7 +1335,7 @@ class OralAlignmentScoringMixin:
                 hypo=hypo_idx,
                 data=data,
                 beta=float(beta),
-                distance_mode=partition.DISTANCE_MODE_PROTOTYPE,
+                distance_mode=distance_mode,
             )[:, 0]
             if 0 <= choice_idx < len(prob):
                 likelihood[hypo_idx] = float(prob[choice_idx])
@@ -1303,6 +1364,7 @@ class OralAlignmentScoringMixin:
         partition,
         choice,
         model_distribution="choice_conditioned_prior",
+        distance_mode=None,
         beta=10.0,
     ):
         """Return the model belief state aligned to oral-report timing."""
@@ -1317,6 +1379,7 @@ class OralAlignmentScoringMixin:
                 prior=prior_log[trial_idx],
                 stimulus=stimulus,
                 choice=choice,
+                distance_mode=distance_mode,
                 beta=beta,
             )
 
@@ -1515,6 +1578,7 @@ class OralAlignmentScoringMixin:
         oral_region_temperature=DEFAULT_ORAL_REGION_TEMPERATURE,
         region_n_samples=1000,
         region_stimulus_sigma=None,
+        partitions_by_subject=None,
     ):
         """Compute fixed-likelihood oral hypothesis distributions per subject.
 
@@ -1552,7 +1616,16 @@ class OralAlignmentScoringMixin:
             condition = int(subj_df["condition"].iloc[0])
             n_cats = 2 if condition == 1 else 4
             target_hypo = 0 if condition == 1 else 42
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition = None
+            if partitions_by_subject is not None:
+                partition = partitions_by_subject.get(int(iSub))
+            if partition is None:
+                partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            if partition.n_cats != n_cats:
+                raise ValueError(
+                    "Oral partition category count does not match subject condition: "
+                    f"{partition.n_cats} vs {n_cats}."
+                )
             n_trials = len(subj_df)
             oral_mass = np.full((n_trials, partition.length), np.nan, dtype=float)
             instantaneous_oral_mass = np.full(
@@ -1734,6 +1807,7 @@ class OralAlignmentScoringMixin:
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
         if oral_mass_results is None:
+            partitions_by_subject = self._partitions_for_model_results(model_res)
             oral_mass_results = self.compute_oral_mass_probabilities(
                 oral_df,
                 oral_mode=oral_mode,
@@ -1743,6 +1817,7 @@ class OralAlignmentScoringMixin:
                 oral_region_temperature=oral_region_temperature,
                 region_n_samples=region_n_samples,
                 region_stimulus_sigma=region_stimulus_sigma,
+                partitions_by_subject=partitions_by_subject,
             )
         state = str(model_distribution).strip().lower()
         model_mass_key = f"{state}_mass"
@@ -1759,7 +1834,10 @@ class OralAlignmentScoringMixin:
             n_cats = 2 if condition == 1 else 4
             raw_target_hypo = info.get("target_hypothesis")
             target_hypo = int(raw_target_hypo) if raw_target_hypo is not None else (0 if condition == 1 else 42)
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, _ = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             model_log = self._extract_model_distribution_log(info, model_distribution=state)
             n_trials = min(len(subj_df), len(model_log))
             if n_trials <= 0:
@@ -2077,6 +2155,12 @@ class OralAlignmentScoringMixin:
             trial_idx,
         )
         if precomputed is not None:
+            if precomputed.size != int(partition.length):
+                raise ValueError(
+                    "Precomputed oral distribution does not match the model "
+                    "hypothesis space: "
+                    f"{precomputed.size} vs {partition.length}."
+                )
             return (
                 precomputed,
                 cls._oral_diagnostics_from_precomputed(
@@ -2139,6 +2223,7 @@ class OralAlignmentScoringMixin:
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
         if oral_mass_results is None:
+            partitions_by_subject = self._partitions_for_model_results(model_res)
             oral_mass_results = self.compute_oral_mass_probabilities(
                 oral_df,
                 oral_mode=oral_mode,
@@ -2148,6 +2233,7 @@ class OralAlignmentScoringMixin:
                 oral_region_temperature=oral_region_temperature,
                 region_n_samples=region_n_samples,
                 region_stimulus_sigma=region_stimulus_sigma,
+                partitions_by_subject=partitions_by_subject,
             )
         rows = []
 
@@ -2159,7 +2245,10 @@ class OralAlignmentScoringMixin:
 
             condition = int(info.get("condition", subj_df["condition"].iloc[0]))
             n_cats = 2 if condition == 1 else 4
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, _ = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             model_log = self._extract_model_distribution_log(info, model_distribution=model_distribution)
             n_trials = min(len(subj_df), len(model_log))
 
@@ -2272,7 +2361,10 @@ class OralAlignmentScoringMixin:
 
             condition = int(info.get("condition", subj_df["condition"].iloc[0]))
             n_cats = 2 if condition == 1 else 4
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, distance_mode = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             model_state = str(model_distribution).strip().lower().replace("-", "_")
             if model_state in {"choice_conditioned", "choice_conditioned_prior", "choice_conditional_prior"}:
                 model_len = len(self._extract_prior_log(info))
@@ -2289,6 +2381,7 @@ class OralAlignmentScoringMixin:
                     partition=partition,
                     choice=choice,
                     model_distribution=model_distribution,
+                    distance_mode=distance_mode,
                     beta=beta,
                 )
                 valid_model = model_dist.size > 0 and not np.isnan(model_dist).any()
@@ -2387,6 +2480,7 @@ class OralAlignmentScoringMixin:
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
         if oral_mass_results is None:
+            partitions_by_subject = self._partitions_for_model_results(model_res)
             oral_mass_results = self.compute_oral_mass_probabilities(
                 oral_df,
                 oral_mode=oral_mode,
@@ -2396,6 +2490,7 @@ class OralAlignmentScoringMixin:
                 oral_region_temperature=oral_region_temperature,
                 region_n_samples=region_n_samples,
                 region_stimulus_sigma=region_stimulus_sigma,
+                partitions_by_subject=partitions_by_subject,
             )
         rows = []
         spaces = tuple(alignment_spaces or self.TARGET_ALIGNMENT_SPACES)
@@ -2417,7 +2512,10 @@ class OralAlignmentScoringMixin:
                 if raw_target_hypo is not None
                 else (0 if condition == 1 else 42)
             )
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, _ = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             prior_repeat_logs, model_state_source = self._extract_prior_repeat_logs(info)
             if not prior_repeat_logs:
                 continue
@@ -2586,6 +2684,7 @@ class OralAlignmentScoringMixin:
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
         if oral_mass_results is None:
+            partitions_by_subject = self._partitions_for_model_results(model_res)
             oral_mass_results = self.compute_oral_mass_probabilities(
                 oral_df,
                 oral_mode=oral_mode,
@@ -2595,6 +2694,7 @@ class OralAlignmentScoringMixin:
                 oral_region_temperature=oral_region_temperature,
                 region_n_samples=region_n_samples,
                 region_stimulus_sigma=region_stimulus_sigma,
+                partitions_by_subject=partitions_by_subject,
             )
         rows = []
 
@@ -2612,7 +2712,10 @@ class OralAlignmentScoringMixin:
                 if raw_target_hypo is not None
                 else (0 if condition == 1 else 42)
             )
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, _ = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             prior_log = self._extract_prior_log(info)
             n_trials = min(len(subj_df), len(prior_log))
             resolved_rank_top_k = self._resolve_rank_top_k(rank_top_k, condition)
@@ -2741,6 +2844,7 @@ class OralAlignmentScoringMixin:
         model_res = self._filter_results(model_results, subjects)
         oral_df = oral_df.copy()
         if oral_mass_results is None:
+            partitions_by_subject = self._partitions_for_model_results(model_res)
             oral_mass_results = self.compute_oral_mass_probabilities(
                 oral_df,
                 oral_mode=oral_mode,
@@ -2750,6 +2854,7 @@ class OralAlignmentScoringMixin:
                 oral_region_temperature=oral_region_temperature,
                 region_n_samples=region_n_samples,
                 region_stimulus_sigma=region_stimulus_sigma,
+                partitions_by_subject=partitions_by_subject,
             )
         rows = []
 
@@ -2761,7 +2866,10 @@ class OralAlignmentScoringMixin:
 
             condition = int(info.get("condition", subj_df["condition"].iloc[0]))
             n_cats = 2 if condition == 1 else 4
-            partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+            partition, _ = self._partition_for_model_result(
+                info,
+                expected_n_cats=n_cats,
+            )
             prior_log = self._extract_prior_log(info)
             n_trials = min(len(subj_df), len(prior_log))
 

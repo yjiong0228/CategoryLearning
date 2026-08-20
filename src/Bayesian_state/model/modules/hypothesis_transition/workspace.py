@@ -1035,7 +1035,7 @@ class AdaptiveWorkspaceController(BaseModule):
                 f"choice must be 1-based and lie in [1, {n_cats}]."
             )
         stimulus = np.asarray(observation[0], dtype=float)
-        distance_mode = getattr(self.engine, "distance_mode", "prototype")
+        distance_mode = self.engine.distance_mode
         supports = np.fromiter(
             (
                 float(
@@ -1187,11 +1187,16 @@ class AdaptiveWorkspaceController(BaseModule):
         if self._distance_matrix is not None and self._local_kernel is not None:
             return
         partition = getattr(self.engine, "partition", None)
-        similarity = getattr(partition, "similarity_matrix", None)
-        if similarity is None:
+        get_similarity = getattr(partition, "get_similarity_matrix", None)
+        if not callable(get_similarity):
             raise ValueError(
-                "adaptive bounded-workspace transitions require partition.similarity_matrix."
+                "adaptive bounded-workspace transitions require an explicit "
+                "assignment-agreement similarity interface."
             )
+        similarity = get_similarity(
+            kind="assignment_agreement",
+            distance_mode=self.engine.distance_mode,
+        )
         similarity_array = np.asarray(similarity, dtype=float)
         expected = (self.total_hypo, self.total_hypo)
         if similarity_array.shape != expected:

@@ -11,6 +11,7 @@ from copy import deepcopy
 from typing import Sequence, List, Dict, Set, Tuple, Callable, Any, Mapping
 from ....utils.numeric import entropy
 from ....utils.console import print
+from ....hypothesis_space.similarity import prototype_center_scores
 
 from ..base_module import BaseModule
 from .prior_assignment import PriorAssignmentPolicyMixin
@@ -915,6 +916,11 @@ class HypothesisSelectionPolicy(PriorAssignmentPolicyMixin, BaseModule):
         return "graded"
 
     def _validate_ksimilar_partition(self) -> None:
+        if getattr(self.engine, "distance_mode", None) != "prototype":
+            raise ValueError(
+                "ksimilar_centers is prototype-only and cannot be used in a "
+                "boundary-encoded run."
+            )
         partition = getattr(self.engine, "partition", None)
         missing = [
             name for name in (
@@ -1399,24 +1405,13 @@ class HypothesisSelectionPolicy(PriorAssignmentPolicyMixin, BaseModule):
         
         # Compare the reference component with the nearest component carrying
         # the same category label in each candidate hypothesis.
-        scores = np.zeros(len(candidate_hypos_index))
-        
-        for j, cand_idx in enumerate(candidate_hypos_index):
-            # For this candidate, sum similarity over all reference hypos
-            sim_sum = 0.0
-            for i in range(proto_hypo_amount):
-                ref_c = ref_hypos_center[i] # (n_dims,)
-                candidate_prototypes = self.engine.partition.get_category_prototypes(
-                    int(cand_idx),
-                    int(ref_choices[i]),
-                )
-                dist = min(
-                    self.center_dist(tuple(ref_c), tuple(candidate_center))
-                    for candidate_center in candidate_prototypes
-                )
-                sim = np.exp(-dist) # Similarity
-                sim_sum += sim * ref_hypos_post[i]
-            scores[j] = sim_sum
+        scores = prototype_center_scores(
+            self.engine.partition,
+            reference_centers=ref_hypos_center,
+            reference_categories=np.asarray(ref_choices, dtype=int),
+            reference_weights=ref_hypos_post,
+            candidates=candidate_hypos_index,
+        )
 
         # Select based on scores
         cluster_hypo_method = strategy_config.get("cluster_hypo_method", "top")
@@ -1718,7 +1713,7 @@ class HypothesisSelectionPolicy(PriorAssignmentPolicyMixin, BaseModule):
                 int(hypo),
                 ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
                 beta=self._current_beta_for_hypothesis(int(hypo), state),
-                distance_mode=getattr(self.engine, "distance_mode", "prototype"),
+                distance_mode=self.engine.distance_mode,
             )
             prob = np.asarray(prob, dtype=float)
             if prob.ndim == 1:
@@ -1768,7 +1763,7 @@ class HypothesisSelectionPolicy(PriorAssignmentPolicyMixin, BaseModule):
                     int(hypo),
                     ([np.asarray(stimulus, dtype=float)], [int(choice)], [1.0]),
                     beta=beta,
-                    distance_mode=getattr(self.engine, "distance_mode", "prototype"),
+                    distance_mode=self.engine.distance_mode,
                 )
                 prob = np.asarray(prob, dtype=float)
                 if prob.ndim == 1:

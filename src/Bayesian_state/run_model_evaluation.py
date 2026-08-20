@@ -290,6 +290,8 @@ def run_basic_plots(
     exp_accuracy_alpha: float | None,
     records: list[dict[str, Any]],
     posterior_limit: bool,
+    distance_mode: str | None = None,
+    default_beta: float | None = None,
 ) -> None:
     basic_dir = output_dir / "basic"
     basic_dir.mkdir(parents=True, exist_ok=True)
@@ -327,6 +329,8 @@ def run_basic_plots(
                 subjects=subjects,
                 save_path=basic_dir / "accuracy_family_comparison.png",
                 window_size=window_size,
+                distance_mode=distance_mode,
+                default_beta=default_beta,
             ),
             [basic_dir / "accuracy_family_comparison.png"],
         )
@@ -1072,6 +1076,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-prediction-mode", help="Metrics mode to plot, e.g. prior_t")
     p.add_argument("--window-size", type=int, help="Override window size for evaluation plots")
     p.add_argument(
+        "--distance-mode",
+        choices=("prototype", "boundary"),
+        help="Override saved encoding mode when recomputing family accuracy.",
+    )
+    p.add_argument(
+        "--default-beta",
+        type=float,
+        help="Explicit fallback only for legacy results without a complete beta log.",
+    )
+    p.add_argument(
         "--exp-accuracy-alpha",
         type=float,
         help="Override exponential accuracy alpha for evaluation plots; must be in (0, 1].",
@@ -1269,6 +1283,8 @@ def main() -> None:
             exp_accuracy_alpha=args.exp_accuracy_alpha,
             records=records,
             posterior_limit=bool(args.posterior_limit),
+            distance_mode=args.distance_mode,
+            default_beta=args.default_beta,
         )
 
     if args.strategy_audit_config is not None:

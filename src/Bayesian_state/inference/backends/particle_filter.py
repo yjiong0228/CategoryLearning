@@ -251,7 +251,7 @@ def _map_hypothesis_choice_probability(
         hypo=hypothesis,
         data=([np.asarray(perceived_stimulus, dtype=float)], [1], [1.0]),
         beta=float(beta[hypothesis]),
-        distance_mode=getattr(engine, "distance_mode", "prototype"),
+        distance_mode=engine.distance_mode,
     )
     cognitive = apply_hypothesis_mapping(
         engine,
@@ -307,7 +307,7 @@ def _choice_layer_audit(
             hypo=int(hypothesis),
             data=([stimulus], [1], [1.0]),
             beta=float(beta[hypothesis]),
-            distance_mode=getattr(engine, "distance_mode", "prototype"),
+            distance_mode=engine.distance_mode,
         )
         category_by_hypothesis[active_arg] = apply_hypothesis_mapping(
             engine,

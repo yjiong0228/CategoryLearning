@@ -166,7 +166,7 @@ def _build_single_mode_prediction_payload(
     score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
-    distance_mode = getattr(model.engine, "distance_mode", "prototype")
+    distance_mode = model.engine.distance_mode
     n_trials = len(feedback)
     if score_trial_mask is None:
         resolved_score_mask = np.ones(n_trials, dtype=bool)

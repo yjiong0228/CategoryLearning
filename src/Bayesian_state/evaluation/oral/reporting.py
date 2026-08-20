@@ -804,11 +804,7 @@ class OralAlignmentReportingMixin(OralAlignmentScoringMixin):
                     ax.text(0.5, 0.5, f"No {ylabel.lower()} data", ha="center", va="center", transform=ax.transAxes)
                     continue
 
-                if limit:
-                    max_k = 29 if int(condition) == 1 else 116
-                    max_k = min(max_k, oral_mass.shape[1])
-                else:
-                    max_k = oral_mass.shape[1]
+                max_k = oral_mass.shape[1]
 
                 mass = oral_mass[:, :max_k]
                 n_trials, n_hypos = mass.shape

@@ -244,11 +244,54 @@ class ModelEvaluator(
     @staticmethod
     def _resolve_beta_for_hypo(beta_vec, hypo, default_beta):
         if beta_vec is None:
+            if default_beta is None:
+                raise ValueError(
+                    "Family-accuracy recomputation requires a saved per-trial "
+                    "beta log or an explicit default_beta override."
+                )
             return float(default_beta)
         arr = np.asarray(beta_vec, dtype=float).reshape(-1)
         if hypo < arr.size and np.isfinite(arr[hypo]) and arr[hypo] > 0:
             return float(arr[hypo])
+        if default_beta is None:
+            raise ValueError(
+                f"Missing a finite beta value for hypothesis {hypo}."
+            )
         return float(default_beta)
+
+    @staticmethod
+    def _family_recompute_partition(info, distance_mode=None):
+        provenance = info.get("model_provenance") or {}
+        resolved = provenance.get("resolved") if isinstance(provenance, Mapping) else None
+        partition_config = (
+            resolved.get("partition") if isinstance(resolved, Mapping) else None
+        )
+        likelihood_config = (
+            resolved.get("likelihood") if isinstance(resolved, Mapping) else None
+        )
+        if not isinstance(partition_config, Mapping):
+            raise ValueError(
+                "Family-accuracy recomputation requires saved partition provenance."
+            )
+        class_path = str(partition_config.get("class", ""))
+        if not class_path.endswith("ContinuousPartition"):
+            raise ValueError(
+                "Family-accuracy recomputation currently requires ContinuousPartition "
+                f"provenance, got {class_path!r}."
+            )
+        kwargs = partition_config.get("kwargs", {})
+        if not isinstance(kwargs, Mapping):
+            raise ValueError("Saved partition kwargs must be a mapping.")
+        resolved_mode = distance_mode
+        if resolved_mode is None and isinstance(likelihood_config, Mapping):
+            resolved_mode = likelihood_config.get("distance_mode")
+        if resolved_mode is None:
+            raise ValueError(
+                "Family-accuracy recomputation requires distance_mode provenance "
+                "or an explicit override."
+            )
+        partition = ContinuousPartition(**dict(kwargs))
+        return partition, str(resolved_mode)
 
     def compute_family_accuracy_metrics(
         self,
@@ -256,8 +299,8 @@ class ModelEvaluator(
         condition=None,
         window_size=None,
         prediction_mode=None,
-        default_beta=10.0,
-        distance_mode="prototype",
+        default_beta=None,
+        distance_mode=None,
     ):
         """Compute relaxed family-level accuracy curves from saved trial logs."""
         choices, categories, stimulus = self._extract_subject_trials(info)
@@ -266,7 +309,15 @@ class ModelEvaluator(
 
         condition = int(condition if condition is not None else info.get("condition", 1))
         n_cats = 2 if condition == 1 else 4
-        partition = ContinuousPartition(n_dims=4, n_cats=n_cats)
+        partition, resolved_distance_mode = self._family_recompute_partition(
+            info,
+            distance_mode=distance_mode,
+        )
+        if partition.n_cats != n_cats:
+            raise ValueError(
+                "Saved partition category count does not match result condition: "
+                f"{partition.n_cats} vs {n_cats}."
+            )
         steps = info.get("best_step_results") or info.get("step_results") or []
         posterior_log = info.get("posterior_log") or []
         prior_log = info.get("prior_log") or []
@@ -302,7 +353,6 @@ class ModelEvaluator(
         pred_family_acc = np.full(n_trials, np.nan, dtype=float)
 
         beta_arr = self._extract_beta_log(info)
-        beta_vec = beta_arr[-1] if beta_arr.size else None
 
         for trial_idx in range(1, n_trials):
             if mode == "prior_t":
@@ -332,6 +382,11 @@ class ModelEvaluator(
             )
             family_idx = family_indices(int(categories[trial_idx]), n_cats)
             weighted_family_prob = 0.0
+            beta_vec = (
+                beta_arr[trial_idx]
+                if beta_arr.ndim == 2 and trial_idx < beta_arr.shape[0]
+                else None
+            )
             for hypo, weight in enumerate(current_dist):
                 if weight <= 0:
                     continue
@@ -340,7 +395,7 @@ class ModelEvaluator(
                     hypo=hypo,
                     data=trial_slice,
                     beta=beta_for_hypo,
-                    distance_mode=distance_mode,
+                    distance_mode=resolved_distance_mode,
                 )
                 if prob.ndim == 1:
                     prob = prob.reshape(-1, 1)
@@ -387,10 +442,7 @@ class ModelEvaluator(
                 return
 
             probability_threshold = float(kwargs.get("probability_threshold", 1e-12))
-            if limit:
-                max_k = 29 if condition == 1 else 116
-            else:
-                max_k = max((len(posterior) for posterior in posterior_log), default=0)
+            max_k = max((len(posterior) for posterior in posterior_log), default=0)
 
             data = []
             for step, posterior in enumerate(posterior_log):
@@ -476,10 +528,7 @@ class ModelEvaluator(
                 return
 
             probability_threshold = float(kwargs.get("probability_threshold", 1e-12))
-            if limit:
-                max_k = 29 if condition == 1 else 116
-            else:
-                max_k = max((prior.size for prior in prior_log), default=0)
+            max_k = max((prior.size for prior in prior_log), default=0)
 
             data = []
             for step, prior in enumerate(prior_log):
@@ -726,8 +775,8 @@ class ModelEvaluator(
                     condition=condition,
                     window_size=window_size,
                     prediction_mode=kwargs.get("prediction_mode"),
-                    default_beta=kwargs.get("default_beta", 10.0),
-                    distance_mode=kwargs.get("distance_mode", "prototype"),
+                    default_beta=kwargs.get("default_beta"),
+                    distance_mode=kwargs.get("distance_mode"),
                 )
             true_acc = computed.get("sliding_true_family_acc") if computed else info.get("sliding_true_family_acc")
             pred_acc = computed.get("sliding_pred_family_acc") if computed else info.get("sliding_pred_family_acc")
@@ -738,8 +787,8 @@ class ModelEvaluator(
                     condition=condition,
                     window_size=window_size,
                     prediction_mode=kwargs.get("prediction_mode"),
-                    default_beta=kwargs.get("default_beta", 10.0),
-                    distance_mode=kwargs.get("distance_mode", "prototype"),
+                    default_beta=kwargs.get("default_beta"),
+                    distance_mode=kwargs.get("distance_mode"),
                 )
                 true_acc = computed.get("sliding_true_family_acc")
                 pred_acc = computed.get("sliding_pred_family_acc")
@@ -1588,10 +1637,7 @@ class ModelEvaluator(
             ax.text(0.5, 0.5, "No posterior data", ha="center", va="center", transform=ax.transAxes)
             return
 
-        if limit:
-            max_k = 29 if int(condition) == 1 else 116
-        else:
-            max_k = max((len(posterior) for posterior in posterior_log), default=0)
+        max_k = max((len(posterior) for posterior in posterior_log), default=0)
 
         data = []
         for step, posterior in enumerate(posterior_log):
