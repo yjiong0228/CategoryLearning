@@ -14,6 +14,7 @@ from ...hypothesis_space import (
     ContinuousPartition,
     Polytope,
 )
+from ...hypothesis_space.similarity import region_overlap
 
 
 class OralRegionMapper:
@@ -246,36 +247,12 @@ class RegionOverlapScorer:
             dist_tol=self.dist_tol,
         )
         hypo_masks = self.hypothesis_masks[int(cat_idx)]
-        intersection_count = np.sum(hypo_masks & oral_mask[None, :], axis=1).astype(float)
-        oral_count = float(np.sum(oral_mask))
-        hypo_count = np.sum(hypo_masks, axis=1).astype(float)
-        union_count = hypo_count + oral_count - intersection_count
-        total_weight = float(self.n_samples)
-
-        if metric == "iou":
-            return np.divide(
-                intersection_count,
-                union_count,
-                out=np.zeros_like(intersection_count, dtype=float),
-                where=union_count > 0,
-            )
-        if metric == "intersection":
-            return (intersection_count / total_weight) * self.box_volume
-        if metric == "precision_like":
-            return np.divide(
-                intersection_count,
-                oral_count,
-                out=np.zeros_like(intersection_count, dtype=float),
-                where=oral_count > 0,
-            )
-        if metric == "recall_like":
-            return np.divide(
-                intersection_count,
-                hypo_count,
-                out=np.zeros_like(intersection_count, dtype=float),
-                where=hypo_count > 0,
-            )
-        raise ValueError(f"Unsupported overlap metric: {metric}")
+        return region_overlap(
+            hypo_masks,
+            oral_mask,
+            metric=metric,
+            box_volume=self.box_volume,
+        )
 
 
 class OralCenterMapper:

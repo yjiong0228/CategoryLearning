@@ -62,6 +62,12 @@ class _TinyPartition:
     def similarity_matrix(self) -> np.ndarray:
         return self._similarity
 
+    def get_similarity_matrix(self, *, kind, distance_mode, **kwargs):
+        del kwargs
+        assert kind == "assignment_agreement"
+        assert distance_mode == "boundary"
+        return self._similarity
+
 
 class _TinyEngine:
     def __init__(self, size: int = 8):
@@ -70,6 +76,7 @@ class _TinyEngine:
         self.posterior = None
         self.hypotheses_mask = None
         self.partition = _TinyPartition(size)
+        self.distance_mode = "boundary"
 
     def get_module(self, role, *, required=False):
         del role

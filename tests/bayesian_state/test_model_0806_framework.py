@@ -70,6 +70,18 @@ class _TinyPartition:
     def similarity_matrix(self) -> np.ndarray:
         return self._similarity
 
+    def get_similarity_matrix(
+        self,
+        *,
+        kind="assignment_agreement",
+        distance_mode="prototype",
+        **kwargs,
+    ) -> np.ndarray:
+        del kwargs
+        assert kind == "assignment_agreement"
+        assert distance_mode == "prototype"
+        return self._similarity
+
     def _probability(self, hypo: int, stimulus: np.ndarray) -> np.ndarray:
         x = float(np.asarray(stimulus, dtype=float).reshape(-1)[0])
         boundary = (int(hypo) + 1.0) / (self.length + 1.0)
@@ -118,6 +130,10 @@ class _TinyEngine:
         self.partition = _TinyPartition()
         self.modules = {}
         self.hypotheses_mask = None
+
+    @property
+    def distance_mode(self):
+        return "prototype"
 
     def get_module(self, role, *, required=False):
         names = {

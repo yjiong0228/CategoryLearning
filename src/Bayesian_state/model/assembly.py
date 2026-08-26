@@ -63,6 +63,27 @@ def build_observation_likelihood(
         likelihood_config = {}
     if not isinstance(likelihood_config, Mapping):
         raise ValueError("engine_config.likelihood must be a mapping when provided.")
+    partition_config = engine_config.get("partition", {})
+    partition_kwargs = (
+        partition_config.get("kwargs", {})
+        if isinstance(partition_config, Mapping)
+        else {}
+    )
+    if (
+        isinstance(partition, ContinuousPartition)
+        and likelihood_config.get("distance_mode") == "prototype"
+        and isinstance(partition_kwargs, Mapping)
+    ):
+        boundary_only = {
+            "boundary_distance_method",
+            "boundary_distance_tolerance",
+            "boundary_projection_iterations",
+        }.intersection(partition_kwargs)
+        if boundary_only:
+            raise ValueError(
+                "Prototype encoding must not configure boundary-only partition "
+                f"parameters: {sorted(boundary_only)}."
+            )
     return ObservationLikelihood(partition, **dict(likelihood_config))
 
 

@@ -32,6 +32,11 @@ class Polytope:
             raise ValueError(
                 f"Polytope expects A[m, d] and b[m], got {A.shape} and {b.shape}."
             )
+        if not np.all(np.isfinite(A)) or not np.all(np.isfinite(b)):
+            raise ValueError("Polytope constraints must be finite.")
+        zero_rows = np.linalg.norm(A, axis=1) == 0.0
+        if np.any(zero_rows & (b < 0.0)):
+            raise ValueError("Polytope contains an infeasible zero-normal constraint.")
         object.__setattr__(self, "A", A)
         object.__setattr__(self, "b", b)
 

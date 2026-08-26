@@ -49,14 +49,41 @@ spaces  →  geometry  →  observation_model
 - 连续类别区域使用 `CategoryRegion.components`。
 - Prototype 通过以下方法从这些 component 推导：
   `prototype_geometry.get_category_prototypes(hypothesis, category)`。
+- 连续模型必须在 `likelihood.distance_mode` 显式选择 `prototype` 或
+  `boundary`。Hard assignment 直接使用相应 geometry，不经过 Beta；Beta 只软化
+  category distance 得到概率。
+
+Boundary geometry 支持两个具名 solver：
+
+```yaml
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+    boundary_distance_method: kkt_active_set_projection
+    boundary_distance_tolerance: 1.0e-9
+    boundary_projection_iterations: 100
+    label_permutation_policy: identity_only
+likelihood:
+  distance_mode: boundary
+```
+
+`dykstra_iterative_projection` 是兼容默认；`kkt_active_set_projection` 枚举 KKT
+active constraints。二者都计算 stimulus 到单位立方体内 category region 的欧氏
+距离。缓存只保存 region geometry 的 active sets 和投影算子，不缓存 stimulus
+distance。`label_permutation_policy` 还可显式设为
+`binary_identity_and_reverse`；它仅支持二分类，并在原规则之后追加标签反转规则。
 
 代码有意不提供 `Partition` 这类过于宽泛的名称，也不提供 `.splits`、
 `.regions`、`.rules` 和 `.prototypes` 这类重复视图。
 
 ## 相似度资源
 
-连续假设的相似度定义为：在单位超立方体上均匀采样刺激，并计算 boundary
-geometry 下固定类别标签的一致率。实现位于 `similarity.py`。
+连续假设的 assignment-agreement 相似度定义为：在单位超立方体上均匀采样刺激，
+并使用调用方显式指定的 `prototype` 或 `boundary` hard assignment 计算标签一致率。
+调用 `partition.get_similarity_matrix(kind="assignment_agreement",
+distance_mode=...)`；旧 `similarity_matrix` property 仅是 deprecated boundary adapter。
 
 随模型发布的带版本矩阵位于 `resources/similarity/`。非标准矩阵写入
 `results/cache/hypothesis_space/`，绝不写入 `src/`。运行时计算固定使用 seed 0，

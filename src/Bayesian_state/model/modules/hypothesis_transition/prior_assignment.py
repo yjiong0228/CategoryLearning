@@ -226,12 +226,16 @@ class PriorAssignmentPolicyMixin:
         if len(newcomer_indices) == 0:
             return np.empty(0, dtype=float), {"similarity_available": False, "fallback": False}
         partition = getattr(self.engine, "partition", None)
-        similarity_matrix = getattr(partition, "similarity_matrix", None)
-        if similarity_matrix is None or len(old_indices) == 0:
+        get_similarity = getattr(partition, "get_similarity_matrix", None)
+        if not callable(get_similarity) or len(old_indices) == 0:
             return (
                 np.ones(len(newcomer_indices), dtype=float),
                 {"similarity_available": False, "fallback": True},
             )
+        similarity_matrix = get_similarity(
+            kind="assignment_agreement",
+            distance_mode=self.engine.distance_mode,
+        )
         similarity_matrix = np.asarray(similarity_matrix, dtype=float)
         if (
             similarity_matrix.ndim != 2
@@ -239,7 +243,8 @@ class PriorAssignmentPolicyMixin:
             or similarity_matrix.shape[1] < self.total_hypo
         ):
             raise ValueError(
-                "partition.similarity_matrix must cover all hypotheses for post_to_prior similarity_novelty."
+                "partition assignment-agreement similarity must cover all "
+                "hypotheses for post_to_prior similarity_novelty."
             )
         sim_sub = similarity_matrix[np.ix_(newcomer_indices, old_indices)]
         if not np.all(np.isfinite(sim_sub)):

@@ -87,6 +87,30 @@ def build_model_provenance(
         "choice_readout": deepcopy(config.get("choice_readout", {})),
         "repeat_aggregation": str(repeat_aggregation),
     }
+    partition_kwargs = _mapping_path(config, "partition.kwargs") or {}
+    partition_class = str(_mapping_path(config, "partition.class") or "")
+    is_continuous = partition_class.endswith("ContinuousPartition")
+    likelihood = config.get("likelihood", {})
+    resolved["encoding"] = {
+        "distance_mode": _mapping_path(config, "likelihood.distance_mode"),
+        "boundary_distance_method": partition_kwargs.get(
+            "boundary_distance_method", "dykstra_iterative_projection"
+        ) if is_continuous else None,
+        "boundary_distance_tolerance": partition_kwargs.get(
+            "boundary_distance_tolerance", 1.0e-9
+        ) if is_continuous else None,
+        "boundary_projection_iterations": partition_kwargs.get(
+            "boundary_projection_iterations", 100
+        ) if is_continuous else None,
+        "label_permutation_policy": partition_kwargs.get(
+            "label_permutation_policy", "identity_only"
+        ) if is_continuous else None,
+        "feedback_likelihood_mode": (
+            likelihood.get("feedback_likelihood_mode")
+            if isinstance(likelihood, Mapping)
+            else None
+        ),
+    }
     tau_local = transition.get("tau_local")
     if declared_similarity or tau_local is not None:
         resolved["hypothesis_similarity"] = {
@@ -94,7 +118,7 @@ def build_model_provenance(
             "tau_local": tau_local,
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_config_sha256": _canonical_sha256(config),
         "declared": deepcopy(declared),
         "resolved": resolved,

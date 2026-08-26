@@ -672,7 +672,7 @@ def read_choice_probabilities_from_model(
             hypo=int(hypothesis),
             data=([stimulus], [1], [1.0]),
             beta=float(beta[hypothesis]),
-            distance_mode=getattr(engine, "distance_mode", "prototype"),
+            distance_mode=engine.distance_mode,
         )
         probability = normalize_probability_vector(
             np.asarray(raw[:, 0], dtype=float), strict=True
@@ -772,7 +772,7 @@ def predict_choice_from_model(
             hypo=int(hypothesis),
             data=([stimulus], [1], [1.0]),
             beta=float(beta_values[hypothesis_arg]),
-            distance_mode=getattr(engine, "distance_mode", "prototype"),
+            distance_mode=engine.distance_mode,
         )
         probability = np.asarray(raw, dtype=float)
         if probability.ndim == 2:

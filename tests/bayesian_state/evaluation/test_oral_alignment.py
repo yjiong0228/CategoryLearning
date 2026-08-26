@@ -10,6 +10,31 @@ from src.Bayesian_state.evaluation.oral.scoring import OralAlignmentScoringMixin
 from src.Bayesian_state.hypothesis_space import ContinuousPartition
 
 
+def _continuous_model_provenance(
+    *,
+    n_cats=2,
+    distance_mode="prototype",
+    label_permutation_policy="identity_only",
+):
+    return {
+        "schema_version": 2,
+        "resolved": {
+            "partition": {
+                "class": (
+                    "src.Bayesian_state.hypothesis_space.observation_model."
+                    "continuous_partition.ContinuousPartition"
+                ),
+                "kwargs": {
+                    "n_dims": 4,
+                    "n_cats": n_cats,
+                    "label_permutation_policy": label_permutation_policy,
+                },
+            },
+            "likelihood": {"distance_mode": distance_mode},
+        },
+    }
+
+
 def _manual_gaussian_component_mixture(partition, center, choice, sigma):
     cat_idx = int(choice) - 1
     log_likelihood = []
@@ -166,6 +191,69 @@ def test_oral_mass_npz_round_trip_preserves_encoder_provenance(tmp_path):
     assert np.isfinite(restored[101]["oral_distribution_entropy"]).all()
 
 
+def test_oral_mass_uses_model_label_permutation_space_when_provided():
+    oral_df = pd.DataFrame(
+        {
+            "iSub": [101],
+            "condition": [1],
+            "choice": [1],
+            "oral_center": ["[0.25, 0.5, 0.5, 0.5]"],
+        }
+    )
+    partition = ContinuousPartition(
+        n_dims=4,
+        n_cats=2,
+        label_permutation_policy="binary_identity_and_reverse",
+    )
+
+    result = OralAlignmentScoringMixin().compute_oral_mass_probabilities(
+        oral_df,
+        oral_mode="center",
+        partitions_by_subject={101: partition},
+    )
+
+    assert partition.length == 58
+    assert result[101]["oral_mass"].shape == (1, 58)
+    assert result[101]["instantaneous_oral_mass"].shape == (1, 58)
+
+
+def test_choice_conditioned_prior_uses_requested_distance_mode():
+    class RecordingPartition:
+        length = 2
+
+        def __init__(self):
+            self.modes = []
+
+        def get_category_probabilities(self, *, hypo, distance_mode, **kwargs):
+            self.modes.append(distance_mode)
+            values = ([0.8, 0.2], [0.3, 0.7])[hypo]
+            return np.asarray(values, dtype=float)[:, None]
+
+    partition = RecordingPartition()
+    conditioned = OralAlignmentScoringMixin._choice_conditioned_prior(
+        partition,
+        prior=np.asarray([0.5, 0.5]),
+        stimulus=np.zeros(4),
+        choice=1,
+        distance_mode="boundary",
+        beta=5.0,
+    )
+
+    assert partition.modes == ["boundary", "boundary"]
+    np.testing.assert_allclose(conditioned, [0.8 / 1.1, 0.3 / 1.1])
+
+
+def test_model_oral_partition_requires_saved_provenance():
+    with np.testing.assert_raises_regex(
+        ValueError,
+        "requires saved partition provenance",
+    ):
+        OralAlignmentScoringMixin._partition_for_model_result(
+            {"condition": 1},
+            expected_n_cats=2,
+        )
+
+
 def test_oral_mass_diagnostic_csv_has_one_row_per_trial(tmp_path):
     oral_df = pd.DataFrame(
         {
@@ -270,6 +358,7 @@ def test_all_five_based_families_share_the_precomputed_oral_distribution():
             "condition": 1,
             "target_hypothesis": 0,
             "prior_log": [prior.copy(), prior.copy()],
+            "model_provenance": _continuous_model_provenance(),
         }
     }
     evaluator = ModelEvaluator()
@@ -355,6 +444,7 @@ def test_target_alignment_averages_pf_repeat_marginal_priors(monkeypatch):
             "target_hypothesis": 0,
             "prior_log": low.tolist(),
             "state_distribution_kind": "particle_marginal",
+            "model_provenance": _continuous_model_provenance(),
         }
     }
     evaluator = ModelEvaluator()
@@ -404,6 +494,7 @@ def test_target_alignment_precomputes_compact_trajectory_band(monkeypatch):
             "target_hypothesis": 0,
             "prior_log": low.tolist(),
             "state_distribution_kind": "trajectory",
+            "model_provenance": _continuous_model_provenance(),
         }
     }
     evaluator = ModelEvaluator()

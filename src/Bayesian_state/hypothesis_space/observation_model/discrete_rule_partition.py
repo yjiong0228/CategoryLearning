@@ -7,6 +7,8 @@ layers to the likelihood API shared with continuous partitions.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from ..spaces import (
@@ -51,6 +53,25 @@ class DiscreteRulePartition(BasePartition):
 
     @property
     def similarity_matrix(self) -> np.ndarray:
+        warnings.warn(
+            "DiscreteRulePartition.similarity_matrix is deprecated; call "
+            "get_similarity_matrix() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.rule_geometry.similarity_matrix
+
+    def get_similarity_matrix(
+        self,
+        *,
+        kind: str = "assignment_agreement",
+        distance_mode: str = DISTANCE_MODE_RULE,
+        **kwargs,
+    ) -> np.ndarray:
+        del kwargs
+        if kind != "assignment_agreement":
+            raise ValueError(f"Unsupported discrete similarity kind '{kind}'.")
+        self._resolve_distance_mode(distance_mode)
         return self.rule_geometry.similarity_matrix
 
     def describe_rule(self, hypo: int) -> str:
