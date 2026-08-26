@@ -259,12 +259,22 @@ class DualMemoryModule(BaseModule):
         log_likelihood[finite_likelihood] *= self.feedback_gain
 
         if "fade" in self.baseline_state:
-            self.baseline_state["fade"] = self.baseline_state["fade"] * self.gamma + log_fake_likelihood
+            if self.gamma == 0.0:
+                # gamma=0 is the exact memoryless boundary: discard the old
+                # trace before adding current evidence.  Writing this branch
+                # explicitly also avoids the undefined floating-point product
+                # 0 * (-inf) for inactive hypotheses.
+                self.baseline_state["fade"] = log_fake_likelihood
+            else:
+                self.baseline_state["fade"] = self.baseline_state["fade"] * self.gamma + log_fake_likelihood
         if "static" in self.baseline_state:
             self.baseline_state["static"] = self.baseline_state["static"] + log_fake_likelihood
 
         if "fade" in self.state:
-            self.state["fade"] = self.state["fade"] * self.gamma + log_likelihood
+            if self.gamma == 0.0:
+                self.state["fade"] = np.array(log_likelihood, copy=True)
+            else:
+                self.state["fade"] = self.state["fade"] * self.gamma + log_likelihood
         if "static" in self.state:
             self.state["static"] = self.state["static"] + log_likelihood
 

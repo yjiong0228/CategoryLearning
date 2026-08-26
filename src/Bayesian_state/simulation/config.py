@@ -32,6 +32,7 @@ from src.Bayesian_state.utils.subjects import (
 DEFAULT_DATA_PATH = TASK2_PROCESSED_PATH
 DEFAULT_OUTPUT_DIR = SIMULATION_RESULTS_DIR
 PROFILE_CANDIDATE_KEY = "__profile_candidate__"
+PROFILE_CANDIDATE_KEY_PREFIX = f"{PROFILE_CANDIDATE_KEY}:"
 EVALUATION_ROLE_OPTIMIZATION = "optimization"
 EVALUATION_ROLE_SIMULATION = "simulation"
 EVALUATION_ROLES = (
@@ -47,6 +48,15 @@ REPEAT_AGGREGATION_CHOICES = (
 
 
 # Parameter payloads
+def is_profile_candidate_key(key: Any) -> bool:
+    """Return whether *key* is a packed, optionally named profile coordinate."""
+
+    text = str(key)
+    return text == PROFILE_CANDIDATE_KEY or text.startswith(
+        PROFILE_CANDIDATE_KEY_PREFIX
+    )
+
+
 def expand_profile_candidate_hyperparams(
     hyperparams: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -55,7 +65,12 @@ def expand_profile_candidate_hyperparams(
     expanded: dict[str, Any] = {}
     for key, value in hyperparams.items():
         key_text = str(key)
-        if key_text != PROFILE_CANDIDATE_KEY:
+        if not is_profile_candidate_key(key_text):
+            if key_text in expanded:
+                raise ValueError(
+                    "Packed profile coordinates contain a duplicate hyperparameter "
+                    f"path: {key_text}"
+                )
             expanded[key_text] = deepcopy(value)
             continue
         if not isinstance(value, Mapping):
@@ -67,8 +82,15 @@ def expand_profile_candidate_hyperparams(
                 raise ValueError(
                     f"{PROFILE_CANDIDATE_KEY} nested keys must be non-empty strings."
                 )
-            if nested_key == PROFILE_CANDIDATE_KEY:
-                raise ValueError(f"{PROFILE_CANDIDATE_KEY} cannot contain itself.")
+            if is_profile_candidate_key(nested_key):
+                raise ValueError(
+                    f"{PROFILE_CANDIDATE_KEY} coordinates cannot contain themselves."
+                )
+            if nested_key in expanded:
+                raise ValueError(
+                    "Packed profile coordinates contain a duplicate hyperparameter "
+                    f"path: {nested_key}"
+                )
             expanded[nested_key] = deepcopy(nested_value)
     return expanded
 
@@ -412,11 +434,13 @@ __all__ = [
     "EVALUATION_ROLE_SIMULATION",
     "EVALUATION_ROLES",
     "PROFILE_CANDIDATE_KEY",
+    "PROFILE_CANDIDATE_KEY_PREFIX",
     "REPEAT_AGGREGATION_CHOICES",
     "REPEAT_AGGREGATION_MEAN_LOSS",
     "REPEAT_AGGREGATION_MEAN_PROBABILITY",
     "dump_stream",
     "expand_profile_candidate_hyperparams",
+    "is_profile_candidate_key",
     "load_yaml",
     "recursive_to_builtin",
     "resolve_engine_config",

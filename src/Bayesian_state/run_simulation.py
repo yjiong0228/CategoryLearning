@@ -17,6 +17,7 @@ from src.Bayesian_state.simulation.config import (
     PROFILE_CANDIDATE_KEY,
     dump_stream,
     expand_profile_candidate_hyperparams,
+    is_profile_candidate_key,
     load_yaml,
     recursive_to_builtin,
     resolve_engine_config,
@@ -124,8 +125,9 @@ def serialize_result(
 def _compact_hyperparams(hyperparams: Mapping[str, Any]) -> Dict[str, Any]:
     expanded_hyperparams = expand_profile_candidate_hyperparams(hyperparams)
     summary = dict(expanded_hyperparams)
-    if PROFILE_CANDIDATE_KEY in hyperparams:
-        summary[PROFILE_CANDIDATE_KEY] = deepcopy(hyperparams[PROFILE_CANDIDATE_KEY])
+    for key, value in hyperparams.items():
+        if is_profile_candidate_key(key):
+            summary[str(key)] = deepcopy(value)
     shortcuts = {
         "engine.modules.memory_mod.kwargs.gamma": "gamma",
         "engine.modules.memory_mod.kwargs.w0": "w0",

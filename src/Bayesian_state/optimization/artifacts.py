@@ -12,8 +12,8 @@ import subprocess
 from typing import Any, List, Mapping, Sequence
 
 from src.Bayesian_state.simulation.config import (
-    PROFILE_CANDIDATE_KEY,
     expand_profile_candidate_hyperparams,
+    is_profile_candidate_key,
 )
 
 HYPER_RESULT_SCHEMA_VERSION = "hyper_result.v2"
@@ -171,7 +171,11 @@ def values_product(spec: Mapping[str, Any]) -> List[Any]:
 
 
 def validate_no_nested_hyperparam_paths(param_specs: Mapping[str, Any]) -> None:
-    names = sorted(str(name) for name in param_specs.keys() if str(name) != PROFILE_CANDIDATE_KEY)
+    names = sorted(
+        str(name)
+        for name in param_specs.keys()
+        if not is_profile_candidate_key(name)
+    )
     for idx, left in enumerate(names):
         prefix = f"{left}."
         for right in names[idx + 1:]:

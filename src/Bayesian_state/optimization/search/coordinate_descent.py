@@ -144,6 +144,30 @@ class HyperCDOptimizer(HyperSearchBase):
         self.min_delta = float(cd_cfg.get("min_delta", 0.0))
         self.init_strategy = str(cd_cfg.get("init_strategy", "random"))
         self.anchor = dict(cd_cfg.get("anchor") or {})
+        raw_initial_points = cd_cfg.get("initial_points")
+        if raw_initial_points is None:
+            self.initial_points: List[Dict[str, Any]] = []
+        elif not isinstance(raw_initial_points, Sequence) or isinstance(
+            raw_initial_points, (str, bytes)
+        ):
+            raise ValueError("cd.initial_points must be a sequence of mappings")
+        else:
+            self.initial_points = []
+            for index, raw_point in enumerate(raw_initial_points):
+                if not isinstance(raw_point, Mapping):
+                    raise ValueError(
+                        f"cd.initial_points[{index}] must be a mapping"
+                    )
+                self.initial_points.append(deepcopy(dict(raw_point)))
+            if len(self.initial_points) != self.n_restarts:
+                raise ValueError(
+                    "cd.initial_points must contain exactly cd.n_restarts points"
+                )
+        self.common_random_numbers_within_candidate_comparisons = bool(
+            self.config.get(
+                "common_random_numbers_within_candidate_comparisons", False
+            )
+        )
         self.parallel_budget = self._positive_int(
             cd_cfg.get("parallel_budget", 1),
             "cd.parallel_budget",
@@ -261,9 +285,39 @@ class HyperCDOptimizer(HyperSearchBase):
         )
         return random.Random(seed)
 
+    def _simulation_point_seed(
+        self,
+        *,
+        stage_name: str,
+        hyper_candidate_seed: int,
+        subject_id: int,
+        point: Mapping[str, Any],
+    ) -> int:
+        """Resolve legacy candidate seeds or stage-paired common random numbers."""
+
+        if getattr(
+            self,
+            "common_random_numbers_within_candidate_comparisons",
+            False,
+        ):
+            return stable_seed(
+                {
+                    "seed_role": "hyper_cd_stage_common_random_numbers",
+                    "hyper_base_seed": int(self.hyper_base_seed),
+                    "stage": str(stage_name),
+                    "subject_id": int(subject_id),
+                }
+            )
+        return derive_simulation_point_seed(
+            int(hyper_candidate_seed),
+            int(subject_id),
+            dict(point),
+        )
+
     def _simulate_runs_for_point(
         self,
         *,
+        stage_name: str,
         runner: StateModelSimulationRunner,
         dataset_paths: Mapping[str, Path | str],
         subject_id: int,
@@ -290,10 +344,11 @@ class HyperCDOptimizer(HyperSearchBase):
             evaluation_protocol,
             role=EVALUATION_ROLE_OPTIMIZATION,
         )
-        simulation_point_seed = derive_simulation_point_seed(
-            int(hyper_candidate_seed),
-            int(subject_id),
-            dict(point),
+        simulation_point_seed = self._simulation_point_seed(
+            stage_name=stage_name,
+            hyper_candidate_seed=int(hyper_candidate_seed),
+            subject_id=int(subject_id),
+            point=point,
         )
 
         tasks = []
@@ -425,6 +480,7 @@ class HyperCDOptimizer(HyperSearchBase):
             effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
 
             runs, condition, simulation_point_seed, score_context = self._simulate_runs_for_point(
+                stage_name=stage_name,
                 runner=runner,
                 dataset_paths=dataset_paths,
                 subject_id=sid,
@@ -583,10 +639,11 @@ class HyperCDOptimizer(HyperSearchBase):
                     point_sim_cfg.get("evaluation_protocol"),
                     role=EVALUATION_ROLE_OPTIMIZATION,
                 )
-                simulation_point_seed = derive_simulation_point_seed(
-                    int(hyper_candidate_seed),
-                    sid,
-                    point,
+                simulation_point_seed = self._simulation_point_seed(
+                    stage_name=stage_name,
+                    hyper_candidate_seed=int(hyper_candidate_seed),
+                    subject_id=sid,
+                    point=point,
                 )
 
                 candidate_meta[position]["subjects"][sid] = {
@@ -874,7 +931,26 @@ class HyperCDOptimizer(HyperSearchBase):
         self._combination_counter = max(self._combination_counter, max_existing_index + 1)
         return combinations
 
-    def _init_point(self, space: Dict[str, List[Any]], rng: random.Random) -> Dict[str, Any]:
+    def _init_point(
+        self,
+        space: Dict[str, List[Any]],
+        rng: random.Random,
+        restart_id: int = 0,
+    ) -> Dict[str, Any]:
+        if getattr(self, "initial_points", None):
+            point = deepcopy(self.initial_points[int(restart_id)])
+            if set(point) != set(space):
+                raise ValueError(
+                    "Every cd.initial_points entry must contain exactly the "
+                    "configured hyperparameter coordinates"
+                )
+            for name, value in point.items():
+                if value not in space[name]:
+                    raise ValueError(
+                        f"cd.initial_points[{restart_id}].{name} is outside its "
+                        "configured candidate values"
+                    )
+            return point
         if self.init_strategy == "anchor":
             point = {}
             for name, vals in space.items():
@@ -934,7 +1010,7 @@ class HyperCDOptimizer(HyperSearchBase):
             return result, True
 
         for restart_id in range(self.n_restarts):
-            current = self._init_point(space, rng)
+            current = self._init_point(space, rng, restart_id)
             restart_coords = list(coords_base)
             if self.coordinate_order == "shuffle_per_restart":
                 rng.shuffle(restart_coords)
@@ -1286,6 +1362,9 @@ class HyperCDOptimizer(HyperSearchBase):
                 "restart_id": best_combination.restart_id,
                 "iter_id": best_combination.iter_id,
                 "coordinate": best_combination.coordinate,
+                "common_random_numbers_within_candidate_comparisons": bool(
+                    self.common_random_numbers_within_candidate_comparisons
+                ),
                 "objectives": {"order": self.objective_order_config},
                 "final_selection": final_selection_context,
             },
