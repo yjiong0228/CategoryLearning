@@ -443,6 +443,27 @@ def test_dynamic_continuous_particle_plots_and_basic_dispatch(tmp_path: Path, mo
     }.issubset(called)
 
 
+def test_particle_strategy_profile_defaults_to_eight_columns(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_particle_subject(tmp_path)
+    results = load_simulation_results(tmp_path)
+    evaluator = ModelEvaluator()
+    layout_calls: list[dict[str, object]] = []
+    original_layout = evaluator._layout_by_condition
+
+    def capture_layout(grouped, kwargs):
+        layout_calls.append(dict(kwargs))
+        return original_layout(grouped, kwargs)
+
+    monkeypatch.setattr(evaluator, "_layout_by_condition", capture_layout)
+    evaluator.plot_particle_filter_dynamic_strategy_profile(results)
+
+    assert layout_calls == [{"max_subjects_per_row": 8}]
+    plt.close("all")
+
+
 def test_particle_filter_active_set_counts_use_pre_choice_replacement_fraction():
     evaluator = ModelEvaluator()
     info = {

@@ -605,6 +605,7 @@ kwargs:
     accumulator_logit_gain: 0.00
     global_search_failure_gain: 0.00
     initial_failure: 0.00
+    event_history_excludes_latest_error: true
   prior_assignment: {method: pairwise_mass_transfer}
 ```
 
@@ -613,13 +614,16 @@ kwargs:
 ```text
 F_t = accumulator_decay * F_(t-1)
       + (1 - accumulator_decay) * e_(t-1)
-logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * F_t
+H_t = F_(t-1)  # Model 0826 event-history input
+logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * H_t
 g_t = global_search
       + (1 - global_search) * global_search_failure_gain * F_t
 ```
 
 `E_reactive,t` 在正确后等于 `event_after_correct`，错误后等于
-`event_after_error`。边界关系是：
+`event_after_error`。因此最近一次反馈只进入 reactive baseline，正的 accumulator gain 只读取
+更早的错误史。`event_history_excludes_latest_error` 默认 false 仅用于复现历史 H4/H5 配置；
+Model 0826 将其固定为 true。边界关系是：
 
 ```text
 accumulator_logit_gain = 0
@@ -686,6 +690,25 @@ prior-specific 拟合参数：`E_t` 通过 realized `K_t` 决定更新比例，`
 `configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml`；H4 配置和既有结果保持不变。
 该 H5 模板同时暴露默认关闭的 `persistent_execution.enabled`；被试级拟合只枚举 false/true，
 不改变 similarity transport、workspace capacity 或固定的 execution switch scale。
+
+Model 0826 还提供一个一次性、无新参数的质量守恒反事实：
+
+```yaml
+prior_assignment: {method: mass_preserving_similarity_transport}
+```
+
+令 $D_t$ 为 dropped rules、$N_t$ 为 newcomers，$m_t^{\rm drop}$ 为被删除 posterior mass，
+$\widetilde z_t$ 为只在 newcomers 上归一化的同一 local/global semantic projection，则
+
+```text
+m_drop = sum(posterior_(t-1)[D_t])
+prior_t[survivors] = posterior_(t-1)[survivors]
+prior_t[newcomers] = m_drop * z_tilde[newcomers]
+```
+
+这个反事实只检验 workspace turnover 是否需要槽位比例的 belief reallocation；配置
+`configs/specific_models/model_0826_belief_transport_counterfactual.yaml` 保证 A/B 之间仅改变
+`prior_assignment.method`。
 
 ## 10. 因果性、日志与扩展约束
 

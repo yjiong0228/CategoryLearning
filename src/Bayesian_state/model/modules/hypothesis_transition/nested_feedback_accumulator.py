@@ -20,7 +20,13 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
 
     The probability of at least one workspace replacement is
 
-    ``logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * F_t``,
+    ``logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * H_t``,
+
+    where the revised Model 0818 sets ``H_t = F_(t-1)`` so the one-step
+    reactive term owns feedback from trial ``t-1`` and the accumulator gain
+    owns only earlier error history.  Historical configurations remain
+    reproducible by leaving ``event_history_excludes_latest_error`` false, in
+    which case ``H_t = F_t``.
 
     and the conditional probability that a newcomer is proposed globally is
 
@@ -58,6 +64,7 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
             "accumulator_logit_gain",
             "global_search_failure_gain",
             "initial_failure",
+            "event_history_excludes_latest_error",
         }
         if unknown:
             raise ValueError(
@@ -88,6 +95,14 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
             raw.get("initial_failure", 0.0),
             "initial_failure",
         )
+        event_history_excludes_latest_error = raw.get(
+            "event_history_excludes_latest_error",
+            False,
+        )
+        if not isinstance(event_history_excludes_latest_error, bool):
+            raise ValueError(
+                "event_history_excludes_latest_error must be boolean."
+            )
 
         resolved["feedback_reactive_controller"] = {
             "event_after_correct": raw.get("event_after_correct"),
@@ -105,6 +120,9 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
         self.accumulator_logit_gain = float(accumulator_gain)
         self.global_search_failure_gain = float(global_search_failure_gain)
         self.accumulator_initial_failure = float(initial_failure)
+        self.event_history_excludes_latest_error = bool(
+            event_history_excludes_latest_error
+        )
         self.event_accumulator_active = bool(self.accumulator_logit_gain > 0.0)
         self.global_range_accumulator_active = bool(
             self.global_search_failure_gain > 0.0
@@ -123,6 +141,7 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
             # value is retained solely for the shared diagnostic contract.
             self.mastery_evidence = float(1.0 - self.failure_pressure)
             self.peak_mastery_evidence = float(self.mastery_evidence)
+        self.event_history_failure = float(self.failure_pressure)
 
     def _transition_signals(self) -> Mapping[str, Any]:
         signals = dict(super()._transition_signals())
@@ -139,6 +158,9 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
                 ),
                 "global_range_accumulator_active": bool(
                     self.global_range_accumulator_active
+                ),
+                "event_history_excludes_latest_error": bool(
+                    self.event_history_excludes_latest_error
                 ),
             }
         )
@@ -163,9 +185,15 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
         if self.outcome_pending and np.isfinite(self.previous_feedback):
             feedback = float(np.clip(self.previous_feedback, 0.0, 1.0))
             error = float(1.0 - feedback)
+            lagged_failure = float(self.failure_pressure)
             self.failure_pressure = float(
                 self.accumulator_decay * self.failure_pressure
                 + (1.0 - self.accumulator_decay) * error
+            )
+            self.event_history_failure = float(
+                lagged_failure
+                if self.event_history_excludes_latest_error
+                else self.failure_pressure
             )
             self.mastery_evidence = float(1.0 - self.failure_pressure)
             self.peak_mastery_evidence = float(
@@ -178,12 +206,14 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
             self.exploration_target = float(
                 self._expit(
                     self._safe_logit(reactive_event)
-                    + self.accumulator_logit_gain * self.failure_pressure
+                    + self.accumulator_logit_gain
+                    * self.event_history_failure
                 )
             )
             self.outcome_pending = False
         else:
             self.exploration_target = float(self.initial_event_probability)
+            self.event_history_failure = float(self.failure_pressure)
 
         self.current_event_probability = float(self.exploration_target)
         self.current_m = self._event_probability_to_slot_rate(

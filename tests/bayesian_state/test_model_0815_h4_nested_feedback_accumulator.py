@@ -87,6 +87,7 @@ def _nested(
     accumulator_decay: float = 0.80,
     event_after_correct: float = 0.20,
     event_after_error: float = 0.60,
+    event_history_excludes_latest_error: bool = False,
     seed: int = 17,
 ):
     engine = _TinyEngine()
@@ -103,6 +104,9 @@ def _nested(
             "accumulator_logit_gain": accumulator_logit_gain,
             "global_search_failure_gain": global_search_failure_gain,
             "initial_failure": 0.0,
+            "event_history_excludes_latest_error": (
+                event_history_excludes_latest_error
+            ),
         },
         module_seed=seed,
     )
@@ -246,6 +250,59 @@ def test_positive_accumulator_gain_builds_and_retains_failure_pressure() -> None
     assert 0.10 < probabilities[3] < probabilities[2]
 
 
+def test_lagged_event_history_excludes_latest_error_from_accumulator_gain() -> None:
+    current_engine, current = _nested(
+        accumulator_logit_gain=2.0,
+        accumulator_decay=0.80,
+        event_after_correct=0.10,
+        event_after_error=0.50,
+        event_history_excludes_latest_error=False,
+    )
+    lagged_engine, lagged = _nested(
+        accumulator_logit_gain=2.0,
+        accumulator_decay=0.80,
+        event_after_correct=0.10,
+        event_after_error=0.50,
+        event_history_excludes_latest_error=True,
+    )
+    current.process()
+    lagged.process()
+
+    _advance(current_engine, current, 0.0)
+    _advance(lagged_engine, lagged, 0.0)
+
+    assert current.failure_pressure == lagged.failure_pressure == pytest.approx(0.20)
+    assert current.event_history_failure == pytest.approx(0.20)
+    assert lagged.event_history_failure == pytest.approx(0.0)
+    assert current.current_event_probability > 0.50
+    assert lagged.current_event_probability == pytest.approx(0.50)
+
+    _advance(current_engine, current, 0.0)
+    _advance(lagged_engine, lagged, 0.0)
+
+    assert current.failure_pressure == lagged.failure_pressure == pytest.approx(0.36)
+    assert current.event_history_failure == pytest.approx(0.36)
+    assert lagged.event_history_failure == pytest.approx(0.20)
+    expected = lagged._expit(lagged._safe_logit(0.50) + 2.0 * 0.20)
+    assert lagged.current_event_probability == pytest.approx(expected)
+
+
+def test_lagged_event_history_does_not_change_global_range_input() -> None:
+    engine, module = _nested(
+        accumulator_logit_gain=1.5,
+        global_search_failure_gain=0.50,
+        accumulator_decay=0.80,
+        event_history_excludes_latest_error=True,
+    )
+    module.process()
+
+    _advance(engine, module, 0.0)
+
+    assert module.event_history_failure == pytest.approx(0.0)
+    assert module.failure_pressure == pytest.approx(0.20)
+    assert module.current_g == pytest.approx(0.30 + 0.70 * 0.50 * 0.20)
+
+
 def test_global_search_gain_reuses_failure_without_changing_event_boundary() -> None:
     engine, module = _nested(
         accumulator_logit_gain=0.0,
@@ -353,6 +410,10 @@ def test_nested_accumulator_config_assembles_on_reactive_boundary() -> None:
         ({"accumulator_decay": 1.0}, "smaller than 1"),
         ({"global_search_failure_gain": -0.1}, "finite probability"),
         ({"global_search_failure_gain": 1.1}, "finite probability"),
+        (
+            {"event_history_excludes_latest_error": 1},
+            "must be boolean",
+        ),
     ],
 )
 def test_nested_accumulator_rejects_invalid_accumulation_parameters(

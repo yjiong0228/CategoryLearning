@@ -155,6 +155,63 @@ def test_similarity_transport_uses_replacement_fraction_and_semantic_kernel() ->
     )
 
 
+def test_mass_preserving_transport_moves_only_dropped_belief_mass() -> None:
+    _, module = _module(
+        "mass_preserving_similarity_transport",
+        global_search=0.30,
+    )
+    posterior = np.asarray([0.80, 0.15, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0])
+    selection = _one_replacement()
+    module._pending_transition = {"posterior": posterior}
+
+    prior = module.assign_prior(None, selection)
+
+    np.testing.assert_allclose(
+        prior,
+        [0.80, 0.15, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0],
+    )
+    assert module._pending_transition["prior_assignment_method"] == (
+        "mass_preserving_similarity_transport"
+    )
+    assert module._pending_transition["prior_transport_fraction"] == pytest.approx(
+        1.0 / 3.0
+    )
+    assert module._pending_transition["newcomer_prior_mass"] == pytest.approx(0.05)
+
+
+def test_mass_preserving_transport_semantically_splits_aggregate_removed_mass() -> None:
+    _, module = _module(
+        "mass_preserving_similarity_transport",
+        global_search=0.30,
+    )
+    posterior = np.asarray([0.70, 0.20, 0.10, 0.0, 0.0, 0.0, 0.0, 0.0])
+    selection = HypothesisSelection.from_active_sets(
+        [0, 1, 2],
+        [0, 3, 4],
+        replacement_pairs=((1, 3), (2, 4)),
+    )
+    module._pending_transition = {"posterior": posterior}
+
+    prior = module.assign_prior(None, selection)
+
+    assert prior[0] == pytest.approx(0.70)
+    assert np.sum(prior[[3, 4]]) == pytest.approx(0.30)
+    assert np.all(prior[[3, 4]] > 0.0)
+    assert np.all(prior[[1, 2, 5, 6, 7]] == 0.0)
+
+
+def test_mass_preserving_transport_is_exact_carryover_without_replacement() -> None:
+    _, module = _module("mass_preserving_similarity_transport")
+    posterior = np.asarray([0.80, 0.15, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0])
+    module._pending_transition = {"posterior": posterior}
+    selection = HypothesisSelection.from_active_sets([0, 1, 2], [0, 1, 2])
+
+    prior = module.assign_prior(None, selection)
+
+    np.testing.assert_allclose(prior, posterior)
+    assert module._pending_transition["newcomer_prior_mass"] == 0.0
+
+
 def test_global_boundary_flattens_semantic_component_over_new_workspace() -> None:
     _, module = _module("similarity_transport", global_search=1.0)
     posterior = np.asarray([0.80, 0.15, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0])

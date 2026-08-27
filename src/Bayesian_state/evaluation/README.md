@@ -108,6 +108,9 @@ summary 的 `source_semantics` 中明确标记。主图叠加被试与 PF 滚动
 `dynamic_continuous_controls.png`；原始 controls 数值仍保存在 state log，反馈驱动信号继续由
 `dynamic_continuous_signals.png` 诊断。
 
+与其他逐被试 evaluation 主图一致，该图默认每行最多排 8 名被试；调用方仍可通过 `n_cols` 或
+`max_subjects_per_row` 显式覆盖。条件内被试数超过 8 时自动换行。
+
 当结果来自 `failure_accumulator_v2` 时，strategy summary 还报告低表现/掌握期的
 `predictive_failure_pressure` 与 `predictive_mastery_evidence`。这些是 pre-choice PF 边缘状态，
 用于检验“连续失败触发探索、稳定正确恢复利用”，不改变上述 phase 的因果定义。若启用 v2b，

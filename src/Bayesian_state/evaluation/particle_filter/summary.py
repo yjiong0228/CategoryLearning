@@ -701,9 +701,9 @@ class ParticleFilterEvaluationMixin:
         low_accuracy_threshold=0.60,
         mastery_accuracy_threshold=0.85,
         n_cols=None,
-        max_subjects_per_row=4,
+        max_subjects_per_row=8,
     ) -> pd.DataFrame:
-        """Plot continuous exploit/local/global tendencies against performance."""
+        """Plot continuous strategy profiles in the standard eight-column grid."""
         visible = self._filter_results(results, subjects)
         grouped_info = self._group_by_condition(visible)
         if not grouped_info:

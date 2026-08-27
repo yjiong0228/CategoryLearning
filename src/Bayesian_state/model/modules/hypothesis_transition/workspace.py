@@ -36,9 +36,13 @@ class AdaptiveWorkspaceController(BaseModule):
     FAILURE_ACCUMULATOR_MODE = "failure_accumulator_v2"
     PAIRWISE_PRIOR_ASSIGNMENT = "pairwise_mass_transfer"
     SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT = "similarity_transport"
+    MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT = (
+        "mass_preserving_similarity_transport"
+    )
     VALID_PRIOR_ASSIGNMENTS = {
         PAIRWISE_PRIOR_ASSIGNMENT,
         SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT,
+        MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT,
     }
 
     def __init__(self, engine, **kwargs):
@@ -174,11 +178,14 @@ class AdaptiveWorkspaceController(BaseModule):
         )
         if (
             self.prior_assignment_method
-            == self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+            in {
+                self.SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT,
+                self.MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT,
+            }
             and self.prior_reset_max_strength > 0.0
         ):
             raise ValueError(
-                "similarity_transport already defines the transition prior and "
+                "similarity-based transport already defines the transition prior and "
                 "cannot be combined with failure-accumulator prior_reset."
             )
         if self.failure_accumulator_enabled:
@@ -296,9 +303,11 @@ class AdaptiveWorkspaceController(BaseModule):
     def _parse_prior_assignment(cls, raw: Any) -> str:
         """Resolve the bounded-workspace posterior-to-prior mapping.
 
-        ``similarity_transport`` deliberately has no method-specific fitted
-        parameters.  Its transport strength is the realized replacement
-        fraction, and it reuses the already configured local/global kernel.
+        The two similarity-based methods deliberately have no method-specific
+        fitted parameters. ``similarity_transport`` uses the realized replaced
+        slot fraction; ``mass_preserving_similarity_transport`` reallocates
+        only the posterior mass of the dropped rules. Both reuse the configured
+        local/global kernel.
         """
 
         if raw is None:

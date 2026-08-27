@@ -292,6 +292,74 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
             "semantic_newcomer_mass": float(np.sum(semantic[newcomers])),
         }
 
+    def _mass_preserving_similarity_transport_prior(
+        self,
+        posterior: np.ndarray,
+        selection: HypothesisSelection,
+    ) -> tuple[np.ndarray, dict[str, float | str]]:
+        """Keep survivor mass fixed and semantically allocate dropped mass.
+
+        This parameter-free counterfactual separates workspace turnover from a
+        slot-proportional belief reset. Survivors retain their absolute
+        posterior mass, while newcomers jointly receive exactly the mass of the
+        discarded rules. The existing local/global kernel determines only how
+        that mass is distributed among newcomers.
+        """
+
+        active_after = np.asarray(selection.active_after, dtype=int)
+        survivors = np.asarray(selection.survivors, dtype=int)
+        dropped = np.asarray(selection.dropped, dtype=int)
+        newcomers = np.asarray(selection.newcomers, dtype=int)
+        replacement_fraction = float(newcomers.size) / float(self.capacity)
+
+        if newcomers.size == 0:
+            unchanged = np.zeros(self.total_hypo, dtype=float)
+            unchanged[active_after] = posterior[active_after]
+            unchanged = self._normalize(
+                unchanged,
+                "unchanged mass-preserving similarity-transport prior",
+            )
+            return unchanged, {
+                "prior_assignment_method": (
+                    self.MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+                ),
+                "prior_transport_fraction": 0.0,
+                "semantic_newcomer_mass": 0.0,
+            }
+
+        removed_mass = float(np.sum(posterior[dropped]))
+        self._ensure_geometry()
+        assert self._local_kernel is not None
+        local_full = np.asarray(posterior @ self._local_kernel, dtype=float)
+        local_newcomers = self._normalize(
+            local_full[newcomers],
+            "mass-preserving local newcomer projection",
+        )
+        global_newcomers = self._normalize(
+            self.base_prior[newcomers],
+            "mass-preserving global newcomer projection",
+        )
+        semantic_newcomers = self._normalize(
+            (1.0 - float(self.current_g)) * local_newcomers
+            + float(self.current_g) * global_newcomers,
+            "mass-preserving semantic newcomer projection",
+        )
+
+        prior = np.zeros(self.total_hypo, dtype=float)
+        prior[survivors] = posterior[survivors]
+        prior[newcomers] = removed_mass * semantic_newcomers
+        prior = self._normalize(
+            prior,
+            "mass-preserving similarity-transport post-transition prior",
+        )
+        return prior, {
+            "prior_assignment_method": (
+                self.MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+            ),
+            "prior_transport_fraction": replacement_fraction,
+            "semantic_newcomer_mass": 1.0,
+        }
+
     def assign_prior(
         self,
         context: TransitionContext,
@@ -312,6 +380,16 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         ):
             transition_prior, assignment_diagnostics = (
                 self._similarity_transport_prior(posterior, selection)
+            )
+        elif (
+            self.prior_assignment_method
+            == self.MASS_PRESERVING_SIMILARITY_TRANSPORT_PRIOR_ASSIGNMENT
+        ):
+            transition_prior, assignment_diagnostics = (
+                self._mass_preserving_similarity_transport_prior(
+                    posterior,
+                    selection,
+                )
             )
         else:  # pragma: no cover - constructor validation owns this invariant.
             raise RuntimeError(

@@ -172,6 +172,8 @@ Model 0815 H5 将这一步显式拆为 active-set selection 与 `similarity_tran
 workspace。H5 把固定标签的功能一致率解释为 functional similarity，并将共同
 `tau_local=0.10` 同时用于 newcomer proposal 与 belief transport；该尺度不作为被试级坐标，
 避免与 `global_search` 重复控制搜索宽度。历史 `pairwise_mass_transfer` 仍可配置，但不再是 H5 默认。
+Model 0826 的一次性反事实可把 prior assignment 切为 `mass_preserving_similarity_transport`：
+survivors 保留绝对 posterior mass，newcomers 总共只接收被删除质量，其他模块和参数保持不变。
 
 `StateModel` 将这一过程显式拆为共享的三段生命周期：
 

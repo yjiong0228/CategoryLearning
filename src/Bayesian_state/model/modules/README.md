@@ -183,7 +183,8 @@ Static 表示同一被试在全部 trials 中使用固定的 `selection strategy
 `FixedStrategyHypothesisTransitionModule` 执行固定 strategy chain；
 `FixedWorkspaceHypothesisTransitionModule` 表示 `m/g` 均固定的 bounded-workspace policy。bounded
 workspace 支持历史兼容的 `pairwise_mass_transfer`，以及 Model 0815 H5 使用的无额外参数
-`similarity_transport`；其他 prior-assignment 方法会在初始化时失败。
+`similarity_transport`。Model 0826 的单因素 sensitivity 另提供同样无额外参数的
+`mass_preserving_similarity_transport`；其他 prior-assignment 方法会在初始化时失败。
 
 `FeedbackReactiveHypothesisTransitionModule` 复用同一 bounded-workspace selection、local/global
 proposal 与所配置的 bounded-workspace prior assignment，但让下一 trial 的 replacement-event probability 只取决于
@@ -199,6 +200,9 @@ failure/mastery accumulator，也不允许 persistent execution；它用于检�
 因此 constant、reactive 和 accumulator 可以由同一实现的被试级参数表达，而不需要为被试硬选
 三个互不嵌套的 H 类。H4 历史筛选固定使用 pairwise transfer；H5 保持同一 controller，但改用
 `similarity_transport`，并允许同一 failure state 通过可归零 gain 扩大 global-search 比例。
+Model 0826 固定设置 `event_history_excludes_latest_error: true`：搜索事件的累计增益
+读取更新前的 $F_{t-1}$，使 `event_after_correct/error` 独占最近一次反馈；global-search range
+仍读取包含最近反馈的 $F_t$。未设置该键的历史 H4/H5 配置保留原行为。
 H4/H5 还可把 `persistent_execution.enabled` 作为被试级 false/true 坐标：false 时按 workspace
 posterior 边际作答，true 时由一条受保护且可持续的 executed rule 作答。当前 switch scale 固定，
 不随被试另行优化；H3 仍明确限制为 execution-off。
@@ -234,7 +238,8 @@ selection，并在 pairwise compatibility 或 similarity transport 两种 prior 
 2. 按 `1-posterior` 权重移除 `K_t` 个 active hypotheses；
 3. 从 `(1-g_t) local + g_t global` proposal 无放回抽取同数 newcomer；
 4. 按固定 prior-assignment policy 产生新 prior：pairwise compatibility path 搬运 dropped mass；
-   H5 similarity transport 则按替换比例混合 survivor carry-over 与 local/global semantic projection。
+   H5 similarity transport 则按替换比例混合 survivor carry-over 与 local/global semantic projection；
+   mass-preserving sensitivity 保留 survivors 的绝对质量，只把 dropped mass 在 newcomers 间语义分配。
 
 新配置可将两组 controller 写成：
 
