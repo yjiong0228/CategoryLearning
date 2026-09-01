@@ -22,6 +22,7 @@ from src.Bayesian_state.evaluation.model_recovery import (
     schedule_fingerprint,
     score_frozen_candidate,
     score_pf_bank,
+    score_pf_bank_parallel,
     summarize_module_recovery,
     summarize_parameter_recovery,
     summarize_pf_calibration,
@@ -499,6 +500,68 @@ def test_pf_bank_scores_nll_after_seed_probability_averaging() -> None:
     assert rows[0]["total_nll"] == pytest.approx(-2.0 * np.log(0.5))
     assert np.allclose(rows[0]["mean_probability"], 0.5)
     assert rows[0]["probability_aggregation"] == "mean_probability_then_nll"
+
+
+def test_parallel_pf_bank_matches_serial_candidate_seed_aggregation() -> None:
+    stimulus = np.ones((5, 4), dtype=float)
+    choices = np.asarray([1, 2, 1, 2, 1], dtype=int)
+    feedback = np.ones(5, dtype=float)
+    anchor = {
+        "M": 3,
+        "gamma": 0.8,
+        "E_C": 0.25,
+        "delta_E": 0.8,
+        "g_0": 0.2,
+        "c_A": 2.0,
+        "c_G": 0.5,
+        "beta_0": 5.0,
+        "eta_plus": 0.04,
+        "eta_minus": 0.15,
+    }
+
+    def fake_pf(**kwargs):
+        probability_two = 0.2 + 0.1 * (int(kwargs["filter_seed"]) % 3)
+        probabilities = np.column_stack(
+            [
+                np.full(5, 1.0 - probability_two),
+                np.full(5, probability_two),
+            ]
+        )
+        return SimpleNamespace(marginal_probabilities=probabilities)
+
+    common = {
+        "dataset_id": "parallel_check",
+        "subject_id": 101,
+        "stimulus": stimulus,
+        "choices": choices,
+        "feedback": feedback,
+        "base_engine_config": yaml.safe_load(
+            MODEL_0826_ENGINE.read_text(encoding="utf-8")
+        ),
+        "candidates": build_calibration_bank(anchor)[:2],
+        "particle_count": 8,
+        "filter_seeds": [101, 102, 103],
+        "ensemble": "A",
+        "pf_runner": fake_pf,
+    }
+    serial = score_pf_bank(**common)
+    parallel = score_pf_bank_parallel(**common, n_jobs=2)
+
+    assert [row["candidate_id"] for row in parallel] == [
+        row["candidate_id"] for row in serial
+    ]
+    for serial_row, parallel_row in zip(serial, parallel):
+        assert parallel_row["total_nll"] == pytest.approx(
+            serial_row["total_nll"]
+        )
+        assert np.allclose(
+            parallel_row["mean_probability"],
+            serial_row["mean_probability"],
+        )
+        assert np.allclose(
+            parallel_row["probability_runs"],
+            serial_row["probability_runs"],
+        )
 
 
 def test_pf_calibration_summary_applies_all_rank_winner_rmse_and_mcse_gates() -> None:

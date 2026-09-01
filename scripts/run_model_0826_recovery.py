@@ -39,6 +39,7 @@ from src.Bayesian_state.evaluation.model_recovery import (  # noqa: E402
     resolve_calibration_filter_seeds,
     score_frozen_candidate,
     score_pf_bank,
+    score_pf_bank_parallel,
     summarize_module_recovery,
     summarize_parameter_recovery,
     summarize_pf_calibration,
@@ -808,7 +809,7 @@ def _score_calibration_setting(
             arrays_path,
             fingerprint=fingerprint,
         )
-    rows = score_pf_bank(
+    rows = score_pf_bank_parallel(
         dataset_id=specification.dataset_id,
         subject_id=specification.subject_id,
         stimulus=arrays["stimulus"],
@@ -819,6 +820,7 @@ def _score_calibration_setting(
         particle_count=particle_count,
         filter_seeds=seeds,
         ensemble=ensemble,
+        n_jobs=int(design.config["search"]["cd"]["parallel_budget"]),
         processed_data_dir=dataset_paths["processed_dir"],
         dataset_paths=dataset_paths,
     )

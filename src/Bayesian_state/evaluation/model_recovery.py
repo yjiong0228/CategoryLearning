@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 import yaml
+from joblib import Parallel, delayed
 from scipy.stats import spearmanr
 
 from src.Bayesian_state.inference.backends.particle_filter import (
@@ -829,6 +830,114 @@ def score_pf_bank(
             }
         )
     return rows
+
+
+def _score_pf_candidate_seed(
+    *,
+    common_kwargs: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    filter_seed: int,
+) -> dict[str, Any]:
+    return score_pf_bank(
+        **dict(common_kwargs),
+        candidates=[dict(candidate)],
+        filter_seeds=[int(filter_seed)],
+    )[0]
+
+
+def score_pf_bank_parallel(
+    *,
+    dataset_id: str,
+    subject_id: int,
+    stimulus: Sequence[Sequence[float]] | np.ndarray,
+    choices: Sequence[int] | np.ndarray,
+    feedback: Sequence[float] | np.ndarray,
+    base_engine_config: Mapping[str, Any],
+    candidates: Sequence[Mapping[str, Any]],
+    particle_count: int,
+    filter_seeds: Sequence[int],
+    ensemble: str,
+    n_jobs: int,
+    resample_threshold_fraction: float = 0.5,
+    processed_data_dir: str | Path | None = None,
+    dataset_paths: Mapping[str, str | Path] | None = None,
+    pf_runner: Callable[..., Any] = run_state_model_particle_filter,
+) -> list[dict[str, Any]]:
+    """Parallelize independent candidate×seed PF runs, then aggregate exactly."""
+
+    candidate_rows = [deepcopy(dict(candidate)) for candidate in candidates]
+    seeds = [int(value) for value in filter_seeds]
+    if not candidate_rows:
+        raise ValueError("parallel PF calibration requires at least one candidate")
+    if not seeds or len(seeds) != len(set(seeds)):
+        raise ValueError("parallel PF calibration requires unique filter seeds")
+    jobs = min(int(n_jobs), len(candidate_rows) * len(seeds))
+    if jobs < 1:
+        raise ValueError("parallel PF calibration n_jobs must be positive")
+    common_kwargs = {
+        "dataset_id": str(dataset_id),
+        "subject_id": int(subject_id),
+        "stimulus": np.asarray(stimulus, dtype=float),
+        "choices": np.asarray(choices, dtype=int),
+        "feedback": np.asarray(feedback, dtype=float),
+        "base_engine_config": deepcopy(dict(base_engine_config)),
+        "particle_count": int(particle_count),
+        "ensemble": str(ensemble),
+        "resample_threshold_fraction": float(resample_threshold_fraction),
+        "processed_data_dir": processed_data_dir,
+        "dataset_paths": dataset_paths,
+        "pf_runner": pf_runner,
+    }
+    if jobs == 1:
+        return score_pf_bank(
+            **common_kwargs,
+            candidates=candidate_rows,
+            filter_seeds=seeds,
+        )
+    single_rows = Parallel(n_jobs=jobs, backend="loky", verbose=10)(
+        delayed(_score_pf_candidate_seed)(
+            common_kwargs=common_kwargs,
+            candidate=candidate,
+            filter_seed=filter_seed,
+        )
+        for candidate in candidate_rows
+        for filter_seed in seeds
+    )
+    observed = np.asarray(choices, dtype=int).reshape(-1)
+    combined: list[dict[str, Any]] = []
+    for candidate_index, candidate in enumerate(candidate_rows):
+        start = candidate_index * len(seeds)
+        candidate_seed_rows = single_rows[start : start + len(seeds)]
+        stack = np.stack(
+            [
+                np.asarray(row["mean_probability"], dtype=float)
+                for row in candidate_seed_rows
+            ],
+            axis=0,
+        )
+        if stack.shape[0] > 1:
+            probability_mcse = np.std(stack[:, :, 1], axis=0, ddof=1) / np.sqrt(
+                float(stack.shape[0])
+            )
+        else:
+            probability_mcse = np.zeros(observed.size, dtype=float)
+        total_nll = mean_probability_nll(stack, observed)
+        row = dict(candidate_seed_rows[0])
+        row.update(
+            {
+                "candidate_id": str(candidate["candidate_id"]),
+                "filter_seed_count": int(len(seeds)),
+                "filter_seeds": seeds,
+                "total_nll": total_nll,
+                "mean_trial_nll": total_nll / float(observed.size),
+                "mean_probability": np.mean(stack, axis=0),
+                "probability_runs": stack,
+                "trial_probability_mcse": probability_mcse,
+                "parallel_n_jobs": int(jobs),
+            }
+        )
+        combined.append(row)
+    return combined
 
 
 def _setting_rows(
@@ -1985,6 +2094,7 @@ __all__ = [
     "schedule_fingerprint",
     "score_frozen_candidate",
     "score_pf_bank",
+    "score_pf_bank_parallel",
     "summarize_module_recovery",
     "summarize_parameter_recovery",
     "summarize_pf_calibration",
