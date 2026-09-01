@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections import Counter
+from types import SimpleNamespace
 
+import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
+from src.Bayesian_state.evaluation.model_recovery import (
+    generate_synthetic_dataset,
+    load_recovery_design,
+    schedule_fingerprint,
+    synthetic_dataset_frame,
+)
 from src.Bayesian_state.optimization.model_0826 import (
     build_model_0826_cell_engine,
     build_model_0826_hyper_config,
@@ -24,6 +34,9 @@ PARAMETER_SPACE_0826 = (
     ROOT / "configs/specific_models/model_0826_cond1_parameter_space.yaml"
 )
 MODEL_0826_ENGINE = ROOT / "configs/model_struct/pmh_model_cond1_0826.yaml"
+RECOVERY_CONFIG = (
+    ROOT / "configs/specific_models/model_0826_recovery_v1.yaml"
+)
 
 
 def test_parameter_loader_accepts_0818_and_0826_without_cross_version_aliasing() -> None:
@@ -211,3 +224,140 @@ def test_named_parameter_extraction_round_trips_pmh_anchor(tmp_path: Path) -> No
         "eta_plus": 0.04,
         "eta_minus": 0.15,
     }
+
+
+def test_recovery_design_has_exact_pre_registered_counts_and_assignments() -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+
+    assert design.subject_trial_counts == {101: 320, 111: 320, 118: 256}
+    assert len(design.module_datasets) == 36
+    assert len(design.parameter_datasets) == 40
+    assert Counter(row.truth["chi"] for row in design.parameter_datasets) == {
+        0: 20,
+        1: 20,
+    }
+    assert Counter(row.subject_id for row in design.parameter_datasets) == {
+        101: 14,
+        111: 13,
+        118: 13,
+    }
+    assert {
+        row.subject_id: (row.train_trial_count, row.evaluation_trial_count)
+        for row in design.module_datasets
+    } == {
+        101: (224, 96),
+        111: (224, 96),
+        118: (179, 77),
+    }
+    assert len({row.generation_seed for row in design.all_datasets}) == 76
+
+
+def test_schedule_fingerprint_and_synthetic_frame_ignore_observed_choice() -> None:
+    schedule = pd.DataFrame(
+        {
+            "iSub": [101, 101, 101],
+            "condition": [1, 1, 1],
+            "iSession": [1, 1, 1],
+            "iBlock": [1, 1, 1],
+            "iTrial": [1, 2, 3],
+            "feature1": [1.0, 2.0, 3.0],
+            "feature2": [2.0, 3.0, 4.0],
+            "feature3": [3.0, 4.0, 5.0],
+            "feature4": [4.0, 5.0, 6.0],
+            "category": [1, 2, 1],
+            "choice": [1, 1, 2],
+            "feedback": [1.0, 0.0, 0.0],
+        }
+    )
+    altered_observed_behavior = schedule.copy()
+    altered_observed_behavior["choice"] = [2, 2, 1]
+    altered_observed_behavior["feedback"] = [0.0, 1.0, 1.0]
+
+    assert schedule_fingerprint(schedule) == schedule_fingerprint(
+        altered_observed_behavior
+    )
+    generated = synthetic_dataset_frame(
+        altered_observed_behavior,
+        choices=np.asarray([2, 1, 1]),
+        feedback=np.asarray([0.0, 0.0, 1.0]),
+    )
+    assert generated["choice"].tolist() == [2, 1, 1]
+    assert generated["feedback"].tolist() == [0.0, 0.0, 1.0]
+    assert generated.attrs["observed_choices_used"] is False
+
+
+def test_synthetic_generation_uses_schedule_not_observed_choice_and_is_resumable(
+    tmp_path: Path,
+) -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+    specification = design.module_datasets[0]
+    trial_count = specification.trial_count
+    schedule = pd.DataFrame(
+        {
+            "iSub": np.full(trial_count, specification.subject_id),
+            "condition": np.ones(trial_count, dtype=int),
+            "iSession": np.ones(trial_count, dtype=int),
+            "iBlock": np.repeat(np.arange(1, 6), 64)[:trial_count],
+            "iTrial": np.arange(1, trial_count + 1),
+            "feature1": np.linspace(0.0, 1.0, trial_count),
+            "feature2": np.linspace(1.0, 2.0, trial_count),
+            "feature3": np.linspace(2.0, 3.0, trial_count),
+            "feature4": np.linspace(3.0, 4.0, trial_count),
+            "category": 1 + (np.arange(trial_count) % 2),
+            "choice": np.ones(trial_count, dtype=int),
+            "feedback": np.zeros(trial_count, dtype=float),
+        }
+    )
+    captured = []
+
+    def fake_generator(**kwargs):
+        captured.append(kwargs)
+        choices = 1 + (np.arange(trial_count) % 2)
+        feedback = (choices == kwargs["categories"]).astype(float)
+        probabilities = np.eye(2, dtype=float)[choices - 1]
+        return SimpleNamespace(
+            trajectory=SimpleNamespace(
+                choices=choices,
+                feedback=feedback,
+                observed_probabilities=probabilities,
+            )
+        )
+
+    base_engine = yaml.safe_load(MODEL_0826_ENGINE.read_text(encoding="utf-8"))
+    manifest = generate_synthetic_dataset(
+        specification,
+        schedule_frame=schedule,
+        base_engine_config=base_engine,
+        output_dir=tmp_path / "synthetic",
+        generator=fake_generator,
+    )
+
+    assert manifest["trial_count"] == 320
+    assert manifest["observed_choices_used"] is False
+    assert captured[0]["trajectory_seed"] == specification.generation_seed
+    assert "hypo_transitions_mod" not in captured[0]["engine_config"]["modules"]
+    assert Path(manifest["csv_path"]).is_file()
+    assert Path(manifest["npz_path"]).is_file()
+
+    altered = schedule.copy()
+    altered["choice"] = 2
+    altered["feedback"] = 1.0
+    resumed = generate_synthetic_dataset(
+        specification,
+        schedule_frame=altered,
+        base_engine_config=base_engine,
+        output_dir=tmp_path / "synthetic",
+        resume=True,
+        generator=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("completed synthetic dataset was regenerated")
+        ),
+    )
+    assert resumed["fingerprint"] == manifest["fingerprint"]
+    with pytest.raises(FileExistsError):
+        generate_synthetic_dataset(
+            specification,
+            schedule_frame=schedule,
+            base_engine_config=base_engine,
+            output_dir=tmp_path / "synthetic",
+            generator=fake_generator,
+        )
