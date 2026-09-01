@@ -37,6 +37,10 @@ from src.Bayesian_state.optimization.model_0826 import (
     GLOBAL_SEARCH_PATH,
     INITIAL_EVENT_PATH,
     build_model_0826_cell_engine,
+    build_model_0826_hyper_config,
+)
+from src.Bayesian_state.optimization.search.coordinate_descent import (
+    HyperCDOptimizer,
 )
 from src.Bayesian_state.optimization.parameter_space import (
     load_model_parameter_space,
@@ -45,10 +49,15 @@ from src.Bayesian_state.optimization.parameter_space import (
 from src.Bayesian_state.simulation.autonomous import (
     run_autonomous_category_learning,
 )
+from src.Bayesian_state.simulation.config import (
+    EVALUATION_ROLE_SIMULATION,
+    resolve_evaluation_score_mask,
+)
 from src.Bayesian_state.simulation.parameters import (
     apply_fixed_hyperparams_to_engine_config,
 )
 from src.Bayesian_state.utils.seeding import stable_seed
+from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 
 
 FEATURE_COLUMNS = ("feature1", "feature2", "feature3", "feature4")
@@ -1078,6 +1087,275 @@ def freeze_smallest_passing_budget(
     return budget
 
 
+def mean_probability_nll(
+    probability_runs: Sequence[Any] | np.ndarray,
+    choices: Sequence[int] | np.ndarray,
+    mask: Sequence[bool] | np.ndarray | None = None,
+) -> float:
+    """Average PF probabilities first, then compute masked total choice NLL."""
+
+    runs = np.asarray(probability_runs, dtype=float)
+    observed = np.asarray(choices, dtype=int).reshape(-1)
+    if runs.ndim != 3 or runs.shape[1:] != (observed.size, 2):
+        raise ValueError("probability_runs must have shape (B, T, 2)")
+    if runs.shape[0] < 1 or not np.all(np.isfinite(runs)) or np.any(runs < 0.0):
+        raise ValueError("probability_runs must contain finite nonnegative values")
+    if not np.allclose(runs.sum(axis=2), 1.0, atol=1e-8):
+        raise ValueError("probability rows must sum to one")
+    if not np.all(np.isin(observed, [1, 2])):
+        raise ValueError("choices must be encoded as 1 or 2")
+    score_mask = np.ones(observed.size, dtype=bool)
+    if mask is not None:
+        score_mask = np.asarray(mask, dtype=bool).reshape(-1)
+        if score_mask.size != observed.size:
+            raise ValueError("NLL mask must align with choices")
+    if not np.any(score_mask):
+        raise ValueError("NLL mask must select at least one trial")
+    mean_probability = np.mean(runs, axis=0)
+    selected = mean_probability[np.arange(observed.size), observed - 1]
+    return float(-np.log(np.clip(selected[score_mask], 1e-12, 1.0)).sum())
+
+
+def _atomic_yaml(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            yaml.safe_dump(
+                to_builtin(dict(payload)),
+                stream,
+                sort_keys=False,
+                allow_unicode=True,
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _write_immutable_yaml(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    resume: bool,
+) -> None:
+    if path.exists():
+        existing = _load_yaml(path)
+        if _canonical_fingerprint(existing) != _canonical_fingerprint(payload):
+            raise ValueError(f"recovery config fingerprint does not match: {path}")
+        if not resume:
+            raise FileExistsError(f"recovery config already exists: {path}")
+        return
+    _atomic_yaml(path, payload)
+
+
+def fit_recovery_dataset(
+    design: RecoveryDesign,
+    specification: RecoveryDatasetSpec,
+    *,
+    candidate_cell: str,
+    synthetic_csv: str | Path,
+    frozen_budget: Mapping[str, Any],
+    output_dir: str | Path,
+    resume: bool = False,
+    optimizer_factory: Callable[..., Any] = HyperCDOptimizer,
+) -> dict[str, Any]:
+    """Fit one cell to one synthetic dataset under its registered score mask."""
+
+    cell = str(candidate_cell).strip().upper()
+    if cell not in CELL_FREE_PARAMETERS:
+        raise ValueError("candidate_cell must be P, PM, PH, or PMH")
+    particle_count = int(frozen_budget["particle_count"])
+    filter_seed_count = int(frozen_budget["filter_seed_count"])
+    if particle_count < 2 or filter_seed_count < 1:
+        raise ValueError("frozen PF budget is invalid")
+    synthetic_path = Path(synthetic_csv).resolve()
+    if not synthetic_path.is_file():
+        raise ValueError(f"synthetic recovery CSV does not exist: {synthetic_path}")
+    synthetic = pd.read_csv(synthetic_path)
+    if len(synthetic) != specification.trial_count:
+        raise ValueError("synthetic recovery CSV trial count does not match design")
+
+    base_simulation = _load_yaml(design.base_simulation_config)
+    dataset_paths = resolve_dataset_paths(
+        base_simulation,
+        design.base_simulation_config.parent,
+    )
+    base_engine = _load_yaml(design.model_engine_config)
+    cell_engine = build_model_0826_cell_engine(base_engine, cell)
+    if specification.family == "module":
+        evaluation_protocol: dict[str, Any] = {
+            "mode": "sequential_holdout",
+            "train_fraction": 0.70,
+            "optimization_partition": "train",
+            "simulation_partition": "evaluation",
+        }
+    elif specification.family == "parameter":
+        evaluation_protocol = {"mode": "all"}
+    else:
+        raise ValueError("unknown recovery dataset family")
+
+    output = Path(output_dir)
+    config_dir = output / "configs"
+    search_dir = output / "search"
+    simulation_config_path = config_dir / "simulation.yaml"
+    hyper_config_path = config_dir / "hyper_cd.yaml"
+    resolved_simulation = deepcopy(base_simulation)
+    resolved_simulation.pop("engine_config_path", None)
+    resolved_simulation.update(
+        {
+            "subjects": [int(specification.subject_id)],
+            "engine_config": cell_engine,
+            "dataset": {
+                "processed_dir": str(dataset_paths["processed_dir"]),
+                "learning_data": str(synthetic_path),
+                "perception_summary": str(dataset_paths["perception_summary"]),
+                "perception_summary_72": str(
+                    dataset_paths["perception_summary_72"]
+                ),
+                "feature_order_data": str(dataset_paths["feature_order_data"]),
+            },
+            "output_dir": str(output / "base_simulation"),
+            "simulation_repeats": filter_seed_count,
+            "repeat_aggregation": "mean_probability",
+            "max_trials": None,
+            "evaluation_protocol": evaluation_protocol,
+            "keep_logs": False,
+        }
+    )
+    _write_immutable_yaml(
+        simulation_config_path,
+        resolved_simulation,
+        resume=resume,
+    )
+
+    search_config = dict(design.config["search"])
+    final_seed_family = (
+        f"{search_config['final_rescore_seed_family']}:"
+        f"{specification.dataset_id}:{cell}"
+    )
+    analysis_config = {
+        "analysis_id": (
+            f"{design.analysis_id}:{specification.dataset_id}:{cell}"
+        ),
+        "subjects": [int(specification.subject_id)],
+        "hyper_base_seed": stable_seed(
+            {
+                "seed_role": "model0826_recovery_hyper_cd",
+                "analysis_id": design.analysis_id,
+                "dataset_id": specification.dataset_id,
+                "candidate_cell": cell,
+            }
+        ),
+        "max_trials": None,
+        "evaluation_protocol": evaluation_protocol,
+        "shortlist_size": int(search_config["shortlist_size"]),
+        "cd": deepcopy(dict(search_config["cd"])),
+    }
+    budget = {
+        "particle_count": particle_count,
+        "filter_seed_count": filter_seed_count,
+    }
+    hyper_config = build_model_0826_hyper_config(
+        analysis_config,
+        load_model_parameter_space(
+            design.parameter_space_path,
+            expected_model_id="model_0826",
+        ),
+        cell,
+        simulation_config_path,
+        search_dir,
+        {
+            "coarse": budget,
+            "fine": budget,
+            "final_rescore": {**budget, "seed_family": final_seed_family},
+        },
+    )
+    _write_immutable_yaml(hyper_config_path, hyper_config, resume=resume)
+    optimizer = optimizer_factory(hyper_config, hyper_config_path)
+    fit_result = optimizer.run(
+        [int(specification.subject_id)],
+        stage="all",
+        resume=bool(resume),
+    )
+    return {
+        "dataset_id": specification.dataset_id,
+        "candidate_cell": cell,
+        "simulation_config_path": str(simulation_config_path),
+        "hyper_config_path": str(hyper_config_path),
+        "search_output_dir": str(search_dir),
+        "fit_result": fit_result,
+    }
+
+
+def score_frozen_candidate(
+    *,
+    subject_id: int,
+    stimulus: Sequence[Sequence[float]] | np.ndarray,
+    choices: Sequence[int] | np.ndarray,
+    feedback: Sequence[float] | np.ndarray,
+    base_engine_config: Mapping[str, Any],
+    candidate_cell: str,
+    fixed_hyperparams: Mapping[str, Any],
+    particle_count: int,
+    filter_seeds: Sequence[int],
+    evaluation_protocol: Mapping[str, Any] | None,
+    resample_threshold_fraction: float = 0.5,
+    processed_data_dir: str | Path | None = None,
+    dataset_paths: Mapping[str, str | Path] | None = None,
+    pf_runner: Callable[..., Any] = run_state_model_particle_filter,
+) -> dict[str, Any]:
+    """Run frozen parameters on the full sequence and score only the held-out mask."""
+
+    physical = np.asarray(stimulus, dtype=float)
+    observed = np.asarray(choices, dtype=int).reshape(-1)
+    observed_feedback = np.asarray(feedback, dtype=float).reshape(-1)
+    if physical.ndim != 2 or physical.shape[0] != observed.size:
+        raise ValueError("frozen scoring arrays are misaligned")
+    if observed_feedback.size != observed.size:
+        raise ValueError("frozen scoring feedback is misaligned")
+    score_mask, score_context = resolve_evaluation_score_mask(
+        observed.size,
+        evaluation_protocol,
+        role=EVALUATION_ROLE_SIMULATION,
+    )
+    engine = build_model_0826_cell_engine(base_engine_config, candidate_cell)
+    engine = apply_fixed_hyperparams_to_engine_config(engine, fixed_hyperparams)
+    readout_args = _frozen_readout_args(engine)
+    probability_runs: list[np.ndarray] = []
+    for filter_seed in filter_seeds:
+        result = pf_runner(
+            engine_config=engine,
+            subject_id=int(subject_id),
+            stimulus=physical,
+            choices=observed,
+            feedback=observed_feedback,
+            particle_count=int(particle_count),
+            filter_seed=int(filter_seed),
+            resample_threshold_fraction=float(resample_threshold_fraction),
+            processed_data_dir=processed_data_dir,
+            dataset_paths=dataset_paths,
+            **readout_args,
+        )
+        probability_runs.append(
+            np.asarray(result.marginal_probabilities, dtype=float)
+        )
+    stack = np.stack(probability_runs, axis=0)
+    total_nll = mean_probability_nll(stack, observed, score_mask)
+    return {
+        "total_nll": total_nll,
+        "mean_trial_nll": total_nll / float(score_context["score_trial_count"]),
+        "score_context": score_context,
+        "particle_count": int(particle_count),
+        "filter_seed_count": int(len(filter_seeds)),
+        "filter_seeds": [int(value) for value in filter_seeds],
+        "probability_aggregation": "mean_probability_then_nll",
+        "mean_probability": np.mean(stack, axis=0),
+    }
+
+
 __all__ = [
     "CELL_FREE_PARAMETERS",
     "FEATURE_COLUMNS",
@@ -1087,10 +1365,13 @@ __all__ = [
     "RecoveryDesign",
     "build_calibration_bank",
     "freeze_smallest_passing_budget",
+    "fit_recovery_dataset",
     "generate_synthetic_dataset",
     "load_recovery_design",
+    "mean_probability_nll",
     "resolve_calibration_filter_seeds",
     "schedule_fingerprint",
+    "score_frozen_candidate",
     "score_pf_bank",
     "summarize_pf_calibration",
     "synthetic_dataset_frame",

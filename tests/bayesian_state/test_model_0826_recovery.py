@@ -12,10 +12,13 @@ import yaml
 from src.Bayesian_state.evaluation.model_recovery import (
     build_calibration_bank,
     freeze_smallest_passing_budget,
+    fit_recovery_dataset,
     generate_synthetic_dataset,
     load_recovery_design,
     resolve_calibration_filter_seeds,
+    mean_probability_nll,
     schedule_fingerprint,
+    score_frozen_candidate,
     score_pf_bank,
     summarize_pf_calibration,
     synthetic_dataset_frame,
@@ -528,3 +531,122 @@ def test_pf_calibration_summary_applies_all_rank_winner_rmse_and_mcse_gates() ->
         "particle_count": 64,
         "filter_seed_count": 8,
     }
+
+
+def test_nll_is_computed_after_probability_averaging_on_requested_mask() -> None:
+    probability_runs = np.asarray(
+        [
+            [[0.9, 0.1], [0.9, 0.1], [0.8, 0.2]],
+            [[0.1, 0.9], [0.1, 0.9], [0.4, 0.6]],
+        ],
+        dtype=float,
+    )
+    choices = np.asarray([1, 2, 1])
+    mask = np.asarray([False, True, True])
+
+    total_nll = mean_probability_nll(probability_runs, choices, mask)
+
+    assert total_nll == pytest.approx(-np.log(0.5) - np.log(0.6))
+
+
+def test_module_fit_configures_prefix_only_parameter_selection(
+    tmp_path: Path,
+) -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+    specification = design.module_datasets[0]
+    synthetic_csv = tmp_path / "synthetic.csv"
+    pd.DataFrame(
+        {
+            "iSub": np.full(specification.trial_count, specification.subject_id),
+            "condition": np.ones(specification.trial_count, dtype=int),
+            "iSession": np.ones(specification.trial_count, dtype=int),
+            "iBlock": np.ones(specification.trial_count, dtype=int),
+            "iTrial": np.arange(1, specification.trial_count + 1),
+            "feature1": np.zeros(specification.trial_count),
+            "feature2": np.zeros(specification.trial_count),
+            "feature3": np.zeros(specification.trial_count),
+            "feature4": np.zeros(specification.trial_count),
+            "category": np.ones(specification.trial_count, dtype=int),
+            "choice": np.ones(specification.trial_count, dtype=int),
+            "feedback": np.ones(specification.trial_count),
+        }
+    ).to_csv(synthetic_csv, index=False)
+    captured = {}
+
+    class FakeOptimizer:
+        def __init__(self, config, config_path):
+            captured["config"] = config
+            captured["config_path"] = config_path
+
+        def run(self, subjects, stage, resume):
+            captured["run"] = {
+                "subjects": subjects,
+                "stage": stage,
+                "resume": resume,
+            }
+            return {"best": {"selected": {"best_hyperparams": {}}}}
+
+    result = fit_recovery_dataset(
+        design,
+        specification,
+        candidate_cell="P",
+        synthetic_csv=synthetic_csv,
+        frozen_budget={"particle_count": 64, "filter_seed_count": 8},
+        output_dir=tmp_path / "fit",
+        optimizer_factory=FakeOptimizer,
+    )
+
+    resolved_simulation = yaml.safe_load(
+        Path(result["simulation_config_path"]).read_text(encoding="utf-8")
+    )
+    protocol = resolved_simulation["evaluation_protocol"]
+    assert protocol["train_fraction"] == 0.70
+    assert protocol["optimization_partition"] == "train"
+    assert protocol["simulation_partition"] == "evaluation"
+    assert resolved_simulation["max_trials"] is None
+    assert captured["run"] == {
+        "subjects": [specification.subject_id],
+        "stage": "all",
+        "resume": False,
+    }
+    assert captured["config"]["final_rescore"]["simulation_overrides"][
+        "evaluation_protocol"
+    ]["optimization_partition"] == "train"
+
+
+def test_frozen_module_candidate_runs_full_history_but_scores_only_suffix() -> None:
+    trial_count = 320
+    observed_trial_counts = []
+
+    def fake_pf(**kwargs):
+        observed_trial_counts.append(len(kwargs["choices"]))
+        return SimpleNamespace(
+            marginal_probabilities=np.full((trial_count, 2), 0.5, dtype=float)
+        )
+
+    score = score_frozen_candidate(
+        subject_id=101,
+        stimulus=np.ones((trial_count, 4), dtype=float),
+        choices=np.ones(trial_count, dtype=int),
+        feedback=np.ones(trial_count, dtype=float),
+        base_engine_config=yaml.safe_load(
+            MODEL_0826_ENGINE.read_text(encoding="utf-8")
+        ),
+        candidate_cell="P",
+        fixed_hyperparams={},
+        particle_count=64,
+        filter_seeds=[1011, 1012],
+        evaluation_protocol={
+            "mode": "sequential_holdout",
+            "train_fraction": 0.70,
+            "optimization_partition": "train",
+            "simulation_partition": "evaluation",
+        },
+        pf_runner=fake_pf,
+    )
+
+    assert observed_trial_counts == [320, 320]
+    assert score["score_context"]["train_trial_count"] == 224
+    assert score["score_context"]["evaluation_trial_count"] == 96
+    assert score["score_context"]["score_trial_count"] == 96
+    assert score["total_nll"] == pytest.approx(96 * np.log(2.0))
