@@ -10,9 +10,14 @@ import pytest
 import yaml
 
 from src.Bayesian_state.evaluation.model_recovery import (
+    build_calibration_bank,
+    freeze_smallest_passing_budget,
     generate_synthetic_dataset,
     load_recovery_design,
+    resolve_calibration_filter_seeds,
     schedule_fingerprint,
+    score_pf_bank,
+    summarize_pf_calibration,
     synthetic_dataset_frame,
 )
 from src.Bayesian_state.optimization.model_0826 import (
@@ -361,3 +366,165 @@ def test_synthetic_generation_uses_schedule_not_observed_choice_and_is_resumable
             output_dir=tmp_path / "synthetic",
             generator=fake_generator,
         )
+
+
+def test_calibration_bank_is_eight_fixed_candidates() -> None:
+    anchor = {
+        "M": 3,
+        "gamma": 0.8,
+        "E_C": 0.25,
+        "delta_E": 0.8,
+        "g_0": 0.2,
+        "c_A": 2.0,
+        "c_G": 0.5,
+        "beta_0": 5.0,
+        "eta_plus": 0.04,
+        "eta_minus": 0.15,
+    }
+
+    bank = build_calibration_bank(anchor)
+
+    assert len(bank) == 8
+    assert {
+        (row["truth"]["chi"], row["variant"]) for row in bank
+    } == {
+        (chi, variant)
+        for chi in (0, 1)
+        for variant in ("anchor", "gamma_050", "gains_zero", "beta_slow")
+    }
+    assert len({row["candidate_id"] for row in bank}) == 8
+
+
+def test_calibration_seed_families_are_nested_within_and_disjoint_between_ensembles() -> None:
+    a4 = resolve_calibration_filter_seeds(
+        dataset_id="calibration_subject_101_chi_0",
+        base_seed=9,
+        ensemble="A",
+        count=4,
+    )
+    a8 = resolve_calibration_filter_seeds(
+        dataset_id="calibration_subject_101_chi_0",
+        base_seed=9,
+        ensemble="A",
+        count=8,
+    )
+    b8 = resolve_calibration_filter_seeds(
+        dataset_id="calibration_subject_101_chi_0",
+        base_seed=9,
+        ensemble="B",
+        count=8,
+    )
+
+    assert a8[:4] == a4
+    assert set(a8).isdisjoint(b8)
+
+
+def test_calibration_freezes_smallest_budget_passing_every_gate() -> None:
+    summary = {
+        "budget_decisions": [
+            {"particle_count": 64, "filter_seed_count": 8, "passes_all_gates": True},
+            {"particle_count": 128, "filter_seed_count": 16, "passes_all_gates": True},
+        ]
+    }
+
+    assert freeze_smallest_passing_budget(summary) == {
+        "particle_count": 64,
+        "filter_seed_count": 8,
+    }
+    assert freeze_smallest_passing_budget(
+        {
+            "budget_decisions": [
+                {
+                    "particle_count": 128,
+                    "filter_seed_count": 16,
+                    "passes_all_gates": False,
+                }
+            ]
+        }
+    ) is None
+
+
+def test_pf_bank_scores_nll_after_seed_probability_averaging() -> None:
+    anchor = {
+        "M": 3,
+        "gamma": 0.8,
+        "E_C": 0.25,
+        "delta_E": 0.8,
+        "g_0": 0.2,
+        "c_A": 2.0,
+        "c_G": 0.5,
+        "beta_0": 5.0,
+        "eta_plus": 0.04,
+        "eta_minus": 0.15,
+    }
+    probabilities = {
+        11: np.asarray([[0.9, 0.1], [0.9, 0.1]]),
+        12: np.asarray([[0.1, 0.9], [0.1, 0.9]]),
+    }
+
+    rows = score_pf_bank(
+        dataset_id="calibration_subject_101_chi_0",
+        subject_id=101,
+        stimulus=np.ones((2, 4), dtype=float),
+        choices=np.asarray([1, 2]),
+        feedback=np.asarray([1.0, 1.0]),
+        base_engine_config=yaml.safe_load(
+            MODEL_0826_ENGINE.read_text(encoding="utf-8")
+        ),
+        candidates=build_calibration_bank(anchor)[:1],
+        particle_count=16,
+        filter_seeds=[11, 12],
+        ensemble="A",
+        pf_runner=lambda **kwargs: SimpleNamespace(
+            marginal_probabilities=probabilities[kwargs["filter_seed"]]
+        ),
+    )
+
+    assert rows[0]["total_nll"] == pytest.approx(-2.0 * np.log(0.5))
+    assert np.allclose(rows[0]["mean_probability"], 0.5)
+    assert rows[0]["probability_aggregation"] == "mean_probability_then_nll"
+
+
+def test_pf_calibration_summary_applies_all_rank_winner_rmse_and_mcse_gates() -> None:
+    score_rows = []
+    settings = (
+        (16, 4, "A"),
+        (32, 4, "A"),
+        (64, 4, "A"),
+        (64, 8, "A"),
+        (64, 8, "B"),
+    )
+    for dataset_index in range(6):
+        for particle_count, seed_count, ensemble in settings:
+            for candidate_index in range(8):
+                probability = np.full((4, 2), 0.5, dtype=float)
+                score_rows.append(
+                    {
+                        "dataset_id": f"dataset_{dataset_index}",
+                        "candidate_id": f"candidate_{candidate_index}",
+                        "particle_count": particle_count,
+                        "filter_seed_count": seed_count,
+                        "ensemble": ensemble,
+                        "total_nll": float(candidate_index),
+                        "mean_probability": probability,
+                        "trial_probability_mcse": np.full(4, 0.005),
+                    }
+                )
+    gates = {
+        "dataset_count": 6,
+        "median_adjacent_rank_spearman_min": 0.90,
+        "minimum_adjacent_rank_spearman_min": 0.70,
+        "adjacent_winner_agreement_min_count": 5,
+        "independent_winner_agreement_min_count": 5,
+        "median_probability_rmse_max": 0.015,
+        "trial_probability_mcse_q95_max": 0.020,
+    }
+
+    summary = summarize_pf_calibration(score_rows, gates)
+
+    assert summary["status"] == "passed"
+    assert summary["budget_decisions"][0]["passes_all_gates"] is True
+    assert freeze_smallest_passing_budget(summary) == {
+        "particle_count": 64,
+        "filter_seed_count": 8,
+    }
