@@ -9,6 +9,11 @@ from numbers import Real
 from typing import Any, Mapping, Sequence
 
 from src.Bayesian_state.optimization.artifacts import to_builtin
+from src.Bayesian_state.optimization.objectives import (
+    ObjectiveSpec,
+    compare_objective_values,
+    first_objective_value,
+)
 
 
 def canonical_point_key(point: Mapping[str, Any]) -> str:
@@ -69,6 +74,30 @@ def project_point_to_space(
     return projected
 
 
+def candidate_improves(
+    current_values: Mapping[str, Any],
+    candidate_values: Mapping[str, Any],
+    objective_order: Sequence[ObjectiveSpec],
+    min_delta: float,
+) -> bool:
+    """Return whether a candidate is ordered-better by at least ``min_delta``."""
+
+    threshold = float(min_delta)
+    if threshold < 0.0:
+        raise ValueError("cd.min_delta must be non-negative")
+    if compare_objective_values(
+        candidate_values,
+        current_values,
+        objective_order,
+    ) >= 0:
+        return False
+    improvement = first_objective_value(
+        current_values, objective_order
+    ) - first_objective_value(candidate_values, objective_order)
+    rounding_slack = max(1.0, abs(improvement), abs(threshold)) * 1e-15
+    return bool(improvement + rounding_slack >= threshold)
+
+
 @dataclass(frozen=True)
 class CDV2Config:
     """Validated behavior switches for schema-v2 coordinate descent."""
@@ -115,4 +144,9 @@ class CDV2Config:
         )
 
 
-__all__ = ["CDV2Config", "canonical_point_key", "project_point_to_space"]
+__all__ = [
+    "CDV2Config",
+    "candidate_improves",
+    "canonical_point_key",
+    "project_point_to_space",
+]

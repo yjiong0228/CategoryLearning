@@ -22,7 +22,10 @@ from src.Bayesian_state.optimization.artifacts import (
     to_builtin as _to_builtin,
 )
 from src.Bayesian_state.optimization.search.common import HyperSearchBase
-from src.Bayesian_state.optimization.search.cd_v2 import CDV2Config
+from src.Bayesian_state.optimization.search.cd_v2 import (
+    CDV2Config,
+    candidate_improves,
+)
 from src.Bayesian_state.simulation.config import (
     EVALUATION_ROLE_OPTIMIZATION,
     resolve_evaluation_score_mask,
@@ -145,6 +148,8 @@ class HyperCDOptimizer(HyperSearchBase):
         self.coordinate_order = str(cd_cfg.get("coordinate_order", "shuffle_each_iter"))
         self.patience = int(cd_cfg.get("patience", 2))
         self.min_delta = float(cd_cfg.get("min_delta", 0.0))
+        if not np.isfinite(self.min_delta) or self.min_delta < 0.0:
+            raise ValueError("cd.min_delta must be a non-negative finite number")
         self.init_strategy = str(cd_cfg.get("init_strategy", "random"))
         self.anchor = dict(cd_cfg.get("anchor") or {})
         raw_initial_points = cd_cfg.get("initial_points")
@@ -1140,15 +1145,28 @@ class HyperCDOptimizer(HyperSearchBase):
                     restart_new_evaluations += coord_new_evaluations
                     restart_cache_hits += coord_cache_hits
                     improved_coord = False
-                    if (
-                        candidate_best.combination_index != best_local.combination_index
-                        and compare_objective_values(
+                    candidate_differs = (
+                        candidate_best.combination_index
+                        != best_local.combination_index
+                    )
+                    candidate_is_ordered_better = candidate_differs and (
+                        compare_objective_values(
                             candidate_best.objective_values,
                             best_local.objective_values,
                             self.objective_order,
                         )
                         < 0
-                    ):
+                    )
+                    move_allowed = candidate_differs and candidate_improves(
+                            best_local.objective_values,
+                            candidate_best.objective_values,
+                            self.objective_order,
+                            self.min_delta,
+                        )
+                    min_delta_reject_count = int(
+                        candidate_is_ordered_better and not move_allowed
+                    )
+                    if move_allowed:
                         current = deepcopy(candidate_best.hyperparams)
                         best_local = candidate_best
                         anchor_values = update_anchor_values(
@@ -1189,6 +1207,7 @@ class HyperCDOptimizer(HyperSearchBase):
                                 "new_evaluations": coord_new_evaluations,
                                 "cache_hits": coord_cache_hits,
                                 "anchor_reject_count": anchor_reject_count,
+                                "min_delta_reject_count": min_delta_reject_count,
                                 "value_jobs": value_jobs,
                                 "repeat_jobs": repeat_jobs,
                                 "planned_total_jobs": flat_diag["planned_total_jobs"],
