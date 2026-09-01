@@ -132,15 +132,21 @@ class CDV2Config:
         refine_policy = config.get("refine_policy") or {}
         if not isinstance(refine_policy, Mapping):
             raise ValueError("refine_policy must be a mapping when provided")
+        fine_initialization = str(
+            refine_policy.get("fine_initialization", "coarse_shortlist")
+        ).strip().lower()
+        if fine_initialization != "coarse_shortlist":
+            raise ValueError(
+                "refine_policy.fine_initialization must be 'coarse_shortlist' "
+                "for schema-v2 Hyper-CD"
+            )
         return cls(
             enabled=True,
             resume_mode=resume_mode,
             checkpoint_every_coordinate=bool(
                 cd.get("checkpoint_every_coordinate", True)
             ),
-            fine_initialization=str(
-                refine_policy.get("fine_initialization", "coarse_shortlist")
-            ).strip().lower(),
+            fine_initialization=fine_initialization,
         )
 
 

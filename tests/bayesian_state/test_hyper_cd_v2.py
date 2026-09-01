@@ -49,6 +49,7 @@ def _run_surface_search(
     initial_point: dict[str, int],
     space: dict[str, list[int]],
     min_delta: float,
+    initial_points_override: list[dict[str, int]] | None = None,
 ) -> tuple[CombinationResult, list[dict], Path]:
     optimizer = object.__new__(HyperCDOptimizer)
     optimizer.n_restarts = 1
@@ -96,6 +97,9 @@ def _run_surface_search(
 
     optimizer._evaluate_missing_entries_flat = evaluate_entries
     trace_path = tmp_path / "coordinate_trace.jsonl"
+    search_kwargs = {}
+    if initial_points_override is not None:
+        search_kwargs["initial_points"] = initial_points_override
     _, restarts, best = optimizer._coordinate_descent(
         stage_name="coarse",
         stage_sim_cfg={},
@@ -104,6 +108,7 @@ def _run_surface_search(
         all_combinations_path=tmp_path / "all_combinations.jsonl",
         coordinate_trace_path=trace_path,
         rng=random.Random(7),
+        **search_kwargs,
     )
     return best, restarts, trace_path
 
@@ -125,6 +130,17 @@ def test_schema_v2_rejects_negative_min_delta(tmp_path: Path) -> None:
     config["cd"]["min_delta"] = -0.1
 
     with pytest.raises(ValueError, match="cd.min_delta"):
+        HyperCDOptimizer(config, config_path)
+
+
+def test_schema_v2_rejects_unknown_fine_initialization(tmp_path: Path) -> None:
+    """Catch schema-v2 fine search silently falling back to legacy starts."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    config["refine_policy"] = {"fine_initialization": "random"}
+
+    with pytest.raises(ValueError, match="fine_initialization"):
         HyperCDOptimizer(config, config_path)
 
 
@@ -199,3 +215,117 @@ def test_coordinate_descent_revisits_earlier_coordinate_on_second_sweep(
     assert best.hyperparams == {"x": 1, "y": 1}
     assert restarts[0]["num_improvements"] == 2
     assert restarts[0]["outer_iters_completed"] >= 2
+
+
+def test_fine_initial_points_are_ranked_projected_and_deduplicated() -> None:
+    """Catch fine search restarting randomly or duplicating projected coarse points."""
+
+    optimizer = object.__new__(HyperCDOptimizer)
+    optimizer.config = {"refine_policy": {"top_k": 3}}
+    optimizer.objective_order = resolve_objective_order(
+        {"objective_order": [{"path": "simulation.mean_error"}]}
+    )
+
+    def coarse(index, error, joint, x):
+        return CombinationResult(
+            stage="coarse",
+            combination_index=index,
+            hyperparams={"joint": joint, "x": x},
+            aggregated_error=error,
+            objective_values={"simulation.mean_error": error},
+            subject_metrics={},
+            hyper_candidate_seed=index,
+            restart_id=0,
+            iter_id=1,
+            coordinate="x",
+        )
+
+    combinations = [
+        coarse(1, 0.80, {"M": 3, "chi": 0}, 0.49),
+        coarse(2, 0.90, {"M": 3, "chi": 1}, 0.74),
+        coarse(3, 1.00, {"M": 3, "chi": 0}, 0.51),
+    ]
+    fine_space = {
+        "joint": [{"M": 3, "chi": 0}, {"M": 3, "chi": 1}],
+        "x": [0.50, 0.75],
+    }
+
+    assert optimizer._fine_initial_points(combinations, fine_space) == [
+        {"joint": {"M": 3, "chi": 0}, "x": 0.50},
+        {"joint": {"M": 3, "chi": 1}, "x": 0.75},
+    ]
+
+
+def test_stage_initial_points_override_global_restart_configuration(
+    tmp_path: Path,
+) -> None:
+    """Catch fine restarts accidentally reusing the global coarse starts."""
+
+    _, restarts, _ = _run_surface_search(
+        tmp_path,
+        surface={(0,): 2.0, (1,): 1.0},
+        initial_point={"x": 0},
+        space={"x": [0, 1]},
+        min_delta=0.0,
+        initial_points_override=[{"x": 1}, {"x": 0}],
+    )
+
+    assert len(restarts) == 2
+    assert [row["initial_error"] for row in restarts] == [1.0, 2.0]
+
+
+def test_all_stage_pipeline_passes_projected_coarse_shortlist_to_fine(
+    tmp_path: Path,
+) -> None:
+    """Catch the pipeline computing fine starts but failing to use them."""
+
+    class FineInvocationObserved(RuntimeError):
+        pass
+
+    optimizer = object.__new__(HyperCDOptimizer)
+    optimizer.config = {
+        "stages": {
+            "coarse": {"hyperparam_space": {"x": {"values": [0.49, 0.74]}}},
+            "fine": {"hyperparam_space": {"x": {"values": [0.50, 0.75]}}},
+        },
+        "refine_policy": {"top_k": 1},
+    }
+    optimizer.cd_v2 = cd_v2.CDV2Config(
+        enabled=True,
+        resume_mode="explicit",
+        checkpoint_every_coordinate=True,
+        fine_initialization="coarse_shortlist",
+    )
+    optimizer.hyper_base_seed = 20260901
+    optimizer._prepare_stage_config = lambda stage_name: {}
+    optimizer._combination_counter = 0
+    optimizer.objective_order = resolve_objective_order(
+        {"objective_order": [{"path": "simulation.mean_error"}]}
+    )
+    coarse = CombinationResult(
+        stage="coarse",
+        combination_index=0,
+        hyperparams={"x": 0.49},
+        aggregated_error=0.8,
+        objective_values={"simulation.mean_error": 0.8},
+        subject_metrics={},
+        hyper_candidate_seed=1,
+        restart_id=0,
+        iter_id=1,
+        coordinate="x",
+    )
+
+    def coordinate_descent(**kwargs):
+        if kwargs["stage_name"] == "coarse":
+            return [coarse], [], coarse
+        assert kwargs["initial_points"] == [{"x": 0.50}]
+        raise FineInvocationObserved
+
+    optimizer._coordinate_descent = coordinate_descent
+
+    with pytest.raises(FineInvocationObserved):
+        optimizer._run_pipeline(
+            subjects=[101],
+            stage="all",
+            output_dir=tmp_path,
+        )

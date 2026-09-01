@@ -25,6 +25,8 @@ from src.Bayesian_state.optimization.search.common import HyperSearchBase
 from src.Bayesian_state.optimization.search.cd_v2 import (
     CDV2Config,
     candidate_improves,
+    canonical_point_key,
+    project_point_to_space,
 )
 from src.Bayesian_state.simulation.config import (
     EVALUATION_ROLE_OPTIMIZATION,
@@ -260,6 +262,26 @@ class HyperCDOptimizer(HyperSearchBase):
                 unique.append(value)
             out[name] = unique
         return out
+
+    def _fine_initial_points(
+        self,
+        coarse_combinations: Sequence[CombinationResult],
+        fine_space: Mapping[str, Sequence[Any]],
+    ) -> List[Dict[str, Any]]:
+        """Project the ranked coarse shortlist onto explicit fine support."""
+
+        projected_points: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for point in self._top_k_combinations_from_coarse(coarse_combinations):
+            projected = project_point_to_space(point, fine_space)
+            key = canonical_point_key(projected)
+            if key in seen:
+                continue
+            seen.add(key)
+            projected_points.append(projected)
+        if not projected_points:
+            raise ValueError("fine initialization produced no distinct starting points")
+        return projected_points
 
     def _hyper_candidate_seed(
         self,
@@ -975,6 +997,7 @@ class HyperCDOptimizer(HyperSearchBase):
         all_combinations_path: Path,
         coordinate_trace_path: Path | None = None,
         rng: random.Random | None = None,
+        initial_points: Sequence[Mapping[str, Any]] | None = None,
     ) -> tuple[List[CombinationResult], List[Dict[str, Any]], CombinationResult]:
         if rng is None:
             rng = self._stage_rng(subjects, stage_name)
@@ -984,6 +1007,30 @@ class HyperCDOptimizer(HyperSearchBase):
         restart_local_bests: List[CombinationResult] = []
         cache: Dict[str, CombinationResult] = {}
         coords_base = list(space.keys())
+        stage_initial_points: List[Dict[str, Any]] | None = None
+        if initial_points is not None:
+            if not initial_points:
+                raise ValueError("stage initial_points cannot be empty")
+            stage_initial_points = []
+            for index, raw_point in enumerate(initial_points):
+                point = deepcopy(dict(raw_point))
+                if set(point) != set(space):
+                    raise ValueError(
+                        f"stage initial_points[{index}] must contain exactly "
+                        "the configured coordinates"
+                    )
+                for name, value in point.items():
+                    if value not in space[name]:
+                        raise ValueError(
+                            f"stage initial_points[{index}].{name} is outside "
+                            "its configured candidate values"
+                        )
+                stage_initial_points.append(point)
+        restart_count = (
+            len(stage_initial_points)
+            if stage_initial_points is not None
+            else self.n_restarts
+        )
 
         def eval_with_cache(
             point: Dict[str, Any],
@@ -1017,8 +1064,12 @@ class HyperCDOptimizer(HyperSearchBase):
             self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
             return result, True
 
-        for restart_id in range(self.n_restarts):
-            current = self._init_point(space, rng, restart_id)
+        for restart_id in range(restart_count):
+            current = (
+                deepcopy(stage_initial_points[restart_id])
+                if stage_initial_points is not None
+                else self._init_point(space, rng, restart_id)
+            )
             restart_coords = list(coords_base)
             if self.coordinate_order == "shuffle_per_restart":
                 rng.shuffle(restart_coords)
@@ -1321,6 +1372,7 @@ class HyperCDOptimizer(HyperSearchBase):
         stage_restarts: Dict[str, Any] = {}
         for stage_name in stages_to_run:
             stage_sim_cfg = self._prepare_stage_config(stage_name)
+            stage_initial_points: List[Dict[str, Any]] | None = None
             if stage_name == "fine":
                 fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
                 if "hyperparam_space" in fine_stage_cfg:
@@ -1333,10 +1385,23 @@ class HyperCDOptimizer(HyperSearchBase):
                     coarse_top = self._top_k_combinations_from_coarse(prior)
                     coarse_specs = self._param_specs_for_stage("coarse")
                     space = self._space_from_combinations(coarse_top, coarse_specs)
+                if (
+                    self.cd_v2.enabled
+                    and self.cd_v2.fine_initialization == "coarse_shortlist"
+                ):
+                    prior = stage_combinations.get("coarse")
+                    if prior is None:
+                        raise ValueError(
+                            "schema-v2 fine initialization requires coarse results"
+                        )
+                    stage_initial_points = self._fine_initial_points(prior, space)
             else:
                 specs = self._param_specs_for_stage(stage_name)
                 space = {name: self._hyperparam_values(spec) for name, spec in specs.items()}
 
+            search_kwargs: Dict[str, Any] = {}
+            if stage_initial_points is not None:
+                search_kwargs["initial_points"] = stage_initial_points
             combinations, restarts, _ = self._coordinate_descent(
                 stage_name=stage_name,
                 stage_sim_cfg=stage_sim_cfg,
@@ -1345,6 +1410,7 @@ class HyperCDOptimizer(HyperSearchBase):
                 all_combinations_path=all_combinations_path,
                 coordinate_trace_path=coordinate_trace_path,
                 rng=self._stage_rng(subjects, stage_name),
+                **search_kwargs,
             )
             stage_combinations[stage_name] = combinations
             stage_restarts[stage_name] = restarts
