@@ -85,6 +85,8 @@ results/subjects/*.json + optional compressed run streams
 | `run_hyper_then_simulation.py` | Hyper 搜索、生成 subjectwise simulation YAML、再通过公开 API 运行 simulation |
 | `run_hyper_evaluation.py` | 已完成 Hyper-CD 输出的收敛和选择诊断 |
 | `run_model_evaluation.py` | 已完成 simulation 输出的统一后处理 |
+| `run_autonomous_trajectory_evaluation.py` | 冻结参数下生成完整自主行为轨迹，并输出形态分布、medoid、轨迹聚类与持续掌握起点 |
+| `run_internal_cognitive_trajectory_evaluation.py` | 条件于被试完整观察历史，汇总多种子 PF 完整祖先路径、形态 archetype 与 genealogy 充分性诊断 |
 | `__init__.py` | package marker；公共对象应从职责明确的子包显式导入 |
 
 更详细的说明见各目录 README：

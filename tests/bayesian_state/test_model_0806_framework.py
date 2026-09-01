@@ -1917,6 +1917,28 @@ def test_particle_backend_uses_common_inference_result_contract():
         "swap_event",
     ):
         assert np.asarray(ancestral[key]).shape == (n_particles, n_trials)
+    n_hypotheses = np.asarray(
+        result.state_probabilities["hypothesis_prior"]
+    ).shape[1]
+    prior_paths = np.asarray(ancestral["hypothesis_prior"], dtype=float)
+    posterior_paths = np.asarray(
+        ancestral["hypothesis_posterior"], dtype=float
+    )
+    active_paths = np.asarray(
+        ancestral["active_hypothesis_mask"], dtype=bool
+    )
+    assert prior_paths.shape == posterior_paths.shape == active_paths.shape == (
+        n_particles,
+        n_trials,
+        n_hypotheses,
+    )
+    np.testing.assert_allclose(prior_paths.sum(axis=2), 1.0, atol=1e-6)
+    np.testing.assert_allclose(posterior_paths.sum(axis=2), 1.0, atol=1e-6)
+    assert np.all(prior_paths[~active_paths] <= 1e-6)
+    replacement = np.asarray(
+        ancestral["replacement_fraction"], dtype=float
+    )
+    assert replacement.shape == (n_particles, n_trials)
     np.testing.assert_allclose(
         np.asarray(ancestral["strategy_exploit"])
         + np.asarray(ancestral["strategy_local_explore"])

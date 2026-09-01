@@ -887,6 +887,43 @@ def run_state_model_particle_filter(
         if audit_choice_transmission
         else None
     )
+    # Full-state arrays are diagnostic-only. Float32/bool storage keeps the
+    # path audit tractable without changing the fitted filter calculations,
+    # which continue to use the native engine precision above.
+    audit_particle_hypothesis_prior = (
+        np.zeros(
+            (n_trials, n_particles, n_hypotheses),
+            dtype=np.float32,
+        )
+        if audit_choice_transmission
+        else None
+    )
+    audit_particle_hypothesis_posterior = (
+        np.zeros(
+            (n_trials, n_particles, n_hypotheses),
+            dtype=np.float32,
+        )
+        if audit_choice_transmission
+        else None
+    )
+    audit_particle_active_hypothesis_mask = (
+        np.zeros(
+            (n_trials, n_particles, n_hypotheses),
+            dtype=bool,
+        )
+        if audit_choice_transmission
+        else None
+    )
+    audit_particle_replacement_fraction = (
+        np.zeros((n_trials, n_particles), dtype=np.float32)
+        if audit_choice_transmission
+        else None
+    )
+    audit_particle_executed_beta = (
+        np.full((n_trials, n_particles), np.nan, dtype=np.float32)
+        if audit_choice_transmission and persistent_execution_enabled
+        else None
+    )
     audit_particle_executed_hypothesis = (
         np.full((n_trials, n_particles), -1, dtype=int)
         if audit_choice_transmission and persistent_execution_enabled
@@ -1247,6 +1284,20 @@ def run_state_model_particle_filter(
                     (1.0 - exploration) * particle_predictions[particle_index]
                     + exploration * np.full(2, 0.5, dtype=float)
                 )
+
+        if audit_choice_transmission:
+            assert audit_particle_hypothesis_prior is not None
+            assert audit_particle_active_hypothesis_mask is not None
+            assert audit_particle_replacement_fraction is not None
+            audit_particle_hypothesis_prior[trial_index] = particle_priors
+            audit_particle_active_hypothesis_mask[trial_index] = (
+                particle_active > 0.0
+            )
+            audit_particle_replacement_fraction[trial_index] = (
+                replacement_fractions
+            )
+            if audit_particle_executed_beta is not None:
+                audit_particle_executed_beta[trial_index] = executed_betas
 
         pre_ess[trial_index] = effective_sample_size(weights)
         marginal_hypothesis_prior[trial_index] = np.sum(
@@ -1631,6 +1682,10 @@ def run_state_model_particle_filter(
                 float(observed_feedback[trial_index]),
                 update_state=update_occurs,
             )
+            if audit_particle_hypothesis_posterior is not None:
+                audit_particle_hypothesis_posterior[
+                    trial_index, particle_index
+                ] = _normalize(np.asarray(engine.posterior, dtype=float))
             if orientation_enabled:
                 assert post_orientation_joint is not None
                 assert post_orientation_probability is not None
@@ -1714,6 +1769,10 @@ def run_state_model_particle_filter(
         assert audit_particle_search_range is not None
         assert audit_particle_failure_pressure is not None
         assert audit_particle_mastery_evidence is not None
+        assert audit_particle_hypothesis_prior is not None
+        assert audit_particle_hypothesis_posterior is not None
+        assert audit_particle_active_hypothesis_mask is not None
+        assert audit_particle_replacement_fraction is not None
         path_indices = _trace_ancestral_indices(audit_parent_indices)
         trial_rows = np.arange(n_trials, dtype=int)[None, :]
 
@@ -1739,8 +1798,19 @@ def run_state_model_particle_filter(
             "search_range": trace(audit_particle_search_range),
             "failure_pressure": trace(audit_particle_failure_pressure),
             "mastery_evidence": trace(audit_particle_mastery_evidence),
+            "hypothesis_prior": trace(audit_particle_hypothesis_prior),
+            "hypothesis_posterior": trace(
+                audit_particle_hypothesis_posterior
+            ),
+            "active_hypothesis_mask": trace(
+                audit_particle_active_hypothesis_mask
+            ),
+            "replacement_fraction": trace(
+                audit_particle_replacement_fraction
+            ),
         }
         if audit_particle_executed_hypothesis is not None:
+            assert audit_particle_executed_beta is not None
             audit_ancestral_paths.update(
                 {
                     "executed_hypothesis": trace(
@@ -1752,6 +1822,7 @@ def run_state_model_particle_filter(
                     "execution_dwell_trials": trace(
                         audit_particle_execution_dwell_trials
                     ),
+                    "executed_beta": trace(audit_particle_executed_beta),
                 }
             )
 

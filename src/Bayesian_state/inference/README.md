@@ -35,6 +35,11 @@ particle weights 仍只由原 fitted readout 更新。审计还记录每次重�
 posterior-weighted 粒子向前回溯完整的 prediction/strategy 祖先路径。该开关默认关闭，不应加入
 正式拟合配置。
 
+该审计还可保存每条 ancestry 的完整 pre-choice prior、post-feedback posterior、active mask、
+replacement fraction、executed hypothesis 与 executed beta，供独立评价程序重建连贯的内部状态
+路径。这些字段仅在 analysis-only 开关下分配和回溯；它们不参与 choice likelihood、
+particle weights、重采样决策或模型状态更新。
+
 当 persistent execution 已启用时，审计同时返回执行规则在 strategy confidence 变换前后的
 choice probability。两者共享完全相同的 pre-choice 粒子状态和权重，可用于估计纯读出层的即时
 配对贡献；由于替代读出没有反过来更新后续粒子权重，这仍是条件分解，不是完整反事实模型拟合。

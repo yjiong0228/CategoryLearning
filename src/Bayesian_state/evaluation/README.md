@@ -11,6 +11,8 @@ oral/model alignment 图表。它不参与模型拟合，也不改变 hyperparam
 | `evaluator.py` | `ModelEvaluator` 通用评价门面：accuracy、choice Brier、posterior/prior、beta、行为 PPC 和 trajectory-rank 图表 |
 | `transition.py` | 仅在相应日志存在时使用的 dynamic-discrete、dynamic-continuous 与 active-set 诊断 |
 | `fft_clustering.py` | 保存后的 run-level 轨迹 FFT 聚类 |
+| `autonomous_trajectories.py` | 冻结参数下的完整自主学习轨迹、whole-curve 中央区域、medoid、形态聚类与持续掌握起点 |
+| `internal_cognitive_trajectories.py` | 条件于被试完整观察历史的 PF 完整祖先路径、形态 archetype 与 genealogy 充分性诊断 |
 | `oral/mapping.py` | oral center/region 到共享 hypothesis space 的映射 |
 | `oral/scoring.py` | latest-by-category oral state、oral/model 分布构造及五类对齐计算 |
 | `oral/reporting.py` | 对齐结果汇总、CSV 保存与绘图 |
@@ -41,6 +43,63 @@ cache/subject_<id>_raw_runs.gz   # optional
 
 `run_model_evaluation.py` 将 subject JSON 规范化为 `ModelEvaluator` 使用的 result mapping，并在
 `<input-dir>/evaluation/` 下写图、CSV 和 `evaluation_manifest.json`。
+
+自主轨迹形态评价使用独立入口，避免把生成性轨迹分布混入条件于真实历史的标准 accuracy band：
+
+```bash
+python -m src.Bayesian_state.run_autonomous_trajectory_evaluation \
+  --config configs/simulation_cfg/example.yaml \
+  --subject 101 \
+  --rollouts 500 \
+  --output-dir results/example/model_evaluation/autonomous_trajectories
+```
+
+每个 rollout 从首试次开始自主采样 choice，接收该 choice 对应的任务 feedback，并用自己的历史
+更新后续状态。主图保留若干完整轨迹、whole-curve medoid 与按完整曲线距离选择的 50%/90%
+中央轨迹区域，同时给出自动选择 2--4 类的形态 medoid 和持续掌握起点分布。配套 NPZ 保存所有
+choice、feedback、预期正确概率和 rolling curve，CSV 保存逐 rollout 汇总与主图源数据，manifest
+记录冻结配置 hash、随机种子、全部试次数及不确定性边界。输出目录必须是新目录，入口拒绝覆盖
+现有结果。
+
+观察历史条件下的内部认知路径使用另一个独立入口：
+
+```bash
+python -m src.Bayesian_state.run_internal_cognitive_trajectory_evaluation \
+  --config results/example/primary_config.yaml \
+  --subject 101 \
+  --particles 128 --seed-count 16 --path-draws 500 \
+  --output-dir results/example/model_evaluation/internal_cognitive_trajectories_v1
+```
+
+该分析用真实 choice/feedback 顺序运行多个独立 PF seeds，同时保存 online filtering 输出和
+observed-history-conditioned complete paths。后者把每个 seed 的终点粒子权重规范为相等 seed
+质量，再系统抽取 500 条等权完整 ancestry；路径按 executed rule、search event、H0 prior 和选择
+读出组成的 whole-path distance 聚类。importance weights 只承担推断角色，不被解释为认知机制。
+
+这不是 FFBSi、PGAS 或独立的平滑后验采样器，而是 bootstrap-PF terminal genealogy 的多种子
+近似。`genealogy_diagnostics.png` 必须与 archetype 同时解释：早期 effective ancestors 太少时，
+输出会将路径比例标为 illustrative，而不能当作校准后的被试内部轨迹概率。所有图和源数据覆盖
+完整试次；输出目录必须是新目录，入口拒绝覆盖已有结果。
+
+已保存的完整路径还可生成一个不含逐 trial 粒子平均的 model-versus-human 对照：
+
+```python
+from src.Bayesian_state.evaluation.internal_cognitive_trajectories import (
+    render_best_complete_path_model_human_from_artifacts,
+)
+
+render_best_complete_path_model_human_from_artifacts(
+    input_dir="results/example/model_evaluation/internal_cognitive_trajectories_v1",
+    output_dir="results/example/model_evaluation/internal_cognitive_trajectories_v1/model_vs_human_v1",
+    window_size=16,
+)
+```
+
+该诊断在所有已保存的完整 genealogy 中，以整段 observed-choice NLL 最小为准只选择一次路径；
+随后同一条路径从首试次用到末试次，不允许逐 trial 换粒子或重新加权。主图直接叠加被试 rolling
+accuracy 与该路径的 rolling `P(correct)`，CSV 报告全序列 NLL、rolling RMSE/相关和平均准确率。
+由于相同320次选择同时参与 PF 条件化和最佳路径选择，这些量是描述性的 in-sample fit，不是
+held-out prediction；输出目录仍必须是新目录。
 
 ## 日志依赖
 
@@ -79,6 +138,10 @@ particle backend 保存的是 `marginal_prior`、`marginal_active_probability` �
   Monte-Carlo 数值误差，也不是 autonomous rollout。
 - `trajectory`：保留跨单条 latent-trajectory runs 的 ensemble band，并在标题和图例中显式标为
   trajectory band，避免与 PF behavioral interval 混淆。
+
+上述标准 band 与自主轨迹形态评价回答不同问题。自主评价不读取真实 choice/feedback 作为下一
+试次历史，也不把多次 PF 重跑的有限粒子误差当作认知轨迹分布。其固定被试参数下的 ensemble
+只包含潜在过程与自主 choice 的随机性；未包含参数不确定性。
 
 PF 行为抽样数量和固定随机种子可通过 `--accuracy-band-draws` 与
 `--accuracy-band-seed` 设置，并记录在 summary CSV 中。
