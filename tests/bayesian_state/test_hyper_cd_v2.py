@@ -15,6 +15,7 @@ from src.Bayesian_state.optimization.search.coordinate_descent import (
 from src.Bayesian_state.optimization.search import cd_v2
 from src.Bayesian_state.optimization.search.common import HyperSearchBase
 from src.Bayesian_state.optimization.objectives import resolve_objective_order
+from src.Bayesian_state.utils.seeding import derive_hyper_candidate_seed, stable_seed
 
 
 def _minimal_hyper_config(tmp_path: Path) -> tuple[dict, Path]:
@@ -629,3 +630,249 @@ def test_hyper_optimization_cli_accepts_explicit_resume(monkeypatch) -> None:
     args = optimization_cli.parse_args()
 
     assert args.resume is True
+
+
+def test_final_rescore_uses_independent_crn_seed_family_and_selects_its_winner(
+    tmp_path: Path,
+) -> None:
+    """Catch the noisy search winner bypassing independent high-budget rescoring."""
+
+    optimizer = object.__new__(HyperCDOptimizer)
+    optimizer.config = {
+        "final_rescore": {
+            "enabled": True,
+            "shortlist_size": 2,
+            "seed_family": "independent_v1",
+            "simulation_overrides": {
+                "simulation_repeats": 8,
+                "repeat_aggregation": "mean_probability",
+            },
+        }
+    }
+    optimizer.base_sim_config = {
+        "simulation_repeats": 2,
+        "repeat_aggregation": "mean_loss",
+    }
+    optimizer.objective_order = resolve_objective_order(
+        {"objective_order": [{"path": "simulation.mean_error"}]}
+    )
+    optimizer.save_level = "compact"
+    optimizer._combination_counter = 2
+
+    search_rows = [
+        CombinationResult(
+            stage="fine",
+            combination_index=index,
+            hyperparams={"x": value},
+            aggregated_error=error,
+            objective_values={"simulation.mean_error": error},
+            subject_metrics={},
+            hyper_candidate_seed=index + 1,
+            restart_id=0,
+            iter_id=1,
+            coordinate="x",
+        )
+        for index, value, error in ((0, 0, 0.10), (1, 1, 0.20))
+    ]
+    observed_calls = []
+
+    def fake_evaluate(**kwargs):
+        observed_calls.append(kwargs)
+        value = int(kwargs["point"]["x"])
+        error = {0: 0.40, 1: 0.15}[value]
+        return CombinationResult(
+            stage="final_rescore",
+            combination_index=int(kwargs["combination_index"]),
+            hyperparams=dict(kwargs["point"]),
+            aggregated_error=error,
+            objective_values={"simulation.mean_error": error},
+            subject_metrics={101: {"simulation": {"mean_error": error}}},
+            hyper_candidate_seed=100 + value,
+            restart_id=-1,
+            iter_id=0,
+            coordinate="final_rescore",
+        )
+
+    optimizer._evaluate_point_with_index = fake_evaluate
+
+    rows, winner, context = optimizer._run_final_rescore(
+        search_rows,
+        subjects=[101],
+        output_path=tmp_path / "final_rescore.jsonl",
+    )
+
+    assert [row.hyperparams for row in rows] == [{"x": 0}, {"x": 1}]
+    assert winner.hyperparams == {"x": 1}
+    assert context["seed_family"] == "independent_v1"
+    assert context["search_best_combination_index"] == 0
+    assert all(call["stage_name"] == "final_rescore" for call in observed_calls)
+    assert all(call["seed_family"] == "independent_v1" for call in observed_calls)
+    assert all(call["force_common_random_numbers"] is True for call in observed_calls)
+    assert all(
+        call["stage_sim_cfg"]["repeat_aggregation"] == "mean_probability"
+        for call in observed_calls
+    )
+    records = HyperSearchBase._load_jsonl_records(
+        tmp_path / "final_rescore.jsonl"
+    )
+    assert all("subject_metrics" in record for record in records)
+
+    def unexpected_evaluation(**kwargs):
+        raise AssertionError("cached final-rescore point was evaluated again")
+
+    optimizer._evaluate_point_with_index = unexpected_evaluation
+    resumed_rows, resumed_winner, _ = optimizer._run_final_rescore(
+        search_rows,
+        subjects=[101],
+        output_path=tmp_path / "final_rescore.jsonl",
+        resume=True,
+    )
+    assert [row.hyperparams for row in resumed_rows] == [{"x": 0}, {"x": 1}]
+    assert resumed_winner.hyperparams == {"x": 1}
+
+
+def test_pipeline_exposes_search_best_but_selects_final_rescore_best(
+    tmp_path: Path,
+) -> None:
+    """Catch the final payload relabeling the low-budget search winner as final."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    config["final_rescore"] = {
+        "enabled": True,
+        "shortlist_size": 2,
+        "seed_family": "independent_v1",
+        "simulation_overrides": {
+            "simulation_repeats": 8,
+            "repeat_aggregation": "mean_probability",
+        },
+    }
+    optimizer = HyperCDOptimizer(config, config_path)
+
+    def row(index, value, error, stage, with_metrics=False):
+        metrics = {}
+        if with_metrics:
+            metrics = {
+                101: {
+                    "simulation": {"mean_error": error},
+                    "statistics": {},
+                    "objectives": {
+                        "values": {"simulation.mean_error": error}
+                    },
+                }
+            }
+        return CombinationResult(
+            stage=stage,
+            combination_index=index,
+            hyperparams={"engine.value": value},
+            aggregated_error=error,
+            objective_values={"simulation.mean_error": error},
+            subject_metrics=metrics,
+            hyper_candidate_seed=index + 1,
+            restart_id=0 if stage == "coarse" else -1,
+            iter_id=1 if stage == "coarse" else 0,
+            coordinate="engine.value" if stage == "coarse" else "final_rescore",
+        )
+
+    search_rows = [
+        row(0, 0, 0.10, "coarse"),
+        row(1, 1, 0.20, "coarse"),
+    ]
+    final_rows = [
+        row(2, 0, 0.40, "final_rescore", with_metrics=True),
+        row(3, 1, 0.15, "final_rescore", with_metrics=True),
+    ]
+
+    optimizer._coordinate_descent = lambda **kwargs: (
+        search_rows,
+        [],
+        search_rows[0],
+    )
+
+    def fake_final_rescore(search_combinations, **kwargs):
+        assert search_combinations == search_rows
+        assert kwargs["output_path"].name == "final_rescore.jsonl"
+        return final_rows, final_rows[1], {
+            "enabled": True,
+            "seed_family": "independent_v1",
+            "search_best_combination_index": 0,
+            "final_rescore_best_combination_index": 3,
+        }
+
+    optimizer._run_final_rescore = fake_final_rescore
+
+    result = optimizer._run_pipeline(
+        subjects=[101],
+        stage="coarse",
+        output_dir=tmp_path / "pipeline",
+    )
+
+    assert result["best"]["selected"]["best_hyperparams"] == {
+        "engine.value": 1
+    }
+    assert result["best"]["search_best"]["hyperparams"] == {
+        "engine.value": 0
+    }
+    assert result["best"]["final_rescore_best"]["hyperparams"] == {
+        "engine.value": 1
+    }
+    assert result["best"]["artifacts"]["final_rescore"].endswith(
+        "final_rescore.jsonl"
+    )
+
+
+def test_final_rescore_rejects_mean_loss_before_search_starts(
+    tmp_path: Path,
+) -> None:
+    """Catch an expensive rescore averaging scalar PF losses instead of probabilities."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    config["final_rescore"] = {
+        "enabled": True,
+        "shortlist_size": 2,
+        "seed_family": "independent_v1",
+        "simulation_overrides": {
+            "simulation_repeats": 8,
+            "repeat_aggregation": "mean_loss",
+        },
+    }
+
+    with pytest.raises(ValueError, match="mean_probability"):
+        HyperCDOptimizer(config, config_path)
+
+
+def test_optional_final_rescore_seed_family_preserves_legacy_seed_paths() -> None:
+    """Catch optional rescore metadata perturbing pre-v2 search random streams."""
+
+    optimizer = object.__new__(HyperCDOptimizer)
+    optimizer.hyper_base_seed = 17
+    optimizer.common_random_numbers_within_candidate_comparisons = True
+    point = {"x": 1}
+
+    assert optimizer._hyper_candidate_seed(
+        "coarse", 2, point, 0, 1, "x"
+    ) == derive_hyper_candidate_seed(
+        hyper_base_seed=17,
+        stage="coarse",
+        combination_index=2,
+        hyperparams=point,
+        extra_context={
+            "restart_id": 0,
+            "iter_id": 1,
+            "coordinate": "x",
+        },
+    )
+    assert optimizer._simulation_point_seed(
+        stage_name="coarse",
+        hyper_candidate_seed=123,
+        subject_id=101,
+        point=point,
+    ) == stable_seed(
+        {
+            "seed_role": "hyper_cd_stage_common_random_numbers",
+            "hyper_base_seed": 17,
+            "stage": "coarse",
+            "subject_id": 101,
+        }
+    )

@@ -479,6 +479,8 @@ def build_subject_artifacts(
     *,
     include_cd: bool = False,
     include_accepted: bool = False,
+    include_checkpoint: bool = False,
+    include_final_rescore: bool = False,
 ) -> dict[str, str]:
     artifacts = {
         "output_dir": str(subject_dir),
@@ -491,6 +493,10 @@ def build_subject_artifacts(
     if include_cd:
         artifacts["restart_summary"] = str(subject_dir / "restart_summary.json")
         artifacts["coordinate_trace"] = str(subject_dir / "coordinate_trace.jsonl")
+    if include_checkpoint:
+        artifacts["search_checkpoint"] = str(subject_dir / "search_checkpoint.json")
+    if include_final_rescore:
+        artifacts["final_rescore"] = str(subject_dir / "final_rescore.jsonl")
     return artifacts
 
 

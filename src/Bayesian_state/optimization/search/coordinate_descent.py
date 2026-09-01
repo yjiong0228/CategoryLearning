@@ -21,7 +21,7 @@ from src.Bayesian_state.optimization.artifacts import (
     compact_hyperparams,
     to_builtin as _to_builtin,
 )
-from src.Bayesian_state.optimization.search.common import HyperSearchBase
+from src.Bayesian_state.optimization.search.common import HyperSearchBase, deep_update
 from src.Bayesian_state.optimization.search.cd_v2 import (
     CDV2Config,
     atomic_write_checkpoint,
@@ -188,6 +188,9 @@ class HyperCDOptimizer(HyperSearchBase):
         self.statistics_config = self._resolve_statistics_config(
             self.config.get("statistics_config")
         )
+        self.final_rescore_config = self._validate_final_rescore_config(
+            self.config.get("final_rescore")
+        )
         if self.coordinate_order not in {"shuffle_each_iter", "shuffle_per_restart", "fixed"}:
             raise ValueError("cd.coordinate_order must be 'shuffle_each_iter', 'shuffle_per_restart', or 'fixed'")
         if self.init_strategy not in {"random", "anchor"}:
@@ -197,6 +200,34 @@ class HyperCDOptimizer(HyperSearchBase):
 
     def _resolve_statistics_config(self, raw: Any) -> Dict[str, Any]:
         return resolve_simulation_stat_config(raw, setting_name="statistics_config")
+
+    def _validate_final_rescore_config(
+        self,
+        raw: Any,
+    ) -> Dict[str, Any] | None:
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise ValueError("final_rescore must be a mapping")
+        config = deepcopy(dict(raw))
+        if not bool(config.get("enabled", False)):
+            return config
+        self._positive_int(
+            config.get("shortlist_size", 1),
+            "final_rescore.shortlist_size",
+        )
+        if not str(config.get("seed_family", "")).strip():
+            raise ValueError("final_rescore.seed_family must be a non-empty string")
+        overrides = config.get("simulation_overrides") or {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError("final_rescore.simulation_overrides must be a mapping")
+        stage_sim_cfg = deep_update(self.base_sim_config, overrides)
+        resolve_simulation_repeats(stage_sim_cfg)
+        if resolve_repeat_aggregation(stage_sim_cfg) != "mean_probability":
+            raise ValueError(
+                "final_rescore must use repeat_aggregation='mean_probability'"
+            )
+        return config
 
     @staticmethod
     def _positive_int(value: Any, name: str) -> int:
@@ -294,17 +325,25 @@ class HyperCDOptimizer(HyperSearchBase):
         restart_id: int,
         iter_id: int,
         coordinate: str,
+        seed_family: str | None = None,
     ) -> int:
+        extra_context: Dict[str, Any] = {
+            "restart_id": int(restart_id),
+            "iter_id": int(iter_id),
+            "coordinate": str(coordinate),
+        }
+        if seed_family is not None:
+            extra_context["seed_family"] = seed_family
         return derive_hyper_candidate_seed(
             hyper_base_seed=self.hyper_base_seed,
-            stage=stage_name,
+            stage=(
+                f"{stage_name}:{seed_family}"
+                if seed_family is not None
+                else stage_name
+            ),
             combination_index=combination_index,
             hyperparams=point,
-            extra_context={
-                "restart_id": int(restart_id),
-                "iter_id": int(iter_id),
-                "coordinate": str(coordinate),
-            },
+            extra_context=extra_context,
         )
 
     def _stage_rng(self, subjects: Sequence[int], stage_name: str) -> random.Random:
@@ -325,22 +364,32 @@ class HyperCDOptimizer(HyperSearchBase):
         hyper_candidate_seed: int,
         subject_id: int,
         point: Mapping[str, Any],
+        force_common_random_numbers: bool | None = None,
+        seed_family: str | None = None,
     ) -> int:
         """Resolve legacy candidate seeds or stage-paired common random numbers."""
 
-        if getattr(
-            self,
-            "common_random_numbers_within_candidate_comparisons",
-            False,
-        ):
-            return stable_seed(
-                {
-                    "seed_role": "hyper_cd_stage_common_random_numbers",
-                    "hyper_base_seed": int(self.hyper_base_seed),
-                    "stage": str(stage_name),
-                    "subject_id": int(subject_id),
-                }
+        use_common_random_numbers = (
+            bool(force_common_random_numbers)
+            if force_common_random_numbers is not None
+            else bool(
+                getattr(
+                    self,
+                    "common_random_numbers_within_candidate_comparisons",
+                    False,
+                )
             )
+        )
+        if use_common_random_numbers:
+            seed_context: Dict[str, Any] = {
+                "seed_role": "hyper_cd_stage_common_random_numbers",
+                "hyper_base_seed": int(self.hyper_base_seed),
+                "stage": str(stage_name),
+                "subject_id": int(subject_id),
+            }
+            if seed_family is not None:
+                seed_context["seed_family"] = seed_family
+            return stable_seed(seed_context)
         return derive_simulation_point_seed(
             int(hyper_candidate_seed),
             int(subject_id),
@@ -367,6 +416,8 @@ class HyperCDOptimizer(HyperSearchBase):
         hyper_candidate_seed: int,
         n_jobs: int,
         evaluation_protocol: Mapping[str, Any] | None,
+        force_common_random_numbers: bool | None = None,
+        seed_family: str | None = None,
     ):
         subject_frame = runner._get_subject_frame(int(subject_id), float(stop_at))
         condition = runner._get_condition_value(subject_frame)
@@ -382,6 +433,8 @@ class HyperCDOptimizer(HyperSearchBase):
             hyper_candidate_seed=int(hyper_candidate_seed),
             subject_id=int(subject_id),
             point=point,
+            force_common_random_numbers=force_common_random_numbers,
+            seed_family=seed_family,
         )
 
         tasks = []
@@ -454,6 +507,148 @@ class HyperCDOptimizer(HyperSearchBase):
         )
         return selected, context
 
+    def _run_final_rescore(
+        self,
+        search_combinations: Sequence[CombinationResult],
+        *,
+        subjects: Sequence[int],
+        output_path: Path,
+        resume: bool = False,
+        checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> tuple[List[CombinationResult], CombinationResult, Dict[str, Any]]:
+        """Rescore a unique search shortlist with independent, paired PF seeds."""
+
+        raw_config = self.config.get("final_rescore") or {}
+        if not isinstance(raw_config, Mapping) or not bool(
+            raw_config.get("enabled", False)
+        ):
+            raise ValueError("final_rescore must be enabled before rescoring")
+        shortlist_size = self._positive_int(
+            raw_config.get("shortlist_size", 1),
+            "final_rescore.shortlist_size",
+        )
+        seed_family = str(raw_config.get("seed_family", "")).strip()
+        if not seed_family:
+            raise ValueError("final_rescore.seed_family must be a non-empty string")
+        overrides = raw_config.get("simulation_overrides") or {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError("final_rescore.simulation_overrides must be a mapping")
+        stage_sim_cfg = deep_update(self.base_sim_config, overrides)
+        repeat_aggregation = resolve_repeat_aggregation(stage_sim_cfg)
+        if repeat_aggregation != "mean_probability":
+            raise ValueError(
+                "final_rescore must use repeat_aggregation='mean_probability'"
+            )
+
+        ranked = rank_by_objectives(
+            search_combinations,
+            lambda combination: combination.objective_values,
+            self.objective_order,
+            tie_breaker=lambda combination: (
+                int(combination.restart_id),
+                int(combination.combination_index),
+            ),
+        )
+        shortlist: List[CombinationResult] = []
+        seen: set[str] = set()
+        for combination in ranked:
+            key = canonical_point_key(combination.hyperparams)
+            if key in seen:
+                continue
+            seen.add(key)
+            shortlist.append(combination)
+            if len(shortlist) >= shortlist_size:
+                break
+        if not shortlist:
+            raise ValueError("final_rescore shortlist cannot be empty")
+        search_best = shortlist[0]
+
+        cached: Dict[str, CombinationResult] = {}
+        if resume and output_path.is_file():
+            records = self._load_jsonl_records(output_path, repair_trailing=True)
+            for record in records:
+                if record.get("seed_family") != seed_family:
+                    raise ValueError(
+                        "final_rescore cache seed_family does not match"
+                    )
+                combination = self._combination_from_record(record, output_path)
+                key = canonical_point_key(combination.hyperparams)
+                if key in cached:
+                    raise ValueError(
+                        "final_rescore cache contains duplicate parameter points"
+                    )
+                cached[key] = combination
+            if cached:
+                self._combination_counter = max(
+                    self._combination_counter,
+                    max(row.combination_index for row in cached.values()) + 1,
+                )
+        elif output_path.exists():
+            raise FileExistsError(
+                f"final_rescore output already exists: {output_path}"
+            )
+
+        rescored: List[CombinationResult] = []
+        for shortlist_rank, search_row in enumerate(shortlist):
+            key = canonical_point_key(search_row.hyperparams)
+            result = cached.get(key)
+            if result is None:
+                combination_index = self._next_combination_index()
+                result = self._evaluate_point_with_index(
+                    stage_name="final_rescore",
+                    point=deepcopy(search_row.hyperparams),
+                    stage_sim_cfg=stage_sim_cfg,
+                    subjects=subjects,
+                    restart_id=-1,
+                    iter_id=0,
+                    coordinate="final_rescore",
+                    combination_index=combination_index,
+                    seed_family=seed_family,
+                    force_common_random_numbers=True,
+                )
+                record = self._serialize_combination_record(result)
+                record.update(
+                    {
+                        "seed_family": seed_family,
+                        "shortlist_rank": int(shortlist_rank),
+                        "search_combination_index": int(
+                            search_row.combination_index
+                        ),
+                        "subject_metrics": result.subject_metrics,
+                    }
+                )
+                self._append_jsonl(output_path, record)
+            rescored.append(result)
+            if checkpoint_callback is not None:
+                checkpoint_callback(
+                    {
+                        "status": "final_rescore_active",
+                        "stage": "final_rescore",
+                        "final_rescore_completed": int(shortlist_rank + 1),
+                        "final_rescore_total": int(len(shortlist)),
+                    }
+                )
+
+        winner, selection_context = self._select_final_combination(rescored)
+        context = {
+            "enabled": True,
+            "seed_family": seed_family,
+            "common_random_numbers": True,
+            "repeat_aggregation": repeat_aggregation,
+            "simulation_repeats": resolve_simulation_repeats(stage_sim_cfg),
+            "shortlist_size": int(len(shortlist)),
+            "search_best_combination_index": int(
+                search_best.combination_index
+            ),
+            "search_best_hyperparams": deepcopy(search_best.hyperparams),
+            "final_rescore_best_combination_index": int(
+                winner.combination_index
+            ),
+            "final_rescore_best_hyperparams": deepcopy(winner.hyperparams),
+            "selection": selection_context,
+        }
+        return rescored, winner, context
+
     def _evaluate_point(
         self,
         stage_name: str,
@@ -487,6 +682,8 @@ class HyperCDOptimizer(HyperSearchBase):
         iter_id: int,
         coordinate: str,
         combination_index: int,
+        seed_family: str | None = None,
+        force_common_random_numbers: bool | None = None,
     ) -> CombinationResult:
         hyper_candidate_seed = self._hyper_candidate_seed(
             stage_name,
@@ -495,6 +692,7 @@ class HyperCDOptimizer(HyperSearchBase):
             restart_id,
             iter_id,
             coordinate,
+            seed_family,
         )
 
         subject_metrics: Dict[int, Dict[str, Any]] = {}
@@ -530,6 +728,8 @@ class HyperCDOptimizer(HyperSearchBase):
                 hyper_candidate_seed=hyper_candidate_seed,
                 n_jobs=n_jobs,
                 evaluation_protocol=point_sim_cfg.get("evaluation_protocol"),
+                force_common_random_numbers=force_common_random_numbers,
+                seed_family=seed_family,
             )
             best = aggregate_simulation_runs(
                 runs,
@@ -1615,10 +1815,56 @@ class HyperCDOptimizer(HyperSearchBase):
                     },
                 )
 
+        search_final_stage = "fine" if "fine" in stage_combinations else "coarse"
+        final_combinations = stage_combinations[search_final_stage]
+        search_best, search_selection_context = self._select_final_combination(
+            final_combinations
+        )
+        best_combination = search_best
+        final_stage = search_final_stage
+        final_selection_context = search_selection_context
+        final_rescore_context: Dict[str, Any] = {"enabled": False}
+        final_rescore_path = output_dir / "final_rescore.jsonl"
+        raw_final_rescore = self.config.get("final_rescore") or {}
+        final_rescore_enabled = (
+            isinstance(raw_final_rescore, Mapping)
+            and bool(raw_final_rescore.get("enabled", False))
+        )
+        search_combination_record_count = int(self._combination_counter)
+        if final_rescore_enabled:
+            def write_final_rescore_checkpoint(
+                payload: Mapping[str, Any],
+            ) -> None:
+                if checkpoint_base is None:
+                    return
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        **dict(payload),
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": int(
+                            search_combination_record_count
+                        ),
+                    },
+                )
+
+            rescored, best_combination, final_rescore_context = (
+                self._run_final_rescore(
+                    final_combinations,
+                    subjects=subjects,
+                    output_path=final_rescore_path,
+                    resume=resume,
+                    checkpoint_callback=write_final_rescore_checkpoint,
+                )
+            )
+            stage_combinations["final_rescore"] = rescored
+            final_stage = "final_rescore"
+            final_selection_context = dict(
+                final_rescore_context.get("selection") or {}
+            )
+
         stage_summary = self._build_stage_summary(stage_combinations)
-        final_stage = "fine" if "fine" in stage_combinations else "coarse"
-        final_combinations = stage_combinations[final_stage]
-        best_combination, final_selection_context = self._select_final_combination(final_combinations)
 
         stage_summary_path = output_dir / "stage_summary.json"
         with stage_summary_path.open("w", encoding="utf-8") as f:
@@ -1631,7 +1877,7 @@ class HyperCDOptimizer(HyperSearchBase):
         metrics = None
         if len(subjects) == 1:
             sid = int(subjects[0])
-            metrics = best_combination.subject_metrics[sid]
+            metrics = best_combination.subject_metrics.get(sid)
         best_payload = build_subject_best_payload(
             subject_id=int(subjects[0]) if len(subjects) == 1 else -1,
             backend="hyper_cd",
@@ -1655,18 +1901,47 @@ class HyperCDOptimizer(HyperSearchBase):
                 ),
                 "objectives": {"order": self.objective_order_config},
                 "final_selection": final_selection_context,
+                "search_selection": search_selection_context,
+                "final_rescore": final_rescore_context,
             },
             provenance=build_hyper_provenance(
                 config_path=self.config_path,
                 output_dir=output_dir,
                 base_sim_config_path=self.base_sim_config_path,
             ),
-            artifacts=build_subject_artifacts(output_dir, include_cd=True),
+            artifacts=build_subject_artifacts(
+                output_dir,
+                include_cd=True,
+                include_checkpoint=self.cd_v2.enabled,
+                include_final_rescore=final_rescore_enabled,
+            ),
             full_subject_metrics=(
                 best_combination.subject_metrics
                 if self.save_level == "full"
                 else None
             ),
+        )
+        best_payload["search_best"] = {
+            "stage": search_best.stage,
+            "combination_index": int(search_best.combination_index),
+            "hyperparams": deepcopy(search_best.hyperparams),
+            "aggregated_error": float(search_best.aggregated_error),
+            "objective_values": deepcopy(search_best.objective_values),
+            "hyper_candidate_seed": int(search_best.hyper_candidate_seed),
+        }
+        best_payload["final_rescore_best"] = (
+            {
+                "stage": best_combination.stage,
+                "combination_index": int(best_combination.combination_index),
+                "hyperparams": deepcopy(best_combination.hyperparams),
+                "aggregated_error": float(best_combination.aggregated_error),
+                "objective_values": deepcopy(best_combination.objective_values),
+                "hyper_candidate_seed": int(
+                    best_combination.hyper_candidate_seed
+                ),
+            }
+            if final_rescore_enabled
+            else None
         )
 
         best_path = output_dir / "best_hyperparams.json"
@@ -1681,14 +1956,16 @@ class HyperCDOptimizer(HyperSearchBase):
                     "status": "complete",
                     "stage": final_stage,
                     "combination_counter": int(self._combination_counter),
-                    "combination_record_count": int(self._combination_counter),
+                    "combination_record_count": int(
+                        search_combination_record_count
+                    ),
                     "best_combination_index": int(
                         best_combination.combination_index
                     ),
                 },
             )
 
-        return {
+        result = {
             "output_dir": str(output_dir),
             "all_combinations": str(all_combinations_path),
             "stage_summary": str(stage_summary_path),
@@ -1697,6 +1974,9 @@ class HyperCDOptimizer(HyperSearchBase):
             "best_hyperparams": str(best_path),
             "best": best_payload,
         }
+        if final_rescore_enabled:
+            result["final_rescore"] = str(final_rescore_path)
+        return result
 
     def _build_stage_summary(self, stage_combinations: Mapping[str, Sequence[CombinationResult]]) -> Dict[str, Any]:
         top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
@@ -1776,7 +2056,7 @@ class HyperCDOptimizer(HyperSearchBase):
                     stage,
                     resume_from_coarse=resume_from_coarse,
                 )
-            per_subject_outputs[str(int(sid))] = {
+            subject_output = {
                 "output_dir": out["output_dir"],
                 "all_combinations": out["all_combinations"],
                 "stage_summary": out["stage_summary"],
@@ -1784,6 +2064,9 @@ class HyperCDOptimizer(HyperSearchBase):
                 "coordinate_trace": out["coordinate_trace"],
                 "best_hyperparams": out["best_hyperparams"],
             }
+            if "final_rescore" in out:
+                subject_output["final_rescore"] = out["final_rescore"]
+            per_subject_outputs[str(int(sid))] = subject_output
             per_subject_best[str(int(sid))] = out["best"]
 
         best_payload = build_root_best_payload(
