@@ -24,6 +24,7 @@ MODEL_0818_SUBJECT_PARAMETERS = {
     "eta_plus",
     "eta_minus",
 }
+SUPPORTED_MODEL_IDS = {"model_0818", "model_0826"}
 
 
 def reactive_error_probability(event_after_correct: float, delta_e: float) -> float:
@@ -66,7 +67,16 @@ def spike_and_positive_values(
 
 
 def load_parameter_space(path: str | Path) -> dict[str, Any]:
-    """Load and validate a Model 0818 parameter-space YAML file."""
+    """Backward-compatible alias for the frozen Model 0818 parameter space."""
+
+    return load_model_parameter_space(path, expected_model_id="model_0818")
+
+
+def load_model_parameter_space(
+    path: str | Path,
+    expected_model_id: str | None = None,
+) -> dict[str, Any]:
+    """Load a versioned Model 0818/0826 parameter-space YAML file."""
 
     source = Path(path)
     try:
@@ -76,24 +86,56 @@ def load_parameter_space(path: str | Path) -> dict[str, Any]:
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid parameter-space YAML: {source}") from exc
     config = deepcopy(_mapping(parsed, "parameter-space root"))
-    validate_model_0818_parameter_space(config)
+    validate_model_parameter_space(
+        config,
+        expected_model_id=expected_model_id,
+    )
     return config
 
 
 def validate_model_0818_parameter_space(config: Mapping[str, Any]) -> None:
-    """Validate scientific boundaries and recovery-design invariants."""
+    """Backward-compatible Model 0818-only validation entry point."""
+
+    validate_model_parameter_space(config, expected_model_id="model_0818")
+
+
+def validate_model_parameter_space(
+    config: Mapping[str, Any],
+    *,
+    expected_model_id: str | None = None,
+) -> None:
+    """Validate shared boundaries and version-specific provenance."""
 
     provenance = _mapping(config.get("provenance"), "provenance")
-    if provenance.get("model_id") != "model_0818":
-        raise ValueError("provenance.model_id must be 'model_0818'.")
+    model_id = str(provenance.get("model_id", ""))
+    if model_id not in SUPPORTED_MODEL_IDS:
+        raise ValueError(
+            "provenance.model_id must be 'model_0818' or 'model_0826'."
+        )
+    if expected_model_id is not None:
+        expected = str(expected_model_id)
+        if expected not in SUPPORTED_MODEL_IDS:
+            raise ValueError(
+                "expected_model_id must be 'model_0818' or 'model_0826'."
+            )
+        if model_id != expected:
+            raise ValueError(
+                f"provenance.model_id must be '{expected}', got '{model_id}'."
+            )
+    if model_id == "model_0826" and (
+        provenance.get("event_history_excludes_latest_error") is not True
+    ):
+        raise ValueError(
+            "Model 0826 provenance.event_history_excludes_latest_error must be true."
+        )
     if provenance.get("support_status") != "provisional_until_recovery_passes":
         raise ValueError(
-            "The Model 0818 candidate support must remain provisional until recovery passes."
+            f"The {model_id} candidate support must remain provisional until recovery passes."
         )
 
     scope = _mapping(config.get("scope"), "scope")
     if int(scope.get("condition", -1)) != 1:
-        raise ValueError("Model 0818 first-stage parameter recovery is restricted to cond1.")
+        raise ValueError(f"{model_id} first-stage parameter recovery is restricted to cond1.")
     subjects = [int(value) for value in _sequence(scope.get("subjects"), "scope.subjects")]
     if subjects != list(range(101, 133)):
         raise ValueError("scope.subjects must be the ordered cond1 subjects 101--132.")
@@ -107,7 +149,7 @@ def validate_model_0818_parameter_space(config: Mapping[str, Any]) -> None:
     extra = set(parameters) - MODEL_0818_SUBJECT_PARAMETERS
     if missing or extra:
         raise ValueError(
-            "subject_parameters must match Model 0818 exactly; "
+            f"subject_parameters must match {model_id} exactly; "
             f"missing={sorted(missing)}, extra={sorted(extra)}."
         )
 
@@ -134,6 +176,62 @@ def validate_model_0818_parameter_space(config: Mapping[str, Any]) -> None:
 
     _validate_architecture_cells(config)
     _validate_fixed_parameters(config)
+    if model_id == "model_0826":
+        _validate_model_0826_fine_supports(config)
+
+
+def _validate_model_0826_fine_supports(config: Mapping[str, Any]) -> None:
+    parameters = _mapping(config.get("subject_parameters"), "subject_parameters")
+    workspace = _mapping(
+        parameters.get("workspace_execution"),
+        "subject_parameters.workspace_execution",
+    )
+    if workspace.get("fine_candidates") != workspace.get("candidates"):
+        raise ValueError(
+            "Model 0826 workspace_execution fine_candidates must equal candidates."
+        )
+
+    expected = {
+        "gamma": [0.0, 0.125, 0.25, 0.375, 0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.935, 0.97],
+        "E_C": [0.02, 0.06, 0.10, 0.175, 0.25, 0.375, 0.50, 0.625, 0.75],
+        "g_0": [0.0, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.55, 0.70, 0.85, 1.0],
+        "beta_0": [0.50, 0.75, 1.0, 1.75, 2.50, 3.75, 5.0, 7.50, 10.0, 15.0, 20.0],
+        "eta_plus": [0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.04, 0.06, 0.08, 0.12, 0.16, 0.24, 0.32],
+        "eta_minus": [0.01, 0.02, 0.03, 0.05, 0.07, 0.11, 0.15, 0.225, 0.30, 0.45, 0.60, 0.80, 1.0],
+    }
+    expected_spikes = {
+        "delta_E": [0.125, 0.25, 0.36478654013094315, 0.4795730802618863, 0.6397865401309432, 0.80, 1.20, 1.60, 2.40, 3.20],
+        "c_A": [0.125, 0.25, 0.375, 0.50, 0.75, 1.0, 1.50, 2.0, 3.0, 4.0, 5.0, 6.0],
+        "c_G": [0.05, 0.10, 0.175, 0.25, 0.375, 0.50, 0.625, 0.75, 0.875, 1.0],
+    }
+    for name, values in expected.items():
+        specification = _mapping(
+            parameters.get(name),
+            f"subject_parameters.{name}",
+        )
+        actual = _finite_values(
+            specification.get("fine_values"),
+            f"subject_parameters.{name}.fine_values",
+        )
+        if actual != values:
+            raise ValueError(
+                f"Model 0826 subject_parameters.{name}.fine_values is not frozen support."
+            )
+    for name, values in expected_spikes.items():
+        specification = _mapping(
+            parameters.get(name),
+            f"subject_parameters.{name}",
+        )
+        actual = _finite_values(
+            specification.get("fine_positive_values"),
+            f"subject_parameters.{name}.fine_positive_values",
+        )
+        if float(specification.get("zero_value", np.nan)) != 0.0:
+            raise ValueError(f"Model 0826 {name} must preserve an exact zero spike.")
+        if actual != values or any(value <= 0.0 for value in actual):
+            raise ValueError(
+                f"Model 0826 subject_parameters.{name}.fine_positive_values is not frozen support."
+            )
 
 
 def _validate_workspace_execution(raw: Any) -> None:
@@ -315,8 +413,11 @@ def _sequence(raw: Any, name: str) -> Sequence[Any]:
 
 __all__ = [
     "MODEL_0818_SPIKE_PARAMETERS",
+    "SUPPORTED_MODEL_IDS",
+    "load_model_parameter_space",
     "load_parameter_space",
     "reactive_error_probability",
     "spike_and_positive_values",
+    "validate_model_parameter_space",
     "validate_model_0818_parameter_space",
 ]
