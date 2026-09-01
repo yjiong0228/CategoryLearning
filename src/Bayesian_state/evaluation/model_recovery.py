@@ -1356,6 +1356,606 @@ def score_frozen_candidate(
     }
 
 
+def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    if total <= 0:
+        return float("nan"), float("nan")
+    proportion = float(successes) / float(total)
+    denominator = 1.0 + z * z / float(total)
+    center = (proportion + z * z / (2.0 * total)) / denominator
+    half_width = (
+        z
+        * np.sqrt(
+            proportion * (1.0 - proportion) / float(total)
+            + z * z / (4.0 * total * total)
+        )
+        / denominator
+    )
+    return float(center - half_width), float(center + half_width)
+
+
+def summarize_module_recovery(
+    scores: pd.DataFrame,
+    *,
+    near_best_delta_nll: float = 2.0,
+    gates: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Summarize held-out total-NLL architecture recovery."""
+
+    required = {
+        "dataset_id", "true_cell", "candidate_cell", "total_nll",
+    }
+    if not required.issubset(scores.columns):
+        raise ValueError("module recovery scores are missing required columns")
+    cells = ("P", "PM", "PH", "PMH")
+    dataset_rows: list[dict[str, Any]] = []
+    for dataset_id, frame in scores.groupby("dataset_id", sort=True):
+        if set(frame["candidate_cell"].astype(str)) != set(cells) or len(frame) != 4:
+            raise ValueError(f"module dataset {dataset_id} requires four candidate cells")
+        if frame["true_cell"].nunique() != 1:
+            raise ValueError(f"module dataset {dataset_id} has inconsistent truth")
+        ranked = frame.assign(
+            _cell_order=frame["candidate_cell"].map(
+                {cell: index for index, cell in enumerate(cells)}
+            )
+        ).sort_values(["total_nll", "_cell_order"])
+        if not np.all(np.isfinite(ranked["total_nll"].to_numpy(dtype=float))):
+            raise ValueError(f"module dataset {dataset_id} has non-finite NLL")
+        winner = ranked.iloc[0]
+        true_cell = str(frame["true_cell"].iloc[0])
+        true_score = frame.loc[
+            frame["candidate_cell"].astype(str).eq(true_cell), "total_nll"
+        ]
+        if len(true_score) != 1:
+            raise ValueError(f"module dataset {dataset_id} lacks one true-cell score")
+        best_nll = float(winner["total_nll"])
+        true_nll = float(true_score.iloc[0])
+        row = {
+            "dataset_id": str(dataset_id),
+            "true_cell": true_cell,
+            "predicted_cell": str(winner["candidate_cell"]),
+            "best_total_nll": best_nll,
+            "true_total_nll": true_nll,
+            "true_delta_nll": true_nll - best_nll,
+            "exact_recovery": str(winner["candidate_cell"]) == true_cell,
+            "true_within_near_best": (
+                true_nll <= best_nll + float(near_best_delta_nll)
+            ),
+        }
+        if "generated_accuracy" in frame:
+            row["generated_accuracy"] = float(frame["generated_accuracy"].iloc[0])
+        dataset_rows.append(row)
+    dataset_frame = pd.DataFrame(dataset_rows)
+    confusion_rows = []
+    for true_cell in cells:
+        for predicted_cell in cells:
+            confusion_rows.append(
+                {
+                    "true_cell": true_cell,
+                    "predicted_cell": predicted_cell,
+                    "count": int(
+                        np.sum(
+                            dataset_frame["true_cell"].eq(true_cell)
+                            & dataset_frame["predicted_cell"].eq(predicted_cell)
+                        )
+                    ),
+                }
+            )
+    cell_rows = []
+    for cell in cells:
+        selected = dataset_frame.loc[dataset_frame["true_cell"].eq(cell)]
+        successes = int(selected["exact_recovery"].sum())
+        low, high = _wilson_interval(successes, len(selected))
+        cell_rows.append(
+            {
+                "true_cell": cell,
+                "dataset_n": int(len(selected)),
+                "exact_recovery_count": successes,
+                "exact_recovery": float(selected["exact_recovery"].mean()),
+                "wilson_low": low,
+                "wilson_high": high,
+                "near_best_coverage": float(
+                    selected["true_within_near_best"].mean()
+                ),
+            }
+        )
+    total = len(dataset_frame)
+    wrong_absorption = {
+        cell: float(
+            np.mean(
+                dataset_frame["predicted_cell"].eq(cell)
+                & ~dataset_frame["true_cell"].eq(cell)
+            )
+        )
+        for cell in cells
+    }
+    gate_config = {
+        "overall_exact_recovery_min": 0.70,
+        "per_cell_exact_recovery_min": 0.50,
+        "true_cell_near_best_coverage_min": 0.85,
+        "maximum_single_wrong_cell_absorption": 0.30,
+        **dict(gates or {}),
+    }
+    overall_exact = float(dataset_frame["exact_recovery"].mean())
+    near_best_coverage = float(dataset_frame["true_within_near_best"].mean())
+    passes = bool(
+        total > 0
+        and overall_exact >= float(gate_config["overall_exact_recovery_min"])
+        and min(row["exact_recovery"] for row in cell_rows)
+        >= float(gate_config["per_cell_exact_recovery_min"])
+        and near_best_coverage
+        >= float(gate_config["true_cell_near_best_coverage_min"])
+        and max(wrong_absorption.values())
+        <= float(gate_config["maximum_single_wrong_cell_absorption"])
+    )
+    return {
+        "dataset_n": int(total),
+        "near_best_delta_nll": float(near_best_delta_nll),
+        "overall_exact_recovery": overall_exact,
+        "true_cell_near_best_coverage": near_best_coverage,
+        "wrong_cell_absorption": wrong_absorption,
+        "passes_pre_registered_gates": passes,
+        "gates": gate_config,
+        "confusion_rows": confusion_rows,
+        "cell_rows": cell_rows,
+        "dataset_rows": dataset_frame.to_dict(orient="records"),
+    }
+
+
+def _parameter_support_values(
+    parameter_space: Mapping[str, Any],
+    parameter: str,
+) -> list[float]:
+    return [float(value) for value in _declared_support(parameter_space, parameter)]
+
+
+def _workspace_support_values(
+    parameter_space: Mapping[str, Any],
+    parameter: str,
+) -> list[int]:
+    workspace = parameter_space["subject_parameters"]["workspace_execution"]
+    values = {
+        int(candidate[parameter])
+        for candidate in workspace["candidates"]
+    }
+    if not values:
+        raise ValueError(f"workspace parameter {parameter} has empty support")
+    return sorted(values)
+
+
+def _safe_spearman(truth: np.ndarray, estimate: np.ndarray) -> float:
+    if truth.size < 2 or np.allclose(truth, truth[0]) or np.allclose(
+        estimate, estimate[0]
+    ):
+        return 1.0 if np.allclose(truth, estimate) else 0.0
+    value = float(spearmanr(truth, estimate).statistic)
+    return value if np.isfinite(value) else 0.0
+
+
+def _balanced_accuracy_binary(truth: np.ndarray, estimate: np.ndarray) -> float:
+    truth_positive = truth > 0.0
+    estimate_positive = estimate > 0.0
+    if not np.any(truth_positive) or not np.any(~truth_positive):
+        return float("nan")
+    sensitivity = float(np.mean(estimate_positive[truth_positive]))
+    specificity = float(np.mean(~estimate_positive[~truth_positive]))
+    return 0.5 * (sensitivity + specificity)
+
+
+def summarize_parameter_recovery(
+    estimates: pd.DataFrame,
+    *,
+    parameter_space: Mapping[str, Any],
+    gates: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Summarize discrete, continuous, and zero-boundary recovery."""
+
+    required = {"dataset_id", "true_M", "estimated_M", "true_chi", "estimated_chi"}
+    continuous = (
+        "gamma", "E_C", "delta_E", "g_0", "c_A", "c_G",
+        "beta_0", "eta_plus", "eta_minus",
+    )
+    for parameter in continuous:
+        required.update({f"true_{parameter}", f"estimated_{parameter}"})
+    if not required.issubset(estimates.columns):
+        missing = sorted(required - set(estimates.columns))
+        raise ValueError(f"parameter recovery estimates are missing: {missing}")
+    frame = estimates.copy()
+    if "true_within_near_best" not in frame:
+        frame["true_within_near_best"] = False
+    if frame["dataset_id"].duplicated().any():
+        raise ValueError("parameter recovery estimates require one row per dataset")
+    gate_config = {
+        "chi_exact_recovery_min": 0.70,
+        "chi_near_best_coverage_min": 0.85,
+        "continuous_spearman_min": 0.60,
+        "continuous_normalized_mae_max": 0.20,
+        "continuous_near_best_coverage_min": 0.80,
+        "zero_positive_balanced_accuracy_min": 0.70,
+        **dict(gates or {}),
+    }
+    near_best_coverage = float(frame["true_within_near_best"].mean())
+    parameter_rows = []
+    error_columns: dict[str, np.ndarray] = {}
+    for parameter in continuous:
+        truth = frame[f"true_{parameter}"].to_numpy(dtype=float)
+        estimate = frame[f"estimated_{parameter}"].to_numpy(dtype=float)
+        if not np.all(np.isfinite(truth)) or not np.all(np.isfinite(estimate)):
+            raise ValueError(f"parameter {parameter} contains non-finite values")
+        error = estimate - truth
+        support = _parameter_support_values(parameter_space, parameter)
+        support_span = float(max(support) - min(support))
+        if support_span <= 0.0:
+            raise ValueError(f"parameter {parameter} has zero support span")
+        balanced_accuracy = None
+        positive_mae = None
+        if parameter in {"delta_E", "c_A", "c_G"}:
+            balanced_accuracy = _balanced_accuracy_binary(truth, estimate)
+            positive = truth > 0.0
+            positive_mae = (
+                float(np.mean(np.abs(error[positive])))
+                if np.any(positive)
+                else None
+            )
+        spearman = _safe_spearman(truth, estimate)
+        normalized_mae = float(np.mean(np.abs(error)) / support_span)
+        supported = bool(
+            spearman >= float(gate_config["continuous_spearman_min"])
+            and normalized_mae
+            <= float(gate_config["continuous_normalized_mae_max"])
+            and near_best_coverage
+            >= float(gate_config["continuous_near_best_coverage_min"])
+            and (
+                balanced_accuracy is None
+                or (
+                    np.isfinite(balanced_accuracy)
+                    and balanced_accuracy
+                    >= float(gate_config["zero_positive_balanced_accuracy_min"])
+                )
+            )
+        )
+        parameter_rows.append(
+            {
+                "parameter": parameter,
+                "dataset_n": int(len(frame)),
+                "bias": float(np.mean(error)),
+                "mae": float(np.mean(np.abs(error))),
+                "rmse": float(np.sqrt(np.mean(np.square(error)))),
+                "spearman": spearman,
+                "support_span": support_span,
+                "normalized_mae": normalized_mae,
+                "near_best_coverage": near_best_coverage,
+                "zero_positive_balanced_accuracy": balanced_accuracy,
+                "positive_truth_mae": positive_mae,
+                "supported": supported,
+            }
+        )
+        error_columns[parameter] = error
+
+    chi_truth = frame["true_chi"].to_numpy(dtype=int)
+    chi_estimate = frame["estimated_chi"].to_numpy(dtype=int)
+    chi_exact = float(np.mean(chi_truth == chi_estimate))
+    chi_successes = int(np.sum(chi_truth == chi_estimate))
+    chi_low, chi_high = _wilson_interval(chi_successes, len(frame))
+    chi_confusion_rows = [
+        {
+            "true_chi": truth,
+            "estimated_chi": estimate,
+            "count": int(np.sum((chi_truth == truth) & (chi_estimate == estimate))),
+        }
+        for truth in (0, 1)
+        for estimate in (0, 1)
+    ]
+    m_truth = frame["true_M"].to_numpy(dtype=int)
+    m_estimate = frame["estimated_M"].to_numpy(dtype=int)
+    m_exact = float(np.mean(m_truth == m_estimate))
+    m_successes = int(np.sum(m_truth == m_estimate))
+    m_low, m_high = _wilson_interval(m_successes, len(frame))
+    m_support = _workspace_support_values(parameter_space, "M")
+    if not set(m_truth).issubset(m_support) or not set(m_estimate).issubset(
+        m_support
+    ):
+        raise ValueError("M truth or estimate falls outside declared support")
+    m_confusion_rows = [
+        {
+            "true_M": truth,
+            "estimated_M": estimate,
+            "count": int(np.sum((m_truth == truth) & (m_estimate == estimate))),
+        }
+        for truth in m_support
+        for estimate in m_support
+    ]
+
+    correlation_rows: list[dict[str, Any]] = []
+    names = list(continuous)
+    for left in names:
+        for right in names:
+            left_error = error_columns[left]
+            right_error = error_columns[right]
+            if np.std(left_error) == 0.0 or np.std(right_error) == 0.0:
+                correlation = 1.0 if left == right else 0.0
+            else:
+                correlation = float(np.corrcoef(left_error, right_error)[0, 1])
+            correlation_rows.append(
+                {
+                    "left_parameter": left,
+                    "right_parameter": right,
+                    "error_correlation": correlation,
+                }
+            )
+    chi_supported = bool(
+        chi_exact >= float(gate_config["chi_exact_recovery_min"])
+        and near_best_coverage
+        >= float(gate_config["chi_near_best_coverage_min"])
+    )
+    return {
+        "dataset_n": int(len(frame)),
+        "M_exact_recovery": m_exact,
+        "M_wilson_low": m_low,
+        "M_wilson_high": m_high,
+        "chi_exact_recovery": chi_exact,
+        "chi_wilson_low": chi_low,
+        "chi_wilson_high": chi_high,
+        "chi_near_best_coverage": near_best_coverage,
+        "chi_supported": chi_supported,
+        "gates": gate_config,
+        "M_confusion_rows": m_confusion_rows,
+        "chi_confusion_rows": chi_confusion_rows,
+        "parameter_rows": parameter_rows,
+        "error_correlation_rows": correlation_rows,
+        "dataset_rows": frame.to_dict(orient="records"),
+    }
+
+
+def _save_png_atomic(figure: Any, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(
+        f".{output_path.stem}.{os.getpid()}.tmp.png"
+    )
+    try:
+        figure.savefig(
+            temporary,
+            dpi=600,
+            bbox_inches="tight",
+            facecolor="white",
+        )
+        os.replace(temporary, output_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _configure_recovery_figure_style() -> None:
+    import matplotlib as mpl
+
+    mpl.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "sans-serif"],
+            "font.size": 7,
+            "svg.fonttype": "none",
+            "pdf.fonttype": 42,
+            "savefig.dpi": 600,
+            "axes.spines.right": False,
+            "axes.spines.top": False,
+            "axes.linewidth": 0.8,
+            "legend.frameon": False,
+        }
+    )
+
+
+def plot_module_recovery(
+    summary: Mapping[str, Any],
+    output_path: str | Path,
+) -> dict[str, str]:
+    """Plot the architecture confusion hero panel and supporting diagnostics."""
+
+    import matplotlib.pyplot as plt
+
+    _configure_recovery_figure_style()
+    output = Path(output_path)
+    confusion = pd.DataFrame(summary["confusion_rows"])
+    cells = ["P", "PM", "PH", "PMH"]
+    matrix = (
+        confusion.pivot(index="true_cell", columns="predicted_cell", values="count")
+        .reindex(index=cells, columns=cells)
+        .fillna(0)
+        .to_numpy(dtype=float)
+    )
+    cell_frame = pd.DataFrame(summary["cell_rows"])
+    dataset_frame = pd.DataFrame(summary["dataset_rows"])
+    source_paths = {
+        "confusion": output.with_name("module_recovery_confusion_source.csv"),
+        "cells": output.with_name("module_recovery_cell_source.csv"),
+        "datasets": output.with_name("module_recovery_dataset_source.csv"),
+    }
+    _atomic_csv(source_paths["confusion"], confusion)
+    _atomic_csv(source_paths["cells"], cell_frame)
+    _atomic_csv(source_paths["datasets"], dataset_frame)
+
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.2), constrained_layout=True)
+    ax = axes[0, 0]
+    image = ax.imshow(matrix, cmap="Blues", vmin=0.0)
+    for row in range(4):
+        for column in range(4):
+            ax.text(column, row, f"{int(matrix[row, column])}", ha="center", va="center")
+    ax.set_xticks(range(4), cells)
+    ax.set_yticks(range(4), cells)
+    ax.set_xlabel("Recovered architecture")
+    ax.set_ylabel("Generating architecture")
+    ax.set_title("a  Held-out architecture recovery", loc="left", fontweight="bold")
+    fig.colorbar(image, ax=ax, label="Datasets", fraction=0.046)
+
+    ax = axes[0, 1]
+    ordered = cell_frame.set_index("true_cell").reindex(cells)
+    values = ordered["exact_recovery"].to_numpy(dtype=float)
+    lower = values - ordered["wilson_low"].to_numpy(dtype=float)
+    upper = ordered["wilson_high"].to_numpy(dtype=float) - values
+    ax.bar(cells, values, color="#5B8DB8", width=0.68)
+    ax.errorbar(cells, values, yerr=np.vstack([lower, upper]), fmt="none", color="#263746", capsize=2)
+    ax.axhline(0.5, color="#A65E4E", linestyle="--", linewidth=1)
+    ax.set_ylim(0.0, 1.05)
+    ax.set_ylabel("Exact recovery rate")
+    ax.set_title("b  Recovery by true cell", loc="left", fontweight="bold")
+
+    ax = axes[1, 0]
+    for index, cell in enumerate(cells):
+        values = dataset_frame.loc[
+            dataset_frame["true_cell"].eq(cell), "true_delta_nll"
+        ].to_numpy(dtype=float)
+        ax.scatter(
+            np.full(values.size, index),
+            values,
+            color="#5B8DB8",
+            edgecolor="white",
+            linewidth=0.4,
+            s=22,
+            zorder=3,
+        )
+    ax.axhline(2.0, color="#A65E4E", linestyle="--", linewidth=1)
+    ax.set_xticks(range(4), cells)
+    ax.set_ylabel(r"True-cell $\Delta$ total NLL")
+    ax.set_title("c  Near-best coverage", loc="left", fontweight="bold")
+
+    ax = axes[1, 1]
+    if "generated_accuracy" in dataset_frame:
+        for index, cell in enumerate(cells):
+            values = dataset_frame.loc[
+                dataset_frame["true_cell"].eq(cell), "generated_accuracy"
+            ].to_numpy(dtype=float)
+            ax.scatter(
+                np.full(values.size, index),
+                values,
+                color="#8AAE92",
+                edgecolor="white",
+                linewidth=0.4,
+                s=22,
+            )
+        ax.set_xticks(range(4), cells)
+        ax.set_ylabel("Generated choice accuracy")
+        ax.set_ylim(0.0, 1.0)
+    else:
+        ax.text(0.5, 0.5, "Accuracy unavailable", ha="center", va="center")
+        ax.set_axis_off()
+    ax.set_title("d  Synthetic behavior", loc="left", fontweight="bold")
+    _save_png_atomic(fig, output)
+    plt.close(fig)
+    return {name: str(path) for name, path in source_paths.items()}
+
+
+def plot_parameter_recovery(
+    summary: Mapping[str, Any],
+    output_path: str | Path,
+) -> dict[str, str]:
+    """Plot readout confusion and parameter-level identifiability diagnostics."""
+
+    import matplotlib.pyplot as plt
+
+    _configure_recovery_figure_style()
+    output = Path(output_path)
+    m_confusion = pd.DataFrame(summary["M_confusion_rows"])
+    confusion = pd.DataFrame(summary["chi_confusion_rows"])
+    parameter_frame = pd.DataFrame(summary["parameter_rows"])
+    dataset_frame = pd.DataFrame(summary["dataset_rows"])
+    source_paths = {
+        "M": output.with_name("parameter_recovery_M_source.csv"),
+        "chi": output.with_name("parameter_recovery_chi_source.csv"),
+        "parameters": output.with_name("parameter_recovery_metric_source.csv"),
+        "datasets": output.with_name("parameter_recovery_dataset_source.csv"),
+    }
+    _atomic_csv(source_paths["M"], m_confusion)
+    _atomic_csv(source_paths["chi"], confusion)
+    _atomic_csv(source_paths["parameters"], parameter_frame)
+    _atomic_csv(source_paths["datasets"], dataset_frame)
+    m_levels = sorted(
+        set(m_confusion["true_M"].astype(int))
+        | set(m_confusion["estimated_M"].astype(int))
+    )
+    m_matrix = (
+        m_confusion.pivot(index="true_M", columns="estimated_M", values="count")
+        .reindex(index=m_levels, columns=m_levels)
+        .fillna(0)
+        .to_numpy(dtype=float)
+    )
+    chi_matrix = (
+        confusion.pivot(index="true_chi", columns="estimated_chi", values="count")
+        .reindex(index=[0, 1], columns=[0, 1])
+        .fillna(0)
+        .to_numpy(dtype=float)
+    )
+    parameters = parameter_frame["parameter"].astype(str).tolist()
+    colors = [
+        "#5B8DB8" if bool(value) else "#B7BEC5"
+        for value in parameter_frame["supported"]
+    ]
+    fig = plt.figure(figsize=(7.2, 5.2), constrained_layout=True)
+    axes = fig.subplot_mosaic(
+        [["M", "chi", "zero"], ["mae", "mae", "rank"]],
+        width_ratios=[1.0, 1.0, 1.0],
+    )
+    ax = axes["M"]
+    image = ax.imshow(m_matrix, cmap="Blues", vmin=0.0)
+    for row in range(len(m_levels)):
+        for column in range(len(m_levels)):
+            ax.text(
+                column,
+                row,
+                f"{int(m_matrix[row, column])}",
+                ha="center",
+                va="center",
+            )
+    ax.set_xticks(range(len(m_levels)), m_levels)
+    ax.set_yticks(range(len(m_levels)), m_levels)
+    ax.set_xlabel("Recovered M")
+    ax.set_ylabel("Generating M")
+    ax.set_title("a  Capacity recovery", loc="left", fontweight="bold")
+    fig.colorbar(image, ax=ax, label="Datasets", fraction=0.046)
+
+    ax = axes["chi"]
+    image = ax.imshow(chi_matrix, cmap="Blues", vmin=0.0)
+    for row in range(2):
+        for column in range(2):
+            ax.text(column, row, f"{int(chi_matrix[row, column])}", ha="center", va="center")
+    ax.set_xticks([0, 1], ["Mixture", "Single rule"])
+    ax.set_yticks([0, 1], ["Mixture", "Single rule"])
+    ax.set_xlabel("Recovered readout")
+    ax.set_ylabel("Generating readout")
+    ax.set_title("b  Readout recovery", loc="left", fontweight="bold")
+    fig.colorbar(image, ax=ax, label="Datasets", fraction=0.046)
+
+    ax = axes["mae"]
+    ax.barh(parameters, parameter_frame["normalized_mae"], color=colors)
+    ax.axvline(0.20, color="#A65E4E", linestyle="--", linewidth=1)
+    ax.invert_yaxis()
+    ax.set_xlabel("Normalized MAE")
+    ax.set_title("d  Parameter error", loc="left", fontweight="bold")
+
+    ax = axes["rank"]
+    ax.barh(parameters, parameter_frame["spearman"], color=colors)
+    ax.axvline(0.60, color="#A65E4E", linestyle="--", linewidth=1)
+    ax.set_xlim(-1.0, 1.0)
+    ax.invert_yaxis()
+    ax.set_xlabel("Truth–estimate Spearman")
+    ax.set_title("e  Rank recovery", loc="left", fontweight="bold")
+
+    ax = axes["zero"]
+    zero_frame = parameter_frame.loc[
+        parameter_frame["zero_positive_balanced_accuracy"].notna()
+    ]
+    ax.bar(
+        zero_frame["parameter"],
+        zero_frame["zero_positive_balanced_accuracy"],
+        color="#8AAE92",
+        width=0.68,
+    )
+    ax.axhline(0.70, color="#A65E4E", linestyle="--", linewidth=1)
+    ax.set_ylim(0.0, 1.05)
+    ax.set_ylabel("Balanced accuracy")
+    ax.set_title("c  Exact-zero detection", loc="left", fontweight="bold")
+    _save_png_atomic(fig, output)
+    plt.close(fig)
+    return {name: str(path) for name, path in source_paths.items()}
+
+
 __all__ = [
     "CELL_FREE_PARAMETERS",
     "FEATURE_COLUMNS",
@@ -1369,10 +1969,14 @@ __all__ = [
     "generate_synthetic_dataset",
     "load_recovery_design",
     "mean_probability_nll",
+    "plot_module_recovery",
+    "plot_parameter_recovery",
     "resolve_calibration_filter_seeds",
     "schedule_fingerprint",
     "score_frozen_candidate",
     "score_pf_bank",
+    "summarize_module_recovery",
+    "summarize_parameter_recovery",
     "summarize_pf_calibration",
     "synthetic_dataset_frame",
 ]

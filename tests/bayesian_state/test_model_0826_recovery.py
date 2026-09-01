@@ -17,9 +17,13 @@ from src.Bayesian_state.evaluation.model_recovery import (
     load_recovery_design,
     resolve_calibration_filter_seeds,
     mean_probability_nll,
+    plot_module_recovery,
+    plot_parameter_recovery,
     schedule_fingerprint,
     score_frozen_candidate,
     score_pf_bank,
+    summarize_module_recovery,
+    summarize_parameter_recovery,
     summarize_pf_calibration,
     synthetic_dataset_frame,
 )
@@ -650,3 +654,156 @@ def test_frozen_module_candidate_runs_full_history_but_scores_only_suffix() -> N
     assert score["score_context"]["evaluation_trial_count"] == 96
     assert score["score_context"]["score_trial_count"] == 96
     assert score["total_nll"] == pytest.approx(96 * np.log(2.0))
+
+
+def test_module_summary_uses_total_nll_and_delta_two_near_best() -> None:
+    winners = {"P": "P", "PM": "PM", "PH": "PH", "PMH": "PH"}
+    rows = []
+    for dataset_index, true_cell in enumerate(("P", "PM", "PH", "PMH")):
+        winner = winners[true_cell]
+        for candidate_cell in ("P", "PM", "PH", "PMH"):
+            nll = 100.0 + float(candidate_cell != winner) * 5.0
+            if candidate_cell == true_cell and true_cell == "PMH":
+                nll = 101.5
+            rows.append(
+                {
+                    "dataset_id": f"dataset_{dataset_index}",
+                    "true_cell": true_cell,
+                    "candidate_cell": candidate_cell,
+                    "total_nll": nll,
+                    "generated_accuracy": 0.7 + dataset_index * 0.02,
+                }
+            )
+
+    summary = summarize_module_recovery(
+        pd.DataFrame(rows),
+        near_best_delta_nll=2.0,
+    )
+
+    assert summary["overall_exact_recovery"] == pytest.approx(0.75)
+    assert summary["true_cell_near_best_coverage"] == pytest.approx(1.0)
+    assert sum(row["count"] for row in summary["confusion_rows"]) == 4
+
+
+def test_parameter_summary_separates_zero_positive_classification() -> None:
+    rows = []
+    for index in range(8):
+        truth_zero = index < 4
+        rows.append(
+            {
+                "dataset_id": f"parameter_{index}",
+                "true_M": 2 + (index % 4),
+                "estimated_M": 2 + (index % 4),
+                "true_chi": index % 2,
+                "estimated_chi": index % 2,
+                "true_gamma": 0.1 * index,
+                "estimated_gamma": 0.1 * index + 0.01,
+                "true_E_C": 0.1 + 0.05 * index,
+                "estimated_E_C": 0.1 + 0.05 * index,
+                "true_delta_E": 0.0 if truth_zero else 0.25 * (index - 3),
+                "estimated_delta_E": 0.0 if truth_zero else 0.25 * (index - 3),
+                "true_g_0": 0.05 * index,
+                "estimated_g_0": 0.05 * index,
+                "true_c_A": 0.0 if truth_zero else float(index - 3),
+                "estimated_c_A": 0.0 if truth_zero else float(index - 3),
+                "true_c_G": 0.0 if truth_zero else 0.1 * (index - 3),
+                "estimated_c_G": 0.0 if truth_zero else 0.1 * (index - 3),
+                "true_beta_0": 1.0 + index,
+                "estimated_beta_0": 1.0 + index,
+                "true_eta_plus": 0.01 + 0.01 * index,
+                "estimated_eta_plus": 0.01 + 0.01 * index,
+                "true_eta_minus": 0.03 + 0.03 * index,
+                "estimated_eta_minus": 0.03 + 0.03 * index,
+                "true_within_near_best": True,
+            }
+        )
+    parameter_space = load_model_parameter_space(
+        PARAMETER_SPACE_0826,
+        expected_model_id="model_0826",
+    )
+
+    summary = summarize_parameter_recovery(
+        pd.DataFrame(rows),
+        parameter_space=parameter_space,
+    )
+
+    by_parameter = {
+        row["parameter"]: row for row in summary["parameter_rows"]
+    }
+    assert "zero_positive_balanced_accuracy" in by_parameter["c_A"]
+    assert by_parameter["c_A"]["zero_positive_balanced_accuracy"] == 1.0
+    assert summary["chi_exact_recovery"] == 1.0
+    assert sum(row["count"] for row in summary["M_confusion_rows"]) == 8
+    assert {
+        (row["true_M"], row["estimated_M"])
+        for row in summary["M_confusion_rows"]
+    } == {(truth, estimate) for truth in range(1, 6) for estimate in range(1, 6)}
+
+
+def test_recovery_plots_emit_png_and_csv_source_data(tmp_path: Path) -> None:
+    module_summary = {
+        "confusion_rows": [
+            {"true_cell": truth, "predicted_cell": prediction, "count": int(truth == prediction)}
+            for truth in ("P", "PM", "PH", "PMH")
+            for prediction in ("P", "PM", "PH", "PMH")
+        ],
+        "cell_rows": [
+            {
+                "true_cell": cell,
+                "dataset_n": 3,
+                "exact_recovery": 0.75,
+                "wilson_low": 0.30,
+                "wilson_high": 0.95,
+            }
+            for cell in ("P", "PM", "PH", "PMH")
+        ],
+        "dataset_rows": [
+            {
+                "dataset_id": f"d{index}",
+                "true_cell": cell,
+                "predicted_cell": cell,
+                "true_delta_nll": float(index),
+                "generated_accuracy": 0.7,
+            }
+            for index, cell in enumerate(("P", "PM", "PH", "PMH"))
+        ],
+    }
+    parameter_summary = {
+        "M_confusion_rows": [
+            {"true_M": truth, "estimated_M": estimate, "count": int(truth == estimate) * 2}
+            for truth in range(1, 6)
+            for estimate in range(1, 6)
+        ],
+        "chi_confusion_rows": [
+            {"true_chi": truth, "estimated_chi": estimate, "count": int(truth == estimate) * 4}
+            for truth in (0, 1)
+            for estimate in (0, 1)
+        ],
+        "parameter_rows": [
+            {
+                "parameter": name,
+                "normalized_mae": 0.1,
+                "spearman": 0.8,
+                "near_best_coverage": 0.9,
+                "zero_positive_balanced_accuracy": 0.8 if name in {"delta_E", "c_A", "c_G"} else None,
+                "supported": True,
+            }
+            for name in ("gamma", "E_C", "delta_E", "g_0", "c_A", "c_G", "beta_0", "eta_plus", "eta_minus")
+        ],
+        "dataset_rows": [
+            {"dataset_id": "d1", "true_chi": 0, "estimated_chi": 0}
+        ],
+    }
+
+    module_png = tmp_path / "module_recovery_overview.png"
+    parameter_png = tmp_path / "parameter_recovery_overview.png"
+    plot_module_recovery(module_summary, module_png)
+    plot_parameter_recovery(parameter_summary, parameter_png)
+
+    assert module_png.is_file()
+    assert parameter_png.is_file()
+    assert list(tmp_path.glob("*.csv"))
+    assert (tmp_path / "parameter_recovery_M_source.csv").is_file()
+    assert not list(tmp_path.glob("*.pdf"))
+    assert not list(tmp_path.glob("*.svg"))
+    assert not list(tmp_path.glob("*.tiff"))
