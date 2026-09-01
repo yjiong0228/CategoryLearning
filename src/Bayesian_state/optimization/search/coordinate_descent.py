@@ -22,6 +22,7 @@ from src.Bayesian_state.optimization.artifacts import (
     to_builtin as _to_builtin,
 )
 from src.Bayesian_state.optimization.search.common import HyperSearchBase
+from src.Bayesian_state.optimization.search.cd_v2 import CDV2Config
 from src.Bayesian_state.simulation.config import (
     EVALUATION_ROLE_OPTIMIZATION,
     resolve_evaluation_score_mask,
@@ -124,6 +125,8 @@ class HyperCDOptimizer(HyperSearchBase):
 
     def __init__(self, config: Mapping[str, Any], config_path: Path) -> None:
         super().__init__(config, config_path)
+
+        self.cd_v2 = CDV2Config.from_search_config(self.config)
 
         self.objective_order = resolve_objective_order(self.config)
         self.objective_order_config = objective_order_payload(self.objective_order)
