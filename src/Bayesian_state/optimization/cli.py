@@ -14,7 +14,10 @@ from src.Bayesian_state.utils.logging import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Hyperparameter optimization")
+    p = argparse.ArgumentParser(
+        description="Hyperparameter optimization",
+        allow_abbrev=False,
+    )
     p.add_argument("--backend", choices=("grid", "cd"), required=True, help="Hyper optimizer backend")
     p.add_argument("--config", required=True, type=Path, help="Hyper YAML config")
     p.add_argument("--subjects", nargs="+", type=int, help="Override subject list")
@@ -24,6 +27,14 @@ def parse_args() -> argparse.Namespace:
         "--resume-from-coarse",
         action="store_true",
         help="With --stage fine, load existing coarse all_combinations.jsonl and run only fine.",
+    )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume the same schema-v2 Hyper-CD run from its atomic checkpoint "
+            "and cached combinations."
+        ),
     )
     return p.parse_args()
 
@@ -39,11 +50,16 @@ def main() -> None:
     optimizer_cls = HyperGridOptimizer if args.backend == "grid" else HyperCDOptimizer
     optimizer = optimizer_cls(cfg, cfg_path)
     subjects = optimizer.resolve_subjects(args.subjects, args.subject_range)
-    result = optimizer.run(
-        subjects=subjects,
-        stage=args.stage,
-        resume_from_coarse=bool(args.resume_from_coarse),
-    )
+    run_kwargs = {
+        "subjects": subjects,
+        "stage": args.stage,
+        "resume_from_coarse": bool(args.resume_from_coarse),
+    }
+    if args.backend == "cd":
+        run_kwargs["resume"] = bool(args.resume)
+    elif args.resume:
+        raise ValueError("--resume is supported only with --backend cd")
+    result = optimizer.run(**run_kwargs)
 
     print(f"Hyper-{args.backend} optimization done.")
     print(json.dumps(to_builtin(result), ensure_ascii=False, indent=2, allow_nan=False))

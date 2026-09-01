@@ -7,11 +7,13 @@ import random
 import pytest
 import yaml
 
+from src.Bayesian_state.optimization import cli as optimization_cli
 from src.Bayesian_state.optimization.search.coordinate_descent import (
     CombinationResult,
     HyperCDOptimizer,
 )
 from src.Bayesian_state.optimization.search import cd_v2
+from src.Bayesian_state.optimization.search.common import HyperSearchBase
 from src.Bayesian_state.optimization.objectives import resolve_objective_order
 
 
@@ -50,6 +52,8 @@ def _run_surface_search(
     space: dict[str, list[int]],
     min_delta: float,
     initial_points_override: list[dict[str, int]] | None = None,
+    existing_combinations: list[CombinationResult] | None = None,
+    checkpoint_callback=None,
 ) -> tuple[CombinationResult, list[dict], Path]:
     optimizer = object.__new__(HyperCDOptimizer)
     optimizer.n_restarts = 1
@@ -64,7 +68,11 @@ def _run_surface_search(
         {"objective_order": [{"path": "simulation.mean_error"}]}
     )
     optimizer.save_level = "compact"
-    optimizer._combination_counter = 0
+    optimizer._combination_counter = (
+        max(row.combination_index for row in existing_combinations) + 1
+        if existing_combinations
+        else 0
+    )
     optimizer._coordinate_parallel_plan = lambda *args: (1, 1)
 
     coordinate_names = list(space)
@@ -100,6 +108,10 @@ def _run_surface_search(
     search_kwargs = {}
     if initial_points_override is not None:
         search_kwargs["initial_points"] = initial_points_override
+    if existing_combinations is not None:
+        search_kwargs["existing_combinations"] = existing_combinations
+    if checkpoint_callback is not None:
+        search_kwargs["checkpoint_callback"] = checkpoint_callback
     _, restarts, best = optimizer._coordinate_descent(
         stage_name="coarse",
         stage_sim_cfg={},
@@ -297,6 +309,7 @@ def test_all_stage_pipeline_passes_projected_coarse_shortlist_to_fine(
         fine_initialization="coarse_shortlist",
     )
     optimizer.hyper_base_seed = 20260901
+    optimizer.base_sim_config = {}
     optimizer._prepare_stage_config = lambda stage_name: {}
     optimizer._combination_counter = 0
     optimizer.objective_order = resolve_objective_order(
@@ -329,3 +342,290 @@ def test_all_stage_pipeline_passes_projected_coarse_shortlist_to_fine(
             stage="all",
             output_dir=tmp_path,
         )
+
+
+def test_checkpoint_is_written_atomically_and_round_trips(tmp_path: Path) -> None:
+    """Catch partial checkpoint files being mistaken for resumable search state."""
+
+    path = tmp_path / "search_checkpoint.json"
+    payload = {
+        "status": "active",
+        "stage": "coarse",
+        "restart_id": 1,
+        "iter_id": 2,
+        "current_point": {"x": 0.5},
+        "subjects": [101, 111, 118],
+    }
+
+    cd_v2.atomic_write_checkpoint(path, payload)
+
+    assert cd_v2.load_checkpoint(path) == payload
+    assert list(tmp_path.glob(".search_checkpoint.json.*.tmp")) == []
+
+
+def test_resume_fingerprint_covers_config_base_subject_order_and_stage() -> None:
+    """Catch a resume operation reusing scores under a changed scientific context."""
+
+    config = {"search_schema_version": 2, "cd": {"min_delta": 0.0}}
+    base = {"max_trials": None, "prediction_mode": "prior_t"}
+    expected = cd_v2.search_context_fingerprint(config, base, [101, 111], "all")
+
+    assert expected == cd_v2.search_context_fingerprint(
+        {"cd": {"min_delta": 0.0}, "search_schema_version": 2},
+        {"prediction_mode": "prior_t", "max_trials": None},
+        [101, 111],
+        "all",
+    )
+    assert expected != cd_v2.search_context_fingerprint(
+        config, base, [111, 101], "all"
+    )
+    assert expected != cd_v2.search_context_fingerprint(
+        config, {**base, "max_trials": 64}, [101, 111], "all"
+    )
+    assert expected != cd_v2.search_context_fingerprint(
+        config, base, [101, 111], "coarse"
+    )
+
+
+def test_resume_repairs_only_a_partial_final_jsonl_record(tmp_path: Path) -> None:
+    """Catch crash-truncated tails blocking safe cache recovery."""
+
+    path = tmp_path / "records.jsonl"
+    path.write_text('{"combination_index": 0}\n{"combination_index":', encoding="utf-8")
+
+    assert HyperSearchBase._load_jsonl_records(
+        path, repair_trailing=True
+    ) == [{"combination_index": 0}]
+    assert path.read_text(encoding="utf-8") == '{"combination_index": 0}\n'
+
+
+def test_resume_rejects_invalid_jsonl_before_the_final_line(tmp_path: Path) -> None:
+    """Catch cache corruption being mislabeled as an interrupted final append."""
+
+    path = tmp_path / "records.jsonl"
+    path.write_text('{"combination_index":\n{"combination_index": 1}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid JSONL"):
+        HyperSearchBase._load_jsonl_records(path, repair_trailing=True)
+
+
+def test_deterministic_replay_resume_matches_uninterrupted_search(
+    tmp_path: Path,
+) -> None:
+    """Catch resume paths that repeat evaluation or diverge from the original trace."""
+
+    surface = {(0, 0): 3.0, (1, 0): 3.0, (0, 1): 2.0, (1, 1): 1.0}
+    full_dir = tmp_path / "full"
+    full_dir.mkdir()
+    full_best, full_restarts, full_trace = _run_surface_search(
+        full_dir,
+        surface=surface,
+        initial_point={"x": 0, "y": 0},
+        space={"x": [0, 1], "y": [0, 1]},
+        min_delta=0.0,
+    )
+
+    interrupted_dir = tmp_path / "interrupted"
+    interrupted_dir.mkdir()
+    checkpoint_count = 0
+
+    def interrupt_after_second_coordinate(payload):
+        nonlocal checkpoint_count
+        checkpoint_count += 1
+        if checkpoint_count == 2:
+            raise RuntimeError("injected interruption")
+
+    with pytest.raises(RuntimeError, match="injected interruption"):
+        _run_surface_search(
+            interrupted_dir,
+            surface=surface,
+            initial_point={"x": 0, "y": 0},
+            space={"x": [0, 1], "y": [0, 1]},
+            min_delta=0.0,
+            checkpoint_callback=interrupt_after_second_coordinate,
+        )
+
+    combination_path = interrupted_dir / "all_combinations.jsonl"
+    records = HyperSearchBase._load_jsonl_records(combination_path)
+    loader = object.__new__(HyperCDOptimizer)
+    cached = [loader._combination_from_record(record, combination_path) for record in records]
+    (interrupted_dir / "coordinate_trace.jsonl").unlink()
+
+    resumed_best, resumed_restarts, resumed_trace = _run_surface_search(
+        interrupted_dir,
+        surface=surface,
+        initial_point={"x": 0, "y": 0},
+        space={"x": [0, 1], "y": [0, 1]},
+        min_delta=0.0,
+        existing_combinations=cached,
+    )
+
+    def scientific_restarts(rows):
+        return [
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {"num_new_evaluations", "num_cache_hits"}
+            }
+            for row in rows
+        ]
+
+    def scientific_trace(path):
+        runtime_fields = {
+            "missing_value_count",
+            "new_evaluations",
+            "cache_hits",
+            "flat_task_count",
+            "flat_jobs",
+            "parallel_backend",
+        }
+        return [
+            {key: value for key, value in json.loads(line).items() if key not in runtime_fields}
+            for line in path.read_text().splitlines()
+        ]
+
+    assert resumed_best.hyperparams == full_best.hyperparams
+    assert scientific_restarts(resumed_restarts) == scientific_restarts(full_restarts)
+    assert scientific_trace(resumed_trace) == scientific_trace(full_trace)
+    assert combination_path.read_text() == (
+        full_dir / "all_combinations.jsonl"
+    ).read_text()
+
+
+def test_schema_v2_existing_output_requires_explicit_resume(tmp_path: Path) -> None:
+    """Catch a new schema-v2 invocation silently deleting prior search artifacts."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    optimizer = HyperCDOptimizer(config, config_path)
+    subject_dir = optimizer.output_dir / "subject_101"
+    subject_dir.mkdir()
+    (subject_dir / "coordinate_trace.jsonl").write_text(
+        '{"stage":"coarse"}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(FileExistsError, match="--resume"):
+        optimizer.run([101], stage="coarse", resume=False)
+
+
+def test_schema_v2_resume_requires_checkpoint(tmp_path: Path) -> None:
+    """Catch an alleged resume silently starting a fresh search."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    optimizer = HyperCDOptimizer(config, config_path)
+
+    with pytest.raises(FileNotFoundError, match="search_checkpoint.json"):
+        optimizer.run([101], stage="coarse", resume=True)
+
+
+def test_schema_v2_resume_rejects_context_fingerprint_mismatch(
+    tmp_path: Path,
+) -> None:
+    """Catch cached scores being reused under a different scientific context."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    optimizer = HyperCDOptimizer(config, config_path)
+    subject_dir = optimizer.output_dir / "subject_101"
+    subject_dir.mkdir()
+    cd_v2.atomic_write_checkpoint(
+        subject_dir / "search_checkpoint.json",
+        {
+            "schema_version": 2,
+            "context_fingerprint": "not-the-current-context",
+            "subjects": [101],
+            "requested_stage": "coarse",
+            "combination_record_count": 0,
+        },
+    )
+
+    with pytest.raises(ValueError, match="fingerprint"):
+        optimizer.run([101], stage="coarse", resume=True)
+
+
+def test_schema_v2_resume_replays_stage_from_jsonl_cache(
+    tmp_path: Path,
+) -> None:
+    """Catch resume deleting cached combinations instead of replaying from them."""
+
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config["cd"]["resume_mode"] = "explicit"
+    optimizer = HyperCDOptimizer(config, config_path)
+    subject_dir = optimizer.output_dir / "subject_101"
+    subject_dir.mkdir()
+    record = {
+        "schema_version": 1,
+        "stage": "coarse",
+        "combination_index": 0,
+        "restart_id": 0,
+        "iter_id": 0,
+        "coordinate": "init",
+        "hyperparams": {"engine.value": 0},
+        "aggregated_error": 1.0,
+        "objective_values": {"simulation.mean_error": 1.0},
+        "hyper_candidate_seed": 1,
+    }
+    combinations_path = subject_dir / "all_combinations.jsonl"
+    combinations_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    trace_path = subject_dir / "coordinate_trace.jsonl"
+    trace_path.write_text('{"stale":true}\n', encoding="utf-8")
+    fingerprint = cd_v2.search_context_fingerprint(
+        optimizer.config,
+        optimizer.base_sim_config,
+        [101],
+        "coarse",
+    )
+    cd_v2.atomic_write_checkpoint(
+        subject_dir / "search_checkpoint.json",
+        {
+            "schema_version": 2,
+            "context_fingerprint": fingerprint,
+            "subjects": [101],
+            "requested_stage": "coarse",
+            "combination_record_count": 1,
+        },
+    )
+
+    def capture_resume(**kwargs):
+        assert not trace_path.exists()
+        cached = kwargs["existing_combinations"]
+        assert [row.hyperparams for row in cached] == [{"engine.value": 0}]
+        kwargs["checkpoint_callback"](
+            {
+                "status": "active",
+                "stage": "coarse",
+                "combination_record_count": 1,
+            }
+        )
+        raise RuntimeError("resume inputs captured")
+
+    optimizer._coordinate_descent = capture_resume
+
+    with pytest.raises(RuntimeError, match="resume inputs captured"):
+        optimizer.run([101], stage="coarse", resume=True)
+
+    checkpoint = cd_v2.load_checkpoint(subject_dir / "search_checkpoint.json")
+    assert checkpoint["context_fingerprint"] == fingerprint
+    assert checkpoint["subjects"] == [101]
+    assert checkpoint["requested_stage"] == "coarse"
+
+
+def test_hyper_optimization_cli_accepts_explicit_resume(monkeypatch) -> None:
+    """Catch the public CLI omitting the opt-in needed by schema-v2 searches."""
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "hyper-opt",
+            "--backend",
+            "cd",
+            "--config",
+            "hyper.yaml",
+            "--resume",
+        ],
+    )
+
+    args = optimization_cli.parse_args()
+
+    assert args.resume is True

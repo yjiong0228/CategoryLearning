@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import hashlib
 import json
 from numbers import Real
+import os
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from src.Bayesian_state.optimization.artifacts import to_builtin
@@ -98,6 +101,67 @@ def candidate_improves(
     return bool(improvement + rounding_slack >= threshold)
 
 
+def atomic_write_checkpoint(path: Path, payload: Mapping[str, Any]) -> None:
+    """Durably replace one JSON checkpoint without exposing a partial file."""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(
+                to_builtin(dict(payload)),
+                stream,
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            )
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def load_checkpoint(path: Path) -> dict[str, Any]:
+    """Load one checkpoint mapping and reject malformed top-level values."""
+
+    source = Path(path)
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Cannot load Hyper-CD checkpoint: {source}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"Hyper-CD checkpoint must contain a mapping: {source}")
+    return dict(payload)
+
+
+def search_context_fingerprint(
+    search_config: Mapping[str, Any],
+    base_sim_config: Mapping[str, Any],
+    subjects: Sequence[int],
+    requested_stage: str,
+) -> str:
+    """Hash every context element that makes cached candidate scores valid."""
+
+    payload = {
+        "search_config": to_builtin(dict(search_config)),
+        "base_sim_config": to_builtin(dict(base_sim_config)),
+        "subjects": [int(subject_id) for subject_id in subjects],
+        "requested_stage": str(requested_stage),
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 @dataclass(frozen=True)
 class CDV2Config:
     """Validated behavior switches for schema-v2 coordinate descent."""
@@ -152,7 +216,10 @@ class CDV2Config:
 
 __all__ = [
     "CDV2Config",
+    "atomic_write_checkpoint",
     "candidate_improves",
     "canonical_point_key",
+    "load_checkpoint",
     "project_point_to_space",
+    "search_context_fingerprint",
 ]

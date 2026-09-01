@@ -256,24 +256,45 @@ class HyperSearchBase:
             stream.write(json.dumps(to_builtin(payload), ensure_ascii=False, allow_nan=False) + "\n")
 
     @staticmethod
-    def _load_jsonl_records(path: Path) -> List[Dict[str, Any]]:
+    def _load_jsonl_records(
+        path: Path,
+        *,
+        repair_trailing: bool = False,
+    ) -> List[Dict[str, Any]]:
         if not path.is_file():
             raise FileNotFoundError(
                 f"Cannot resume fine stage; missing coarse combinations file: {path}"
             )
         records: List[Dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as stream:
-            for line_no, line in enumerate(stream, start=1):
-                text = line.strip()
-                if not text:
-                    continue
-                try:
-                    payload = json.loads(text)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f"Invalid JSONL at {path}:{line_no}") from exc
-                if not isinstance(payload, Mapping):
-                    raise ValueError(f"JSONL record must be a mapping at {path}:{line_no}")
-                records.append(dict(payload))
+        raw_text = path.read_text(encoding="utf-8")
+        lines = raw_text.splitlines()
+        nonempty_line_numbers = [
+            index
+            for index, line in enumerate(lines, start=1)
+            if line.strip()
+        ]
+        final_nonempty_line = (
+            nonempty_line_numbers[-1] if nonempty_line_numbers else None
+        )
+        for line_no, line in enumerate(lines, start=1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError as exc:
+                repairable_tail = (
+                    repair_trailing
+                    and line_no == final_nonempty_line
+                    and not raw_text.endswith(("\n", "\r"))
+                )
+                if repairable_tail:
+                    HyperSearchBase._write_jsonl_records(path, records)
+                    return records
+                raise ValueError(f"Invalid JSONL at {path}:{line_no}") from exc
+            if not isinstance(payload, Mapping):
+                raise ValueError(f"JSONL record must be a mapping at {path}:{line_no}")
+            records.append(dict(payload))
         return records
 
     @staticmethod

@@ -6,7 +6,7 @@ import random
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Sequence
 
 import numpy as np
 from joblib import Parallel, delayed
@@ -24,9 +24,12 @@ from src.Bayesian_state.optimization.artifacts import (
 from src.Bayesian_state.optimization.search.common import HyperSearchBase
 from src.Bayesian_state.optimization.search.cd_v2 import (
     CDV2Config,
+    atomic_write_checkpoint,
     candidate_improves,
     canonical_point_key,
+    load_checkpoint,
     project_point_to_space,
+    search_context_fingerprint,
 )
 from src.Bayesian_state.simulation.config import (
     EVALUATION_ROLE_OPTIMIZATION,
@@ -998,14 +1001,25 @@ class HyperCDOptimizer(HyperSearchBase):
         coordinate_trace_path: Path | None = None,
         rng: random.Random | None = None,
         initial_points: Sequence[Mapping[str, Any]] | None = None,
+        existing_combinations: Sequence[CombinationResult] | None = None,
+        checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> tuple[List[CombinationResult], List[Dict[str, Any]], CombinationResult]:
         if rng is None:
             rng = self._stage_rng(subjects, stage_name)
-        all_combinations: List[CombinationResult] = []
+        all_combinations: List[CombinationResult] = list(
+            existing_combinations or []
+        )
         restart_best: List[Dict[str, Any]] = []
         global_best: CombinationResult | None = None
         restart_local_bests: List[CombinationResult] = []
         cache: Dict[str, CombinationResult] = {}
+        for existing in all_combinations:
+            key = canonical_point_key(existing.hyperparams)
+            if key in cache:
+                raise ValueError(
+                    "existing Hyper-CD combinations contain duplicate parameter points"
+                )
+            cache[key] = existing
         coords_base = list(space.keys())
         stage_initial_points: List[Dict[str, Any]] | None = None
         if initial_points is not None:
@@ -1039,7 +1053,7 @@ class HyperCDOptimizer(HyperSearchBase):
             coordinate: str,
             repeat_jobs: int,
         ) -> tuple[CombinationResult, bool]:
-            key = json.dumps(_to_builtin(point), sort_keys=True)
+            key = canonical_point_key(point)
             if key in cache:
                 return cache[key], False
             evaluated, _ = self._evaluate_missing_entries_flat(
@@ -1124,7 +1138,7 @@ class HyperCDOptimizer(HyperSearchBase):
                         candidate_count += 1
                         candidate = deepcopy(base_point)
                         candidate[coord] = value
-                        key = json.dumps(_to_builtin(candidate), sort_keys=True)
+                        key = canonical_point_key(candidate)
                         entry = {
                             "position": candidate_count - 1,
                             "key": key,
@@ -1275,6 +1289,36 @@ class HyperCDOptimizer(HyperSearchBase):
                                 "improved": improved_coord,
                             },
                         )
+                    if checkpoint_callback is not None:
+                        checkpoint_callback(
+                            {
+                                "status": "active",
+                                "stage": stage_name,
+                                "restart_id": int(restart_id),
+                                "iter_id": int(iter_id),
+                                "next_coordinate_index": int(coord_index + 1),
+                                "coordinate_order": list(coords),
+                                "current_point": deepcopy(current),
+                                "best_combination_index": int(
+                                    best_local.combination_index
+                                ),
+                                "initial_combination_index": int(
+                                    initial_result.combination_index
+                                ),
+                                "anchor_values": deepcopy(anchor_values),
+                                "no_improve_rounds": int(no_improve_rounds),
+                                "combination_counter": int(
+                                    self._combination_counter
+                                ),
+                                "combination_record_count": int(
+                                    len(all_combinations)
+                                ),
+                                "completed_restart_count": int(
+                                    len(restart_best)
+                                ),
+                                "random_state": _to_builtin(rng.getstate()),
+                            }
+                        )
 
                 if improved_this_round:
                     no_improve_rounds = 0
@@ -1324,14 +1368,19 @@ class HyperCDOptimizer(HyperSearchBase):
         stage: str,
         output_base: Path,
         resume_from_coarse: bool = False,
+        resume: bool = False,
     ) -> Dict[str, Any]:
         subject_dir = output_base / f"subject_{int(subject_id)}"
         subject_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_kwargs: Dict[str, Any] = {}
+        if resume:
+            pipeline_kwargs["resume"] = True
         return self._run_pipeline(
             subjects=[int(subject_id)],
             stage=stage,
             output_dir=subject_dir,
             resume_from_coarse=resume_from_coarse,
+            **pipeline_kwargs,
         )
 
     def _run_pipeline(
@@ -1340,6 +1389,7 @@ class HyperCDOptimizer(HyperSearchBase):
         stage: str,
         output_dir: Path,
         resume_from_coarse: bool = False,
+        resume: bool = False,
     ) -> Dict[str, Any]:
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
@@ -1353,7 +1403,103 @@ class HyperCDOptimizer(HyperSearchBase):
         else:
             stages_to_run = [stage]
         all_combinations_path = output_dir / "all_combinations.jsonl"
-        if resume_from_coarse:
+        resume_checkpoint: Dict[str, Any] | None = None
+        context_fingerprint: str | None = None
+        if self.cd_v2.enabled:
+            artifact_names = (
+                "all_combinations.jsonl",
+                "coordinate_trace.jsonl",
+                "search_checkpoint.json",
+                "restart_summary.json",
+                "stage_summary.json",
+                "final_rescore.jsonl",
+                "best_hyperparams.json",
+            )
+            existing_artifacts = [
+                output_dir / name
+                for name in artifact_names
+                if (output_dir / name).exists()
+            ]
+            if existing_artifacts and not resume:
+                raise FileExistsError(
+                    "schema-v2 Hyper-CD output already contains search artifacts; "
+                    "run with --resume or choose a new output directory: "
+                    + ", ".join(path.name for path in existing_artifacts)
+                )
+            checkpoint_path = output_dir / "search_checkpoint.json"
+            if resume and not checkpoint_path.is_file():
+                raise FileNotFoundError(
+                    "schema-v2 Hyper-CD resume requires "
+                    f"search_checkpoint.json in {output_dir}"
+                )
+            context_fingerprint = search_context_fingerprint(
+                self.config,
+                self.base_sim_config,
+                subjects,
+                stage,
+            )
+            if resume:
+                resume_checkpoint = load_checkpoint(checkpoint_path)
+                if int(resume_checkpoint.get("schema_version", -1)) != 2:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint schema_version must be 2"
+                    )
+                if resume_checkpoint.get("context_fingerprint") != context_fingerprint:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint fingerprint does not match "
+                        "the current search context"
+                    )
+                checkpoint_subjects = [
+                    int(subject_id)
+                    for subject_id in resume_checkpoint.get("subjects", [])
+                ]
+                if checkpoint_subjects != [int(subject_id) for subject_id in subjects]:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint subject order does not match"
+                    )
+                if str(resume_checkpoint.get("requested_stage")) != str(stage):
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint requested_stage does not match"
+                    )
+        resumed_by_stage: Dict[str, List[CombinationResult]] = {}
+        if self.cd_v2.enabled and resume:
+            if all_combinations_path.is_file():
+                resumed_records = self._load_jsonl_records(
+                    all_combinations_path,
+                    repair_trailing=True,
+                )
+            else:
+                resumed_records = []
+            confirmed_record_count = int(
+                (resume_checkpoint or {}).get("combination_record_count", 0)
+            )
+            if confirmed_record_count > len(resumed_records):
+                raise ValueError(
+                    "Hyper-CD resume checkpoint confirms more combination "
+                    "records than are present in all_combinations.jsonl"
+                )
+            resumed_combinations = [
+                self._combination_from_record(record, all_combinations_path)
+                for record in resumed_records
+            ]
+            combination_indices = [
+                int(combination.combination_index)
+                for combination in resumed_combinations
+            ]
+            if len(combination_indices) != len(set(combination_indices)):
+                raise ValueError(
+                    "Hyper-CD resume combinations contain duplicate combination indices"
+                )
+            if combination_indices:
+                self._combination_counter = max(combination_indices) + 1
+            for combination in resumed_combinations:
+                resumed_by_stage.setdefault(combination.stage, []).append(combination)
+            stage_combinations = {
+                stage_name: list(combinations)
+                for stage_name, combinations in resumed_by_stage.items()
+                if stage_name not in stages_to_run
+            }
+        elif resume_from_coarse:
             stage_combinations: Dict[str, List[CombinationResult]] = {
                 "coarse": self._load_coarse_for_fine_resume(all_combinations_path)
             }
@@ -1364,10 +1510,32 @@ class HyperCDOptimizer(HyperSearchBase):
             stage_combinations = {}
 
         coordinate_trace_path = output_dir / "coordinate_trace.jsonl"
-        if resume_from_coarse:
+        if self.cd_v2.enabled and resume:
+            if coordinate_trace_path.exists():
+                coordinate_trace_path.unlink()
+        elif resume_from_coarse:
             self._trim_jsonl_to_stage(coordinate_trace_path, "coarse")
         elif coordinate_trace_path.exists():
             coordinate_trace_path.unlink()
+
+        checkpoint_base: Dict[str, Any] | None = None
+        if self.cd_v2.enabled:
+            checkpoint_base = {
+                "schema_version": 2,
+                "context_fingerprint": context_fingerprint,
+                "subjects": [int(subject_id) for subject_id in subjects],
+                "requested_stage": str(stage),
+            }
+            if not resume:
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        "status": "starting",
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": 0,
+                    },
+                )
 
         stage_restarts: Dict[str, Any] = {}
         for stage_name in stages_to_run:
@@ -1402,6 +1570,27 @@ class HyperCDOptimizer(HyperSearchBase):
             search_kwargs: Dict[str, Any] = {}
             if stage_initial_points is not None:
                 search_kwargs["initial_points"] = stage_initial_points
+            if self.cd_v2.enabled:
+                search_kwargs["existing_combinations"] = list(
+                    resumed_by_stage.get(stage_name, [])
+                )
+                if self.cd_v2.checkpoint_every_coordinate:
+                    def write_coordinate_checkpoint(
+                        payload: Mapping[str, Any],
+                        *,
+                        _checkpoint_base: Mapping[str, Any] = checkpoint_base or {},
+                    ) -> None:
+                        checkpoint_payload = {
+                            **dict(_checkpoint_base),
+                            **dict(payload),
+                            "combination_counter": int(self._combination_counter),
+                            "combination_record_count": int(
+                                self._combination_counter
+                            ),
+                        }
+                        atomic_write_checkpoint(checkpoint_path, checkpoint_payload)
+
+                    search_kwargs["checkpoint_callback"] = write_coordinate_checkpoint
             combinations, restarts, _ = self._coordinate_descent(
                 stage_name=stage_name,
                 stage_sim_cfg=stage_sim_cfg,
@@ -1414,6 +1603,17 @@ class HyperCDOptimizer(HyperSearchBase):
             )
             stage_combinations[stage_name] = combinations
             stage_restarts[stage_name] = restarts
+            if checkpoint_base is not None:
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        "status": "stage_complete",
+                        "stage": stage_name,
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": int(self._combination_counter),
+                    },
+                )
 
         stage_summary = self._build_stage_summary(stage_combinations)
         final_stage = "fine" if "fine" in stage_combinations else "coarse"
@@ -1473,6 +1673,21 @@ class HyperCDOptimizer(HyperSearchBase):
         with best_path.open("w", encoding="utf-8") as f:
             json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
 
+        if checkpoint_base is not None:
+            atomic_write_checkpoint(
+                checkpoint_path,
+                {
+                    **checkpoint_base,
+                    "status": "complete",
+                    "stage": final_stage,
+                    "combination_counter": int(self._combination_counter),
+                    "combination_record_count": int(self._combination_counter),
+                    "best_combination_index": int(
+                        best_combination.combination_index
+                    ),
+                },
+            )
+
         return {
             "output_dir": str(output_dir),
             "all_combinations": str(all_combinations_path),
@@ -1512,18 +1727,28 @@ class HyperCDOptimizer(HyperSearchBase):
             }
         return summary
 
-    def run(self, subjects: Sequence[int], stage: str = "all", resume_from_coarse: bool = False) -> Dict[str, Any]:
+    def run(
+        self,
+        subjects: Sequence[int],
+        stage: str = "all",
+        resume_from_coarse: bool = False,
+        resume: bool = False,
+    ) -> Dict[str, Any]:
         if stage not in {"coarse", "fine", "all"}:
             raise ValueError("stage must be one of: coarse, fine, all")
         if resume_from_coarse and stage != "fine":
             raise ValueError("resume_from_coarse requires stage='fine'")
 
         if self.hyperparam_selection_mode == "shared":
+            pipeline_kwargs: Dict[str, Any] = {}
+            if resume:
+                pipeline_kwargs["resume"] = True
             shared = self._run_pipeline(
                 subjects=[int(subject_id) for subject_id in subjects],
                 stage=stage,
                 output_dir=self.output_dir,
                 resume_from_coarse=resume_from_coarse,
+                **pipeline_kwargs,
             )
             return {
                 "output_dir": shared["output_dir"],
@@ -1537,11 +1762,20 @@ class HyperCDOptimizer(HyperSearchBase):
         per_subject_best: Dict[str, Any] = {}
         per_subject_outputs: Dict[str, Any] = {}
         for sid in subjects:
-            out = self.run_subject(
-                int(sid),
-                stage,
-                resume_from_coarse=resume_from_coarse,
-            )
+            if resume:
+                out = self._run_subject_pipeline(
+                    int(sid),
+                    stage,
+                    self.output_dir,
+                    resume_from_coarse=resume_from_coarse,
+                    resume=True,
+                )
+            else:
+                out = self.run_subject(
+                    int(sid),
+                    stage,
+                    resume_from_coarse=resume_from_coarse,
+                )
             per_subject_outputs[str(int(sid))] = {
                 "output_dir": out["output_dir"],
                 "all_combinations": out["all_combinations"],

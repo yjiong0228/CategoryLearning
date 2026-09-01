@@ -200,6 +200,18 @@ python -m src.Bayesian_state.optimization.cli --backend cd --config <yaml>
 python -m src.Bayesian_state.optimization.cli --backend grid --config <yaml>
 ```
 
+`search_schema_version: 2` 的 Hyper-CD 运行采用显式续跑策略。每完成一个坐标会原子更新
+`search_checkpoint.json`；同一输出目录若已存在搜索产物，新运行会立即报错。确认配置、基础
+simulation 配置、被试顺序和 stage 均未改变后，可用：
+
+```bash
+python -m src.Bayesian_state.optimization.cli --backend cd --config <yaml> --resume
+```
+
+续跑会从 `all_combinations.jsonl` 重建同一 stage 的候选缓存，并确定性回放搜索控制；已计算
+参数点不会重复运行 PF。`--resume` 与旧的 `--resume-from-coarse` 含义不同：前者继续同一次
+schema-v2 搜索，后者只用于从既有 coarse 结果启动单独的 fine stage。
+
 顶层 workflow 与结果序列化由：
 
 - `src.Bayesian_state.run_hyper_then_simulation`
