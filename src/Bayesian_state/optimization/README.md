@@ -212,6 +212,25 @@ python -m src.Bayesian_state.optimization.cli --backend cd --config <yaml> --res
 参数点不会重复运行 PF。`--resume` 与旧的 `--resume-from-coarse` 含义不同：前者继续同一次
 schema-v2 搜索，后者只用于从既有 coarse 结果启动单独的 fine stage。
 
+Schema v2 可再配置独立最终复评分：
+
+```yaml
+final_rescore:
+  enabled: true
+  shortlist_size: 4
+  seed_family: model0826_recovery_final_rescore_v1
+  simulation_overrides:
+    simulation_repeats: 32
+    repeat_aggregation: mean_probability
+```
+
+复评分从最终 search stage 的唯一候选中按目标顺序取 shortlist，使用独立 seed family 和
+候选间共同随机数重新运行 PF。它必须先平均每个试次的 choice probability，再计算 NLL；最终
+参数只能由该复评分决定。`best_hyperparams.json` 同时保留低预算 `search_best` 与实际采用的
+`final_rescore_best`，完整复评分记录写入 `final_rescore.jsonl`。若基础配置使用 sequential
+holdout，复评分沿用同一 optimization trial mask；完整序列仍参与因果状态递推，但只有训练前缀
+参与参数选择。全试次分析应明确保持 `max_trials: null`，不能继承旧的 64-trial 探索上限。
+
 顶层 workflow 与结果序列化由：
 
 - `src.Bayesian_state.run_hyper_then_simulation`

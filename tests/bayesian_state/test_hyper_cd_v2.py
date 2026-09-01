@@ -3,11 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import random
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import yaml
 
 from src.Bayesian_state.optimization import cli as optimization_cli
+from src.Bayesian_state.optimization.search import coordinate_descent as cd_module
 from src.Bayesian_state.optimization.search.coordinate_descent import (
     CombinationResult,
     HyperCDOptimizer,
@@ -876,3 +879,81 @@ def test_optional_final_rescore_seed_family_preserves_legacy_seed_paths() -> Non
             "subject_id": 101,
         }
     )
+
+
+def test_schema_v2_smoke_passes_all_320_trials_to_evaluator(
+    monkeypatch,
+) -> None:
+    """Catch full-trial recovery silently inheriting an old 64-trial cap."""
+
+    observed = {}
+
+    class FakeRunner:
+        _engine_config_template = {}
+        _processed_data_dir = Path("processed")
+
+        @staticmethod
+        def _get_subject_frame(subject_id, stop_at):
+            return int(subject_id)
+
+        @staticmethod
+        def _get_condition_value(subject_frame):
+            return 1
+
+        @staticmethod
+        def _extract_arrays(subject_frame, max_trials):
+            observed["max_trials"] = max_trials
+            return SimpleNamespace(feedback=np.ones(320, dtype=float))
+
+    class SequentialParallel:
+        def __init__(self, n_jobs):
+            self.n_jobs = n_jobs
+
+        @staticmethod
+        def __call__(tasks):
+            return [task() for task in tasks]
+
+    def fake_evaluator(*args, **kwargs):
+        observed["evaluator_trial_count"] = int(args[2].feedback.shape[0])
+        return object()
+
+    monkeypatch.setattr(cd_module, "Parallel", SequentialParallel)
+    monkeypatch.setattr(
+        cd_module,
+        "delayed",
+        lambda fn: lambda *args, **kwargs: lambda: fn(*args, **kwargs),
+    )
+    monkeypatch.setattr(cd_module, "evaluate_state_model_run", fake_evaluator)
+
+    optimizer = object.__new__(HyperCDOptimizer)
+    optimizer.hyper_base_seed = 17
+    optimizer.common_random_numbers_within_candidate_comparisons = True
+    runs, _, _, score_context = optimizer._simulate_runs_for_point(
+        stage_name="final_rescore",
+        runner=FakeRunner(),
+        dataset_paths={},
+        subject_id=101,
+        point={"x": 1},
+        simulation_repeats=1,
+        window_size=16,
+        stop_at=1.0,
+        max_trials=None,
+        keep_logs=False,
+        prediction_mode="prior_t",
+        selection_prediction_mode="prior_t",
+        loss_metric="choice_nll",
+        loss_delta=None,
+        hyper_candidate_seed=123,
+        n_jobs=1,
+        evaluation_protocol=None,
+        force_common_random_numbers=True,
+        seed_family="full_trial_smoke_v1",
+    )
+
+    assert len(runs) == 1
+    assert observed == {
+        "max_trials": None,
+        "evaluator_trial_count": 320,
+    }
+    assert score_context["n_trials"] == 320
+    assert score_context["score_trial_count"] == 320

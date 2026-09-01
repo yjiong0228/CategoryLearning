@@ -303,6 +303,12 @@ Grid/CD 仍执行完整观察序列，但只用前缀 trial 计算候选 objecti
 继续对全部 trial 评分。实际切分点、角色和评分 trial 数写入结果的
 `selection.selection_meta.score_context`。
 
+需要可中断且抗 PF 噪声的搜索时，Hyper-CD 2.0 通过
+`search_schema_version: 2` 显式启用。它保留离散/联合参数块，按完整坐标多轮扫描，并可把
+coarse shortlist 投影为 fine 起点。最终 shortlist 必须用独立 seed family、候选间共同随机数
+和 `mean_probability` 聚合复评分；搜索控制与复评分都属于统计估计过程，不作为被试认知机制。
+恢复实验若要求全部试次，应在基础配置及 stage override 中都保持 `max_trials: null`。
+
 ## 7. 正式入口
 
 ### 超参数搜索
@@ -314,6 +320,10 @@ python -m src.Bayesian_state.optimization.cli \
 ```
 
 将 `cd` 替换为 `grid` 可运行显式网格搜索。
+
+Schema-v2 Hyper-CD 若因中断需要继续，使用同一命令并追加 `--resume`。系统会核对配置、基础
+simulation 配置、被试顺序和 stage 的 fingerprint；不一致时拒绝复用旧 PF 评分。同一输出目录
+已有产物而未显式续跑时也会报错，不会静默覆盖。
 
 ### 搜索后生成逐被试配置并仿真
 
@@ -382,6 +392,8 @@ Hyper 搜索通常写入：
     stage_summary.json
     restart_summary.json          # Hyper-CD
     coordinate_trace.jsonl        # Hyper-CD
+    search_checkpoint.json        # Hyper-CD 2.0，原子断点状态
+    final_rescore.jsonl           # Hyper-CD 2.0，独立高预算 shortlist 复评分
 ```
 
 固定仿真通常写入：
