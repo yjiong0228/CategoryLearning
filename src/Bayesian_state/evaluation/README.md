@@ -293,6 +293,18 @@ keep_logs: true
 本目录负责评价 protocol、结果适配、比较、图表和解释，不应重新
 实现 Brier、NLL、CRPS、学习曲线或行为统计。
 
+## Model0826 恢复汇总
+
+`evaluation/model_recovery.py` 汇总 `scripts/run_model_0826_recovery.py` 的冻结结果。模块恢复报告
+P/PM/PH/PMH 的 held-out confusion matrix、逐 cell Wilson 95% interval、真值 cell 的
+`delta total NLL <= 2` coverage 和错误 cell 吸收率。参数恢复把 `M` 与 readout 结构 `chi`
+分别作为离散 confusion matrix；连续参数报告 bias、MAE、RMSE、支持跨度归一化 MAE、Spearman
+和参数误差相关，`delta_E/c_A/c_G` 另报告精确零点与正值的 balanced accuracy。
+
+输出中的 `supported` 完全由 recovery YAML 中预注册的门槛计算。未通过门槛的参数不得作为稳定
+个体差异解释；模块 gate 未通过时也只能按具体混淆缩减架构结论，不能事后改门槛。两张 overview
+图的每个定量元素都有同目录 CSV 源数据，按仓库约定只输出 PNG。
+
 ## 添加新评价
 
 1. 先确认输入来自 subject JSON 还是 raw-run stream。

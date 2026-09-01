@@ -231,6 +231,13 @@ final_rescore:
 holdout，复评分沿用同一 optimization trial mask；完整序列仍参与因果状态递推，但只有训练前缀
 参与参数选择。全试次分析应明确保持 `max_trials: null`，不能继承旧的 64-trial 探索上限。
 
+Model0826 的正式恢复由 `scripts/run_model_0826_recovery.py` 编排。模块恢复的 Hyper-CD 与
+final-rescore 都只能读取 70% 时间前缀；冻结赢家后才由 evaluation 层用新的候选配对 PF seeds
+计算 30% 后缀 NLL。参数恢复使用全部试次拟合，但恢复判定不会只比较一个估计点：final-rescore
+shortlist 的全部候选和生成真值会在同一组独立 seeds 下重新评分，真值相对该集合最小 total NLL
+的差值决定 `delta NLL <= 2` near-best coverage。搜索产生的粒子权重、坐标移动和 shortlist
+选择都属于统计估计程序，不是认知机制。
+
 顶层 workflow 与结果序列化由：
 
 - `src.Bayesian_state.run_hyper_then_simulation`

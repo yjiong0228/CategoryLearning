@@ -379,6 +379,30 @@ python -m src.Bayesian_state.run_model_evaluation \
 
 所有命令建议从仓库根目录执行。
 
+### Model 0826 模块与参数恢复
+
+冻结的 Model0826 恢复入口为：
+
+```bash
+python scripts/run_model_0826_recovery.py --phase smoke
+python scripts/run_model_0826_recovery.py --phase generate --resume
+python scripts/run_model_0826_recovery.py --phase calibrate --resume
+python scripts/run_model_0826_recovery.py --phase module-fit --resume
+python scripts/run_model_0826_recovery.py --phase parameter-fit --resume
+python scripts/run_model_0826_recovery.py --phase summarize --resume
+```
+
+也可在全新输出目录用 `--phase all` 顺序执行。默认输出只写入
+`results/model_0826/recovery_v1/`；已有目录必须显式 `--resume`，并且源 recovery YAML、
+Model0826 engine、参数空间和基础 simulation 配置的联合 fingerprint 必须一致。
+
+`smoke`、正式生成和 PF 校准都使用 101/111/118 的全部 320/320/256 个试次。模块恢复只用
+70% 时间前缀进行 Hyper-CD 2.0 参数选择，冻结参数后执行完整历史但只在 30% 后缀计算
+held-out total choice NLL。参数恢复对 final-rescore shortlist 全部候选与生成真值使用另一组
+共同 PF seeds 成对评分；先逐试次平均 PF 概率，再计算 NLL。PF 加权和多 seed 平均是不可见状态
+积分的数值估计，不被解释为被试的额外认知步骤；不同自主生成轨迹始终是独立观测，不能彼此
+平均成一条行为轨迹。
+
 ## 8. 输出约定
 
 Hyper 搜索通常写入：

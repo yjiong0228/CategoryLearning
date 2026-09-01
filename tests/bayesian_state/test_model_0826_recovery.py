@@ -36,6 +36,15 @@ from src.Bayesian_state.optimization.parameter_space import (
     load_model_parameter_space,
     load_parameter_space,
 )
+from scripts.run_model_0826_recovery import (
+    PHASES,
+    build_calibration_specs,
+    build_parser,
+    load_subject_schedules,
+    prepare_output,
+    require_frozen_budget,
+    resolve_final_score_seeds,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -618,6 +627,42 @@ def test_module_fit_configures_prefix_only_parameter_selection(
     ]["optimization_partition"] == "train"
 
 
+def test_fit_resume_reuses_configs_but_starts_fresh_before_checkpoint(
+    tmp_path: Path,
+) -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+    specification = design.module_datasets[0]
+    synthetic_csv = tmp_path / "synthetic.csv"
+    pd.DataFrame(
+        {
+            "choice": np.ones(specification.trial_count, dtype=int),
+            "feedback": np.ones(specification.trial_count),
+        }
+    ).to_csv(synthetic_csv, index=False)
+    resume_values = []
+
+    class FakeOptimizer:
+        def __init__(self, config, config_path):
+            del config, config_path
+
+        def run(self, subjects, stage, resume):
+            del subjects, stage
+            resume_values.append(bool(resume))
+            return {"best": {"selected": {"best_hyperparams": {}}}}
+
+    kwargs = {
+        "candidate_cell": "P",
+        "synthetic_csv": synthetic_csv,
+        "frozen_budget": {"particle_count": 64, "filter_seed_count": 8},
+        "output_dir": tmp_path / "fit",
+        "optimizer_factory": FakeOptimizer,
+    }
+    fit_recovery_dataset(design, specification, **kwargs)
+    fit_recovery_dataset(design, specification, resume=True, **kwargs)
+
+    assert resume_values == [False, False]
+
+
 def test_frozen_module_candidate_runs_full_history_but_scores_only_suffix() -> None:
     trial_count = 320
     observed_trial_counts = []
@@ -807,3 +852,119 @@ def test_recovery_plots_emit_png_and_csv_source_data(tmp_path: Path) -> None:
     assert not list(tmp_path.glob("*.pdf"))
     assert not list(tmp_path.glob("*.svg"))
     assert not list(tmp_path.glob("*.tiff"))
+
+
+def test_recovery_cli_has_all_pre_registered_phases() -> None:
+    parser = build_parser()
+    phase_action = next(
+        action for action in parser._actions if action.dest == "phase"
+    )
+
+    assert tuple(phase_action.choices) == PHASES
+    assert PHASES == (
+        "smoke",
+        "generate",
+        "calibrate",
+        "module-fit",
+        "parameter-fit",
+        "summarize",
+        "all",
+    )
+
+
+def test_existing_output_requires_resume_and_matching_manifest(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "recovery_v1"
+    created = prepare_output(
+        output,
+        resume=False,
+        analysis_id="model_0826_recovery_v1",
+        config_fingerprint="abc",
+    )
+    assert created["status"] == "initialized"
+
+    with pytest.raises(FileExistsError):
+        prepare_output(
+            output,
+            resume=False,
+            analysis_id="model_0826_recovery_v1",
+            config_fingerprint="abc",
+        )
+    resumed = prepare_output(
+        output,
+        resume=True,
+        analysis_id="model_0826_recovery_v1",
+        config_fingerprint="abc",
+    )
+    assert resumed["config_fingerprint"] == "abc"
+    with pytest.raises(ValueError, match="fingerprint"):
+        prepare_output(
+            output,
+            resume=True,
+            analysis_id="model_0826_recovery_v1",
+            config_fingerprint="changed",
+        )
+
+
+def test_formal_fit_requires_successfully_frozen_pf_budget(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(FileNotFoundError, match="calibration"):
+        require_frozen_budget(tmp_path / "missing.json")
+
+    failed = tmp_path / "failed.json"
+    failed.write_text('{"status": "failed"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="not frozen"):
+        require_frozen_budget(failed)
+
+
+def test_cli_uses_complete_registered_subject_schedules() -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+    schedules, _ = load_subject_schedules(design)
+
+    assert {subject_id: len(frame) for subject_id, frame in schedules.items()} == {
+        101: 320,
+        111: 320,
+        118: 256,
+    }
+
+
+def test_calibration_specs_are_six_independent_full_trajectories() -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+    specifications = build_calibration_specs(design)
+
+    assert len(specifications) == 6
+    assert len({row.dataset_id for row in specifications}) == 6
+    assert len({row.generation_seed for row in specifications}) == 6
+    assert Counter(row.subject_id for row in specifications) == {
+        101: 2,
+        111: 2,
+        118: 2,
+    }
+    assert {row.trial_count for row in specifications} == {256, 320}
+
+
+def test_final_score_seeds_are_paired_across_candidates_but_role_disjoint() -> None:
+    first = resolve_final_score_seeds(
+        analysis_id="model_0826_recovery_v1",
+        dataset_id="dataset_1",
+        role="module_suffix",
+        count=4,
+    )
+    repeated = resolve_final_score_seeds(
+        analysis_id="model_0826_recovery_v1",
+        dataset_id="dataset_1",
+        role="module_suffix",
+        count=4,
+    )
+    other_role = resolve_final_score_seeds(
+        analysis_id="model_0826_recovery_v1",
+        dataset_id="dataset_1",
+        role="parameter_near_best",
+        count=4,
+    )
+
+    assert first == repeated
+    assert len(set(first)) == 4
+    assert set(first).isdisjoint(other_role)

@@ -436,7 +436,11 @@ def synthetic_dataset_frame(
     return frame
 
 
-def _named_truth_hyperparams(truth: Mapping[str, Any]) -> dict[str, Any]:
+def model_0826_truth_hyperparams(
+    truth: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Convert named recovery truth values to executable engine paths."""
+
     hyperparams: dict[str, Any] = {
         BETA_PATH: float(truth["beta_0"]),
         ETA_PLUS_PATH: float(truth["eta_plus"]),
@@ -464,7 +468,7 @@ def _named_truth_hyperparams(truth: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _truth_hyperparams(specification: RecoveryDatasetSpec) -> dict[str, Any]:
-    return _named_truth_hyperparams(specification.truth)
+    return model_0826_truth_hyperparams(specification.truth)
 
 
 def _canonical_fingerprint(payload: Mapping[str, Any]) -> str:
@@ -767,7 +771,7 @@ def score_pf_bank(
         engine = build_model_0826_cell_engine(base_engine_config, "PMH")
         engine = apply_fixed_hyperparams_to_engine_config(
             engine,
-            _named_truth_hyperparams(truth),
+            model_0826_truth_hyperparams(truth),
         )
         readout_args = _frozen_readout_args(engine)
         probability_runs: list[np.ndarray] = []
@@ -1275,10 +1279,15 @@ def fit_recovery_dataset(
     )
     _write_immutable_yaml(hyper_config_path, hyper_config, resume=resume)
     optimizer = optimizer_factory(hyper_config, hyper_config_path)
+    checkpoint_path = (
+        search_dir
+        / f"subject_{int(specification.subject_id)}"
+        / "search_checkpoint.json"
+    )
     fit_result = optimizer.run(
         [int(specification.subject_id)],
         stage="all",
-        resume=bool(resume),
+        resume=bool(resume and checkpoint_path.is_file()),
     )
     return {
         "dataset_id": specification.dataset_id,
@@ -1969,6 +1978,7 @@ __all__ = [
     "generate_synthetic_dataset",
     "load_recovery_design",
     "mean_probability_nll",
+    "model_0826_truth_hyperparams",
     "plot_module_recovery",
     "plot_parameter_recovery",
     "resolve_calibration_filter_seeds",
