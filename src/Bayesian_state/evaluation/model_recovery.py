@@ -1582,6 +1582,7 @@ def score_frozen_candidate(
     particle_count: int,
     filter_seeds: Sequence[int],
     evaluation_protocol: Mapping[str, Any] | None,
+    n_jobs: int = 1,
     resample_threshold_fraction: float = 0.5,
     processed_data_dir: str | Path | None = None,
     dataset_paths: Mapping[str, str | Path] | None = None,
@@ -1604,8 +1605,14 @@ def score_frozen_candidate(
     engine = build_model_0826_cell_engine(base_engine_config, candidate_cell)
     engine = apply_fixed_hyperparams_to_engine_config(engine, fixed_hyperparams)
     readout_args = _frozen_readout_args(engine)
-    probability_runs: list[np.ndarray] = []
-    for filter_seed in filter_seeds:
+    seeds = [int(value) for value in filter_seeds]
+    if not seeds or len(seeds) != len(set(seeds)):
+        raise ValueError("frozen scoring requires unique filter seeds")
+    jobs = min(int(n_jobs), len(seeds))
+    if jobs < 1:
+        raise ValueError("frozen scoring n_jobs must be positive")
+
+    def run_seed(filter_seed: int) -> np.ndarray:
         result = pf_runner(
             engine_config=engine,
             subject_id=int(subject_id),
@@ -1619,8 +1626,19 @@ def score_frozen_candidate(
             dataset_paths=dataset_paths,
             **readout_args,
         )
-        probability_runs.append(
-            np.asarray(result.marginal_probabilities, dtype=float)
+        probabilities = np.asarray(result.marginal_probabilities, dtype=float)
+        if probabilities.shape != (observed.size, 2):
+            raise ValueError("frozen scoring probabilities must have shape (T, 2)")
+        return probabilities
+
+    if jobs == 1:
+        probability_runs = [run_seed(filter_seed) for filter_seed in seeds]
+    else:
+        warmup_dykstra_numba()
+        probability_runs = list(
+            Parallel(n_jobs=jobs, backend="loky", verbose=10)(
+                delayed(run_seed)(filter_seed) for filter_seed in seeds
+            )
         )
     stack = np.stack(probability_runs, axis=0)
     total_nll = mean_probability_nll(stack, observed, score_mask)
@@ -1629,8 +1647,9 @@ def score_frozen_candidate(
         "mean_trial_nll": total_nll / float(score_context["score_trial_count"]),
         "score_context": score_context,
         "particle_count": int(particle_count),
-        "filter_seed_count": int(len(filter_seeds)),
-        "filter_seeds": [int(value) for value in filter_seeds],
+        "filter_seed_count": int(len(seeds)),
+        "filter_seeds": seeds,
+        "parallel_n_jobs": int(jobs),
         "probability_aggregation": "mean_probability_then_nll",
         "mean_probability": np.mean(stack, axis=0),
     }

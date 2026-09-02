@@ -246,6 +246,10 @@ top-2，未通过便禁止进入正式恢复。PF 最终预算的相邻稳定性
 top-k”判定，同时保留 exact-winner agreement 作为诊断，避免把近乎并列的 NLL 抖动误判成
 数值失败。
 
+受墙钟限制时，runner 的 `priority-all --priority-subject <id>` 会先完成指定 subject template
+的模块和参数恢复，再继续其余被试。它不缩减任何被试的试次数、生成重复、候选结构或最终 PF
+预算；subject-level 图和 JSON 明确是运行检查点，只有所有 36+40 数据集齐全时才计算正式总门槛。
+
 顶层 workflow 与结果序列化由：
 
 - `src.Bayesian_state.run_hyper_then_simulation`

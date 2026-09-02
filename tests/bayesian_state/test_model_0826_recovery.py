@@ -47,6 +47,7 @@ from scripts.run_model_0826_recovery import (
     prepare_output,
     require_frozen_budget,
     resolve_final_score_seeds,
+    resolve_subject_order,
 )
 
 
@@ -64,6 +65,22 @@ RECOVERY_CONFIG = (
 RECOVERY_CONFIG_V2 = (
     ROOT / "configs/specific_models/model_0826_recovery_v2.yaml"
 )
+
+
+def test_priority_all_orders_requested_subject_before_remaining_subjects() -> None:
+    assert resolve_subject_order((101, 111, 118), 101) == (101, 111, 118)
+    assert resolve_subject_order((101, 111, 118), 118) == (118, 101, 111)
+    with pytest.raises(ValueError, match="priority subject"):
+        resolve_subject_order((101, 111, 118), 999)
+
+
+def test_parser_accepts_subject_first_continuous_recovery() -> None:
+    args = build_parser().parse_args(
+        ["--phase", "priority-all", "--priority-subject", "101"]
+    )
+
+    assert args.phase == "priority-all"
+    assert args.priority_subject == 101
 
 
 def test_parameter_loader_accepts_0818_and_0826_without_cross_version_aliasing() -> None:
@@ -913,6 +930,45 @@ def test_frozen_module_candidate_runs_full_history_but_scores_only_suffix() -> N
     assert score["total_nll"] == pytest.approx(96 * np.log(2.0))
 
 
+def test_frozen_candidate_parallel_seed_scoring_matches_serial() -> None:
+    trial_count = 12
+
+    def fake_pf(**kwargs):
+        probability_one = 0.25 + 0.1 * (int(kwargs["filter_seed"]) % 3)
+        probabilities = np.column_stack(
+            (
+                np.full(trial_count, probability_one),
+                np.full(trial_count, 1.0 - probability_one),
+            )
+        )
+        return SimpleNamespace(marginal_probabilities=probabilities)
+
+    common = {
+        "subject_id": 101,
+        "stimulus": np.ones((trial_count, 4), dtype=float),
+        "choices": np.asarray([1, 2] * (trial_count // 2), dtype=int),
+        "feedback": np.ones(trial_count, dtype=float),
+        "base_engine_config": yaml.safe_load(
+            MODEL_0826_ENGINE.read_text(encoding="utf-8")
+        ),
+        "candidate_cell": "P",
+        "fixed_hyperparams": {},
+        "particle_count": 8,
+        "filter_seeds": [1011, 1012, 1013],
+        "evaluation_protocol": {"mode": "all"},
+        "pf_runner": fake_pf,
+    }
+
+    serial = score_frozen_candidate(**common, n_jobs=1)
+    parallel = score_frozen_candidate(**common, n_jobs=3)
+
+    assert parallel["parallel_n_jobs"] == 3
+    assert parallel["total_nll"] == pytest.approx(serial["total_nll"])
+    assert np.array_equal(
+        parallel["mean_probability"], serial["mean_probability"]
+    )
+
+
 def test_module_summary_uses_total_nll_and_delta_two_near_best() -> None:
     winners = {"P": "P", "PM": "PM", "PH": "PH", "PMH": "PH"}
     rows = []
@@ -1080,6 +1136,7 @@ def test_recovery_cli_has_all_pre_registered_phases() -> None:
         "module-fit",
         "parameter-fit",
         "summarize",
+        "priority-all",
         "all",
     )
 

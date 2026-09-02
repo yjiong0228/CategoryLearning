@@ -407,6 +407,19 @@ python scripts/run_model_0826_recovery.py \
 v2 保留全部试次、模型结构和高预算 final-rescore，只把候选发现拆成 R16×B4 coarse 与
 R32×B4 fine；进入恢复前必须验证这两个阶段分别保留 R128×B16 赢家于 top-4/top-2。边界距离
 默认由 Numba 执行与历史 Dykstra 更新顺序相同的机器码循环，缺少 Numba 时自动回退 Python。
+如果需要在有限墙钟时间内优先得到一个完整 subject-template 检查点，可用：
+
+```bash
+python scripts/run_model_0826_recovery.py \
+  --config configs/specific_models/model_0826_recovery_v2.yaml \
+  --output-dir results/model_0826/recovery_v2_subject_first \
+  --phase priority-all --priority-subject 101
+```
+
+该入口连续执行 smoke、PF 校准、全部数据生成，然后按 101→111→118 分别完成模块与参数恢复；
+每个数据集后原子更新增量 score 表，每个被试完成后写出明确标记为 partial 的 subject-level
+报告，最后才合并全体预注册结果。中断后用完全相同命令追加 `--resume`。最终 suffix 和
+near-best 的多个 PF seeds 也按 `search.cd.parallel_budget` 并行，但仍先平均逐试次概率再计算 NLL。
 
 `smoke`、正式生成和 PF 校准都使用 101/111/118 的全部 320/320/256 个试次。模块恢复只用
 70% 时间前缀进行 Hyper-CD 2.0 参数选择，冻结参数后执行完整历史但只在 30% 后缀计算

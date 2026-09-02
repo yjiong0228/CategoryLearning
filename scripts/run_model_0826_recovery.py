@@ -69,6 +69,7 @@ PHASES = (
     "module-fit",
     "parameter-fit",
     "summarize",
+    "priority-all",
     "all",
 )
 
@@ -143,11 +144,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--phase", choices=PHASES, default="all")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument(
+        "--priority-subject",
+        type=int,
+        help=(
+            "With --phase priority-all, finish this subject's module and "
+            "parameter recovery before starting the remaining subjects."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume only artifacts whose registered fingerprints match.",
     )
     return parser
+
+
+def resolve_subject_order(
+    available_subjects: Sequence[int],
+    priority_subject: int,
+) -> tuple[int, ...]:
+    """Place one registered subject first without dropping the others."""
+
+    subjects = tuple(dict.fromkeys(int(value) for value in available_subjects))
+    priority = int(priority_subject)
+    if priority not in subjects:
+        raise ValueError(
+            f"priority subject {priority} is not registered: {subjects}"
+        )
+    return (priority, *(value for value in subjects if value != priority))
 
 
 def prepare_output(
@@ -1288,6 +1312,7 @@ def _score_or_load_frozen_candidate(
         particle_count=int(frozen_budget["particle_count"]),
         filter_seeds=seeds,
         evaluation_protocol=evaluation_protocol,
+        n_jobs=int(design.config["search"]["cd"]["parallel_budget"]),
         processed_data_dir=dataset_paths["processed_dir"],
         dataset_paths=dataset_paths,
     )
@@ -1330,20 +1355,52 @@ def run_module_fit_phase(
     output_root: Path,
     *,
     resume: bool,
+    subject_ids: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     """Fit all four cells on prefixes and score frozen fits on suffixes."""
 
-    score_path = output_root / "module_recovery" / "fit_scores.csv"
-    if resume and _phase_is_complete(output_root, "module-fit"):
+    selected_subjects = (
+        None
+        if subject_ids is None
+        else tuple(dict.fromkeys(int(value) for value in subject_ids))
+    )
+    if selected_subjects is not None and not selected_subjects:
+        raise ValueError("module recovery subject_ids cannot be empty")
+    phase_name = (
+        "module-fit"
+        if selected_subjects is None
+        else "module-fit-subject-" + "-".join(map(str, selected_subjects))
+    )
+    score_filename = (
+        "fit_scores.csv"
+        if selected_subjects is None
+        else "fit_scores_subject_" + "_".join(map(str, selected_subjects)) + ".csv"
+    )
+    score_path = output_root / "module_recovery" / score_filename
+    if resume and _phase_is_complete(output_root, phase_name):
         return {"status": "complete", "score_path": str(score_path)}
     _require_phase(output_root, "generate")
     budget = require_frozen_budget(
         output_root / "numerical_calibration" / "frozen_budget.json"
     )
-    _update_phase_manifest(output_root, "module-fit", status="running")
+    _update_phase_manifest(output_root, phase_name, status="running")
     _, dataset_paths = load_subject_schedules(design)
     rows: list[dict[str, Any]] = []
-    total = len(design.module_datasets) * 4
+    specifications = [
+        specification
+        for specification in design.module_datasets
+        if selected_subjects is None
+        or specification.subject_id in selected_subjects
+    ]
+    if selected_subjects is not None:
+        missing = set(selected_subjects) - {
+            specification.subject_id for specification in specifications
+        }
+        if missing:
+            raise ValueError(
+                f"module recovery subjects are not registered: {sorted(missing)}"
+            )
+    total = len(specifications) * 4
     completed = 0
     evaluation_protocol = {
         "mode": "sequential_holdout",
@@ -1351,7 +1408,7 @@ def run_module_fit_phase(
         "optimization_partition": "train",
         "simulation_partition": "evaluation",
     }
-    for specification in design.module_datasets:
+    for specification in specifications:
         arrays = _load_synthetic_arrays(
             _synthetic_paths(output_root, specification)[1]
         )
@@ -1402,6 +1459,7 @@ def run_module_fit_phase(
                     ),
                 }
             )
+            _atomic_csv(score_path, pd.DataFrame(rows))
             completed += 1
             print(
                 f"[module-fit {completed}/{total}] "
@@ -1410,16 +1468,21 @@ def run_module_fit_phase(
             )
     frame = pd.DataFrame(rows)
     if len(frame) != total:
-        raise ValueError("module recovery did not produce all 144 fit scores")
+        raise ValueError(
+            f"module recovery did not produce all {total} fit scores"
+        )
     _atomic_csv(score_path, frame)
     details = {
-        "dataset_count": len(design.module_datasets),
+        "dataset_count": len(specifications),
+        "subjects": (
+            sorted({row["subject_id"] for row in rows}) if rows else []
+        ),
         "candidate_score_count": len(frame),
         "score_path": str(score_path),
     }
     _update_phase_manifest(
         output_root,
-        "module-fit",
+        phase_name,
         status="complete",
         details=details,
     )
@@ -1431,20 +1494,52 @@ def run_parameter_fit_phase(
     output_root: Path,
     *,
     resume: bool,
+    subject_ids: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     """Recover PMH parameters and audit the true vector with paired seeds."""
 
-    score_path = output_root / "parameter_recovery" / "fit_scores.csv"
-    if resume and _phase_is_complete(output_root, "parameter-fit"):
+    selected_subjects = (
+        None
+        if subject_ids is None
+        else tuple(dict.fromkeys(int(value) for value in subject_ids))
+    )
+    if selected_subjects is not None and not selected_subjects:
+        raise ValueError("parameter recovery subject_ids cannot be empty")
+    phase_name = (
+        "parameter-fit"
+        if selected_subjects is None
+        else "parameter-fit-subject-" + "-".join(map(str, selected_subjects))
+    )
+    score_filename = (
+        "fit_scores.csv"
+        if selected_subjects is None
+        else "fit_scores_subject_" + "_".join(map(str, selected_subjects)) + ".csv"
+    )
+    score_path = output_root / "parameter_recovery" / score_filename
+    if resume and _phase_is_complete(output_root, phase_name):
         return {"status": "complete", "score_path": str(score_path)}
     _require_phase(output_root, "generate")
     budget = require_frozen_budget(
         output_root / "numerical_calibration" / "frozen_budget.json"
     )
-    _update_phase_manifest(output_root, "parameter-fit", status="running")
+    _update_phase_manifest(output_root, phase_name, status="running")
     _, dataset_paths = load_subject_schedules(design)
     rows: list[dict[str, Any]] = []
-    for index, specification in enumerate(design.parameter_datasets, start=1):
+    specifications = [
+        specification
+        for specification in design.parameter_datasets
+        if selected_subjects is None
+        or specification.subject_id in selected_subjects
+    ]
+    if selected_subjects is not None:
+        missing = set(selected_subjects) - {
+            specification.subject_id for specification in specifications
+        }
+        if missing:
+            raise ValueError(
+                f"parameter recovery subjects are not registered: {sorted(missing)}"
+            )
+    for index, specification in enumerate(specifications, start=1):
         arrays = _load_synthetic_arrays(
             _synthetic_paths(output_root, specification)[1]
         )
@@ -1541,22 +1636,28 @@ def run_parameter_fit_phase(
             row[f"true_{parameter}"] = specification.truth[parameter]
             row[f"estimated_{parameter}"] = estimated[parameter]
         rows.append(row)
+        _atomic_csv(score_path, pd.DataFrame(rows))
         print(
-            f"[parameter-fit {index}/{len(design.parameter_datasets)}] "
+            f"[parameter-fit {index}/{len(specifications)}] "
             f"{specification.dataset_id}",
             flush=True,
         )
     frame = pd.DataFrame(rows)
-    if len(frame) != len(design.parameter_datasets):
-        raise ValueError("parameter recovery did not produce all 40 fit rows")
+    if len(frame) != len(specifications):
+        raise ValueError(
+            f"parameter recovery did not produce all {len(specifications)} fit rows"
+        )
     _atomic_csv(score_path, frame)
     details = {
         "dataset_count": len(frame),
+        "subjects": (
+            sorted({row["subject_id"] for row in rows}) if rows else []
+        ),
         "score_path": str(score_path),
     }
     _update_phase_manifest(
         output_root,
-        "parameter-fit",
+        phase_name,
         status="complete",
         details=details,
     )
@@ -1706,6 +1807,168 @@ def run_summarize_phase(
     return report
 
 
+def run_subject_summarize_phase(
+    design: RecoveryDesign,
+    output_root: Path,
+    *,
+    subject_id: int,
+    resume: bool,
+) -> dict[str, Any]:
+    """Write an explicitly partial recovery summary for one subject template."""
+
+    subject = int(subject_id)
+    phase_name = f"summarize-subject-{subject}"
+    summary_dir = output_root / "subject_summaries" / f"subject_{subject}"
+    report_path = summary_dir / "partial_recovery_report.json"
+    if resume and _phase_is_complete(output_root, phase_name):
+        return json.loads(report_path.read_text(encoding="utf-8"))
+    _require_phase(output_root, f"module-fit-subject-{subject}")
+    _require_phase(output_root, f"parameter-fit-subject-{subject}")
+    _update_phase_manifest(output_root, phase_name, status="running")
+
+    module_scores = pd.read_csv(
+        output_root
+        / "module_recovery"
+        / f"fit_scores_subject_{subject}.csv"
+    )
+    parameter_scores = pd.read_csv(
+        output_root
+        / "parameter_recovery"
+        / f"fit_scores_subject_{subject}.csv"
+    )
+    module_summary = summarize_module_recovery(
+        module_scores,
+        near_best_delta_nll=float(
+            design.config["module_recovery"]["near_best_delta_total_nll"]
+        ),
+        gates=design.config["module_recovery"]["gates"],
+    )
+    parameter_space = load_model_parameter_space(
+        design.parameter_space_path,
+        expected_model_id="model_0826",
+    )
+    parameter_summary = summarize_parameter_recovery(
+        parameter_scores,
+        parameter_space=parameter_space,
+        gates=design.config["parameter_recovery"]["gates"],
+    )
+    _atomic_json(summary_dir / "module_recovery_summary.json", module_summary)
+    _atomic_json(
+        summary_dir / "parameter_recovery_summary.json",
+        parameter_summary,
+    )
+    plot_module_recovery(
+        module_summary,
+        summary_dir / "module_recovery_overview.png",
+    )
+    plot_parameter_recovery(
+        parameter_summary,
+        summary_dir / "parameter_recovery_overview.png",
+    )
+    report = {
+        "schema_version": 1,
+        "status": "complete",
+        "scope": "single_subject_partial_recovery",
+        "analysis_id": design.analysis_id,
+        "subject_id": subject,
+        "module_dataset_count": int(module_scores["dataset_id"].nunique()),
+        "parameter_dataset_count": int(parameter_scores["dataset_id"].nunique()),
+        "module_recovery": {
+            "passes_full_design_gates_on_subject_subset": module_summary[
+                "passes_pre_registered_gates"
+            ],
+            "overall_exact_recovery": module_summary[
+                "overall_exact_recovery"
+            ],
+            "true_cell_near_best_coverage": module_summary[
+                "true_cell_near_best_coverage"
+            ],
+        },
+        "parameter_recovery": {
+            "chi_exact_recovery": parameter_summary["chi_exact_recovery"],
+            "chi_near_best_coverage": parameter_summary[
+                "chi_near_best_coverage"
+            ],
+            "M_exact_recovery": parameter_summary["M_exact_recovery"],
+        },
+        "interpretation": (
+            "This subject-first report is an operational checkpoint. Final "
+            "pre-registered conclusions require all 36 module and 40 parameter "
+            "datasets."
+        ),
+    }
+    _atomic_json(report_path, report)
+    _update_phase_manifest(
+        output_root,
+        phase_name,
+        status="complete",
+        details={"report_path": str(report_path)},
+    )
+    return report
+
+
+def run_priority_all(
+    design: RecoveryDesign,
+    output_root: Path,
+    *,
+    priority_subject: int,
+    resume: bool,
+) -> dict[str, Any]:
+    """Run recovery continuously while completing one subject first."""
+
+    subject_order = resolve_subject_order(
+        tuple(design.subject_trial_counts),
+        priority_subject,
+    )
+    _update_phase_manifest(
+        output_root,
+        "priority-all",
+        status="running",
+        details={"subject_order": list(subject_order)},
+    )
+    run_smoke_phase(design, output_root, resume=resume)
+    run_calibrate_phase(design, output_root, resume=resume)
+    run_generate_phase(design, output_root, resume=resume)
+    subject_reports: dict[str, Any] = {}
+    for subject in subject_order:
+        run_module_fit_phase(
+            design,
+            output_root,
+            resume=resume,
+            subject_ids=(subject,),
+        )
+        run_parameter_fit_phase(
+            design,
+            output_root,
+            resume=resume,
+            subject_ids=(subject,),
+        )
+        subject_reports[str(subject)] = run_subject_summarize_phase(
+            design,
+            output_root,
+            subject_id=subject,
+            resume=resume,
+        )
+
+    # Consolidate registered all-subject tables from fingerprint-checked
+    # artifacts before applying the full-design gates.
+    run_module_fit_phase(design, output_root, resume=True)
+    run_parameter_fit_phase(design, output_root, resume=True)
+    final_report = run_summarize_phase(design, output_root, resume=True)
+    details = {
+        "subject_order": list(subject_order),
+        "subject_reports": subject_reports,
+        "final_report": final_report,
+    }
+    _update_phase_manifest(
+        output_root,
+        "priority-all",
+        status="complete",
+        details={"subject_order": list(subject_order)},
+    )
+    return details
+
+
 def run(argv: Sequence[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     config_path = args.config.resolve()
@@ -1727,6 +1990,31 @@ def run(argv: Sequence[str] | None = None) -> None:
         config_fingerprint=_design_fingerprint(design),
     )
     _record_run_provenance(design, output)
+    if args.phase == "priority-all":
+        if args.priority_subject is None:
+            raise ValueError(
+                "--phase priority-all requires --priority-subject"
+            )
+        try:
+            run_priority_all(
+                design,
+                output,
+                priority_subject=args.priority_subject,
+                resume=bool(args.resume),
+            )
+        except Exception as exc:
+            _update_phase_manifest(
+                output,
+                "priority-all",
+                status="failed",
+                details={"error_type": type(exc).__name__, "error": str(exc)},
+            )
+            raise
+        return
+    if args.priority_subject is not None:
+        raise ValueError(
+            "--priority-subject is only valid with --phase priority-all"
+        )
     handlers = {
         "smoke": run_smoke_phase,
         "generate": run_generate_phase,
