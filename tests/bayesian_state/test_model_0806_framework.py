@@ -1965,6 +1965,38 @@ def test_particle_backend_uses_common_inference_result_contract():
     )
 
 
+def test_particle_filter_supports_no_hypothesis_transition_module():
+    n_trials = 4
+    stimulus = np.linspace(0.1, 0.9, n_trials)[:, None]
+    categories = np.where(stimulus[:, 0] < 0.5, 1, 2)
+    config = _engine_config()
+    config["modules"].pop("hypo_transitions_mod")
+    config["agenda"].remove("hypo_transitions_mod")
+
+    result = run_inference_backend(
+        engine_config=config,
+        subject_id=1,
+        condition=1,
+        stimulus=stimulus,
+        choices=categories,
+        feedback=np.ones(n_trials, dtype=float),
+        inference_seed=20260903,
+        choice_readout_power=1.0,
+        output_lapse=0.0,
+        processed_data_dir=Path("."),
+    )
+
+    assert result.backend == "particle_filter"
+    assert result.marginal_probabilities.shape == (n_trials, 2)
+    np.testing.assert_allclose(result.marginal_probabilities.sum(axis=1), 1.0)
+    np.testing.assert_allclose(result.latent_summaries["transition_rate"], 0.0)
+    np.testing.assert_allclose(result.latent_summaries["replacement_count"], 0.0)
+    np.testing.assert_allclose(
+        np.asarray(result.state_probabilities["active_probability"]).sum(axis=1),
+        6.0,
+    )
+
+
 def test_particle_filter_analysis_controls_separate_weighting_and_resampling():
     n_trials = 18
     stimulus = np.linspace(0.05, 0.95, n_trials)[:, None]

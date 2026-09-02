@@ -646,7 +646,14 @@ def read_choice_probabilities_from_model(
     prior = np.asarray(engine.prior, dtype=float)
     beta = np.asarray(engine.beta, dtype=float)
     executed_hypothesis = resolve_executed_hypothesis(engine)
-    active = np.flatnonzero(np.asarray(engine.hypotheses_mask, dtype=float) > 0.0)
+    raw_mask = getattr(engine, "hypotheses_mask", None)
+    if raw_mask is None:
+        active = np.arange(prior.size, dtype=int)
+    else:
+        mask = np.asarray(raw_mask, dtype=float).reshape(-1)
+        if mask.shape != prior.shape:
+            raise ValueError("hypothesis mask width does not match the prior")
+        active = np.flatnonzero(mask > 0.0)
     if active.size == 0:
         raise RuntimeError("Choice readout received an empty active hypothesis set.")
     if executed_hypothesis is not None:

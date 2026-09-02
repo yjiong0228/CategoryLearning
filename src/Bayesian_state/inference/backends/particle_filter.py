@@ -85,6 +85,22 @@ def _normalize(values: np.ndarray) -> np.ndarray:
     return array / total
 
 
+def _active_hypothesis_mask(engine: Any) -> np.ndarray:
+    """Return the explicit mask, or the full hypothesis space when H is absent."""
+
+    prior = np.asarray(engine.prior, dtype=float).reshape(-1)
+    raw_mask = getattr(engine, "hypotheses_mask", None)
+    if raw_mask is None:
+        return np.ones(prior.size, dtype=bool)
+    mask = np.asarray(raw_mask, dtype=float).reshape(-1)
+    if mask.shape != prior.shape:
+        raise ValueError("hypothesis mask width does not match the prior")
+    active = mask > 0.0
+    if not np.any(active):
+        raise RuntimeError("particle filter received an empty active hypothesis set")
+    return active
+
+
 def _particle_seed(filter_seed: int, particle_index: int, role: str) -> int:
     return stable_seed(
         {
@@ -120,15 +136,16 @@ def _particle_config(
     modules = config.setdefault("modules", {})
     transition = modules.get("hypo_transitions_mod")
     perception = modules.get("perception_mod")
-    if not isinstance(transition, Mapping) or not isinstance(perception, Mapping):
-        raise ValueError(
-            "Particle filtering requires perception_mod and hypo_transitions_mod."
-        )
-    transition_kwargs = transition.setdefault("kwargs", {})
+    if not isinstance(perception, Mapping):
+        raise ValueError("Particle filtering requires perception_mod.")
+    if transition is not None and not isinstance(transition, Mapping):
+        raise ValueError("hypo_transitions_mod must be a mapping when present.")
     perception_kwargs = perception.setdefault("kwargs", {})
-    transition_kwargs["module_seed"] = _particle_seed(
-        filter_seed, particle_index, "active_set_pf_transition_initial"
-    )
+    if transition is not None:
+        transition_kwargs = transition.setdefault("kwargs", {})
+        transition_kwargs["module_seed"] = _particle_seed(
+            filter_seed, particle_index, "active_set_pf_transition_initial"
+        )
     perception_kwargs["module_seed"] = _particle_seed(
         filter_seed, particle_index, "active_set_pf_perception_initial"
     )
@@ -241,7 +258,7 @@ def _map_hypothesis_choice_probability(
     """Read choice probability from the highest-prior active hypothesis only."""
 
     engine = model.engine
-    active = np.flatnonzero(np.asarray(engine.hypotheses_mask, dtype=float) > 0.0)
+    active = np.flatnonzero(_active_hypothesis_mask(engine))
     if active.size == 0:
         raise RuntimeError("MAP choice audit received an empty active set.")
     prior = np.asarray(engine.prior, dtype=float).reshape(-1)
@@ -286,7 +303,7 @@ def _choice_layer_audit(
     """
 
     engine = model.engine
-    active = np.flatnonzero(np.asarray(engine.hypotheses_mask, dtype=float) > 0.0)
+    active = np.flatnonzero(_active_hypothesis_mask(engine))
     if active.size == 0:
         raise RuntimeError("Choice-layer audit received an empty active set.")
     prior = np.asarray(engine.prior, dtype=float).reshape(-1)
@@ -635,7 +652,6 @@ def run_state_model_particle_filter(
             getattr(
                 model.engine.get_module(
                     ModuleRole.HYPOTHESIS_TRANSITION,
-                    required=True,
                 ),
                 "persistent_execution_enabled",
                 False,
@@ -1041,16 +1057,20 @@ def run_state_model_particle_filter(
                     orientation_oracle[trial_index]
                 )
             perceived = prepared.perceived_stimulus
-            transition = engine.get_module(
-                ModuleRole.HYPOTHESIS_TRANSITION,
-                required=True,
-            )
-            event = transition.transition_log[-1]
+            transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+            if transition is None:
+                event = {"swap_probability": 0.0, "swap_event": False}
+            else:
+                if not transition.transition_log:
+                    raise RuntimeError(
+                        "hypothesis transition module did not record a pre-choice event"
+                    )
+                event = transition.transition_log[-1]
             particle_priors[particle_index] = _normalize(
                 np.asarray(engine.prior, dtype=float)
             )
-            particle_active[particle_index] = (
-                np.asarray(engine.hypotheses_mask, dtype=float) > 0.0
+            particle_active[particle_index] = _active_hypothesis_mask(
+                engine
             ).astype(float)
             swap_probabilities[particle_index] = float(
                 event["swap_probability"]

@@ -232,6 +232,11 @@ def _design_fingerprint(design: RecoveryDesign) -> str:
             ROOT
             / "src/Bayesian_state/optimization/search/coordinate_descent.py"
         ),
+        "particle_filter": (
+            ROOT
+            / "src/Bayesian_state/inference/backends/particle_filter.py"
+        ),
+        "choice_readout": ROOT / "src/Bayesian_state/model/readout.py",
     }
     return _canonical_fingerprint(
         {
@@ -267,6 +272,11 @@ def _record_run_provenance(
             ROOT
             / "src/Bayesian_state/optimization/search/coordinate_descent.py"
         ),
+        "particle_filter": (
+            ROOT
+            / "src/Bayesian_state/inference/backends/particle_filter.py"
+        ),
+        "choice_readout": ROOT / "src/Bayesian_state/model/readout.py",
     }
     provenance = {
         "source_files": {
