@@ -5,6 +5,7 @@ import pytest
 
 from src.Bayesian_state.evaluation.evaluator import ModelEvaluator
 from src.Bayesian_state.hypothesis_space import ContinuousPartition
+from src.Bayesian_state.hypothesis_space.geometry import dykstra_numba_available
 from src.Bayesian_state.simulation.provenance import build_model_provenance
 
 
@@ -21,6 +22,7 @@ def _engine_config(distance_mode: str = "boundary") -> dict:
                 "boundary_distance_method": "kkt_active_set_projection",
                 "boundary_distance_tolerance": 1e-9,
                 "boundary_projection_iterations": 100,
+                "boundary_dykstra_backend": "python",
                 "label_permutation_policy": "identity_only",
                 "similarity_n_samples": 8,
             },
@@ -71,7 +73,24 @@ def test_provenance_records_resolved_encoding() -> None:
     encoding = provenance["resolved"]["encoding"]
     assert encoding["distance_mode"] == "boundary"
     assert encoding["boundary_distance_method"] == "kkt_active_set_projection"
+    assert encoding["boundary_dykstra_backend_requested"] == "python"
+    assert encoding["boundary_dykstra_backend"] == "python"
     assert encoding["label_permutation_policy"] == "identity_only"
+
+
+def test_provenance_resolves_auto_dykstra_backend() -> None:
+    config = _engine_config()
+    config["partition"]["kwargs"]["boundary_dykstra_backend"] = "auto"
+
+    encoding = build_model_provenance(
+        config,
+        repeat_aggregation="mean_probability",
+    )["resolved"]["encoding"]
+
+    assert encoding["boundary_dykstra_backend_requested"] == "auto"
+    assert encoding["boundary_dykstra_backend"] == (
+        "numba" if dykstra_numba_available() else "python"
+    )
 
 
 def test_family_recompute_uses_trial_beta_and_saved_mode(monkeypatch) -> None:

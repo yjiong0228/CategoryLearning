@@ -19,6 +19,7 @@ from scipy.stats import spearmanr
 from src.Bayesian_state.inference.backends.particle_filter import (
     run_state_model_particle_filter,
 )
+from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
 from src.Bayesian_state.model.readout import (
     resolve_choice_readout_config,
     resolve_output_noise_config,
@@ -321,8 +322,15 @@ def load_recovery_design(path: str | Path) -> RecoveryDesign:
 
     source = Path(path).resolve()
     config = _load_yaml(source)
-    if config.get("analysis_id") != "model_0826_recovery_v1":
-        raise ValueError("analysis_id must be model_0826_recovery_v1")
+    analysis_id = str(config.get("analysis_id", ""))
+    if analysis_id not in {
+        "model_0826_recovery_v1",
+        "model_0826_recovery_v2",
+    }:
+        raise ValueError(
+            "analysis_id must be model_0826_recovery_v1 or "
+            "model_0826_recovery_v2"
+        )
     if config.get("model_id") != "model_0826":
         raise ValueError("model_id must be model_0826")
     subject_rows = list(config["subjects"])
@@ -336,7 +344,6 @@ def load_recovery_design(path: str | Path) -> RecoveryDesign:
     if generation.get("observed_choices_used") is not False:
         raise ValueError("recovery generation must not use observed choices")
     base_seed = int(generation["base_seed"])
-    analysis_id = str(config["analysis_id"])
     module_datasets = _module_specs(
         config, subject_trial_counts, analysis_id, base_seed
     )
@@ -894,6 +901,7 @@ def score_pf_bank_parallel(
             candidates=candidate_rows,
             filter_seeds=seeds,
         )
+    warmup_dykstra_numba()
     single_rows = Parallel(n_jobs=jobs, backend="loky", verbose=10)(
         delayed(_score_pf_candidate_seed)(
             common_kwargs=common_kwargs,
@@ -984,6 +992,11 @@ def _compare_pf_settings(
         right_nll = np.asarray(
             [float(right_rows[name]["total_nll"]) for name in candidate_ids]
         )
+        right_winner_index = int(np.argmin(right_nll))
+        left_order = np.argsort(left_nll, kind="stable")
+        right_winner_rank_in_left = int(
+            np.flatnonzero(left_order == right_winner_index)[0] + 1
+        )
         rho = float(spearmanr(left_nll, right_nll).statistic)
         if not np.isfinite(rho):
             rho = 1.0 if np.allclose(left_nll, right_nll) else 0.0
@@ -1008,14 +1021,132 @@ def _compare_pf_settings(
                 "candidate_nll_spearman": rho,
                 "winner_agreement": bool(
                     candidate_ids[int(np.argmin(left_nll))]
-                    == candidate_ids[int(np.argmin(right_nll))]
+                    == candidate_ids[right_winner_index]
                 ),
+                "right_winner_rank_in_left": right_winner_rank_in_left,
                 "probability_rmse": float(
                     np.sqrt(np.mean(np.concatenate(probability_differences)))
                 ),
             }
         )
     return comparisons
+
+
+def summarize_search_budget_retention(
+    score_rows: Sequence[Mapping[str, Any]],
+    policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Check whether low-budget stages retain the high-budget winner."""
+
+    settings = _setting_rows(score_rows)
+    reference_config = dict(policy.get("reference") or {})
+    reference = (
+        int(reference_config["particle_count"]),
+        int(reference_config["filter_seed_count"]),
+        str(reference_config.get("ensemble", "A")).upper(),
+    )
+    stage_configs = policy.get("stages") or {}
+    if not isinstance(stage_configs, Mapping) or not stage_configs:
+        raise ValueError("search budget retention requires at least one stage")
+
+    stage_summaries: dict[str, Any] = {}
+    comparison_rows: list[dict[str, Any]] = []
+    for stage_name, raw_config in stage_configs.items():
+        config = dict(raw_config)
+        low = (
+            int(config["particle_count"]),
+            int(config["filter_seed_count"]),
+            str(config.get("ensemble", "A")).upper(),
+        )
+        top_k = int(config["winner_top_k"])
+        minimum_count = int(config["minimum_dataset_count"])
+        if top_k < 1 or minimum_count < 1:
+            raise ValueError(
+                "winner_top_k and minimum_dataset_count must be positive"
+            )
+        rows = _compare_pf_settings(settings, low, reference)
+        ranks = [int(row["right_winner_rank_in_left"]) for row in rows]
+        retained_count = sum(rank <= top_k for rank in ranks)
+        stage_summaries[str(stage_name)] = {
+            "particle_count": low[0],
+            "filter_seed_count": low[1],
+            "ensemble": low[2],
+            "reference": {
+                "particle_count": reference[0],
+                "filter_seed_count": reference[1],
+                "ensemble": reference[2],
+            },
+            "winner_top_k": top_k,
+            "minimum_dataset_count": minimum_count,
+            "comparison_dataset_count": len(rows),
+            "retained_dataset_count": int(retained_count),
+            "right_winner_ranks": ranks,
+            "median_candidate_nll_spearman": (
+                float(np.median([row["candidate_nll_spearman"] for row in rows]))
+                if rows
+                else None
+            ),
+            "passes": bool(
+                len(rows) >= minimum_count and retained_count >= minimum_count
+            ),
+        }
+        comparison_rows.extend(
+            {"stage": str(stage_name), **row} for row in rows
+        )
+
+    return {
+        "status": (
+            "passed"
+            if all(row["passes"] for row in stage_summaries.values())
+            else "failed"
+        ),
+        "stages": stage_summaries,
+        "comparisons": comparison_rows,
+    }
+
+
+def resolve_recovery_stage_budgets(
+    search_config: Mapping[str, Any],
+    frozen_budget: Mapping[str, Any],
+) -> dict[str, dict[str, int]]:
+    """Resolve low-cost search stages and the frozen final-score budget."""
+
+    final_budget = {
+        "particle_count": int(frozen_budget["particle_count"]),
+        "filter_seed_count": int(frozen_budget["filter_seed_count"]),
+    }
+    if final_budget["particle_count"] < 2 or final_budget["filter_seed_count"] < 1:
+        raise ValueError("frozen PF budget is invalid")
+    configured = search_config.get("stage_budgets")
+    if configured is None:
+        return {
+            stage: deepcopy(final_budget)
+            for stage in ("coarse", "fine", "final_rescore")
+        }
+    if not isinstance(configured, Mapping):
+        raise ValueError("search.stage_budgets must be a mapping")
+
+    resolved: dict[str, dict[str, int]] = {}
+    for stage in ("coarse", "fine"):
+        raw = configured.get(stage)
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"search.stage_budgets.{stage} must be a mapping")
+        budget = {
+            "particle_count": int(raw["particle_count"]),
+            "filter_seed_count": int(raw["filter_seed_count"]),
+        }
+        if budget["particle_count"] < 2 or budget["filter_seed_count"] < 1:
+            raise ValueError(f"search.stage_budgets.{stage} is invalid")
+        if (
+            budget["particle_count"] > final_budget["particle_count"]
+            or budget["filter_seed_count"] > final_budget["filter_seed_count"]
+        ):
+            raise ValueError(
+                f"search.stage_budgets.{stage} cannot exceed final_rescore"
+            )
+        resolved[stage] = budget
+    resolved["final_rescore"] = final_budget
+    return resolved
 
 
 def _budget_mcse_q95(
@@ -1078,6 +1209,22 @@ def summarize_pf_calibration(
             sum(bool(row["winner_agreement"]) for row in pair_rows)
             for pair_rows in scaling_by_pair
         ]
+        winner_top_k = int(gates.get("adjacent_winner_top_k", 1))
+        if winner_top_k < 1:
+            raise ValueError("adjacent_winner_top_k must be positive")
+        winner_top_k_min_count = int(
+            gates.get(
+                "adjacent_winner_top_k_min_count",
+                gates.get("adjacent_winner_agreement_min_count", dataset_count),
+            )
+        )
+        scaling_winner_top_k_counts = [
+            sum(
+                int(row["right_winner_rank_in_left"]) <= winner_top_k
+                for row in pair_rows
+            )
+            for pair_rows in scaling_by_pair
+        ]
         independent_winners = sum(
             bool(row["winner_agreement"]) for row in independent
         )
@@ -1104,6 +1251,15 @@ def summarize_pf_calibration(
             "minimum_adjacent_winner_agreement_count": (
                 int(min(scaling_winner_counts)) if scaling_winner_counts else 0
             ),
+            "adjacent_high_budget_winner_top_k": winner_top_k,
+            "adjacent_high_budget_winner_top_k_counts": [
+                int(value) for value in scaling_winner_top_k_counts
+            ],
+            "minimum_adjacent_high_budget_winner_top_k_count": (
+                int(min(scaling_winner_top_k_counts))
+                if scaling_winner_top_k_counts
+                else 0
+            ),
             "independent_winner_agreement_count": int(independent_winners),
             "median_probability_rmse": (
                 float(np.median(probability_rmse)) if probability_rmse else None
@@ -1116,8 +1272,8 @@ def summarize_pf_calibration(
             >= float(gates["median_adjacent_rank_spearman_min"])
             and metrics["minimum_adjacent_rank_spearman"]
             >= float(gates["minimum_adjacent_rank_spearman_min"])
-            and metrics["minimum_adjacent_winner_agreement_count"]
-            >= int(gates["adjacent_winner_agreement_min_count"])
+            and metrics["minimum_adjacent_high_budget_winner_top_k_count"]
+            >= winner_top_k_min_count
             and independent_winners
             >= int(gates["independent_winner_agreement_min_count"])
             and metrics["median_probability_rmse"]
@@ -1367,10 +1523,13 @@ def fit_recovery_dataset(
         "shortlist_size": int(search_config["shortlist_size"]),
         "cd": deepcopy(dict(search_config["cd"])),
     }
-    budget = {
-        "particle_count": particle_count,
-        "filter_seed_count": filter_seed_count,
-    }
+    stage_budgets = resolve_recovery_stage_budgets(
+        search_config,
+        {
+            "particle_count": particle_count,
+            "filter_seed_count": filter_seed_count,
+        },
+    )
     hyper_config = build_model_0826_hyper_config(
         analysis_config,
         load_model_parameter_space(
@@ -1381,9 +1540,12 @@ def fit_recovery_dataset(
         simulation_config_path,
         search_dir,
         {
-            "coarse": budget,
-            "fine": budget,
-            "final_rescore": {**budget, "seed_family": final_seed_family},
+            "coarse": stage_budgets["coarse"],
+            "fine": stage_budgets["fine"],
+            "final_rescore": {
+                **stage_budgets["final_rescore"],
+                "seed_family": final_seed_family,
+            },
         },
     )
     _write_immutable_yaml(hyper_config_path, hyper_config, resume=resume)
@@ -2091,6 +2253,7 @@ __all__ = [
     "plot_module_recovery",
     "plot_parameter_recovery",
     "resolve_calibration_filter_seeds",
+    "resolve_recovery_stage_budgets",
     "schedule_fingerprint",
     "score_frozen_candidate",
     "score_pf_bank",
@@ -2098,5 +2261,6 @@ __all__ = [
     "summarize_module_recovery",
     "summarize_parameter_recovery",
     "summarize_pf_calibration",
+    "summarize_search_budget_retention",
     "synthetic_dataset_frame",
 ]

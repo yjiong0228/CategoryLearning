@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Mapping, Sequence
 import numpy as np
 from joblib import Parallel, delayed
 
+from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
 from src.Bayesian_state.optimization.artifacts import (
     HYPER_RESULT_SCHEMA_VERSION,
     build_root_best_payload,
@@ -451,6 +452,7 @@ class HyperCDOptimizer(HyperSearchBase):
                 }
             )
 
+        warmup_dykstra_numba()
         runs = list(
             Parallel(n_jobs=max(1, int(n_jobs)))(
                 delayed(evaluate_state_model_run)(
@@ -936,6 +938,8 @@ class HyperCDOptimizer(HyperSearchBase):
 
         flat_task_count = len(flat_tasks)
         flat_jobs = min(self.parallel_budget, flat_task_count)
+        if flat_jobs > 1:
+            warmup_dykstra_numba()
         flat_results = list(
             Parallel(n_jobs=flat_jobs)(
                 delayed(_evaluate_cd_flat_repeat_task)(task)

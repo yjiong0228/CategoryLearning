@@ -8,7 +8,11 @@ import pytest
 from scipy.optimize import Bounds, LinearConstraint, minimize
 import yaml
 
-from src.Bayesian_state.hypothesis_space.geometry import BoundaryGeometry
+from src.Bayesian_state.hypothesis_space.geometry import (
+    BoundaryGeometry,
+    dykstra_numba_available,
+    warmup_dykstra_numba,
+)
 from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPartition
 from src.Bayesian_state.hypothesis_space.observation_model import ObservationLikelihood
 from src.Bayesian_state.model.assembly import build_observation_likelihood
@@ -29,6 +33,68 @@ from src.Bayesian_state.hypothesis_space.spaces import (
 def _geometry(method: str, *, n_dims: int = 2) -> BoundaryGeometry:
     space = build_continuous_hypothesis_space(n_dims, 2)
     return BoundaryGeometry(space, method=method)
+
+
+def test_numba_dykstra_matches_historical_python_path() -> None:
+    if not dykstra_numba_available():
+        pytest.skip("Numba is not installed in this environment")
+    polytope = Polytope(
+        np.asarray([[1.0, 1.0], [-1.0, 0.25], [0.5, -1.0]]),
+        np.asarray([0.75, 0.10, 0.20]),
+    )
+    points = np.asarray(
+        [
+            [0.20, 0.20],
+            [0.90, 0.90],
+            [-0.25, 0.40],
+            [1.25, -0.10],
+        ]
+    )
+    space = build_continuous_hypothesis_space(2, 2)
+    historical = BoundaryGeometry(
+        space,
+        method="dykstra_iterative_projection",
+        dykstra_backend="python",
+    ).distances_to_polytope(points, polytope)
+    accelerated = BoundaryGeometry(
+        space,
+        method="dykstra_iterative_projection",
+        dykstra_backend="numba",
+    ).distances_to_polytope(points, polytope)
+
+    assert np.allclose(accelerated, historical, atol=1e-14, rtol=0.0)
+
+
+def test_dykstra_auto_backend_and_warmup_follow_numba_availability() -> None:
+    geometry = BoundaryGeometry(
+        build_continuous_hypothesis_space(2, 2),
+        method="dykstra_iterative_projection",
+        dykstra_backend="auto",
+    )
+
+    expected = "numba" if dykstra_numba_available() else "python"
+    assert geometry.dykstra_backend == expected
+    assert warmup_dykstra_numba() is dykstra_numba_available()
+
+
+def test_dykstra_backend_names_are_strict() -> None:
+    with pytest.raises(ValueError, match="Unsupported Dykstra backend"):
+        BoundaryGeometry(
+            build_continuous_hypothesis_space(2, 2),
+            dykstra_backend="compiled_sometimes",
+        )
+
+
+def test_bounded_polytope_constraints_are_reused() -> None:
+    polytope = Polytope(
+        np.asarray([[1.0, -1.0], [-0.5, 1.0]]),
+        np.asarray([0.25, 0.50]),
+    )
+
+    first = BoundaryGeometry._bounded_constraints(polytope)
+    second = BoundaryGeometry._bounded_constraints(polytope)
+
+    assert first is second
 
 
 @pytest.mark.parametrize(
@@ -148,6 +214,16 @@ def test_prototype_config_rejects_explicit_boundary_only_parameters() -> None:
                 "boundary_distance_method": "dykstra_iterative_projection"
             }
         },
+        "likelihood": {"distance_mode": "prototype"},
+    }
+    partition = ContinuousPartition(4, 2, similarity_n_samples=8)
+    with pytest.raises(ValueError, match="boundary-only"):
+        build_observation_likelihood(config, partition)
+
+
+def test_prototype_config_rejects_explicit_dykstra_backend() -> None:
+    config = {
+        "partition": {"kwargs": {"boundary_dykstra_backend": "python"}},
         "likelihood": {"distance_mode": "prototype"},
     }
     partition = ContinuousPartition(4, 2, similarity_n_samples=8)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from hashlib import sha256
 from itertools import combinations
 from typing import Iterable
@@ -11,6 +12,10 @@ import numpy as np
 
 from ...utils.numeric import softmax
 from ..spaces import CategoryRegion, ContinuousHypothesisSpace, Polytope
+from .dykstra_acceleration import (
+    dykstra_distances_numba,
+    dykstra_numba_available,
+)
 from .stimuli import as_stimuli
 
 
@@ -39,6 +44,14 @@ class BoundaryGeometry:
     METHOD_DYKSTRA = "dykstra_iterative_projection"
     METHOD_KKT_ACTIVE_SET = "kkt_active_set_projection"
     VALID_METHODS = (METHOD_DYKSTRA, METHOD_KKT_ACTIVE_SET)
+    DYKSTRA_BACKEND_AUTO = "auto"
+    DYKSTRA_BACKEND_PYTHON = "python"
+    DYKSTRA_BACKEND_NUMBA = "numba"
+    VALID_DYKSTRA_BACKENDS = (
+        DYKSTRA_BACKEND_AUTO,
+        DYKSTRA_BACKEND_PYTHON,
+        DYKSTRA_BACKEND_NUMBA,
+    )
     CACHE_VERSION = "boundary_geometry_v2"
     _compilation_cache: dict[str, _CompiledPolytope] = {}
 
@@ -48,11 +61,30 @@ class BoundaryGeometry:
         method: str = METHOD_DYKSTRA,
         tolerance: float = 1e-9,
         projection_iterations: int = 100,
+        dykstra_backend: str = DYKSTRA_BACKEND_AUTO,
     ) -> None:
         self.space = hypothesis_space
         self.method = self.resolve_method(method)
         self.tolerance = float(tolerance)
         self.projection_iterations = int(projection_iterations)
+        self.dykstra_backend_requested = self.resolve_dykstra_backend(
+            dykstra_backend
+        )
+        self.dykstra_backend = (
+            self.DYKSTRA_BACKEND_NUMBA
+            if self.dykstra_backend_requested == self.DYKSTRA_BACKEND_AUTO
+            and dykstra_numba_available()
+            else self.DYKSTRA_BACKEND_PYTHON
+            if self.dykstra_backend_requested == self.DYKSTRA_BACKEND_AUTO
+            else self.dykstra_backend_requested
+        )
+        if (
+            self.dykstra_backend == self.DYKSTRA_BACKEND_NUMBA
+            and not dykstra_numba_available()
+        ):
+            raise RuntimeError(
+                "The Numba Dykstra backend was requested, but Numba is unavailable."
+            )
         if not np.isfinite(self.tolerance) or self.tolerance <= 0.0:
             raise ValueError("boundary tolerance must be positive and finite.")
         if self.projection_iterations <= 0:
@@ -68,7 +100,18 @@ class BoundaryGeometry:
             )
         return resolved
 
+    @classmethod
+    def resolve_dykstra_backend(cls, backend: str) -> str:
+        resolved = str(backend).strip().lower()
+        if resolved not in cls.VALID_DYKSTRA_BACKENDS:
+            raise ValueError(
+                f"Unsupported Dykstra backend '{backend}'. Expected one of: "
+                f"{cls.VALID_DYKSTRA_BACKENDS}."
+            )
+        return resolved
+
     @staticmethod
+    @lru_cache(maxsize=None)
     def _bounded_constraints(polytope: Polytope) -> tuple[np.ndarray, np.ndarray]:
         identity = np.eye(polytope.n_dims, dtype=float)
         constraints = np.vstack((polytope.A, -identity, identity))
@@ -190,7 +233,16 @@ class BoundaryGeometry:
         violations = stimuli @ constraints.T - bounds[None, :]
         outside = np.any(violations > self.tolerance, axis=1)
         distances = np.zeros(stimuli.shape[0], dtype=float)
-        for row in np.flatnonzero(outside):
+        outside_rows = np.flatnonzero(outside)
+        if self.dykstra_backend == self.DYKSTRA_BACKEND_NUMBA:
+            return dykstra_distances_numba(
+                stimuli,
+                outside_rows,
+                polytope.A,
+                polytope.b,
+                self.projection_iterations,
+            )
+        for row in outside_rows:
             projection = self._project_dykstra(
                 stimuli[row], polytope, self.projection_iterations
             )

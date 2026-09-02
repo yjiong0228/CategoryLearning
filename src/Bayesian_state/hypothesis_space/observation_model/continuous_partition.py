@@ -39,6 +39,7 @@ class ContinuousPartition(BasePartition):
         boundary_distance_method: str = BoundaryGeometry.METHOD_DYKSTRA,
         boundary_distance_tolerance: float = 1e-9,
         boundary_projection_iterations: int = 100,
+        boundary_dykstra_backend: str = BoundaryGeometry.DYKSTRA_BACKEND_AUTO,
         label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
         similarity_n_samples: int = ContinuousSimilarity.DEFAULT_N_SAMPLES,
         similarity_cache_dir: str | Path | None = None,
@@ -63,12 +64,14 @@ class ContinuousPartition(BasePartition):
             method=boundary_distance_method,
             tolerance=boundary_distance_tolerance,
             projection_iterations=boundary_projection_iterations,
+            dykstra_backend=boundary_dykstra_backend,
         )
         self.boundary_distance_method = self.boundary_geometry.method
         self.boundary_distance_tolerance = self.boundary_geometry.tolerance
         self.boundary_projection_iterations = (
             self.boundary_geometry.projection_iterations
         )
+        self.boundary_dykstra_backend = self.boundary_geometry.dykstra_backend
         self.label_permutation_policy = str(
             self.hypothesis_space.parameters["label_permutation_policy"]
         )

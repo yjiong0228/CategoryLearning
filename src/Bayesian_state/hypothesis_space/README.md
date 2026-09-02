@@ -61,7 +61,8 @@ partition:
   kwargs:
     n_dims: 4
     n_cats: 2
-    boundary_distance_method: kkt_active_set_projection
+    boundary_distance_method: dykstra_iterative_projection
+    boundary_dykstra_backend: auto
     boundary_distance_tolerance: 1.0e-9
     boundary_projection_iterations: 100
     label_permutation_policy: identity_only
@@ -74,6 +75,11 @@ active constraints。二者都计算 stimulus 到单位立方体内 category reg
 距离。缓存只保存 region geometry 的 active sets 和投影算子，不缓存 stimulus
 distance。`label_permutation_policy` 还可显式设为
 `binary_identity_and_reverse`；它仅支持二分类，并在原规则之后追加标签反转规则。
+
+当使用兼容默认 Dykstra solver 时，`boundary_dykstra_backend` 可为 `auto`、`numba`
+或 `python`。`auto` 在 Numba 可用时编译历史循环（保持 100 次投影、更新顺序和
+`fastmath=False`），否则回退到 Python；`python` 主要用于数值等价审计。单位立方体约束和
+固定知觉统计会在进程内复用，但不缓存随 trial 改变的 stimulus distance。
 
 代码有意不提供 `Partition` 这类过于宽泛的名称，也不提供 `.splits`、
 `.regions`、`.rules` 和 `.prototypes` 这类重复视图。

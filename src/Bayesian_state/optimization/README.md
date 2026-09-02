@@ -238,6 +238,14 @@ shortlist 的全部候选和生成真值会在同一组独立 seeds 下重新评
 的差值决定 `delta NLL <= 2` near-best coverage。搜索产生的粒子权重、坐标移动和 shortlist
 选择都属于统计估计程序，不是认知机制。
 
+计算优化后的预注册配置是
+`configs/specific_models/model_0826_recovery_v2.yaml`。它不改模型结构或最终评分精度：coarse
+搜索用 R16×B4，fine 搜索用 R32×B4，shortlist 仍用校准冻结的高预算独立 seeds 最终复评分。
+低预算只负责保留候选；校准必须逐数据集检查高预算赢家是否分别位于 coarse top-4 和 fine
+top-2，未通过便禁止进入正式恢复。PF 最终预算的相邻稳定性也以“高预算赢家是否位于低预算
+top-k”判定，同时保留 exact-winner agreement 作为诊断，避免把近乎并列的 NLL 抖动误判成
+数值失败。
+
 顶层 workflow 与结果序列化由：
 
 - `src.Bayesian_state.run_hyper_then_simulation`

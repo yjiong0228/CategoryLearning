@@ -78,6 +78,7 @@ def build_observation_likelihood(
             "boundary_distance_method",
             "boundary_distance_tolerance",
             "boundary_projection_iterations",
+            "boundary_dykstra_backend",
         }.intersection(partition_kwargs)
         if boundary_only:
             raise ValueError(

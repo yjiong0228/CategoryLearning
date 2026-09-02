@@ -214,14 +214,13 @@ def _resolve_data_paths(
     )
 
 
-def _get_perception_noise_stats(
-    processed_data_dir: Path | str | None,
-    dataset_paths: Mapping[str, Any] | None = None,
+@lru_cache(maxsize=None)
+def _get_perception_noise_stats_cached(
+    summary_path: str,
+    task2_path: str,
 ) -> Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray]]:
-    summary_path, _, task2_path = _resolve_data_paths(processed_data_dir, dataset_paths)
-
-    summary_df = _load_csv_cached(str(summary_path))
-    task2_df = _load_csv_cached(str(task2_path))
+    summary_df = _load_csv_cached(summary_path)
+    task2_df = _load_csv_cached(task2_path)
     feature_names = _resolve_feature_names(summary_df, task2_df)
     mean_df, std_df = _compute_subject_stats_from_summary(summary_df, feature_names)
     feature_orders = _extract_feature_orders(task2_df, feature_names)
@@ -240,8 +239,12 @@ def _get_perception_noise_stats(
 
         subject_mean = np.array([mean_dict[name] for name in order], dtype=float)
         subject_std = np.array([std_dict[name] for name in order], dtype=float)
-        mean_map[i_sub] = np.nan_to_num(subject_mean, nan=0.0)
-        std_map[i_sub] = np.nan_to_num(subject_std, nan=0.0)
+        mean_values = np.nan_to_num(subject_mean, nan=0.0)
+        std_values = np.nan_to_num(subject_std, nan=0.0)
+        mean_values.setflags(write=False)
+        std_values.setflags(write=False)
+        mean_map[i_sub] = mean_values
+        std_map[i_sub] = std_values
 
     if not mean_map:
         raise ValueError(
@@ -251,14 +254,26 @@ def _get_perception_noise_stats(
     return mean_map, std_map
 
 
-def _get_uniform_threshold_stats(
+def _get_perception_noise_stats(
     processed_data_dir: Path | str | None,
     dataset_paths: Mapping[str, Any] | None = None,
-) -> Dict[int, np.ndarray]:
-    _, summary72_path, task2_path = _resolve_data_paths(processed_data_dir, dataset_paths)
+) -> Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray]]:
+    summary_path, _, task2_path = _resolve_data_paths(
+        processed_data_dir, dataset_paths
+    )
+    return _get_perception_noise_stats_cached(
+        str(summary_path), str(task2_path)
+    )
 
-    summary72_df = _load_csv_cached(str(summary72_path))
-    task2_df = _load_csv_cached(str(task2_path))
+
+@lru_cache(maxsize=None)
+def _get_uniform_threshold_stats_cached(
+    summary72_path: str,
+    task2_path: str,
+) -> Dict[int, np.ndarray]:
+
+    summary72_df = _load_csv_cached(summary72_path)
+    task2_df = _load_csv_cached(task2_path)
     feature_names = _resolve_feature_names(summary72_df, task2_df)
     feature_orders = _extract_feature_orders(task2_df, feature_names)
 
@@ -295,11 +310,25 @@ def _get_uniform_threshold_stats(
         order = feature_orders[i_sub]
         values = threshold_df.loc[sub_id, feature_names].to_dict()
         vec = np.array([values[name] for name in order], dtype=float)
-        threshold_map[i_sub] = np.abs(np.nan_to_num(vec, nan=0.0))
+        threshold_values = np.abs(np.nan_to_num(vec, nan=0.0))
+        threshold_values.setflags(write=False)
+        threshold_map[i_sub] = threshold_values
 
     if not threshold_map:
         raise ValueError("Failed to compute uniform-threshold statistics for any subject")
     return threshold_map
+
+
+def _get_uniform_threshold_stats(
+    processed_data_dir: Path | str | None,
+    dataset_paths: Mapping[str, Any] | None = None,
+) -> Dict[int, np.ndarray]:
+    _, summary72_path, task2_path = _resolve_data_paths(
+        processed_data_dir, dataset_paths
+    )
+    return _get_uniform_threshold_stats_cached(
+        str(summary72_path), str(task2_path)
+    )
 
 
 

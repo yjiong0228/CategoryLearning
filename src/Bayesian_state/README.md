@@ -396,6 +396,18 @@ python scripts/run_model_0826_recovery.py --phase summarize --resume
 `results/model_0826/recovery_v1/`；已有目录必须显式 `--resume`，并且源 recovery YAML、
 Model0826 engine、参数空间和基础 simulation 配置的联合 fingerprint 必须一致。
 
+优化版使用独立配置和输出目录，不覆盖 v1：
+
+```bash
+python scripts/run_model_0826_recovery.py \
+  --config configs/specific_models/model_0826_recovery_v2.yaml \
+  --phase smoke
+```
+
+v2 保留全部试次、模型结构和高预算 final-rescore，只把候选发现拆成 R16×B4 coarse 与
+R32×B4 fine；进入恢复前必须验证这两个阶段分别保留 R128×B16 赢家于 top-4/top-2。边界距离
+默认由 Numba 执行与历史 Dykstra 更新顺序相同的机器码循环，缺少 Numba 时自动回退 Python。
+
 `smoke`、正式生成和 PF 校准都使用 101/111/118 的全部 320/320/256 个试次。模块恢复只用
 70% 时间前缀进行 Hyper-CD 2.0 参数选择，冻结参数后执行完整历史但只在 30% 后缀计算
 held-out total choice NLL。参数恢复对 final-rescore shortlist 全部候选与生成真值使用另一组

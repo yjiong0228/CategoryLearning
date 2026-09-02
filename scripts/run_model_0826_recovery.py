@@ -43,6 +43,7 @@ from src.Bayesian_state.evaluation.model_recovery import (  # noqa: E402
     summarize_module_recovery,
     summarize_parameter_recovery,
     summarize_pf_calibration,
+    summarize_search_budget_retention,
 )
 from src.Bayesian_state.optimization.artifacts import (  # noqa: E402
     subject_best_hyperparams,
@@ -987,7 +988,10 @@ def run_calibrate_phase(
 
     gates = design.config["pf_calibration"]["gates"]
     summary = summarize_pf_calibration(rows, gates)
-    if summary["status"] != "passed":
+    budget_validation_policy = design.config["search"].get(
+        "budget_validation"
+    )
+    if summary["status"] != "passed" or budget_validation_policy is not None:
         for index, specification in enumerate(specifications, start=1):
             arrays = _load_synthetic_arrays(
                 _synthetic_paths(
@@ -1019,6 +1023,24 @@ def run_calibrate_phase(
         summary = summarize_pf_calibration(rows, gates)
 
     calibration_dir = output_root / "numerical_calibration"
+    search_budget_validation = None
+    if budget_validation_policy is not None:
+        search_budget_validation = summarize_search_budget_retention(
+            rows,
+            budget_validation_policy,
+        )
+        summary["pf_status"] = summary["status"]
+        summary["search_budget_validation"] = search_budget_validation
+        if search_budget_validation["status"] != "passed":
+            summary["status"] = "failed"
+        _atomic_json(
+            calibration_dir / "search_budget_validation.json",
+            search_budget_validation,
+        )
+        _atomic_csv(
+            calibration_dir / "search_budget_comparisons.csv",
+            pd.DataFrame(search_budget_validation["comparisons"]),
+        )
     _atomic_csv(calibration_dir / "score_rows.csv", _calibration_scalar_frame(rows))
     _atomic_csv(
         calibration_dir / "comparisons.csv",
@@ -1029,11 +1051,23 @@ def run_calibrate_phase(
         pd.DataFrame(summary["budget_decisions"]),
     )
     _atomic_json(summary_path, summary)
-    budget = freeze_smallest_passing_budget(summary, budget_path)
+    budget = (
+        freeze_smallest_passing_budget(summary, budget_path)
+        if summary["status"] == "passed"
+        else None
+    )
     if budget is None:
+        failure_reason = "no PF budget passed every gate"
+        if (
+            search_budget_validation is not None
+            and search_budget_validation["status"] != "passed"
+        ):
+            failure_reason = (
+                "search-stage budgets did not retain the high-budget winner"
+            )
         _atomic_json(
             budget_path,
-            {"status": "failed", "reason": "no PF budget passed every gate"},
+            {"status": "failed", "reason": failure_reason},
         )
         _update_phase_manifest(
             output_root,
@@ -1041,7 +1075,7 @@ def run_calibrate_phase(
             status="failed",
             details={"summary_path": str(summary_path)},
         )
-        raise RuntimeError("PF calibration failed every pre-registered budget")
+        raise RuntimeError(f"Model0826 recovery calibration failed: {failure_reason}")
     details = {"frozen_budget": budget, "dataset_count": len(specifications)}
     _update_phase_manifest(
         output_root,

@@ -16,6 +16,7 @@ from src.Bayesian_state.evaluation.model_recovery import (
     generate_synthetic_dataset,
     load_recovery_design,
     resolve_calibration_filter_seeds,
+    resolve_recovery_stage_budgets,
     mean_probability_nll,
     plot_module_recovery,
     plot_parameter_recovery,
@@ -26,6 +27,7 @@ from src.Bayesian_state.evaluation.model_recovery import (
     summarize_module_recovery,
     summarize_parameter_recovery,
     summarize_pf_calibration,
+    summarize_search_budget_retention,
     synthetic_dataset_frame,
 )
 from src.Bayesian_state.optimization.model_0826 import (
@@ -58,6 +60,9 @@ PARAMETER_SPACE_0826 = (
 MODEL_0826_ENGINE = ROOT / "configs/model_struct/pmh_model_cond1_0826.yaml"
 RECOVERY_CONFIG = (
     ROOT / "configs/specific_models/model_0826_recovery_v1.yaml"
+)
+RECOVERY_CONFIG_V2 = (
+    ROOT / "configs/specific_models/model_0826_recovery_v2.yaml"
 )
 
 
@@ -461,6 +466,98 @@ def test_calibration_freezes_smallest_budget_passing_every_gate() -> None:
     ) is None
 
 
+def test_optimized_recovery_uses_multifidelity_search_budgets() -> None:
+    design = load_recovery_design(RECOVERY_CONFIG_V2)
+
+    budgets = resolve_recovery_stage_budgets(
+        design.config["search"],
+        {"particle_count": 128, "filter_seed_count": 16},
+    )
+
+    assert design.analysis_id == "model_0826_recovery_v2"
+    assert design.output_root.name == "recovery_v2"
+    assert budgets == {
+        "coarse": {"particle_count": 16, "filter_seed_count": 4},
+        "fine": {"particle_count": 32, "filter_seed_count": 4},
+        "final_rescore": {"particle_count": 128, "filter_seed_count": 16},
+    }
+
+
+def test_legacy_recovery_defaults_every_stage_to_frozen_budget() -> None:
+    design = load_recovery_design(RECOVERY_CONFIG)
+
+    budgets = resolve_recovery_stage_budgets(
+        design.config["search"],
+        {"particle_count": 64, "filter_seed_count": 8},
+    )
+
+    assert budgets == {
+        stage: {"particle_count": 64, "filter_seed_count": 8}
+        for stage in ("coarse", "fine", "final_rescore")
+    }
+
+
+def test_search_budget_retention_uses_high_budget_winner_rank() -> None:
+    rows = []
+    settings = (
+        (16, 4, "A"),
+        (32, 4, "A"),
+        (128, 16, "A"),
+    )
+    for dataset_index in range(6):
+        for particle_count, seed_count, ensemble in settings:
+            for candidate_index in range(8):
+                nll = float(candidate_index)
+                if particle_count == 128:
+                    nll = 0.0 if candidate_index == 1 else (
+                        0.1 if candidate_index == 0 else float(candidate_index)
+                    )
+                rows.append(
+                    {
+                        "dataset_id": f"dataset_{dataset_index}",
+                        "candidate_id": f"candidate_{candidate_index}",
+                        "particle_count": particle_count,
+                        "filter_seed_count": seed_count,
+                        "ensemble": ensemble,
+                        "total_nll": nll,
+                        "mean_probability": np.full((4, 2), 0.5),
+                        "trial_probability_mcse": np.zeros(4),
+                    }
+                )
+
+    summary = summarize_search_budget_retention(
+        rows,
+        {
+            "reference": {
+                "particle_count": 128,
+                "filter_seed_count": 16,
+                "ensemble": "A",
+            },
+            "stages": {
+                "coarse": {
+                    "particle_count": 16,
+                    "filter_seed_count": 4,
+                    "ensemble": "A",
+                    "winner_top_k": 4,
+                    "minimum_dataset_count": 6,
+                },
+                "fine": {
+                    "particle_count": 32,
+                    "filter_seed_count": 4,
+                    "ensemble": "A",
+                    "winner_top_k": 2,
+                    "minimum_dataset_count": 6,
+                },
+            },
+        },
+    )
+
+    assert summary["status"] == "passed"
+    assert summary["stages"]["coarse"]["retained_dataset_count"] == 6
+    assert summary["stages"]["fine"]["retained_dataset_count"] == 6
+    assert summary["stages"]["fine"]["right_winner_ranks"] == [2] * 6
+
+
 def test_pf_bank_scores_nll_after_seed_probability_averaging() -> None:
     anchor = {
         "M": 3,
@@ -607,6 +704,58 @@ def test_pf_calibration_summary_applies_all_rank_winner_rmse_and_mcse_gates() ->
         "particle_count": 64,
         "filter_seed_count": 8,
     }
+
+
+def test_pf_calibration_can_gate_on_high_budget_winner_top_k_retention() -> None:
+    score_rows = []
+    settings = (
+        (16, 4, "A"),
+        (32, 4, "A"),
+        (64, 4, "A"),
+        (64, 8, "A"),
+        (64, 8, "B"),
+        (128, 16, "A"),
+        (128, 16, "B"),
+    )
+    for dataset_index in range(6):
+        for particle_count, seed_count, ensemble in settings:
+            for candidate_index in range(8):
+                nll = float(candidate_index)
+                if particle_count == 128:
+                    nll = 0.0 if candidate_index == 1 else (
+                        0.1 if candidate_index == 0 else float(candidate_index)
+                    )
+                score_rows.append(
+                    {
+                        "dataset_id": f"dataset_{dataset_index}",
+                        "candidate_id": f"candidate_{candidate_index}",
+                        "particle_count": particle_count,
+                        "filter_seed_count": seed_count,
+                        "ensemble": ensemble,
+                        "total_nll": nll,
+                        "mean_probability": np.full((4, 2), 0.5),
+                        "trial_probability_mcse": np.full(4, 0.005),
+                    }
+                )
+
+    summary = summarize_pf_calibration(
+        score_rows,
+        {
+            "dataset_count": 6,
+            "median_adjacent_rank_spearman_min": 0.90,
+            "minimum_adjacent_rank_spearman_min": 0.70,
+            "adjacent_winner_top_k": 2,
+            "adjacent_winner_top_k_min_count": 6,
+            "independent_winner_agreement_min_count": 5,
+            "median_probability_rmse_max": 0.015,
+            "trial_probability_mcse_q95_max": 0.020,
+        },
+    )
+
+    high_budget = summary["budget_decisions"][1]
+    assert high_budget["adjacent_high_budget_winner_top_k"] == 2
+    assert high_budget["adjacent_high_budget_winner_top_k_counts"] == [6]
+    assert high_budget["passes_all_gates"] is True
 
 
 def test_nll_is_computed_after_probability_averaging_on_requested_mask() -> None:
