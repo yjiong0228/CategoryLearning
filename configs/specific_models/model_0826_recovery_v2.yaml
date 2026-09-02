@@ -108,12 +108,12 @@ search:
   shortlist_size: 4
   stage_budgets:
     coarse: {particle_count: 16, filter_seed_count: 4}
-    fine: {particle_count: 32, filter_seed_count: 4}
+    fine: {particle_count: 64, filter_seed_count: 8}
   budget_validation:
     reference: {particle_count: 128, filter_seed_count: 16, ensemble: A}
     stages:
       coarse: {particle_count: 16, filter_seed_count: 4, ensemble: A, winner_top_k: 4, minimum_dataset_count: 6}
-      fine: {particle_count: 32, filter_seed_count: 4, ensemble: A, winner_top_k: 2, minimum_dataset_count: 6}
+      fine: {particle_count: 64, filter_seed_count: 8, ensemble: A, winner_top_k: 2, minimum_dataset_count: 6}
   cd:
     max_outer_iters: 6
     coordinate_order: fixed

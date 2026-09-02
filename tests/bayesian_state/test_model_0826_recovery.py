@@ -495,8 +495,15 @@ def test_optimized_recovery_uses_multifidelity_search_budgets() -> None:
     assert design.output_root.name == "recovery_v2"
     assert budgets == {
         "coarse": {"particle_count": 16, "filter_seed_count": 4},
-        "fine": {"particle_count": 32, "filter_seed_count": 4},
+        "fine": {"particle_count": 64, "filter_seed_count": 8},
         "final_rescore": {"particle_count": 128, "filter_seed_count": 16},
+    }
+    assert design.config["search"]["budget_validation"]["stages"]["fine"] == {
+        "particle_count": 64,
+        "filter_seed_count": 8,
+        "ensemble": "A",
+        "winner_top_k": 2,
+        "minimum_dataset_count": 6,
     }
 
 

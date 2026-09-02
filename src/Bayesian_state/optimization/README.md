@@ -240,9 +240,11 @@ shortlist 的全部候选和生成真值会在同一组独立 seeds 下重新评
 
 计算优化后的预注册配置是
 `configs/specific_models/model_0826_recovery_v2.yaml`。它不改模型结构或最终评分精度：coarse
-搜索用 R16×B4，fine 搜索用 R32×B4，shortlist 仍用校准冻结的高预算独立 seeds 最终复评分。
+搜索用 R16×B4，fine 搜索用 R64×B8，shortlist 仍用校准冻结的高预算独立 seeds 最终复评分。
 低预算只负责保留候选；校准必须逐数据集检查高预算赢家是否分别位于 coarse top-4 和 fine
-top-2，未通过便禁止进入正式恢复。PF 最终预算的相邻稳定性也以“高预算赢家是否位于低预算
+top-2，未通过便禁止进入正式恢复。初始 R32×B4 fine 预算只在 3/6 个校准数据中保留了
+R128×B16 赢家，补测 R32×B8 也只有 5/6；R64×B8 达到 6/6，因此在不放宽 top-2
+门槛的前提下采用最小通过预算。PF 最终预算的相邻稳定性也以“高预算赢家是否位于低预算
 top-k”判定，同时保留 exact-winner agreement 作为诊断，避免把近乎并列的 NLL 抖动误判成
 数值失败。
 
