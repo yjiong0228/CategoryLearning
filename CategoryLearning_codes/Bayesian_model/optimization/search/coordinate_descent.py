@@ -1,0 +1,2099 @@
+"""Coordinate-descent hyperparameter optimizer backed by repeated simulations."""
+from __future__ import annotations
+
+import json
+import random
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Mapping, Sequence
+
+import numpy as np
+from joblib import Parallel, delayed
+
+from CategoryLearning_codes.Bayesian_model.hypothesis_space.geometry import warmup_dykstra_numba
+from CategoryLearning_codes.Bayesian_model.optimization.artifacts import (
+    HYPER_RESULT_SCHEMA_VERSION,
+    build_root_best_payload,
+    build_hyper_provenance,
+    build_subject_artifacts,
+    build_subject_best_payload,
+    combination_metrics_summary,
+    compact_hyperparams,
+    to_builtin as _to_builtin,
+)
+from CategoryLearning_codes.Bayesian_model.optimization.search.common import HyperSearchBase, deep_update
+from CategoryLearning_codes.Bayesian_model.optimization.search.cd_v2 import (
+    CDV2Config,
+    atomic_write_checkpoint,
+    candidate_improves,
+    canonical_point_key,
+    load_checkpoint,
+    project_point_to_space,
+    search_context_fingerprint,
+)
+from CategoryLearning_codes.Bayesian_model.simulation.config import (
+    EVALUATION_ROLE_OPTIMIZATION,
+    resolve_evaluation_score_mask,
+    resolve_loss_delta,
+    resolve_repeat_aggregation,
+    resolve_simulation_repeats,
+)
+from CategoryLearning_codes.Bayesian_model.simulation.execution import evaluate_state_model_run
+from CategoryLearning_codes.Bayesian_model.utils.seeding import (
+    derive_hyper_candidate_seed,
+    derive_simulation_point_seed,
+    derive_trajectory_seed,
+    stable_seed,
+)
+from CategoryLearning_codes.Bayesian_model.optimization.objectives import (
+    aggregate_objective_values,
+    compare_objective_values,
+    extract_subject_objective_values,
+    first_objective_value,
+    objective_order_payload,
+    passes_anchor_guard,
+    rank_by_objectives,
+    resolve_objective_order,
+    select_best_by_objectives,
+    update_anchor_values,
+)
+from CategoryLearning_codes.Bayesian_model.simulation.runner import (
+    resolve_simulation_stat_config,
+    StateModelSimulationRunner,
+    aggregate_simulation_runs,
+)
+
+
+LOWER_TAIL_FRACTION = 0.10
+
+
+@dataclass
+class CombinationResult:
+    stage: str
+    combination_index: int
+    hyperparams: Dict[str, Any]
+    aggregated_error: float
+    objective_values: Dict[str, float]
+    subject_metrics: Dict[int, Dict[str, Any]]
+    hyper_candidate_seed: int
+    restart_id: int
+    iter_id: int
+    coordinate: str
+
+
+def _lower_tail_error_metrics(sample_errors: Sequence[float], fallback_error: float) -> Dict[str, Any]:
+    values = np.asarray(list(sample_errors or []), dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        values = np.asarray([float(fallback_error)], dtype=float)
+    ordered = np.sort(values)
+    tail_count = max(1, int(np.ceil(ordered.size * LOWER_TAIL_FRACTION)))
+    return {
+        "best10_mean_error": float(np.mean(ordered[:tail_count])),
+        "q10_error": float(np.quantile(ordered, LOWER_TAIL_FRACTION)),
+        "lower_tail_fraction": float(LOWER_TAIL_FRACTION),
+        "lower_tail_count": int(tail_count),
+    }
+
+
+def _evaluate_cd_flat_repeat_task(task: Mapping[str, Any]) -> Dict[str, Any]:
+    run = evaluate_state_model_run(
+        int(task["subject_id"]),
+        int(task["condition"]),
+        task["arrays"],
+        dict(task["params"]),
+        task["engine_config_template"],
+        task["processed_data_dir"],
+        int(task["window_size"]),
+        task["dataset_paths"],
+        bool(task["keep_logs"]),
+        bool(task["keep_logs"]),
+        str(task["prediction_mode"]),
+        str(task["selection_prediction_mode"]),
+        str(task["loss_metric"]),
+        task.get("loss_delta"),
+        simulation_point_seed=int(task["simulation_point_seed"]),
+        trajectory_seed=int(task["trajectory_seed"]),
+        seed_context=task.get("seed_context"),
+        score_trial_mask=task.get("score_trial_mask"),
+    )
+    return {
+        "position": int(task["position"]),
+        "subject_id": int(task["subject_id"]),
+        "repeat_index": int(task["repeat_index"]),
+        "run": run,
+    }
+
+
+class HyperCDOptimizer(HyperSearchBase):
+    """Choose model hyperparameters with coordinate descent."""
+
+    backend_label = "Hyper-CD"
+    default_output_dir = "../../results/state-based-hyper-cd/default"
+
+    def __init__(self, config: Mapping[str, Any], config_path: Path) -> None:
+        super().__init__(config, config_path)
+
+        self.cd_v2 = CDV2Config.from_search_config(self.config)
+
+        self.objective_order = resolve_objective_order(self.config)
+        self.objective_order_config = objective_order_payload(self.objective_order)
+
+        self.hyperparam_selection_mode = str(
+            self.config.get("hyperparam_selection_mode", "per_subject")
+        ).strip().lower()
+        if self.hyperparam_selection_mode not in {"per_subject", "shared"}:
+            raise ValueError(
+                "hyperparam_selection_mode must be one of: per_subject, shared."
+            )
+
+        cd_cfg = dict(self.config.get("cd") or {})
+        self.n_restarts = int(cd_cfg.get("n_restarts", 5))
+        self.max_outer_iters = int(cd_cfg.get("max_outer_iters", 8))
+        self.coordinate_order = str(cd_cfg.get("coordinate_order", "shuffle_each_iter"))
+        self.patience = int(cd_cfg.get("patience", 2))
+        self.min_delta = float(cd_cfg.get("min_delta", 0.0))
+        if not np.isfinite(self.min_delta) or self.min_delta < 0.0:
+            raise ValueError("cd.min_delta must be a non-negative finite number")
+        self.init_strategy = str(cd_cfg.get("init_strategy", "random"))
+        self.anchor = dict(cd_cfg.get("anchor") or {})
+        raw_initial_points = cd_cfg.get("initial_points")
+        if raw_initial_points is None:
+            self.initial_points: List[Dict[str, Any]] = []
+        elif not isinstance(raw_initial_points, Sequence) or isinstance(
+            raw_initial_points, (str, bytes)
+        ):
+            raise ValueError("cd.initial_points must be a sequence of mappings")
+        else:
+            self.initial_points = []
+            for index, raw_point in enumerate(raw_initial_points):
+                if not isinstance(raw_point, Mapping):
+                    raise ValueError(
+                        f"cd.initial_points[{index}] must be a mapping"
+                    )
+                self.initial_points.append(deepcopy(dict(raw_point)))
+            if len(self.initial_points) != self.n_restarts:
+                raise ValueError(
+                    "cd.initial_points must contain exactly cd.n_restarts points"
+                )
+        self.common_random_numbers_within_candidate_comparisons = bool(
+            self.config.get(
+                "common_random_numbers_within_candidate_comparisons", False
+            )
+        )
+        self.parallel_budget = self._positive_int(
+            cd_cfg.get("parallel_budget", 1),
+            "cd.parallel_budget",
+        )
+        self.statistics_config = self._resolve_statistics_config(
+            self.config.get("statistics_config")
+        )
+        self.final_rescore_config = self._validate_final_rescore_config(
+            self.config.get("final_rescore")
+        )
+        if self.coordinate_order not in {"shuffle_each_iter", "shuffle_per_restart", "fixed"}:
+            raise ValueError("cd.coordinate_order must be 'shuffle_each_iter', 'shuffle_per_restart', or 'fixed'")
+        if self.init_strategy not in {"random", "anchor"}:
+            raise ValueError("cd.init_strategy must be 'random' or 'anchor'")
+
+        self._combination_counter = 0
+
+    def _resolve_statistics_config(self, raw: Any) -> Dict[str, Any]:
+        return resolve_simulation_stat_config(raw, setting_name="statistics_config")
+
+    def _validate_final_rescore_config(
+        self,
+        raw: Any,
+    ) -> Dict[str, Any] | None:
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise ValueError("final_rescore must be a mapping")
+        config = deepcopy(dict(raw))
+        if not bool(config.get("enabled", False)):
+            return config
+        self._positive_int(
+            config.get("shortlist_size", 1),
+            "final_rescore.shortlist_size",
+        )
+        if not str(config.get("seed_family", "")).strip():
+            raise ValueError("final_rescore.seed_family must be a non-empty string")
+        overrides = config.get("simulation_overrides") or {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError("final_rescore.simulation_overrides must be a mapping")
+        stage_sim_cfg = deep_update(self.base_sim_config, overrides)
+        resolve_simulation_repeats(stage_sim_cfg)
+        if resolve_repeat_aggregation(stage_sim_cfg) != "mean_probability":
+            raise ValueError(
+                "final_rescore must use repeat_aggregation='mean_probability'"
+            )
+        return config
+
+    @staticmethod
+    def _positive_int(value: Any, name: str) -> int:
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        try:
+            out = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.") from exc
+        if out != value and not (isinstance(value, str) and str(out) == value):
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        if out <= 0:
+            raise ValueError(f"{name} must be a positive integer, got {value!r}.")
+        return out
+
+    def _top_k_combinations_from_coarse(self, coarse_combinations: Sequence[CombinationResult]) -> List[Dict[str, Any]]:
+        policy = self.config.get("refine_policy") or {}
+        top_k = max(1, int(policy.get("top_k", 3)))
+        ranked = rank_by_objectives(
+            coarse_combinations,
+            lambda combination: combination.objective_values,
+            self.objective_order,
+            tie_breaker=lambda combination: int(combination.combination_index),
+        )
+        selected: List[Dict[str, Any]] = []
+        seen = set()
+        for combination in ranked:
+            key = json.dumps(_to_builtin(combination.hyperparams), sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(deepcopy(combination.hyperparams))
+            if len(selected) >= top_k:
+                break
+        return selected
+
+    def _space_from_combinations(
+        self,
+        combinations: Sequence[Dict[str, Any]],
+        fallback_specs: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, List[Any]]:
+        out: Dict[str, List[Any]] = {}
+        expand_policy = (self.config.get("refine_policy") or {}).get("expand") or {}
+        if not isinstance(expand_policy, Mapping):
+            raise ValueError("refine_policy.expand must be a mapping when provided")
+        for name in fallback_specs.keys():
+            vals = [combination[name] for combination in combinations if name in combination]
+            if not vals:
+                vals = self._hyperparam_values(fallback_specs[name])
+            if name in expand_policy:
+                expanded_values = expand_policy[name]
+                vals = (
+                    self._hyperparam_values(expanded_values)
+                    if isinstance(expanded_values, Mapping)
+                    else list(expanded_values)
+                )
+                if not vals:
+                    raise ValueError(f"refine_policy.expand.{name} cannot be empty")
+            unique = []
+            seen = set()
+            for value in vals:
+                key = json.dumps(_to_builtin(value), sort_keys=True)
+                if key in seen:
+                    continue
+                seen.add(key)
+                unique.append(value)
+            out[name] = unique
+        return out
+
+    def _fine_initial_points(
+        self,
+        coarse_combinations: Sequence[CombinationResult],
+        fine_space: Mapping[str, Sequence[Any]],
+    ) -> List[Dict[str, Any]]:
+        """Project the ranked coarse shortlist onto explicit fine support."""
+
+        projected_points: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for point in self._top_k_combinations_from_coarse(coarse_combinations):
+            projected = project_point_to_space(point, fine_space)
+            key = canonical_point_key(projected)
+            if key in seen:
+                continue
+            seen.add(key)
+            projected_points.append(projected)
+        if not projected_points:
+            raise ValueError("fine initialization produced no distinct starting points")
+        return projected_points
+
+    def _hyper_candidate_seed(
+        self,
+        stage_name: str,
+        combination_index: int,
+        point: Mapping[str, Any],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+        seed_family: str | None = None,
+    ) -> int:
+        extra_context: Dict[str, Any] = {
+            "restart_id": int(restart_id),
+            "iter_id": int(iter_id),
+            "coordinate": str(coordinate),
+        }
+        if seed_family is not None:
+            extra_context["seed_family"] = seed_family
+        return derive_hyper_candidate_seed(
+            hyper_base_seed=self.hyper_base_seed,
+            stage=(
+                f"{stage_name}:{seed_family}"
+                if seed_family is not None
+                else stage_name
+            ),
+            combination_index=combination_index,
+            hyperparams=point,
+            extra_context=extra_context,
+        )
+
+    def _stage_rng(self, subjects: Sequence[int], stage_name: str) -> random.Random:
+        seed = stable_seed(
+            {
+                "seed_role": "hyper_cd_stage_rng",
+                "hyper_base_seed": self.hyper_base_seed,
+                "stage": stage_name,
+                "subjects": [int(sid) for sid in subjects],
+            }
+        )
+        return random.Random(seed)
+
+    def _simulation_point_seed(
+        self,
+        *,
+        stage_name: str,
+        hyper_candidate_seed: int,
+        subject_id: int,
+        point: Mapping[str, Any],
+        force_common_random_numbers: bool | None = None,
+        seed_family: str | None = None,
+    ) -> int:
+        """Resolve legacy candidate seeds or stage-paired common random numbers."""
+
+        use_common_random_numbers = (
+            bool(force_common_random_numbers)
+            if force_common_random_numbers is not None
+            else bool(
+                getattr(
+                    self,
+                    "common_random_numbers_within_candidate_comparisons",
+                    False,
+                )
+            )
+        )
+        if use_common_random_numbers:
+            seed_context: Dict[str, Any] = {
+                "seed_role": "hyper_cd_stage_common_random_numbers",
+                "hyper_base_seed": int(self.hyper_base_seed),
+                "stage": str(stage_name),
+                "subject_id": int(subject_id),
+            }
+            if seed_family is not None:
+                seed_context["seed_family"] = seed_family
+            return stable_seed(seed_context)
+        return derive_simulation_point_seed(
+            int(hyper_candidate_seed),
+            int(subject_id),
+            dict(point),
+        )
+
+    def _simulate_runs_for_point(
+        self,
+        *,
+        stage_name: str,
+        runner: StateModelSimulationRunner,
+        dataset_paths: Mapping[str, Path | str],
+        subject_id: int,
+        point: Mapping[str, Any],
+        simulation_repeats: int,
+        window_size: int,
+        stop_at: float,
+        max_trials: Any,
+        keep_logs: bool,
+        prediction_mode: str,
+        selection_prediction_mode: str,
+        loss_metric: str,
+        loss_delta: float | None,
+        hyper_candidate_seed: int,
+        n_jobs: int,
+        evaluation_protocol: Mapping[str, Any] | None,
+        force_common_random_numbers: bool | None = None,
+        seed_family: str | None = None,
+    ):
+        subject_frame = runner._get_subject_frame(int(subject_id), float(stop_at))
+        condition = runner._get_condition_value(subject_frame)
+        max_trials_int = int(max_trials) if max_trials is not None else None
+        arrays = runner._extract_arrays(subject_frame, max_trials_int)
+        score_trial_mask, score_context = resolve_evaluation_score_mask(
+            int(arrays.feedback.shape[0]),
+            evaluation_protocol,
+            role=EVALUATION_ROLE_OPTIMIZATION,
+        )
+        simulation_point_seed = self._simulation_point_seed(
+            stage_name=stage_name,
+            hyper_candidate_seed=int(hyper_candidate_seed),
+            subject_id=int(subject_id),
+            point=point,
+            force_common_random_numbers=force_common_random_numbers,
+            seed_family=seed_family,
+        )
+
+        tasks = []
+        for repeat_index in range(int(simulation_repeats)):
+            trajectory_seed = derive_trajectory_seed(
+                int(simulation_point_seed),
+                "simulation",
+                int(repeat_index),
+            )
+            tasks.append(
+                {
+                    "repeat_index": int(repeat_index),
+                    "trajectory_seed": trajectory_seed,
+                }
+            )
+
+        warmup_dykstra_numba()
+        runs = list(
+            Parallel(n_jobs=max(1, int(n_jobs)))(
+                delayed(evaluate_state_model_run)(
+                    int(subject_id),
+                    int(condition),
+                    arrays,
+                    dict(point),
+                    runner._engine_config_template,
+                    runner._processed_data_dir,
+                    int(window_size),
+                    dataset_paths,
+                    bool(keep_logs),
+                    bool(keep_logs),
+                    str(prediction_mode),
+                    str(selection_prediction_mode),
+                    str(loss_metric),
+                    loss_delta,
+                    simulation_point_seed=int(simulation_point_seed),
+                    trajectory_seed=task["trajectory_seed"],
+                    seed_context={
+                        "hyper_candidate_seed": int(hyper_candidate_seed),
+                        "simulation_point_seed": int(simulation_point_seed),
+                        "trajectory_seed": task["trajectory_seed"],
+                        "phase": "hyper_cd",
+                        "repeat_index": task["repeat_index"],
+                    },
+                    score_trial_mask=score_trial_mask,
+                )
+                for task in tasks
+            )
+        )
+        return (
+            [run for run in runs if run is not None],
+            int(condition),
+            int(simulation_point_seed),
+            score_context,
+        )
+
+    def _select_final_combination(
+        self,
+        combinations: Sequence[CombinationResult],
+    ) -> tuple[CombinationResult, Dict[str, Any]]:
+        selected, context = select_best_by_objectives(
+            combinations,
+            lambda result: result.objective_values,
+            self.objective_order,
+            tie_breaker=lambda result: (int(result.restart_id), int(result.combination_index)),
+        )
+        context.update(
+            {
+                "selected_combination_index": selected.combination_index,
+                "selected_restart_id": selected.restart_id,
+            }
+        )
+        return selected, context
+
+    def _run_final_rescore(
+        self,
+        search_combinations: Sequence[CombinationResult],
+        *,
+        subjects: Sequence[int],
+        output_path: Path,
+        resume: bool = False,
+        checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> tuple[List[CombinationResult], CombinationResult, Dict[str, Any]]:
+        """Rescore a unique search shortlist with independent, paired PF seeds."""
+
+        raw_config = self.config.get("final_rescore") or {}
+        if not isinstance(raw_config, Mapping) or not bool(
+            raw_config.get("enabled", False)
+        ):
+            raise ValueError("final_rescore must be enabled before rescoring")
+        shortlist_size = self._positive_int(
+            raw_config.get("shortlist_size", 1),
+            "final_rescore.shortlist_size",
+        )
+        seed_family = str(raw_config.get("seed_family", "")).strip()
+        if not seed_family:
+            raise ValueError("final_rescore.seed_family must be a non-empty string")
+        overrides = raw_config.get("simulation_overrides") or {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError("final_rescore.simulation_overrides must be a mapping")
+        stage_sim_cfg = deep_update(self.base_sim_config, overrides)
+        repeat_aggregation = resolve_repeat_aggregation(stage_sim_cfg)
+        if repeat_aggregation != "mean_probability":
+            raise ValueError(
+                "final_rescore must use repeat_aggregation='mean_probability'"
+            )
+
+        ranked = rank_by_objectives(
+            search_combinations,
+            lambda combination: combination.objective_values,
+            self.objective_order,
+            tie_breaker=lambda combination: (
+                int(combination.restart_id),
+                int(combination.combination_index),
+            ),
+        )
+        shortlist: List[CombinationResult] = []
+        seen: set[str] = set()
+        for combination in ranked:
+            key = canonical_point_key(combination.hyperparams)
+            if key in seen:
+                continue
+            seen.add(key)
+            shortlist.append(combination)
+            if len(shortlist) >= shortlist_size:
+                break
+        if not shortlist:
+            raise ValueError("final_rescore shortlist cannot be empty")
+        search_best = shortlist[0]
+
+        cached: Dict[str, CombinationResult] = {}
+        if resume and output_path.is_file():
+            records = self._load_jsonl_records(output_path, repair_trailing=True)
+            for record in records:
+                if record.get("seed_family") != seed_family:
+                    raise ValueError(
+                        "final_rescore cache seed_family does not match"
+                    )
+                combination = self._combination_from_record(record, output_path)
+                key = canonical_point_key(combination.hyperparams)
+                if key in cached:
+                    raise ValueError(
+                        "final_rescore cache contains duplicate parameter points"
+                    )
+                cached[key] = combination
+            if cached:
+                self._combination_counter = max(
+                    self._combination_counter,
+                    max(row.combination_index for row in cached.values()) + 1,
+                )
+        elif output_path.exists():
+            raise FileExistsError(
+                f"final_rescore output already exists: {output_path}"
+            )
+
+        rescored: List[CombinationResult] = []
+        for shortlist_rank, search_row in enumerate(shortlist):
+            key = canonical_point_key(search_row.hyperparams)
+            result = cached.get(key)
+            if result is None:
+                combination_index = self._next_combination_index()
+                result = self._evaluate_point_with_index(
+                    stage_name="final_rescore",
+                    point=deepcopy(search_row.hyperparams),
+                    stage_sim_cfg=stage_sim_cfg,
+                    subjects=subjects,
+                    restart_id=-1,
+                    iter_id=0,
+                    coordinate="final_rescore",
+                    combination_index=combination_index,
+                    seed_family=seed_family,
+                    force_common_random_numbers=True,
+                )
+                record = self._serialize_combination_record(result)
+                record.update(
+                    {
+                        "seed_family": seed_family,
+                        "shortlist_rank": int(shortlist_rank),
+                        "search_combination_index": int(
+                            search_row.combination_index
+                        ),
+                        "subject_metrics": result.subject_metrics,
+                    }
+                )
+                self._append_jsonl(output_path, record)
+            rescored.append(result)
+            if checkpoint_callback is not None:
+                checkpoint_callback(
+                    {
+                        "status": "final_rescore_active",
+                        "stage": "final_rescore",
+                        "final_rescore_completed": int(shortlist_rank + 1),
+                        "final_rescore_total": int(len(shortlist)),
+                    }
+                )
+
+        winner, selection_context = self._select_final_combination(rescored)
+        context = {
+            "enabled": True,
+            "seed_family": seed_family,
+            "common_random_numbers": True,
+            "repeat_aggregation": repeat_aggregation,
+            "simulation_repeats": resolve_simulation_repeats(stage_sim_cfg),
+            "shortlist_size": int(len(shortlist)),
+            "search_best_combination_index": int(
+                search_best.combination_index
+            ),
+            "search_best_hyperparams": deepcopy(search_best.hyperparams),
+            "final_rescore_best_combination_index": int(
+                winner.combination_index
+            ),
+            "final_rescore_best_hyperparams": deepcopy(winner.hyperparams),
+            "selection": selection_context,
+        }
+        return rescored, winner, context
+
+    def _evaluate_point(
+        self,
+        stage_name: str,
+        point: Dict[str, Any],
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+    ) -> CombinationResult:
+        combination_index = self._combination_counter
+        self._combination_counter += 1
+        return self._evaluate_point_with_index(
+            stage_name=stage_name,
+            point=point,
+            stage_sim_cfg=stage_sim_cfg,
+            subjects=subjects,
+            restart_id=restart_id,
+            iter_id=iter_id,
+            coordinate=coordinate,
+            combination_index=combination_index,
+        )
+
+    def _evaluate_point_with_index(
+        self,
+        stage_name: str,
+        point: Dict[str, Any],
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+        combination_index: int,
+        seed_family: str | None = None,
+        force_common_random_numbers: bool | None = None,
+    ) -> CombinationResult:
+        hyper_candidate_seed = self._hyper_candidate_seed(
+            stage_name,
+            combination_index,
+            point,
+            restart_id,
+            iter_id,
+            coordinate,
+            seed_family,
+        )
+
+        subject_metrics: Dict[int, Dict[str, Any]] = {}
+        subject_objectives: List[Dict[str, float]] = []
+        for sid in subjects:
+            subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, n_jobs = self._resolve_sim_components(
+                stage_sim_cfg,
+                sid,
+                subjects,
+            )
+            point_sim_cfg, point_engine_cfg = self._apply_hyperparams(point, subject_cfg, base_engine_cfg)
+            runner, dataset_paths = self._build_runner(point_sim_cfg, point_engine_cfg)
+            runner.n_jobs = n_jobs
+            simulation_repeats = resolve_simulation_repeats(point_sim_cfg)
+            effective_loss_metric = str(point_sim_cfg["loss_metric"])
+            effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
+
+            runs, condition, simulation_point_seed, score_context = self._simulate_runs_for_point(
+                stage_name=stage_name,
+                runner=runner,
+                dataset_paths=dataset_paths,
+                subject_id=sid,
+                simulation_repeats=simulation_repeats,
+                point=point,
+                window_size=int(point_sim_cfg.get("window_size", window_size)),
+                stop_at=float(point_sim_cfg.get("stop_at", 1.0)),
+                max_trials=point_sim_cfg.get("max_trials"),
+                keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
+                prediction_mode=str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+                loss_metric=effective_loss_metric,
+                loss_delta=effective_loss_delta,
+                hyper_candidate_seed=hyper_candidate_seed,
+                n_jobs=n_jobs,
+                evaluation_protocol=point_sim_cfg.get("evaluation_protocol"),
+                force_common_random_numbers=force_common_random_numbers,
+                seed_family=seed_family,
+            )
+            best = aggregate_simulation_runs(
+                runs,
+                params=point,
+                subject_id=sid,
+                condition=condition,
+                window_size=int(point_sim_cfg.get("window_size", window_size)),
+                selection_prediction_mode=str(point_sim_cfg.get("selection_prediction_mode", sel_mode)),
+                simulation_repeats=simulation_repeats,
+                simulation_point_seed=simulation_point_seed,
+                keep_logs=bool(point_sim_cfg.get("keep_logs", False)),
+                statistics_config=self.statistics_config,
+                repeat_aggregation=resolve_repeat_aggregation(point_sim_cfg),
+            )
+
+            mean_err = float(getattr(best, "mean_error"))
+            best_err = float(getattr(best, "best_error", mean_err))
+            sample_errors = list(getattr(best, "sample_errors", []) or [])
+            tail_metrics = _lower_tail_error_metrics(sample_errors, mean_err)
+            statistics_summary = dict(getattr(best, "statistics_summary", {}) or {})
+            simulation_summary = {
+                "mean_error": mean_err,
+                "best_error": best_err,
+                **tail_metrics,
+                "std_error": float(getattr(best, "std_error", 0.0)),
+                "sample_errors": sample_errors,
+                "simulation_repeats": simulation_repeats,
+                "repeat_aggregation": str(best.repeat_aggregation),
+                "aggregation_diagnostics": dict(
+                    best.aggregation_diagnostics or {}
+                ),
+            }
+            subject_record = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+            }
+            objective_values = extract_subject_objective_values(
+                subject_record,
+                self.objective_order,
+            )
+            subject_objectives.append(objective_values)
+            subject_metrics[int(sid)] = {
+                "simulation": simulation_summary,
+                "statistics": statistics_summary,
+                "objectives": {
+                    "values": objective_values,
+                },
+                "fixed_hyperparams": deepcopy(point),
+                "condition": int(condition),
+                "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
+                "hyper_candidate_seed": int(hyper_candidate_seed),
+                "simulation_point_seed": int(simulation_point_seed),
+                "scoring": deepcopy(score_context),
+            }
+
+        aggregated_objectives = aggregate_objective_values(subject_objectives, self.objective_order)
+        agg_error = first_objective_value(aggregated_objectives, self.objective_order)
+        return CombinationResult(
+            stage=stage_name,
+            combination_index=combination_index,
+            hyperparams=deepcopy(point),
+            aggregated_error=agg_error,
+            objective_values=aggregated_objectives,
+            subject_metrics=subject_metrics,
+            hyper_candidate_seed=hyper_candidate_seed,
+            restart_id=restart_id,
+            iter_id=iter_id,
+            coordinate=coordinate,
+        )
+
+    def _evaluate_missing_entries_flat(
+        self,
+        *,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        restart_id: int,
+        iter_id: int,
+        coordinate: str,
+        missing_entries: Sequence[Dict[str, Any]],
+        value_jobs: int,
+        repeat_jobs: int,
+    ) -> tuple[List[CombinationResult], Dict[str, Any]]:
+        if not missing_entries:
+            return [], {
+                "flat_task_count": 0,
+                "flat_jobs": 0,
+                "parallel_backend": "flat_value_repeat_processes",
+            }
+        flat_tasks: List[Dict[str, Any]] = []
+        candidate_meta: Dict[int, Dict[str, Any]] = {}
+
+        for entry in missing_entries:
+            position = int(entry["position"])
+            point = dict(entry["point"])
+            combination_index = int(entry["combination_index"])
+            hyper_candidate_seed = self._hyper_candidate_seed(
+                stage_name,
+                combination_index,
+                point,
+                restart_id,
+                iter_id,
+                coordinate,
+            )
+
+            candidate_meta[position] = {
+                "point": point,
+                "combination_index": combination_index,
+                "hyper_candidate_seed": int(hyper_candidate_seed),
+                "subjects": {},
+            }
+
+            for raw_subject_id in subjects:
+                sid = int(raw_subject_id)
+                subject_cfg, base_engine_cfg, pred_mode, sel_mode, loss_metric, loss_delta, window_size, _ = self._resolve_sim_components(
+                    stage_sim_cfg,
+                    sid,
+                    subjects,
+                )
+                point_sim_cfg, point_engine_cfg = self._apply_hyperparams(
+                    point,
+                    subject_cfg,
+                    base_engine_cfg,
+                )
+                runner, dataset_paths = self._build_runner(point_sim_cfg, point_engine_cfg)
+                simulation_repeats = resolve_simulation_repeats(point_sim_cfg)
+                effective_loss_metric = str(point_sim_cfg["loss_metric"])
+                effective_loss_delta = resolve_loss_delta(point_sim_cfg, effective_loss_metric)
+                effective_window_size = int(point_sim_cfg.get("window_size", window_size))
+                keep_logs = bool(point_sim_cfg.get("keep_logs", False))
+
+                subject_frame = runner._get_subject_frame(
+                    sid,
+                    float(point_sim_cfg.get("stop_at", 1.0)),
+                )
+                condition = runner._get_condition_value(subject_frame)
+                arrays = runner._extract_arrays(subject_frame, point_sim_cfg.get("max_trials"))
+                score_trial_mask, score_context = resolve_evaluation_score_mask(
+                    int(arrays.feedback.shape[0]),
+                    point_sim_cfg.get("evaluation_protocol"),
+                    role=EVALUATION_ROLE_OPTIMIZATION,
+                )
+                simulation_point_seed = self._simulation_point_seed(
+                    stage_name=stage_name,
+                    hyper_candidate_seed=int(hyper_candidate_seed),
+                    subject_id=sid,
+                    point=point,
+                )
+
+                candidate_meta[position]["subjects"][sid] = {
+                    "simulation_point_seed": int(simulation_point_seed),
+                    "condition": int(condition),
+                    "window_size": effective_window_size,
+                    "selection_prediction_mode": str(
+                        point_sim_cfg.get("selection_prediction_mode", sel_mode)
+                    ),
+                    "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                    "loss_metric": effective_loss_metric,
+                    "loss_delta": effective_loss_delta,
+                    "simulation_repeats": simulation_repeats,
+                    "repeat_aggregation": resolve_repeat_aggregation(point_sim_cfg),
+                    "keep_logs": keep_logs,
+                    "dataset_paths": {k: str(v) for k, v in dataset_paths.items()},
+                    "score_context": score_context,
+                }
+
+                for repeat_index in range(simulation_repeats):
+                    trajectory_seed = derive_trajectory_seed(
+                        int(simulation_point_seed),
+                        "simulation",
+                        repeat_index,
+                    )
+                    flat_tasks.append(
+                        {
+                            "position": position,
+                            "repeat_index": int(repeat_index),
+                            "subject_id": sid,
+                            "condition": int(condition),
+                            "arrays": arrays,
+                            "params": point,
+                            "engine_config_template": runner._engine_config_template,
+                            "processed_data_dir": runner._processed_data_dir,
+                            "window_size": effective_window_size,
+                            "dataset_paths": dataset_paths,
+                            "keep_logs": keep_logs,
+                            "prediction_mode": str(point_sim_cfg.get("prediction_mode", pred_mode)),
+                            "selection_prediction_mode": str(
+                                point_sim_cfg.get("selection_prediction_mode", sel_mode)
+                            ),
+                            "loss_metric": effective_loss_metric,
+                            "loss_delta": effective_loss_delta,
+                            "simulation_point_seed": int(simulation_point_seed),
+                            "trajectory_seed": trajectory_seed,
+                            "seed_context": {
+                                "hyper_candidate_seed": int(hyper_candidate_seed),
+                                "simulation_point_seed": int(simulation_point_seed),
+                                "trajectory_seed": trajectory_seed,
+                                "phase": "simulation",
+                                "repeat_index": int(repeat_index),
+                            },
+                            "score_trial_mask": score_trial_mask,
+                        }
+                    )
+
+        flat_task_count = len(flat_tasks)
+        flat_jobs = min(self.parallel_budget, flat_task_count)
+        if flat_jobs > 1:
+            warmup_dykstra_numba()
+        flat_results = list(
+            Parallel(n_jobs=flat_jobs)(
+                delayed(_evaluate_cd_flat_repeat_task)(task)
+                for task in flat_tasks
+            )
+        )
+
+        runs_by_position: Dict[int, Dict[int, Dict[int, Any]]] = {
+            position: {
+                int(subject_id): {}
+                for subject_id in meta["subjects"]
+            }
+            for position, meta in candidate_meta.items()
+        }
+        for result in flat_results:
+            runs_by_position[int(result["position"])][int(result["subject_id"])][
+                int(result["repeat_index"])
+            ] = result["run"]
+
+        out: List[CombinationResult] = []
+        for entry in missing_entries:
+            position = int(entry["position"])
+            meta = candidate_meta[position]
+            subject_metrics: Dict[int, Dict[str, Any]] = {}
+            subject_objectives: List[Dict[str, float]] = []
+            for subject_id, subject_meta in meta["subjects"].items():
+                sid = int(subject_id)
+                simulation_repeats = int(subject_meta["simulation_repeats"])
+                runs_by_repeat = runs_by_position[position][sid]
+                runs = [runs_by_repeat[idx] for idx in range(simulation_repeats)]
+                best = aggregate_simulation_runs(
+                    runs,
+                    params=meta["point"],
+                    subject_id=sid,
+                    condition=int(subject_meta["condition"]),
+                    window_size=int(subject_meta["window_size"]),
+                    selection_prediction_mode=str(subject_meta["selection_prediction_mode"]),
+                    simulation_repeats=simulation_repeats,
+                    simulation_point_seed=int(subject_meta["simulation_point_seed"]),
+                    keep_logs=bool(subject_meta["keep_logs"]),
+                    statistics_config=self.statistics_config,
+                    repeat_aggregation=str(subject_meta["repeat_aggregation"]),
+                )
+                mean_error = float(best.mean_error)
+                best_error = float(
+                    best.best_error if best.best_error is not None else mean_error
+                )
+                sample_errors = list(best.sample_errors or [])
+                tail_metrics = _lower_tail_error_metrics(sample_errors, mean_error)
+                statistics_summary = dict(best.statistics_summary or {})
+                simulation_summary = {
+                    "mean_error": mean_error,
+                    "best_error": best_error,
+                    **tail_metrics,
+                    "std_error": float(best.std_error),
+                    "sample_errors": sample_errors,
+                    "simulation_repeats": simulation_repeats,
+                    "repeat_aggregation": str(best.repeat_aggregation),
+                    "aggregation_diagnostics": dict(
+                        best.aggregation_diagnostics or {}
+                    ),
+                }
+                subject_record = {
+                    "simulation": simulation_summary,
+                    "statistics": statistics_summary,
+                }
+                objective_values = extract_subject_objective_values(
+                    subject_record,
+                    self.objective_order,
+                )
+                subject_objectives.append(objective_values)
+                subject_metrics[sid] = {
+                    "simulation": simulation_summary,
+                    "statistics": statistics_summary,
+                    "objectives": {
+                        "values": objective_values,
+                    },
+                    "fixed_hyperparams": deepcopy(meta["point"]),
+                    "condition": int(subject_meta["condition"]),
+                    "dataset_paths": dict(subject_meta["dataset_paths"]),
+                    "hyper_candidate_seed": int(meta["hyper_candidate_seed"]),
+                    "simulation_point_seed": int(subject_meta["simulation_point_seed"]),
+                    "scoring": deepcopy(subject_meta["score_context"]),
+                }
+
+            aggregated_objectives = aggregate_objective_values(
+                subject_objectives,
+                self.objective_order,
+            )
+            selection_error = first_objective_value(
+                aggregated_objectives,
+                self.objective_order,
+            )
+            out.append(
+                CombinationResult(
+                    stage=stage_name,
+                    combination_index=int(meta["combination_index"]),
+                    hyperparams=deepcopy(meta["point"]),
+                    aggregated_error=selection_error,
+                    objective_values=aggregated_objectives,
+                    subject_metrics=subject_metrics,
+                    hyper_candidate_seed=int(meta["hyper_candidate_seed"]),
+                    restart_id=restart_id,
+                    iter_id=iter_id,
+                    coordinate=coordinate,
+                )
+            )
+
+        return out, {
+            "flat_task_count": flat_task_count,
+            "flat_jobs": flat_jobs,
+            "parallel_backend": "flat_value_repeat_processes",
+            "planned_total_jobs": value_jobs * repeat_jobs * len(subjects),
+        }
+
+    def _next_combination_index(self) -> int:
+        out = self._combination_counter
+        self._combination_counter += 1
+        return out
+
+    def _stage_cd_parallel_config(self, stage_name: str) -> Dict[str, int]:
+        stages = self.config.get("stages") or {}
+        stage_cfg = stages.get(stage_name)
+        if not isinstance(stage_cfg, Mapping):
+            raise ValueError(f"Missing stages.{stage_name}")
+        cd_parallel = stage_cfg.get("cd_parallel")
+        if not isinstance(cd_parallel, Mapping):
+            raise ValueError(f"stages.{stage_name}.cd_parallel.max_repeat_jobs is required for hyper-CD.")
+        if "max_repeat_jobs" not in cd_parallel:
+            raise ValueError(f"stages.{stage_name}.cd_parallel.max_repeat_jobs is required for hyper-CD.")
+        return {
+            "max_repeat_jobs": self._positive_int(
+                cd_parallel["max_repeat_jobs"],
+                f"stages.{stage_name}.cd_parallel.max_repeat_jobs",
+            )
+        }
+
+    def _coordinate_parallel_plan(
+        self,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        num_values: int,
+    ) -> tuple[int, int]:
+        if num_values <= 0:
+            return 1, 1
+        cd_parallel = self._stage_cd_parallel_config(stage_name)
+        simulation_repeats = resolve_simulation_repeats(stage_sim_cfg)
+        repeat_jobs = min(cd_parallel["max_repeat_jobs"], simulation_repeats, self.parallel_budget)
+        value_jobs = min(int(num_values), max(1, self.parallel_budget // repeat_jobs))
+        return max(1, int(value_jobs)), max(1, int(repeat_jobs))
+
+    @staticmethod
+    def _stage_sim_cfg_with_n_jobs(stage_sim_cfg: Dict[str, Any], repeat_jobs: int) -> Dict[str, Any]:
+        out = deepcopy(stage_sim_cfg)
+        out["n_jobs"] = int(repeat_jobs)
+        return out
+
+    def _serialize_combination_record(self, result: CombinationResult) -> Dict[str, Any]:
+        data = {
+            "schema_version": HYPER_RESULT_SCHEMA_VERSION,
+            "stage": result.stage,
+            "combination_index": result.combination_index,
+            "restart_id": result.restart_id,
+            "iter_id": result.iter_id,
+            "coordinate": result.coordinate,
+            "hyperparams": result.hyperparams,
+            "aggregated_error": result.aggregated_error,
+            "objective_values": result.objective_values,
+            "hyper_candidate_seed": result.hyper_candidate_seed,
+        }
+        metrics_summary = combination_metrics_summary(
+            result.subject_metrics,
+            aggregated_error=result.aggregated_error,
+            objective_values=result.objective_values,
+        )
+        if metrics_summary:
+            data["metrics_summary"] = metrics_summary
+        if self.save_level == "full":
+            data["subject_metrics"] = result.subject_metrics
+        return data
+
+    def _trim_jsonl_to_stage(self, path: Path, stage: str) -> None:
+        if not path.is_file():
+            return
+        records = self._load_jsonl_records(path)
+        kept = [record for record in records if record.get("stage") == stage]
+        if len(kept) != len(records):
+            self._write_jsonl_records(path, kept)
+
+    def _combination_from_record(self, record: Mapping[str, Any], path: Path) -> CombinationResult:
+        hyperparams = record.get("hyperparams")
+        if not isinstance(hyperparams, Mapping):
+            raise ValueError(f"Combination record is missing hyperparams in {path}")
+
+        raw_subject_metrics = record.get("subject_metrics")
+        subject_metrics: Dict[int, Dict[str, Any]] = {}
+        if isinstance(raw_subject_metrics, Mapping):
+            subject_metrics = {
+                int(sid): dict(metrics)
+                for sid, metrics in raw_subject_metrics.items()
+                if isinstance(metrics, Mapping)
+            }
+
+        return CombinationResult(
+            stage=str(record.get("stage", "")),
+            combination_index=int(record["combination_index"]),
+            hyperparams=deepcopy(dict(hyperparams)),
+            aggregated_error=float(record["aggregated_error"]),
+            objective_values=deepcopy(dict(record["objective_values"])),
+            subject_metrics=subject_metrics,
+            hyper_candidate_seed=int(record["hyper_candidate_seed"]),
+            restart_id=int(record.get("restart_id", -1)),
+            iter_id=int(record.get("iter_id", -1)),
+            coordinate=str(record.get("coordinate", "loaded_coarse")),
+        )
+
+    def _load_coarse_for_fine_resume(self, path: Path) -> List[CombinationResult]:
+        records = self._load_jsonl_records(path)
+        coarse_records = [record for record in records if record.get("stage") == "coarse"]
+        if not coarse_records:
+            raise ValueError(f"Cannot resume fine stage; no coarse records found in {path}")
+        if len(coarse_records) != len(records):
+            self._write_jsonl_records(path, coarse_records)
+        combinations = [self._combination_from_record(record, path) for record in coarse_records]
+        max_existing_index = max(int(record["combination_index"]) for record in coarse_records)
+        self._combination_counter = max(self._combination_counter, max_existing_index + 1)
+        return combinations
+
+    def _init_point(
+        self,
+        space: Dict[str, List[Any]],
+        rng: random.Random,
+        restart_id: int = 0,
+    ) -> Dict[str, Any]:
+        if getattr(self, "initial_points", None):
+            point = deepcopy(self.initial_points[int(restart_id)])
+            if set(point) != set(space):
+                raise ValueError(
+                    "Every cd.initial_points entry must contain exactly the "
+                    "configured hyperparameter coordinates"
+                )
+            for name, value in point.items():
+                if value not in space[name]:
+                    raise ValueError(
+                        f"cd.initial_points[{restart_id}].{name} is outside its "
+                        "configured candidate values"
+                    )
+            return point
+        if self.init_strategy == "anchor":
+            point = {}
+            for name, vals in space.items():
+                point[name] = self.anchor[name] if name in self.anchor else vals[0]
+            return point
+        return {name: rng.choice(list(vals)) for name, vals in space.items()}
+
+    def _coordinate_descent(
+        self,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        space: Dict[str, List[Any]],
+        all_combinations_path: Path,
+        coordinate_trace_path: Path | None = None,
+        rng: random.Random | None = None,
+        initial_points: Sequence[Mapping[str, Any]] | None = None,
+        existing_combinations: Sequence[CombinationResult] | None = None,
+        checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> tuple[List[CombinationResult], List[Dict[str, Any]], CombinationResult]:
+        if rng is None:
+            rng = self._stage_rng(subjects, stage_name)
+        all_combinations: List[CombinationResult] = list(
+            existing_combinations or []
+        )
+        restart_best: List[Dict[str, Any]] = []
+        global_best: CombinationResult | None = None
+        restart_local_bests: List[CombinationResult] = []
+        cache: Dict[str, CombinationResult] = {}
+        for existing in all_combinations:
+            key = canonical_point_key(existing.hyperparams)
+            if key in cache:
+                raise ValueError(
+                    "existing Hyper-CD combinations contain duplicate parameter points"
+                )
+            cache[key] = existing
+        coords_base = list(space.keys())
+        stage_initial_points: List[Dict[str, Any]] | None = None
+        if initial_points is not None:
+            if not initial_points:
+                raise ValueError("stage initial_points cannot be empty")
+            stage_initial_points = []
+            for index, raw_point in enumerate(initial_points):
+                point = deepcopy(dict(raw_point))
+                if set(point) != set(space):
+                    raise ValueError(
+                        f"stage initial_points[{index}] must contain exactly "
+                        "the configured coordinates"
+                    )
+                for name, value in point.items():
+                    if value not in space[name]:
+                        raise ValueError(
+                            f"stage initial_points[{index}].{name} is outside "
+                            "its configured candidate values"
+                        )
+                stage_initial_points.append(point)
+        restart_count = (
+            len(stage_initial_points)
+            if stage_initial_points is not None
+            else self.n_restarts
+        )
+
+        def eval_with_cache(
+            point: Dict[str, Any],
+            restart_id: int,
+            iter_id: int,
+            coordinate: str,
+            repeat_jobs: int,
+        ) -> tuple[CombinationResult, bool]:
+            key = canonical_point_key(point)
+            if key in cache:
+                return cache[key], False
+            evaluated, _ = self._evaluate_missing_entries_flat(
+                stage_name=stage_name,
+                stage_sim_cfg=stage_sim_cfg,
+                subjects=subjects,
+                restart_id=restart_id,
+                iter_id=iter_id,
+                coordinate=coordinate,
+                missing_entries=[
+                    {
+                        "position": 0,
+                        "point": deepcopy(point),
+                        "combination_index": self._next_combination_index(),
+                    }
+                ],
+                value_jobs=1,
+                repeat_jobs=repeat_jobs,
+            )
+            result = evaluated[0]
+            cache[key] = result
+            self._append_jsonl(all_combinations_path, self._serialize_combination_record(result))
+            return result, True
+
+        for restart_id in range(restart_count):
+            current = (
+                deepcopy(stage_initial_points[restart_id])
+                if stage_initial_points is not None
+                else self._init_point(space, rng, restart_id)
+            )
+            restart_coords = list(coords_base)
+            if self.coordinate_order == "shuffle_per_restart":
+                rng.shuffle(restart_coords)
+            _, init_repeat_jobs = self._coordinate_parallel_plan(stage_name, stage_sim_cfg, 1)
+            current_result, current_is_new = eval_with_cache(
+                current,
+                restart_id,
+                0,
+                "init",
+                init_repeat_jobs,
+            )
+            restart_new_evaluations = int(current_is_new)
+            restart_cache_hits = int(not current_is_new)
+            if current_is_new:
+                all_combinations.append(current_result)
+            best_local = current_result
+            anchor_values = dict(best_local.objective_values)
+            initial_result = current_result
+            no_improve_rounds = 0
+            outer_iters_completed = 0
+            stopped_by = "max_outer_iters"
+            improvements: List[Dict[str, Any]] = []
+
+            for iter_id in range(1, self.max_outer_iters + 1):
+                outer_iters_completed = iter_id
+                if self.coordinate_order == "shuffle_each_iter":
+                    coords = list(coords_base)
+                    rng.shuffle(coords)
+                elif self.coordinate_order == "shuffle_per_restart":
+                    coords = list(restart_coords)
+                else:
+                    coords = list(coords_base)
+                improved_this_round = False
+
+                for coord_index, coord in enumerate(coords):
+                    start_best = best_local
+                    candidate_best = best_local
+                    candidate_best_guard: Dict[str, Any] = {"checks": []}
+                    base_point = deepcopy(current)
+                    candidate_count = 0
+                    coord_new_evaluations = 0
+                    coord_cache_hits = 0
+                    anchor_reject_count = 0
+                    value_jobs, repeat_jobs = self._coordinate_parallel_plan(
+                        stage_name,
+                        stage_sim_cfg,
+                        len(space[coord]),
+                    )
+                    candidate_entries: List[Dict[str, Any]] = []
+                    missing_entries: List[Dict[str, Any]] = []
+                    for value in space[coord]:
+                        candidate_count += 1
+                        candidate = deepcopy(base_point)
+                        candidate[coord] = value
+                        key = canonical_point_key(candidate)
+                        entry = {
+                            "position": candidate_count - 1,
+                            "key": key,
+                            "point": candidate,
+                        }
+                        if key in cache:
+                            entry["result"] = cache[key]
+                            entry["is_new"] = False
+                            coord_cache_hits += 1
+                        else:
+                            entry["is_new"] = True
+                            entry["combination_index"] = self._next_combination_index()
+                            missing_entries.append(entry)
+                        candidate_entries.append(entry)
+
+                    if missing_entries:
+                        evaluated_missing, flat_diag = self._evaluate_missing_entries_flat(
+                            stage_name=stage_name,
+                            stage_sim_cfg=stage_sim_cfg,
+                            subjects=subjects,
+                            restart_id=restart_id,
+                            iter_id=iter_id,
+                            coordinate=coord,
+                            missing_entries=missing_entries,
+                            value_jobs=value_jobs,
+                            repeat_jobs=repeat_jobs,
+                        )
+                        by_position = {
+                            int(entry["position"]): result
+                            for entry, result in zip(missing_entries, evaluated_missing)
+                        }
+                    else:
+                        flat_diag = {
+                            "flat_task_count": 0,
+                            "flat_jobs": 0,
+                            "parallel_backend": "flat_value_repeat_processes",
+                            "planned_total_jobs": value_jobs * repeat_jobs,
+                        }
+                        by_position = {}
+
+                    for entry in candidate_entries:
+                        if entry["is_new"]:
+                            candidate_result = by_position[int(entry["position"])]
+                            cache[str(entry["key"])] = candidate_result
+                            self._append_jsonl(all_combinations_path, self._serialize_combination_record(candidate_result))
+                            all_combinations.append(candidate_result)
+                            coord_new_evaluations += 1
+                        else:
+                            candidate_result = entry["result"]
+                        passed_guard, guard_context = passes_anchor_guard(
+                            candidate_result.objective_values,
+                            anchor_values,
+                            self.objective_order,
+                        )
+                        if not passed_guard:
+                            anchor_reject_count += 1
+                            continue
+                        if (
+                            compare_objective_values(
+                                candidate_result.objective_values,
+                                candidate_best.objective_values,
+                                self.objective_order,
+                            )
+                            < 0
+                        ):
+                            candidate_best = candidate_result
+                            candidate_best_guard = guard_context
+
+                    restart_new_evaluations += coord_new_evaluations
+                    restart_cache_hits += coord_cache_hits
+                    improved_coord = False
+                    candidate_differs = (
+                        candidate_best.combination_index
+                        != best_local.combination_index
+                    )
+                    candidate_is_ordered_better = candidate_differs and (
+                        compare_objective_values(
+                            candidate_best.objective_values,
+                            best_local.objective_values,
+                            self.objective_order,
+                        )
+                        < 0
+                    )
+                    move_allowed = candidate_differs and candidate_improves(
+                            best_local.objective_values,
+                            candidate_best.objective_values,
+                            self.objective_order,
+                            self.min_delta,
+                        )
+                    min_delta_reject_count = int(
+                        candidate_is_ordered_better and not move_allowed
+                    )
+                    if move_allowed:
+                        current = deepcopy(candidate_best.hyperparams)
+                        best_local = candidate_best
+                        anchor_values = update_anchor_values(
+                            anchor_values,
+                            best_local.objective_values,
+                            self.objective_order,
+                        )
+                        improved_this_round = True
+                        improved_coord = True
+                        improvements.append(
+                            {
+                                "iter_id": iter_id,
+                                "coordinate": coord,
+                                "from_combination_index": start_best.combination_index,
+                                "to_combination_index": best_local.combination_index,
+                                "from_error": start_best.aggregated_error,
+                                "to_error": best_local.aggregated_error,
+                                "from_objective_values": start_best.objective_values,
+                                "to_objective_values": best_local.objective_values,
+                                "anchor_values": anchor_values,
+                                "anchor_guard": candidate_best_guard,
+                                "selected_hyperparams": best_local.hyperparams,
+                            }
+                        )
+
+                    if coordinate_trace_path is not None:
+                        self._append_jsonl(
+                            coordinate_trace_path,
+                            {
+                                "stage": stage_name,
+                                "restart_id": restart_id,
+                                "iter_id": iter_id,
+                                "coordinate": coord,
+                                "coordinate_index": coord_index,
+                                "coordinate_order": coords,
+                                "candidate_count": candidate_count,
+                                "missing_value_count": len(missing_entries),
+                                "new_evaluations": coord_new_evaluations,
+                                "cache_hits": coord_cache_hits,
+                                "anchor_reject_count": anchor_reject_count,
+                                "min_delta_reject_count": min_delta_reject_count,
+                                "value_jobs": value_jobs,
+                                "repeat_jobs": repeat_jobs,
+                                "planned_total_jobs": flat_diag["planned_total_jobs"],
+                                "flat_task_count": flat_diag["flat_task_count"],
+                                "flat_jobs": flat_diag["flat_jobs"],
+                                "parallel_backend": flat_diag["parallel_backend"],
+                                "start_best_combination_index": start_best.combination_index,
+                                "start_best_error": start_best.aggregated_error,
+                                "start_best_objective_values": start_best.objective_values,
+                                "end_best_combination_index": best_local.combination_index,
+                                "end_best_error": best_local.aggregated_error,
+                                "end_best_objective_values": best_local.objective_values,
+                                "anchor_values": anchor_values,
+                                "improved": improved_coord,
+                            },
+                        )
+                    if checkpoint_callback is not None:
+                        checkpoint_callback(
+                            {
+                                "status": "active",
+                                "stage": stage_name,
+                                "restart_id": int(restart_id),
+                                "iter_id": int(iter_id),
+                                "next_coordinate_index": int(coord_index + 1),
+                                "coordinate_order": list(coords),
+                                "current_point": deepcopy(current),
+                                "best_combination_index": int(
+                                    best_local.combination_index
+                                ),
+                                "initial_combination_index": int(
+                                    initial_result.combination_index
+                                ),
+                                "anchor_values": deepcopy(anchor_values),
+                                "no_improve_rounds": int(no_improve_rounds),
+                                "combination_counter": int(
+                                    self._combination_counter
+                                ),
+                                "combination_record_count": int(
+                                    len(all_combinations)
+                                ),
+                                "completed_restart_count": int(
+                                    len(restart_best)
+                                ),
+                                "random_state": _to_builtin(rng.getstate()),
+                            }
+                        )
+
+                if improved_this_round:
+                    no_improve_rounds = 0
+                else:
+                    no_improve_rounds += 1
+                    if no_improve_rounds >= self.patience:
+                        stopped_by = "patience"
+                        break
+
+            restart_best.append(
+                {
+                    "restart_id": restart_id,
+                    "initial_combination_index": initial_result.combination_index,
+                    "initial_error": initial_result.aggregated_error,
+                    "initial_objective_values": initial_result.objective_values,
+                    "best_combination_index": best_local.combination_index,
+                    "best_error": best_local.aggregated_error,
+                    "best_objective_values": best_local.objective_values,
+                    "anchor_values": anchor_values,
+                    "best_hyperparams": best_local.hyperparams,
+                    "best_params": compact_hyperparams(best_local.hyperparams),
+                    "outer_iters_completed": outer_iters_completed,
+                    "stopped_by": stopped_by,
+                    "no_improve_rounds": no_improve_rounds,
+                    "num_improvements": len(improvements),
+                    "num_new_evaluations": restart_new_evaluations,
+                    "num_cache_hits": restart_cache_hits,
+                    "coordinate_order": restart_coords,
+                    "improvements": improvements,
+                }
+            )
+            restart_local_bests.append(best_local)
+
+        if not restart_local_bests:
+            raise RuntimeError("CD optimizer produced no combination")
+        global_best, _ = select_best_by_objectives(
+            restart_local_bests,
+            lambda result: result.objective_values,
+            self.objective_order,
+            tie_breaker=lambda result: (int(result.restart_id), int(result.combination_index)),
+        )
+        return all_combinations, restart_best, global_best
+
+    def _run_subject_pipeline(
+        self,
+        subject_id: int,
+        stage: str,
+        output_base: Path,
+        resume_from_coarse: bool = False,
+        resume: bool = False,
+    ) -> Dict[str, Any]:
+        subject_dir = output_base / f"subject_{int(subject_id)}"
+        subject_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_kwargs: Dict[str, Any] = {}
+        if resume:
+            pipeline_kwargs["resume"] = True
+        return self._run_pipeline(
+            subjects=[int(subject_id)],
+            stage=stage,
+            output_dir=subject_dir,
+            resume_from_coarse=resume_from_coarse,
+            **pipeline_kwargs,
+        )
+
+    def _run_pipeline(
+        self,
+        subjects: Sequence[int],
+        stage: str,
+        output_dir: Path,
+        resume_from_coarse: bool = False,
+        resume: bool = False,
+    ) -> Dict[str, Any]:
+        if resume_from_coarse and stage != "fine":
+            raise ValueError("resume_from_coarse requires stage='fine'")
+
+        self._combination_counter = 0
+        if stage == "all":
+            configured_stages = self.config.get("stages") or {}
+            stages_to_run = [name for name in ("coarse", "fine") if name in configured_stages]
+            if not stages_to_run:
+                raise ValueError("stage='all' requires at least one configured stage under stages.coarse or stages.fine")
+        else:
+            stages_to_run = [stage]
+        all_combinations_path = output_dir / "all_combinations.jsonl"
+        resume_checkpoint: Dict[str, Any] | None = None
+        context_fingerprint: str | None = None
+        if self.cd_v2.enabled:
+            artifact_names = (
+                "all_combinations.jsonl",
+                "coordinate_trace.jsonl",
+                "search_checkpoint.json",
+                "restart_summary.json",
+                "stage_summary.json",
+                "final_rescore.jsonl",
+                "best_hyperparams.json",
+            )
+            existing_artifacts = [
+                output_dir / name
+                for name in artifact_names
+                if (output_dir / name).exists()
+            ]
+            if existing_artifacts and not resume:
+                raise FileExistsError(
+                    "schema-v2 Hyper-CD output already contains search artifacts; "
+                    "run with --resume or choose a new output directory: "
+                    + ", ".join(path.name for path in existing_artifacts)
+                )
+            checkpoint_path = output_dir / "search_checkpoint.json"
+            if resume and not checkpoint_path.is_file():
+                raise FileNotFoundError(
+                    "schema-v2 Hyper-CD resume requires "
+                    f"search_checkpoint.json in {output_dir}"
+                )
+            context_fingerprint = search_context_fingerprint(
+                self.config,
+                self.base_sim_config,
+                subjects,
+                stage,
+            )
+            if resume:
+                resume_checkpoint = load_checkpoint(checkpoint_path)
+                if int(resume_checkpoint.get("schema_version", -1)) != 2:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint schema_version must be 2"
+                    )
+                if resume_checkpoint.get("context_fingerprint") != context_fingerprint:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint fingerprint does not match "
+                        "the current search context"
+                    )
+                checkpoint_subjects = [
+                    int(subject_id)
+                    for subject_id in resume_checkpoint.get("subjects", [])
+                ]
+                if checkpoint_subjects != [int(subject_id) for subject_id in subjects]:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint subject order does not match"
+                    )
+                if str(resume_checkpoint.get("requested_stage")) != str(stage):
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint requested_stage does not match"
+                    )
+        resumed_by_stage: Dict[str, List[CombinationResult]] = {}
+        if self.cd_v2.enabled and resume:
+            if all_combinations_path.is_file():
+                resumed_records = self._load_jsonl_records(
+                    all_combinations_path,
+                    repair_trailing=True,
+                )
+            else:
+                resumed_records = []
+            confirmed_record_count = int(
+                (resume_checkpoint or {}).get("combination_record_count", 0)
+            )
+            if confirmed_record_count > len(resumed_records):
+                raise ValueError(
+                    "Hyper-CD resume checkpoint confirms more combination "
+                    "records than are present in all_combinations.jsonl"
+                )
+            resumed_combinations = [
+                self._combination_from_record(record, all_combinations_path)
+                for record in resumed_records
+            ]
+            combination_indices = [
+                int(combination.combination_index)
+                for combination in resumed_combinations
+            ]
+            if len(combination_indices) != len(set(combination_indices)):
+                raise ValueError(
+                    "Hyper-CD resume combinations contain duplicate combination indices"
+                )
+            if combination_indices:
+                self._combination_counter = max(combination_indices) + 1
+            for combination in resumed_combinations:
+                resumed_by_stage.setdefault(combination.stage, []).append(combination)
+            stage_combinations = {
+                stage_name: list(combinations)
+                for stage_name, combinations in resumed_by_stage.items()
+                if stage_name not in stages_to_run
+            }
+        elif resume_from_coarse:
+            stage_combinations: Dict[str, List[CombinationResult]] = {
+                "coarse": self._load_coarse_for_fine_resume(all_combinations_path)
+            }
+        elif all_combinations_path.exists():
+            all_combinations_path.unlink()
+            stage_combinations = {}
+        else:
+            stage_combinations = {}
+
+        coordinate_trace_path = output_dir / "coordinate_trace.jsonl"
+        if self.cd_v2.enabled and resume:
+            if coordinate_trace_path.exists():
+                coordinate_trace_path.unlink()
+        elif resume_from_coarse:
+            self._trim_jsonl_to_stage(coordinate_trace_path, "coarse")
+        elif coordinate_trace_path.exists():
+            coordinate_trace_path.unlink()
+
+        checkpoint_base: Dict[str, Any] | None = None
+        if self.cd_v2.enabled:
+            checkpoint_base = {
+                "schema_version": 2,
+                "context_fingerprint": context_fingerprint,
+                "subjects": [int(subject_id) for subject_id in subjects],
+                "requested_stage": str(stage),
+            }
+            if not resume:
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        "status": "starting",
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": 0,
+                    },
+                )
+
+        stage_restarts: Dict[str, Any] = {}
+        for stage_name in stages_to_run:
+            stage_sim_cfg = self._prepare_stage_config(stage_name)
+            stage_initial_points: List[Dict[str, Any]] | None = None
+            if stage_name == "fine":
+                fine_stage_cfg = (self.config.get("stages") or {}).get("fine") or {}
+                if "hyperparam_space" in fine_stage_cfg:
+                    specs = self._param_specs_for_stage(stage_name)
+                    space = {name: self._hyperparam_values(spec) for name, spec in specs.items()}
+                else:
+                    prior = stage_combinations.get("coarse")
+                    if prior is None:
+                        raise ValueError("fine stage without hyperparam_space requires coarse stage results")
+                    coarse_top = self._top_k_combinations_from_coarse(prior)
+                    coarse_specs = self._param_specs_for_stage("coarse")
+                    space = self._space_from_combinations(coarse_top, coarse_specs)
+                if (
+                    self.cd_v2.enabled
+                    and self.cd_v2.fine_initialization == "coarse_shortlist"
+                ):
+                    prior = stage_combinations.get("coarse")
+                    if prior is None:
+                        raise ValueError(
+                            "schema-v2 fine initialization requires coarse results"
+                        )
+                    stage_initial_points = self._fine_initial_points(prior, space)
+            else:
+                specs = self._param_specs_for_stage(stage_name)
+                space = {name: self._hyperparam_values(spec) for name, spec in specs.items()}
+
+            search_kwargs: Dict[str, Any] = {}
+            if stage_initial_points is not None:
+                search_kwargs["initial_points"] = stage_initial_points
+            if self.cd_v2.enabled:
+                search_kwargs["existing_combinations"] = list(
+                    resumed_by_stage.get(stage_name, [])
+                )
+                if self.cd_v2.checkpoint_every_coordinate:
+                    def write_coordinate_checkpoint(
+                        payload: Mapping[str, Any],
+                        *,
+                        _checkpoint_base: Mapping[str, Any] = checkpoint_base or {},
+                    ) -> None:
+                        checkpoint_payload = {
+                            **dict(_checkpoint_base),
+                            **dict(payload),
+                            "combination_counter": int(self._combination_counter),
+                            "combination_record_count": int(
+                                self._combination_counter
+                            ),
+                        }
+                        atomic_write_checkpoint(checkpoint_path, checkpoint_payload)
+
+                    search_kwargs["checkpoint_callback"] = write_coordinate_checkpoint
+            combinations, restarts, _ = self._coordinate_descent(
+                stage_name=stage_name,
+                stage_sim_cfg=stage_sim_cfg,
+                subjects=subjects,
+                space=space,
+                all_combinations_path=all_combinations_path,
+                coordinate_trace_path=coordinate_trace_path,
+                rng=self._stage_rng(subjects, stage_name),
+                **search_kwargs,
+            )
+            stage_combinations[stage_name] = combinations
+            stage_restarts[stage_name] = restarts
+            if checkpoint_base is not None:
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        "status": "stage_complete",
+                        "stage": stage_name,
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": int(self._combination_counter),
+                    },
+                )
+
+        search_final_stage = "fine" if "fine" in stage_combinations else "coarse"
+        final_combinations = stage_combinations[search_final_stage]
+        search_best, search_selection_context = self._select_final_combination(
+            final_combinations
+        )
+        best_combination = search_best
+        final_stage = search_final_stage
+        final_selection_context = search_selection_context
+        final_rescore_context: Dict[str, Any] = {"enabled": False}
+        final_rescore_path = output_dir / "final_rescore.jsonl"
+        raw_final_rescore = self.config.get("final_rescore") or {}
+        final_rescore_enabled = (
+            isinstance(raw_final_rescore, Mapping)
+            and bool(raw_final_rescore.get("enabled", False))
+        )
+        search_combination_record_count = int(self._combination_counter)
+        if final_rescore_enabled:
+            def write_final_rescore_checkpoint(
+                payload: Mapping[str, Any],
+            ) -> None:
+                if checkpoint_base is None:
+                    return
+                atomic_write_checkpoint(
+                    checkpoint_path,
+                    {
+                        **checkpoint_base,
+                        **dict(payload),
+                        "combination_counter": int(self._combination_counter),
+                        "combination_record_count": int(
+                            search_combination_record_count
+                        ),
+                    },
+                )
+
+            rescored, best_combination, final_rescore_context = (
+                self._run_final_rescore(
+                    final_combinations,
+                    subjects=subjects,
+                    output_path=final_rescore_path,
+                    resume=resume,
+                    checkpoint_callback=write_final_rescore_checkpoint,
+                )
+            )
+            stage_combinations["final_rescore"] = rescored
+            final_stage = "final_rescore"
+            final_selection_context = dict(
+                final_rescore_context.get("selection") or {}
+            )
+
+        stage_summary = self._build_stage_summary(stage_combinations)
+
+        stage_summary_path = output_dir / "stage_summary.json"
+        with stage_summary_path.open("w", encoding="utf-8") as f:
+            json.dump(_to_builtin(stage_summary), f, ensure_ascii=False, indent=2, allow_nan=False)
+
+        restart_summary_path = output_dir / "restart_summary.json"
+        with restart_summary_path.open("w", encoding="utf-8") as f:
+            json.dump(_to_builtin(stage_restarts), f, ensure_ascii=False, indent=2, allow_nan=False)
+
+        metrics = None
+        if len(subjects) == 1:
+            sid = int(subjects[0])
+            metrics = best_combination.subject_metrics.get(sid)
+        best_payload = build_subject_best_payload(
+            subject_id=int(subjects[0]) if len(subjects) == 1 else -1,
+            backend="hyper_cd",
+            hyper_base_seed=self.hyper_base_seed,
+            objective_order=self.objective_order_config,
+            objective_values=best_combination.objective_values,
+            best_stage=final_stage,
+            best_combination_index=best_combination.combination_index,
+            best_hyperparams=best_combination.hyperparams,
+            aggregated_error=best_combination.aggregated_error,
+            hyper_candidate_seed=best_combination.hyper_candidate_seed,
+            metrics=metrics,
+            search_context={
+                "hyperparam_selection_mode": self.hyperparam_selection_mode,
+                "subjects": [int(subject_id) for subject_id in subjects],
+                "restart_id": best_combination.restart_id,
+                "iter_id": best_combination.iter_id,
+                "coordinate": best_combination.coordinate,
+                "common_random_numbers_within_candidate_comparisons": bool(
+                    self.common_random_numbers_within_candidate_comparisons
+                ),
+                "objectives": {"order": self.objective_order_config},
+                "final_selection": final_selection_context,
+                "search_selection": search_selection_context,
+                "final_rescore": final_rescore_context,
+            },
+            provenance=build_hyper_provenance(
+                config_path=self.config_path,
+                output_dir=output_dir,
+                base_sim_config_path=self.base_sim_config_path,
+            ),
+            artifacts=build_subject_artifacts(
+                output_dir,
+                include_cd=True,
+                include_checkpoint=self.cd_v2.enabled,
+                include_final_rescore=final_rescore_enabled,
+            ),
+            full_subject_metrics=(
+                best_combination.subject_metrics
+                if self.save_level == "full"
+                else None
+            ),
+        )
+        best_payload["search_best"] = {
+            "stage": search_best.stage,
+            "combination_index": int(search_best.combination_index),
+            "hyperparams": deepcopy(search_best.hyperparams),
+            "aggregated_error": float(search_best.aggregated_error),
+            "objective_values": deepcopy(search_best.objective_values),
+            "hyper_candidate_seed": int(search_best.hyper_candidate_seed),
+        }
+        best_payload["final_rescore_best"] = (
+            {
+                "stage": best_combination.stage,
+                "combination_index": int(best_combination.combination_index),
+                "hyperparams": deepcopy(best_combination.hyperparams),
+                "aggregated_error": float(best_combination.aggregated_error),
+                "objective_values": deepcopy(best_combination.objective_values),
+                "hyper_candidate_seed": int(
+                    best_combination.hyper_candidate_seed
+                ),
+            }
+            if final_rescore_enabled
+            else None
+        )
+
+        best_path = output_dir / "best_hyperparams.json"
+        with best_path.open("w", encoding="utf-8") as f:
+            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
+
+        if checkpoint_base is not None:
+            atomic_write_checkpoint(
+                checkpoint_path,
+                {
+                    **checkpoint_base,
+                    "status": "complete",
+                    "stage": final_stage,
+                    "combination_counter": int(self._combination_counter),
+                    "combination_record_count": int(
+                        search_combination_record_count
+                    ),
+                    "best_combination_index": int(
+                        best_combination.combination_index
+                    ),
+                },
+            )
+
+        result = {
+            "output_dir": str(output_dir),
+            "all_combinations": str(all_combinations_path),
+            "stage_summary": str(stage_summary_path),
+            "restart_summary": str(restart_summary_path),
+            "coordinate_trace": str(coordinate_trace_path),
+            "best_hyperparams": str(best_path),
+            "best": best_payload,
+        }
+        if final_rescore_enabled:
+            result["final_rescore"] = str(final_rescore_path)
+        return result
+
+    def _build_stage_summary(self, stage_combinations: Mapping[str, Sequence[CombinationResult]]) -> Dict[str, Any]:
+        top_k = int((self.config.get("refine_policy") or {}).get("top_k", 3))
+        summary: Dict[str, Any] = {}
+        for stage_name, combinations in stage_combinations.items():
+            ranked = rank_by_objectives(
+                combinations,
+                lambda combination: combination.objective_values,
+                self.objective_order,
+                tie_breaker=lambda combination: (int(combination.restart_id), int(combination.combination_index)),
+            )
+            summary[stage_name] = {
+                "num_combinations": len(combinations),
+                "top_combinations": [
+                    {
+                        "combination_index": result.combination_index,
+                        "aggregated_error": result.aggregated_error,
+                        "objective_values": result.objective_values,
+                        "hyperparams": result.hyperparams,
+                        "best_params": compact_hyperparams(result.hyperparams),
+                        "restart_id": result.restart_id,
+                        "iter_id": result.iter_id,
+                        "coordinate": result.coordinate,
+                        "hyper_candidate_seed": result.hyper_candidate_seed,
+                    }
+                    for result in ranked[:max(1, top_k)]
+                ],
+            }
+        return summary
+
+    def run(
+        self,
+        subjects: Sequence[int],
+        stage: str = "all",
+        resume_from_coarse: bool = False,
+        resume: bool = False,
+    ) -> Dict[str, Any]:
+        if stage not in {"coarse", "fine", "all"}:
+            raise ValueError("stage must be one of: coarse, fine, all")
+        if resume_from_coarse and stage != "fine":
+            raise ValueError("resume_from_coarse requires stage='fine'")
+
+        if self.hyperparam_selection_mode == "shared":
+            pipeline_kwargs: Dict[str, Any] = {}
+            if resume:
+                pipeline_kwargs["resume"] = True
+            shared = self._run_pipeline(
+                subjects=[int(subject_id) for subject_id in subjects],
+                stage=stage,
+                output_dir=self.output_dir,
+                resume_from_coarse=resume_from_coarse,
+                **pipeline_kwargs,
+            )
+            return {
+                "output_dir": shared["output_dir"],
+                "hyperparam_selection_mode": "shared",
+                "subjects": [int(subject_id) for subject_id in subjects],
+                "shared_output": shared,
+                "best_hyperparams": shared["best_hyperparams"],
+                "best": shared["best"],
+            }
+
+        per_subject_best: Dict[str, Any] = {}
+        per_subject_outputs: Dict[str, Any] = {}
+        for sid in subjects:
+            if resume:
+                out = self._run_subject_pipeline(
+                    int(sid),
+                    stage,
+                    self.output_dir,
+                    resume_from_coarse=resume_from_coarse,
+                    resume=True,
+                )
+            else:
+                out = self.run_subject(
+                    int(sid),
+                    stage,
+                    resume_from_coarse=resume_from_coarse,
+                )
+            subject_output = {
+                "output_dir": out["output_dir"],
+                "all_combinations": out["all_combinations"],
+                "stage_summary": out["stage_summary"],
+                "restart_summary": out["restart_summary"],
+                "coordinate_trace": out["coordinate_trace"],
+                "best_hyperparams": out["best_hyperparams"],
+            }
+            if "final_rescore" in out:
+                subject_output["final_rescore"] = out["final_rescore"]
+            per_subject_outputs[str(int(sid))] = subject_output
+            per_subject_best[str(int(sid))] = out["best"]
+
+        best_payload = build_root_best_payload(
+            backend="hyper_cd",
+            config_path=self.config_path,
+            output_dir=self.output_dir,
+            base_sim_config_path=self.base_sim_config_path,
+            hyper_base_seed=self.hyper_base_seed,
+            objective_order=self.objective_order_config,
+            save_level=self.save_level,
+            subjects=subjects,
+            per_subject_best=per_subject_best,
+            per_subject_outputs=per_subject_outputs,
+        )
+        best_path = self.output_dir / "best_hyperparams.json"
+        with best_path.open("w", encoding="utf-8") as f:
+            json.dump(_to_builtin(best_payload), f, ensure_ascii=False, indent=2, allow_nan=False)
+        return {
+            "output_dir": str(self.output_dir),
+            "per_subject_outputs": per_subject_outputs,
+            "best_hyperparams": str(best_path),
+            "best": best_payload,
+        }
+
+
+__all__ = ["HyperCDOptimizer", "CombinationResult"]

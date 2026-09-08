@@ -1,5 +1,9 @@
 # Bayesian_state 模型框架
 
+> Model 0826 的论文实现已核对并迁入
+> [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)。
+> 新的 0826 工作使用该包；本目录保留旧模型/脚本兼容性及数值对照，不批量重定向旧入口。
+
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型
 写成一份从数据读取到画图的独立脚本。

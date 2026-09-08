@@ -1,0 +1,169 @@
+# Pre-recovery subject-parameter space for the frozen Model 0826 manuscript.
+#
+# This file freezes the first candidate support to be tested by parameter and
+# model recovery.  It does not authorize fitting the 32 observed sequences and
+# it is not yet the post-recovery final support.  In particular, exact
+# mechanism boundaries are represented separately from their positive grids.
+
+schema_version: 1
+analysis_id: model_0826_cond1_parameter_space_v1
+
+provenance:
+  model_id: model_0826
+  manuscript_path: manuscript/model_0826.tex
+  manuscript_sha256: ce4d709ab416795b1028bf472653f4e911dd569c3621dfb6072e217d80d7c3b6
+  event_history_excludes_latest_error: true
+  scientific_status: frozen_model_pre_recovery_parameter_support
+  support_status: provisional_until_recovery_passes
+
+scope:
+  condition: 1
+  subjects: [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]
+  perception_parameters: subject_specific_fixed_external
+  observed_data_fit_authorized: false
+  intended_use: parameter_and_model_recovery
+
+architecture_cells:
+  P:
+    memory_module: standard_bayes
+    hypothesis_module: full_29_rule_space
+    free_parameters: [beta_0, eta_plus, eta_minus]
+  PM:
+    memory_module: fading_memory
+    hypothesis_module: full_29_rule_space
+    free_parameters: [gamma, beta_0, eta_plus, eta_minus]
+  PH:
+    memory_module: standard_bayes
+    hypothesis_module: bounded_workspace
+    free_parameters: [workspace_execution, E_C, delta_E, g_0, c_A, c_G, beta_0, eta_plus, eta_minus]
+  PMH:
+    memory_module: fading_memory
+    hypothesis_module: bounded_workspace
+    free_parameters: [workspace_execution, gamma, E_C, delta_E, g_0, c_A, c_G, beta_0, eta_plus, eta_minus]
+
+optimization:
+  discrete_method: exhaustive_enumeration
+  continuous_method: multistart_coarse_to_fine_block_coordinate_grid
+  continuous_parameters_are_grid_approximated: true
+  primary_score: choice_nll_from_seed_averaged_trial_probabilities
+  common_random_numbers_within_candidate_comparisons: true
+  final_high_precision_rescore_required: true
+  blocks:
+    - [workspace_execution]
+    - [E_C, delta_E, c_A]
+    - [g_0, c_G]
+    - [beta_0, eta_plus, eta_minus]
+    - [gamma]
+
+subject_parameters:
+  workspace_execution:
+    kind: joint_discrete
+    interpretation: fixed_workspace_capacity_and_persistent_execution
+    start_candidates:
+      - {M: 3, chi: 0}
+      - {M: 3, chi: 1}
+    candidates:
+      - {M: 1, chi: 0}
+      - {M: 2, chi: 0}
+      - {M: 2, chi: 1}
+      - {M: 3, chi: 0}
+      - {M: 3, chi: 1}
+      - {M: 4, chi: 0}
+      - {M: 4, chi: 1}
+      - {M: 5, chi: 0}
+      - {M: 5, chi: 1}
+    fine_candidates:
+      - {M: 1, chi: 0}
+      - {M: 2, chi: 0}
+      - {M: 2, chi: 1}
+      - {M: 3, chi: 0}
+      - {M: 3, chi: 1}
+      - {M: 4, chi: 0}
+      - {M: 4, chi: 1}
+      - {M: 5, chi: 0}
+      - {M: 5, chi: 1}
+
+  gamma:
+    kind: bounded_continuous_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: true, upper_closed: true}
+    anchor: 0.80
+    coarse_values: [0.00, 0.25, 0.50, 0.70, 0.80, 0.90, 0.97]
+    fine_values: [0.00, 0.125, 0.25, 0.375, 0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.935, 0.97]
+    memory_off_value: 1.00
+
+  E_C:
+    kind: bounded_continuous_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: false, upper_closed: false}
+    anchor: 0.25
+    coarse_values: [0.02, 0.10, 0.25, 0.50, 0.75]
+    fine_values: [0.02, 0.06, 0.10, 0.175, 0.25, 0.375, 0.50, 0.625, 0.75]
+
+  delta_E:
+    kind: spike_and_positive_grid
+    interpretation: logit_E_error_minus_logit_E_correct
+    theoretical_domain: {lower: 0.0, upper: null, lower_closed: true, upper_closed: false}
+    zero_value: 0.00
+    positive_anchor: 0.4795730802618863
+    positive_values: [0.25, 0.4795730802618863, 0.80, 1.60, 3.20]
+    fine_positive_values: [0.125, 0.25, 0.36478654013094315, 0.4795730802618863, 0.6397865401309432, 0.80, 1.20, 1.60, 2.40, 3.20]
+    derived_parameter:
+      name: E_E
+      formula: sigmoid(logit(E_C) + delta_E)
+
+  g_0:
+    kind: bounded_continuous_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: true, upper_closed: true}
+    anchor: 0.20
+    coarse_values: [0.00, 0.05, 0.10, 0.20, 0.40, 0.70, 1.00]
+    fine_values: [0.00, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.55, 0.70, 0.85, 1.00]
+
+  c_A:
+    kind: spike_and_positive_grid
+    theoretical_domain: {lower: 0.0, upper: null, lower_closed: true, upper_closed: false}
+    zero_value: 0.00
+    positive_values: [0.25, 0.50, 1.00, 2.00, 4.00, 6.00]
+    fine_positive_values: [0.125, 0.25, 0.375, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00, 5.00, 6.00]
+
+  c_G:
+    kind: spike_and_positive_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: true, upper_closed: true}
+    zero_value: 0.00
+    positive_values: [0.10, 0.25, 0.50, 0.75, 1.00]
+    fine_positive_values: [0.05, 0.10, 0.175, 0.25, 0.375, 0.50, 0.625, 0.75, 0.875, 1.00]
+
+  beta_0:
+    kind: bounded_continuous_grid
+    theoretical_domain: {lower: 0.1, upper: 25.0, lower_closed: true, upper_closed: true}
+    anchor: 5.00
+    coarse_values: [0.50, 1.00, 2.50, 5.00, 10.00, 20.00]
+    fine_values: [0.50, 0.75, 1.00, 1.75, 2.50, 3.75, 5.00, 7.50, 10.00, 15.00, 20.00]
+
+  eta_plus:
+    kind: positive_bounded_continuous_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: true, upper_closed: true}
+    anchor: 0.04
+    coarse_values: [0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32]
+    fine_values: [0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.04, 0.06, 0.08, 0.12, 0.16, 0.24, 0.32]
+    zero_reserved_for_static_beta_ablation: true
+
+  eta_minus:
+    kind: positive_bounded_continuous_grid
+    theoretical_domain: {lower: 0.0, upper: 1.0, lower_closed: true, upper_closed: true}
+    anchor: 0.15
+    coarse_values: [0.01, 0.03, 0.07, 0.15, 0.30, 0.60, 1.00]
+    fine_values: [0.01, 0.02, 0.03, 0.05, 0.07, 0.11, 0.15, 0.225, 0.30, 0.45, 0.60, 0.80, 1.00]
+    zero_reserved_for_static_beta_ablation: true
+
+shared_fixed_parameters:
+  delta_F: 0.60
+  tau_L: 0.10
+  s_exec: 0.20
+  beta_min: 0.10
+  beta_max: 25.00
+  alpha: 1.00
+  w_0: 0.00
+
+numerical_parameters:
+  particle_count_R: pending_convergence_audit
+  independent_seed_count_B: pending_convergence_audit
+  resample_threshold_fraction: 0.50

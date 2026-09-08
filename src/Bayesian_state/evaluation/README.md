@@ -115,7 +115,7 @@ held-out prediction；输出目录仍必须是新目录。
 - trajectory rank、posterior rank 和 behavior PPC 的完整 run 分布需要 `raw_runs_ref`。
 - oral alignment 还需要 Task2/oral 数据与相同的 partition 定义。
 
-Center oral report 默认通过固定 `sigma=0.10` 的 Gaussian component-mixture likelihood 映射为
+Center oral report 默认通过固定 `sigma=0.05` 的 Gaussian component-mixture likelihood 映射为
 完整 hypothesis distribution；所有 hypothesis 使用 uniform encoder prior，再归一化为 1。
 `--oral-center-sigma` 可覆盖这个跨 trial 固定的测量尺度。Region mode 对 `1-IoU` 使用固定
 `--oral-region-temperature`。两种模式均不再从每个 trial 的候选距离自适应 temperature；encoder

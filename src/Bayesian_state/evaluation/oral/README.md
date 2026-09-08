@@ -51,7 +51,7 @@ q_t(h) = L_t(h) / sum_j L_t(j)
 
 单-category `q_t` 使用独立于待评价模型的 uniform hypothesis prior，在当前 fixed-label
 hypothesis space 上严格归一化为 1。category-state 联合时先恢复每个 category 的 likelihood，
-求积后只应用一次 prior。默认 `sigma_oral=0.10`，对所有 trial 和 subject 固定；CLI 可用
+求积后只应用一次 prior。默认 `sigma_oral=0.05`，对所有 trial 和 subject 固定；CLI 可用
 `--oral-center-sigma` 显式覆盖。禁止根据每个 trial 的 hypothesis 距离重新估计 temperature，
 因为那会消除绝对距离尺度并强制每个 trial 产生近似宽度的分布。
 

@@ -1,0 +1,1048 @@
+{
+  "manuscript": "manuscript/model_0826.tex",
+  "manuscript_sha256": "ce4d709ab416795b1028bf472653f4e911dd569c3621dfb6072e217d80d7c3b6",
+  "roots": [
+    "model/state_model.py",
+    "model/modules/perception.py",
+    "model/modules/beta.py",
+    "model/modules/memory.py",
+    "model/modules/hypothesis_transition/nested_feedback_accumulator.py",
+    "inference/dispatcher.py",
+    "inference/posterior_predictive.py",
+    "optimization/model_0826.py",
+    "optimization/cli.py",
+    "optimization/seed_convergence.py",
+    "evaluation/model_recovery.py",
+    "evaluation/autonomous_trajectories.py",
+    "evaluation/internal_cognitive_trajectories.py",
+    "run_simulation.py",
+    "run_hyper_then_simulation.py",
+    "run_hyper_evaluation.py",
+    "run_autonomous_trajectory_evaluation.py",
+    "run_internal_cognitive_trajectory_evaluation.py",
+    "evaluation/oral/scoring.py",
+    "evaluation/oral/alignment.py",
+    "evaluation/oral/mapping.py",
+    "evaluation/oral/reporting.py",
+    "evaluation/oral/__init__.py",
+    "evaluation/particle_filter/residuals.py",
+    "evaluation/particle_filter/choice_transmission.py",
+    "evaluation/particle_filter/summary.py",
+    "evaluation/particle_filter/__init__.py",
+    "evaluation/particle_filter/strategy.py"
+  ],
+  "included": [
+    {
+      "file": "__init__.py",
+      "source_sha256": "14282b61472595548c713119e6cad67e46e5be386f0bfde4bab737ca101c6b57",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/__init__.py",
+      "migrated_sha256": "14282b61472595548c713119e6cad67e46e5be386f0bfde4bab737ca101c6b57",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/__init__.py",
+      "source_sha256": "5566319e0ad2ac18c6ce346167855317367339137955e3fb720981458e2d77ef",
+      "reason": "evaluation/model_recovery.py",
+      "export_pruned": true,
+      "source": "src/Bayesian_state/evaluation/__init__.py",
+      "migrated_sha256": "de6e8507eff2733617facebc4ea93702d187d6099daa73c73251ca5ffd45ffac",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "evaluation/autonomous_trajectories.py",
+      "source_sha256": "96a02d7661dc4e1eca71a45521bb20aa6acb09311f4dca6741f1ff1b53764c4a",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/autonomous_trajectories.py",
+      "migrated_sha256": "96a02d7661dc4e1eca71a45521bb20aa6acb09311f4dca6741f1ff1b53764c4a",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/internal_cognitive_trajectories.py",
+      "source_sha256": "e063719037b8b27e1dd61024365a7ca140e23a779bdbcb11339f652479173cb6",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/internal_cognitive_trajectories.py",
+      "migrated_sha256": "e063719037b8b27e1dd61024365a7ca140e23a779bdbcb11339f652479173cb6",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/model_recovery.py",
+      "source_sha256": "bfbc47e28cde2a25a1d235ed0ef23d581677e39d27154d8d237206bf8a689f68",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/model_recovery.py",
+      "migrated_sha256": "8f8d84155b31cf9ba856c3cdcd0dd5aeb269261e7c3a633512c672548c80aa7b",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/oral/__init__.py",
+      "source_sha256": "656ff4cd46c9d7d791eabe917e0ce4da132a2d6291e49b7852ad62fffe850457",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/oral/__init__.py",
+      "migrated_sha256": "656ff4cd46c9d7d791eabe917e0ce4da132a2d6291e49b7852ad62fffe850457",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/oral/alignment.py",
+      "source_sha256": "11bbf850f0458558efc9dce1538a04d74622fe7e2e2b3da07c48b23384150208",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/oral/alignment.py",
+      "migrated_sha256": "11bbf850f0458558efc9dce1538a04d74622fe7e2e2b3da07c48b23384150208",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/oral/mapping.py",
+      "source_sha256": "66295dc735047b65dafac27ad7a03dd7c364e481aa5207bd1e796daa21287f16",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/oral/mapping.py",
+      "migrated_sha256": "66295dc735047b65dafac27ad7a03dd7c364e481aa5207bd1e796daa21287f16",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/oral/reporting.py",
+      "source_sha256": "9588574d28b38427bfe89ef7d96b4e0e898cf60c8843040407bb854f554a95a9",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/oral/reporting.py",
+      "migrated_sha256": "9588574d28b38427bfe89ef7d96b4e0e898cf60c8843040407bb854f554a95a9",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/oral/scoring.py",
+      "source_sha256": "ef73d73ee011385575f9f9a130df519b0ad70219bf738600935ffac5be00c932",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/oral/scoring.py",
+      "migrated_sha256": "ef73d73ee011385575f9f9a130df519b0ad70219bf738600935ffac5be00c932",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/particle_filter/__init__.py",
+      "source_sha256": "86a062e0b1387d771e4c27ac1463039bea3b373372e2616cc060aad6fd2f6205",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/particle_filter/__init__.py",
+      "migrated_sha256": "86a062e0b1387d771e4c27ac1463039bea3b373372e2616cc060aad6fd2f6205",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/particle_filter/choice_transmission.py",
+      "source_sha256": "24634b56a3d7e24ec19cb8cf8296432c99ecf168208e69f036dc522dee2d754f",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/particle_filter/choice_transmission.py",
+      "migrated_sha256": "b41206eab7c81bba1a752f326276e474ffe08d71442b29508e553a525464e07f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/particle_filter/residuals.py",
+      "source_sha256": "30594fc1950428d57ccad9476273f6c5cf6ca30880611acf13028d874e83006f",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/particle_filter/residuals.py",
+      "migrated_sha256": "5f28339a952157007fa1207a7447494847a1c20ec6e77ba25693f55c0adbdde9",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/particle_filter/strategy.py",
+      "source_sha256": "d73d05466b2e3b701fe33822df6b3d160f09dc723a7a9c7c28162186aaadf064",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/particle_filter/strategy.py",
+      "migrated_sha256": "d04c290ffaa52a6b1e172fc7521f4e722806524c68462b486310743f1eeb1041",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "evaluation/particle_filter/summary.py",
+      "source_sha256": "88fcc76069ec71170775633ea01619f28611cc49a8ede3fea29f439b8c3225c8",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/evaluation/particle_filter/summary.py",
+      "migrated_sha256": "ec5978f7025653c3cf060e3e9130010f0e940b483e08a692f8a9919fcf28234e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/__init__.py",
+      "source_sha256": "306ab3932791f80239314cf912d659abcfdefa5274737dfdf48e77dbbdc9af19",
+      "reason": "evaluation/oral/scoring.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/__init__.py",
+      "migrated_sha256": "306ab3932791f80239314cf912d659abcfdefa5274737dfdf48e77dbbdc9af19",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/__init__.py",
+      "source_sha256": "960d33ee8ce18942e8b542a5c31e081228a62028ce33c43e3631362dc53a86cc",
+      "reason": "evaluation/model_recovery.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/__init__.py",
+      "migrated_sha256": "960d33ee8ce18942e8b542a5c31e081228a62028ce33c43e3631362dc53a86cc",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/boundary.py",
+      "source_sha256": "dcf73dc32dadbdc7afd6a5f05eebec457ce46bc1e760db1d1d4ee8d9fb1827b9",
+      "reason": "hypothesis_space/geometry/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/boundary.py",
+      "migrated_sha256": "dcf73dc32dadbdc7afd6a5f05eebec457ce46bc1e760db1d1d4ee8d9fb1827b9",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/discrete_rule.py",
+      "source_sha256": "f7e1993bf5a47b55d871c2d11fcb64e1ad48520d3287778869dfd8b1222551e0",
+      "reason": "hypothesis_space/geometry/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/discrete_rule.py",
+      "migrated_sha256": "f7e1993bf5a47b55d871c2d11fcb64e1ad48520d3287778869dfd8b1222551e0",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/dykstra_acceleration.py",
+      "source_sha256": "d86dbeb84328f3537c165e33d46cd3669b6fbcd64005a24f260fb89c114aa278",
+      "reason": "hypothesis_space/geometry/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/dykstra_acceleration.py",
+      "migrated_sha256": "d86dbeb84328f3537c165e33d46cd3669b6fbcd64005a24f260fb89c114aa278",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/prototype.py",
+      "source_sha256": "56ba56d803ea2758bfe20cd305981b3448667643b750aff4bd8ae84529894aad",
+      "reason": "hypothesis_space/geometry/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/prototype.py",
+      "migrated_sha256": "56ba56d803ea2758bfe20cd305981b3448667643b750aff4bd8ae84529894aad",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/geometry/stimuli.py",
+      "source_sha256": "be59cd986ddd106a5cf99f8cb529b7832aee66ca8586a4916f80f84440b7ef30",
+      "reason": "hypothesis_space/geometry/boundary.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/geometry/stimuli.py",
+      "migrated_sha256": "be59cd986ddd106a5cf99f8cb529b7832aee66ca8586a4916f80f84440b7ef30",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/observation_model/__init__.py",
+      "source_sha256": "065a9b7ba9493b3934f3c9cf9f071c857693934d6b4479bdf89cfd9d5d7b19e3",
+      "reason": "hypothesis_space/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/observation_model/__init__.py",
+      "migrated_sha256": "065a9b7ba9493b3934f3c9cf9f071c857693934d6b4479bdf89cfd9d5d7b19e3",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/observation_model/base_partition.py",
+      "source_sha256": "26a80993578fb2fde96c6931415e05448b11b5d043dbcf3bfb9d39cec5bdea27",
+      "reason": "hypothesis_space/observation_model/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/observation_model/base_partition.py",
+      "migrated_sha256": "26a80993578fb2fde96c6931415e05448b11b5d043dbcf3bfb9d39cec5bdea27",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/observation_model/continuous_partition.py",
+      "source_sha256": "65d9b7af228aae59408610b77ee5b45550b526be402e40b22f1c01f14898265e",
+      "reason": "hypothesis_space/observation_model/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/observation_model/continuous_partition.py",
+      "migrated_sha256": "65d9b7af228aae59408610b77ee5b45550b526be402e40b22f1c01f14898265e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/observation_model/discrete_rule_partition.py",
+      "source_sha256": "f079ba51389be290a3e7f3fef8afc1f3066d4053a4daf9b0beb98614a3953389",
+      "reason": "hypothesis_space/observation_model/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/observation_model/discrete_rule_partition.py",
+      "migrated_sha256": "f079ba51389be290a3e7f3fef8afc1f3066d4053a4daf9b0beb98614a3953389",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/observation_model/likelihood.py",
+      "source_sha256": "d8378d6fe71f39d3d860b56701d8202d7fd086abbcd9b20d1f20dc46d2b40d50",
+      "reason": "hypothesis_space/observation_model/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/observation_model/likelihood.py",
+      "migrated_sha256": "d8378d6fe71f39d3d860b56701d8202d7fd086abbcd9b20d1f20dc46d2b40d50",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/similarity.py",
+      "source_sha256": "b3674b2d0d8f29e0ba440233794184288f36be8def4b5862695d1c93d9a897c1",
+      "reason": "evaluation/oral/mapping.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/similarity.py",
+      "migrated_sha256": "b3674b2d0d8f29e0ba440233794184288f36be8def4b5862695d1c93d9a897c1",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/spaces/__init__.py",
+      "source_sha256": "08c901efa5014e0b68f10373e8d2cacf20b516e2054dee57a65cd91f2ab75e2d",
+      "reason": "hypothesis_space/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/spaces/__init__.py",
+      "migrated_sha256": "08c901efa5014e0b68f10373e8d2cacf20b516e2054dee57a65cd91f2ab75e2d",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/spaces/common.py",
+      "source_sha256": "0b98cee2ca62fd5953817cb7c70d87c252b936e6bcc93314ab3aaaf957dee2e1",
+      "reason": "hypothesis_space/spaces/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/spaces/common.py",
+      "migrated_sha256": "0b98cee2ca62fd5953817cb7c70d87c252b936e6bcc93314ab3aaaf957dee2e1",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/spaces/continuous.py",
+      "source_sha256": "c3fe0d86264d97d503739cbb242e56e241b2f6be61e5d795f8f4606f045d6d2f",
+      "reason": "hypothesis_space/spaces/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/spaces/continuous.py",
+      "migrated_sha256": "c3fe0d86264d97d503739cbb242e56e241b2f6be61e5d795f8f4606f045d6d2f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/spaces/discrete.py",
+      "source_sha256": "357595ed03022f8ceb28570711bbb0c455f27c77b0c33a503885089df9ff72b8",
+      "reason": "hypothesis_space/spaces/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/spaces/discrete.py",
+      "migrated_sha256": "357595ed03022f8ceb28570711bbb0c455f27c77b0c33a503885089df9ff72b8",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "hypothesis_space/spaces/regions.py",
+      "source_sha256": "7212e36dbb5e3439c90df4ca97a97a7fb7b37284b425960284983f5dbad4e880",
+      "reason": "hypothesis_space/spaces/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/hypothesis_space/spaces/regions.py",
+      "migrated_sha256": "7212e36dbb5e3439c90df4ca97a97a7fb7b37284b425960284983f5dbad4e880",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/__init__.py",
+      "source_sha256": "598236ed055790f226fbc59e4fe237a5a1da5c0a14125af6e37ebf1efcb7d5f0",
+      "reason": "inference/dispatcher.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/__init__.py",
+      "migrated_sha256": "598236ed055790f226fbc59e4fe237a5a1da5c0a14125af6e37ebf1efcb7d5f0",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/backends/__init__.py",
+      "source_sha256": "a75c447574a73ee20ad5a101b95b166f8a51904ee61fbc3122f00180f13563f2",
+      "reason": "inference/backends/particle_filter.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/backends/__init__.py",
+      "migrated_sha256": "a75c447574a73ee20ad5a101b95b166f8a51904ee61fbc3122f00180f13563f2",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/backends/particle_filter.py",
+      "source_sha256": "a68ea18d876ddc58cb7660b563840e603d6399002e58aa7daaef7840bdd92bcb",
+      "reason": "inference/dispatcher.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/backends/particle_filter.py",
+      "migrated_sha256": "a68ea18d876ddc58cb7660b563840e603d6399002e58aa7daaef7840bdd92bcb",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/backends/trajectory.py",
+      "source_sha256": "992615e1d677ece49466ef12318fe77919682a7e47475e8e8ea04c3c5a91dd78",
+      "reason": "inference/dispatcher.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/backends/trajectory.py",
+      "migrated_sha256": "992615e1d677ece49466ef12318fe77919682a7e47475e8e8ea04c3c5a91dd78",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/dispatcher.py",
+      "source_sha256": "44c5b1c2473bef3644da139531af115b320ee2fee09597fe90a928878a84d1fe",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/dispatcher.py",
+      "migrated_sha256": "44c5b1c2473bef3644da139531af115b320ee2fee09597fe90a928878a84d1fe",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/posterior_predictive.py",
+      "source_sha256": "262c2f89d8b6fa91238046b6c511b4097f468a247638ea5df234ef6377cc78de",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/posterior_predictive.py",
+      "migrated_sha256": "262c2f89d8b6fa91238046b6c511b4097f468a247638ea5df234ef6377cc78de",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "inference/results.py",
+      "source_sha256": "76fe66536d67d91b52579fac740e323d97b0b6f3ce3015d734e941b7c5af1bf2",
+      "reason": "inference/dispatcher.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/inference/results.py",
+      "migrated_sha256": "76fe66536d67d91b52579fac740e323d97b0b6f3ce3015d734e941b7c5af1bf2",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/__init__.py",
+      "source_sha256": "67dcd90bc0c494c466d704226d41256b27a3505c285cbd070c14da0a8fc988d6",
+      "reason": "evaluation/particle_filter/residuals.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/__init__.py",
+      "migrated_sha256": "67dcd90bc0c494c466d704226d41256b27a3505c285cbd070c14da0a8fc988d6",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/behavior.py",
+      "source_sha256": "b4a449930d42c0ad073af347eb71379f97b81f4e7e582a0f7b6d35bce65220ed",
+      "reason": "metrics/trajectory.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/behavior.py",
+      "migrated_sha256": "b4a449930d42c0ad073af347eb71379f97b81f4e7e582a0f7b6d35bce65220ed",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/losses.py",
+      "source_sha256": "ec8ccdf0f04051a6ef06636cac72abfff2bb58300d2ee2527b1945d979f7735f",
+      "reason": "simulation/config.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/losses.py",
+      "migrated_sha256": "ec8ccdf0f04051a6ef06636cac72abfff2bb58300d2ee2527b1945d979f7735f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/numeric.py",
+      "source_sha256": "deeaa46e707cf87e1787dcaa2f882624b74b09bd2489e2c1e2ea83ef673b75c9",
+      "reason": "simulation/runner.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/numeric.py",
+      "migrated_sha256": "deeaa46e707cf87e1787dcaa2f882624b74b09bd2489e2c1e2ea83ef673b75c9",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/prediction.py",
+      "source_sha256": "b7951a30597d42aa08553cbc03a14127e0d8f63fab9d8a3daad4353e9256a4ce",
+      "reason": "metrics/trajectory.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/prediction.py",
+      "migrated_sha256": "b7951a30597d42aa08553cbc03a14127e0d8f63fab9d8a3daad4353e9256a4ce",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/selection.py",
+      "source_sha256": "1282aed5e06c9d77bdefdf3925c52abc18fb2c0df95fad8d062996918d8d049b",
+      "reason": "simulation/runner.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/selection.py",
+      "migrated_sha256": "1282aed5e06c9d77bdefdf3925c52abc18fb2c0df95fad8d062996918d8d049b",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/trajectory.py",
+      "source_sha256": "2286a1c5e04d97342748242c5587b5995c32f5b273d849a8c624c838e2e3aaf1",
+      "reason": "simulation/runner.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/trajectory.py",
+      "migrated_sha256": "2286a1c5e04d97342748242c5587b5995c32f5b273d849a8c624c838e2e3aaf1",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/trial.py",
+      "source_sha256": "a7b19001446c49ead027ab7dc4fb2cdb0c383db705c3aafd09709127b7e8168f",
+      "reason": "simulation/execution.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/trial.py",
+      "migrated_sha256": "a7b19001446c49ead027ab7dc4fb2cdb0c383db705c3aafd09709127b7e8168f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/__init__.py",
+      "source_sha256": "9481617ab701a5d4494b3e2a449f10ebf0a3078d84087743cc9e2593e7eb3e76",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/__init__.py",
+      "migrated_sha256": "211506fea5b3ac83e77129a41abf482c560f6978b16ee363e77380875c034236",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "model/assembly.py",
+      "source_sha256": "a285632507a4aedceecae4adb5d4d9726dd880e7202817a16d5799534cb0728e",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/assembly.py",
+      "migrated_sha256": "a285632507a4aedceecae4adb5d4d9726dd880e7202817a16d5799534cb0728e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/config.py",
+      "source_sha256": "35968a706da9add3285b51849e1cecec21f925b62138fd22a3ba6adce8378686",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/config.py",
+      "migrated_sha256": "35968a706da9add3285b51849e1cecec21f925b62138fd22a3ba6adce8378686",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/engine.py",
+      "source_sha256": "fef6f027b1c182f542e4899f04001ee06b380772adcb3610eb28db657bc5db86",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/engine.py",
+      "migrated_sha256": "fef6f027b1c182f542e4899f04001ee06b380772adcb3610eb28db657bc5db86",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/__init__.py",
+      "source_sha256": "3d3ea5cd44797bba529469a7d85ff8eb5bb8ad4b4af66e024663af202399530e",
+      "reason": "model/modules/perception.py",
+      "export_pruned": true,
+      "source": "src/Bayesian_state/model/modules/__init__.py",
+      "migrated_sha256": "2f75fef9770847cbc8c4b6eb2045c7d84e14d2f883dc08da3346056515630040",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "model/modules/base_module.py",
+      "source_sha256": "258b97133c24fcf924d6a4e2e6e4726160000b66fa3c871bb11abcc1c4abaa0d",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/base_module.py",
+      "migrated_sha256": "258b97133c24fcf924d6a4e2e6e4726160000b66fa3c871bb11abcc1c4abaa0d",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/beta.py",
+      "source_sha256": "ab891a814b9799733106e6db60f8fcb590f2b96f9d608cde29a7f8215f2a9a1d",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/beta.py",
+      "migrated_sha256": "ab891a814b9799733106e6db60f8fcb590f2b96f9d608cde29a7f8215f2a9a1d",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/hypothesis_transition/__init__.py",
+      "source_sha256": "e9dabc047dde912272cf74bef7bb456362dd5fefbd36eda8703cd864b92c957f",
+      "reason": "model/modules/hypothesis_transition/nested_feedback_accumulator.py",
+      "export_pruned": true,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/__init__.py",
+      "migrated_sha256": "3c9a30440ef5ddcc643f9771f73388f2296bc83159d63e1b85753238298bbdeb",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "model/modules/hypothesis_transition/contracts.py",
+      "source_sha256": "916e6f66814f874a5c30076f9cf210f23b21f0327c4c1088ef1ff383653d683e",
+      "reason": "model/modules/hypothesis_transition/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/contracts.py",
+      "migrated_sha256": "916e6f66814f874a5c30076f9cf210f23b21f0327c4c1088ef1ff383653d683e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/hypothesis_transition/execution.py",
+      "source_sha256": "8b585c147ec6557561a0389de195c16fd70a5720d9f4e18908d63204adef43b8",
+      "reason": "model/modules/hypothesis_transition/feedback_reactive.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/execution.py",
+      "migrated_sha256": "8b585c147ec6557561a0389de195c16fd70a5720d9f4e18908d63204adef43b8",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/hypothesis_transition/feedback_reactive.py",
+      "source_sha256": "114004bcfc6287a9e5a8581923f459b35eb0b2f5da0e1e2b7fa4110d16655fc7",
+      "reason": "model/modules/hypothesis_transition/nested_feedback_accumulator.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/feedback_reactive.py",
+      "migrated_sha256": "114004bcfc6287a9e5a8581923f459b35eb0b2f5da0e1e2b7fa4110d16655fc7",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/hypothesis_transition/nested_feedback_accumulator.py",
+      "source_sha256": "e69c4ab286bf5359b8b3da05ada6cf61d0e0506f8755c6c942dc512737335fee",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/nested_feedback_accumulator.py",
+      "migrated_sha256": "35d0427dd0eca248749fe724799f398336315301108a7bc8d595525eff62280f",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "model/modules/hypothesis_transition/workspace.py",
+      "source_sha256": "e7b270f1487b7b93c8979fa2639d79a06afb40e0ca9f030620e9803b7817ae83",
+      "reason": "model/modules/hypothesis_transition/feedback_reactive.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/hypothesis_transition/workspace.py",
+      "migrated_sha256": "e7b270f1487b7b93c8979fa2639d79a06afb40e0ca9f030620e9803b7817ae83",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/memory.py",
+      "source_sha256": "7f7d32d2e67b794c335795d47c4e91d485124da52feb70221d6dd73840245f2e",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/memory.py",
+      "migrated_sha256": "7f7d32d2e67b794c335795d47c4e91d485124da52feb70221d6dd73840245f2e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/modules/perception.py",
+      "source_sha256": "d72e20d44a81cfa3f71496acee573d1df019bac0c35c223521e6dc0ef3da294f",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/modules/perception.py",
+      "migrated_sha256": "d72e20d44a81cfa3f71496acee573d1df019bac0c35c223521e6dc0ef3da294f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/readout.py",
+      "source_sha256": "90c2e402bbad58199a3ba6a7771cd8eb93d02cd80ad5feb62dfc234a19324222",
+      "reason": "model/state_model.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/readout.py",
+      "migrated_sha256": "90c2e402bbad58199a3ba6a7771cd8eb93d02cd80ad5feb62dfc234a19324222",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "model/state_model.py",
+      "source_sha256": "6aa53814b6b13cbbfbee2e5e7fdd55bdb16ae6137801e98a688e842a1f1a5a2c",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/model/state_model.py",
+      "migrated_sha256": "6aa53814b6b13cbbfbee2e5e7fdd55bdb16ae6137801e98a688e842a1f1a5a2c",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/__init__.py",
+      "source_sha256": "c7b5d7ce4388ebf259d854b73ca1e4aaf1bc5fc500db6d379e95c32e56f0f60a",
+      "reason": "optimization/model_0826.py",
+      "export_pruned": true,
+      "source": "src/Bayesian_state/optimization/__init__.py",
+      "migrated_sha256": "d57ac698e17bc2ea2317874653f7965a1d9a9bf1ab7fc48db9575f9cc091766e",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "optimization/artifacts.py",
+      "source_sha256": "8afae7fe1f88edf7e43dbaa04ad3debc1c02b9f33717f4be5a5bff0618a3e002",
+      "reason": "optimization/cli.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/artifacts.py",
+      "migrated_sha256": "4645987b681d9257609616bbd568a158b6d765bca9fb1bbe4d7ce2eee6f2961b",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/cli.py",
+      "source_sha256": "b462b957980be92fcdb174d164ba14ad294c5467b08586eec96894a7bc430f72",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/cli.py",
+      "migrated_sha256": "0b399f2d1832c0992e94a150d7e13131b394aa2b2b90e153a09553f7574b3090",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/diagnostics/__init__.py",
+      "source_sha256": "c300ff5f2ca9a4c8be203d7cf2d630b694296f43c20da1d7fc6cb7bb68388ce4",
+      "reason": "optimization/diagnostics/predictive.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/diagnostics/__init__.py",
+      "migrated_sha256": "c300ff5f2ca9a4c8be203d7cf2d630b694296f43c20da1d7fc6cb7bb68388ce4",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/diagnostics/predictive.py",
+      "source_sha256": "bf83776037c1e7b0656b7fc7e3c9e4364428fd531daa003394076a59504fe0de",
+      "reason": "run_hyper_evaluation.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/diagnostics/predictive.py",
+      "migrated_sha256": "f112bf06920c709813a255f85e76907d612506a1bc9e66b55df549d8722155a6",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/diagnostics/search.py",
+      "source_sha256": "df31e32eb6271be3b1fa0e91b761dff9fff85b6f7ec17333a1d62c904dac7977",
+      "reason": "run_hyper_evaluation.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/diagnostics/search.py",
+      "migrated_sha256": "d58d1ab3d96c05cc10ffb3e4d73fdb50a82ee5db681f9ee159606aff233e8b6e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/model_0826.py",
+      "source_sha256": "8a32a9af945d9beac0612ef894d19d3937de9ba6e84617caba199529aa8ded31",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/model_0826.py",
+      "migrated_sha256": "ecafae40101e5d7563d9af0754fd13fb990be215c0849df015d910129706f9b1",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/objectives.py",
+      "source_sha256": "bd021dac1614a10a0e5ba40679965c6b9122c53cbba04477dd22415778474c2e",
+      "reason": "optimization/search/coordinate_descent.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/objectives.py",
+      "migrated_sha256": "55a97b3ed2898eb46b0f1da394d0072b63fa44ac206179a7c1106ef73bfdc8e2",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/parameter_space.py",
+      "source_sha256": "a65dd2ef380f098b902f963487a4a888c2a58ea59b78c48c72a2681117a25249",
+      "reason": "optimization/model_0826.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/parameter_space.py",
+      "migrated_sha256": "4397ed1b9e22bbf8a41ceebd6189452cf319297a38fd679fbff11b5839df45c2",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "optimization/search/__init__.py",
+      "source_sha256": "cd20f54ec22df16151dc32bbab233d4f32b899412622ac11aac7a9751267ce85",
+      "reason": "optimization/search/coordinate_descent.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/search/__init__.py",
+      "migrated_sha256": "cd20f54ec22df16151dc32bbab233d4f32b899412622ac11aac7a9751267ce85",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/search/cd_v2.py",
+      "source_sha256": "64d7ef97c5c91ef6bc0127538d7c28856eaf99954fda9ac179768283f849845f",
+      "reason": "optimization/search/coordinate_descent.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/search/cd_v2.py",
+      "migrated_sha256": "72f3c0256bf1637bbb689304334abeb2472ee3d8e6aa8d15081e5853ad2d49e4",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/search/common.py",
+      "source_sha256": "c8d2f4220635b1958f242aee9ca0dbc1e2963925a91ae5f793a63eaaf33714e2",
+      "reason": "run_hyper_then_simulation.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/search/common.py",
+      "migrated_sha256": "f45df8def74be06ee42674263fd1f3afa402d6c975be7b0f5c958f8a89aefbdd",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/search/coordinate_descent.py",
+      "source_sha256": "5262a34dfd951f7dfd35f55138279243843423a6c54f93465f9461c0a83b4431",
+      "reason": "optimization/cli.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/search/coordinate_descent.py",
+      "migrated_sha256": "5e41be4e0e3b71cdd2abae43e5a090d0c5a0f2e8fe04eb4ed9d995d664a7f141",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/search/grid.py",
+      "source_sha256": "f136b5eb343c1f64282f2e8a55c07060d3e33d07468b85ee8e43f18c7984a433",
+      "reason": "optimization/cli.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/search/grid.py",
+      "migrated_sha256": "2165a339d4c8df15eaa2f9ed9a4537e659d6ffd0f4c49d3dede1cbe8b005ab50",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "optimization/seed_convergence.py",
+      "source_sha256": "300b38843953d185653d25d107755d32b5d6912fbe4e391f44d991bbdec99e4c",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/optimization/seed_convergence.py",
+      "migrated_sha256": "300b38843953d185653d25d107755d32b5d6912fbe4e391f44d991bbdec99e4c",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "run_autonomous_trajectory_evaluation.py",
+      "source_sha256": "7af42135e805e5381a2c757a2a6353d82f5fb69025bb8db2be3bea4bc560ba45",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/run_autonomous_trajectory_evaluation.py",
+      "migrated_sha256": "bbfdc7c08c005256f61ec5313933dd6088a0313e16a689a2696c2f87146feadf",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "run_hyper_evaluation.py",
+      "source_sha256": "ccd77a021dcdc3d86de1e429ee7a8b6ab135c73f1567f3e7408449e9b2031cff",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/run_hyper_evaluation.py",
+      "migrated_sha256": "b3c3921fd829cbb0223806a7fb0730ae12e167a89237fb7c085f1b82bba514e7",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "run_hyper_then_simulation.py",
+      "source_sha256": "514b2c228cba8b590e468115a08b303a84e647777e547e0135a439c71a9b4e09",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/run_hyper_then_simulation.py",
+      "migrated_sha256": "823371cb21a8704061174f62d2c6caa0c1e49ca727c8275296ee78986a3c772a",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "run_internal_cognitive_trajectory_evaluation.py",
+      "source_sha256": "12577778c828db61f8d4652e36d8ce5c8aacf10f9b3fbcdc22d3de5da82cb9cf",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/run_internal_cognitive_trajectory_evaluation.py",
+      "migrated_sha256": "12577778c828db61f8d4652e36d8ce5c8aacf10f9b3fbcdc22d3de5da82cb9cf",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "run_simulation.py",
+      "source_sha256": "9edf0f407425aecb894acde9d3ff86a852c3a892e0deea3d264440aacde0dd18",
+      "reason": "0826 workflow root",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/run_simulation.py",
+      "migrated_sha256": "344fcbcf3b012aa5b8b6ba42cd039a59e883e65f8b1575df27879f8c2062801e",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/__init__.py",
+      "source_sha256": "d4d85fd0b4ef4583cdb989aa4c8c66e6fe2db781942f477262fb06228182838f",
+      "reason": "simulation/config.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/__init__.py",
+      "migrated_sha256": "d4d85fd0b4ef4583cdb989aa4c8c66e6fe2db781942f477262fb06228182838f",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/autonomous.py",
+      "source_sha256": "9d6396465f4c83dfcaed4a085a7a50c0577801fa79b4b8521833e689408d1327",
+      "reason": "evaluation/model_recovery.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/autonomous.py",
+      "migrated_sha256": "9d6396465f4c83dfcaed4a085a7a50c0577801fa79b4b8521833e689408d1327",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/config.py",
+      "source_sha256": "0d97349ca0b8d3d05700f3f0ee0bed9dc7bf4958d5f89d4de844cdb7a1960529",
+      "reason": "optimization/model_0826.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/config.py",
+      "migrated_sha256": "366d5e45d6f6c05cb67c2a7f17d418087ec2e2e47b0876718952c0a82bfb12eb",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/data.py",
+      "source_sha256": "e6cf445aad282ab7ef4356d1e08d3147914bdb69298c003033b1e710b9d4bcc5",
+      "reason": "evaluation/autonomous_trajectories.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/data.py",
+      "migrated_sha256": "e6cf445aad282ab7ef4356d1e08d3147914bdb69298c003033b1e710b9d4bcc5",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/execution.py",
+      "source_sha256": "b653fe11a8dfa67a3f746ee5c8cc03279e7a7debeb1243ccb6fb8fccfbe1dd25",
+      "reason": "simulation/config.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/execution.py",
+      "migrated_sha256": "b653fe11a8dfa67a3f746ee5c8cc03279e7a7debeb1243ccb6fb8fccfbe1dd25",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/parameters.py",
+      "source_sha256": "6eb745332b2e35ed059094328027993b7de92044aed8075d2a2dcf9b09590b8c",
+      "reason": "evaluation/model_recovery.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/parameters.py",
+      "migrated_sha256": "6eb745332b2e35ed059094328027993b7de92044aed8075d2a2dcf9b09590b8c",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/provenance.py",
+      "source_sha256": "2f3e55d7985b040ab5a044a534ecafaaf4435ddd2616cb77586a3c29b2b418ac",
+      "reason": "run_simulation.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/provenance.py",
+      "migrated_sha256": "8fcb50f322883cfe75ddad05f9dca539cff97d7ce6c7651631a28aa800c9d9b2",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/results.py",
+      "source_sha256": "b4765047eac969f7863db848dc7d0bbb804f201bd52d8f85d897f8a020a18d90",
+      "reason": "simulation/runner.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/results.py",
+      "migrated_sha256": "b4765047eac969f7863db848dc7d0bbb804f201bd52d8f85d897f8a020a18d90",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "simulation/runner.py",
+      "source_sha256": "d63590d11ada446c9c99bf3dc0942211c4048fe7fe00b503743f5ae0892f7ddf",
+      "reason": "run_simulation.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/simulation/runner.py",
+      "migrated_sha256": "d63590d11ada446c9c99bf3dc0942211c4048fe7fe00b503743f5ae0892f7ddf",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/__init__.py",
+      "source_sha256": "3ca34b6970e89df666df6f94d726aa96cb577e05056ce9b0cf06369e1269881a",
+      "reason": "utils/paths.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/__init__.py",
+      "migrated_sha256": "3ca34b6970e89df666df6f94d726aa96cb577e05056ce9b0cf06369e1269881a",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/config.py",
+      "source_sha256": "89802f9aca39e6221a0d02ed3749d9416f2e21895474102f6e166f9c1aba16f7",
+      "reason": "utils/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/config.py",
+      "migrated_sha256": "89802f9aca39e6221a0d02ed3749d9416f2e21895474102f6e166f9c1aba16f7",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/console.py",
+      "source_sha256": "ec0b27b6622a3fd80ba71225f7dc78ee63f203500e26f22c35e061d3c4b1a22d",
+      "reason": "utils/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/console.py",
+      "migrated_sha256": "ec0b27b6622a3fd80ba71225f7dc78ee63f203500e26f22c35e061d3c4b1a22d",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/datasets.py",
+      "source_sha256": "c679a4cedc73577062b12c62cdd5ea8e98a95891db4b13305cf963ee7363dc6b",
+      "reason": "evaluation/model_recovery.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/datasets.py",
+      "migrated_sha256": "c679a4cedc73577062b12c62cdd5ea8e98a95891db4b13305cf963ee7363dc6b",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/decay.py",
+      "source_sha256": "7b44906719566b17dacfe8892fbd6742824736a03552b5d88c9403d0ad1e9227",
+      "reason": "utils/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/decay.py",
+      "migrated_sha256": "7b44906719566b17dacfe8892fbd6742824736a03552b5d88c9403d0ad1e9227",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/logging.py",
+      "source_sha256": "ee6b99c2eae43a38a8b65b9a927672664cc1bfda9d89e44814f57cd42cc46266",
+      "reason": "optimization/cli.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/logging.py",
+      "migrated_sha256": "ee6b99c2eae43a38a8b65b9a927672664cc1bfda9d89e44814f57cd42cc46266",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/numeric.py",
+      "source_sha256": "7cd2799872b2a26ee3be9e48018b38d4c73e429f53957f3f7e1580804a259eae",
+      "reason": "utils/__init__.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/numeric.py",
+      "migrated_sha256": "7cd2799872b2a26ee3be9e48018b38d4c73e429f53957f3f7e1580804a259eae",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/paths.py",
+      "source_sha256": "e972dfa4a5292b6e10f8c8b0ae0c6fb5470874e73a956b4ad1179164b91a0a3b",
+      "reason": "model/modules/perception.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/paths.py",
+      "migrated_sha256": "2d5208455a44c12dc8a8dbb0d386dbecdc38d53cd88d644ca8dcad84054375d1",
+      "namespace_rewrite_only": false
+    },
+    {
+      "file": "utils/seeding.py",
+      "source_sha256": "2eef3ee04f6b917c9b588fffe938310a45e5094622c37705f25201ba12bae8d3",
+      "reason": "inference/posterior_predictive.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/seeding.py",
+      "migrated_sha256": "2eef3ee04f6b917c9b588fffe938310a45e5094622c37705f25201ba12bae8d3",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/streaming.py",
+      "source_sha256": "f56507dd86b30ee2c192776f80cbee3529b308ffaac4f2b24430b25c6f18e1f9",
+      "reason": "evaluation/particle_filter/residuals.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/streaming.py",
+      "migrated_sha256": "f56507dd86b30ee2c192776f80cbee3529b308ffaac4f2b24430b25c6f18e1f9",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "utils/subjects.py",
+      "source_sha256": "0c89da17175f5c36dad9b7c979ca9dce30feb90581037c17e620713defdb7e06",
+      "reason": "evaluation/autonomous_trajectories.py",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/utils/subjects.py",
+      "migrated_sha256": "0c89da17175f5c36dad9b7c979ca9dce30feb90581037c17e620713defdb7e06",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/group.py",
+      "source_sha256": "3b1453921950f9b62114ef8b8a06961cdd7b6e33abb431212ac996767cca3558",
+      "reason": "metrics lazy public exports used by PF evaluation",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/group.py",
+      "migrated_sha256": "3b1453921950f9b62114ef8b8a06961cdd7b6e33abb431212ac996767cca3558",
+      "namespace_rewrite_only": true
+    },
+    {
+      "file": "metrics/residuals.py",
+      "source_sha256": "e82f1c1c472f6666b20e8fe45446f78f20103c79b3146abb78f0ff86cd49f9ab",
+      "reason": "metrics lazy public exports used by PF evaluation",
+      "export_pruned": false,
+      "source": "src/Bayesian_state/metrics/residuals.py",
+      "migrated_sha256": "e82f1c1c472f6666b20e8fe45446f78f20103c79b3146abb78f0ff86cd49f9ab",
+      "namespace_rewrite_only": true
+    }
+  ],
+  "excluded_python": [
+    "evaluation/evaluator.py",
+    "evaluation/fft_clustering.py",
+    "evaluation/transition.py",
+    "hypothesis_space/analysis/__init__.py",
+    "hypothesis_space/analysis/__main__.py",
+    "hypothesis_space/analysis/oral_evidence.py",
+    "hypothesis_space/analysis/reporting.py",
+    "model/modules/hypothesis_transition/dynamic_adaptive_control.py",
+    "model/modules/hypothesis_transition/dynamic_discrete_strategy.py",
+    "model/modules/hypothesis_transition/fixed_strategy.py",
+    "model/modules/hypothesis_transition/prior_assignment.py",
+    "model/modules/hypothesis_transition/selection.py",
+    "model/modules/mapping.py",
+    "optimization/candidates.py",
+    "optimization/observed_fit.py",
+    "reference_models/__init__.py",
+    "reference_models/model_0803.py",
+    "reference_models/model_0804/__init__.py",
+    "reference_models/model_0804/core.py",
+    "reference_models/model_0804/forgetting.py",
+    "reference_models/model_0804/pgas.py",
+    "reference_models/model_0804/recovery.py",
+    "reference_models/model_0806.py",
+    "run_model_evaluation.py"
+  ],
+  "resource": "hypothesis_space/resources/similarity/similarity_matrix_shared_hypothesis_space_v1_d4_c2_n100000_pairtol0p1_centertol0p1.npy",
+  "resource_sha256": "0e75c695d24473e7c8a03831c3b6527946c36d274d1b0b3ec927c1c7be0fbdd2",
+  "external_sources": [
+    {
+      "source": "scripts/run_model_0826_recovery.py",
+      "destination": "run_recovery.py",
+      "source_sha256": "fb54a3642676f4137b7bb742625e9b1d3eefdf6ec145cb780dc4c585b45c0c4a",
+      "migrated_sha256": "aefeecdde94a4ac7ac66a6043226a774576dff634840a0b93bc2cad76b0f2dc7"
+    }
+  ],
+  "retained_python_count": 108,
+  "excluded_python_count": 24,
+  "status": "audited_model_0826_migration_no_numerical_formula_changes",
+  "adjustments_document": "MODEL_0826_AUDIT.md",
+  "configuration_hashes": {
+    "recovery_simulation.yaml": "eaa7c807a03c089ebc4b89ec7e628bac3d54482819aa06aa2e22e6c01c91a65a",
+    "parameter_space_0826.yaml": "2029b538830f182a3deec5e5a5f2cb4b4d422f46e1db8eab1341aa8321e69a75",
+    "model_0826.yaml": "01d1dc5eb8aa5aa0f155903410119630ded58197ef018acf01d88bc6c057d345",
+    "recovery_v2.yaml": "0304f00fa4d602680b0fc2dbb8cd66dcbcf9cde03381d90b2338cb9f651b9206",
+    "recovery_v1.yaml": "dc045c3439d8bf29737b9d35bb92b0f65b9d4e41078c256810d4f862d9c18e5c",
+    "smoke_simulation.yaml": "4f04b8b87c0da4c7437428b7aec6494458b97a2e242ef20f7271585df03ed000"
+  },
+  "source_file_policy": "Original implementation files remain unchanged; original README points to new 0826 package."
+}
