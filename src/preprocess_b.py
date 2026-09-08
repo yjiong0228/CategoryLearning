@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.oral_coding import Recording_Processor_Center, Recording_Processor_Region, parts_from_feature_map
+from src.oral_coding import (Recording_Processor_Center, Recording_Processor_Region,
+                             parts_from_feature_map, FEATURE_NAME_TO_PART)
 
 
 class Preprocessor_B:
@@ -64,9 +65,9 @@ class Preprocessor_B:
         combined_data = combined_data.sort_values(by=["iSession", "iTrial"])
 
         extra_columns = ["text", "oral_center", "oral_A", "oral_b"]
+        oral_parts = parts_from_feature_map(feature_map)
+        center_processor = Recording_Processor_Center(parts=oral_parts)
         if recording_data is not None:
-            oral_parts = parts_from_feature_map(feature_map)
-            center_processor = Recording_Processor_Center(parts=oral_parts)
             center_df = center_processor.process(recording_data)
             center_coded = center_df[["iSession", "iTrial", "text", "all"]].copy()
 
@@ -105,4 +106,10 @@ class Preprocessor_B:
                 combined_data[col] = pd.NA
 
         final_columns = base_columns + extra_columns
-        return combined_data[final_columns]
+        # Reuse process_use, then reorder its part-based output like the center.
+        use_coded = center_processor.process_use(combined_data)
+        for i in range(1, 5):
+            part = FEATURE_NAME_TO_PART[joint_data[f"feature{i}_name"].iloc[0]]
+            combined_data[f"feature{i}_use"] = use_coded[
+                f"feature{oral_parts.index(part)+1}_oraluse"].to_numpy()
+        return combined_data[final_columns + [f"feature{i}_use" for i in range(1, 5)]]
