@@ -17,9 +17,9 @@ from src.Bayesian_state.optimization.parameter_space import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAMETER_SPACE = (
-    ROOT / "configs/specific_models/model_0818_cond1_parameter_space.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml"
 )
-MANUSCRIPT = ROOT / "manuscript/model_0818.tex"
+MANUSCRIPT = ROOT / "src/Bayesian_state/docs/model_architecture/model_0818.tex"
 
 
 def test_parameter_space_matches_frozen_manuscript_and_cond1_scope() -> None:

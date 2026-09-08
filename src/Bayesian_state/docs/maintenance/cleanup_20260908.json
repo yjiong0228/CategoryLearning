@@ -1,0 +1,2525 @@
+{
+  "date": "2026-09-08",
+  "scope": "Untracked Python/pytest runtime caches only; protected research/output directories excluded",
+  "removed_directories": 63,
+  "removed_files": 550,
+  "removed_bytes": 14573965,
+  "skipped": [],
+  "entries": [
+    {
+      "directory": ".pytest_cache",
+      "files": [
+        {
+          "path": ".pytest_cache/.gitignore",
+          "bytes": 37
+        },
+        {
+          "path": ".pytest_cache/CACHEDIR.TAG",
+          "bytes": 191
+        },
+        {
+          "path": ".pytest_cache/README.md",
+          "bytes": 302
+        },
+        {
+          "path": ".pytest_cache/v/cache/lastfailed",
+          "bytes": 117
+        },
+        {
+          "path": ".pytest_cache/v/cache/nodeids",
+          "bytes": 114802
+        },
+        {
+          "path": ".pytest_cache/v/cache/stepwise",
+          "bytes": 2
+        }
+      ]
+    },
+    {
+      "directory": "tests/__pycache__",
+      "files": [
+        {
+          "path": "tests/__pycache__/test_bayesian_state_structure.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 137410
+        },
+        {
+          "path": "tests/__pycache__/test_bayesian_state_structure.cpython-311.pyc",
+          "bytes": 33347
+        },
+        {
+          "path": "tests/__pycache__/test_metrics.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 101622
+        },
+        {
+          "path": "tests/__pycache__/test_metrics.cpython-311.pyc",
+          "bytes": 37203
+        },
+        {
+          "path": "tests/__pycache__/test_model_0806_evaluation_protocol.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 87561
+        },
+        {
+          "path": "tests/__pycache__/test_model_0806_evaluation_protocol.cpython-311.pyc",
+          "bytes": 39320
+        },
+        {
+          "path": "tests/__pycache__/test_model_0806_framework.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 283743
+        },
+        {
+          "path": "tests/__pycache__/test_model_0806_framework.cpython-311.pyc",
+          "bytes": 91979
+        },
+        {
+          "path": "tests/__pycache__/test_model_0809_subject_capacity.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 23422
+        },
+        {
+          "path": "tests/__pycache__/test_model_0809_subject_capacity.cpython-311.pyc",
+          "bytes": 7362
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/__pycache__/test_hyper_cd_v2.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 93259
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0806_framework.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 322391
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0813_mechanism_reachability.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 16860
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0813_parameter_recovery.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 13016
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0813_pf_calibration.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 14544
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0813_pf_choice_layer_audit.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 13046
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0813_pf_seed_averaging.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 21971
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0814_rule_consistent.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 6246
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0814_rule_consistent.cpython-311.pyc",
+          "bytes": 1983
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_b0_adaptive_controller_pilot.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 42472
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_b0_memory_ablation_pilot.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 22461
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_h2_legacy_count_comparison.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 18281
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_h3_feedback_reactive.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 16914
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_h4_nested_feedback_accumulator.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 74328
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_h4_nested_subject_screen.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 19649
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_h5_similarity_transport.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 69402
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_p0.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 33306
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_p0_nested_convergence.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 7776
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_p0_persistent_execution_counterfactual.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 15330
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0815_p1_mapping.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 29972
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0818_belief_transport_counterfactual.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 8564
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0818_boundary_recovery.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 42408
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0818_observed_fit.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 40716
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0818_parameter_space.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 16382
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0818_seed_convergence.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 35158
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0826_belief_transport_counterfactual.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 8564
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0826_recovery.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 141930
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_model_0826_versioning.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 19000
+        },
+        {
+          "path": "tests/bayesian_state/__pycache__/test_structure.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 163475
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/metrics/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/metrics/__pycache__/test_metrics.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 101675
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/evaluation/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_autonomous_trajectories.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 19165
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_autonomous_trajectories.cpython-311.pyc",
+          "bytes": 5097
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_encoding_recompute.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 13275
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_evaluation_protocol.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 90316
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_internal_cognitive_trajectories.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 36557
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_internal_cognitive_trajectories.cpython-311.pyc",
+          "bytes": 21220
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_oral_alignment.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 98677
+        },
+        {
+          "path": "tests/bayesian_state/evaluation/__pycache__/test_oral_alignment.cpython-311.pyc",
+          "bytes": 16546
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/hypothesis_space/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/hypothesis_space/__pycache__/test_boundary_geometry.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 55389
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/simulation/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/simulation/__pycache__/test_repeat_probability_aggregation.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 16704
+        }
+      ]
+    },
+    {
+      "directory": "tests/bayesian_state/model/__pycache__",
+      "files": [
+        {
+          "path": "tests/bayesian_state/model/__pycache__/test_perception_cache.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 5195
+        },
+        {
+          "path": "tests/bayesian_state/model/__pycache__/test_subject_capacity.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 23432
+        }
+      ]
+    },
+    {
+      "directory": "src/__pycache__",
+      "files": [
+        {
+          "path": "src/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 185
+        },
+        {
+          "path": "src/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 211
+        },
+        {
+          "path": "src/__pycache__/oral_coding.cpython-311.pyc",
+          "bytes": 105700
+        },
+        {
+          "path": "src/__pycache__/preprocess_b.cpython-311.pyc",
+          "bytes": 7320
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 272
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_autonomous_trajectory_evaluation.cpython-311.pyc",
+          "bytes": 4760
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_hyper_evaluation.cpython-311.pyc",
+          "bytes": 22646
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_hyper_then_simulation.cpython-311.pyc",
+          "bytes": 48016
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_internal_cognitive_trajectory_evaluation.cpython-311.pyc",
+          "bytes": 3056
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_model_evaluation.cpython-311.pyc",
+          "bytes": 59040
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_recovery.cpython-311.pyc",
+          "bytes": 85331
+        },
+        {
+          "path": "src/Bayesian_state/__pycache__/run_simulation.cpython-311.pyc",
+          "bytes": 20188
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/metrics/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 4395
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/_numeric.cpython-311.pyc",
+          "bytes": 4390
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/aggregation.cpython-311.pyc",
+          "bytes": 3081
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/behavior.cpython-311.pyc",
+          "bytes": 23956
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/behavior_metrics.cpython-311.pyc",
+          "bytes": 24006
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/contracts.cpython-311.pyc",
+          "bytes": 12408
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/group.cpython-311.pyc",
+          "bytes": 5247
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/group_comparison.cpython-311.pyc",
+          "bytes": 5302
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/group_statistics.cpython-311.pyc",
+          "bytes": 5300
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/learning_curves.cpython-311.pyc",
+          "bytes": 9685
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/losses.cpython-311.pyc",
+          "bytes": 29213
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/numeric.cpython-311.pyc",
+          "bytes": 4389
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/prediction.cpython-311.pyc",
+          "bytes": 23351
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/prediction_metrics.cpython-311.pyc",
+          "bytes": 23360
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/predictive.cpython-311.pyc",
+          "bytes": 11708
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/repeated_runs.cpython-311.pyc",
+          "bytes": 10961
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/residuals.cpython-311.pyc",
+          "bytes": 23309
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/run_aggregation.cpython-311.pyc",
+          "bytes": 53294
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/scoring.cpython-311.pyc",
+          "bytes": 9322
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/selection.cpython-311.pyc",
+          "bytes": 22044
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/sequential_residuals.cpython-311.pyc",
+          "bytes": 23362
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/trajectory.cpython-311.pyc",
+          "bytes": 54022
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/trajectory_selection.cpython-311.pyc",
+          "bytes": 22014
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/trajectory_statistics.cpython-311.pyc",
+          "bytes": 54007
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/trial.cpython-311.pyc",
+          "bytes": 44880
+        },
+        {
+          "path": "src/Bayesian_state/metrics/__pycache__/trial_metrics.cpython-311.pyc",
+          "bytes": 44740
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/inference/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 240
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 787
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/bayesian_engine.cpython-310.pyc",
+          "bytes": 9133
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/bayesian_engine.cpython-311.pyc",
+          "bytes": 18957
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/dispatcher.cpython-311.pyc",
+          "bytes": 6038
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/engine.cpython-311.pyc",
+          "bytes": 11800
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/posterior_predictive.cpython-311.pyc",
+          "bytes": 30040
+        },
+        {
+          "path": "src/Bayesian_state/inference/__pycache__/results.cpython-311.pyc",
+          "bytes": 24288
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/inference/backends/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/inference/backends/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 630
+        },
+        {
+          "path": "src/Bayesian_state/inference/backends/__pycache__/particle_filter.cpython-311.pyc",
+          "bytes": 85717
+        },
+        {
+          "path": "src/Bayesian_state/inference/backends/__pycache__/trajectory.cpython-311.pyc",
+          "bytes": 4684
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/reference_models/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 239
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0803.cpython-311.pyc",
+          "bytes": 57184
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0804.cpython-311.pyc",
+          "bytes": 173913
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0804_forgetting.cpython-311.pyc",
+          "bytes": 17492
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0804_pgas.cpython-311.pyc",
+          "bytes": 28549
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0804_recovery.cpython-311.pyc",
+          "bytes": 6547
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/__pycache__/model_0806.cpython-311.pyc",
+          "bytes": 10105
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/reference_models/model_0804/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/reference_models/model_0804/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 435
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/model_0804/__pycache__/core.cpython-311.pyc",
+          "bytes": 173966
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/model_0804/__pycache__/forgetting.cpython-311.pyc",
+          "bytes": 17532
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/model_0804/__pycache__/pgas.cpython-311.pyc",
+          "bytes": 28589
+        },
+        {
+          "path": "src/Bayesian_state/reference_models/model_0804/__pycache__/recovery.cpython-311.pyc",
+          "bytes": 6587
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/evaluation/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1198
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/autonomous_trajectories.cpython-311.pyc",
+          "bytes": 52529
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/evaluator.cpython-311.pyc",
+          "bytes": 106098
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/fft_clustering.cpython-311.pyc",
+          "bytes": 45553
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/internal_cognitive_trajectories.cpython-311.pyc",
+          "bytes": 94715
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/model_evaluation.cpython-311.pyc",
+          "bytes": 103326
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/model_recovery.cpython-311.pyc",
+          "bytes": 123311
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/oral_model_alignment.cpython-311.pyc",
+          "bytes": 255730
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/particle_filter_choice_transmission_audit.cpython-311.pyc",
+          "bytes": 115854
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/particle_filter_evaluation.cpython-311.pyc",
+          "bytes": 60131
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/particle_filter_residual_diagnostics.cpython-311.pyc",
+          "bytes": 31066
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/particle_filter_strategy_audit.cpython-311.pyc",
+          "bytes": 60802
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/transition.cpython-311.pyc",
+          "bytes": 42234
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/__pycache__/transition_evaluation.cpython-311.pyc",
+          "bytes": 42251
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/evaluation/oral/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/evaluation/oral/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 552
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/oral/__pycache__/alignment.cpython-311.pyc",
+          "bytes": 881
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/oral/__pycache__/mapping.cpython-311.pyc",
+          "bytes": 16811
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/oral/__pycache__/reporting.cpython-311.pyc",
+          "bytes": 159653
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/oral/__pycache__/scoring.cpython-311.pyc",
+          "bytes": 148293
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/evaluation/particle_filter/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/evaluation/particle_filter/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1668
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/particle_filter/__pycache__/choice_transmission.cpython-311.pyc",
+          "bytes": 115789
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/particle_filter/__pycache__/residuals.cpython-311.pyc",
+          "bytes": 31010
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/particle_filter/__pycache__/strategy.cpython-311.pyc",
+          "bytes": 60772
+        },
+        {
+          "path": "src/Bayesian_state/evaluation/particle_filter/__pycache__/summary.cpython-311.pyc",
+          "bytes": 60086
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/hypothesis_space/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/hypothesis_space/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1614
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/__pycache__/similarity.cpython-311.pyc",
+          "bytes": 17068
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/hypothesis_space/analysis/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/hypothesis_space/analysis/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 321
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/analysis/__pycache__/__main__.cpython-311.pyc",
+          "bytes": 3580
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/analysis/__pycache__/oral_evidence.cpython-311.pyc",
+          "bytes": 48972
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/analysis/__pycache__/reporting.cpython-311.pyc",
+          "bytes": 23355
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 612
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__/base_partition.cpython-311.pyc",
+          "bytes": 11655
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__/continuous_partition.cpython-311.pyc",
+          "bytes": 11653
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__/discrete_rule_partition.cpython-311.pyc",
+          "bytes": 6144
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/observation_model/__pycache__/likelihood.cpython-311.pyc",
+          "bytes": 6872
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/hypothesis_space/spaces/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/hypothesis_space/spaces/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1490
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/spaces/__pycache__/common.cpython-311.pyc",
+          "bytes": 2796
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/spaces/__pycache__/continuous.cpython-311.pyc",
+          "bytes": 29133
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/spaces/__pycache__/discrete.cpython-311.pyc",
+          "bytes": 8990
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/spaces/__pycache__/regions.cpython-311.pyc",
+          "bytes": 4880
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/hypothesis_space/geometry/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 735
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/boundary.cpython-311.pyc",
+          "bytes": 22717
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/discrete_rule.cpython-311.pyc",
+          "bytes": 5468
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/dykstra_acceleration._dykstra_distances_impl-13.py311.1.nbc",
+          "bytes": 112625
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/dykstra_acceleration._dykstra_distances_impl-13.py311.2.nbc",
+          "bytes": 112462
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/dykstra_acceleration._dykstra_distances_impl-13.py311.nbi",
+          "bytes": 2676
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/dykstra_acceleration.cpython-311.pyc",
+          "bytes": 5046
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/prototype.cpython-311.pyc",
+          "bytes": 12695
+        },
+        {
+          "path": "src/Bayesian_state/hypothesis_space/geometry/__pycache__/stimuli.cpython-311.pyc",
+          "bytes": 1178
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/simulation/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1313
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/autonomous.cpython-311.pyc",
+          "bytes": 5405
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/autonomous_model_execution.cpython-311.pyc",
+          "bytes": 5294
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/config.cpython-311.pyc",
+          "bytes": 23073
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/data.cpython-311.pyc",
+          "bytes": 13168
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/execution.cpython-311.pyc",
+          "bytes": 56878
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/parameters.cpython-311.pyc",
+          "bytes": 8932
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/provenance.cpython-311.pyc",
+          "bytes": 6527
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/repeated_simulation.cpython-311.pyc",
+          "bytes": 49041
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/results.cpython-311.pyc",
+          "bytes": 4451
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/runner.cpython-311.pyc",
+          "bytes": 59190
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/simulation_config.cpython-311.pyc",
+          "bytes": 20916
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/state_model_execution.cpython-311.pyc",
+          "bytes": 71557
+        },
+        {
+          "path": "src/Bayesian_state/simulation/__pycache__/synthetic_trajectory_generation.cpython-311.pyc",
+          "bytes": 11672
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/utils/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 332
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1657
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/active_set_generation.cpython-311.pyc",
+          "bytes": 11611
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/active_set_mechanism_variants.cpython-311.pyc",
+          "bytes": 12570
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/active_set_particle_filter.cpython-311.pyc",
+          "bytes": 30104
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/active_set_posterior_predictive.cpython-311.pyc",
+          "bytes": 31530
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/base.cpython-310.pyc",
+          "bytes": 1450
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/base.cpython-311.pyc",
+          "bytes": 2201
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/basic_stat.cpython-310.pyc",
+          "bytes": 1221
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/basic_stat.cpython-311.pyc",
+          "bytes": 2098
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/classical_tools.cpython-310.pyc",
+          "bytes": 730
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/classical_tools.cpython-311.pyc",
+          "bytes": 1017
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/config.cpython-311.pyc",
+          "bytes": 3486
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/config_subjects.cpython-311.pyc",
+          "bytes": 4840
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/console.cpython-311.pyc",
+          "bytes": 2876
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/console_styles.cpython-310.pyc",
+          "bytes": 1766
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/console_styles.cpython-311.pyc",
+          "bytes": 2925
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/datasets.cpython-311.pyc",
+          "bytes": 3779
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/decay.cpython-311.pyc",
+          "bytes": 1007
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/hyper_utils.cpython-311.pyc",
+          "bytes": 40545
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/load_config.cpython-310.pyc",
+          "bytes": 650
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/load_config.cpython-311.pyc",
+          "bytes": 3456
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/logging.cpython-311.pyc",
+          "bytes": 2206
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._entropy_vector-201.py311.1.nbc",
+          "bytes": 16742
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._entropy_vector-201.py311.nbi",
+          "bytes": 1313
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._entropy_vector-254.py311.1.nbc",
+          "bytes": 16742
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._entropy_vector-254.py311.nbi",
+          "bytes": 1313
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._expit_scalar-192.py311.1.nbc",
+          "bytes": 17968
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._expit_scalar-192.py311.nbi",
+          "bytes": 1193
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._expit_scalar-245.py311.1.nbc",
+          "bytes": 17968
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._expit_scalar-245.py311.nbi",
+          "bytes": 1193
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._run_model0803_numba-212.py311.1.nbc",
+          "bytes": 350632
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._run_model0803_numba-212.py311.nbi",
+          "bytes": 1675
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._run_model0803_numba-265.py311.1.nbc",
+          "bytes": 350648
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803._run_model0803_numba-265.py311.nbi",
+          "bytes": 1675
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0803.cpython-311.pyc",
+          "bytes": 57253
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0804.cpython-311.pyc",
+          "bytes": 173943
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0804_forgetting.cpython-311.pyc",
+          "bytes": 17522
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0804_pgas.cpython-311.pyc",
+          "bytes": 28579
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/model_0804_recovery.cpython-311.pyc",
+          "bytes": 6577
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/numeric.cpython-311.pyc",
+          "bytes": 2095
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/optimization_config.cpython-311.pyc",
+          "bytes": 13221
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/optimizer_common.cpython-311.pyc",
+          "bytes": 113783
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/optimizer_simulation.cpython-311.pyc",
+          "bytes": 20524
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/paths.cpython-310.pyc",
+          "bytes": 813
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/paths.cpython-311.pyc",
+          "bytes": 1083
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/seeding.cpython-311.pyc",
+          "bytes": 6449
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/simulation_statistics.cpython-311.pyc",
+          "bytes": 1490
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/stream.cpython-311.pyc",
+          "bytes": 6034
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/streaming.cpython-311.pyc",
+          "bytes": 5995
+        },
+        {
+          "path": "src/Bayesian_state/utils/__pycache__/subjects.cpython-311.pyc",
+          "bytes": 4833
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/optimization/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 729
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/artifacts.cpython-311.pyc",
+          "bytes": 40076
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/candidates.cpython-311.pyc",
+          "bytes": 12569
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/cli.cpython-311.pyc",
+          "bytes": 4190
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/configuration.cpython-311.pyc",
+          "bytes": 39662
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_cd_optimizer.cpython-311.pyc",
+          "bytes": 63497
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_cli.cpython-311.pyc",
+          "bytes": 3761
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_evaluation.cpython-311.pyc",
+          "bytes": 237267
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_grid_optimizer.cpython-311.pyc",
+          "bytes": 41195
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_objectives.cpython-311.pyc",
+          "bytes": 17118
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_predictive_evaluation.cpython-311.pyc",
+          "bytes": 73452
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_search_common.cpython-311.pyc",
+          "bytes": 20068
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_search_evaluation.cpython-311.pyc",
+          "bytes": 163954
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/hyper_utils.cpython-311.pyc",
+          "bytes": 39713
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/mechanism_candidates.cpython-311.pyc",
+          "bytes": 12579
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/model_0826.cpython-311.pyc",
+          "bytes": 21061
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/objectives.cpython-311.pyc",
+          "bytes": 17099
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/observed_fit.cpython-311.pyc",
+          "bytes": 21117
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/optimization_config.cpython-311.pyc",
+          "bytes": 1289
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/optimizer_common.cpython-311.pyc",
+          "bytes": 3712
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/optimizer_simulation.cpython-311.pyc",
+          "bytes": 429
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/parameter_space.cpython-311.pyc",
+          "bytes": 25797
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/particle_filter.cpython-311.pyc",
+          "bytes": 3117
+        },
+        {
+          "path": "src/Bayesian_state/optimization/__pycache__/seed_convergence.cpython-311.pyc",
+          "bytes": 16007
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/optimization/search/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/optimization/search/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 501
+        },
+        {
+          "path": "src/Bayesian_state/optimization/search/__pycache__/cd_v2.cpython-311.pyc",
+          "bytes": 11890
+        },
+        {
+          "path": "src/Bayesian_state/optimization/search/__pycache__/common.cpython-311.pyc",
+          "bytes": 20685
+        },
+        {
+          "path": "src/Bayesian_state/optimization/search/__pycache__/coordinate_descent.cpython-311.pyc",
+          "bytes": 93073
+        },
+        {
+          "path": "src/Bayesian_state/optimization/search/__pycache__/grid.cpython-311.pyc",
+          "bytes": 41424
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/optimization/diagnostics/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/optimization/diagnostics/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 683
+        },
+        {
+          "path": "src/Bayesian_state/optimization/diagnostics/__pycache__/predictive.cpython-311.pyc",
+          "bytes": 73458
+        },
+        {
+          "path": "src/Bayesian_state/optimization/diagnostics/__pycache__/search.cpython-311.pyc",
+          "bytes": 164438
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/model/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/model/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 342
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 3424
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/assembly.cpython-311.pyc",
+          "bytes": 7051
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/base_problem.cpython-310.pyc",
+          "bytes": 485
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/base_problem.cpython-311.pyc",
+          "bytes": 703
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/config.cpython-311.pyc",
+          "bytes": 6225
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/engine.cpython-311.pyc",
+          "bytes": 20914
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/model.cpython-310.pyc",
+          "bytes": 3454
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/model.cpython-311.pyc",
+          "bytes": 25221
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/readout.cpython-311.pyc",
+          "bytes": 43493
+        },
+        {
+          "path": "src/Bayesian_state/model/__pycache__/state_model.cpython-311.pyc",
+          "bytes": 22256
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/model/modules/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 314
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1891
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/base_module.cpython-310.pyc",
+          "bytes": 772
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/base_module.cpython-311.pyc",
+          "bytes": 3957
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/beta.cpython-310.pyc",
+          "bytes": 10927
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/beta.cpython-311.pyc",
+          "bytes": 24396
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/decision.cpython-310.pyc",
+          "bytes": 1880
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/decision.cpython-311.pyc",
+          "bytes": 2908
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/likelihood.cpython-311.pyc",
+          "bytes": 4770
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/mapping.cpython-311.pyc",
+          "bytes": 12685
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/memory.cpython-310.pyc",
+          "bytes": 10586
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/memory.cpython-311.pyc",
+          "bytes": 19955
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/perception.cpython-310.pyc",
+          "bytes": 14861
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/perception.cpython-311.pyc",
+          "bytes": 30403
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/__pycache__/readout.cpython-311.pyc",
+          "bytes": 44351
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1524
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/contracts.cpython-311.pyc",
+          "bytes": 16591
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/dynamic_adaptive_control.cpython-311.pyc",
+          "bytes": 5873
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/dynamic_discrete_strategy.cpython-311.pyc",
+          "bytes": 4929
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/execution.cpython-311.pyc",
+          "bytes": 34501
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/feedback_reactive.cpython-311.pyc",
+          "bytes": 11187
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/fixed_strategy.cpython-311.pyc",
+          "bytes": 35281
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/nested_feedback_accumulator.cpython-311.pyc",
+          "bytes": 10807
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/prior_assignment.cpython-311.pyc",
+          "bytes": 31414
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/selection.cpython-311.pyc",
+          "bytes": 165395
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/strategy_policy.cpython-311.pyc",
+          "bytes": 194396
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/workspace.cpython-311.pyc",
+          "bytes": 84680
+        },
+        {
+          "path": "src/Bayesian_state/model/modules/hypothesis_transition/__pycache__/workspace_policy.cpython-311.pyc",
+          "bytes": 105311
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 159
+        },
+        {
+          "path": "src/Bayesian/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 175
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian/problems/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian/problems/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 342
+        },
+        {
+          "path": "src/Bayesian/problems/__pycache__/base_problem.cpython-310.pyc",
+          "bytes": 479
+        },
+        {
+          "path": "src/Bayesian/problems/__pycache__/config.cpython-310.pyc",
+          "bytes": 426
+        },
+        {
+          "path": "src/Bayesian/problems/__pycache__/fit_config.cpython-310.pyc",
+          "bytes": 2913
+        },
+        {
+          "path": "src/Bayesian/problems/__pycache__/model.cpython-310.pyc",
+          "bytes": 34416
+        },
+        {
+          "path": "src/Bayesian/problems/__pycache__/partitions.cpython-310.pyc",
+          "bytes": 23998
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian/problems/modules/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 292
+        },
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/base_module.cpython-310.pyc",
+          "bytes": 630
+        },
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/decision.cpython-310.pyc",
+          "bytes": 1998
+        },
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/hypo_transitions.cpython-310.pyc",
+          "bytes": 19556
+        },
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/memory.cpython-310.pyc",
+          "bytes": 2093
+        },
+        {
+          "path": "src/Bayesian/problems/modules/__pycache__/perception.cpython-310.pyc",
+          "bytes": 3989
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian/inference_engine/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian/inference_engine/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 234
+        },
+        {
+          "path": "src/Bayesian/inference_engine/__pycache__/bayesian_engine.cpython-310.pyc",
+          "bytes": 6401
+        }
+      ]
+    },
+    {
+      "directory": "src/Bayesian/utils/__pycache__",
+      "files": [
+        {
+          "path": "src/Bayesian/utils/__pycache__/__init__.cpython-310.pyc",
+          "bytes": 261
+        },
+        {
+          "path": "src/Bayesian/utils/__pycache__/basic_stat.cpython-310.pyc",
+          "bytes": 1215
+        },
+        {
+          "path": "src/Bayesian/utils/__pycache__/classical_tools.cpython-310.pyc",
+          "bytes": 724
+        },
+        {
+          "path": "src/Bayesian/utils/__pycache__/model_evaluation.cpython-310.pyc",
+          "bytes": 10961
+        },
+        {
+          "path": "src/Bayesian/utils/__pycache__/optimizer.cpython-310.pyc",
+          "bytes": 19838
+        },
+        {
+          "path": "src/Bayesian/utils/__pycache__/stream.cpython-310.pyc",
+          "bytes": 2867
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 291
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/conftest.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 369
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/conftest.cpython-311.pyc",
+          "bytes": 229
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_autonomous_trajectory_evaluation.cpython-311.pyc",
+          "bytes": 741
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_hyper_evaluation.cpython-311.pyc",
+          "bytes": 1646
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_hyper_then_simulation.cpython-311.pyc",
+          "bytes": 707
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_internal_cognitive_trajectory_evaluation.cpython-311.pyc",
+          "bytes": 765
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_recovery.cpython-311.pyc",
+          "bytes": 2135
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/run_simulation.cpython-311.pyc",
+          "bytes": 1737
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/__pycache__/workflow.cpython-311.pyc",
+          "bytes": 2771
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 4414
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/behavior.cpython-311.pyc",
+          "bytes": 680
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/group.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/losses.cpython-311.pyc",
+          "bytes": 674
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/numeric.cpython-311.pyc",
+          "bytes": 677
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/prediction.cpython-311.pyc",
+          "bytes": 686
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/residuals.cpython-311.pyc",
+          "bytes": 683
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/selection.cpython-311.pyc",
+          "bytes": 683
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/trajectory.cpython-311.pyc",
+          "bytes": 686
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/metrics/__pycache__/trial.cpython-311.pyc",
+          "bytes": 671
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/inference/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 806
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/__pycache__/dispatcher.cpython-311.pyc",
+          "bytes": 692
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/__pycache__/posterior_predictive.cpython-311.pyc",
+          "bytes": 723
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/__pycache__/results.cpython-311.pyc",
+          "bytes": 683
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/inference/backends/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/backends/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 642
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/backends/__pycache__/particle_filter.cpython-311.pyc",
+          "bytes": 735
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/inference/backends/__pycache__/trajectory.cpython-311.pyc",
+          "bytes": 720
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/tests/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/reference_cases.cpython-311.pyc",
+          "bytes": 4685
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/test_belief_transport.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 35260
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/test_failure_controller.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 59488
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/test_migration.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 22855
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/test_recovery_contract.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 37939
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/tests/__pycache__/test_workflow.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 12192
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/evaluation/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 296
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/__pycache__/autonomous_trajectories.cpython-311.pyc",
+          "bytes": 735
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/__pycache__/internal_cognitive_trajectories.cpython-311.pyc",
+          "bytes": 759
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/__pycache__/model_recovery.cpython-311.pyc",
+          "bytes": 707
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 571
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__/alignment.cpython-311.pyc",
+          "bytes": 707
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__/mapping.cpython-311.pyc",
+          "bytes": 701
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__/reporting.cpython-311.pyc",
+          "bytes": 707
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/oral/__pycache__/scoring.cpython-311.pyc",
+          "bytes": 701
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1687
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__/choice_transmission.cpython-311.pyc",
+          "bytes": 771
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__/residuals.cpython-311.pyc",
+          "bytes": 741
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__/strategy.cpython-311.pyc",
+          "bytes": 738
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/evaluation/particle_filter/__pycache__/summary.cpython-311.pyc",
+          "bytes": 735
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/hypothesis_space/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1633
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/__pycache__/similarity.cpython-311.pyc",
+          "bytes": 714
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 673
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__/base_partition.cpython-311.pyc",
+          "bytes": 780
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__/continuous_partition.cpython-311.pyc",
+          "bytes": 807
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__/discrete_rule_partition.cpython-311.pyc",
+          "bytes": 822
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/observation_model/__pycache__/likelihood.cpython-311.pyc",
+          "bytes": 768
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1509
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__/common.cpython-311.pyc",
+          "bytes": 723
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__/continuous.cpython-311.pyc",
+          "bytes": 735
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__/discrete.cpython-311.pyc",
+          "bytes": 729
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/spaces/__pycache__/regions.cpython-311.pyc",
+          "bytes": 726
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 754
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/boundary.cpython-311.pyc",
+          "bytes": 735
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/discrete_rule.cpython-311.pyc",
+          "bytes": 750
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/dykstra_acceleration._dykstra_distances_impl-13.py311.1.nbc",
+          "bytes": 112942
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/dykstra_acceleration._dykstra_distances_impl-13.py311.nbi",
+          "bytes": 1604
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/dykstra_acceleration.cpython-311.pyc",
+          "bytes": 771
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/prototype.cpython-311.pyc",
+          "bytes": 738
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/hypothesis_space/geometry/__pycache__/stimuli.cpython-311.pyc",
+          "bytes": 732
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1332
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/autonomous.cpython-311.pyc",
+          "bytes": 695
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/config.cpython-311.pyc",
+          "bytes": 683
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/data.cpython-311.pyc",
+          "bytes": 677
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/execution.cpython-311.pyc",
+          "bytes": 692
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/parameters.cpython-311.pyc",
+          "bytes": 695
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/provenance.cpython-311.pyc",
+          "bytes": 695
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/results.cpython-311.pyc",
+          "bytes": 686
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/simulation/__pycache__/runner.cpython-311.pyc",
+          "bytes": 683
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/utils/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 1676
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/config.cpython-311.pyc",
+          "bytes": 668
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/console.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/datasets.cpython-311.pyc",
+          "bytes": 674
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/decay.cpython-311.pyc",
+          "bytes": 665
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/logging.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/numeric.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/paths.cpython-311.pyc",
+          "bytes": 665
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/seeding.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/streaming.cpython-311.pyc",
+          "bytes": 677
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/utils/__pycache__/subjects.cpython-311.pyc",
+          "bytes": 674
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 299
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/artifacts.cpython-311.pyc",
+          "bytes": 698
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/cli.cpython-311.pyc",
+          "bytes": 680
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/model_0826.cpython-311.pyc",
+          "bytes": 701
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/objectives.cpython-311.pyc",
+          "bytes": 701
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/parameter_space.cpython-311.pyc",
+          "bytes": 1393
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/__pycache__/seed_convergence.cpython-311.pyc",
+          "bytes": 720
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 520
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__/cd_v2.cpython-311.pyc",
+          "bytes": 707
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__/common.cpython-311.pyc",
+          "bytes": 710
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__/coordinate_descent.cpython-311.pyc",
+          "bytes": 747
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/search/__pycache__/grid.cpython-311.pyc",
+          "bytes": 704
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/optimization/diagnostics/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/diagnostics/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 702
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/diagnostics/__pycache__/predictive.cpython-311.pyc",
+          "bytes": 738
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/optimization/diagnostics/__pycache__/search.cpython-311.pyc",
+          "bytes": 726
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/model/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 991
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/assembly.cpython-311.pyc",
+          "bytes": 674
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/config.cpython-311.pyc",
+          "bytes": 668
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/engine.cpython-311.pyc",
+          "bytes": 668
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/readout.cpython-311.pyc",
+          "bytes": 671
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/__pycache__/state_model.cpython-311.pyc",
+          "bytes": 683
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 748
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__/base_module.cpython-311.pyc",
+          "bytes": 707
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__/beta.cpython-311.pyc",
+          "bytes": 686
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__/memory.cpython-311.pyc",
+          "bytes": 692
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/__pycache__/perception.cpython-311.pyc",
+          "bytes": 704
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/__init__.cpython-311.pyc",
+          "bytes": 612
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/contracts.cpython-311.pyc",
+          "bytes": 768
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/execution.cpython-311.pyc",
+          "bytes": 768
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/feedback_reactive.cpython-311.pyc",
+          "bytes": 801
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/nested_feedback_accumulator.cpython-311.pyc",
+          "bytes": 837
+        },
+        {
+          "path": "CategoryLearning_codes/Bayesian_model/model/modules/hypothesis_transition/__pycache__/workspace.cpython-311.pyc",
+          "bytes": 768
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/migration_tools/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/migration_tools/__pycache__/migrate_model_0826.cpython-311.pyc",
+          "bytes": 9798
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/figures/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/behavior.cpython-311.pyc",
+          "bytes": 24973
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/build_fig1.cpython-311.pyc",
+          "bytes": 15034
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/conftest.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 461
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/nonoral.cpython-311.pyc",
+          "bytes": 12975
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/render.cpython-311.pyc",
+          "bytes": 25207
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/reporting.cpython-311.pyc",
+          "bytes": 7939
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/schematics.cpython-311.pyc",
+          "bytes": 13827
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/test_behavior.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 27614
+        },
+        {
+          "path": "CategoryLearning_codes/figures/__pycache__/test_nonoral.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 10470
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/figures/fig1/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/behavior.cpython-311.pyc",
+          "bytes": 24978
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/build_fig1.cpython-311.pyc",
+          "bytes": 15084
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/nonoral.cpython-311.pyc",
+          "bytes": 12980
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/render.cpython-311.pyc",
+          "bytes": 25212
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/reporting.cpython-311.pyc",
+          "bytes": 7944
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/schematics.cpython-311.pyc",
+          "bytes": 13832
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/test_behavior.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 27624
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig1/__pycache__/test_nonoral.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 10480
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/figures/fig2/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/figures/fig2/__pycache__/build_behavior_state.cpython-311.pyc",
+          "bytes": 25674
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig2/__pycache__/build_complete.cpython-311.pyc",
+          "bytes": 9485
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig2/__pycache__/build_framework.cpython-311.pyc",
+          "bytes": 11329
+        },
+        {
+          "path": "CategoryLearning_codes/figures/fig2/__pycache__/framework_wide.cpython-311.pyc",
+          "bytes": 19406
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/figures/fig2/diagnostics/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/figures/fig2/diagnostics/__pycache__/check_oral_ceiling.cpython-311.pyc",
+          "bytes": 4899
+        }
+      ]
+    },
+    {
+      "directory": "CategoryLearning_codes/tests/__pycache__",
+      "files": [
+        {
+          "path": "CategoryLearning_codes/tests/__pycache__/test_preprocess_b.cpython-311-pytest-7.4.4.pyc",
+          "bytes": 6581
+        }
+      ]
+    },
+    {
+      "directory": "scripts/__pycache__",
+      "files": [
+        {
+          "path": "scripts/__pycache__/analyze_cond1_dynamic_rho_separability.cpython-311.pyc",
+          "bytes": 18505
+        },
+        {
+          "path": "scripts/__pycache__/analyze_cond1_phase_coverage.cpython-311.pyc",
+          "bytes": 43984
+        },
+        {
+          "path": "scripts/__pycache__/analyze_cond1_v14_fine.cpython-311.pyc",
+          "bytes": 20831
+        },
+        {
+          "path": "scripts/__pycache__/analyze_cond1_v14_results.cpython-311.pyc",
+          "bytes": 22129
+        },
+        {
+          "path": "scripts/__pycache__/analyze_model_architecture_effect_audit.cpython-311.pyc",
+          "bytes": 19734
+        },
+        {
+          "path": "scripts/__pycache__/behavior_diagnostics.cpython-311.pyc",
+          "bytes": 35158
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_behavior_event_report.cpython-311.pyc",
+          "bytes": 28497
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_dynamic_rho_report.cpython-311.pyc",
+          "bytes": 25513
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_mechanism_report_artifact.cpython-311.pyc",
+          "bytes": 45199
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_phase_coverage_report.cpython-311.pyc",
+          "bytes": 25097
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_trajectory_ppc_report.cpython-311.pyc",
+          "bytes": 34454
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_v14_candidates.cpython-311.pyc",
+          "bytes": 4742
+        },
+        {
+          "path": "scripts/__pycache__/build_cond1_v14_report.cpython-311.pyc",
+          "bytes": 18186
+        },
+        {
+          "path": "scripts/__pycache__/build_model_0805_accuracy_report.cpython-311.pyc",
+          "bytes": 23937
+        },
+        {
+          "path": "scripts/__pycache__/build_model_0813_pf_calibration_artifact.cpython-311.pyc",
+          "bytes": 19178
+        },
+        {
+          "path": "scripts/__pycache__/build_model_0813_pf_choice_layer_artifact.cpython-311.pyc",
+          "bytes": 19930
+        },
+        {
+          "path": "scripts/__pycache__/build_model_0813_pf_parameter_recovery_artifact.cpython-311.pyc",
+          "bytes": 26070
+        },
+        {
+          "path": "scripts/__pycache__/build_model_0813_pf_seed_averaging_artifact.cpython-311.pyc",
+          "bytes": 22689
+        },
+        {
+          "path": "scripts/__pycache__/build_model_architecture_effect_report.cpython-311.pyc",
+          "bytes": 24332
+        },
+        {
+          "path": "scripts/__pycache__/build_s103_rule_commitment_guardrail_report.cpython-311.pyc",
+          "bytes": 38557
+        },
+        {
+          "path": "scripts/__pycache__/compare_cond1_static_global_vs_c1.cpython-311.pyc",
+          "bytes": 9128
+        },
+        {
+          "path": "scripts/__pycache__/diagnose_model_0804_adaptation.cpython-311.pyc",
+          "bytes": 34481
+        },
+        {
+          "path": "scripts/__pycache__/diagnose_model_0804_forgetting.cpython-311.pyc",
+          "bytes": 33105
+        },
+        {
+          "path": "scripts/__pycache__/diagnose_model_0804_pgas.cpython-311.pyc",
+          "bytes": 28617
+        },
+        {
+          "path": "scripts/__pycache__/diagnose_model_0805_accuracy.cpython-311.pyc",
+          "bytes": 33816
+        },
+        {
+          "path": "scripts/__pycache__/plot_cond1_phase_coverage.cpython-311.pyc",
+          "bytes": 25895
+        },
+        {
+          "path": "scripts/__pycache__/plot_model_0805_subject_fits.cpython-311.pyc",
+          "bytes": 21696
+        },
+        {
+          "path": "scripts/__pycache__/plot_model_0805_trialwise_fits.cpython-311.pyc",
+          "bytes": 46587
+        },
+        {
+          "path": "scripts/__pycache__/plot_model_0815_h4_accuracy_bands.cpython-311.pyc",
+          "bytes": 32664
+        },
+        {
+          "path": "scripts/__pycache__/prepare_model_0818_subset_evaluation.cpython-311.pyc",
+          "bytes": 7144
+        },
+        {
+          "path": "scripts/__pycache__/reevaluate_cond1_trajectory_caches.cpython-311.pyc",
+          "bytes": 9843
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_acquisition_changepoint_sweep.cpython-311.pyc",
+          "bytes": 23729
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_b0_trajectory_ppc.cpython-311.pyc",
+          "bytes": 91330
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_behavior_event_atlas.cpython-311.pyc",
+          "bytes": 84176
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_dynamic_rho_sweep.cpython-311.pyc",
+          "bytes": 33309
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_mechanism_external_validation.cpython-311.pyc",
+          "bytes": 32327
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_mechanism_recovery.cpython-311.pyc",
+          "bytes": 29014
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_mechanism_screen.cpython-311.pyc",
+          "bytes": 54462
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_v14_boundary_probe.cpython-311.pyc",
+          "bytes": 16413
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_v14_confirm.cpython-311.pyc",
+          "bytes": 9385
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_v14_frozen_confirmation.cpython-311.pyc",
+          "bytes": 22867
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_v14_pilot.cpython-311.pyc",
+          "bytes": 22377
+        },
+        {
+          "path": "scripts/__pycache__/run_cond1_v14_state_diagnostics.cpython-311.pyc",
+          "bytes": 13437
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0803_cond1.cpython-311.pyc",
+          "bytes": 112186
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0804_cond1_preflight.cpython-311.pyc",
+          "bytes": 41152
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0804_fixed_g_recovery.cpython-311.pyc",
+          "bytes": 57481
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0804_marginalized_lapse_recovery.cpython-311.pyc",
+          "bytes": 72261
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0804_particle_stability_audit.cpython-311.pyc",
+          "bytes": 58978
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0804_regeneration_recovery.cpython-311.pyc",
+          "bytes": 81228
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0805_real_predictive.cpython-311.pyc",
+          "bytes": 75862
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0806_dynamic_m_recovery.cpython-311.pyc",
+          "bytes": 49580
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0806_real_rolling.cpython-311.pyc",
+          "bytes": 63284
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0806_targeted_diagnostics.cpython-311.pyc",
+          "bytes": 57757
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0806_uncertainty_gate.cpython-311.pyc",
+          "bytes": 24066
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0813_pf_calibration.cpython-311.pyc",
+          "bytes": 76234
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0813_pf_choice_layer_audit.cpython-311.pyc",
+          "bytes": 64666
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0813_pf_mechanism_reachability.cpython-311.pyc",
+          "bytes": 59570
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0813_pf_parameter_recovery.cpython-311.pyc",
+          "bytes": 89327
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0813_pf_seed_averaging.cpython-311.pyc",
+          "bytes": 71651
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_b0_adaptive_controller_pilot.cpython-311.pyc",
+          "bytes": 67562
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_b0_memory_ablation_pilot.cpython-311.pyc",
+          "bytes": 35872
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_h2_legacy_count_comparison.cpython-311.pyc",
+          "bytes": 45736
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_h3_feedback_reactive_comparison.cpython-311.pyc",
+          "bytes": 31139
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_h4_nested_subject_screen.cpython-311.pyc",
+          "bytes": 46349
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_p0_persistent_execution_counterfactual.cpython-311.pyc",
+          "bytes": 55555
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_p0_pf_convergence.cpython-311.pyc",
+          "bytes": 25142
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_p0_pf_nested_convergence.cpython-311.pyc",
+          "bytes": 47926
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_p1_mapping_sensitivity.cpython-311.pyc",
+          "bytes": 56724
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0815_p1_state_identifiability.cpython-311.pyc",
+          "bytes": 70080
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0818_belief_transport_counterfactual.cpython-311.pyc",
+          "bytes": 18052
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0818_boundary_recovery.cpython-311.pyc",
+          "bytes": 71911
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0818_exploratory_observed_fit.cpython-311.pyc",
+          "bytes": 46480
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0818_seed_convergence.cpython-311.pyc",
+          "bytes": 38011
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0826_belief_transport_counterfactual.cpython-311.pyc",
+          "bytes": 18094
+        },
+        {
+          "path": "scripts/__pycache__/run_model_0826_recovery.cpython-311.pyc",
+          "bytes": 898
+        },
+        {
+          "path": "scripts/__pycache__/run_model_architecture_effect_audit.cpython-311.pyc",
+          "bytes": 16333
+        },
+        {
+          "path": "scripts/__pycache__/summarize_cond1_dynamic_rho_results.cpython-311.pyc",
+          "bytes": 18753
+        },
+        {
+          "path": "scripts/__pycache__/summarize_cond1_global_external_validation.cpython-311.pyc",
+          "bytes": 15610
+        },
+        {
+          "path": "scripts/__pycache__/summarize_cond1_global_mechanism_mixture.cpython-311.pyc",
+          "bytes": 19738
+        },
+        {
+          "path": "scripts/__pycache__/summarize_cond1_mechanism_replication.cpython-311.pyc",
+          "bytes": 7293
+        },
+        {
+          "path": "scripts/__pycache__/summarize_model_0804_alive_islands.cpython-311.pyc",
+          "bytes": 12679
+        }
+      ]
+    }
+  ]
+}

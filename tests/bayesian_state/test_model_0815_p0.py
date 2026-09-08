@@ -7,10 +7,6 @@ import numpy as np
 import pytest
 import yaml
 
-from scripts.run_model_0815_p0_pf_convergence import (
-    compare_successive_counts,
-    summarize_repeat_panel,
-)
 from src.Bayesian_state.optimization import objectives
 from src.Bayesian_state.optimization.search import coordinate_descent as cd_module
 from src.Bayesian_state.model import ModelContext, StateModel
@@ -21,14 +17,14 @@ from src.Bayesian_state.simulation.execution import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_CONFIG = ROOT / "configs/model_struct/pmh_model_cond1_0815_p0.yaml"
+MODEL_CONFIG = ROOT / "configs/exp123/model_struct/pmh_model_cond1_0815_p0.yaml"
 SIM_CONFIG = (
     ROOT
-    / "configs/simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml"
+    / "configs/exp123/simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml"
 )
 HYPER_CONFIG = (
     ROOT
-    / "configs/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml"
+    / "configs/exp123/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml"
 )
 
 
@@ -107,7 +103,7 @@ def test_shared_hyper_cd_routes_all_subjects_to_one_pipeline(monkeypatch) -> Non
 def test_shared_flat_cd_averages_subject_objectives_equally(monkeypatch) -> None:
     class FakeRunner:
         _engine_config_template = {}
-        _processed_data_dir = ROOT / "data/processed"
+        _processed_data_dir = ROOT / "data/exp123/processed"
 
         @staticmethod
         def _get_subject_frame(subject_id, stop_at):
@@ -160,7 +156,7 @@ def test_shared_flat_cd_averages_subject_objectives_equally(monkeypatch) -> None
     )
     optimizer._build_runner = lambda *args, **kwargs: (
         FakeRunner(),
-        {"learning_data": ROOT / "data/processed/Task2_processed.csv"},
+        {"learning_data": ROOT / "data/exp123/processed/Task2_processed.csv"},
     )
 
     monkeypatch.setattr(cd_module, "Parallel", SequentialParallel)
@@ -238,30 +234,3 @@ def _raw_run(probability: float, particle_count: int) -> dict:
             "post_choice_ess": np.full(choices.size, particle_count * 0.75),
         },
     }
-
-
-def test_pf_convergence_gate_uses_probability_and_executed_state_stability() -> None:
-    lower_row, lower_arrays = summarize_repeat_panel(
-        [_raw_run(0.70, 64), _raw_run(0.72, 64)],
-        prediction_mode="prior_t",
-        particle_count=64,
-    )
-    upper_row, upper_arrays = summarize_repeat_panel(
-        [_raw_run(0.705, 128), _raw_run(0.715, 128)],
-        prediction_mode="prior_t",
-        particle_count=128,
-    )
-    comparisons = compare_successive_counts(
-        [lower_row, upper_row],
-        {64: lower_arrays, 128: upper_arrays},
-        gates={
-            "maximum_successive_choice_nll_change": 0.01,
-            "maximum_successive_choice_probability_rmse": 0.01,
-            "maximum_successive_executed_posterior_js": 0.01,
-            "maximum_split_half_choice_probability_rmse": 0.03,
-            "minimum_median_post_choice_ess_fraction": 0.20,
-        },
-    )
-    assert len(comparisons) == 1
-    assert comparisons[0]["all_gates_passed"] is True
-    assert lower_row["choice_nll"] == pytest.approx(-np.log(0.71))

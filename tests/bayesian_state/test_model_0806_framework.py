@@ -1196,7 +1196,7 @@ def test_feedback_swap_is_a_static_reactive_strategy():
 
 
 def test_model_structure_module_class_paths_are_importable():
-    for config_path in sorted(Path("configs/model_struct").glob("*.yaml")):
+    for config_path in sorted(Path("configs").glob("*/model_struct/*.yaml")):
         payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         for module_config in (payload.get("modules") or {}).values():
             class_path = module_config.get("class")
@@ -1248,7 +1248,7 @@ def test_all_hypothesis_transition_config_paths_are_current_and_resolvable():
             for child in value:
                 visit(child, config_path)
 
-    for root in (Path("configs"), Path("configs_exp4"), Path("configs_exp5")):
+    for root in (Path("configs"),):
         for config_path in sorted(root.rglob("*.yaml")):
             raw = config_path.read_text(encoding="utf-8")
             assert not any(fragment in raw for fragment in old_fragments), config_path
@@ -1271,7 +1271,7 @@ def test_canonical_transition_configs_run_the_declared_mode(
     config_name: str,
     expected_mode: str,
 ):
-    config_path = Path("configs/model_struct") / config_name
+    config_path = Path("configs/exp123/model_struct") / config_name
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     transition_config = payload["modules"]["hypo_transitions_mod"]
     module_name, class_name = transition_config["class"].rsplit(".", 1)
@@ -1288,10 +1288,10 @@ def test_canonical_transition_configs_run_the_declared_mode(
 
 
 def test_0806_hyper_candidates_bind_static_and_dynamic_classes_to_controls():
-    config_path = Path("configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml")
+    config_path = Path("configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml")
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     model_payload = yaml.safe_load(
-        Path("configs/model_struct/pmh_model_cond1_0806.yaml").read_text(
+        Path("configs/exp123/model_struct/pmh_model_cond1_0806.yaml").read_text(
             encoding="utf-8"
         )
     )

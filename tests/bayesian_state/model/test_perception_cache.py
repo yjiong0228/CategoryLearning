@@ -13,7 +13,7 @@ from src.Bayesian_state.utils.datasets import resolve_dataset_paths
 
 ROOT = Path(__file__).resolve().parents[3]
 SIMULATION_CONFIG = (
-    ROOT / "configs/simulation_cfg/model0826_cond1_recovery_base.yaml"
+    ROOT / "configs/exp123/simulation_cfg/model0826_cond1_recovery_base.yaml"
 )
 
 

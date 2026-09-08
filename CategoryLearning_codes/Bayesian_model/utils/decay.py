@@ -1,22 +1,9 @@
-"""
-Some useful functions
-"""
-from typing import List
-import numpy as np
+"""Compatibility import; implementation lives in src.Bayesian_state.utils.decay."""
+import importlib as _importlib
+import sys as _sys
 
-
-def two_factor_decay(data: List, gamma: float, lower: float):
-    """
-    data: List
-
-    Formula:
-    For `(current - k)`-th element, the strength is
-    $ gamma^k * (1 - lower) + lower $
-    to guarantee the values in (lower, 1].
-    """
-
-    try:
-        length = len(data[1])
-    except TypeError:
-        length = 1
-    return (1 - lower) * gamma**np.arange(length - 1, -1, -1) + lower
+if __name__ == "__main__":
+    import runpy
+    runpy.run_module("src.Bayesian_state.utils.decay", run_name="__main__")
+else:
+    _sys.modules[__name__] = _importlib.import_module("src.Bayesian_state.utils.decay")

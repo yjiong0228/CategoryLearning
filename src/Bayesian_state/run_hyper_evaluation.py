@@ -123,6 +123,7 @@ def infer_candidate_source(
     stage: str,
     candidates_json: Path | None,
     candidate_key: str | None,
+    default_candidates_json: Path | None = DEFAULT_CANDIDATES_JSON,
 ) -> tuple[Path | None, str]:
     if candidates_json is not None:
         return resolve_project_path(candidates_json), str(candidate_key or "cond1")
@@ -135,7 +136,7 @@ def infer_candidate_source(
         inferred_path = _resolve_maybe_project_path(raw_path, base_dir=hyper_config_path.parent)
         if inferred_path is not None and raw_key:
             return inferred_path, str(candidate_key or raw_key)
-    return DEFAULT_CANDIDATES_JSON, str(candidate_key or "cond1")
+    return default_candidates_json, str(candidate_key or "cond1")
 
 
 def infer_base_sim_config_path(input_dir: Path, hyper_config_path: Path | None, override: Path | None) -> Path:
@@ -181,14 +182,14 @@ def parse_csv_strings(raw: str) -> list[str]:
     return values
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None, *, default_input_dir: Path = DEFAULT_INPUT_DIR) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run convergence, plateau, and PPC/selection diagnostics for hyper-CD outputs"
     )
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=DEFAULT_INPUT_DIR,
+        default=default_input_dir,
         help="Hyper-CD output dir containing subject_*/ artifacts",
     )
     parser.add_argument(
@@ -269,7 +270,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--volatility-binary-samples-per-run", type=int, default=32)
     parser.add_argument("--volatility-n-jobs", type=int, default=8)
     parser.add_argument("--volatility-seed", type=int, default=20260622)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _add_paths(prefix: str, paths: Mapping[str, Any], out: dict[str, str]) -> None:
@@ -277,9 +278,10 @@ def _add_paths(prefix: str, paths: Mapping[str, Any], out: dict[str, str]) -> No
         out[f"{prefix}.{key}"] = str(value)
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None, *, default_input_dir: Path = DEFAULT_INPUT_DIR,
+         default_candidates_json: Path | None = DEFAULT_CANDIDATES_JSON) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-    args = parse_args()
+    args = parse_args(argv, default_input_dir=default_input_dir)
     input_dir = resolve_project_path(args.input_dir)
     output_dir = resolve_project_path(args.output_dir) if args.output_dir else input_dir / "hyper_evaluation"
     subjects = resolve_subjects(args.subjects, args.subject_range)
@@ -290,6 +292,7 @@ def main() -> None:
         stage=str(args.stage),
         candidates_json=args.candidates_json,
         candidate_key=args.candidate_key,
+        default_candidates_json=default_candidates_json,
     )
     base_sim_config = infer_base_sim_config_path(input_dir, hyper_config_path, args.base_sim_config)
 

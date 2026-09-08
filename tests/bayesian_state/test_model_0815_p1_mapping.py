@@ -19,10 +19,10 @@ from src.Bayesian_state.simulation.autonomous import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-M0_PATH = ROOT / "configs/model_struct/pmh_model_cond1_0815_p0.yaml"
+M0_PATH = ROOT / "configs/exp123/model_struct/pmh_model_cond1_0815_p0.yaml"
 M1_PATH = (
     ROOT
-    / "configs/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml"
+    / "configs/exp123/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml"
 )
 
 

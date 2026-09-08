@@ -1,0 +1,10 @@
+{
+  "commit": "65519f4e0a7cf2fd23c4ee76d8c274e8ac5101df",
+  "cases": 6,
+  "array_count": 232,
+  "sha256": {
+    "data/processed/Task2_processed.csv": "1cab8247ac0203bf95a7eeb38fac82343907e35f1d33ae07ce9bb0737918d597",
+    "CategoryLearning_codes/Bayesian_model/configs/model_0826.yaml": "01d1dc5eb8aa5aa0f155903410119630ded58197ef018acf01d88bc6c057d345",
+    "CategoryLearning_codes/Bayesian_model/tests/fixtures/pre_shared_core.npz": "1bcbd7ad7ff39715c6d2ac419634766cbb5cf7e5524319edb6969409181a6700"
+  }
+}

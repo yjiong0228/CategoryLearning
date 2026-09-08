@@ -1,5 +1,6 @@
 """Initial dependency extraction; refuses an existing destination.
 
+HISTORICAL TOOL: do not rerun for shared-core development; edit src/Bayesian_state.
 Audited post-extraction adjustments are documented in Bayesian_model/MODEL_0826_AUDIT.md.
 The current package and final manifest, not this extraction alone, define the delivered version."""
 import ast

@@ -96,7 +96,7 @@ def main():
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     build(args.output)
     shutil.copy2(__file__,args.output/'build_framework.py')
-    sources=[Path('manuscript/model_0826.tex'),Path('manuscript/figures/model_0826_framework.png'),
+    sources=[Path('src/Bayesian_state/docs/model_architecture/model_0826.tex'),Path('src/Bayesian_state/docs/model_architecture/figures/model_0826_framework.png'),
              Path('CategoryLearning_paper/references/Weiss et al_2021_Interacting with volatile environments stabilizes hidden-state inference and.pdf')]
     manifest={'status':'schematic_draft_not_results','size_mm':[120,90],'dpi':450,'backend':'matplotlib',
               'source_sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},

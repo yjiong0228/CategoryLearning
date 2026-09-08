@@ -1,0 +1,862 @@
+{
+  "file_moves": [
+    {
+      "old": "scripts/run_model_0815_h4_nested_subject_screen.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_h4_nested_subject_screen.py",
+      "before_sha256": "cf0c8d30b213bd368e977622147e7f37f570ce1a55e3dd6240e16ba97dc3d43b",
+      "bytes": 38407,
+      "after_sha256": "b184dee9955ec5e86f5a938088a4c1ebd265beb633e1f23152cb734c4921675c"
+    },
+    {
+      "old": "scripts/diagnose_model_0804_forgetting.py",
+      "new": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_forgetting.py",
+      "before_sha256": "db0ca494e63ea241992d413c7cd93c9d2afdd71cf04a078dfa8b1e997388eb32",
+      "bytes": 23926,
+      "after_sha256": "992d967ad36be86c825f0a28bf9413d55f7020dcfec3d99945b76216cf730804"
+    },
+    {
+      "old": "scripts/plot_cond1_phase_coverage.py",
+      "new": "src/Bayesian_state/workflows/reports/plot_cond1_phase_coverage.py",
+      "before_sha256": "9f65e28e9358af25677e5da659dff0f86d5046567befb9398e09f3495b8804f6",
+      "bytes": 17489,
+      "after_sha256": "60f307d0cac5b2a55efa4cf5dde326699c8bdbeaf6434c1ccf7ad6e255d759c0"
+    },
+    {
+      "old": "scripts/build_model_0813_pf_parameter_recovery_artifact.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_0813_pf_parameter_recovery_artifact.py",
+      "before_sha256": "978a168f0d4aa09d22d0e3e9455cf93b016fbadac4b259858fab84ae520f8a08",
+      "bytes": 32667,
+      "after_sha256": "3f134505b8f386cb9540639164d51dabbee510144b14b526e257ac9e62b95fbd"
+    },
+    {
+      "old": "scripts/build_s103_rule_commitment_guardrail_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_s103_rule_commitment_guardrail_report.py",
+      "before_sha256": "ff463a06099b56c24fc66f50efd6b0bba2c8aeb3a55f8da8a9f3fbea47dde30d",
+      "bytes": 42998,
+      "after_sha256": "1c242ddcb3118830478b857e4f554512c30877a78a79dcd4c8ef8b83fb2e4752"
+    },
+    {
+      "old": "scripts/run_model_0815_b0_memory_ablation_pilot.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_b0_memory_ablation_pilot.py",
+      "before_sha256": "f6a2591aa02877f2156ea41f29adbac208177545e03855194b7d8f3bbdab3ce7",
+      "bytes": 27433,
+      "after_sha256": "42a8d450abaefd0eb15ee330904d5dc9f8ca81e856af1a455c02a999067b98e2"
+    },
+    {
+      "old": "scripts/run_model_0818_full_standard_evaluation.sh",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0818_full_standard_evaluation.sh",
+      "before_sha256": "cc223d63033447a1ee06166f9df1cd84d382c7830cdf6d95bc86a0088a6854e7",
+      "bytes": 2908,
+      "after_sha256": "8b6d9711771ef7319974fdea095172700e4d1e638aa9d2871232c55bd52d917d"
+    },
+    {
+      "old": "scripts/run_model_0815_p0_pf_nested_convergence.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_p0_pf_nested_convergence.py",
+      "before_sha256": "d7187f69361b894b4d317101a2af503205f7170382dd755eadab9029b4611a3b",
+      "bytes": 34151,
+      "after_sha256": "5d4b8b875ebcea7f3bb2e5dc6108398e851e969402de7b39a4e682fc4f86a7e4"
+    },
+    {
+      "old": "scripts/behavior_diagnostics.py",
+      "new": "src/Bayesian_state/workflows/analysis/behavior_diagnostics.py",
+      "before_sha256": "bf445488dcf198afc801a5f159b5659fd93cbf57475849584e9c80ee83a42a7c",
+      "bytes": 20323,
+      "after_sha256": "bf445488dcf198afc801a5f159b5659fd93cbf57475849584e9c80ee83a42a7c"
+    },
+    {
+      "old": "scripts/run_model_0818_boundary_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0818_boundary_recovery.py",
+      "before_sha256": "875250684b9e90027318803f3d56738892f355a32556b20dc701a84d8d905c71",
+      "bytes": 53387,
+      "after_sha256": "8cd3cc9e2ca2927c1847d4db954fdf31e97b68d839add2e5dbd602724d6e5bc9"
+    },
+    {
+      "old": "scripts/prepare_model_0818_subset_evaluation.py",
+      "new": "src/Bayesian_state/workflows/analysis/prepare_model_0818_subset_evaluation.py",
+      "before_sha256": "bfe6da0c9e9718007f7e1c189c3382cee625e1c501a6bf0cb73c75664e2abbff",
+      "bytes": 4139,
+      "after_sha256": "6aa8ef1fa32baf9d3fb7596d79efd980b3ca164246b18770c4584cf73fed81f9"
+    },
+    {
+      "old": "scripts/run_model_0804_fixed_g_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0804_fixed_g_recovery.py",
+      "before_sha256": "06acec02ba3d7e97fcccc4f98c64ff28f1089c11d62961125fd5831568ef1ee8",
+      "bytes": 34002,
+      "after_sha256": "018a70fd86571f0fa4453fe4fb4e86210ffb0dd858cee5201d2a6c3dacdcfcd3"
+    },
+    {
+      "old": "scripts/run_cond1_v14_confirm.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v14_confirm.py",
+      "before_sha256": "b40024c293649494aba483a458018b5670b7cf2957cdec278d03471cbe44ac77",
+      "bytes": 7490,
+      "after_sha256": "c059cbdd01f37bc612b25b0d3290a0b904186f6ff167909a7fabd7c12e36f887"
+    },
+    {
+      "old": "scripts/plot_model_0805_subject_fits.py",
+      "new": "src/Bayesian_state/workflows/reports/plot_model_0805_subject_fits.py",
+      "before_sha256": "12e1a1261f38ba9bbc1933670116ea5f81dc3189332745ce21f01d14611ddf3a",
+      "bytes": 13924,
+      "after_sha256": "6cc28b4a237a04b1c0a5ea5130590c19e53aff345d8c558e0bea12301960c361"
+    },
+    {
+      "old": "scripts/build_cond1_dynamic_rho_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_dynamic_rho_report.py",
+      "before_sha256": "4e6dc13ea7fd83711fed9a0403377c16e1e39932ccd60bb3c10af41c38f6069d",
+      "bytes": 35749,
+      "after_sha256": "04d3146b4733f858dde22960fbb052789427ec4dfa2daf382df4344f38f466f0"
+    },
+    {
+      "old": "scripts/run_model_0815_p1_mapping_sensitivity.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_p1_mapping_sensitivity.py",
+      "before_sha256": "d6667ee5ca0ae1fb9353b3c1fd6698f850e4cbb958e3d0104c67726c93199417",
+      "bytes": 43737,
+      "after_sha256": "3ddba5e3c7a2cd7b906dc50829a8da68511c7559e0810dcd40c3c953d61765f3"
+    },
+    {
+      "old": "scripts/build_model_0813_pf_choice_layer_artifact.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_0813_pf_choice_layer_artifact.py",
+      "before_sha256": "02ce7b556834cab45fcf7a87defd1aa1d0bc3388a9ac6c5db11d3657db430202",
+      "bytes": 25377,
+      "after_sha256": "245388a93cc6339bca52e894f1ede94f6025a7714785a0d19bb69dc5b34ba732"
+    },
+    {
+      "old": "scripts/run_model_0804_cond1_preflight.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0804_cond1_preflight.py",
+      "before_sha256": "21d1fec2c986ccb2237400a5cdfca74421847bed5680194939ebc5dcf223fcdc",
+      "bytes": 29822,
+      "after_sha256": "048a1db4d4e636abff4e696135edaf8210f1282bca3a4f082af1b4523f37ce76"
+    },
+    {
+      "old": "scripts/summarize_model_0804_alive_islands.py",
+      "new": "src/Bayesian_state/workflows/analysis/summarize_model_0804_alive_islands.py",
+      "before_sha256": "fe8925868fcbf3ca1817836355f978840f1ec8aca54ae18f785b35d7985f0b50",
+      "bytes": 7570,
+      "after_sha256": "e64fbfc1a2d8204863c91149d49d35e24e99005c6caee1cdbdb670d70f800a7e"
+    },
+    {
+      "old": "scripts/run_model_0813_pf_seed_averaging.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0813_pf_seed_averaging.py",
+      "before_sha256": "05c65a8b8c1f5cf73479ee12f52ed157849d77746f0db3701d0e8c52157db594",
+      "bytes": 50856,
+      "after_sha256": "a70e3000e30bdae9cf0712cab7e1efa977fc7047c52ec596ffed1e49e9b104cd"
+    },
+    {
+      "old": "scripts/run_cond1_v10_test8_hyper_then_sim.ps1",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v10_test8_hyper_then_sim.ps1",
+      "before_sha256": "3bb5415dfca7ad5c2aa16bb96493193fb09e396e24be837af9c9d368338ef109",
+      "bytes": 724,
+      "after_sha256": "3bb5415dfca7ad5c2aa16bb96493193fb09e396e24be837af9c9d368338ef109"
+    },
+    {
+      "old": "scripts/reevaluate_cond1_trajectory_caches.py",
+      "new": "src/Bayesian_state/workflows/analysis/reevaluate_cond1_trajectory_caches.py",
+      "before_sha256": "03b8297d4a14d72920cfa4b6d0178623e751ddcd8ce4ce8085fd9e8f009c27c9",
+      "bytes": 7030,
+      "after_sha256": "57c306d140d4f24de3c1fddd561d7822489f59493c323c83d4c807a38e187e8b"
+    },
+    {
+      "old": "scripts/build_model_0805_accuracy_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_0805_accuracy_report.py",
+      "before_sha256": "2f8439ecf9b7a4351cb8cfd6da3621820578a0fa4de14763ea04904a9324effc",
+      "bytes": 28351,
+      "after_sha256": "e0473c05df82bc86d66efa7f3ca03850242753e4a8698027103951f280a39905"
+    },
+    {
+      "old": "scripts/run_model_0815_p0_pf_convergence.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_p0_pf_convergence.py",
+      "before_sha256": "3c3502e7edbaf9ad4ddb1df62a9c65b576506beaee3e5c657b21743cc8348f06",
+      "bytes": 16857,
+      "after_sha256": "dbb604b78afb6a9e0090488698b5640a392e68f93e83f48393f5e716384afffb"
+    },
+    {
+      "old": "scripts/run_model_0826_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0826_recovery.py",
+      "before_sha256": "eb216b9b3db47f3a619742c2e92875925ed9104eb66b8b7172a08cb18573d793",
+      "bytes": 364,
+      "after_sha256": "f3063a914845db99abfe61aef05540c874d13dec1c3ef82d42ced9b6b78a900b"
+    },
+    {
+      "old": "scripts/build_model_0813_pf_seed_averaging_artifact.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_0813_pf_seed_averaging_artifact.py",
+      "before_sha256": "57388b62fd46fe7c904be3c1daf12fd597d6e55286a91d4c0c557a0d772fd591",
+      "bytes": 28155,
+      "after_sha256": "1a4a14be3d811c403ab15e93c297304c0e36d1f45ea97ff4444a84480f07a70b"
+    },
+    {
+      "old": "scripts/run_model_0803_cond1.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0803_cond1.py",
+      "before_sha256": "399b3f55c866d9b2ce11ea5f9ef2e6a1334ce5626ccad92a85d5248ba4ceb6a0",
+      "bytes": 76464,
+      "after_sha256": "aafe98543ee9fe117ef1224ede17e968ec423a6188afc770054e3b160d6eb108"
+    },
+    {
+      "old": "scripts/run_model_0815_h3_feedback_reactive_comparison.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_h3_feedback_reactive_comparison.py",
+      "before_sha256": "10b808d01d346788cdbf1512940fb99242f24f1c09fad338a64fa74d06425b21",
+      "bytes": 25332,
+      "after_sha256": "6bb542e744b9f75b2c040d6e59401ca84bc949f87f80bcf67cc5f5d0ad873c3d"
+    },
+    {
+      "old": "scripts/build_cond1_v14_candidates.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_v14_candidates.py",
+      "before_sha256": "319b539ed565fd3e5da73acda9c7aa5ab328941faae9210a0bba0b6c3e16273b",
+      "bytes": 3505,
+      "after_sha256": "937d7806eee09f64ad947a8cd75224796e432399128fe9e3788b5a71740a55f0"
+    },
+    {
+      "old": "scripts/run_model_0815_p0_persistent_execution_counterfactual.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_p0_persistent_execution_counterfactual.py",
+      "before_sha256": "b07dd93a50593a31d6a84ad7dacda66001fc2c40407888b967df880bf707b203",
+      "bytes": 39543,
+      "after_sha256": "444e65eb908b079b80ab46621db025de2a61c44da09782ff2f1d2d085c5b6c36"
+    },
+    {
+      "old": "scripts/run_cond1_mechanism_external_validation.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_external_validation.py",
+      "before_sha256": "cc878a3d2304e6437dfbf0430fd8b3e31efa186f44564a2901da65315e8fd47d",
+      "bytes": 19421,
+      "after_sha256": "2f5ebc5a846c9c3711108b108a184dc7e4add40158858623c7e981ba74cd1672"
+    },
+    {
+      "old": "scripts/run_model_0805_real_predictive.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0805_real_predictive.py",
+      "before_sha256": "5aca5cc65b3024c07f13a649d6b4d6b2882bfe53bba99f7ed9df0e609fe97a19",
+      "bytes": 52852,
+      "after_sha256": "a668fb74ca5c93630e03a01155dbbb6172cfe06d0e39480a3e4b674fbbc090cb"
+    },
+    {
+      "old": "scripts/diagnose_model_0804_adaptation.py",
+      "new": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_adaptation.py",
+      "before_sha256": "e47f243f12b09438dcd56dba617fe5f37e11a9f810df560fd9d415856db43ae8",
+      "bytes": 24646,
+      "after_sha256": "f52bbc086cf577463ec76725052a9e10b6460af80fbe2b4b74585d1f29b530cc"
+    },
+    {
+      "old": "scripts/summarize_cond1_global_external_validation.py",
+      "new": "src/Bayesian_state/workflows/analysis/summarize_cond1_global_external_validation.py",
+      "before_sha256": "3a80ad133eab1f36b26c03f00f077561d09029b14a5cef1677084ff86e0c2aad",
+      "bytes": 9651,
+      "after_sha256": "d6e8297e0cced204fefeaa9b92062e0564b9719f402cf6c4012b6adaf5a67b05"
+    },
+    {
+      "old": "scripts/resume_model_0818_evaluation_after_8.sh",
+      "new": "src/Bayesian_state/workflows/runs/resume_model_0818_evaluation_after_8.sh",
+      "before_sha256": "765fdd126d3b36b99153f2631aa071de0ebc2ce471ff3aa81e5fdaaca20d4b86",
+      "bytes": 2785,
+      "after_sha256": "df1da278ae9f5986e906f3c3aabba403111a43287002860498f4f007ba2edd74"
+    },
+    {
+      "old": "scripts/build_cond1_mechanism_report_artifact.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_mechanism_report_artifact.py",
+      "before_sha256": "318f2fd427c93648b3cdde7111188c3ba8a5e30f4522a0777a33e748b67151c8",
+      "bytes": 56473,
+      "after_sha256": "318f2fd427c93648b3cdde7111188c3ba8a5e30f4522a0777a33e748b67151c8"
+    },
+    {
+      "old": "scripts/plot_model_0815_h4_accuracy_bands.py",
+      "new": "src/Bayesian_state/workflows/reports/plot_model_0815_h4_accuracy_bands.py",
+      "before_sha256": "a41a70575f6f47b5c835876e6acde07c57cc2678ad5a230c324b7cad1a684975",
+      "bytes": 22616,
+      "after_sha256": "89aa12bf4a4384f1c2a5a69731d123fce196f9fa3a87ddbb6886a85b15219e44"
+    },
+    {
+      "old": "scripts/run_cond1_acquisition_changepoint_sweep.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_acquisition_changepoint_sweep.py",
+      "before_sha256": "1f698aa4954a3b6bc5e7a5a6963fd44ad5ce332a238747e18806cb3deabb8085",
+      "bytes": 16336,
+      "after_sha256": "0783e9abef16d949d2767e7e4ce96e38a300ecc5cacd71c4235e99c48a9fe956"
+    },
+    {
+      "old": "scripts/run_model_0813_pf_mechanism_reachability.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0813_pf_mechanism_reachability.py",
+      "before_sha256": "914a3d6a9e5d76022f2e11d5535405f6a44138626c826bd0eef299a589b0cb64",
+      "bytes": 43867,
+      "after_sha256": "b6f75a176990c6bffaa96f67154b918e3f02aa85b64f711092522f4a6675c292"
+    },
+    {
+      "old": "scripts/run_cond1_v14_pilot.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v14_pilot.py",
+      "before_sha256": "5cfab62dda8c611aea01b3492881b4a48f259c69f8047a502a08d0ea2fc74c10",
+      "bytes": 15933,
+      "after_sha256": "1257b835973bea2828ffea999553a937b46f68bf1e4b57d73c5d53c89c61cf70"
+    },
+    {
+      "old": "scripts/diagnose_model_0804_pgas.py",
+      "new": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_pgas.py",
+      "before_sha256": "1a971db03b58e7226c6331713784ee7749fdab7b4e72fb9fc4a4c52a7dde66be",
+      "bytes": 20514,
+      "after_sha256": "dce97c22bc52f5b9e45a6e43b3caebce56eafb9d39596be979102fa78aaeb082"
+    },
+    {
+      "old": "scripts/diagnose_model_0805_accuracy.py",
+      "new": "src/Bayesian_state/workflows/analysis/diagnose_model_0805_accuracy.py",
+      "before_sha256": "a9422182f6a252674316001c33f510a612bb93f9882ea0d90d7df7486f6d9f3b",
+      "bytes": 22993,
+      "after_sha256": "7f443f0cd958aa1af6fb82d784e49752e51faab9a51d85d8fa05f46287cfa244"
+    },
+    {
+      "old": "scripts/build_cond1_behavior_event_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_behavior_event_report.py",
+      "before_sha256": "84f26b2c575b0be29fdc38388ceebba2cc05c3bcc648fe604771d8324ebe3026",
+      "bytes": 33510,
+      "after_sha256": "c263e5bd47863c712afe852436163d401c067d878d3c5d5d6ed8ef6cf1711003"
+    },
+    {
+      "old": "scripts/run_model_0804_particle_stability_audit.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0804_particle_stability_audit.py",
+      "before_sha256": "ceaa3f3f8527f8ba1e311841d950994973ab0d8e710a121780b5fb1d7a6d92a6",
+      "bytes": 35060,
+      "after_sha256": "d4bd652b21fea439eab678226e83b4f8f2e8d3416f504d48baebd1bd0ac14f97"
+    },
+    {
+      "old": "scripts/analyze_model_architecture_effect_audit.py",
+      "new": "src/Bayesian_state/workflows/analysis/analyze_model_architecture_effect_audit.py",
+      "before_sha256": "073151a4d9eefbdcbe6a0260a320d57deb63822a1c89f849b62cb967701b333b",
+      "bytes": 15179,
+      "after_sha256": "75bb167998e7603d64fd6ce7fe2bfe4776ce5005e4b4f7956626532a82c205dc"
+    },
+    {
+      "old": "scripts/run_model_architecture_effect_audit.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_architecture_effect_audit.py",
+      "before_sha256": "490fd9f6a1baf539deca86f6c4011cc9ba5a9eeff43857edb5fbf10ca34be225",
+      "bytes": 13865,
+      "after_sha256": "e005c29e00960e58f2a3de6a3afe6cae0f53e832f93ff45a7fda0503b107a204"
+    },
+    {
+      "old": "scripts/run_model_0815_b0_adaptive_controller_pilot.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_b0_adaptive_controller_pilot.py",
+      "before_sha256": "993f5b225544b57197b1e22c761fee2eb7edcae0ae007103ceddfa0888cb4a1d",
+      "bytes": 47045,
+      "after_sha256": "e71813e5659c78dc857b3e76fa16777ed9a2387e5b164b609b3fef1a8eee7a63"
+    },
+    {
+      "old": "scripts/analyze_cond1_phase_coverage.py",
+      "new": "src/Bayesian_state/workflows/analysis/analyze_cond1_phase_coverage.py",
+      "before_sha256": "2b72432d0caef9a711cbcf47893f9b7eaf49f4e0624aa3f42dcadb4307305472",
+      "bytes": 32834,
+      "after_sha256": "663d071e06ac752255fd5878a260e9baff194727cfb0dee47eaa02711149fa23"
+    },
+    {
+      "old": "scripts/run_model_0813_pf_choice_layer_audit.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0813_pf_choice_layer_audit.py",
+      "before_sha256": "b01dc4173219da32da29698efba7b672b5d5390b36cdfe8a7a78b8ca0a9c0547",
+      "bytes": 46563,
+      "after_sha256": "b8e72e767f97f2ee6305aa9aeaa574e6bcc85b1b9da7be4a1dcb62aa58ee982f"
+    },
+    {
+      "old": "scripts/run_model0809_boundary_probe_confidence_selected3.sh",
+      "new": "src/Bayesian_state/workflows/runs/run_model0809_boundary_probe_confidence_selected3.sh",
+      "before_sha256": "90a9b60f8b11fd63e040bb5d0b02852e385d3d0700301604ba62c40b5c81d826",
+      "bytes": 6074,
+      "after_sha256": "b3bba18ded03363eabecec1b210706d0a8a71efb21dae58b0a2c0548ef64b086"
+    },
+    {
+      "old": "scripts/run_model_0813_pf_parameter_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0813_pf_parameter_recovery.py",
+      "before_sha256": "810bcad0493c7912eef27c80c80edf41ec993bc9d9a002ee1c802d84e4e6b6f7",
+      "bytes": 63581,
+      "after_sha256": "8ee98cddaf07a64c751c1ebb57ad0e5ab575bf07a8bf8d86f2193bc33eac6dc5"
+    },
+    {
+      "old": "scripts/run_model_0806_uncertainty_gate.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0806_uncertainty_gate.py",
+      "before_sha256": "b7598740fcb44aebfeb1c27831e7809f2d3a79617375ac465e0f8c89dfa1703b",
+      "bytes": 17473,
+      "after_sha256": "07a3c450cc00811ee9f96b3e51f6cb4fa56e5966e0b4d42c7d9c1be57f559f24"
+    },
+    {
+      "old": "scripts/run_model_0818_standard_evaluation.sh",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0818_standard_evaluation.sh",
+      "before_sha256": "1caee519f5233dda0140196a7b062b60c213deedf19e3e394a10690c0b56e6ca",
+      "bytes": 2419,
+      "after_sha256": "e891aad3824c64730736813f9210e473d63c58da1519670ba172b180e96b0967"
+    },
+    {
+      "old": "scripts/run_model_0804_marginalized_lapse_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0804_marginalized_lapse_recovery.py",
+      "before_sha256": "0eec405f31908f9ea192d8bb09ce4ace1b8cfe07a61361134d425d4724ac9fd3",
+      "bytes": 44240,
+      "after_sha256": "3405a1a221d1170da8bf9da4d432fa5f606a6ed71807aced0859140c60c8cb67"
+    },
+    {
+      "old": "scripts/plot_model_0805_trialwise_fits.py",
+      "new": "src/Bayesian_state/workflows/reports/plot_model_0805_trialwise_fits.py",
+      "before_sha256": "71582f96a834c402c914cfea17af89ffaf9b87d0d6182ffa66761c80556f18d7",
+      "bytes": 32301,
+      "after_sha256": "840ab8e32fd62d23323a22b22522913a722a544c91906004bc4c4869dbebc131"
+    },
+    {
+      "old": "scripts/build_model_0813_pf_calibration_artifact.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_0813_pf_calibration_artifact.py",
+      "before_sha256": "0e96ca6a3403b9b831c8a3748e3a2b83887a6829fda58643af5e140f84474e23",
+      "bytes": 23011,
+      "after_sha256": "b4b6bca7b6c07ed94ef20db6bbe66023a6874c3411b68d1736d3772dadc75879"
+    },
+    {
+      "old": "scripts/run_model_0806_dynamic_m_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0806_dynamic_m_recovery.py",
+      "before_sha256": "486e064ad0dd5bd0659b6950f19f9cd7fa4d4b4ceb60726d0bf2b09503bfef87",
+      "bytes": 30127,
+      "after_sha256": "29b1579e37300282b9db31fccd62feb294fbaf0cc3ee71cdefd31a5906ac11c8"
+    },
+    {
+      "old": "scripts/summarize_cond1_mechanism_replication.py",
+      "new": "src/Bayesian_state/workflows/analysis/summarize_cond1_mechanism_replication.py",
+      "before_sha256": "04ba7abb611abe004030c1a7f917f57f41d9dc7ccbd435e2b8c3f06f332c365b",
+      "bytes": 4887,
+      "after_sha256": "04ba7abb611abe004030c1a7f917f57f41d9dc7ccbd435e2b8c3f06f332c365b"
+    },
+    {
+      "old": "scripts/run_model_0815_h2_legacy_count_comparison.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_h2_legacy_count_comparison.py",
+      "before_sha256": "d1428f5919d6e9a561709b636a27ea0fa0735fa335b76f7ddc81b4ac44955de2",
+      "bytes": 33909,
+      "after_sha256": "f6e8a73a73a169a5176f531f8094f332762776136c5f3e2e53bc85bb28fcdc91"
+    },
+    {
+      "old": "scripts/build_cond1_trajectory_ppc_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_trajectory_ppc_report.py",
+      "before_sha256": "dea7d94da40952d568567f4aa27a8bb4eefe97bf0dc450e196791b8646013fc9",
+      "bytes": 42902,
+      "after_sha256": "0b6517af0c48c20be25d6e51944543663d7767348754d3f4b0cac4412bff8dbd"
+    },
+    {
+      "old": "scripts/build_model_architecture_effect_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_model_architecture_effect_report.py",
+      "before_sha256": "9dd5db9bc14d7398dcfff1ff1e51dfa07afc33d7ed6c79789c89681f7933b281",
+      "bytes": 31570,
+      "after_sha256": "aea29704d6b774c57c0780d8884c17807ebc889ecc072444d0073c5fc331eda4"
+    },
+    {
+      "old": "scripts/run_model_0806_real_rolling.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0806_real_rolling.py",
+      "before_sha256": "2fe8bc5fb0c143527c282cf3d9f4155bf0ca21fd74c3bbba47fd3e90f57a45f4",
+      "bytes": 37915,
+      "after_sha256": "e6305f9735b8b068ee85b5ec1a12b79d532e780be59540772e593d6d5860aa7e"
+    },
+    {
+      "old": "scripts/run_cond1_v14_frozen_confirmation.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v14_frozen_confirmation.py",
+      "before_sha256": "5b626fab2fae5128bb7d613350675dafb914361c980033b5af4f2c7200f98445",
+      "bytes": 18531,
+      "after_sha256": "68a2bb9bd60e9297b035f15feea967ef4fded3b3ceb3b59517e1f9f3eb0dcc82"
+    },
+    {
+      "old": "scripts/analyze_cond1_dynamic_rho_separability.py",
+      "new": "src/Bayesian_state/workflows/analysis/analyze_cond1_dynamic_rho_separability.py",
+      "before_sha256": "a27f79e302a81bca867139a31cca4439959e53fddeeac5eb37863f86fb18ed05",
+      "bytes": 13103,
+      "after_sha256": "88ef88516474a36515cccc6e809d23b1cc9818ffd3837c17bde543feb38e5dd5"
+    },
+    {
+      "old": "scripts/summarize_cond1_dynamic_rho_results.py",
+      "new": "src/Bayesian_state/workflows/analysis/summarize_cond1_dynamic_rho_results.py",
+      "before_sha256": "900fcc7fc28ed70cf94ff9472eb92ea4d7b24fd95cdb146f090e0ae4391a1a22",
+      "bytes": 14343,
+      "after_sha256": "3dea9001f1718bf80cfc95eab9a8e93fd2c7cc8bdb2a3dfdcc4dacf28ce748c8"
+    },
+    {
+      "old": "scripts/run_cond1_behavior_event_atlas.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_behavior_event_atlas.py",
+      "before_sha256": "7c99d0aaab9532287a18850ffceb2549d346317d6acb12347631b3d47b0f6781",
+      "bytes": 59828,
+      "after_sha256": "983d9e7640b24aaf31e44ab7fbab8becb178161c015722955f0f4a6d2d0f45c3"
+    },
+    {
+      "old": "scripts/run_model_0815_p1_state_identifiability.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0815_p1_state_identifiability.py",
+      "before_sha256": "d3ecc475c8f96267a61b0dde8c950d8dcb652d4c3bd12eec24bb4b020a61483f",
+      "bytes": 50424,
+      "after_sha256": "629bc4285502f13d1ad140d32400d32b2fa9a879f7fc8854d836311529e5b93c"
+    },
+    {
+      "old": "scripts/run_cond1_v14_boundary_probe.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v14_boundary_probe.py",
+      "before_sha256": "b74a2b770f080f28e8f6190f65b201cbbba19cf8836be9b1595885f660538689",
+      "bytes": 11807,
+      "after_sha256": "ce4efd3bf0e9ec4dd2d9ad1743b19a5f78b7aea0f1040e52d95b363a2ad55459"
+    },
+    {
+      "old": "scripts/build_cond1_phase_coverage_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_phase_coverage_report.py",
+      "before_sha256": "ad1221953c12025a91eb316c2081e760bfd8df32055feea6a1b94a7f5627428b",
+      "bytes": 34839,
+      "after_sha256": "e45fe45b0d50b64a127bc524461608492fde6a83b0c6b8af3412f29acff242fd"
+    },
+    {
+      "old": "scripts/analyze_cond1_v14_results.py",
+      "new": "src/Bayesian_state/workflows/analysis/analyze_cond1_v14_results.py",
+      "before_sha256": "fc943f854df7b6df28d48f70e7d504e77d2d8ce8f087a5ed65972085dd7609f8",
+      "bytes": 15996,
+      "after_sha256": "5aa91845d081066e7a1ed301a09c4a5bbcc09e93b41de2be1463d7a3ad6020fb"
+    },
+    {
+      "old": "scripts/analyze_cond1_v14_fine.py",
+      "new": "src/Bayesian_state/workflows/analysis/analyze_cond1_v14_fine.py",
+      "before_sha256": "d9c6db06345bad3dc047cff4c58854c5dda15bedd23560fe395c261c0a8e3781",
+      "bytes": 13301,
+      "after_sha256": "b82a2534a3f01cb9ab18e8dd02682d402ae83859069330f54d1016bec45a2b14"
+    },
+    {
+      "old": "scripts/run_cond1_b0_trajectory_ppc.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_b0_trajectory_ppc.py",
+      "before_sha256": "1bd190ec236088139fd0bf20d23b8cdd386f4af881c9c551d25a2f3bc17f8628",
+      "bytes": 70293,
+      "after_sha256": "45076202e32085aa132e4c19eb279ef9977ca0f6548ee5ff3396279a0847fd1d"
+    },
+    {
+      "old": "scripts/run_model_0806_targeted_diagnostics.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0806_targeted_diagnostics.py",
+      "before_sha256": "1bf084e61276baa4d52b769c972955078d76a2b7afd49e39521225f2ba7c58cc",
+      "bytes": 40416,
+      "after_sha256": "ffa066ddba9610c4accf877285b7530633c90f92bc103670edfb478bef366bf3"
+    },
+    {
+      "old": "scripts/run_cond1_dynamic_rho_sweep.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_dynamic_rho_sweep.py",
+      "before_sha256": "f240ccab7367943111bb54525f4e97fc0eed29e52ef2fb9f49d2b9aeec248b77",
+      "bytes": 23343,
+      "after_sha256": "85ec2f0fa290ca26cc1ecbbc1de4983fcad9e8486030ca2d574c2ab32c75542f"
+    },
+    {
+      "old": "scripts/run_cond1_mechanism_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_recovery.py",
+      "before_sha256": "ecebed529d040c97297c1bf02a281da3cfd01c944cfa28764ff8ce9365e7d3e0",
+      "bytes": 18553,
+      "after_sha256": "ad27557ce2cd4c2977e9076066f66427cbcc790943d24865d5ff9581a2b4864e"
+    },
+    {
+      "old": "scripts/build_cond1_v14_report.py",
+      "new": "src/Bayesian_state/workflows/reports/build_cond1_v14_report.py",
+      "before_sha256": "a5ad5c74117e8b7de2a4225da836e3cac1feb76d4647b6584ce0e5bfbfe97623",
+      "bytes": 23784,
+      "after_sha256": "e37b5cfe1ccfcc6be9330adde63f7a6e4f441bedaaf689fe03f9792692f11518"
+    },
+    {
+      "old": "scripts/run_model_0804_regeneration_recovery.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0804_regeneration_recovery.py",
+      "before_sha256": "8d96a4abd7fe2b7383e26a9febc9956f9433c2ddbe15f99c126f9a035dbf8998",
+      "bytes": 53061,
+      "after_sha256": "5f1e92d6b852480a57d07361f59a33ec10e102d3ac46e04938c4b61576e2ac8d"
+    },
+    {
+      "old": "scripts/run_cond1_v14_state_diagnostics.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_v14_state_diagnostics.py",
+      "before_sha256": "d0e6963bc048fe470590720d7764ca7a24c96c393c0907a7ba9444ebd18db70e",
+      "bytes": 7378,
+      "after_sha256": "4b59d00b4f3f8a017c0deea5ca4ef35a20ae39db74ac1390c12ff73beaaa4830"
+    },
+    {
+      "old": "scripts/run_cond1_mechanism_screen.py",
+      "new": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_screen.py",
+      "before_sha256": "6d5827b827fbea0d1fdc1aa557127d3cf49906d6d25c6cb8e6c3e49a67a2e691",
+      "bytes": 36197,
+      "after_sha256": "47b668553a2adb72a5b7a3d4ff50caa5d8ebf26f283bd2727383f2cad6c9d362"
+    },
+    {
+      "old": "scripts/run_model_0813_pf_calibration.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0813_pf_calibration.py",
+      "before_sha256": "9b88462112becc8dfbb8f23699075eb5aec4aa92a06def89fda0b69ef2306482",
+      "bytes": 55268,
+      "after_sha256": "6f6955e703d3c25ff533ceb56d2294b2f8befef1139667f06563bf1bae0e6401"
+    },
+    {
+      "old": "scripts/run_model_0818_seed_convergence.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0818_seed_convergence.py",
+      "before_sha256": "34de19517345713ea9acd89d35b6de3312faac4796363bd6bdf5002240d7d744",
+      "bytes": 27912,
+      "after_sha256": "3c05447572d41010ebaaf9a8911b1523d925ad1680f71f43bbdc5ce7fae8ce7f"
+    },
+    {
+      "old": "scripts/run_model_0818_exploratory_observed_fit.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0818_exploratory_observed_fit.py",
+      "before_sha256": "8adf1d7b87806c80625983b8e221726fe9dc87bd11c163976092037c79febdf3",
+      "bytes": 32757,
+      "after_sha256": "3e23fb3d086495bc67db1fb62db0cbf1f5fab2464a30920465d42bef4552d535"
+    },
+    {
+      "old": "scripts/summarize_cond1_global_mechanism_mixture.py",
+      "new": "src/Bayesian_state/workflows/analysis/summarize_cond1_global_mechanism_mixture.py",
+      "before_sha256": "ff10819df1d1fff5297cb4f45202e94d864f552fd551f00b05a9eaffd9bcd1f1",
+      "bytes": 14279,
+      "after_sha256": "9453aea35a5d923217451e12c684620e547984469611425722d5f2195db0c3b6"
+    },
+    {
+      "old": "scripts/run_model_0826_belief_transport_counterfactual.py",
+      "new": "src/Bayesian_state/workflows/runs/run_model_0826_belief_transport_counterfactual.py",
+      "before_sha256": "55285a336e40697850342edbbedff874ef53ecbf16c2a3288dc0305e3f84714e",
+      "bytes": 12523,
+      "after_sha256": "db16ea019675530e6e9fd77919aca125f64aad67efb222edac4a1c9475769c30"
+    },
+    {
+      "old": "scripts/compare_cond1_static_global_vs_c1.py",
+      "new": "src/Bayesian_state/workflows/analysis/compare_cond1_static_global_vs_c1.py",
+      "before_sha256": "96ce6e18ff3960deb8b4847efacc923e2b8760a8c11dadae9efbca667b26b1b5",
+      "bytes": 5849,
+      "after_sha256": "5282136b86b7efbeb4d2967fb37bedb983336e64266fb95c75cf879ce2cb92ee"
+    },
+    {
+      "old": "scripts/benchmarks/benchmark_boundary_geometry.py",
+      "new": "src/Bayesian_state/workflows/benchmarks/benchmark_boundary_geometry.py",
+      "before_sha256": "853a2cd629a09bdde85dbb19b7ee757c7846ee9a687d9ca6461b12a264fe2ed2",
+      "bytes": 1672,
+      "after_sha256": "853a2cd629a09bdde85dbb19b7ee757c7846ee9a687d9ca6461b12a264fe2ed2"
+    },
+    {
+      "old": "scripts/benchmarks/README.md",
+      "new": "src/Bayesian_state/workflows/benchmarks/README.md",
+      "before_sha256": "af8e94149f2a3fa7290768d493bae2f484a1c6d6e6b482f3066d5152ad3a1b52",
+      "bytes": 417,
+      "after_sha256": "6f925a77bdc5fdca2913c51ef33c512865e1e09ca68a23e84b2244c70da77110"
+    },
+    {
+      "old": "docs/README.md",
+      "new": "src/Bayesian_state/docs/README.md",
+      "before_sha256": "802793b1069c9eedd0d24469d53b1350a153901ed7d0e625f296a8ae1eb1dd27",
+      "bytes": 718,
+      "after_sha256": "e09bfb0d7e0a03592d22d62610b06b9f8020b34dfcb20080955b6328b119f04a"
+    },
+    {
+      "old": "docs/REPOSITORY_MANAGEMENT.md",
+      "new": "src/Bayesian_state/docs/history/repository_management_20260908.md",
+      "before_sha256": "3e4e142fa549a0cbb434440575b71a8c49e1cb1da2421230fa8916a56f8f1ec4",
+      "bytes": 5023,
+      "after_sha256": "3e4e142fa549a0cbb434440575b71a8c49e1cb1da2421230fa8916a56f8f1ec4"
+    },
+    {
+      "old": "docs/superpowers/plans/2026-09-08-shared-model.md",
+      "new": "src/Bayesian_state/docs/superpowers/plans/2026-09-08-shared-model.md",
+      "before_sha256": "6c507937637ff65cfa7e190af9e5ad7d9479daee1d9e84d4ccec009071b7616a",
+      "bytes": 2178,
+      "after_sha256": "6c507937637ff65cfa7e190af9e5ad7d9479daee1d9e84d4ccec009071b7616a"
+    },
+    {
+      "old": "docs/superpowers/plans/2026-09-01-hyper-cd-2.md",
+      "new": "src/Bayesian_state/docs/superpowers/plans/2026-09-01-hyper-cd-2.md",
+      "before_sha256": "ad2655ec04b1534eb0e8ac0326ca9ebef8671382f7ed5c583dc038cb9d53cbcd",
+      "bytes": 13555,
+      "after_sha256": "ad2655ec04b1534eb0e8ac0326ca9ebef8671382f7ed5c583dc038cb9d53cbcd"
+    },
+    {
+      "old": "docs/superpowers/plans/2026-09-01-model-0826-recovery.md",
+      "new": "src/Bayesian_state/docs/superpowers/plans/2026-09-01-model-0826-recovery.md",
+      "before_sha256": "43612f7de05d6e3bfa48f3776cd891d508ecfc5d383bb5c801688c147ce0d41e",
+      "bytes": 19071,
+      "after_sha256": "43612f7de05d6e3bfa48f3776cd891d508ecfc5d383bb5c801688c147ce0d41e"
+    },
+    {
+      "old": "docs/superpowers/specs/2026-09-01-model-0826-recovery-design.md",
+      "new": "src/Bayesian_state/docs/superpowers/specs/2026-09-01-model-0826-recovery-design.md",
+      "before_sha256": "38773458bace3431504b6d0feb20d849da85d50c2e3c0118507f2a9d0dee537b",
+      "bytes": 9869,
+      "after_sha256": "38773458bace3431504b6d0feb20d849da85d50c2e3c0118507f2a9d0dee537b"
+    },
+    {
+      "old": "docs/superpowers/specs/2026-09-01-hyper-cd-2-design.md",
+      "new": "src/Bayesian_state/docs/superpowers/specs/2026-09-01-hyper-cd-2-design.md",
+      "before_sha256": "bf3f96a92750592c0386d5daf69e4e653362e23d2329e1458718a7883e3c8bca",
+      "bytes": 6136,
+      "after_sha256": "bf3f96a92750592c0386d5daf69e4e653362e23d2329e1458718a7883e3c8bca"
+    },
+    {
+      "old": "docs/history/post-prior-trans.md",
+      "new": "src/Bayesian_state/docs/history/post-prior-trans.md",
+      "before_sha256": "99df342121613f2effc3528d08b2b2d67393f6649f1c9421ab00298c8c31d76e",
+      "bytes": 4288,
+      "after_sha256": "99df342121613f2effc3528d08b2b2d67393f6649f1c9421ab00298c8c31d76e"
+    },
+    {
+      "old": "docs/history/model_v14_frozen_confirmation.md",
+      "new": "src/Bayesian_state/docs/history/model_v14_frozen_confirmation.md",
+      "before_sha256": "98f91c6b154c84ae38e2c27441fb27d2abff55224a201c0c59f7b697ea32607a",
+      "bytes": 2563,
+      "after_sha256": "98f91c6b154c84ae38e2c27441fb27d2abff55224a201c0c59f7b697ea32607a"
+    },
+    {
+      "old": "docs/history/model_0806_workflow.md",
+      "new": "src/Bayesian_state/docs/history/model_0806_workflow.md",
+      "before_sha256": "992a6809bb56c4996a85b10c3fc03a642bd545c4d617fcf3efa5d828060295ef",
+      "bytes": 4764,
+      "after_sha256": "992a6809bb56c4996a85b10c3fc03a642bd545c4d617fcf3efa5d828060295ef"
+    },
+    {
+      "old": "docs/history/hypothesis_transition_strategy_reference.md",
+      "new": "src/Bayesian_state/docs/history/hypothesis_transition_strategy_reference.md",
+      "before_sha256": "f03674d485aa7e42c716d28e181e0e2cdd48a8b14d3c9bf614a96eb6cc80eaef",
+      "bytes": 14356,
+      "after_sha256": "f03674d485aa7e42c716d28e181e0e2cdd48a8b14d3c9bf614a96eb6cc80eaef"
+    },
+    {
+      "old": "docs/history/model_v14_fine_checkpoint.md",
+      "new": "src/Bayesian_state/docs/history/model_v14_fine_checkpoint.md",
+      "before_sha256": "d8b4366cdada2d09744674e864180e421d60b9dc9610660e50c3198d767bd69c",
+      "bytes": 2756,
+      "after_sha256": "d8b4366cdada2d09744674e864180e421d60b9dc9610660e50c3198d767bd69c"
+    },
+    {
+      "old": "docs/history/model_v13_summary.md",
+      "new": "src/Bayesian_state/docs/history/model_v13_summary.md",
+      "before_sha256": "503b5d94bfb1807af6baef89dcd9a22fa266311353edee0daa8c10c1330eebb2",
+      "bytes": 10691,
+      "after_sha256": "503b5d94bfb1807af6baef89dcd9a22fa266311353edee0daa8c10c1330eebb2"
+    },
+    {
+      "old": "docs/history/model_v14_boundary_checkpoint.md",
+      "new": "src/Bayesian_state/docs/history/model_v14_boundary_checkpoint.md",
+      "before_sha256": "83f4aceda421da94a5fb84c3090c8c6cf975cbee29ece1bda195a20a85b2b43e",
+      "bytes": 948,
+      "after_sha256": "83f4aceda421da94a5fb84c3090c8c6cf975cbee29ece1bda195a20a85b2b43e"
+    },
+    {
+      "old": "docs/history/run_grid_optimization.md",
+      "new": "src/Bayesian_state/docs/history/run_grid_optimization.md",
+      "before_sha256": "6ece668652155e138e6c143302cae06d9c8b6e6ca13f1f063c343d7edd0028cb",
+      "bytes": 5782,
+      "after_sha256": "6ece668652155e138e6c143302cae06d9c8b6e6ca13f1f063c343d7edd0028cb"
+    },
+    {
+      "old": "docs/maintenance/LAYOUT_MIGRATION_20260908.md",
+      "new": "src/Bayesian_state/docs/maintenance/LAYOUT_MIGRATION_20260908.md",
+      "before_sha256": "df27202bab1cd9301ad2abafb7590ccaefaf5b6331b74859697c1469c07288fc",
+      "bytes": 4312,
+      "after_sha256": "df27202bab1cd9301ad2abafb7590ccaefaf5b6331b74859697c1469c07288fc"
+    },
+    {
+      "old": "docs/maintenance/layout_20260908.json",
+      "new": "src/Bayesian_state/docs/maintenance/layout_20260908.json",
+      "before_sha256": "e355be174f51b83f731d8c5b141f96816e932b46f82d22d6526b7f263f14eddf",
+      "bytes": 66855,
+      "after_sha256": "e355be174f51b83f731d8c5b141f96816e932b46f82d22d6526b7f263f14eddf"
+    },
+    {
+      "old": "docs/maintenance/cleanup_20260908.json",
+      "new": "src/Bayesian_state/docs/maintenance/cleanup_20260908.json",
+      "before_sha256": "8f43aea1d6c014dd6e562edd48c1940b7367b7615ecb261481e829d1c712add6",
+      "bytes": 87038,
+      "after_sha256": "8f43aea1d6c014dd6e562edd48c1940b7367b7615ecb261481e829d1c712add6"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/artifact.json",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/artifact.json",
+      "before_sha256": "bc76c94178b384585b420d7127ab4f0c889d329a3e2b94bdf14b7f7f34bb3bf7",
+      "bytes": 38591,
+      "after_sha256": "bc76c94178b384585b420d7127ab4f0c889d329a3e2b94bdf14b7f7f34bb3bf7"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/VALIDATION.md",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/VALIDATION.md",
+      "before_sha256": "c707cd79efccd16684ba5d45117a01db2ea9c85c291dac49fafd652080334e0b",
+      "bytes": 2732,
+      "after_sha256": "c707cd79efccd16684ba5d45117a01db2ea9c85c291dac49fafd652080334e0b"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/DESIGN.md",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/DESIGN.md",
+      "before_sha256": "b829e0d5c56e49ebc693fd35b5bbe5d5476d8ee2adfbd5e0324b80760e5f2cd7",
+      "bytes": 1973,
+      "after_sha256": "b829e0d5c56e49ebc693fd35b5bbe5d5476d8ee2adfbd5e0324b80760e5f2cd7"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/report_source_notes.md",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/report_source_notes.md",
+      "before_sha256": "6e4052754c62cca156cf5f66e4cc2ae43de0fe1051d362533a569a34f8042a74",
+      "bytes": 4455,
+      "after_sha256": "6e4052754c62cca156cf5f66e4cc2ae43de0fe1051d362533a569a34f8042a74"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/REPORT.md",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/REPORT.md",
+      "before_sha256": "daa1bed8b4237f634e8e2094348f6fb7b83af7f456e84c681305f1d188ab9ff1",
+      "bytes": 19247,
+      "after_sha256": "daa1bed8b4237f634e8e2094348f6fb7b83af7f456e84c681305f1d188ab9ff1"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/HTML_BUILD_BLOCKER.md",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/HTML_BUILD_BLOCKER.md",
+      "before_sha256": "c60c9762bf2edd8648e97191576f3aa1a861f4de35d12d5a84e3fd21064bb1a8",
+      "bytes": 702,
+      "after_sha256": "c60c9762bf2edd8648e97191576f3aa1a861f4de35d12d5a84e3fd21064bb1a8"
+    },
+    {
+      "old": "reports/model_0813_pf_literature_audit_20260814/audit_metrics.json",
+      "new": "results/model_dynamic/0813_pf/reports/literature_audit_20260814/audit_metrics.json",
+      "before_sha256": "debb9e2149b8fb3d937b92ee21b17831ed9d5d9c4f5f17a809bb044ba1b97003",
+      "bytes": 5484,
+      "after_sha256": "debb9e2149b8fb3d937b92ee21b17831ed9d5d9c4f5f17a809bb044ba1b97003"
+    },
+    {
+      "old": "reports/model_0826/recovery_snapshot_20260907/plot_recovery.py",
+      "new": "results/model_0826/reports/recovery_snapshot_20260907/plot_recovery.py",
+      "before_sha256": "c11870dd8d29d79df2c4193df6c4718e350a4e7d9a7f464207329d4127995acb",
+      "bytes": 5885,
+      "after_sha256": "c11870dd8d29d79df2c4193df6c4718e350a4e7d9a7f464207329d4127995acb"
+    },
+    {
+      "old": "reports/model_0826/recovery_snapshot_20260907/source_data.csv",
+      "new": "results/model_0826/reports/recovery_snapshot_20260907/source_data.csv",
+      "before_sha256": "aed6c51a3dbdb23b92a563cb069856dc1de1147be736a6999cfb530e18e30056",
+      "bytes": 10452,
+      "after_sha256": "aed6c51a3dbdb23b92a563cb069856dc1de1147be736a6999cfb530e18e30056"
+    },
+    {
+      "old": "reports/model_0826/recovery_snapshot_20260907/parameter_recovery.png",
+      "new": "results/model_0826/reports/recovery_snapshot_20260907/parameter_recovery.png",
+      "before_sha256": "096b431437e98c38f82a6b467d75c0eb2f31eea507d9655037c7ea30aab5e0ba",
+      "bytes": 491311,
+      "after_sha256": "096b431437e98c38f82a6b467d75c0eb2f31eea507d9655037c7ea30aab5e0ba"
+    },
+    {
+      "old": "reports/model_0826/recovery_snapshot_20260907/figure_notes.json",
+      "new": "results/model_0826/reports/recovery_snapshot_20260907/figure_notes.json",
+      "before_sha256": "bb1516e9f453ba35b48c3d47c0af3d7cf50b17d1bdc88ecf03d3a479dcf8dae0",
+      "bytes": 1055,
+      "after_sha256": "bb1516e9f453ba35b48c3d47c0af3d7cf50b17d1bdc88ecf03d3a479dcf8dae0"
+    },
+    {
+      "old": "reports/internal_cognitive_smoke_qa/subject_101_internal_path_archetypes.png",
+      "new": "results/model_0826/reports/internal_cognitive_smoke_qa/subject_101_internal_path_archetypes.png",
+      "before_sha256": "f836635fe2d5bdec628ac8b7d1fba9f78964f324613530e70bf60bcd5abe5e3a",
+      "bytes": 418067,
+      "after_sha256": "f836635fe2d5bdec628ac8b7d1fba9f78964f324613530e70bf60bcd5abe5e3a"
+    },
+    {
+      "old": "reports/internal_cognitive_smoke_qa/subject_101_internal_cognitive_overview.png",
+      "new": "results/model_0826/reports/internal_cognitive_smoke_qa/subject_101_internal_cognitive_overview.png",
+      "before_sha256": "ffde32d874fe2a12e6c665e5943041ede44920aba9a0b6d4b44259b8fe6054ad",
+      "bytes": 1039246,
+      "after_sha256": "ffde32d874fe2a12e6c665e5943041ede44920aba9a0b6d4b44259b8fe6054ad"
+    },
+    {
+      "old": "reports/internal_cognitive_smoke_qa/subject_101_genealogy_diagnostics.png",
+      "new": "results/model_0826/reports/internal_cognitive_smoke_qa/subject_101_genealogy_diagnostics.png",
+      "before_sha256": "4576c52644d924f61b916a09ef185d077aa705ff4257a477962d4a959935ef20",
+      "bytes": 401363,
+      "after_sha256": "4576c52644d924f61b916a09ef185d077aa705ff4257a477962d4a959935ef20"
+    },
+    {
+      "old": "reports/internal_cognitive_smoke_qa/contact.jpg",
+      "new": "results/model_0826/reports/internal_cognitive_smoke_qa/contact.jpg",
+      "before_sha256": "d07b246ab38f6a1d263d338ebe16035bc21ebce52969654250b0f3df45f37330",
+      "bytes": 392875,
+      "after_sha256": "d07b246ab38f6a1d263d338ebe16035bc21ebce52969654250b0f3df45f37330"
+    },
+    {
+      "old": "reports/repository_maintenance/layout_20260908/data_file_manifest.json",
+      "new": "results/repository_maintenance/layout_20260908/data_file_manifest.json",
+      "before_sha256": "6325ee4ed82bdd67a05726b1f5d36cff24f819171285703608f580899bed7d95",
+      "bytes": 13726133,
+      "after_sha256": "6325ee4ed82bdd67a05726b1f5d36cff24f819171285703608f580899bed7d95"
+    }
+  ],
+  "removed_prompt": {
+    "path": ".github/prompts/CateLearnIntro.prompt.md",
+    "sha256": "399a30df81e60313cec87657583db3c4ae4b094aba3e6fd87632bdb8bbdd48cc"
+  },
+  "research_report_bytes_unchanged": true,
+  "scope": "Top-level ownership consolidation; data and existing results untouched except explicitly moved report bundles.",
+  "validation": {
+    "tests_passed": 470,
+    "python_syntax": true,
+    "shell_syntax": true
+  }
+}

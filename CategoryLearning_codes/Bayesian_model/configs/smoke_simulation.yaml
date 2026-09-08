@@ -4,7 +4,7 @@ subjects:
 - 101
 hyper_base_seed: 20260901
 dataset:
-  processed_dir: ../../../data/processed
+  processed_dir: ../../../data/exp123/processed
   learning_data: Task2_processed.csv
   perception_summary: Task1b_errorsummary_24.csv
   perception_summary_72: Task1b_errorsummary_72.csv

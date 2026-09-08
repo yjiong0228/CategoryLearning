@@ -1,7 +1,7 @@
 # Fig. 2：模型解释力与外部验证
 
 状态：内容规划。0826 有效实现已迁入 CategoryLearning_codes/Bayesian_model，见该目录的核对与验证记录；尚未进行四分类扩展或正式全体拟合。
-依据：manuscript/model_0826.tex；Weiss et al. (2021) 的 Fig3a；现有 model_0826 配置与结果目录。
+依据：src/Bayesian_state/docs/model_architecture/model_0826.tex；Weiss et al. (2021) 的 Fig3a；现有 model_0826 配置与结果目录。
 
 ## 目标与叙事
 

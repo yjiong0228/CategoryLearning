@@ -13,7 +13,7 @@ CONFIGS_DIR = ROOT_DIR / "configs"
 LOGS_DIR = ROOT_DIR / "logs"
 RESULTS_DIR = ROOT_DIR / "results"
 
-PROCESSED_DATA_DIR = ROOT_DIR / "data" / "processed"
+PROCESSED_DATA_DIR = ROOT_DIR / "data" / "exp123" / "processed"
 TASK2_PROCESSED_PATH = PROCESSED_DATA_DIR / "Task2_processed.csv"
 TASK1B_ERRORSUMMARY_PATH = PROCESSED_DATA_DIR / "Task1b_errorsummary_24.csv"
 TASK1B_ERRORSUMMARY_72_PATH = PROCESSED_DATA_DIR / "Task1b_errorsummary_72.csv"

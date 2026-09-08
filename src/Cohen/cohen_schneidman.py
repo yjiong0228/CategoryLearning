@@ -21,13 +21,13 @@ The paper does not publish exact GA/SA population sizes, mutation rates, or temp
 So this is formula-faithful and method-family-faithful, but not an unpublished official code clone.
 
 CSV usage example:
-    python src/Cohen/cohen_schneidman.py --csv data_exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit
+    python src/Cohen/cohen_schneidman.py --csv data/exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit
 
 Faster test:
-    python src/Cohen/cohen_schneidman.py --csv data_exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit --population-size 8 --generations 2 --anneal-steps 2
+    python src/Cohen/cohen_schneidman.py --csv data/exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit --population-size 8 --generations 2 --anneal-steps 2
 
 Paper-style future prediction:
-    python src/Cohen/cohen_schneidman.py --csv data_exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit --fit-first-n 64
+    python src/Cohen/cohen_schneidman.py --csv data/exp5/processed/Rule1_processed.csv --outdir results/Cohen_model/Exp5 --fit --fit-first-n 64
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 
 
 Array = np.ndarray
-DEFAULT_EXP5_CSV = Path("data_exp5/processed/Rule1_processed.csv")
+DEFAULT_EXP5_CSV = Path("data/exp5/processed/Rule1_processed.csv")
 
 
 # -----------------------------
@@ -1283,7 +1283,7 @@ def main():
     parser.add_argument(
         "--csv",
         default=None,
-        help="Combined processed CSV. Defaults to data_exp5/processed/Rule1_processed.csv.",
+        help="Combined processed CSV. Defaults to data/exp5/processed/Rule1_processed.csv.",
     )
     parser.add_argument("--outdir", default="results/Cohen_model/Exp5")
     parser.add_argument("--n-bits", type=int, default=5)

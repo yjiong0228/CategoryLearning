@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import yaml
 
-from scripts.run_model_0826_belief_transport_counterfactual import (
+from src.Bayesian_state.workflows.runs.run_model_0826_belief_transport_counterfactual import (
     PRIOR_ASSIGNMENT_PATH,
     _mean_js,
     build_variant_engine,
@@ -15,10 +15,10 @@ from scripts.run_model_0826_belief_transport_counterfactual import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_CONFIG = ROOT / "configs/model_struct/pmh_model_cond1_0826.yaml"
+MODEL_CONFIG = ROOT / "configs/exp123/model_struct/pmh_model_cond1_0826.yaml"
 AUDIT_CONFIG = (
     ROOT
-    / "configs/specific_models/model_0826_belief_transport_counterfactual.yaml"
+    / "configs/exp123/specific_models/model_0826_belief_transport_counterfactual.yaml"
 )
 
 

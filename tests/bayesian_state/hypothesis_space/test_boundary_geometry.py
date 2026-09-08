@@ -392,7 +392,7 @@ def test_label_reversed_space_runs_complete_model_trial() -> None:
     config = yaml.safe_load(
         (
             root
-            / "configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml"
+            / "configs/exp123/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml"
         ).read_text(encoding="utf-8")
     )
     config["inference"] = {"backend": "trajectory"}

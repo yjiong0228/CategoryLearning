@@ -6,22 +6,15 @@ import numpy as np
 import pytest
 import yaml
 
-from scripts.run_model_0815_h2_legacy_count_comparison import (
-    LEGACY_CLASS,
-    summarize_contrast,
-    summarize_variant,
-    validate_engine_pair,
-    validate_legacy_engine,
-)
 from src.Bayesian_state.model import ModelContext, StateModel
 
 
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTIVE_CONFIG = (
-    ROOT / "configs/model_struct/pmh_model_cond1_0815_h1_adaptive_controller.yaml"
+    ROOT / "configs/exp123/model_struct/pmh_model_cond1_0815_h1_adaptive_controller.yaml"
 )
 LEGACY_CONFIG = (
-    ROOT / "configs/model_struct/pmh_model_cond1_0815_h2_legacy_count.yaml"
+    ROOT / "configs/exp123/model_struct/pmh_model_cond1_0815_h2_legacy_count.yaml"
 )
 
 
@@ -29,24 +22,6 @@ def _engine(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_legacy_h_preserves_exact_variable_count_policy_and_common_architecture() -> None:
-    adaptive = _engine(ADAPTIVE_CONFIG)
-    legacy = _engine(LEGACY_CONFIG)
-    validate_legacy_engine(legacy)
-    validate_engine_pair(adaptive, legacy)
-
-    transition = legacy["modules"]["hypo_transitions_mod"]
-    assert transition["class"] == LEGACY_CLASS
-    assert transition["kwargs"]["init_num"] == 2
-    assert transition["kwargs"]["max_active_hypotheses"] == 3
-    assert [item["amount"] for item in transition["kwargs"]["strategies"]] == [
-        "random_4",
-        "opp_random_4",
-    ]
-    for key in ("likelihood", "choice_readout", "output_noise", "inference", "agenda"):
-        assert legacy[key] == adaptive[key]
-    for key in ("perception_mod", "memory_mod", "beta_mod"):
-        assert legacy["modules"][key] == adaptive["modules"][key]
 
 
 def test_legacy_transition_emits_pf_diagnostics_without_changing_policy() -> None:
@@ -100,36 +75,3 @@ def _panel(correct_probability: float, active_total: float) -> dict[str, np.ndar
         "observed_choice_index": choices,
         "valid_trial_mask": np.ones(8, dtype=bool),
     }
-
-
-def test_positive_legacy_minus_adaptive_delta_favors_adaptive() -> None:
-    legacy_row, legacy = summarize_variant(
-        _panel(0.60, 2.0),
-        subject_id=103,
-        variant_id="legacy",
-        particle_count=32,
-        train_trials=4,
-        target_hypothesis=0,
-    )
-    adaptive_row, adaptive = summarize_variant(
-        _panel(0.70, 3.0),
-        subject_id=103,
-        variant_id="adaptive",
-        particle_count=32,
-        train_trials=4,
-        target_hypothesis=0,
-    )
-    row, seed_rows = summarize_contrast(
-        legacy_row,
-        legacy,
-        adaptive_row,
-        adaptive,
-        train_trials=4,
-        practical_fraction=0.01,
-        seed_noise_multiplier=2.0,
-    )
-
-    assert row["paired_delta_nll_heldout"] > 0.0
-    assert row["positive_seed_fraction_heldout"] == pytest.approx(1.0)
-    assert row["heldout_active_probability_mae"] > 0.0
-    assert len(seed_rows) == 16

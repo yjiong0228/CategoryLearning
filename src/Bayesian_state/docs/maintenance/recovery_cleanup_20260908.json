@@ -1,0 +1,700 @@
+{
+  "retained_workflows": [
+    "src/Bayesian_state/workflows/analysis/behavior_diagnostics.py",
+    "src/Bayesian_state/workflows/benchmarks/benchmark_boundary_geometry.py",
+    "src/Bayesian_state/workflows/recovery/__init__.py",
+    "src/Bayesian_state/workflows/recovery/design.py",
+    "src/Bayesian_state/workflows/recovery/run.py",
+    "src/Bayesian_state/workflows/runs/run_model_0818_boundary_recovery.py",
+    "src/Bayesian_state/workflows/runs/run_model_0826_belief_transport_counterfactual.py",
+    "src/Bayesian_state/workflows/runs/run_model_0826_recovery.py"
+  ],
+  "removed_files": [
+    {
+      "path": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_forgetting.py",
+      "bytes": 23978,
+      "sha256": "992d967ad36be86c825f0a28bf9413d55f7020dcfec3d99945b76216cf730804"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/prepare_model_0818_subset_evaluation.py",
+      "bytes": 4165,
+      "sha256": "6aa8ef1fa32baf9d3fb7596d79efd980b3ca164246b18770c4584cf73fed81f9"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/summarize_model_0804_alive_islands.py",
+      "bytes": 7570,
+      "sha256": "e64fbfc1a2d8204863c91149d49d35e24e99005c6caee1cdbdb670d70f800a7e"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/reevaluate_cond1_trajectory_caches.py",
+      "bytes": 7030,
+      "sha256": "57c306d140d4f24de3c1fddd561d7822489f59493c323c83d4c807a38e187e8b"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_adaptation.py",
+      "bytes": 24698,
+      "sha256": "f52bbc086cf577463ec76725052a9e10b6460af80fbe2b4b74585d1f29b530cc"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/summarize_cond1_global_external_validation.py",
+      "bytes": 9703,
+      "sha256": "d6e8297e0cced204fefeaa9b92062e0564b9719f402cf6c4012b6adaf5a67b05"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/diagnose_model_0804_pgas.py",
+      "bytes": 20566,
+      "sha256": "dce97c22bc52f5b9e45a6e43b3caebce56eafb9d39596be979102fa78aaeb082"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/diagnose_model_0805_accuracy.py",
+      "bytes": 23021,
+      "sha256": "7f443f0cd958aa1af6fb82d784e49752e51faab9a51d85d8fa05f46287cfa244"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/analyze_model_architecture_effect_audit.py",
+      "bytes": 15205,
+      "sha256": "75bb167998e7603d64fd6ce7fe2bfe4776ce5005e4b4f7956626532a82c205dc"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/analyze_cond1_phase_coverage.py",
+      "bytes": 32860,
+      "sha256": "663d071e06ac752255fd5878a260e9baff194727cfb0dee47eaa02711149fa23"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/summarize_cond1_mechanism_replication.py",
+      "bytes": 4887,
+      "sha256": "04ba7abb611abe004030c1a7f917f57f41d9dc7ccbd435e2b8c3f06f332c365b"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/analyze_cond1_dynamic_rho_separability.py",
+      "bytes": 13129,
+      "sha256": "88ef88516474a36515cccc6e809d23b1cc9818ffd3837c17bde543feb38e5dd5"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/summarize_cond1_dynamic_rho_results.py",
+      "bytes": 14343,
+      "sha256": "3dea9001f1718bf80cfc95eab9a8e93fd2c7cc8bdb2a3dfdcc4dacf28ce748c8"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/analyze_cond1_v14_results.py",
+      "bytes": 15996,
+      "sha256": "5aa91845d081066e7a1ed301a09c4a5bbcc09e93b41de2be1463d7a3ad6020fb"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/analyze_cond1_v14_fine.py",
+      "bytes": 13320,
+      "sha256": "b82a2534a3f01cb9ab18e8dd02682d402ae83859069330f54d1016bec45a2b14"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/summarize_cond1_global_mechanism_mixture.py",
+      "bytes": 14305,
+      "sha256": "9453aea35a5d923217451e12c684620e547984469611425722d5f2195db0c3b6"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/analysis/compare_cond1_static_global_vs_c1.py",
+      "bytes": 5875,
+      "sha256": "5282136b86b7efbeb4d2967fb37bedb983336e64266fb95c75cf879ce2cb92ee"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_h4_nested_subject_screen.py",
+      "bytes": 38433,
+      "sha256": "b184dee9955ec5e86f5a938088a4c1ebd265beb633e1f23152cb734c4921675c"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_b0_memory_ablation_pilot.py",
+      "bytes": 27459,
+      "sha256": "42a8d450abaefd0eb15ee330904d5dc9f8ca81e856af1a455c02a999067b98e2"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_p0_pf_nested_convergence.py",
+      "bytes": 34151,
+      "sha256": "5d4b8b875ebcea7f3bb2e5dc6108398e851e969402de7b39a4e682fc4f86a7e4"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0804_fixed_g_recovery.py",
+      "bytes": 34080,
+      "sha256": "018a70fd86571f0fa4453fe4fb4e86210ffb0dd858cee5201d2a6c3dacdcfcd3"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_v14_confirm.py",
+      "bytes": 7516,
+      "sha256": "c059cbdd01f37bc612b25b0d3290a0b904186f6ff167909a7fabd7c12e36f887"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_p1_mapping_sensitivity.py",
+      "bytes": 43737,
+      "sha256": "3ddba5e3c7a2cd7b906dc50829a8da68511c7559e0810dcd40c3c953d61765f3"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0804_cond1_preflight.py",
+      "bytes": 29848,
+      "sha256": "048a1db4d4e636abff4e696135edaf8210f1282bca3a4f082af1b4523f37ce76"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0813_pf_seed_averaging.py",
+      "bytes": 50934,
+      "sha256": "a70e3000e30bdae9cf0712cab7e1efa977fc7047c52ec596ffed1e49e9b104cd"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_p0_pf_convergence.py",
+      "bytes": 16857,
+      "sha256": "dbb604b78afb6a9e0090488698b5640a392e68f93e83f48393f5e716384afffb"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0803_cond1.py",
+      "bytes": 76464,
+      "sha256": "aafe98543ee9fe117ef1224ede17e968ec423a6188afc770054e3b160d6eb108"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_h3_feedback_reactive_comparison.py",
+      "bytes": 25358,
+      "sha256": "6bb542e744b9f75b2c040d6e59401ca84bc949f87f80bcf67cc5f5d0ad873c3d"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_p0_persistent_execution_counterfactual.py",
+      "bytes": 39543,
+      "sha256": "444e65eb908b079b80ab46621db025de2a61c44da09782ff2f1d2d085c5b6c36"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_external_validation.py",
+      "bytes": 19473,
+      "sha256": "2f5ebc5a846c9c3711108b108a184dc7e4add40158858623c7e981ba74cd1672"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0805_real_predictive.py",
+      "bytes": 52878,
+      "sha256": "a668fb74ca5c93630e03a01155dbbb6172cfe06d0e39480a3e4b674fbbc090cb"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_acquisition_changepoint_sweep.py",
+      "bytes": 16362,
+      "sha256": "0783e9abef16d949d2767e7e4ce96e38a300ecc5cacd71c4235e99c48a9fe956"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0813_pf_mechanism_reachability.py",
+      "bytes": 43867,
+      "sha256": "b6f75a176990c6bffaa96f67154b918e3f02aa85b64f711092522f4a6675c292"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_v14_pilot.py",
+      "bytes": 15933,
+      "sha256": "1257b835973bea2828ffea999553a937b46f68bf1e4b57d73c5d53c89c61cf70"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0804_particle_stability_audit.py",
+      "bytes": 35112,
+      "sha256": "d4bd652b21fea439eab678226e83b4f8f2e8d3416f504d48baebd1bd0ac14f97"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_architecture_effect_audit.py",
+      "bytes": 13947,
+      "sha256": "e005c29e00960e58f2a3de6a3afe6cae0f53e832f93ff45a7fda0503b107a204"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_b0_adaptive_controller_pilot.py",
+      "bytes": 47045,
+      "sha256": "e71813e5659c78dc857b3e76fa16777ed9a2387e5b164b609b3fef1a8eee7a63"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0813_pf_choice_layer_audit.py",
+      "bytes": 46615,
+      "sha256": "b8e72e767f97f2ee6305aa9aeaa574e6bcc85b1b9da7be4a1dcb62aa58ee982f"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0813_pf_parameter_recovery.py",
+      "bytes": 63581,
+      "sha256": "8ee98cddaf07a64c751c1ebb57ad0e5ab575bf07a8bf8d86f2193bc33eac6dc5"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0806_uncertainty_gate.py",
+      "bytes": 17499,
+      "sha256": "07a3c450cc00811ee9f96b3e51f6cb4fa56e5966e0b4d42c7d9c1be57f559f24"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0804_marginalized_lapse_recovery.py",
+      "bytes": 44344,
+      "sha256": "3405a1a221d1170da8bf9da4d432fa5f606a6ed71807aced0859140c60c8cb67"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0806_dynamic_m_recovery.py",
+      "bytes": 30179,
+      "sha256": "29b1579e37300282b9db31fccd62feb294fbaf0cc3ee71cdefd31a5906ac11c8"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_h2_legacy_count_comparison.py",
+      "bytes": 33935,
+      "sha256": "f6e8a73a73a169a5176f531f8094f332762776136c5f3e2e53bc85bb28fcdc91"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0806_real_rolling.py",
+      "bytes": 37993,
+      "sha256": "e6305f9735b8b068ee85b5ec1a12b79d532e780be59540772e593d6d5860aa7e"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_v14_frozen_confirmation.py",
+      "bytes": 18636,
+      "sha256": "68a2bb9bd60e9297b035f15feea967ef4fded3b3ceb3b59517e1f9f3eb0dcc82"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_behavior_event_atlas.py",
+      "bytes": 59828,
+      "sha256": "983d9e7640b24aaf31e44ab7fbab8becb178161c015722955f0f4a6d2d0f45c3"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0815_p1_state_identifiability.py",
+      "bytes": 50450,
+      "sha256": "629bc4285502f13d1ad140d32400d32b2fa9a879f7fc8854d836311529e5b93c"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_v14_boundary_probe.py",
+      "bytes": 11882,
+      "sha256": "ce4efd3bf0e9ec4dd2d9ad1743b19a5f78b7aea0f1040e52d95b363a2ad55459"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_b0_trajectory_ppc.py",
+      "bytes": 70293,
+      "sha256": "45076202e32085aa132e4c19eb279ef9977ca0f6548ee5ff3396279a0847fd1d"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0806_targeted_diagnostics.py",
+      "bytes": 40468,
+      "sha256": "ffa066ddba9610c4accf877285b7530633c90f92bc103670edfb478bef366bf3"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_dynamic_rho_sweep.py",
+      "bytes": 23369,
+      "sha256": "85ec2f0fa290ca26cc1ecbbc1de4983fcad9e8486030ca2d574c2ab32c75542f"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_recovery.py",
+      "bytes": 18579,
+      "sha256": "ad27557ce2cd4c2977e9076066f66427cbcc790943d24865d5ff9581a2b4864e"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0804_regeneration_recovery.py",
+      "bytes": 53113,
+      "sha256": "5f1e92d6b852480a57d07361f59a33ec10e102d3ac46e04938c4b61576e2ac8d"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_v14_state_diagnostics.py",
+      "bytes": 7404,
+      "sha256": "4b59d00b4f3f8a017c0deea5ca4ef35a20ae39db74ac1390c12ff73beaaa4830"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_cond1_mechanism_screen.py",
+      "bytes": 36223,
+      "sha256": "47b668553a2adb72a5b7a3d4ff50caa5d8ebf26f283bd2727383f2cad6c9d362"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0813_pf_calibration.py",
+      "bytes": 55320,
+      "sha256": "6f6955e703d3c25ff533ceb56d2294b2f8befef1139667f06563bf1bae0e6401"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0818_seed_convergence.py",
+      "bytes": 27938,
+      "sha256": "3c05447572d41010ebaaf9a8911b1523d925ad1680f71f43bbdc5ce7fae8ce7f"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0818_exploratory_observed_fit.py",
+      "bytes": 32783,
+      "sha256": "3e23fb3d086495bc67db1fb62db0cbf1f5fab2464a30920465d42bef4552d535"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/plot_cond1_phase_coverage.py",
+      "bytes": 17489,
+      "sha256": "60f307d0cac5b2a55efa4cf5dde326699c8bdbeaf6434c1ccf7ad6e255d759c0"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_0813_pf_parameter_recovery_artifact.py",
+      "bytes": 32667,
+      "sha256": "3f134505b8f386cb9540639164d51dabbee510144b14b526e257ac9e62b95fbd"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_s103_rule_commitment_guardrail_report.py",
+      "bytes": 43130,
+      "sha256": "1c242ddcb3118830478b857e4f554512c30877a78a79dcd4c8ef8b83fb2e4752"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/plot_model_0805_subject_fits.py",
+      "bytes": 13924,
+      "sha256": "6cc28b4a237a04b1c0a5ea5130590c19e53aff345d8c558e0bea12301960c361"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_dynamic_rho_report.py",
+      "bytes": 35749,
+      "sha256": "04d3146b4733f858dde22960fbb052789427ec4dfa2daf382df4344f38f466f0"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_0813_pf_choice_layer_artifact.py",
+      "bytes": 25377,
+      "sha256": "245388a93cc6339bca52e894f1ede94f6025a7714785a0d19bb69dc5b34ba732"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_0805_accuracy_report.py",
+      "bytes": 28435,
+      "sha256": "e0473c05df82bc86d66efa7f3ca03850242753e4a8698027103951f280a39905"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_0813_pf_seed_averaging_artifact.py",
+      "bytes": 28155,
+      "sha256": "1a4a14be3d811c403ab15e93c297304c0e36d1f45ea97ff4444a84480f07a70b"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_v14_candidates.py",
+      "bytes": 3531,
+      "sha256": "937d7806eee09f64ad947a8cd75224796e432399128fe9e3788b5a71740a55f0"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_mechanism_report_artifact.py",
+      "bytes": 56473,
+      "sha256": "318f2fd427c93648b3cdde7111188c3ba8a5e30f4522a0777a33e748b67151c8"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/plot_model_0815_h4_accuracy_bands.py",
+      "bytes": 22616,
+      "sha256": "89aa12bf4a4384f1c2a5a69731d123fce196f9fa3a87ddbb6886a85b15219e44"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_behavior_event_report.py",
+      "bytes": 33510,
+      "sha256": "c263e5bd47863c712afe852436163d401c067d878d3c5d5d6ed8ef6cf1711003"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/plot_model_0805_trialwise_fits.py",
+      "bytes": 32301,
+      "sha256": "840ab8e32fd62d23323a22b22522913a722a544c91906004bc4c4869dbebc131"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_0813_pf_calibration_artifact.py",
+      "bytes": 23011,
+      "sha256": "b4b6bca7b6c07ed94ef20db6bbe66023a6874c3411b68d1736d3772dadc75879"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_trajectory_ppc_report.py",
+      "bytes": 42902,
+      "sha256": "0b6517af0c48c20be25d6e51944543663d7767348754d3f4b0cac4412bff8dbd"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_model_architecture_effect_report.py",
+      "bytes": 31570,
+      "sha256": "aea29704d6b774c57c0780d8884c17807ebc889ecc072444d0073c5fc331eda4"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_phase_coverage_report.py",
+      "bytes": 34839,
+      "sha256": "e45fe45b0d50b64a127bc524461608492fde6a83b0c6b8af3412f29acff242fd"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/reports/build_cond1_v14_report.py",
+      "bytes": 23784,
+      "sha256": "e37b5cfe1ccfcc6be9330adde63f7a6e4f441bedaaf689fe03f9792692f11518"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0818_full_standard_evaluation.sh",
+      "bytes": 3035,
+      "sha256": "8b6d9711771ef7319974fdea095172700e4d1e638aa9d2871232c55bd52d917d"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/resume_model_0818_evaluation_after_8.sh",
+      "bytes": 2857,
+      "sha256": "df1da278ae9f5986e906f3c3aabba403111a43287002860498f4f007ba2edd74"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model0809_boundary_probe_confidence_selected3.sh",
+      "bytes": 6083,
+      "sha256": "b3bba18ded03363eabecec1b210706d0a8a71efb21dae58b0a2c0548ef64b086"
+    },
+    {
+      "path": "src/Bayesian_state/workflows/runs/run_model_0818_standard_evaluation.sh",
+      "bytes": 2487,
+      "sha256": "e891aad3824c64730736813f9210e473d63c58da1519670ba172b180e96b0967"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0806.py",
+      "bytes": 7395,
+      "sha256": "a6dcd080da5a55ee6f7e4c9bbfbf12467eaa13be64af0f563fc04dee126d4305"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/__init__.py",
+      "bytes": 75,
+      "sha256": "84898dbcb450adaaf23ef14c8dd17f65c432d488358182aa827005a40978cb51"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/README.md",
+      "bytes": 2427,
+      "sha256": "4d5c4aaa970a15e1081f8bf15c2b949dfef43f2105dc88b9bf4a05677d4cbd79"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0803.py",
+      "bytes": 40484,
+      "sha256": "00b75f968e4e54d4cf4333f188023327607881c38fb085e834dfec368f5ed997"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/recovery.py",
+      "bytes": 4402,
+      "sha256": "4e9298042142d071be74d4ab50245c8d1cdab6adb616b5d031a3a67e2f80dfb9"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/core.py",
+      "bytes": 135876,
+      "sha256": "b77c9402bf59484a6b1108e00c11d157577fda9e2c7eaeffc9ab9b55a734abe5"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/forgetting.py",
+      "bytes": 12484,
+      "sha256": "2f3222e8707dff06a36b755a37413a404c5d63989c4f528b3a89b33566cef15c"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/pgas.py",
+      "bytes": 23904,
+      "sha256": "633115770202a66a93c3c10818d4afe60bf9c9c3367d11f5076e28e491b53bc3"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/__init__.py",
+      "bytes": 211,
+      "sha256": "5fa8b192b9a5e4dd92be3283dae940db8ae77d80cb8ae3e9f7d31ace6d24d0d4"
+    },
+    {
+      "path": "src/Bayesian_state/reference_models/model_0804/README.md",
+      "bytes": 246,
+      "sha256": "77f16f3e4dc6b4c03cae1d37eac2229449da478804e967e02839818ee27bc2fb"
+    }
+  ],
+  "test_changes": [
+    {
+      "path": "tests/bayesian_state/test_model_0818_seed_convergence.py",
+      "removed_tests": [
+        "test_config_declares_128_unique_candidate_paired_seed_tasks",
+        "test_high_budget_config_declares_1024_paired_seed_tasks",
+        "test_seed_cache_path_is_unique_by_dataset_profile_and_seed"
+      ],
+      "retained_tests": [
+        "test_nested_seed_scores_use_exact_prefixes_and_mean_probabilities",
+        "test_independent_halves_and_bootstrap_preserve_candidate_pairing",
+        "test_predeclared_seed_convergence_gates_do_not_authorize_formal_recovery",
+        "test_probability_bank_rejects_non_normalized_probabilities"
+      ],
+      "before_sha256": "2693021dca348f20ab9bc813232c48845663d83a00ae641e4120bd3ddff7bc6e"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0813_pf_choice_layer_audit.py",
+      "removed_tests": [
+        "test_choice_layer_probability_validation_and_metrics",
+        "test_choice_layer_summary_uses_disjoint_panels_and_frozen_gates",
+        "test_choice_layer_summary_marks_unstable_sign_reversal"
+      ],
+      "retained_tests": [],
+      "before_sha256": "b3af3449587b85c845497674495d1b21f82f896b8e4d8fd439044d7b45f133ad"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0813_parameter_recovery.py",
+      "removed_tests": [
+        "test_l9_profiles_are_pairwise_balanced_and_contain_baseline",
+        "test_recovery_config_uses_authoritative_0813_pf_model",
+        "test_summary_recovers_known_best_profiles_and_parameters",
+        "test_wilson_interval_is_bounded_and_not_degenerate"
+      ],
+      "retained_tests": [],
+      "before_sha256": "561339c16b4152984c59b82e2d8647df5351066131ac57127b052f33c31d1a06"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_h3_feedback_reactive.py",
+      "removed_tests": [
+        "test_projection_uses_previous_feedback_and_train_trials_only",
+        "test_projected_reactive_engine_changes_only_h_and_assembles"
+      ],
+      "retained_tests": [],
+      "before_sha256": "cd525adb1fd6ebbdcbb1bce85ee4b79569a41f8c59ef399bae68c0b2847651aa"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_b0_memory_ablation_pilot.py",
+      "removed_tests": [
+        "test_candidate_bank_is_nested_and_smoke_preserves_all_three_levels",
+        "test_memory_candidate_changes_only_the_optional_M_block",
+        "test_gamma_one_single_channel_is_the_M_off_nested_boundary",
+        "test_family_selection_uses_training_nll_then_stable_id_tie_break"
+      ],
+      "retained_tests": [],
+      "before_sha256": "82df6dfde703d18a78eae2539a3625787937ced9754cbe8f1755535278e7feb9"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0813_pf_calibration.py",
+      "removed_tests": [
+        "test_ranking_gate_requires_repeats_and_cross_count_stability",
+        "test_filter_decomposition_uses_paired_seed_gain_direction",
+        "test_filter_decomposition_rejects_missing_mode"
+      ],
+      "retained_tests": [],
+      "before_sha256": "78d51fbd8c74df4e9b881617254cd9af315c5f1e904bb5ebf287abccb106729f"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0813_mechanism_reachability.py",
+      "removed_tests": [
+        "test_variant_mutations_are_scoped_and_leave_input_unchanged",
+        "test_compare_outputs_distinguishes_exact_and_changed_predictions",
+        "test_array_max_diff_supports_boolean_diagnostics",
+        "test_all_registered_numerical_mechanisms_have_declared_probes"
+      ],
+      "retained_tests": [],
+      "before_sha256": "ce32dd9749715899fa00a14ac1a0ba133a5337ecbcb6045e9ebd40f1f32b7677"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_h2_legacy_count_comparison.py",
+      "removed_tests": [
+        "test_legacy_h_preserves_exact_variable_count_policy_and_common_architecture",
+        "test_positive_legacy_minus_adaptive_delta_favors_adaptive"
+      ],
+      "retained_tests": [
+        "test_legacy_transition_emits_pf_diagnostics_without_changing_policy"
+      ],
+      "before_sha256": "a87b876b9ccd999179103fd20c46edf75f515b24a8f8998227e455b49f4cf353"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_b0_adaptive_controller_pilot.py",
+      "removed_tests": [
+        "test_minimal_adaptive_baseline_assembles_without_optional_leakage",
+        "test_fixed_comparator_changes_only_transition_controller_and_matches_event_rate",
+        "test_h1_baseline_uses_leaky_memory_and_one_dynamic_beta",
+        "test_h1_fixed_comparator_preserves_memory_and_unified_dynamic_beta",
+        "test_training_match_excludes_initialization_and_uses_only_train_trials",
+        "test_heldout_paired_delta_is_positive_for_better_adaptive_predictions"
+      ],
+      "retained_tests": [],
+      "before_sha256": "e9b6c97178f7c4359dd85c315f0a45a21f03e0db3d8dbd2e74de6ab9b1d75b20"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_p0_persistent_execution_counterfactual.py",
+      "removed_tests": [
+        "test_three_model_bank_separates_execution_from_beta_scope",
+        "test_paired_counterfactual_delta_is_positive_for_better_mechanism"
+      ],
+      "retained_tests": [],
+      "before_sha256": "3a8e35ebca3d46b85a694e834db7b3ae618665668d6a92b2cb71fc8deddec42a"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_p0.py",
+      "removed_tests": [
+        "test_pf_convergence_gate_uses_probability_and_executed_state_stability"
+      ],
+      "retained_tests": [
+        "test_p0_model_assembles_with_declared_simple_structure",
+        "test_p0_calibration_keeps_capacity_fixed_and_scores_mean_probability",
+        "test_shared_hyper_cd_routes_all_subjects_to_one_pipeline",
+        "test_shared_flat_cd_averages_subject_objectives_equally"
+      ],
+      "before_sha256": "ea0c71cd0fe7b3d27953bdd721f45a789b53e28b8150a0dc7e1a3623833059c0"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_h4_nested_subject_screen.py",
+      "removed_tests": [
+        "test_parameterization_uses_nonnegative_immediate_logit_gain",
+        "test_engine_builder_changes_only_nested_controller_and_not_template",
+        "test_screen_design_has_zero_spike_and_disjoint_seed_roles",
+        "test_smoke_design_satisfies_shared_metric_window"
+      ],
+      "retained_tests": [],
+      "before_sha256": "2cde3b1e58bf07e5f0cdcc765650547b0796046c6aec27bace88981f99ec5979"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0813_pf_seed_averaging.py",
+      "removed_tests": [
+        "test_replicated_log_likelihood_reports_effective_seed_support",
+        "test_candidate_aggregation_uses_requested_complete_seed_panel",
+        "test_seed_averaging_gate_and_equivalence_sets_are_paired"
+      ],
+      "retained_tests": [],
+      "before_sha256": "a7eecbf88dc790e46944f3314ac184ee99c473b8ded4cfb7438c98c0680d7c31"
+    },
+    {
+      "path": "tests/bayesian_state/test_model_0815_p0_nested_convergence.py",
+      "removed_tests": [
+        "test_nested_ensemble_summary_retains_seed_and_state_dimensions",
+        "test_nested_ensemble_comparison_applies_all_three_gates"
+      ],
+      "retained_tests": [],
+      "before_sha256": "41983962460b59ecf9818b58ec506bb4edcfc466e968ff537154479be9403810"
+    }
+  ],
+  "model_architecture_untouched": true,
+  "removed_test_functions": 43,
+  "retained_test_functions_in_affected_files": 9,
+  "recovery_owners": {
+    "FEATURE_COLUMNS": "src.Bayesian_state.simulation.recovery",
+    "ORDER_COLUMNS": "src.Bayesian_state.simulation.recovery",
+    "SCHEDULE_COLUMNS": "src.Bayesian_state.simulation.recovery",
+    "MODEL_PARAMETER_NAMES": "src.Bayesian_state.simulation.recovery",
+    "CELL_FREE_PARAMETERS": "src.Bayesian_state.simulation.recovery",
+    "RecoveryDatasetSpec": "src.Bayesian_state.simulation.recovery",
+    "RecoveryDesign": "src.Bayesian_state.simulation.recovery",
+    "schedule_fingerprint": "src.Bayesian_state.simulation.recovery",
+    "synthetic_dataset_frame": "src.Bayesian_state.simulation.recovery",
+    "_truth_hyperparams": "src.Bayesian_state.workflows.recovery.generation",
+    "generate_synthetic_dataset": "src.Bayesian_state.workflows.recovery.generation",
+    "_resolve_relative": "src.Bayesian_state.workflows.recovery.design",
+    "_generation_seed": "src.Bayesian_state.workflows.recovery.design",
+    "_module_specs": "src.Bayesian_state.workflows.recovery.design",
+    "_parameter_specs": "src.Bayesian_state.workflows.recovery.design",
+    "_validate_parameter_truth_support": "src.Bayesian_state.workflows.recovery.design",
+    "load_recovery_design": "src.Bayesian_state.workflows.recovery.design",
+    "_declared_support": "src.Bayesian_state.optimization.recovery_parameters",
+    "model_0826_truth_hyperparams": "src.Bayesian_state.optimization.recovery_parameters",
+    "_load_yaml": "src.Bayesian_state.utils.recovery_artifacts",
+    "_canonical_fingerprint": "src.Bayesian_state.utils.recovery_artifacts",
+    "_atomic_json": "src.Bayesian_state.utils.recovery_artifacts",
+    "_atomic_csv": "src.Bayesian_state.utils.recovery_artifacts",
+    "_atomic_npz": "src.Bayesian_state.utils.recovery_artifacts",
+    "_atomic_yaml": "src.Bayesian_state.utils.recovery_artifacts",
+    "_write_immutable_yaml": "src.Bayesian_state.utils.recovery_artifacts",
+    "resolve_recovery_stage_budgets": "src.Bayesian_state.optimization.recovery",
+    "fit_recovery_dataset": "src.Bayesian_state.optimization.recovery",
+    "build_calibration_bank": "src.Bayesian_state.evaluation.recovery",
+    "resolve_calibration_filter_seeds": "src.Bayesian_state.evaluation.recovery",
+    "_frozen_readout_args": "src.Bayesian_state.evaluation.recovery",
+    "score_pf_bank": "src.Bayesian_state.evaluation.recovery",
+    "_score_pf_candidate_seed": "src.Bayesian_state.evaluation.recovery",
+    "score_pf_bank_parallel": "src.Bayesian_state.evaluation.recovery",
+    "_setting_rows": "src.Bayesian_state.evaluation.recovery",
+    "_compare_pf_settings": "src.Bayesian_state.evaluation.recovery",
+    "summarize_search_budget_retention": "src.Bayesian_state.evaluation.recovery",
+    "_budget_mcse_q95": "src.Bayesian_state.evaluation.recovery",
+    "summarize_pf_calibration": "src.Bayesian_state.evaluation.recovery",
+    "freeze_smallest_passing_budget": "src.Bayesian_state.evaluation.recovery",
+    "mean_probability_nll": "src.Bayesian_state.evaluation.recovery",
+    "score_frozen_candidate": "src.Bayesian_state.evaluation.recovery",
+    "_wilson_interval": "src.Bayesian_state.evaluation.recovery",
+    "summarize_module_recovery": "src.Bayesian_state.evaluation.recovery",
+    "_parameter_support_values": "src.Bayesian_state.evaluation.recovery",
+    "_workspace_support_values": "src.Bayesian_state.evaluation.recovery",
+    "_safe_spearman": "src.Bayesian_state.evaluation.recovery",
+    "_balanced_accuracy_binary": "src.Bayesian_state.evaluation.recovery",
+    "summarize_parameter_recovery": "src.Bayesian_state.evaluation.recovery",
+    "_save_png_atomic": "src.Bayesian_state.evaluation.recovery",
+    "_configure_recovery_figure_style": "src.Bayesian_state.evaluation.recovery",
+    "plot_module_recovery": "src.Bayesian_state.evaluation.recovery",
+    "plot_parameter_recovery": "src.Bayesian_state.evaluation.recovery"
+  },
+  "validation": {
+    "baseline": {
+      "passed": 465,
+      "failed": 5
+    },
+    "after": {
+      "passed": 425,
+      "failed": 5
+    },
+    "removed_obsolete_workflow_tests": 43,
+    "added_ownership_tests": 3,
+    "unchanged_failure_ids": [
+      "FAILED CategoryLearning_codes/Bayesian_model/tests/test_migration.py::test_frozen_config_and_resource_match_manuscript",
+      "FAILED tests/bayesian_state/test_model_0818_boundary_recovery.py::test_executable_model_matches_frozen_manuscript_and_0818_defaults",
+      "FAILED tests/bayesian_state/test_model_0818_parameter_space.py::test_parameter_space_matches_frozen_manuscript_and_cond1_scope",
+      "FAILED tests/bayesian_state/test_model_0826_versioning.py::test_model_0818_remains_the_original_frozen_version",
+      "FAILED tests/bayesian_state/test_model_0826_versioning.py::test_model_0826_is_the_revised_self_consistent_version"
+    ],
+    "recovery_function_and_class_asts_preserved": 48,
+    "public_cli_help_passed": true,
+    "manuscript_paths_changed": false
+  },
+  "scope": "Only reference-model removal, necessary-workflow pruning and recovery ownership separation; model_architecture and scientific core unchanged."
+}

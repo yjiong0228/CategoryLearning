@@ -1,61 +1,71 @@
-# Bayesian_model — Model 0826
+# Bayesian_model — 期刊工作流
 
-这是论文 Model 0826 的独立实现包，以 `manuscript/model_0826.tex` 与冻结配置为依据，
-从 `src/Bayesian_state` 的有效依赖链迁入。原目录保留兼容旧模型、旧脚本与数值对照；
-新工作使用 `CategoryLearning_codes.Bayesian_model`，不依赖旧包的 Python 实现。
+期刊和博士论文共同使用 **`src/Bayesian_state/` 中的一份模型实现**。
+本目录保留期刊配置、入口、验证与历史兼容导入，不再维护另一份认知模块、PF、拟合或评价算法。
 
-## 保留的分层
+## 修改放在哪里
 
-- `model/`：StateModel 生命周期、engine、装配、认知模块与选择读出。
-- `hypothesis_space/`：规则目录、边界几何、似然、固定相似度资源。
-- `inference/`：PF、单轨迹分派与统一结果契约。
-- `simulation/`：观察数据执行、自主生成、重复聚合与来源记录。
-- `optimization/`：0826 参数空间、P/PM/PH/PMH 单元、搜索及收敛诊断。
-- `evaluation/`：恢复、PF 检查、oral 对齐、自主/条件状态轨迹分析。
-- `metrics/`、`utils/`：被多个执行层实际使用的指标和公共基础工具。
-- `configs/`：迁移后的 0826 配置，均使用本包类路径与可移植的相对路径。
-- `tests/`：新旧实现一致性、公式级机制测试及恢复契约测试。
+| 内容 | 维护位置 |
+| --- | --- |
+| 状态更新、memory、规则切换、选择读出 | `src/Bayesian_state/model/` |
+| hypothesis space、几何和相似度资源 | `src/Bayesian_state/hypothesis_space/` |
+| PF、仿真、搜索、oral alignment、恢复 | `src/Bayesian_state/{inference,simulation,optimization,evaluation}/` |
+| 数据路径与被试覆盖解析 | `src/Bayesian_state/utils/{datasets,subjects}.py` |
+| 期刊模型和运行参数 | 本目录 `configs/` |
+| 期刊数据范围检查与入口默认值 | 本目录 `workflow.py`、`run_simulation.py`、`run_recovery.py`、`run_hyper_evaluation.py` |
+| 期刊分析与图形 | `CategoryLearning_codes/figures/fig1/`、`figures/fig2/` |
+| 博士论文的实验配置 | `configs/{exp123,exp4,exp5,meg}/`；共享定义在 `configs/shared/` |
 
-规则：先 begin_trial(stimulus)，再 predict_choice()，最后 complete_trial(choice, feedback)。
-当前结果不得进入当前预测。PF 是研究者的推断方法，不是新增认知机制。
+本目录原来的层级文件是兼容入口。叶模块转发到同一个共享 Python 模块对象，
+不是另行加载一份源码。旧 YAML 类路径和常用导入仍能使用；新代码直接导入
+`src.Bayesian_state`，不再增加兼容文件。期刊参数空间加载器保留只接受 0826 的限制，
+共享加载器继续兼容 0818。相似度矩阵仅保留共享目录中的一份。
 
-## 使用
+## 日常工作流
 
-从仓库根目录运行：
+从仓库根目录运行；无需复制模型或调整 PYTHONPATH：
 
 ```bash
 python -m CategoryLearning_codes.Bayesian_model.run_simulation --config CategoryLearning_codes/Bayesian_model/configs/smoke_simulation.yaml
-python -m CategoryLearning_codes.Bayesian_model.optimization.cli --help
 python -m CategoryLearning_codes.Bayesian_model.run_recovery --help
+python -m src.Bayesian_state.run_recovery --help
 python -m pytest -q CategoryLearning_codes/Bayesian_model/tests
 ```
 
-smoke_simulation 是单被试、32 试次、1 次重复的流程检查，不是正式拟合；本次已写入
-`outputs/smoke32_v1`。再次运行前将 output_dir 改为新的目录，避免覆盖。
-8 试次初版不足以计算 16 试次滑窗指标，已保留失败目录并改用 32 试次检查。
+示例 simulation 配置指向已有 `outputs/smoke32_v1`，再次执行前请复制 YAML 并将
+`output_dir` 改成新的目录。模型结构、随机种子、粒子数和数据路径均由配置决定。
+期刊 simulation/recovery 入口检查所选被试的解析后数据路径全部位于 `data/exp123/`。
+其他保留的旧 CLI 是通用兼容入口，使用时仍需明确传入期刊配置。
 
-正式结构配置 `configs/model_0826.yaml` 不改冻结参数或粒子数。参数支持仍为
-pre-recovery provisional support；`recovery_v1.yaml`/`recovery_v2.yaml` 保留原设计，
-仅修改入口路径及新的输出位置。迁移未启动完整恢复、参数搜索或全被试拟合。
-已有恢复目录的代码/配置 fingerprint 不等于新包 fingerprint，不要强行跨包 resume。
+博士论文使用 `python -m src.Bayesian_state...` 和对应实验配置。现有 `dataset`
+字段可以指定 processed_dir、learning_data、perception_summary、perception_summary_72、
+feature_order_data，不必因为换数据目录复制核心算法。后续字段转换放在数据适配层，
+类别结构和反馈含义由任务配置及对应任务实现处理，不在认知模块内根据文件夹名称分支。
 
-## 范围与旧代码处理
+**路径可配置不等于科学模型已支持所有任务。** 当前冻结的 0826/PF 工作流仍限定
+condition 1 的二分类。四分类、部分反馈和 MEG 情境需要另行定义并验证任务语义。
+这次没有改变它们的支持状态，也没有修改默认超参数、预测时序、试次筛选或 oral σ=0.05。
 
-不迁入旧 reference_models、旧动态/离散策略类、独立 label-mapping 模块、旧 0818
-拟合封装及无关的 FFT/旧报告入口。详见 MIGRATION_MANIFEST.json 的逐文件清单。
-`feedback_reactive.py` 是 0826 控制器的真实父类，必须保留。当前信念迁移位于
-`workspace.py`，不是未迁入的旧 `prior_assignment.py`。
+## 发表版本与持续开发
 
-共享文件中仍有被通用结构复用的几何、读出或兼容分支；本次不为删除几行旧选项而
-重写经过验证的数值实现。它们不属于 0826 的活跃模型：默认固定标签、w0=0、
-expectation/power=1、lapse=0，无 orientation、commitment 或错误规则捕获。
-本包不提供旧版本专用策略的公共导出，参数加载器仅接受 model_0826。
+开发阶段两篇文章共享核心修复；实验差异放到独立 YAML。改变科学行为时用新配置/显式选项，
+避免为了博士论文实验直接改变期刊配置默认行为。运行结果使用新目录。
 
-当前论文和 PF 路径仍限定 condition 1 的二分类；通用几何接口能表示其他空间，
-不意味着 Model 0826 已支持四分类与部分反馈。Task2/3 扩展是下一项独立工作。
+确定投稿版本时，提交相关代码与配置，给该 commit 建立明确的期刊版本 tag；博士论文继续
+在后续提交开发。需要复现旧期刊结果时，在另一个 Git worktree 检出该 tag，使用已记录的
+依赖环境、数据哈希、配置和随机种子。tag 冻结代码；数据和生成结果另行归档。
+不通过拷贝一整份模型来冻结版本。当前未创建 tag、额外 worktree 或自动提交。
 
-模型—文稿逐项核对见 MODEL_0826_AUDIT.md；验证记录见 VALIDATION.md。
+恢复流程现统一位于 `src/Bayesian_state/run_recovery.py`，原
+`src/Bayesian_state/workflows/runs/run_model_0826_recovery.py` 仍可调用。来源指纹指向实际共享代码；
+旧恢复产物的指纹可能不匹配，保留原产物并在其历史版本复现，不强行跨版本 resume。
 
-## Oral 编码尺度
+## 验证与历史
 
-按论文分析决策，center oral encoder 默认 sigma=0.05（新包及旧入口统一）。这是口述后处理尺度的变更，不改变模型选择预测或拟合参数。历史产物保留其原尺度；比较或合并前检查 metadata 中 oral_center_sigma。Region temperature 不变。迁移清单仍记录迁移时的历史快照，后续此变更不重写清单。
+`tests/fixtures/pre_shared_core.npz` 是合并前生成的固定数值参考：四种 PF 设置、
+两种自主轨迹设置，共 232 个数组；元数据记录生成 commit 与数据/配置/参考文件哈希。
+测试与该参考比较，不把两个同源导入互相比对当作数值回归证据。
+详见 [SHARED_CORE_VALIDATION.md](SHARED_CORE_VALIDATION.md)。
+
+`MIGRATION_MANIFEST.json`、`MODEL_0826_AUDIT.md`、`VALIDATION.md` 记录此前独立迁移的历史，
+不代表当前包仍然独立。历史输出和它们的元数据保持原样；原 migration_tools 仅供追溯。

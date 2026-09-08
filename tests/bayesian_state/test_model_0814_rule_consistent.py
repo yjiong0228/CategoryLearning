@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG = (
     ROOT
     / "configs"
-    / "model_struct"
+    / "exp123" / "model_struct"
     / "pmh_model_cond1_0814_rule_consistent.yaml"
 )
 

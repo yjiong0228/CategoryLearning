@@ -29,10 +29,10 @@ from src.Bayesian_state.simulation.config import (
 
 ROOT = Path(__file__).resolve().parents[2]
 ANALYSIS_PATH = (
-    ROOT / "configs/specific_models/model_0818_exploratory_observed_fit.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_exploratory_observed_fit.yaml"
 )
 FULL_ANALYSIS_PATH = (
-    ROOT / "configs/specific_models/model_0818_cond1_full_observed_fit.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_cond1_full_observed_fit.yaml"
 )
 
 

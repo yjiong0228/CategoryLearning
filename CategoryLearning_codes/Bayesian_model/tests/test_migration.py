@@ -1,101 +1,57 @@
-"""Migration parity against frozen source; not a model-fit quality claim."""
-from copy import deepcopy
+"""Shared-core regressions against saved pre-consolidation numerical outputs."""
 from pathlib import Path
 import importlib
+import hashlib
 import json
-import sys
-
 import numpy as np
-import pandas as pd
 import pytest
 import yaml
-
-ROOT = Path(__file__).resolve().parents[3]
-PACKAGE = ROOT/'CategoryLearning_codes/Bayesian_model'
+from CategoryLearning_codes.Bayesian_model.tests.reference_cases import run_cases, ROOT, PACKAGE
 
 
-def test_new_import_and_resource_are_independent():
-    from CategoryLearning_codes.Bayesian_model.model import StateModel
-    from CategoryLearning_codes.Bayesian_model.hypothesis_space.similarity import ContinuousSimilarity
-    assert StateModel.__module__.startswith('CategoryLearning_codes.Bayesian_model.')
-    assert ContinuousSimilarity.RESOURCE_DIR.is_relative_to(PACKAGE)
+def test_frozen_numeric_reference():
+    reference = PACKAGE / 'tests/fixtures/pre_shared_core.npz'
+    metadata = json.loads(reference.with_suffix('.json').read_text())
+    assert hashlib.sha256(reference.read_bytes()).hexdigest() == metadata['sha256'][str(reference.relative_to(ROOT))]
+    with np.load(reference, allow_pickle=False) as expected:
+        actual = run_cases('src.Bayesian_state')
+        assert set(actual) == set(expected.files)
+        for key in expected.files:
+            np.testing.assert_array_equal(actual[key], expected[key], err_msg=key)
 
 
-@pytest.mark.parametrize('execution', [False,True])
-@pytest.mark.parametrize('transport', ['similarity_transport','mass_preserving_similarity_transport'])
-def test_fixed_seed_pf_matches_source(execution,transport):
-    from src.Bayesian_state.inference.backends.particle_filter import run_state_model_particle_filter as old_run
-    from CategoryLearning_codes.Bayesian_model.inference.backends.particle_filter import run_state_model_particle_filter as new_run
-    old=yaml.safe_load((ROOT/'configs/model_struct/pmh_model_cond1_0826.yaml').read_text())
-    new=yaml.safe_load((PACKAGE/'configs/model_0826.yaml').read_text())
-    for config in [old,new]:
-        transition=config['modules']['hypo_transitions_mod']['kwargs']
-        transition['persistent_execution']['enabled']=execution
-        transition['prior_assignment']['method']=transport
-        transition['nested_feedback_accumulator_controller']['accumulator_logit_gain']=.4
-        transition['nested_feedback_accumulator_controller']['global_search_failure_gain']=.3
-    data=pd.read_csv(ROOT/'data/processed/Task2_processed.csv')
-    sub=data[data.iSub.eq(101)].sort_values(['iSession','iTrial']).iloc[:16]
-    kwargs=dict(subject_id=101,stimulus=sub[[f'feature{i}' for i in range(1,5)]].to_numpy(),
-                choices=sub.choice.to_numpy(),feedback=sub.feedback.to_numpy(),
-                particle_count=4,choice_readout_power=1.,filter_seed=8326)
-    a=old_run(engine_config=old,**kwargs);b=new_run(engine_config=new,**kwargs)
-    for attr in ['observation_probabilities','state_probabilities','latent_summaries']:
-        left,right=getattr(a,attr),getattr(b,attr)
-        assert left.keys()==right.keys()
-        for key in left:
-            if left[key] is None:assert right[key] is None
-            else: np.testing.assert_equal(left[key],right[key],err_msg=f'{attr}.{key}')
-    np.testing.assert_equal(a.resampled,b.resampled)
-    np.testing.assert_allclose(b.marginal_probabilities.sum(axis=1),1.,atol=1e-12)
-    assert np.isfinite(b.marginal_probabilities).all()
+@pytest.mark.parametrize('module', [
+    'model.engine', 'model.state_model', 'inference.backends.particle_filter',
+    'simulation.runner', 'evaluation.oral.scoring', 'hypothesis_space.similarity',
+])
+def test_compatibility_modules_are_the_same_object(module):
+    old = importlib.import_module('CategoryLearning_codes.Bayesian_model.' + module)
+    shared = importlib.import_module('src.Bayesian_state.' + module)
+    assert old is shared
 
 
-@pytest.mark.parametrize('execution',[False,True])
-def test_autonomous_choices_and_states_match_source(execution):
-    from src.Bayesian_state.simulation.autonomous import run_autonomous_category_learning as old_run
-    from CategoryLearning_codes.Bayesian_model.simulation.autonomous import run_autonomous_category_learning as new_run
-    old=yaml.safe_load((ROOT/'configs/model_struct/pmh_model_cond1_0826.yaml').read_text())
-    new=yaml.safe_load((PACKAGE/'configs/model_0826.yaml').read_text())
-    for cfg in [old,new]:cfg['modules']['hypo_transitions_mod']['kwargs']['persistent_execution']['enabled']=execution
-    data=pd.read_csv(ROOT/'data/processed/Task2_processed.csv')
-    sub=data[data.iSub.eq(101)].sort_values(['iSession','iTrial']).iloc[:24]
-    kw=dict(subject_id=101,condition=1,stimulus=sub[[f'feature{i}' for i in range(1,5)]].to_numpy(),
-            categories=sub.category.to_numpy(),trajectory_seed=8261)
-    a=old_run(engine_config=old,**kw).trajectory;b=new_run(engine_config=new,**kw).trajectory
-    for key in ['choices','feedback','perceived_stimulus','prior','posterior','beta','cognitive_probabilities','observed_probabilities']:
-        np.testing.assert_equal(getattr(a,key),getattr(b,key),err_msg=key)
+def test_shared_core_has_no_journal_dependency():
+    for file in (ROOT / 'src/Bayesian_state').rglob('*.py'):
+        assert 'CategoryLearning_codes' not in file.read_text(), str(file)
 
 
-def test_package_imports_with_legacy_namespace_blocked():
-    import subprocess
-    program='''
-import importlib, importlib.abc, json, sys
-from pathlib import Path
-class BlockLegacy(importlib.abc.MetaPathFinder):
-    def find_spec(self,fullname,path=None,target=None):
-        if fullname.startswith('src.Bayesian_state'):
-            raise AssertionError('Legacy dependency: '+fullname)
-sys.meta_path.insert(0,BlockLegacy())
-p=Path('CategoryLearning_codes/Bayesian_model')
-for file in p.rglob('*.py'):
-    rel=file.relative_to(p)
-    if rel.parts[0] in ('tests','outputs'):continue
-    name='CategoryLearning_codes.Bayesian_model.'+str(rel).removesuffix('.py').replace('/','.').removesuffix('.__init__')
-    if str(rel)=='__init__.py':name='CategoryLearning_codes.Bayesian_model'
-    importlib.import_module(name)
-'''
-    subprocess.run([sys.executable,'-c',program],cwd=ROOT,check=True,capture_output=True,text=True)
+def test_recovery_entrypoints_share_implementation():
+    from src.Bayesian_state.workflows.runs import run_model_0826_recovery as legacy
+    from src.Bayesian_state import run_recovery as shared
+    from CategoryLearning_codes.Bayesian_model import run_recovery as journal
+    assert legacy is shared
+    assert journal.build_parser().parse_args([]).config == PACKAGE / 'configs/recovery_v1.yaml'
+    assert shared.build_parser().parse_args([]).config == ROOT / 'configs/exp123/specific_models/model_0826_recovery_v1.yaml'
 
 
 def test_frozen_config_and_resource_match_manuscript():
     import hashlib
-    old=(ROOT/'configs/model_struct/pmh_model_cond1_0826.yaml').read_text()
+    old=(ROOT/'configs/exp123/model_struct/pmh_model_cond1_0826.yaml').read_text()
     config=yaml.safe_load((PACKAGE/'configs/model_0826.yaml').read_text())
-    assert config==yaml.safe_load(old.replace('src.Bayesian_state','CategoryLearning_codes.Bayesian_model'))
+    assert config==yaml.safe_load(old)
     assert hashlib.sha256((ROOT/config['provenance']['manuscript_path']).read_bytes()).hexdigest()==config['provenance']['manuscript_sha256']
     similarity=config['provenance']['hypothesis_similarity']
-    resource=PACKAGE/'hypothesis_space/resources/similarity'/similarity['resource_filename']
+    resource=ROOT/'src/Bayesian_state/hypothesis_space/resources/similarity'/similarity['resource_filename']
     assert hashlib.sha256(resource.read_bytes()).hexdigest()==similarity['resource_sha256']
     assert np.load(resource).shape==(29,29)
     from CategoryLearning_codes.Bayesian_model.evaluation.model_recovery import load_recovery_design

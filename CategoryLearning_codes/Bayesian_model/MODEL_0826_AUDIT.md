@@ -1,3 +1,5 @@
+> Historical record of the initial independent migration. Since 2026-09-08 the implementation is shared in src/Bayesian_state; see README.md and SHARED_CORE_VALIDATION.md.
+
 # Model 0826 — manuscript/implementation audit
 
 比较基准：manuscript/model_0826.tex 与 configs/model_struct/pmh_model_cond1_0826.yaml。

@@ -11,7 +11,7 @@ All outputs are grouped by figure number; see the [output index](../outputs/READ
 All code, tests, audit tables, source snapshots and unconfirmed figures are in
 CategoryLearning_codes. CategoryLearning_paper/figures is reserved for confirmed
 images; Figure1.png is the confirmed v10 copy. Previous outputs are preserved. The v1–v3 directory
-migration is recorded in migration_20260907.json (its paths refer to the original figures root). The audited model implementation is in `../../Bayesian_model/`.
+migration is recorded in migration_20260907.json (its paths refer to the original figures root). The journal model workflow is in `../../Bayesian_model/`; its shared implementation is in `src/Bayesian_state/`.
 
 ## Reproduce
 

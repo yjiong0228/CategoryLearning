@@ -115,7 +115,7 @@ CATEGORICAL_PARAM_COLUMNS = (
     "output_lapse_target",
 )
 
-DEFAULT_BASE_SIM_CONFIG = Path("configs/simulation_cfg/pmh_cond1_simulation.yaml")
+DEFAULT_BASE_SIM_CONFIG = Path("configs/exp123/simulation_cfg/pmh_cond1_simulation.yaml")
 
 ACCURACY_SHAPE_COLUMNS = (
     "accuracy_shape_score",

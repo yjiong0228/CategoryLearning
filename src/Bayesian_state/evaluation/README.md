@@ -1,5 +1,7 @@
 # 模型评价
 
+`recovery.py` 只负责冻结候选评分、数值预算评价、恢复统计与绘图。拟合已归 optimization/recovery.py，设计和阶段编排位于 workflows/recovery/。`model_recovery.py` 仅保留旧导入的兼容转发。
+
 本目录负责读取已经完成的 simulation 输出，计算或复核指标，并生成状态轨迹、行为 PPC 和
 oral/model alignment 图表。它不参与模型拟合，也不改变 hyperparameter selection。
 它可以用冻结参数运行明确的评价协议，但不得根据评价结果重新搜索参数或覆盖冻结配置。
@@ -48,7 +50,7 @@ cache/subject_<id>_raw_runs.gz   # optional
 
 ```bash
 python -m src.Bayesian_state.run_autonomous_trajectory_evaluation \
-  --config configs/simulation_cfg/example.yaml \
+  --config configs/exp123/simulation_cfg/example.yaml \
   --subject 101 \
   --rollouts 500 \
   --output-dir results/example/model_evaluation/autonomous_trajectories
@@ -199,7 +201,7 @@ python -m src.Bayesian_state.run_model_evaluation \
   --input-dir results/model_dynamic_continuous/0809_v1/simulation \
   --output-dir results/model_dynamic_continuous/0809_v1/model_evaluation \
   --eval-prediction-mode prior_t \
-  --strategy-audit-config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
+  --strategy-audit-config configs/exp123/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
   --strategy-audit-particles 32 \
   --strategy-audit-seeds 20260821 20260822 20260823 20260824 \
   --skip-basic --skip-trajectory --skip-behavior-ppc --skip-oral
@@ -295,7 +297,7 @@ keep_logs: true
 
 ## Model0826 恢复汇总
 
-`evaluation/model_recovery.py` 汇总 `scripts/run_model_0826_recovery.py` 的冻结结果。模块恢复报告
+`evaluation/model_recovery.py` 汇总 `src/Bayesian_state/workflows/runs/run_model_0826_recovery.py` 的冻结结果。模块恢复报告
 P/PM/PH/PMH 的 held-out confusion matrix、逐 cell Wilson 95% interval、真值 cell 的
 `delta total NLL <= 2` coverage 和错误 cell 吸收率。参数恢复把 `M` 与 readout 结构 `chi`
 分别作为离散 confusion matrix；连续参数报告 bias、MAE、RMSE、支持跨度归一化 MAE、Spearman

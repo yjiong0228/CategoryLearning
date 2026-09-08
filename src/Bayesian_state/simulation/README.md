@@ -1,5 +1,7 @@
 # 仿真
 
+`recovery.py` 提供恢复数据契约、任务序列哈希与合成 trial 表格；实际自主生成继续使用 autonomous.py。恢复真值的实验配置与文件调度位于 workflows/recovery/generation.py。
+
 本目录负责固定参数下的观察数据执行、独立重复运行与模型自主行为生成。
 它不搜索或选择超参数；optimization 通过调用这里的稳定运行接口比较候选参数。
 
@@ -74,9 +76,9 @@ choice NLL/Brier。`simulation.mean_error` 是这个 probability-mixture score�
 声明性解释来自 engine YAML 的 `provenance` 字段；该字段不参与认知计算。
 
 Controller v2a 的三被试结构探针配置是
-`configs/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml`。
+`configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml`。
 它继承 0809 已选中的 memory/readout/noise/capacity 设置，只替换 continuous controller，并写入
 新的 `results/model_dynamic_continuous/0810_controller_v2a_probe/`；它不是新的 Hyper-CD 拟合。
 v2b 的受限先验重置探针是
-`configs/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml`；除
+`configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml`；除
 `prior_reset.max_strength: 0.35` 与独立输出目录外，它与 v2a 完全相同，便于直接归因比较。

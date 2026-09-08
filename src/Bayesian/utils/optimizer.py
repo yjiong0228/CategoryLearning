@@ -18,7 +18,7 @@ from ..problems import (
 from .stream import StreamList
 
 PROJECT_ROOT_PATH = Path(os.getcwd()).parent.parent.parent.parent.parent
-DEFAULT_DATA_PATH = Path(PROJECT_ROOT_PATH, "data", "processed", "Task2_processed.csv")
+DEFAULT_DATA_PATH = Path(PROJECT_ROOT_PATH, "data", "exp123", "processed", "Task2_processed.csv")
 
 
 class ConstantDict(UserDict):

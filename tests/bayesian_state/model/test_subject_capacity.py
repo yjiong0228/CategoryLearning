@@ -15,18 +15,18 @@ from src.Bayesian_state.simulation.config import (
 
 
 HYPER_CONFIG = Path(
-    "configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml"
+    "configs/exp123/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml"
 )
 SIMULATION_CONFIG = Path(
-    "configs/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml"
+    "configs/exp123/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml"
 )
 CAPACITY_PATH = "engine.modules.hypo_transitions_mod.kwargs.capacity"
 V2_PROBE_CONFIG = Path(
-    "configs/simulation_cfg/generated_from_hyper/"
+    "configs/exp123/simulation_cfg/generated_from_hyper/"
     "model0809_controller_v2a_selected3_probe.yaml"
 )
 V2B_PROBE_CONFIG = Path(
-    "configs/simulation_cfg/generated_from_hyper/"
+    "configs/exp123/simulation_cfg/generated_from_hyper/"
     "model0809_controller_v2b_selected3_probe.yaml"
 )
 
@@ -38,8 +38,12 @@ def test_model0809_pilot_searches_subject_capacity_on_the_full_sequence():
     selected_subjects = [103, 104, 105, 108, 111, 120, 124, 132]
     assert hyper["subjects"] == selected_subjects
     assert simulation["subjects"] == selected_subjects
-    assert hyper["output_dir"] == "../../results/model_dynamic_continuous/0809_v1/hyper_cd"
-    assert simulation["output_dir"] == "../../results/model_dynamic_continuous/0809_v1/simulation"
+    assert (HYPER_CONFIG.parent / hyper["output_dir"]).resolve() == Path(
+        "results/model_dynamic_continuous/0809_v1/hyper_cd"
+    ).resolve()
+    assert (SIMULATION_CONFIG.parent / simulation["output_dir"]).resolve() == Path(
+        "results/model_dynamic_continuous/0809_v1/simulation"
+    ).resolve()
     assert hyper["loss_metric"] == "choice_nll"
     assert simulation["loss_metric"] == "choice_nll"
     assert hyper["objective_order"][0]["path"] == "simulation.mean_error"

@@ -1,0 +1,49 @@
+analysis_id: model_0818_cond1_high_budget_r128_b128_v1
+scope: synthetic_high_budget_pf_convergence_before_formal_recovery
+
+parameter_space: configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml
+boundary_recovery_config: configs/exp123/specific_models/model_0818_boundary_recovery.yaml
+base_simulation_config: configs/exp123/simulation_cfg/model0818_cond1_boundary_recovery.yaml
+source_pilot_dir: results/model_0818/cond1/boundary_recovery/pf_budget_calibration_v1/pilot
+output_dir: results/model_0818/cond1/boundary_recovery/high_convergence_r128_b128_v1
+
+# These are the same two fixed autonomous trajectories used in the lower-budget
+# diagnostic. Human choices remain forbidden in this numerical stress test.
+dataset_ids:
+  - B000_all_zero_subject_103_replicate_00
+  - B010_c_A_subject_103_replicate_00
+
+design:
+  particle_count: 128
+  filter_seed_count: 128
+  nested_checkpoints: [16, 32, 64, 128]
+  seed_family: model0818_high_budget_r128_b128_v1
+  cache_namespace: R128_nested_B128_v1
+  resample_threshold_fraction: 0.5
+  n_jobs: 128
+  probability_aggregation: mean_probability_then_nll
+  independent_halves: [64, 64]
+
+bootstrap:
+  replicates: 4000
+  confidence_level: 0.95
+  base_seed: 20260819
+  paired_seed_resampling_across_candidates: true
+
+# Predeclared before launching the 1024 PF tasks. This is a stop test for
+# brute-force scaling: failure at R128/B128 ends further particle/seed growth.
+convergence_gates:
+  comparison_from_seed_count: 64
+  comparison_to_seed_count: 128
+  maximum_absolute_candidate_nll_change: 0.10
+  maximum_pairwise_delta_nll_ci_half_width: 0.20
+
+scientific_decision:
+  high_budget_stop_test: true
+  if_failed: stop_bruteforce_particle_and_seed_scaling
+  if_passed: numerical_stability_only_not_recovery_evidence
+
+execution:
+  parallel_unit: one_dataset_by_candidate_by_filter_seed
+  expected_task_count: 1024
+  numerical_library_threads_per_process: 1

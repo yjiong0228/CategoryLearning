@@ -1,0 +1,123 @@
+schema_version: 2
+analysis_id: model_0826_recovery_v2
+model_id: model_0826
+model_engine_config: ../model_struct/pmh_model_cond1_0826.yaml
+parameter_space: model_0826_cond1_parameter_space.yaml
+base_simulation_config: ../simulation_cfg/model0826_cond1_recovery_base.yaml
+output_root: ../../../results/model_0826/recovery_v2
+
+subjects:
+  - {subject_id: 101, trial_count: 320}
+  - {subject_id: 111, trial_count: 320}
+  - {subject_id: 118, trial_count: 256}
+
+generation:
+  base_seed: 20260901
+  condition: 1
+  observed_choices_used: false
+  schedule_columns: [iSession, iBlock, iTrial, feature1, feature2, feature3, feature4, category]
+
+module_recovery:
+  cells: [P, PM, PH, PMH]
+  templates: [101, 111, 118]
+  replicates_per_cell_template: 3
+  train_fraction: 0.70
+  near_best_delta_total_nll: 2.0
+  truth:
+    gamma: 0.80
+    M: 3
+    chi: 0
+    E_C: 0.25
+    delta_E: 0.80
+    g_0: 0.20
+    c_A: 2.00
+    c_G: 0.50
+    beta_0: 5.00
+    eta_plus: 0.04
+    eta_minus: 0.15
+  gates:
+    overall_exact_recovery_min: 0.70
+    per_cell_exact_recovery_min: 0.50
+    true_cell_near_best_coverage_min: 0.85
+    maximum_single_wrong_cell_absorption: 0.30
+
+parameter_recovery:
+  near_best_delta_total_nll: 2.0
+  local_center:
+    profile_id: local_sub101_pattern_check
+    template_assignments: [101, 101, 101, 101, 111, 111, 111, 118, 118, 118]
+    truth:
+      M: 4
+      chi: 1
+      gamma: 0.97
+      E_C: 0.02
+      delta_E: 0.80
+      g_0: 0.20
+      c_A: 0.00
+      c_G: 0.00
+      beta_0: 5.00
+      eta_plus: 0.04
+      eta_minus: 0.07
+  contrast_profiles:
+    C1:
+      template_assignments: [101, 111, 118, 101, 111]
+      truth: {M: 2, chi: 0, gamma: 0.25, E_C: 0.10, delta_E: 0.25, g_0: 0.05, c_A: 0.25, c_G: 0.10, beta_0: 1.0, eta_plus: 0.01, eta_minus: 0.03}
+    C2:
+      template_assignments: [111, 118, 101, 111, 118]
+      truth: {M: 5, chi: 1, gamma: 0.90, E_C: 0.50, delta_E: 1.60, g_0: 0.70, c_A: 4.00, c_G: 0.75, beta_0: 10.0, eta_plus: 0.16, eta_minus: 0.60}
+    C3:
+      template_assignments: [118, 101, 111, 118, 101]
+      truth: {M: 3, chi: 0, gamma: 0.50, E_C: 0.25, delta_E: 3.20, g_0: 0.10, c_A: 6.00, c_G: 1.00, beta_0: 2.5, eta_plus: 0.32, eta_minus: 1.00}
+    C4:
+      template_assignments: [101, 111, 118, 101, 111]
+      truth: {M: 4, chi: 1, gamma: 0.80, E_C: 0.75, delta_E: 0.00, g_0: 0.40, c_A: 0.00, c_G: 0.00, beta_0: 20.0, eta_plus: 0.005, eta_minus: 0.01}
+    C5:
+      template_assignments: [111, 118, 101, 111, 118]
+      truth: {M: 2, chi: 0, gamma: 0.00, E_C: 0.10, delta_E: 0.4795730802618863, g_0: 0.00, c_A: 2.00, c_G: 1.00, beta_0: 0.5, eta_plus: 0.08, eta_minus: 0.30}
+    C6:
+      template_assignments: [118, 101, 111, 118, 101]
+      truth: {M: 5, chi: 0, gamma: 0.80, E_C: 0.02, delta_E: 0.80, g_0: 0.20, c_A: 0.50, c_G: 0.25, beta_0: 10.0, eta_plus: 0.02, eta_minus: 0.15}
+  gates:
+    chi_exact_recovery_min: 0.70
+    chi_near_best_coverage_min: 0.85
+    continuous_spearman_min: 0.60
+    continuous_normalized_mae_max: 0.20
+    continuous_near_best_coverage_min: 0.80
+    zero_positive_balanced_accuracy_min: 0.70
+
+pf_calibration:
+  anchor_truth: {M: 3, gamma: 0.80, E_C: 0.25, delta_E: 0.80, g_0: 0.20, c_A: 2.00, c_G: 0.50, beta_0: 5.00, eta_plus: 0.04, eta_minus: 0.15}
+  templates: [101, 111, 118]
+  chi_values: [0, 1]
+  candidate_bank_variants: [anchor, gamma_050, gains_zero, beta_slow]
+  primary_particle_counts: [16, 32, 64]
+  primary_filter_seed_counts: [4, 8]
+  escalation: {particle_count: 128, filter_seed_count: 16}
+  seed_ensembles: [A, B]
+  gates:
+    median_adjacent_rank_spearman_min: 0.90
+    minimum_adjacent_rank_spearman_min: 0.70
+    adjacent_winner_top_k: 2
+    adjacent_winner_top_k_min_count: 6
+    independent_winner_agreement_min_count: 5
+    dataset_count: 6
+    median_probability_rmse_max: 0.015
+    trial_probability_mcse_q95_max: 0.020
+
+search:
+  shortlist_size: 4
+  stage_budgets:
+    coarse: {particle_count: 16, filter_seed_count: 4}
+    fine: {particle_count: 64, filter_seed_count: 8}
+  budget_validation:
+    reference: {particle_count: 128, filter_seed_count: 16, ensemble: A}
+    stages:
+      coarse: {particle_count: 16, filter_seed_count: 4, ensemble: A, winner_top_k: 4, minimum_dataset_count: 6}
+      fine: {particle_count: 64, filter_seed_count: 8, ensemble: A, winner_top_k: 2, minimum_dataset_count: 6}
+  cd:
+    max_outer_iters: 6
+    coordinate_order: fixed
+    patience: 2
+    min_delta: 0.0001
+    parallel_budget: 64
+  final_rescore_seed_family: model0826_recovery_final_rescore_v2

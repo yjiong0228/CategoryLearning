@@ -7,10 +7,6 @@ import pandas as pd
 import pytest
 import yaml
 
-from scripts.run_model_0818_seed_convergence import (
-    build_seed_jobs,
-    seed_cache_path,
-)
 from src.Bayesian_state.optimization.seed_convergence import (
     bootstrap_pairwise_delta_nll,
     evaluate_seed_convergence,
@@ -20,9 +16,9 @@ from src.Bayesian_state.optimization.seed_convergence import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / "configs/specific_models/model_0818_seed_convergence.yaml"
+CONFIG = ROOT / "configs/exp123/specific_models/model_0818_seed_convergence.yaml"
 HIGH_CONFIG = (
-    ROOT / "configs/specific_models/model_0818_high_budget_convergence.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_high_budget_convergence.yaml"
 )
 
 
@@ -43,95 +39,10 @@ def _constant_banks(seed_count: int = 16) -> tuple[dict[str, np.ndarray], np.nda
     return {"candidate_a": candidate_a, "candidate_b": candidate_b}, choices
 
 
-def test_config_declares_128_unique_candidate_paired_seed_tasks() -> None:
-    config = _yaml(CONFIG)
-    design = config["design"]
-    datasets = [
-        {"dataset_id": dataset_id, "subject_id": 103, "true_profile_id": "x"}
-        for dataset_id in config["dataset_ids"]
-    ]
-    profiles = [{"profile_id": f"p{index}"} for index in range(4)]
-    jobs = build_seed_jobs(
-        datasets=datasets,
-        profiles=profiles,
-        particle_count=design["particle_count"],
-        filter_seed_count=design["filter_seed_count"],
-        base_seed=20260818,
-        seed_family=design["seed_family"],
-    )
-
-    assert len(jobs) == config["execution"]["expected_task_count"] == 128
-    assert config["design"]["n_jobs"] == 128
-    assert config["design"]["nested_checkpoints"] == [2, 4, 8, 16]
-    assert len(
-        {
-            (
-                job["dataset"]["dataset_id"],
-                job["profile"]["profile_id"],
-                job["filter_seed"],
-            )
-            for job in jobs
-        }
-    ) == 128
-    for dataset_id in config["dataset_ids"]:
-        candidate_seed_lists = []
-        for profile in profiles:
-            candidate_seed_lists.append(
-                [
-                    job["filter_seed"]
-                    for job in jobs
-                    if job["dataset"]["dataset_id"] == dataset_id
-                    and job["profile"]["profile_id"] == profile["profile_id"]
-                ]
-            )
-        assert all(
-            seeds == candidate_seed_lists[0] for seeds in candidate_seed_lists[1:]
-        )
-        assert len(set(candidate_seed_lists[0])) == 16
 
 
-def test_high_budget_config_declares_1024_paired_seed_tasks() -> None:
-    config = _yaml(HIGH_CONFIG)
-    design = config["design"]
-    datasets = [
-        {"dataset_id": dataset_id, "subject_id": 103, "true_profile_id": "x"}
-        for dataset_id in config["dataset_ids"]
-    ]
-    profiles = [{"profile_id": f"p{index}"} for index in range(4)]
-    jobs = build_seed_jobs(
-        datasets=datasets,
-        profiles=profiles,
-        particle_count=design["particle_count"],
-        filter_seed_count=design["filter_seed_count"],
-        base_seed=20260818,
-        seed_family=design["seed_family"],
-    )
-
-    assert design["particle_count"] == 128
-    assert design["filter_seed_count"] == 128
-    assert design["nested_checkpoints"] == [16, 32, 64, 128]
-    assert design["independent_halves"] == [64, 64]
-    assert design["n_jobs"] == 128
-    assert len(jobs) == config["execution"]["expected_task_count"] == 1024
-    assert len(
-        {
-            (
-                job["dataset"]["dataset_id"],
-                job["profile"]["profile_id"],
-                job["filter_seed"],
-            )
-            for job in jobs
-        }
-    ) == 1024
 
 
-def test_seed_cache_path_is_unique_by_dataset_profile_and_seed(tmp_path: Path) -> None:
-    left = seed_cache_path(tmp_path, "namespace", "dataset", "p0", 123)
-    right = seed_cache_path(tmp_path, "namespace", "dataset", "p1", 123)
-
-    assert left != right
-    assert left.name == "seed_123.npz"
-    assert "per_seed" in left.parts
 
 
 def test_nested_seed_scores_use_exact_prefixes_and_mean_probabilities() -> None:

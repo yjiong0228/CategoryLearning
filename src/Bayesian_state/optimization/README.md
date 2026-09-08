@@ -1,5 +1,7 @@
 # 优化
 
+`recovery.py` 拥有 fit_recovery_dataset 和冻结搜索预算解析；`recovery_parameters.py` 提供真值参数映射。阶段编排位于 workflows/recovery/run.py，评价层不再承担拟合实现。本文历史专用脚本可能已移除，以 workflows/README.md 保留清单为准。
+
 本目录是 `Bayesian_state` 的参数搜索与模型选择层。它调用 `simulation/`，把候选
 hyperparameters 对应的 `SingleRunResult`/`SimulationResult` 组成可比较的 objective，但不拥有
 固定参数运行时、结果契约、指标公式或具体认知机制。
@@ -118,14 +120,14 @@ objective，再对被试等权平均后选择同一候选；不会因不同被�
 `search_context.subjects` 保存实际开发集。
 
 Model 0818 的恢复前候选支持保存在
-`configs/specific_models/model_0818_cond1_parameter_space.yaml`。其中 `delta_E`、`c_A` 和
+`configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml`。其中 `delta_E`、`c_A` 和
 `c_G` 使用 `spike_and_positive_grid`：精确零边界写在 `zero_value`，严格正值写在
 `positive_values`，不得把两者合并成一个普通连续区间。`delta_E` 在 logit 尺度上导出
 `E_E = sigmoid(logit(E_C) + delta_E)`，从结构上保证 `E_E >= E_C`。该配置在参数和模型恢复
 通过前保持 provisional，不得直接用于冻结真实被试估计。
 
 三条零边界的最小生成--恢复入口是
-`scripts/run_model_0818_boundary_recovery.py --smoke`。它只读取 condition-1 的刺激和正确类别作为
+`src/Bayesian_state/workflows/runs/run_model_0818_boundary_recovery.py --smoke`。它只读取 condition-1 的刺激和正确类别作为
 固定任务日程，自主生成 choice/feedback，再用共同 PF 随机数和“先跨种子平均逐试次概率、后计算
 NLL”的规则盲评四个候选剖面。smoke 输出只用于验证管线和候选边界是否可达，不作为参数可恢复
 的科学证据。
@@ -138,16 +140,16 @@ NLL”的规则盲评四个候选剖面。smoke 输出只用于验证管线和�
 正式恢复成功。
 
 当候选接近、赢家会随 PF 种子改变时，使用
-`scripts/run_model_0818_seed_convergence.py` 运行逐种子数值诊断。每个
+`src/Bayesian_state/workflows/runs/run_model_0818_seed_convergence.py` 运行逐种子数值诊断。每个
 dataset × candidate × filter-seed 是一个独立并行任务，并单独保存逐试次选择概率、ESS 和重采样
 记录；同一缓存可按配置中的 `nested_checkpoints` 无损汇总不同 B 前缀，不允许把已经聚合的 NLL
 再作平均。汇总使用配对种子 bootstrap 估计候选间 delta-NLL 的 Monte Carlo 区间，并把近似并列
 与评分器不稳定分开。默认配置检查 R32/B16；
-`configs/specific_models/model_0818_high_budget_convergence.yaml` 是 R128/B128 的暴力扩容终止测试。
+`configs/exp123/specific_models/model_0818_high_budget_convergence.yaml` 是 R128/B128 的暴力扩容终止测试。
 该步骤即使通过，也只允许进入稳定 B 下的配对粒子数比较；它本身不授权正式恢复或真实被试拟合。
 
 在使用者明确授权跳过恢复、只查看当前模型拟合状况时，可运行
-`scripts/run_model_0818_exploratory_observed_fit.py`。当前正式配置
+`src/Bayesian_state/workflows/runs/run_model_0818_exploratory_observed_fit.py`。当前正式配置
 `model_0818_cond1_full_observed_fit.yaml` 使用 condition 1 的 32 名被试各自全部可用试次（共
 10,048 个；每人 64--768 个）、完整 PMH 架构和固定的被试知觉参数。搜索阶段使用 R32/B4 的
 两起点单轮块坐标筛选；入选点用独立种子族执行 R128/B128，并先平均逐试次概率再计算 NLL。
@@ -163,7 +165,7 @@ R128、4 个不参与 Hyper-CD 选择的新 PF seeds 和 `keep_logs: true` 生�
 `src.Bayesian_state.run_model_evaluation --oral-mode center`，得到与
 `results/model_dynamic_adaptive_control/0813_pf/model_evaluation` 同构的 basic、trajectory、
 behavior PPC、sequential residual 和 oral/model alignment 产物。快捷编排入口是
-`scripts/run_model_0818_full_standard_evaluation.sh`。这里的标准评价覆盖每名被试的全部拟合内
+`src/Bayesian_state/workflows/runs/run_model_0818_full_standard_evaluation.sh`。这里的标准评价覆盖每名被试的全部拟合内
 试次；R128/B128 的最终重评分单独保留，不能把 4-seed 图形评价误称为最终 likelihood 精度。
 
 若基础 simulation config 声明 `evaluation_protocol.mode: sequential_holdout`，Grid 和 Hyper-CD
@@ -231,7 +233,7 @@ final_rescore:
 holdout，复评分沿用同一 optimization trial mask；完整序列仍参与因果状态递推，但只有训练前缀
 参与参数选择。全试次分析应明确保持 `max_trials: null`，不能继承旧的 64-trial 探索上限。
 
-Model0826 的正式恢复由 `scripts/run_model_0826_recovery.py` 编排。模块恢复的 Hyper-CD 与
+Model0826 的正式恢复由 `src/Bayesian_state/workflows/runs/run_model_0826_recovery.py` 编排。模块恢复的 Hyper-CD 与
 final-rescore 都只能读取 70% 时间前缀；冻结赢家后才由 evaluation 层用新的候选配对 PF seeds
 计算 30% 后缀 NLL。参数恢复使用全部试次拟合，但恢复判定不会只比较一个估计点：final-rescore
 shortlist 的全部候选和生成真值会在同一组独立 seeds 下重新评分，真值相对该集合最小 total NLL
@@ -239,7 +241,7 @@ shortlist 的全部候选和生成真值会在同一组独立 seeds 下重新评
 选择都属于统计估计程序，不是认知机制。
 
 计算优化后的预注册配置是
-`configs/specific_models/model_0826_recovery_v2.yaml`。它不改模型结构或最终评分精度：coarse
+`configs/exp123/specific_models/model_0826_recovery_v2.yaml`。它不改模型结构或最终评分精度：coarse
 搜索用 R16×B4，fine 搜索用 R64×B8，shortlist 仍用校准冻结的高预算独立 seeds 最终复评分。
 低预算只负责保留候选；校准必须逐数据集检查高预算赢家是否分别位于 coarse top-4 和 fine
 top-2，未通过便禁止进入正式恢复。初始 R32×B4 fine 预算只在 3/6 个校准数据中保留了

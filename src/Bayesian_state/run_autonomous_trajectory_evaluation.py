@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import tempfile
 from pathlib import Path
 
-_PROJECT_TMP = Path(__file__).resolve().parents[2] / "tmp"
+_PROJECT_TMP = Path(tempfile.gettempdir()) / "categorylearning-cache"
 _MPL_CACHE = _PROJECT_TMP / "matplotlib"
 _MPL_CACHE.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_MPL_CACHE))

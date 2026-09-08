@@ -44,7 +44,7 @@ hypothesis_transition/
 
 只有表中前六个文件定义认知模式或公共契约；后四个是共享机制，不能在
 model YAML 中当作独立 H 模式配置。被试级 candidate 资源位于
-`configs/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
+`configs/shared/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
 
 ## 2. 公共的两步过程
 
@@ -640,7 +640,7 @@ and event_after_correct = event_after_error
 连续优化自动落在该边界。`global_search_failure_gain=0` 保持固定 global mixture；正值只复用同一
 `F_t` 增大全局 newcomer proposal 的比例，不增加第二套 range accumulator。独立 mastery state、
 阈值和额外 rise/recovery smoothing 仍不属于这个精简控制器。完整模板见
-`configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml`。
+`configs/exp123/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml`。
 
 H3 继续作为纯 execution-off 参照。H4/H5 则允许在同一个 nested controller 下配置：
 
@@ -658,11 +658,11 @@ persistent_execution:
 这一扩展不改变 accumulator 的零边界：execution-off 且两个 accumulator gain 为零时仍与 H3
 逐 trial 严格相同。
 
-历史低维筛选入口为 `scripts/run_model_0815_h4_nested_subject_screen.py`。它先在训练 trials 上
+历史低维筛选入口为 `src/Bayesian_state/workflows/runs/run_model_0815_h4_nested_subject_screen.py`。它先在训练 trials 上
 顺序校准 `event_after_correct`、即时错误 logit gain 与固定 `global_search`，再在三种共同 decay
 下 profile 包含精确 0 的 subject gain。正 gain 必须同时越过训练实用阈值和配对 PF seed-noise
 门槛，否则保留 0。最终留出评估使用不同的 seed role，不能反向参与参数选择。对应预声明配置为
-`configs/specific_models/model_0815_h4_nested_subject_screen.yaml`。该入口不包含新加入的动态 global
+`configs/exp123/specific_models/model_0815_h4_nested_subject_screen.yaml`。该入口不包含新加入的动态 global
 gain，且其 32/32 切分结果只保留为历史技术产物，不再用于当前架构去留决定。
 
 ### 9.6 H5 similarity-transport prior assignment
@@ -687,7 +687,7 @@ prior-specific 拟合参数：`E_t` 通过 realized `K_t` 决定更新比例，`
 范围。H5 将 `tau_local=0.10` 固定为公共架构尺度，不允许它与 `g_t` 一起成为被试级的两个
 搜索宽度补偿参数。该核表示固定标签规则的功能一致性，而不是另行假定的口头/心理结构距离。
 它不与 failure-accumulator `prior_reset` 叠加。新模板为
-`configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml`；H4 配置和既有结果保持不变。
+`configs/exp123/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml`；H4 配置和既有结果保持不变。
 该 H5 模板同时暴露默认关闭的 `persistent_execution.enabled`；被试级拟合只枚举 false/true，
 不改变 similarity transport、workspace capacity 或固定的 execution switch scale。
 
@@ -707,7 +707,7 @@ prior_t[newcomers] = m_drop * z_tilde[newcomers]
 ```
 
 这个反事实只检验 workspace turnover 是否需要槽位比例的 belief reallocation；配置
-`configs/specific_models/model_0826_belief_transport_counterfactual.yaml` 保证 A/B 之间仅改变
+`configs/exp123/specific_models/model_0826_belief_transport_counterfactual.yaml` 保证 A/B 之间仅改变
 `prior_assignment.method`。
 
 ## 10. 因果性、日志与扩展约束

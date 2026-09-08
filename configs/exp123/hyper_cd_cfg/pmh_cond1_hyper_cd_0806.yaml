@@ -1,0 +1,131 @@
+# Coordinate descent for model 0806 inside the standard optimization workflow.
+# Latent transition paths are integrated by the particle backend at every point.
+
+base_sim_config_path: ../simulation_cfg/pmh_cond1_simulation_0806.yaml
+subjects: [103, 105, 111, 112, 117, 118, 127, 131]
+output_dir: ../../../results/state-based-hyper-cd/pmh/cond1_0806_selected8
+
+objective_order:
+  - path: statistics.marginal_prediction.choice_brier
+    rel_tolerance: 0.01
+    abs_tolerance: 0.001
+    scale_floor: 0.01
+    anchor_guard: true
+  - path: statistics.marginal_prediction.trajectory_crps
+    rel_tolerance: 0.03
+    abs_tolerance: 0.002
+    scale_floor: 0.01
+    anchor_guard: true
+
+save_level: compact
+hyper_base_seed: 20260806
+loss_metric: choice_brier
+window_size: 16
+
+statistics_config:
+  enabled: true
+  mode: accuracy_shape
+  primary_tolerance_abs: 0.010
+  primary_tolerance_rel: 0.03
+  run_choice_fraction: 0.10
+
+cd:
+  n_restarts: 3
+  max_outer_iters: 6
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 2
+  min_delta: 0.0005
+  parallel_budget: 8
+
+# Reusable YAML anchors for the joint finite-workspace mechanism coordinate.
+# The static/dynamic class is bound to the controller values below so an
+# all-zero controller is never mislabeled as continuous dynamics.
+transition_controller_library:
+  rate_static: &rate_static {m_phi: 0.0, m_beta_surprise: 0.0, m_beta_uncertainty: 0.0}
+  rate_s04: &rate_s04 {m_phi: 0.20, m_beta_surprise: 0.40, m_beta_uncertainty: 0.0}
+  rate_s08: &rate_s08 {m_phi: 0.20, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+  rate_s08_persist: &rate_s08_persist {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.0}
+  rate_u04: &rate_u04 {m_phi: 0.20, m_beta_surprise: 0.0, m_beta_uncertainty: 0.40}
+  rate_u08: &rate_u08 {m_phi: 0.50, m_beta_surprise: 0.0, m_beta_uncertainty: 0.80}
+  rate_joint: &rate_joint {m_phi: 0.50, m_beta_surprise: 0.80, m_beta_uncertainty: 0.80}
+  range_static: &range_static {g_phi: 0.0, g_beta_surprise: 0.0, g_beta_uncertainty: 0.0}
+  range_s04: &range_s04 {g_phi: 0.20, g_beta_surprise: 0.40, g_beta_uncertainty: 0.0}
+  range_u04: &range_u04 {g_phi: 0.20, g_beta_surprise: 0.0, g_beta_uncertainty: 0.40}
+  range_joint: &range_joint {g_phi: 0.20, g_beta_surprise: 0.40, g_beta_uncertainty: 0.40}
+
+hyperparam_space:
+  engine.modules.memory_mod.kwargs:
+    values:
+      - {gamma: 1.0, w0: 1.0, feedback_gain: 1.0}
+      - {gamma: 0.40, w0: 0.0, feedback_gain: 1.0}
+      - {gamma: 0.70, w0: 0.40, feedback_gain: 1.0}
+
+  engine.modules.hypo_transitions_mod.kwargs.m:
+    values: [0.05, 0.15, 0.30]
+
+  engine.modules.hypo_transitions_mod.kwargs.g:
+    values: [0.0, 0.35, 0.70]
+
+  # Joint mode/controller candidates preserve the original 7 x 4 support.
+  # The single all-zero point uses the subject-fixed static implementation;
+  # every point with dynamic m_t or g_t uses the continuous-control class.
+  __profile_candidate__:
+    values:
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy.FixedWorkspaceHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_static, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_s08_persist, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u04, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_u08, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_static}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_s04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_u04}
+      - {engine.modules.hypo_transitions_mod.class: src.Bayesian_state.model.modules.hypothesis_transition.dynamic_adaptive_control.DynamicAdaptiveControlHypothesisTransitionModule, engine.modules.hypo_transitions_mod.kwargs.rate_controller: *rate_joint, engine.modules.hypo_transitions_mod.kwargs.range_controller: *range_joint}
+
+  engine.choice_readout.kwargs:
+    values:
+      - {method: expectation}
+      - {method: sharpened_expectation, power: 2.0}
+      - {method: sharpened_expectation, power: 4.0}
+
+  engine.output_noise.kwargs.base_lapse:
+    values: [0.02, 0.05, 0.20]
+
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 1
+    simulation_overrides:
+      simulation_repeats: 1
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 128
+  fine:
+    cd_parallel:
+      max_repeat_jobs: 2
+    simulation_overrides:
+      simulation_repeats: 2
+      keep_logs: false
+      engine_config:
+        inference:
+          particle_count: 512

@@ -23,9 +23,9 @@ def test_bayesian_state_core_package_layout_is_explicit() -> None:
         "optimization",
         "evaluation",
         "metrics",
-        "reference_models",
     )
     removed_package_names = (
+        "reference_models",
         "problems",
         "inference_engine",
         "model_evaluation",
@@ -56,7 +56,6 @@ def test_nested_package_names_and_readmes_are_explicit() -> None:
         "model/modules/hypothesis_transition",
         "optimization/diagnostics",
         "optimization/search",
-        "reference_models/model_0804",
     )
     for relative_path in expected_nested_packages:
         package_dir = package_root / relative_path

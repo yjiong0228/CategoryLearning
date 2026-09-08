@@ -3,8 +3,8 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
-from CategoryLearning_codes.Bayesian_model.evaluation.oral.scoring import OralAlignmentScoringMixin as Encoder
-from CategoryLearning_codes.Bayesian_model.hypothesis_space import ContinuousPartition
+from src.Bayesian_state.evaluation.oral.scoring import OralAlignmentScoringMixin as Encoder
+from src.Bayesian_state.hypothesis_space import ContinuousPartition
 
 ROOT=Path(__file__).resolve().parents[4]
 
@@ -23,7 +23,7 @@ def main():
             rows.append({'sigma':sigma,'categories_seen':cat,'center':center.tolist(),'instantaneous_h0':q[0],'state_h0':state[0]})
             if sigma==.1 and cat==2:
                 pd.DataFrame({'hypothesis':range(p.length),'mass':state}).to_csv(out/'ideal_report_distribution.csv',index=False)
-    df=pd.read_csv(ROOT/'data/processed/Task2_processed.csv').query('iSub == 101')
+    df=pd.read_csv(ROOT/'data/exp123/processed/Task2_processed.csv').query('iSub == 101')
     oral=e.compute_oral_mass_probabilities(df,subjects=[101],partitions_by_subject={101:p})[101]
     np.savez_compressed(out/'s101_oral.npz',oral_mass=oral['oral_mass'],instantaneous=oral['instantaneous_oral_mass'])
     print('ideal',rows)

@@ -502,7 +502,7 @@ distribution、加入 output noise 后的可观测 distribution、readout 诊断
 - 模块目录：`src/Bayesian_state/model/modules/`
 - 动态调度：`src/Bayesian_state/model/engine.py`
 - 模型装配：`src/Bayesian_state/model/assembly.py`
-- 常用配置：`configs/model_struct/pmh_*.yaml`
+- 常用配置：`configs/exp123/model_struct/pmh_*.yaml`
 - H 模块说明：`hypothesis_transition/README.md`
-- strategy/controller candidate 资源：`configs/candidates/hypothesis_transition/README.md`
+- strategy/controller candidate 资源：`configs/shared/candidates/hypothesis_transition/README.md`
 - likelihood/partition 执行机制：`../../hypothesis_space/observation_model/README.md`

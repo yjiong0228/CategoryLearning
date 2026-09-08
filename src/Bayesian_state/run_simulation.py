@@ -2,7 +2,7 @@
 
 Usage:
     python -m src.Bayesian_state.run_simulation \
-        --config configs/simulation_cfg/pmh_cond1_simulation.yaml
+        --config configs/exp123/simulation_cfg/pmh_cond1_simulation.yaml
 """
 from __future__ import annotations
 

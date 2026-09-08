@@ -49,11 +49,11 @@ from src.Bayesian_state.utils.paths import ROOT_DIR
 from src.Bayesian_state.utils.logging import configure_logging
 
 
-DEFAULT_HYPER_GRID_CONFIG = Path("configs/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml")
-DEFAULT_HYPER_CD_CONFIG = Path("configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v1.yaml")
+DEFAULT_HYPER_GRID_CONFIG = Path("configs/exp123/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml")
+DEFAULT_HYPER_CD_CONFIG = Path("configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v1.yaml")
 DEFAULT_GENERATED_SIM_CONFIGS = {
-    "hyper_grid": Path("configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_grid_best.yaml"),
-    "hyper_cd": Path("configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml"),
+    "hyper_grid": Path("configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_grid_best.yaml"),
+    "hyper_cd": Path("configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml"),
 }
 DEFAULT_SIM_OUTPUT_DIRS = {
     "hyper_grid": Path("results/state-based-simulation/pmh/cond1_subjectwise_hyper_grid_best"),

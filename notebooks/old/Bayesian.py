@@ -91,7 +91,7 @@ elif model_name == 'M7_PMH':
 optimizer = Optimizer(module_configs, n_jobs=120)
 
 # 导入数据
-processed_path = Path(project_root) / 'data' / 'processed'
+processed_path = Path(project_root) / 'data' / 'exp123' / 'processed'
 optimizer.prepare_data(processed_path / 'Task2_processed.csv')
 
 

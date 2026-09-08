@@ -3,12 +3,11 @@
 !results/Model_results/
 !results/Model_results/*.png
 
-data/processed/oral_hypo_hits.pkl
+data/exp123/processed/oral_hypo_hits.pkl
 results/
-reports/
 
 # *.csv
-*data/不用
+data/exp123/不用/
 *src/Hybrid
 
 *.pyc
@@ -31,3 +30,6 @@ CategoryLearning_paper/**/*.blg
 CategoryLearning_paper/**/*.fdb_latexmk
 CategoryLearning_paper/**/*.fls
 CategoryLearning_paper/**/*.out
+
+# Disposable test runner cache (research caches remain protected).
+.pytest_cache/

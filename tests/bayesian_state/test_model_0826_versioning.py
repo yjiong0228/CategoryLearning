@@ -18,10 +18,10 @@ def _sha256(relative_path: str) -> str:
 
 
 def test_model_0818_remains_the_original_frozen_version() -> None:
-    manuscript_path = "manuscript/model_0818.tex"
-    model = _yaml("configs/model_struct/pmh_model_cond1_0818.yaml")
+    manuscript_path = "src/Bayesian_state/docs/model_architecture/model_0818.tex"
+    model = _yaml("configs/exp123/model_struct/pmh_model_cond1_0818.yaml")
     parameter_space = _yaml(
-        "configs/specific_models/model_0818_cond1_parameter_space.yaml"
+        "configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml"
     )
     controller = model["modules"]["hypo_transitions_mod"]["kwargs"][
         "nested_feedback_accumulator_controller"
@@ -40,10 +40,10 @@ def test_model_0818_remains_the_original_frozen_version() -> None:
 
 
 def test_model_0826_is_the_revised_self_consistent_version() -> None:
-    manuscript_path = "manuscript/model_0826.tex"
-    model = _yaml("configs/model_struct/pmh_model_cond1_0826.yaml")
+    manuscript_path = "src/Bayesian_state/docs/model_architecture/model_0826.tex"
+    model = _yaml("configs/exp123/model_struct/pmh_model_cond1_0826.yaml")
     parameter_space = _yaml(
-        "configs/specific_models/model_0826_cond1_parameter_space.yaml"
+        "configs/exp123/specific_models/model_0826_cond1_parameter_space.yaml"
     )
     manuscript = (ROOT / manuscript_path).read_text(encoding="utf-8")
     transition = model["modules"]["hypo_transitions_mod"]["kwargs"]
@@ -69,10 +69,10 @@ def test_model_0826_is_the_revised_self_consistent_version() -> None:
 
 def test_model_0826_counterfactual_uses_only_0826_entrypoints() -> None:
     audit = _yaml(
-        "configs/specific_models/model_0826_belief_transport_counterfactual.yaml"
+        "configs/exp123/specific_models/model_0826_belief_transport_counterfactual.yaml"
     )
     simulation = _yaml(
-        "configs/simulation_cfg/model0826_cond1_exploratory_observed_fit.yaml"
+        "configs/exp123/simulation_cfg/model0826_cond1_exploratory_observed_fit.yaml"
     )
 
     assert audit["base_simulation_config"].endswith(

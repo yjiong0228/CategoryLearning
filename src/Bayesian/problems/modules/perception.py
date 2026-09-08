@@ -9,7 +9,7 @@ import pandas as pd
 from .base_module import BaseModule
 
 DEFAULT_processed_data_DIR = os.path.join(os.path.dirname(__file__),
-                                          "../../../../data/processed")
+                                          "../../../../data/exp123/processed")
 
 
 class BasePerception(BaseModule):

@@ -1,0 +1,27 @@
+engine_config_path: ../model_struct/pmh_model_cond1_0818.yaml
+
+subjects: [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]
+hyper_base_seed: 20260824
+
+dataset:
+  processed_dir: ../../../data/exp123/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+
+output_dir: ../../../results/model_0818/cond1/full_observed_fit_v1/base_simulation
+n_jobs: 128
+simulation_repeats: 4
+repeat_aggregation: mean_probability
+window_size: 16
+stop_at: 1.0
+max_trials: null
+keep_logs: false
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

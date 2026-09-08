@@ -26,8 +26,8 @@ from .nonoral import analyze, plot_candidates
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("data/processed/Task2_processed.csv"))
-    parser.add_argument("--raw-dir", type=Path, default=Path("data/raw/Task2"))
+    parser.add_argument("--data", type=Path, default=Path("data/exp123/processed/Task2_processed.csv"))
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/exp123/raw/Task2"))
     parser.add_argument("--config", type=Path, default=Path(__file__).with_name("config.json"))
     parser.add_argument("--output", type=Path, required=True, help="New directory; refuses existing paths")
     args = parser.parse_args()

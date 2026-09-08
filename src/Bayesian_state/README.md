@@ -1,16 +1,18 @@
 # Bayesian_state 模型框架
 
-> Model 0826 的论文实现已核对并迁入
-> [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)。
-> 新的 0826 工作使用该包；本目录保留旧模型/脚本兼容性及数值对照，不批量重定向旧入口。
+> 本目录是期刊与博士论文共同维护的模型实现。期刊的配置、入口和验证位于
+> [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
+> 该目录依赖本包；本包不依赖期刊目录。修改机制只改这里，实验差异由配置和数据适配处理。
+> 0826 四分类/部分反馈支持仍需单独扩展；路径支持不代表任务语义已验证。
+> 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型
 写成一份从数据读取到画图的独立脚本。
 
 当前正式建模路径以 `StateModel + BayesianStateEngine + modules` 为核心。`model_0806` 的动态连续
-hypothesis-transition 模型也已经接入这条路径；`reference_models/` 中的同名实现保留作
-恢复实验和数值参考，不是正式拟合入口。
+hypothesis-transition 模型也已经接入这条路径。独立 `reference_models/` 已按维护范围删除；
+当前 0826 核心与恢复流程不依赖它，历史实现需要从 Git 历史恢复。
 
 ## 1. 总体结构
 
@@ -24,12 +26,11 @@ Bayesian_state/
 ├── simulation/           单次/重复运行与自主行为生成
 ├── optimization/         参数搜索与模型选择
 ├── evaluation/           已完成结果的统计与诊断
-├── metrics/              各执行层共享的纯数值指标
-└── reference_models/     冻结的论文数值实现与复现基准
+└── metrics/              各执行层共享的纯数值指标
 ```
 
 此外，`utils/` 保存跨层基础工具，FFT 聚类归入 `evaluation/`，根目录的
-`run_*.py` 只负责 orchestration；它们不改变上述八个核心职责边界。
+`run_*.py` 只负责 orchestration；它们不改变上述七个核心职责边界。
 
 ```text
 configs/*.yaml
@@ -78,7 +79,6 @@ results/subjects/*.json + optional compressed run streams
 | `simulation/` | trial/run 结果、单次/重复固定参数运行、统计 schema 和自主行为生成 | 是 |
 | `optimization/` | 候选参数、objective、机制候选与 Hyper-CD/Grid | 是 |
 | `evaluation/` | 已完成仿真的统计、作图和 oral/model alignment | 是，属于后处理 |
-| `reference_models/` | 论文阶段的独立数值实现、恢复和 oracle | 否；参考与复现用途 |
 | `utils/` | 路径、数据集、subject override、stream、公共统计 | 是，底层支持 |
 
 根目录的可执行文件只负责 orchestration：
@@ -103,7 +103,6 @@ results/subjects/*.json + optional compressed run streams
 - [`optimization/README.md`](optimization/README.md)
 - [`simulation/README.md`](simulation/README.md)
 - [`evaluation/README.md`](evaluation/README.md)
-- [`reference_models/README.md`](reference_models/README.md)
 - [`utils/README.md`](utils/README.md)
 
 根目录的 `PMH modules.svg` 是较早期的 module-loop 示意图，可用于理解黑板式调度，但它
@@ -133,8 +132,8 @@ results/subjects/*.json + optional compressed run streams
 2. `model/modules/hypothesis_transition/contracts.py`
 3. `model/modules/hypothesis_transition/dynamic_adaptive_control.py`
 4. `inference/backends/particle_filter.py`
-5. `configs/model_struct/pmh_model_cond1_0806.yaml`
-6. `docs/model_0806_workflow.md`
+5. `configs/exp123/model_struct/pmh_model_cond1_0806.yaml`
+6. `src/Bayesian_state/docs/history/model_0806_workflow.md`
 
 ## 4. 一个 trial 的数据流
 
@@ -320,7 +319,7 @@ coarse shortlist 投影为 fine 起点。最终 shortlist 必须用独立 seed f
 ```bash
 python -m src.Bayesian_state.optimization.cli \
   --backend cd \
-  --config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
+  --config configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
 ```
 
 将 `cd` 替换为 `grid` 可运行显式网格搜索。
@@ -334,7 +333,7 @@ simulation 配置、被试顺序和 stage 的 fingerprint；不一致时拒绝�
 ```bash
 python -m src.Bayesian_state.run_hyper_then_simulation \
   --backend hyper_cd \
-  --hyper-config configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
+  --hyper-config configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml
 ```
 
 Model 0809 的 selected-eight 完整序列试跑使用一份独立配置，不改写历史 0806 输出：
@@ -342,11 +341,11 @@ Model 0809 的 selected-eight 完整序列试跑使用一份独立配置，不�
 ```bash
 python -m src.Bayesian_state.run_hyper_then_simulation \
   --backend hyper_cd \
-  --hyper-config configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml \
+  --hyper-config configs/exp123/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml \
   --subjects 103 104 105 108 111 120 124 132 \
   --stage coarse \
   --skip-simulation \
-  --generated-sim-config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
+  --generated-sim-config configs/exp123/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml \
   --sim-output-dir results/model_dynamic_continuous/0809_v1/simulation
 ```
 
@@ -357,14 +356,14 @@ python -m src.Bayesian_state.run_hyper_then_simulation \
 
 ```bash
 python -m src.Bayesian_state.run_simulation \
-  --config configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml
+  --config configs/exp123/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml
 ```
 
 ### 固定参数仿真
 
 ```bash
 python -m src.Bayesian_state.run_simulation \
-  --config configs/simulation_cfg/pmh_cond1_simulation_0806.yaml
+  --config configs/exp123/simulation_cfg/pmh_cond1_simulation_0806.yaml
 ```
 
 ### 超参数搜索诊断
@@ -388,12 +387,12 @@ python -m src.Bayesian_state.run_model_evaluation \
 冻结的 Model0826 恢复入口为：
 
 ```bash
-python scripts/run_model_0826_recovery.py --phase smoke
-python scripts/run_model_0826_recovery.py --phase generate --resume
-python scripts/run_model_0826_recovery.py --phase calibrate --resume
-python scripts/run_model_0826_recovery.py --phase module-fit --resume
-python scripts/run_model_0826_recovery.py --phase parameter-fit --resume
-python scripts/run_model_0826_recovery.py --phase summarize --resume
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase smoke
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase generate --resume
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase calibrate --resume
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase module-fit --resume
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase parameter-fit --resume
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py --phase summarize --resume
 ```
 
 也可在全新输出目录用 `--phase all` 顺序执行。默认输出只写入
@@ -403,8 +402,8 @@ Model0826 engine、参数空间和基础 simulation 配置的联合 fingerprint 
 优化版使用独立配置和输出目录，不覆盖 v1：
 
 ```bash
-python scripts/run_model_0826_recovery.py \
-  --config configs/specific_models/model_0826_recovery_v2.yaml \
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py \
+  --config configs/exp123/specific_models/model_0826_recovery_v2.yaml \
   --phase smoke
 ```
 
@@ -414,8 +413,8 @@ R32×B4 fine；进入恢复前必须验证这两个阶段分别保留 R128×B16 
 如果需要在有限墙钟时间内优先得到一个完整 subject-template 检查点，可用：
 
 ```bash
-python scripts/run_model_0826_recovery.py \
-  --config configs/specific_models/model_0826_recovery_v2.yaml \
+python src/Bayesian_state/workflows/runs/run_model_0826_recovery.py \
+  --config configs/exp123/specific_models/model_0826_recovery_v2.yaml \
   --output-dir results/model_0826/recovery_v2_subject_first \
   --phase priority-all --priority-subject 101
 ```
@@ -468,16 +467,16 @@ subject JSON 保存轻量 summary、representative run 和 stream reference；�
 Model 0815 P0 的未拟合结构、precision 标定和 PF 收敛入口分别为：
 
 ```text
-configs/model_struct/pmh_model_cond1_0815_p0.yaml
-configs/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml
-configs/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml
-configs/specific_models/model_0815_p0_pf_convergence.yaml
-configs/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml
-configs/specific_models/model_0815_p1_mapping_sensitivity.yaml
-configs/specific_models/model_0815_p1_state_identifiability.yaml
-configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml
-configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml
-configs/specific_models/model_0815_h4_nested_subject_screen.yaml
+configs/exp123/model_struct/pmh_model_cond1_0815_p0.yaml
+configs/exp123/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml
+configs/exp123/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml
+configs/exp123/specific_models/model_0815_p0_pf_convergence.yaml
+configs/exp123/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml
+configs/exp123/specific_models/model_0815_p1_mapping_sensitivity.yaml
+configs/exp123/specific_models/model_0815_p1_state_identifiability.yaml
+configs/exp123/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml
+configs/exp123/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml
+configs/exp123/specific_models/model_0815_h4_nested_subject_screen.yaml
 ```
 
 其中 `beta_screening` 只用 8 人各 64 个早期 trial 和低粒子预算排除明显不合适的尺度，不能作为
@@ -487,13 +486,13 @@ configs/specific_models/model_0815_h4_nested_subject_screen.yaml
 boundary-distance precision 参数，每位被试先得到自己的 choice NLL，再在被试间等权平均；
 它不是为每位被试增加五个新的自由参数。
 
-P1 mapping 入口 `scripts/run_model_0815_p1_mapping_sensitivity.py` 严格配对 M0/M1 的 PF seeds，
+P1 mapping 入口 `src/Bayesian_state/workflows/runs/run_model_0815_p1_mapping_sensitivity.py` 严格配对 M0/M1 的 PF seeds，
 先对 seed 重复的预测概率求平均再计分，并统一输出双向 fixed-parameter recovery、geometry/orientation state
 recovery、early predictive NLL、执行规则轨迹敏感性以及 mapping effect/PF seed noise 比值。该小样本
 pilot 只用于决定 mapping omission 是否会污染核心 strategy inference，不能单独用来选择最终模型；
 
 当 pilot 的 M1 geometry recovery 较差时，
-`scripts/run_model_0815_p1_state_identifiability.py` 在固定的 M1 synthetic paths 上比较
+`src/Bayesian_state/workflows/runs/run_model_0815_p1_state_identifiability.py` 在固定的 M1 synthetic paths 上比较
 R=64/128/256，并以四个共同 PF seeds 同时检查 choice probability、geometry、
 geometry×orientation joint、后验期望 switch、ancestral support 与 true-path choice-likelihood
 replay。最高粒子数另跑 O1 oracle：只把生成器完整的 pre-choice orientation belief vector
@@ -511,7 +510,7 @@ Model 0815 H4 把 constant、一步 feedback-reactive 与 accumulated-failure se
 event probability 相等时得到 constant 边界。正的 global gain 使用同一个 failure state：
 `g_t = g_0 + (1-g_0)c_gF_t`，不会增加第二套 range accumulator、阈值或 rise/recovery controller。
 当前模板在两个 gain 的精确零边界提供独立接口，尚未进行最终被试级参数估计。
-历史入口 `scripts/run_model_0815_h4_nested_subject_screen.py` 只用前32 trials和独立 training PF seeds选择
+历史入口 `src/Bayesian_state/workflows/runs/run_model_0815_h4_nested_subject_screen.py` 只用前32 trials和独立 training PF seeds选择
 reactive 基线、共同 decay 与被试 gain；后32 trials及另一组 PF seeds 只用于最终预测比较。训练搜索
 使用较低粒子预算，锁定参数后的效应估计恢复到32粒子×4 seeds。该切分结果现仅作为历史技术
 产物保留，不再用于 accumulator 或动态 global search 的当前架构去留决定。
@@ -530,9 +529,8 @@ H4 配置继续保留为既有审计结果的生成来源。当前 H5 模板还�
 - choice Brier、NLL、accuracy curves、Hyper-CD 和结果序列化复用公共实现。
 
 正式 `StateModel` 已支持自主 choice/feedback trajectory；`simulation/autonomous.py`
-提供类别学习任务入口。尚保留在 `reference_models/model_0806.py` 的 RT emission 和旧 rolling
-实验属于参考工作流。迁移这些额外观测模型时，应增加独立 module/adapter，而不是继续扩展一套
-平行的完整模型。
+提供类别学习任务入口。旧参考实现中的 RT emission 和 rolling 实验已退出当前维护范围。
+未来若需要这些额外观测模型，应增加明确的 module/adapter。
 
 ## 10. 扩展原则
 
@@ -542,6 +540,16 @@ H4 配置继续保留为既有审计结果的生成来源。当前 H5 模板还�
 2. 如果改变 hypothesis inventory、geometry 或 observation partition，放入 `hypothesis_space/`。
 3. 如果改变潜在状态积分方法，放入 `inference/backends/`；不要复制认知更新方程。
 4. 如果新增评价指标，先在 `metrics/` 定义纯数值计算，再由 `simulation/runner.py` 负责聚合。
-5. 如果只是复现论文某阶段的冻结算法，可放在 `reference_models/`，但必须明确不是正式入口。
+5. 已删除历史工作流的复现使用对应 Git 版本，不再扩展独立 reference_models 实现。
 6. 为所有有状态 module 实现快照、恢复、日志清理；随机 module 还应实现 future reseeding。
 7. 配置 class path、README、回归测试必须与代码一起更新。
+
+## 工作流与模型文档
+
+专题脚本已从根 scripts/ 迁入 [workflows/](workflows/README.md)，
+目前保留 recovery、runs、analysis、benchmarks 中的必要工具。模型设计与历史说明位于
+[docs/](docs/README.md)。生成的报告随 results 中对应模型保存。
+
+恢复职责和当前工作流保留范围见 [恢复说明](workflows/recovery/README.md)及
+[工作流索引](workflows/README.md)。此前 0813/0815 等历史脚本的命令示例按原版本理解，
+是否仍提供入口以当前工作流索引为准。

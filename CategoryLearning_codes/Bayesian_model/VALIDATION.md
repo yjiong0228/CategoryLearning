@@ -1,3 +1,5 @@
+> Historical record of the initial independent migration. Since 2026-09-08 the implementation is shared in src/Bayesian_state; see README.md and SHARED_CORE_VALIDATION.md.
+
 # Migration validation
 
 - 47 tests passed: 44 in the new package plus 3 original Model 0826 versioning tests.

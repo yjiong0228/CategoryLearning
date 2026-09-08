@@ -1,0 +1,1132 @@
+{
+  "date": "2026-09-08",
+  "data": {
+    "file_count": 63169,
+    "bytes": 24967958413,
+    "all_sha256_equal": true,
+    "manifest": "reports/repository_maintenance/layout_20260908/data_file_manifest.json",
+    "manifest_sha256": "6325ee4ed82bdd67a05726b1f5d36cff24f819171285703608f580899bed7d95"
+  },
+  "data_prefix_map": {
+    "data/": "data/exp123/",
+    "data_exp4/": "data/exp4/",
+    "data_exp5/": "data/exp5/",
+    "data_meg/": "data/meg/"
+  },
+  "moved_files": [
+    {
+      "old": "configs/oral_coding_adapters.yaml",
+      "new": "configs/exp123/oral_coding_adapters.yaml",
+      "new_sha256": "f02d03610f552a38367bb8d8a503a2afa3d4189bcb0f4765cc36b5e05d5b9703",
+      "head_sha256": "f02d03610f552a38367bb8d8a503a2afa3d4189bcb0f4765cc36b5e05d5b9703"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_acceptance.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_acceptance.yaml",
+      "new_sha256": "5afc1e47d94418eb8801fab2427f55fb312243200f59c866b1bb2b067eecef40",
+      "head_sha256": "c53ea478303daa839eb2605f89931d59a528230784300fb58f64fab82200f80f"
+    },
+    {
+      "old": "configs/specific_models/model_0826_cond1_parameter_space.yaml",
+      "new": "configs/exp123/specific_models/model_0826_cond1_parameter_space.yaml",
+      "new_sha256": "2029b538830f182a3deec5e5a5f2cb4b4d422f46e1db8eab1341aa8321e69a75",
+      "head_sha256": "2029b538830f182a3deec5e5a5f2cb4b4d422f46e1db8eab1341aa8321e69a75"
+    },
+    {
+      "old": "configs/specific_models/model_0806_dynamic_m_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0806_dynamic_m_recovery.yaml",
+      "new_sha256": "4d399575f5af41c08a2ec7d3af08ef61f18c15ddfac9258612599824546ac7f1",
+      "head_sha256": "4d399575f5af41c08a2ec7d3af08ef61f18c15ddfac9258612599824546ac7f1"
+    },
+    {
+      "old": "configs/specific_models/model_0815_h3_feedback_reactive_comparison.yaml",
+      "new": "configs/exp123/specific_models/model_0815_h3_feedback_reactive_comparison.yaml",
+      "new_sha256": "0ad3a44dc6040e876963329aa45c54c4e58f95a75069522bc8ccd6c01c53615f",
+      "head_sha256": "ebe82b8761e835f8380ce9e1258cf40620237e0587fdfa55076e6643149134fa"
+    },
+    {
+      "old": "configs/specific_models/model_0804_fixed_g_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0804_fixed_g_recovery.yaml",
+      "new_sha256": "01a5c10e4b5bae0280bb560916c80c890b5854f77c07a42718e9500551cd1e99",
+      "head_sha256": "01a5c10e4b5bae0280bb560916c80c890b5854f77c07a42718e9500551cd1e99"
+    },
+    {
+      "old": "configs/specific_models/model_0818_cond1_full_observed_fit_resume_108.yaml",
+      "new": "configs/exp123/specific_models/model_0818_cond1_full_observed_fit_resume_108.yaml",
+      "new_sha256": "71d379b05993756bcc3d70ee7f746e141cd5488a80bf01d69f7b5d1c1f8c352b",
+      "head_sha256": "ec85dc8cf182e1402c3866832382265f8fa1545b99140fa39bbb1759fb9df5b7"
+    },
+    {
+      "old": "configs/specific_models/model_0818_boundary_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0818_boundary_recovery.yaml",
+      "new_sha256": "95da2536ec64821106893ec26818262fc28cce5a95fe1c9dce4d125b34148b1d",
+      "head_sha256": "97a723313f58aabf8356a43a8a32c21c8862bec1b65450550a7107c6c0a42b4b"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_calibrated_pf_128_256_convergence.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_calibrated_pf_128_256_convergence.yaml",
+      "new_sha256": "f3dc8958614e2fa88a4b24d527631c291bc95f09b88d00f53a0273b6cc79ae71",
+      "head_sha256": "ce9494540d1ecba4a05049a6c17dc6a6d862297877e9aa503ab608e6c5d63103"
+    },
+    {
+      "old": "configs/specific_models/model_0806_dynamic_u_real_rolling.yaml",
+      "new": "configs/exp123/specific_models/model_0806_dynamic_u_real_rolling.yaml",
+      "new_sha256": "1a7c97022d95fd2cbabff4a81095214a9c0624ae98de445dd5f7f8244bafb83e",
+      "head_sha256": "1a7c97022d95fd2cbabff4a81095214a9c0624ae98de445dd5f7f8244bafb83e"
+    },
+    {
+      "old": "configs/specific_models/model_0805_cond1_real_predictive.yaml",
+      "new": "configs/exp123/specific_models/model_0805_cond1_real_predictive.yaml",
+      "new_sha256": "37ec958b6afdd1d221511a6ccf2629e7487498658a759e636f36847b08efaf7f",
+      "head_sha256": "10e499949692aded26d03ec3ed3ac4f0d327f4488aca6aa0714f1ef1b6bb7a37"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_pf_convergence.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_pf_convergence.yaml",
+      "new_sha256": "15bc24329c690d9aaad1242f505209e3c0d9a7befa8dc1b6f5e47339943f95c0",
+      "head_sha256": "2ffe1f4bdf64abace81aa029f7bcaff342da4951dd0ccc9cf652872918245c8f"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_common_state_choice_layer_audit.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_common_state_choice_layer_audit.yaml",
+      "new_sha256": "182e0728a35c4ecef12fa8a0ce879e9c473f078a1a985515c2cb561632b2f47c",
+      "head_sha256": "b98523c81638d3626616fc4c98a69c19eb14929ee51a403b71e695e26855db39"
+    },
+    {
+      "old": "configs/specific_models/model_0813_pf_choice_layer_audit.yaml",
+      "new": "configs/exp123/specific_models/model_0813_pf_choice_layer_audit.yaml",
+      "new_sha256": "933ed40b08addb0f46ba79d2e101ef1e797d17e82dab3b4807fa6fe17746f704",
+      "head_sha256": "87d726164a8fe245d3131086ffa7770313532a5c2221649568ef4fd240051943"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_persistent_execution_counterfactual_pilot.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_persistent_execution_counterfactual_pilot.yaml",
+      "new_sha256": "9b151333226345cdd438a0d152d56a0886288ebf8bb71aa0dea680ab985f0fee",
+      "head_sha256": "446c9dfde53456fc176fcb4d3a7f617ac252aeee446d45184021502fbdfb11fa"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p0_calibrated_pf_nested_convergence_pilot.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p0_calibrated_pf_nested_convergence_pilot.yaml",
+      "new_sha256": "626bb6285e70a6714f07a814f7fdfa7bfea43c01e3f8d4dacbd62e65d1f22b92",
+      "head_sha256": "bcfdf9eb873667a9b2b22a524b82653a76c6e0234f52892ef0912925b5bfe2f8"
+    },
+    {
+      "old": "configs/specific_models/model_0806_uncertainty_gate.yaml",
+      "new": "configs/exp123/specific_models/model_0806_uncertainty_gate.yaml",
+      "new_sha256": "a5da3b104b857922d776a5feeafae2602bc250b6b89e708ab3d520985437b300",
+      "head_sha256": "358af50bc8a0f93c62fa76e4c85c629338305c4a61adc723096c25dfdfa14e3b"
+    },
+    {
+      "old": "configs/specific_models/model_0806_dynamic_u_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0806_dynamic_u_recovery.yaml",
+      "new_sha256": "26ce6b203a0bc5897b5fa51f006229b5b900c3ad17409d493d5775104756f3e7",
+      "head_sha256": "26ce6b203a0bc5897b5fa51f006229b5b900c3ad17409d493d5775104756f3e7"
+    },
+    {
+      "old": "configs/specific_models/model_0804_forgetting_audit.yaml",
+      "new": "configs/exp123/specific_models/model_0804_forgetting_audit.yaml",
+      "new_sha256": "d437d188d388a5e9d0a4fc6b0f35dc8552c7eeb908a562bdc85c56416c063833",
+      "head_sha256": "d437d188d388a5e9d0a4fc6b0f35dc8552c7eeb908a562bdc85c56416c063833"
+    },
+    {
+      "old": "configs/specific_models/model_0815_h1_adaptive_controller_pilot.yaml",
+      "new": "configs/exp123/specific_models/model_0815_h1_adaptive_controller_pilot.yaml",
+      "new_sha256": "9cc8e0f93ff31a1b3df9b4432c91fb72e5247ba7fbb61650a56fc1f2adccc4ee",
+      "head_sha256": "d9a872fc1226dae02cfa86bd320afa62b533a465df7ded26175b5cfb93b81234"
+    },
+    {
+      "old": "configs/specific_models/model_0815_b0_memory_ablation_pilot.yaml",
+      "new": "configs/exp123/specific_models/model_0815_b0_memory_ablation_pilot.yaml",
+      "new_sha256": "8f74bc18a5facd043b9002a27d2bae003ba7949cf9dc96182172ccc0601c5a01",
+      "head_sha256": "80bf19967c227e771e3817999e77521ed30ac0c23dceae9e2fc9d343581be5dd"
+    },
+    {
+      "old": "configs/specific_models/model_0804_forgetting_m_sensitivity.yaml",
+      "new": "configs/exp123/specific_models/model_0804_forgetting_m_sensitivity.yaml",
+      "new_sha256": "0d588fb4adc86aa26b43084fb82597dc08659274827f8bff64f91e2cd332c89a",
+      "head_sha256": "0d588fb4adc86aa26b43084fb82597dc08659274827f8bff64f91e2cd332c89a"
+    },
+    {
+      "old": "configs/specific_models/model_0815_h2_legacy_count_comparison.yaml",
+      "new": "configs/exp123/specific_models/model_0815_h2_legacy_count_comparison.yaml",
+      "new_sha256": "521e605c62167d55442b007ada271a3db9405baf5b43bf1fc472f4e761155db7",
+      "head_sha256": "c5dffda864f60aa1dfd6e013b3079b2334c7e952f661298ce4fc5e6e5e761c49"
+    },
+    {
+      "old": "configs/specific_models/model_0804_regeneration_recovery_replicated.yaml",
+      "new": "configs/exp123/specific_models/model_0804_regeneration_recovery_replicated.yaml",
+      "new_sha256": "e2c99ea7bdf9b9f7cb3e53353e8c149b3c11f99c544d52d3d38941c151c36371",
+      "head_sha256": "e2c99ea7bdf9b9f7cb3e53353e8c149b3c11f99c544d52d3d38941c151c36371"
+    },
+    {
+      "old": "configs/specific_models/model_0818_exploratory_observed_fit.yaml",
+      "new": "configs/exp123/specific_models/model_0818_exploratory_observed_fit.yaml",
+      "new_sha256": "73364672f2bb024dc993cb6d2d5a1176c7749d47525d6d65a32c20fcae1143d4",
+      "head_sha256": "1753660f0d39adeb4b459b8250d8db1ca6f1e2afbbff16000593150ce3910174"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p1_mapping_sensitivity.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p1_mapping_sensitivity.yaml",
+      "new_sha256": "cfae0367807cf6fa16b2c09ca57ef8f65025f36c5779d513e2a04b13457169cf",
+      "head_sha256": "2c19ba4fb22fa2b338310e2211cae4be90390c0d1a78b2dd3ac91fa47cad35e1"
+    },
+    {
+      "old": "configs/specific_models/model_0804_cond1_preflight.yaml",
+      "new": "configs/exp123/specific_models/model_0804_cond1_preflight.yaml",
+      "new_sha256": "5f301974bcf2d2d7d85065e050d1dc20ebe956fd2fc9523038b49202ae4d3100",
+      "head_sha256": "458ed724aa201e043aff4c20ec42a293f79f9d519a35006968f25de102eb6ed6"
+    },
+    {
+      "old": "configs/specific_models/model_0818_cond1_parameter_space.yaml",
+      "new": "configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml",
+      "new_sha256": "4e3c081cbe7e8afe2df4a62a439c597922c2dfe3672e8b7ea3d0a732928c2ccc",
+      "head_sha256": "4e3c081cbe7e8afe2df4a62a439c597922c2dfe3672e8b7ea3d0a732928c2ccc"
+    },
+    {
+      "old": "configs/specific_models/model_0815_h4_nested_subject_screen.yaml",
+      "new": "configs/exp123/specific_models/model_0815_h4_nested_subject_screen.yaml",
+      "new_sha256": "4a6ce8ac8b0d960072f32d92742f8598fb57365e3788327a6dc1e0545bb9230a",
+      "head_sha256": "2a1d350774a0fcba13b3309b970b7a21bef0a7510af69a329002d9785ee9597f"
+    },
+    {
+      "old": "configs/specific_models/model_0804_marginalized_lapse_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0804_marginalized_lapse_recovery.yaml",
+      "new_sha256": "7140ddbaf66d6fda5857aa70b4e0f07d303f4c6ed13738daa4ac9df020d1ed02",
+      "head_sha256": "7140ddbaf66d6fda5857aa70b4e0f07d303f4c6ed13738daa4ac9df020d1ed02"
+    },
+    {
+      "old": "configs/specific_models/model_0806_dynamic_m_real_rolling.yaml",
+      "new": "configs/exp123/specific_models/model_0806_dynamic_m_real_rolling.yaml",
+      "new_sha256": "6314c097aa9adfa0a0df2287a2c5f15fb33058ea33ce3f4d88111ca61d5c4d90",
+      "head_sha256": "6314c097aa9adfa0a0df2287a2c5f15fb33058ea33ce3f4d88111ca61d5c4d90"
+    },
+    {
+      "old": "configs/specific_models/model_0804_particle_stability_audit.yaml",
+      "new": "configs/exp123/specific_models/model_0804_particle_stability_audit.yaml",
+      "new_sha256": "a38c65427e321c166bc528cd45cb69bc3045b95034de11a3fab1cada014f3047",
+      "head_sha256": "a38c65427e321c166bc528cd45cb69bc3045b95034de11a3fab1cada014f3047"
+    },
+    {
+      "old": "configs/specific_models/model_0818_cond1_full_observed_fit.yaml",
+      "new": "configs/exp123/specific_models/model_0818_cond1_full_observed_fit.yaml",
+      "new_sha256": "d06eefff0e158c9635c375db7bb16033ed616b4decc6b922a4ba42e309bd6e3b",
+      "head_sha256": "560f060e4e5e2e53e96a92f19b00d930cdff78d3ce2d0b366b8aa0fad5451521"
+    },
+    {
+      "old": "configs/specific_models/model_0813_pf_parameter_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0813_pf_parameter_recovery.yaml",
+      "new_sha256": "f85f3243fd2726f9fe54a019424657ea8e12cb9efb1e0964f1695a6f86d36a3a",
+      "head_sha256": "a920fdf585b3cf16e3bc1cd0ee44de050ba06771ecab0fe12fca61594c79f696"
+    },
+    {
+      "old": "configs/specific_models/model_0806_targeted_diagnostics.yaml",
+      "new": "configs/exp123/specific_models/model_0806_targeted_diagnostics.yaml",
+      "new_sha256": "9a287294e4c04915ea02067d5ba7e0036a64f5acba2534679eaf88a09a5414eb",
+      "head_sha256": "301e5c7dce71e8fa1099392cefbae9da41dac1d982fdb3c8d04c5627767a5f85"
+    },
+    {
+      "old": "configs/specific_models/model_0826_belief_transport_counterfactual.yaml",
+      "new": "configs/exp123/specific_models/model_0826_belief_transport_counterfactual.yaml",
+      "new_sha256": "f987f3d44df48692b2b834b9b4707fe78319e5069c633a4d2fb17a5635365296",
+      "head_sha256": "b2c76ce7cec6f653121f381c9a96c3585f4b3fd6d02fbbcc8348a822753504e4"
+    },
+    {
+      "old": "configs/specific_models/model_0813_pf_seed_averaging.yaml",
+      "new": "configs/exp123/specific_models/model_0813_pf_seed_averaging.yaml",
+      "new_sha256": "a3bb76763a6ed46f573e6bddabf5867f1b33ade9c816dbf722a72da71dd35b6c",
+      "head_sha256": "d5fb09c32f911a0a3639738e93b3e07f0b388660de7ad0d2e98c618697d1a17f"
+    },
+    {
+      "old": "configs/specific_models/model_0826_recovery_v1.yaml",
+      "new": "configs/exp123/specific_models/model_0826_recovery_v1.yaml",
+      "new_sha256": "b0178d9e5b440cdaa94a999504535cfbc6a02f6035fc488b55982c5d6a55f35c",
+      "head_sha256": "737e20c077a0190728552e48d645ed4abd1ad030a8d76fe1a156953b9ac222d1"
+    },
+    {
+      "old": "configs/specific_models/model_0806_dynamic_u_targeted_diagnostics.yaml",
+      "new": "configs/exp123/specific_models/model_0806_dynamic_u_targeted_diagnostics.yaml",
+      "new_sha256": "d97cf12cb84a88beebf5361b028f52d4c2341dfb110fbe5bd7d439debde4df33",
+      "head_sha256": "64d2f2001c26e5918c18134bf680824f6ae6e0a44ad21fc70a3d776703db3af5"
+    },
+    {
+      "old": "configs/specific_models/model_0803_cond1_formal.yaml",
+      "new": "configs/exp123/specific_models/model_0803_cond1_formal.yaml",
+      "new_sha256": "c6adc3fa1fa4e063fe9cfca48f80a7490fe18f8d7f258e2c24807af2b4159253",
+      "head_sha256": "a368439e12b1ec06af091e806aa62bd0a7d6328069112294f9b617eb9ae00b1e"
+    },
+    {
+      "old": "configs/specific_models/model_0818_high_budget_convergence.yaml",
+      "new": "configs/exp123/specific_models/model_0818_high_budget_convergence.yaml",
+      "new_sha256": "40bb8cb49a0cd7b5379c588863724fca44e940577232c120636dee616c7e7cf3",
+      "head_sha256": "bb06486ed26794aee081fd9a2c29d3f7264049963289a90c6b1bef9dcff37e6d"
+    },
+    {
+      "old": "configs/specific_models/model_0813_pf_mechanism_reachability.yaml",
+      "new": "configs/exp123/specific_models/model_0813_pf_mechanism_reachability.yaml",
+      "new_sha256": "95d711f3a9aee4f79670cc829145e6ceebc62c38ad532506c396f519fab00702",
+      "head_sha256": "37c75dca88a6b58d1cb3cd5453b049f7fa31b2d86b4ce705adbf6b15a51ee51d"
+    },
+    {
+      "old": "configs/specific_models/model_0804_regeneration_audit.yaml",
+      "new": "configs/exp123/specific_models/model_0804_regeneration_audit.yaml",
+      "new_sha256": "e3a6f3bbc5fe564a16a4b0acdec66b86852fb76803bf94663e6337ee69adc659",
+      "head_sha256": "e3a6f3bbc5fe564a16a4b0acdec66b86852fb76803bf94663e6337ee69adc659"
+    },
+    {
+      "old": "configs/specific_models/model_0813_pf_calibration.yaml",
+      "new": "configs/exp123/specific_models/model_0813_pf_calibration.yaml",
+      "new_sha256": "a34dd90df4950575d8befeefcc6c96776d4da834954c9ca6ab2f3abf9345edcb",
+      "head_sha256": "a4c684d18e9183e03669051564e86a539e533bbdbe63c3af77f5927ddb8d9fc0"
+    },
+    {
+      "old": "configs/specific_models/model_0804_regeneration_recovery.yaml",
+      "new": "configs/exp123/specific_models/model_0804_regeneration_recovery.yaml",
+      "new_sha256": "3e2a4a5107d1876268db102e360c9f0b957e6ed69972ae2de1ede98a9a6c122f",
+      "head_sha256": "3e2a4a5107d1876268db102e360c9f0b957e6ed69972ae2de1ede98a9a6c122f"
+    },
+    {
+      "old": "configs/specific_models/model_0815_p1_state_identifiability.yaml",
+      "new": "configs/exp123/specific_models/model_0815_p1_state_identifiability.yaml",
+      "new_sha256": "d7aa8352f1bd84348518361f25c4736eb645eb514bf19e0ba41220919f468dea",
+      "head_sha256": "0c262400dfdb04ba9e76bc7a1684d3b1f12b87f842ba7b8b991a6cae47aba4e1"
+    },
+    {
+      "old": "configs/specific_models/model_0818_seed_convergence.yaml",
+      "new": "configs/exp123/specific_models/model_0818_seed_convergence.yaml",
+      "new_sha256": "099348e9c891738e4fca56b338c93792fba2b502c803dbf0bf5926081fd190c5",
+      "head_sha256": "9570b510ea6c51ec32ffe66e7cb7deeeed23dfff6efc5708cd59b31224b13dc8"
+    },
+    {
+      "old": "configs/specific_models/model_0826_recovery_v2.yaml",
+      "new": "configs/exp123/specific_models/model_0826_recovery_v2.yaml",
+      "new_sha256": "4a52cb8034c9ae973624022dd553772951f1fc25aac40c8be0d03a81dbbc9d73",
+      "head_sha256": "a39bc9e22db7e30a016ddff7863415ae4ec9ac6a2835cc7d86be157ee889e8b8"
+    },
+    {
+      "old": "configs/specific_models/model_0815_b0_adaptive_controller_pilot.yaml",
+      "new": "configs/exp123/specific_models/model_0815_b0_adaptive_controller_pilot.yaml",
+      "new_sha256": "f32c910d264238f810c4216de52bf0519b8e5a763584303553d4806fbeac89b3",
+      "head_sha256": "b0abbfa34b2e8a45d86c53e743571d74807849eb266c3dc5eabc4ad3329dd366"
+    },
+    {
+      "old": "configs/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml",
+      "new": "configs/exp123/hyper_grid_cfg/pmh_cond1_hyper_grid_v1.yaml",
+      "new_sha256": "fbd99742d180beea998a1fcfa6516d915728b48b27382dae7b6bfe3d4bda9169",
+      "head_sha256": "a2b9482139deaa347b8594ba547481fb98cb6830bf17b354fd318d7c98d36057"
+    },
+    {
+      "old": "configs/simulation_cfg/pmh_cond1_simulation_v13.yaml",
+      "new": "configs/exp123/simulation_cfg/pmh_cond1_simulation_v13.yaml",
+      "new_sha256": "9a6e063d78a0bc56c30d559e5c269c51b90fcbaaa6d6791be2be4275e6678f36",
+      "head_sha256": "b78101cb33ea1000cb5626e8289b8d9cbc472f01c19a7ef0b590ea326a75c65c"
+    },
+    {
+      "old": "configs/simulation_cfg/model0818_cond1_full_observed_fit.yaml",
+      "new": "configs/exp123/simulation_cfg/model0818_cond1_full_observed_fit.yaml",
+      "new_sha256": "c10593527089a1ef16614b75a05fd294fcea23dba24bb43b99bb0a5e4c53a3a2",
+      "head_sha256": "3ce8f2d29b7cfa78bd8caa27c02d6cd54054eab3e13eeb8b23295f17d04bc199"
+    },
+    {
+      "old": "configs/simulation_cfg/model0818_cond1_boundary_recovery.yaml",
+      "new": "configs/exp123/simulation_cfg/model0818_cond1_boundary_recovery.yaml",
+      "new_sha256": "879c126f414e40e52c75fac341f2a381c0235ac26f82f86eb743bb5b1447f47e",
+      "head_sha256": "a32ff62084918f860ab8d3734011db35b3016688f09f7e8b236a668810362b93"
+    },
+    {
+      "old": "configs/simulation_cfg/pmh_cond1_simulation.yaml",
+      "new": "configs/exp123/simulation_cfg/pmh_cond1_simulation.yaml",
+      "new_sha256": "f5fda9a5bfe36ee240e58a0474a43b3f6eeaf94676a5c07efe5ee03d87f78744",
+      "head_sha256": "70d2bb0d966320560228ba5ec80d1af19ba4b2351e6dc6ba3fa49f2262d9b454"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_h2_cond1_legacy_count_pilot.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_h2_cond1_legacy_count_pilot.yaml",
+      "new_sha256": "4efdb1b4edcd398217c1f95f11d1e3a0590507a7a77bc1c60bf23b1712e6e6aa",
+      "head_sha256": "136954dc278d0a3ecb1dfc77a92a20371a983295f51419f5d75b59f6c9ab6946"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_p0_cond1_acceptance.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_p0_cond1_acceptance.yaml",
+      "new_sha256": "b40034ea47686e630b9c8fa4097f6bd121ded438d9b5967e4b53a9a75658cbc0",
+      "head_sha256": "52161ad4d4282f243606c89fd02b9105cd23bc77f910ac070b5bc2e93773ddc5"
+    },
+    {
+      "old": "configs/simulation_cfg/model0826_cond1_recovery_base.yaml",
+      "new": "configs/exp123/simulation_cfg/model0826_cond1_recovery_base.yaml",
+      "new_sha256": "20de03b66b38d1383450f0e1806c6917ded082e6344fb3712ce6c3b4b2aabd8f",
+      "head_sha256": "19470c5ff8448d857e2efd147d7e9f2e0b631ebf3c19555ce27d2b0b84e00a23"
+    },
+    {
+      "old": "configs/simulation_cfg/model0826_cond1_exploratory_observed_fit.yaml",
+      "new": "configs/exp123/simulation_cfg/model0826_cond1_exploratory_observed_fit.yaml",
+      "new_sha256": "792ffaafa5750b79846cec687bfcbfcdf0eef9c12a1cfa87fb4a6d1887e5e11b",
+      "head_sha256": "8b3e0896eac15eb356eecab8415f2c3886a68354572196ab38cd88f2607660ed"
+    },
+    {
+      "old": "configs/simulation_cfg/pmh_cond1_simulation_v14.yaml",
+      "new": "configs/exp123/simulation_cfg/pmh_cond1_simulation_v14.yaml",
+      "new_sha256": "8cdf6b7f7f283aa155a0d18fe7534755d4ff7997fcc825e8235ab6f0a514f5d9",
+      "head_sha256": "490b96a4ddfab032e65bff1ddd9bbbd971ad65d4e7ad1d372c48da8552269711"
+    },
+    {
+      "old": "configs/simulation_cfg/pmh_cond1_simulation_test8.yaml",
+      "new": "configs/exp123/simulation_cfg/pmh_cond1_simulation_test8.yaml",
+      "new_sha256": "0460a998500d92678049c3341e509659a510f6b04a6c9d74e30828588cf1da36",
+      "head_sha256": "1c5aeecc87d16244d54b6f5bfbe14b1bdbcf1f8e17be56e56a91e521a515a26d"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_h3_cond1_feedback_reactive_pilot.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_h3_cond1_feedback_reactive_pilot.yaml",
+      "new_sha256": "f268abd2409ba6a61679e162461b5eca6e7fdddffa086bef66cf392f7dc2b881",
+      "head_sha256": "a00a333ac1d1f68dc0a93f04027e7d3bcac30aac01d1340a44d45ccb1ce028a2"
+    },
+    {
+      "old": "configs/simulation_cfg/model0818_cond1_exploratory_observed_fit.yaml",
+      "new": "configs/exp123/simulation_cfg/model0818_cond1_exploratory_observed_fit.yaml",
+      "new_sha256": "59b929f2009f5ff8c0966f1a15ac0a5aba933a2c2402f80702b53da46dde1afb",
+      "head_sha256": "9031943e049803fe8a82b85a5f446ff283fcfab9139458ba579321a04f2f9e0a"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_h1_cond1_controller_pilot.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_h1_cond1_controller_pilot.yaml",
+      "new_sha256": "0880946d91a42b0ae6b50f85069ec1ea375ed352ffad351f6470792cb8ae9ecd",
+      "head_sha256": "d5d4767b1f498440760018184256f0490bb3d02bae9dc0d02358fd839856100b"
+    },
+    {
+      "old": "configs/simulation_cfg/pmh_cond1_simulation_0806.yaml",
+      "new": "configs/exp123/simulation_cfg/pmh_cond1_simulation_0806.yaml",
+      "new_sha256": "4097d2d4e6b67e6a6350ae8c945dd34133ebbd1fed840f645fa9bc50c9a10ea5",
+      "head_sha256": "689bad6ab3aec158b154380424614d082e016dfe75fa46fe3500488155c7dc75"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_b0_cond1_controller_pilot.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_b0_cond1_controller_pilot.yaml",
+      "new_sha256": "9e3027cab86d737126f2f79bcd975bcec702c7676ed812aa0c304f9747685210",
+      "head_sha256": "9d4555216f091137e1bcb831face75fd0fc6320546df4bbe48a018869ed2763f"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_p0_cond1_calibrated.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_p0_cond1_calibrated.yaml",
+      "new_sha256": "7ebadb42fb9a375446603117eecb6eaca424f2fdab06fc9b25a3ad85c840f1ce",
+      "head_sha256": "8dde3e76c42a764856116f93a9c1f45ea3b9377360b59c2907de15f0ce023bf0"
+    },
+    {
+      "old": "configs/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml",
+      "new": "configs/exp123/simulation_cfg/model0809_cond1_dynamic_continuous_full_data.yaml",
+      "new_sha256": "c9e08004387a46e94c7af6b99194813dffe885cdcea8bbf82f13267d1d249450",
+      "head_sha256": "c46a090a50ccd6363563fda6216e75beb834547adb2675553ca83d0afa7182fd"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_p0_cond1_beta_recalibration.yaml",
+      "new_sha256": "499631653746a72e5b949f6d27762f026c0ef0fb21d3757d80656a6707ddd480",
+      "head_sha256": "6c1fc73cf68e6250084d0ec4f5e9e3f773c73c1d6c279df70f93d4ae24677ee1"
+    },
+    {
+      "old": "configs/simulation_cfg/model0809_cond1_boundary_probe_confidence_selected3.yaml",
+      "new": "configs/exp123/simulation_cfg/model0809_cond1_boundary_probe_confidence_selected3.yaml",
+      "new_sha256": "2575097a758bb28ec98f1d003bfd94d41fb5f307dbb278c2c5bbde2391ec93b8",
+      "head_sha256": "e40934399f687afbfa0e4f8265e1ebf95544eab401b28be29c178ed793fbc803"
+    },
+    {
+      "old": "configs/simulation_cfg/model0815_h4_cond1_nested_feedback_accumulator_pilot.yaml",
+      "new": "configs/exp123/simulation_cfg/model0815_h4_cond1_nested_feedback_accumulator_pilot.yaml",
+      "new_sha256": "b5dd279c5d26c13fe1eb382e064a44e17cb16df4ed282938024626fe69f4989b",
+      "head_sha256": "0894b1900e1e4e3448c300081a5ca730fb8260f8161bcd2752d052d122226c55"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_selected3_boundary_probe_confidence_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_selected3_boundary_probe_confidence_best.yaml",
+      "new_sha256": "fbd57f6af629dce594dcf679b43b4734b290074952fb60981adf30be00ed617a",
+      "head_sha256": "018e52c352c7d6f2a511cb72d26941213ec36f2020ff64ff902534dc39cd9340"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects.yaml",
+      "new_sha256": "5099dbc38a18a108cfed27811ebd51a96db79da4673014e4b3ae9064e8234277",
+      "head_sha256": "073a3564412eab0be136fdc98b8775e66563c83eeeeae5ebe6e73ba271277646"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2i_rng_aligned_capture70_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2i_rng_aligned_capture70_s103_probe.yaml",
+      "new_sha256": "92067911c16251821a5b14a2d0e5f0a7cef041efab7c590e3b2f3dd16401eead",
+      "head_sha256": "31651998812f457ae2b871984d97f659f053401dc75368750b2f049c90793420"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2a_selected3_probe.yaml",
+      "new_sha256": "cae9a4c2266bbea324e0f1193ab91af7786f77c78e9754eb24d93dad8a1434ba",
+      "head_sha256": "7760a1d6de41b58f7f4df61cd4e91435cec8137809479d8978b49929de3d334e"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2c_lite_selected3_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2c_lite_selected3_probe.yaml",
+      "new_sha256": "b804536df66a1ea30d74a18e31f2dee668763cae12ae22dc5b0d23f3d3eae5dd",
+      "head_sha256": "f48579497c5ac10be3f5a9b014afe4140d638b9e225b745439947a0e2fad9d87"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2e_persistent_execution_selected3_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2e_persistent_execution_selected3_probe.yaml",
+      "new_sha256": "c6b584f819b33165e9a0a65bab5a70e68fe83c1ead25f41819614f9112962fa5",
+      "head_sha256": "49b9cab429efa2c6a780d5631c434b69aabde8aecceab8919de40910e431681f"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_best.yaml",
+      "new_sha256": "2d264b64ec71c090ba12b07260010c7e64f1381d096a1f76fa378b23108afd71",
+      "head_sha256": "d8b8c57f2178e9dfb4ad63dc2c313f951c5fb661fbcb71446952a159124f45f6"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c1p0_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c1p0_s103_probe.yaml",
+      "new_sha256": "37d1fe68cc5a01b7bed6fdcc98d68c1cb662c5b1b16e9443690dee40d9a0621f",
+      "head_sha256": "782e3c937f08d746a09d091dddc65e4104ac75f49e44eac53a0b42c4dbe1c345"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2f_rule_confidence_s103_19hypo_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2f_rule_confidence_s103_19hypo_probe.yaml",
+      "new_sha256": "43ea6f0a586a5952b9e9ac4b94cf597d4af5fe52afe9190aca5186d8452fb570",
+      "head_sha256": "0681c262bc98a68db59c3786a52f77ea49b8ccd12fe79ae2bd58effb821986c4"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2k_refined_guardrail_selected8.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2k_refined_guardrail_selected8.yaml",
+      "new_sha256": "1a34733f26bcb8af08a088f7f6315eab3db3da11ee1388c7a8053581ff195cbb",
+      "head_sha256": "a88d11a4893b9a8c6f1c7cdfd0744f9bcd85d9a080f29c11f406dca8405cef7b"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v7_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v7_best.yaml",
+      "new_sha256": "13b0f075cd8cf61b5ef2e087e5c6d8bab0e9ad6c830450c637a40270f56b7f29",
+      "head_sha256": "e711b2d922fbcdd7a7f35d30487ee33fa2685914e66184fa97c51e2be31cba69"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v8_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v8_best.yaml",
+      "new_sha256": "671b334968e85ee93483569eacf26e5e8806f08ee26a1adc75f2fad9b0e2a960",
+      "head_sha256": "c271644da60c9012eb9af7a3229e89c07df56b68818c6427bd5dbfdd13879b2c"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c1p4_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c1p4_s103_probe.yaml",
+      "new_sha256": "fbc02526cb3c20735a7d0522b19896366ea86f23b2362ebdbe722d537dbd9437",
+      "head_sha256": "b2b43e5eedf7a49291002e26aef3f1a97957ff2a8ad5818e9c3ccc9afa7c2695"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c0p4_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c0p4_s103_probe.yaml",
+      "new_sha256": "e6721edca39211af0d46df50c6cc666ad477ba13816ad29e7bf2e0d772a7d9e5",
+      "head_sha256": "5f2a6154e98c0b950d32107bc8ec4a86178757c07f6097865c35c1f1e5873ef8"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2d_confidence_selected3_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2d_confidence_selected3_probe.yaml",
+      "new_sha256": "ecd3bc43270fed836693c7c806b1c1631b918acaba584e304d759f92bd936ca0",
+      "head_sha256": "c8bb70b53ba6a3dc72e76b30cc39a2f98d24ed45ccf8bbf4b4f98baa8d3c65e3"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c0p0_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c0p0_s103_probe.yaml",
+      "new_sha256": "b40970a7ac8bca73b0ff7053139498dc350335b591e509c81aeb1a459e067f8e",
+      "head_sha256": "c5e8bccc937d38eee8b3218ff9d464e146a22471b46c01a53cc9f81a8dbccf10"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml",
+      "new_sha256": "b560658210e531f417f2c8dc73a9fa7f99af76021887825d004dd01231cbbee9",
+      "head_sha256": "43765d297019938eaf681463f53c6c0bea77d527cb67160be25516f322a9c689"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2k_refined_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2k_refined_s103_probe.yaml",
+      "new_sha256": "4084504121ddd1f0e0f3b2eb14831e875331edcddb75dcfd8cf02539dd54ab30",
+      "head_sha256": "4e032b961e81bd264725b9594f4408132552b582d227b398d44e4c31e956c951"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v4_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v4_best.yaml",
+      "new_sha256": "4f31d2aa8216b5fba1e0cbea3ebb56668b9c73e54c1dccc530cb9c1b234367d9",
+      "head_sha256": "f7cb800d28f2f2cd1ea8416bafb3699d49ae4723f21cb9c415a2702e208c7a51"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2g_misconception_capture_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2g_misconception_capture_s103_probe.yaml",
+      "new_sha256": "1273975f210cdb9a1f192d7039303bf9ebe6c95df6ba6eca5c86e0c0a8e07c8c",
+      "head_sha256": "efbef99158c7d26d1869a0c32c401c5fc41479fdd8fd7247efa2b2edd286508d"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_grid_v1_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_grid_v1_best.yaml",
+      "new_sha256": "379ef0cbb7562bb36fd759244150879c17f2f34060e0f33b8c3409e66da0a1c6",
+      "head_sha256": "676998f996aa4663a3f9357e14e3db0f9b9a419cd9ba46cae16ed9b1d983ddc8"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c1p4_selected8.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c1p4_selected8.yaml",
+      "new_sha256": "1b55d08f1b9e245449094510e7618569ee1e73312413a730a2b459d01ea896d3",
+      "head_sha256": "dab13e0cf9f730e437d060bd1ec1c10c64e03d6e0ed67a73edcbc64f999cbfff"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v5_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v5_best.yaml",
+      "new_sha256": "7d6c1e0e25f21cc876986b68b8be69f9cc419994afd3028440d1fcb5d48bb901",
+      "head_sha256": "5f37099b3e04617969af4fd66f1450fd688c45590c6c7082b679da95e81ccc3d"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects_trajectory.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0813_v2f_cond1_all_subjects_trajectory.yaml",
+      "new_sha256": "6c675ce080cb5c2ec56df6d8943836f25bf6ae490cad0e917cd289214b41ca31",
+      "head_sha256": "b9881600d2214ea9ed288bd2f2a101d50da40b5c124b4b40d1dbd2f511749eb5"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c1p4_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c1p4_s103_probe.yaml",
+      "new_sha256": "c2e31776f1db8346246e003341e168c8e0275dc4f26ffb49a1b7165bfc1d00a4",
+      "head_sha256": "8ba7229d1adfda33cd3abe63cf709b912d4d9fc50695bb70c122e1d91d99c168"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c1p0_selected8.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c1p0_selected8.yaml",
+      "new_sha256": "be5ca0ba5c43a28688d984ffcf8b5fc65662ebdcd0958fbdbd309725751292ab",
+      "head_sha256": "9ffbec2b1e2ec51e9d5355e0df1b2f0044832d74e0aae142ddba340a7911a40a"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c0p0_selected8.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_guardrail_c0p0_selected8.yaml",
+      "new_sha256": "c2e97d6ed515db6bb303aa8d1768e547da4cb72ccef1cf0c74ebf9a716255bdd",
+      "head_sha256": "50758a0ea5f1ba3909fc422579a7769d0810fc4de11dd6897ccb3b18edd25cd0"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2f_rule_confidence_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2f_rule_confidence_s103_probe.yaml",
+      "new_sha256": "bd45b8d3785832fdb0c831118e186ac295e096e5cd155eba8f754e3fb31d21ac",
+      "head_sha256": "248952523e8b291bcc2e80cc02ec890c389d1ecb951a6e5ea6dc570003e669a0"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2i_rng_aligned_capture0_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2i_rng_aligned_capture0_s103_probe.yaml",
+      "new_sha256": "e31e131b2b0abf929c9f636cd7d09ea338a5c602e01376f8e182f6c8932266ca",
+      "head_sha256": "51a767ac1382586b323e4146b3317712362731975f56f322e71f6b123f023bf2"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_controller_v2h_coherent_capture_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2h_coherent_capture_s103_probe.yaml",
+      "new_sha256": "2bec66ca54f525e974385cbb8f038c80724d8b5d387116d483c7819716d1f4af",
+      "head_sha256": "7b7cd4d1d843c082a9909cff54fa6db09c180d6f14e7193bc8c10ff8e4b44264"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v6_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v6_best.yaml",
+      "new_sha256": "7eea1275de8b1418bb103a27eda01079fc189387e162e04f5c17d0869c8de1f2",
+      "head_sha256": "50aee5f2df427034e0bcfec866f9c6fa6f35aa10bdf1cfe68d1289c5201dccb5"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c0p4_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c0p4_s103_probe.yaml",
+      "new_sha256": "89c3eeebefdb9ee9913d38145dcad85770b26a8ec140a3758922b5aff5b365c8",
+      "head_sha256": "b8ef797acbbac7356bcd5454a2b0ec199bea73a0e1ad2b0ba3f8cba01cd558ff"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v8_probe2_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_subjectwise_hyper_cd_v8_probe2_best.yaml",
+      "new_sha256": "b60178df81618feea63ab0dbd3edbbf4d31959ba49623188e23cbc7b29ddb977",
+      "head_sha256": "3c6ffa149eb401459086769700ccf4002b6b0cb56b389df8d2acd98f099885aa"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c1p0_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_paired_c1p0_s103_probe.yaml",
+      "new_sha256": "180abffb3e8209ced7803958568faac730a54c05865b35abf6d4b856eab1fd7a",
+      "head_sha256": "5615cb58b84f821e689fff03a7262b77cbcad6fd7658ace2b79e686aaeb84a12"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0809_selected8_best.yaml",
+      "new_sha256": "abc5bc27b9192d06be94ddd4f47e62c73c8e3af6a98a9b453434a724eded7145",
+      "head_sha256": "55a454cdb7c11a7c6aae5dc52a4c0501393b0e9dc36e0e1d1b55d6665de90eba"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c0p0_s103_probe.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/model0812_controller_v2j_c0p0_s103_probe.yaml",
+      "new_sha256": "3a145319c20b18992063331660a1adaa3fb1ab3e25aaa82e29a938b5614ab36d",
+      "head_sha256": "514a5929103faabd86232ad0ed4c82a5b18a98c31b7f4fd9341ef589f0ccde88"
+    },
+    {
+      "old": "configs/simulation_cfg/generated_from_hyper/pmh_cond1_v9_best.yaml",
+      "new": "configs/exp123/simulation_cfg/generated_from_hyper/pmh_cond1_v9_best.yaml",
+      "new_sha256": "dd4a5964b0a31025e7fdd1d56e7223c5d5de137d309737fdc431321b1afbcd17",
+      "head_sha256": "33d0a9576fd0776e4c6075b1e2fd58faae56ec542bab0af7ae9822dd133c3e16"
+    },
+    {
+      "old": "configs/candidates/README.md",
+      "new": "configs/shared/candidates/README.md",
+      "new_sha256": "7ffa7b7e4af5175111a3546de027fd1c8bac7589148a8a9465b53680ad11e395",
+      "head_sha256": "7ffa7b7e4af5175111a3546de027fd1c8bac7589148a8a9465b53680ad11e395"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe4_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe4_candidates.json",
+      "new_sha256": "48e1c840da36b60ea70c8e6708833225ce8e2d0ad00faa0bf11fdad7d03aa166",
+      "head_sha256": "48e1c840da36b60ea70c8e6708833225ce8e2d0ad00faa0bf11fdad7d03aa166"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_v10_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_v10_candidates.json",
+      "new_sha256": "4b14ffe6930cb5ec5ddde79c2065048b7a9af8ab0d1f28cf1678d12a50fc6910",
+      "head_sha256": "4b14ffe6930cb5ec5ddde79c2065048b7a9af8ab0d1f28cf1678d12a50fc6910"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_profile_v13_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_profile_v13_candidates.json",
+      "new_sha256": "951cfe1cf8fabdef5127b31d0adcdd37663a5a25d5e992c03fc0411f9deea49c",
+      "head_sha256": "951cfe1cf8fabdef5127b31d0adcdd37663a5a25d5e992c03fc0411f9deea49c"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_profile_v14_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_profile_v14_candidates.json",
+      "new_sha256": "374a38de9fb0805b79464048ae5b28040fec89f67be16737639df1171d235d88",
+      "head_sha256": "374a38de9fb0805b79464048ae5b28040fec89f67be16737639df1171d235d88"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_v9_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_v9_candidates.json",
+      "new_sha256": "9d3c22eefbc23cc11d8772032b96ffd628f11d5957ab5d0b828bd02a4770cc8c",
+      "head_sha256": "9d3c22eefbc23cc11d8772032b96ffd628f11d5957ab5d0b828bd02a4770cc8c"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe5_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe5_candidates.json",
+      "new_sha256": "50f91e725da8d98bbde1e561547a5b0fcb471e4ea8d2b0b08b3d92f6160b752a",
+      "head_sha256": "50f91e725da8d98bbde1e561547a5b0fcb471e4ea8d2b0b08b3d92f6160b752a"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_feedback_probe_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_feedback_probe_candidates.json",
+      "new_sha256": "751c62fcd098ef5d9ef9461640b52466062eb761c0bde5f1aacb9c7cf68b4ac9",
+      "head_sha256": "751c62fcd098ef5d9ef9461640b52466062eb761c0bde5f1aacb9c7cf68b4ac9"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_profile_v11_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_profile_v11_candidates.json",
+      "new_sha256": "c151287804e783f084f64f9076b93456541aa68d5bd1c94b54e9d6bc5c350a47",
+      "head_sha256": "c151287804e783f084f64f9076b93456541aa68d5bd1c94b54e9d6bc5c350a47"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_candidates.json",
+      "new_sha256": "c19c58bae7576a425104ecb1471c258c46bc86a4acd6f2062c59ff66ec034700",
+      "head_sha256": "c19c58bae7576a425104ecb1471c258c46bc86a4acd6f2062c59ff66ec034700"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/README.md",
+      "new": "configs/shared/candidates/hypothesis_transition/README.md",
+      "new_sha256": "9575ffae2c0219f58df6bea131b480ed9e63a19062bb575ab8ce5408fa9a81d9",
+      "head_sha256": "249510c46b150f657722bb1ec3be3c9d68c61733afbb66f8c72075b23a643ed2"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe2_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_v8_probe2_candidates.json",
+      "new_sha256": "713d062162b5e24fb59b0937545dfb6f8c5c06c71c1dc683bca64b636b9c4b83",
+      "head_sha256": "713d062162b5e24fb59b0937545dfb6f8c5c06c71c1dc683bca64b636b9c4b83"
+    },
+    {
+      "old": "configs/candidates/hypothesis_transition/hypothesis_transition_strategy_grid_v1_candidates.json",
+      "new": "configs/shared/candidates/hypothesis_transition/hypothesis_transition_strategy_grid_v1_candidates.json",
+      "new_sha256": "cc594b90a5602c36cfc637424e98e98f3ef44c34d16f41e2bce8bc48649e09d6",
+      "head_sha256": "cc594b90a5602c36cfc637424e98e98f3ef44c34d16f41e2bce8bc48649e09d6"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/model0815_p0_cond1_beta_screening.yaml",
+      "new_sha256": "c6893bfc3d2897b79189b6086b0fca6e469dc967898641bb566636eb87acd3f6",
+      "head_sha256": "71126795a4e84457a5f6d533d0d2fcfc097b0dd81190327b9efd7e5f2fe35355"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v2.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v2.yaml",
+      "new_sha256": "92a087c3b8558edfd8ffdcdbb6e3695a0a5545ba961d58d01fbaf99896eb047a",
+      "head_sha256": "95100a353123faed627b498c1f5c594eb6fbfe1d5ab07f3d3ce3bf60b4bff9ee"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe4.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe4.yaml",
+      "new_sha256": "294094ad077a501da62ae36013dda62379f00f06526d2db5e241203f951ca305",
+      "head_sha256": "c56a15f335d1884eee5887e2726073d39eb077f94f4f75a152d857130ca25f2c"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8.yaml",
+      "new_sha256": "6b80b2651263e2a7b860497ccc6c82cf03b14c60f5b9788c0521a34f7a3b80a9",
+      "head_sha256": "9960e947bfaa4dc554fb20135ec4eee0b597127ffa8a49c90f39728d9cf1de93"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v9.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v9.yaml",
+      "new_sha256": "dd314665437b9fc0f0ce505d5473b416c73ab8cc73a3a6d8215250c6dc52793c",
+      "head_sha256": "35be58b127651c4afc065ce433c24ba24bd6535219da5dbf27e554de943390f0"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe2.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe2.yaml",
+      "new_sha256": "5832febb93da383a07b3ffb9a7681b3c0fb1523b08fbcb298f5bc9954571fb69",
+      "head_sha256": "1bf86a474ea304199a564aa82870e80a7f431f62a2c5f13cc0c9da275237b4d9"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v10.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v10.yaml",
+      "new_sha256": "1757b8af93cdc3d2cd530ae8891518525e41043d8f32fa45a62037a3ff49b9cc",
+      "head_sha256": "5c2f1753b655ecaf33de31dd78a0697f47f93d0a00150d5fb09052064f778495"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_0806.yaml",
+      "new_sha256": "b056e9c1d471dcbecb781900c37efe828238694b94220b7f2fa2f5c0180e6839",
+      "head_sha256": "9305f311c030e55abd1e5371cb60c850498101d780f9604ca5fd47a3ea652037"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v6.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v6.yaml",
+      "new_sha256": "3293a5af392dc746082db07796307d7b3a7a1e0cf245ec9c339deba138f9d5d8",
+      "head_sha256": "adce5970e3f17fe9dca9e48a60f06fd11799e7c0078aaa9dce2a1816edcf71ce"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v4.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v4.yaml",
+      "new_sha256": "b476b1faca1189e9f0f046f1588f0578b0e414175cc4bec3f3dc59f9c8a119b0",
+      "head_sha256": "8a3e4a6a18ffd4638dbfacb1c8efe259d2940c860c64c9ccd8d0a7396322298b"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v14.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v14.yaml",
+      "new_sha256": "73c32d36b25f114505f761a313fabd62e75d57f19571883eb6a1925a9f8af428",
+      "head_sha256": "a66d8ccd6a1ad33b49c85e9a45ba423d43b1f6323486bcbf1a8d6ede4bf3b3b4"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v7.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v7.yaml",
+      "new_sha256": "1cb6cabd250baf08238cb2bc7fbd997c64efa02b85467a4eebb6236859ee905c",
+      "head_sha256": "4772397a931a6776bec89f6eb1e6d0f8780315cf46d931512dc7e13af161e45a"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v5.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v5.yaml",
+      "new_sha256": "058f2b09ee357a10b49712cbcb1dc87e79708983ca9a59cfc1463ec6c8c67a9a",
+      "head_sha256": "d679cd112143f285252992d7afed7fcb3fe45f834c47c04963afd5c65eed2de6"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_feedback_probe.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_feedback_probe.yaml",
+      "new_sha256": "eefb2fcf02fb241b446a809e152ec866a153854b59ca2f65feb1bcaf1d9e679a",
+      "head_sha256": "a707e3d5806cbeef4b42c14b9d1fe10ba8c119c948876b673cd239e0429fc5a6"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v1.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v1.yaml",
+      "new_sha256": "4704eeb3daaca5ec31b38580c34bc7ce5ec10ab85d66bda46d139aadab1eb858",
+      "head_sha256": "626dbfe1b2e28e4e36a5258e6cc4ccfc0b9c96e7e4a66413e15f4fe6919da976"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v3.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v3.yaml",
+      "new_sha256": "1195da6c55cb1460af638635d89a7616454e6ec7978b61f72f1da96872ff6fb9",
+      "head_sha256": "acd0c939336e6e0d6fe534b0b5befd1a9b17add23424e7003e8ad16b38d91a02"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/model0815_p0_cond1_beta_recalibration.yaml",
+      "new_sha256": "1204120b0b177ecc94a182df5c56063efc5142f42c3625796c7aafd85a66c8e8",
+      "head_sha256": "1ba44759187aa6903b304a49931c039587d8c058baedc57280a2d8e26ea87a02"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/model0809_cond1_boundary_probe_confidence_selected3.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/model0809_cond1_boundary_probe_confidence_selected3.yaml",
+      "new_sha256": "fd35e956f28eb3a07e8f2fb34494f29079d5aa5b9a429f803adf564239604c07",
+      "head_sha256": "73a391023aa4617d9b67d06d865c086cb7084726800359cb1409a5e06b20a962"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v13.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v13.yaml",
+      "new_sha256": "c74af3146a3fdd3848a022997826805fc505753c7ac68cf1381b6cac4b3449b6",
+      "head_sha256": "56c1bd778d1e105a839c485386aa85d51cdf7cd0b4b39de0b7c2dc487ac9ab6d"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v10_test8.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v10_test8.yaml",
+      "new_sha256": "e1408a5020e1cae5fccd0d96d1372f2145d06c3cd481ca5399c8d8cc1ac31f32",
+      "head_sha256": "90e24ba50e919b19c03c10a5331ce6bd39cf6a4805195217fa4aa4ba0e378c33"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe3.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe3.yaml",
+      "new_sha256": "751592259efff83c392788ad023db7b64a5f61630b3a8105f5150477c8631d5d",
+      "head_sha256": "a2a95b0b96d3d36884088a284d7feca220234dac3fe134a052d753ba634f7286"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe5.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/pmh_cond1_hyper_cd_v8_probe5.yaml",
+      "new_sha256": "928427cd6be9ced813c0be57b92d03846fc6f202ab6b7408134e550498e83666",
+      "head_sha256": "c7422eb9dbc3f324e7ac64c02bb00c0cedede5cfe66220108ac0519505fbcde1"
+    },
+    {
+      "old": "configs/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml",
+      "new": "configs/exp123/hyper_cd_cfg/model0809_cond1_dynamic_continuous_selected8.yaml",
+      "new_sha256": "b9d4d4c9a11b13eab4f226692fd1e2be9541a81760fea5d61c3080b803078c17",
+      "head_sha256": "71f6ac91e037e281defd6f13ac0642471739e87be42f9314af915898e2f5333a"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml",
+      "new_sha256": "aedd8b8da00cd6f969a8f73cc1cf16f4ad92a4ba0f8ea565c7b51574fd96ce61",
+      "head_sha256": "aedd8b8da00cd6f969a8f73cc1cf16f4ad92a4ba0f8ea565c7b51574fd96ce61"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_h1_adaptive_controller.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_h1_adaptive_controller.yaml",
+      "new_sha256": "c2af9d4ccb52e91252f71d172b3954c0ceda67b57e25bf974dbbe90935dd4139",
+      "head_sha256": "c2af9d4ccb52e91252f71d172b3954c0ceda67b57e25bf974dbbe90935dd4139"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0806.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0806.yaml",
+      "new_sha256": "a47b6571d722d301b57c19f6e412724446ed615e857191635a72bb6aabd88656",
+      "head_sha256": "a47b6571d722d301b57c19f6e412724446ed615e857191635a72bb6aabd88656"
+    },
+    {
+      "old": "configs/model_struct/p_model.yaml",
+      "new": "configs/shared/model_struct/p_model.yaml",
+      "new_sha256": "530eaf2bdca72696bc28df66b62ae354ea5cb1f9001cfed184a86ab4d68b81a0",
+      "head_sha256": "530eaf2bdca72696bc28df66b62ae354ea5cb1f9001cfed184a86ab4d68b81a0"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_active_set.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_active_set.yaml",
+      "new_sha256": "9c181eff3487a2fc783bc00946803e3bd7a21752e91b10d04b54fe01c68f7d74",
+      "head_sha256": "9c181eff3487a2fc783bc00946803e3bd7a21752e91b10d04b54fe01c68f7d74"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_v13.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_v13.yaml",
+      "new_sha256": "3e761470f0b94b9db01b4eddac0a84afbb1c2fa6622d4adae09e213e9863f088",
+      "head_sha256": "3e761470f0b94b9db01b4eddac0a84afbb1c2fa6622d4adae09e213e9863f088"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_mechanism_screen.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_mechanism_screen.yaml",
+      "new_sha256": "6daa555a29492da8bcee7860aaa56d3f471b031bf8671fc6163d9b43ad09233e",
+      "head_sha256": "6daa555a29492da8bcee7860aaa56d3f471b031bf8671fc6163d9b43ad09233e"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_h2_legacy_count.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_h2_legacy_count.yaml",
+      "new_sha256": "ad0039e50bb2b8cdbd8722578bea6df720541ba4e39f56aab9d2097ac6a1ada8",
+      "head_sha256": "ad0039e50bb2b8cdbd8722578bea6df720541ba4e39f56aab9d2097ac6a1ada8"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_b0_adaptive_controller.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_b0_adaptive_controller.yaml",
+      "new_sha256": "9bc50d68cc7a2ab68011204cc423edf42166d109d1cb8d39e57e73c183fe9edd",
+      "head_sha256": "9bc50d68cc7a2ab68011204cc423edf42166d109d1cb8d39e57e73c183fe9edd"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_c1_frozen.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_c1_frozen.yaml",
+      "new_sha256": "ea1dc7e2872ae5e74fb723aa5d6f615939aaff69094f25dca5f4937b802b3566",
+      "head_sha256": "ea1dc7e2872ae5e74fb723aa5d6f615939aaff69094f25dca5f4937b802b3566"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_h3_feedback_reactive.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_h3_feedback_reactive.yaml",
+      "new_sha256": "496d52246b7c5c9a2fe57e9647fef3af0207a88435cea483941db63c7853616b",
+      "head_sha256": "496d52246b7c5c9a2fe57e9647fef3af0207a88435cea483941db63c7853616b"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1.yaml",
+      "new_sha256": "ec23e7dd72513f2913dc2f91c16f7f4163c4db23513c3975dc2de3baa75ae2b3",
+      "head_sha256": "ec23e7dd72513f2913dc2f91c16f7f4163c4db23513c3975dc2de3baa75ae2b3"
+    },
+    {
+      "old": "configs/model_struct/base_model.yaml",
+      "new": "configs/shared/model_struct/base_model.yaml",
+      "new_sha256": "1736d7fac769e99ca7d728851b9cebc6039b712891b0fbe68e47553a7c842063",
+      "head_sha256": "1736d7fac769e99ca7d728851b9cebc6039b712891b0fbe68e47553a7c842063"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0814_rule_consistent.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0814_rule_consistent.yaml",
+      "new_sha256": "f3e9a1f0724cc959e75e743d5ae4f32ca49209b23ee04e7baaff59f1e0b67f78",
+      "head_sha256": "f3e9a1f0724cc959e75e743d5ae4f32ca49209b23ee04e7baaff59f1e0b67f78"
+    },
+    {
+      "old": "configs/model_struct/m_model.yaml",
+      "new": "configs/shared/model_struct/m_model.yaml",
+      "new_sha256": "cad1e85e97fdfb8f8b3664dcaf0d54543ad0104fc9621f468cd140cd6350b409",
+      "head_sha256": "cad1e85e97fdfb8f8b3664dcaf0d54543ad0104fc9621f468cd140cd6350b409"
+    },
+    {
+      "old": "configs/model_struct/pm_model.yaml",
+      "new": "configs/shared/model_struct/pm_model.yaml",
+      "new_sha256": "ee6d2a797b580cb5cb93b771d8a99352978b923bd30c0eb7749aa9b879a74a9f",
+      "head_sha256": "ee6d2a797b580cb5cb93b771d8a99352978b923bd30c0eb7749aa9b879a74a9f"
+    },
+    {
+      "old": "configs/model_struct/default_model.yaml",
+      "new": "configs/shared/model_struct/default_model.yaml",
+      "new_sha256": "d5a9db8e3ce3aa9dd7665049d1ef8b2d507e49f90e70f29cdaab8a1d4a4d8899",
+      "head_sha256": "d5a9db8e3ce3aa9dd7665049d1ef8b2d507e49f90e70f29cdaab8a1d4a4d8899"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_v14.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_v14.yaml",
+      "new_sha256": "ced3ad8168500a6e48d400608affdaeafac006a156be08578b1b67b6151eb3f8",
+      "head_sha256": "ced3ad8168500a6e48d400608affdaeafac006a156be08578b1b67b6151eb3f8"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_p1_m1_orientation.yaml",
+      "new_sha256": "b0f0c081caacd19dc2a060bcb670d6ae0037023fbc132f35b6256921fb5f0cbb",
+      "head_sha256": "b0f0c081caacd19dc2a060bcb670d6ae0037023fbc132f35b6256921fb5f0cbb"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0826.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0826.yaml",
+      "new_sha256": "b6d5ba6ebc2e7ca371683386a9e59898066024724834444f28589ccb730942e1",
+      "head_sha256": "deb09bf9482f1d38512cf0131bc5d55babd0522cd5f08dc6398bc171d2976808"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_p0.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_p0.yaml",
+      "new_sha256": "a0de63f2c5fb241b471de0ea1f31296d3fb46e41afa4d58fa4592b5a95593c8a",
+      "head_sha256": "a0de63f2c5fb241b471de0ea1f31296d3fb46e41afa4d58fa4592b5a95593c8a"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml",
+      "new_sha256": "a00ca079c8d4e577bc4b71c5a56b471978afff335aaad530b4fb0096d39307cb",
+      "head_sha256": "a00ca079c8d4e577bc4b71c5a56b471978afff335aaad530b4fb0096d39307cb"
+    },
+    {
+      "old": "configs/model_struct/pmh_model_cond1_0818.yaml",
+      "new": "configs/exp123/model_struct/pmh_model_cond1_0818.yaml",
+      "new_sha256": "7c2676a544c4f0ac9f5a3e5566c901b41c9562530dba1ad99288e9fa7971b20c",
+      "head_sha256": "362ad1fa8150a6dd4cc64fb4773ae4bea600f8051a1d3c7c2b24a1dcde028000"
+    },
+    {
+      "old": "configs_exp4/hyper_grid_cfg/pmh_prob_proto_hyper_grid.yaml",
+      "new": "configs/exp4/hyper_grid_cfg/pmh_prob_proto_hyper_grid.yaml",
+      "new_sha256": "528ab4496ebb36db25903289685e56283b5ee5084453883ffda2372d5ce22ad4",
+      "head_sha256": "3099a3a56200bc340e37f1bd441b8eb3640ba12d341ad1592834c715a22c3613"
+    },
+    {
+      "old": "configs_exp4/simulation_cfg/pmh_prob_proto_simulation.yaml",
+      "new": "configs/exp4/simulation_cfg/pmh_prob_proto_simulation.yaml",
+      "new_sha256": "22f3fd7ba05ac2bca7af0983febadbd332a036a36ca04e8d5cd8ca773cd8f53b",
+      "head_sha256": "15ee04c8c4b6a51a505df55326210361d90bbe92194da57638c56983dfd28948"
+    },
+    {
+      "old": "configs_exp4/model_struct/pmh_prob_proto.yaml",
+      "new": "configs/exp4/model_struct/pmh_prob_proto.yaml",
+      "new_sha256": "13bfd24183cf89967b1ce2c46cc18c76a8d6fea4007a2edc4090d4cc71f6592b",
+      "head_sha256": "13bfd24183cf89967b1ce2c46cc18c76a8d6fea4007a2edc4090d4cc71f6592b"
+    },
+    {
+      "old": "configs_exp5/hyper_grid_cfg/pmh_rule1_hyper_grid.yaml",
+      "new": "configs/exp5/hyper_grid_cfg/pmh_rule1_hyper_grid.yaml",
+      "new_sha256": "d830ff50704de85b7a599853184f71a3c8c7bd40c3e9dc5e2eb6ce150537d1e7",
+      "head_sha256": "b2af7cd59fbc8ce7ccddbf128262101a2fcfef202009b0b03f4ab777fa9024a5"
+    },
+    {
+      "old": "configs_exp5/simulation_cfg/pmh_rule1_simulation.yaml",
+      "new": "configs/exp5/simulation_cfg/pmh_rule1_simulation.yaml",
+      "new_sha256": "616d15db84a71985f36cef14b57a8d8e2f06599cd030088747ca19db844fabfc",
+      "head_sha256": "7ea0a7f5dcf01dd2b84b3421418e08c7086070df60fa51ac662f37ba87a7bb00"
+    },
+    {
+      "old": "configs_exp5/hyper_cd_cfg/pmh_rule1_hyper_cd.yaml",
+      "new": "configs/exp5/hyper_cd_cfg/pmh_rule1_hyper_cd.yaml",
+      "new_sha256": "b699c117fed86ca588fd5af1f6d643b97171897669e54014ac37c3068719f8fc",
+      "head_sha256": "2abba231b8677b98131a28b95913a65a871e491e6173293aff6b95076f977531"
+    },
+    {
+      "old": "configs_exp5/model_struct/pmh_rule1.yaml",
+      "new": "configs/exp5/model_struct/pmh_rule1.yaml",
+      "new_sha256": "f268a22a977b84b6ed972ccb8ec4963f0898a2a1af9478664d1a0b414ecb55a3",
+      "head_sha256": "f268a22a977b84b6ed972ccb8ec4963f0898a2a1af9478664d1a0b414ecb55a3"
+    },
+    {
+      "old": "benchmarks/benchmark_boundary_geometry.py",
+      "new": "scripts/benchmarks/benchmark_boundary_geometry.py",
+      "new_sha256": "853a2cd629a09bdde85dbb19b7ee757c7846ee9a687d9ca6461b12a264fe2ed2",
+      "head_sha256": "853a2cd629a09bdde85dbb19b7ee757c7846ee9a687d9ca6461b12a264fe2ed2"
+    },
+    {
+      "old": "docs/post-prior-trans.md",
+      "new": "docs/history/post-prior-trans.md",
+      "new_sha256": "99df342121613f2effc3528d08b2b2d67393f6649f1c9421ab00298c8c31d76e",
+      "head_sha256": "99df342121613f2effc3528d08b2b2d67393f6649f1c9421ab00298c8c31d76e"
+    },
+    {
+      "old": "docs/model_v14_frozen_confirmation.md",
+      "new": "docs/history/model_v14_frozen_confirmation.md",
+      "new_sha256": "98f91c6b154c84ae38e2c27441fb27d2abff55224a201c0c59f7b697ea32607a",
+      "head_sha256": "98f91c6b154c84ae38e2c27441fb27d2abff55224a201c0c59f7b697ea32607a"
+    },
+    {
+      "old": "docs/model_0806_workflow.md",
+      "new": "docs/history/model_0806_workflow.md",
+      "new_sha256": "992a6809bb56c4996a85b10c3fc03a642bd545c4d617fcf3efa5d828060295ef",
+      "head_sha256": "992a6809bb56c4996a85b10c3fc03a642bd545c4d617fcf3efa5d828060295ef"
+    },
+    {
+      "old": "docs/hypothesis_transition_strategy_reference.md",
+      "new": "docs/history/hypothesis_transition_strategy_reference.md",
+      "new_sha256": "f03674d485aa7e42c716d28e181e0e2cdd48a8b14d3c9bf614a96eb6cc80eaef",
+      "head_sha256": "f03674d485aa7e42c716d28e181e0e2cdd48a8b14d3c9bf614a96eb6cc80eaef"
+    },
+    {
+      "old": "docs/model_v14_fine_checkpoint.md",
+      "new": "docs/history/model_v14_fine_checkpoint.md",
+      "new_sha256": "d8b4366cdada2d09744674e864180e421d60b9dc9610660e50c3198d767bd69c",
+      "head_sha256": "d8b4366cdada2d09744674e864180e421d60b9dc9610660e50c3198d767bd69c"
+    },
+    {
+      "old": "docs/model_v13_summary.md",
+      "new": "docs/history/model_v13_summary.md",
+      "new_sha256": "503b5d94bfb1807af6baef89dcd9a22fa266311353edee0daa8c10c1330eebb2",
+      "head_sha256": "503b5d94bfb1807af6baef89dcd9a22fa266311353edee0daa8c10c1330eebb2"
+    },
+    {
+      "old": "docs/model_v14_boundary_checkpoint.md",
+      "new": "docs/history/model_v14_boundary_checkpoint.md",
+      "new_sha256": "83f4aceda421da94a5fb84c3090c8c6cf975cbee29ece1bda195a20a85b2b43e",
+      "head_sha256": "83f4aceda421da94a5fb84c3090c8c6cf975cbee29ece1bda195a20a85b2b43e"
+    },
+    {
+      "old": "docs/run_grid_optimization.md",
+      "new": "docs/history/run_grid_optimization.md",
+      "new_sha256": "6ece668652155e138e6c143302cae06d9c8b6e6ca13f1f063c343d7edd0028cb",
+      "head_sha256": "6ece668652155e138e6c143302cae06d9c8b6e6ca13f1f063c343d7edd0028cb"
+    },
+    {
+      "old": "docs/cleanup_20260908.json",
+      "new": "docs/maintenance/cleanup_20260908.json",
+      "new_sha256": "8f43aea1d6c014dd6e562edd48c1940b7367b7615ecb261481e829d1c712add6"
+    }
+  ],
+  "configuration_semantics_checks": 160,
+  "removed_runtime_cache": {
+    "directories": [
+      "tmp/fontconfig",
+      "tmp/matplotlib"
+    ],
+    "file_count": 81,
+    "bytes": 1412260
+  },
+  "historical_outputs_rewritten": false,
+  "validation": {
+    "tests_passed": 470,
+    "fig1_pngs_byte_identical": 9,
+    "fig2_pngs_byte_identical": 2,
+    "smoke_choice_nll": 0.7377468323010447,
+    "notebook_outputs_preserved": true
+  }
+}

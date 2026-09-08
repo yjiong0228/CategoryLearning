@@ -20,7 +20,7 @@ BLUE = '#487DA8'
 def build(output: Path, oral_sigma: float = 0.05) -> None:
     files = [STATE / name for name in ['internal_cognitive_trial_summary.csv',
              'internal_cognitive_belief_source.csv', 'hypothesis_catalog.csv', 'analysis_manifest.json']]
-    files += [ROOT / 'data/processed/Task2_processed.csv', SOURCE / 'README.md', SOURCE / 'primary_config.yaml']
+    files += [ROOT / 'data/exp123/processed/Task2_processed.csv', SOURCE / 'README.md', SOURCE / 'primary_config.yaml']
     trial = pd.read_csv(files[0])
     belief = pd.read_csv(files[1])
     catalog = pd.read_csv(files[2])
@@ -46,10 +46,10 @@ def build(output: Path, oral_sigma: float = 0.05) -> None:
     known = raw.text.fillna('').str.strip().ne('').to_numpy()
     mentions = raw[[f'feature{i}_use' for i in range(1,5)]].to_numpy()
     assert np.isin(mentions, [0,1]).all()
-    from CategoryLearning_codes.Bayesian_model.evaluation.oral.scoring import OralAlignmentScoringMixin
+    from src.Bayesian_state.evaluation.oral.scoring import OralAlignmentScoringMixin
     oral_encoder = OralAlignmentScoringMixin()
     oral_result = oral_encoder.compute_oral_mass_probabilities(raw, subjects=[101], oral_center_sigma=oral_sigma)[101]
-    from CategoryLearning_codes.Bayesian_model.hypothesis_space import ContinuousPartition
+    from src.Bayesian_state.hypothesis_space import ContinuousPartition
     partition = ContinuousPartition(n_dims=4, n_cats=2)
     ideal_reports = {}
     for category in [1, 2]:

@@ -11,16 +11,27 @@ instructions always take precedence.
 This repository contains behavioral category-learning models, experiment
 configurations, analysis scripts, and generated scientific results.
 
-- `src/Bayesian_state/` is the current, actively maintained model pipeline.
+- `src/Bayesian_state/` is the single actively maintained model implementation
+  shared by the journal and dissertation. Do not duplicate its algorithms.
+- `CategoryLearning_codes/Bayesian_model/` holds journal configs, policy wrappers,
+  compatibility imports and regression tests. New model imports use the shared core.
+- The journal uses only `data/exp123/`; the dissertation also uses `data/exp4/`,
+  `data/exp5/`, and `data/meg/`. Configurable paths do not imply that Model 0826
+  already supports every task's category/feedback semantics.
+- `CategoryLearning_paper/` holds the journal manuscript; `src/Bayesian_state/docs/model_architecture/` holds
+  model technical specifications, currently `model_0826.tex`.
+- Figure code and draft outputs belong to `CategoryLearning_codes/figures/`,
+  grouped by figure number. Only confirmed figures belong in
+  `CategoryLearning_paper/figures/`. Default export is PNG.
 - `src/Bayesian/` is a legacy/baseline implementation; preserve compatibility
   unless the task explicitly targets a migration.
 - `src/Hybrid/`, `src/RNN_old/`, `src/RNN_new/`, `src/SUSTAIN/`, and
   `src/Cohen/` are separate model families. Do not change them merely to make
   an unrelated implementation uniform.
-- `configs/`, `configs_exp4/`, and `configs_exp5/` contain experiment-specific
-  YAML configurations.
-- `data*/` contains source or processed research data.
-- `results/`, `reports/`, and `logs/` contain generated artifacts and may be
+- `configs/{exp123,exp4,exp5,meg}/` organize experiment configurations;
+  `configs/shared/` holds reusable definitions. MEG has no migrated YAML yet.
+- `data/{exp123,exp4,exp5,meg}/` contains source or processed research data.
+- `results/` (including report bundles) and `logs/` contain generated artifacts and may be
   expensive to reproduce.
 
 For work on the active pipeline, read `src/Bayesian_state/README.md` before
@@ -35,9 +46,13 @@ changing its interfaces, configuration schema, or workflow.
 3. Search for all call sites and configuration references before changing a
    public function, CLI option, YAML key, output filename, or result schema.
 4. Treat raw data as read-only. Do not delete, rename, rewrite, or normalize
-   files under `data*/` unless the user explicitly requests it.
-5. Do not overwrite or delete existing results, reports, checkpoints, caches,
-   or logs. Use a new, clearly named output directory for exploratory runs.
+   files under `data/` unless the user explicitly requests it.
+5. Do not overwrite or delete existing research results, reports, checkpoints,
+   numerical caches, or logs. Use a new output directory for exploratory runs.
+   During an authorized repository cleanup, untracked `__pycache__` and
+   `.pytest_cache` outside data/research-output directories may be removed.
+   Do not treat `results/cache`, notebook checkpoints, or ignored files as
+   disposable runtime caches. See `src/Bayesian_state/docs/history/repository_management_20260908.md`.
 6. Do not launch full grid searches, repeated simulations, or other long and
    compute-intensive jobs unless the user explicitly asks for them. Start with
    a small or targeted validation when possible.
@@ -91,8 +106,15 @@ Run the smallest relevant validation first. Examples:
 
 ```bash
 python -m pytest -q tests/bayesian_state/test_model_0806_framework.py
-python -m pytest -q
+python -m pytest -q CategoryLearning_codes/Bayesian_model/tests
+python -m pytest -q CategoryLearning_codes/figures CategoryLearning_codes/tests
 ```
+
+The root pytest default collects `tests/` only, not all journal tests. Select
+suites explicitly. For shared-core refactors, include the journal's saved
+pre-refactor numeric references; comparing two aliases of the same code is not
+an independent regression check. Do not regenerate references merely to pass a
+failure. Explain and validate any scientific change first.
 
 For CLI or configuration changes, also exercise the affected entry point with
 a lightweight configuration or inspect its `--help` output. Do not represent a
@@ -110,14 +132,42 @@ result.
 - In the final handoff, summarize the behavior changed, list the validation
   performed, and identify any unverified or long-running follow-up work.
 
-## Project-specific details to add
+## Repository maintenance
 
-This baseline intentionally leaves the following choices for the maintainers:
+- Root README is the current entrypoint map and retention/cleanup policy. Keep them consistent with actual paths.
+- Inspect references before moving old scripts/configs. Dated files, migration
+  manifests, model specifications and audit reports are not automatically junk.
+- Do not rewrite historical manifests to reflect new directory layouts; add a
+  current navigation note instead. Preserve data-correction audit trails.
+- For research-artifact cleanup, prepare a concrete path list with purpose,
+  dependencies, regeneration cost and backup status before requesting a decision.
+  Broad housekeeping authorization is sufficient for disposable runtime caches.
+- Preserve unrelated pending changes. Do not stage the entire worktree or commit
+  previous tasks while performing documentation/cleanup work unless requested.
+- Freeze publication code by commit/tag plus separately archived data/results;
+  never make a second editable model tree to preserve a paper version.
 
-- Canonical Python/Conda environment name and supported Python version.
-- Required formatter, linter, and type-check commands.
-- Tests or smoke configurations required for each model family.
-- Naming conventions for experiments, output directories, and checkpoints.
-- Compute limits and rules for local, cluster, CPU, GPU, and parallel jobs.
-- Canonical data provenance, privacy, and archival requirements.
-- Maintainer-defined completion criteria for scientific analyses and figures.
+## Environment and compute
+
+No canonical Conda environment, complete environment lock, or mandatory formatter/
+linter is currently declared. Do not invent one in reports. requirements.txt is
+not a complete development lock; PyYAML is needed for YAML and pytest for tests.
+Record actual versions for reproducible runs. Do not reinstall the environment
+merely to edit documentation.
+
+For smoke validation, start with one subject, a short valid trial sequence and one
+job; choose a new output directory. Existing recovery configs can request large
+parallel jobs, so inspect them before running. Full fits, recovery and repeated
+large simulations require explicit task authorization.
+
+Current layout and historical-path mapping: src/Bayesian_state/docs/maintenance/LAYOUT_MIGRATION_20260908.md.
+Keep performance scripts in src/Bayesian_state/workflows/benchmarks, historical docs in src/Bayesian_state/docs/history,
+and migration/cleanup records in src/Bayesian_state/docs/maintenance. Use system temporary directories
+for disposable caches; do not recreate the old top-level data/config directories.
+
+Do not recreate root docs/, reports/, scripts/ or .github/ for ordinary work.
+Model documentation belongs in src/Bayesian_state/docs; workflow tools belong in
+src/Bayesian_state/workflows/{runs,analysis,reports,benchmarks}; generated reports
+belong with their results. Repository audit bundles live in results/repository_maintenance.
+Use AGENTS.md and current READMEs as the shared agent instructions; the old Copilot
+intro prompt was removed because it described an obsolete architecture.

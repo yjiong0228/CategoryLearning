@@ -29,7 +29,7 @@ from src.Bayesian_state.simulation.provenance import build_model_provenance
 ROOT = Path(__file__).resolve().parents[2]
 H5_CONFIG = (
     ROOT
-    / "configs/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml"
+    / "configs/exp123/model_struct/pmh_model_cond1_0815_h5_similarity_transport.yaml"
 )
 EXECUTION_ENABLED_PATH = (
     "engine.modules.hypo_transitions_mod.kwargs."

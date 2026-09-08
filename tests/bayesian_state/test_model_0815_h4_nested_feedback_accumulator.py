@@ -22,10 +22,10 @@ from src.Bayesian_state.simulation.parameters import (
 ROOT = Path(__file__).resolve().parents[2]
 NESTED_CONFIG = (
     ROOT
-    / "configs/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml"
+    / "configs/exp123/model_struct/pmh_model_cond1_0815_h4_nested_feedback_accumulator.yaml"
 )
 REACTIVE_CONFIG = (
-    ROOT / "configs/model_struct/pmh_model_cond1_0815_h3_feedback_reactive.yaml"
+    ROOT / "configs/exp123/model_struct/pmh_model_cond1_0815_h3_feedback_reactive.yaml"
 )
 
 

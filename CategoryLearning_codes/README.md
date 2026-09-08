@@ -12,7 +12,9 @@ The one-time data_preparation utility was removed after its work was integrated 
 src/preprocess_b.py. Existing update backups and audit files remain under figures/outputs/fig1/.
 
 Fig2 content and implementation prerequisites: figures/fig2/FIG2_PLAN.md.
-The audited Model 0826 implementation is now in `Bayesian_model/`, preserving the
-existing layer structure. Original src/Bayesian_state remains for historical compatibility.
-See Bayesian_model/README.md and MODEL_0826_AUDIT.md. Four-category/partial-feedback
-extension and formal fitting remain separate future work.
+The shared Model 0826 implementation is maintained in `src/Bayesian_state/` for both
+journal and dissertation work. `Bayesian_model/` contains journal configurations,
+entrypoints, regression tests and compatibility imports, rather than duplicate algorithms.
+See [Bayesian_model/README.md](Bayesian_model/README.md) for ownership and publication
+version freezes. Four-category/partial-feedback extension and formal fitting remain
+separate future work.

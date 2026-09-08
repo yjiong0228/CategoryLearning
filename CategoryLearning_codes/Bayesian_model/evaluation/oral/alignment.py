@@ -1,16 +1,9 @@
-"""口述报告评价的稳定公共组合接口。"""
+"""Compatibility import; implementation lives in src.Bayesian_state.evaluation.oral.alignment."""
+import importlib as _importlib
+import sys as _sys
 
-from .mapping import OralCenterMapper, OralRegionMapper, RegionOverlapScorer
-from .reporting import OralAlignmentReportingMixin
-
-
-class OralModelAlignmentMixin(OralAlignmentReportingMixin):
-    """组合口述映射、对齐计算和报告输出，供 ModelEvaluator 使用。"""
-
-
-__all__ = [
-    "OralCenterMapper",
-    "OralModelAlignmentMixin",
-    "OralRegionMapper",
-    "RegionOverlapScorer",
-]
+if __name__ == "__main__":
+    import runpy
+    runpy.run_module("src.Bayesian_state.evaluation.oral.alignment", run_name="__main__")
+else:
+    _sys.modules[__name__] = _importlib.import_module("src.Bayesian_state.evaluation.oral.alignment")

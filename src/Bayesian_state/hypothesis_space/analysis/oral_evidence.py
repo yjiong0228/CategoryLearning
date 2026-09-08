@@ -16,7 +16,7 @@ Run from the repository root:
 
 The default output directory is ``results/hypothesis_analysis``.  The script
 expects ``results/oral_analysis`` to have been regenerated from the current
-``data/processed/Task2_processed.csv`` and stops on any key mismatch.
+``data/exp123/processed/Task2_processed.csv`` and stops on any key mismatch.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from ..observation_model import ContinuousPartition
 
 
 ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_DATA = ROOT / "data/processed/Task2_processed.csv"
+DEFAULT_DATA = ROOT / "data/exp123/processed/Task2_processed.csv"
 DEFAULT_DIAGNOSTICS = ROOT / "results/oral_analysis/Task2_oral_trial_diagnostics.csv"
 DEFAULT_OUTPUT_DIR = ROOT / "results/hypothesis_analysis"
 KEY_COLUMNS = ["iSub", "iSession", "iTrial"]

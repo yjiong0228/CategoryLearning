@@ -659,8 +659,8 @@ def run(args: argparse.Namespace) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-csv", default="data/processed/Task2_processed.csv")
-    parser.add_argument("--processed-out", default="data/processed/Task2_processed_with_fidelity.csv")
+    parser.add_argument("--input-csv", default="data/exp123/processed/Task2_processed.csv")
+    parser.add_argument("--processed-out", default="data/exp123/processed/Task2_processed_with_fidelity.csv")
     parser.add_argument("--results-dir", default="results/oral_analysis")
     parser.add_argument("--center-intermediate-name", default="Task2_oral_center_intermediate.csv")
     parser.add_argument("--region-intermediate-name", default="Task2_oral_region_intermediate.csv")

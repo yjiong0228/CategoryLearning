@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from scripts.run_model_0818_boundary_recovery import (
+from src.Bayesian_state.workflows.runs.run_model_0818_boundary_recovery import (
     build_boundary_profiles,
     resolve_filter_seeds,
     summarize_boundary_recovery,
@@ -23,13 +23,13 @@ from src.Bayesian_state.simulation.parameters import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAMETER_SPACE = (
-    ROOT / "configs/specific_models/model_0818_cond1_parameter_space.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml"
 )
 RECOVERY_CONFIG = (
-    ROOT / "configs/specific_models/model_0818_boundary_recovery.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_boundary_recovery.yaml"
 )
-MODEL_CONFIG = ROOT / "configs/model_struct/pmh_model_cond1_0818.yaml"
-MANUSCRIPT = ROOT / "manuscript/model_0818.tex"
+MODEL_CONFIG = ROOT / "configs/exp123/model_struct/pmh_model_cond1_0818.yaml"
+MANUSCRIPT = ROOT / "src/Bayesian_state/docs/model_architecture/model_0818.tex"
 
 
 def _yaml(path: Path) -> dict:

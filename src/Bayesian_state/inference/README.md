@@ -146,7 +146,7 @@ likelihood replay 使用。`orientation_oracle_schedule` 是 PF 公共函数的�
 参数：它在每个 particle 完成 workspace transition 后固定完整的 pre-choice orientation belief
 vector；常规模型拟合必须保持未设置，且结果 metadata 会标记是否启用。
 
-PF 是否“粒子足够”不能只看单次运行是否完成。`scripts/run_model_0815_p0_pf_convergence.py`
+PF 是否“粒子足够”不能只看单次运行是否完成。`src/Bayesian_state/workflows/runs/run_model_0815_p0_pf_convergence.py`
 用独立 filter seeds 比较相邻 particle counts，同时检查 probability-averaged choice NLL、逐 trial
 choice-probability RMSE、executed-rule posterior 的 Jensen--Shannon divergence、repeat split-half
 稳定性和 post-choice ESS fraction。只有预先声明的门槛同时通过，较小 particle count 才可作为

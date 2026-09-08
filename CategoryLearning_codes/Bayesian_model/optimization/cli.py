@@ -1,69 +1,9 @@
-"""Unified CLI for hyperparameter optimization backends."""
-from __future__ import annotations
-
-import argparse
-import json
-from pathlib import Path
-
-from CategoryLearning_codes.Bayesian_model.optimization.search.coordinate_descent import HyperCDOptimizer
-from CategoryLearning_codes.Bayesian_model.optimization.search.grid import HyperGridOptimizer
-from CategoryLearning_codes.Bayesian_model.optimization.artifacts import to_builtin
-from CategoryLearning_codes.Bayesian_model.simulation.config import load_yaml
-from CategoryLearning_codes.Bayesian_model.utils.paths import ROOT_DIR
-from CategoryLearning_codes.Bayesian_model.utils.logging import configure_logging
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Hyperparameter optimization",
-        allow_abbrev=False,
-    )
-    p.add_argument("--backend", choices=("grid", "cd"), required=True, help="Hyper optimizer backend")
-    p.add_argument("--config", required=True, type=Path, help="Hyper YAML config")
-    p.add_argument("--subjects", nargs="+", type=int, help="Override subject list")
-    p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Override subject range")
-    p.add_argument("--stage", choices=("coarse", "fine", "all"), default="all", help="Run coarse/fine/all stages")
-    p.add_argument(
-        "--resume-from-coarse",
-        action="store_true",
-        help="With --stage fine, load existing coarse all_combinations.jsonl and run only fine.",
-    )
-    p.add_argument(
-        "--resume",
-        action="store_true",
-        help=(
-            "Resume the same schema-v2 Hyper-CD run from its atomic checkpoint "
-            "and cached combinations."
-        ),
-    )
-    return p.parse_args()
-
-
-def main() -> None:
-    configure_logging()
-    args = parse_args()
-    cfg_path = args.config
-    if not cfg_path.is_absolute():
-        cfg_path = (ROOT_DIR / cfg_path).resolve()
-
-    cfg = load_yaml(cfg_path)
-    optimizer_cls = HyperGridOptimizer if args.backend == "grid" else HyperCDOptimizer
-    optimizer = optimizer_cls(cfg, cfg_path)
-    subjects = optimizer.resolve_subjects(args.subjects, args.subject_range)
-    run_kwargs = {
-        "subjects": subjects,
-        "stage": args.stage,
-        "resume_from_coarse": bool(args.resume_from_coarse),
-    }
-    if args.backend == "cd":
-        run_kwargs["resume"] = bool(args.resume)
-    elif args.resume:
-        raise ValueError("--resume is supported only with --backend cd")
-    result = optimizer.run(**run_kwargs)
-
-    print(f"Hyper-{args.backend} optimization done.")
-    print(json.dumps(to_builtin(result), ensure_ascii=False, indent=2, allow_nan=False))
-
+"""Compatibility import; implementation lives in src.Bayesian_state.optimization.cli."""
+import importlib as _importlib
+import sys as _sys
 
 if __name__ == "__main__":
-    main()
+    import runpy
+    runpy.run_module("src.Bayesian_state.optimization.cli", run_name="__main__")
+else:
+    _sys.modules[__name__] = _importlib.import_module("src.Bayesian_state.optimization.cli")

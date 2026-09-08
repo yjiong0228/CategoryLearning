@@ -20,15 +20,17 @@ def load_config(filename: str | Path) -> Any:
 class _LazyModelStruct(Mapping[str, Any]):
     """Compatibility mapping that scans model YAML only on first access."""
 
-    def __init__(self, config_dir: Path) -> None:
+    def __init__(self, config_dir: Path, *additional_dirs: Path) -> None:
         self._config_dir = Path(config_dir)
+        self._config_dirs = (self._config_dir, *map(Path, additional_dirs))
         self._values: dict[str, Any] | None = None
 
     def _load(self) -> dict[str, Any]:
         if self._values is None:
             self._values = {
                 path.stem: load_config(path)
-                for path in sorted(self._config_dir.glob("*.yaml"))
+                for directory in self._config_dirs
+                for path in sorted(directory.glob("*.yaml"))
             }
         return self._values
 
@@ -42,7 +44,10 @@ class _LazyModelStruct(Mapping[str, Any]):
         return len(self._load())
 
 
-MODEL_STRUCT: Mapping[str, Any] = _LazyModelStruct(CONFIGS_DIR / "model_struct")
+MODEL_STRUCT: Mapping[str, Any] = _LazyModelStruct(
+    CONFIGS_DIR / "shared" / "model_struct",
+    CONFIGS_DIR / "exp123" / "model_struct",
+)
 
 
 __all__ = ["MODEL_STRUCT", "load_config"]

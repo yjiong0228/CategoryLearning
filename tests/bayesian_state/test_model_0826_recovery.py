@@ -39,7 +39,7 @@ from src.Bayesian_state.optimization.parameter_space import (
     load_model_parameter_space,
     load_parameter_space,
 )
-from scripts.run_model_0826_recovery import (
+from src.Bayesian_state.workflows.runs.run_model_0826_recovery import (
     PHASES,
     build_calibration_specs,
     build_parser,
@@ -53,17 +53,17 @@ from scripts.run_model_0826_recovery import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAMETER_SPACE_0818 = (
-    ROOT / "configs/specific_models/model_0818_cond1_parameter_space.yaml"
+    ROOT / "configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml"
 )
 PARAMETER_SPACE_0826 = (
-    ROOT / "configs/specific_models/model_0826_cond1_parameter_space.yaml"
+    ROOT / "configs/exp123/specific_models/model_0826_cond1_parameter_space.yaml"
 )
-MODEL_0826_ENGINE = ROOT / "configs/model_struct/pmh_model_cond1_0826.yaml"
+MODEL_0826_ENGINE = ROOT / "configs/exp123/model_struct/pmh_model_cond1_0826.yaml"
 RECOVERY_CONFIG = (
-    ROOT / "configs/specific_models/model_0826_recovery_v1.yaml"
+    ROOT / "configs/exp123/specific_models/model_0826_recovery_v1.yaml"
 )
 RECOVERY_CONFIG_V2 = (
-    ROOT / "configs/specific_models/model_0826_recovery_v2.yaml"
+    ROOT / "configs/exp123/specific_models/model_0826_recovery_v2.yaml"
 )
 
 

@@ -243,7 +243,7 @@ def _artifact_payload(
                 }
             ],
             "sources": [
-                {"id": "task2_data", "path": "data/processed/Task2_processed.csv"},
+                {"id": "task2_data", "path": "data/exp123/processed/Task2_processed.csv"},
                 {"id": "oral_diagnostics", "path": "results/oral_analysis/Task2_oral_trial_diagnostics.csv"},
                 {"id": "partition_code", "path": "src/Bayesian_state/hypothesis_space/observation_model/continuous_partition.py"},
             ],

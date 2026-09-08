@@ -1,0 +1,31 @@
+analysis_id: model_0826_belief_transport_counterfactual_v1
+scope: one_factor_slot_reallocation_vs_mass_preserving_transport
+
+base_simulation_config: configs/exp123/simulation_cfg/model0826_cond1_exploratory_observed_fit.yaml
+output_dir: results/model_0826/cond1/belief_transport_counterfactual_v1
+
+design:
+  subjects: [103, 120, 127]
+  trials_per_subject: 64
+  particle_count: 32
+  filter_seed_count: 4
+  base_seed: 20260826
+  resample_threshold_fraction: 0.50
+
+  variants:
+    - variant_id: slot_proportional_reallocation
+      prior_assignment_method: similarity_transport
+      role: primary_model
+    - variant_id: mass_preserving_transport
+      prior_assignment_method: mass_preserving_similarity_transport
+      role: one_factor_counterfactual
+
+interpretation:
+  only_changed_path: modules.hypo_transitions_mod.kwargs.prior_assignment.method
+  no_refitting: true
+  common_filter_seeds: true
+  primary_estimands:
+    - ensemble_choice_nll
+    - choice_probability_rmse
+    - predictive_workspace_belief_js
+  boundary: pre_recovery_sensitivity_not_formal_model_selection_or_ppc

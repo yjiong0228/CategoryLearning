@@ -125,10 +125,10 @@ mapping 配置，而不是通过 `engine.modules` 配置。
 大多数运行从本包之外的配置文件开始：
 
 ```text
-configs/model_struct/*.yaml
-configs/hyper_grid_cfg/*.yaml
-configs/hyper_cd_cfg/*.yaml
-configs/simulation_cfg/*.yaml
+configs/exp123/model_struct/*.yaml
+configs/exp123/hyper_grid_cfg/*.yaml
+configs/exp123/hyper_cd_cfg/*.yaml
+configs/exp123/simulation_cfg/*.yaml
 ```
 
 典型流程：
@@ -153,7 +153,7 @@ configs/simulation_cfg/*.yaml
 - `modules/hypothesis_transition/selection.py` 中有一个局部 `cached_dist`；该缓存用于
   transition policy 内的中心间距离，不用于缓存 likelihood 距离。
 - `../hypothesis_space/resources/similarity/README.md` 说明随代码发布的矩阵。
-- `configs/candidates/hypothesis_transition/README.md` 说明 Hyper-CD/Grid 配置加载的
+- `configs/shared/candidates/hypothesis_transition/README.md` 说明 Hyper-CD/Grid 配置加载的
   版本化 strategy 资源。
 
 ## 几何验证
