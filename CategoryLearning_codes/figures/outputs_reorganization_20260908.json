@@ -1,0 +1,218 @@
+{
+  "operation": "group_figure_outputs",
+  "date": "2026-09-08",
+  "contents_changed": false,
+  "historical_manifests_and_snapshots": "preserved byte-for-byte; resolve original paths with this directory mapping",
+  "directories": [
+    {
+      "old": "CategoryLearning_codes/figures/outputs/feature_use_update_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/feature_use_update_v1",
+      "file_count": 2,
+      "bytes": 16448585,
+      "tree_sha256": "755604da3dac148b5814e810a1f25bc154a2a9fc2ca82b5ca20d38d1d3ce59ff"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v1",
+      "file_count": 14,
+      "bytes": 11536151,
+      "tree_sha256": "0779983e35f12c6fecf74c71936a5d9a667fa9e676fc2d836947c5858ba37051"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v10",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v10",
+      "file_count": 37,
+      "bytes": 22138249,
+      "tree_sha256": "f6f88b5137d1779588eb9aab0e3041742ae23dba75ba8701f0d6dbd0e718660f"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v2",
+      "file_count": 14,
+      "bytes": 11665420,
+      "tree_sha256": "a0bbb5b37a0a3885bac5e968de36bb67ac94e27c7ee44bf3ca3a5e3e062deab4"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v3",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v3",
+      "file_count": 22,
+      "bytes": 11714021,
+      "tree_sha256": "ecc1c711e87bd8aa4862c2d38b2ed840a537c41c344802d12bc06f54d273fa32"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v4",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v4",
+      "file_count": 27,
+      "bytes": 16324309,
+      "tree_sha256": "e237818a421bf552a78f9e3502e7d9d900675eb81f8ec033e4c7cbcd5b149658"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v5",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v5",
+      "file_count": 27,
+      "bytes": 16331010,
+      "tree_sha256": "a507d6754430ba5116cd67325837834824035c335558e6c0ef3ba2953dbc4a14"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v6",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v6",
+      "file_count": 29,
+      "bytes": 16339563,
+      "tree_sha256": "6ee7da1197b739aac9b3a5f65cd7193dfdeaa11577e7808de77cb7678e43cbc4"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v7",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v7",
+      "file_count": 29,
+      "bytes": 16320084,
+      "tree_sha256": "13ff6005d519d5450dc877b4a200d4931b4cc741fd184180cfae0fcb925f8a9c"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v8",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v8",
+      "file_count": 37,
+      "bytes": 21773736,
+      "tree_sha256": "1381d5e3d56a661b8c2dd7b02c5f720f07503e6d1729acf2338d77775c259c80"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig1_v9",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/fig1_v9",
+      "file_count": 37,
+      "bytes": 21752093,
+      "tree_sha256": "7bcaba8a564c05c04706c54104e64212d8b3937aa35fc370edfeafbf43f022fb"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v1",
+      "file_count": 13,
+      "bytes": 2144685,
+      "tree_sha256": "f1dc6383ed3a836c5dd2134eb96a0c150b015f458d3749460161abdc5988bbf8"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v2",
+      "file_count": 15,
+      "bytes": 2452594,
+      "tree_sha256": "d17087c3a22ceee3fee41a13c831ad35c6f30de50e8e57f02c56c06ba4874775"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v3",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v3",
+      "file_count": 15,
+      "bytes": 2457326,
+      "tree_sha256": "72e1b0b3d928ae60b881859bc7b56a3e54fa1b600cbc32d0718879711c99142b"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v4",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v4",
+      "file_count": 15,
+      "bytes": 2224493,
+      "tree_sha256": "51357c8a5a695993217d48b8fb3c815a85899c51ba87ac38867466a51640fd11"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v5",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v5",
+      "file_count": 15,
+      "bytes": 2220083,
+      "tree_sha256": "1cba3ff3d98ababb9d637580fe6ade33da0db534d11f40461c2b31242d823ea4"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v6",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v6",
+      "file_count": 16,
+      "bytes": 2339280,
+      "tree_sha256": "9069e748d1e15cbf84ef72a3ec6ddcd46a07f9bfbe69398ef42e6bbfa4fae066"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v7",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v7",
+      "file_count": 16,
+      "bytes": 2347565,
+      "tree_sha256": "93ab41c15c591f1433a0d050fc3c8563584427629744f1b45ba93aa010de074a"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v8",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v8",
+      "file_count": 16,
+      "bytes": 2372012,
+      "tree_sha256": "668dc89b470e24f30d641058f83ea38522ea7f94a1e2ae2ae17016fb174f1139"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2_complete_v9",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v9",
+      "file_count": 16,
+      "bytes": 2371067,
+      "tree_sha256": "2c5560ddf1e62f807a7eb937a0f952f32cf21cb0597f2896f8f28a497e87ea2d"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2a_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2a_v1",
+      "file_count": 3,
+      "bytes": 245177,
+      "tree_sha256": "705d1aa3ca1c943666d094974d5f3bef35a31633581c9dcd57130bf08d1ba83e"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2a_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2a_v2",
+      "file_count": 3,
+      "bytes": 245505,
+      "tree_sha256": "0fb9e2ed34d5ba667024d923544d51e26fbbdc1ed4aedce45c2b127fd2b3eed6"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2a_v3",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2a_v3",
+      "file_count": 3,
+      "bytes": 245494,
+      "tree_sha256": "d271e0885ec7dafaeae5e658c13b9644f9e5b2d79d5bf1a26846ecf1a5baa672"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2bc_sigma005_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2bc_sigma005_v1",
+      "file_count": 10,
+      "bytes": 1524601,
+      "tree_sha256": "010f4b2608c0182604f4ebd97150a6f9dab439950d8a8a405e1df9c966b1f300"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2bc_sigma005_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2bc_sigma005_v2",
+      "file_count": 10,
+      "bytes": 1524616,
+      "tree_sha256": "8ec5eee7b13401dc806fe78db0b2d007d08b6119cf864579500de4b378e352d9"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2bc_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2bc_v1",
+      "file_count": 7,
+      "bytes": 811082,
+      "tree_sha256": "cee782c7198542cfa764262af8519f69250c8e37cca6fc58df5c6c6c01988bd3"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2bc_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2bc_v2",
+      "file_count": 7,
+      "bytes": 807828,
+      "tree_sha256": "9c404d05dcce05e0bac8784f806c7910100e98239547201d9fda03ca6f34ea22"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/fig2bc_v3",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/fig2bc_v3",
+      "file_count": 7,
+      "bytes": 908574,
+      "tree_sha256": "409c881943cced0868d18ad4580d2edae1b70a424ecd277d8b22c4f912f64000"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/oral_alignment_audit_v1",
+      "new": "CategoryLearning_codes/figures/outputs/fig2/oral_alignment_audit_v1",
+      "file_count": 5,
+      "bytes": 38762,
+      "tree_sha256": "502cc0cb7698055437823c54befa9c74428e71aaa9e2d2162a4e2e3d5432020e"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/outputs/process_use_update_v2",
+      "new": "CategoryLearning_codes/figures/outputs/fig1/process_use_update_v2",
+      "file_count": 2,
+      "bytes": 16947728,
+      "tree_sha256": "39addaf6905b5ffd72806a6a626cee54c8fe463b636ac362e0483c6db7f1242d"
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "operation": "group_code_by_figure",
+  "moves": [
+    {
+      "old": "CategoryLearning_codes/figures/REVISION_v4.md",
+      "new": "CategoryLearning_codes/figures/fig1/REVISION_v4.md",
+      "original_sha256": "459d13524b54d2d201856a3ffaa91f483c471ed74fdc55b73ba1e6f61d1e39c2",
+      "current_sha256": "459d13524b54d2d201856a3ffaa91f483c471ed74fdc55b73ba1e6f61d1e39c2"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/REVISION_v7.md",
+      "new": "CategoryLearning_codes/figures/fig1/REVISION_v7.md",
+      "original_sha256": "79e7eedc58d62a7f8854b8d76bd36a4af29e7fd2940dbcb5ca2e3f9196b6c894",
+      "current_sha256": "193669e343aff26fa656dc33cdf0a49aa651dd278eacf2c83078d8a3901a8a45"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/test_behavior.py",
+      "new": "CategoryLearning_codes/figures/fig1/test_behavior.py",
+      "original_sha256": "2c2fe13e6df8e21c12c98c5c427c2b8dea9f24d32b38ef9d59016f0f20cd6e67",
+      "current_sha256": "15d1fbf1fb8df64c71227e4cda50b57c8cb397b75b639ddf7bac6a296a3cb6df"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/FIG1_SUBMISSION_REVIEW.md",
+      "new": "CategoryLearning_codes/figures/fig1/FIG1_SUBMISSION_REVIEW.md",
+      "original_sha256": "871f4b93f75d86f4364ace9167935a59f7c29e2770311f0b347314f2694ec973",
+      "current_sha256": "871f4b93f75d86f4364ace9167935a59f7c29e2770311f0b347314f2694ec973"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/build_fig1.py",
+      "new": "CategoryLearning_codes/figures/fig1/build_fig1.py",
+      "original_sha256": "ea12866aed41b7548535a08fc818fcb1a2fcb3dca956bf5342bf21b1c7757744",
+      "current_sha256": "3228fc50954ac7370fbd419d4963bbffdeaecbd5c114c4f613a352d4e84379c2"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/config.json",
+      "new": "CategoryLearning_codes/figures/fig1/config.json",
+      "original_sha256": "49d919a0827c79947348a3b695d09fcae9df4240d70b9325f6f3ff65e4dcd145",
+      "current_sha256": "49d919a0827c79947348a3b695d09fcae9df4240d70b9325f6f3ff65e4dcd145"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/behavior.py",
+      "new": "CategoryLearning_codes/figures/fig1/behavior.py",
+      "original_sha256": "591d622c9bb0828c03181a187d5dbfd97ad71ba31f4c222f03a6b7b55f766ded",
+      "current_sha256": "591d622c9bb0828c03181a187d5dbfd97ad71ba31f4c222f03a6b7b55f766ded"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/QA_fig1_v9.md",
+      "new": "CategoryLearning_codes/figures/fig1/QA_fig1_v9.md",
+      "original_sha256": "21bb1650727ab327b981dbc775b7f7bed1c7a5b42e00fac66eaa479069b2ffe7",
+      "current_sha256": "21bb1650727ab327b981dbc775b7f7bed1c7a5b42e00fac66eaa479069b2ffe7"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/QA_fig1_v7.md",
+      "new": "CategoryLearning_codes/figures/fig1/QA_fig1_v7.md",
+      "original_sha256": "195cadf5992b8d83e14ac7baccd7fd5c2de43d5ed8f69e87c5c01e4a6d696a19",
+      "current_sha256": "195cadf5992b8d83e14ac7baccd7fd5c2de43d5ed8f69e87c5c01e4a6d696a19"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/test_nonoral.py",
+      "new": "CategoryLearning_codes/figures/fig1/test_nonoral.py",
+      "original_sha256": "97d74399c502e16ff0b10d726413c3b774c4e9c3729c2761f7e1860511921ddf",
+      "current_sha256": "d33072782385922d8260005cd63e81ed20e05c78eb369f253f5fdfeae5446cd6"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/QA_fig1_v3.md",
+      "new": "CategoryLearning_codes/figures/fig1/QA_fig1_v3.md",
+      "original_sha256": "9f5398763889b33436d6efcf01e90b387d6a71f73113e20b03f3edc19c85ebd8",
+      "current_sha256": "9f5398763889b33436d6efcf01e90b387d6a71f73113e20b03f3edc19c85ebd8"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/nonoral.py",
+      "new": "CategoryLearning_codes/figures/fig1/nonoral.py",
+      "original_sha256": "b23bd8104a3ee55083c03b142cddcbd65295c78795ed93f05500a4f0771ee961",
+      "current_sha256": "b23bd8104a3ee55083c03b142cddcbd65295c78795ed93f05500a4f0771ee961"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/schematics.py",
+      "new": "CategoryLearning_codes/figures/fig1/schematics.py",
+      "original_sha256": "b42fc3b3741b61922752661499384c3fa028c0eb9cfd9d24773ca0645e932ef4",
+      "current_sha256": "b42fc3b3741b61922752661499384c3fa028c0eb9cfd9d24773ca0645e932ef4"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/QA_fig1_v6.md",
+      "new": "CategoryLearning_codes/figures/fig1/QA_fig1_v6.md",
+      "original_sha256": "2f882c1a3f994d971ec6cdd9c93eee235e2ff57aba17cb41b74753a43e670513",
+      "current_sha256": "2f882c1a3f994d971ec6cdd9c93eee235e2ff57aba17cb41b74753a43e670513"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/migration_20260907.json",
+      "new": "CategoryLearning_codes/figures/fig1/migration_20260907.json",
+      "original_sha256": "2549fc4ae05655d0c7e0d0e220a03390c95af675d981491511125c4dc7717c2c",
+      "current_sha256": "2549fc4ae05655d0c7e0d0e220a03390c95af675d981491511125c4dc7717c2c"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/render.py",
+      "new": "CategoryLearning_codes/figures/fig1/render.py",
+      "original_sha256": "2d13ab72c79204b5d837b147883bdb66ee417e51e412d1155385ddcfd943b58f",
+      "current_sha256": "2d13ab72c79204b5d837b147883bdb66ee417e51e412d1155385ddcfd943b58f"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/reporting.py",
+      "new": "CategoryLearning_codes/figures/fig1/reporting.py",
+      "original_sha256": "7f396fd2ce910522f990b96c7143273bef04a3196671aba3658831173551f362",
+      "current_sha256": "7f396fd2ce910522f990b96c7143273bef04a3196671aba3658831173551f362"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/README.md",
+      "new": "CategoryLearning_codes/figures/fig1/README.md",
+      "original_sha256": "9ab3ba2a9df676e90474b1444ba1285b99fe3af987f2061a1d4d24126e103c73",
+      "current_sha256": "c64ccbef5c0867399347ea6641a4e4879a6b36709492b5d8a8f6802bc94ed021"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/REVISION_v8.md",
+      "new": "CategoryLearning_codes/figures/fig1/REVISION_v8.md",
+      "original_sha256": "e0e422f59427017a3f8eedc769f44738470d50eff52839b4ea086109cd75def5",
+      "current_sha256": "e0e422f59427017a3f8eedc769f44738470d50eff52839b4ea086109cd75def5"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/REVISION_v10.md",
+      "new": "CategoryLearning_codes/figures/fig1/REVISION_v10.md",
+      "original_sha256": "422096a389b6cf1654ef3471713e098d6c216c24e7d1178a3fe49ba4dd73c3a3",
+      "current_sha256": "422096a389b6cf1654ef3471713e098d6c216c24e7d1178a3fe49ba4dd73c3a3"
+    },
+    {
+      "old": "CategoryLearning_codes/figures/FIG2_PLAN.md",
+      "new": "CategoryLearning_codes/figures/fig2/FIG2_PLAN.md",
+      "original_sha256": "b6cf956e18199c362fc8c21a956cf572e8d9dd5870a991a3d109bebf2c938b15",
+      "current_sha256": "b6cf956e18199c362fc8c21a956cf572e8d9dd5870a991a3d109bebf2c938b15"
+    }
+  ],
+  "archived_outputs_modified": false,
+  "validation": {
+    "tests_passed": 18,
+    "fig1_full_pipeline": "passed on 62720 trials / 96 participants",
+    "fig1_png_byte_matches_to_v10": 9,
+    "fig1_audit_data_and_config_unchanged": true,
+    "fig1_and_fig2_cli_help": "passed",
+    "historical_output_files_unchanged": 469
+  }
+}

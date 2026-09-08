@@ -1,0 +1,55 @@
+{
+  "tasks": [
+    {
+      "task": 1,
+      "condition": 1,
+      "label": "Two categories",
+      "feedback": "Correct / incorrect",
+      "chance": 0.5,
+      "color": "#487DA8",
+      "example_subjects": [
+        124,
+        129,
+        108
+      ]
+    },
+    {
+      "task": 2,
+      "condition": 3,
+      "label": "Four categories + hierarchy",
+      "feedback": "Full / partial / incorrect",
+      "chance": 0.25,
+      "color": "#A46A8A",
+      "example_subjects": [
+        323,
+        308,
+        306
+      ]
+    },
+    {
+      "task": 3,
+      "condition": 2,
+      "label": "Four categories",
+      "feedback": "Correct / incorrect",
+      "chance": 0.25,
+      "color": "#648B76",
+      "example_subjects": [
+        232,
+        229,
+        214
+      ]
+    }
+  ],
+  "rolling_window": 32,
+  "gain_windows": [
+    16,
+    32,
+    64
+  ],
+  "criterion_window": 64,
+  "criterion_threshold": 0.9,
+  "oral_comparison_max_gap": 32,
+  "dpi": 450,
+  "width_mm": 183,
+  "height_mm": 225
+}
