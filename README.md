@@ -95,3 +95,38 @@ Git 忽略只决定是否跟踪，不表示文件可删。Git 无法恢复从未
 4. 更新当前导航/状态文档。历史 QA、计划和 migration manifest 保留原始事实，必要时加历史标记。
 5. 提交时按科学改动、重构、管理文档拆分；不要把当前工作区所有内容一并暂存。
 6. 每个阶段结束后审核临时产物；投稿/章节冻结时再审核大体量研究输出。
+
+## 录音转写
+
+`src/audio_to_word.py` 替代原 notebook，将一个被试的一个会话录音目录转换为
+UTF-8 BOM CSV，严格使用 `iSession,iTrial,text` 三列。文件名 `12.wav` 对应
+`iTrial=12`，按数字排序；会话号通过 `--session` 指定，不假设每会话有 320 条。
+默认从输入路径 `data/<实验>/` 自动选择实验 prompt：
+
+- `exp123`：头、脖子、腿、尾巴、四肢、躯干等身体部位的长度与比较。
+- `exp4`：绿色、黄色、粉色、蓝色器官的长度与比较。
+- `exp5`：格子的黑色/白色描述。
+
+录音在其他位置时可用 `--experiment exp123`、`exp4` 或 `exp5` 显式指定。
+未识别的路径（包括 meg）使用通用 prompt，也可用 `--experiment generic` 主动选择。
+`--prompt-file` 可追加 UTF-8 背景及词汇；仅需自定义背景时配合 `--experiment generic`。
+所有 prompt 都要求忠实转写，不补全规则或未提及特征，不要在背景中提供目标规则或被试答案。
+
+先预览（不访问 API、不写文件）：
+
+```bash
+python -m src.audio_to_word data/exp5/raw/Recording/502_1 \
+  --session 1 --output results/transcription/502_rec.csv --dry-run
+```
+
+API 密钥、地址及模型名暂留空。申请完成后设置环境变量 `DASHSCOPE_API_KEY`、
+`DASHSCOPE_BASE_URL`、`DASHSCOPE_MODEL`，安装可选依赖 `python -m pip install dashscope`，
+去掉 `--dry-run` 即可调用当前 DashScope ASR 适配入口。新接口协议若不同，修改
+`make_transcriber`；参考 [Qwen ASR 官方接口文档](https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-api-reference)。
+本次没有实际联网转写验证。
+
+每成功一条便原子保存 CSV；失败或空结果重试后终止，不将错误信息写入口头报告。
+已有文件默认拒绝覆盖。核对输入属于同一被试、prompt/API 配置一致后，可以添加
+`--resume` 跳过已有 `(iSession,iTrial)`，也可追加同一被试的另一个会话。
+不同被试必须使用不同输出文件；修改 prompt 或模型后应使用新输出文件。
+建议先输出到 `results/transcription/` 审核，再人工纳入 raw 数据。
