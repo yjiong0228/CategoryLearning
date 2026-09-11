@@ -3,7 +3,8 @@
 > 本目录是期刊与博士论文共同维护的模型实现。期刊的配置、入口和验证位于
 > [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
 > 该目录依赖本包；本包不依赖期刊目录。修改机制只改这里，实验差异由配置和数据适配处理。
-> 0826 四分类/部分反馈支持仍需单独扩展；路径支持不代表任务语义已验证。
+> 0826 已扩展 condition 2 的四分类二值反馈 PF 拟合；condition 3 的部分反馈仍未迁移。
+> 新入口和限制见 [condition 2 说明](docs/model_architecture/model_0826_condition2.md)。
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”

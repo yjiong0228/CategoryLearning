@@ -627,8 +627,8 @@ def _evaluate_state_model_particle_filter_run(
     seed_context: Optional[Mapping[str, Any]],
     score_trial_mask: Optional[Sequence[bool] | np.ndarray],
 ) -> SingleRunResult:
-    if int(condition) != 1:
-        raise ValueError("the current StateModel particle backend supports condition 1 only.")
+    if int(condition) not in (1, 2):
+        raise ValueError("the current StateModel particle backend supports conditions 1 and 2 only.")
     if prediction_mode not in {PREDICTION_MODE_PRIOR_T, PREDICTION_MODE_BOTH}:
         raise ValueError(
             "particle-filter prediction_mode must be 'prior_t' or 'both'; "

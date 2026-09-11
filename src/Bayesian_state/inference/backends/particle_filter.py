@@ -498,6 +498,7 @@ def run_state_model_particle_filter(
     feedback: Sequence[float] | np.ndarray,
     particle_count: int,
     choice_readout_power: float,
+    condition: int = 1,
     strategy_confidence_gain: float = 0.0,
     rule_commitment_confidence_gain: float = 0.0,
     output_lapse: float = 0.0,
@@ -513,7 +514,11 @@ def run_state_model_particle_filter(
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
 ) -> InferenceResult:
-    """Filter one observed condition-1 trajectory using bootstrap particles.
+    """Filter one observed binary-feedback trajectory using bootstrap particles.
+
+    Conditions 1 and 2 have two and four fixed task labels, respectively.
+    The optional transmission audit infers the correct category from binary
+    feedback and is therefore restricted to condition 1.
 
     ``condition_on_observed_choice=False`` and
     ``resample_threshold_fraction=0`` are analysis-only controls for separating
@@ -542,8 +547,16 @@ def run_state_model_particle_filter(
     n_trials = int(x.shape[0])
     if observed_choices.shape[0] != n_trials or observed_feedback.shape[0] != n_trials:
         raise ValueError("stimulus, choices, and feedback must have equal trial counts.")
-    if not np.all(np.isin(observed_choices, [1, 2])):
-        raise ValueError("Condition-1 choices must be encoded as 1 or 2.")
+    condition = int(condition)
+    if condition not in (1, 2):
+        raise ValueError("the particle backend supports conditions 1 and 2 only.")
+    n_categories = 2 if condition == 1 else 4
+    if not np.all(np.isin(observed_choices, np.arange(1, n_categories + 1))):
+        raise ValueError(f"Condition-{condition} choices must be encoded in [1, {n_categories}].")
+    if condition == 2 and not np.all(np.isin(observed_feedback, [0., 1.])):
+        raise ValueError("condition 2 requires binary feedback (0 or 1).")
+    if condition == 2 and choice_transmission_audit:
+        raise ValueError("choice transmission audit supports condition 1 only.")
     if not np.all(np.isfinite(observed_feedback)) or np.any(
         (observed_feedback < 0.0) | (observed_feedback > 1.0)
     ):
@@ -630,7 +643,7 @@ def run_state_model_particle_filter(
         model = StateModel(
             config,
             context=ModelContext(
-                condition=1,
+                condition=condition,
                 subject_id=int(subject_id),
                 processed_data_dir=processed_data_dir,
                 dataset_paths=dataset_paths,
@@ -643,6 +656,8 @@ def run_state_model_particle_filter(
             shared_space = model.hypotheses_set
         models.append(model)
 
+    if int(models[0].n_cats) != n_categories:
+        raise ValueError("partition category count does not match condition.")
     n_hypotheses = int(models[0].engine.set_size)
     marginal_hypothesis_prior = np.zeros((n_trials, n_hypotheses), dtype=float)
     marginal_active_probability = np.zeros((n_trials, n_hypotheses), dtype=float)
@@ -716,7 +731,7 @@ def run_state_model_particle_filter(
 
     weights = np.full(n_particles, 1.0 / float(n_particles), dtype=float)
     particle_swap_counts = np.zeros(n_particles, dtype=int)
-    marginal = np.zeros((n_trials, 2), dtype=float)
+    marginal = np.zeros((n_trials, n_categories), dtype=float)
     pre_ess = np.zeros(n_trials, dtype=float)
     post_ess = np.zeros(n_trials, dtype=float)
     resampled = np.zeros(n_trials, dtype=bool)
@@ -784,47 +799,47 @@ def run_state_model_particle_filter(
     predictive_rule_commitment_choice_precision = np.ones(n_trials, dtype=float)
 
     audit_hypothesis_map = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_adaptive_sharpening = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_exploration_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_unsharpened_expectation = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_sharpened_no_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_strategy_confidence_no_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         else None
     )
     audit_persistent_execution_no_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission and persistent_execution_enabled
         else None
     )
     audit_persistent_execution_no_strategy_no_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission and persistent_execution_enabled
         else None
     )
     audit_persistent_execution_counterfactual_strategy_no_lapse = (
-        np.zeros((n_trials, 2), dtype=float)
+        np.zeros((n_trials, n_categories), dtype=float)
         if audit_choice_transmission
         and persistent_execution_enabled
         and counterfactual_gain_value is not None
@@ -959,7 +974,7 @@ def run_state_model_particle_filter(
     resampling_log: list[dict[str, Any]] = []
 
     for trial_index in range(n_trials):
-        particle_predictions = np.zeros((n_particles, 2), dtype=float)
+        particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
         particle_priors = np.zeros((n_particles, n_hypotheses), dtype=float)
         particle_active = np.zeros((n_particles, n_hypotheses), dtype=float)
         swap_probabilities = np.zeros(n_particles, dtype=float)
@@ -1008,26 +1023,26 @@ def run_state_model_particle_filter(
         rule_commitment_choice_precisions = np.ones(n_particles, dtype=float)
 
         if audit_choice_transmission:
-            particle_hypothesis_map = np.zeros((n_particles, 2), dtype=float)
-            particle_adaptive_sharpening = np.zeros((n_particles, 2), dtype=float)
-            particle_exploration_lapse = np.zeros((n_particles, 2), dtype=float)
+            particle_hypothesis_map = np.zeros((n_particles, n_categories), dtype=float)
+            particle_adaptive_sharpening = np.zeros((n_particles, n_categories), dtype=float)
+            particle_exploration_lapse = np.zeros((n_particles, n_categories), dtype=float)
             particle_unsharpened_expectation = np.zeros(
-                (n_particles, 2), dtype=float
+                (n_particles, n_categories), dtype=float
             )
             particle_sharpened_no_lapse = np.zeros(
-                (n_particles, 2), dtype=float
+                (n_particles, n_categories), dtype=float
             )
             particle_strategy_confidence_no_lapse = np.zeros(
-                (n_particles, 2), dtype=float
+                (n_particles, n_categories), dtype=float
             )
             particle_persistent_execution_no_lapse = np.zeros(
-                (n_particles, 2), dtype=float
+                (n_particles, n_categories), dtype=float
             )
             particle_persistent_execution_no_strategy_no_lapse = np.zeros(
-                (n_particles, 2), dtype=float
+                (n_particles, n_categories), dtype=float
             )
             particle_persistent_execution_counterfactual_strategy_no_lapse = (
-                np.zeros((n_particles, 2), dtype=float)
+                np.zeros((n_particles, n_categories), dtype=float)
                 if counterfactual_gain_value is not None
                 else None
             )
@@ -1042,11 +1057,13 @@ def run_state_model_particle_filter(
             )
 
         observed_choice_index = int(observed_choices[trial_index]) - 1
+        # Binary errors identify the other label only in condition 1. This
+        # value is consumed exclusively by the condition-1 transmission audit.
         correct_category_index = (
             observed_choice_index
             if observed_feedback[trial_index] >= 0.5
             else 1 - observed_choice_index
-        )
+        ) if condition == 1 else None
 
         for particle_index, model in enumerate(models):
             engine = model.engine
@@ -1302,7 +1319,7 @@ def run_state_model_particle_filter(
                 )
                 particle_exploration_lapse[particle_index] = _normalize(
                     (1.0 - exploration) * particle_predictions[particle_index]
-                    + exploration * np.full(2, 0.5, dtype=float)
+                    + exploration * np.full(n_categories, 1.0 / n_categories, dtype=float)
                 )
 
         if audit_choice_transmission:

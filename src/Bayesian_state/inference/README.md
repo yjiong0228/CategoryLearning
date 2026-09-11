@@ -121,7 +121,7 @@ from src.Bayesian_state.inference.backends.particle_filter import (
 )
 ```
 
-当前正式入口支持 condition 1、expectation 类 readout 和 uniform output lapse。条件 posterior
+当前入口支持 condition 1（二类）与 condition 2（四类、仅二值反馈）、expectation 类 readout 和 uniform output lapse。condition 3 尚未迁移；choice transmission audit 仍仅支持 condition 1，因为二值错误反馈不足以确定四分类的正确标签。条件 posterior
 predictive 由 `posterior_predictive.py` 组合粒子状态与自主生成过程，不属于 optimizer。
 
 机制审计可直接调用 PF 公共函数，用
