@@ -1,8 +1,8 @@
 # Complete Fig2 draft
 
-Current: [Fig2 v9](../outputs/fig2/fig2_complete_v9/Figure2_draft.png) (183 × 240 mm, 450 dpi, PNG).
+Current: [Fig2 v15](../outputs/fig2/fig2_complete_v15/Figure2_draft.png) (183 × 240 mm, 450 dpi, PNG).
 
-Panel plan: a framework; b Task1 existing S101 case; c Task2 individual example; d Task3 individual example; e group behavioral prediction; f group oral–model alignment; g key model ablations. c–g contain only empty outlined rectangles with panel titles. Group panels eventually contain all three tasks; their existence is not evidence that results are available.
+Panel plan: a framework; b Task1 existing S101 case; c Task2 individual example; d Task3 individual example; e group behavioral prediction; f group oral–model alignment; g key model ablations. Current v15 populates b with S129 and d with S229; c and e–g remain empty outlined rectangles. Earlier version descriptions below are historical. Group panels eventually contain all three tasks; their existence is not evidence that results are available.
 
 b uses all 320 S101 trials: trailing 32-trial observed/model accuracy; model and oral distributions over the same 29 hypotheses and common 0–1 scale; trailing 32-trial distribution overlap. H0 is the target feature-1 threshold. Full definitions and timing limitations are in README_behavior_state.md. This compact layout uses full-space overlap; the separate target-based and feature-mention panels remain available in case_sources and earlier drafts for layout alternatives. S101 is selected by availability, not claimed as a final representative participant.
 
@@ -11,7 +11,7 @@ Oral center sigma is now 0.05 by user decision in both the new package and legac
 Reproduce from root with a new directory:
 
 ```bash
-python -m CategoryLearning_codes.figures.fig2.build_complete --output CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v10
+python -m CategoryLearning_codes.figures.fig2.build_complete --output CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v12
 ```
 
 Source tables, case code snapshot and input hashes are in case_sources; whole layout code and image hash are in this output. Panel a reuses the existing PNG intact, so its effective resolution/text size decreases when reduced; it should be rendered natively once the layout is settled. Current figure is for composition review, not submission certification. Viewed rendered output: no clipped panels. Oral regression suite: 18 passed; both old/new default constants and public method defaults checked at 0.05. New case generation checks trial alignment and distribution normalization.
@@ -46,3 +46,86 @@ Current framework and full figure are in `../outputs/fig2/fig2_complete_v9/`.
 Memory is now visible as a separate pale panel: prior -> normalized prior^gamma, followed by multiplication by current feedback likelihood and normalization. These intermediate bars are an algebraic visualization of the existing fading-memory update, not an added model stage or separately stored cognitive variable. With gamma=.8 the prior [.60,.25,.15] contracts toward uniform while preserving rank; dotted outlines in the faded histogram show the original heights. The updated distribution is identical to v7; empirical source tables remain byte-identical. gamma=1 retains prior odds, gamma<1 attenuates them before incorporating current evidence. This is distinct from the controller's feedback-history variable F. The current stimulus prediction still uses the original pre-choice prior, not the faded intermediate display.
 
 Validation: two-step normalization equals the manuscript's joint normalization; probability sums and rank preservation checked, peakedness reduced as expected; final standalone render inspected. v8 retained; v9 moves the category key clear of the memory heading and routes feedback clear of the update title.
+
+## S129 individually fitted case (v11, 2026-09-10)
+
+v11 replaces the historical S101 panel b with the fitted S129 PMH case, using
+all 256 trials. Framework a and placeholder roles c–g are retained. The older
+S101 notes above describe historical versions, not v11. Both behavioral
+probabilities and online beliefs average the same 16 saved simulation PF runs;
+no best-run selection or terminal genealogy enters the panel. Oral sigma is .05,
+full-space overlap is 1−TV, and displayed curves use 32-trial trailing means.
+The fitted S129 structure is mixture readout, with no unique executed rule.
+
+A reusable case exporter and optional `--case-sources` input preserve the old
+builder default while permitting fitted cases. Run from root with new output
+paths (existing outputs are not overwritten):
+
+```bash
+python -m CategoryLearning_codes.figures.fig2.build_fitted_case --subject 129 \
+  --model-dir results/model_0826/cond1/subject_129/pipeline_20260908_v1/models/PMH \
+  --output CategoryLearning_codes/figures/outputs/fig2/subject129_sources_v2
+python -m CategoryLearning_codes.figures.fig2.build_complete \
+  --case-sources CategoryLearning_codes/figures/outputs/fig2/subject129_sources_v2 \
+  --output CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v12
+```
+
+The output includes a whole-figure PNG, enlarged panel-b PNG, source tables,
+configuration provenance and QA notes. No inference or optimization is rerun.
+
+## Target-based alignment (v12, 2026-09-10)
+
+At the user's request, the bottom of Fig2b now compares model and oral
+probability mass on target rule H0 across the full 29-rule space. Both curves
+use trailing 32-trial means. This is not a model–oral similarity statistic;
+no active-set renormalization is applied. Source values and plotted means are
+saved in case_sources/target_alignment.csv. Full-space overlap moves to FigS2g.
+The complete builder now uses target alignment for both historical and fitted
+case inputs. Earlier versions and their source snapshots remain unchanged.
+
+
+## S229 evaluation and Task 3 panel (v15, 2026-09-11)
+
+v15 retains the S129 source tables from v12 and adds S229 in **panel d**:
+condition 2 maps to paper Task 3; Task 2 is condition 3. v13 is an intermediate
+render retained for provenance; v14 fixes the right colorbar margin and v15 removes neighboring placeholder fragments from the enlarged panel d.
+
+The added panel uses all 1088 trials and all 116 hypotheses, with H42 as the
+target. Both behavior and pre-choice workspace belief average the same 16 saved
+PF repeats. The fitted readout is persistent execution, while the heatmap shows
+workspace belief (not executed-rule probability). Oral state uses the saved
+partition definition, latest-by-category encoding and sigma .05. Target mass is
+not renormalized to the active workspace. Behavioral and target curves use
+32-trial trailing means, leaving the first 31 positions undefined. Missing oral
+states are retained as missing. These are descriptive full-sequence fits for
+one participant per task, without held-out prediction or participant-level
+uncertainty claims. Heatmaps retain the common 0–1 scale.
+
+Standard evaluation uses the same entry point and defaults as S129:
+`results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH/evaluation_20260911_v1/`.
+The evaluation manifest records 25 successful tasks, two unavailable state-log
+plots and one binary-only sequential-residual diagnostic skipped. Independent
+internal genealogy and autonomous-rollout analyses are separate from this
+standard model evaluation and are not included; the current internal-path entry
+point requires a condition-1-only transmission audit. The earlier fine-search
+diagnostic plotting failure is preserved, and does not block this evaluation.
+
+Reproduce from the repository root, always choosing new output directories:
+
+```bash
+python -m src.Bayesian_state.run_model_evaluation \
+  --input-dir results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH/simulation \
+  --output-dir results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH/evaluation_20260911_v1 \
+  --subjects 229 --oral-center-sigma 0.05
+python -m CategoryLearning_codes.figures.fig2.build_fitted_case --subject 229 \
+  --model-dir results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH \
+  --output CategoryLearning_codes/figures/outputs/fig2/subject229_sources_v1
+python -m CategoryLearning_codes.figures.fig2.build_complete \
+  --case-sources CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v12/case_sources \
+  --task3-case-sources CategoryLearning_codes/figures/outputs/fig2/subject229_sources_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v15
+```
+
+Outputs include the whole PNG, enlarged b/d PNG panels, unchanged S129 sources,
+S229 trial/belief/oral/target source tables, source hashes and QA notes. Scientific
+model code, fitted parameters, seeds and raw data are unchanged.

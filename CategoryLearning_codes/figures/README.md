@@ -12,7 +12,7 @@ figures/
 ```
 
 - [Fig1 代码与说明](fig1/README.md) · [已确认 v10](outputs/fig1/fig1_v10/fig1_behavior_draft.png)
-- [Fig2 代码与说明](fig2/README.md) · [完整草稿 v9](outputs/fig2/fig2_complete_v9/Figure2_draft.png)
+- [Fig2 代码与说明](fig2/README.md) · [完整草稿 v15](outputs/fig2/fig2_complete_v15/Figure2_draft.png)
 - [图产物索引](outputs/README.md)
 
 从仓库根目录运行，使用新的输出版本目录：
