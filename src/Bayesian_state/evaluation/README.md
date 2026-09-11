@@ -75,8 +75,15 @@ python -m src.Bayesian_state.run_internal_cognitive_trajectory_evaluation \
 
 该分析用真实 choice/feedback 顺序运行多个独立 PF seeds，同时保存 online filtering 输出和
 observed-history-conditioned complete paths。后者把每个 seed 的终点粒子权重规范为相等 seed
-质量，再系统抽取 500 条等权完整 ancestry；路径按 executed rule、search event、H0 prior 和选择
-读出组成的 whole-path distance 聚类。importance weights 只承担推断角色，不被解释为认知机制。
+质量，再系统抽取 500 条等权完整 ancestry。开启 persistent execution 时，路径按 executed
+rule、search event、H0 prior 和选择读出组成的 whole-path distance 聚类。
+importance weights 只承担推断角色，不被解释为认知机制。
+
+关闭 persistent execution 的混合读出模型（包括 P、PM）会输出 workspace belief PNG、
+逐试次 online prior/active probability、完整历史条件下的 genealogy posterior、等权完整路径
+NPZ 和祖先充分性 CSV。搜索事件与祖先计数也显示在同一张 PNG 中；不虚构 executed rule、
+dwell 或 execution beta，不应用基于执行规则的聚类。manifest 将这些指标明确标记为
+`not_applicable`。两种输出均可继续生成下面的完整路径行为对照；混合读出的 cluster 字段为空。
 
 这不是 FFBSi、PGAS 或独立的平滑后验采样器，而是 bootstrap-PF terminal genealogy 的多种子
 近似。`genealogy_diagnostics.png` 必须与 archetype 同时解释：早期 effective ancestors 太少时，
@@ -100,7 +107,7 @@ render_best_complete_path_model_human_from_artifacts(
 该诊断在所有已保存的完整 genealogy 中，以整段 observed-choice NLL 最小为准只选择一次路径；
 随后同一条路径从首试次用到末试次，不允许逐 trial 换粒子或重新加权。主图直接叠加被试 rolling
 accuracy 与该路径的 rolling `P(correct)`，CSV 报告全序列 NLL、rolling RMSE/相关和平均准确率。
-由于相同320次选择同时参与 PF 条件化和最佳路径选择，这些量是描述性的 in-sample fit，不是
+由于同一完整序列同时参与 PF 条件化和最佳路径选择，这些量是描述性的 in-sample fit，不是
 held-out prediction；输出目录仍必须是新目录。
 
 ## 日志依赖

@@ -62,6 +62,11 @@ PATH_FIELDS = (
     "executed_beta",
 )
 
+EXECUTION_PATH_FIELDS = (
+    "executed_hypothesis", "execution_switch_event", "execution_dwell_trials",
+    "executed_beta",
+)
+
 FAMILY_ORDER = (
     "univariate_threshold",
     "pairwise_order",
@@ -103,7 +108,7 @@ class CognitivePathEnsemble:
     marginal_choice_probability: np.ndarray
     online_hypothesis_prior: np.ndarray
     online_active_probability: np.ndarray
-    online_executed_probability: np.ndarray
+    online_executed_probability: np.ndarray | None
     online_swap_probability: np.ndarray
     pre_choice_ess: np.ndarray
     post_choice_ess: np.ndarray
@@ -290,16 +295,16 @@ def _run_genealogy_seed(
     ancestral = result.artifacts.get("audit_ancestral_paths")
     if not isinstance(ancestral, Mapping):
         raise RuntimeError("particle filter did not return ancestral paths.")
-    missing = [field for field in PATH_FIELDS if field not in ancestral]
+    executed = result.state_probabilities.get("executed_probability")
+    fields = tuple(
+        field for field in PATH_FIELDS
+        if executed is not None or field not in EXECUTION_PATH_FIELDS
+    )
+    missing = [field for field in fields if field not in ancestral]
     if missing:
         raise RuntimeError(f"ancestral path audit is missing fields: {missing}")
     diagnostics = result.diagnostics
     latent = result.latent_summaries
-    executed = result.state_probabilities.get("executed_probability")
-    if executed is None:
-        raise RuntimeError(
-            "Internal cognitive trajectories require persistent execution."
-        )
     return {
         "filter_seed": int(filter_seed),
         "weights": np.asarray(ancestral["weights"], dtype=float),
@@ -307,7 +312,7 @@ def _run_genealogy_seed(
             ancestral["particle_indices"], dtype=np.int32
         ),
         "paths": {
-            field: np.asarray(ancestral[field]) for field in PATH_FIELDS
+            field: np.asarray(ancestral[field]) for field in fields
         },
         "marginal_choice_probability": np.asarray(
             result.observation_probabilities["prior_t"], dtype=float
@@ -318,7 +323,9 @@ def _run_genealogy_seed(
         "online_active_probability": np.asarray(
             result.state_probabilities["active_probability"], dtype=float
         ),
-        "online_executed_probability": np.asarray(executed, dtype=float),
+        "online_executed_probability": (
+            None if executed is None else np.asarray(executed, dtype=float)
+        ),
         "online_swap_probability": np.asarray(
             latent["predictive_swap_probability"], dtype=float
         ),
@@ -359,8 +366,11 @@ def generate_cognitive_path_ensemble(
     seed_index = []
     terminal_particle = []
     particle_indices = []
-    paths: dict[str, list[np.ndarray]] = {field: [] for field in PATH_FIELDS}
+    fields = tuple(runs[0]["paths"])
+    paths: dict[str, list[np.ndarray]] = {field: [] for field in fields}
     for run_index, run in enumerate(runs):
+        if set(run["paths"]) != set(fields):
+            raise RuntimeError("PF seeds disagree on available cognitive path fields.")
         weights = _normalize(run["weights"])
         if weights.size != n_particles:
             raise RuntimeError("terminal particle count does not match request.")
@@ -368,7 +378,7 @@ def generate_cognitive_path_ensemble(
         seed_index.append(np.full(n_particles, run_index, dtype=np.int16))
         terminal_particle.append(np.arange(n_particles, dtype=np.int32))
         particle_indices.append(run["particle_indices"])
-        for field in PATH_FIELDS:
+        for field in fields:
             paths[field].append(run["paths"][field])
     combined_paths = {
         field: np.concatenate(values, axis=0) for field, values in paths.items()
@@ -376,7 +386,7 @@ def generate_cognitive_path_ensemble(
     n_trials = int(spec.arrays.choices.size)
     n_hypotheses = int(combined_paths["hypothesis_prior"].shape[2])
     expected_2d = (len(runs) * n_particles, n_trials)
-    for field in PATH_FIELDS:
+    for field in fields:
         values = combined_paths[field]
         expected = (
             (*expected_2d, n_hypotheses)
@@ -413,7 +423,7 @@ def generate_cognitive_path_ensemble(
             np.stack([run["online_active_probability"] for run in runs]),
             axis=0,
         ),
-        online_executed_probability=np.mean(
+        online_executed_probability=None if runs[0]["online_executed_probability"] is None else np.mean(
             np.stack([run["online_executed_probability"] for run in runs]),
             axis=0,
         ),
@@ -873,7 +883,13 @@ def render_best_complete_path_model_human_from_artifacts(
         terminal_particle = np.asarray(
             arrays["sampled_source_terminal_particle"], dtype=int
         )
-        cluster_labels = np.asarray(arrays["cluster_labels"], dtype=int)
+        clustering_unavailable = (
+            source_manifest.get("archetypes", {}).get("status") == "not_applicable"
+        )
+        cluster_labels = (
+            None if clustering_unavailable
+            else np.asarray(arrays["cluster_labels"], dtype=int)
+        )
 
     candidate_count = int(observed_probability.shape[0])
     for name, values in (
@@ -882,7 +898,7 @@ def render_best_complete_path_model_human_from_artifacts(
         ("sampled_source_terminal_particle", terminal_particle),
         ("cluster_labels", cluster_labels),
     ):
-        if values.shape != (candidate_count,):
+        if values is not None and values.shape != (candidate_count,):
             raise ValueError(
                 f"{name} must align with the candidate path count "
                 f"({candidate_count})."
@@ -934,7 +950,7 @@ def render_best_complete_path_model_human_from_artifacts(
     selected_sample_source = int(sample_source_index[best])
     selected_seed = int(source_seed[best])
     selected_terminal = int(terminal_particle[best])
-    selected_cluster = int(cluster_labels[best]) + 1
+    selected_cluster = None if cluster_labels is None else int(cluster_labels[best]) + 1
 
     output.mkdir(parents=True, exist_ok=True)
     figure_path = output / f"subject_{subject_id}_best_complete_path_vs_human.png"
@@ -967,7 +983,7 @@ def render_best_complete_path_model_human_from_artifacts(
             "selected_terminal_particle": np.full(
                 n_trials, selected_terminal, dtype=int
             ),
-            "selected_cluster": np.full(n_trials, selected_cluster, dtype=int),
+            "selected_cluster": [selected_cluster] * n_trials,
         }
     )
     trial_source_path = output / "best_complete_path_vs_human_trial_data.csv"
@@ -1629,7 +1645,8 @@ def save_cognitive_trajectory_outputs(
         },
         "uncertainty_scope": (
             "Fixed subject-level parameters; latent path uncertainty conditional "
-            "on all 320 observed choices and feedback. Parameter uncertainty is excluded."
+            f"on all {ensemble.spec.arrays.choices.size} observed choices and feedback. "
+            "Parameter uncertainty is excluded."
         ),
         "outputs": {
             "overview_figure": overview.name,
@@ -1658,6 +1675,113 @@ def save_cognitive_trajectory_outputs(
         "catalog": catalog_csv,
         "manifest": manifest_path,
     }
+
+
+def save_workspace_trajectory_outputs(
+    ensemble: CognitivePathEnsemble,
+    *,
+    output_dir: str | Path,
+    draw_count: int,
+    analysis_seed: int,
+) -> dict[str, Path]:
+    """Report mixture-readout beliefs without inventing an executed rule.
+
+    The existing executed-rule distance and clustering are undefined here.
+    Preserve complete sampled genealogies, but report their support directly.
+    """
+    output = Path(output_dir)
+    if output.exists() and any(output.iterdir()):
+        raise FileExistsError(f"Refusing to overwrite non-empty output directory: {output}")
+    output.mkdir(parents=True, exist_ok=True)
+    draws = _systematic_equal_weight_draws(
+        ensemble.weights, draw_count=draw_count, random_state=analysis_seed,
+    )
+    unique, effective, per_seed, status, message = _genealogy_diagnostics(ensemble)
+    posterior = _weighted_mean(ensemble.weights, ensemble.paths["hypothesis_posterior"])
+    trial = np.arange(1, ensemble.spec.arrays.choices.size + 1)
+    n_hypotheses = posterior.shape[1]
+    outputs = {
+        "overview": output / f"subject_{ensemble.spec.subject_id}_workspace_beliefs.png",
+        "arrays": output / "internal_cognitive_path_samples.npz",
+        "trial_source": output / "internal_cognitive_trial_summary.csv",
+        "belief_source": output / "internal_cognitive_belief_source.csv",
+        "seed_diagnostics": output / "genealogy_seed_diagnostics.csv",
+        "catalog": output / "hypothesis_catalog.csv",
+        "manifest": output / "analysis_manifest.json",
+    }
+    np.savez_compressed(
+        outputs["arrays"], sample_source_index=draws,
+        sampled_source_seed_index=ensemble.seed_index[draws],
+        sampled_source_terminal_particle=ensemble.terminal_particle[draws],
+        raw_terminal_weights=ensemble.weights,
+        raw_seed_index=ensemble.seed_index,
+        raw_particle_indices=ensemble.particle_indices,
+        pre_choice_ess=ensemble.pre_choice_ess,
+        post_choice_ess=ensemble.post_choice_ess,
+        resampled=ensemble.resampled,
+        **{f"path_{key}": values[draws] for key, values in ensemble.paths.items()},
+    )
+    pd.DataFrame({
+        "trial": trial, "observed_feedback": ensemble.spec.arrays.feedback,
+        "online_swap_probability": ensemble.online_swap_probability,
+        "unique_ancestors": unique, "effective_ancestors": effective,
+        "mean_pre_choice_ess": ensemble.pre_choice_ess.mean(axis=0),
+        "mean_post_choice_ess": ensemble.post_choice_ess.mean(axis=0),
+        "resampling_seed_fraction": ensemble.resampled.mean(axis=0),
+    }).to_csv(outputs["trial_source"], index=False)
+    pd.DataFrame({
+        "trial": np.repeat(trial, n_hypotheses),
+        "hypothesis": np.tile(np.arange(n_hypotheses), trial.size),
+        "online_prior": ensemble.online_hypothesis_prior.ravel(),
+        "online_active_probability": ensemble.online_active_probability.ravel(),
+        "terminal_genealogy_posterior": posterior.ravel(),
+    }).to_csv(outputs["belief_source"], index=False)
+    pd.DataFrame({"filter_seed": ensemble.filter_seeds,
+                  "start_unique_ancestor_count": per_seed}).to_csv(
+        outputs["seed_diagnostics"], index=False,
+    )
+    pd.DataFrame(_hypothesis_catalog(ensemble.spec)).to_csv(outputs["catalog"], index=False)
+    fig, axes = plt.subplots(5, 1, figsize=(11, 12), constrained_layout=True)
+    for ax, values, title in zip(axes[:3], (
+        ensemble.online_hypothesis_prior, ensemble.online_active_probability, posterior,
+    ), ("Online pre-choice belief", "Online active-rule probability",
+        "Post-feedback belief: terminal genealogy approximation")):
+        artist = ax.imshow(values.T, aspect="auto", origin="lower", vmin=0, vmax=1,
+                           extent=(0.5, trial.size + 0.5, -0.5, n_hypotheses - 0.5),
+                           cmap="viridis", interpolation="nearest")
+        ax.set(title=title, ylabel="Hypothesis index")
+        fig.colorbar(artist, ax=ax, label="Probability")
+    axes[3].plot(trial, ensemble.online_swap_probability, color="#4C78A8")
+    axes[3].set(ylabel="Search-event probability", ylim=(-0.02, 1.02))
+    axes[4].plot(trial, unique, label="Unique ancestors", color="#9C755F")
+    axes[4].plot(trial, effective, label="Effective ancestors", color="#4C78A8")
+    axes[4].set(xlabel="Trial", ylabel="Ancestor count", title=status.replace("_", " "))
+    axes[4].legend(frameon=False)
+    fig.suptitle(f"S{ensemble.spec.subject_id}: mixture readout; no single executed rule")
+    fig.savefig(outputs["overview"], dpi=300, facecolor="white")
+    plt.close(fig)
+    manifest = {
+        "analysis": "observed_history_conditioned_workspace_trajectories",
+        "method": "bootstrap_particle_filter_terminal_genealogy_approximation",
+        "persistent_execution": False,
+        "subject_id": int(ensemble.spec.subject_id), "condition": int(ensemble.spec.condition),
+        "trial_count": int(trial.size), "particle_count_per_seed": ensemble.particle_count,
+        "filter_seed_count": int(ensemble.filter_seeds.size),
+        "filter_seeds": ensemble.filter_seeds.tolist(), "analysis_seed": analysis_seed,
+        "equal_weight_draw_count": int(draws.size),
+        "raw_terminal_path_count": int(ensemble.weights.size),
+        "config_path": _project_relative(ensemble.spec.config_path),
+        "config_sha256": ensemble.spec.config_sha256,
+        "resolved_engine_config_sha256": ensemble.spec.engine_config_sha256,
+        "genealogy": {"status": status, "message": message},
+        "archetypes": {"status": "not_applicable", "reason": "Executed-rule path distance is undefined for mixture readout."},
+        "execution_metrics": {"status": "not_applicable", "reason": "No single rule is executed; execution beta and dwell are undefined."},
+        "uncertainty_scope": "Fixed parameters; terminal genealogy is a path approximation, not FFBSi or an independent posterior path sampler.",
+        "timing": {"online_prior": "Before current choice", "terminal_genealogy_posterior": "Post-feedback state conditioned on the complete observed history via terminal genealogy weights"},
+        "outputs": {key: path.name for key, path in outputs.items() if key != "manifest"},
+    }
+    outputs["manifest"].write_text(json.dumps(manifest, indent=2))
+    return outputs
 
 
 def run_internal_cognitive_trajectory_evaluation(
@@ -1690,6 +1814,11 @@ def run_internal_cognitive_trajectory_evaluation(
         filter_seeds=seeds,
         n_jobs=int(n_jobs),
     )
+    if ensemble.online_executed_probability is None:
+        return save_workspace_trajectory_outputs(
+            ensemble, output_dir=output_dir, draw_count=int(path_draw_count),
+            analysis_seed=int(analysis_seed),
+        )
     summary = summarize_cognitive_paths(
         ensemble,
         draw_count=int(path_draw_count),

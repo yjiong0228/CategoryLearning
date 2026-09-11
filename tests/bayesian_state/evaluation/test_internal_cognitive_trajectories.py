@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 from src.Bayesian_state.evaluation import internal_cognitive_trajectories as ict
 from src.Bayesian_state.evaluation.internal_cognitive_trajectories import (
@@ -11,6 +13,44 @@ from src.Bayesian_state.evaluation.internal_cognitive_trajectories import (
     generate_filter_seeds,
     summarize_cognitive_paths,
 )
+
+
+@pytest.mark.parametrize("cell", ["P", "PMH"])
+def test_nonexecuting_models_export_actual_beliefs_without_invented_rules(tmp_path, cell):
+    from src.Bayesian_state.optimization.model_0826 import build_model_0826_cell_engine
+
+    root = Path.cwd()
+    engine = yaml.safe_load((root / "configs/exp123/model_struct/pmh_model_cond1_0826.yaml").read_text())
+    engine = build_model_0826_cell_engine(engine, cell)
+    config = {
+        "engine_config": engine, "subjects": [129], "max_trials": 24,
+        "window_size": 16, "stop_at": 1.0,
+        "dataset": {"processed_dir": str(root / "data/exp123/processed"),
+                    "learning_data": "Task2_processed.csv"},
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config))
+    outputs = ict.run_internal_cognitive_trajectory_evaluation(
+        config_path=path, subject_id=129, output_dir=tmp_path / "outputs",
+        particle_count=2, seed_count=2, path_draw_count=8, n_jobs=1,
+    )
+    manifest = json.loads(outputs["manifest"].read_text())
+    assert manifest["trial_count"] == 24
+    assert manifest["persistent_execution"] is False
+    assert manifest["archetypes"]["status"] == "not_applicable"
+    with np.load(outputs["arrays"]) as arrays:
+        assert "path_executed_hypothesis" not in arrays.files
+        assert arrays["path_hypothesis_prior"].shape == (8, 24, 29)
+        # PF audit paths are stored as float32, including 29-term reductions.
+        np.testing.assert_allclose(arrays["path_hypothesis_prior"].sum(axis=2), 1., atol=1e-6)
+        np.testing.assert_allclose(arrays["path_hypothesis_posterior"].sum(axis=2), 1., atol=1e-6)
+    assert outputs["overview"].stat().st_size > 0
+    comparison = ict.render_best_complete_path_model_human_from_artifacts(
+        input_dir=tmp_path / "outputs", output_dir=tmp_path / "comparison",
+    )
+    comparison_manifest = json.loads(comparison["manifest"].read_text())
+    assert comparison_manifest["selection"]["selected_cluster"] is None
+    assert comparison["figure"].stat().st_size > 0
 
 
 def _toy_ensemble() -> CognitivePathEnsemble:
