@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -28,6 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from src.Bayesian_state.simulation.runner import get_stat_value
+from src.Bayesian_state.simulation.config import expand_profile_candidate_hyperparams
 
 
 MEMORY_KEY = "engine.modules.memory_mod.kwargs"
@@ -71,6 +73,13 @@ OUTPUT_NOISE_LATENT_VOLATILITY_LAPSE_KEY = "engine.output_noise.kwargs.latent_vo
 OUTPUT_NOISE_LATENT_VOLATILITY_POWER_KEY = "engine.output_noise.kwargs.latent_volatility_power"
 
 NUMERIC_PARAM_COLUMNS = (
+    "capacity",
+    "persistent_execution",
+    "event_after_correct",
+    "event_after_error",
+    "global_search",
+    "accumulator_logit_gain",
+    "global_search_failure_gain",
     "gamma",
     "w0",
     "beta_init",
@@ -530,6 +539,9 @@ def _strategy_signature(strategy_kwargs: Mapping[str, Any] | None) -> str:
     init_num = strategy_kwargs.get("init_num", "?")
     strategies = strategy_kwargs.get("strategies")
     if not isinstance(strategies, list):
+        if "nested_feedback_accumulator_controller" in strategy_kwargs or "capacity" in strategy_kwargs:
+            digest = hashlib.sha256(_canonical_json(strategy_kwargs).encode()).hexdigest()[:10]
+            return f"workspace{strategy_kwargs.get('capacity', '?')}:profile{digest}"
         return f"init{init_num}:no_strategies"
     parts = []
     for strat in strategies:
@@ -588,16 +600,38 @@ def flatten_hyperparams(
     strategy_lookup: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Extract analysis-friendly fields from a hyperparameter dictionary."""
-    hp = hyperparams if isinstance(hyperparams, Mapping) else {}
-    memory = hp.get(MEMORY_KEY)
-    if not isinstance(memory, Mapping):
-        memory = {}
-    transition = hp.get(TRANSITION_KEY)
-    if not isinstance(transition, Mapping):
-        transition = {}
+    original = hyperparams if isinstance(hyperparams, Mapping) else {}
+    hp = expand_profile_candidate_hyperparams(original)
+
+    def module_kwargs(prefix: str) -> dict[str, Any]:
+        raw = hp.get(prefix)
+        merged = deepcopy(dict(raw)) if isinstance(raw, Mapping) else {}
+        # Modern searches save leaf paths and packed blocks; older searches
+        # save whole kwargs mappings. Reconstruct both before reporting.
+        for key, value in hp.items():
+            if not key.startswith(prefix + "."):
+                continue
+            parts = key[len(prefix) + 1:].split(".")
+            node = merged
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node[parts[-1]] = deepcopy(value)
+        return merged
+
+    memory = module_kwargs(MEMORY_KEY)
+    transition = module_kwargs(TRANSITION_KEY)
+    controller = transition.get("nested_feedback_accumulator_controller") or {}
+    execution = transition.get("persistent_execution") or {}
     strategy_id, strategy_description = identify_strategy(transition, strategy_lookup)
 
     return {
+        "capacity": _safe_float(transition.get("capacity", hp.get("capacity"))),
+        "persistent_execution": _safe_float(execution.get("enabled")),
+        "event_after_correct": _safe_float(controller.get("event_after_correct")),
+        "event_after_error": _safe_float(controller.get("event_after_error")),
+        "global_search": _safe_float(controller.get("global_search")),
+        "accumulator_logit_gain": _safe_float(controller.get("accumulator_logit_gain")),
+        "global_search_failure_gain": _safe_float(controller.get("global_search_failure_gain")),
         "gamma": _safe_float(memory.get("gamma", hp.get("gamma"))),
         "w0": _safe_float(memory.get("w0", hp.get("w0"))),
         "strategy_id": strategy_id,
@@ -787,7 +821,7 @@ def flatten_hyperparams(
             )
         ),
         "distance_mode": hp.get(DISTANCE_MODE_KEY, hp.get("distance_mode")),
-        "hyperparam_signature": _canonical_json(hp),
+        "hyperparam_signature": _canonical_json(original),
     }
 
 

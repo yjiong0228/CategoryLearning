@@ -957,3 +957,17 @@ def test_schema_v2_smoke_passes_all_320_trials_to_evaluator(
     }
     assert score_context["n_trials"] == 320
     assert score_context["score_trial_count"] == 320
+
+
+def test_full_support_does_not_guarantee_escape_from_coarse_basin(tmp_path: Path) -> None:
+    """Full fine support can still trap greedy block moves; a diverse start escapes."""
+    surface = {(0, 0): 1.0, (1, 0): 2.0, (0, 1): 2.0, (1, 1): 0.0}
+    kwargs = dict(surface=surface, initial_point={"x": 0, "y": 0},
+                  space={"x": [0, 1], "y": [0, 1]}, min_delta=0.0)
+    trapped, _, _ = _run_surface_search(tmp_path / "trapped", **kwargs)
+    escaped, _, _ = _run_surface_search(
+        tmp_path / "diverse", **kwargs,
+        initial_points_override=[{"x": 0, "y": 0}, {"x": 1, "y": 1}],
+    )
+    assert trapped.aggregated_error == 1.0
+    assert escaped.aggregated_error == 0.0
