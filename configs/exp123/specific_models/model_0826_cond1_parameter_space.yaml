@@ -11,7 +11,7 @@ analysis_id: model_0826_cond1_parameter_space_v1
 provenance:
   model_id: model_0826
   manuscript_path: src/Bayesian_state/docs/model_architecture/model_0826.tex
-  manuscript_sha256: ce4d709ab416795b1028bf472653f4e911dd569c3621dfb6072e217d80d7c3b6
+  manuscript_sha256: a34b9931ac2b4bada9ea7c56e776faad8b0d7b911129f8bf8624dbcf7c0df697
   event_history_excludes_latest_error: true
   scientific_status: frozen_model_pre_recovery_parameter_support
   support_status: provisional_until_recovery_passes

@@ -12,3 +12,5 @@
 - [文档/脚本/报告归属迁移](maintenance/OWNERSHIP_MIGRATION_20260908.md)：当前分组和旧路径映射。
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
+
+- [Model 0826 Plus：检验与论文呈现方案](model_architecture/model_0826_plus.tex)：中文内部讨论稿，区分数值/恢复/行为/口述/生成检验，说明最新 Fig2 a–g 与补充图分工，以及已完成和待检验内容。
