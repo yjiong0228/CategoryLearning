@@ -224,6 +224,9 @@ class ContinuousPartition(BasePartition):
         """Map Task2's correct/related/incorrect codes to probabilities."""
         n_trials = len(choices)
         p_category = prob[choices, np.arange(n_trials)]
+        # Family geometry contributes only to the partial-feedback branch.
+        if not np.any(responses == 0.5):
+            return np.where(responses == 1, p_category, 1.0 - p_category)
         family_probability = np.zeros(n_trials)
         mask = np.zeros_like(prob, dtype=bool)
         for trial_index in range(n_trials):

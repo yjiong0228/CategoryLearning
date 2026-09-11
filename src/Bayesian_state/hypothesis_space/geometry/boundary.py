@@ -324,6 +324,11 @@ class BoundaryGeometry:
         *,
         context: str = "category",
     ) -> np.ndarray:
+        # Most categories are a single convex region; no union reduction is needed.
+        if len(category.components) == 1:
+            return self.distances_to_polytope(
+                stimuli, category.components[0], context=f"{context}, component=0"
+            )
         component_distances = [
             self.distances_to_polytope(
                 stimuli,
