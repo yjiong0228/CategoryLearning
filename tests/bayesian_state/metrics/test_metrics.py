@@ -410,6 +410,7 @@ def test_simulation_ownership_and_removed_facades_are_enforced():
         if path.name != "__init__.py"
     }
     assert simulation_modules == {
+        "artifacts.py",
         "runner.py",
         "config.py",
         "execution.py",

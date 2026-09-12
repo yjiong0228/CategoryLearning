@@ -44,6 +44,7 @@ from src.Bayesian_state.simulation.parameters import (
     resolve_hyper_candidate_seed,
 )
 from src.Bayesian_state.simulation.provenance import build_model_provenance
+from src.Bayesian_state.simulation.artifacts import reserve_subject_outputs
 from src.Bayesian_state.utils.paths import ROOT_DIR
 
 
@@ -262,7 +263,7 @@ def run_simulation(
     subjects: Sequence[int] | None = None,
     subject_range: Sequence[int] | None = None,
 ) -> list[Path]:
-    """Run the configured fixed-hyperparameter simulations and return saved files."""
+    """Run fixed-parameter simulations, refusing existing selected-subject outputs."""
     cfg_path = Path(config_path)
     if not cfg_path.is_absolute():
         cfg_path = (ROOT_DIR / cfg_path).resolve()
@@ -271,105 +272,115 @@ def run_simulation(
     selected_subjects = resolve_subjects(subjects, subject_range, cfg)
     saved_paths: list[Path] = []
 
+    outputs = []
     for sid in selected_subjects:
         subject_cfg = resolve_subject_config(cfg, sid)
-        explicit_fixed_hyperparams = dict(subject_cfg.get("fixed_hyperparams") or {})
-        subject_cfg = apply_fixed_hyperparams_to_subject_config(subject_cfg, explicit_fixed_hyperparams)
-        engine_config = resolve_engine_config(subject_cfg, cfg_path.parent, subject_id=sid)
-        fixed_hyperparams = {
-            **infer_fixed_hyperparams_from_engine_config(engine_config),
-            **explicit_fixed_hyperparams,
-        }
-        seed_hyperparams = explicit_fixed_hyperparams or fixed_hyperparams
-        engine_config = apply_fixed_hyperparams_to_engine_config(engine_config, fixed_hyperparams)
-        prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
-        loss_metric = resolve_loss_metric(subject_cfg)
-        loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
-
-        dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
-        data_path = dataset_paths["learning_data"]
+        subject_cfg = apply_fixed_hyperparams_to_subject_config(
+            subject_cfg, dict(subject_cfg.get("fixed_hyperparams") or {})
+        )
         output_dir = resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        outputs.append((output_dir, sid))
 
-        n_jobs = int(subject_cfg.get("n_jobs", 4))
-        simulation_repeats = resolve_simulation_repeats(subject_cfg)
-        repeat_aggregation = resolve_repeat_aggregation(subject_cfg)
-        hyper_base_seed = resolve_hyper_base_seed(subject_cfg)
-        hyper_candidate_seed = resolve_hyper_candidate_seed(
-            subject_cfg,
-            hyper_base_seed,
-            sid,
-            seed_hyperparams,
-        )
-        stop_at = float(subject_cfg.get("stop_at", 1.0))
-        max_trials_val = subject_cfg.get("max_trials")
-        max_trials = int(max_trials_val) if max_trials_val is not None else None
-        keep_logs = bool(subject_cfg.get("keep_logs", False))
-        window_size = resolve_window_size(subject_cfg, sid, selected_subjects)
-        representative_run_selection = str(
-            subject_cfg.get("representative_run_selection", "min_error")
-        )
-        representative_choice_fraction = float(
-            subject_cfg.get("representative_choice_fraction", 0.10)
-        )
-        statistics_config = subject_cfg.get("statistics_config")
+    with reserve_subject_outputs(outputs):
+        for sid in selected_subjects:
+            subject_cfg = resolve_subject_config(cfg, sid)
+            explicit_fixed_hyperparams = dict(subject_cfg.get("fixed_hyperparams") or {})
+            subject_cfg = apply_fixed_hyperparams_to_subject_config(subject_cfg, explicit_fixed_hyperparams)
+            engine_config = resolve_engine_config(subject_cfg, cfg_path.parent, subject_id=sid)
+            fixed_hyperparams = {
+                **infer_fixed_hyperparams_from_engine_config(engine_config),
+                **explicit_fixed_hyperparams,
+            }
+            seed_hyperparams = explicit_fixed_hyperparams or fixed_hyperparams
+            engine_config = apply_fixed_hyperparams_to_engine_config(engine_config, fixed_hyperparams)
+            prediction_mode, selection_prediction_mode = resolve_prediction_modes(subject_cfg)
+            loss_metric = resolve_loss_metric(subject_cfg)
+            loss_delta = resolve_loss_delta(subject_cfg, loss_metric)
 
-        runner = StateModelSimulationRunner(
-            engine_config=engine_config,
-            processed_data_dir=dataset_paths["processed_dir"],
-            dataset_paths=dataset_paths,
-            n_jobs=n_jobs,
-        )
-        runner.prepare_data(data_path)
-        model_provenance = build_model_provenance(
-            engine_config,
-            repeat_aggregation=repeat_aggregation,
-        )
+            dataset_paths = resolve_dataset_paths(subject_cfg, cfg_path.parent, DEFAULT_DATA_PATH)
+            data_path = dataset_paths["learning_data"]
+            output_dir = resolve_path(cfg_path.parent, subject_cfg.get("output_dir"), DEFAULT_OUTPUT_DIR)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"\n{'=' * 60}")
-        print(f"Subject {sid}")
-        print(f"{'=' * 60}")
+            n_jobs = int(subject_cfg.get("n_jobs", 4))
+            simulation_repeats = resolve_simulation_repeats(subject_cfg)
+            repeat_aggregation = resolve_repeat_aggregation(subject_cfg)
+            hyper_base_seed = resolve_hyper_base_seed(subject_cfg)
+            hyper_candidate_seed = resolve_hyper_candidate_seed(
+                subject_cfg,
+                hyper_base_seed,
+                sid,
+                seed_hyperparams,
+            )
+            stop_at = float(subject_cfg.get("stop_at", 1.0))
+            max_trials_val = subject_cfg.get("max_trials")
+            max_trials = int(max_trials_val) if max_trials_val is not None else None
+            keep_logs = bool(subject_cfg.get("keep_logs", False))
+            window_size = resolve_window_size(subject_cfg, sid, selected_subjects)
+            representative_run_selection = str(
+                subject_cfg.get("representative_run_selection", "min_error")
+            )
+            representative_choice_fraction = float(
+                subject_cfg.get("representative_choice_fraction", 0.10)
+            )
+            statistics_config = subject_cfg.get("statistics_config")
 
-        result: Dict[str, Any] = runner.simulate_subject(
-            subject_id=sid,
-            simulation_repeats=simulation_repeats,
-            fixed_hyperparams=fixed_hyperparams,
-            window_size=window_size,
-            stop_at=stop_at,
-            max_trials=max_trials,
-            keep_logs=keep_logs,
-            prediction_mode=prediction_mode,
-            selection_prediction_mode=selection_prediction_mode,
-            loss_metric=loss_metric,
-            loss_delta=loss_delta,
-            hyper_candidate_seed=hyper_candidate_seed,
-            seed_hyperparams=seed_hyperparams,
-            representative_run_selection=representative_run_selection,
-            representative_choice_fraction=representative_choice_fraction,
-            statistics_config=statistics_config,
-            evaluation_protocol=subject_cfg.get("evaluation_protocol"),
-            evaluation_role="simulation",
-            repeat_aggregation=repeat_aggregation,
-            model_provenance=model_provenance,
-        )
-        result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
-        if statistics_config is not None:
-            result["selection_meta"]["statistics_config"] = statistics_config
+            runner = StateModelSimulationRunner(
+                engine_config=engine_config,
+                processed_data_dir=dataset_paths["processed_dir"],
+                dataset_paths=dataset_paths,
+                n_jobs=n_jobs,
+            )
+            runner.prepare_data(data_path)
+            model_provenance = build_model_provenance(
+                engine_config,
+                repeat_aggregation=repeat_aggregation,
+            )
 
-        best: Any = result["best"]
-        print(f"  Fixed hyperparams: {fixed_hyperparams}")
-        print(f"  Mean error ({selection_prediction_mode}): {float(best.mean_error):.6f} +/- {float(best.std_error):.6f}")
-        print(f"  Best run error ({selection_prediction_mode}): {float(best.best_error):.6f}")
-        print(f"  Loss metric: {loss_metric}")
-        print(f"  Repeat aggregation: {repeat_aggregation}")
-        print(f"  Seeds: hyper_base_seed={hyper_base_seed}, hyper_candidate_seed={hyper_candidate_seed}")
+            print(f"\n{'=' * 60}")
+            print(f"Subject {sid}")
+            print(f"{'=' * 60}")
 
-        subjects_dir = output_dir / "subjects"
-        payload = serialize_result(sid, int(result["condition"]), result, output_dir, subject_json_dir=subjects_dir)
-        save_path = subjects_dir / f"subject_{sid}.json"
-        save_json(payload, save_path)
-        saved_paths.append(save_path)
-        print(f"  Saved -> {save_path}")
+            result: Dict[str, Any] = runner.simulate_subject(
+                subject_id=sid,
+                simulation_repeats=simulation_repeats,
+                fixed_hyperparams=fixed_hyperparams,
+                window_size=window_size,
+                stop_at=stop_at,
+                max_trials=max_trials,
+                keep_logs=keep_logs,
+                prediction_mode=prediction_mode,
+                selection_prediction_mode=selection_prediction_mode,
+                loss_metric=loss_metric,
+                loss_delta=loss_delta,
+                hyper_candidate_seed=hyper_candidate_seed,
+                seed_hyperparams=seed_hyperparams,
+                representative_run_selection=representative_run_selection,
+                representative_choice_fraction=representative_choice_fraction,
+                statistics_config=statistics_config,
+                evaluation_protocol=subject_cfg.get("evaluation_protocol"),
+                evaluation_role="simulation",
+                repeat_aggregation=repeat_aggregation,
+                model_provenance=model_provenance,
+            )
+            result["selection_meta"]["hyper_base_seed"] = hyper_base_seed
+            if statistics_config is not None:
+                result["selection_meta"]["statistics_config"] = statistics_config
+
+            best: Any = result["best"]
+            print(f"  Fixed hyperparams: {fixed_hyperparams}")
+            print(f"  Mean error ({selection_prediction_mode}): {float(best.mean_error):.6f} +/- {float(best.std_error):.6f}")
+            print(f"  Best run error ({selection_prediction_mode}): {float(best.best_error):.6f}")
+            print(f"  Loss metric: {loss_metric}")
+            print(f"  Repeat aggregation: {repeat_aggregation}")
+            print(f"  Seeds: hyper_base_seed={hyper_base_seed}, hyper_candidate_seed={hyper_candidate_seed}")
+
+            subjects_dir = output_dir / "subjects"
+            payload = serialize_result(sid, int(result["condition"]), result, output_dir, subject_json_dir=subjects_dir)
+            save_path = subjects_dir / f"subject_{sid}.json"
+            save_json(payload, save_path)
+            saved_paths.append(save_path)
+            print(f"  Saved -> {save_path}")
 
     print("\nAll subjects done.")
     return saved_paths

@@ -434,6 +434,9 @@ held-out total choice NLL。参数恢复对 final-rescore shortlist 全部候选
 
 ## 8. 输出约定
 
+普通 simulation 在计算前拒绝已有的选中被试产物，并原子发布新 JSON/流文件；
+输出保护与中断处理见 [simulation 输出保护](simulation/README.md#输出保护)。
+
 Hyper 搜索通常写入：
 
 ```text

@@ -79,7 +79,9 @@ Git 忽略只决定是否跟踪，不表示文件可删。Git 无法恢复从未
 
 ### 输出与版本
 
-- 新运行必须用新目录，沿用各工作流既有命名，不覆盖旧运行。
+- 新运行必须用新目录，沿用各工作流既有命名，不覆盖旧运行。普通 simulation 在计算前检查所有
+  选中被试的 JSON、raw-run 流和运行锁；发现冲突即报错。JSON/流文件完成后原子发布，拒绝覆盖。
+  普通 simulation 不提供自动续跑或强制覆盖；已有 recovery 的显式 resume 规则保持独立。
 - 图代码继续按 `figures/fig1/`、`figures/fig2/` 分组，图产物按 `outputs/fig1/`、`outputs/fig2/` 分组。
 - `CategoryLearning_paper/figures/` 仅保存确认的 FigureN；默认 PNG。
 - 新研究运行记录代码 commit/工作区改动、配置、数据来源/哈希、随机种子、被试/试次范围、

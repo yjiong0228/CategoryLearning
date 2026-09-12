@@ -19,6 +19,7 @@ from src.Bayesian_state.simulation.execution import (
     PREDICTION_MODE_POSTERIOR_T_MINUS_1,
 )
 from src.Bayesian_state.utils.streaming import StreamList
+from src.Bayesian_state.simulation.artifacts import new_artifact_path
 from src.Bayesian_state.utils.paths import (
     TASK2_PROCESSED_PATH,
     SIMULATION_RESULTS_DIR,
@@ -271,9 +272,10 @@ def load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def save_json(obj: Mapping[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(recursive_to_builtin(obj), f, ensure_ascii=False, indent=2)
+    """Atomically save a new JSON artifact; never overwrite an existing path."""
+    with new_artifact_path(path) as temporary:
+        with temporary.open("w", encoding="utf-8") as f:
+            json.dump(recursive_to_builtin(obj), f, ensure_ascii=False, indent=2)
 
 
 def resolve_path(base: Path, maybe_path: Any, default: Path) -> Path:
@@ -405,12 +407,9 @@ def dump_stream(items: Sequence[Any] | None, output_dir: Path, subject_id: int, 
         return None
     rel_path = Path("cache") / f"subject_{subject_id}_{tag}.gz"
     abs_path = output_dir / rel_path
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    if abs_path.exists():
-        abs_path.unlink()
-
-    stream = StreamList(str(abs_path), 0)
-    stream.extend(items)
+    with new_artifact_path(abs_path) as temporary:
+        stream = StreamList(str(temporary), 0)
+        stream.extend(items)
     return {
         "format": "stream-gzip-pickle",
         "path": rel_path.as_posix(),

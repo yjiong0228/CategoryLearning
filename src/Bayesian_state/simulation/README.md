@@ -13,6 +13,7 @@
 | `results.py` | 单次和重复运行的稳定结果契约 |
 | `execution.py` | 单次 trajectory/particle StateModel 执行 |
 | `runner.py` | 独立重复、representative run 与聚合统计 |
+| `artifacts.py` | 输出冲突预检、被试运行锁与不覆盖旧文件的原子发布 |
 | `config.py` | YAML/路径/loss/顺序评价协议解析及 packed profile 参数展开 |
 | `parameters.py` | 固定超参数的提取、覆盖与可复现 candidate seed 解析 |
 | `provenance.py` | 结构配置哈希、容量、初始化、precision/readout 与 repeat 聚合溯源 |
@@ -82,3 +83,20 @@ Controller v2a 的三被试结构探针配置是
 v2b 的受限先验重置探针是
 `configs/exp123/simulation_cfg/generated_from_hyper/model0809_controller_v2b_selected3_probe.yaml`；除
 `prior_reset.max_strength: 0.35` 与独立输出目录外，它与 v2a 完全相同，便于直接归因比较。
+
+## 输出保护
+
+普通 `run_simulation()` 在计算前解析所有选中被试（含 subject overrides）的输出目录，
+检查 `subjects/subject_<id>.json` 和 `cache/subject_<id>_raw_runs.gz` 是否存在。
+即使本轮 `keep_logs: false`，旧 raw-run 文件也会触发拒绝，避免把新 JSON 和旧轨迹混在一起。
+重复被试也会被拒绝。允许输出目录内已有组合工作流的元数据，但不覆盖选中被试的产物。
+
+每位选中被试用 `.subject_<id>.lock` 独占运行；全部锁取得后才开始计算，正常结束或
+Python 异常时释放本次创建的锁。进程被强制终止可能留下锁，程序不会自动删除它；
+新运行应使用新目录，不通过清理锁来强行复用旧输出。
+
+JSON 和 gzip-pickle 流的路径、内容 schema 及 seed 规则保持不变。文件先写入同目录临时文件，
+完成并同步后用硬链接原子发布；目标名若被其他写入者抢先创建则报错，已有文件保留。
+文件系统必须支持同目录硬链接，不支持时明确失败，不回退到覆盖写入。
+该保护是逐文件发布，不是整个批次的事务：后续失败时，已经完整写出的产物会保留。
+普通 simulation 不新增 `--resume` 或 `--overwrite`；recovery 的来源指纹续跑规则保持原样。
