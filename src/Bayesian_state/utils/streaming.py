@@ -45,29 +45,25 @@ class StreamList:
                 for i in range(index + 1):
                     try:
                         item = pickle.load(f)
-                        self.__update_cache(index, item)
+                        self.__update_cache(i, item)
                     except EOFError:
                         raise IndexError("Index out of range")
                 return item
             elif isinstance(index, slice):
-                start, stop, step = index.indices(len(self))
-                items = []
-                for i in range(start):
+                indices = range(*index.indices(len(self)))
+                values = {i: self.cache[i] for i in indices if i in self.cache}
+                missing = set(indices) - values.keys()
+                # Consume gzip records sequentially even for cached/skipped indices.
+                # Retain selected records and restore the requested slice order.
+                for i in range(max(missing, default=-1) + 1):
                     try:
-                        pickle.load(f)
-                    except EOFError:
-                        raise IndexError("Index out of range")
-                for i in range(start, stop, step):
-                    try:
-                        if i in self.cache:
-                            items.append(self.cache[i])
-                        else:
-                            item = pickle.load(f)
-                            items.append(item)
+                        item = pickle.load(f)
+                        if i in missing:
+                            values[i] = item
                             self.__update_cache(i, item)
                     except EOFError:
-                        break
-                return items
+                        raise IndexError("Stream ended before the declared record count") from None
+                return [values[i] for i in indices]
             else:
                 raise TypeError("Invalid index type")
     

@@ -74,6 +74,9 @@ schema 变更，必须同步 configs、hyper evaluation 和 tests。
 {"path": "cache/subject_103_raw_runs.gz", "count": 4}
 ```
 
+`StreamList` 的整数索引和切片保持 Python 列表的顺序语义，包括负索引、负步长和
+缓存命中后的切片。切片顺序扫描压缩记录，仅保留所请求条目；切片越大，返回列表占用越大。
+
 移动结果目录时必须保持 JSON reference 与 cache 的相对结构，或通过公共 rebase helper 更新。
 
 ## 不应放在这里的内容
