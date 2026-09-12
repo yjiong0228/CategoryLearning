@@ -116,7 +116,7 @@ UTF-8 BOM CSV，严格使用 `iSession,iTrial,text` 三列。文件名 `12.wav` 
 
 ```bash
 python -m src.audio_to_word data/exp5/raw/Recording/502_1 \
-  --session 1 --output results/transcription/502_rec.csv --dry-run
+  --session 1 --output /tmp/502_rec.csv --dry-run
 ```
 
 API 密钥、地址及模型名暂留空。申请完成后设置环境变量 `DASHSCOPE_API_KEY`、
@@ -129,4 +129,5 @@ API 密钥、地址及模型名暂留空。申请完成后设置环境变量 `DA
 已有文件默认拒绝覆盖。核对输入属于同一被试、prompt/API 配置一致后，可以添加
 `--resume` 跳过已有 `(iSession,iTrial)`，也可追加同一被试的另一个会话。
 不同被试必须使用不同输出文件；修改 prompt 或模型后应使用新输出文件。
-建议先输出到 `results/transcription/` 审核，再人工纳入 raw 数据。
+oral 转文本仅保存所需的转写文件，不再生成 `results/transcription/` 记录或额外归档副本。
+实际转写时将示例中的 `--output` 替换为所需输出路径；如需临时审核文件，使用系统临时目录。

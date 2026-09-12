@@ -61,6 +61,9 @@ changing its interfaces, configuration schema, or workflow.
 8. Unless the user explicitly requests another format, generate and retain
    plots as PNG only. Do not emit redundant PDF, SVG, or TIFF copies by
    default.
+9. For oral-to-text transcription, do not create `results/transcription/`
+   records or extra archival copies. Save the requested transcript only;
+   use a system temporary directory if intermediate review files are needed.
 
 ## Python and configuration conventions
 
