@@ -49,8 +49,26 @@ python -m pytest -q tests/bayesian_state/test_model_0826_versioning.py
 ```
 
 根 `pytest.ini` 的默认收集范围是 `tests/`；仅运行 `python -m pytest` 不包含所有期刊测试。
-依赖列表在 `requirements.txt`；目前未指定统一 Conda 环境，也未声明完整开发环境锁文件。
-运行代码还需 PyYAML，运行测试需 pytest；正式复现时应记录实际 Python/依赖版本。
+历史 notebooks、results、data、logs 和 outputs 不参与递归收集；期刊套件仍显式选择。
+检查全部正式套件的收集范围（不运行测试）：
+
+```bash
+python -m pytest --collect-only -q tests CategoryLearning_codes/Bayesian_model/tests CategoryLearning_codes/figures CategoryLearning_codes/tests
+```
+
+核心依赖（含 PyYAML）在 `requirements.txt`，测试依赖在 `requirements-dev.txt`：
+
+```bash
+python -m pip install -r requirements.txt
+# 需要运行测试时：
+python -m pip install -r requirements-dev.txt
+```
+
+目前未指定统一 Conda 环境，也未声明完整环境锁文件。此次保留既有数值依赖版本声明，
+不升级或重装当前环境；实际验证环境与该声明存在差异，见
+[验证环境记录](src/Bayesian_state/docs/maintenance/validation_environment_20260912.md)。
+正式复现时需要在目标环境验证并保存 Python/完整依赖版本；上述依赖文件不能替代该步骤。
+RNN 的 PyTorch、语音转写的 DashScope 为相应工作流的可选依赖，不随核心安装引入。
 
 0826 当前冻结流程的二分类支持，不能直接等同于四分类、部分反馈或 MEG 任务已获验证。
 既有初步结果也不等同于全体被试的正式拟合。具体边界见共享模型和期刊说明。
