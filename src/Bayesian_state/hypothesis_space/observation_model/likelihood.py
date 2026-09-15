@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from .pairing import pairing_feedback_kernel
+
 
 class ObservationLikelihood:
     """Process ``p(observation | hypothesis)`` through a runtime partition."""
@@ -87,7 +89,12 @@ class ObservationLikelihood:
             "_resolve_feedback_likelihood_mode",
             None,
         )
-        if callable(resolve_feedback_mode):
+        if feedback_mode == "hierarchical_pairing":
+            if int(getattr(partition, "n_cats", 0)) != 4:
+                raise ValueError("hierarchical_pairing requires four response categories.")
+            if lapse_value != 0.:
+                raise ValueError("hierarchical_pairing currently requires feedback_lapse=0.")
+        elif callable(resolve_feedback_mode):
             feedback_mode = resolve_feedback_mode(feedback_mode)
 
         self.partition = partition
@@ -104,6 +111,9 @@ class ObservationLikelihood:
         beta: float | Sequence[float] | np.ndarray | None = None,
     ) -> np.ndarray:
         """Return the one-dimensional likelihood vector for one completed trial."""
+
+        if self.feedback_likelihood_mode == "hierarchical_pairing":
+            raise ValueError("hierarchical_pairing requires joint memory; use pairing_kernel().")
 
         if observation is None or len(observation) != 3:
             raise ValueError(
@@ -154,6 +164,27 @@ class ObservationLikelihood:
         if float(np.sum(likelihood)) <= 0.0:
             raise ValueError("likelihood must contain positive total mass.")
         return likelihood
+
+    def pairing_kernel(
+        self, observation: Sequence[Any], hypotheses: Sequence[int],
+        beta: float | Sequence[float] | np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Compute stateless absolute feedback probabilities for three pairings."""
+        if self.feedback_likelihood_mode != "hierarchical_pairing":
+            raise ValueError("pairing_kernel requires hierarchical_pairing mode.")
+        if observation is None or len(observation) != 3:
+            raise ValueError("observation must contain stimulus, choice and feedback.")
+        stimulus, choice, feedback = observation
+        beta_value = (self.default_beta if beta is None or self.beta_source == self.BETA_SOURCE_FIXED else beta)
+        beta_values = np.broadcast_to(np.asarray(beta_value, dtype=float), (len(hypotheses),))
+        data = ([stimulus], [choice], [feedback])
+        probabilities = np.asarray([
+            self.partition.get_category_probabilities(
+                int(h), data, float(b), distance_mode=self.distance_mode,
+            )[:, 0]
+            for h, b in zip(hypotheses, beta_values)
+        ])
+        return pairing_feedback_kernel(probabilities, choice, feedback)
 
 
 __all__ = ["ObservationLikelihood"]

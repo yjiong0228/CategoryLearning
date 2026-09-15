@@ -22,6 +22,10 @@ class FeedbackReactiveHypothesisTransitionModule(
 
     ``E_t = feedback * E_correct + (1-feedback) * E_error``.
 
+    The module-level ``feedback_interpretation`` defaults to ``graded``.
+    With ``full_success``, only feedback equal to 1 counts as success in these
+    control formulas; the recorded outcome retains its original value.
+
     Completed feedback from trial ``t-1`` is recorded through
     :meth:`record_outcome` and consumed before trial ``t``.  The current
     trial's choice and feedback therefore cannot affect its own transition.
@@ -36,6 +40,13 @@ class FeedbackReactiveHypothesisTransitionModule(
 
     def __init__(self, engine, **kwargs):
         resolved = dict(kwargs)
+        feedback_interpretation = str(
+            resolved.pop("feedback_interpretation", "graded")
+        ).strip().lower()
+        if feedback_interpretation not in {"graded", "full_success"}:
+            raise ValueError(
+                "feedback_interpretation must be 'graded' or 'full_success'."
+            )
         raw = resolved.pop("feedback_reactive_controller", None)
         if not isinstance(raw, Mapping):
             raise ValueError("feedback_reactive_controller must be a mapping.")
@@ -129,6 +140,7 @@ class FeedbackReactiveHypothesisTransitionModule(
                 "feedback-reactive H is an execution-off architecture screen."
             )
         self.controller_mode = self.MODE
+        self.feedback_interpretation = feedback_interpretation
         self.uses_outcome_feedback_controller = True
         self.dynamic_rate = True
         self.dynamic_range = False
@@ -167,11 +179,17 @@ class FeedbackReactiveHypothesisTransitionModule(
     def _event_to_slot_rate(event_probability: float, capacity: int) -> float:
         return float(1.0 - (1.0 - float(event_probability)) ** (1.0 / int(capacity)))
 
+    def _control_feedback(self) -> float:
+        """Interpret completed feedback without changing its recorded value."""
+        if self.feedback_interpretation == "full_success":
+            return float(self.previous_feedback == 1.0)
+        return float(np.clip(self.previous_feedback, 0.0, 1.0))
+
     def _update_transition_controls(self) -> tuple[float, float]:
         self.feedback_surprise = float("nan")
         self.feedback_uncertainty = float("nan")
         if self.outcome_pending and np.isfinite(self.previous_feedback):
-            feedback = float(np.clip(self.previous_feedback, 0.0, 1.0))
+            feedback = self._control_feedback()
             self.exploration_target = float(
                 feedback * self.event_after_correct
                 + (1.0 - feedback) * self.event_after_error

@@ -101,6 +101,21 @@ def _active_hypothesis_mask(engine: Any) -> np.ndarray:
     return active
 
 
+def _pairing_marginal(engine: Any) -> np.ndarray:
+    """Read the cognitive response-pairing belief without inferring true labels."""
+
+    memory = engine.get_module(ModuleRole.MEMORY, required=True)
+    if not callable(getattr(memory, "pairing_marginal", None)):
+        raise ValueError("condition 3 requires hierarchical_pairing joint memory.")
+    joint = np.asarray(getattr(memory, "joint", None), dtype=float)
+    if joint.shape != (int(engine.set_size), 3):
+        raise ValueError("condition 3 joint memory must have shape (n_hypotheses, 3).")
+    marginal = np.asarray(memory.pairing_marginal(), dtype=float)
+    if marginal.shape != (3,):
+        raise ValueError("condition 3 pairing marginal must contain three probabilities.")
+    return _normalize(marginal)
+
+
 def _particle_seed(filter_seed: int, particle_index: int, role: str) -> int:
     return stable_seed(
         {
@@ -514,9 +529,11 @@ def run_state_model_particle_filter(
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
 ) -> InferenceResult:
-    """Filter one observed binary-feedback trajectory using bootstrap particles.
+    """Filter an observed task trajectory using bootstrap particles.
 
     Conditions 1 and 2 have two and four fixed task labels, respectively.
+    Condition 3 requires explicit hierarchical-pairing feedback and joint memory;
+    its four choice IDs are opaque response coordinates.
     The optional transmission audit infers the correct category from binary
     feedback and is therefore restricted to condition 1.
 
@@ -540,6 +557,10 @@ def run_state_model_particle_filter(
     from ...model import StateModel
 
     x = np.asarray(stimulus, dtype=float)
+    if int(condition) == 3:
+        raw_choices = np.asarray(choices, dtype=float)
+        if not np.all(np.isin(raw_choices, [1.0, 2.0, 3.0, 4.0])):
+            raise ValueError("condition 3 choices must be finite integers in [1, 4].")
     observed_choices = np.asarray(choices, dtype=int).reshape(-1)
     observed_feedback = np.asarray(feedback, dtype=float).reshape(-1)
     if x.ndim != 2:
@@ -548,15 +569,26 @@ def run_state_model_particle_filter(
     if observed_choices.shape[0] != n_trials or observed_feedback.shape[0] != n_trials:
         raise ValueError("stimulus, choices, and feedback must have equal trial counts.")
     condition = int(condition)
-    if condition not in (1, 2):
-        raise ValueError("the particle backend supports conditions 1 and 2 only.")
+    if condition not in (1, 2, 3):
+        raise ValueError("the particle backend supports conditions 1, 2 and 3 only.")
     n_categories = 2 if condition == 1 else 4
     if not np.all(np.isin(observed_choices, np.arange(1, n_categories + 1))):
         raise ValueError(f"Condition-{condition} choices must be encoded in [1, {n_categories}].")
     if condition == 2 and not np.all(np.isin(observed_feedback, [0., 1.])):
         raise ValueError("condition 2 requires binary feedback (0 or 1).")
-    if condition == 2 and choice_transmission_audit:
+    if condition != 1 and choice_transmission_audit:
         raise ValueError("choice transmission audit supports condition 1 only.")
+    if condition == 3:
+        if not np.all(np.isin(observed_feedback, [0.0, 0.5, 1.0])):
+            raise ValueError("condition 3 requires feedback in {0, 0.5, 1}.")
+        likelihood_config = engine_config.get("likelihood", {})
+        if (
+            not isinstance(likelihood_config, Mapping)
+            or likelihood_config.get("feedback_likelihood_mode") != "hierarchical_pairing"
+        ):
+            raise ValueError(
+                "condition 3 requires likelihood.feedback_likelihood_mode='hierarchical_pairing'."
+            )
     if not np.all(np.isfinite(observed_feedback)) or np.any(
         (observed_feedback < 0.0) | (observed_feedback > 1.0)
     ):
@@ -661,6 +693,11 @@ def run_state_model_particle_filter(
     n_hypotheses = int(models[0].engine.set_size)
     marginal_hypothesis_prior = np.zeros((n_trials, n_hypotheses), dtype=float)
     marginal_active_probability = np.zeros((n_trials, n_hypotheses), dtype=float)
+    pairing_prior = np.zeros((n_trials, 3), dtype=float) if condition == 3 else None
+    pairing_posterior = np.zeros((n_trials, 3), dtype=float) if condition == 3 else None
+    if condition == 3:
+        for model in models:
+            _pairing_marginal(model.engine)
 
     execution_flags = [
         bool(
@@ -977,6 +1014,9 @@ def run_state_model_particle_filter(
         particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
         particle_priors = np.zeros((n_particles, n_hypotheses), dtype=float)
         particle_active = np.zeros((n_particles, n_hypotheses), dtype=float)
+        particle_pairing = (
+            np.zeros((n_particles, 3), dtype=float) if condition == 3 else None
+        )
         swap_probabilities = np.zeros(n_particles, dtype=float)
         swap_events = np.zeros(n_particles, dtype=float)
         transition_rates = np.zeros(n_particles, dtype=float)
@@ -1068,6 +1108,8 @@ def run_state_model_particle_filter(
         for particle_index, model in enumerate(models):
             engine = model.engine
             prepared = model.begin_trial(x[trial_index])
+            if particle_pairing is not None:
+                particle_pairing[particle_index] = _pairing_marginal(engine)
             if orientation_oracle is not None:
                 mapping = engine.get_module(ModuleRole.MAPPING, required=True)
                 mapping.condition_on_orientation_probability(
@@ -1368,6 +1410,9 @@ def run_state_model_particle_filter(
             axis=0,
         )
         marginal[trial_index] = _normalize(marginal[trial_index])
+        if pairing_prior is not None:
+            assert particle_pairing is not None
+            pairing_prior[trial_index] = _normalize(weights @ particle_pairing)
 
         if audit_choice_transmission:
             assert audit_hypothesis_map is not None
@@ -1719,6 +1764,8 @@ def run_state_model_particle_filter(
                 float(observed_feedback[trial_index]),
                 update_state=update_occurs,
             )
+            if particle_pairing is not None:
+                particle_pairing[particle_index] = _pairing_marginal(engine)
             if audit_particle_hypothesis_posterior is not None:
                 audit_particle_hypothesis_posterior[
                     trial_index, particle_index
@@ -1741,6 +1788,12 @@ def run_state_model_particle_filter(
                 ] = (orientation, 1.0 - orientation)
             if hasattr(engine, "clear_module_logs"):
                 engine.clear_module_logs()
+
+        if pairing_posterior is not None:
+            assert particle_pairing is not None
+            # The outer filter conditions only on choice. Feedback updates each
+            # cognitive joint belief, which is averaged with those choice weights.
+            pairing_posterior[trial_index] = _normalize(weights @ particle_pairing)
 
         if filtered_executed_orientation_joint is not None:
             assert post_orientation_joint is not None
@@ -1863,8 +1916,34 @@ def run_state_model_particle_filter(
                 }
             )
 
+    pairing_diagnostics = {}
+    pairing_metadata = {}
+    if pairing_prior is not None and pairing_posterior is not None:
+        for key, probabilities in (
+            ("pairing_prior", pairing_prior),
+            ("pairing_posterior", pairing_posterior),
+        ):
+            pairing_diagnostics[f"{key}_entropy"] = -np.sum(
+                probabilities * np.log(np.clip(probabilities, 1e-300, 1.0)), axis=1
+            )
+            pairing_diagnostics[f"{key}_confidence"] = np.max(probabilities, axis=1)
+        pairing_metadata = {
+            "pairing_order": ["12|34", "13|24", "14|23"],
+            "probability_coordinate": "choice",
+            "pairing_prior_timing": "after_begin_trial_before_current_choice",
+            "pairing_prior_weights": "pre_choice_particle_weights",
+            "pairing_posterior_timing": "after_current_feedback_before_resampling",
+            "pairing_posterior_weights": "post_choice_particle_weights_without_feedback_weighting",
+            "pairing_entropy_definition": "entropy_of_particle_marginal_nats",
+            "pairing_confidence_definition": "maximum_particle_marginal_probability",
+        }
+
     return ParticleFilterResult(
         marginal_probabilities=marginal,
+        pairing_prior=pairing_prior,
+        pairing_posterior=pairing_posterior,
+        pairing_diagnostics=pairing_diagnostics,
+        pairing_metadata=pairing_metadata,
         marginal_hypothesis_prior=marginal_hypothesis_prior,
         marginal_active_probability=marginal_active_probability,
         marginal_executed_probability=marginal_executed_probability,

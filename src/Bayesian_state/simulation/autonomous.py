@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from ..metrics.task import category_learning_feedback, category_learning_metrics
 from ..model.config import ModelContext
 from ..model.state_model import GeneratedBehaviorTrajectory, StateModel
 from ..utils.seeding import inject_module_seed_from_trajectory, stable_seed
@@ -23,6 +24,7 @@ class AutonomousModelResult:
     condition: int
     subject_id: int
     trajectory_seed: int
+    metrics: dict[str, float] = field(default_factory=dict)
 
 
 def run_autonomous_category_learning(
@@ -43,7 +45,10 @@ def run_autonomous_category_learning(
     The model receives the physical stimulus but never the correct category
     before choosing.  The category schedule is owned by the task environment
     and is used only after the sampled choice to produce deterministic
-    correctness feedback.
+    feedback. Condition 3 returns 1 for an exact match, 0.5 for the other
+    species in the same task family, and 0 for the other family. Task family
+    membership is never passed to the cognitive modules. The result reports
+    species accuracy, family accuracy, and mean reward as separate metrics.
     """
 
     physical = np.asarray(stimulus, dtype=float)
@@ -79,7 +84,9 @@ def run_autonomous_category_learning(
     )
 
     def task_feedback(trial_index: int, choice: int) -> float:
-        return float(int(choice) == int(task_categories[trial_index]))
+        return category_learning_feedback(
+            choice, int(task_categories[trial_index]), condition=int(condition)
+        )
 
     legacy_random_state = np.random.get_state()
     np.random.seed(int(trajectory_seed))
@@ -100,6 +107,12 @@ def run_autonomous_category_learning(
         condition=int(condition),
         subject_id=int(subject_id),
         trajectory_seed=int(trajectory_seed),
+        metrics=category_learning_metrics(
+            choices=trajectory.choices,
+            categories=task_categories,
+            feedback=trajectory.feedback,
+            n_categories=int(model.n_cats),
+        ),
     )
 
 

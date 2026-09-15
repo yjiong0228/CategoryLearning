@@ -121,8 +121,32 @@ from src.Bayesian_state.inference.backends.particle_filter import (
 )
 ```
 
-当前入口支持 condition 1（二类）与 condition 2（四类、仅二值反馈）、expectation 类 readout 和 uniform output lapse。condition 3 尚未迁移；choice transmission audit 仍仅支持 condition 1，因为二值错误反馈不足以确定四分类的正确标签。条件 posterior
+当前入口支持 condition 1（二类）、condition 2（四类、仅二值反馈）和显式配置的 condition 3
+（四个不透明 response ID、反馈 `{0, 0.5, 1}`），以及 expectation 类 readout 和 uniform output lapse。
+Condition 3 必须使用 `likelihood.feedback_likelihood_mode: hierarchical_pairing` 与联合配对记忆，
+参考 `configs/exp123/model_struct/pmh_model_cond3_0826.yaml`。没有 `0.5` 的观察前缀也使用相同的
+三值反馈机制。choice transmission audit 仍仅支持 condition 1，因为二值错误反馈不足以确定四分类的正确标签。条件 posterior
 predictive 由 `posterior_predictive.py` 组合粒子状态与自主生成过程，不属于 optimizer。
+
+Condition 3 的 `state_probabilities` 额外提供 `(trial, 3)` 的 `pairing_prior` 和
+`pairing_posterior`，列顺序固定为 choice ID 配对 `12|34`、`13|24`、`14|23`。
+前者在 `begin_trial` 完成后、当前 choice 进入 PF 权重前，用 pre-choice 粒子权重平均；
+后者在当前 feedback 更新各粒子认知联合分布后、重采样前，用 post-choice 权重平均。
+Feedback 不额外进入外层 PF 权重。相应 `*_entropy` 是边缘配对分布的 Shannon entropy（nats），
+`*_confidence` 是其最大概率；它们不等于各粒子 entropy/confidence 的加权平均。
+这些时序与权重定义、配对顺序和 `probability_coordinate: choice` 同时保存在 result metadata。
+
+Simulation 的 metrics 保留上述字段并添加 `particle_` 前缀，state log 保留原字段名。
+观察到的 `presskey` 与双向 `response_key_mapping` 仅作为结果元数据保存，均不传入 learner。
+多次 PF 的 `mean_probability` 汇总先对配对分布等权平均，再计算其 entropy/confidence；
+即使关闭完整日志，也保留配对摘要、响应坐标和按键映射。
+
+Condition 3 的 metrics 还提供 `observed_task_metrics` 和 `predicted_task_metrics`，分别报告
+`species_accuracy`、`family_accuracy` 与 `mean_reward`。它们使用同一 `valid_trial_mask`
+（保留既有 trial 0 排除及 score mask），并记录 `task_metrics_n_trials`。
+预测奖励为 `(预测种正确率 + 预测科正确率) / 2`；观察奖励直接平均原始 `observed_feedback`。
+缺少真实类别时，观察分数仍可由三值反馈获得，预测分数标为不可用（NaN），不把所选答案的
+预测概率当作正确率。重复运行按平均预测分布重新计算这些分数。
 
 机制审计可直接调用 PF 公共函数，用
 `condition_on_observed_choice=false` 得到不做外层 choice importance weighting 的均匀轨迹

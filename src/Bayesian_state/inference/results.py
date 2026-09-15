@@ -335,6 +335,10 @@ class ParticleFilterResult(InferenceResult):
         audit_persistent_execution_no_lapse: Any = None,
         audit_persistent_execution_no_strategy_no_lapse: Any = None,
         audit_persistent_execution_counterfactual_strategy_no_lapse: Any = None,
+        pairing_prior: Any = None,
+        pairing_posterior: Any = None,
+        pairing_diagnostics: Mapping[str, Any] | None = None,
+        pairing_metadata: Mapping[str, Any] | None = None,
     ) -> None:
         observation_probabilities = {"prior_t": marginal_probabilities}
         for key, value in (
@@ -388,6 +392,11 @@ class ParticleFilterResult(InferenceResult):
             state_probabilities={
                 "hypothesis_prior": marginal_hypothesis_prior,
                 "active_probability": marginal_active_probability,
+                **(
+                    {"pairing_prior": pairing_prior, "pairing_posterior": pairing_posterior}
+                    if pairing_prior is not None
+                    else {}
+                ),
                 **(
                     {"executed_probability": marginal_executed_probability}
                     if marginal_executed_probability is not None
@@ -526,6 +535,7 @@ class ParticleFilterResult(InferenceResult):
                 "resampled": resampled,
                 "resampling_unique_ancestors": resampling_unique_ancestors,
                 **audit_diagnostics,
+                **dict(pairing_diagnostics or {}),
             },
             artifacts={
                 "final_weights": final_weights,
@@ -552,6 +562,7 @@ class ParticleFilterResult(InferenceResult):
                     else float(choice_transmission_counterfactual_gain)
                 ),
                 "filter_seed": int(filter_seed),
+                **dict(pairing_metadata or {}),
             },
         )
 

@@ -57,6 +57,10 @@ class BetaModule(BaseModule):
               exactly as ``increase_rate = correct_additive / beta_max``.
             - update_scope: ``active_hypotheses`` (legacy default) or
               ``executed_hypothesis`` for rule-specific confidence learning
+            - beta_update_mode: ``inferred_correct_category`` (legacy default),
+              ``probabilistic_feedback``, or ``hierarchical_feedback``. The
+              hierarchical mode consumes absolute pre-feedback evidence cached
+              by the memory module and requires zero feedback lapse.
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
             - prior_beta_scale: Scaling factor for prior-based initialization (default: 10.0)
         """
@@ -133,6 +137,13 @@ class BetaModule(BaseModule):
                 "probabilistic_feedback_lapse must be in [0, 1), "
                 f"got {self.probabilistic_feedback_lapse!r}."
             )
+        if (
+            self.beta_update_mode == "hierarchical_feedback"
+            and self.probabilistic_feedback_lapse != 0.0
+        ):
+            raise ValueError(
+                "hierarchical_feedback requires probabilistic_feedback_lapse=0."
+            )
 
         # Prior-based initialization
         self.use_prior_scaling = bool(kwargs.get("use_prior_scaling", True))
@@ -165,7 +176,11 @@ class BetaModule(BaseModule):
             "bernoulli": "probabilistic_feedback",
         }
         resolved = aliases.get(mode, mode)
-        valid = {"inferred_correct_category", "probabilistic_feedback"}
+        valid = {
+            "inferred_correct_category",
+            "probabilistic_feedback",
+            "hierarchical_feedback",
+        }
         if resolved not in valid:
             raise ValueError(
                 f"Unsupported beta_update_mode '{mode}'. "
@@ -350,6 +365,52 @@ class BetaModule(BaseModule):
                 penalty = self.decrease_rate * current_beta * min(1.0, -centered)
                 self.beta[hypo_idx] = max(current_beta - penalty, self.beta_min)
 
+    def _update_beta_hierarchical_feedback(
+        self,
+        feedback: float,
+        update_indices: np.ndarray,
+    ) -> None:
+        """Compare cached ternary-feedback probabilities with task chance."""
+        feedback_value = float(feedback)
+        if feedback_value not in (0.0, 0.5, 1.0):
+            raise ValueError("hierarchical_feedback requires feedback in {0, 0.5, 1}.")
+        memory = self.engine.get_module(ModuleRole.MEMORY)
+        cached = getattr(memory, "feedback_evidence", None)
+        if cached is None:
+            raise RuntimeError(
+                "hierarchical_feedback requires cached memory.feedback_evidence "
+                "from the current pre-feedback prediction."
+            )
+        evidence = np.asarray(cached, dtype=float)
+        if evidence.shape != self.beta.shape:
+            raise ValueError(
+                "memory.feedback_evidence must have one absolute probability "
+                "per hypothesis."
+            )
+        selected = evidence[update_indices]
+        if (
+            not np.all(np.isfinite(selected))
+            or np.any(selected < 0.0)
+            or np.any(selected > 1.0)
+        ):
+            raise ValueError(
+                "memory.feedback_evidence must contain finite probabilities in [0, 1]."
+            )
+        # Memory may already contain the updated pairing posterior. Its cache
+        # retains the faded, pre-feedback mixture, without normalization across
+        # hypotheses; recomputing here would consume the same feedback twice.
+        chance = 0.5 if feedback_value == 0.0 else 0.25
+        support = (selected - chance) / (selected + chance)
+        for hypo_idx, centered in zip(update_indices, support):
+            current_beta = self.beta[hypo_idx]
+            if centered >= 0.0:
+                headroom = self.beta_max - current_beta
+                increment = self.increase_rate * centered * headroom
+                self.beta[hypo_idx] = min(current_beta + increment, self.beta_max)
+            else:
+                penalty = self.decrease_rate * current_beta * min(1.0, -centered)
+                self.beta[hypo_idx] = max(current_beta - penalty, self.beta_min)
+
     def update_beta(self, 
                     stimulus: np.ndarray,
                     choice: int,
@@ -358,15 +419,18 @@ class BetaModule(BaseModule):
         """
         Update beta values based on trial outcome.
         
-        NEW Evolution rules (based on ground truth, not subject's choice):
+        In ``hierarchical_feedback`` mode, consume the memory module's cached
+        pre-feedback likelihood relative to the chance probability of this
+        ternary outcome. In ``probabilistic_feedback`` mode, use the existing
+        binary feedback evidence.
+
+        Legacy ``inferred_correct_category`` evolution rules:
         - We infer the correct category from feedback:
           - If feedback=1 (correct), correct_category = choice
           - If feedback=0 (wrong), correct_category = other category
         - For each hypothesis:
           - If hypothesis predicts correct_category: beta INCREASES
           - If hypothesis predicts wrong category: beta DECREASES
-        
-        This ensures GT hypothesis always gets rewarded when trial outcome is known.
         
         Parameters
         ----------
@@ -386,6 +450,11 @@ class BetaModule(BaseModule):
         
         active_indices = np.where(active_mask > 0)[0]
         update_indices = self._resolve_update_indices(active_indices)
+        if self.beta_update_mode == "hierarchical_feedback":
+            self._update_beta_hierarchical_feedback(feedback, update_indices)
+            self._zero_inactive_beta(active_indices)
+            self.engine.beta = self.beta
+            return
         if self.beta_update_mode == "probabilistic_feedback":
             self._update_beta_probabilistic_feedback(
                 stimulus,

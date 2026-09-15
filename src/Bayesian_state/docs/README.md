@@ -13,4 +13,6 @@
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
 
+- [Condition 3：类别、按键与配对学习](model_architecture/model_0826_condition3_design.md)：Task2 编码约定、联合配对学习实现、运行入口和验证范围；正式拟合及恢复实验尚未开展。
+
 - [Model 0826 Plus：检验与论文呈现方案](model_architecture/model_0826_plus.tex)：中文内部讨论稿，区分数值/恢复/行为/口述/生成检验，说明最新 Fig2 a–g 与补充图分工，以及已完成和待检验内容。

@@ -159,6 +159,10 @@ class StateModel:
         beta_value = getattr(engine, "beta", None)
         beta = None if beta_value is None else np.asarray(beta_value, dtype=float).copy()
         log: dict[str, Any] = {"perceived_stimulus": perceived.copy()}
+        memory = engine.get_module(ModuleRole.MEMORY)
+        if callable(getattr(memory, "pairing_marginal", None)):
+            log["pairing_probability_pre"] = memory.pairing_marginal()
+            log["conditional_pairing_pre"] = memory.conditional_pairing()
         mask = getattr(engine, "hypotheses_mask", None)
         if mask is not None:
             log["active_indices"] = np.flatnonzero(
@@ -247,6 +251,8 @@ class StateModel:
         prepared = self._pending_trial
         if prepared is None:
             raise RuntimeError("begin_trial() must be called before complete_trial().")
+        if self.condition == 3 and (not np.isfinite(choice) or choice != int(choice)):
+            raise ValueError("condition 3 choice must be a finite integer in 1..4.")
         choice_value = int(choice)
         if choice_value < 1 or choice_value > int(self.n_cats):
             raise ValueError(
@@ -255,6 +261,8 @@ class StateModel:
         feedback_value = float(feedback)
         if not np.isfinite(feedback_value) or not 0.0 <= feedback_value <= 1.0:
             raise ValueError("feedback must be a finite value in [0, 1].")
+        if self.condition == 3 and feedback_value not in (0., .5, 1.):
+            raise ValueError("condition 3 feedback must be 0, 0.5 or 1.")
 
         observation = (
             prepared.perceived_stimulus.copy(),
@@ -279,6 +287,11 @@ class StateModel:
         log = dict(prepared.log)
         log["choice"] = choice_value
         log["feedback"] = feedback_value
+        memory = self.engine.get_module(ModuleRole.MEMORY)
+        if callable(getattr(memory, "pairing_marginal", None)):
+            log["pairing_probability_post"] = memory.pairing_marginal()
+            log["conditional_pairing_post"] = memory.conditional_pairing()
+            log["pairing_local_projection_fallback"] = memory.local_projection_fallback
         mapping = self.engine.get_module(ModuleRole.MAPPING)
         if mapping is not None:
             orientation = np.asarray(

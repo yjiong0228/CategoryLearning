@@ -14,13 +14,22 @@ from ..utils.paths import PROCESSED_DATA_DIR, TASK2_PROCESSED_PATH
 
 @dataclass
 class TrialArrays:
-    """Subject trial arrays with optional hard and probabilistic targets."""
+    """Trial arrays and experimenter-only response-encoding metadata.
+
+    Choices and probability columns use the same ``choice`` response IDs. The
+    optional key maps describe encoding, not the learner's family knowledge.
+    A map covers observed responses only; absent answers are never inferred.
+    """
 
     stimulus: np.ndarray
     choices: np.ndarray
     feedback: np.ndarray
     categories: Optional[np.ndarray] = None
     target_probs: Optional[np.ndarray] = None
+    presskeys: Optional[np.ndarray] = None
+    choice_to_presskey: Optional[Dict[int, int]] = None
+    presskey_to_choice: Optional[Dict[int, int]] = None
+    probability_coordinate: str = "choice"
 
 
 # Trial-data preparation
@@ -64,6 +73,22 @@ def _probability_columns_from_frame(subject_frame: pd.DataFrame) -> list[str]:
         if suffix.isdigit():
             cols.append((int(suffix), name))
     return [name for _, name in sorted(cols)]
+
+
+def _response_key_mapping(subject_frame: pd.DataFrame) -> Optional[Dict[int, int]]:
+    """Validate a subject's fixed same-response choice-to-key correspondence."""
+    if "presskey" not in subject_frame.columns:
+        return None
+    for column in ("choice", "presskey"):
+        values = pd.to_numeric(subject_frame[column], errors="coerce").to_numpy(dtype=float)
+        if not np.all(np.isfinite(values) & (values == np.floor(values))):
+            raise ValueError(f"{column} response IDs must be finite integers")
+    pairs = subject_frame[["choice", "presskey"]].astype(int).drop_duplicates()
+    if pairs["choice"].duplicated().any() or pairs["presskey"].duplicated().any():
+        raise ValueError(
+            "choice and presskey must have a fixed one-to-one mapping across all subject sessions"
+        )
+    return dict(zip(pairs["choice"].tolist(), pairs["presskey"].tolist()))
 
 
 class SubjectTrialDataLoader:
@@ -113,8 +138,13 @@ class SubjectTrialDataLoader:
         if subject_frame.empty:
             raise ValueError(f"Subject {subject_id} not found in dataset")
 
+        # Encoding is fixed design metadata, inferred before either truncation.
+        # It must not depend on correctness or initialize cognitive pairing state.
+        key_mapping = _response_key_mapping(subject_frame)
         stop_index = max(1, int(len(subject_frame) * stop_at + 0.5))
-        return subject_frame.iloc[:stop_index].copy()
+        selected = subject_frame.iloc[:stop_index].copy()
+        selected.attrs["choice_to_presskey"] = key_mapping
+        return selected
 
     def _extract_arrays(
         self,
@@ -130,6 +160,16 @@ class SubjectTrialDataLoader:
         stimulus = subject_frame[self._feature_columns].to_numpy(dtype=float)
         choices = subject_frame["choice"].to_numpy(dtype=int)
         feedback = subject_frame["feedback"].to_numpy(dtype=float)
+        key_mapping = (
+            subject_frame.attrs["choice_to_presskey"]
+            if "choice_to_presskey" in subject_frame.attrs
+            else _response_key_mapping(subject_frame)
+        )
+        presskeys = (
+            subject_frame["presskey"].to_numpy(dtype=int)
+            if "presskey" in subject_frame.columns
+            else None
+        )
 
         probabilistic_target_types = {"probabilistic", "probability", "soft", "soft_category"}
         categories: Optional[np.ndarray] = None
@@ -172,6 +212,8 @@ class SubjectTrialDataLoader:
             stimulus = stimulus[:usable]
             choices = choices[:usable]
             feedback = feedback[:usable]
+            if presskeys is not None:
+                presskeys = presskeys[:usable]
             if categories is not None:
                 categories = categories[:usable]
             if target_probs is not None:
@@ -183,6 +225,11 @@ class SubjectTrialDataLoader:
             feedback=feedback,
             categories=categories,
             target_probs=target_probs,
+            presskeys=presskeys,
+            choice_to_presskey=None if key_mapping is None else dict(key_mapping),
+            presskey_to_choice=(
+                None if key_mapping is None else {key: choice for choice, key in key_mapping.items()}
+            ),
         )
 
     def _get_condition_value(self, subject_frame: pd.DataFrame) -> int:

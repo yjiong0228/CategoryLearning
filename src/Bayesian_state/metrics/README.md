@@ -22,12 +22,18 @@ evaluation ─────────┘
 | `prediction.py` | trial/run prediction 数据契约，以及 choice Brier/NLL、ECE、CRPS 和预测区间统计 |
 | `losses.py` | 所有 `loss_metric` 的唯一实现，包括 accuracy-curve BerHu、Brier 与 NLL family |
 | `trial.py` | trial 对齐、rolling/exponential accuracy、family/target-majority 和标准 metric bundle |
+| `task.py` | 实验环境反馈，以及种正确率、科正确率、平均得分；真实类别只用于评分 |
 | `behavior.py` | 学习曲线、history kernel、switch、perseveration、win--stay/lose--shift |
 | `trajectory.py` | 跨随机轨迹的边际 choice 预测，以及 loss、shape、history、switch 与分布汇总 |
 | `selection.py` | accuracy shape、history、switch 和代表轨迹选择所用的复合分数 |
 | `group.py` | 以被试等独立单位进行 paired delta、bootstrap 和 FDR 汇总 |
 | `residuals.py` | 逐试次顺序残差与因果状态诊断所需的纯数值函数 |
 | `numeric.py` | metric 模块复用的小型数值 helper |
+
+Condition 3 的 `condition3_task_metric_summaries()` 沿用调用方的 `valid_trial_mask`，
+不改变首试次排除规则。分别返回 observed/predicted 的种、科、平均得分；相同试次下
+`mean_reward = (species_accuracy + family_accuracy) / 2`。
+没有真实类别时，可由三值反馈计算观察指标，预测任务指标则保持缺失，不能用所选反应概率代替。
 
 配置名 `accuracy_curve_berhu` 的实现是 `losses.accuracy_curve_berhu()`；更短的
 `accuracy_berhu()` 是同一实现的兼容入口。旧代码中的

@@ -3,8 +3,12 @@
 > 本目录是期刊与博士论文共同维护的模型实现。期刊的配置、入口和验证位于
 > [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
 > 该目录依赖本包；本包不依赖期刊目录。修改机制只改这里，实验差异由配置和数据适配处理。
-> 0826 已扩展 condition 2 的四分类二值反馈 PF 拟合；condition 3 的部分反馈仍未迁移。
+> 0826 支持 condition 2 的四分类二值反馈，以及 condition 3 的三值反馈和未知反应配对学习。
+> Condition 3 当前开放 PMH 全模型；已有实现测试和短序列验证，尚未进行正式个体拟合与恢复实验。
 > 新入口和限制见 [condition 2 说明](docs/model_architecture/model_0826_condition2.md)。
+> Task2 的 `category`、`choice`、`presskey` 不能混用：类别的科结构固定，按键配对随被试变化。
+> 字段约定、实现入口与 condition 3 验证范围见
+> [condition 3：类别、按键与配对学习](docs/model_architecture/model_0826_condition3_design.md)。
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
@@ -137,6 +141,45 @@ results/subjects/*.json + optional compressed run streams
 6. `src/Bayesian_state/docs/history/model_0806_workflow.md`
 
 ## 4. 一个 trial 的数据流
+
+### Task2 的类别与按键编码
+
+`data/exp123/processed/Task2_processed.csv` 中，`category` 是刺激的真实类别，
+`choice` 是已经用同一类别编号表示的被试所选答案，`presskey` 是实际反应按键的编码。
+`choice` 不是正确答案，也不能直接视为 `presskey`。每位被试有固定的一一对应
+`choice ↔ presskey` 映射；该映射在被试之间不同。提取映射应使用同一次反应的
+`choice` 与 `presskey`，不能把错误试次的 `category` 与 `presskey` 当作映射样本。
+
+对于四分类任务，真实上层为科、下层为种：`category={1,2}` 属于一科，`{3,4}` 属于另一科。
+Condition 3 被试预先知道“两科、每科两种”，但不知道哪两个反应按键属于同一科。
+例如 301 的 `choice 1,2,3,4` 分别对应 `presskey 4,2,3,1`，两科的真实按键集合为
+`{2,4}` 和 `{1,3}`。这些真实集合可用于任务反馈和事后评价，不能直接初始化被试的配对信念。
+
+`simulation/data.py` 保留 `choice`、`presskey` 和双向映射；先用完整被试记录核查映射，
+再按既有规则截取试次。映射是实验编码元数据，不进入学习先验。
+统一使用 `choice` 编号本身只是重编码；若模型据编号直接认定 `{1,2}|{3,4}` 是已知配对，
+就把实验者知识提供给了被试模型。Condition 3 使用 `choice` 作为无语义的反应 ID，
+从均匀的三种配对开始学习；结果保存配对顺序、实际按键和概率列坐标。
+反馈核已检查整体重编码等价性，旧四分类固定标签规则库的完整标签对称性仍需单独审计。
+
+Condition 3 显式配置为
+[`pmh_model_cond3_0826.yaml`](../../configs/exp123/model_struct/pmh_model_cond3_0826.yaml)。
+它同时启用联合记忆、`hierarchical_pairing` 反馈、`hierarchical_feedback` 精度更新和
+`full_success` 搜索解释；缺少其中一项会报错，不能用 condition 2 配置直接读取半分反馈。
+配对权重是每条粒子轨迹的学习状态，不是额外的被试参数。现有 PMH 选择 NLL 与参数搜索接口
+保留；condition 3 的消融及恢复流程尚未定义，不应套用 condition 1 的恢复配置。
+
+单被试短序列检查入口（32 试次、8 粒子、1 个进程、固定参数）：
+
+```bash
+python -m src.Bayesian_state.run_simulation --config configs/exp123/simulation_cfg/model0826_cond3_smoke.yaml
+```
+
+重跑前设置新的 `output_dir`，已有输出受保护。PF 结果含选择预测、评分掩码、按键映射、
+反馈前后配对边际、配对熵与最大配对概率；这些边际分别使用进入本试次和观察选择后的粒子权重。
+自主生成按“种正确 1、同科另一种 0.5、异科 0”评分，科正确率、种正确率、平均得分分别解释。
+
+### 试次调度
 
 标准 observation 为：
 

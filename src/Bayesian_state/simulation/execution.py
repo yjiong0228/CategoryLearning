@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..metrics.losses import LOSS_METRIC_MAE, attach_loss_metrics
+from ..metrics.task import condition3_task_metric_summaries
 from ..metrics.trial import (
     build_prediction_metric_bundle,
 )
@@ -627,8 +628,8 @@ def _evaluate_state_model_particle_filter_run(
     seed_context: Optional[Mapping[str, Any]],
     score_trial_mask: Optional[Sequence[bool] | np.ndarray],
 ) -> SingleRunResult:
-    if int(condition) not in (1, 2):
-        raise ValueError("the current StateModel particle backend supports conditions 1 and 2 only.")
+    if int(condition) not in (1, 2, 3):
+        raise ValueError("the StateModel particle backend supports conditions 1, 2 and 3 only.")
     if prediction_mode not in {PREDICTION_MODE_PRIOR_T, PREDICTION_MODE_BOTH}:
         raise ValueError(
             "particle-filter prediction_mode must be 'prior_t' or 'both'; "
@@ -875,6 +876,29 @@ def _evaluate_state_model_particle_filter_run(
         "output_lapse_mean": float(output_lapse),
         "output_lapse_max": float(output_lapse),
     }
+    pairing_state_log = {}
+    if "pairing_prior" in state_probabilities:
+        for key in ("pairing_prior", "pairing_posterior"):
+            diagnostic_arrays[f"particle_{key}"] = state_probabilities[key]
+            pairing_state_log[key] = state_probabilities[key]
+            for suffix in ("entropy", "confidence"):
+                diagnostic_key = f"{key}_{suffix}"
+                diagnostic_arrays[f"particle_{diagnostic_key}"] = diagnostics[diagnostic_key]
+                pairing_state_log[diagnostic_key] = diagnostics[diagnostic_key]
+        pairing_metadata = {
+            key: value for key, value in result.metadata.items()
+            if key.startswith("pairing_")
+        }
+        diagnostic_arrays["pairing_metadata"] = pairing_metadata
+        pairing_state_log["pairing_metadata"] = pairing_metadata
+    if trial_arrays.presskeys is not None:
+        diagnostic_arrays["observed_presskey"] = trial_arrays.presskeys.copy()
+    if trial_arrays.choice_to_presskey is not None:
+        diagnostic_arrays["response_key_mapping"] = {
+            "choice_to_presskey": dict(trial_arrays.choice_to_presskey),
+            "presskey_to_choice": dict(trial_arrays.presskey_to_choice or {}),
+        }
+    diagnostic_arrays["probability_coordinate"] = trial_arrays.probability_coordinate
     if "executed_probability" in state_probabilities:
         diagnostic_arrays["particle_executed_probability"] = state_probabilities[
             "executed_probability"
@@ -907,6 +931,14 @@ def _evaluate_state_model_particle_filter_run(
         score_trial_mask=score_trial_mask,
         diagnostics=diagnostic_arrays,
     )
+    if int(condition) == 3:
+        metrics.update(condition3_task_metric_summaries(
+            probabilities=probabilities,
+            choices=trial_arrays.choices,
+            feedback=trial_arrays.feedback,
+            categories=trial_arrays.categories,
+            valid_trial_mask=metrics["valid_trial_mask"],
+        ))
     metrics_by_mode = {PREDICTION_MODE_PRIOR_T: metrics}
     transition_counts = None
     state_log = None
@@ -1177,6 +1209,7 @@ def _evaluate_state_model_particle_filter_run(
             "post_choice_ess": diagnostics["post_choice_ess"],
             "resampled": diagnostics["resampled"],
             **audit_state_log,
+            **pairing_state_log,
         }
         if "executed_probability" in state_probabilities:
             state_log.update(

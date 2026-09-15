@@ -45,13 +45,16 @@ STANDARD_MEMORY_CLASS = (
     "src.Bayesian_state.model.modules.memory.BayesianMemoryModule"
 )
 DUAL_MEMORY_CLASS = "src.Bayesian_state.model.modules.memory.DualMemoryModule"
+HIERARCHICAL_MEMORY_CLASS = (
+    "src.Bayesian_state.model.modules.pairing_memory.HierarchicalPairingMemoryModule"
+)
 
 
 def build_model_0826_cell_engine(
     base_engine: Mapping[str, Any],
     cell: str,
 ) -> dict[str, Any]:
-    """Return one P/PM/PH/PMH engine while changing only M and H."""
+    """Build an architecture cell; condition 3 currently supports joint PMH only."""
 
     cell_name = str(cell).strip().upper()
     if cell_name not in MODEL_0826_CELLS:
@@ -65,13 +68,36 @@ def build_model_0826_cell_engine(
     if not isinstance(modules, dict) or not isinstance(agenda, list):
         raise ValueError("base Model0826 engine requires modules and agenda")
 
+    memory = modules.get("memory_mod")
+    memory_class = memory.get("class") if isinstance(memory, dict) else None
+    hierarchical = (
+        (engine.get("likelihood") or {}).get("feedback_likelihood_mode")
+        == "hierarchical_pairing"
+    )
+    condition3 = (
+        hierarchical
+        or memory_class == HIERARCHICAL_MEMORY_CLASS
+        or provenance.get("condition") == 3
+    )
+    if condition3:
+        if cell_name != "PMH":
+            raise ValueError("condition 3 currently supports only the PMH architecture cell.")
+        if not hierarchical or memory_class != HIERARCHICAL_MEMORY_CLASS:
+            raise ValueError(
+                "condition 3 requires explicit hierarchical_pairing likelihood "
+                "and HierarchicalPairingMemoryModule together."
+            )
+
     has_memory = cell_name in {"PM", "PMH"}
     has_hypothesis_search = cell_name in {"PH", "PMH"}
     if has_memory:
         memory = modules.get("memory_mod")
         if not isinstance(memory, dict):
             raise ValueError("base Model0826 engine is missing memory_mod")
-        memory["class"] = DUAL_MEMORY_CLASS
+        # Joint rule/pairing memory is the condition-3 scientific mechanism;
+        # the ordinary PMH builder must not silently turn it into scalar memory.
+        if not hierarchical:
+            memory["class"] = DUAL_MEMORY_CLASS
     else:
         modules["memory_mod"] = {"class": STANDARD_MEMORY_CLASS}
 

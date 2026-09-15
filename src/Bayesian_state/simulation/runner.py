@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from ..metrics.losses import LOSS_METRIC_MAE
 from ..metrics.numeric import safe_float
+from ..metrics.task import condition3_task_metric_summaries
 from ..metrics.trajectory import (
     marginal_prediction_metrics_from_runs,
     accuracy_shape_metrics_from_runs,
@@ -245,6 +246,30 @@ def _mean_probability_metrics_by_mode(
             "repeat_probability_sd": repeat_sd,
             "repeat_probability_mcse": repeat_sd / np.sqrt(float(len(runs))),
         }
+        # Response coordinates are observation metadata, so averaging repeats
+        # must retain and verify them even when full per-run logs are disabled.
+        for key in ("probability_coordinate", "response_key_mapping", "pairing_metadata"):
+            value = mode_metrics[0].get(key)
+            if any(metrics.get(key) != value for metrics in mode_metrics[1:]):
+                raise ValueError(f"Repeat metric field {key!r} is not invariant across runs.")
+            if value is not None:
+                diagnostics[key] = value
+        presskeys = _shared_observation_array(mode_metrics, "observed_presskey")
+        if presskeys is not None:
+            diagnostics["observed_presskey"] = presskeys
+        for key in ("pairing_prior", "pairing_posterior"):
+            probability_key = f"particle_{key}"
+            pairing_values = [metrics.get(probability_key) for metrics in mode_metrics]
+            if all(value is None for value in pairing_values):
+                continue
+            if any(value is None for value in pairing_values):
+                raise ValueError("Repeat runs disagree on available pairing diagnostics.")
+            mean_pairing = np.mean(np.stack(pairing_values, axis=0), axis=0)
+            diagnostics[probability_key] = mean_pairing
+            diagnostics[f"{probability_key}_entropy"] = -np.sum(
+                mean_pairing * np.log(np.clip(mean_pairing, 1e-300, 1.0)), axis=1
+            )
+            diagnostics[f"{probability_key}_confidence"] = np.max(mean_pairing, axis=1)
         output[mode] = compute_metrics_from_category_probabilities(
             mean_probability,
             choices=np.asarray(choices, dtype=int),
@@ -265,6 +290,14 @@ def _mean_probability_metrics_by_mode(
             ),
             diagnostics=diagnostics,
         )
+        if "observed_task_metrics" in mode_metrics[0]:
+            output[mode].update(condition3_task_metric_summaries(
+                probabilities=mean_probability,
+                choices=choices,
+                feedback=feedback,
+                categories=categories,
+                valid_trial_mask=output[mode]["valid_trial_mask"],
+            ))
     return output
 
 

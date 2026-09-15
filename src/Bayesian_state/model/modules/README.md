@@ -2,6 +2,18 @@
 
 本文档面向论文写作与模型维护，系统说明 `src/Bayesian_state/model/modules/` 下各模块的构造、输入输出、状态变量、关键公式和模块间耦合关系。目标是把“模型如何从 trial 数据走到 posterior，再走到下一 trial prior”的全过程讲清楚。
 
+Condition 3 的 PMH 使用 `pairing_memory.HierarchicalPairingMemoryModule`：保存
+`joint[h,a]`，配对顺序为 `12|34, 13|24, 14|23`，各规则初始配对均匀。
+`engine.compute_likelihood()` 只计算活跃规则的四类概率，由无状态的
+`ObservationLikelihood.pairing_kernel()` 产生三配对证据；记忆先对联合先验作
+`gamma` 次幂，再乘一次反馈核。`feedback_evidence` 保留反馈前的绝对事件概率，
+供 `beta_update_mode: hierarchical_feedback` 使用；不能跨规则归一化或用更新后的配对重算。
+新模块第一版要求 `w0=0, feedback_gain=1`。规则替换时联合质量沿用原 prior assignment，
+局部投影为零时回退到携带旧配对信念的全局投影，并记录 fallback。
+联合状态与待消费证据均通过模块快照复制。搜索显式设
+`feedback_interpretation: full_success`，但 observation 中仍保留原始三值反馈。
+完整原理见 [Model 0826 第 13 节](../../docs/model_architecture/model_0826.tex)。
+
 ## 1. 整体推理链条（模块管线）
 
 在 `StateModel` 初始化时，`model/assembly.py` 按配置创建模块实例并注册到 engine。

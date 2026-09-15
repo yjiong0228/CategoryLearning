@@ -262,5 +262,11 @@ top-k”判定，同时保留 exact-winner agreement 作为诊断，避免把近
 
 负责。optimizer 本身应保持可由测试和 notebook 直接调用。
 
+Condition 3 的 `model_0826.build_model_0826_cell_engine()` 第一版只接受 PMH，保留
+`hierarchical_pairing` 似然与 `HierarchicalPairingMemoryModule` 的联合更新。二者必须同时
+显式配置；构建器拒绝 P、PM、PH，不会把联合记忆替换为普通 `DualMemoryModule`。拟合仍使用
+已有 `gamma` 参数路径，配对权重由每条候选轨迹重新学习。该接口检查不代表完成了 condition 3
+的搜索预算校准或恢复验证；已有 condition 1/2 架构单元的构建方式不变。
+
 `diagnostics/search.py` 不启动模型，适合快速检查搜索产物；
 `diagnostics/predictive.py` 会重新采样或运行模型，应显式控制 repeats、subjects 和 `n_jobs`。

@@ -23,6 +23,7 @@ from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
+from ..metrics.task import category_learning_metrics
 from ..simulation.autonomous import run_autonomous_category_learning
 from ..simulation.config import (
     DEFAULT_DATA_PATH,
@@ -238,7 +239,7 @@ def _simulate_autonomous_minimal(
     ]
     return (
         np.asarray(trajectory.choices, dtype=np.int16),
-        np.asarray(trajectory.feedback, dtype=np.int8),
+        np.asarray(trajectory.feedback, dtype=np.float32),
         np.asarray(expected_correct, dtype=np.float32),
     )
 
@@ -297,8 +298,9 @@ def generate_autonomous_ensemble(
         raise RuntimeError("Autonomous expected-correct probabilities are non-finite.")
     if np.any((expected_correct < 0.0) | (expected_correct > 1.0)):
         raise RuntimeError("Autonomous expected-correct probabilities fall outside [0, 1].")
-    if not np.all(np.isin(feedback, (0, 1))):
-        raise RuntimeError("Autonomous feedback must be binary.")
+    allowed_feedback = (0.0, 0.5, 1.0) if int(spec.condition) == 3 else (0.0, 1.0)
+    if not np.all(np.isin(feedback, allowed_feedback)):
+        raise RuntimeError(f"Autonomous feedback must be one of {allowed_feedback}.")
     return AutonomousEnsemble(
         choices=choices,
         feedback=feedback,
@@ -475,10 +477,11 @@ def summarize_trajectory_shapes(
     max_clusters: int = 4,
     cluster_seed: int = 20260831,
 ) -> TrajectoryShapeSummary:
-    """Summarize coherent curves without resampling a fixed probability path."""
+    """Summarize species-accuracy curves; retain graded task rewards separately."""
 
+    species_success = np.asarray(ensemble.feedback, dtype=float) == 1.0
     trial, rolling = rolling_binary_ensemble(
-        ensemble.feedback,
+        species_success,
         window_size=window_size,
     )
     expected_trial, rolling_expected = rolling_binary_ensemble(
@@ -486,7 +489,7 @@ def summarize_trajectory_shapes(
         window_size=window_size,
     )
     observed_trial, observed_rolling = rolling_binary_ensemble(
-        np.asarray(observed_feedback, dtype=float),
+        np.asarray(observed_feedback, dtype=float) == 1.0,
         window_size=window_size,
     )
     if not np.array_equal(trial, expected_trial) or not np.array_equal(
@@ -510,8 +513,8 @@ def summarize_trajectory_shapes(
         )
     )
     final_count = min(max(1, int(final_block_trials)), ensemble.feedback.shape[1])
-    overall_accuracy = np.mean(ensemble.feedback, axis=1)
-    final_accuracy = np.mean(ensemble.feedback[:, -final_count:], axis=1)
+    overall_accuracy = np.mean(species_success, axis=1)
+    final_accuracy = np.mean(species_success[:, -final_count:], axis=1)
     labels, cluster_medoids, shares, silhouette, cluster_count = (
         _cluster_trajectory_shapes(
             rolling,
@@ -588,6 +591,7 @@ def plot_autonomous_trajectory_ensemble(
     """Draw the hero ensemble, cluster archetypes, and mastery-onset CDF."""
 
     _configure_figure_style()
+    species_chance = 0.5 if int(spec.condition) == 1 else 0.25
     colors = ["#4878A8", "#D9822B", "#6A9F58", "#9A6FB0"]
     x = summary.trial
     n_rollouts = summary.rolling_accuracy.shape[0]
@@ -657,7 +661,7 @@ def plot_autonomous_trajectory_ensemble(
         zorder=5,
     )
     ax_ensemble.axhline(
-        0.5,
+        species_chance,
         color="#888888",
         linewidth=0.8,
         linestyle=":",
@@ -712,7 +716,7 @@ def plot_autonomous_trajectory_ensemble(
         linestyle="--",
         label="Observed subject",
     )
-    ax_clusters.axhline(0.5, color="#888888", linewidth=0.7, linestyle=":")
+    ax_clusters.axhline(species_chance, color="#888888", linewidth=0.7, linestyle=":")
     ax_clusters.set(
         xlim=(1, int(spec.arrays.stimulus.shape[0])),
         ylim=(0, 1.02),
@@ -820,12 +824,15 @@ def plot_autonomous_trajectory_ensemble(
 def _trajectory_summary_frame(
     ensemble: AutonomousEnsemble,
     summary: TrajectoryShapeSummary,
+    *,
+    categories: np.ndarray | None = None,
+    n_categories: int = 2,
 ) -> pd.DataFrame:
     medoid_for = {
         int(index): int(label) + 1
         for label, index in enumerate(summary.cluster_medoid_indices)
     }
-    return pd.DataFrame(
+    frame = pd.DataFrame(
         {
             "rollout_index": np.arange(ensemble.feedback.shape[0], dtype=int),
             "trajectory_seed": ensemble.trajectory_seeds.astype(np.uint64),
@@ -843,6 +850,20 @@ def _trajectory_summary_frame(
             ],
         }
     )
+    if categories is not None:
+        task_metrics = pd.DataFrame(
+            [
+                category_learning_metrics(
+                    choices=choices,
+                    categories=categories,
+                    feedback=feedback,
+                    n_categories=n_categories,
+                )
+                for choices, feedback in zip(ensemble.choices, ensemble.feedback)
+            ]
+        )
+        frame = pd.concat([frame, task_metrics], axis=1)
+    return frame
 
 
 def _plot_source_frame(
@@ -952,7 +973,12 @@ def save_autonomous_trajectory_evaluation(
         central_90_indices=summary.central_90_indices,
     )
     summary_path = output / "autonomous_trajectory_summary.csv"
-    _trajectory_summary_frame(ensemble, summary).to_csv(summary_path, index=False)
+    _trajectory_summary_frame(
+        ensemble,
+        summary,
+        categories=spec.arrays.categories,
+        n_categories=2 if spec.condition == 1 else 4,
+    ).to_csv(summary_path, index=False)
     source_path = output / "autonomous_trajectory_plot_source.csv"
     _plot_source_frame(summary, visible_indices).to_csv(source_path, index=False)
 
@@ -966,6 +992,12 @@ def save_autonomous_trajectory_evaluation(
         ),
         "subject_id": int(spec.subject_id),
         "condition": int(spec.condition),
+        "metric_definitions": {
+            "species_accuracy": "mean(choice == category)",
+            "family_accuracy": "mean(task family(choice) == task family(category))",
+            "mean_reward": "mean(raw feedback)",
+            "accuracy_curves": "species accuracy: feedback == 1",
+        },
         "label": spec.label,
         "config_path": _project_relative(spec.config_path),
         "config_sha256": spec.config_sha256,

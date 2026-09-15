@@ -18,6 +18,10 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
 
     ``F_t = decay * F_(t-1) + (1 - decay) * e_(t-1)``.
 
+    With module-level ``feedback_interpretation='full_success'``, these
+    formulas use ``feedback = 1(raw_feedback == 1)`` while retaining raw
+    feedback in outcome state and diagnostics. The default remains ``graded``.
+
     The probability of at least one workspace replacement is
 
     ``logit(E_t) = logit(E_reactive,t) + accumulator_logit_gain * H_t``,
@@ -183,7 +187,7 @@ class NestedFeedbackAccumulatorHypothesisTransitionModule(
         self.feedback_surprise = float("nan")
         self.feedback_uncertainty = float("nan")
         if self.outcome_pending and np.isfinite(self.previous_feedback):
-            feedback = float(np.clip(self.previous_feedback, 0.0, 1.0))
+            feedback = self._control_feedback()
             error = float(1.0 - feedback)
             lagged_failure = float(self.failure_pressure)
             self.failure_pressure = float(

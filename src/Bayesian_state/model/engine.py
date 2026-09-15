@@ -311,6 +311,20 @@ class BayesianStateEngine:
     def compute_likelihood(self) -> np.ndarray:
         """针对当前完整 observation 计算并保存 likelihood。"""
 
+        if self.observation_likelihood.feedback_likelihood_mode == "hierarchical_pairing":
+            memory = self.get_module(ModuleRole.MEMORY)
+            active = np.flatnonzero(np.asarray(self.hypotheses_mask) > 0.)
+            # Only active rules need emissions. Pairing adds three scalar
+            # evidence cells, not three geometry calculations per rule.
+            chance = .5 if self.observation[2] == 0. else .25
+            kernel = np.full((self.set_size, 3), chance, dtype=float)
+            beta = None if self.beta is None else np.asarray(self.beta)[active]
+            kernel[active] = self.observation_likelihood.pairing_kernel(
+                self.observation, active, beta=beta,
+            )
+            self.likelihood = memory.prepare_feedback(kernel)
+            return self.likelihood
+
         hypothesis_args = tuple(
             self.hypotheses_set[hypothesis] for hypothesis in self.hypotheses_set
         )

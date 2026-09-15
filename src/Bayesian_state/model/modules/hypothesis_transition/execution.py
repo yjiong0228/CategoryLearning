@@ -6,6 +6,8 @@ from typing import Any, Dict, Mapping
 
 import numpy as np
 
+from ..base_module import ModuleRole
+
 from .contracts import (
     HypothesisSelection,
     TransitionContext,
@@ -370,7 +372,11 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         if self._pending_transition is None:
             raise RuntimeError("bounded-workspace transition has no pending selection.")
         posterior = np.asarray(self._pending_transition["posterior"], dtype=float)
-        if self.prior_assignment_method == self.PAIRWISE_PRIOR_ASSIGNMENT:
+        memory = self.engine.get_module(ModuleRole.MEMORY)
+        joint_assignment = getattr(memory, "assign_transition_prior", None)
+        if callable(joint_assignment):
+            transition_prior, assignment_diagnostics = joint_assignment(self, selection)
+        elif self.prior_assignment_method == self.PAIRWISE_PRIOR_ASSIGNMENT:
             transition_prior, assignment_diagnostics = (
                 self._pairwise_mass_transfer_prior(posterior, selection)
             )
@@ -418,6 +424,13 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
             )
         else:
             prior = transition_prior
+
+        if callable(joint_assignment) and reset_strength > 0.:
+            # A global reset changes the rule prior, while retaining the old
+            # workspace's learned response-pair distribution.
+            pair_marginal = memory.joint.sum(axis=0)
+            memory.joint = ((1. - reset_strength) * memory.joint
+                            + reset_strength * broad_prior[:, None] * pair_marginal)
 
         self._pending_transition.update(assignment_diagnostics)
         self._pending_transition["prior_reset_strength"] = reset_strength

@@ -91,8 +91,8 @@ def run_inference_backend(
             dataset_paths=dataset_paths,
         )
         return ensure_inference_result(result, backend=BACKEND_TRAJECTORY)
-    if int(condition) not in (1, 2):
-        raise ValueError("the current StateModel particle backend supports conditions 1 and 2 only.")
+    if int(condition) not in (1, 2, 3):
+        raise ValueError("the StateModel particle backend supports conditions 1, 2 and 3 only.")
     assert config.particle_count is not None
     assert config.resample_threshold_fraction is not None
     result = run_state_model_particle_filter(

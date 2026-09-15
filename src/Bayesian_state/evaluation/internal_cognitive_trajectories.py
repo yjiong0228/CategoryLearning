@@ -677,8 +677,9 @@ def summarize_fixed_path_fit(
     selected_correct_probability: np.ndarray,
     selected_observed_choice_probability: np.ndarray,
     window_size: int,
+    condition: int = 1,
 ) -> FixedPathFitSummary:
-    """Compare one fixed complete path with the subject's full behavior."""
+    """Compare one fixed complete path with full species-correct behavior."""
 
     feedback = np.asarray(observed_feedback, dtype=float).reshape(-1)
     correct_probability = np.asarray(
@@ -693,10 +694,10 @@ def summarize_fixed_path_fit(
         == observed_probability.size
     ):
         raise ValueError("Human and fixed-path arrays must have equal length.")
-    if not np.all(np.isfinite(feedback)) or not np.all(
-        (feedback == 0.0) | (feedback == 1.0)
-    ):
-        raise ValueError("observed_feedback must contain finite binary values.")
+    allowed_feedback = (0.0, 0.5, 1.0) if int(condition) == 3 else (0.0, 1.0)
+    if not np.all(np.isfinite(feedback)) or not np.all(np.isin(feedback, allowed_feedback)):
+        description = "0, 0.5, or 1" if int(condition) == 3 else "binary values"
+        raise ValueError(f"observed_feedback must contain finite {description}.")
     if (
         not np.all(np.isfinite(correct_probability))
         or not np.all(np.isfinite(observed_probability))
@@ -708,7 +709,8 @@ def summarize_fixed_path_fit(
         raise ValueError(
             "Fixed-path arrays must contain finite probabilities in [0, 1]."
         )
-    rolling_human = _rolling_accuracy(feedback, int(window_size))
+    species_success = (feedback == 1.0).astype(float)
+    rolling_human = _rolling_accuracy(species_success, int(window_size))
     rolling_model = _rolling_accuracy(correct_probability, int(window_size))
     valid = np.isfinite(rolling_human) & np.isfinite(rolling_model)
     difference = rolling_model[valid] - rolling_human[valid]
@@ -727,7 +729,7 @@ def summarize_fixed_path_fit(
     return FixedPathFitSummary(
         rolling_human_accuracy=rolling_human,
         rolling_model_correct_probability=rolling_model,
-        empirical_accuracy=float(np.mean(feedback)),
+        empirical_accuracy=float(np.mean(species_success)),
         model_expected_accuracy=float(np.mean(correct_probability)),
         sequence_nll=sequence_nll,
         mean_trial_nll=sequence_nll / float(feedback.size),
@@ -772,6 +774,7 @@ def _save_fixed_path_model_human_figure(
     subject_id: int,
     window_size: int,
     output_path: Path,
+    condition: int = 1,
 ) -> Path:
     """Render the direct human-versus-one-fixed-path comparison."""
 
@@ -793,7 +796,7 @@ def _save_fixed_path_model_human_figure(
         label="Best fixed complete path",
         zorder=2,
     )
-    error_trial = trial[np.asarray(observed_feedback, dtype=float) < 0.5]
+    error_trial = trial[np.asarray(observed_feedback, dtype=float) < 1.0]
     axis.scatter(
         error_trial,
         np.full(error_trial.size, 0.025),
@@ -804,7 +807,8 @@ def _save_fixed_path_model_human_figure(
         label="Observed error",
         zorder=4,
     )
-    axis.axhline(0.5, color="#999999", lw=0.75, ls=":")
+    species_chance = 0.5 if int(condition) == 1 else 0.25
+    axis.axhline(species_chance, color="#999999", lw=0.75, ls=":")
     axis.set_xlim(float(trial[0]), float(trial[-1]))
     axis.set_ylim(-0.02, 1.02)
     axis.set_xlabel("Trial")
@@ -932,6 +936,7 @@ def render_best_complete_path_model_human_from_artifacts(
         selected_correct_probability=correct_probability[best],
         selected_observed_choice_probability=observed_probability[best],
         window_size=int(window_size),
+        condition=int(source_manifest.get("condition", 1)),
     )
     trial_raw = pd.to_numeric(trial_frame["trial"], errors="coerce").to_numpy(
         dtype=float
@@ -961,6 +966,7 @@ def render_best_complete_path_model_human_from_artifacts(
         subject_id=subject_id,
         window_size=int(window_size),
         output_path=figure_path,
+        condition=int(source_manifest.get("condition", 1)),
     )
 
     trial_source = pd.DataFrame(
@@ -1067,7 +1073,7 @@ def _save_overview_figure(
 ) -> Path:
     _plot_style()
     trial = np.arange(1, ensemble.spec.arrays.choices.size + 1)
-    correct = np.asarray(ensemble.spec.arrays.feedback, dtype=float)
+    correct = (np.asarray(ensemble.spec.arrays.feedback, dtype=float) == 1.0).astype(float)
     categories = np.asarray(ensemble.spec.arrays.categories, dtype=int) - 1
     sampled = summary.sampled_paths
     h0_prior = np.asarray(sampled["hypothesis_prior"], dtype=float)[:, :, 0]
@@ -1228,7 +1234,7 @@ def _save_overview_figure(
     ax_choice.plot(trial, representative_rolling, color="#111111", lw=0.9, alpha=0.80, label="Representative complete path")
     error_trials = trial[correct < 0.5]
     ax_choice.scatter(error_trials, np.full(error_trials.size, 0.03), marker="|", s=30, color="#C44E52", label="Observed error")
-    ax_choice.axhline(0.5, color="#999999", lw=0.7, ls=":")
+    ax_choice.axhline(1.0 / ensemble.marginal_choice_probability.shape[1], color="#999999", lw=0.7, ls=":")
     ax_choice.set_ylim(-0.03, 1.03)
     ax_choice.set_ylabel("16-trial mean P(correct)")
     ax_choice.set_xlabel("Trial")
@@ -1355,13 +1361,13 @@ def _save_archetype_figure(
             label=f"{ensemble.spec.window_size}-trial mean",
         )
         readout.scatter(
-            trial[np.asarray(ensemble.spec.arrays.feedback) < 0.5],
-            np.full(np.sum(np.asarray(ensemble.spec.arrays.feedback) < 0.5), 0.03),
+            trial[np.asarray(ensemble.spec.arrays.feedback) < 1.0],
+            np.full(np.sum(np.asarray(ensemble.spec.arrays.feedback) < 1.0), 0.03),
             marker="|",
             s=25,
             color="#C44E52",
         )
-        readout.axhline(0.5, color="#999999", lw=0.7, ls=":")
+        readout.axhline(1.0 / ensemble.marginal_choice_probability.shape[1], color="#999999", lw=0.7, ls=":")
         readout.set_ylim(-0.03, 1.03)
         readout.set_ylabel("Readout")
         axes.extend((strip, belief, readout))

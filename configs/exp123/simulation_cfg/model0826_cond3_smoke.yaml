@@ -1,0 +1,28 @@
+# Fixed-parameter implementation check, not an individual parameter fit.
+# Existing subject outputs are protected; choose a new output_dir for reruns.
+engine_config_path: ../model_struct/pmh_model_cond3_0826.yaml
+subjects: [301]
+hyper_base_seed: 20260915
+dataset:
+  processed_dir: ../../../data/exp123/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+output_dir: ../../../results/model_0826/cond3/subject_301/implementation_smoke_20260915_v2
+fixed_hyperparams:
+  engine.inference.particle_count: 8
+n_jobs: 1
+simulation_repeats: 1
+repeat_aggregation: mean_probability
+window_size: 8
+stop_at: 1.0
+max_trials: 32
+keep_logs: true
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

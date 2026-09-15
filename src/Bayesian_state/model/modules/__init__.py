@@ -18,6 +18,7 @@ from .hypothesis_transition import (
     TwoStepHypothesisTransitionMixin,
 )
 from .memory import BayesianMemoryModule, DualMemoryModule
+from .pairing_memory import HierarchicalPairingMemoryModule
 from .mapping import BinaryOrientationMappingModule
 from .perception import (
     DEFAULT_NORMAL_SUBJECT_IDS,
@@ -37,6 +38,7 @@ __all__ = [
     "DEFAULT_NORMAL_SUBJECT_IDS",
     "DEFAULT_UNIFORM_SUBJECT_IDS",
     "DualMemoryModule",
+    "HierarchicalPairingMemoryModule",
     "DynamicAdaptiveControlHypothesisTransitionModule",
     "DynamicDiscreteStrategyHypothesisTransitionModule",
     "FEATURE_NAMES",

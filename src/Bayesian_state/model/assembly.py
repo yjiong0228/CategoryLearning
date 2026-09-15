@@ -15,6 +15,8 @@ from ..hypothesis_space import ContinuousPartition, ObservationLikelihood
 from ..utils.logging import LOGGER
 from .config import ModelContext
 from .engine import BayesianStateEngine, IndexedSet
+from .modules.base_module import ModuleRole
+from .modules.pairing_memory import HierarchicalPairingMemoryModule
 
 
 def resolve_class(class_reference: str | type) -> type:
@@ -123,6 +125,24 @@ def build_engine(
         LOGGER.debug("Building module %s with kwargs=%s", name, module_kwargs)
         engine.register_module(name, module_class(engine=engine, **module_kwargs))
     engine.validate_agenda()
+    memory = engine.get_module(ModuleRole.MEMORY)
+    hierarchical = observation_likelihood.feedback_likelihood_mode == "hierarchical_pairing"
+    if context.condition == 3 or hierarchical or isinstance(memory, HierarchicalPairingMemoryModule):
+        if context.condition != 3 or not hierarchical or not isinstance(memory, HierarchicalPairingMemoryModule):
+            raise ValueError("condition 3 requires hierarchical_pairing likelihood and HierarchicalPairingMemoryModule together.")
+        beta = engine.get_module(ModuleRole.BETA)
+        transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+        if (observation_likelihood.beta_source != "action"
+                or observation_likelihood.distance_mode != "boundary"
+                or getattr(beta, "beta_update_mode", None) != "hierarchical_feedback"
+                or getattr(transition, "feedback_interpretation", None) != "full_success"
+                or not hasattr(transition, "prior_assignment_method")
+                or engine.get_module(ModuleRole.MAPPING) is not None):
+            raise ValueError("condition 3 requires boundary/action emissions, hierarchical_feedback beta, full_success workspace search and fixed response coordinates.")
+        names = {module.role: name for name, module in engine.modules.items()}
+        if engine.agenda.index(names[ModuleRole.MEMORY]) > engine.agenda.index(names[ModuleRole.BETA]):
+            raise ValueError("condition 3 memory must precede beta in the post-choice agenda.")
+        memory.initialize_prior()
     return engine
 
 

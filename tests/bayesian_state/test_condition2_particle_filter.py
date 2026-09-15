@@ -55,7 +55,7 @@ def test_condition2_rejects_partial_feedback_and_binary_audit(case):
         run_inference_backend(**case)
 
 
-def test_condition3_remains_deferred(case):
+def test_condition3_requires_hierarchical_pairing_configuration(case):
     case["condition"] = 3
-    with pytest.raises(ValueError, match="conditions 1 and 2"):
+    with pytest.raises(ValueError, match="hierarchical_pairing"):
         run_inference_backend(**case)
