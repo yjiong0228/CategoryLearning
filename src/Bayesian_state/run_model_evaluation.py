@@ -60,6 +60,42 @@ def resolve_subjects(
     return None
 
 
+def resolve_oral_modes(
+    results: Mapping[int, Mapping[str, Any]],
+    requested_mode: str = "auto",
+) -> dict[str, list[int]]:
+    """Group subjects by the oral representation matching their saved encoding.
+
+    Explicit modes preserve historical and sensitivity-analysis workflows.
+    Auto never guesses the encoding of a legacy result without provenance.
+    """
+    if requested_mode in {"center", "region"}:
+        return {requested_mode: sorted(results)}
+    if requested_mode != "auto":
+        raise ValueError(f"Unsupported oral mode: {requested_mode!r}")
+
+    groups: dict[str, list[int]] = {}
+    for sid in sorted(results):
+        provenance = results[sid].get("model_provenance") or {}
+        resolved = provenance.get("resolved") or {}
+        encoding_mode = (resolved.get("encoding") or {}).get("distance_mode")
+        likelihood_mode = (resolved.get("likelihood") or {}).get("distance_mode")
+        if encoding_mode and likelihood_mode and encoding_mode != likelihood_mode:
+            raise ValueError(
+                f"Subject {sid}: saved encoding and likelihood distance modes conflict."
+            )
+        distance_mode = encoding_mode or likelihood_mode
+        if distance_mode not in {"prototype", "boundary"}:
+            raise ValueError(
+                f"Subject {sid}: oral auto mode requires saved prototype/boundary "
+                "distance_mode; use --oral-mode center or --oral-mode region "
+                "explicitly for legacy results."
+            )
+        mode = "region" if distance_mode == "boundary" else "center"
+        groups.setdefault(mode, []).append(sid)
+    return groups
+
+
 def subject_json_files(input_dir: Path) -> list[Path]:
     if input_dir.name == "subjects":
         files = sorted(input_dir.glob("subject_*.json"))
@@ -1092,7 +1128,15 @@ def parse_args() -> argparse.Namespace:
         help="Override exponential accuracy alpha for evaluation plots; must be in (0, 1].",
     )
     p.add_argument("--skip-basic", action="store_true", help="Skip group-level metric/log plots")
-    p.add_argument("--skip-trajectory", action="store_true", help="Skip raw-run trajectory plots")
+    trajectory = p.add_mutually_exclusive_group()
+    trajectory.add_argument(
+        "--skip-trajectory", action="store_true", help="Skip raw-run trajectory plots"
+    )
+    trajectory.add_argument(
+        "--include-trajectory",
+        action="store_true",
+        help="Opt into legacy run-rank plots for PF results (skipped by default)",
+    )
     p.add_argument("--skip-behavior-ppc", action="store_true", help="Skip predictive-distribution PPC plots")
     p.add_argument(
         "--ppc-max-runs-per-subject",
@@ -1200,7 +1244,15 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--skip-oral", action="store_true", help="Skip oral/model alignment plots")
     p.add_argument("--oral-data", type=Path, default=DEFAULT_ORAL_DATA, help="Oral/Task2 processed CSV")
-    p.add_argument("--oral-mode", choices=("center", "region"), default="center")
+    p.add_argument(
+        "--oral-mode",
+        choices=("auto", "center", "region"),
+        default="auto",
+        help=(
+            "Auto matches saved encoding per subject: boundary -> region, "
+            "prototype -> center; explicit modes support historical comparisons"
+        ),
+    )
     p.add_argument(
         "--oral-state-mode",
         choices=ModelEvaluator.VALID_ORAL_STATE_MODES,
@@ -1274,6 +1326,13 @@ def main() -> None:
     resolved_subjects = sorted(results)
     LOGGER.info("Loaded %d subject result(s): %s", len(resolved_subjects), resolved_subjects)
 
+    oral_data = resolve_project_path(args.oral_data)
+    oral_groups = (
+        resolve_oral_modes(results, str(args.oral_mode))
+        if not args.skip_oral and oral_data.is_file()
+        else {}
+    )
+
     if not args.skip_basic:
         run_basic_plots(
             evaluator=evaluator,
@@ -1321,7 +1380,10 @@ def main() -> None:
             ),
         )
 
-    if not args.skip_trajectory:
+    has_particle_results = any(
+        evaluator.is_particle_filter_result(info) for info in results.values()
+    )
+    if not args.skip_trajectory and (args.include_trajectory or not has_particle_results):
         run_trajectory_plots(
             evaluator=evaluator,
             input_dir=input_dir,
@@ -1332,6 +1394,18 @@ def main() -> None:
             eval_prediction_mode=args.eval_prediction_mode,
             posterior_limit=bool(args.posterior_limit),
         )
+    elif not args.skip_trajectory:
+        # PF repeats integrate latent paths; ranking filter seeds is not an
+        # ensemble of individual cognitive trajectories.
+        reason = (
+            "PF results skip legacy run-rank plots by default; "
+            "use --include-trajectory only for an explicit run-level audit."
+        )
+        LOGGER.info(reason)
+        for name in ("trajectory_accuracy", "trajectory_posterior"):
+            records.append(
+                {"name": name, "status": "skipped", "reason": reason, "outputs": []}
+            )
 
     if not args.skip_behavior_ppc:
         run_behavior_ppc_plots(
@@ -1347,29 +1421,42 @@ def main() -> None:
             accuracy_band_seed=args.accuracy_band_seed,
         )
 
-    oral_data = resolve_project_path(args.oral_data)
     if not args.skip_oral:
         if oral_data.is_file():
-            run_oral_plots(
-                evaluator=evaluator,
-                results=results,
-                oral_data_path=oral_data,
-                output_dir=output_dir,
-                subjects=subjects,
-                records=records,
-                oral_mode=str(args.oral_mode),
-                window_size=args.window_size,
-                oral_state_mode=str(args.oral_state_mode),
-                oral_center_sigma=float(args.oral_center_sigma),
-                oral_region_temperature=float(args.oral_region_temperature),
-                target_band_draws=int(args.accuracy_band_draws),
-                target_band_seed=int(args.accuracy_band_seed),
-                region_n_samples=int(args.region_n_samples),
-                region_stimulus_sigma=args.region_stimulus_sigma,
-                distribution_model_distribution=str(args.distribution_model_distribution),
-                oral_model_distribution=str(args.oral_model_distribution),
-                combine_oral_equivalent=bool(args.combine_oral_equivalent),
+            records.append(
+                {
+                    "name": "oral_mode_resolution",
+                    "status": "ok",
+                    "requested_mode": str(args.oral_mode),
+                    "subjects_by_mode": oral_groups,
+                    "source": (
+                        "model_provenance.resolved"
+                        if args.oral_mode == "auto"
+                        else "explicit_cli_override"
+                    ),
+                }
             )
+            for oral_mode, oral_subjects in oral_groups.items():
+                run_oral_plots(
+                    evaluator=evaluator,
+                    results={sid: results[sid] for sid in oral_subjects},
+                    oral_data_path=oral_data,
+                    output_dir=output_dir,
+                    subjects=oral_subjects,
+                    records=records,
+                    oral_mode=oral_mode,
+                    window_size=args.window_size,
+                    oral_state_mode=str(args.oral_state_mode),
+                    oral_center_sigma=float(args.oral_center_sigma),
+                    oral_region_temperature=float(args.oral_region_temperature),
+                    target_band_draws=int(args.accuracy_band_draws),
+                    target_band_seed=int(args.accuracy_band_seed),
+                    region_n_samples=int(args.region_n_samples),
+                    region_stimulus_sigma=args.region_stimulus_sigma,
+                    distribution_model_distribution=str(args.distribution_model_distribution),
+                    oral_model_distribution=str(args.oral_model_distribution),
+                    combine_oral_equivalent=bool(args.combine_oral_equivalent),
+                )
         else:
             records.append(
                 {

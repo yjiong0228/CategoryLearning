@@ -31,6 +31,11 @@ class ParticleFilterEvaluationMixin:
     @staticmethod
     def is_particle_filter_result(info: Mapping[str, Any]) -> bool:
         """Identify particle-filter results from persisted semantics, not names."""
+        provenance = info.get("model_provenance") or {}
+        resolved = provenance.get("resolved") or {}
+        inference = resolved.get("inference") or {}
+        if str(inference.get("backend", "")).lower() == "particle_filter":
+            return True
         if str(info.get("state_distribution_kind", "")).lower() == "particle_marginal":
             return True
         if str(info.get("choice_readout_method", "")).lower() == "particle_marginal":

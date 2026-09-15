@@ -6,6 +6,12 @@
 oral/model alignment 图表。它不参与模型拟合，也不改变 hyperparameter selection。
 它可以用冻结参数运行明确的评价协议，但不得根据评价结果重新搜索参数或覆盖冻结配置。
 
+Condition 3 的自主与内部轨迹评价保留 `0/0.5/1` 浮点反馈；种正确率曲线统一使用
+`feedback == 1`，四分类的机会线为 0.25，半分也标记为未完全正确。
+自主结果中的种正确率、科正确率、平均得分分开保存。原来四分类图中固定为 0.5 的
+种正确率机会线也已修正；PF/选择 NLL 的数值定义不变。
+完整 condition 3 口述规则对齐与恢复设计仍需另行验证。
+
 ## 文件
 
 | 文件 | 职责 |
@@ -44,7 +50,23 @@ cache/subject_<id>_raw_runs.gz   # optional
 ```
 
 `run_model_evaluation.py` 将 subject JSON 规范化为 `ModelEvaluator` 使用的 result mapping，并在
-`<input-dir>/evaluation/` 下写图、CSV 和 `evaluation_manifest.json`。
+`<input-dir>/model_evaluation/` 下写图、CSV 和 `evaluation_manifest.json`；可用
+`--output-dir` 指定新的评价目录。重新评价已有结果时使用新目录，保留历史报告。
+
+默认行为由保存的结果决定：
+
+- PF 不生成 `trajectory_accuracy/` 和 `trajectory_posterior/`，manifest 记录跳过原因。
+  这两项按重复 run 的误差排序，不适合把 PF seed 重复解释为认知轨迹；需要复查时显式使用
+  `--include-trajectory`。trajectory backend 保留旧默认，`--skip-trajectory` 对两种后端均有效。
+- `--oral-mode auto`（默认）读取每个被试的 `model_provenance.resolved.encoding.distance_mode`，
+  并兼容较早的 `resolved.likelihood.distance_mode`：`boundary → region`，
+  `prototype → center`。不同编码的被试分组输出；manifest 保存实际模式及被试列表。
+- 自动模式遇到编码缺失或矛盾时会报错，不猜测模型表示。历史结果可以显式指定
+  `--oral-mode center` 或 `--oral-mode region`；这些选项也保留给有意的跨表示比较。
+  `--distance-mode` 仍只覆盖 family-accuracy 重计算，不改变基于已保存模型的 oral 自动选择。
+
+S129 pipeline 各目录的用途、保留建议与本次默认设置修正见
+[Model 0826 结果目录说明](../docs/maintenance/model_0826_pipeline_outputs.md)。
 
 自主轨迹形态评价使用独立入口，避免把生成性轨迹分布混入条件于真实历史的标准 accuracy band：
 
