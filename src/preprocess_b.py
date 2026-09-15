@@ -60,6 +60,8 @@ class Preprocessor_B:
         ]
         if "rating" in joint_data.columns:
             base_columns.insert(base_columns.index("choice") + 1, "rating")
+        if "presskey" in behavior_data.columns:
+            base_columns.insert(base_columns.index("choice") + 1, "presskey")
 
         combined_data = joint_data[base_columns].copy()
         combined_data = combined_data.sort_values(by=["iSession", "iTrial"])
