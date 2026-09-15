@@ -1,0 +1,808 @@
+% !TeX program = xelatex
+% Chinese research plan; build auxiliary files in a fresh system temporary directory.
+% Compile twice using xelatex, or xetex with a separately generated xelatex format.
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=23mm,bottom=23mm,left=23mm,right=23mm]{geometry}
+\usepackage{fontspec}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{needspace}
+\usepackage[most]{tcolorbox}
+\usepackage[unicode,colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!50!black]{hyperref}
+\defaultfontfeatures{Ligatures=TeX}
+\setmainfont[AutoFakeSlant=0.2]{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip=0pt plus 1pt minus 0.1pt
+\definecolor{ink}{HTML}{20394D}
+\definecolor{accent}{HTML}{356E85}
+\definecolor{pale}{HTML}{EDF4F6}
+\definecolor{muted}{HTML}{52616B}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.35em}
+\linespread{1.15}
+\setlength{\emergencystretch}{3em}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.32}
+\setlist{nosep,leftmargin=2em,topsep=0.3em}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\key}[1]{\textbf{\textcolor{ink}{#1}}}
+\newcommand{\src}[1]{\par{\footnotesize\textcolor{muted}{本地依据：}\path{#1}}\par}
+\newcommand{\field}[1]{\texttt{\small #1}}
+\newcommand{\ready}[1]{\textcolor{accent}{\textbf{#1}}}
+\newtcolorbox{takeaway}{colback=pale,colframe=accent!40,boxrule=0.5pt,arc=1mm,
+ left=3mm,right=3mm,top=2mm,bottom=2mm,breakable}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\sffamily\textcolor{muted}{Model 0826 后续研究计划}}
+\fancyhead[R]{\small\sffamily\textcolor{muted}{2026-09-12 · 研究设计稿}}
+\fancyfoot[C]{\small\thepage}
+\setlength{\headheight}{15pt}
+\renewcommand{\headrulewidth}{0.3pt}
+\hypersetup{pdftitle={Model 0826 后续研究计划：策略、学习路径与个体差异},
+pdfauthor={Category Learning Research},pdfsubject={基于现有图稿、模型实现与文献的候选分析及实施路线}}
+\setcounter{tocdepth}{1}
+\renewcommand{\contentsname}{目录}
+\renewcommand{\refname}{参考文献与借鉴方式}
+\renewcommand{\tablename}{表}
+\renewcommand{\figurename}{图}
+\begin{document}
+\begin{titlepage}
+\vspace*{15mm}
+{\sffamily\color{accent}\large CATEGORY LEARNING / RESEARCH PLAN\par}
+\vspace{8mm}
+{\sffamily\bfseries\color{ink}\Huge Model 0826\\[3mm]后续研究计划\par}
+\vspace{6mm}
+{\sffamily\Large 从表征变化走向学习策略、\\个体差异与泛化机制\par}
+\vspace{10mm}
+{\large 以 Fig1、Fig2 为基础，衔接现有 Fig3 与后续论文分析\par}
+\vspace{9mm}
+\begin{takeaway}
+\key{核心问题}\\
+人们如何通过不同的内部表征路径学会同一类别结构？这些路径为什么不同，又怎样影响发现、稳定掌握、持续错误以及后续表现？
+\end{takeaway}
+\vspace{4mm}
+本计划分为两条并行路线：一条充分发散，保留50个候选分析问题；另一条明确实施顺序，从已有行为与口述数据出发，逐步推进到模型事件检验、学习路径、个体差异和预测验证。并不要求一次完成所有方向。
+\par
+本文中的假设、拟议指标和图形安排均为研究设计，不是已经得到的结果，也不构成预注册。当前图稿和实现的核对日期为2026年9月12日。
+\vfill
+{\small
+\key{与现有文档的关系}\\
+\path{model_0826.tex} 定义模型；\path{model_0826_plus.tex} 讨论验证与论文证据链；本稿集中回答“在此基础上还能研究什么，以及先做什么、如何判断值得继续”。本次仅编写计划，不运行新的拟合、恢复或大规模模拟。
+\par}
+\end{titlepage}
+
+\section*{先读这一页：建议怎样推进}
+\addcontentsline{toc}{section}{先读这一页：建议怎样推进}
+\begin{takeaway}
+\key{建议的第一条主线：发现有效结构、稳定使用有效结构，是两个值得分开研究的环节。}\\
+将这一区分与独立口述修订事件联系起来，检验不同学习困难发生在哪个环节，再判断这些过程差异能否预测后续行为。若证据支持，可以自然连接策略分析与个体差异。
+\end{takeaway}
+
+\key{第一步，完成现有证据的对接。}
+Fig1已有96人的行为与口述描述；当前Fig2 v15呈现S129和S229两个拟合个案，群体面板仍待补齐；Fig3 v4已有两个同类别口述内容变化片段，跨事件和后续行为面板仍待分析。优先建立全体口述修订事件表，充分利用已有数据，再将稳定的模型输出与之对齐。
+
+\key{第二步，先研究连续过程差异。}
+分别测量有效结构首次出现、维持、离开和返回的过程。比较行为成绩相近者是否处于不同学习阶段。先判断这些指标是否可靠，再考虑划分人群。
+
+\key{第三步，用未参与定义的行为检验价值。}
+优先检验前段轨迹对后段选择、错误类型和反应时的增量预测；若确认有独立迁移或延迟测试，再加入泛化与保持。完整序列拟合产生的前段状态只能作为描述，不能直接称为早期预测。
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2.4cm} Y Y}
+\toprule
+优先级 & 本轮后续工作的重点 & 完成后应该得到什么\\
+\midrule
+P0：基础核对 & 数据时序、口述事件、模型状态语义、拟合覆盖与稳定性 & 可审查的事件表、字段表和可用被试清单\\
+P1：核心研究 & 发现与稳定、修订前后变化、相似成绩下的不同过程 & 能由独立证据支持的过程发现\\
+P2：扩展解释 & 连续个体差异、条件效应、前推预测、自主生成 & 过程差异的功能意义和适用边界\\
+P3：新数据拓展 & 迁移探针、个体化教学、跨任务稳定性、MEG & 未来实验的可反驳预测\\
+\bottomrule
+\end{tabularx}
+\end{center}
+\key{选择原则：}结果若支持连续差异，就保留连续结论；若无法恢复精确规则，就在可区分的规则家族或功能层面解释；若没有独立预测增益，就如实报告过程指标目前主要具有描述价值。
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{研究从哪里出发：当前证据与适用范围}
+\subsection{三种任务的编号必须固定}
+论文Task编号与数据condition编号不同，尤其不能将Task2与condition2混用。
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{1.6cm} L{1.8cm} Y Y}
+\toprule
+论文任务 & condition & 实验特点 & 当前模型范围\\
+\midrule
+Task1 & 1 & 二分类，0/1反馈；目标为F1阈值规则 & 29条规则；当前Fig2b为S129，256试次，混合读出\\
+Task2 & 3 & 四分类与层级信息；0/0.5/1反馈 & 部分反馈机制尚未迁移；当前Fig2c待补齐\\
+Task3 & 2 & 四分类，0/1反馈 & 116条规则；当前Fig2d为S229，1088试次，持续执行读出\\
+\bottomrule
+\end{tabularx}
+\end{center}
+Fig1采用相同四维刺激体系。Task2/3的客观边界按F1分支，并在不同分支使用F2或F3；F1--F4依据每名被试的特征分配对齐。Task2同时涉及层级信息和部分反馈，因此现有跨任务比较不能单独识别这两个因素各自的因果作用。需核对原实验分配、说明文字、停止规则和训练安排。
+\src{CategoryLearning_codes/figures/fig1/config.json}
+\src{CategoryLearning_codes/figures/outputs/fig1/fig1_v10/readout.md}
+
+condition2是明确的四分类二值反馈扩展：错误反馈对应其余三类概率之和，不能由一次错误唯一反推正确类别。该扩展保留原动态精度更新的0.5中心化，尚不能声称完成四分类机制恢复。condition3和消融的后续运行仍属于单独工作，本计划不自动重启。
+\src{src/Bayesian_state/docs/model_architecture/model_0826_condition2.md}
+
+\subsection{已有图形支持什么，尚缺什么}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2cm} Y Y}
+\toprule
+来源 & 已有内容 & 后续研究仍需补齐\\
+\midrule
+Fig1 v10 & 96人、62,720试次的描述性汇总；正确率、口述提及和反应时；保留模糊刺激 & 完整语义事件定义、事件级推断及机制检验\\
+Fig2 v15 & S129/S229的行为预测、全规则信念、口述和目标规则质量；各平均16次PF重复 & 群体面板、稳定模型比较、独立前推评价及状态稳定性\\
+Fig3 v4 & 两段同选择类别的真实报告变化；全窗口反馈和搜索值 & 全体事件表、匹配对照、修订后行为分析\\
+FigS2 & 单被试参数候选、数值误差、口述诊断、自主轨迹等既有审计 & 相关结论的覆盖扩展；区分已完成诊断和未完成验证\\
+论文Results & 已有“选择不足以识别过程—口述约束—修订机制—自主生成”的论证草稿 & 多处Result pending；不能当成已完成结果\\
+\bottomrule
+\end{tabularx}
+\end{center}
+上表描述的是已核对图稿和说明的范围，不是对整个results目录的穷尽盘点。Fig1的样本数和试次数引用保存的readout，本次未重算全体行为统计。图形目录中有文件，不自动意味着正式群体拟合或心理解释已经成立。
+
+\subsection{已有验证计划继续作为基础}
+本稿承接 \path{model_0826_plus.tex} 的数值、恢复、外部口述和自主生成验证，不重新定义第二套模型。该文档记录的较新condition1预算校准，只适用于特定候选库和模板；不能外推为S129/S229附近所有候选、全部状态量和condition2都已稳定。当前Results中某些预算与任务表述保留历史状态，实施前按具体结果manifest和当前实现复核。
+
+\begin{takeaway}
+\key{证据推进应分层。}
+群体行为和口述研究可以先行；模型个案可以检查流程；稳定的群体模型量才能支持群体机制比较；声称可预测或可干预，还需要对应的留出或实验设计。
+\end{takeaway}
+
+\section{核心科学问题与可反驳的解释}
+\subsection{把学习过程拆成四层}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2.1cm} Y Y}
+\toprule
+层次 & 通俗问题 & 本研究可能使用的证据\\
+\midrule
+表征内容 & 此刻怎样理解类别？ & 完整规则信念、规则家族、语义口述\\
+更新方式 & 什么经历使理解改变？ & 搜索概率、已实现替换、报告修订区间\\
+选择执行 & 当前理解怎样变成反应？ & 混合或持续执行读出、类别概率、错误类型\\
+功能后果 & 这些变化是否帮助学习？ & 后续选择、反应时、保持或迁移（若有）\\
+\bottomrule
+\end{tabularx}
+\end{center}
+PF粒子是研究者对不可见路径进行推断的数值工具。粒子间不确定性、单个粒子内部的规则信念、动态规则精度和被试报告的主观信心是不同对象。全文不用“信心”统一替代这些量。
+
+\subsection{四个优先假设与相反结果}
+\begin{enumerate}
+\item \key{发现与稳定可能分离。}预测：个体在首次形成有效理解后，达到稳定使用所需的时间仍有明显差异。若二者几乎重合，或无法可靠区分，则以单一到达过程表述。
+\item \key{有效的更新依赖处境。}预测：错误结构后的退出、有效结构上的保持，比单纯的切换次数更能预测后续表现。若仅总体搜索率已足够解释，就不增加“适时调节”的强解释。
+\item \key{相似成绩可能来自不同路径。}预测：控制训练阶段和已有成绩后，路径指标仍能解释独立报告或后续错误模式。若无额外证据，则仅保留描述性轨迹差异。
+\item \key{环境可能影响不同学习环节。}预测：条件差异可能集中在发现、稳定或执行中的某一环节。若差异完全由机会水平、训练量、刺激难度等解释，则缩小条件机制结论。
+\end{enumerate}
+
+\subsection{本研究的贡献应如何定位}
+已有研究讨论了类别表征变化、稳定策略倾向和任务内策略流动性\cite{johansen,mcdaniel,gouravajhala,herzog}；CHMM等方法也已估计动态类别归属\cite{chmm}。因此，本研究应着重说明：哪些内部变化得到独立口述支持；这些变化揭示了什么可重复的学习规律；它们能否预测未来行为或由自主学习过程再现。文献提供问题和比较思路，不预先规定本研究必须发现哪种类型。
+
+\section{先准备什么数据：统一表格与信息时序}
+\subsection{四张分析表}
+下列是建议的分析契约，不是已经新增的结果schema。实现时优先复用现有导出，并保留原字段。
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2.4cm} Y Y}
+\toprule
+表 & 一行代表什么 & 最少保留的信息\\
+\midrule
+逐试次行为表 & 被试的一次真实试次 & subject、condition、Task、session/block/trial、四维刺激、choice、feedback、choRT、口述原文与缺失标记\\
+模型状态长表 & 被试×试次×规则；另有标量表 & online prior、完整规则目录、规则语义、搜索三分量、替换比例、数值重复与配置来源\\
+口述修订事件表 & 同被试、同选择类别的一次可判定修订区间 & 旧/新报告试次、语义、修订类型、间隔、信度、排除原因、前后可用试次\\
+个体过程摘要表 & 一个被试在一个任务中的过程摘要 & 发现/稳定时间及删失、有效/错误驻留、修订类型比例、有效事件数、可靠性和不确定性\\
+\bottomrule
+\end{tabularx}
+\end{center}
+连接键必须保留原始session/block/trial，同时建立单调的sequence trial。不能只按重启的iTrial连接，也不能因筛选口述而重新压缩模型的时间轴。
+
+\subsection{当前已经确认可用的字段}
+Fig3 v4的源表已包含以下字段，可先用于S129/S229的流程试算：
+\begin{itemize}
+\item 规则层：\field{online\_prior}、\field{oral\_mass}、\field{valid\_oral\_report}。
+\item 搜索层：\\\field{predictive\_strategy\_exploit}、\\\field{predictive\_strategy\_local\_explore}、\\\field{predictive\_strategy\_global\_explore}。
+\item 控制与替换：\\\field{predictive\_replacement\_fraction}、\\\field{predictive\_failure\_pressure}、\\\field{predictive\_mastery\_evidence}。
+\item 行为/报告：\field{choice}、\field{feedback}、\field{choRT}、\field{text}、\field{oral\_center}、\field{oral\_A}、\field{oral\_b}与特征提及字段。
+\end{itemize}
+字段名中的exploit在当前Fig3解释为“保留分支”，不意味着信念完全不变。单个可选模块在代码中存在，也不代表当前PMH配置已经启用。
+\src{CategoryLearning_codes/figures/fig3/build_fig3.py}
+\src{CategoryLearning_codes/figures/outputs/fig3/fig3_v4/source_data}
+
+\subsection{统一每个量在什么时候可获得}
+当前实验报告在选择后、反馈前发生。建议在文档与源表中显式使用以下顺序：
+\[
+\text{过去历史}\ \longrightarrow\ \text{当前刺激与作答前预测}\space
+\longrightarrow\ \text{选择}\ \longrightarrow\ \text{口述}\ \longrightarrow\ \text{反馈与更新}.
+\]
+同试次反馈不可能作为此前口述修订的预测因子。检验反馈推动修订时，使用先前已发生的反馈。使用当前choice进行过滤的状态与作答前状态也不可混用。
+
+\subsection{缺失、旧报告沿用与报告机会}
+\field{latest\_by\_category}使用各选择类别最近的有效报告构造状态。需要分别记录：本次是否有原文、本次是否可解析、是否形成新观测、各类别报告已经过去多少试次。沿用旧报告的平直段不等于被试在这些试次持续确认原规则。
+
+策略修订只能在有可比报告机会时被观察。选择类别变化会改变报告对象，因此事件率的分母应包含可比较的报告对和时间暴露；不能把没有报告机会当成“没有修订”。同时记录口述缺失或不可解析比例是否与学习阶段、错误和反应时相关。
+
+\section{共同指标：先规定“变化”与“学会”是什么意思}
+\subsection{规则信念、有效结构与比较空间}
+用$q_t(h)$表示当前作答前、PF边际化的全目录规则信念。它是对模型潜在信念的摘要，不能把其熵直接解释为被试自身的不确定性。条件内以固定完整目录比较，条件间先映射到语义或功能层级，不能直接比较29条与116条目录中的规则编号。
+
+设$\mathcal H_{\mathrm{valid}}$为事先定义、能够满足目标类别结构的规则集合：
+\[
+M_t^{\mathrm{valid}}=\sum_{h\in\mathcal H_{\mathrm{valid}}}q_t(h).
+\]
+当前图中S129的目标是H0，S229是H42；正式分析仍需检查是否存在功能等效的其他解。集合定义不能根据想提高的口述一致性事后修改。某条规则恰好答对当前刺激，不等于它是全局有效结构。
+
+\subsection{相邻试次的变化幅度}
+规则信念变化可以用总变差距离：
+\[
+D_t^{\mathrm{belief}}=\frac{1}{2}\sum_h |q_t(h)-q_{t-1}(h)|.
+\]
+这个指标描述边际信念重分配，不等于实际发生一次离散切换。若目标是比较分类功能，还可在预先固定的刺激集合$\mathcal X_\star$上计算相邻时点类别概率的平均距离。必须使用同一刺激集合，避免把刺激更换造成的预测差异误称为表征变化。
+
+\subsection{搜索意向、替换与执行切换分别定义}
+在单条粒子路径上，以$E_t$表示搜索事件概率，$g_t$表示已发生搜索时的全局范围权重：
+\[
+P_{\mathrm{retain}}=1-E_t,\quad
+P_{\mathrm{local}}=E_t(1-g_t),\quad
+P_{\mathrm{global}}=E_tg_t.
+\]
+应先在粒子内计算三项，再按作答前粒子权重聚合，不能用两个边际均值相乘替代。三项之和为1；已实现替换比例是另一项量。只有持续执行结构才定义执行规则及其驻留、切换。S129的混合读出没有唯一执行规则，不通过argmax人为构造它。
+
+\subsection{发现、稳定与退出}
+\key{发现时间}是有效结构首次达到预定支持标准的时间；\key{稳定时间}是满足预定持续标准的时间；二者之差用于刻画发现后的稳定过程。阈值与持续窗口需通过恢复、测量分辨率和敏感性检查确定，本计划不把未经核验的阈值写成既定标准。
+
+可先将行为标准“64试次窗口、完整正确率0.9”作为与Fig1配置一致的候选参照，但这只是行为标准，不等于内部结构已被掌握。模型信念标准另行定义，两种标准分别报告。短记录和未达到标准者保留；未达到者按右删失处理。报告修订的真实时间只知道处于两次报告之间，应按区间定位分析。
+\src{CategoryLearning_codes/figures/fig1/config.json}
+
+\subsection{外部口述一致性}
+完整目录上的分布重叠为
+\[
+O_t=\sum_h\min\{q_t(h),o_t(h)\}=1-\mathrm{TV}(q_t,o_t).
+\]
+它是描述性一致性，既不是准确率，也没有自动扣除共同刺激、选择和时间趋势。保持当前$\sigma_{\mathrm{oral}}=0.05$，在新报告试次检验，并与保留被试、类别和时间结构的对照比较。目标质量只是一维摘要，两边都不支持目标时可能采用完全不同的错误规则。
+
+\section{工作包1：建立独立的口述修订事件表}
+\subsection{问题与优先性}
+\key{问题：被试何时改变了对同一类别的描述，改变的是哪个方面？}
+这是最直接衔接Fig3现有空缺的工作，也能先于全体模型拟合开展。已有特征提及编码可做初筛，但相同特征可以有相反方向、不同逻辑关系，不能据此认定语义没有变化。
+
+\subsection{事件类型与判定规则}
+在同一被试、同一选择类别内，比较两次可解析报告。先统一同义表达，再保留方向、否定、阈值、关系和连接词。
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2.5cm} Y Y}
+\toprule
+候选类型 & 通俗解释 & 需要区分的情况\\
+\midrule
+维度替换 & 原先看脖子，后来改看尾巴 & 换词描述同一部位不算替换\\
+方向或阈值修正 & 从“长”改为“短”，或改变分界 & 语气差异与真实条件改变分开\\
+规则扩展/简化 & 加入或删除一个约束 & 未提及可能是不完整报告，需证据等级\\
+关系或分支变化 & 从独立特征转向比较、合取或层级关系 & 只有报告足够完整时才判定\\
+暂时回退/恢复 & 曾出现的旧内容重新出现 & 记录中间报告机会与缺失，避免虚构连续状态\\
+无法判定 & 文本含糊、指代不清或不可比 & 保留并报告比例，不强行分入机制类型\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+建议由两名编码者在不知道模型搜索曲线和后续表现的条件下独立标注一个覆盖各任务、阶段和内容的样本，修订规则后冻结编码方案，再扩展到全部可比报告。报告一致性、分歧类型与裁决记录。自动编码可以辅助定位，不能用模型状态为人工事件贴标签。
+
+\subsection{已有例子怎样进入计划}
+S129中t136“脖子长。”到t138“尾巴长。”；S229中t988“腿长，脖子短。”到t992“腿长，尾巴短。”，是现有Fig3的两段实例。应保留各自的同选择类别比较和完整窗口；它们只示范数据结构，不进入“代表所有修订事件”的论证。
+
+将事件记为$(t_{\mathrm{old}},t_{\mathrm{new}}]$。第一次新报告并不等于精确认知切换时刻。主分析可以将搜索量在整个区间内汇总，同时检验末端对齐、区间长度限制等敏感性版本，避免仅挑一个最有利时点。
+
+\subsection{对照、产物与通过条件}
+每个事件匹配同被试、同类别、相近学习阶段、报告间隔和可用前后窗口的未修订报告对。用于匹配的准确率等变量只取事件区间开始前的数据。根据具体问题匹配刺激组成和既往反馈；若反馈本身是待检验因素，不机械地将它完全匹配掉。
+
+\key{交付物：}事件编码手册、全体事件长表、事件覆盖图、编码信度表、无法判定原因表。\\
+\key{通过条件：}事件定义可复核，主要类型的编码一致性足够，且有效事件分布不完全由极少数被试贡献。若类型区分不稳，退回更粗的“可确认内容变化”层级。
+
+\section{工作包2：区分首次发现与稳定掌握}
+\subsection{问题与假设}
+\key{问题：较慢的学习者，是较晚发现有效结构，还是发现后难以保持？}
+这一分析优先使用共同适用的工作空间信念和独立口述证据，持续执行规则只作为相应结构的附加分析。
+
+\subsection{具体步骤}
+\begin{enumerate}
+\item 按任务语义建立有效结构和错误结构家族，保留无法区分的状态。
+\item 对每名被试计算首次发现、首次稳定、稳定前回退、错误结构驻留等摘要，并传播状态估计不确定性。
+\item 比较模型、口述和行为三种时间标记的一致与差异；它们的分辨率不同，不要求逐试次完全同步。
+\item 使用含右删失的到达时间分析、阶段转移模型或分层模型，保留没有达到标准的被试。
+\item 在数值重复、近优参数、阈值、持续窗口及语义合并方式间检查结论稳定性。
+\end{enumerate}
+
+\subsection{预期图与解释}
+建议图形包括全体轨迹栅格、首次发现与稳定时间的配对图、发现后稳定所需时间分布，以及不同错误结构的退出概率。每个群体点以被试为单位；按不确定性显示区间或可用范围。
+
+若“发现早、稳定慢”和“发现晚、稳定快”均可可靠测量，便有理由将二者作为不同学习环节。若差异完全由推断不确定性或记录长度造成，则保留描述，不将其解释为两类心理机制。
+
+\subsection{实施依赖}
+两例可先检查数据契约和图形；正式群体分析需要相应任务的拟合覆盖和状态稳定性。不能以S129/S229两例估计人群比例。记录停止可能与表现有关，除了右删失，还要核对停止规则、固定长度记录和退出原因，判断删失是否具有信息性。
+
+\section{工作包3：搜索、口述修订与后续行为}
+\subsection{三个顺序问题}
+依次检验：\key{先前什么经历与修订有关；模型搜索是否在共同信息之外解释修订；修订后是否出现可重复的行为变化。}
+三个问题分别设定结果变量，避免同一张相关图同时承担全部机制解释。
+
+\subsection{修订的预测}
+将工作包1的事件作为独立结果。以报告区间为观察单位，先建立只使用过去反馈、阶段、报告间隔、刺激信息和个体差异的基线，再加入作答前模型搜索、替换或信念变化量。根据样本与事件密度选择分层二项模型、离散时间风险模型或区间事件模型。
+
+报告可解释的效应与留出预测差，主要关注模型量是否增加信息。模型方程已经将错误接到搜索，因此“失败压力与搜索相关”只描述内置机制，不构成独立心理发现。若加入模型量没有提升，说明现有反馈历史摘要已能解释相应事件。
+
+\subsection{修订之后发生什么}
+在预先指定的前后窗口比较完整正确率、具体类别混淆、反应时及后续有效结构支持。使用匹配未修订窗口，并处理学习时间趋势、刺激难度、重复事件与重叠窗口。不能把跨所有事件的“后减前”上升直接解释为修订造成改善。
+
+正式预测使用仅在预测时点可获得的信息。当前个案参数来自全序列拟合，适合探索关系与构建流程；若声称提前预测，必须重新按时间切分拟合。匹配和分层分析可以降低混杂，但没有干预就不声称人的因果机制。
+
+\subsection{预期图与最低交付}
+Fig3b可展示全体事件和匹配对照的搜索时程，报告区间与不确定性；Fig3c展示事件后的行为变化或前推预测增益。事件分布不均时，先计算被试内效应，再做群体汇总。提供事件级源表、窗口/匹配规则、有效人数、事件数和敏感性图。
+
+\section{工作包4：个体差异与人群划分}
+\subsection{先问有哪些维度，再问有几类人}
+优先提取少量有明确科学含义的维度：发现时间、发现后的稳定时间、有效结构上的保持、错误结构上的退出、语义修订幅度、信息量控制后的更新倾向。高度相关的指标不重复堆入聚类。
+
+不能用PF种子数扩充样本，也不将一个人的多个时间窗当独立人。当前三项任务是被试间设计，不能据此判断同一个人的跨任务稳定倾向；这种结论需要重复测量或新增跨任务数据。
+
+\subsection{五种候选困难机制}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{2.6cm} Y Y}
+\toprule
+候选机制 & 需要观察到什么 & 还要排除什么\\
+\midrule
+发现较晚 & 前期长期没有足够有效结构支持，之后能够保持 & 目录未覆盖真实策略、口述机会不足\\
+持续错误结构 & 错误家族长期得到支持，并产生对应错误模式 & 单纯低信息刺激或较大推断误差\\
+稳定困难 & 有效结构出现后反复减弱或被替代 & 边际argmax抖动、记录边界伪事件\\
+执行不稳定 & 结构证据较好，但选择仍持续偏离其预测 & 结构推断失准、感知误差、读出混淆\\
+训练成功但迁移受限 & 训练表现良好而诊断性新刺激反应系统性偏离 & 需要真正迁移数据；不能由训练拟合单独推定\\
+\bottomrule
+\end{tabularx}
+\end{center}
+这些机制可以重叠；默认使用连续评分、软归属或多标签，并保留无法判断者。它们是描述学习困难的候选框架，不是诊断标签或能力等级。
+
+\subsection{三类比较}
+第一，比较“表现相近、过程不同”的被试。匹配当前或先前表现、试次数和刺激难度，检验独立口述或未来错误模式。按最终成绩匹配可作描述，但它可能引入选择偏差，不能据此解释原因。
+
+第二，比较连续因子模型与有限类别模型。不能只凭聚类软件给出两个或三个簇，就认定天然人群存在。若样本不足，采用低维描述，暂缓复杂混合模型。
+
+第三，在留出被试或新的测量中检验分组。标准化、降维、选择簇数和命名都在训练数据内进行。验证指标不能与用于分组的变量重复，也不能事后根据显著结果反复调整特征。
+
+\subsection{参数与过程指标的分工}
+当前模型参数可能存在补偿和恢复限制。精确参数不足以解释个体差异时，可研究经恢复验证的功能摘要；功能摘要也不是天然可靠，需要单独测量误差和稳定性检验。数值seed差异、近优参数差异和被试差异应分别呈现。群体效应稳健不自动意味着个体排序可靠\cite{hedge}。
+
+\section{工作包5：任务结构、经验历史与表征组织}
+\subsection{任务比较应落在可比层级}
+Task1与Task3的类别数、机会水平和目录规模不同，原始NLL、目标概率、熵或切换次数不能直接当作同尺度心理指标。先在任务内与适当基线比较；跨任务比较采用共同定义的功能指标、每次可比报告机会的事件率，以及考虑不确定性的标准化效应。
+
+Task2的行为与口述可先行分析。将它纳入Model0826机制比较之前，需定义半正确反馈的似然、精度和搜索含义，完成实现与恢复验证。现阶段不把Task2的空模型面板填成推断结果。
+
+\subsection{层级结构提供的具体问题}
+\begin{itemize}
+\item 被试是否先掌握F1所对应的上层区分，再掌握各分支的细分？
+\item 两个分支的学习是否不同步？某一分支的失败会不会推动另一分支的重组？
+\item 口述是否从分散特征列表转为明确的条件关系？
+\item 有效结构稳定后，例外和边界刺激是否仍会引发全局搜索？
+\item 层级信息与部分反馈的组合，是否减少某些错误结构的驻留，或改变修订的内容？
+\end{itemize}
+这些均为待检验假设；任务间已有操纵组合不能分离单个因素。若需要回答“仅层级提示”的因果作用，未来应采用能够独立操纵提示和反馈的设计。
+
+\subsection{早期经历与路径依赖}
+记录早期诊断刺激、类别顺序、边界附近刺激和反馈历史，检验其与后续结构偏好的关系。观察到的反馈受到被试选择影响，不能视为完全外生随机输入。可先研究实验安排中随机的刺激顺序，再结合模型反事实提出待验证的经验顺序预测。
+
+\subsection{表征几何的可行边界}
+Model0826有固定的规则几何和相似度资源。规则信念加权的功能表示会随学习变化，但不能把固定目录本身说成已经学习了新的几何。可以在固定探针刺激上研究功能性边界、整合与区分，以及跨个体收敛；若希望解释真实心理距离或注意权重，需独立感知、相似性、眼动或神经测量支持\cite{mack}。
+
+\section{工作包6：前推预测、自主生成与功能意义}
+\subsection{先完成真正的前推预测}
+建议以已有恢复设计的70\%训练、30\%后缀作为候选起点，先核查短记录与阶段覆盖，再冻结正式方案。该比例是建议衔接，不是本轮已执行或预注册。所有模型参数、预处理、特征选择和比较规则只从训练部分确定。
+
+后缀可有两类问题，必须分别报告：
+\begin{enumerate}
+\item \key{滚动一步预测：}模型固定参数，预测每个下一试次后再接收已发生的真实历史。每个预测不使用未来数据。
+\item \key{固定时点的远期预测：}在某一时点预测之后一个窗口或整段表现，不能再把该窗口中的真实选择用于生成同一个预测。
+\end{enumerate}
+比较基线包括早期正确率/趋势、反应时、刺激难度、近期选择和反馈、静态特征偏好。主要报告choice log score或Brier分数及校准；辅助报告错误类型和变化时间，避免仅用正确率相关衡量模型价值。
+
+\subsection{自主生成的研究任务}
+现有自主入口可以在冻结参数下自己选择、接收自己的反馈并继续学习。比较完整轨迹分布中的平台、突然改善、反转、错误驻留和到达标准时间，而不是选一条最像人的轨迹。
+
+固定真实刺激日程的末端意味着观察结束，不意味着模型已学会。未达标准者按删失处理；要检验完成时间，需明确可延长刺激日程和真实停止规则。固定参数rollout的范围不包含参数估计不确定性。
+
+\subsection{模型反事实与人的机制推断}
+已有策略贡献审计可比较动态控制器、匹配平均搜索率的静态对照等。冻结参数干预用于诊断当前模型内部的作用；公平重拟合的结构比较回答不同模型哪个更充分。二者不能混称，也不自动证明人的因果机制。
+
+期刊当前P/PM/PH消融仍是暂缓工作；将其写入阶段计划并不意味着本次启动。优先选对核心主张有辨别力的对照，而非一次穷举所有可选模块。
+
+\subsection{迁移、保持与教学作为条件分支}
+本次核对的图形源表未确认独立迁移、延迟保持或跨任务重复测试。若发现相应数据，可直接进入其数据审计；若没有，则保留为新实验。最有辨别力的是竞争性表征预测相反的探针刺激，以及根据错误结构定向提供证据的随机教学比较。
+
+\clearpage
+\section{候选分析全景：10类、50个方向}
+\label{sec:catalog}
+以下目录保留上一轮发散范围，并按当前仓库证据重新标记可行性。\key{D}：可从已有行为/口述体系开展加工；\key{M}：有相关模型字段，可先做个案，群体依赖拟合与状态稳定性；\key{V}：需要额外导出、可靠性验证或方法开发；\key{N}：需确认额外测量，缺失时转为新实验。标记表示前提，不表示分析已完成。各项可组合，不要求逐项做统计检验。
+
+\Needspace{9\baselineskip}
+\subsection{策略内容：学习者采用什么结构}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+1 & 单维到多维 & 按口述关系与规则家族比较维度使用；检验信息整合是否逐渐扩展。维度提及不是注意权重。 & D/M\\
+2 & 错误结构内容 & 区分错误维度、方向、分支和类别合并，联系对应混淆模式；研究失败是否有系统内容。 & D/M\\
+3 & 多种成功结构 & 比较功能等效解及独立探针预测，检验同一任务是否允许不同有效理解。 & M/V\\
+4 & 复杂度演化 & 跟踪约束数、逻辑关系或规则家族复杂度；复杂度由结构定义，不能等同活跃规则数量。 & D/M\\
+5 & 局部修正与整体重组 & 比较一次经历后对固定探针集的影响范围；检验更新是否超出当前刺激。 & M/V\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{学习路径：如何走到同一个终点}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+6 & 渐进与突然变化 & 比较连续漂移与分段变化模型，结合口述区间；排除argmax转换制造的突变。 & D/M/V\\
+7 & 发现与稳定 & 分离有效结构首次出现、持续使用和中间间隔；这是首轮优先问题。 & M/V\\
+8 & 典型路径与中间阶段 & 按语义状态顺序描述分支、共同中间状态和路线；同时保留速度与顺序信息。 & D/M\\
+9 & 回退与重新发现 & 量化旧结构返回、有效结构丢失和恢复；持续执行与信念变化分开。 & D/M\\
+10 & 子过程不同步 & 比较类别、分支与刺激区域的掌握时序；检验整体曲线由哪些子过程组成。 & D/M\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{反馈与更新：什么经历推动改变}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+11 & 错误的诊断性 & 区分一般错误与可排除竞争结构的反例，比较其后独立报告修订；研究哪些错误有学习价值。 & D/M/V\\
+12 & 累计证据与阈值 & 比较最近反馈、连续错误和累积证据对修订的预测；排除方程内置关系。 & D/M\\
+13 & 正负证据不对称 & 在匹配预期与诊断性后比较支持和反驳证据；Task2半正确反馈先做行为/口述分析。 & D/M/V\\
+14 & 承诺与惯性 & 检验旧结构的使用时长和成功历史是否预测退出难度，控制证据强弱。 & D/M\\
+15 & 适时改变 & 比较有效结构保持与错误结构退出的功能价值；优先于解释总切换次数。 & M/V\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{个体差异：差异是什么形状}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+16 & 连续过程维度 & 提取少量可恢复、低冗余的发现、保持和更新指标；研究差异的主要维度。 & M/V\\
+17 & 是否存在离散类型 & 比较连续分布与类别模型，检查重采样和外部预测；允许不存在天然类型。 & V\\
+18 & 失败机制分解 & 区分发现晚、持续错误、稳定困难与执行不稳，保留重叠和不确定个体。 & D/M/V\\
+19 & 相同成绩不同过程 & 在相近成绩和经验量下检验独立口述、轨迹或未来错误差异。 & D/M/V\\
+20 & 稳定倾向与当前状态 & 用同人重复测量分解人、任务和时点成分；现有被试间任务不能回答跨任务个体稳定性。 & N\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{表征几何：刺激关系怎样变化}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+21 & 相关信息增强 & 计算固定探针上的维度敏感性；区分功能权重、口述提及与直接注意测量。 & M/V\\
+22 & 功能性边界变化 & 比较预测边界的平移、方向和分区，限定为规则混合产生的功能变化。 & M/V\\
+23 & 表征压缩 & 用独立定义的表示复杂度与预测充分性衡量压缩，不能把目录固定说成新几何学习。 & M/V\\
+24 & 整合与区分时序 & 比较类内一致与类间差异的变化时间，控制刺激集和标签语义。 & M/V\\
+25 & 个体间收敛 & 比较不同阶段的功能表征距离；允许终点表现趋同而内部理解仍多样。 & M/V\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{环境与经验：任务如何改变学习}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+26 & 条件与结构占据 & 在可比规则家族上比较出现率、停留与支持，研究任务诱导哪些理解。 & D/M/V\\
+27 & 发现、保持还是执行 & 将条件差异分解到过程环节；不能从相关分解直接推出因果中介。 & M/V\\
+28 & 早期经验路径依赖 & 用随机刺激顺序及早期诊断性接触预测后续结构；选择依赖反馈要另作处理。 & D/M\\
+29 & 顺序与比较机会 & 分析同类、异类、相似和对比刺激的相邻关系，控制阶段和样本组成。 & D/M\\
+30 & 类别与分支不对称 & 分别分析两个层级分支、典型刺激和边界区域，避免整体均值掩盖局部困难。 & D/M\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{假设搜索：如何利用信息}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+31 & 搜索范围收缩 & 区分信念集中、工作空间成员变化和研究者推断不确定性，检验搜索是否阶段化。 & M/V\\
+32 & 局部搜索与远跳 & 使用真实规则相似度与替换事件比较搜索距离；主分析保留连续概率。 & M/V\\
+33 & 过早稳定 & 检验证据尚弱时稳定于错误结构的后果，排除目录缺失与推断误差。 & M/V\\
+34 & 信息利用效率 & 在明确证据参照模型下比较更新收益；按试次数归一化不能完全代表信息效率。 & M/V\\
+35 & 旧知识重新利用 & 研究旧报告/规则回归、间隔后恢复；记忆保留解释需要超出重复出现的证据。 & D/M/V\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{预测与泛化：轨迹有什么用}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+36 & 早期预测后期 & 前缀内拟合并冻结分析流程，与行为基线比较后缀评分；优先验证增量价值。 & V\\
+37 & 训练预测迁移 & 用竞争表征分歧最大的测试刺激检验泛化方向；先确认真正迁移数据。 & N\\
+38 & 表征稳健性 & 分析边界附近刺激的真实反应；模型对未呈现扰动的结果仅是待检验预测。 & D/M/V\\
+39 & 保持与遗忘 & 用独立延迟测试比较发现和稳定指标的预测；当前会话内下降不直接称遗忘。 & N\\
+40 & 反转与再学习 & 检验旧结构帮助、干扰和节省效应；需要实际变化阶段或新实验。 & N\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{独立行为通道：变化能否被看见}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+41 & 反应时与修订成本 & 研究修订前后减速和恢复，控制刺激难度、学习阶段、选择与报告负担。 & D/M\\
+42 & 错误类型变化 & 比较规则家族特有的混淆；用于验证的错误必须与状态拟合信息关系说清。 & D/M/V\\
+43 & 选择历史与侧偏 & 检查重复选择、类别偏好和序列残差；区分反应波动与表征更新。 & D/M\\
+44 & 策略意识与信心 & 现有口述可研究报告时序；主观信心需要确有量表，不能从模型熵替代。 & D/N\\
+45 & 眼动与信息选择 & 比较注视与功能维度敏感性，检验注意机制；先确认是否存在该测量。 & N\\
+\bottomrule
+\end{longtable}
+
+\Needspace{9\baselineskip}
+\subsection{新的实验：让解释可区分、可干预}
+\begin{longtable}{L{0.9cm}L{2.6cm}L{9.4cm}L{1cm}}
+\toprule 编号 & 方向 & 分析与可能的解释 & 前提\\\midrule\endhead
+46 & 个体诊断探针 & 选择区分当前候选结构的刺激，比较诊断准确度与测量成本。 & V/N\\
+47 & 针对错误结构教学 & 随机比较定向反例、通用反馈与其他教学；直接检验过程测量的应用价值。 & N\\
+48 & 资源与反馈操纵 & 通过时间压力、负荷、延迟或反馈可靠性操纵区分发现、保持与执行。 & N\\
+49 & 跨任务结构迁移 & 在任务语义适配后研究同人的结构偏好和更新方式；exp4/5需单独验证支持。 & N\\
+50 & MEG与变化时点 & 比较行为推断状态与独立神经表征，严格分离训练和验证；不假定当前0826已适用。 & N\\
+\bottomrule
+\end{longtable}
+
+\section{论文怎样组织：图形与叙事的选择}
+\subsection{优先衔接当前图形，而不是重新排号}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{1.8cm}Y Y}
+\toprule
+图形位置 & 建议承担的问题 & 所需关键证据\\
+\midrule
+Fig1 & 行为与口述为何值得逐人研究 & 全体描述、真实报告与任务结构；保持行为证据边界\\
+Fig2 & 内部状态的解释有多少独立支持 & 群体选择评分、口述新增信息、模型和状态稳定性\\
+Fig3 & 什么经历伴随规则修订，随后怎样变化 & 全体语义事件、匹配对照、时间区间与后续行为\\
+后续主图A & 发现与稳定是否分离 & 被试级到达与驻留分析、独立口述支持\\
+后续主图B & 个体与任务如何改变学习路径 & 连续差异、可重复的分组或条件环节分解\\
+后续主图C & 同一过程能否预测或自主产生学习 & 前推预测、自主分布、具有辨别力的机制对照\\
+\bottomrule
+\end{tabularx}
+\end{center}
+Results草稿已经将后续部分指向任务调节和自主生成，因此正式Fig4/Fig5编号应在结果收敛后协调。本计划中的A/B/C是内容模块，不是要求新增三张主图。
+
+\subsection{三个可选择的主故事}
+\key{故事A：同一学习成绩背后的不同困难。}
+从发现与稳定的分离出发，解释为何有些人长期没有有效结构，有些人已经形成却难以维持，最后检验未来表现。适合工作包2、4和6产生稳定证据时使用。
+
+\key{故事B：学习优势来自适时改变。}
+以独立口述修订为中心，检验局部/全局搜索的时机、内容和行为后果，再用静态搜索对照或自主生成定位模型贡献。适合工作包1、3和6。
+
+\key{故事C：环境塑造了通往知识的不同路径。}
+从各任务中的表征路线与分支学习出发，比较环境作用于发现、保持还是执行，再讨论泛化。适合任务支持和群体覆盖充分后使用。
+
+\key{收敛原则：}正式主文选择一个主问题和少量互相支撑的结论。其余方向进入补充材料、后续项目或保留目录。不能根据哪项显著就临时更换整篇文章的核心问题而不说明探索过程。
+
+\section{验证与统计：怎样避免把图形故事当成证据}
+\subsection{不同不确定性分别报告}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{3cm}Y}
+\toprule
+来源 & 应怎样处理\\\midrule
+有限PF预算 & 独立seed和粒子数检查；16次重复是数值重复，不是16名被试\\
+近优参数/结构 & 比较功能指标是否稳健；近优集合不是自动校准的置信区间\\
+潜在路径多解 & 报告可区分层级；genealogy有祖先退化时仅作示意\\
+口述测量误差 & 编码信度、报告年龄、不可解析与缺失分开\\
+被试抽样 & 以被试为外层推断单位，报告有效人数与个体分布\\
+重复事件与时间依赖 & 分层模型或适当块级重采样；不把重叠窗口当独立样本\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{四类恢复与一个额外检查}
+依次区分模块结构恢复、执行结构恢复、参数恢复和状态恢复，再验证本计划真正要解释的派生指标：发现时间、稳定间隔、错误驻留、事件时机和路径类别。生成渐进变化、反应噪声、错误稳定等具有已知性质的轨迹，检查分析是否制造虚假突变或错误分组。模拟证明的是在指定生成条件下的辨别能力，不等于人真实使用该机制\cite{wilson}。
+
+\subsection{口述的独立性必须准确表述}
+口述没有进入当前choice拟合目标，但规则目录的构造曾参考口述；当前choice和刺激也可能同时影响报告与推断。因此称为“未进入选择损失的额外测量通道”更准确，不能笼统称为从未参与开发的独立数据。
+
+冻结编码尺度和语义方案；主验证采用完整目录，并比较刺激/choice基线、静态偏好和时间结构对照。若用口述挑选模型，就为确认性验证另留被试或报告；同一结果不能重复承担选择与验证。
+
+\subsection{预测与探索的边界}
+所有前推特征、标准化、维度选择、聚类和参数拟合都必须限制在训练信息内。仅把全序列拟合的曲线截成前半段不符合要求。先冻结少量主要终点，再列次级指标及多重比较策略；报告效应量与区间，保留不显著和相反结果。
+
+\subsection{最低报告清单}
+每项分析至少说明：问题、分析单位、可用人数/试次/事件、结果与预测变量、信息时点、比较基线、缺失与删失、误差来源、效应和区间、探索/验证状态。不得把记录长度称作掌握时间，不将Task2半正确反馈算作完整正确，也不为提高结果删除模糊刺激。
+
+\section{实施路线：按证据条件分阶段推进}
+\subsection{阶段与可审查交付物}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{1.6cm}Y Y}
+\toprule
+阶段 & 实际任务 & 进入下一阶段的条件\\
+\midrule
+阶段0 & 盘点任务、停止规则、字段时序、模型配置与结果覆盖；记录来源 & 数据连接和语义一致；知道哪些分析能够开展\\
+阶段1 & 完成口述事件手册与全体事件表，建立覆盖与信度报告 & 事件可复核、报告机会可计量、主要类别足够稳定\\
+阶段2 & 用两例检查指标和完整源表；检查近优状态及恢复需求 & 不同结构的指标适用性清楚，数值不确定性可见\\
+阶段3 & 在经验证的群体拟合上运行核心事件与发现/稳定分析 & 群体覆盖及状态稳定性充分，不由少数人支配\\
+阶段4 & 研究连续差异、必要时分组，并检验任务调节 & 分组或维度可重复，解释不超出设计\\
+阶段5 & 完成前推预测、自主生成与选定对照 & 对应主张具有留出、生成或独立测量证据\\
+阶段6 & 选择主故事，形成主图与补充材料；规划新实验 & 主张—证据一一对应，边界清楚\\
+\bottomrule
+\end{tabularx}
+\end{center}
+阶段1的行为/口述工作可与模型数值核查并行推进；阶段3之后需要真实拟合覆盖。这里不给未经测量的小时数或CPU预算。全体拟合、恢复、重复大规模模拟需单独运行安排，本次文档交付不执行这些任务。
+
+\subsection{首轮最小可行研究包}
+\begin{enumerate}
+\item 一张完整事件表：含未修订对照与无法判定记录。
+\item 一份两例数据契约核查：确认字段、时间、任务映射和读出差异。
+\item 三项预先选定的核心摘要：发现时间、稳定间隔、有效/错误结构保持与退出。
+\item 一张全体数据覆盖图：区分有行为、有可比报告、有稳定模型输出的被试。
+\item 一份明确的正式分析方案：核心终点、窗口、基线、删失和验证拆分。
+\end{enumerate}
+完成这些后，再决定主要推进故事A还是故事B；不以两名个案的视觉效果作选择依据。
+
+\subsection{什么情况下暂停某个方向}
+若事件信度不足，合并类型或保留可确认变化；若模型状态不稳，先报告行为/口述结果并缩小机制解释；若群体样本不足，保留连续低维描述；若没有迁移数据，将迁移转为实验设计；若Task2语义尚未迁移，其模型层分析继续等待。暂停的是具体依赖分支，其余已经具备条件的工作可以继续。
+
+\section{落地位置、复用入口与输出约定}
+\subsection{复用现有实现}
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{3.4cm}Y}
+\toprule
+对象 & 当前可复用位置或建议位置\\
+\midrule
+行为、RT、口述提及 & \path{CategoryLearning_codes/figures/fig1/behavior.py} 与 \path{nonoral.py}\\
+个案模型与口述表 & \path{CategoryLearning_codes/figures/fig2/build_fitted_case.py}\\
+搜索量与事件图 & \path{CategoryLearning_codes/figures/fig3/build_fig3.py} 与 \path{build_revision_fig3.py}\\
+口述编码与对齐 & \path{src/Bayesian_state/evaluation/oral/}\\
+策略、选择传递和残差审计 & \path{src/Bayesian_state/evaluation/particle_filter/}\\
+自主轨迹与内部路径 & \path{run_autonomous_trajectory_evaluation.py} 与 \path{run_internal_cognitive_trajectory_evaluation.py}（共享包根目录）\\
+新增共享分析与编排 & 纯指标放 \path{metrics/}，后处理放 \path{evaluation/}，流程放 \path{workflows/analysis/}；以实际复用范围决定\\
+后续论文图 & 继续放 \path{CategoryLearning_codes/figures/figN/}，草稿用新的版本输出目录\\
+\bottomrule
+\end{tabularx}
+\end{center}
+现有FFT或自主轨迹聚类针对run/rollout或路径，不是现成的被试人群划分器。不能直接把其自动选出的形态簇改称人类学习类型。condition2的部分选择传递审计及依赖它的内部genealogy入口仍不可用，应按具体支持检查，不复用二分类错误反推规则。
+
+\subsection{结果保存与可复现信息}
+后续分析选择新的 \path{results/model_0826/further_analysis/<run_id>/} 目录；这是建议位置，本次不创建。保存配置、输入哈希、代码版本、被试范围、评分掩码、事件编码版本、随机种子、依赖版本和输出清单。原始data只读，既有结果与图稿不覆盖。
+
+绘图继续默认PNG。仅确认后的论文图进入 \path{CategoryLearning_paper/figures/}。本计划按用户明确要求交付PDF，并保留同名TeX源文件便于修改；编译日志和预览图放系统临时目录。
+
+\subsection{实施后的验证范围}
+文档修改只检查编译、字体、分页、引用与内容完整性。未来新增指标时先用针对性单元或小样本检验，涉及共享核心时再执行相应回归。不得把导入检查或两个个案试算写成完整科学流程验证，也不为计划文档运行昂贵模型作业。
+
+\appendix
+\section{文献如何帮助讲清问题}
+以下仅概括与本计划有关的思路，具体预测和分析设计是本项目的候选方案。文献核查基于上一轮已打开的论文、摘要及作者/出版社页面；不将文献中的结果移植成当前数据的结论。
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{L{3.5cm}Y}
+\toprule
+研究线索 & 可借鉴的叙事方式与本计划连接\\
+\midrule
+表征随学习变化\cite{johansen} & 用诊断性泛化区分信息使用变化；提醒“信息改变”与“表征系统改变”层级不同\\
+SUSTAIN\cite{love} & 意外事件推动类别子结构调整；连接局部修正、整体重组与错误的诊断性\\
+稳定策略倾向\cite{mcdaniel,herzog} & 用跨任务测量验证倾向，而非仅按一项成绩分组；本数据需新增重复测量才能检验稳定性\\
+任务内策略流动\cite{gouravajhala} & 逐块报告比一次总回顾更接近过程；本项目可研究更细的修订区间\\
+动态类别归属\cite{chmm} & 将潜在类别归属的变化作为测量对象；比较何种变化能在独立通道获得支持\\
+交替决策策略\cite{ashwood} & 平均表现可能掩盖持续偏向状态；借鉴时间建模，不直接套用知觉任务的认知标签\\
+概念与神经表征\cite{mack} & 将计算模型与独立表征测量连接；MEG拓展需单独设计与验证\\
+主动采样\cite{markant} & 研究者可选择最有辨别力的探针；系统安排刺激的当前任务不直接称主动采样\\
+建模与可靠性\cite{wilson,hedge} & 恢复、预测、数值稳定和个体排序分别验证，明确每一层证据的用途\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{thebibliography}{99}
+\small
+\bibitem{johansen}
+Johansen, M. K., \& Palmeri, T. J. (2002).
+Are there representational shifts during category learning?
+\textit{Cognitive Psychology}, 45, 482--553.
+\href{https://doi.org/10.1016/S0010-0285(02)00505-4}{doi:10.1016/S0010-0285(02)00505-4}.
+
+\bibitem{love}
+Love, B. C., Medin, D. L., \& Gureckis, T. M. (2004).
+SUSTAIN: A network model of category learning.
+\textit{Psychological Review}, 111, 309--332.
+\href{https://www.gureckislab.org/papers/ref/love2004sustain}{作者实验室论文页}.
+
+\bibitem{mcdaniel}
+McDaniel, M. A., Cahill, M. J., Robbins, M., \& Wiener, C. (2014).
+Individual differences in learning and transfer: Stable tendencies for learning exemplars versus abstracting rules.
+\textit{Journal of Experimental Psychology: General}, 143, 668--693.
+\href{https://pmc.ncbi.nlm.nih.gov/articles/PMC3890377/}{论文全文}.
+
+\bibitem{gouravajhala}
+Gouravajhala, R., Wahlheim, C. N., \& McDaniel, M. A. (2020).
+Individual and age differences in block-by-block dynamics of category learning strategies.
+\textit{Quarterly Journal of Experimental Psychology}, 73, 578--593.
+\href{https://doi.org/10.1177/1747021819892584}{doi:10.1177/1747021819892584}.
+
+\bibitem{herzog}
+Herzog, S. A., \& Goldwater, M. B. (2026; online 2025).
+Evidence for rule versus exemplar learning strategies as stable individual differences independent from working memory.
+\textit{Memory \& Cognition}, 54, 311--334.
+\href{https://doi.org/10.3758/s13421-025-01752-7}{doi:10.3758/s13421-025-01752-7}.
+
+\bibitem{chmm}
+Villarreal, M., \& Lee, M. D. (2024).
+A Coupled Hidden Markov Model framework for measuring the dynamics of categorization.
+\textit{Journal of Mathematical Psychology}, 123, 102884.
+\href{https://doi.org/10.1016/j.jmp.2024.102884}{doi:10.1016/j.jmp.2024.102884}.
+
+
+\bibitem{ashwood}
+Ashwood, Z. C., Roy, N. A., Stone, I. R., et al. (2022).
+Mice alternate between discrete strategies during perceptual decision-making.
+\textit{Nature Neuroscience}, 25, 201--212.
+\href{https://doi.org/10.1038/s41593-021-01007-z}{doi:10.1038/s41593-021-01007-z}.
+
+\bibitem{mack}
+Mack, M. L., Love, B. C., \& Preston, A. R. (2016).
+Dynamic updating of hippocampal object representations reflects new conceptual knowledge.
+\textit{PNAS}, 113, 13203--13208.
+\href{https://doi.org/10.1073/pnas.1614048113}{doi:10.1073/pnas.1614048113}.
+
+\bibitem{markant}
+Markant, D. B., \& Gureckis, T. M. (2010).
+Category learning through active sampling.
+\textit{Proceedings of the 32nd Annual Conference of the Cognitive Science Society}, 248--253.
+\href{https://gureckislab.org/publications/MarkantGureckisCogSci2010.pdf}{作者保存的会议论文}.
+
+\bibitem{wilson}
+Wilson, R. C., \& Collins, A. G. E. (2019).
+Ten simple rules for the computational modeling of behavioral data.
+\textit{eLife}, 8, e49547.
+\href{https://elifesciences.org/articles/49547}{doi:10.7554/eLife.49547}.
+
+\bibitem{hedge}
+Hedge, C., Powell, G., \& Sumner, P. (2018).
+The reliability paradox: Why robust cognitive tasks do not produce reliable individual differences.
+\textit{Behavior Research Methods}, 50, 1166--1186.
+\href{https://pmc.ncbi.nlm.nih.gov/articles/PMC5990556/}{论文全文}.
+\end{thebibliography}
+
+\section{本地依据、版本与待核对事项}
+\subsection{核对来源与优先级}
+本次直接读取了当前图形README、选定版本源表、相关绘图代码、共享核心README、Model0826及其plus说明、condition2专项说明和论文Results。口述事件例子依照当前Fig3源表与代码核查。没有重跑模型，也没有把保存的描述数值重新计算为新的统计结论。
+
+对于互相冲突的历史文字，本计划优先采用当前实现及专项支持说明、当前选定图形版本和其源表。期刊工作流README中“仍限定condition1”的旧文字，与较新的condition2专项说明不一致；此处按后者确认四分类二值反馈扩展，同时保留其限制。Results中的待完成语句不作为实证来源。
+
+\begin{longtable}{L{14.4cm}}
+\toprule 主要本地文件与目录\\\midrule\endhead
+\path{CategoryLearning_codes/AGENTS.md}\\
+\path{CategoryLearning_paper/AGENTS.md}\\
+\path{CategoryLearning_codes/figures/fig1/README.md}\\
+\path{CategoryLearning_codes/figures/fig1/config.json}\\
+\path{CategoryLearning_codes/figures/outputs/fig1/fig1_v10/readout.md}\\
+\path{CategoryLearning_codes/figures/fig2/README_complete.md}\\
+\path{CategoryLearning_codes/figures/fig2/ORAL_ALIGNMENT_AUDIT.md}\\
+\path{CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v15/case_sources}\\
+\path{CategoryLearning_codes/figures/outputs/fig2/fig2_complete_v15/task3_case_sources}\\
+\path{CategoryLearning_codes/figures/fig3/README.md}\\
+\path{CategoryLearning_codes/figures/fig3/build_fig3.py}\\
+\path{CategoryLearning_codes/figures/fig3/build_revision_fig3.py}\\
+\path{CategoryLearning_codes/figures/outputs/fig3/fig3_v4/source_data}\\
+\path{CategoryLearning_codes/figures/figS2/README.md}\\
+\path{CategoryLearning_paper/sections/results.tex}\\
+\path{src/Bayesian_state/README.md}\\
+\path{src/Bayesian_state/evaluation/README.md}\\
+\path{src/Bayesian_state/docs/model_architecture/model_0826.tex}\\
+\path{src/Bayesian_state/docs/model_architecture/model_0826_plus.tex}\\
+\path{src/Bayesian_state/docs/model_architecture/model_0826_condition2.md}\\
+\bottomrule
+\end{longtable}
+
+\subsection{版本记录}
+核对日期：2026-09-12。读取时Git HEAD短标识为\texttt{0889ac11}，工作区包含其他未提交修改，因而该提交号不能单独复现本次全部工作区状态。选定来源的SHA256如下，辅助定位本计划依赖的文档快照：
+\begin{itemize}
+\item \path{model_0826.tex}：\\
+{\footnotesize\texttt{a34b9931ac2b4bada9ea7c56e776faad8b0d7b911129f8bf8624dbcf7c0df697}}
+\item \path{fig1/config.json}：\\
+{\footnotesize\texttt{49d919a0827c79947348a3b695d09fcae9df4240d70b9325f6f3ff65e4dcd145}}
+\item \path{fig3/README.md}：\\
+{\footnotesize\texttt{ef569728c0de7d51cdec162d459fc5952ae738935e63ffaace0d7595950deeef}}
+\end{itemize}
+
+\subsection{实施前仍需确认的材料}
+\begin{enumerate}
+\item 全体被试的实际拟合覆盖、选择结构、数值稳定性及失败记录。
+\item 任务分配、停止标准、退出原因、原始说明和各阶段的正式时间定义。
+\item 是否存在独立迁移、延迟保持、主观信心、眼动或同人跨任务测量。
+\item 哪些被试/报告参与过规则目录与口述编码开发，如何划分后续验证。
+\item 当前近优参数与状态恢复证据，尤其是condition2与执行结构差异。
+\end{enumerate}
+这些事项是具体分析的依赖条件。本文已经给出在不同条件下可以继续的路线，后续不需要为了缺少某一扩展测量而暂停全部研究。
+\end{document}
