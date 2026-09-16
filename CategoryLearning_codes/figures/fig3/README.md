@@ -1,5 +1,19 @@
 # Fig3：搜索与规则过程初稿
 
+## 六种文章主线的 Fig3 / Fig4 候选预览
+
+[打开六组配对图集](../outputs/fig3/story_previews_20260915_v2/index.html) · [全部配对总览](../outputs/fig3/story_previews_20260915_v2/all_six_pairs.png) · [来源与计算说明](../outputs/fig3/story_previews_20260915_v2/README.md) · [核查记录](../outputs/fig3/story_previews_20260915_v2/QA.md)
+
+对应 `model_0826_further.tex` 的六条文章主线：理解重组、改变时机、个体困难、任务差异、未来预测、自主生成。每条主线提供一张 Fig3 和一张 Fig4，共 12 张单图、6 张并排图，并提供本地图集。用于比较候选叙事与构图；正式分析尚未完成的部分采用明确标注的设计示意。
+
+```bash
+MPLCONFIGDIR=/tmp/categorylearning_story_mpl python -m CategoryLearning_codes.figures.fig3.build_story_previews --version story_previews_YYYYMMDD_v1
+```
+
+`--version` 必须是新目录名，且 `outputs/fig3/<version>` 与 `outputs/fig4/<version>` 均不存在。命令一起生成两组图；Fig4 实现在 `fig4/build_story_previews.py`，数据读取和样式共用 `story_preview_common.py`。单图 183 × 205 mm、300 dpi、PNG；并排图和总览为屏幕预览。
+
+输入为 Fig1 v10、Fig2 complete v15、Fig3 v4 的已保存来源，以及 S129 PMH 的 500 条历史自主轨迹。命令只读取和汇总这些来源，不重新拟合或模拟。每个面板标明真实数据、已有拟合、历史模拟或设计示意；导出来源哈希、逐面板清单、汇总 CSV 和代码快照。后缀预测、迁移与公平机制对照仍是待开展分析。此候选图集不替代下方 Fig3 v4。
+
 ## 当前：v4，真实报告变化片段
 
 ```bash
