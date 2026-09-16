@@ -15,4 +15,8 @@
 
 - [Condition 3：类别、按键与配对学习](model_architecture/model_0826_condition3_design.md)：Task2 编码约定、联合配对学习实现、运行入口和验证范围；正式拟合及恢复实验尚未开展。
 
+- [Model 0826：从文献论证到科学问题](model_architecture/model_0826_scientific_questions_20260916.md)：基于人类认知文献地图，评估反馈利用、学习瓶颈与知识继承等八个问题，区分竞争解释、关键证据、模型边界和三条候选文章主线。
+
+- [两条主线的 Results 逻辑](model_architecture/model_0826_results_logic_bottlenecks_continuity.md)：展开“学习瓶颈”与“知识继承”的逐节论证、Fig3/4 分工，以及现有数据与新增实验分别能支持的结论；第四部分对接人类认知、心理健康与 AI 会议，明确认知机制与模型指导学习支持的联系。
+
 - [Model 0826 Plus：检验与论文呈现方案](model_architecture/model_0826_plus.tex)：中文内部讨论稿，区分数值/恢复/行为/口述/生成检验，说明最新 Fig2 a–g 与补充图分工，以及已完成和待检验内容。
