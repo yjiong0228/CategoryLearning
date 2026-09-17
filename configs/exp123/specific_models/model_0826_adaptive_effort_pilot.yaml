@@ -1,0 +1,42 @@
+# Bounded methodological pilot; production fitting remains unchanged.
+analysis_id: model_0826_adaptive_effort_pilot_v1
+previous_pilot: ../../../results/model_0826/simplified_fit_pilot_20260917/full
+parameter_space: model_0826_cond1_parameter_space.yaml
+base_seed: 20260919
+parallel_budget: 128
+search:
+  subject: 129
+  particle_count: 32
+  filter_seed_count: 4
+  initial_count: 36
+  elite_count: 4
+  rounds: 2
+  proposals_per_elite: 24
+  local_fraction: 0.5
+  jump_fraction: 0.25
+  patience: 2
+  min_improvement: 0.0001
+  shortlist_size: 4
+screen:
+  particle_count: 64
+  filter_seed_count: 8
+confirmation:
+  particle_count: 128
+  filter_seed_count: 16
+  top_per_source: 2
+calibration:
+  subject: 229
+  particles: [32, 64, 128]
+  seed_counts: [4, 8, 16, 32]
+  candidates_per_source: 2
+  reuse_previous_confirmation: true
+criteria:
+  require_state_stability: true
+  max_mean_nll_gap: 0.005
+  max_pairwise_interval_halfwidth: 0.005
+  max_bootstrap_regret95: 0.005
+  max_choice_probability_rmse: 0.02
+  max_mean_rule_total_variation: 0.10
+  max_active_probability_mae: 0.05
+  max_strategy_probability_mae: 0.05
+  bootstrap_replicates: 2000

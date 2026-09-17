@@ -15,6 +15,7 @@
 | `analysis/audit_model_0826_system.py` | 小规模机制、输入契约与 exp4/exp5 适配检查；隔离进程内验证加速原型 |
 | `analysis/probe_model_0826_search.py` | S129 分散起点与跨块联合移动的有限补充搜索，复用共享评分器 |
 | `analysis/pilot_model_0826_simplified_fit.py` | 简化拟合的隔离试验：单阶段低预算搜索、独立筛选和确认，与历史入围参数在当前代码下比较 |
+| `analysis/pilot_model_0826_adaptive_effort.py` | 后续试点：固定候选上限的分散搜索与局部/联合调整、固定参数的粒子/种子校准及按被试追加计算的诊断 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
 
@@ -130,3 +131,40 @@ env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_T
 默认入口则使用 128 的完整进程预算，每 worker 单线程。`--resume` 只接受完全相同的
 输入/代码/环境；搜索可恢复，完整筛选/确认批次可复用。筛选/确认的半成品批次不会覆盖，
 若该批中断应保留旧目录并在新的输出目录重做。
+
+## 按被试分配搜索与数值预算的试点
+
+`pilot_model_0826_adaptive_effort` 延续简化拟合诊断，配置为
+`configs/exp123/specific_models/model_0826_adaptive_effort_pilot.yaml`，不修改正式配置或模型核心。
+
+- S129 从现有参数空间生成 36 个初始点：所有工作空间格的标准起点，以及各参数块分层抽样的
+  分散起点。随后最多两轮、每轮四个不同精英点、每点最多 24 个局部/整块/双块候选，总上限 228。
+  候选来自现有 fine 支持集，没有穷举 dense fine。搜索始终使用同一组 32×4 seeds。
+  历史参数只在搜索结束后加入独立 64×8 筛选与 128×16 确认；本轮是新提案策略的探索试验，
+  同时改变了候选分布和搜索种子，不能当作只改变一个因素的优化器比较。
+- S229 固定上一轮独立筛选的两名简化候选和两名历史参照，比较 R=32/64/128 与 B=4/8/16/32。
+  每个 R 只算到 B=32，再分析相同 seeds 的前缀。核对旧配置、输入、源码和候选后，R=128
+  只补齐 16 个新 seeds，旧前缀只读复用。完整 32-seed 结果包含已见过的前缀，不能称为全新独立验证。
+- 阈值控制平均 NLL 数值区间、bootstrap regret、逐试次预测与状态差异。Regret 允许近似等价的
+  候选换位；不要求每次随机运行都有唯一赢家。分半指标使用 B/2 对 B/2，不等于两个独立 B-seed
+  重复；有限候选、有限粒子下的 bootstrap 也不是全局最优或积分收敛证明。
+  追加参数搜索使用评分/排序精度检查；最终输出另查预测和状态精度。已明确的评分差距不会
+  仅因输出精度稍低而阻止继续搜索，停止交付前仍须检查目标输出精度。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMBA_CACHE_DIR=/tmp/model0826_adaptive_numba MPLCONFIGDIR=/tmp/model0826_adaptive_mpl \
+  python -m src.Bayesian_state.workflows.analysis.pilot_model_0826_adaptive_effort \
+  --config configs/exp123/specific_models/model_0826_adaptive_effort_pilot.yaml \
+  --output-dir results/model_0826/adaptive_effort_pilot_new
+```
+
+先以 `--smoke` 在另一个新目录检查两个被试的 32-trial 单进程流程；默认运行完整序列、128 进程
+预算。`--resume` 检查完整输入/源码/环境并复用完成批次；半成品批次不覆盖。输出包括提案来源、
+逐轮收益、逐 seed 数组、各预算诊断及追加计算建议。
+
+按被试调整的是计算量，所有被试仍使用相同模型、目标、试次契约和预先确定的精度要求。
+优先区分评分噪声与搜索覆盖不足：前者校准 R/B，后者增加真正不同的起点或有限局部搜索。
+低 NLL 本身不能证明搜索充分，高 NLL 也不自动意味着需要更多搜索。状态分析还需单独达到状态
+稳定性要求。达到预设计算上限但未过检查时，应标记“尚未稳定”，不能把耗尽预算写成“已收敛”。
+当前建议器没有自动选择正式的被试级预算，推广到全体被试与模型比较仍需独立验证。
