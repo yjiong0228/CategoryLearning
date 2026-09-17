@@ -22,6 +22,7 @@ from matplotlib.colors import ListedColormap
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from ..utils.parallel import parallel_job_count, single_threaded_processes
 from scipy.spatial.distance import cdist
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
@@ -339,6 +340,7 @@ def _run_genealogy_seed(
     }
 
 
+@single_threaded_processes()
 def generate_cognitive_path_ensemble(
     spec: AutonomousEvaluationSpec,
     *,
@@ -354,7 +356,7 @@ def generate_cognitive_path_ensemble(
     seeds = np.asarray(filter_seeds, dtype=np.uint32).reshape(-1)
     if seeds.size < 2 or np.unique(seeds).size != seeds.size:
         raise ValueError("filter_seeds must contain at least two unique values.")
-    runs = Parallel(n_jobs=int(n_jobs), prefer="processes")(
+    runs = Parallel(n_jobs=parallel_job_count(n_jobs, len(seeds)))(
         delayed(_run_genealogy_seed)(
             spec,
             particle_count=n_particles,

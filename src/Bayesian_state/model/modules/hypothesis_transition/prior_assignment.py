@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 import numpy as np
+from ....utils.numeric import entropy
 
 from ..base_module import ModuleRole
 

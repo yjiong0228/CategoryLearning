@@ -7,6 +7,7 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from ..utils.parallel import parallel_job_count, single_threaded_processes
 from scipy.stats import spearmanr
 from src.Bayesian_state.inference.backends.particle_filter import run_state_model_particle_filter
 from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
@@ -235,6 +236,7 @@ def _score_pf_candidate_seed(
     )[0]
 
 
+@single_threaded_processes()
 def score_pf_bank_parallel(
     *,
     dataset_id: str,
@@ -261,9 +263,9 @@ def score_pf_bank_parallel(
         raise ValueError("parallel PF calibration requires at least one candidate")
     if not seeds or len(seeds) != len(set(seeds)):
         raise ValueError("parallel PF calibration requires unique filter seeds")
-    jobs = min(int(n_jobs), len(candidate_rows) * len(seeds))
-    if jobs < 1:
+    if int(n_jobs) < 1:
         raise ValueError("parallel PF calibration n_jobs must be positive")
+    jobs = parallel_job_count(int(n_jobs), len(candidate_rows) * len(seeds))
     common_kwargs = {
         "dataset_id": str(dataset_id),
         "subject_id": int(subject_id),
@@ -285,7 +287,7 @@ def score_pf_bank_parallel(
             filter_seeds=seeds,
         )
     warmup_dykstra_numba()
-    single_rows = Parallel(n_jobs=jobs, backend="loky", verbose=10)(
+    single_rows = Parallel(n_jobs=jobs, verbose=10)(
         delayed(_score_pf_candidate_seed)(
             common_kwargs=common_kwargs,
             candidate=candidate,
@@ -724,6 +726,7 @@ def mean_probability_nll(
     return float(-np.log(np.clip(selected[score_mask], 1e-12, 1.0)).sum())
 
 
+@single_threaded_processes()
 def score_frozen_candidate(
     *,
     subject_id: int,
@@ -762,9 +765,9 @@ def score_frozen_candidate(
     seeds = [int(value) for value in filter_seeds]
     if not seeds or len(seeds) != len(set(seeds)):
         raise ValueError("frozen scoring requires unique filter seeds")
-    jobs = min(int(n_jobs), len(seeds))
-    if jobs < 1:
+    if int(n_jobs) < 1:
         raise ValueError("frozen scoring n_jobs must be positive")
+    jobs = parallel_job_count(int(n_jobs), len(seeds))
 
     def run_seed(filter_seed: int) -> np.ndarray:
         result = pf_runner(
@@ -790,7 +793,7 @@ def score_frozen_candidate(
     else:
         warmup_dykstra_numba()
         probability_runs = list(
-            Parallel(n_jobs=jobs, backend="loky", verbose=10)(
+            Parallel(n_jobs=jobs, verbose=10)(
                 delayed(run_seed)(filter_seed) for filter_seed in seeds
             )
         )

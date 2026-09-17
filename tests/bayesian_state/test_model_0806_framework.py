@@ -1084,7 +1084,11 @@ def test_static_strategy_uses_common_selection_then_prior_contract():
     assert np.all(result.prior_after[engine.hypotheses_mask == 0.0] == 0.0)
 
 
-def test_dynamic_discrete_has_explicit_trial_level_strategy_state():
+@pytest.mark.parametrize("prior_config", [
+    {"method": "conservative_carryover", "newcomer_mass": 0.1},
+    {"method": "similarity_novelty", "confidence_source": "entropy"},
+])
+def test_dynamic_discrete_has_explicit_trial_level_strategy_state(prior_config):
     engine = _TinyEngine()
     engine.posterior = np.asarray([0.65, 0.35, 0.0, 0.0, 0.0, 0.0])
     engine.observation = (np.asarray([0.2]), 1, 1.0)
@@ -1122,10 +1126,7 @@ def test_dynamic_discrete_has_explicit_trial_level_strategy_state():
                             "pool": "inactive",
                         },
                     ],
-                    "post_to_prior": {
-                        "method": "conservative_carryover",
-                        "newcomer_mass": 0.1,
-                    },
+                    "post_to_prior": prior_config,
                 }
             ],
         },
@@ -1133,6 +1134,8 @@ def test_dynamic_discrete_has_explicit_trial_level_strategy_state():
 
     module.process()
 
+    assert np.isfinite(engine.prior).all()
+    assert engine.prior.sum() == pytest.approx(1.0)
     assert module.strategy_counts_log[-1]["selected_state"] == "only_state"
     assert module.strategy_counts_log[-1]["strategy_mode"] == "dynamic_discrete"
     assert module.last_transition_result is not None

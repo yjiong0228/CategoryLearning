@@ -256,5 +256,5 @@ search:
     coordinate_order: fixed
     patience: 2
     min_delta: 0.0001
-    parallel_budget: 64
+    parallel_budget: 128
   final_rescore_seed_family: model0826_recovery_final_rescore_v1

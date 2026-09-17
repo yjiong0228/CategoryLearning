@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from ...utils.parallel import parallel_job_count, single_threaded_processes
 
 from src.Bayesian_state.optimization.diagnostics.search import (
     DEFAULT_BASE_SIM_CONFIG,
@@ -226,6 +227,7 @@ def _curve_metrics(metrics: Mapping[str, Any]) -> dict[str, float]:
     }
 
 
+@single_threaded_processes()
 def _run_candidate_accuracy_diagnostic(
     *,
     subject_id: int,
@@ -282,7 +284,7 @@ def _run_candidate_accuracy_diagnostic(
             },
         )
 
-    runs = Parallel(n_jobs=max(1, int(n_jobs)))(
+    runs = Parallel(n_jobs=parallel_job_count(max(1, int(n_jobs)), int(simulation_repeats)))(
         delayed(one_run)(repeat_index) for repeat_index in range(int(simulation_repeats))
     )
 
@@ -910,6 +912,7 @@ def _run_one_volatility_model_trajectory(
     }
 
 
+@single_threaded_processes()
 def _evaluate_volatility_subject(
     *,
     input_dir: Path,
@@ -960,7 +963,7 @@ def _evaluate_volatility_subject(
         )
     simulation_point_seed = derive_simulation_point_seed(int(hyper_candidate_seed), int(subject_id), raw_params)
 
-    runs = Parallel(n_jobs=max(1, int(n_jobs)))(
+    runs = Parallel(n_jobs=parallel_job_count(max(1, int(n_jobs)), int(model_repeats)))(
         delayed(_run_one_volatility_model_trajectory)(
             subject_id=int(subject_id),
             condition=int(condition),

@@ -2,7 +2,7 @@
 
 2026-09-09，按用户要求优先拟合 PMH；condition 3 与消融模型暂停。
 
-入口为 `configs/exp123/model_struct/pmh_model_cond2_0826.yaml`。共享 PF 接收 `condition=2`；直接调用未传 condition 时仍默认为 1。simulation 和 dispatcher 都转交实际 condition。condition 2 必须使用四类 partition、choice 1–4、feedback 0/1。condition 3 仍明确报错。
+入口为 `configs/exp123/model_struct/pmh_model_cond2_0826.yaml`。共享 PF 接收 `condition=2`；直接调用未传 condition 时仍默认为 1。simulation 和 dispatcher 都转交实际 condition。condition 2 必须使用四类 partition、choice 1–4、feedback 0/1。condition 3 已另行实现层级配对及部分反馈（见 `model_0826_condition3_design.md`），有定向测试与短序列验证，尚未完成正式拟合和完整恢复。
 
 ## 继承与变化
 

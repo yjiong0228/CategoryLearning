@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 from joblib import Parallel, delayed
+from ..utils.parallel import parallel_job_count, single_threaded_processes
 from tqdm import tqdm
 
 from ..metrics.losses import LOSS_METRIC_MAE
@@ -416,6 +417,7 @@ def aggregate_simulation_runs(
 class StateModelSimulationRunner(SubjectTrialDataLoader):
     """Run repeated simulations for one fixed hyperparameter setting."""
 
+    @single_threaded_processes()
     def simulate_subject(
         self,
         subject_id: int,
@@ -527,7 +529,7 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
         )
 
         raw_results = list(
-            Parallel(n_jobs=self.n_jobs)(
+            Parallel(n_jobs=parallel_job_count(self.n_jobs, len(tasks)))(
                 delayed(evaluate_state_model_run)(
                     subject_id,
                     condition,

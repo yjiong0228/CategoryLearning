@@ -11,6 +11,8 @@ Examples:
 """
 from __future__ import annotations
 
+from src.Bayesian_state.utils.parallel import MODEL_0826_PARALLEL_BUDGET
+
 import argparse
 import json
 import logging
@@ -268,7 +270,8 @@ def parse_args(argv: Sequence[str] | None = None, *, default_input_dir: Path = D
 
     parser.add_argument("--volatility-model-repeats", type=int, default=128)
     parser.add_argument("--volatility-binary-samples-per-run", type=int, default=32)
-    parser.add_argument("--volatility-n-jobs", type=int, default=8)
+    parser.add_argument("--volatility-n-jobs", type=int, default=MODEL_0826_PARALLEL_BUDGET,
+                        help="Process budget (default: 128), one numeric thread per worker")
     parser.add_argument("--volatility-seed", type=int, default=20260622)
     return parser.parse_args(argv)
 

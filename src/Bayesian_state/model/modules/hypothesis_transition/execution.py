@@ -9,6 +9,7 @@ import numpy as np
 from ..base_module import ModuleRole
 
 from .contracts import (
+    _membership_mask,
     HypothesisSelection,
     TransitionContext,
     TwoStepHypothesisTransitionMixin,
@@ -118,7 +119,7 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
                 ):
                     protected.add(int(commitment_target))
                 drop_pool = active_before[
-                    ~np.isin(active_before, np.asarray(sorted(protected), dtype=int))
+                    ~_membership_mask(active_before, np.asarray(sorted(protected), dtype=int))
                 ]
             replacement_count = min(replacement_count, int(drop_pool.size))
             drop_weights = 1.0 - posterior[drop_pool] + self.epsilon
@@ -127,7 +128,7 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
                 drop_weights,
                 replacement_count,
             )
-            inactive = self.full_indices[~np.isin(self.full_indices, active_before)]
+            inactive = self.full_indices[~_membership_mask(self.full_indices, active_before)]
             remaining_count = int(replacement_count)
             newcomer_parts: list[np.ndarray] = []
             if forced_newcomer:
@@ -149,7 +150,7 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
                 if newcomer_parts
                 else np.empty(0, dtype=int)
             )
-            survivors = active_before[~np.isin(active_before, dropped)]
+            survivors = active_before[~_membership_mask(active_before, dropped)]
             active_after = np.sort(np.concatenate([survivors, newcomers]))
 
         if active_after.size != self.capacity or np.unique(active_after).size != self.capacity:

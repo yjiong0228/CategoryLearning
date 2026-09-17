@@ -37,14 +37,20 @@ python -m pytest -q CategoryLearning_codes/Bayesian_model/tests
 期刊 simulation/recovery 入口检查所选被试的解析后数据路径全部位于 `data/exp123/`。
 其他保留的旧 CLI 是通用兼容入口，使用时仍需明确传入期刊配置。
 
+正式 `recovery_v1.yaml`、`recovery_v2.yaml` 和 `recovery_simulation.yaml` 的并行预算为
+128，不主动预留 CPU。共享执行层限制每个 worker 的数值线程为 1，并按当前独立任务数和
+可用 CPU 收缩进程池；`smoke_simulation.yaml` 继续保持小规模。详见
+[128 核并行策略](../../src/Bayesian_state/docs/maintenance/model_0826_parallel_policy_20260917.md)。
+
 博士论文使用 `python -m src.Bayesian_state...` 和对应实验配置。现有 `dataset`
 字段可以指定 processed_dir、learning_data、perception_summary、perception_summary_72、
 feature_order_data，不必因为换数据目录复制核心算法。后续字段转换放在数据适配层，
 类别结构和反馈含义由任务配置及对应任务实现处理，不在认知模块内根据文件夹名称分支。
 
-**路径可配置不等于科学模型已支持所有任务。** 当前冻结的 0826/PF 工作流仍限定
-condition 1 的二分类。四分类、部分反馈和 MEG 情境需要另行定义并验证任务语义。
-这次没有改变它们的支持状态，也没有修改默认超参数、预测时序、试次筛选或 oral σ=0.05。
+**路径可配置不等于科学模型已支持所有任务。** 期刊默认配置仍以 condition 1 二分类为主；共享核心
+已实现 condition 2 四分类二值反馈和 condition 3 层级部分反馈。condition 3 目前通过
+定向测试和短序列验证，正式拟合、完整恢复及消融尚未完成。exp4/exp5 和 MEG 的任务
+适配仍需独立验证。默认超参数、预测时序和 oral σ=0.05 保持不变。
 
 ## 发表版本与持续开发
 

@@ -106,6 +106,8 @@ def main() -> None:
         "runtime_code_sha256": {
             method.__qualname__: hashlib.sha256(marshal.dumps(method.__code__)).hexdigest()
             for method in (BoundaryGeometry.distances_to_category,
+                           BoundaryGeometry.category_distances,
+                           ContinuousPartition.get_category_probabilities,
                            ContinuousPartition._category_feedback_likelihood)
         },
         "source_sha256": {

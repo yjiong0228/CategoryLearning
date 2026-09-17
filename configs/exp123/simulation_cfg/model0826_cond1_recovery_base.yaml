@@ -11,7 +11,7 @@ dataset:
   feature_order_data: Task2_processed.csv
 
 output_dir: ../../../results/model_0826/recovery_v1/base_simulation
-n_jobs: 64
+n_jobs: 128
 simulation_repeats: 4
 repeat_aggregation: mean_probability
 window_size: 16

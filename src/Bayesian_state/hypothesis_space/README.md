@@ -72,14 +72,14 @@ likelihood:
 
 `dykstra_iterative_projection` 是兼容默认；`kkt_active_set_projection` 枚举 KKT
 active constraints。二者都计算 stimulus 到单位立方体内 category region 的欧氏
-距离。缓存只保存 region geometry 的 active sets 和投影算子，不缓存 stimulus
-distance。`label_permutation_policy` 还可显式设为
+距离。Region geometry 的 active sets 和投影算子沿用原有缓存；实际感知刺激的
+boundary distance 另有实例级有界缓存（见下文）。`label_permutation_policy` 还可显式设为
 `binary_identity_and_reverse`；它仅支持二分类，并在原规则之后追加标签反转规则。
 
 当使用兼容默认 Dykstra solver 时，`boundary_dykstra_backend` 可为 `auto`、`numba`
 或 `python`。`auto` 在 Numba 可用时编译历史循环（保持 100 次投影、更新顺序和
 `fastmath=False`），否则回退到 Python；`python` 主要用于数值等价审计。单位立方体约束和
-固定知觉统计会在进程内复用，但不缓存随 trial 改变的 stimulus distance。
+固定知觉统计会在进程内复用；刺激距离只按精确输入缓存，不对刺激进行量化或舍入。
 
 代码有意不提供 `Partition` 这类过于宽泛的名称，也不提供 `.splits`、
 `.regions`、`.rules` 和 `.prototypes` 这类重复视图。
@@ -111,3 +111,46 @@ python -m src.Bayesian_state.hypothesis_space.analysis
 ```
 
 审计结果写入 `results/hypothesis_analysis`，模型执行路径不会导入该分析包。
+
+
+## Model 0826 的等价计算加速（2026-09-17）
+
+连续 partition 默认启用三个工程优化；模型公式、科学参数、随机数流和全规则似然归一化不变：
+
+- 对 beta **精确等于 0** 且处于单位立方体内的有效刺激，直接返回均匀类别概率。不会把接近 0
+  的正数视为 0；仍校验 mode、维度与规则索引。非有限、空批次及立方体外输入沿原计算路径处理。
+- `BoundaryGeometry` 按规则 ID、实际感知刺激的 shape 和 float64 精确字节缓存距离；不缓存
+  beta、预测概率或学习状态。不同 beta 仍执行原 softmax。Prototype 距离暂不缓存。
+- 对上述有效刺激、二值 `category_feedback` 和精确为零的 beta，复用一次反馈似然计算填入
+  相同的列；保留全部规则、列顺序和完整矩阵的归一化。部分反馈、其他反馈模型、自定义子类
+  和非零 beta 走原求值路径；不缓存随认知更新而变化的似然。
+
+```yaml
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition
+  kwargs:
+    n_dims: 4
+    n_cats: 2
+    zero_beta_fast_path: true
+    zero_beta_likelihood_batch: true
+    boundary_distance_cache_max_entries: 4096
+    boundary_distance_cache_max_bytes: 4194304
+```
+
+这四个字段可省略，以上为默认值。单独将 `zero_beta_likelihood_batch` 设为 `false` 可关闭
+似然列复用。将 `zero_beta_fast_path` 设为 `false` 且任一缓存上限设为 0 可关闭上述三项加速，
+便于复核。上限必须是非负整数。字节上限计算保留的刺激／距离数组内容；Python
+字典与对象开销另受条目上限约束，不表示整个 PF 进程只占 4 MiB。
+
+缓存是 LRU，属于单个 boundary geometry；同一次 PF 的粒子共享它，不跨独立 PF 运行共享。
+超出单项字节预算的批量请求在复制缓存 key 前直接绕过缓存。规则空间对象、solver、容差、投影
+迭代次数或后端改变会使旧条目失效。规则区域遵守原有不可变契约，禁止绕过只读保护原地改写。
+
+缓存返回值由不可变 bytes 支撑，不能直接写入或重新设为可写；修改数组 shape/dtype 也不会破坏
+其他调用。调用方如需编辑结果，使用 `.copy()`。没有缓存的结果仍可能可写，应统一按只读方式使用。
+通过 `partition.boundary_geometry.distance_cache_info()` 查看命中、未命中、条目及内容字节数，
+通过 `clear_distance_cache()` 释放条目。缓存不进入认知状态快照，pickle/deepcopy 后为空；对象
+回收时随之释放。锁保护并发读写的缓存账目；几何配置应在计算期间保持固定。
+
+复现、数值与内存验收入口见 [性能检查](../workflows/benchmarks/README.md)。此次验证只支持等价
+加速结论，不替代参数恢复、状态恢复或 exp4/exp5 任务迁移。

@@ -42,18 +42,21 @@ def test_no_production_imports_reference_models():
 def test_recovery_fingerprint_tracks_each_split_implementation(monkeypatch):
     design = load_recovery_design(ROOT / 'configs/exp123/specific_models/model_0826_recovery_v1.yaml')
     before = run_recovery._design_fingerprint(design)
-    original_hash = run_recovery._file_sha256
+    from src.Bayesian_state.utils import provenance
+    original_hash = provenance.file_digest
     changed = {'path': None}
 
     def controlled_hash(path):
         return '0' * 64 if Path(path) == changed['path'] else original_hash(path)
 
-    monkeypatch.setattr(run_recovery, '_file_sha256', controlled_hash)
+    monkeypatch.setattr(provenance, 'file_digest', controlled_hash)
     for relative in [
         'simulation/recovery.py', 'optimization/recovery.py',
         'optimization/recovery_parameters.py', 'evaluation/recovery.py',
         'utils/recovery_artifacts.py', 'workflows/recovery/design.py',
         'workflows/recovery/generation.py', 'workflows/recovery/run.py',
+        'model/modules/memory.py', 'model/modules/beta.py',
+        'model/modules/hypothesis_transition/prior_assignment.py',
     ]:
         changed['path'] = ROOT / 'src/Bayesian_state' / relative
         assert run_recovery._design_fingerprint(design) != before, relative

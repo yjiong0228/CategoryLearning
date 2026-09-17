@@ -11,6 +11,7 @@
 | `datasets.py` | 解析 simulation YAML 的 dataset block 和数据文件绝对路径 |
 | `subjects.py` | deep merge、移除/读取 subject overrides、生成 subject-specific config |
 | `seeding.py` | 跨 inference、simulation、optimization 共享的稳定 seed 派生 |
+| `parallel.py` | 完整 CPU 预算、独立任务进程并行、每个 worker 单线程及嵌套池约束 |
 | `streaming.py` | `StreamList`：大体积 run log 的 gzip 流式存取 |
 | `numeric.py` | `softmax`、Euclidean distance、entropy 等小型数值函数 |
 | `decay.py` | 保留的经典衰减工具 |
@@ -38,6 +39,13 @@ YAML 内的相对路径不要直接拼到 `ROOT_DIR`。它们由 `datasets.py` �
 导入 `src.Bayesian_state.utils` 不创建目录、日志文件，不配置 root logger，也不扫描 model YAML。
 CLI 在 `main()` 中显式调用 `configure_logging()`；库调用方可自行管理 logging。
 `MODEL_STRUCT` API 在首次迭代、取值或查询长度时加载配置。
+
+`parallel.single_threaded_processes()` 在调用期间将数值线程限制为 1，并给 loky worker
+显式设置 `inner_max_num_threads=1`；退出时恢复调用方的线程设置。`parallel_job_count()`
+取请求预算、可用 CPU 和当前独立任务数的最小值，不预留核心；进程池内再次调用时串行执行，
+由外层统一占用预算。Model 0826 的正式默认预算是 128，明确的小规模配置仍被尊重。
+导入该模块不设置全局环境变量。完整说明见
+[并行策略](../docs/maintenance/model_0826_parallel_policy_20260917.md)。
 
 ## 被试级配置覆盖
 

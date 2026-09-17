@@ -37,6 +37,11 @@ evaluator。
 
 ## 正式入口
 
+自主轨迹入口 `--n-jobs`、内部认知轨迹入口 `--jobs` 和 hyper evaluation 的
+`--volatility-n-jobs` 默认进程预算均为 128。实际 worker 数受独立 rollout/filter-seed
+任务数和可用 CPU 限制，每个 worker 的数值线程为 1。预算不增加轨迹数或 PF 粒子数；
+详见 [128 核并行策略](../docs/maintenance/model_0826_parallel_policy_20260917.md)。
+
 ```bash
 python -m src.Bayesian_state.run_model_evaluation \
   --input-dir results/state-based-simulation/pmh/cond1_0806

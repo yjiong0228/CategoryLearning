@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from ..utils.parallel import parallel_job_count, single_threaded_processes
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
@@ -244,6 +245,7 @@ def _simulate_autonomous_minimal(
     )
 
 
+@single_threaded_processes()
 def generate_autonomous_ensemble(
     spec: AutonomousEvaluationSpec,
     *,
@@ -273,7 +275,7 @@ def generate_autonomous_ensemble(
     if np.unique(seeds).size != seeds.size:
         raise RuntimeError("Autonomous trajectory seed collision detected.")
     categories = np.asarray(spec.arrays.categories, dtype=int)
-    results = Parallel(n_jobs=int(n_jobs), prefer="processes")(
+    results = Parallel(n_jobs=parallel_job_count(n_jobs, len(seeds)))(
         delayed(_simulate_autonomous_minimal)(
             engine_config=spec.engine_config,
             subject_id=spec.subject_id,

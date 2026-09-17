@@ -1,7 +1,7 @@
 provenance:
   model_id: model_0826
   manuscript_path: src/Bayesian_state/docs/model_architecture/model_0826.tex
-  manuscript_sha256: a34b9931ac2b4bada9ea7c56e776faad8b0d7b911129f8bf8624dbcf7c0df697
+  manuscript_sha256: 568586ce77fe5e533e7f3585d7164134f9537ac5be0721084d3e909a692c7004
   architecture_profile: fixed_perception_fading_memory_lagged_failure_event_nested_workspace_similarity_transport_dynamic_rule_precision
   scientific_status: condition2_binary_feedback_extension_20260909
   label_mapping:

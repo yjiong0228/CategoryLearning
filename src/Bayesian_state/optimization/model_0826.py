@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
+from ..utils.parallel import MODEL_0826_PARALLEL_BUDGET
 
 from src.Bayesian_state.optimization.parameter_space import (
     reactive_error_probability,
@@ -364,7 +365,7 @@ def build_model_0826_hyper_config(
             "coordinate_order": str(cd_config.get("coordinate_order", "fixed")),
             "patience": int(cd_config.get("patience", 2)),
             "min_delta": float(cd_config.get("min_delta", 0.0)),
-            "parallel_budget": int(cd_config.get("parallel_budget", 1)),
+            "parallel_budget": int(cd_config.get("parallel_budget", MODEL_0826_PARALLEL_BUDGET)),
             "resume_mode": "explicit",
             "checkpoint_every_coordinate": True,
         },

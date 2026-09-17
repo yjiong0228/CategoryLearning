@@ -17,6 +17,8 @@
 
 - [Model 0826：从文献论证到科学问题](model_architecture/model_0826_scientific_questions_20260916.md)：基于人类认知文献地图，评估反馈利用、学习瓶颈与知识继承等八个问题，区分竞争解释、关键证据、模型边界和三条候选文章主线。
 
-- [两条主线的 Results 逻辑](model_architecture/model_0826_results_logic_bottlenecks_continuity.md)：展开“学习瓶颈”与“知识继承”的逐节论证、Fig3/4 分工，以及现有数据与新增实验分别能支持的结论；第四部分对接人类认知、心理健康与 AI 会议，明确认知机制与模型指导学习支持的联系。
+- [科学故事、Results 逻辑与摘要构想](model_architecture/model_0826_results_logic_bottlenecks_continuity.md)：保留此前路线与摘要记录；当前重点为第七部分 G3“验证个体信念解码 → 区分学习瓶颈 → 检验有限资源下的认知补偿”，包含模块设计依据、补偿关系及 Fig3/4 的证据逻辑。中英文摘要中的设想结果与现有证据分开标注。
+
+- [摘要结论对应的分析方案](model_architecture/model_0826_bottlenecks_analysis_plan_20260917.md)：以用户确认的 G3 标题与英文摘要为准，逐项说明瓶颈识别、个体画像与分组、搜索补偿和信念迁移需要的分析、现有输出字段及优先执行顺序。
 
 - [Model 0826 Plus：检验与论文呈现方案](model_architecture/model_0826_plus.tex)：中文内部讨论稿，区分数值/恢复/行为/口述/生成检验，说明最新 Fig2 a–g 与补充图分工，以及已完成和待检验内容。

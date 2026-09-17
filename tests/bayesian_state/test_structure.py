@@ -130,6 +130,7 @@ def test_observation_model_is_separate_from_hypothesis_inventory() -> None:
         "continuous_partition.py",
         "discrete_rule_partition.py",
         "likelihood.py",
+        "pairing.py",
     }
     assert (hypothesis_dir / "similarity.py").is_file()
     assert not (hypothesis_dir / "runtime").exists()

@@ -7,6 +7,7 @@ Prototype and boundary implementations consume that same object.
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -16,6 +17,8 @@ from ..spaces import (
     build_continuous_hypothesis_space,
 )
 from ..geometry import BoundaryGeometry, PrototypeGeometry
+from ..geometry.distance_cache import ExactDistanceCache
+from ..geometry.stimuli import as_stimuli
 from .base_partition import BasePartition
 from ..similarity import ContinuousSimilarity, prototype_boundary_agreement
 
@@ -43,7 +46,17 @@ class ContinuousPartition(BasePartition):
         label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
         similarity_n_samples: int = ContinuousSimilarity.DEFAULT_N_SAMPLES,
         similarity_cache_dir: str | Path | None = None,
+        zero_beta_fast_path: bool = True,
+        boundary_distance_cache_max_entries: int = ExactDistanceCache.DEFAULT_MAX_ENTRIES,
+        boundary_distance_cache_max_bytes: int = ExactDistanceCache.DEFAULT_MAX_BYTES,
+        zero_beta_likelihood_batch: bool = True,
     ) -> None:
+        if not isinstance(zero_beta_fast_path, (bool, np.bool_)):
+            raise ValueError("zero_beta_fast_path must be a boolean")
+        self.zero_beta_fast_path = bool(zero_beta_fast_path)
+        if not isinstance(zero_beta_likelihood_batch, (bool, np.bool_)):
+            raise ValueError("zero_beta_likelihood_batch must be a boolean")
+        self.zero_beta_likelihood_batch = bool(zero_beta_likelihood_batch)
         pair_tolerance = float(pairwise_similarity_tolerance)
         center_tolerance = float(center_band_tolerance)
         self.hypothesis_space: ContinuousHypothesisSpace = (
@@ -65,6 +78,8 @@ class ContinuousPartition(BasePartition):
             tolerance=boundary_distance_tolerance,
             projection_iterations=boundary_projection_iterations,
             dykstra_backend=boundary_dykstra_backend,
+            distance_cache_max_entries=boundary_distance_cache_max_entries,
+            distance_cache_max_bytes=boundary_distance_cache_max_bytes,
         )
         self.boundary_distance_method = self.boundary_geometry.method
         self.boundary_distance_tolerance = self.boundary_geometry.tolerance
@@ -145,9 +160,81 @@ class ContinuousPartition(BasePartition):
         **kwargs,
     ) -> np.ndarray:
         mode = self._resolve_distance_mode(distance_mode)
+        if self.zero_beta_fast_path and float(beta) == 0.0:
+            values = as_stimuli(data[0], self.n_dims)
+            self.hypothesis_space[int(hypo)]  # Keep the ordinary index validation.
+            # Restrict the shortcut to the task's finite unit-cube stimuli.
+            # Empty/nonfinite/extreme inputs retain the legacy geometry behavior.
+            if values.shape[0] and np.all((values >= 0.0) & (values <= 1.0)):
+                return np.full((self.n_cats, values.shape[0]), 1.0 / self.n_cats)
         if mode == self.DISTANCE_MODE_PROTOTYPE:
             return self.prototype_geometry.category_probabilities(hypo, data[0], beta)
         return self.boundary_geometry.category_probabilities(hypo, data[0], beta)
+
+    def calc_likelihood(
+        self,
+        hypos: Sequence[int],
+        data: list | tuple,
+        beta: list | tuple | float | np.ndarray = 1.0,
+        distance_mode: str | None = None,
+        normalized: bool = True,
+        **kwargs,
+    ) -> np.ndarray:
+        """Reuse equal zero-beta columns without changing full-rule evidence.
+
+        Binary category feedback is independent of rule topology at beta=0.
+        Partial feedback, alternate feedback models and custom subclasses keep
+        the base evaluator. Nonzero beta values are never rounded to zero.
+        """
+        def fallback():
+            return BasePartition.calc_likelihood(
+                self, hypos, data, beta, distance_mode, normalized, **kwargs
+            )
+
+        if (type(self) is not ContinuousPartition or not self.zero_beta_fast_path
+                or not self.zero_beta_likelihood_batch):
+            return fallback()
+        beta_values = self._resolve_beta_vector(beta, len(hypos))
+        mode = self._resolve_distance_mode(distance_mode)
+        if beta_values.count(0.0) < 2:
+            return fallback()
+        # Invalid/irregular inputs follow the original evaluator's validation
+        # and exception ordering, rather than acquiring a shortcut contract.
+        try:
+            values = as_stimuli(data[0], self.n_dims)
+            responses = np.asarray(data[2])
+            feedback_mode = self._resolve_feedback_likelihood_mode(
+                kwargs.get("feedback_likelihood_mode", self.FEEDBACK_MODE_CATEGORY)
+            )
+            eligible = (
+                values.shape[0] > 0
+                and responses.shape == (values.shape[0],)
+                and np.asarray(data[1]).shape == responses.shape
+                and np.all((values >= 0.0) & (values <= 1.0))
+                and np.all((responses == 0.0) | (responses == 1.0))
+                and feedback_mode == self.FEEDBACK_MODE_CATEGORY
+            )
+        except (IndexError, TypeError, ValueError):
+            return fallback()
+        if not eligible:
+            return fallback()
+        result = np.zeros((len(data[2]), len(hypos)), dtype=float)
+        zero_column = None
+        for column, hypothesis in enumerate(hypos):
+            value = beta_values[column]
+            if value == 0.0 and zero_column is not None:
+                self.hypothesis_space[int(hypothesis)]
+                result[:, column] = zero_column
+            else:
+                likelihood = self.calc_likelihood_entry(
+                    hypothesis, data, value, distance_mode=mode, **kwargs
+                )
+                result[:, column] = likelihood
+                if value == 0.0:
+                    zero_column = likelihood
+        if not normalized:
+            return result
+        return result / np.sum(result, axis=1, keepdims=True)
 
     def get_category_assignments(
         self,

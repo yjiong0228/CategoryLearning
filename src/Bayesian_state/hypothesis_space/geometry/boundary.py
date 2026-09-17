@@ -17,6 +17,7 @@ from .dykstra_acceleration import (
     dykstra_numba_available,
 )
 from .stimuli import as_stimuli
+from .distance_cache import ExactDistanceCache
 
 
 class BoundaryProjectionError(RuntimeError):
@@ -62,6 +63,8 @@ class BoundaryGeometry:
         tolerance: float = 1e-9,
         projection_iterations: int = 100,
         dykstra_backend: str = DYKSTRA_BACKEND_AUTO,
+        distance_cache_max_entries: int = ExactDistanceCache.DEFAULT_MAX_ENTRIES,
+        distance_cache_max_bytes: int = ExactDistanceCache.DEFAULT_MAX_BYTES,
     ) -> None:
         self.space = hypothesis_space
         self.method = self.resolve_method(method)
@@ -89,6 +92,17 @@ class BoundaryGeometry:
             raise ValueError("boundary tolerance must be positive and finite.")
         if self.projection_iterations <= 0:
             raise ValueError("boundary projection_iterations must be positive.")
+        self._distance_cache = ExactDistanceCache(
+            distance_cache_max_entries, distance_cache_max_bytes
+        )
+
+    def clear_distance_cache(self) -> None:
+        """Release stimulus distances without changing geometry or cognitive state."""
+        self._distance_cache.clear()
+
+    def distance_cache_info(self) -> dict[str, int]:
+        """Return cache bounds, current payload size and diagnostic counters."""
+        return self._distance_cache.info()
 
     @classmethod
     def resolve_method(cls, method: str) -> str:
@@ -344,7 +358,16 @@ class BoundaryGeometry:
         hypo: int,
         stimuli: np.ndarray | Iterable,
     ) -> np.ndarray:
+        """Return exact distances; cached results are read-only (copy to mutate)."""
         values = as_stimuli(stimuli, self.space.n_dims)
+        context = (self.space, self.method, self.tolerance,
+                   self.projection_iterations, self.dykstra_backend, self.CACHE_VERSION)
+        return self._distance_cache.get_or_compute(
+            context, int(hypo), values, self.space.n_cats,
+            lambda: self._category_distances_uncached(hypo, values),
+        )
+
+    def _category_distances_uncached(self, hypo: int, values: np.ndarray) -> np.ndarray:
         categories = self.space[int(hypo)].categories
         return np.column_stack(
             [

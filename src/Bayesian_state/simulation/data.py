@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ..utils.paths import PROCESSED_DATA_DIR, TASK2_PROCESSED_PATH
+from ..utils.validation import response_ids
 
 
 @dataclass
@@ -35,6 +36,7 @@ class TrialArrays:
 # Trial-data preparation
 def _coerce_trial_arrays(arrays: TrialArrays | tuple | list) -> TrialArrays:
     if isinstance(arrays, TrialArrays):
+        response_ids(arrays.choices)
         return arrays
     if not isinstance(arrays, (tuple, list)) or len(arrays) < 3:
         raise ValueError("arrays must be a TrialArrays instance or a tuple/list with at least 3 entries")
@@ -42,7 +44,7 @@ def _coerce_trial_arrays(arrays: TrialArrays | tuple | list) -> TrialArrays:
     target_probs = arrays[4] if len(arrays) >= 5 else None
     return TrialArrays(
         stimulus=np.asarray(arrays[0], dtype=float),
-        choices=np.asarray(arrays[1], dtype=int),
+        choices=response_ids(arrays[1]),
         feedback=np.asarray(arrays[2], dtype=float),
         categories=None if categories is None else np.asarray(categories, dtype=int),
         target_probs=None if target_probs is None else np.asarray(target_probs, dtype=float),
@@ -119,6 +121,14 @@ class SubjectTrialDataLoader:
         self._category_column = str(data_cfg.get("category_column", "category"))
         self._target_type = str(data_cfg.get("target_type", "auto")).strip().lower()
         self._probability_columns = list(data_cfg.get("probability_columns", []))
+        self._trial_order_columns = data_cfg.get("trial_order_columns")
+        if self._trial_order_columns is not None and (
+            not isinstance(self._trial_order_columns, list)
+            or not self._trial_order_columns
+            or not all(isinstance(key, str) for key in self._trial_order_columns)
+            or len(set(self._trial_order_columns)) != len(self._trial_order_columns)
+        ):
+            raise ValueError("data.trial_order_columns must be a nonempty list of unique column names")
 
     def prepare_data(self, data_path: Path | str = TASK2_PROCESSED_PATH) -> None:
         data_path = Path(data_path).resolve()
@@ -138,6 +148,9 @@ class SubjectTrialDataLoader:
         if subject_frame.empty:
             raise ValueError(f"Subject {subject_id} not found in dataset")
 
+        self._validate_trial_order(subject_frame)
+        self._validate_choices(subject_frame)
+
         # Encoding is fixed design metadata, inferred before either truncation.
         # It must not depend on correctness or initialize cognitive pairing state.
         key_mapping = _response_key_mapping(subject_frame)
@@ -145,6 +158,36 @@ class SubjectTrialDataLoader:
         selected = subject_frame.iloc[:stop_index].copy()
         selected.attrs["choice_to_presskey"] = key_mapping
         return selected
+
+    def _validate_trial_order(self, frame: pd.DataFrame) -> None:
+        """Reject ambiguous histories; never reorder or reset learning at sessions."""
+        self._get_condition_value(frame)
+        columns = self._trial_order_columns
+        if columns is None:
+            # Tables without trial IDs retain the legacy explicit row-order contract.
+            # Custom task keys must be declared instead of guessed from arbitrary names.
+            if "iTrial" not in frame:
+                return
+            columns = [key for key in ("iSession", "iRun", "iBlock", "iTrial") if key in frame]
+        missing = [key for key in columns if key not in frame]
+        if missing:
+            raise ValueError(f"Missing trial order columns: {missing}")
+        keys = frame[columns].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+        if not np.all(np.isfinite(keys) & (keys == np.floor(keys))):
+            raise ValueError(f"Trial order columns must contain finite integer IDs: {columns}")
+        index = pd.MultiIndex.from_arrays(keys.T)
+        if not index.is_unique:
+            raise ValueError(f"Duplicate trial keys for columns {columns}")
+        if not index.is_monotonic_increasing:
+            raise ValueError(f"Trial keys must be in chronological order: {columns}; input was not sorted")
+
+    def _validate_choices(self, frame: pd.DataFrame) -> np.ndarray:
+        condition = self._get_condition_value(frame)
+        partition = self._engine_config_template.get("partition", {}) or {}
+        n_categories = (partition.get("kwargs", {}) or {}).get("n_cats")
+        if n_categories is None:
+            n_categories = self._engine_config_template.get("n_cats", 2 if condition == 1 else 4)
+        return response_ids(frame["choice"].to_numpy(), n_categories=int(n_categories))
 
     def _extract_arrays(
         self,
@@ -158,7 +201,7 @@ class SubjectTrialDataLoader:
                 + ", ".join(missing_features)
             )
         stimulus = subject_frame[self._feature_columns].to_numpy(dtype=float)
-        choices = subject_frame["choice"].to_numpy(dtype=int)
+        choices = self._validate_choices(subject_frame)
         feedback = subject_frame["feedback"].to_numpy(dtype=float)
         key_mapping = (
             subject_frame.attrs["choice_to_presskey"]
@@ -233,10 +276,12 @@ class SubjectTrialDataLoader:
         )
 
     def _get_condition_value(self, subject_frame: pd.DataFrame) -> int:
-        if self._condition_column in subject_frame.columns:
-            return int(subject_frame[self._condition_column].iloc[0])
-        if "ruleID" in subject_frame.columns:
-            return int(subject_frame["ruleID"].iloc[0])
+        for column in (self._condition_column, "ruleID"):
+            if column in subject_frame.columns:
+                values = response_ids(subject_frame[column].to_numpy(), context=column)
+                if len(np.unique(values)) != 1:
+                    raise ValueError(f"A subject learning sequence must have one consistent {column}")
+                return int(values[0])
         return 1
 
 
@@ -245,6 +290,9 @@ def prepare_trial_sequence(
     choices: np.ndarray,
     feedback: np.ndarray,
 ) -> List[List[float]]:
+    choices = response_ids(choices)
+    if len(stimulus) != len(choices) or len(choices) != len(feedback):
+        raise ValueError("stimulus, choices, and feedback must have equal trial counts")
     trials: List[List[float]] = []
     for stim, choice, fb in zip(stimulus, choices, feedback):
         trial: List[float] = [stim, int(choice), float(fb)]

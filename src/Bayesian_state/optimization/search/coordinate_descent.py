@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Sequence
 
 import numpy as np
+from src.Bayesian_state.utils.provenance import FINGERPRINT_SCHEMA_VERSION
 from joblib import Parallel, delayed
+from ...utils.parallel import parallel_job_count, single_threaded_processes
 
 from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
 from src.Bayesian_state.optimization.artifacts import (
@@ -397,6 +399,7 @@ class HyperCDOptimizer(HyperSearchBase):
             dict(point),
         )
 
+    @single_threaded_processes()
     def _simulate_runs_for_point(
         self,
         *,
@@ -454,7 +457,7 @@ class HyperCDOptimizer(HyperSearchBase):
 
         warmup_dykstra_numba()
         runs = list(
-            Parallel(n_jobs=max(1, int(n_jobs)))(
+            Parallel(n_jobs=parallel_job_count(max(1, int(n_jobs)), len(tasks)))(
                 delayed(evaluate_state_model_run)(
                     int(subject_id),
                     int(condition),
@@ -802,6 +805,7 @@ class HyperCDOptimizer(HyperSearchBase):
             coordinate=coordinate,
         )
 
+    @single_threaded_processes()
     def _evaluate_missing_entries_flat(
         self,
         *,
@@ -937,7 +941,7 @@ class HyperCDOptimizer(HyperSearchBase):
                     )
 
         flat_task_count = len(flat_tasks)
-        flat_jobs = min(self.parallel_budget, flat_task_count)
+        flat_jobs = parallel_job_count(self.parallel_budget, flat_task_count)
         if flat_jobs > 1:
             warmup_dykstra_numba()
         flat_results = list(
@@ -1636,18 +1640,25 @@ class HyperCDOptimizer(HyperSearchBase):
                     "schema-v2 Hyper-CD resume requires "
                     f"search_checkpoint.json in {output_dir}"
                 )
+            if resume:
+                resume_checkpoint = load_checkpoint(checkpoint_path)
+                if resume_checkpoint.get("fingerprint_schema_version") != FINGERPRINT_SCHEMA_VERSION:
+                    raise ValueError(
+                        "Hyper-CD resume fingerprint schema is obsolete; preserve the old run "
+                        "and use a new output directory (old scores cannot be migrated automatically)"
+                    )
+                if int(resume_checkpoint.get("schema_version", -1)) != 2:
+                    raise ValueError(
+                        "Hyper-CD resume checkpoint schema_version must be 2"
+                    )
             context_fingerprint = search_context_fingerprint(
                 self.config,
                 self.base_sim_config,
                 subjects,
                 stage,
+                config_dir=self.config_dir,
             )
             if resume:
-                resume_checkpoint = load_checkpoint(checkpoint_path)
-                if int(resume_checkpoint.get("schema_version", -1)) != 2:
-                    raise ValueError(
-                        "Hyper-CD resume checkpoint schema_version must be 2"
-                    )
                 if resume_checkpoint.get("context_fingerprint") != context_fingerprint:
                     raise ValueError(
                         "Hyper-CD resume checkpoint fingerprint does not match "
@@ -1727,6 +1738,7 @@ class HyperCDOptimizer(HyperSearchBase):
             checkpoint_base = {
                 "schema_version": 2,
                 "context_fingerprint": context_fingerprint,
+                "fingerprint_schema_version": FINGERPRINT_SCHEMA_VERSION,
                 "subjects": [int(subject_id) for subject_id in subjects],
                 "requested_stage": str(stage),
             }

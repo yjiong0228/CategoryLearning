@@ -109,6 +109,11 @@ Likelihood 由 `BayesianStateEngine.compute_likelihood()` 调用，不是可省�
 
 快照接口是认知状态协议，不是长期磁盘序列化格式。不要假定其 payload 跨代码版本稳定。
 
+重采样先为每个唯一祖先建立一次快照，再恢复全部后代。每个后代仍独立深拷贝 payload，
+并按原有规则设置未来随机流；后代之间不共享可变认知状态。学习更新门控拥有独立的派生种子，
+当 `learning_update_probability` 精确为 0 或 1 时直接返回确定性决策；介于两者之间时仍执行
+原有随机抽样。这些优化不改变粒子数、ESS 阈值、反馈更新或输出字段。
+
 dynamic-continuous persistent execution 开启时，快照还保存 executed hypothesis、dwell/switch
 计数和独立 execution RNG。重采样复制这些认知状态，再为子粒子的未来 transition/execution
 随机流重新设种；因此 overt strategy persistence 属于粒子状态，不是 filter 外部的绘图平滑。

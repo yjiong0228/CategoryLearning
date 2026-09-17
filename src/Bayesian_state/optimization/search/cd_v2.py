@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from src.Bayesian_state.optimization.artifacts import to_builtin
+from src.Bayesian_state.utils.provenance import search_dependencies
 from src.Bayesian_state.optimization.objectives import (
     ObjectiveSpec,
     compare_objective_values,
@@ -143,6 +144,8 @@ def search_context_fingerprint(
     base_sim_config: Mapping[str, Any],
     subjects: Sequence[int],
     requested_stage: str,
+    *,
+    config_dir: Path | None = None,
 ) -> str:
     """Hash every context element that makes cached candidate scores valid."""
 
@@ -151,6 +154,10 @@ def search_context_fingerprint(
         "base_sim_config": to_builtin(dict(base_sim_config)),
         "subjects": [int(subject_id) for subject_id in subjects],
         "requested_stage": str(requested_stage),
+        "dependencies": to_builtin(search_dependencies(
+            search_config, base_sim_config, subjects,
+            Path.cwd() if config_dir is None else Path(config_dir),
+        )),
     }
     encoded = json.dumps(
         payload,

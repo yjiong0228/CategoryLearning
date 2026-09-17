@@ -20,6 +20,8 @@ def benchmark(n_cats: int, label_policy: str, n_stimuli: int) -> None:
             label_permutation_policy=label_policy,
             boundary_distance_method=method,
             similarity_n_samples=8,
+            # Measure projection backends, not memoized stimulus lookups.
+            boundary_distance_cache_max_entries=0,
         )
         for pass_name in ("cold", "warm"):
             started = perf_counter()

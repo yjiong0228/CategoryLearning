@@ -275,14 +275,16 @@ Model 0815 的 M1 sensitivity 配置可选加入 parameter-free binary orientati
 返回 predictive/filtered `executed_orientation_joint`（geometry × 两种方向）；这仍是 online
 filtering 输出，不是事后 smoothing。M0 不配置该 module，因而与原 fixed-label 路径保持严格兼容。
 
-当前通用粒子入口支持 condition 1、`expectation`/`sharpened_expectation` readout，以及
+当前通用粒子入口支持 condition 1（二分类）、condition 2（四分类二值反馈）和
+condition 3（四分类层级部分反馈），以及 `expectation`/`sharpened_expectation` readout，以及
 uniform `base_lapse`。`choice_readout.kwargs.strategy_confidence_gain > 0` 还可在 hypothesis
 已汇总为 category probability 后、lapse 之前加入策略条件化执行确信度。它只使用 pre-choice
 controller state：令
 `signal_t = max(mastery_evidence_t - failure_pressure_t, 0)^2`，再以
 `precision_t = 1 + gain * signal_t` 对当前 category probability 做幂变换。该操作放大当前偏好，
 不读取正确答案，也不改变 hypothesis learning；默认 `gain=0` 时严格退化为旧行为。历史依赖
-lapse、RT emission 和其他 condition 尚未进入这一入口。
+lapse 和 RT emission 尚未进入这一入口。`choice_transmission_audit` 仍仅支持 condition 1；
+condition 3 已有测试及短序列验证，正式拟合、完整恢复和消融尚未完成。
 
 `continuous_controller.execution.enabled: true` 可让每个 trajectory/particle 维护一个
 `executed_hypothesis`：active set 仍表示内部候选池，但 choice 只执行该 rule。执行 rule
@@ -600,3 +602,63 @@ H4 配置继续保留为既有审计结果的生成来源。当前 H5 模板还�
 恢复职责和当前工作流保留范围见 [恢复说明](workflows/recovery/README.md)及
 [工作流索引](workflows/README.md)。此前 0813/0815 等历史脚本的命令示例按原版本理解，
 是否仍提供入口以当前工作流索引为准。
+
+### 2026-09-17 输入校验与断点溯源修复
+
+反应编码在整数转换之前检查：必须有限、为整数且属于任务类别范围；不自动填补漏答或
+截断小数。Loader 在 `stop_at` / `max_trials` 截取之前检查完整被试的编码、条件一致性
+及试次键。含 `iTrial` 的表默认按现存的 `iSession, iRun, iBlock, iTrial` 列检查严格递增
+和唯一性；自定义任务请在引擎中明确设置，例如：
+
+```yaml
+data:
+  trial_order_columns: [iSession, iBlock, iTrial]
+```
+
+显式声明的列必须存在。无 `iTrial` 且未声明试次键的旧数组／表仍按输入行序运行，无法
+验证其真实时序；正式新任务应声明完整键。检查不排序数据，也不在 session 边界重置认知状态。
+
+Hyper-CD search schema 2 与 recovery manifest 增加独立的 `fingerprint_schema_version: 2`。
+恢复前检查解析后的阶段／被试配置、引用文件内容、行为与感知数据、规则资源、实际连续规则
+相似矩阵、共享核心全部 Python 源码和数值库版本。相似矩阵首次缺缓存时会按现有算法生成，
+再建立指纹；不会把后续生成的缓存误作输入变更。输入文件须在运行期间保持不变。
+当前任务与规则几何在候选间须固定；schema-2 搜索拒绝把数据路径、partition 或
+`likelihood.distance_mode` 当搜索坐标。自定义类的直接源码及基类被记录，但额外外部资源
+应通过配置中的文件路径显式声明，不能依赖隐藏的运行环境输入。
+
+旧 checkpoint 缺少完整内容指纹，不能在新版中直接续算。保留旧目录；可在原代码及原环境下
+复现，或使用新输出目录重算。没有自动给旧分数补盖新指纹的迁移操作。共享核心任一源码变更
+都可能保守地拒绝续跑，即使只是与该任务无关的修改；固定代码快照后再启动正式长任务。
+
+模型说明现在是独立 TeX 文档。编译到一个不存在的新文件：
+
+```bash
+bash src/Bayesian_state/docs/model_architecture/compile_model_0826.sh /tmp/model_0826_new_proof.pdf
+```
+
+脚本拒绝覆盖已有 PDF，构建日志留在独立临时目录。修复记录与六步研究流程说明见
+[系统修复与后续步骤](docs/maintenance/model_0826_system_repairs_20260917.md)。
+
+
+### Model 0826 等价加速（2026-09-17）
+
+零 beta 的均匀预测快捷路径和 boundary 距离的有界精确缓存已默认启用。缓存以实际感知刺激为 key，
+同次 PF 粒子共享，不改变随机数流、反馈核或全规则归一化。默认最多 4096 条／4 MiB 数组内容；
+后续优化合并零 beta 的相同二值反馈似然列，减少工作区成员查询，并复用唯一祖先快照；后代
+仍独立复制认知状态。确定性学习门控省去独立 RNG 构造，其他随机流保持原样。类别概率缓存
+与轻量诊断仍只在性能原型中评估，正式拟合的输出字段和评分路径保持不变。
+设置与关闭方法见 [假设空间 README](hypothesis_space/README.md#model-0826-的等价计算加速2026-09-17)，
+验证入口见 [性能检查](workflows/benchmarks/README.md)。这属于等价工程优化；由于源码已更新，
+旧代码创建的断点仍受内容指纹约束，正式新运行应使用新的输出目录。
+
+### Model 0826 正式并行预算（2026-09-17）
+
+正式 recovery 的搜索和固定仿真配置使用 **128 个进程的预算，不主动预留 CPU**；
+新生成的 0826 搜索配置和轨迹评价 CLI 也默认使用 128。每个 worker 的数值计算线程为 1，
+嵌套调用串行执行，避免进程数与 BLAS/OpenMP 线程数相乘。实际进程数取预算、可用 CPU
+和当前就绪任务数的最小值。显式指定的较小预算和 smoke/test 配置仍有效。
+
+这只改变计算资源分配，不改变粒子数、重复次数、随机种子、模型机制或候选选择顺序。
+当前按被试串行推进的流程与 CD 坐标依赖仍然保留，因此小任务批次未必能持续占满 128 核。
+已有运行进程和结果目录内的冻结配置不会自动更新；新正式运行使用新输出目录。
+具体入口和验证见 [128 核并行策略](docs/maintenance/model_0826_parallel_policy_20260917.md)。

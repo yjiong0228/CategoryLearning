@@ -185,6 +185,8 @@ def prepare_output(
 ) -> dict[str, Any]:
     """Create a new run root or validate an explicitly resumed one."""
 
+    from ...utils.provenance import FINGERPRINT_SCHEMA_VERSION
+
     output = Path(output_root)
     manifest_path = output / "manifest.json"
     if output.exists():
@@ -197,6 +199,8 @@ def prepare_output(
                 f"recovery resume requires manifest.json: {output}"
             )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("fingerprint_schema_version") != FINGERPRINT_SCHEMA_VERSION:
+            raise ValueError("recovery fingerprint schema is obsolete; preserve the old run and choose a new output directory")
         if manifest.get("analysis_id") != str(analysis_id):
             raise ValueError("recovery manifest analysis_id does not match")
         if manifest.get("config_fingerprint") != str(config_fingerprint):
@@ -208,6 +212,7 @@ def prepare_output(
     output.mkdir(parents=True, exist_ok=False)
     manifest = {
         "schema_version": 1,
+        "fingerprint_schema_version": FINGERPRINT_SCHEMA_VERSION,
         "analysis_id": str(analysis_id),
         "config_fingerprint": str(config_fingerprint),
         "status": "initialized",
@@ -217,46 +222,30 @@ def prepare_output(
     return manifest
 
 
-def _design_fingerprint(design: RecoveryDesign) -> str:
-    paths = {
-        "recovery_config": design.source_path,
-        "model_engine_config": design.model_engine_config,
-        "parameter_space": design.parameter_space_path,
-        "base_simulation_config": design.base_simulation_config,
-        "recovery_runner": Path(__file__).resolve(),
-        "recovery_generation": ROOT / "src/Bayesian_state/workflows/recovery/generation.py",
-        "recovery_evaluation_recovery": ROOT / "src/Bayesian_state/evaluation/recovery.py",
-        "recovery_optimization_recovery": ROOT / "src/Bayesian_state/optimization/recovery.py",
-        "recovery_optimization_recovery_parameters": ROOT / "src/Bayesian_state/optimization/recovery_parameters.py",
-        "recovery_simulation_recovery": ROOT / "src/Bayesian_state/simulation/recovery.py",
-        "recovery_utils_recovery_artifacts": ROOT / "src/Bayesian_state/utils/recovery_artifacts.py",
-        "recovery_workflows_recovery_design": ROOT / "src/Bayesian_state/workflows/recovery/design.py",
-        "recovery_library": (
-            ROOT / "src/Bayesian_state/evaluation/model_recovery.py"
-        ),
-        "model_0826_optimization": (
-            ROOT / "src/Bayesian_state/optimization/model_0826.py"
-        ),
-        "hyper_cd": (
-            ROOT
-            / "src/Bayesian_state/optimization/search/coordinate_descent.py"
-        ),
-        "particle_filter": (
-            ROOT
-            / "src/Bayesian_state/inference/backends/particle_filter.py"
-        ),
-        "choice_readout": ROOT / "src/Bayesian_state/model/readout.py",
-    }
-    return _canonical_fingerprint(
-        {
-            "analysis_id": design.analysis_id,
-            "files": {
-                name: {"path": str(path), "sha256": _file_sha256(path)}
-                for name, path in paths.items()
-            },
-            "subject_trial_counts": design.subject_trial_counts,
-        }
+def _design_dependencies(design: RecoveryDesign) -> dict[str, Any]:
+    from ...utils.provenance import DependencySnapshot
+
+    snapshot = DependencySnapshot()
+    for path in (design.source_path, design.model_engine_config,
+                 design.parameter_space_path, design.base_simulation_config):
+        snapshot.add_file(path, follow_yaml=True)
+    base = yaml.safe_load(design.base_simulation_config.read_text(encoding="utf-8")) or {}
+    subjects = list(design.subject_trial_counts)
+    snapshot.simulation(base, design.base_simulation_config.parent, subjects)
+    snapshot.simulation(
+        {**base, "engine_config_path": str(design.model_engine_config)},
+        design.base_simulation_config.parent, subjects,
     )
+    return snapshot.payload()
+
+
+def _design_fingerprint(design: RecoveryDesign) -> str:
+    return _canonical_fingerprint({
+        "analysis_id": design.analysis_id,
+        "config": design.config,
+        "dependencies": _design_dependencies(design),
+        "subject_trial_counts": design.subject_trial_counts,
+    })
 
 
 def _record_run_provenance(
@@ -295,6 +284,7 @@ def _record_run_provenance(
         "choice_readout": ROOT / "src/Bayesian_state/model/readout.py",
     }
     provenance = {
+        "dependencies": _design_dependencies(design),
         "source_files": {
             name: {"path": str(path), "sha256": _file_sha256(path)}
             for name, path in source_paths.items()

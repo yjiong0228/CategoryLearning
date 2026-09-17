@@ -500,6 +500,7 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
         "selection.py",
         "trajectory.py",
         "trial.py",
+        "task.py",
     }
 
     general_module = ast.parse(

@@ -9,6 +9,8 @@ Usage:
 
 from __future__ import annotations
 
+from src.Bayesian_state.utils.parallel import MODEL_0826_PARALLEL_BUDGET
+
 import argparse
 import os
 import tempfile
@@ -46,7 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--label")
     parser.add_argument("--rollouts", type=int, default=500)
-    parser.add_argument("--n-jobs", type=int, default=1)
+    parser.add_argument("--n-jobs", type=int, default=MODEL_0826_PARALLEL_BUDGET,
+                        help="Process budget (default: 128); each worker uses one numeric thread")
     parser.add_argument("--analysis-seed", type=int, default=20260831)
     parser.add_argument("--window-size", type=int)
     parser.add_argument("--visible-trajectories", type=int, default=48)

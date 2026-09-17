@@ -21,6 +21,13 @@ import numpy as np
 from ..base_module import ModulePhase, ModuleRole
 
 
+def _membership_mask(indices: np.ndarray, candidates: np.ndarray) -> np.ndarray:
+    """Membership for small integer workspaces, preserving order and repeats."""
+    members = set(candidates.tolist())
+    return np.fromiter((index in members for index in indices), dtype=bool,
+                       count=len(indices))
+
+
 @dataclass(frozen=True)
 class TransitionContext:
     """Information available before the current trial's transition.
@@ -62,9 +69,11 @@ class HypothesisSelection:
 
         before = np.asarray(active_before, dtype=int).reshape(-1).copy()
         after = np.asarray(active_after, dtype=int).reshape(-1).copy()
-        survivors = after[np.isin(after, before)]
-        dropped = before[~np.isin(before, after)]
-        newcomers = after[~np.isin(after, before)]
+        after_in_before = _membership_mask(after, before)
+        before_in_after = _membership_mask(before, after)
+        survivors = after[after_in_before]
+        dropped = before[~before_in_after]
+        newcomers = after[~after_in_before]
         return cls(
             active_before=before,
             active_after=after,
@@ -246,10 +255,12 @@ class TwoStepHypothesisTransitionMixin(ABC):
             if not np.array_equal(actual_values, expected_values):
                 raise ValueError(f"selection.{name} is inconsistent with the active sets.")
 
+        dropped_set = set(selection.dropped.tolist())
+        newcomer_set = set(selection.newcomers.tolist())
         for dropped_hypothesis, newcomer in selection.replacement_pairs:
-            if dropped_hypothesis not in set(selection.dropped.tolist()):
+            if dropped_hypothesis not in dropped_set:
                 raise ValueError("replacement pair references a hypothesis that was not dropped.")
-            if newcomer not in set(selection.newcomers.tolist()):
+            if newcomer not in newcomer_set:
                 raise ValueError("replacement pair references a hypothesis that is not new.")
 
     def _validate_prior_assignment(

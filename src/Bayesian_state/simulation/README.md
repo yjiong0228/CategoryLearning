@@ -55,6 +55,11 @@ particle-filter 的 `state_log` 同时保存 post-choice filtered transition 诊
 `hyper_candidate_seed -> simulation_point_seed -> trajectory_seed` 链生成 seeds；只有显式传入
 该参数时才覆盖。`compute_statistics=False` 可供不需要重复运行统计的诊断使用，默认保持 `True`。
 
+`n_jobs` 是进程预算。Model 0826 正式配置使用 128；实际进程数不超过可用 CPU 和当前
+被试的独立 repeat 数。每个 worker 的数值线程为 1，外层已有进程池时内部串行执行。
+这些限制不改变 seed 派生、repeat 数量、结果顺序或聚合定义。跨被试循环仍按原顺序推进；
+仅有 4 个 repeat 的单被试任务最多使用 4 个 worker。
+
 ## 独立重复的主分数
 
 历史配置默认使用 `repeat_aggregation: mean_loss`：每个随机 repeat 先计算 loss，再平均标量。

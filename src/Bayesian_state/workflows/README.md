@@ -12,6 +12,7 @@
 | `runs/run_model_0818_boundary_recovery.py` | 0826 比较仍直接使用其数据读取、引擎设置和种子工具；保留的历史依赖 |
 | `analysis/behavior_diagnostics.py` | 通用行为诊断 |
 | `analysis/audit_model_0826_finalists.py` | S129 原始四个 finalist 的定点复算和配对 PF 重采样；不搜索新参数 |
+| `analysis/audit_model_0826_system.py` | 小规模机制、输入契约与 exp4/exp5 适配检查；隔离进程内验证加速原型 |
 | `analysis/probe_model_0826_search.py` | S129 分散起点与跨块联合移动的有限补充搜索，复用共享评分器 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
@@ -48,6 +49,21 @@ python -m src.Bayesian_state.workflows.analysis.audit_model_0826_finalists \
 ```
 
 该命令包含 64 次完整 PF 运行，需要按任务授权与其他正在运行的拟合协调并行预算。
+
+## 系统审查的轻量复现
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+MPLCONFIGDIR=/tmp/model0826_audit_mpl NUMBA_CACHE_DIR=/tmp/model0826_audit_numba \
+python -m src.Bayesian_state.workflows.analysis.audit_model_0826_system \
+  --output-dir results/model_0826/system_audit_new
+```
+
+输出目录必须不存在。检查使用 S129 的前 32 试次与 8–16 粒子，另对 exp4/exp5 各做
+16 试次、4 粒子的一次集成检查；不搜索参数。`evidence.json` 保存环境、输入与源码哈希、
+问题复现及计时，`baseline_arrays.npz` 保存基线输出。零精度快速路径和几何缓存仅通过
+进程内临时替换进行对比，不修改正式模型；逐数组相等检查覆盖公开预测、状态、控制量和
+部分 PF 诊断，不等于所有配置均已验证。exp4/exp5 的通过仅说明短序列接口可运行。
 
 ## S129 跨块搜索验证
 

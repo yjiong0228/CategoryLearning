@@ -174,6 +174,27 @@ def _snapshot(model: Any) -> _CognitiveSnapshot:
     return _CognitiveSnapshot(payload=deepcopy(engine.state_dict()))
 
 
+def _snapshot_ancestors(models: Sequence[Any], ancestors: np.ndarray) -> list[_CognitiveSnapshot]:
+    # Snapshot all parents before restoring any child. Each restore deep-copies
+    # its payload, so sharing the immutable snapshot does not share child state.
+    unique = dict.fromkeys(int(index) for index in ancestors)
+    snapshots = {index: _snapshot(models[index]) for index in unique}
+    return [snapshots[int(index)] for index in ancestors]
+
+
+def _learning_update_occurs(probability: float, filter_seed: int,
+                            trial_index: int, particle_index: int) -> bool:
+    # The gate owns an independently seeded RNG; skipping a deterministic gate
+    # cannot consume/change the transition, perception or resampling streams.
+    if probability == 1.0:
+        return True
+    if probability == 0.0:
+        return False
+    seed = _future_seed(filter_seed, trial_index, particle_index,
+                        "active_set_learning_update_gate")
+    return bool(np.random.default_rng(seed).random() < probability)
+
+
 def _restore(
     model: Any,
     snapshot: _CognitiveSnapshot,
@@ -555,25 +576,22 @@ def run_state_model_particle_filter(
     """
 
     from ...model import StateModel
+    from ...utils.validation import response_ids
 
     x = np.asarray(stimulus, dtype=float)
-    if int(condition) == 3:
-        raw_choices = np.asarray(choices, dtype=float)
-        if not np.all(np.isin(raw_choices, [1.0, 2.0, 3.0, 4.0])):
-            raise ValueError("condition 3 choices must be finite integers in [1, 4].")
-    observed_choices = np.asarray(choices, dtype=int).reshape(-1)
+    condition = int(condition)
+    if condition not in (1, 2, 3):
+        raise ValueError("the particle backend supports conditions 1, 2 and 3 only.")
+    n_categories = 2 if condition == 1 else 4
+    observed_choices = response_ids(
+        choices, context=f"condition {condition} choices", n_categories=n_categories
+    ).reshape(-1)
     observed_feedback = np.asarray(feedback, dtype=float).reshape(-1)
     if x.ndim != 2:
         raise ValueError("stimulus must be a 2-D array.")
     n_trials = int(x.shape[0])
     if observed_choices.shape[0] != n_trials or observed_feedback.shape[0] != n_trials:
         raise ValueError("stimulus, choices, and feedback must have equal trial counts.")
-    condition = int(condition)
-    if condition not in (1, 2, 3):
-        raise ValueError("the particle backend supports conditions 1, 2 and 3 only.")
-    n_categories = 2 if condition == 1 else 4
-    if not np.all(np.isin(observed_choices, np.arange(1, n_categories + 1))):
-        raise ValueError(f"Condition-{condition} choices must be encoded in [1, {n_categories}].")
     if condition == 2 and not np.all(np.isin(observed_feedback, [0., 1.])):
         raise ValueError("condition 2 requires binary feedback (0 or 1).")
     if condition != 1 and choice_transmission_audit:
@@ -1749,15 +1767,8 @@ def run_state_model_particle_filter(
         )
         for particle_index, model in enumerate(models):
             engine = model.engine
-            update_seed = _future_seed(
-                int(filter_seed),
-                trial_index,
-                particle_index,
-                "active_set_learning_update_gate",
-            )
-            update_occurs = bool(
-                np.random.default_rng(update_seed).random()
-                < update_probability
+            update_occurs = _learning_update_occurs(
+                update_probability, int(filter_seed), trial_index, particle_index
             )
             model.complete_trial(
                 int(observed_choices[trial_index]),
@@ -1821,7 +1832,7 @@ def run_state_model_particle_filter(
             if audit_choice_transmission:
                 assert audit_parent_indices is not None
                 audit_parent_indices[trial_index] = ancestors
-            snapshots = [_snapshot(models[int(index)]) for index in ancestors]
+            snapshots = _snapshot_ancestors(models, ancestors)
             copied_swap_counts = particle_swap_counts[ancestors].copy()
             for particle_index, snapshot in enumerate(snapshots):
                 _restore(

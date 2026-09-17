@@ -314,6 +314,7 @@ def test_all_stage_pipeline_passes_projected_coarse_shortlist_to_fine(
     )
     optimizer.hyper_base_seed = 20260901
     optimizer.base_sim_config = {}
+    optimizer.config_dir = tmp_path
     optimizer._prepare_stage_config = lambda stage_name: {}
     optimizer._combination_counter = 0
     optimizer.objective_order = resolve_objective_order(
@@ -537,6 +538,7 @@ def test_schema_v2_resume_rejects_context_fingerprint_mismatch(
         subject_dir / "search_checkpoint.json",
         {
             "schema_version": 2,
+            "fingerprint_schema_version": 2,
             "context_fingerprint": "not-the-current-context",
             "subjects": [101],
             "requested_stage": "coarse",
@@ -579,11 +581,13 @@ def test_schema_v2_resume_replays_stage_from_jsonl_cache(
         optimizer.base_sim_config,
         [101],
         "coarse",
+        config_dir=optimizer.config_dir,
     )
     cd_v2.atomic_write_checkpoint(
         subject_dir / "search_checkpoint.json",
         {
             "schema_version": 2,
+            "fingerprint_schema_version": 2,
             "context_fingerprint": fingerprint,
             "subjects": [101],
             "requested_stage": "coarse",
@@ -971,3 +975,21 @@ def test_full_support_does_not_guarantee_escape_from_coarse_basin(tmp_path: Path
     )
     assert trapped.aggregated_error == 1.0
     assert escaped.aggregated_error == 0.0
+
+
+def test_legacy_resume_is_rejected_before_any_artifact_mutation(tmp_path):
+    config, config_path = _minimal_hyper_config(tmp_path)
+    config['cd']['resume_mode'] = 'explicit'
+    optimizer = HyperCDOptimizer(config, config_path)
+    subject_dir = optimizer.output_dir / 'subject_101'
+    subject_dir.mkdir()
+    checkpoint = subject_dir / 'search_checkpoint.json'
+    checkpoint.write_text(json.dumps({'schema_version': 2, 'context_fingerprint': 'old'}))
+    scores = subject_dir / 'all_combinations.jsonl'
+    scores.write_text('historical scores, including incomplete trailing row')
+    trace = subject_dir / 'coordinate_trace.jsonl'
+    trace.write_text('historical trace')
+    before = {p: p.read_bytes() for p in (checkpoint, scores, trace)}
+    with pytest.raises(ValueError, match='fingerprint schema is obsolete'):
+        optimizer.run([101], stage='coarse', resume=True)
+    assert {p: p.read_bytes() for p in before} == before
