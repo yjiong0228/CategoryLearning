@@ -14,6 +14,7 @@
 | `analysis/audit_model_0826_finalists.py` | S129 原始四个 finalist 的定点复算和配对 PF 重采样；不搜索新参数 |
 | `analysis/audit_model_0826_system.py` | 小规模机制、输入契约与 exp4/exp5 适配检查；隔离进程内验证加速原型 |
 | `analysis/probe_model_0826_search.py` | S129 分散起点与跨块联合移动的有限补充搜索，复用共享评分器 |
+| `analysis/pilot_model_0826_simplified_fit.py` | 简化拟合的隔离试验：单阶段低预算搜索、独立筛选和确认，与历史入围参数在当前代码下比较 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
 
@@ -94,3 +95,38 @@ python -m src.Bayesian_state.workflows.analysis.probe_model_0826_search \
 设置评价，则复用其概率文件；其余点调用共享 PF。输出到新建的
 `coordinate_trap_validation/`，用于区别“细搜数值目标中的局部停滞”和“更高精度下
 仍成立的联合改善”。入口参数见 `python -m ...validate_model_0826_joint_square --help`。
+
+## 简化拟合试点
+
+`pilot_model_0826_simplified_fit` 是试验入口，尚未替换正式拟合。默认配置位于
+`configs/exp123/specific_models/model_0826_simplified_fit_pilot.yaml`：S129/S229 全序列、
+32 粒子 × 4 seeds、既有 coarse 网格、两个原始起点、最多三轮、patience=1。
+使用共享 Hyper-CD，不运行 dense fine 阶段。候选保留全局前四名及每种已评估 M/χ 的最佳解。
+粒子数、停止规则与网格密度变化可能改变估计结果，不属于逐元素等价加速。
+两个原始起点只在工作空间设置上不同；首个工作空间块遍历后可能合并为同一条搜索路径。
+因此应检查 restart 的新增评价数，不能把配置中的两个起点视为两次独立探索。
+
+历史完整拟合的参数仅在新搜索完成后读入，既不作起点，也不作搜索候选。
+入围参数用当前共享引擎在独立共同 seeds 上以 64×8 比较；每方前两名和低预算原始赢家
+再以另一独立 seed family 的 128×16 确认。主要比较对象在 64×8 阶段预先选定。
+本轮固定做高精度确认，是为了评价未来是否能省去统一高精度计算，不是新增一轮密集搜索。
+
+输出包括各阶段配置、搜索记录、入围解逐 seed 预测/状态数组、实际计时、输入/源码指纹及
+比较报告。比较使用首试次递推但不评分的原契约，先平均概率再计算 NLL。状态为 pre-choice
+过滤边际，不宣称恢复了真实心理路径。配对 seed bootstrap 仅表示固定候选的数值不确定性；
+YAML 中的差异阈值是试点筛查标准，不是通用科学等价界限。参数相同但 seeds 分半产生的
+状态差异也保存，供区分数值波动和参数解释变化。输出不含新的被试泛化检验。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMBA_CACHE_DIR=/tmp/model0826_pilot_numba MPLCONFIGDIR=/tmp/model0826_pilot_mpl \
+  python -m src.Bayesian_state.workflows.analysis.pilot_model_0826_simplified_fit \
+  --config configs/exp123/specific_models/model_0826_simplified_fit_pilot.yaml \
+  --output-dir results/model_0826/simplified_fit_pilot_new
+```
+
+先添加 `--smoke` 在另一个新目录运行：仅 S129、32 trials、2 粒子 × 2 seeds 和单进程，
+检查参数确实作用于引擎及全流程输出；不能用 smoke 的筛查标志判定方法有效。
+默认入口则使用 128 的完整进程预算，每 worker 单线程。`--resume` 只接受完全相同的
+输入/代码/环境；搜索可恢复，完整筛选/确认批次可复用。筛选/确认的半成品批次不会覆盖，
+若该批中断应保留旧目录并在新的输出目录重做。

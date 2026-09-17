@@ -1,0 +1,38 @@
+# Exploratory search-policy experiment; does not replace production budgets.
+analysis_id: model_0826_simplified_fit_pilot_v1
+parameter_space: model_0826_cond1_parameter_space.yaml
+processed_dir: ../../../data/exp123/processed
+base_seed: 20260918
+parallel_budget: 128
+subjects:
+  - subject: 129
+    condition: 1
+    engine: ../model_struct/pmh_model_cond1_0826.yaml
+    reference_finalists: ../../../results/model_0826/cond1/subject_129/pipeline_20260908_v1/models/PMH/optimization/subject_129/final_rescore.jsonl
+  - subject: 229
+    condition: 2
+    engine: ../model_struct/pmh_model_cond2_0826.yaml
+    reference_finalists: ../../../results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH/optimization/subject_229/final_rescore.jsonl
+search:
+  particle_count: 32
+  filter_seed_count: 4
+  max_outer_iters: 3
+  patience: 1
+  min_delta: 0.0001
+  shortlist_top_k: 4
+  retain_best_per_workspace: true
+screen:
+  particle_count: 64
+  filter_seed_count: 8
+confirmation:
+  particle_count: 128
+  filter_seed_count: 16
+  top_per_source: 2
+comparison:
+  # Practical pilot thresholds, not universal scientific equivalence margins.
+  max_mean_nll_increase: 0.005
+  max_choice_probability_rmse: 0.02
+  max_mean_rule_total_variation: 0.10
+  max_active_probability_mae: 0.05
+  max_strategy_probability_mae: 0.05
+  bootstrap_replicates: 2000
