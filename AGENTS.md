@@ -135,6 +135,24 @@ result.
 - In the final handoff, summarize the behavior changed, list the validation
   performed, and identify any unverified or long-running follow-up work.
 
+## Automatic local commits
+
+- After each agent task that changes repository files, automatically create
+  local Git commits for that task's changes after the relevant validation.
+  This is standing user authorization; do not ask for confirmation each time.
+  Apply this at task completion, not after every shell command or simulation.
+- Inspect the diff and stage explicit paths or hunks belonging to the task.
+  Preserve unrelated pending changes unless the user asks to commit them too.
+  Split independent changes into coherent commits with descriptive messages.
+- Keep raw data, generated research outputs, large binaries, secrets, temporary
+  files and machine-specific paths out of automatic commits. Existing retention
+  and validation rules still apply; do not modify scientific results to make a
+  commit pass checks.
+- If there are no eligible changes, do not create an empty commit. If validation
+  fails or committing is blocked, report the reason and remaining changes rather
+  than bypassing checks. Do not push, amend or rewrite history unless requested.
+- Include the local commit hashes and validation status in the final handoff.
+
 ## Repository maintenance
 
 - Root README is the current entrypoint map and retention/cleanup policy. Keep them consistent with actual paths.
@@ -151,6 +169,12 @@ result.
   never make a second editable model tree to preserve a paper version.
 
 ## Environment and compute
+
+Model 0826 production runs use the full available CPU allocation, with a 128-worker
+budget on the current machine and no deliberately reserved cores. Use one numeric
+thread per worker and a single process-parallel layer. Bound workers by available
+CPUs and ready tasks; do not increase particles, repeats or search candidates just
+to occupy cores. Keep explicitly small smoke/test configurations small.
 
 No canonical Conda environment, complete environment lock, or mandatory formatter/
 linter is currently declared. Do not invent one in reports. requirements.txt is
