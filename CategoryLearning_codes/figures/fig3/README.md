@@ -1,5 +1,21 @@
 # Fig3：搜索与规则过程初稿
 
+## 瓶颈个案分析预演：2026-09-17
+
+[首轮结果与解读](../outputs/fig3/bottleneck_cases_20260917_v2/README.md) · [完整时间轴](../outputs/fig3/bottleneck_cases_20260917_v2/belief_bottleneck_timelines.png) · [阶段画像](../outputs/fig3/bottleneck_cases_20260917_v2/stage_learning_profiles.png) · [局部片段](../outputs/fig3/bottleneck_cases_20260917_v2/candidate_transition_closeups.png) · [核查记录](../outputs/fig3/bottleneck_cases_20260917_v2/QA.md)
+
+对应[摘要分析方案](../../../src/Bayesian_state/docs/model_architecture/model_0826_bottlenecks_analysis_plan_20260917.md)的前两步：读取 S129/S229 已保存的全部 16 次 PF 输出，提取每试次的目标规则考虑概率 A、条件支持 C、总体信念质量 Q，以及适用时的执行概率 E，并与原始行为、当前口述和按类别保留的口述状态对齐。没有重新拟合、模拟或聚类。这里的两个跨任务案例不能支持人群分组或补偿机制结论。
+
+```bash
+MPLCONFIGDIR=/tmp/categorylearning_bottleneck_mpl python -m CategoryLearning_codes.figures.fig3.build_bottleneck_cases --output CategoryLearning_codes/figures/outputs/fig3/bottleneck_cases_YYYYMMDD_v1
+```
+
+输出目录必须是新目录。参数、来源和探索性筛选阈值在 `bottleneck_case_config.json`；数据提取在 `bottleneck_analysis.py`，三张图与本组案例的解释性报告在 `build_bottleneck_cases.py`。报告中的逐试次口述解读针对当前 S129/S229 来源；更换案例或来源后须重新审阅，不能直接沿用。PNG 均为宽 183 mm、450 dpi；不生成其它图像格式。
+
+保存完整逐试次表、全规则表、PF 重复表、阶段摘要、候选区间及阈值敏感性表，连同输入哈希、版本、种子、原始评分 mask 和代码快照。C 按平均 Q / 平均 A 计算，阶段内使用 ΣQ / ΣA；不先平均各 PF 的比值。S129 没有唯一执行规则，E 记为不适用。当前低 A 不等于历史上从未考虑；阈值区间只供复核，不作为已识别的认知事件或人群标签。
+
+v2 修正了首轮 v1 阶段画像的轴标签重叠；两版数值相同，v1 保留。该预演与下方历史故事图集、Fig3 v4 分开存放，尚未选定为正式 Fig3。
+
 ## 六种文章主线的 Fig3 / Fig4 候选预览
 
 [打开六组配对图集](../outputs/fig3/story_previews_20260915_v2/index.html) · [全部配对总览](../outputs/fig3/story_previews_20260915_v2/all_six_pairs.png) · [来源与计算说明](../outputs/fig3/story_previews_20260915_v2/README.md) · [核查记录](../outputs/fig3/story_previews_20260915_v2/QA.md)

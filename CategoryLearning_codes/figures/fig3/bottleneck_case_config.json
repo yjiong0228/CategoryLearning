@@ -1,0 +1,32 @@
+{
+  "data": "data/exp123/processed/Task2_processed.csv",
+  "cases": [
+    {
+      "subject": 129,
+      "task": 1,
+      "model_dir": "results/model_0826/cond1/subject_129/pipeline_20260908_v1/models/PMH",
+      "oral_file": "evaluation/oral_alignment_center_mode/oral_mass_probabilities.npz"
+    },
+    {
+      "subject": 229,
+      "task": 3,
+      "model_dir": "results/model_0826/cond2/subject_229/pmh_20260909_v1/models/PMH",
+      "oral_file": "evaluation_20260911_v1/oral_alignment_center_mode/oral_mass_probabilities.npz"
+    }
+  ],
+  "oral_sigma": 0.05,
+  "rolling_window": 32,
+  "stage_count": 4,
+  "conditional_display_min_active": 0.10,
+  "screening": {
+    "low_active": 0.25,
+    "high_active": 0.75,
+    "high_support": 0.50,
+    "low_execution": 0.25,
+    "minimum_run": 5,
+    "support_drop_lookback": 32
+  },
+  "sensitivity_high_active": [0.60, 0.75, 0.90],
+  "sensitivity_high_support": [0.40, 0.50, 0.60],
+  "dpi": 450
+}

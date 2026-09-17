@@ -2,6 +2,8 @@
 
 日期：2026-09-16。本文展开[科学问题梳理](model_0826_scientific_questions_20260916.md)中的 Q2 与 Q3。
 
+当前讨论更新至第七部分 G3（2026-09-17）：融合个体信念解码与学习瓶颈故事，组织为“验证解码优势 → 区分学习瓶颈 → 检验有限资源下的认知补偿”。新增模块设计依据、补偿关系及 Fig3/4 的证据逻辑；中英文摘要中的结果仍为设想。第六部分的两条路线已被用户否定，保留为讨论记录。
+
 本文是结果组织方案。下面的关系、交互和机制解释均有待检验；“若得到支持后的结论”不能直接复制成已经完成的 Results。本次不运行拟合或模拟，也不重新绘图。
 
 面向用户提供的“人类认知、心理健康与人工智能”会议主题，见第四部分：以认知机制研究对接 session 1，并将状态匹配的学习帮助作为通向 session 4 的待检验应用。
@@ -441,6 +443,373 @@ The same error can conceal very different obstacles to learning. Identifying the
 | 帮助对准当前受限过程 | Fig3 的预测价值与 Fig4 的帮助效果共同支持 | 条件性结论；仅有模型内操作不足以确认人类干预效果 |
 
 此稿以学习瓶颈为唯一主线，知识继承留作解释特定瓶颈的后续机制，避免在一份摘要中并列两篇文章的中心问题。正文保留真实样本量，不编造效应量、显著性或新增实验人数。若最终仅开展现有数据分析，应将随机实验与帮助效果两句替换为实际完成的前瞻预测结果，并相应收窄结论。
+
+# 第六部分：两个不同出发点的故事与摘要
+
+状态更新：用户已否定本部分两条故事；下文保留此前构想，不再作为当前推荐。最新三条候选见第七部分。
+
+日期：2026-09-17。延续用户允许设想 Fig3、Fig4 结果的要求。**本部分是含假设结果的研究构想；两份摘要用完成式预演论证，不表示分析、新实验或相应效果已经得到验证。** 96 人始终指 Fig1 的原始样本，不包含任何设想的新实验。Fig2 v15 仍只有 S129、S229 两个个案，Task2 与群体结果尚未填充。
+
+文体沿用研究型会议摘要，面向认知与 AI 的跨领域读者；英文后附中文对应稿。术语继续使用 hypothesis search（假设搜索）、belief revision（信念修订）、belief transfer（信念迁移）；本节将知识继承限定为候选关系和信念支持的延续，将 response relations（反应选项关系）限定为 Task2 的同科配对知识。
+
+## F0. 三个故事究竟在回答什么不同的问题
+
+| 故事 | 出发点 | 最有分量的认识推进 | 决定性证据 |
+|---|---|---|---|
+| 上一版：学习瓶颈 | 相似错误为什么需要不同帮助？ | 过程状态决定帮助的有效性 | 状态与帮助类型的交互，以及撤去帮助后的泛化 |
+| 新故事一：知识继承的收益与代价 | 同一种修订方式，为什么有时推动理解、有时延续错误？ | 有效修订与持续错误可以由同一机制解释 | 控制起始表现后，连续修订在不同规则环境中的作用反转 |
+| 新故事二：学会利用反馈 | 一条反馈为什么要等到某些知识形成后才更有用？ | 学习者同时学习任务规则，以及如何从反馈中识别支持这些规则的证据 | 只操纵反应关系知识，就改变同一种反馈的定向作用 |
+
+第一条把此前 Q3 提升为独立故事；第二条把 Q1 展开为关于“证据怎样变得可用”的故事。两者都不需要把“匹配帮助提高成绩”设为中心结论。它们分别讨论修订过程和证据解释。
+
+## F1. 故事一：旧理解怎样同时促成改进与延续错误
+
+### 中心问题与结论
+
+**标题：How prior knowledge guides and constrains belief revision**
+
+**中文：已有知识如何引导并限制信念修订**
+
+核心问题：学习者修改了自己的解释，为什么还可能反复犯同一种错误？
+
+考虑一个直观情形：一个人从“看尾巴长短”改成“看尾巴与脖子的关系”，确实提出了新的规则，但新旧规则可能仍把关键刺激分错在同一个地方。在另一种问题结构中，这类沿已有理解的修改又可能是通向正确规则的有效步骤。这个例子仅帮助理解，不能凭文字相似就断言模型中的功能相似。
+
+拟检验的中心结论：**同一种知识继承机制，既能促进修订，也能延续错误；它的价值取决于已有理解与可行修订路径之间的关系。**
+
+### 从文献摘要借鉴什么
+
+- **A08，Holton 等，Nature Human Behaviour：** 摘要把更好的迁移和更大的干扰连接到共享表征，最终落在同一计算权衡上。本故事借鉴“用同一机制解释相反结果”的结构，把对象改为单个任务中候选规则和信念的连续修订。这里不复述其跨任务 A–B–A 结果，也不声称我们已发现相同的神经网络机制。[原文摘要](https://www.nature.com/articles/s41562-025-02318-y)
+- **C02，Bavard 等，Science Advances：** 摘要从局部适应推导出跨情境错误，并检验一个反直觉预测。本故事据此要求：连续性带来的代价必须由模型事前预测，而不能事后把任何停滞都解释为知识继承。[原文摘要](https://pubmed.ncbi.nlm.nih.gov/33811071/)
+
+### Fig1–4 怎样把结论推出来
+
+| 图 | 读者应当理解的一步 | 现有基础与拟增加证据 |
+|---|---|---|
+| Fig1 | 学习者在改变解释，改变后的行为也可能继续出错 | 已有学习轨迹、反馈前口述和报告特征；完整规则修订及重复错误的群体分析尚待完成，特征提及数本身不证明知识继承 |
+| Fig2 | “更容易想到相似规则”和“新规则继承旧支持”是不同过程 | 已有有限工作空间、局部提议和信念迁移框架，以及两个个案；需补状态验证与公平模型比较 |
+| Fig3 | 新解释留下了旧学习历史的可预测痕迹 | 拟检验超出机会基线的功能连续性；在新规则及其后续证据可比时，旧规则历史是否还影响选择；独立改变提议与迁移形成机制比较 |
+| Fig4 | 连续性在不同规则环境中产生可预测的收益与代价 | 设想新实验：匹配初始表现，改变当前规则附近是否存在有效修订路径；用冻结预测检验后续学习和诊断性错误，不能只比较当下准确率 |
+
+最有吸引力的结果设想是：**一个有助于学习者在某种环境中快速改进的过程，会让他在另一种环境中持续受困。** 新实验的主操纵是初始理解与候选规则结构的关系；如果还要因果操纵连续性本身，需要独立验证提示或训练确实改变了相关过程。
+
+### English abstract — hypothetical results draft
+
+Human learning depends on reusing knowledge, yet reuse can keep learners close to explanations that are wrong. We asked whether a single mechanism of continuity could account for both successful revision and persistent error. Using trial-by-trial choices and verbal reports from 96 participants across three category-learning tasks, we examined how explanations change during learning. A Bayesian model separated the selection of similar candidate rules from the transfer of belief to those candidates. Rule changes preserved functional similarities beyond those expected from the available alternatives, and support for a newly adopted rule depended on the history of related rules. Models with local search alone did not explain this dependence on prior learning. In a subsequent experiment, we varied whether alternatives similar to the initial explanation provided a route towards the correct rule or continued to make the same diagnostic errors. Predictions fixed before testing captured opposite outcomes: greater continuity predicted faster learning in the former environment but more persistent errors in the latter, despite comparable initial accuracy. These findings link productive revision and persistent error to a shared mechanism of knowledge inheritance. They suggest that adaptive learning in humans and AI depends on matching the reuse of prior knowledge to the structure of the problem.
+
+### 中文摘要——含假设结果
+
+人类学习依赖已有知识，但沿用已有知识也可能使学习者持续接近错误的解释。我们研究，同一种连续修订机制能否同时解释有效改进与持续错误。结合 96 名参与者在三种分类学习任务中的逐试次选择与口述报告，我们考察了学习过程中解释如何变化，并通过贝叶斯模型区分两种过程：优先考虑相似的候选规则，以及将旧信念迁移给这些候选。结果显示，规则修订保留的功能相似性超出可用候选所决定的机会水平；即使采用了新的规则，对它的支持仍受到相关旧规则学习历史的影响。仅包含局部搜索的模型无法解释这种历史依赖。在后续实验中，我们操纵与初始解释相近的候选是否提供通向正确规则的修订路径。事前冻结的模型预测得到支持：在初始正确率相近时，更强的连续性在存在有效路径的环境中预示更快学习，在近邻候选延续同类错误的环境中则预示更持久的错误。这些结果将有效修订与持续错误联系到同一种知识继承机制，提示人类与人工学习系统需要根据问题结构，调整对已有知识的沿用。
+
+### 这个故事成立所需的关键边界
+
+1. 相似性指规则对刺激的分类输出有多一致。口头表达相近不是同一个指标。匹配可用候选、原有信念和规则复杂度等机会因素，避免把规则目录本身的结构误认作人的搜索倾向。
+2. 当前 `g_t` 同时影响局部提议和迁移投影。需要独立改变两者的比较，不能把调一个参数后的总差异归给某一个机制。主迁移还须接受质量守恒方案的敏感性检验。
+3. 旧历史的影响也可能来自仍在工作空间中的旧候选、持续执行、刺激记忆或按键重复；单一历史效应不足以确认信念迁移。
+4. 新实验须先验证规则目录确实存在所需环境，并匹配起始正确率、刺激难度和训练量。不能把“离正确规则近”与“当前做得对”之间的定义关系当作未来学习效应。
+5. 若只有提议连续性得到支持，应把结论收窄到局部搜索；若只发现收益，则不宣称完整的收益—代价机制。关于 AI 的最后一句是设计启发，没有假定已完成新的人工系统基准测试。
+
+## F2. 故事二：学习者如何学会利用反馈中的信息
+
+### 中心问题与结论
+
+**标题：Learning changes what feedback can teach**
+
+**中文：学习改变了反馈的教学价值**
+
+核心问题：学习者已经理解“部分正确”这句话，为什么还可能不知道该保留哪个判断、修改哪个判断？
+
+Task2 给出很具体的情境：被试知道“科对、种错”的含义，但未必知道哪些反应选项属于同一科。于是，知道自己错在哪个层级，仍不足以确定哪个替代答案更受支持。随着反应选项关系被学到，同一种反馈才可能更精确地约束分类规则。
+
+拟检验的中心结论：**学习者既在学习答案，也在建立让反馈成为可用证据的关系知识。** 这里的“学会利用反馈”有明确对象：反应选项如何配对，以及这种配对怎样改变反馈对具体规则的相对支持。
+
+### 从文献摘要借鉴什么
+
+- **A09，Mi 与 Summerfield，Nature Human Behaviour：** 摘要从熟悉的训练现象出发，提出信用分配机制，再预测并检验此前未测的课程。这里借鉴“机制必须生成一个新的实验预测”，具体预测是：只教反应关系、不教刺激分类，也会改变之后利用部分反馈的方式。[原文摘要](https://www.nature.com/articles/s41562-026-02452-1)
+- **A06，Nelli 等，Neuron：** 摘要把新增的连接信息与已有知识的快速重组联系起来。这里借鉴的提问方式是：少量关系知识能否改变信息的作用。我们的当前模型不包含原文的神经表征重组，也不包含对过去反馈的离线重新解释。[原文摘要](https://pubmed.ncbi.nlm.nih.gov/36898375/)
+
+### Fig1–4 怎样把结论推出来
+
+| 图 | 读者应当理解的一步 | 现有基础与拟增加证据 |
+|---|---|---|
+| Fig1 | 接收到分层反馈，并不直接告诉我们学习者怎样利用它 | 96 人三任务提供背景；核心问题来自其中 32 人的 Task2；任务间平均正确率差异不足以证明反馈价值差异 |
+| Fig2 | 学习分类规则与学习反应关系可以相互影响 | 已有共享模型框架；condition 3 的联合规则—配对学习已实现，但正式拟合、恢复、标签对称性与口述坐标验证仍待完成，Task2 面板不能借用其他任务个案充当结果 |
+| Fig3 | 相同类型的反馈，在不同关系知识状态下引起不同的定向修订 | 拟比较配对知识较弱/较强时，部分反馈之后的规则支持、同科预测保留及诊断性选择；检验关系知识的作用是否超出练习与当前正确率 |
+| Fig4 | 只改变关系知识，能否提前改变反馈的作用 | 设想随机实验：只教按键/反应选项的真实同科关系，不展示刺激分类规则；设等时、等暴露对照，使用相同类别规则与反馈方案，检验关系知识与反馈类型的交互 |
+
+最有吸引力的结果设想是：**没有教会学习者新的分类规则，仅教会答案之间的关系，就让同一种反馈开始指导更有针对性的修订。** 决定性证据是修订方向和反馈类型之间的特异关系，不能只报告总体学得更快。
+
+### English abstract — hypothetical results draft
+
+Feedback can identify an error without telling a learner which belief to revise. We asked how people acquire the knowledge needed to turn feedback into evidence. Starting from choices and verbal reports in three category-learning tasks (96 participants), we focused on a hierarchical task in which partial feedback distinguished errors within and between category families, while the grouping of response options was initially unknown. A Bayesian model jointly tracked beliefs about category rules and relations among response options. As learners acquired these relations, partial feedback increasingly supported selective revisions that preserved family-level predictions while correcting distinctions within a family. This change was better predicted by knowledge of response relations than by practice or current accuracy alone. In a subsequent randomized experiment, teaching only the response grouping, without revealing stimulus-category rules, brought forward this selective use of feedback. A matched control providing equal exposure to the response options did not produce the same benefit. These findings show how learning changes the diagnostic value of subsequent feedback: acquiring relational knowledge changes which hypotheses an outcome supports. Designing AI feedback therefore requires modelling what the learner can infer from it.
+
+### 中文摘要——含假设结果
+
+反馈可以告诉学习者犯了错误，却未必告诉他应该修改哪一种理解。我们研究，人如何获得将反馈转化为有效证据所需的知识。以 96 名参与者在三种分类学习任务中的选择与口述报告为基础，我们聚焦其中的层级任务：部分反馈区分同科内与跨科的错误，但反应选项的同科关系起初并不为学习者所知。我们建立了同时追踪分类规则与反应关系的贝叶斯模型。结果显示，随着反应关系逐渐被掌握，部分反馈越来越能够支持有选择的修订，使学习者保留科层级的判断，同时修正同科内的类别区分。相比练习次数或当前正确率，反应关系知识更好地预测了这一变化。在后续随机实验中，仅教会反应选项的分组关系、而不透露刺激分类规则，就使这种定向反馈利用更早出现；等量接触相同选项的对照没有产生同样的收益。这些结果表明，关系知识的获得会改变后续反馈支持哪些假设，从而改变反馈的诊断价值。对于支持人类学习的 AI，有效反馈设计需要考虑学习者能据此作出什么推断。
+
+### 这个故事成立所需的关键边界
+
+1. 核心对象是 Task2 / condition 3 的 32 人，其他两任务提供背景或机制比较；不是三任务都含未知反应配对。设想的新实验另行招募，不写入已有 96 人。
+2. 模型中，仅当每条规则下的配对权重均匀时，半分与零分对规则的相对支持严格相同；两者仍可能产生不同的配对更新。不能写成整个早期学习阶段的必然等价，更不能写成半分毫无信息。
+3. 配对知识应通过独立关系探针和留出预测验证。不能仅从同一组选择推断状态，再把该状态与同一组选择相关当作外部证据。全序列拟合后的前向状态不自动构成前瞻预测。
+4. 现有模型没有直接规定“半分时保留科、只搜索种”。当前控制器将半分和零分都视为尚未完全成功；定向效应需要由联合证据更新与后续规则变化共同产生，并经实际模拟和数据检验。若不能产生，需比较新增方向控制机制，不能把该结果描述成已有方程的必然后果。
+5. 教会同科配对不等于教会刺激属于哪一科。实验需要核查操纵所提供的知识、直接答案泄露及一般记忆负荷效应；相同反馈方案也不保证两组实际经历完全相同，诊断性探针应匹配刺激与可比较的历史。
+6. 这条故事讨论关系知识怎样改变后续反馈的作用。当前模型没有离线重放或回溯重算过去反馈，因此摘要不宣称“一条新线索让此前所有错误突然被重新解释”。
+
+## F3. 如何选择
+
+**按当前研究兴趣与已有 Fig2 的衔接，优先展开故事一。** 它延续已选的知识继承主线，把局部搜索与信念迁移转化为一个可检验的理论问题，最有分量的结论是同一机制的收益与代价。
+
+**如果希望与上一版形成更大的问题差异，重点评估故事二。** 它把焦点从“学习过程卡在哪里”推进到“反馈怎样成为可用证据”，也自然连接 AI 与人沟通时对学习者知识的建模。其决定性操纵较明确，但 Task2 的正式模型与状态验证工作更多。
+
+两条路线均直接对应会议 session 1；与 AI 的联系分别是知识复用的条件和反馈可解释性的条件。这里没有新增神经、临床或 AI 产品效果主张。本次重新读取了文献表中的相关条目及“故事拆解”，并核对 A08、C02、A09、A06 的原文摘要；没有将这些论文的结论直接当作本项目的证据。
+
+# 第七部分：从教学目标、解释行为与集体学习重新出发
+
+日期：2026-09-17。用户要求再提出三个新故事，不受此前思路限制。本部分把研究问题分别放在**教学系统如何选择经历、语言行为如何改变学习、个体解释差异如何影响集体学习**三个层面。文体为面向认知与 AI 会议的研究故事及摘要，英文后附中文；没有指定投稿字数。
+
+最新修订：用户要求保留个体内在信念解码优势，并与学习瓶颈故事融合，强调模块设计的合理性和有限资源下的认知补偿。G3 已据此整合，主结果落在现有分类任务、信念动态、瓶颈区分与补偿机制。
+
+**写作状态：三份摘要均为含假设结果的构想稿。** 已有基础仍为 Fig1 的 96 人三任务数据、Fig2 的模型框架和两个个案。下文的新分析、教学策略、语言干预、协作实验及其效果均未完成；新增实验人数不计入已有 96 人。本次只写作，不运行拟合、模拟或实验，不改变模型实现。
+
+## G0. 三条故事的区别
+
+| 出发点 | 核心问题 | 最有吸引力的结果设想 | 与现有模型的关系 |
+|---|---|---|---|
+| 教学目标 | 追求练习中答对，会不会使错误理解更难被发现？ | 高正确率的课程保留了错误规则；专门区分规则的课程带来更好的独立泛化 | 复用个体学习模型；新增选择刺激的教学策略 |
+| 解释行为 | 说出哪一个解释，会不会改变随后从反馈中学到什么？ | 控制先前选择与反馈后，随机要求表达的规则仍影响后续更新 | 当前口述只作外部测量；需比较新增的报告影响学习机制 |
+| 个体信念解码、瓶颈与补偿（当前融合主线） | 解码信念能否揭示有限资源下学习受阻与继续进步的机制？ | 口述支持解码优势；相似表现隐藏不同瓶颈；搜索与信念修订在特定条件下减轻资源限制的代价 | 以现有个体模型为主体，检验模块作用及交互；AI 帮助是后续应用问题 |
+
+沿用 hypothesis search（假设搜索）、belief revision（信念修订）、candidate rules（候选规则）。本节的 misconception（错误理解）限定为在诊断性刺激上作出系统错误预测的规则；hypothesis diversity（假设多样性）指不同规则的功能差异，不指措辞多样性或人口学差异。
+
+## G1. 故事一：高正确率的教学，可能保护了错误理解
+
+**Title: When successful practice preserves misconceptions**
+
+### 科学问题与关键转折
+
+一个自适应教学系统可以不断挑选学习者最可能答对的题目。如果正确规则和某个错误规则恰好在这些题目上给出相同答案，学习者与系统都可能观察到进步，却没有发现理解中的问题。关键问题是：**教学系统依据当前表现挑选经历时，会不会让某些错误理解持续逃过检验？**
+
+这个故事把“学习者—教学系统—后续经历”作为研究对象。需要解释的结果是：教学目标如何改变可见证据，进而改变最后学到的规则。
+
+一个直观例子：训练中，长尾刺激也通常有长脖子。学习者依据尾巴或脖子，都可能持续答对。如果教学系统继续挑选两种解释都能成功的刺激，错误解释就可以存活。真正有区分力的例子是两条规则预测不同的刺激；它可能较难，却能判断学习者到底懂了什么。这个例子是设计示意，不能当作既有刺激分布的描述。
+
+**拟检验结论：以当前正确率为目标选择练习，可能延长错误理解的寿命。**
+
+### Fig1–4 的结果逻辑
+
+1. **Fig1：** 以既有正确率和口述说明测量基础；新增分析检查高正确率片段是否仍有可区分的错误规则。不能把提及特征较少或反应较快当作正确理解。
+2. **Fig2：** 用有限候选模型刻画不同规则在已见刺激上的行为等价性，并预测在哪些新刺激上会暴露差异。当前两个个案只是起点，需要留出刺激/时段验证。
+3. **Fig3：** 找出“对当前训练样本能答对、对诊断性样本会系统出错”的具体规则；检验基于口述与过去行为的预测能否预示这种错误。若新增探针，它属于新实验，不能冒充原数据已有测量。
+4. **Fig4：** 新实验比较等训练长度的课程策略：以预测正确率为目标、以区分候选规则为目标，以及适当的非自适应或重放对照。共同测试集包含未训练的诊断刺激。最有力的设想是练习正确率与之后独立泛化出现相反排序。
+
+避免把问题简化为“多做难题更好”。需要额外比较困难程度相近但区分候选能力不同的题目，并检查效果是否来自接触范围、重复量或知觉难度。若要声称成功减少了搜索，还须检验独立规则内容的变化，不能把现有错误驱动控制器的方程输出当作人类证据。
+
+### English abstract — hypothetical results draft
+
+Adaptive teaching changes the experiences from which people learn. We asked whether selecting practice to maximize immediate success can preserve misconceptions. Building on trial-by-trial choices and verbal reports from 96 participants across three category-learning tasks, a Bayesian model tracked candidate rules that produced similar answers on encountered examples. High accuracy sometimes coexisted with alternative rules that made systematically different predictions on diagnostic stimuli. These differences predicted later errors beyond practice accuracy. In a subsequent randomized experiment, an adaptive curriculum prioritizing correct responses produced higher practice accuracy but poorer unaided generalization than a curriculum designed to distinguish competing rules. The advantage of diagnostic practice persisted when compared with equally difficult examples that provided less evidence for separating those rules. Model analyses linked the divergence to the survival of incorrect hypotheses under successful but nondiagnostic practice, and verbal reports supported this predicted persistence. These findings reveal how a teaching system's objective can shape which misconceptions survive learning. AI systems that support learning should be evaluated by whether the experiences they select expose and resolve mistaken understanding.
+
+### 中文摘要——含假设结果
+
+自适应教学改变了人们从中学习的经历。我们研究，以练习中的即时成功为目标，是否可能使错误理解持续存在。以 96 名参与者在三种分类学习任务中的逐试次选择和口述为基础，我们利用贝叶斯模型追踪那些在已见样本上产生相似答案的候选规则。结果显示，较高正确率可以与多种错误规则并存；这些规则在诊断性刺激上的不同预测，能够提供超出练习正确率的后续错误预测。在新增随机实验中，优先选择容易答对题目的自适应课程提高了练习表现，却产生了较差的独立泛化；选择能够区分候选规则的题目则呈现相反优势。与难度相近但区分能力较低的题目相比，诊断性练习的优势仍然存在。模型将这种分离联系到错误规则在成功却缺少区分力的练习中持续存活，口述变化支持了这一预测。这些发现表明，教学系统的目标会影响哪些错误理解在学习中得以保留。支持人类学习的 AI，需要通过其选择的经历能否暴露并纠正错误理解来评价。
+
+### 文献启发与新增工作
+
+- 文献表 **E07** 的摘要展示了一个有力结构：成功达成交易可以与错误的规范信念并存，目标通过改变行为和取样而改变学到的内容。这里借鉴“成功如何遮蔽误解”的问题结构，不引入其不平等厌恶或社会规范机制。[Rojek-Giffin 等，PNAS，原文摘要](https://pubmed.ncbi.nlm.nih.gov/37126724/)
+- **A04** 将训练安排与组合泛化联系起来，启发我们用独立泛化检验课程结果；本项目的固定规则目录不因此变成组合规则生成模型。[Dekker 等，PNAS，原文摘要](https://pubmed.ncbi.nlm.nih.gov/36191191/)
+- 自适应出题策略是新增层；当前 Model 0826 不会自主为人选择课程。现有实验可能已包含自适应取样，分析前需核对实际协议与取样记录，不能把原始训练经历当作随机呈现。
+- 当前模型中的低工作空间熵不等于真实理解，也不等于被试主观自信；必须用规则分歧刺激验证。各策略不得使用未来真实被试反应选择题目，统一最终测试集并明确各自所获信息。
+- 如果结果只剩“容易题训练不利于难题测试”，这个故事不够强。需要证明候选规则的可区分性解释了课程差异，且超出一般训练—测试分布匹配。
+
+## G2. 故事二：说出一个解释，会改变接下来学到什么
+
+**Title: Verbal explanations redirect belief updating**
+
+### 科学问题与关键转折
+
+现有任务在选择后、反馈前要求口述。这个安排提供了另一个科学对象：**口述是否本身改变了学习？**
+
+更具体地说，学习者可能同时考虑两条规则。当他被要求说出其中一条时，这条规则是否更容易获得随后反馈的更新、被保留或被用于下一次判断？如果如此，人机对话中“请解释一下”的作用就包含了塑造学习过程。
+
+一般的“自我解释影响学习”已有文献。本故事需要收紧到一个有区分力的预测：**在先前选择、可用规则和反馈相近时，随机要求学习者表达哪一条已有解释，会改变随后哪条规则获得支持；这种作用取决于表达相对于反馈的时点。**
+
+**拟检验结论：表达行为参与决定了经验如何改写信念。**
+
+### Fig1–4 的结果逻辑
+
+1. **Fig1：** 保留原有选择—口述—反馈的时间顺序；新增分析检验表达内容与后续诊断性选择的关系。相关预测仅用于发现候选现象。
+2. **Fig2：** 当前模型把口述放在拟合之外。用它作为“报告只是测量”的基线，与报告影响候选保持、反馈更新或读出的扩展模型比较。三种解释需要不同预测，不能用一个自由参数笼统代表“语言的作用”。
+3. **Fig3：** 在过去行为和表达前状态可比时，报告内容是否增加对后续规则变化的预测？检验报告是否只是表达了原本就更强的信念，或者只是对刚才选择的重述。
+4. **Fig4：** 在新增实验中，先获取参与者自己提出的可用候选，再随机指定需要阐述的候选，以及阐述位于反馈前还是后。设置等时间、等发声或等规则复述控制。用共同的后续诊断性选择检验内容与时点的作用。
+
+最值得争取的发现是：**同一次选择和同一条反馈，因中间表达的规则不同，产生了不同的后续学习。** 是否来自选择性反馈更新、一般记忆强化或表达承诺，应由比较决定；不能在设计阶段把全部作用预先叫作信用分配。
+
+### English abstract — hypothetical results draft
+
+Verbal explanations offer access to how people understand a task, but producing an explanation may also change what they learn. We investigated this possibility using trial-by-trial choices and reports collected before feedback from 96 participants across three category-learning tasks. Reported rule content predicted subsequent diagnostic choices beyond preceding performance, motivating a causal test of whether articulation redirects learning. In a new experiment, participants first generated candidate explanations, and we randomized which candidate they articulated and whether articulation occurred before or after feedback. With prior choices and feedback held comparable, articulating a candidate before feedback increased its influence on subsequent rule judgments relative to matched controls. Models allowing reports to alter belief updating predicted these effects better than models treating reports solely as observations of an unchanged learning process. Comparisons with rehearsal and response-persistence accounts localized the effect to how feedback changed support among candidates. These findings identify explanation as an action within the learning process. For conversational AI, eliciting a user's reasoning can shape the beliefs that future experience reinforces.
+
+### 中文摘要——含假设结果
+
+口头解释使我们能够了解学习者怎样理解任务，但产生一个解释也可能改变随后学到的内容。我们利用 96 名参与者在三种分类学习任务中的逐试次选择及反馈前口述，研究表达行为是否会改变学习。规则表达能够提供超出先前表现的后续诊断性选择预测，促使我们进一步检验这一关系的因果来源。在新增实验中，参与者先提出候选解释，我们随后随机指定需要阐述的候选，并操纵阐述发生在反馈之前还是之后。在先前选择与反馈可比时，反馈前表达某个候选提高了它对后续规则判断的影响。允许口述改变信念更新的模型，比仅将口述视为学习过程观测的模型更好地预测了这一效应；与记忆复述和反应持续解释的比较，将作用定位到反馈如何改变候选之间的支持。这些结果将解释确立为学习过程中的一种行动。对于对话式 AI，询问用户的理由，也可能参与塑造之后的经验会强化哪些信念。
+
+### 文献启发与新增工作
+
+- 文献表 **A10** 的摘要考察语言结构如何影响人和网络的学习，启发我们把语言当作影响学习的因素来研究。但原文研究的是输入语言结构，不能作为“说出解释改变更新”的直接证据。[Galke 等，Nature Communications，原文摘要](https://www.nature.com/articles/s41467-024-55158-1)
+- 额外核对了表外的早期研究：**The hazards of explanation: overgeneralization in the face of exceptions** 已表明解释会影响模式发现，并可在存在例外时损害学习。因此本故事的新贡献不能停在“解释有时有害”，而应是表达对象与反馈时序如何改变候选规则更新。[Williams、Lombrozo 与 Rehder，JEP: General，2013，原文摘要](https://pubmed.ncbi.nlm.nih.gov/23294346/)
+- 另查阅了作者公开稿 **Mind Your Step (by Step)** 的摘要：该文借助人类言语思考的条件差异研究 CoT 效果。这只提醒我们不能假定人类解释和模型推理共享机制，不作为本项目的实证依据。[作者公开稿](https://cocosci.princeton.edu/papers/liu2025chain.pdf)
+- 既有所有人都在口述，缺少随机的口述时点或无口述对照，不能据此确认口述的因果作用。口述未进入选择拟合目标，也不等于它在心理上没有影响。
+- 当前核心没有口述内容回馈到更新的机制。报告影响更新、保持或读出的模型都属于新增候选；不可声称这是现有框架已验证的功能。
+- 随机指定的解释优先来自参与者已提出的候选，避免给新规则与要求表达混在一起；两候选收集本身的干预须对照。任务时长、复述次数、额外思考和社会迎合也需要区分。研究比较应确保后续表现不只是更频繁说出被要求的词语。
+- 若控制复述后效应消失，结论应收窄到记忆强化；若随机操纵没有效应，既有口述仍可作为预测线索，不能宣称解释改变学习。
+
+## G3. 当前融合主线：通过信念解码理解学习瓶颈与认知补偿
+
+**Title: Reconstructing belief dynamics reveals bottlenecks and compensatory mechanisms in human learning**
+
+**中文：重建信念动态，揭示人类学习中的瓶颈与补偿机制**
+
+标题与英文摘要采用用户于 2026-09-17 提供的版本。逐句对应的分析、现有输出字段和执行顺序见[摘要结论对应分析方案](model_0826_bottlenecks_analysis_plan_20260917.md)。
+
+本版融合第五部分的 **Understanding learning bottlenecks through hypothesis search and belief revision** 与此前 G3 的个体信念解码故事。保留“先证明模型的解码优势，再讨论认知发现”的顺序，将发现推进到有限资源下各学习过程如何配合、何时出现瓶颈。
+
+> **中心问题：在只能同时考虑少量规则、又不能完整保留过去证据的条件下，人如何继续学习，为什么相似的学习困难需要不同的解释？**
+
+> **拟议核心结论：解码个体信念可以区分学习受阻的环节，并揭示搜索与信念修订在不同资源约束下的补偿作用及其边界。**
+
+“相似表现背后的不同理解”继续作为机制分析的入口。后文围绕这些差异怎样形成、哪些过程能缓解困难展开；集体交流与 AI 个性化帮助保留为后续应用问题。
+
+### 1. 两个故事怎样连成一条证据链
+
+| 层次 | 需要回答的问题 | 在文章中的贡献 |
+|---|---|---|
+| 个体信念解码 | 模型能否准确重建一个人正在考虑的规则及其变化？ | 建立研究内在学习过程的测量基础 |
+| 学习瓶颈 | 表现相近的人，是否卡在规则进入、支持保持或指导选择的不同环节？ | 解释外在错误背后的不同过程 |
+| 认知补偿 | 哪些机制能在特定资源约束下减轻这些困难？什么条件下失效？ | 解释受限的学习系统如何维持有效学习 |
+
+全篇顺序是：**解码可信 → 区分瓶颈 → 检验补偿 → 预测后续学习。** “认知资源有限”贯穿问题、模型和结果；模块介绍应说明每个设计要解释哪一种可观察的学习现象。
+
+解码指基于模型的概率性重建：推断候选规则、相对支持及其时间变化。它不等于直接读取神经表征或唯一恢复真实心理路径；当前结论首先限定在固定规则目录可表达的理解上。
+
+### 2. 模型各模块为什么需要这样设计
+
+先讲学习者面对的困难，再介绍模型如何表达这些困难。以下“补偿作用”都是待检验的功能解释，不能从公式本身直接认定。
+
+| 模块或设计 | 认知动机：要区分什么问题？ | 值得检验的作用 | 适用边界 |
+|---|---|---|---|
+| 个体知觉噪声 P | 同一物理刺激可能形成不同的内部输入；错误可能发生在规则推理之前 | 为检验跨次证据积累能否缓解不可靠输入提供约束 | 噪声本身是限制；当前由个体知觉测量校准并固定，不随学习自动降低 |
+| 有限候选工作空间与假设搜索 H | 人无法同时比较所有规则；尚未考虑与考虑后不相信是不同状态 | 根据失败调节搜索时机与局部/全局范围，用跨时间搜索补充有限的同时比较能力 | 容量在被试内固定；频繁搜索也可能挤掉有价值的候选，并非越多越好 |
+| 有限记忆 M 与信念更新 | 新证据的作用取决于旧证据保留多少；一次正确或错误不应等同于规则的全部历史 | 保留的证据可以帮助稳定筛选少量候选；进一步检验搜索是否缓解证据衰减造成的停滞 | 遗忘是约束，不能把加入遗忘写成补偿；更强搜索能否补偿较差保持仍需验证 |
+| 工作空间改变时的信念迁移 | 修改假设后，原有支持如何影响新一轮评估？ | 在功能相关的规则间延续已有支持，可能降低反复替换候选的重新学习成本 | 延续的是现存信念，不会恢复已丢失的证据；错误支持也可能被延续 |
+| 动态规则精度 β | 更相信一条规则，与按这条规则形成多明确的分类预测，需要分开描述 | 在保留候选的同时根据反馈调整其预测精度，可能减少过早放弃有用规则或过早形成僵硬预测的代价 | β 不是信念概率或已验证的主观信心；它不移动类别边界，也不能补回感知中丢失的信息 |
+| 信念到选择的读出 | 有多个候选，不代表每次作答都把它们混合；执行规则也可能暂时持续 | 持续执行可在后台评估候选时保持行动稳定；全部活跃规则接受反馈，可检验未执行候选是否也获得有用信息 | 持续执行也可能造成惯性；混合与持续执行是被试层候选结构，不能宣称同一个人自动在两者间切换 |
+
+这些设计共同把“看到什么、考虑什么、相信什么、规则预测多明确、实际如何选择”区分开来。**设计的认知依据来自这些可区分的问题；设计是否得到数据支持，则取决于口述、选择预测和针对性模型比较。**
+
+资源的定义保持具体：候选容量是同时维持多少条规则，证据保持是过去支持衰减多快，知觉噪声是输入的不确定性。当前框架没有统一的资源预算，也没有求解全局最优的资源分配；粒子数量属于研究者的推断计算，不属于被试资源。
+
+### 3. 第一项结果：模型确实提高了个体信念解码能力
+
+最应突出的拟议优势是：**仅依据选择进行参数拟合，模型仍比更简单的竞争模型更准确地解释未用于参数拟合的口述规则内容及其变化。** 比较需要同时覆盖正确规则、具体错误规则及其出现、持续和改变，不能只比较最终正确率或目标规则权重。
+
+Fig2 应让读者看到：某些模型或许能近似解释外在选择，但对这个人当时采用什么规则给出不同解释；逐试次口述能进一步约束这些解释。这是待完成的比较结果，不能由两个个案预先认定。自身状态对自身口述的对应还应超过匹配任务、阶段和表现的其他个体/时间对照。
+
+采用共同规则坐标、公平重拟合和预先固定的评价时点。P/PM/PH/PMH 比较有助于检验记忆与有限搜索结构；四者均有动态 β，因此 β、搜索控制、信念迁移和读出需要各自的定向对照。没有规则表征的行为模型可参与选择预测比较，但不能给其不存在的信念向量评分。
+
+### 4. Fig3：相似的学习困难，发生在不同环节
+
+Fig3 的问题是：**同样没有稳定学会，内部过程到底有什么不同？** 建议围绕三个可区分、可连续变化的状态组织：
+
+1. **合适规则尚未进入考虑。** 工作空间未包含能解释任务的候选，继续更新当前候选难以解决问题。
+2. **合适规则进入后未获得或维持足够支持。** 区分它缺少诊断性证据，还是已有支持随后减弱；弱记忆只是需要比较的一种解释。
+3. **已有支持尚未稳定转化为选择。** 检验规则预测精度与读出是否能解释剩余差异；持续执行结构下，受支持的规则也可能尚未成为执行规则。
+
+**呈现顺序：匹配个案 → 群体状态证据 → 后续预测。**
+
+- **Fig3a：** 在同任务、相近训练阶段与近期表现下，展示几条不同的信念轨迹，并将反馈前口述放在同一时间轴上。用具体规则内容说明差异。
+- **Fig3b：** 在群体层面估计上述状态的概率和持续时间，保留推断不确定性。若两种解释无法区分，呈现为不确定，而非硬分组。
+- **Fig3c：** 用过去信息检验不同状态是否预示随后不同的规则出现、支持下降或诊断性选择错误，比较近期表现和完整行为历史基线。
+
+这里提出的是某一阶段的瓶颈，不是给参与者贴上永久类型标签。口述没有提到某条规则，不能直接判定规则不在工作空间；特别是第三类瓶颈，必须确认状态与读出在现有数据中可区分。
+
+### 5. Fig4：什么机制能够缓解瓶颈，又会付出什么代价
+
+Fig4 的问题是：**既然资源受限，为什么有些学习轨迹仍能走出瓶颈？** 建议主图集中检验两条补偿关系，其余机制承担针对性验证。
+
+**关系一：有选择的搜索能否缓解候选容量限制？**
+
+同样只能容纳少量候选时，反馈引导的搜索是否比搜索总量相当、但时机或范围不随反馈调整的搜索，更容易让有用规则进入并留下来？如果优势随容量收紧而增加，且能够在规则进入时间、无效替换和后续学习中找到对应，才支持“搜索部分补偿有限容量”。只显示搜索次数增加不够。
+
+**关系二：信念的延续能否降低反复修改假设的代价？**
+
+当必须更换候选时，在相关规则间延续已有支持，是否比将新候选的初始支持与旧规则关系脱钩，更快建立对有用规则的稳定支持？收益是否随证据保持程度变化？这里同时保留反面结果：错误规则间的连续迁移可能延长错误理解；若过去支持已严重衰减，也未必还有足够内容可供利用。
+
+在这两条主关系之外，直接检验旧稿提出的**搜索补偿记忆限制**：固定候选容量，比较不同证据保持水平下反馈引导搜索的收益。可能得到部分补偿，也可能发现记忆较差时频繁搜索进一步打断积累。结论服从结果，不预设所有模块在所有条件下相互帮助。
+
+| 面板 | 建议呈现 | 应回答的问题 |
+|---|---|---|
+| Fig4a | 候选容量 × 搜索控制的交互曲线，同时报告有用规则进入及学习表现 | 搜索的作用是否在容量有限时更重要？ |
+| Fig4b | 证据保持 × 搜索控制的交互，并核对重复发现、支持丢失和替换事件 | 搜索在何种记忆条件下有帮助，何时反而打断积累？ |
+| Fig4c | 规则替换前后的支持变化，对照相似度相关/无关的迁移，展示有用与误导性连续修订 | 信念延续何时节省重新学习，何时保留错误？ |
+| Fig4d | 将模型推演得到的过程预测带回真实被试的时间留出数据，比较后续选择和口述变化 | 这些补偿解释是否对人的后续学习具有额外解释力？ |
+
+Fig4a–c 属于模型中的机制检验，Fig4d 提供人类数据约束。若要进一步声称人的因果性补偿，需要操纵资源或支持条件的新实验。当前故事可以先以计算机制和过程预测成立，不必把尚未开展的 AI 干预实验写成必要主结果。
+
+### 6. 怎样让“补偿”成为有证据的结论
+
+**补偿指：某种机制减轻了一项明确资源限制造成的学习损失。** 它比“加入模块后拟合更好”多一个要求：作用要与资源条件发生有解释意义的交互，并有相应的过程变化。
+
+- **模块的经验必要性：** 用公平重拟合的竞争模型比较选择与口述解释力。这回答是否需要该结构来解释被试数据。
+- **模块的计算作用：** 固定其他设置，在自主生成选择及对应反馈的模型中改变资源或机制，比较损失与过程变化。这回答该机制在模型中起什么作用；不把沿用真实人的反馈序列当作新选择会得到的反馈。
+- **作用对人的适用性：** 用冻结参数和过去信息预测后续行为、口述及可区分规则的反应；因果结论再由资源操纵检验。
+
+搜索对照应尽量匹配替换数量等计算投入，并分别区分搜索时机与范围的贡献。容量比较使用相同读出结构和有效参数范围，避免把结构改变当成容量效应。迁移比较要区分“相似规则更容易进入”与“进入后继承相似规则的支持”；当前槽位比例迁移与质量守恒迁移都包含结构化投影，两者之比本身不能证明有无知识延续的差别。具体重置/无关迁移对照仍需定义，不能说已经实现或检验。
+
+拟合参数之间的相关、优化过程中参数相互抵消，以及“低记忆者搜索较多”，均不能单独证明认知补偿。最有分量的结果应当同时显示：资源限制带来什么困难、机制如何减轻困难、这种解释如何约束真实的后续学习。
+
+### 7. 整篇文章的四张图
+
+| 图 | 核心问题 | 在融合故事中的作用 |
+|---|---|---|
+| Fig1 | 三种类别学习任务中，选择与反馈前口述呈现怎样的学习过程？ | 提供 96 人的实验基础与可用于检验规则表征的过程线索 |
+| Fig2 | 模型能否更准确地重建个体内在信念？ | 解释模块设计、展示轨迹，完成群体口述验证与关键模型比较 |
+| Fig3 | 相似的学习困难卡在哪个环节？ | 从解码的信念动态识别不同瓶颈，并检验后续预测 |
+| Fig4 | 哪些机制能缓解这些困难，什么条件下失效？ | 检验资源与机制的交互、收益与代价，并返回人的过程数据 |
+
+Fig2 建立可信度，Fig3 给出新的过程区分，Fig4 解释这些过程如何共同支持学习。研究的提升是：**从重建一个人的信念，走向理解有限资源下学习成败的形成机制。** 这一贡献直接对接会议中 AI/计算模型如何推进认知理解的主题；个性化帮助是由机制结果导出的未来用途。
+
+### English abstract — hypothetical results draft
+
+**构想稿：以下模型比较、瓶颈差异、个体画像与人群分组、补偿效应和时间留出预测均为设想结果，尚未由现有 Fig1/2 证明。模型反事实结果与人类数据结果在文中分别表述。**
+
+Similar errors can arise from different underlying beliefs, making behavioral performance alone insufficient to explain why learning stalls. We developed a resource-constrained Bayesian model that reconstructs learners’ beliefs from choices and feedback across three category-learning tasks completed by 96 participants. The model captures constraints on the number of rules learners can consider, the extent to which past evidence is retained, and how current beliefs guide choice. Although fitted only to choice behavior, it predicted participants' verbal reports of their current rules, and changes in those reports over time, more accurately than alternative models. The inferred belief states revealed distinct sources of learning difficulty among participants with similar performance. Some learners had not considered a useful rule, others had considered it but no longer regarded it as plausible, and others did not apply it consistently. These differences yielded individual learning profiles and groups characterized by distinct bottlenecks. The same framework also revealed how learners could overcome these bottlenecks despite limited cognitive resources. When only a few rules could be considered at a time, using feedback to determine when and where to search helped learners discover useful alternatives. Evaluating newly considered rules in light of previous judgments about rules that classified stimuli similarly also reduced redundant trial and error. Together, these findings link observable learning difficulties to distinct underlying cognitive processes and provide a basis for AI assistance tailored to the process that currently constrains an individual learner's progress.
+
+### 中文摘要——含假设结果
+
+相似的错误可能源于不同的内在信念，因此，仅凭行为表现不足以解释学习为何停滞。我们建立了一个考虑认知资源限制的贝叶斯模型，从 96 名参与者在三种类别学习任务中的选择与反馈，重建他们的信念。模型刻画了学习者能够同时考虑多少条规则、能够保留多少过去的证据，以及当前信念如何指导选择。虽然仅用选择行为拟合，模型对参与者所述当前规则及其随时间变化的预测，仍比其他模型更准确。推断的信念状态揭示了表现相近的参与者面临的不同学习困难：有些人尚未考虑过有效规则，有些人曾经考虑过、后来却不再认为它合理，还有些人未能稳定地按它作答。这些差异形成了个体学习画像，以及具有不同瓶颈特征的人群。同一框架还揭示了学习者如何在认知资源有限的情况下克服这些瓶颈。当一次只能考虑少量规则时，利用反馈决定何时寻找新规则、往哪个方向寻找，有助于发现有效的替代解释。评估新规则时，参考此前对分类方式相近的规则所形成的判断，也减少了重复试错。这些发现将可观察的学习困难与不同的内在认知过程联系起来，为 AI 针对当前限制个体学习进展的具体过程提供帮助奠定了基础。
+
+中文为上述用户确认英文的对应译文。本版摘要面向非本领域读者，保留“解码优势 → 学习瓶颈 → 有限资源下的补偿”主线。搜索和信念迁移的具体对照、适用条件及副作用仍在本节第 5–6 小节展开；摘要不再同时压入全部机制细节。
+
+### 证据状态、旧稿衔接与表述边界
+
+- **目前已具备的是实验数据、模型框架及代表性拟合展示。** Fig2 v15 仅包含 S129、S229 两个个案，Task2、群体选择预测、群体口述对应与消融面板尚未完成。尚不能宣称全体 96 人已完成解码、模型已优胜或补偿已得到验证；condition 3 已实现，但正式个体拟合与恢复尚未完成。
+- 口述未进入选择参数的拟合目标，但曾参与规则目录构建；使用“未用于参数拟合的口述”，不称完全独立的真实信念。需固定目录、编码和评价时点，并保留留出或独立编码复核。口述编码反映规则内容，不是逐条报告的主观概率。
+- 报告在选择后、反馈前采集。作答前、当前选择后的过滤与全历史平滑状态不能混用；全序列拟合参数不能用于宣称严格的前瞻预测。沿用旧类别报告、缺失及编码歧义也需处理。
+- 活跃规则、集合内信念、规则精度与执行状态的可辨识性要分别检验。跨粒子的边际支持不等于一个人同时考虑的规则数量；PF 不确定性也不等于主观不确定性。不可区分的路径应保留多种解释。
+- 个体画像描述当前任务中的规则探索、证据保持与规则使用特点；分组可随学习阶段变化，不预设固定类型或群体数量。人群分组是否稳健，以及画像能否预测留出阶段表现，仍需检验，不能由拟合参数的聚类直接认定。
+- 若简单模型同样解释口述与留出选择，需收窄解码优势主张；若补偿交互未出现，保留瓶颈区分及条件依赖的机制作用，不把模块存在本身写成适应性证据。
+- 旧 NeurIPS 稿的[模型结果](../../../../CategoryLearning_paper/references/Category_learning_Jiong/04_modelresults.tex)已有“内部表征比较 → 搜索与记忆关系”的叙事雏形。其参数、架构与结果不能直接当作当前 0826 的证据；其中记忆参数与探索阶段长度的相关也不能单独证明补偿。当前版本把这一设想推进为资源与机制的交互检验。
+- 当前固定规则目录、均匀基础先验与反馈控制搜索，不等于旧稿中无限假设空间或可自由学习的先验分布；本稿不主张已证明资源分配最优性、群体协作效果或心理健康干预效果。
+
+具体检验约定参见 [Model 0826 Plus](model_0826_plus.tex) 中的状态恢复、口述外部约束、模型比较及 Fig2 呈现方案。本次只修订故事与摘要，没有运行新的拟合、模拟或统计检验。
+
+## G4. 三条路线如何取舍
+
+| 关注点 | 更值得先讨论的故事 | 理由 |
+|---|---|---|
+| 会议中 AI 怎样影响人的学习 | 故事一 | 研究对象包含教学目标和经历选择，能够直接检验“系统优化了什么”如何影响人的知识 |
+| 最大程度利用逐试次口述的特色 | 故事二 | 把现有任务中的口述时点变成新的因果问题；但需要扩展模型和新对照 |
+| 当前用户选择：融合信念解码、学习瓶颈与认知补偿 | 修订后的故事三 | 先验证解码优势，再区分瓶颈，检验模块如何在资源有限时发挥作用及其边界 |
+
+当前优先推进融合后的故事三。它以现有个体实验和模型为主体，先完成解码、群体比较与时间留出验证，再用资源与机制交互检验补偿解释。是否需要新探针，取决于既有刺激能否区分候选规则；人的因果性补偿仍需资源操纵。故事一、二依赖新的教学或语言实验，集体交流与 AI 辅助保留为后续应用。
 
 ## 来源与状态
 
