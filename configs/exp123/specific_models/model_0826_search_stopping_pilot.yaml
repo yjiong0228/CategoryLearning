@@ -1,0 +1,45 @@
+# Prospective bounded checks; not a production fitter or population inference.
+analysis_id: model_0826_search_stopping_pilot_v1
+parameter_space: model_0826_cond1_parameter_space.yaml
+processed_dir: ../../../data/exp123/processed
+previous_adaptive: ../../../results/model_0826/adaptive_effort_pilot_20260917/full
+previous_simple: ../../../results/model_0826/simplified_fit_pilot_20260917/full
+base_seed: 20260920
+parallel_budget: 128
+subjects:
+  - {subject: 129, condition: 1, engine: ../model_struct/pmh_model_cond1_0826.yaml}
+  - {subject: 103, condition: 1, engine: ../model_struct/pmh_model_cond1_0826.yaml}
+  - {subject: 203, condition: 2, engine: ../model_struct/pmh_model_cond2_0826.yaml}
+  - {subject: 301, condition: 3, engine: ../model_struct/pmh_model_cond3_0826.yaml}
+selection_rule: closest to condition median trial count, excluding prior pilot subjects; ties by subject ID
+search:
+  particle_count: 32
+  filter_seed_count: 4
+  initial_count: 45
+  rounds: 4
+  elite_count: 2
+  proposals_per_elite: 48
+  patience: 2
+  min_improvement: 0.0001
+  shortlist_size: 4
+  challenge_global_count: 36
+  challenge_local_count: 60
+screen: {particle_count: 64, filter_seed_count: 8}
+confirmation: {particle_count: 128, filter_seed_count: 16, top_per_source: 2}
+noise:
+  subject: 229
+  condition: 2
+  engine: ../model_struct/pmh_model_cond2_0826.yaml
+  trace_particles: 128
+  larger_particles: 256
+  seed_count: 16
+  segment_length: 64
+criteria:
+  max_mean_nll_gap: 0.005
+  max_pairwise_interval_halfwidth: 0.005
+  max_bootstrap_regret95: 0.005
+  max_choice_probability_rmse: 0.02
+  max_mean_rule_total_variation: 0.10
+  max_active_probability_mae: 0.05
+  max_strategy_probability_mae: 0.05
+  bootstrap_replicates: 2000

@@ -16,6 +16,7 @@
 | `analysis/probe_model_0826_search.py` | S129 分散起点与跨块联合移动的有限补充搜索，复用共享评分器 |
 | `analysis/pilot_model_0826_simplified_fit.py` | 简化拟合的隔离试验：单阶段低预算搜索、独立筛选和确认，与历史入围参数在当前代码下比较 |
 | `analysis/pilot_model_0826_adaptive_effort.py` | 后续试点：固定候选上限的分散搜索与局部/联合调整、固定参数的粒子/种子校准及按被试追加计算的诊断 |
+| `analysis/pilot_model_0826_search_stopping.py` | 搜索与停止检查：逐参数方向提案、停止后的额外挑战、S129 历史起点续搜、S229 评分波动定位，以及 condition 3 完整序列试点 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
 
@@ -168,3 +169,49 @@ env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_T
 低 NLL 本身不能证明搜索充分，高 NLL 也不自动意味着需要更多搜索。状态分析还需单独达到状态
 稳定性要求。达到预设计算上限但未过检查时，应标记“尚未稳定”，不能把耗尽预算写成“已收敛”。
 当前建议器没有自动选择正式的被试级预算，推广到全体被试与模型比较仍需独立验证。
+
+### 搜索覆盖、评分波动与停止检查（2026-09-18）
+
+`pilot_model_0826_search_stopping` 使用独立配置
+`configs/exp123/specific_models/model_0826_search_stopping_pilot.yaml`，继续复用共享引擎和已有评分、
+配对种子比较函数。没有修改认知方程、正式拟合默认值、评分掩码或预测时点。
+
+- S129、S103、S203、S301 使用完整序列。后三人按各 condition 试次数距中位数最近、
+  同距离取较小编号选定，排除前期试点被试，不按拟合好坏选择。
+- 45 个起点加最多四轮、每轮两名不同精英候选、每名最多 48 个提案。提案按原始参数方向轮流
+  安排远近调整，联合块中的派生量保持约束，不穷举稠密联合网格。
+- 低预算搜索为 R32×B4；两轮改善不超过 0.0001 时冻结拟停止候选，但本试验继续至上限，
+  并增加最多 60 个局部方向和 36 个全局起点。所有停后候选都属于挑战组；去重可减少实际数量。
+  未出现平台时以预算上限处为参照，不能声称已收敛。
+- 基础组和挑战组各保留四名候选，经独立 R64×B8 筛选，固定各组主候选并以 R128×B16 确认。
+  NLL 差定义为基础组减挑战组，正值表示挑战组更好。只有评分精度通过、有平台、且改善区间
+  上界不超过容差，才给出有限范围内的暂时停止建议。该小试点不证明全局最优。
+- S129 在通用搜索和挑战结束后，另读取历史候选，从两名历史筛选优胜者附近续搜；
+  `reference`、`warm`、`base` 分开记录，不能把历史起点的效果归入通用搜索覆盖。
+- S229 对上一轮四名固定候选定位种子波动及 64-trial 时间段贡献；以同一旧种子前缀重跑
+  R128×B16，增加 ESS/重采样记录，并要求所有概率与状态数组与归档逐元素完全一致。
+  两名历史候选另用 R256×B16 检查粒子敏感性。它是旧种子配对诊断，不是新种子独立确认。
+  时间段方差使用保留 trial 间协方差的种子影响量分解；不能将 trial 当独立观测来降低误差。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMEXPR_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/model0826_stopping_numba \
+  MPLCONFIGDIR=/tmp/model0826_stopping_mpl \
+  python -m src.Bayesian_state.workflows.analysis.pilot_model_0826_search_stopping \
+  --config configs/exp123/specific_models/model_0826_search_stopping_pilot.yaml \
+  --output-dir results/model_0826/search_stopping_pilot_new
+```
+
+先另选新目录加 `--smoke` 检查 32-trial、小粒子、单进程的普通与 condition 3 分支。
+`--resume` 只复用相同输入/源码/环境的完整批次，未完成的数值产物保留并拒绝覆盖。
+`context.json` 记录依赖内容和实际库版本；`workflow_source_at_run.py.txt` 保留执行源文件。
+输出分为各被试的逐轮、挑战、筛选、确认目录和 `noise_229` 诊断目录。
+
+通俗说明与科学解释边界见
+[`Model 0826 Plus`](../docs/model_architecture/model_0826_plus.tex)。本轮只执行小规模诊断，
+全体正式拟合、恢复实验及 exp5 不在本入口的执行范围。
+
+本轮完整结果见 [搜索与停止检查报告](../../../results/model_0826/search_stopping_pilot_20260918/README.md)。
+S129 的追加挑战已找到接近历史参照得分的候选；S103 的评分检查通过但未到搜索平台，
+S129/S203/S301 的整体评分精度检查未通过。四名搜索被试均未触发两轮平台，因此本轮
+不能验证实际早停的误停率；当前入口仍是诊断试点。
