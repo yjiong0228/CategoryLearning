@@ -21,4 +21,10 @@
 
 - [摘要结论对应的分析方案](model_architecture/model_0826_bottlenecks_analysis_plan_20260917.md)：以用户确认的 G3 标题与英文摘要为准，逐项说明瓶颈识别、个体画像与分组、搜索补偿和信念迁移需要的分析、现有输出字段及优先执行顺序。
 
-- [Model 0826 Plus：检验与论文呈现方案](model_architecture/model_0826_plus.tex)：中文内部讨论稿，区分数值/恢复/行为/口述/生成检验，说明最新 Fig2 a–g 与补充图分工，以及已完成和待检验内容。
+- [Model 0826 Plus：怎样拟合，怎样检验](model_architecture/model_0826_plus.pdf)
+  （[TeX 源文件](model_architecture/model_0826_plus.tex)）：2026-09-18 精简修订，先用通俗语言区分
+  搜索覆盖、评分精度和状态精度，说明按被试追加计算与停止检查，再介绍恢复、行为、口述、
+  自主生成和 Fig2 分工。同步修正 condition 3 已接入的状态；试点不等于正式流程已验证。
+  编译到新文件使用 `bash src/Bayesian_state/docs/model_architecture/compile_model_0826_plus.sh NEW_OUTPUT.pdf`，
+  脚本拒绝覆盖现有 PDF。此次用户要求修订的旧版已归档到
+  `results/model_0826/search_stopping_pilot_20260918/document_before/`。
