@@ -36,8 +36,8 @@ def load_fit_config(path: Path, smoke: bool = False) -> dict:
     config = yaml.safe_load(path.read_text())
     required = {'schema_version', 'backend', 'analysis_id', 'parameter_space', 'processed_dir',
                 'conditions', 'base_seed', 'parallel_budget', 'search', 'precision', 'boundary'}
-    if not isinstance(config, dict) or set(config) != required or config['schema_version'] != 1 or config['backend'] != 'model0826_adaptive':
-        raise ValueError('Expected Model 0826 adaptive schema version 1; unknown keys are not ignored')
+    if not isinstance(config, dict) or set(config) != required or type(config['schema_version']) is not int or config['schema_version'] not in (1, 2) or config['backend'] != 'model0826_adaptive':
+        raise ValueError('Expected Model 0826 adaptive schema version 1 or 2; unknown keys are not ignored')
     for key in ('parameter_space', 'processed_dir'):
         config[key] = str((path.parent/config[key]).resolve())
     if not config['conditions'] or any(type(c) is not int or c not in (1, 2, 3) for c in config['conditions']):
@@ -51,7 +51,10 @@ def load_fit_config(path: Path, smoke: bool = False) -> dict:
                    'proposals_per_elite', 'fresh_global_count', 'local_fraction', 'jump_fraction',
                    'guide_top', 'guide_diverse', 'guide_random', 'patience', 'min_improvement',
                    'challenge_rounds', 'challenge_global_count', 'audit_top_per_source'}
-    if set(search) != search_keys or set(precision) != {'tiers', 'audit', 'alpha', 'tolerance', 'bootstrap_replicates'} or set(boundary) != {'extensions', 'near_tolerance', 'max_candidates', 'proposals_per_elite'}:
+    precision_keys = {'tiers', 'alpha', 'tolerance', 'bootstrap_replicates'}
+    if config['schema_version'] == 1:
+        precision_keys.add('audit')
+    if set(search) != search_keys or set(precision) != precision_keys or set(boundary) != {'extensions', 'near_tolerance', 'max_candidates', 'proposals_per_elite'}:
         raise ValueError('Unknown or missing search/precision/boundary keys')
     for key in search_keys - {'discovery', 'guide', 'local_fraction', 'jump_fraction', 'min_improvement'}:
         if type(search[key]) is not int or search[key] < 1:
@@ -66,11 +69,12 @@ def load_fit_config(path: Path, smoke: bool = False) -> dict:
         raise ValueError('Need at least 100 bootstrap draws')
     if not isinstance(precision['tiers'], list) or not precision['tiers']:
         raise ValueError('Need numerical precision tiers')
-    budgets = [search['discovery'], search['guide'], *precision['tiers'], precision['audit']]
+    extra_audit = [precision['audit']] if config['schema_version'] == 1 else []
+    budgets = [search['discovery'], search['guide'], *precision['tiers'], *extra_audit]
     for budget in budgets:
         if set(budget) != {'particle_count', 'filter_seed_count'} or any(type(v) is not int or v < 2 for v in budget.values()):
             raise ValueError('Each numerical budget needs integer particle/seed counts >= 2')
-    ordered = [search['guide'], *precision['tiers'], precision['audit']]
+    ordered = [search['guide'], *precision['tiers'], *extra_audit]
     if any(any(b[k] < a[k] for k in a) for a, b in zip(ordered, ordered[1:])):
         raise ValueError('Precision tiers and audit must not decrease R or B below guide')
     if not isinstance(boundary['extensions'], dict) or any(type(boundary[k]) is not int or boundary[k] < 1 for k in ('max_candidates', 'proposals_per_elite')):
@@ -180,16 +184,74 @@ def stop_status(plateau: bool, challenge_improved: bool, decision: str, audit: s
     return ('unresolved' if issues else 'provisional_stop_within_tested_scope'), issues
 
 
+def audit_frozen_candidates(scorer: Scorer, config: dict, banks: dict[int, list[dict]],
+                            primary: dict[int, str], baseline: dict[int, str],
+                            challenger: dict[int, str], cycle_name: str) -> dict[int, dict]:
+    """One fresh-seed phase answers two predeclared questions per subject.
+
+    The primary is checked against the bank; the pre-challenge representative
+    is checked against the fixed post-challenge representative. Neither is
+    chosen using these audit draws. Higher tiers are needed only while neither
+    question establishes a restart and at least one remains unresolved.
+    """
+    precision = config['precision']
+    alpha = precision['alpha'] / (2 * len(precision['tiers']) * config['search']['max_cycles'])
+    family = f'{cycle_name}/independent_audit'
+    pending = list(banks)
+    history = {sid: [] for sid in banks}
+    final = {}
+    for tier, budget in enumerate(precision['tiers']):
+        scored = scorer.batch({sid: banks[sid] for sid in pending}, budget, family,
+                              f'{cycle_name}/audit_{tier}')
+        for sid in pending:
+            arrays = {r['id']: scorer.arrays(sid, r, budget, family) for r in scored[sid]}
+            audit = decision_diagnostics(arrays, primary[sid], precision['tolerance'], alpha,
+                precision['bootstrap_replicates'], proposal_seed(config, sid, f'{cycle_name}/audit_bootstrap_{tier}'))
+            pair = {pid: arrays[pid] for pid in (baseline[sid], challenger[sid])}
+            challenge = decision_diagnostics(pair, baseline[sid], precision['tolerance'], alpha,
+                precision['bootstrap_replicates'], proposal_seed(config, sid, f'{cycle_name}/challenge_bootstrap_{tier}'))
+            history[sid].append({'role': 'independent_audit', 'budget': budget,
+                                 'diagnostic': audit, 'challenge_diagnostic': challenge})
+            final[sid] = {'rows': scored[sid], 'arrays': arrays, 'audit': audit,
+                          'challenge': challenge, 'budget': budget, 'family': family,
+                          'tiers': history[sid]}
+        pending = [sid for sid in pending
+                   if 'selected_point_inferior' not in (final[sid]['audit']['status'], final[sid]['challenge']['status'])
+                   and 'unresolved' in (final[sid]['audit']['status'], final[sid]['challenge']['status'])]
+        if not pending:
+            break
+    return final
+
+
+def streamlined_stop_status(plateau: bool, audit: str, challenge: str,
+                            boundary: bool) -> tuple[str, list[str]]:
+    issues = []
+    if not plateau:
+        issues.append('search_budget_without_plateau')
+    if audit != 'acceptable_within_bank':
+        issues.append('independent_audit_unresolved')
+    if challenge == 'selected_point_inferior':
+        issues.append('challenge_improved')
+    elif challenge == 'unresolved':
+        issues.append('challenge_precision_unresolved')
+    if boundary:
+        issues.append('boundary_review_required')
+    return ('unresolved' if issues else 'provisional_stop_within_tested_scope'), issues
+
+
 def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: dict,
                  support: dict, root: Path, smoke: bool) -> dict:
     scorer = Scorer(root, config, contexts)
     search, precision = config['search'], config['precision']
+    streamlined = config['schema_version'] == 2
     states = {sid: {'guided': {}, 'seen': set(), 'trace': [], 'rejected': set()} for sid in contexts}
     active = list(contexts)
     results: dict[int, dict] = {}
 
     def evaluate(banks: dict[int, list[dict]], label: str, *, direct: bool = False) -> dict[int, list[dict]]:
-        low = scorer.batch(banks, search['discovery'], 'discovery', label+'/discovery')
+        # A mandatory point bypasses screening; scoring it at discovery budget
+        # cannot affect its admission or its independent guide-seed score.
+        low = banks if direct and streamlined else scorer.batch(banks, search['discovery'], 'discovery', label+'/discovery')
         guides = {sid: (merge_proposals([('mandatory_boundary', rows)]) if direct else
                        shortlist(rows, config, proposal_seed(config, sid, label))) for sid, rows in low.items()}
         high = scorer.batch(guides, search['guide'], 'guide', label+'/guide')
@@ -274,7 +336,7 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
         for sid, rows in high.items():
             challenges[sid] += rows
         improved = {sid: base[sid][0]['mean_nll']-ranking(list(states[sid]['guided'].values()))[0]['mean_nll'] > search['min_improvement'] for sid in active}
-        next_cycle = [sid for sid in active if improved[sid] and cycle+1 < search['max_cycles']]
+        next_cycle = [] if streamlined else [sid for sid in active if improved[sid] and cycle+1 < search['max_cycles']]
         testing = [sid for sid in active if sid not in next_cycle]
         banks, primary = {}, {}
         for sid in testing:
@@ -285,11 +347,55 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
                 chosen = state['guided'][state['preferred']]
             primary[sid] = chosen['id']
             banks[sid] = merge_proposals([('base', base[sid]), ('challenge', ranking(challenges[sid])[:search['audit_top_per_source']]), ('selected', [chosen])])
+            if streamlined:
+                winner = ranking(list(state['guided'].values()))[0]
+                banks[sid] = merge_proposals([('audit_bank', banks[sid]), ('post_challenge', [winner])])
         if not testing:
             active = next_cycle
             continue
         freeze_json(root/'progress'/f'{cycle_name}_frozen_selection.json',
                     {'primary': {str(sid): pid for sid, pid in primary.items()}, 'banks': {str(sid): rows for sid, rows in banks.items()}})
+        if streamlined:
+            baseline = {sid: base[sid][0]['id'] for sid in testing}
+            challenger = {sid: ranking(list(states[sid]['guided'].values()))[0]['id'] for sid in testing}
+            freeze_json(root/'progress'/f'{cycle_name}_frozen_challenge.json',
+                        {'baseline': {str(s): p for s, p in baseline.items()},
+                         'challenger': {str(s): p for s, p in challenger.items()}})
+            inspected = audit_frozen_candidates(scorer, config, banks, primary, baseline, challenger, cycle_name)
+            for sid in testing:
+                check = inspected[sid]
+                audit, challenge = check['audit'], check['challenge']
+                near_rows = [r for r in check['rows'] if r['id'] == primary[sid] or
+                             r['mean_nll'] <= min(audit['scores'].values()) + config['boundary']['near_tolerance']]
+                edge = boundary_report(near_rows, support, float('inf'), len(near_rows))
+                status, issues = streamlined_stop_status(plateau[sid], audit['status'], challenge['status'], edge['review_required'])
+                selected = next(r for r in banks[sid] if r['id'] == primary[sid])
+                result = {'subject': sid, 'condition': contexts[sid]['condition'], 'status': status,
+                          'issues': issues, 'smoke_only': smoke, 'selected': primary[sid],
+                          'hyperparams': selected['hyperparams'], 'parameters': extract_model_0826_parameters(selected['hyperparams']),
+                          'candidate_bank': banks[sid], 'near_candidates': [r['id'] for r in near_rows],
+                          'selected_mean_nll': audit['scores'][primary[sid]], 'tiers': check['tiers'],
+                          'independent_audit': audit, 'boundary': edge, 'search_trace': states[sid]['trace'],
+                          'audit_family': check['family'], 'audit_budget': check['budget'],
+                          'precision_policy': 'single_independent_audit',
+                          'challenge_diagnostic': challenge, 'challenge_baseline': baseline[sid],
+                          'challenge_nominee': challenger[sid], 'guide_challenge_improved': improved[sid],
+                          'trial_count': len(contexts[sid]['arrays'].choices),
+                          'scored_trial_count': int(next(iter(check['arrays'].values()))['mask'].sum()),
+                          'state_precision': 'not_checked', 'parameter_recovery': 'not_checked'}
+                freeze_json(root/'subjects'/str(sid)/f'cycle_{cycle}.json', result)
+                inferior = audit['status'] == 'selected_point_inferior'
+                restart = inferior or challenge['status'] == 'selected_point_inferior' or not plateau[sid]
+                if restart and cycle+1 < search['max_cycles']:
+                    if inferior:
+                        states[sid]['preferred'] = min(audit['scores'], key=audit['scores'].get)
+                        states[sid]['rejected'].add(primary[sid])
+                    next_cycle.append(sid)
+                else:
+                    results[sid] = result
+                    freeze_json(root/'subjects'/str(sid)/'fit_result.json', result)
+            active = next_cycle
+            continue
         decisions, tier_history = {}, {sid: [] for sid in testing}
         unresolved = list(testing)
         for tier, budget in enumerate(precision['tiers']):
@@ -341,7 +447,7 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
                 results[sid] = result
                 freeze_json(root/'subjects'/str(sid)/'fit_result.json', result)
         active = next_cycle
-    return {'schema_version': 1, 'backend': 'model0826_adaptive', 'smoke_only': smoke,
+    return {'schema_version': config['schema_version'], 'backend': 'model0826_adaptive', 'smoke_only': smoke,
             'subjects': {str(sid): result for sid, result in results.items()},
             'scope': 'Representative parameters and choice-scoring diagnostics; latent-state output precision, recovery and global optimality unverified.'}
 

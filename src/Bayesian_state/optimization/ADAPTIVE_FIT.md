@@ -1,5 +1,9 @@
 # Model 0826 默认自适应拟合
 
+当前默认是 **v2 精简流程**：已冻结规则，正在用每个 condition 两名新被试做完整序列验收。
+这一步不等于全体拟合完成，也不能证明比 v1 搜索更充分。旧配置保存在
+`configs/exp123/specific_models/model_0826_adaptive_fit_v1.yaml`，schema 1 的执行规则继续支持。
+
 参数边界的定向完整序列检查见 [范围校准协议](BOUNDARY_CALIBRATION.md)。
 该试点单独声明扩展取值，不自动改写本入口的默认支持范围。
 
@@ -35,18 +39,28 @@ python -m src.Bayesian_state.optimization.cli --config configs/exp123/specific_m
 - 45 个分散起点；R32×B4 发现候选；前 8 个、最多 4 个分散候选和最多 2 个随机抽查
   候选，用 R128×B16 引导后续搜索。引导分数与发现分数不混排。
 - 每轮从最多两个较好候选各提议 48 个局部/整块/跨块点（配额 25%/25%/50%），加18个
-  分散点。去重后不补凑工作量。最多六轮，连续两轮改善不超过平均 NLL 0.0001 记为平台。
-- 随后两轮联合挑战，第一轮另提议90个分散点。人为边界附近还有方向和联合提案，直接
-  进入引导评分，不被低预算筛掉。挑战继续改善时再搜索，最多三个完整循环。
-- 代表和候选库在数值复核前冻结。独立决策从 R128×B16 开始，未明确时升至 R256×B32；
-  再以独立种子 R256×B32 审查。相对候选库最佳者的平均 NLL 损失上界≤0.005才通过。
-- alpha=0.05，决策按预算档×最大循环数分配，审查按最大循环数分配。这是有限粒子下、
+  分散点。去重后不补凑工作量。最多四轮，连续两轮改善不超过平均 NLL 0.001 记为平台。
+- 随后一轮联合挑战，另提议90个分散点。人为边界最多检查两个近优起点，每个最多4个
+  混合提案加4个方向提案，即最多16点。这些点直接进入引导评分，跳过无用的发现评分。
+- 在审查前冻结最终代表、整个复核候选库，以及挑战前后各一名代表。只用一层新的独立
+  种子审查，同时回答：最终代表相对库内最佳者的损失是否≤0.005；挑战前代表相对挑战后
+  代表是否存在超过0.005的可靠损失。候选库包括普通搜索前4名、挑战前4名及必要代表。
+- 独立审查从 R128×B16 开始。如果尚未证明需要重搜，且任一问题仍不明确，再升至
+  R256×B32；没有第二次强制全库复评。这里的通过是数值损失上界≤0.005，明确较差是
+  下界>0.005，夹在中间则不确定。相同粒子数下可复用同一独立种子族的前缀；提升粒子数
+  需要重算，不能把不同 R 混在同一个评分中。
+- 只有独立审查确认挑战改善、确认当前代表较差，或常规搜索尚未出现平台，才再开一个
+  搜索循环，最多两循环。很小的引导分数改善不自动重搜；纯数值不确定到顶后保留标记。
+- alpha=0.05，按两个问题×预算档×最大循环数分配，默认每项每次0.00625。这是有限粒子下、
   完整 PF 种子 bootstrap 的近似数值诊断，不是参数区间或严格全局错误率保证。
 - 审查发现代表较差时，用已见结果引导下一轮，下一轮审查换新种子；不会在同一批结果上
   换赢家后又宣称独立通过。无法区分的结果明确保留 unresolved。
 
 默认值是有上限的工作设置。联合搜索、随机抽查和有限候选库的检查都不能认证全局最优；
 新的组合策略尚无全体被试的速度/质量基准，不能用 smoke 耗时推算正式拟合耗时。
+schema 2 不接受 `precision.audit`，因为它已合并进 `precision.tiers`。新基础种子为
+2026091904；这与减少轮数、缩小边界检查量一样，是明确的估计方案调整，不是逐结果等价
+的代码替换。仅“必进引导层的边界点跳过低预算评分”属于同点同种子下的等价省算。
 
 ## 边界与范围
 
@@ -57,8 +71,8 @@ boundary:
   extensions:
     gamma: [0.985]
   near_tolerance: 0.005
-  max_candidates: 4
-  proposals_per_elite: 16
+  max_candidates: 2
+  proposals_per_elite: 4
 ```
 
 扩展值作为所有被试共享的允许支持，进入分散、方向和联合搜索；不回写冻结的恢复 YAML。
@@ -75,9 +89,12 @@ workspace组合，不允许修改固定 beta 上下限或偷偷加入零更新�
 
 `provisional_stop_within_tested_scope` 要求平台、挑战、独立评分及边界检查全部通过。
 否则为 `unresolved`，列出 `search_budget_without_plateau`、`challenge_improved`、
-`selection_precision_unresolved`、`independent_audit_unresolved`、`boundary_review_required`
+`challenge_precision_unresolved`、`independent_audit_unresolved`、`boundary_review_required`
 中相应原因。没有通过的参数可以检查，但不能被称为最终稳定估计。所有结果都明确标注
 `state_precision: not_checked` 和 `parameter_recovery: not_checked`。
+schema 1 仍可输出旧的 `selection_precision_unresolved`；schema 2 不重复设置两个评分状态。
+`challenge_diagnostic` 的 selected 是挑战前代表，selected_point_inferior 表示挑战有可靠改善；
+`independent_audit` 的 selected 则是最终提名代表。两者同用一批审查概率，不是两份独立证据。
 
 | 路径 | 内容 |
 |---|---|
@@ -102,3 +119,6 @@ worker一个数值线程，仅一层进程；批次跨被试×候选×种子。s
 
 软件验证见 `results/model_0826/adaptive_default_integration_20260919/README.md`；
 通俗说明与试点证据见 `src/Bayesian_state/docs/model_architecture/model_0826_plus.pdf`。
+v2 预先声明的验收协议与首批结果位于
+`results/model_0826/streamlined_fit_acceptance_20260919/`。首批仅6名，不能在原目录追加其余
+90名再 resume，因为被试列表也属于冻结指纹；后续另建目录且保持兼容配置才能合并结果。

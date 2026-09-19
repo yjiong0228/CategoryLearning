@@ -17,7 +17,7 @@ from src.Bayesian_state.optimization.search.adaptive_proposals import candidate,
 
 @pytest.fixture
 def setup():
-    config = fit.load_fit_config(fit.DEFAULT_CONFIG, smoke=True)
+    config = fit.load_fit_config(fit.DEFAULT_CONFIG.with_name('model_0826_adaptive_fit_v1.yaml'), smoke=True)
     original = load_model_parameter_space(config['parameter_space'], expected_model_id='model_0826')
     space, anchor, support = adaptive_support(original, {})
     return config, original, space, anchor, support

@@ -1,21 +1,21 @@
 # Default observed-data PMH fitting policy. Working settings, not a recovery claim.
-schema_version: 2
+schema_version: 1
 backend: model0826_adaptive
-analysis_id: model_0826_adaptive_fit_v2
+analysis_id: model_0826_adaptive_fit_v1
 parameter_space: model_0826_cond1_parameter_space.yaml
 processed_dir: ../../../data/exp123/processed
 conditions:
   1: ../model_struct/pmh_model_cond1_0826.yaml
   2: ../model_struct/pmh_model_cond2_0826.yaml
   3: ../model_struct/pmh_model_cond3_0826.yaml
-base_seed: 2026091904
+base_seed: 20260919
 parallel_budget: 128
 search:
   discovery: {particle_count: 32, filter_seed_count: 4}
   guide: {particle_count: 128, filter_seed_count: 16}
   initial_count: 45
-  max_rounds: 4
-  max_cycles: 2
+  max_rounds: 6
+  max_cycles: 3
   elite_count: 2
   proposals_per_elite: 48
   fresh_global_count: 18
@@ -25,14 +25,15 @@ search:
   guide_diverse: 4
   guide_random: 2
   patience: 2
-  min_improvement: 0.001
-  challenge_rounds: 1
+  min_improvement: 0.0001
+  challenge_rounds: 2
   challenge_global_count: 90
   audit_top_per_source: 4
 precision:
   tiers:
     - {particle_count: 128, filter_seed_count: 16}
     - {particle_count: 256, filter_seed_count: 32}
+  audit: {particle_count: 256, filter_seed_count: 32}
   alpha: 0.05
   tolerance: 0.005
   bootstrap_replicates: 6000
@@ -41,5 +42,5 @@ boundary:
   # Applied uniformly to allowed support; never edits the frozen recovery YAML.
   extensions: {}
   near_tolerance: 0.005
-  max_candidates: 2
-  proposals_per_elite: 4
+  max_candidates: 4
+  proposals_per_elite: 16
