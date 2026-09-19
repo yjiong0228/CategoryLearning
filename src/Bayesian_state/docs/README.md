@@ -17,9 +17,14 @@
 
 - [Model 0826：从文献论证到科学问题](model_architecture/model_0826_scientific_questions_20260916.md)：基于人类认知文献地图，评估反馈利用、学习瓶颈与知识继承等八个问题，区分竞争解释、关键证据、模型边界和三条候选文章主线。
 
-- [科学故事、Results 逻辑与摘要构想](model_architecture/model_0826_results_logic_bottlenecks_continuity.md)：保留此前路线与摘要记录；当前重点为第七部分 G3“验证个体信念解码 → 区分学习瓶颈 → 检验有限资源下的认知补偿”，包含模块设计依据、补偿关系及 Fig3/4 的证据逻辑。中英文摘要中的设想结果与现有证据分开标注。
+- [科学故事、Results 逻辑与摘要构想](model_architecture/model_0826_results_logic_bottlenecks_continuity.md)：此前路线作为历史保留，当前以第八部分（2026-09-19）的用户确认英文摘要为准，连接信念解码、快速／缓慢／突变轨迹与补偿机制。版本确定不表示相应科学结论已完成验证。
 
-- [摘要结论对应的分析方案](model_architecture/model_0826_bottlenecks_analysis_plan_20260917.md)：以用户确认的 G3 标题与英文摘要为准，逐项说明瓶颈识别、个体画像与分组、搜索补偿和信念迁移需要的分析、现有输出字段及优先执行顺序。
+- [Model 0826 Further：从信念动态理解学习轨迹](model_architecture/model_0826_further.pdf)
+  （[TeX 源文件](model_architecture/model_0826_further.tex)）：按 2026-09-19 确认摘要重组全文，说明 Fig1–4 的证据连接、关键概念及每部分写法；旧 50 个方向压缩保留在参考附录。
+  编译到新文件使用 `bash src/Bayesian_state/docs/model_architecture/compile_model_0826_further.sh NEW_OUTPUT.pdf`，脚本拒绝覆盖。
+  用户要求更新的旧版保存在 `results/model_0826/further_story_20260919_v1/document_before/`。
+
+- [摘要结论对应的分析方案（2026-09-17）](model_architecture/model_0826_bottlenecks_analysis_plan_20260917.md)：按当时 G3 摘要制定，保留瓶颈识别、个体画像、搜索补偿和信念迁移的详细分析约定；当前故事安排以 Further 的 2026-09-19 版为准。
 
 - [Model 0826 Plus：怎样拟合，怎样检验](model_architecture/model_0826_plus.pdf)
   （[TeX 源文件](model_architecture/model_0826_plus.tex)）：2026-09-18 精简修订，先用通俗语言区分

@@ -20,7 +20,7 @@ v2 修正了首轮 v1 阶段画像的轴标签重叠；两版数值相同，v1 �
 
 [打开六组配对图集](../outputs/fig3/story_previews_20260915_v2/index.html) · [全部配对总览](../outputs/fig3/story_previews_20260915_v2/all_six_pairs.png) · [来源与计算说明](../outputs/fig3/story_previews_20260915_v2/README.md) · [核查记录](../outputs/fig3/story_previews_20260915_v2/QA.md)
 
-对应 `model_0826_further.tex` 的六条文章主线：理解重组、改变时机、个体困难、任务差异、未来预测、自主生成。每条主线提供一张 Fig3 和一张 Fig4，共 12 张单图、6 张并排图，并提供本地图集。用于比较候选叙事与构图；正式分析尚未完成的部分采用明确标注的设计示意。
+对应 `model_0826_further.tex` 在 2026-09-15 旧版中的六条主线：理解重组、改变时机、个体困难、任务差异、未来预测、自主生成。每条提供一张 Fig3 和一张 Fig4，共 12 张单图、6 张并排图及本地图集。用于比较候选叙事与构图；未完成分析采用明确标注的设计示意。2026-09-19 的 Further 已以用户确认摘要重组为学习轨迹主线，本图集继续作为历史参考，不自动成为新框架的结果图。
 
 ```bash
 MPLCONFIGDIR=/tmp/categorylearning_story_mpl python -m CategoryLearning_codes.figures.fig3.build_story_previews --version story_previews_YYYYMMDD_v1

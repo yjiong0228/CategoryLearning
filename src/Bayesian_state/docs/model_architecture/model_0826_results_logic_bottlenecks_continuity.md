@@ -2,7 +2,7 @@
 
 日期：2026-09-16。本文展开[科学问题梳理](model_0826_scientific_questions_20260916.md)中的 Q2 与 Q3。
 
-当前讨论更新至第七部分 G3（2026-09-17）：融合个体信念解码与学习瓶颈故事，组织为“验证解码优势 → 区分学习瓶颈 → 检验有限资源下的认知补偿”。新增模块设计依据、补偿关系及 Fig3/4 的证据逻辑；中英文摘要中的结果仍为设想。第六部分的两条路线已被用户否定，保留为讨论记录。
+当前版本更新至第八部分（2026-09-19）：原文保存用户确定的英文摘要，以“验证信念解码 → 解释快速、缓慢与突变轨迹 → 检验补偿与代价”为主线。全文框架与 Fig1–4 方案见 [Model 0826 Further](model_0826_further.pdf)。此前 G3 等章节保留为讨论历史；摘要中的待验证结果仍与已有证据分开。
 
 本文是结果组织方案。下面的关系、交互和机制解释均有待检验；“若得到支持后的结论”不能直接复制成已经完成的 Results。本次不运行拟合或模拟，也不重新绘图。
 
@@ -816,3 +816,33 @@ Similar errors can arise from different underlying beliefs, making behavioral pe
 文献启发沿用[前一份科学问题文档](model_0826_scientific_questions_20260916.md)中已明确标注的阅读范围：学习瓶颈主要借鉴 A01、C04/C07、D02 的解释层级与测量区分；知识继承主要借鉴 A08/C02 的收益与代价结构；新实验推进借鉴 A09。此处是对本项目的研究设计推演，没有新增文献发现的主张。
 
 机制核对：[model_0826.tex](model_0826.tex)、[当前共享核心状态](../../README.md)。特别核对了有限工作空间、混合/持续执行读出、相似度提议、槽位比例与质量守恒迁移。当前已保存的 S129/S229 个案图不足以支持上述群体结论；本文没有把待完成结果草稿中的断言作为已验证事实。
+
+# 第八部分：当前确定的摘要与全文框架（2026-09-19）
+
+本节取代此前摘要的“当前版本”地位。以下英文按用户确认原文保存；这是研究主线与摘要措辞的确定，模型比较、轨迹差异、补偿与突破机制仍需验证。
+
+## H1. 当前摘要
+
+Similar errors can arise from different latent beliefs, making observable performance alone insufficient to explain why learning stalls or suddenly improves. We developed a resource-constrained Bayesian model that reconstructs learners' belief dynamics from choices and feedback across three category-learning tasks completed by 96 participants. Critically, although fitted only to overt choices, the model recovered belief trajectories that predicted participants' trial-by-trial verbal reports more accurately than alternative models.
+
+The reconstructed belief dynamics revealed the cognitive mechanisms underlying several characteristic learning trajectories. Rapid learners efficiently narrowed the hypothesis space toward relatively simple rules, quickly accumulated belief in promising candidates, and remained robust to occasional errors. Slow but gradually improving learners tended to search more broadly and reset their beliefs more frequently. Although these strategies helped compensate for limited memory capacity, they also slowed the accumulation of stable belief in the correct rule, delaying behavioral improvement. By contrast, learners who stalled before an "aha" moment had often already accumulated substantial belief in a useful rule while continuing to behave inconsistently with it; their performance improved abruptly once this latent belief began to reliably guide choice.
+
+Together, these findings reveal that learning curves are not merely records of performance, but signatures of distinct latent processes. By identifying the underlying reasons why a learner is struggling, our framework provides a computational basis for AI systems that can deliver support targeted to what needs to change for learning to advance.
+
+## H2. 全文按一条主线组织
+
+**学习表象 → 验证信念解码 → 解释轨迹背后的内部变化 → 检验资源限制下的补偿与代价 → 针对性帮助的计算基础。**
+
+- **Fig1：**从三任务的选择与口述建立现象，分开描述学习速度、变化突然程度和改善后的稳定性。
+- **Fig2：**先验证模型对规则内容和变化的解码优势，再交代事件恢复、近优参数及数值不确定性。
+- **Fig3：**解释有效判断较早形成并保持、反复调整中的缓慢积累，以及已有支持开始指导行为后的突破；不先验规定三种固定人群。
+- **Fig4：**分别检验反馈搜索、搜索与证据保持的交互、相关规则间的支持迁移，以及信念到选择的转化，报告收益与代价。
+- **Introduction / Discussion：**围绕“什么内部变化才能让某个学习者继续进步”展开，AI 干预有效性保留为后续验证。
+
+完整章节与逐面板方案见 [Model 0826 Further PDF](model_0826_further.pdf)（[TeX](model_0826_further.tex)）。原 50 个构思已在其附录压缩保留。
+
+## H3. 摘要措辞如何对应模型
+
+“搜索收窄”不表示个体候选槽位减少；“简单规则”需独立定义复杂度，均匀先验并非简单规则偏好。“信念重置”需定义为具体重分配事件，当前没有独立的全部信念清零开关。“记忆补偿”需区分证据保持与候选容量，并由机制对照验证。“aha”先对应可测的行为突变，主观体验需直接报告。
+
+本轮仅修改文稿与 PDF，没有新增拟合、模拟或统计检验。此前各节保留为讨论历史，详细分析计划作为执行参考。
