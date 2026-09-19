@@ -1,5 +1,11 @@
 # 优化
 
+Model 0826 观察数据 PMH 拟合现在默认使用
+`python -m src.Bayesian_state.run_model_0826_fit`，统一 CLI 也会按新配置的 backend 分派。
+新流程包括分散/联合搜索、分级选参、独立审查、边界标记和续跑；旧 Grid/CD 与恢复配置
+继续使用原方法。软件接入不等于范围、恢复或全体拟合已经验证。
+具体命令、默认预算、边界扩展和产物见 [自适应拟合说明](ADAPTIVE_FIT.md)。
+
 `recovery.py` 拥有 fit_recovery_dataset 和冻结搜索预算解析；`recovery_parameters.py` 提供真值参数映射。阶段编排位于 workflows/recovery/run.py，评价层不再承担拟合实现。本文历史专用脚本可能已移除，以 workflows/README.md 保留清单为准。
 
 本目录是 `Bayesian_state` 的参数搜索与模型选择层。它调用 `simulation/`，把候选

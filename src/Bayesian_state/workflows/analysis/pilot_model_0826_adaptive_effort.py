@@ -6,6 +6,9 @@ optimizer. Candidate proposals never read archived fit parameters.
 """
 from __future__ import annotations
 
+from ...optimization.search.adaptive_proposals import initial_points, select_elites, neighbor_values, propose_round
+
+
 import argparse
 from copy import deepcopy
 import hashlib
@@ -45,101 +48,6 @@ def verify_reuse_context(previous: dict, versions: dict) -> None:
     if previous.get('versions') != versions:
         raise ValueError('Prior pilot numerical library versions changed; cannot reuse')
     verify_files(previous['input_sha256'])
-
-
-def initial_points(space: dict, anchor: dict, count: int, seed: int) -> list[dict]:
-    """Cover all workspace cells at the standard anchor, then stratify all blocks."""
-    cells = space[WORKSPACE_PROFILE_KEY]
-    if count < len(cells):
-        raise ValueError('initial_count must cover every workspace cell')
-    points = [dict(deepcopy(anchor), **{WORKSPACE_PROFILE_KEY: deepcopy(cell)}) for cell in cells]
-    n = count - len(points)
-    rng = np.random.default_rng(seed)
-    draws = {key: np.minimum(((rng.permutation(n) + .5) / max(n, 1) * len(values)).astype(int),
-                             len(values)-1) for key, values in space.items()}
-    points.extend({key: deepcopy(values[draws[key][i]]) for key, values in space.items()} for i in range(n))
-    unique = {point_id(p): p for p in points}
-    if len(unique) != count:
-        raise ValueError('Stratified starts collided; choose another proposal seed')
-    return list(unique.values())
-
-
-def select_elites(rows: list[dict], count: int) -> list[dict]:
-    """Require two non-workspace blocks to differ when sufficient points exist."""
-    ordered = sorted(rows, key=lambda r: (r['mean_nll'], r['id']))
-    selected = []
-    for row in ordered:
-        p = row['hyperparams']
-        if all(sum(point_id({k: p[k]}) != point_id({k: old['hyperparams'][k]})
-                   for k in p if k != WORKSPACE_PROFILE_KEY) >= 2 for old in selected):
-            selected.append(row)
-        if len(selected) == count:
-            return selected
-    used = {r['id'] for r in selected}
-    return (selected + [r for r in ordered if r['id'] not in used])[:count]
-
-
-def neighbor_values(key: str, value: object, values: list) -> list:
-    """One ordinal step in one primitive coordinate, including profile blocks."""
-    if not isinstance(value, dict):
-        i = values.index(value)
-        return [values[j] for j in (i-1, i+1) if 0 <= j < len(values)]
-    named = [extract_model_0826_parameters({key: v}) for v in values]
-    current = extract_model_0826_parameters({key: value})
-    names = [name for name in current if name != 'E_E']  # Derived, not an extra coordinate.
-    vectors = np.array([[round(p[name], 10) for name in names] for p in named])
-    target = np.array([round(current[name], 10) for name in names])
-    distance = np.zeros(len(values), dtype=int)
-    for j in range(len(names)):
-        levels = np.unique(vectors[:, j])
-        distance += np.abs(np.searchsorted(levels, vectors[:, j])-np.searchsorted(levels, target[j]))
-    return [deepcopy(v) for v, d in zip(values, distance) if d == 1]
-
-
-def propose_round(elites: list[dict], space: dict, seen: set[str], per_elite: int,
-                  seed: int, local_fraction: float, jump_fraction: float) -> list[dict]:
-    """Balance local moves, whole-block jumps and joint two-block moves."""
-    rng = np.random.default_rng(seed)
-    pending = {}
-    keys = list(space)
-    for elite in elites:
-        anchor = elite['hyperparams']
-        pools = [[], [], []]
-        for key, values in space.items():
-            for value in neighbor_values(key, anchor[key], values):
-                pools[0].append({**deepcopy(anchor), key: deepcopy(value)})
-            for value in values:
-                if value != anchor[key]:
-                    pools[1].append({**deepcopy(anchor), key: deepcopy(value)})
-        for _ in range(max(100, per_elite * 10)):
-            a, b = rng.choice(keys, 2, replace=False)
-            candidate = deepcopy(anchor)
-            for key in (a, b):
-                local = neighbor_values(key, anchor[key], space[key])
-                values = local if local and rng.random() < .5 else space[key]
-                values = [v for v in values if v != anchor[key]]
-                candidate[key] = deepcopy(values[int(rng.integers(len(values)))])
-            pools[2].append(candidate)
-        quotas = [int(per_elite * local_fraction), int(per_elite * jump_fraction)]
-        quotas.append(per_elite - sum(quotas))
-        selected = 0
-        for kind, pool, quota in zip(('local', 'jump', 'joint'), pools, quotas):
-            if quota <= 0:
-                continue
-            for index in rng.permutation(len(pool)):
-                candidate = pool[index]
-                pid = point_id(candidate)
-                if pid in seen or pid in pending:
-                    continue
-                pending[pid] = {'id': pid, 'hyperparams': candidate, 'sources': ['new_search'],
-                                'origin': {'anchor': elite['id'], 'kind': kind}}
-                selected += 1
-                quota -= 1
-                if quota == 0:
-                    break
-            if selected >= per_elite:
-                break
-    return list(pending.values())
 
 
 def load_arrays(directory: Path, pid: str) -> dict:

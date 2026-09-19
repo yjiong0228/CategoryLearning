@@ -35,6 +35,7 @@
 
 ```bash
 python -m src.Bayesian_state.run_simulation --help
+python -m src.Bayesian_state.run_model_0826_fit --help
 python -m src.Bayesian_state.optimization.cli --help
 python -m src.Bayesian_state.run_recovery --help
 python -m CategoryLearning_codes.Bayesian_model.run_recovery --help

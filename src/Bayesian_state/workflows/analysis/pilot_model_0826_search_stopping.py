@@ -6,6 +6,9 @@ Historical S129 warm starts are a separate, explicitly labelled experiment.
 """
 from __future__ import annotations
 
+from ...optimization.search.adaptive_proposals import candidate, merge_bank, axis_values, ray_proposals
+
+
 import argparse
 from copy import deepcopy
 import hashlib
@@ -34,68 +37,6 @@ from .pilot_model_0826_simplified_fit import (
     STATE_KEYS, compare_arrays, mixture_nll, paired_difference, point_id,
     score_bank, write_json,
 )
-
-
-def candidate(point: dict, source: str, **origin: object) -> dict:
-    return {'id': point_id(point), 'hyperparams': deepcopy(point),
-            'sources': [source], 'origin': origin}
-
-
-def merge_bank(groups: list[tuple[str, list[dict]]]) -> list[dict]:
-    bank = {}
-    for source, rows in groups:
-        for row in rows:
-            pid = row['id']
-            item = bank.setdefault(pid, candidate(row['hyperparams'], source))
-            if source not in item['sources']:
-                item['sources'].append(source)
-    return list(bank.values())
-
-
-def axis_values(key: str, current: object, values: list) -> list[list]:
-    """Primitive-coordinate rays; derived E_E moves with E_C / delta_E."""
-    if not isinstance(current, dict) or key == WORKSPACE_PROFILE_KEY:
-        return [values]
-    named = [extract_model_0826_parameters({key: v}) for v in values]
-    anchor = extract_model_0826_parameters({key: current})
-    names = [k for k in anchor if k != 'E_E']
-    return [[v for v, p in zip(values, named)
-             if all(abs(p[k]-anchor[k]) < 1e-9 for k in names if k != axis)]
-            for axis in names]
-
-
-def ray_proposals(elites: list[dict], space: dict, seen: set[str],
-                  per_elite: int, seed: int, source: str) -> list[dict]:
-    """Round-robin axes with both long jumps and neighbors, without dense grids.
-
-    Every primitive axis gets opportunities before extra points on any axis.
-    This avoids spending most proposals in a large flattened joint profile.
-    """
-    rng = np.random.default_rng(seed)
-    pending = {}
-    for elite in elites:
-        anchor = elite['hyperparams']
-        pools = []
-        for key, values in space.items():
-            for ray in axis_values(key, anchor[key], values):
-                ordered = [ray[int(i)] for i in np.unique(np.linspace(0, len(ray)-1, 3).astype(int))]
-                ordered += [v for v in neighbor_values(key, anchor[key], values) if v in ray]
-                ordered += [ray[int(i)] for i in rng.permutation(len(ray))]
-                pools.append([{**deepcopy(anchor), key: deepcopy(v)} for v in ordered])
-        added = 0
-        while added < per_elite and any(pools):
-            for pool in pools:
-                while pool:
-                    point = pool.pop(0)
-                    pid = point_id(point)
-                    if pid in seen or pid in pending:
-                        continue
-                    pending[pid] = candidate(point, source, kind='primitive_ray', anchor=elite['id'])
-                    added += 1
-                    break
-                if added >= per_elite:
-                    break
-    return list(pending.values())
 
 
 def stopping_advice(ranking_ok: bool, plateau: bool, challenger_gap_lower: float,

@@ -10,6 +10,10 @@
 > 字段约定、实现入口与 condition 3 验证范围见
 > [condition 3：类别、按键与配对学习](docs/model_architecture/model_0826_condition3_design.md)。
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
+> Model 0826 观察数据 PMH 拟合默认入口为 `python -m src.Bayesian_state.run_model_0826_fit`。
+> 已接入分散/联合搜索、分级选参、独立审查、边界标记和断点续跑；先用 `--dry-run` 检查计划。
+> 软件接入不代表全体拟合、范围校准或恢复已完成，未解决结果保留明确状态。
+> 用法见 [自适应拟合说明](optimization/ADAPTIVE_FIT.md)，通俗流程见 [Model 0826 Plus](docs/model_architecture/model_0826_plus.pdf)。
 
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型
@@ -91,6 +95,7 @@ results/subjects/*.json + optional compressed run streams
 | 文件 | 作用 |
 |---|---|
 | `run_simulation.py` | 固定参数、逐被试重复 simulation 并序列化；也提供公开 `run_simulation()` API |
+| `run_model_0826_fit.py` | Model 0826 exp123 PMH 默认自适应拟合，输出选择概率与停止/边界诊断；不自动交付状态轨迹 |
 | `run_hyper_then_simulation.py` | Hyper 搜索、生成 subjectwise simulation YAML、再通过公开 API 运行 simulation |
 | `run_hyper_evaluation.py` | 已完成 Hyper-CD 输出的收敛和选择诊断 |
 | `run_model_evaluation.py` | 已完成 simulation 输出的统一后处理 |

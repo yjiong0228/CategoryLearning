@@ -7,6 +7,12 @@ this pilot is deliberately independent of both search and shortlist screening.
 """
 from __future__ import annotations
 
+from ...optimization.diagnostics.decision_precision import mixture_nll
+
+
+from ...optimization.search.adaptive_proposals import point_id
+
+
 import argparse
 from copy import deepcopy
 import hashlib
@@ -49,10 +55,6 @@ def read_rows(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line]
 
 
-def point_id(point: dict) -> str:
-    return hashlib.sha256(canonical_point_key(point).encode()).hexdigest()[:16]
-
-
 def select_diverse(rows: list[dict], top_k: int, per_workspace: bool) -> list[dict]:
     """Keep global leaders plus the best observed member of each M/chi cell."""
     ranked = sorted(rows, key=lambda row: (row['aggregated_error'], point_id(row['hyperparams'])))
@@ -66,13 +68,6 @@ def select_diverse(rows: list[dict], top_k: int, per_workspace: bool) -> list[di
                 selected[point_id(row['hyperparams'])] = row
                 seen.add(cell)
     return list(selected.values())
-
-
-def mixture_nll(probabilities: np.ndarray, observed: np.ndarray, mask: np.ndarray) -> float:
-    """Average seed probabilities before the log, on the original score mask."""
-    mean = probabilities.mean(axis=0)
-    selected = mean[np.arange(len(observed)), observed]
-    return float(-np.log(np.clip(selected[mask], 1e-12, 1.)).mean())
 
 
 def validation_seeds(base_seed: int, subject: int, phase: str, count: int) -> list[int]:

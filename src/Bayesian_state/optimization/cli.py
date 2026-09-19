@@ -18,10 +18,14 @@ def parse_args() -> argparse.Namespace:
         description="Hyperparameter optimization",
         allow_abbrev=False,
     )
-    p.add_argument("--backend", choices=("grid", "cd"), required=True, help="Hyper optimizer backend")
+    p.add_argument("--backend", choices=("grid", "cd", "adaptive"), help="Default: config backend, otherwise legacy cd")
     p.add_argument("--config", required=True, type=Path, help="Hyper YAML config")
     p.add_argument("--subjects", nargs="+", type=int, help="Override subject list")
     p.add_argument("--subject-range", nargs=2, type=int, metavar=("START", "END"), help="Override subject range")
+    p.add_argument("--output-dir", type=Path, help="New adaptive fit output directory")
+    p.add_argument("--conditions", nargs="+", type=int, choices=(1, 2, 3))
+    p.add_argument("--smoke", action="store_true", help="Adaptive: one subject, 32 trials, one worker")
+    p.add_argument("--dry-run", action="store_true", help="Adaptive: validate inputs without fitting")
     p.add_argument("--stage", choices=("coarse", "fine", "all"), default="all", help="Run coarse/fine/all stages")
     p.add_argument(
         "--resume-from-coarse",
@@ -32,8 +36,7 @@ def parse_args() -> argparse.Namespace:
         "--resume",
         action="store_true",
         help=(
-            "Resume the same schema-v2 Hyper-CD run from its atomic checkpoint "
-            "and cached combinations."
+            "Resume the same adaptive fit or schema-v2 Hyper-CD run from saved tasks."
         ),
     )
     return p.parse_args()
@@ -47,6 +50,25 @@ def main() -> None:
         cfg_path = (ROOT_DIR / cfg_path).resolve()
 
     cfg = load_yaml(cfg_path)
+    backend = args.backend or ("adaptive" if cfg.get("backend") == "model0826_adaptive" else "cd")
+    if backend == "adaptive":
+        from .adaptive_fit import run_fit
+        if args.stage != "all" or args.resume_from_coarse:
+            raise ValueError("Adaptive fitting has no coarse/fine stage switch")
+        if args.subjects and args.subject_range:
+            raise ValueError("Use subjects or subject-range, not both")
+        subjects = args.subjects
+        if args.subject_range:
+            subjects = list(range(args.subject_range[0], args.subject_range[1] + 1))
+        result = run_fit(cfg_path, args.output_dir, subjects, args.conditions,
+                         smoke=args.smoke, resume=args.resume, dry_run=args.dry_run)
+        print(json.dumps(to_builtin(result), ensure_ascii=False, indent=2, allow_nan=False))
+        return
+    if cfg.get("backend") == "model0826_adaptive":
+        raise ValueError("Adaptive configuration cannot be passed to legacy grid/CD")
+    if args.output_dir or args.conditions or args.smoke or args.dry_run:
+        raise ValueError("output-dir/conditions/smoke/dry-run are adaptive backend options")
+    args.backend = backend
     optimizer_cls = HyperGridOptimizer if args.backend == "grid" else HyperCDOptimizer
     optimizer = optimizer_cls(cfg, cfg_path)
     subjects = optimizer.resolve_subjects(args.subjects, args.subject_range)
