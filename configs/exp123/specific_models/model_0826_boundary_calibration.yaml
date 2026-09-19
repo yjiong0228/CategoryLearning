@@ -1,0 +1,63 @@
+# Bounded full-sequence sensitivity pilot; not a population fit or recovery.
+schema_version: 1
+fit_config: model_0826_adaptive_fit.yaml
+base_seed: 2026091902
+screen: {particle_count: 128, filter_seed_count: 16}
+selection: {particle_count: 256, filter_seed_count: 32}
+condition3_selection: {particle_count: 512, filter_seed_count: 32}
+condition3_audit_max_seeds: 64
+alpha: 0.05
+tolerance: 0.005
+bootstrap_replicates: 6000
+historical_banks: ../../../results/model_0826/decision_precision_pilot_20260918/full/calibration/frozen_banks.json
+historical_stop: ../../../results/model_0826/decision_precision_pilot_20260918/full/extension_103/frozen_stop.json
+extensions:
+  workspace_execution: [{M: 6, chi: 0}, {M: 6, chi: 1}, {M: 8, chi: 0}, {M: 8, chi: 1}]
+  gamma: [0.985, 0.995, 1.0]
+  E_C: [0.01, 0.005]
+  delta_E: [4.8, 6.4]
+  c_A: [8.0, 12.0]
+cases:
+  - subject: 103
+    anchor: 7bc9114511b90b69
+    references: [7bc9114511b90b69]
+    shortlist_size: 4
+    families:
+      - name: capacity_memory
+        grid: {M: [5, 6, 8], gamma: [0.97, 0.985, 0.995, 1.0]}
+  - subject: 129
+    anchor: 2f988e3c8cdf037d
+    references: [2f988e3c8cdf037d, 68cf0f58436440ad]
+    shortlist_size: 6
+    families:
+      - name: capacity_memory
+        grid: {M: [5, 6, 8], gamma: [0.97, 0.985, 0.995, 1.0]}
+      - name: reactive
+        grid: {E_C: [0.02, 0.01, 0.005], delta_E: [3.2, 4.8, 6.4]}
+      - name: cross_block
+        points:
+          - {M: 6, gamma: 0.985, E_C: 0.01, delta_E: 4.8}
+          - {M: 8, gamma: 0.995, E_C: 0.005, delta_E: 6.4}
+          - {M: 6, gamma: 1.0, E_C: 0.005, delta_E: 4.8}
+          - {M: 8, gamma: 0.985, E_C: 0.01, delta_E: 6.4}
+      - name: alternative_accumulator
+        anchor: 68cf0f58436440ad
+        grid: {c_A: [6.0, 8.0, 12.0], gamma: [0.97, 0.985]}
+  - subject: 203
+    anchor: ba4c27b1c5c6df16
+    references: [ba4c27b1c5c6df16]
+    shortlist_size: 4
+    families:
+      - name: reactive
+        grid: {E_C: [0.02, 0.01, 0.005]}
+      - name: matched_error_probability
+        preserve_E_E: true
+        grid: {E_C: [0.01, 0.005]}
+  - subject: 301
+    # Earlier independent scores nominated this alternative before this run.
+    anchor: 48dd2edb1da81996
+    references: [48dd2edb1da81996, d3850d7bd919f52d, 5682a3984e47657b, a72c6b1edb9b30e8]
+    shortlist_size: 6
+    families:
+      - name: capacity_memory
+        grid: {M: [5, 6, 8], gamma: [0.9, 0.935, 0.97]}
