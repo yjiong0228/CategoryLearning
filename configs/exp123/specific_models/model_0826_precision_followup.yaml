@@ -1,0 +1,28 @@
+# Fixed pairs, fresh seeds, finite cap. This does not certify the full old bank.
+schema_version: 1
+fit_config: model_0826_adaptive_fit.yaml
+previous: ../../../results/model_0826/boundary_calibration_20260919/full
+base_seed: 2026091903
+alpha: 0.05
+tolerance: 0.005
+bootstrap_replicates: 6000
+cases:
+  - subject: 203
+    # Previous audit winner; nominated before ANY new seed is evaluated.
+    nominee: b04f17cf2b8865e2
+    candidates: [b04f17cf2b8865e2, cd130ccc5ca3af99]
+    budgets: [{particle_count: 256, filter_seed_count: 64}]
+  - subject: 301
+    nominee: a72c6b1edb9b30e8
+    candidates: [a72c6b1edb9b30e8, e3af8bcc888c7f79]
+    # Both budgets run unconditionally on common seeds. Only the LAST budget
+    # supplies the primary decision; R512 is a sensitivity diagnostic.
+    budgets:
+      - {particle_count: 512, filter_seed_count: 64}
+      - {particle_count: 1024, filter_seed_count: 64}
+cached_prediction_check:
+  subject: 129
+  candidates: [b3bef13a23d5f7f7, 68cf0f58436440ad]
+  budget: {particle_count: 256, filter_seed_count: 32}
+  family: boundary_audit
+  receipt: batches/conditions12/audit_1/scores.json
