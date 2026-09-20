@@ -23,6 +23,7 @@
 | `analysis/pilot_model_0826_adaptive_effort.py` | 后续试点：固定候选上限的分散搜索与局部/联合调整、固定参数的粒子/种子校准及按被试追加计算的诊断 |
 | `analysis/pilot_model_0826_search_stopping.py` | 搜索与停止检查：逐参数方向提案、停止后的额外挑战、S129 历史起点续搜、S229 评分波动定位，以及 condition 3 完整序列试点 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
+| `analysis/diagnose_model_0826_numerics.py` | 六人验收后的缓存波动诊断与预先固定的数值/边界探测；不重新搜索或修改默认配置 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
 
 从仓库根目录运行：
@@ -270,3 +271,32 @@ S103 追加三轮后出现两轮平台，经 237 个新挑战候选和独立审�
 平均 NLL 损失上界为 0.00464，小于探索性容差 0.005；余量较小，只支持该案例的有限停止。
 追加搜索相对初始提名的改善未获独立确认，不能把引导分数下降当成必然的拟合收益。
 这些是计算分配规则的个案证据，尚未把生产默认配置切换为该试点，也不验证最终状态精度。
+
+## 六人验收后的定向复核
+
+`diagnose_model_0826_numerics` 的冻结配置为
+`configs/exp123/specific_models/model_0826_numerical_boundary_followup.yaml`。
+先读取上一轮带校验和的概率缓存，区分更换种子、粒子预算和参数候选造成的差异；逐试次诊断不删除或重新加权试次。
+S307 固定三个历史候选，比较 R128/256/512 各 B32；S221/S314 固定各两点，以 R256×B64 检查随机重复。
+S102/S206 用 R256×B32 做 E_C、gamma、M 的少量外层探测。E_C 降低时，分别检查保持 delta_E 和保持 E_E 两种路径，初始事件概率仍按原约束与 E_C 绑定。
+S206 的 M 探测从近优 M5 备选出发，其原代表是 M3；不把备选的触边误写为代表触边。
+
+总计上限 896 次 PF，候选、提名和预算在计算前冻结，五个主问题各用 alpha=.01、平均 NLL 容差 .005。
+每例全部预算无条件执行，只有最后一档作主判断；前缀和较低档只诊断，不选择最有利的一档报告。
+这只能复核有限点，不能替代整库验收、共同范围的全面校准、参数恢复或状态精度检查。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMEXPR_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/model0826_followup_numba \
+  python -m src.Bayesian_state.workflows.analysis.diagnose_model_0826_numerics \
+  --output-dir results/model_0826/numerical_boundary_followup_new
+```
+
+先用 `--dry-run` 核对范围，在另一个新目录用 `--smoke` 跑 S307 的32试次、R2×B2、单进程。
+`--cache-only` 在新目录只生成缓存诊断；不能把该目录当追加计算目录。
+`--resume` 只复用相同协议、源码、输入和环境，半完成批次保留逐 seed 原子缓存；不改写既有产物。
+完整定向复核需任务授权，默认使用128进程预算、单线程数值库，实际进程数受就绪任务数约束。
+
+2026-09-20的[完整定向复核](../../../results/model_0826/numerical_boundary_diagnosis_20260920/README.md)
+共896次PF、59.6分钟。S221的两点检查通过，S314在R256×B64下边缘通过；S307到R512×B32仍不确定。
+S102/S206的固定外层点没有显示超容差收益。这些结果不替代整库验收，不改变默认预算或原报告状态。

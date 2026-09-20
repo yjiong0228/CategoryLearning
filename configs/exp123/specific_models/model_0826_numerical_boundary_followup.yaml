@@ -1,0 +1,56 @@
+# Fixed candidates and budgets, declared before fresh-seed scores are available.
+schema_version: 1
+fit_config: model_0826_adaptive_fit.yaml
+previous: ../../../results/model_0826/streamlined_fit_acceptance_20260919/full
+base_seed: 2026092001
+# Five primary fixed-bank questions, .05 / 5 per question. Earlier budgets
+# and seed prefixes are descriptive only; no optional stopping or reselection.
+alpha: 0.01
+tolerance: 0.005
+bootstrap_replicates: 6000
+extensions:
+  workspace_execution: [{M: 6, chi: 0}, {M: 6, chi: 1}]
+  gamma: [0.985]
+  E_C: [0.01]
+cases:
+  - subject: 307
+    kind: numerical
+    nominee: 800a7612ad099c8d
+    references: [800a7612ad099c8d, 6743f8e31ad929d7, a2704af348c726af]
+    probes: []
+    budgets:
+      - {particle_count: 128, filter_seed_count: 32}
+      - {particle_count: 256, filter_seed_count: 32}
+      - {particle_count: 512, filter_seed_count: 32}
+  - subject: 221
+    kind: numerical
+    nominee: cb121c857a4c1563
+    references: [cb121c857a4c1563, dc3077c1f77b41da]
+    probes: []
+    budgets: [{particle_count: 256, filter_seed_count: 64}]
+  - subject: 314
+    kind: numerical
+    nominee: 23bd5ef2ced4d10d
+    references: [23bd5ef2ced4d10d, b071bef5f6f9463f]
+    probes: []
+    budgets: [{particle_count: 256, filter_seed_count: 64}]
+  - subject: 102
+    kind: boundary
+    nominee: 45612f6b8fc6e835
+    references: [45612f6b8fc6e835]
+    probes:
+      - {name: gamma_outer, anchor: 45612f6b8fc6e835, changes: {gamma: 0.985}}
+      - {name: ec_outer, anchor: 45612f6b8fc6e835, changes: {E_C: 0.01}}
+      - {name: ec_outer_fixed_error, anchor: 45612f6b8fc6e835, changes: {E_C: 0.01}, preserve_E_E: true}
+      - {name: gamma_ec_outer_fixed_error, anchor: 45612f6b8fc6e835, changes: {gamma: 0.985, E_C: 0.01}, preserve_E_E: true}
+    budgets: [{particle_count: 256, filter_seed_count: 32}]
+  - subject: 206
+    kind: boundary
+    nominee: 63e703a0f3f17621
+    references: [63e703a0f3f17621, 48093b0ab11ef464]
+    probes:
+      - {name: ec_outer, anchor: 63e703a0f3f17621, changes: {E_C: 0.01}}
+      - {name: ec_outer_fixed_error, anchor: 63e703a0f3f17621, changes: {E_C: 0.01}, preserve_E_E: true}
+      - {name: capacity_outer, anchor: 48093b0ab11ef464, changes: {M: 6}}
+      - {name: capacity_ec_outer_fixed_error, anchor: 48093b0ab11ef464, changes: {M: 6, E_C: 0.01}, preserve_E_E: true}
+    budgets: [{particle_count: 256, filter_seed_count: 32}]
