@@ -1,5 +1,24 @@
 # Fig3：搜索与规则过程初稿
 
+## 当前讨论稿：按确定摘要组织学习动力学（2026-09-20）
+
+[Fig3：三种行为轨迹与内部过程](../outputs/fig3/abstract_story_20260920_v2/Figure3_learning_dynamics.png) ·
+[Fig4：逐项检验摘要中的机制](../outputs/fig4/abstract_story_20260920_v2/Figure4_learning_mechanisms.png) ·
+[读图与结果](../../../results/model_0826/abstract_story_20260920_v2/README.md) ·
+[设计与指标](abstract_story_design.md)
+
+本版以“为什么较早学会、缓慢改善、停滞后突然改善”为主线。Fig3a先用真实行为分开学习时间与变化方式，b–d再展示行为规则选出的S122、S206和S307，逐行对照行为、目标规则信念、搜索范围与完整信念重分配。Fig4检验这些过程是否符合摘要提出的简单规则、判断保持、搜索与重建，以及突破前已有信念等解释。没有按内部状态挑选符合预期的案例，也没有把九人硬分成三类。
+
+复用下方九人的现有状态，不重新拟合认知模型或追加模拟。描述性的行为模型比较不调整刺激难度，因此不能作为正式认知分型。Fig4的相关关系也不等于补偿的因果证据；报告保留不支持摘要具体机制的结果。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.abstract_story_analysis --source results/model_0826/fig34_nine_subjects_20260920_v1/analysis_v2 --states results/model_0826/fig34_nine_subjects_20260920_v1/states --output results/model_0826/abstract_story_new/analysis
+python -m CategoryLearning_codes.figures.fig3.build_abstract_story --source results/model_0826/abstract_story_new/analysis --output CategoryLearning_codes/figures/outputs/fig3/abstract_story_new
+python -m CategoryLearning_codes.figures.fig4.build_abstract_story --source results/model_0826/abstract_story_new/analysis --output CategoryLearning_codes/figures/outputs/fig4/abstract_story_new
+```
+
+输出目录必须为新目录；只改构图时复用现有`abstract_story_20260920_v2/analysis`。PNG宽183 mm、450 dpi；源表、输入哈希和代码快照随图保存。下面九人全轨迹和近优参数图改作参考诊断图，原文件保留。
+
 ## 九人完整过程图：2026-09-20
 
 [Fig3 主图](../outputs/fig3/nine_subjects_20260920_v2/Figure3_nine_subjects.png) ·

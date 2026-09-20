@@ -1,5 +1,26 @@
 # Fig4：学习机制图
 
+## 当前讨论稿：检验摘要对学习动力学的解释（2026-09-20）
+
+[Fig4：学习机制](../outputs/fig4/abstract_story_20260920_v2/Figure4_learning_mechanisms.png) ·
+[Fig3：学习动力学](../outputs/fig3/abstract_story_20260920_v2/Figure3_learning_dynamics.png) ·
+[结果与完整图注](../../../results/model_0826/abstract_story_20260920_v2/README.md) ·
+[共同设计](../fig3/abstract_story_design.md)
+
+三列对应摘要的三个解释环节：
+
+- **a、d：早期集中与保持。** 较早达标者是否较早偏向简单规则，已有的目标支持是否在错误后保持？
+- **b、e：搜索与重新积累。** 广泛搜索是否伴随渐进的行为改善，较弱的证据保持是否伴随更频繁的完整信念重分配？
+- **c、f：突破来源。** 对全部两个明显偏向阶跃的案例，比较突破前考虑/支持水平，以及突破前后考虑、信念、适用时的执行、预测正确率的变化。近优参数直接显示在c中。
+
+每列围绕Fig3中的一种现象提出具体检验，不再按反馈、参数或状态输出逐项罗列。九人结果不能确立人群类型；这里的重分配不等于人的信念重置，证据保持参数也不等于独立测得的记忆容量。因果补偿仍需进一步受控比较，不能由相关图替代。
+
+```bash
+python -m CategoryLearning_codes.figures.fig4.build_abstract_story --source results/model_0826/abstract_story_20260920_v2/analysis --output CategoryLearning_codes/figures/outputs/fig4/abstract_story_new
+```
+
+183 × 198 mm、450 dpi PNG。使用新输出目录；原图保留为下方参考诊断图。
+
 ## 九人过程诊断：2026-09-20
 
 [Fig4 主图](../outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png) ·
