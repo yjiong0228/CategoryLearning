@@ -1,0 +1,17 @@
+# One fixed-bank question, declared before fresh R256 x B64 scores.
+# Uses fresh seeds; earlier R256/R512 x B32 runs are descriptive controls.
+schema_version: 1
+fit_config: model_0826_adaptive_fit.yaml
+previous: ../../../results/model_0826/streamlined_fit_acceptance_20260919/full
+base_seed: 2026092002
+alpha: 0.01
+tolerance: 0.005
+bootstrap_replicates: 60000
+extensions: {}
+cases:
+  - subject: 307
+    kind: numerical
+    nominee: 800a7612ad099c8d
+    references: [800a7612ad099c8d, 6743f8e31ad929d7, a2704af348c726af]
+    probes: []
+    budgets: [{particle_count: 256, filter_seed_count: 64}]

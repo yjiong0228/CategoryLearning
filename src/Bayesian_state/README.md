@@ -4,7 +4,7 @@
 > [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
 > 该目录依赖本包；本包不依赖期刊目录。修改机制只改这里，实验差异由配置和数据适配处理。
 > 0826 支持 condition 2 的四分类二值反馈，以及 condition 3 的三值反馈和未知反应配对学习。
-> Condition 3 当前开放 PMH 全模型；已有实现测试和短序列验证，尚未进行正式个体拟合与恢复实验。
+> Condition 3 当前开放 PMH 全模型；已有实现测试及少量被试的完整序列拟合试点，全体拟合与恢复验收尚未完成。
 > 新入口和限制见 [condition 2 说明](docs/model_architecture/model_0826_condition2.md)。
 > Task2 的 `category`、`choice`、`presskey` 不能混用：类别的科结构固定，按键配对随被试变化。
 > 字段约定、实现入口与 condition 3 验证范围见
@@ -12,10 +12,16 @@
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 > Model 0826 观察数据 PMH 拟合默认入口为 `python -m src.Bayesian_state.run_model_0826_fit`。
 > 默认 v2 接入分散/联合搜索、一层分级独立审查、边界标记和断点续跑；旧 v1 配置保留。
-> v2 六人完整验收已结束：独立评分通过3/6，仍有数值、搜索或范围问题；默认预算尚未全体验收通过。
+> v2 六人完整试点已结束：原整库独立评分通过3/6，仍有数值、搜索或范围问题；后续固定点复核不改写原验收状态。
 > 见[验收解释与下一步](../../results/model_0826/streamlined_fit_acceptance_20260919/acceptance_review.md)；先用 `--dry-run` 检查计划。
 > 软件接入不代表全体拟合、范围校准或恢复已完成，未解决结果保留明确状态。
 > 用法见 [自适应拟合说明](optimization/ADAPTIVE_FIT.md)，通俗流程见 [Model 0826 Plus](docs/model_architecture/model_0826_plus.pdf)。
+
+六人试点的作用是校准和验收拟合流程：每个 condition 各两人，按试次长度接近中位数和第75百分位选取，
+不按拟合成绩挑选。六人已经各做过一次完整拟合；后续只针对发现的问题追加检查，例如固定参数后增加随机重复，
+不等于反复重拟合全部六人。它们用于检查搜索覆盖、停止规则、评分波动、参数触边和实际成本，不能替代群体结论。
+规则既然已根据这些人的结果调整，他们就属于开发/校准样本；冻结后的规则还需在少量未参与调整的被试上检查。
+流程应明确何时停止、何时追加搜索或评分、何时保留未解决，而不是要求每个人都追加计算到通过。
 
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型

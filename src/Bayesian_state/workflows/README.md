@@ -300,3 +300,33 @@ env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_T
 2026-09-20的[完整定向复核](../../../results/model_0826/numerical_boundary_diagnosis_20260920/README.md)
 共896次PF、59.6分钟。S221的两点检查通过，S314在R256×B64下边缘通过；S307到R512×B32仍不确定。
 S102/S206的固定外层点没有显示超容差收益。这些结果不替代整库验收，不改变默认预算或原报告状态。
+
+### S307：固定参数后增加随机重复
+
+`configs/exp123/specific_models/model_0826_s307_repeat_followup.yaml` 复用上述入口，
+固定相同三个历史点及提名 `800a7612ad099c8d`，只运行 R256×B64 的192次完整PF。
+这次增加的是新随机种子的重复次数，不搜索新参数。主判断仍为平均NLL损失上界≤.005、alpha=.01；
+bootstrap预先设为60000以减小分位数计算的抽样波动，正式拟合默认值不变。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMEXPR_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/model0826_followup_numba \
+  python -m src.Bayesian_state.workflows.analysis.diagnose_model_0826_numerics \
+  --config configs/exp123/specific_models/model_0826_s307_repeat_followup.yaml \
+  --output-dir results/model_0826/s307_repeat_followup_new
+```
+
+前16/32组种子、两个32组半样本和历史R256/R512×B32只作诊断；只有预定的完整R256×B64决定本次结论。
+历史R512×B32与新R256×B64的粒子×重复数相同，但使用不同种子，不能当作严格配对的效率实验。
+本次协议不继续追加PF，也不以三个固定点通过代替整个拟合流程验收。
+执行记录、与两轮历史种子的去重检查及对照缓存指纹见
+[S307重复次数检查](../../../results/model_0826/s307_repeat_followup_20260920/README.md)。
+
+该检查已完成：192次完整PF耗时10.20分钟，损失上界.006001仍高于.005，结论保留为不确定。
+新种子前16/32/64组的描述性上界依次为.012141/.009465/.006001；增加重复有助于缩小波动，
+但本例仍未达到门槛，不据此统一增加默认预算。6项测试、完整序列校验和完成后的resume均通过。
+本轮没有重搜，S307的原整库审查及M=5触边未在这三点检查中解决。
+
+六人原本用于覆盖三个condition的完整流程和成本试点，已各完成一次完整拟合；随着诊断结果用于调整规则，
+他们属于开发/校准样本。后续检查只针对有具体疑点的被试与环节，不必重跑全部六人。
+拟合规则冻结后，应另选少量未参与调整的被试检查；保留未解决状态也是有效输出，不应无限算到全部通过。
