@@ -11,6 +11,10 @@
 > [condition 3：类别、按键与配对学习](docs/model_architecture/model_0826_condition3_design.md)。
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 
+连续 partition 的普通 `category_feedback` 不接受 `0.5`；新版 Cond3 必须使用
+`hierarchical_pairing` 与联合记忆。旧公式仅供显式 `legacy_category_feedback`
+的底层复现，见 [三值反馈与历史兼容](hypothesis_space/README.md#三值反馈与历史兼容)。
+
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型
 写成一份从数据读取到画图的独立脚本。

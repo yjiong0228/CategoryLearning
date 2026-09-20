@@ -195,6 +195,7 @@ class BasePartition(ABC):
             prob=prob,
             choices=choices,
             responses=responses,
+            feedback_likelihood_mode=mode,
         )
         return np.clip(likelihood, self.EPS, 1.0 - self.EPS)
 
@@ -205,6 +206,8 @@ class BasePartition(ABC):
         prob: np.ndarray,
         choices: np.ndarray,
         responses: np.ndarray,
+        *,
+        feedback_likelihood_mode: str = FEEDBACK_MODE_CATEGORY,
     ) -> np.ndarray:
         """Implement task-specific categorical feedback in each subclass."""
         raise NotImplementedError
