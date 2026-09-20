@@ -1,4 +1,29 @@
-# Fig4：六种文章主线的后续图预览
+# Fig4：学习机制图
+
+## 九人过程诊断：2026-09-20
+
+[Fig4 主图](../outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png) ·
+[Task2 配对状态核查](../outputs/fig4/nine_subjects_20260920_v3/task2_pairing_diagnostic.png) ·
+[共同结果说明](../../../results/model_0826/fig34_nine_subjects_20260920_v1/README.md) ·
+[Fig3/4 设计说明](../fig3/nine_subject_fig34_design.md)
+
+`build_nine_subject_mechanisms.py` 读取 Fig3 同一份九人状态源表，不另行生成行为：
+
+- a：按上一试次反馈比较下一试次选择前的搜索概率；不跨 session 连接。
+- b：目标信念 Q≤.5 / Q>.5 时实际候选更替比例的被试内对照。
+- c：Q>.75 的试次中，目标信念、预测正确率与实际正确率。右侧 n 是该人的试次数。
+- d–f：全部三个持续执行模型的完整 Q、执行概率、行为和执行规则精度 beta。
+
+这版提供原全文机制假设的过程诊断证据。仍需受控比较才能判断搜索补偿、记忆收益或相似性迁移作用；beta轨迹本身也不证明它导致行为突破。
+保留没有明显反馈调节的被试，以及执行已经跟上信念的被试。原拟合问题、近优候选与状态精度检查见共同结果说明。
+
+```bash
+python -m CategoryLearning_codes.figures.fig4.build_nine_subject_mechanisms --source results/model_0826/fig34_nine_subjects_20260920_v1/analysis_v2 --output CategoryLearning_codes/figures/outputs/fig4/nine_subjects_new
+```
+
+183 × 205 mm、450 dpi PNG；输出目录必须不存在。逐试次源表、被试内分层样本量和输入哈希一起保存。
+
+## 历史：六种文章主线的后续图预览
 
 [打开 Fig3 / Fig4 配对图集](../outputs/fig3/story_previews_20260915_v2/index.html) · [来源与计算说明](../outputs/fig3/story_previews_20260915_v2/README.md) · [核查记录](../outputs/fig3/story_previews_20260915_v2/QA.md)
 

@@ -1,5 +1,34 @@
 # Fig3：搜索与规则过程初稿
 
+## 九人完整过程图：2026-09-20
+
+[Fig3 主图](../outputs/fig3/nine_subjects_20260920_v2/Figure3_nine_subjects.png) ·
+[近优参数核查](../outputs/fig3/nine_subjects_20260920_v2/belief_candidate_sensitivity.png) ·
+[Fig4 主图](../outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png) ·
+[结果解读](../../../results/model_0826/fig34_nine_subjects_20260920_v1/README.md) ·
+[设计说明](nine_subject_fig34_design.md)
+
+使用两批已完成的原始拟合：S102/S118/S122、S307/S314/S315、S206/S221/S222，分别为 Task1/2/3。
+固定原提名参数补做状态输出，每人8次PF；另对一份原近优候选做4次敏感性重放，每次128粒子。
+调用共享核心，无重拟合或机制改动；6272个真实试次全部保留。
+
+图3上部是九人的完整过程；下部对照较高考虑、较高信念与行为达标的操作性时点，以及全部98个64试次块的行为与信念。
+主图时点比较已显示近优候选差异。六个混合读出模型不虚构唯一执行规则。配套图的阴影为PF种子标准差，不是人群或参数置信区间。
+“A/Q连续16次>.5”与“过去64次正确率>.9”采用不同标准；时间差不等于直接测得的认知等待时间，首次达标也不等于此后不再回退。
+
+从仓库根目录运行，输出目录均使用新名称：
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.nine_subject_states --output results/model_0826/fig34_new/states
+python -m CategoryLearning_codes.figures.fig3.nine_subject_analysis --states results/model_0826/fig34_new/states --output results/model_0826/fig34_new/analysis
+python -m CategoryLearning_codes.figures.fig3.build_nine_subject_figures --source results/model_0826/fig34_new/analysis --output CategoryLearning_codes/figures/outputs/fig3/nine_subjects_new
+python -m CategoryLearning_codes.figures.fig4.build_nine_subject_mechanisms --source results/model_0826/fig34_new/analysis --output CategoryLearning_codes/figures/outputs/fig4/nine_subjects_new
+```
+
+只调整图面时复用现有 `results/model_0826/fig34_nine_subjects_20260920_v1/analysis_v2`，无需重复状态重放。
+`nine_subject_config.json` 保存被试、数值预算、窗口和阈值；状态重放不覆盖已有种子文件，分析与绘图拒绝已有输出目录。
+复核和局限见结果目录 `QA.md`。模型比较优势、早期留出预测、参数恢复和因果补偿未在本次验证。
+
 ## 瓶颈个案分析预演：2026-09-17
 
 [首轮结果与解读](../outputs/fig3/bottleneck_cases_20260917_v2/README.md) · [完整时间轴](../outputs/fig3/bottleneck_cases_20260917_v2/belief_bottleneck_timelines.png) · [阶段画像](../outputs/fig3/bottleneck_cases_20260917_v2/stage_learning_profiles.png) · [局部片段](../outputs/fig3/bottleneck_cases_20260917_v2/candidate_transition_closeups.png) · [核查记录](../outputs/fig3/bottleneck_cases_20260917_v2/QA.md)
