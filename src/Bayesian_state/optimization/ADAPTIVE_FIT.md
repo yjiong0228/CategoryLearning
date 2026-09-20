@@ -1,7 +1,8 @@
 # Model 0826 默认自适应拟合
 
-当前默认是 **v2 精简流程**：已冻结规则，正在用每个 condition 两名新被试做完整序列验收。
-这一步不等于全体拟合完成，也不能证明比 v1 搜索更充分。旧配置保存在
+当前默认是 **v2 精简流程**：每个 condition 两名新被试的完整序列验收已结束，耗时11.74小时。
+独立评分通过3/6，六人均有范围待复核项；整体停止0/6，默认预算尚不能作为全体已验收通过的定稿。
+这一步不等于全体拟合完成，也不能证明比 v1 搜索更充分或给出配对提速倍数。旧配置保存在
 `configs/exp123/specific_models/model_0826_adaptive_fit_v1.yaml`，schema 1 的执行规则继续支持。
 
 参数边界的定向完整序列检查见 [范围校准协议](BOUNDARY_CALIBRATION.md)。
@@ -57,7 +58,7 @@ python -m src.Bayesian_state.optimization.cli --config configs/exp123/specific_m
   换赢家后又宣称独立通过。无法区分的结果明确保留 unresolved。
 
 默认值是有上限的工作设置。联合搜索、随机抽查和有限候选库的检查都不能认证全局最优；
-新的组合策略尚无全体被试的速度/质量基准，不能用 smoke 耗时推算正式拟合耗时。
+新的组合策略已有六人完整运行的速度/质量记录，但尚无全体基准，不能用 smoke 耗时推算正式拟合耗时。
 schema 2 不接受 `precision.audit`，因为它已合并进 `precision.tiers`。新基础种子为
 2026091904；这与减少轮数、缩小边界检查量一样，是明确的估计方案调整，不是逐结果等价
 的代码替换。仅“必进引导层的边界点跳过低预算评分”属于同点同种子下的等价省算。
@@ -105,6 +106,10 @@ schema 1 仍可输出旧的 `selection_precision_unresolved`；schema 2 不重�
 | `subjects/<id>/fit_result.json` | 代表参数、候选库、近优点、独立审查、边界和未解决项 |
 | `fit_results.json` | 全体汇总；不是旧 Hyper-CD 的 `best_hyperparams.json` |
 
+`candidate_bank` 中的 `mean_nll` 是冻结候选时的引导分数；最终数值比较读取
+`independent_audit.scores`，代表的审查均值为 `selected_mean_nll`。二者种子可能不同，
+审查还可能升级粒子数，不能把这两类分数混排。
+
 这一步不自动运行状态输出。正式并行上限128，按可用 CPU 和未完成任务数取小，每个
 worker一个数值线程，仅一层进程；批次跨被试×候选×种子。smoke始终单被试单进程，
 结果含 `smoke_only: true`。程序不为占满CPU而增加无必要候选或PF重复。
@@ -119,6 +124,12 @@ worker一个数值线程，仅一层进程；批次跨被试×候选×种子。s
 
 软件验证见 `results/model_0826/adaptive_default_integration_20260919/README.md`；
 通俗说明与试点证据见 `src/Bayesian_state/docs/model_architecture/model_0826_plus.pdf`。
-v2 预先声明的验收协议与首批结果位于
-`results/model_0826/streamlined_fit_acceptance_20260919/`。首批仅6名，不能在原目录追加其余
+v2 预先声明的协议、首批结果及[验收解释](../../../results/model_0826/streamlined_fit_acceptance_20260919/acceptance_review.md)
+位于 `results/model_0826/streamlined_fit_acceptance_20260919/`。S102/S118/S206独立评分通过；
+S221/S314在R256×B32下仍不确定，S307在两轮R128×B16审查中均被判提名较差，没有升级到R256。
+S118仍未形成搜索平台，六人近优候选均有人为边界。应先处理数值与共同范围问题，再决定全体运行。
+按当前有限流程及六人的单位试次成本外推，96人约6.9天，低/高成本情景约6.0—7.6天；
+不含未解决项的补算、范围扩展、状态或恢复，也不是置信区间或时限保证。
+114项相关测试、三条件smoke和完整续跑检查通过；39,824份PF缓存续跑未新增或改写。
+首批仅6名，不能在原目录追加其余
 90名再 resume，因为被试列表也属于冻结指纹；后续另建目录且保持兼容配置才能合并结果。

@@ -12,7 +12,8 @@
 > 统一恢复入口为 `python -m src.Bayesian_state.run_recovery`；阶段调度位于 `workflows/recovery/run.py`。
 > Model 0826 观察数据 PMH 拟合默认入口为 `python -m src.Bayesian_state.run_model_0826_fit`。
 > 默认 v2 接入分散/联合搜索、一层分级独立审查、边界标记和断点续跑；旧 v1 配置保留。
-> v2 正在进行六名新被试的完整序列验收；先用 `--dry-run` 检查计划。
+> v2 六人完整验收已结束：独立评分通过3/6，仍有数值、搜索或范围问题；默认预算尚未全体验收通过。
+> 见[验收解释与下一步](../../results/model_0826/streamlined_fit_acceptance_20260919/acceptance_review.md)；先用 `--dry-run` 检查计划。
 > 软件接入不代表全体拟合、范围校准或恢复已完成，未解决结果保留明确状态。
 > 用法见 [自适应拟合说明](optimization/ADAPTIVE_FIT.md)，通俗流程见 [Model 0826 Plus](docs/model_architecture/model_0826_plus.pdf)。
 
