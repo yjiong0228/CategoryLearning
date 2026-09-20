@@ -1,0 +1,46 @@
+# Frozen v2 policy for the prospectively selected S122/S222/S315 validation.
+# Only analysis_id differs from the current default; this is not a new estimator.
+schema_version: 2
+backend: model0826_adaptive
+analysis_id: model_0826_frozen_validation_20260920
+parameter_space: model_0826_cond1_parameter_space.yaml
+processed_dir: ../../../data/exp123/processed
+conditions:
+  1: ../model_struct/pmh_model_cond1_0826.yaml
+  2: ../model_struct/pmh_model_cond2_0826.yaml
+  3: ../model_struct/pmh_model_cond3_0826.yaml
+base_seed: 2026091904
+parallel_budget: 128
+search:
+  discovery: {particle_count: 32, filter_seed_count: 4}
+  guide: {particle_count: 128, filter_seed_count: 16}
+  initial_count: 45
+  max_rounds: 4
+  max_cycles: 2
+  elite_count: 2
+  proposals_per_elite: 48
+  fresh_global_count: 18
+  local_fraction: 0.25
+  jump_fraction: 0.25
+  guide_top: 8
+  guide_diverse: 4
+  guide_random: 2
+  patience: 2
+  min_improvement: 0.001
+  challenge_rounds: 1
+  challenge_global_count: 90
+  audit_top_per_source: 4
+precision:
+  tiers:
+    - {particle_count: 128, filter_seed_count: 16}
+    - {particle_count: 256, filter_seed_count: 32}
+  alpha: 0.05
+  tolerance: 0.005
+  bootstrap_replicates: 6000
+boundary:
+  # Add only predeclared, scientifically justified values, e.g. gamma: [0.985].
+  # Applied uniformly to allowed support; never edits the frozen recovery YAML.
+  extensions: {}
+  near_tolerance: 0.005
+  max_candidates: 2
+  proposals_per_elite: 4

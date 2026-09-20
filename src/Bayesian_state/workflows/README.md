@@ -330,3 +330,11 @@ env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_T
 六人原本用于覆盖三个condition的完整流程和成本试点，已各完成一次完整拟合；随着诊断结果用于调整规则，
 他们属于开发/校准样本。后续检查只针对有具体疑点的被试与环节，不必重跑全部六人。
 拟合规则冻结后，应另选少量未参与调整的被试检查；保留未解决状态也是有效输出，不应无限算到全部通过。
+
+### 冻结规则后的三人完整流程核查
+
+S122/S222/S315各代表一个condition，按长度接近各组中位数选择，并排除已参与近期校准的被试。
+直接调用正式 `run_model_0826_fit`，配置为 `model_0826_frozen_validation.yaml`；与默认v2仅analysis_id不同。
+每人最多9252次完整PF；不因本轮结果追加预算、替换被试、扩范围或修改门槛。
+详细规则与命令见[冻结核查协议](../optimization/FROZEN_VALIDATION.md)，
+执行记录及自动收尾产物位于[本轮目录](../../../results/model_0826/frozen_validation_20260920/README.md)。
