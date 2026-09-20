@@ -5,6 +5,12 @@
 下列 dated pilot 仍是试验记录与复核入口，不是正式默认入口。它们共用的提案和数值诊断
 已迁入优化层，原导入接口保持兼容；历史结果没有改写，但旧源码指纹的续跑需检出旧提交。
 
+`runs/prepare_model_0826_cohort.py` 是全体运行前的只读准备入口：核对旧完整拟合的模型、数据、
+范围、种子、环境、冻结提名、整库NLL和全部PF收据，保留原未解决状态，生成剩余被试清单与启动脚本。
+它仅调用正式入口的 `--dry-run`，不运行PF；复用与正式启动约定见[全体工作方案](../optimization/COHORT_FITTING.md)。
+生成的脚本仅接受无参数（启动）、`--dry-run`（检查）或 `--resume`（同目录续跑），每次都复核冻结输入。
+源码新增清单仅允许已审阅的独立诊断/准备入口，其余改变须重新评估兼容性。
+
 本目录按当前 0826 工作需要精简。保留清单：
 
 | 位置 | 用途与保留原因 |
@@ -13,6 +19,7 @@
 | `recovery/generation.py` | 配置真值模型，调用 simulation 自主生成并保存实验数据 |
 | `recovery/run.py` | 恢复阶段调度、恢复运行及来源指纹 |
 | `runs/run_model_0826_recovery.py` | 原工作流模块路径的兼容入口 |
+| `runs/prepare_model_0826_cohort.py` | 不运行PF的兼容性核查、剩余名单和冻结启动命令 |
 | `runs/run_model_0826_belief_transport_counterfactual.py` | 当前 0826 信念迁移方法比较 |
 | `runs/run_model_0818_boundary_recovery.py` | 0826 比较仍直接使用其数据读取、引擎设置和种子工具；保留的历史依赖 |
 | `analysis/behavior_diagnostics.py` | 通用行为诊断 |
