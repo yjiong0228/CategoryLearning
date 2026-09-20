@@ -1,0 +1,239 @@
+# Fixed complete historical banks and explicit joint outer probes.
+# alpha is divided across the eight inner references within each subject.
+schema_version: 1
+fit_config: model_0826_frozen_validation.yaml
+previous: ../../../results/model_0826/frozen_validation_20260920/full
+base_seed: 2026092004
+alpha: 0.01
+tolerance: 0.005
+bootstrap_replicates: 60000
+extensions:
+  workspace_execution:
+  - M: 6
+    chi: 0
+  - M: 6
+    chi: 1
+  - M: 8
+    chi: 0
+  - M: 8
+    chi: 1
+  gamma:
+  - 0.985
+  - 0.995
+  E_C:
+  - 0.01
+  - 0.005
+  delta_E:
+  - 4.8
+  - 6.4
+  eta_plus:
+  - 0.0025
+  - 0.001
+  eta_minus:
+  - 0.005
+  - 0.0025
+cases:
+- subject: 122
+  kind: boundary
+  nominee: 29d7e09fa72d68b5
+  references:
+  - 88d237a850e0c05d
+  - 7599124bae4f96ba
+  - e1db6eebc6827ff6
+  - 53c207459e9b1a5f
+  - 29d7e09fa72d68b5
+  - 6b78bcc29c1e8944
+  - 9b800dc552523eda
+  - 36929eaba77c56cc
+  probes:
+  - name: capacity_6
+    anchor: 29d7e09fa72d68b5
+    changes:
+      M: 6
+  - name: capacity_8
+    anchor: 29d7e09fa72d68b5
+    changes:
+      M: 8
+  - name: memory_outer
+    anchor: 29d7e09fa72d68b5
+    changes:
+      gamma: 0.985
+  - name: capacity_memory_joint
+    anchor: 29d7e09fa72d68b5
+    changes:
+      M: 6
+      gamma: 0.985
+  - name: ec_outer
+    anchor: 29d7e09fa72d68b5
+    changes:
+      E_C: 0.01
+  - name: delta_outer
+    anchor: 29d7e09fa72d68b5
+    changes:
+      delta_E: 4.8
+  - name: ec_delta_joint
+    anchor: 29d7e09fa72d68b5
+    changes:
+      E_C: 0.01
+      delta_E: 4.8
+  - name: ec_fixed_error
+    anchor: 29d7e09fa72d68b5
+    changes:
+      E_C: 0.01
+    preserve_E_E: true
+  - name: positive_rate_outer
+    anchor: 29d7e09fa72d68b5
+    changes:
+      eta_plus: 0.0025
+  - name: ec_rate_fixed_error
+    anchor: 29d7e09fa72d68b5
+    changes:
+      E_C: 0.01
+      eta_plus: 0.0025
+    preserve_E_E: true
+  - name: joint_near
+    anchor: 29d7e09fa72d68b5
+    changes:
+      M: 6
+      gamma: 0.985
+      E_C: 0.01
+      delta_E: 4.8
+      eta_plus: 0.0025
+  - name: joint_near_alternative
+    anchor: 6b78bcc29c1e8944
+    changes:
+      M: 6
+      gamma: 0.985
+      E_C: 0.01
+      delta_E: 4.8
+      eta_plus: 0.0025
+  - name: reactive_rate_far
+    anchor: 29d7e09fa72d68b5
+    changes:
+      E_C: 0.005
+      delta_E: 6.4
+      eta_plus: 0.001
+  - name: joint_far
+    anchor: 29d7e09fa72d68b5
+    changes:
+      M: 8
+      gamma: 0.995
+      E_C: 0.005
+      delta_E: 6.4
+      eta_plus: 0.001
+  budgets:
+  - particle_count: 256
+    filter_seed_count: 32
+- subject: 222
+  kind: boundary
+  nominee: 5845ec2bc83a044f
+  references:
+  - 5845ec2bc83a044f
+  - 1888b718183a5e06
+  - af91cf3de33a2fa2
+  - 2d5cc3ff2ad455b6
+  - c3a480981fa46ede
+  - 69a727dbb195bc08
+  - 49e6105a81b7b377
+  - 340049cb324916d2
+  probes:
+  - name: ec_0.01
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.01
+  - name: ec_0.005
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.005
+  - name: ec_fixed_error
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.01
+    preserve_E_E: true
+  - name: positive_rate_outer
+    anchor: 5845ec2bc83a044f
+    changes:
+      eta_plus: 0.0025
+  - name: negative_rate_outer
+    anchor: 5845ec2bc83a044f
+    changes:
+      eta_minus: 0.005
+  - name: rates_joint
+    anchor: 5845ec2bc83a044f
+    changes:
+      eta_plus: 0.0025
+      eta_minus: 0.005
+  - name: reactive_rates_joint
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.01
+      eta_plus: 0.0025
+      eta_minus: 0.005
+  - name: reactive_rates_fixed_error
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.01
+      eta_plus: 0.0025
+      eta_minus: 0.005
+    preserve_E_E: true
+  - name: reactive_rates_far
+    anchor: 5845ec2bc83a044f
+    changes:
+      E_C: 0.005
+      eta_plus: 0.001
+      eta_minus: 0.0025
+  - name: reactive_rates_alternative
+    anchor: 69a727dbb195bc08
+    changes:
+      E_C: 0.01
+      eta_plus: 0.0025
+      eta_minus: 0.005
+  budgets:
+  - particle_count: 256
+    filter_seed_count: 32
+- subject: 315
+  kind: boundary
+  nominee: a96187fdc473d7f4
+  references:
+  - 8000c0092e5bc412
+  - 444e7fcd4d1f80d5
+  - 8adb09ad22ce6b8a
+  - 113d7608d06a950d
+  - a96187fdc473d7f4
+  - ad36e3065c2f9e45
+  - 48f2987169da1651
+  - 0be84cd4c1515799
+  probes:
+  - name: capacity_6
+    anchor: a96187fdc473d7f4
+    changes:
+      M: 6
+  - name: capacity_8
+    anchor: a96187fdc473d7f4
+    changes:
+      M: 8
+  - name: capacity_memory_joint
+    anchor: a96187fdc473d7f4
+    changes:
+      M: 6
+      gamma: 0.985
+  - name: memory_from_boundary_alternative
+    anchor: ad36e3065c2f9e45
+    changes:
+      gamma: 0.985
+  - name: joint_from_boundary_alternative
+    anchor: ad36e3065c2f9e45
+    changes:
+      M: 6
+      gamma: 0.985
+  - name: capacity_6_alternative
+    anchor: 444e7fcd4d1f80d5
+    changes:
+      M: 6
+  - name: capacity_8_alternative
+    anchor: 444e7fcd4d1f80d5
+    changes:
+      M: 8
+  budgets:
+  - particle_count: 256
+    filter_seed_count: 32
