@@ -1,5 +1,10 @@
 # Fig1 development
 
+2026-09-21 新审阅草稿：[摘要主线版 Fig1](../outputs/fig1/learning_story_20260921_v2/Figure1_learning_story.png)。
+保留96人的完整行为基础，加入学习时点、行为形状、后期表现，并与最新 Fig3 的例子衔接。
+入口为 `build_learning_story.py`；[设计](LEARNING_STORY_DESIGN.md)、[读图与复现](../fig2/VALIDATION_STORY.md)。
+下文仍记录已确认的 v10，其正式副本没有替换。
+
 Fig1 review bundle: [Fig. 1 v10](../outputs/fig1/fig1_v10/fig1_behavior_draft.png),
 [non-oral candidates](../outputs/fig1/fig1_v10/figS4_nonoral_candidates.png),
 [readout/legend](../outputs/fig1/fig1_v10/readout.md), [revision contract](REVISION_v10.md).

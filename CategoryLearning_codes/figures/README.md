@@ -13,6 +13,7 @@ figures/
 
 - [Fig1 代码与说明](fig1/README.md) · [已确认 v10](outputs/fig1/fig1_v10/fig1_behavior_draft.png)
 - [Fig2 代码与说明](fig2/README.md) · [完整草稿 v15](outputs/fig2/fig2_complete_v15/Figure2_draft.png)
+- [摘要主线版 Fig1，2026-09-21](outputs/fig1/learning_story_20260921_v2/Figure1_learning_story.png) · [配套 Fig2](outputs/fig2/belief_validation_20260921_v2/Figure2_belief_validation.png)：全96人的学习时间、形状与后期表现；最新12人的选择拟合、7,600条当前口述验证与时序检查。[读图与复现](fig2/VALIDATION_STORY.md)。新审阅草稿，保留已确认 Fig1。
 - [Fig3 代码与说明](fig3/README.md) · [报告变化片段 v4，b/c 待分析](outputs/fig3/fig3_v4/Figure3_draft.png)
 - [最新12人 Fig3，2026-09-21](outputs/fig3/abstract_story_20260921_v1/Figure3_learning_dynamics.png) · [配套 Fig4](outputs/fig4/abstract_story_20260921_v3/Figure4_learning_mechanisms.png)：每条件4人，沿确认摘要解释较早学习、缓慢改善和停滞后改善；[设计](fig3/abstract_story_design.md)。保留旧稿，尚未确认为论文终图。
 - [Fig3 瓶颈个案预演，2026-09-17](outputs/fig3/bottleneck_cases_20260917_v2/README.md)：两份现有记录的考虑、支持、执行与口述对照，以及连续阶段画像。
