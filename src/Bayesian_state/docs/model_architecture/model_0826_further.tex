@@ -1,5 +1,5 @@
 % !TeX program = xelatex
-% Abstract confirmed on 2026-09-19, preserved verbatim.
+% Abstract confirmed on 2026-09-21, preserved verbatim (HTML spaces removed).
 % Manuscript plan: anticipated findings are not completed results.
 \documentclass[12pt]{article}
 \usepackage[a4paper,margin=2.5cm]{geometry}
@@ -25,7 +25,7 @@
 
 \title{Model 0826：从信念动态理解学习轨迹}
 \author{}
-\date{2026年9月19日修订}
+\date{2026年9月21日摘要修订}
 \begin{document}
 \maketitle
 
@@ -36,13 +36,15 @@
 \noindent\textbf{版本说明：}英文按用户确认的原文保留。确定的是摘要版本与研究主线；模型优越性、群体轨迹差异、补偿和突破机制仍需分析验证。下文据此设计证据，不把设想当作已完成的结果。
 
 \begingroup\abstractfont
-% BEGIN CONFIRMED ABSTRACT 2026-09-19
-Similar errors can arise from different latent beliefs, making observable performance alone insufficient to explain why learning stalls or suddenly improves. We developed a resource-constrained Bayesian model that reconstructs learners' belief dynamics from choices and feedback across three category-learning tasks completed by 96 participants. Critically, although fitted only to overt choices, the model recovered belief trajectories that predicted participants' trial-by-trial verbal reports more accurately than alternative models.
+% BEGIN CONFIRMED ABSTRACT 2026-09-21
+Inferring internal cognitive processes from behavior is an ill-posed inverse problem: distinct latent beliefs and strategies can generate the same observable choices. Here we introduce a modular Bayesian modeling architecture for trial-resolved inference of each individual’s latent cognitive states, jointly capturing two sources of individual differences: cognitive resources that limit information availability and inductive biases that shape evidence interpretation and strategy sampling.
 
-The reconstructed belief dynamics revealed the cognitive mechanisms underlying several characteristic learning trajectories. Rapid learners efficiently narrowed the hypothesis space toward relatively simple rules, quickly accumulated belief in promising candidates, and remained robust to occasional errors. Slow but gradually improving learners tended to search more broadly and reset their beliefs more frequently. Although these strategies helped compensate for limited memory capacity, they also slowed the accumulation of stable belief in the correct rule, delaying behavioral improvement. By contrast, learners who stalled before an "aha" moment had often already accumulated substantial belief in a useful rule while continuing to behave inconsistently with it; their performance improved abruptly once this latent belief began to reliably guide choice.
+Applied to novel category learning in a four-dimensional feature space under three rules of increasing complexity, our model and several alternative deep neural-network models all accurately predicted individual choices; only our model, however, faithfully reconstructed each learner’s evolving feature-use strategies, independently validated against trial-by-trial verbal reports never used for model fitting.
 
-Together, these findings reveal that learning curves are not merely records of performance, but signatures of distinct latent processes. By identifying the underlying reasons why a learner is struggling, our framework provides a computational basis for AI systems that can deliver support targeted to what needs to change for learning to advance.
-% END CONFIRMED ABSTRACT 2026-09-19
+Analysis of the reconstructed dynamics revealed how the interplay of hypothesis search, belief updating and belief-to-choice mapping gave rise to distinct learning profiles. Rapid learners focused search on simpler hypotheses and sustained belief accumulation despite occasional errors, whereas slow learners searched broadly and repeatedly reset beliefs, compensating for limited memory but delaying stabilization. Interestingly, the model traced “aha” moments to the sudden access to prior learning rather than sudden rule discovery, suggesting that useful beliefs accumulated outside awareness before becoming consciously available to guide choice reliably.
+
+Together, these findings provide a mechanistic account of why individuals learn differently, laying a computational foundation for individualized learning interventions and the design of human-inspired AI that learns flexibly under resource constraints.
+% END CONFIRMED ABSTRACT 2026-09-21
 \par\endgroup
 \clearpage
 
