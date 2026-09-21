@@ -1,6 +1,15 @@
 # Fig3：搜索与规则过程初稿
 
-## 最新讨论稿：每条件4人（2026-09-21）
+## 当前期刊版（2026-09-21）
+
+[Fig3](../outputs/fig3/journal_20260921_v3/Figure3.png) · [独立图注](../outputs/fig3/journal_20260921_v3/legend.md) ·
+[整套Fig1–4/S2](../JOURNAL_SET_20260921.md)。三个行为选定个案的对齐轨迹为主体，连接全部12人的行为形状和持续信念区间。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.build_journal_figure --source results/model_0826/fig34_twelve_subjects_20260921_v1/analysis --output CategoryLearning_codes/figures/outputs/fig3/journal_NEW
+```
+
+## 较早讨论稿：每条件4人（2026-09-21）
 
 [12人Fig3](../outputs/fig3/abstract_story_20260921_v1/Figure3_learning_dynamics.png) ·
 [12人Fig4](../outputs/fig4/abstract_story_20260921_v3/Figure4_learning_mechanisms.png) ·

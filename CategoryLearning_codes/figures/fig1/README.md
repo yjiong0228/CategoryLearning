@@ -1,6 +1,10 @@
 # Fig1 development
 
-2026-09-21 新审阅草稿：[摘要主线版 Fig1](../outputs/fig1/learning_story_20260921_v2/Figure1_learning_story.png)。
+最新期刊版：[Fig1](../outputs/fig1/journal_20260921_v2/Figure1_journal.png) ·
+[设计与图注](JOURNAL_FIGURE.md) · [整套Fig1–4/S2](../JOURNAL_SET_20260921.md)。
+恢复原生任务/试次示意，以全96人的轨迹总览为主体；入口 `build_journal_figure.py`。
+
+2026-09-21 较早审阅草稿：[摘要主线版 Fig1](../outputs/fig1/learning_story_20260921_v2/Figure1_learning_story.png)。
 保留96人的完整行为基础，加入学习时点、行为形状、后期表现，并与最新 Fig3 的例子衔接。
 入口为 `build_learning_story.py`；[设计](LEARNING_STORY_DESIGN.md)、[读图与复现](../fig2/VALIDATION_STORY.md)。
 下文仍记录已确认的 v10，其正式副本没有替换。

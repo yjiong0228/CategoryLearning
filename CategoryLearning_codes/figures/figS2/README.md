@@ -1,5 +1,19 @@
 # Supplementary Fig2: five-part S129 review
 
+## Current 12-participant journal supplement
+
+[Model results](../outputs/figS2/journal_20260921_v4/FigureS2_model_resolution.png) ·
+[Full belief trajectories](../outputs/figS2/journal_20260921_v4/FigureS2_belief_trajectories.png) ·
+[Legends and definitions](../outputs/figS2/journal_20260921_v4/README.md) ·
+[Complete figure set](../JOURNAL_SET_20260921.md).
+
+Fitted resource/readout/search parameters, particle and nearby-candidate stability,
+oral validation, and event-window sensitivity use the current 12-participant cohort.
+Entry point: `python -m CategoryLearning_codes.figures.figS2.build_journal_supplement --output CategoryLearning_codes/figures/outputs/figS2/journal_NEW`.
+Historical S129 probes below remain archived; they are not mixed into the current supplement.
+
+## Historical S129 review
+
 Latest search-method check:
 [joint search probe](../outputs/figS2/joint_search_probe_v2/README.md).
 It includes 43 new fine-budget points, a real Start 4 coordinate-stationary

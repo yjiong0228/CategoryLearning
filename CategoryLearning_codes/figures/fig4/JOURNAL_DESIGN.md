@@ -1,0 +1,19 @@
+# Fig. 4 — journal revision
+
+## Figure contract
+
+**Claim:** Abrupt behavioral gains accompany different changes in inferred rule consideration, belief and execution; the fitted model also exposes how feedback and evidence retention relate to search and belief updating.
+
+**Evidence chain:** a is the dominant four-case comparison. It shows observed and fitted performance above A/Q/E, on fixed windows around behavior-only change points, with particle-repeat ranges. b relates feedback on trial t to the model's search probability on trial t + 1, within participant and session. c relates each person's fitted evidence-retention parameter to early full-distribution belief reallocation. The latter two panels illustrate model operations; they do not establish causal compensation.
+
+**Archetype:** asymmetric longitudinal/quantitative composite. A small consideration → belief → execution cue makes the A/Q/E logic explicit. Four paired case plots share scales; two subordinate cohort plots provide the search/update context. Large narrative titles and methodological footers are removed from the image.
+
+**Data:** all 12 fitted participants; panel a includes all four learners whose preferred behavioral shape is a step with BIC(trend) − BIC(step) >= 6 (S102, S215, S307, S328), rather than selecting only favorable examples. Windows are the existing 32 trials on each side of the existing behavior-only split. Eight selected-parameter particle-filter repeats are technical numerical realizations, not independent people.
+
+**Mapping:** `jump_windows.csv` provides pre/post A/Q/E and model P(correct). Observed accuracy is derived from the corresponding untouched `trials.csv` rows. Each plotted state interval is the minimum–maximum of the eight repeat-specific window means; points/lines show their mean. Mixture readout has no unique executed rule, so E is omitted for S102/S328. Panel b uses `search` at the next observed contiguous trial, excluding session boundaries; current feedback 0, .5 or 1 defines the three levels. Partial feedback occurs only in Task 2. Panel c uses the existing `gamma` and `early_reallocation` (first 128 trials), where reallocation is total variation between adjacent complete belief distributions computed per replay before averaging.
+
+**Review risks:** feedback-conditioned search is a fitted-model response, not a randomized feedback experiment. Gamma is a fitted parameter, not a separate memory measurement. Reallocation is not proof of belief resetting, and the two measures are not independent. Neither panel demonstrates that a mechanism improved performance. State estimates can be sensitive to particles/nearby parameters; material particle variation remains in a, with fuller checks in Fig. S2. S307's observed increase is not fully matched by its prediction in the fixed window. All parameter fits used the complete choice sequence.
+
+**Interpretation retained outside the compact journal legend:** S215 had high mean target support before behavioral improvement, with execution subsequently increasing more strongly than belief; its pre-change state also has substantial replay variation. The other three cases had lower mean pre-change support. Because both support and execution change, these comparisons do not isolate a pure readout effect. S307's observed fixed-window increase exceeds its corresponding model increase and is retained. Full-record parameter uncertainty and alternative-model comparisons remain distinct from numerical particle spread. No correlation test or fitted cross-participant trend is supplied for panel c.
+
+**Backend/export:** Python/matplotlib, 183 × 186 mm, 450-dpi PNG only; 6–7 pt sans-serif typography and 8-pt panel letters. Build anew using the established task/state palette. Existing outputs are preserved. Export source tables, legend, provenance and code snapshot beside the figure.

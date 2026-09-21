@@ -1,6 +1,11 @@
 # Fig2a framework draft
 
-2026-09-21 完整图的新审阅入口：[12人口述验证版 Fig2](../outputs/fig2/belief_validation_20260921_v2/Figure2_belief_validation.png)。
+最新期刊版：[Fig2](../outputs/fig2/journal_20260921_v2/Figure2_journal.png) ·
+[设计与图注](JOURNAL_FIGURE.md) · [整套Fig1–4/S2](../JOURNAL_SET_20260921.md)。
+保留原 Fig2a 原生机制示意及 a/b–d/e–g 结构，补齐三任务与全部12人的检验。
+入口为 `build_journal_figure.py`；没有用参照指标代替未完成的模型消融。
+
+2026-09-21 较早审阅入口：[12人口述验证版 Fig2](../outputs/fig2/belief_validation_20260921_v2/Figure2_belief_validation.png)。
 使用保存的12人拟合与7,600条当前有效口述，包含内容、动态增益和时序对应；
 [读图、边界与复现](VALIDATION_STORY.md)，入口为 `build_belief_validation.py`。
 下面保留原框架子图的历史说明。
