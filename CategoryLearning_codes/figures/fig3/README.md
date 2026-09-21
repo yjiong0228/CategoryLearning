@@ -1,5 +1,23 @@
 # Fig3：搜索与规则过程初稿
 
+## 最新讨论稿：每条件4人（2026-09-21）
+
+[12人Fig3](../outputs/fig3/abstract_story_20260921_v1/Figure3_learning_dynamics.png) ·
+[12人Fig4](../outputs/fig4/abstract_story_20260921_v3/Figure4_learning_mechanisms.png) ·
+[新增数据与结果解读](../../../results/model_0826/fig34_twelve_subjects_20260921_v1/README.md)
+
+新增S104/215/328，合计12人、7936试次；原摘要主线、行为形态定义、阈值和窗口不变。按相同规则重新选出S122、S206、S215，Fig4突破比较扩展到全部4个明确阶跃案例。原九人状态只读复用；只对新增三人导出固定参数状态，不重新拟合模型。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.nine_subject_states --config CategoryLearning_codes/figures/fig3/twelve_subject_config.json --reuse-states results/model_0826/fig34_nine_subjects_20260920_v1/states --output results/model_0826/fig34_twelve_new/states
+python -m CategoryLearning_codes.figures.fig3.nine_subject_analysis --config CategoryLearning_codes/figures/fig3/twelve_subject_config.json --states results/model_0826/fig34_twelve_new/states --output results/model_0826/fig34_twelve_new/base_analysis
+python -m CategoryLearning_codes.figures.fig3.abstract_story_analysis --source results/model_0826/fig34_twelve_new/base_analysis --states results/model_0826/fig34_twelve_new/states --output results/model_0826/fig34_twelve_new/analysis
+python -m CategoryLearning_codes.figures.fig3.build_abstract_story --source results/model_0826/fig34_twelve_new/analysis --output CategoryLearning_codes/figures/outputs/fig3/abstract_story_twelve_new
+python -m CategoryLearning_codes.figures.fig4.build_abstract_story --source results/model_0826/fig34_twelve_new/analysis --output CategoryLearning_codes/figures/outputs/fig4/abstract_story_twelve_new
+```
+
+既有`nine_subject_states`和`nine_subject_analysis`模块名及九人默认配置保留。新增可选`--config`指定队列；状态导出的`--reuse-states`核对来源候选、数值预算和种子后建立相对只读复用链接，只计算缺少的状态。不得删除被链接的旧结果。已完成的同配置导出再次运行只做核对，不新增PF或重写完成记录。分析与绘图仍要求新输出目录。
+
 ## 当前讨论稿：按确定摘要组织学习动力学（2026-09-20）
 
 [Fig3：三种行为轨迹与内部过程](../outputs/fig3/abstract_story_20260920_v2/Figure3_learning_dynamics.png) ·

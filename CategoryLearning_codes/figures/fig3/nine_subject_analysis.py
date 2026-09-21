@@ -75,9 +75,10 @@ def load_repeats(state_root: Path, sid: int, variant: str, count: int) -> dict:
     return {k: np.stack([r[k] for r in runs]) for k in runs[0]}
 
 
-def build(state_root: Path, output: Path) -> None:
+def build(state_root: Path, output: Path, config_path: Path = CONFIG) -> None:
     state_root = state_root.resolve()
-    config = json.loads(CONFIG.read_text())
+    config_path=config_path.resolve()
+    config = json.loads(config_path.read_text())
     rows = cohort(config)
     state_manifest = json.loads((state_root / 'manifest.json').read_text())
     if state_manifest['config'] != config or state_manifest['smoke']:
@@ -192,7 +193,7 @@ def build(state_root: Path, output: Path) -> None:
               'candidate_sensitivity': pd.DataFrame(candidates), 'numerical_checks': pd.DataFrame(split_checks)}
     for name, table in tables.items():
         table.to_csv(output / (name + '.csv'), index=False)
-    inputs = {str(raw_path.relative_to(ROOT)): sha256(raw_path), str(CONFIG.relative_to(ROOT)): sha256(CONFIG)}
+    inputs = {str(raw_path.relative_to(ROOT)): sha256(raw_path), str(config_path.relative_to(ROOT)): sha256(config_path)}
     inputs.update({str(p.relative_to(ROOT)): sha256(p) for p in state_root.rglob('*.npz')})
     manifest = {'config': config, 'input_sha256': inputs, 'participants': len(rows),
                 'trial_count': len(tables['trials']), 'scope': 'Descriptive, full-sequence fitted parameters; pre-choice state filtering.',
@@ -200,7 +201,7 @@ def build(state_root: Path, output: Path) -> None:
                 'criterion_definition': 'First trailing 64-trial accuracy >0.9; later declines retained.',
                 'oral_definition': 'Current post-choice, pre-feedback report; target among top encoder rules may include ties.',
                 'uncertainty': 'PF seed spread is numerical, not between-participant uncertainty; one near-candidate sensitivity only.',
-                'exclusions': 'No participants/trials dropped. Lagged feedback comparisons exclude first trial of each session. Structural execution NA retained for six mixture models.'}
+                'exclusions': 'No participants/trials dropped. Lagged feedback comparisons exclude first trial of each session. Structural execution NA retained for mixture models.'}
     (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
 
 
@@ -208,8 +209,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--states', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--config', type=Path, default=CONFIG)
     args = parser.parse_args()
-    build(args.states, args.output)
+    build(args.states, args.output, args.config)
 
 
 if __name__ == '__main__':

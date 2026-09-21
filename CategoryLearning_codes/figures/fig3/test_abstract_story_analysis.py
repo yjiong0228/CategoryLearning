@@ -69,3 +69,11 @@ def test_examples_follow_behavior_and_not_the_belief_column():
     assert select_examples(summary)=={'rapid':1,'gradual':2,'abrupt':3}
     changed=summary.assign(belief=summary.belief[::-1].to_numpy())
     assert select_examples(changed)==select_examples(summary)
+
+
+def test_cohort_expansion_reselects_later_abrupt_case():
+    summary=pd.DataFrame({'subject':[122,206,307,104,215,328],
+                          'criterion':[139,1378,685,146,732,657],
+                          'delta_bic':[1.356,-12.385,13.872,-4.924,22.142,16.729],
+                          'preferred':['step','trend','step','trend','step','step']})
+    assert select_examples(summary)=={'rapid':122,'gradual':206,'abrupt':215}

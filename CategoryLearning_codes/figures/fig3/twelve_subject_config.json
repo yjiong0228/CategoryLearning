@@ -1,0 +1,20 @@
+{
+  "source_runs": [
+    "results/model_0826/streamlined_fit_acceptance_20260919/full",
+    "results/model_0826/frozen_validation_20260920/full",
+    "results/model_0826/three_subject_fit_20260921/full"
+  ],
+  "subjects": [102, 104, 118, 122, 307, 314, 315, 328, 206, 215, 221, 222],
+  "particle_count": 128,
+  "selected_repeats": 8,
+  "alternative_repeats": 4,
+  "seed_base": 2026092003,
+  "parallel_budget": 128,
+  "oral_sigma": 0.05,
+  "display_window": 32,
+  "criterion_window": 64,
+  "criterion_threshold": 0.9,
+  "state_threshold": 0.5,
+  "state_duration": 16,
+  "output_dpi": 450
+}

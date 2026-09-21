@@ -1,5 +1,19 @@
 # Fig4：学习机制图
 
+## 最新讨论稿：每条件4人（2026-09-21）
+
+[12人Fig4](../outputs/fig4/abstract_story_20260921_v3/Figure4_learning_mechanisms.png) ·
+[配套Fig3](../outputs/fig3/abstract_story_20260921_v1/Figure3_learning_dynamics.png) ·
+[结果与图注](../../../results/model_0826/fig34_twelve_subjects_20260921_v1/README.md)
+
+六个检验的科学问题与指标不变。a/b/d/e纳入全部12人；c/f按原行为规则纳入S102、S215、S307、S328四个阶跃案例，避免只补新点却遗漏新出现的突破路径。同任务案例在f用填心/空心进一步区分；c的空心继续表示近优参数，两个面板的图例分别说明。
+
+```bash
+python -m CategoryLearning_codes.figures.fig4.build_abstract_story --source results/model_0826/fig34_twelve_subjects_20260921_v1/analysis --output CategoryLearning_codes/figures/outputs/fig4/abstract_story_twelve_new
+```
+
+旧图和源表保留。新增拟合仍有原审计未解决项，图面不是已确认的人群分类或因果补偿结论。
+
 ## 当前讨论稿：检验摘要对学习动力学的解释（2026-09-20）
 
 [Fig4：学习机制](../outputs/fig4/abstract_story_20260920_v2/Figure4_learning_mechanisms.png) ·

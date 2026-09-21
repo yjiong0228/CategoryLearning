@@ -14,6 +14,7 @@ figures/
 - [Fig1 代码与说明](fig1/README.md) · [已确认 v10](outputs/fig1/fig1_v10/fig1_behavior_draft.png)
 - [Fig2 代码与说明](fig2/README.md) · [完整草稿 v15](outputs/fig2/fig2_complete_v15/Figure2_draft.png)
 - [Fig3 代码与说明](fig3/README.md) · [报告变化片段 v4，b/c 待分析](outputs/fig3/fig3_v4/Figure3_draft.png)
+- [最新12人 Fig3，2026-09-21](outputs/fig3/abstract_story_20260921_v1/Figure3_learning_dynamics.png) · [配套 Fig4](outputs/fig4/abstract_story_20260921_v3/Figure4_learning_mechanisms.png)：每条件4人，沿确认摘要解释较早学习、缓慢改善和停滞后改善；[设计](fig3/abstract_story_design.md)。保留旧稿，尚未确认为论文终图。
 - [Fig3 瓶颈个案预演，2026-09-17](outputs/fig3/bottleneck_cases_20260917_v2/README.md)：两份现有记录的考虑、支持、执行与口述对照，以及连续阶段画像。
 - [九人 Fig3，2026-09-20](outputs/fig3/nine_subjects_20260920_v2/Figure3_nine_subjects.png) · [九人 Fig4](outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png)：三任务各三人、完整信念轨迹与机制诊断；[设计和证据边界](fig3/nine_subject_fig34_design.md)。均为待审阅草稿。
 - [Fig4 代码与说明](fig4/README.md)

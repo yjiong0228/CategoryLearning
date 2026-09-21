@@ -1,4 +1,4 @@
-"""Bounded, fixed-parameter state replay for the nine completed Model 0826 fits.
+"""Bounded, fixed-parameter state replay for a configured Model 0826 cohort.
 
 Uses the shared evaluator without changing scientific mechanisms or fitting.
 Primary estimates preserve the original nominee, including unresolved fits.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from time import perf_counter
 
@@ -55,8 +56,45 @@ def cohort(config: dict) -> list[dict]:
                               'source': name, 'alternative': alternative,
                               'source_manifest': manifest}
     if set(rows) != set(config['subjects']):
-        raise ValueError('Source cohort does not equal requested nine participants')
+        raise ValueError('Source cohort does not equal requested participants')
     return [rows[sid] for sid in config['subjects']]
+
+
+def reusable_states(source: Path, rows: list[dict], config: dict) -> list[tuple[Path, dict]]:
+    """Validate existing repeats before linking them into an expanded cohort.
+
+    Parameter identities, numeric settings and the original seed schedule must
+    agree. The caller records file hashes and never writes through these links.
+    """
+    manifest=json.loads((source/'manifest.json').read_text())
+    if manifest['smoke'] or not (source/'completion.json').exists():
+        raise ValueError('Cannot reuse smoke or incomplete states')
+    old_config={k:v for k,v in manifest['config'].items() if k not in ('subjects','source_runs')}
+    new_config={k:v for k,v in config.items() if k not in ('subjects','source_runs')}
+    if old_config!=new_config:
+        raise ValueError('State replay settings differ')
+    old={r['subject']:r for r in manifest['cohort']}
+    wanted={r['fit']['subject']:r for r in rows}
+    if not set(old).issubset(wanted):
+        raise ValueError('Reuse source includes participants outside requested cohort')
+    files=[]
+    for sid,prior in old.items():
+        row=wanted[sid]
+        expected={'selected':row['fit']['selected'],'alternative':row['alternative']['id']}
+        if any(prior[k]!=v for k,v in expected.items()) or prior['source']!=row['source']:
+            raise ValueError(f'Parameter nominee/source changed for S{sid}')
+        for variant,count in [('selected',config['selected_repeats']),('alternative',config['alternative_repeats'])]:
+            for repeat in range(count):
+                path=source/f'S{sid}'/f'{variant}_{repeat:02d}.npz'
+                with np.load(path,allow_pickle=False) as run:
+                    seed=stable_seed({'role':'nine_subject_figures','base':config['seed_base'],
+                                      'subject':sid,'repeat':repeat})
+                    if (int(run['subject'])!=sid or str(run['point_id'])!=expected[variant]
+                            or int(run['condition'])!=row['fit']['condition']
+                            or int(run['particles'])!=config['particle_count'] or int(run['seed'])!=seed):
+                        raise ValueError(f'Cached state identity mismatch: {path}')
+                files.append((path,{'subject':sid,'variant':variant,'repeat':repeat,'cached':True}))
+    return files
 
 
 def run_one(row: dict, config: dict, output: Path, variant: str, repeat: int,
@@ -103,11 +141,17 @@ def run_one(row: dict, config: dict, output: Path, variant: str, repeat: int,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--config', type=Path, default=CONFIG)
+    parser.add_argument('--reuse-states', type=Path,
+                        help='Read-only reuse of a compatible completed subset; only new states run')
     parser.add_argument('--smoke', action='store_true')
     args = parser.parse_args()
-    config = json.loads(CONFIG.read_text())
+    if args.smoke and args.reuse_states:
+        parser.error('--reuse-states is only valid for full state exports')
+    config_path=args.config.resolve()
+    config = json.loads(config_path.read_text())
     rows = cohort(config)
-    inputs = {str(CONFIG.relative_to(ROOT)): sha256(CONFIG)}
+    inputs = {str(config_path.relative_to(ROOT)): sha256(config_path)}
     for row in rows:
         for name, expected in row['source_manifest']['input_sha256'].items():
             path = Path(name)
@@ -119,25 +163,44 @@ def main() -> None:
         for filename in ('fit_results.json', 'manifest.json'):
             path = ROOT / row['source'] / filename
             inputs[str(path.relative_to(ROOT))] = sha256(path)
+    reused=reusable_states(args.reuse_states.resolve(),rows,config) if args.reuse_states else []
+    reuse_hashes={str(path.relative_to(ROOT)):sha256(path) for path,_ in reused}
     provenance = {'config': config, 'smoke': args.smoke, 'input_sha256': inputs,
                   'cohort': [{'subject': r['fit']['subject'], 'condition': r['fit']['condition'],
                               'source': r['source'], 'selected': r['fit']['selected'],
                               'alternative': r['alternative']['id'], 'issues': r['fit']['issues']}
                              for r in rows],
                   'scope': 'Fixed-parameter observed-history filtering; no refit or autonomous intervention.'}
+    if reused:
+        provenance['reused_state_sha256']=reuse_hashes
     freeze_json(args.output / 'manifest.json', provenance)
+    for path,_ in reused:
+        destination=args.output/path.parent.name/path.name
+        destination.parent.mkdir(parents=True,exist_ok=True)
+        if destination.exists():
+            if sha256(destination)!=reuse_hashes[str(path.relative_to(ROOT))]:
+                raise ValueError(f'Existing reused state differs: {destination}')
+        else:
+            destination.symlink_to(os.path.relpath(path,destination.parent.resolve()))
     jobs = [(r, variant, repeat) for r in rows
             for variant, count in [('selected', config['selected_repeats']),
                                     ('alternative', config['alternative_repeats'])]
             for repeat in range(count)]
     if args.smoke:
         jobs = [(rows[0], 'selected', 0)]
-    workers = 1 if args.smoke else parallel_job_count(config['parallel_budget'], len(jobs))
+    cached=[{'subject':r['fit']['subject'],'variant':variant,'repeat':repeat,'cached':True}
+            for r,variant,repeat in jobs
+            if (args.output/f'S{r["fit"]["subject"]}'/f'{variant}_{repeat:02d}.npz').exists()]
+    jobs=[job for job in jobs if not (args.output/f'S{job[0]["fit"]["subject"]}'/f'{job[1]}_{job[2]:02d}.npz').exists()]
+    if not jobs and (args.output/'completion.json').exists():
+        print(f'Complete: {len(cached)} cached states; no replay needed.',flush=True)
+        return
+    workers = 1 if args.smoke or not jobs else parallel_job_count(config['parallel_budget'], len(jobs))
     with single_threaded_processes():
         receipts = Parallel(n_jobs=workers)(
             delayed(run_one)(r, config, args.output, variant, repeat, args.smoke)
             for r, variant, repeat in jobs)
-    freeze_json(args.output / 'completion.json', {'runs': receipts, 'workers': workers})
+    freeze_json(args.output / 'completion.json', {'runs': cached+receipts, 'workers': workers})
 
 
 if __name__ == '__main__':

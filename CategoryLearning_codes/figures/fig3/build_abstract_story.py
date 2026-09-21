@@ -26,8 +26,10 @@ def read_story(source: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     manifest = json.loads((source/'manifest.json').read_text())
     subjects = pd.read_csv(source/'subjects.csv').set_index('subject')
     trials = pd.read_csv(source/'trials.csv')
-    assert len(subjects) == manifest['participants'] == 9
-    assert len(trials) == manifest['trials'] == 6272
+    assert len(subjects) == manifest['participants']
+    assert len(trials) == manifest['trials']
+    assert subjects.index.is_unique and not trials.duplicated(['iSub','trial']).any()
+    assert set(subjects.index) == set(trials.iSub)
     return trials, subjects, manifest
 
 
@@ -64,11 +66,12 @@ def build(source: Path, output: Path) -> None:
     d,s,m = read_story(source)
     examples = m['examples']
     reversals = pd.read_csv(source/'support_reversals.csv')
+    jumps = pd.read_csv(source/'jump_windows.csv')
     style()
     fig = plt.figure(figsize=(183/25.4, 235/25.4))
     fig.text(.085,.978,'Fig. 3 | Different learning curves, different belief dynamics',
              fontsize=10, weight='bold', va='top')
-    fig.text(.085,.954,'Start with the behavior; then ask what changed inside the learner.',
+    fig.text(.085,.954,f'{len(s)} learners · {len(d):,} trials | Start with behavior; then ask what changed inside the learner.',
              fontsize=7, color='.35', va='top')
     fig.text(.065,.918,'a',fontsize=9,weight='bold')
     fig.text(.095,.918,'When learning improved, and how',fontsize=8,weight='bold')
@@ -78,17 +81,20 @@ def build(source: Path, output: Path) -> None:
     ax.axhline(0,color='.65',lw=.6,zorder=0)
     highlighted = set(examples.values())
     offsets = {102:(5,3),118:(5,-10),122:(-9,9),206:(-7,-13),
-               221:(-16,7),222:(7,-6),307:(5,5),314:(5,4),315:(-20,6)}
+               221:(-16,7),222:(7,-6),307:(-31,-7),314:(5,4),315:(-20,6),
+               104:(5,-12),215:(8,3),328:(-30,7)}
     for sid,row in s.iterrows():
         task = int(row.task)
         chosen = sid in highlighted
         ax.scatter(row.criterion,row.delta_bic,marker=MARKERS[task],
                    s=35 if chosen else 18, c=TASK_COLORS[task],
                    edgecolor='white',linewidth=.5,zorder=4)
-        ax.annotate(f'S{sid}',(row.criterion,row.delta_bic),xytext=offsets[sid],
+        ax.annotate(f'S{sid}',(row.criterion,row.delta_bic),xytext=offsets.get(sid,(5,5)),
                     textcoords='offset points', fontsize=6.3,
                     weight='bold' if chosen else 'normal', color=TASK_COLORS[task])
-    ax.set(xlim=(0,1460),ylim=(-60,26),xticks=[0,400,800,1200],yticks=[-50,0,20],
+    ax.set(xlim=(0,max(1460,s.criterion.max()*1.06)),
+           ylim=(min(-60,s.delta_bic.min()-8),max(32,s.delta_bic.max()+8)),
+           xticks=[0,400,800,1200],yticks=[-50,0,20],
            xlabel='Trial of first behavioral criterion',ylabel='Step vs. gradual\nfit (ΔBIC)')
     ax.text(.99,.90,'Step-like',ha='right',transform=ax.transAxes,fontsize=6,color='.4')
     ax.text(.99,.06,'Gradual',ha='right',transform=ax.transAxes,fontsize=6,color='.4')
@@ -103,8 +109,6 @@ def build(source: Path, output: Path) -> None:
                columnspacing=1,handlelength=1.7,fontsize=6)
     xs = [.10,.414,.728]
     headings = ['Earlier learning','Slow, gradual improvement','Stagnation then improvement']
-    descriptions = ['Useful belief forms early', 'Useful belief is repeatedly lost',
-                    'Belief and execution rise together']
     ypos = [.526,.355,.207,.067]
     heights = [.113,.135,.098,.096]
     ylabels = ['Accuracy','Target-rule state','Global-search\ntendency','Belief\nreallocation']
@@ -141,12 +145,21 @@ def build(source: Path, output: Path) -> None:
                 axes[1].annotate('',xy=(ev.loss_start,.18),xytext=(ev.loss_start,.72),
                                  arrowprops={'arrowstyle':'->','lw':.7,'color':COLORS['belief']})
         if key=='rapid':
-            axes[1].annotate('Early support',xy=(95,.81),xytext=(116,.20),fontsize=6,
-                             color=COLORS['belief'],arrowprops={'arrowstyle':'-','lw':.5,'color':COLORS['belief']})
+            if np.isfinite(row.belief_event):
+                event=int(row.belief_event)
+                axes[1].annotate('Sustained support',xy=(event,g.iloc[event-1].belief),
+                                 xytext=(len(g)*.45,.20),fontsize=6,color=COLORS['belief'],
+                                 arrowprops={'arrowstyle':'-','lw':.5,'color':COLORS['belief']})
+            description=f'First sustained support: t{int(row.belief_event)}' if np.isfinite(row.belief_event) else 'No sustained high target support'
+        elif key=='gradual':
+            description=f'{int(row.support_reversals)} sustained losses of target support'
+        else:
+            window=jumps.query('subject==@sid and window==32 and variant=="selected" and measure=="belief"')
+            description=f'Belief around change: {window.before.mean():.2f} → {window.after.mean():.2f}'
         if key=='abrupt':
             axes[0].text(.03,.06,f'Change after t{int(row.split)}',transform=axes[0].transAxes,
                          fontsize=6,color='#75664B')
-        fig.text(x,.323,descriptions[col],fontsize=6.1,color=COLORS['belief'])
+        fig.text(x,.323,description,fontsize=6.1,color=COLORS['belief'])
     fig.text(.085,.024,'Accuracy, search and reallocation: trailing 32 trials. Belief states: pre-choice estimates. Same scales within each row.',
              fontsize=6,color='.35')
     fig.text(.085,.011,'These are illustrative trajectories, not three established learner types. Shading in d marks the ±32-trial comparison window.',
