@@ -112,6 +112,8 @@ class DiscreteRulePartition(BasePartition):
         prob: np.ndarray,
         choices: np.ndarray,
         responses: np.ndarray,
+        *,
+        feedback_likelihood_mode: str = BasePartition.FEEDBACK_MODE_CATEGORY,
     ) -> np.ndarray:
         """Preserve Exp5's binary correct/incorrect feedback semantics.
 
@@ -119,7 +121,7 @@ class DiscreteRulePartition(BasePartition):
         feedback code. Historically every value other than ``1`` meant an
         incorrect response; retaining that rule avoids a behavioral change.
         """
-        del hypo
+        del hypo, feedback_likelihood_mode
         p_choice = prob[choices, np.arange(len(choices))]
         return np.where(responses == 1, p_choice, 1.0 - p_choice)
 

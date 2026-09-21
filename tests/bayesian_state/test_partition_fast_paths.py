@@ -27,7 +27,8 @@ def test_mixed_partial_feedback_keeps_neighbor_mass():
     # Rule 0 has category-0 neighbors 1 and 2, carrying mass 0.2 + 0.3.
     prob = np.tile(np.array([0.1, 0.2, 0.3, 0.4])[:, None], (1, 3))
     actual = partition._category_feedback_likelihood(
-        0, prob, np.array([0, 0, 0]), np.array([1., 0.5, 0.])
+        0, prob, np.array([0, 0, 0]), np.array([1., 0.5, 0.]),
+        feedback_likelihood_mode="legacy_category_feedback",
     )
     np.testing.assert_array_equal(actual, [0.1, 0.5, 0.9])
 

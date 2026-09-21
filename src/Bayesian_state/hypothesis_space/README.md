@@ -84,6 +84,33 @@ boundary distance 另有实例级有界缓存（见下文）。`label_permutatio
 代码有意不提供 `Partition` 这类过于宽泛的名称，也不提供 `.splits`、
 `.regions`、`.rules` 和 `.prototypes` 这类重复视图。
 
+## 三值反馈与历史兼容
+
+连续 partition 的 `category_feedback` 用于二值反馈：正确时使用所选类别概率，
+错误时使用其补概率。收到 `0.5` 时明确报错，避免将旧的 overlapping evidence
+误当作三值反馈的互斥事件概率。`category`、`categorical`、`legacy` 等既有 alias
+仍解析为 `category_feedback`，不会自动开启旧三值行为。
+
+新的 Cond3 模型必须配置 `likelihood.feedback_likelihood_mode: hierarchical_pairing`
+及 `HierarchicalPairingMemoryModule`。装配阶段会验证这一组合，即使当前数据前缀
+只有 `0/1` 反馈也不会退化为二值模式。该 kernel 分别计算选对、同科错误、跨科错误，
+并对三种未知反应配对进行联合学习。
+
+仅在单独复现旧 partition / observation-likelihood 计算时，显式指定：
+
+```yaml
+likelihood:
+  distance_mode: boundary
+  feedback_likelihood_mode: legacy_category_feedback
+```
+
+这一兼容模式保留历史的 `q(choice)`、`neighbor_mass`、`1-q(choice)` 公式，
+不修正其重叠事件；不要把它解释为正确的三值反馈概率模型。直接调用
+`partition.calc_likelihood()` 时也必须传入同名参数。该配置会保存在 simulation
+provenance 的 `resolved.encoding.feedback_likelihood_mode`，不能用它绕过当前
+`StateModel(condition=3)` 的联合记忆检查；复现完整旧模型应使用历史版本。
+离散任务不接受这一 continuous-only 兼容模式。
+
 ## 相似度资源
 
 连续假设的 assignment-agreement 相似度定义为：在单位超立方体上均匀采样刺激，

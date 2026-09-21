@@ -25,6 +25,10 @@
 三人核查的冻结规则、选人标准和上限见[原协议](optimization/FROZEN_VALIDATION.md)。后续有限外侧范围检查也已结束；
 原始拟合状态与追加诊断并列保留，可复用不等于已通过。新增三人沿用既定规则，仍不为达到全通过而追加到通过。
 
+连续 partition 的普通 `category_feedback` 不接受 `0.5`；新版 Cond3 必须使用
+`hierarchical_pairing` 与联合记忆。旧公式仅供显式 `legacy_category_feedback`
+的底层复现，见 [三值反馈与历史兼容](hypothesis_space/README.md#三值反馈与历史兼容)。
+
 `Bayesian_state` 是本项目的试次级 Bayesian 状态模型包。它把“模型结构”“逐试次推理”
 “潜在路径积分”“超参数搜索”“重复仿真”和“结果评价”分成相互独立的层，而不是把一个模型
 写成一份从数据读取到画图的独立脚本。

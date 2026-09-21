@@ -31,6 +31,11 @@ class ContinuousPartition(BasePartition):
     DISTANCE_MODE_BOUNDARY = "boundary"
     DEFAULT_DISTANCE_MODE = DISTANCE_MODE_PROTOTYPE
     VALID_DISTANCE_MODES = (DISTANCE_MODE_PROTOTYPE, DISTANCE_MODE_BOUNDARY)
+    FEEDBACK_MODE_LEGACY_CATEGORY = "legacy_category_feedback"
+    VALID_FEEDBACK_MODES = (
+        *BasePartition.VALID_FEEDBACK_MODES,
+        FEEDBACK_MODE_LEGACY_CATEGORY,
+    )
 
     def __init__(
         self,
@@ -307,13 +312,25 @@ class ContinuousPartition(BasePartition):
         prob: np.ndarray,
         choices: np.ndarray,
         responses: np.ndarray,
+        *,
+        feedback_likelihood_mode: str = BasePartition.FEEDBACK_MODE_CATEGORY,
     ) -> np.ndarray:
-        """Map Task2's correct/related/incorrect codes to probabilities."""
+        """Map binary feedback, or explicitly requested historical evidence."""
+        mode = self._resolve_feedback_likelihood_mode(feedback_likelihood_mode)
+        if np.any(responses == 0.5) and mode != self.FEEDBACK_MODE_LEGACY_CATEGORY:
+            raise ValueError(
+                "Partial feedback (0.5) requires hierarchical_pairing likelihood "
+                "and joint memory for condition 3. Historical partition-level "
+                "reproduction must explicitly set "
+                "feedback_likelihood_mode='legacy_category_feedback'; its "
+                "overlapping feedback weights are not a ternary event model."
+            )
         n_trials = len(choices)
         p_category = prob[choices, np.arange(n_trials)]
         # Family geometry contributes only to the partial-feedback branch.
         if not np.any(responses == 0.5):
             return np.where(responses == 1, p_category, 1.0 - p_category)
+        # Preserve the historical overlapping events only behind explicit opt-in.
         family_probability = np.zeros(n_trials)
         mask = np.zeros_like(prob, dtype=bool)
         for trial_index in range(n_trials):
