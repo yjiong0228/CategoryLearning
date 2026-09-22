@@ -117,3 +117,21 @@ env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_T
 默认 `--workers 2`；显式检查 128 要求当前可用 CPU 至少为 128。输出目录必须不存在。
 正式入口的预算和作用范围见
 [128 核并行策略](../../docs/maintenance/model_0826_parallel_policy_20260917.md)。
+
+## 三个 condition 的拟合工期计时输入
+
+`estimate_model_0826_fit_time.py` 先运行一次 32-trial 小检查，再对 S129/S229/S301 的完整
+序列分别测量 R16/R64、M3χ0/M5χ1，共 12 个单 seed 固定参数任务。它调用正式
+`evaluate_state_model_run`，保留真实感知参数加载和评分开销，但不进行参数搜索。
+线程约束与正式执行相同；进程预算 128，当前任务数为 12。输出 `timings.json` 保存
+实际配置、试次数、计时、版本及数据/源码哈希；输出目录必须不存在。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMBA_CACHE_DIR=/tmp/model0826_acceleration_numba \
+  python -m src.Bayesian_state.workflows.benchmarks.estimate_model_0826_fit_time \
+  --output-dir /tmp/model0826-fit-timing-new
+```
+
+这些单任务时间不是完整拟合时间，也不是 128-worker 吞吐实测。估计完整工期还需结合
+实际搜索候选批次、seed 数、缓存命中、被试试次数和当前串行依赖。
