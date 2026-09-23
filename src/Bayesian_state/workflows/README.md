@@ -2,7 +2,10 @@
 
 Model 0923 的新开发入口见[机制规范](../docs/model_architecture/model_0923.md)。
 `analysis/prepare_model_0923.py` 生成现有被试的原话审查清单，不运行拟合，也不把
-编码有效当成规则目录覆盖。三个 `model0923_cond*_B0_smoke.yaml` 使用原
+编码有效当成规则目录覆盖。`analysis/audit_model_0923_reports.py` 进一步保守解析完整分句，
+保留躯干参照不确定性并生成未校准的报告概率矩阵；运行方式与解释限制见
+[口述表示说明](../docs/model_architecture/model_0923_oral.md)。结果写入新目录，旧编码不变。
+三个 `model0923_cond*_B0_smoke.yaml` 使用原
 `run_simulation` 入口作单人短序列检查；尚无 0923 的正式多人拟合入口。
 
 新观察数据的 Model 0826 PMH 拟合默认走

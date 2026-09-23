@@ -98,3 +98,11 @@ Trajectory backend 使用同一套 raw-run 语义但不伪装成 PF：评价器�
 quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源一致；图和 trial CSV 会明确
 记录 `model_inference_backend=trajectory`、trajectory run 数及
 `observed_history_conditional_trajectory_repeat_target_mass`，不会写成 PF draws 或 PF runs。
+
+## Model 0923 的保守结构审查
+
+`structure_0923.py` 提供独立于旧中心/区域评分的完整分句编码。躯干比较保留对象与方向，
+不赋予硬性的心理阈值；组合数量、未解析内容和编码不确定性均保留。
+它复用共享几何编码，不改写本目录旧评分器或原数据。报告矩阵在模型层
+`model/oral_report_space.py` 中生成，尚未校准或接入 PF。
+详见[口述表示说明](../../docs/model_architecture/model_0923_oral.md)。

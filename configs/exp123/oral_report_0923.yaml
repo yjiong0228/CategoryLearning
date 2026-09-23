@@ -1,0 +1,15 @@
+model_id: model_0923
+stage: R1_report_structure_and_kernel
+status: development_audit_not_calibrated
+physical_body_reference: 0.75
+physical_reference_source: user_confirmation_20260923
+# These values check normalization and sensitivity. They are not fitted
+# estimates, official parameter ranges, or evidence that the kernel is adequate.
+measurement_demo:
+  mention_probability: 0.8
+  other_probability: 0.02
+  body_naming_probability: 0.5
+  body_reference_center: 0.75
+  body_reference_widths: [0.05, 0.10, 0.20]
+# The body center is only a starting candidate. Psychological offset has not
+# been measured. No per-subject or per-trial reference parameter is introduced.
