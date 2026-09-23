@@ -5,6 +5,19 @@ Model 0923 的新开发入口见[机制规范](../docs/model_architecture/model_
 编码有效当成规则目录覆盖。`analysis/audit_model_0923_reports.py` 进一步保守解析完整分句，
 保留躯干参照不确定性并生成未校准的报告概率矩阵；运行方式与解释限制见
 [口述表示说明](../docs/model_architecture/model_0923_oral.md)。结果写入新目录，旧编码不变。
+`analysis/probe_model_0923_structure.py` 在原 R1 报告上检查 12 条重复特征候选，
+分别记录忽略标签的结构支持与原 choice 下的支持；前者不作为拟合指标。
+它不运行 PF，不改变正式配置。复现命令（新输出目录）：
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.probe_model_0923_structure \
+  --report-dir results/model_0923/report_structure_20260923_v2 \
+  --trials-path results/model_0826/fig34_twelve_subjects_20260921_v1/base_analysis/trials.csv \
+  --config-path configs/exp123/model_0923_structure_probe.yaml \
+  --output-dir results/model_0923/structure_probe_NEW
+```
+
 三个 `model0923_cond*_B0_smoke.yaml` 使用原
 `run_simulation` 入口作单人短序列检查；尚无 0923 的正式多人拟合入口。
 

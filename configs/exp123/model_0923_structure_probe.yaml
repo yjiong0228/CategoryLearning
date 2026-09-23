@@ -1,0 +1,12 @@
+model_id: model_0923
+stage: R2_axis_pair_overlap_probe
+status: development_structure_probe_not_adopted
+candidate: axis_pair_overlap_12
+label_policy: preserve_fixed_labels_no_permutations
+# Finite geometry check; not a new production similarity resource or fit.
+geometry_seed: 20260923
+geometry_points: 4096
+probability_beta: 5.0
+probability_trials_per_subject: 8
+# Reuse the R1 measurement demonstration, without refitting report parameters.
+report_config: configs/exp123/oral_report_0923.yaml
