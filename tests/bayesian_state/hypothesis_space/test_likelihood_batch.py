@@ -9,7 +9,7 @@ from src.Bayesian_state.hypothesis_space.observation_model.base_partition import
 @pytest.mark.parametrize('n_cats', [2, 4])
 @pytest.mark.parametrize('mode', ['prototype', 'boundary'])
 @pytest.mark.parametrize('normalized', [False, True])
-@pytest.mark.parametrize('feedback_mode', ['category_feedback', 'legacy', 'bernoulli_choice'])
+@pytest.mark.parametrize('feedback_mode', ['category_feedback', 'legacy', 'legacy_category_feedback', 'bernoulli_choice'])
 def test_batch_matches_independent_base_loop(n_cats, mode, normalized, feedback_mode):
     partition = ContinuousPartition(4, n_cats)
     hypos = list(range(partition.length))[::-1] + [0, 0]
@@ -21,6 +21,14 @@ def test_batch_matches_independent_base_loop(n_cats, mode, normalized, feedback_
             data = (x, [1, n_cats, 1], responses)
             kwargs = dict(beta=beta, distance_mode=mode, normalized=normalized,
                           feedback_likelihood_mode=feedback_mode, feedback_lapse=.15)
+            if .5 in responses and feedback_mode in ('category_feedback', 'legacy'):
+                # The short legacy alias is ordinary category feedback; only
+                # the explicit historical mode permits its overlapping weights.
+                with pytest.raises(ValueError, match='Partial feedback'):
+                    BasePartition.calc_likelihood(partition, hypos, data, **kwargs)
+                with pytest.raises(ValueError, match='Partial feedback'):
+                    partition.calc_likelihood(hypos, data, **kwargs)
+                continue
             expected = BasePartition.calc_likelihood(partition, hypos, data, **kwargs)
             actual = partition.calc_likelihood(hypos, data, **kwargs)
             np.testing.assert_array_equal(actual, expected)

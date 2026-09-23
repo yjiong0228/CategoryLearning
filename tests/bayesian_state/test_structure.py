@@ -88,6 +88,7 @@ def test_oral_evaluation_separates_mapping_scoring_and_reporting() -> None:
         "mapping.py",
         "scoring.py",
         "reporting.py",
+        "structure_0923.py",
     }
 
 
@@ -102,6 +103,7 @@ def test_transition_modes_and_shared_mechanisms_are_separate() -> None:
         "dynamic_adaptive_control.py",
         "feedback_reactive.py",
         "nested_feedback_accumulator.py",
+        "unified_rule_search.py",
     }
     shared_mechanisms = {
         "contracts.py",

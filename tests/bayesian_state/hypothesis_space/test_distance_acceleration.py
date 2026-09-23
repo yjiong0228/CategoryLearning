@@ -32,9 +32,12 @@ def test_zero_beta_matches_original_softmax_for_every_rule(n_cats, mode):
     data = (points, [1,2,1,2], [1,0,.5,0])
     beta = np.zeros(partition.length)
     beta[:3] = [1.,5.,10.]
-    fast = partition.calc_likelihood(range(partition.length), data, beta, distance_mode=mode)
+    # This numerical regression explicitly reproduces the historical 0.5
+    # formula; ordinary category_feedback correctly rejects partial feedback.
+    kwargs = dict(distance_mode=mode, feedback_likelihood_mode='legacy_category_feedback')
+    fast = partition.calc_likelihood(range(partition.length), data, beta, **kwargs)
     partition.zero_beta_fast_path = False
-    original = partition.calc_likelihood(range(partition.length), data, beta, distance_mode=mode)
+    original = partition.calc_likelihood(range(partition.length), data, beta, **kwargs)
     np.testing.assert_array_equal(fast, original)
 
 
