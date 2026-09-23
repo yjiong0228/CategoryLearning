@@ -21,6 +21,10 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
 
     dynamic_controls = False
 
+    def _draw_replacement_count(self, slot_count: int, slot_rate: float) -> int:
+        """Draw the count without changing legacy modules' random streams."""
+        return int(self.trial_rng.binomial(slot_count, slot_rate))
+
     def _transition_signals(self) -> Mapping[str, Any]:
         return {
             "controller_mode": str(self.controller_mode),
@@ -71,8 +75,8 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
                     self.current_event_probability,
                     search_slot_count,
                 )
-            replacement_count = int(
-                self.trial_rng.binomial(search_slot_count, search_slot_rate)
+            replacement_count = self._draw_replacement_count(
+                search_slot_count, search_slot_rate
             )
 
         commitment_target = self._prepare_rule_commitment()
@@ -614,10 +618,12 @@ class WorkspaceTransitionExecutionMixin(TwoStepHypothesisTransitionMixin):
         event: Dict[str, Any] = {
             "trial_index": int(context.trial_index),
             "strategy_mode": self.strategy_mode,
-            "transition_method": (
+            "transition_method": getattr(
+                self,
+                "replacement_count_method",
                 "adaptive_binomial_replacement"
                 if self.dynamic_controls
-                else "fixed_binomial_replacement"
+                else "fixed_binomial_replacement",
             ),
             "m": float(self.m),
             "predictive_m": float(self.current_m),

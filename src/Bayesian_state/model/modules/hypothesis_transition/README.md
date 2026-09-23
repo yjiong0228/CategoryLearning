@@ -1,5 +1,10 @@
 # 假设转移（H 模块）
 
+Model 0923 B0 新增 `unified_rule_search.py` 公共模式：一条失败痕迹、
+每题最多一个候选修订、固定局部/全局比例，以及保留规则质量不变的迁移。
+它复用下述 select → assign-prior 生命周期；旧模式保留原二项计数与随机流。
+参见[0923 规范](../../../docs/model_architecture/model_0923.md)。
+
 H 模块描述被试怎样从上一试次的 hypothesis posterior 过渡到下一试次的 hypothesis prior。
 它只包含两个认知步骤：
 
@@ -23,6 +28,7 @@ hypothesis_transition/
 ├── dynamic_adaptive_control.py
 ├── feedback_reactive.py
 ├── nested_feedback_accumulator.py
+├── unified_rule_search.py
 ├── selection.py
 ├── prior_assignment.py
 ├── workspace.py
@@ -39,10 +45,11 @@ hypothesis_transition/
 | `dynamic_adaptive_control.py` | 随 trial 改变的连续 adaptive control state (c_t) |
 | `feedback_reactive.py` | 只读取上一 feedback 的一步反应 H3 参照模式 |
 | `nested_feedback_accumulator.py` | 严格嵌套 constant/reactive/accumulator 的 H4 模式 |
+| `unified_rule_search.py` | 0923 B0：统一失败控制与单候选修订 |
 | `selection.py` / `prior_assignment.py` | 选择和 prior 分配的共享机制 |
 | `workspace.py` / `execution.py` | bounded workspace 状态与执行逻辑 |
 
-只有表中前六个文件定义认知模式或公共契约；后四个是共享机制，不能在
+表中前七个文件定义认知模式或公共契约；后四个是共享机制，不能在
 model YAML 中当作独立 H 模式配置。被试级 candidate 资源位于
 `configs/shared/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
 

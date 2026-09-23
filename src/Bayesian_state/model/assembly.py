@@ -17,6 +17,9 @@ from .config import ModelContext
 from .engine import BayesianStateEngine, IndexedSet
 from .modules.base_module import ModuleRole
 from .modules.pairing_memory import HierarchicalPairingMemoryModule
+from .modules.hypothesis_transition.unified_rule_search import (
+    UnifiedRuleSearchHypothesisTransitionModule,
+)
 
 
 def resolve_class(class_reference: str | type) -> type:
@@ -100,6 +103,15 @@ def build_engine(
 ) -> BayesianStateEngine:
     """Construct an engine and instantiate configured cognitive modules."""
 
+    provenance = engine_config.get("provenance") or {}
+    model_0923 = provenance.get("model_id") == "model_0923"
+    if model_0923:
+        from .model_0923 import validate_model_0923_config
+
+        # Recheck after StateModel module overrides and seed injection.
+        validate_model_0923_config(engine_config)
+        if provenance.get("condition") != context.condition:
+            raise ValueError("0923 declared condition disagrees with the trial context")
     agenda = engine_config.get("agenda", [])
     if not isinstance(agenda, list):
         raise ValueError("engine_config.agenda must be a list.")
@@ -132,13 +144,20 @@ def build_engine(
             raise ValueError("condition 3 requires hierarchical_pairing likelihood and HierarchicalPairingMemoryModule together.")
         beta = engine.get_module(ModuleRole.BETA)
         transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+        # The graded score trace is an explicit 0923 change. All existing
+        # condition-3 profiles retain the full-success search contract.
+        search_feedback = (
+            "graded" if model_0923 and isinstance(
+                transition, UnifiedRuleSearchHypothesisTransitionModule
+            ) else "full_success"
+        )
         if (observation_likelihood.beta_source != "action"
                 or observation_likelihood.distance_mode != "boundary"
                 or getattr(beta, "beta_update_mode", None) != "hierarchical_feedback"
-                or getattr(transition, "feedback_interpretation", None) != "full_success"
+                or getattr(transition, "feedback_interpretation", None) != search_feedback
                 or not hasattr(transition, "prior_assignment_method")
                 or engine.get_module(ModuleRole.MAPPING) is not None):
-            raise ValueError("condition 3 requires boundary/action emissions, hierarchical_feedback beta, full_success workspace search and fixed response coordinates.")
+            raise ValueError(f"condition 3 requires boundary/action emissions, hierarchical_feedback beta, {search_feedback} workspace search and fixed response coordinates.")
         names = {module.role: name for name, module in engine.modules.items()}
         if engine.agenda.index(names[ModuleRole.MEMORY]) > engine.agenda.index(names[ModuleRole.BETA]):
             raise ValueError("condition 3 memory must precede beta in the post-choice agenda.")

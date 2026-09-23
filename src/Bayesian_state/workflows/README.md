@@ -1,5 +1,10 @@
 # 当前模型工作流
 
+Model 0923 的新开发入口见[机制规范](../docs/model_architecture/model_0923.md)。
+`analysis/prepare_model_0923.py` 生成现有被试的原话审查清单，不运行拟合，也不把
+编码有效当成规则目录覆盖。三个 `model0923_cond*_B0_smoke.yaml` 使用原
+`run_simulation` 入口作单人短序列检查；尚无 0923 的正式多人拟合入口。
+
 新观察数据的 Model 0826 PMH 拟合默认走
 `python -m src.Bayesian_state.run_model_0826_fit`，见 [配置与用法](../optimization/ADAPTIVE_FIT.md)。
 下列 dated pilot 仍是试验记录与复核入口，不是正式默认入口。它们共用的提案和数值诊断

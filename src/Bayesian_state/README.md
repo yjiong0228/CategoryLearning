@@ -1,5 +1,9 @@
 # Bayesian_state 模型框架
 
+> **Model 0923 开发入口**：[机制规范与分阶段验证](docs/model_architecture/model_0923.md)。
+> 当前提供 B0 最简行为核心、三条件小规模配置、口述审查清单与联合观测接口；
+> 真实口述矩阵、参数拟合和最终机制选择尚未完成。0826 继续作为现有比较基准。
+
 > 本目录是期刊与博士论文共同维护的模型实现。期刊的配置、入口和验证位于
 > [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
 > 该目录依赖本包；本包不依赖期刊目录。修改机制只改这里，实验差异由配置和数据适配处理。
