@@ -31,6 +31,7 @@
 | `analysis/pilot_model_0826_search_stopping.py` | 搜索与停止检查：逐参数方向提案、停止后的额外挑战、S129 历史起点续搜、S229 评分波动定位，以及 condition 3 完整序列试点 |
 | `analysis/validate_model_0826_joint_square.py` | 独立复核已预选的 S129 四点联合移动例子，保留两个单块对照 |
 | `analysis/diagnose_model_0826_numerics.py` | 六人验收后的缓存波动诊断与预先固定的数值/边界探测；不重新搜索或修改默认配置 |
+| `analysis/audit_model_0826_search_design.py` | 只读汇总已有拟合及近优候选，检查即时／累积搜索控制能否由单一失败量近似；不运行PF或拟合真实选择 |
 | `benchmarks/benchmark_boundary_geometry.py` | 几何计算性能检查 |
 
 从仓库根目录运行：
@@ -43,6 +44,23 @@ python -m src.Bayesian_state.workflows.analysis.behavior_diagnostics --help
 
 恢复拟合实现位于 `optimization/recovery.py`；冻结候选评分、预算评价和恢复统计/绘图位于
 `evaluation/recovery.py`。工作流只组织这些步骤，不维护另一套 PF 或认知机制。
+
+## 已有结果的搜索设计检查
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.audit_model_0826_search_design \
+  --cohort-config CategoryLearning_codes/figures/fig3/twelve_subject_config.json \
+  --analysis results/model_0826/fig34_twelve_subjects_20260921_v1/base_analysis \
+  --output results/model_0826/search_design_audit_new
+```
+
+输出目录必须不存在。入口核对原配置哈希、被试和试次顺序，以及已保存的搜索概率／范围；
+保存全部候选、原提名、数值核验和来源清单。统一曲线仅近似已有模型的控制概率，
+最小化第2试次起的logit均方误差，衰减在[0,.999]内搜索，截距自由、增益非负。
+该检查不估计真实作答似然，也不为统一模型计算AIC/BIC。搜索范围另在事件曲线的
+最优衰减下拟合，不是两者的联合最优。原近优库不是参数置信集合，数值种子区间也不是
+被试参数区间；不能用这些诊断宣布模型胜负。当前12人检查见
+`results/model_0826/search_design_audit_20260923_v1/README.md`。
 
 76 个已无当前依赖的历史 Python 工作流和 3 个历史 shell 批处理入口已删除。
 其对应旧命令不再可用，历史结果、配置和文稿保留；需要复现已删除工具时检出原 Git 版本。
