@@ -10,6 +10,7 @@ import numpy as np
 
 from .geometry import BoundaryGeometry, PrototypeGeometry
 from .spaces import ContinuousHypothesisSpace
+from .spaces.continuous import SPACE_VERSION
 
 
 SIMILARITY_KIND_ASSIGNMENT_AGREEMENT = "assignment_agreement"
@@ -152,7 +153,8 @@ class ContinuousSimilarity:
         random_state: int,
     ) -> Path:
         if (
-            distance_mode != "boundary"
+            self.space.version != SPACE_VERSION
+            or distance_mode != "boundary"
             or n_samples != self.DEFAULT_N_SAMPLES
             or random_state != self.DEFAULT_RANDOM_STATE
             or self.boundary.method != BoundaryGeometry.METHOD_DYKSTRA

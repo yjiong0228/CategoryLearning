@@ -13,11 +13,13 @@
 共享的唯一规则列表；两种 geometry 都不会另建一份假设空间。
 
 
-## Model 0923 的独立结构候选
+## Model 0923 的重复特征扩展
 
-`structural_0923.py::build_axis_pair_overlap_probe_space()` 返回 4 维、4 类的有限候选空间。
+`structural_0923.py::build_axis_pair_overlap_space()` 返回 0923 B0 v2 采用的 4 维、4 类空间。
+原 `build_axis_pair_overlap_probe_space()` 保留为调用同一构造器的兼容入口。
 它复用 `continuous.py` 的区域构造，在原 116 条之后添加 12 条阈值特征与比较特征重叠的规则，
 保留固定比较方向和标签，不枚举标签排列。独立版本与 signature 避免和原目录混淆。
-这不是默认 `ContinuousPartition` 空间，尚未用于正式拟合，也不提供新的相似度资源。
+`ContinuousPartition` 通过显式 `structural_extension: axis_pair_overlap_0923` 接入它；
+不带该项时仍使用原目录。新空间的相似度独立生成并按 signature 缓存，未进行真实拟合。
 验证入口见 `workflows/analysis/probe_model_0923_structure.py`，结果解释见
 [0923 规范](../../docs/model_architecture/model_0923.md)。

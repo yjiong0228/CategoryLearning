@@ -4,17 +4,18 @@ provenance:
   variant: B0
   condition: 3
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-B0-v1
+  specification_version: 0923-B0-v2
   scientific_status: behavioral_baseline_report_kernel_available_text_mapping_unvalidated
-  hypothesis_space_status: inherited_catalogue_pending_oral_coverage_review
+  hypothesis_space_status: adopted_axis_pair_overlap_128
+  catalogue_adoption_basis: user_approved_structure_not_fit_comparison
   hypothesis_similarity:
     basis: boundary_fixed_labels
-    version: shared_hypothesis_space_v1
+    version: mode_aware_assignment_agreement_v2
+    hypothesis_space_version: continuous_axis_pair_overlap_0923_v1
     sample_count: 100000
-    resource_generation_seed: not_recorded
-    fallback_computation_seed: 0
-    resource_filename: similarity_matrix_shared_hypothesis_space_v1_d4_c4_n100000.npy
-    resource_sha256: 89e1458e0647ba1149f6a50f602d45531b479975e6940f6b48252f755c5dbef6
+    computation_seed: 0
+    storage: runtime_cache_keyed_by_space_signature
+    bundled_resource: none_recompute_for_128_rules
     interpretation: fixed_label_functional_agreement
   label_mapping:
     mode: fixed_task_labels
@@ -24,6 +25,8 @@ partition:
   kwargs:
     n_dims: 4
     n_cats: 4
+    structural_extension: axis_pair_overlap_0923
+    similarity_n_samples: 100000
 inference:
   backend: particle_filter
   particle_count: 32

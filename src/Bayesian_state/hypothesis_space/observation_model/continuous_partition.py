@@ -16,6 +16,10 @@ from ..spaces import (
     ContinuousHypothesisSpace,
     build_continuous_hypothesis_space,
 )
+from ..spaces.structural_0923 import (
+    AXIS_PAIR_OVERLAP_EXTENSION,
+    build_axis_pair_overlap_space,
+)
 from ..geometry import BoundaryGeometry, PrototypeGeometry
 from ..geometry.distance_cache import ExactDistanceCache
 from ..geometry.stimuli import as_stimuli
@@ -55,6 +59,7 @@ class ContinuousPartition(BasePartition):
         boundary_distance_cache_max_entries: int = ExactDistanceCache.DEFAULT_MAX_ENTRIES,
         boundary_distance_cache_max_bytes: int = ExactDistanceCache.DEFAULT_MAX_BYTES,
         zero_beta_likelihood_batch: bool = True,
+        structural_extension: str | None = None,
     ) -> None:
         if not isinstance(zero_beta_fast_path, (bool, np.bool_)):
             raise ValueError("zero_beta_fast_path must be a boolean")
@@ -73,6 +78,15 @@ class ContinuousPartition(BasePartition):
                 label_permutation_policy=label_permutation_policy,
             )
         )
+        if structural_extension is not None:
+            if structural_extension != AXIS_PAIR_OVERLAP_EXTENSION:
+                raise ValueError(f"Unsupported structural_extension {structural_extension!r}")
+            if (self.hypothesis_space.n_dims, self.hypothesis_space.n_cats) != (4, 4):
+                raise ValueError("axis_pair_overlap_0923 requires four dimensions and four categories")
+            if self.hypothesis_space.parameters["label_permutation_policy"] != LABEL_PERMUTATION_IDENTITY:
+                raise ValueError("axis_pair_overlap_0923 retains fixed labels")
+            self.hypothesis_space = build_axis_pair_overlap_space()
+        self.structural_extension = structural_extension
         super().__init__(n_dims, n_cats)
         self.pairwise_similarity_tolerance = pair_tolerance
         self.center_band_tolerance = center_tolerance

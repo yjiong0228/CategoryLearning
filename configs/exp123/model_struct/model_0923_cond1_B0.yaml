@@ -4,9 +4,10 @@ provenance:
   variant: B0
   condition: 1
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-B0-v1
+  specification_version: 0923-B0-v2
   scientific_status: behavioral_baseline_report_kernel_available_text_mapping_unvalidated
-  hypothesis_space_status: inherited_catalogue_pending_oral_coverage_review
+  hypothesis_space_status: retained_binary_29
+  catalogue_adoption_basis: user_approved_structure_not_fit_comparison
   hypothesis_similarity:
     basis: boundary_fixed_labels
     version: shared_hypothesis_space_v1

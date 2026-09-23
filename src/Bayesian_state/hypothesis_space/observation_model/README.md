@@ -16,3 +16,17 @@
 
 观测 partition 使用既有的 space 和 geometry，绝不自行枚举假设，也不复制 region 或
 prototype 数组。
+
+
+Model 0923 B0 v2 在上述共享 `ContinuousPartition` 上显式设置：
+
+```yaml
+kwargs:
+  n_dims: 4
+  n_cats: 4
+  structural_extension: axis_pair_overlap_0923
+```
+
+该项仅支持 4 维、4 类和固定标签，调用 `spaces/structural_0923.py` 的 128 条目录。
+省略该项保持原 116 条四分类 / 29 条二分类空间。规则先验、几何、反馈和搜索使用同一目录；
+128 条的相似度按新版本独立生成，不能复用旧 116 条矩阵。详见 [0923 规范](../../docs/model_architecture/model_0923.md)。

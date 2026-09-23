@@ -106,10 +106,11 @@ def build_engine(
     provenance = engine_config.get("provenance") or {}
     model_0923 = provenance.get("model_id") == "model_0923"
     if model_0923:
-        from .model_0923 import validate_model_0923_config
+        from .model_0923 import validate_model_0923_config, validate_model_0923_partition
 
         # Recheck after StateModel module overrides and seed injection.
         validate_model_0923_config(engine_config)
+        validate_model_0923_partition(engine_config, partition)
         if provenance.get("condition") != context.condition:
             raise ValueError("0923 declared condition disagrees with the trial context")
     agenda = engine_config.get("agenda", [])

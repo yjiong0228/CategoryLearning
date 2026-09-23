@@ -18,8 +18,9 @@ python -m src.Bayesian_state.workflows.analysis.probe_model_0923_structure \
   --output-dir results/model_0923/structure_probe_NEW
 ```
 
-三个 `model0923_cond*_B0_smoke.yaml` 使用原
-`run_simulation` 入口作单人短序列检查；尚无 0923 的正式多人拟合入口。
+三个 `model0923_cond*_B0_smoke.yaml` 现使用 B0 v2 配置，经原 `run_simulation` 入口
+检查单人前 32 题：二分类 29 条、四分类 128 条，输出到新的 `cond*_B0_v2_smoke_20260923_v1` 目录。
+相似度首次按新空间生成并缓存；重跑必须使用新输出目录。尚无 0923 的正式多人拟合入口。
 
 新观察数据的 Model 0826 PMH 拟合默认走
 `python -m src.Bayesian_state.run_model_0826_fit`，见 [配置与用法](../optimization/ADAPTIVE_FIT.md)。

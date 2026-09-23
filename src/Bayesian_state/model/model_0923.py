@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
+from ..hypothesis_space.spaces.structural_0923 import AXIS_PAIR_OVERLAP_EXTENSION
+
 
 TRANSITION_CLASS = (
     "src.Bayesian_state.model.modules.hypothesis_transition.unified_rule_search."
@@ -32,6 +34,19 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
     partition_kwargs = partition.get("kwargs") or {}
     if partition_kwargs.get("n_cats") != (2 if condition == 1 else 4):
         raise ValueError("0923 category count disagrees with its condition")
+    # Keep saved v1 configurations executable; v2 explicitly adopts the 12
+    # feature-overlap rules. The catalogue change is not a new search mechanism.
+    version = provenance.get("specification_version", "0923-B0-v1")
+    if version not in {"0923-B0-v1", "0923-B0-v2"}:
+        raise ValueError("unsupported 0923 specification_version")
+    extension = AXIS_PAIR_OVERLAP_EXTENSION if version == "0923-B0-v2" and condition != 1 else None
+    if partition_kwargs.get("structural_extension") != extension:
+        raise ValueError("0923 structural_extension disagrees with its specification_version/condition")
+    if version == "0923-B0-v2":
+        if (partition.get("class") != "src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition"
+                or partition_kwargs.get("n_dims") != 4
+                or partition_kwargs.get("label_permutation_policy", "identity_only") != "identity_only"):
+            raise ValueError("0923 B0 v2 requires the shared four-dimensional partition with fixed labels")
     modules = config.get("modules") or {}
     if set(modules) != {"perception_mod", "hypo_transitions_mod", "memory_mod", "beta_mod"}:
         raise ValueError("0923 B0 requires exactly perception, transition, memory and beta modules")
@@ -70,3 +85,15 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
     noise = (config.get("output_noise") or {}).get("kwargs") or {}
     if noise != {"enabled": False}:
         raise ValueError("0923 B0 has no additional output-noise mechanism")
+
+
+def validate_model_0923_partition(config: Mapping[str, Any], partition: Any) -> None:
+    """Reject an injected partition that silently bypasses the v2 catalogue."""
+    provenance = config.get("provenance") or {}
+    if provenance.get("specification_version") != "0923-B0-v2":
+        return
+    binary = provenance["condition"] == 1
+    expected_extension = None if binary else AXIS_PAIR_OVERLAP_EXTENSION
+    if (getattr(partition, "structural_extension", None) != expected_extension
+            or partition.length != (29 if binary else 128)):
+        raise ValueError("0923 B0 v2 partition does not match its adopted catalogue")
