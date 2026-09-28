@@ -137,6 +137,30 @@ def test_build_posterior_table_allows_undefined_first_trial() -> None:
     assert np.all(np.isfinite(table["origin_true_choice_probability"]))
 
 
+def test_build_posterior_table_preserves_nonconsecutive_itrial_ids() -> None:
+    subject_data = _subject_frame()
+    subject_data["iTrial"] = [169, 172, 173]
+    prediction = {
+        "pred_choice": np.array([0, 2, 1]),
+        "pred_probs": np.array(
+            [
+                [np.nan, np.nan, np.nan, np.nan],
+                [0.1, 0.7, 0.1, 0.1],
+                [0.6, 0.1, 0.2, 0.1],
+            ]
+        ),
+        "original_posterior": [
+            None,
+            {7: 0.5, 9: 0.5},
+            {1: 0.2, 5: 0.3, 9: 0.5},
+        ],
+    }
+
+    table = workflow.build_posterior_table(subject_data, prediction)
+
+    assert table["trial"].tolist() == [172, 173]
+
+
 def test_missing_subject_is_rejected_before_output_is_created(tmp_path: Path) -> None:
     processed_csv = tmp_path / "Task3b_processed.csv"
     _subject_frame(subject_id=333).to_csv(processed_csv, index=False)

@@ -289,10 +289,24 @@ def build_posterior_table(
     ]
     trial_posterior = [original_posterior[int(index)] for index in trial_index]
     hit = (true_choice == predicted_choice).astype(int)
+    if "iTrial" in subject_data:
+        output_trials = pd.to_numeric(
+            subject_data.loc[trial_index, "iTrial"], errors="raise"
+        ).to_numpy(dtype=float)
+        if (
+            not np.all(np.isfinite(output_trials))
+            or not np.all(output_trials == np.floor(output_trials))
+            or np.any(output_trials < 1)
+            or len(np.unique(output_trials)) != len(output_trials)
+        ):
+            raise ValueError("iTrial must contain unique positive integer identifiers")
+        output_trials = output_trials.astype(int)
+    else:
+        output_trials = (trial_index + 1).astype(int)
 
     return pd.DataFrame(
         {
-            "trial": (trial_index + 1).astype(int),
+            "trial": output_trials,
             "true_choice": true_choice,
             "predicted_choice": predicted_choice,
             "hit": hit,
