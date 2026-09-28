@@ -94,15 +94,27 @@ def build_run_paths(
     project_root: Path,
     subject_id: int,
     run_date: date | None = None,
+    run_suffix: str | None = None,
 ) -> MegPosteriorRunPaths:
     """Build the non-overwriting output contract for a subject run."""
 
     subject_id = int(subject_id)
     date_token = (run_date or date.today()).strftime("%y%m%d")
+    suffix_token = ""
+    if run_suffix is not None:
+        normalized_suffix = str(run_suffix).strip()
+        if not normalized_suffix or any(
+            not (character.isalnum() or character in "-_")
+            for character in normalized_suffix
+        ):
+            raise ValueError(
+                "run suffix must contain only letters, digits, '-' or '_'"
+            )
+        suffix_token = f"_{normalized_suffix}"
     output_dir = (
         Path(project_root)
         / DEFAULT_RESULTS_ROOT
-        / f"Model_results_sub{subject_id}_{date_token}"
+        / f"Model_results_sub{subject_id}_{date_token}{suffix_token}"
     )
     return MegPosteriorRunPaths(
         output_dir=output_dir,
@@ -236,6 +248,11 @@ def _validate_subject_data(data: pd.DataFrame, subject_id: int) -> pd.DataFrame:
         raise ValueError(f"Subject {subject_id} needs at least two trials")
     if subject_data["condition"].nunique(dropna=False) != 1:
         raise ValueError(f"Subject {subject_id} has inconsistent condition values")
+    if not pd.api.types.is_integer_dtype(subject_data["choice"].dtype):
+        raise ValueError(
+            "Processed MEG choice column must use an integer dtype; "
+            "remove missing responses before fitting and serialize choices as integers"
+        )
     if int(subject_id) not in module_configs_M6:
         raise ValueError(f"Subject {subject_id} has no M6_MH module configuration")
     return subject_data
@@ -508,6 +525,7 @@ def _initial_manifest(
     project_root: Path,
     processed_csv: Path,
     n_jobs: int,
+    run_suffix: str | None,
 ) -> dict[str, Any]:
     try:
         input_path = str(processed_csv.relative_to(project_root))
@@ -517,6 +535,7 @@ def _initial_manifest(
         "schema_version": 1,
         "status": "running",
         "subject_id": int(subject_id),
+        "run_suffix": run_suffix,
         "task": TASK_NAME,
         "model": MODEL_NAME,
         "started_at": datetime.now().astimezone().isoformat(),
@@ -570,6 +589,7 @@ def run_meg_posterior(
     processed_csv: Path | None = None,
     run_date: date | None = None,
     n_jobs: int = DEFAULT_N_JOBS,
+    run_suffix: str | None = None,
 ) -> MegPosteriorRunPaths:
     """Run a complete fresh M6_MH fit and posterior export for one subject."""
 
@@ -585,9 +605,13 @@ def run_meg_posterior(
         raise ValueError("n_jobs must be at least 1")
 
     _validate_subject_data(pd.read_csv(processed_csv), subject_id)
-    paths = build_run_paths(project_root, subject_id, run_date)
+    paths = build_run_paths(
+        project_root, subject_id, run_date, run_suffix=run_suffix
+    )
     prepare_output_directory(paths)
-    manifest = _initial_manifest(subject_id, project_root, processed_csv, n_jobs)
+    manifest = _initial_manifest(
+        subject_id, project_root, processed_csv, n_jobs, run_suffix
+    )
     _write_manifest(paths.manifest, manifest)
 
     try:
@@ -677,6 +701,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_N_JOBS,
         help=f"Parallel worker budget (default: {DEFAULT_N_JOBS})",
     )
+    parser.add_argument(
+        "--run-suffix",
+        help=(
+            "Optional safe suffix for a preserved retry directory, for example "
+            "'retry1'"
+        ),
+    )
     return parser
 
 
@@ -686,6 +717,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.subject,
         processed_csv=args.processed_csv,
         n_jobs=args.n_jobs,
+        run_suffix=args.run_suffix,
     )
     print(paths.output_dir)
     print(paths.posterior_csv)

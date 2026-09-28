@@ -55,6 +55,18 @@ posterior diagnostics. Existing subject/date directories are never overwritten.
 A failed run remains in place with `status: failed` in the manifest so partial
 research artifacts are not silently deleted.
 
+If a failed directory already occupies the subject/date name, preserve it and
+use a labeled retry rather than overwriting it:
+
+```bash
+python -m src.Bayesian.run_meg_posterior --subject 336 --run-suffix retry1
+```
+
+This writes `Model_results_sub336_<YYMMDD>_retry1/`. Processed inputs must store
+`choice` as an integer column; missed responses should be excluded explicitly
+without renumbering an existing `iTrial` column so downstream MEG alignment
+retains the original trial identity.
+
 ## Important Note
 
 Some cross-module coupling still exists between `Bayesian` and `Bayesian_state`.

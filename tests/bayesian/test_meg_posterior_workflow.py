@@ -45,6 +45,18 @@ def test_prepare_run_paths_uses_yymmdd_and_refuses_overwrite(tmp_path: Path) -> 
         workflow.prepare_output_directory(paths)
 
 
+def test_prepare_run_paths_supports_safe_retry_suffix(tmp_path: Path) -> None:
+    paths = workflow.build_run_paths(
+        tmp_path, 336, date(2026, 9, 28), run_suffix="retry1"
+    )
+
+    assert paths.output_dir.name == "Model_results_sub336_260928_retry1"
+    with pytest.raises(ValueError, match="run suffix"):
+        workflow.build_run_paths(
+            tmp_path, 336, date(2026, 9, 28), run_suffix="../overwrite"
+        )
+
+
 def test_effective_fit_jobs_is_bounded_by_cpu_and_ready_tasks() -> None:
     assert workflow.effective_fit_jobs(120, available_cpus=128, ready_tasks=400) == 120
     assert workflow.effective_fit_jobs(120, available_cpus=32, ready_tasks=400) == 32
@@ -166,6 +178,27 @@ def test_missing_subject_is_rejected_before_output_is_created(tmp_path: Path) ->
     _subject_frame(subject_id=333).to_csv(processed_csv, index=False)
 
     with pytest.raises(ValueError, match="No behavioral rows found for subject 334"):
+        workflow.run_meg_posterior(
+            334,
+            project_root=tmp_path,
+            processed_csv=processed_csv,
+            run_date=date(2026, 9, 28),
+        )
+
+    assert not (
+        tmp_path
+        / "results/model_static/model_results_meg"
+        / "Model_results_sub334_260928"
+    ).exists()
+
+
+def test_float_choice_dtype_is_rejected_before_output_is_created(tmp_path: Path) -> None:
+    processed_csv = tmp_path / "Task3b_processed.csv"
+    subject_data = _subject_frame()
+    subject_data["choice"] = subject_data["choice"].astype(float)
+    subject_data.to_csv(processed_csv, index=False)
+
+    with pytest.raises(ValueError, match="choice column must use an integer dtype"):
         workflow.run_meg_posterior(
             334,
             project_root=tmp_path,
