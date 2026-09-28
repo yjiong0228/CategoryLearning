@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Task1a</title>
+
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        h1 {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        h2 {
+            position: absolute;
+            top: 18%;
+            left: 50%;
+            transform: translateX(-50%);
+        }        
+
+        #text {
+            position: absolute;
+            top: 18%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .flip {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        button {
+            position: absolute;
+            bottom: 15%;
+            right: 30%;
+            width: 60px;
+            height: 40px;
+            font-size: 18px;
+            transform: translateX(-50%);
+        }
+
+        #timer {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+    </style>
+
+    <script src="jquery-3.7.1.min.js"></script>
+</head>
+
+<body style="background-color: gray">
+    <form id="info" style="text-align: center">
+        <label for="subID">subID: </label>
+        <input type="number" id="subID" name="subID" required><br><br>
+        <label for="version">version:</label>
+        <input type="number" id="version" name="version" required><br><br>
+        <input type="submit" value="继续">
+    </form>
+
+    <div id="show_1" style="display: none">
+        <canvas id="canvas_1" height="600" width="1200"></canvas>
+    </div>
+
+    <div id="instruction" style="display: none; text-align: center">
+        <h1>任务1a</h1>
+        <div id="text" style="font-size: 18px; line-height: 1.5">Loading...</div>
+        <img class="flip" src="flip_icon.png" width="50"/>
+        <button onclick="timer(5,0); exploration()">开始</button>
+    </div>
+
+    <div id="show_2" style="display: none">
+        <canvas id="canvas_2" height="600" width="1200"></canvas>
+    </div> 
+
+    <div id="exploration" style="display: none">
+        <div id="timer" style="display: none"><b>剩余时间 5:00</b></div>
+        <img class="flip" src="flip_icon.png" width="50" onclick="flip()"/>
+    </div>
+
+    <div id="ending" style="display: none; text-align: center">
+        <h1>任务1a</h1>
+        <h2>时间到！请向主试示意。</h2>        
+    </div>
+
+
+    <script src="animal.js"></script>
+
+    <script>
+        var subID;
+        var version;  // 1 = learn length; 2 = learn angle
+        var animal_1;
+        var animal_2;
+
+        document.getElementById('info').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            subID = document.getElementById('subID').value;
+            version = document.getElementById('version').value;
+
+            if (!isNaN(subID) && !isNaN(version)) {
+                document.getElementById('info').style.display = 'none';
+                document.getElementById('instruction').style.display = 'block';
+                document.getElementById('show_1').style.display = 'block';
+            } else {
+                alert('请输入数字');
+            }
+
+            if (version == '1') {
+                var insert = "长度"
+            } else if (version == '2') {
+                var insert = "角度"
+            }
+            
+            text.innerHTML = `请拖动4类节点，构造出不同形态的动物，探索脖子、头、尾巴和腿的${insert}变化范围。<br />
+            准备好后请点击“开始”按钮。`;
+
+            animal_1 = new Animal(version, 1, "canvas_1", 1);
+            animal_2 = new Animal(version, 1, "canvas_2", 2);
+            animal_1.draw();
+        });
+
+        function timer(minutes, seconds) {
+            const timer = document.getElementById('timer');
+            setTimeout(() => {
+                timer.style.display = 'block';
+
+                const interval = setInterval(() => {
+                    if (seconds === 0) {
+                        minutes--;
+                        seconds = 59;
+                    } else {
+                        seconds--;
+                    }
+
+                    timer.textContent = `剩余时间 ${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+
+                    if (minutes === 0 && seconds === 0) {
+                        clearInterval(interval);
+                        downloadcsv(mouseTrajectory, ['x', 'y', 'node', 'timestamp'], "Task1a_"+subID+"_mouse.csv");
+                        downloadcsv(featureTrajectory, ['neck_length', 'head_length', 'leg_length', 'tail_length', 
+                        'neck_angle', 'head_angle', 'leg_angle', 'tail_angle', 'timestamp'], "Task1a_"+subID+"_feature.csv");
+
+                        document.getElementById("timer").style.display = "none";
+                        document.getElementById("exploration").style.display = "none";
+                        document.getElementById("show_2").style.display = "none";
+                        document.getElementById("ending").style.display = "block";
+                    }
+                }, 1000);
+            });
+        }
+
+        function exploration() {
+            document.getElementById("instruction").style.display = "none";
+            document.getElementById("show_1").style.display = "none";
+            document.getElementById("exploration").style.display = "block";
+            document.getElementById("show_2").style.display = "block";
+            animal_2.draw();
+        }
+
+        function flip() {
+            document.getElementById("exploration").style.display = "block";
+            document.getElementById("show_2").style.display = "block";
+            animal_2.flip();
+        }
+
+        function downloadcsv(data, headers, filename) {
+            const csvContent = "data:text/csv;charset=utf-8," +
+                headers.join(',') + '\n' +  // Add headers as first row
+                data.map((point) => Object.values(point).join(',')).join('\n');
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+
+</body>
+
+</html>
