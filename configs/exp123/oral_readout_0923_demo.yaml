@@ -1,0 +1,41 @@
+# Synthetic illustration only; oral parameters come from each model profile.
+seed: 20261005
+feature_order: [neck, leg, tail, head]
+similarity_n_samples: 64
+transition_seed: 0
+models:
+  - condition: 1
+    path: configs/exp123/model_struct/model_0923_cond1_B0.yaml
+    feedback: [0.0, 1.0, 0.0]
+  - condition: 2
+    path: configs/exp123/model_struct/model_0923_cond2_B0.yaml
+    feedback: [0.0, 1.0, 0.0]
+  - condition: 3
+    path: configs/exp123/model_struct/model_0923_cond3_B0.yaml
+    feedback: [0.0, 0.5, 1.0]
+live_stimuli:
+  - [0.8, 0.3, 0.2, 0.4]
+  - [0.8, 0.9, 0.2, 0.4]
+  - [0.2, 0.7, 0.6, 0.8]
+illustration:
+  condition: 2
+  hypothesis_index: 117  # zero-based: x0 > .5 and x0 > x2 for category 4
+  choice: 4             # one-based task category
+  stimuli:
+    - label: 腿短的刺激
+      values: [0.8, 0.3, 0.2, 0.4]
+    - label: 只把腿改长
+      values: [0.8, 0.9, 0.2, 0.4]
+  reports:
+    - text: 脖子长，且脖子长于尾巴。
+      meaning: 说全本类别的两个判断
+    - text: 脖子长。
+      meaning: 省略一个判断
+    - text: 脖子长，且腿短。
+      meaning: 省略一个判断，再补充腿短
+    - text: 脖子长，且腿长。
+      meaning: 省略一个判断，再补充腿长
+    - text: 躯干短于脖子，且脖子长于尾巴。
+      meaning: 用躯干命名单特征边界
+    - text: 脖子长，且腿短，且头短。
+      meaning: 一次补充两个部位，首版不支持

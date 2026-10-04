@@ -45,6 +45,10 @@ class ModelConfig:
                 raise ValueError(f"module configuration {name!r} must be a mapping.")
             if "class" not in module_config:
                 raise ValueError(f"module configuration {name!r} must include class.")
+        if values.get("oral_readout") is not None:
+            from .oral_readout import OralReadoutParameters
+
+            OralReadoutParameters.from_config(values["oral_readout"])
         if (values.get("provenance") or {}).get("model_id") == "model_0923":
             from .model_0923 import validate_model_0923_config
 

@@ -12,6 +12,7 @@ from .modules.base_module import ModulePhase, ModuleRole
 
 if TYPE_CHECKING:
     from .readout import ChoicePrediction
+    from .oral_readout import OralPrediction
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,14 @@ class StateModel:
             context=self.context,
         )
         self._pending_trial: PreparedTrial | None = None
+        self._oral_readout_parameters = None
+        if self.engine_config.get("oral_readout") is not None:
+            from .oral_readout import OralReadoutParameters
+
+            self._oral_readout_parameters = OralReadoutParameters.from_config(self.engine_config["oral_readout"])
+        self._oral_readout = None  # Build the fixed report grammar only on demand.
+        self._oral_choice_prediction = None
+        self._oral_reported_choice = None
         self._completed_trial_count = 0
         self.posterior_log: list[np.ndarray] = []
         self.prior_log: list[np.ndarray] = []
@@ -204,6 +213,8 @@ class StateModel:
             log=log,
         )
         self._pending_trial = prepared
+        self._oral_choice_prediction = None
+        self._oral_reported_choice = None
         return prepared
 
     def predict_choice(
@@ -222,9 +233,11 @@ class StateModel:
 
         if self._pending_trial is None:
             raise RuntimeError("begin_trial() must be called before predict_choice().")
+        if self._oral_reported_choice is not None:
+            raise RuntimeError("choice is already fixed by this trial's oral readout")
         from .readout import predict_choice_from_model
 
-        return predict_choice_from_model(
+        prediction = predict_choice_from_model(
             self,
             self._pending_trial.perceived_stimulus,
             trial_idx=self._pending_trial.trial_index,
@@ -237,6 +250,51 @@ class StateModel:
             post_error_lapse_state=post_error_lapse_state,
             latent_volatility_value=latent_volatility_value,
         )
+        self._oral_choice_prediction = prediction
+        return prediction
+
+    def predict_oral(self, choice: int) -> "OralPrediction":
+        """Predict a report after this trial's choice, before its feedback.
+
+        This pure observation does not update beliefs or consume a learning RNG.
+        It requires predict_choice() so it cannot independently select a rule.
+        """
+        if self._pending_trial is None:
+            raise RuntimeError("oral prediction requires a pending trial before feedback")
+        if self._oral_readout_parameters is None:
+            raise ValueError("configure oral_readout before requesting oral prediction")
+        decision = self._oral_choice_prediction
+        if decision is None or decision.rule_snapshot is None:
+            raise RuntimeError("predict_choice() must precede predict_oral()")
+        if self._oral_reported_choice is not None and choice != self._oral_reported_choice:
+            raise ValueError("this trial already has a different reported choice")
+        source = decision.rule_snapshot
+        mixture = source.rule_weights @ source.category_probabilities
+        if (decision.output_lapse != 0.0
+                or not np.allclose(mixture, decision.observed_probabilities, atol=1e-12, rtol=0)):
+            raise ValueError("oral rule_content_v1 requires an untransformed rule-mixture choice; "
+                             "output lapse or aggregate confidence needs an explicit joint observation model")
+        if self.engine.get_module(ModuleRole.MAPPING) is not None:
+            raise ValueError("oral rule_content_v1 uses fixed labels; learned label mapping is not implemented")
+        if self._oral_readout is None:
+            from .oral_readout import OralReadout
+
+            self._oral_readout = OralReadout(
+                self.partition_model.hypothesis_space, self._oral_readout_parameters,
+                boundary_geometry=self.partition_model.boundary_geometry,
+            )
+        report = self._oral_readout.predict(
+            hypothesis_indices=source.hypothesis_indices, rule_weights=source.rule_weights,
+            category_probabilities=source.category_probabilities, choice=choice,
+            perceived_stimulus=source.perceived_stimulus,
+        )
+        self._oral_reported_choice = report.choice
+        self._pending_trial.log["oral_readout"] = {
+            "method": "rule_content_v1", "timing": "after_choice_before_feedback",
+            "choice": report.choice, "vocabulary_size": len(report.codes),
+            "extra_event_probability": float(report.extra_probabilities.sum()),
+        }
+        return report
 
     def complete_trial(
         self,
@@ -258,6 +316,8 @@ class StateModel:
             raise ValueError(
                 f"choice must be 1-indexed in [1, {self.n_cats}], got {choice!r}."
             )
+        if self._oral_reported_choice is not None and choice_value != self._oral_reported_choice:
+            raise ValueError("feedback choice differs from the preceding oral readout choice")
         feedback_value = float(feedback)
         if not np.isfinite(feedback_value) or not 0.0 <= feedback_value <= 1.0:
             raise ValueError("feedback must be a finite value in [0, 1].")
@@ -304,6 +364,8 @@ class StateModel:
                     orientation[int(executed)]
                 )
         self._pending_trial = None
+        self._oral_choice_prediction = None
+        self._oral_reported_choice = None
         self._completed_trial_count += 1
         return posterior_snapshot, prepared.prior.copy(), log
 

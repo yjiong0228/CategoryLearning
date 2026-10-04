@@ -66,6 +66,16 @@ CHOICE_READOUT_KWARG_KEYS = (
 
 
 @dataclass(frozen=True)
+class DecisionRuleSnapshot:
+    """The actual pre-feedback rule mixture, retained for coupled readouts."""
+
+    hypothesis_indices: tuple[int, ...]
+    rule_weights: np.ndarray
+    category_probabilities: np.ndarray
+    perceived_stimulus: np.ndarray
+
+
+@dataclass(frozen=True)
 class ChoicePrediction:
     """Pre-outcome choice readout for one prepared model trial."""
 
@@ -74,6 +84,7 @@ class ChoicePrediction:
     readout_details: Dict[str, Any]
     output_lapse: float
     post_error_lapse_state: float
+    rule_snapshot: DecisionRuleSnapshot | None = None
 
 
 def _mapping_get_path(root: Mapping[str, Any] | None, path: str) -> Any:
@@ -858,12 +869,22 @@ def predict_choice_from_model(
         post_error_lapse_state=float(post_error_lapse_state),
         latent_volatility_value=float(latent_volatility_value),
     )
+    snapshot = None
+    if getattr(model, "_oral_readout_parameters", None) is not None:
+        # No new draw or re-read of beliefs: oral uses precisely this decision
+        # mixture, including its sampled/MAP/persistent rule and current beta.
+        arrays = [np.array(value, copy=True) for value in
+                  (readout_weights, hypothesis_category, stimulus)]
+        for value in arrays:
+            value.setflags(write=False)
+        snapshot = DecisionRuleSnapshot(tuple(int(h) for h in hypotheses), *arrays)
     return ChoicePrediction(
         cognitive_probabilities=cognitive.copy(),
         observed_probabilities=observed.copy(),
         readout_details=dict(readout_details),
         output_lapse=float(output_lapse),
         post_error_lapse_state=float(next_post_error_state),
+        rule_snapshot=snapshot,
     )
 
 

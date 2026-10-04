@@ -394,3 +394,23 @@ S122/S222/S315各代表一个condition，按长度接近各组中位数选择，
 每个内侧候选都与全部外侧比较，alpha在8个预定比较之间分配；只有外侧相对所有原候选均有实质收益，
 才标记为支持考虑扩范围。有限点未见收益不能证明整个范围已校准。预算到顶保留不确定，不自动补算。
 协议和命令见[有限范围检查](../optimization/FROZEN_BOUNDARY_CHECK.md)。
+
+
+## Oral readout 首版演示
+
+`demo_model_0923_oral` 用合成刺激展示同一条规则怎样生成完整、省略、躯干措辞和补充描述，
+并实际运行三个 condition 各 3 题的 `begin_trial → predict_choice → predict_oral → complete_trial`。
+它不读取真实被试数据、不拟合参数，也不改变已有行为 PF。共用口述演示参数读取三个 B0
+配置的 `oral_readout`；合成输入和随机种子由 `configs/exp123/oral_readout_0923_demo.yaml` 提供。
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.demo_model_0923_oral \
+  --config-path configs/exp123/oral_readout_0923_demo.yaml \
+  --output-dir results/model_0923/oral_readout_demo_NEW
+```
+
+输出目录必须不存在。产物为中文 `README.md` 与包含全部输入、配置、逐题结果、环境版本、
+源码哈希的 `demonstration.json`。演示将知觉噪声置零、相似度采样缩为 64，缓存放临时目录；
+这些覆盖记录在输出中，不改正式配置。口述抽样与行为使用独立随机数流。
+现有演示：`results/model_0923/oral_readout_demo_20261005_v1/`。

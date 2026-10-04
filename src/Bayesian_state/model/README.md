@@ -174,3 +174,29 @@ python -m src.Bayesian_state.hypothesis_space.analysis
 `results/oral_analysis/Task2_oral_trial_diagnostics.csv` 的 trial key 是否完全一致，然后将
 可复现表格、PNG 图、provenance 和报告源文件写入 `results/hypothesis_analysis`。这是分析入口，
 不会修改 partition 实现或模型行为。
+
+
+## Oral readout：选择后的口述观测层
+
+`oral_readout.py` 提供 `OralReadout`、`OralReadoutParameters` 与 `OralPrediction`。
+它与 decision readout 共用潜在规则，属于观测层，不放入学习模块的 agenda。
+在 engine 配置顶层加入 `oral_readout: {method: rule_content_v1, kwargs: ...}`；
+参数字段见 `configs/exp123/model_struct/model_0923_cond{1,2,3}_B0.yaml`。
+`ModelConfig` 校验方法与参数；未配置时行为接口兼容原有用法。
+
+显式调用顺序为 `begin_trial → predict_choice → predict_oral(choice) → complete_trial`。
+Oral 使用 `ChoicePrediction.rule_snapshot` 中实际决策权重、各规则类别概率及感知刺激，
+不会独立重抽执行规则。`choice` 从 1 起始；给定该选择后计算口述分布，不更新学习状态。
+`OralPrediction.sample(rng)` 应使用独立口述 RNG；`probability(code)` 对未知代码返回 0，
+不将未解析文本自动归入 OTHER。`extra_probabilities` 是每种报告同时来自补充事件的概率质量；
+`extra_given_report(code)` 才是给定报告后的补充来源概率，不是人工标注结论。
+
+首版支持连续目录、固定标签、最近类别分量、独立省略、模糊躯干命名，以及至多一个未使用
+部位的刺激描述。已产生口述的 trial 不能重新作 decision，也不能用另一选择完成反馈。
+output lapse 或实际改变混合类别概率的置信变换，以及区域—类别映射模块，暂不能读取口述；
+必须先定义明确的联合观测关系。行为运行仍可使用这些机制。
+
+这里仅接通单模型路径；PF 不自动评分口述，`generate_step_by_step` 也不自动生成报告。
+未来多粒子接入须先按选择前粒子权重汇总 `P(choice, report)`，再作条件化。
+详细假设见 [0923 规范第 13 节](../docs/model_architecture/model_0923.md#13-oral-readout-首版从内部判断到说出来的话)，
+可运行例子见 `../workflows/analysis/demo_model_0923_oral.py`。

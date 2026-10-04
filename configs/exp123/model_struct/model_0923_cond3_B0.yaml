@@ -82,3 +82,14 @@ agenda:
 - hypo_transitions_mod
 - memory_mod
 - beta_mod
+# Shared oral demonstration parameters; not fitted estimates.
+# Explicit predict_oral() calls only; behavior/PF scores remain unchanged.
+oral_readout:
+  method: rule_content_v1
+  kwargs:
+    mention_probability: 0.8
+    extra_probability: 0.2
+    other_probability: 0.02
+    body_naming_probability: 0.5
+    body_reference_center: 0.75
+    body_reference_width: 0.1
