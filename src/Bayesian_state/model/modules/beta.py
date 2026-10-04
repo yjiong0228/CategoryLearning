@@ -59,8 +59,10 @@ class BetaModule(BaseModule):
               ``executed_hypothesis`` for rule-specific confidence learning
             - beta_update_mode: ``inferred_correct_category`` (legacy default),
               ``probabilistic_feedback``, or ``hierarchical_feedback``. The
-              hierarchical mode consumes absolute pre-feedback evidence cached
-              by the memory module and requires zero feedback lapse.
+              probabilistic mode centers binary feedback on the task's chance
+              probability for the observed outcome. The hierarchical mode
+              consumes absolute pre-feedback evidence cached by the memory
+              module and requires zero feedback lapse.
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
             - prior_beta_scale: Scaling factor for prior-based initialization (default: 10.0)
         """
@@ -347,6 +349,15 @@ class BetaModule(BaseModule):
         update_indices: np.ndarray,
     ) -> None:
         feedback_value = float(np.clip(feedback, 0.0, 1.0))
+        partition = getattr(self.engine, "partition", None)
+        n_categories = int(getattr(partition, "n_cats", 2))
+        if n_categories < 2:
+            raise ValueError("probabilistic_feedback requires at least two categories.")
+        choice_chance = 1.0 / n_categories
+        feedback_chance = (
+            feedback_value * choice_chance
+            + (1.0 - feedback_value) * (1.0 - choice_chance)
+        )
         for hypo_idx in update_indices:
             current_beta = self.beta[hypo_idx]
             p_choice = self._choice_probability_under_hypothesis(
@@ -356,7 +367,20 @@ class BetaModule(BaseModule):
                 beta=current_beta,
             )
             evidence = feedback_value * p_choice + (1.0 - feedback_value) * (1.0 - p_choice)
-            centered = 2.0 * (evidence - 0.5)
+            if n_categories == 2:
+                # Preserve the exact binary arithmetic and frozen trajectories.
+                centered = 2.0 * (evidence - 0.5)
+            else:
+                # Four-choice chance is .25 for correct feedback and .75 for
+                # error feedback. Rescale each side to [-1, 1], so a uniform
+                # rule stays neutral and the existing learning rates keep
+                # their meaning at fully supportive/contradictory evidence.
+                scale = (
+                    1.0 - feedback_chance
+                    if evidence >= feedback_chance
+                    else feedback_chance
+                )
+                centered = (evidence - feedback_chance) / scale
             if centered >= 0:
                 headroom = self.beta_max - current_beta
                 increment = self.increase_rate * centered * headroom
@@ -421,8 +445,9 @@ class BetaModule(BaseModule):
         
         In ``hierarchical_feedback`` mode, consume the memory module's cached
         pre-feedback likelihood relative to the chance probability of this
-        ternary outcome. In ``probabilistic_feedback`` mode, use the existing
-        binary feedback evidence.
+        ternary outcome. In ``probabilistic_feedback`` mode, compare binary
+        feedback evidence with outcome chance (1/C when correct, 1-1/C when
+        wrong), preserving the original two-category update exactly.
 
         Legacy ``inferred_correct_category`` evolution rules:
         - We infer the correct category from feedback:

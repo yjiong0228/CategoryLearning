@@ -443,7 +443,24 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 `correct_additive=1`；因此这次迁移只改变参数含义和优化坐标，不改变既有 beta 轨迹。
 
 `beta_update_mode: probabilistic_feedback` 不先硬判“哪条规则正确”，而是用该规则对实际
-choice 的支持度与 feedback 联合形成连续证据，再决定 beta 上升或下降。
+choice 的预测 \(p\) 与二值反馈 \(r\) 形成证据 \(\ell=rp+(1-r)(1-p)\)。
+2026-10-05 修正多分类的中性点：对 \(C\) 类任务，反馈机会概率为
+\(b=r/C+(1-r)(1-1/C)\)。取
+
+\[
+\kappa=
+\begin{cases}
+(\ell-b)/(1-b),&\ell\ge b,\\
+(\ell-b)/b,&\ell<b.
+\end{cases}
+\]
+
+支持时增加 \(\alpha_+\kappa(\beta_{max}-\beta_h)\)，反驳时减少
+\(\eta_-\beta_h\min(1,-\kappa)\)，上下界不变。
+四分类正确／错误的中性点分别为 0.25／0.75，均匀规则在两种反馈下均无精度漂移。
+二分类保留原 \(\kappa=2(\ell-0.5)\) 运算和数值结果。
+`hierarchical_feedback` 的三值反馈机会校准保持原样，不走这一二值分支。
+这会改变旧的多分类二值反馈轨迹；历史结果按其记录的源码版本复现，不覆盖或改写。
 
 `update_scope` 决定哪些规则消费当前反馈：
 

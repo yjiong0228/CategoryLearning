@@ -32,6 +32,12 @@
 三人核查的冻结规则、选人标准和上限见[原协议](optimization/FROZEN_VALIDATION.md)。后续有限外侧范围检查也已结束；
 原始拟合状态与追加诊断并列保留，可复用不等于已通过。新增三人沿用既定规则，仍不为达到全通过而追加到通过。
 
+**2026-10-05 精度更新修复：** 多分类二值反馈的 β 更新改为按反馈事件的机会概率居中；
+四分类正确／错误的中性点分别为 0.25／0.75，均匀预测不再发生精度漂移。
+二分类保留原数值运算，condition 3 三值更新不变。该修复改变 condition 2 的学习轨迹，
+尚未重新拟合；旧结果及断点保留，按原 Git 版本复现。公式与版本说明见
+[condition 2 更新说明](docs/model_architecture/model_0826_condition2.md)。
+
 连续 partition 的普通 `category_feedback` 不接受 `0.5`；新版 Cond3 必须使用
 `hierarchical_pairing` 与联合记忆。旧公式仅供显式 `legacy_category_feedback`
 的底层复现，见 [三值反馈与历史兼容](hypothesis_space/README.md#三值反馈与历史兼容)。
