@@ -203,5 +203,5 @@ output lapse 或实际改变混合类别概率的置信变换，以及区域—�
 这里仅接通单模型路径，`generate_step_by_step` 也不自动生成报告。
 批量口述预测须先按选择前粒子权重汇总 `P(choice, report)`，再作条件化。
 等价地，可在反馈前按仅由选择更新的粒子权重平均条件报告分布；真实报告仅用于评价。
-详细假设见 [0923 规范第 13 节](../docs/model_architecture/model_0923.md#13-oral-readout-首版从内部判断到说出来的话)，
+详细假设见 [0923 规范第 13 节](../docs/model_architecture/model_0923.md#13-口述模块把本题判断说出来2026-10-11-修订)，
 可运行例子见 `../workflows/analysis/demo_model_0923_oral.py`。
