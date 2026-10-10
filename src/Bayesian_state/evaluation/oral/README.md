@@ -104,5 +104,6 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 `structure_0923.py` 提供独立于旧中心/区域评分的完整分句编码。躯干比较保留对象与方向，
 不赋予硬性的心理阈值；组合数量、未解析内容和编码不确定性均保留。
 它复用共享几何编码，不改写本目录旧评分器或原数据。报告矩阵在模型层
-`model/oral_report_space.py` 中生成，尚未校准或接入 PF。
+`model/modules/readout/report_space.py` 中生成。当前 Model 0923 用事先固定的表达设置
+生成口述预测，与真实内容比较；真实口述不进入参数拟合或 PF 权重更新。
 详见[口述表示说明](../../docs/model_architecture/model_0923_oral.md)。

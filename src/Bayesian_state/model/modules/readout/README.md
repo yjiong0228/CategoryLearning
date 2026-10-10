@@ -18,5 +18,10 @@
 选择和口述配置分别保留在 `choice_readout` 与 `oral_readout`，由 `StateModel` 调用。
 engine 的 `agenda` 继续管理知觉、假设转换、记忆和精度的学习步骤。
 
+Model 0923 的行为参数仅用选择数据估计；oral 使用事先固定的共同表达设置产出报告
+预测，与真实口述比较。真实口述不进入行为或表达参数拟合，不修正粒子权重，也不更新
+学习状态。选择—口述联合概率用于保留输出的共同来源和汇总预测。当前接口显式生成
+单条路径的口述，批量预测与真实报告比较仍待接通。
+
 代码统一使用 `src.Bayesian_state.model.modules.readout.choice` 和 `.oral`，
 口述词表及联合概率分别使用 `.report_space` 和 `.observation`。

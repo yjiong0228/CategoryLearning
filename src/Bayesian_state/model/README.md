@@ -182,6 +182,8 @@ python -m src.Bayesian_state.hypothesis_space.analysis
 
 `modules/readout/oral.py` 提供 `OralReadout`、`OralReadoutParameters` 与 `OralPrediction`。
 它与 decision readout 共用潜在规则，属于观测层，不放入学习模块的 agenda。
+Model 0923 的 oral 只生成预测，用于与真实内容比较。表达设置事先固定，行为参数
+由选择数据估计；真实口述不参与参数拟合或粒子权重更新。
 在 engine 配置顶层加入 `oral_readout: {method: rule_content_v1, kwargs: ...}`；
 参数字段见 `configs/exp123/model_struct/model_0923_cond{1,2,3}_B0.yaml`。
 `ModelConfig` 校验方法与参数；未配置时行为接口兼容原有用法。
@@ -198,7 +200,8 @@ Oral 使用 `ChoicePrediction.rule_snapshot` 中实际决策权重、各规则�
 output lapse 或实际改变混合类别概率的置信变换，以及区域—类别映射模块，暂不能读取口述；
 必须先定义明确的联合观测关系。行为运行仍可使用这些机制。
 
-这里仅接通单模型路径；PF 不自动评分口述，`generate_step_by_step` 也不自动生成报告。
-未来多粒子接入须先按选择前粒子权重汇总 `P(choice, report)`，再作条件化。
+这里仅接通单模型路径，`generate_step_by_step` 也不自动生成报告。
+批量口述预测须先按选择前粒子权重汇总 `P(choice, report)`，再作条件化。
+等价地，可在反馈前按仅由选择更新的粒子权重平均条件报告分布；真实报告仅用于评价。
 详细假设见 [0923 规范第 13 节](../docs/model_architecture/model_0923.md#13-oral-readout-首版从内部判断到说出来的话)，
 可运行例子见 `../workflows/analysis/demo_model_0923_oral.py`。
