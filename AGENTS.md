@@ -135,6 +135,35 @@ result.
 - In the final handoff, summarize the behavior changed, list the validation
   performed, and identify any unverified or long-running follow-up work.
 
+## Mandatory documentation style
+
+These two requirements are standing user instructions for **all documentation
+writing and revision** in this repository, including Markdown, READMEs, model
+specifications, TeX/PDF documents, reports and manuscripts, in every language.
+They also apply when using academic-writing skills or journal templates.
+
+1. **Use plain, immediately understandable language.** Write with the clarity of
+   a careful conversation with the reader. Explain each mechanism in this order:
+   what happens, why it happens, a concrete example when helpful, and then its
+   formula. Define technical terms and symbols where they first become necessary.
+   A reader should be able to follow the process and its purpose from the prose
+   alone. Preserve exact mathematics and scientific meaning; explain operations
+   such as normalization in ordinary words before naming them. Avoid compressed
+   jargon, bureaucratic phrasing and decorative academic language.
+2. **State the design directly; exclude defensive writing.** Describe what the
+   model does, how it works and why that step is useful. Do not introduce an
+   unrequested alternative merely to reject it or praise the chosen design.
+   Remove formulations such as “不是……而是……”, “并非……”, “无须再估计……”,
+   “不需要额外设置……” and their English equivalents when they serve that purpose.
+   State substantive assumptions, data-use boundaries and implementation status
+   as direct facts, for example “口述仅用于检验预测” and “批量预测尚待接入”.
+
+Before handing off documentation, read the prose independently of its equations
+and check both requirements paragraph by paragraph. A keyword scan is only a
+supplement to this review. Keep necessary definitions and limitations explicit.
+For example, write “各规则对作答的影响随试次变化。权重分散时，多条规则共同影响回答；
+权重集中时，一条规则主导回答。”
+
 ## Automatic local commits
 
 - After each agent task that changes repository files, automatically create
