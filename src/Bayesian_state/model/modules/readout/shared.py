@@ -79,5 +79,3 @@ def normalize_probability_vector(
             raise ValueError("Probability vector must have finite non-negative positive mass.")
         return np.full(expected, 1.0 / max(1, expected), dtype=float)
     return probabilities / float(np.sum(probabilities))
-
-
