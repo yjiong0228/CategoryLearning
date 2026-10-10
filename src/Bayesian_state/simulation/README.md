@@ -34,6 +34,18 @@ posterior-predictive validation 的生成基础，不在本文件中实现恢复
 固定参数工具属于仿真领域接口，调用方应从 `simulation.parameters` 导入，而不是反向依赖 CLI
 入口 `run_simulation.py`。
 
+Model 0923 M1 的三条件小规模入口位于
+configs/exp123/simulation_cfg/model0923_cond{1,2,3}_M1_smoke.yaml：
+每个配置一人、32 题、8 粒子、1 次重复、1 worker。例：
+
+    python -m src.Bayesian_state.run_simulation --config configs/exp123/simulation_cfg/model0923_cond1_M1_smoke.yaml
+
+重跑前指定新的 output_dir。M1 参数可用完整 engine.modules.hypo_transitions_mod.kwargs
+路径覆盖；搜索控制使用其下 search_controller 的五个字段。
+仿真自动记录数量上限、初始一个候选、两种局部来源权重、支持泛化、执行惯性、
+编辑成本及相似度抽样配置。M1 专属字段仅在 M1 中加入固定参数溯源，
+不改变旧 B0 的 candidate seed 输入。示例值不是被试估计，也不构成完整模型效果验证。
+
 ## 顺序训练/留出评价
 
 `evaluation_protocol.mode: sequential_holdout` 只改变哪些 trial 进入指标和 loss，不截断

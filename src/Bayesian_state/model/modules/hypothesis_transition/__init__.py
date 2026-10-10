@@ -23,6 +23,7 @@ from .feedback_reactive import FeedbackReactiveHypothesisTransitionModule
 from .nested_feedback_accumulator import (
     NestedFeedbackAccumulatorHypothesisTransitionModule,
 )
+from .mechanistic_rule_search import MechanisticRuleSearchHypothesisTransitionModule
 
 __all__ = [
     "DynamicAdaptiveControlHypothesisTransitionModule",
@@ -36,6 +37,7 @@ __all__ = [
     "FixedStrategyHypothesisTransitionModule",
     "FeedbackReactiveHypothesisTransitionModule",
     "NestedFeedbackAccumulatorHypothesisTransitionModule",
+    "MechanisticRuleSearchHypothesisTransitionModule",
     "TransitionContext",
     "TwoStepHypothesisTransitionMixin",
 ]

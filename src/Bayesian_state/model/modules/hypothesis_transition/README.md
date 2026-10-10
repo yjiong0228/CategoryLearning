@@ -5,6 +5,52 @@ Model 0923 B0 新增 `unified_rule_search.py` 公共模式：一条失败痕迹�
 它复用下述 select → assign-prior 生命周期；旧模式保留原二项计数与随机流。
 参见[0923 规范](../../../docs/model_architecture/model_0923.md)。
 
+Model 0923 M1 已接入公共模式
+MechanisticRuleSearchHypothesisTransitionModule（mechanistic_rule_search.py），
+配置版本为 0923-M1-v1。它沿用本包的两步生命周期、反馈学习、BetaModule、粒子过滤
+及选择／口述读出，不改变 B0 或 0826 配置的含义。
+
+M1 初始只抽取一个候选，max_capacity 是数量上限。每题非执行候选按
+exit_rate × (1 − posterior) 退出；退出与新搜索分别发生，不自动补满。
+搜索读取最新已完成反馈，failure_decay 是可按被试覆盖的参数；
+基础搜索、失败增益、失败保持、基础全局比例和失败范围增益共用一条失败状态。
+
+局部搜索以 local_structure_weight 混合结构编辑与功能提出。结构语法位于
+../../../hypothesis_space/rule_programs.py，统一表示判断特征、比较原语、参考和分支，
+保留类别标签。edit_costs 必须明确列出 feature、relation、reference、branch 四项正成本。
+示例分别为 1、1.5、1、2，是共同的初版假设，不是心理测量值；
+关系编辑替换完整比较原语及其标准参照，分支编辑只改条件树的一条下级判断。
+没有可用结构邻居时回退到功能提出，保留局部来源并记录回退。
+
+功能关系在固定种子和共同均匀样本上计算完整类别对应张量；
+功能一致率是其对角线之和。独立的只读内存缓存不读写旧相似度资源。
+tau_proposal 固定为 0.10；transfer_scale 是独立的被试支持泛化参数。
+新人按功能关系从旧支持中获得质量；满员竞争可拒绝新人或移除非执行旧候选。
+移除旧候选后重新计算最终集合的守恒迁移，不重复从临时权重扣质量。
+
+每题按 prior × exp(execution_inertia × previous_execution_indicator) 抽取执行规则，
+不要求搜索。choice 和反馈前 oral readout 共用这条执行规则。
+幸存者保留 beta，新人恢复 beta_init；三值任务保留幸存者的条件配对，
+新人继承迁移前的整体配对边际。配对边际本身不承诺在规则迁移后保持不变。
+
+transition_log 区分 search_event（尝试）、admission_event（入场）、
+autonomous_exits（自主退出）、capacity_dropped（满员淘汰）与 execution_switch_event。
+为兼容现有 PF 汇总，swap_event 表示新人入场，swap_probability 表示
+搜索概率乘当前剩余集合下的条件准入概率；replacement_count 仅计满员替换，
+replacement_fraction 用旧实际候选数量作分母。PF 的 predictive_exploration_target
+保存搜索概率 E，predictive_search_range 保存全局比例 g。
+不能将搜索尝试、候选入场与执行切换解释为同一个事件。
+
+三条件示例配置为 configs/exp123/model_struct/model_0923_cond{1,2,3}_M1.yaml。
+数值仅用于运行和机制审查。初始化、退出函数、单候选提议、执行保护及准入竞争
+仍是需要审视的模型假设；完整拟合、参数恢复和 0826 表现保持尚未验证。
+
+2026-10-10 验证：297 项相关测试通过，包含期刊已保存的独立数值参考；
+三个条件各一名被试、32 题、8 粒子、一个 worker 的真实数据 CLI 检查通过。
+另核对输出概率归一化、候选数量上限、反馈使用时序及条件 3 配对分布。
+运行环境为 Python 3.11.10、NumPy 1.26.4、SciPy 1.13.1、PyYAML 6.0.2。
+这些检查验证实现与流程，未验证拟合表现或参数可识别性。
+
 H 模块描述被试怎样从上一试次的 hypothesis posterior 过渡到下一试次的 hypothesis prior。
 它只包含两个认知步骤：
 
@@ -29,6 +75,7 @@ hypothesis_transition/
 ├── feedback_reactive.py
 ├── nested_feedback_accumulator.py
 ├── unified_rule_search.py
+├── mechanistic_rule_search.py
 ├── selection.py
 ├── prior_assignment.py
 ├── workspace.py
@@ -46,10 +93,11 @@ hypothesis_transition/
 | `feedback_reactive.py` | 只读取上一 feedback 的一步反应 H3 参照模式 |
 | `nested_feedback_accumulator.py` | 严格嵌套 constant/reactive/accumulator 的 H4 模式 |
 | `unified_rule_search.py` | 0923 B0：统一失败控制与单候选修订 |
+| `mechanistic_rule_search.py` | 0923 M1：可变候选数量、结构与功能提出、关系驱动支持迁移 |
 | `selection.py` / `prior_assignment.py` | 选择和 prior 分配的共享机制 |
 | `workspace.py` / `execution.py` | bounded workspace 状态与执行逻辑 |
 
-表中前七个文件定义认知模式或公共契约；后四个是共享机制，不能在
+表中前八个文件定义认知模式或公共契约；后四个是共享机制，不能在
 model YAML 中当作独立 H 模式配置。被试级 candidate 资源位于
 `configs/shared/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
 

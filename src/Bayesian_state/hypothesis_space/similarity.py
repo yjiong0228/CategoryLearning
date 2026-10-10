@@ -31,6 +31,7 @@ class ContinuousSimilarity:
     )
     RESOURCE_DIR = Path(__file__).resolve().parent / "resources" / "similarity"
     _memory_cache: dict[tuple, np.ndarray] = {}
+    _confusion_cache: dict[tuple, np.ndarray] = {}
 
     def __init__(
         self,
@@ -145,6 +146,51 @@ class ContinuousSimilarity:
             np.save(path, matrix)
         self._memory_cache[key] = matrix
         return matrix
+
+    def get_confusion_tensor(
+        self, *, distance_mode: str, n_samples: int | None = None,
+        random_state: int = DEFAULT_RANDOM_STATE, stimuli: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return P(c_h=a,c_u=b); M1 derives agreement from the same samples.
+
+        This separate in-memory cache never reads or overwrites legacy matrices,
+        whose resource generation seed is not always recorded.
+        """
+        mode = str(distance_mode).strip().lower()
+        if mode not in {"prototype", "boundary"}:
+            raise ValueError("distance_mode must be prototype or boundary")
+        count = self.n_samples if n_samples is None else int(n_samples)
+        if count <= 0:
+            raise ValueError("n_samples must be positive")
+        key = self._cache_key(distance_mode=mode, n_samples=count,
+                              random_state=random_state, sample_distribution="uniform")
+        # Include content as well as catalogue version for injected test spaces.
+        content = tuple(repr(spec.categories) for spec in self.space)
+        key = (*key, sha256(repr(content).encode()).hexdigest(), "confusion_tensor_v1")
+        if stimuli is None and key in self._confusion_cache:
+            return self._confusion_cache[key]
+        values = (np.random.default_rng(random_state).random((count, self.space.n_dims))
+                  if stimuli is None else np.asarray(stimuli, dtype=float))
+        if (values.ndim != 2 or values.shape[1] != self.space.n_dims
+                or len(values) == 0 or not np.all(np.isfinite(values))):
+            raise ValueError("stimuli must be nonempty finite [n, n_dims] values")
+        geometry = self.boundary if mode == "boundary" else self.prototype
+        assignments = np.asarray([geometry.category_assignments(spec.index, values)
+                                  for spec in self.space], dtype=np.int64)
+        cats, hypotheses = self.space.n_cats, len(self.space)
+        tensor = np.empty((hypotheses, hypotheses, cats, cats), dtype=float)
+        for h in range(hypotheses):
+            for u in range(h, hypotheses):
+                counts = np.bincount(assignments[h] * cats + assignments[u],
+                                     minlength=cats * cats).reshape(cats, cats)
+                tensor[h, u] = counts / len(values)
+                tensor[u, h] = tensor[h, u].T
+        tensor.setflags(write=False)
+        if stimuli is None:
+            if len(self._confusion_cache) >= 8:
+                self._confusion_cache.pop(next(iter(self._confusion_cache)))
+            self._confusion_cache[key] = tensor
+        return tensor
 
     def _compatible_resource_path(
         self,

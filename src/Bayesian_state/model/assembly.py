@@ -20,6 +20,9 @@ from .modules.pairing_memory import HierarchicalPairingMemoryModule
 from .modules.hypothesis_transition.unified_rule_search import (
     UnifiedRuleSearchHypothesisTransitionModule,
 )
+from .modules.hypothesis_transition.mechanistic_rule_search import (
+    MechanisticRuleSearchHypothesisTransitionModule,
+)
 
 
 def resolve_class(class_reference: str | type) -> type:
@@ -149,7 +152,8 @@ def build_engine(
         # condition-3 profiles retain the full-success search contract.
         search_feedback = (
             "graded" if model_0923 and isinstance(
-                transition, UnifiedRuleSearchHypothesisTransitionModule
+                transition, (UnifiedRuleSearchHypothesisTransitionModule,
+                             MechanisticRuleSearchHypothesisTransitionModule)
             ) else "full_success"
         )
         if (observation_likelihood.beta_source != "action"

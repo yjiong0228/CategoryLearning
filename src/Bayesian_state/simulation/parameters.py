@@ -129,7 +129,17 @@ def _get_by_path(root: Mapping[str, Any], path: str) -> Any:
 
 def infer_fixed_hyperparams_from_engine_config(engine_config: Mapping[str, Any]) -> Dict[str, Any]:
     inferred: Dict[str, Any] = {}
-    for key in DEFAULT_FIXED_HYPERPARAM_PATHS:
+    paths = DEFAULT_FIXED_HYPERPARAM_PATHS
+    provenance = engine_config.get("provenance") or {}
+    if provenance.get("model_id") == "model_0923" and provenance.get("variant") == "M1":
+        # Restrict new provenance fields to M1: adding search_controller to the
+        # global list would also change historical B0 candidate-derived seeds.
+        prefix = "engine.modules.hypo_transitions_mod.kwargs."
+        paths += tuple(prefix + name for name in (
+            "max_capacity", "exit_rate", "local_structure_weight", "transfer_scale",
+            "execution_inertia", "search_controller", "tau_proposal", "edit_costs",
+            "relation_samples", "relation_seed"))
+    for key in paths:
         engine_path = key[len("engine."):]
         value = _get_by_path(engine_config, engine_path)
         if value is not None:

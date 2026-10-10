@@ -152,6 +152,19 @@ class HierarchicalPairingMemoryModule(BaseModule):
             "pairing_local_projection_fallback": fallback,
         }
 
+    def assign_relation_prior(self, prior: np.ndarray, selection: Any) -> None:
+        """M1 keeps survivor conditionals; newcomers inherit the old pairing marginal."""
+        if self._pending_joint is not None:
+            raise RuntimeError("feedback must be consumed before a rule transition")
+        marginal = self.pairing_marginal()
+        conditional = self.conditional_pairing()
+        joint = np.zeros_like(self.joint)
+        joint[selection.survivors] = (
+            prior[selection.survivors, None] * conditional[selection.survivors])
+        joint[selection.newcomers] = prior[selection.newcomers, None] * marginal
+        self.joint = _normalize_joint(joint)
+        self.local_projection_fallback = False
+
     def state_dict(self) -> dict[str, Any]:
         return {
             "joint": self.joint.copy(),

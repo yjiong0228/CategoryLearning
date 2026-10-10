@@ -70,6 +70,9 @@ def build_model_provenance(
     if declared is not None and not isinstance(declared, Mapping):
         raise ValueError("engine_config.provenance must be a mapping when provided.")
     declared = dict(declared or {})
+    mechanistic = declared.get("model_id") == "model_0923" and declared.get("variant") == "M1"
+    if mechanistic:
+        initialization.update(method="single_prior_weighted_candidate", active_count=1)
     declared_similarity = declared.get("hypothesis_similarity", {})
     if declared_similarity is not None and not isinstance(
         declared_similarity, Mapping
@@ -91,6 +94,22 @@ def build_model_provenance(
         "choice_readout": deepcopy(config.get("choice_readout", {})),
         "repeat_aggregation": str(repeat_aggregation),
     }
+    if mechanistic:
+        resolved.update(
+            workspace_capacity=transition.get("max_capacity"),
+            workspace_capacity_semantics="upper_bound_variable_occupancy",
+            search_control=deepcopy(transition.get("search_controller")),
+            candidate_management={name: deepcopy(transition.get(name)) for name in (
+                "exit_rate", "local_structure_weight", "transfer_scale",
+                "execution_inertia", "edit_costs")},
+            transition_event_semantics={
+                "search_probability": "search_initiation",
+                "swap_probability": "search_probability_times_conditional_admission_probability",
+                "swap_event": "newcomer_admission",
+                "replacement_count": "capacity_competition_replacements_only",
+                "replacement_fraction": "capacity_replacements_divided_by_previous_active_count",
+            },
+        )
     partition_kwargs = _mapping_path(config, "partition.kwargs") or {}
     partition_class = str(_mapping_path(config, "partition.class") or "")
     is_continuous = partition_class.endswith("ContinuousPartition")
@@ -133,6 +152,11 @@ def build_model_provenance(
             **deepcopy(dict(declared_similarity or {})),
             "tau_local": tau_local,
         }
+        if mechanistic:
+            resolved["hypothesis_similarity"].pop("tau_local")
+            resolved["hypothesis_similarity"].update(
+                tau_proposal=transition.get("tau_proposal"),
+                transfer_scale=transition.get("transfer_scale"))
     return {
         "schema_version": 2,
         "model_config_sha256": _canonical_sha256(config),

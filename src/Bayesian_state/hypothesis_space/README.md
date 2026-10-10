@@ -23,6 +23,7 @@ hypothesis_space/
 │   └── likelihood.py              固定的观测模型计算器
 │
 ├── similarity.py                  相似度与缓存策略
+├── rule_programs.py               0923 M1 判断程序、规范表示与合法单步编辑
 ├── analysis/                       离线口述证据审计
 └── resources/similarity/           带版本的只读矩阵
 ```
@@ -39,6 +40,14 @@ spaces  →  geometry  →  observation_model
 
 ## 规范接口
 
+- Model 0923 M1 的 build_rule_edit_costs 返回完整目录的规范判断程序和合法单步成本。
+  成本来自显式配置，不依据规则编号；无限成本表示不存在合法单步编辑。
+  当前覆盖 29/128 条规则，单特征更换、比较原语替换、参考修改和下级分支重写分别定义。
+  结构邻居与功能接近是两种关系，不保证每条规则有结构邻居。
+- ContinuousSimilarity.get_confusion_tensor 返回形状 [H,H,C,C] 的
+  P(c_h=a,c_u=b)。M1 从同一张量导出一致率，避免将未知种子的旧矩阵与新类别对应混合。
+  默认 100,000 个均匀样本、种子 0，使用独立只读内存缓存；旧 get_matrix 路径、
+  资源和磁盘缓存不变。显式 stimuli 可用于确定性的分布审查，不进入缓存。
 - `ContinuousHypothesisSpace.hypotheses` 和
   `DiscreteHypothesisSpace.hypotheses` 是仅有的规则清单。
 - `ContinuousPartition` 公开 `hypothesis_space`、`prototype_geometry`、
