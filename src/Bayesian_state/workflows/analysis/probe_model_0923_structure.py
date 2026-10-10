@@ -24,9 +24,10 @@ from ...hypothesis_space.geometry.boundary import BoundaryGeometry
 from ...hypothesis_space.spaces import continuous, structural_0923
 from ...hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
 from ...hypothesis_space.spaces.structural_0923 import build_axis_pair_overlap_probe_space
-from ...model import oral_observation, oral_report_space
-from ...model.oral_observation import predict_choice_oral
-from ...model.oral_report_space import CatalogueReportSpace, ReportKernelParameters
+from ...model.modules.readout import observation as oral_observation, report_space as oral_report_space
+from ...model.modules.readout import oral_kernel, shared
+from ...model.modules.readout.observation import predict_choice_oral
+from ...model.modules.readout.report_space import CatalogueReportSpace, ReportKernelParameters
 from .prepare_model_0923 import _boolean, _rows, _write_csv
 
 
@@ -232,7 +233,8 @@ def probe_structure(*, report_dir: Path, trials_path: Path, config_path: Path,
     sources = [config_path, report_config_path, trials_path, r1_manifest_path,
                report_dir / 'reports.csv', report_dir / 'trials.csv', Path(__file__),
                Path(structural_0923.__file__), Path(continuous.__file__),
-               Path(oral_report_space.__file__), Path(oral_observation.__file__)]
+               Path(oral_report_space.__file__), Path(oral_observation.__file__),
+               Path(oral_kernel.__file__), Path(shared.__file__)]
     manifest = {
         'model_id': 'model_0923', 'stage': config['stage'], 'status': config['status'],
         'base_rules': len(base), 'candidate_rules': len(candidate), 'added_rules': len(candidate) - len(base),

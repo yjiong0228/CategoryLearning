@@ -1,11 +1,11 @@
-# Model 0923 M1: illustrative parameters and shared edit costs, not fitted estimates.
+# Model 0923 full: illustrative parameters and shared edit costs, not fitted estimates.
 # One initial candidate; capacity is an upper limit. Oral readout uses the execution rule.
 provenance:
   model_id: model_0923
-  variant: M1
+  variant: full
   condition: 1
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-M1-v1
+  specification_version: 0923-full-v1
   scientific_status: mechanism_candidate_implemented_not_fitted
   hypothesis_space_status: retained_binary_29
   catalogue_adoption_basis: user_approved_structure_not_fit_comparison

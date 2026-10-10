@@ -14,6 +14,10 @@ Condition 3 的 PMH 使用 `pairing_memory.HierarchicalPairingMemoryModule`：�
 `feedback_interpretation: full_success`，但 observation 中仍保留原始三值反馈。
 完整原理见 [Model 0826 第 13 节](../../docs/model_architecture/model_0826.tex)。
 
+`readout/` 实现输出层，包含 choice 与 oral 两个分支，读取本题内部状态并返回观测分布。
+由 `StateModel` 在反馈前调用；学习步骤仍按 engine agenda 执行。
+代码组织和兼容接口见 [readout/README.md](readout/README.md)。
+
 ## 1. 整体推理链条（模块管线）
 
 在 `StateModel` 初始化时，`model/assembly.py` 按配置创建模块实例并注册到 engine。

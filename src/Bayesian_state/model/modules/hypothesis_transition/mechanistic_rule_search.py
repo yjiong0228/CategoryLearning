@@ -1,4 +1,4 @@
-"""Executable Model 0923 M1: variable candidates and two local proposal routes."""
+"""Executable Model 0923 full model: variable candidates and two local proposal routes."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
     """Implement specification sections 14–15 using the shared trial lifecycle.
 
     Initialization, exit, capacity competition and execution protection remain
-    explicit model assumptions. Parameters are not fitted by constructing M1.
+    explicit model assumptions. Parameters are not fitted by constructing 0923 full model.
     """
 
     MODE = "mechanistic_rule_search_0923_v1"
@@ -57,7 +57,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                   "execution_inertia", "tau_proposal", "edit_costs", "search_controller",
                   "relation_samples", "relation_seed", "module_seed"}
         if set(kwargs) - fields:
-            raise ValueError(f"M1 has unsupported transition keys: {sorted(set(kwargs)-fields)}")
+            raise ValueError(f"0923 full model has unsupported transition keys: {sorted(set(kwargs)-fields)}")
         self.total_hypo = int(engine.set_size)
         raw_capacity = kwargs.get("max_capacity", 3)
         self.capacity = int(raw_capacity)
@@ -71,12 +71,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.execution_inertia = _number(kwargs.get("execution_inertia", 0), "execution_inertia")
         self.tau_proposal = _number(kwargs.get("tau_proposal", 0.1), "tau_proposal", open_low=True)
         if self.tau_proposal != 0.1:
-            raise ValueError("M1 v1 fixes tau_proposal=0.10")
+            raise ValueError("0923 full model v1 fixes tau_proposal=0.10")
         controller = kwargs.get("search_controller")
         expected = {"baseline_probability", "error_gain", "failure_decay",
                     "global_search", "global_search_failure_gain"}
         if not isinstance(controller, Mapping) or set(controller) != expected:
-            raise ValueError(f"M1 search_controller requires exactly {sorted(expected)}")
+            raise ValueError(f"0923 full model search_controller requires exactly {sorted(expected)}")
         self.baseline_probability = _number(controller["baseline_probability"], "baseline_probability",
                                             high=1, open_low=True, open_high=True)
         self.error_gain = _number(controller["error_gain"], "error_gain")
@@ -93,7 +93,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             raise ValueError("relation_seed must be a nonnegative integer")
         self.relation_samples, self.relation_seed = int(samples), int(seed)
         if engine.distance_mode != "boundary":
-            raise ValueError("M1 v1 uses boundary functional relations")
+            raise ValueError("0923 full model v1 uses boundary functional relations")
         self.rule_programs, self.edit_distances = build_rule_edit_costs(
             engine.partition.hypothesis_space, kwargs.get("edit_costs"))
         self.confusion_tensor = engine.partition.similarity.get_confusion_tensor(
@@ -106,7 +106,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.base_prior = np.asarray(engine.prior, dtype=float).copy()
         if (self.base_prior.shape != (self.total_hypo,) or not np.isfinite(self.base_prior).all()
                 or np.any(self.base_prior <= 0)):
-            raise ValueError("M1 base prior must be finite and strictly positive on the catalogue")
+            raise ValueError("0923 full model base prior must be finite and strictly positive on the catalogue")
         self.base_prior /= self.base_prior.sum()
         settings = (self.MODE, GRAMMAR_VERSION, self.capacity, self.exit_rate,
                     self.local_structure_weight, self.transfer_scale, self.execution_inertia,
@@ -151,7 +151,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             raise RuntimeError("completed feedback has not yet been consumed")
         feedback = float(observation[2])
         if feedback not in (0, 0.5, 1):
-            raise ValueError("M1 feedback must be 0, 0.5 or 1")
+            raise ValueError("0923 full model feedback must be 0, 0.5 or 1")
         self.previous_feedback = feedback
         self.outcome_pending = True
 
@@ -352,15 +352,15 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         expected = set(self._STATE_FIELDS) | {
             "mode", "capacity", "configuration_signature", "trial_rng", "execution_rng"}
         if set(state) != expected:
-            raise ValueError("M1 snapshot has incomplete or unsupported state fields")
+            raise ValueError("0923 full model snapshot has incomplete or unsupported state fields")
         if (state["mode"] != self.MODE or state["capacity"] != self.capacity
                 or state["configuration_signature"] != self.configuration_signature):
-            raise ValueError("M1 snapshot does not match the configured mechanism/capacity")
+            raise ValueError("0923 full model snapshot does not match the configured mechanism/capacity")
         active = np.asarray(state["active"], dtype=int)
         if (active.ndim != 1 or not 1 <= len(active) <= self.capacity
                 or len(np.unique(active)) != len(active) or np.any(active < 0)
                 or np.any(active >= self.total_hypo) or state["executed_hypothesis"] not in active):
-            raise ValueError("M1 snapshot has an invalid active/executed rule")
+            raise ValueError("0923 full model snapshot has an invalid active/executed rule")
         _number(state["failure_pressure"], "saved failure_pressure", high=1)
         _number(state["current_event_probability"], "saved search probability", high=1)
         _number(state["current_g"], "saved global fraction", high=1)
@@ -368,18 +368,18 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         for name in ("trial_index", "execution_dwell_trials", "execution_switch_count"):
             value = state[name]
             if isinstance(value, bool) or int(value) != value or value < 0:
-                raise ValueError("M1 snapshot counters must be nonnegative integers")
+                raise ValueError("0923 full model snapshot counters must be nonnegative integers")
         if state["previous_feedback"] not in (None, 0., .5, 1.):
-            raise ValueError("M1 snapshot has invalid completed feedback")
+            raise ValueError("0923 full model snapshot has invalid completed feedback")
         if (not isinstance(state["outcome_pending"], bool)
                 or not isinstance(state["current_execution_switch_event"], bool)
                 or state["outcome_pending"] and state["previous_feedback"] is None):
-            raise ValueError("M1 snapshot has invalid outcome/execution flags")
+            raise ValueError("0923 full model snapshot has invalid outcome/execution flags")
         probability = np.asarray(state["execution_probabilities"], dtype=float)
         if (probability.shape != (self.total_hypo,) or not np.isfinite(probability).all()
                 or np.any(probability < 0) or not np.isclose(probability.sum(), 1)
                 or np.any(probability[np.setdiff1d(np.arange(self.total_hypo), active)] != 0)):
-            raise ValueError("M1 snapshot has invalid execution probabilities")
+            raise ValueError("0923 full model snapshot has invalid execution probabilities")
         trial_rng, execution_rng = deepcopy(self.trial_rng), deepcopy(self.execution_rng)
         trial_rng.bit_generator.state = deepcopy(state["trial_rng"])
         execution_rng.bit_generator.state = deepcopy(state["execution_rng"])

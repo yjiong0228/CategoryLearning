@@ -28,7 +28,7 @@ from .modules import (
     TransitionContext,
     TwoStepHypothesisTransitionMixin,
 )
-from .readout import (
+from .modules.readout.choice import (
     CHOICE_READOUT_EXPECTATION,
     CHOICE_READOUT_KWARG_KEYS,
     CHOICE_READOUT_MAP,
@@ -43,8 +43,6 @@ from .readout import (
     OUTPUT_NOISE_TARGET_LOSE_SHIFT,
     OUTPUT_NOISE_TARGET_PREVIOUS_CHOICE,
     OUTPUT_NOISE_TARGET_UNIFORM,
-    OralReportReadoutResult,
-    ReactionTimeReadoutResult,
     apply_output_noise_to_category_prob,
     apply_rule_commitment_choice_confidence,
     apply_strategy_conditioned_choice_confidence,
@@ -53,11 +51,11 @@ from .readout import (
     predict_choice_from_model,
     read_choice_probabilities_from_model,
     resolve_executed_hypothesis,
-    read_oral_report,
-    read_reaction_time,
     resolve_choice_readout_config,
     resolve_output_noise_config,
 )
+from .modules.readout.oral_kernel import OralReportReadoutResult, read_oral_report
+from .modules.readout.reaction_time import ReactionTimeReadoutResult, read_reaction_time
 from .state_model import GeneratedBehaviorTrajectory, PreparedTrial, StateModel
 
 __all__ = [

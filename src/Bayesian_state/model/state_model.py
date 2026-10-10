@@ -11,8 +11,8 @@ from .engine import IndexedSet
 from .modules.base_module import ModulePhase, ModuleRole
 
 if TYPE_CHECKING:
-    from .readout import ChoicePrediction
-    from .oral_readout import OralPrediction
+    from .modules.readout.choice import ChoicePrediction
+    from .modules.readout.oral import OralPrediction
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ class StateModel:
         self._pending_trial: PreparedTrial | None = None
         self._oral_readout_parameters = None
         if self.engine_config.get("oral_readout") is not None:
-            from .oral_readout import OralReadoutParameters
+            from .modules.readout.oral import OralReadoutParameters
 
             self._oral_readout_parameters = OralReadoutParameters.from_config(self.engine_config["oral_readout"])
         self._oral_readout = None  # Build the fixed report grammar only on demand.
@@ -235,7 +235,7 @@ class StateModel:
             raise RuntimeError("begin_trial() must be called before predict_choice().")
         if self._oral_reported_choice is not None:
             raise RuntimeError("choice is already fixed by this trial's oral readout")
-        from .readout import predict_choice_from_model
+        from .modules.readout.choice import predict_choice_from_model
 
         prediction = predict_choice_from_model(
             self,
@@ -277,7 +277,7 @@ class StateModel:
         if self.engine.get_module(ModuleRole.MAPPING) is not None:
             raise ValueError("oral rule_content_v1 uses fixed labels; learned label mapping is not implemented")
         if self._oral_readout is None:
-            from .oral_readout import OralReadout
+            from .modules.readout.oral import OralReadout
 
             self._oral_readout = OralReadout(
                 self.partition_model.hypothesis_space, self._oral_readout_parameters,
@@ -417,7 +417,7 @@ class StateModel:
         if not np.all(np.isfinite(physical)):
             raise ValueError("stimulus contains non-finite values.")
 
-        from .readout import (
+        from .modules.readout.choice import (
             resolve_choice_readout_config,
             resolve_output_noise_config,
         )

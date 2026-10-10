@@ -18,7 +18,7 @@ from src.oral_coding import (
     FEATURE_NAME_TO_PART, RegionEncoder, SemanticClaim, SemanticParser,
     SemanticResult, normalize_text, parts_in_text, split_items,
 )
-from ...model.oral_report_space import body_token, component_tokens, facet_token, Report
+from ...model.modules.readout.report_space import body_token, component_tokens, facet_token, Report
 
 VERSION = "0923-oral-structure-v1"
 BODY = r"(?:躯干|身体)"

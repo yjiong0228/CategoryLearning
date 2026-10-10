@@ -151,7 +151,7 @@ class ContinuousSimilarity:
         self, *, distance_mode: str, n_samples: int | None = None,
         random_state: int = DEFAULT_RANDOM_STATE, stimuli: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Return P(c_h=a,c_u=b); M1 derives agreement from the same samples.
+        """Return P(c_h=a,c_u=b); 0923 full model derives agreement from the same samples.
 
         This separate in-memory cache never reads or overwrites legacy matrices,
         whose resource generation seed is not always recorded.

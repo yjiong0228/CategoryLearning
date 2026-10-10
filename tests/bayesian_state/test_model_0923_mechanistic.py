@@ -27,7 +27,7 @@ X = np.array([.8, .3, .2, .4])
 
 
 def _config(condition=1):
-    config = yaml.safe_load((ROOT / f"configs/exp123/model_struct/model_0923_cond{condition}_M1.yaml").read_text())
+    config = yaml.safe_load((ROOT / f"configs/exp123/model_struct/model_0923_cond{condition}_full.yaml").read_text())
     config["modules"]["perception_mod"]["kwargs"] = {
         "features": 4, "mean": [0.] * 4, "std": [0.] * 4, "module_seed": 32,
     }
@@ -341,11 +341,11 @@ def test_particle_filter_is_causal_normalized_and_deterministic(condition):
         np.testing.assert_allclose(first.state_probabilities["pairing_prior"].sum(axis=1), 1.)
 
 
-def test_fixed_parameter_provenance_captures_m1_without_changing_b0_seed_inputs():
-    m1 = infer_fixed_hyperparams_from_engine_config(_config())
+def test_fixed_parameter_provenance_captures_full_without_changing_b0_seed_inputs():
+    full = infer_fixed_hyperparams_from_engine_config(_config())
     prefix = "engine.modules.hypo_transitions_mod.kwargs."
-    assert m1[prefix+"max_capacity"] == 3
-    assert m1[prefix+"search_controller"]["failure_decay"] == .6
+    assert full[prefix+"max_capacity"] == 3
+    assert full[prefix+"search_controller"]["failure_decay"] == .6
     b0 = yaml.safe_load((ROOT/"configs/exp123/model_struct/model_0923_cond1_B0.yaml").read_text())
     baseline = infer_fixed_hyperparams_from_engine_config(b0)
     assert prefix+"search_controller" not in baseline
@@ -355,6 +355,29 @@ def test_fixed_parameter_provenance_captures_m1_without_changing_b0_seed_inputs(
     assert provenance["resolved"]["workspace_capacity_semantics"] == "upper_bound_variable_occupancy"
     assert provenance["resolved"]["initialization"]["active_count"] == 1
     assert provenance["resolved"]["hypothesis_similarity"]["tau_proposal"] == .1
+
+
+@pytest.mark.parametrize("condition", [1, 2, 3])
+def test_full_name_and_saved_legacy_alias_have_identical_seeded_paths(condition):
+    config = _config(condition)
+    assert config["provenance"]["variant"] == "full"
+    assert config["provenance"]["specification_version"] == "0923-full-v1"
+    legacy = deepcopy(config)
+    legacy["provenance"].update(variant="M1", specification_version="0923-M1-v1")
+    assert infer_fixed_hyperparams_from_engine_config(config) == infer_fixed_hyperparams_from_engine_config(legacy)
+    models = [StateModel(item, context=ModelContext(condition=condition)) for item in (config, legacy)]
+    for stimulus, feedback in [(X, 0.), (1-X, .5 if condition == 3 else 1.), (X, 1.)]:
+        decisions, reports = [], []
+        for model in models:
+            model.begin_trial(stimulus)
+            decisions.append(_choose(model).observed_probabilities)
+            reports.append(model.predict_oral(1).probabilities)
+            model.complete_trial(1, feedback)
+        np.testing.assert_array_equal(*decisions)
+        np.testing.assert_array_equal(*reports)
+        np.testing.assert_array_equal(models[0].engine.posterior, models[1].engine.posterior)
+        np.testing.assert_array_equal(_module(models[0]).active, _module(models[1]).active)
+        assert _module(models[0]).executed_hypothesis == _module(models[1]).executed_hypothesis
 
 
 def test_snapshot_rejects_a_different_subject_parameterization():

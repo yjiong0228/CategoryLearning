@@ -1,4 +1,4 @@
-"""Canonical judgment programs and explicit edit costs for Model 0923 M1."""
+"""Canonical judgment programs and explicit edit costs for Model 0923 full model."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def _plane_judgment(plane: tuple) -> Judgment:
     nonzero = coefficients[coefficients != 0]
     scale = float(np.abs(nonzero[0]))
     if not np.allclose(np.abs(nonzero), scale) or not np.any(coefficients > 0):
-        raise ValueError("M1 judgment grammar requires canonical equal-weight planes")
+        raise ValueError("0923 full model judgment grammar requires canonical equal-weight planes")
     positive = tuple(np.flatnonzero(coefficients > 0).tolist())
     negative = tuple(np.flatnonzero(coefficients < 0).tolist())
     kinds = {(1, 0): "axis", (1, 1): "difference", (2, 0): "sum",

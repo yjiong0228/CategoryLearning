@@ -14,7 +14,7 @@ from ..metrics.task import condition3_task_metric_summaries
 from ..metrics.trial import (
     build_prediction_metric_bundle,
 )
-from ..model.readout import (
+from ..model.modules.readout.choice import (
     CHOICE_READOUT_EXPECTATION,
     CHOICE_READOUT_SHARPENED,
     OUTPUT_NOISE_TARGET_UNIFORM,

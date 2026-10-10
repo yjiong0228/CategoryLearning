@@ -187,6 +187,8 @@ def test_audit_preserves_feature_specific_identity_and_refuses_overwrite(tmp_pat
     assert result['n_feature_specific_reports'] == 6
     assert result['legacy_direction_disagreement_reports'] == 4
     assert result['coverage_counts']['missing'] == 2
+    source_paths = {source['path'] for source in result['sources']}
+    assert str(ROOT / 'src/Bayesian_state/model/modules/readout/report_space.py') in source_paths
     assert kwargs['trials_path'].read_bytes() == original
     rows = pd.read_csv(kwargs['output_dir'] / 'trials.csv')
     assert rows.choice.tolist() == [1, 2, 2, 1, 2, 2]

@@ -18,8 +18,8 @@ import yaml
 from ...evaluation.oral.structure_0923 import encode_report
 from ...model import ModelContext, StateModel
 from ...model.oral_readout import OralReadout, OralReadoutParameters
-from ...model.oral_report_space import report_code
-from ...model.readout import resolve_choice_readout_config, resolve_output_noise_config
+from ...model.modules.readout.report_space import report_code
+from ...model.modules.readout.choice import resolve_choice_readout_config, resolve_output_noise_config
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CONFIG = Path('configs/exp123/oral_readout_0923_demo.yaml')

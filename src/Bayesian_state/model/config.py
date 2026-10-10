@@ -46,7 +46,7 @@ class ModelConfig:
             if "class" not in module_config:
                 raise ValueError(f"module configuration {name!r} must include class.")
         if values.get("oral_readout") is not None:
-            from .oral_readout import OralReadoutParameters
+            from .modules.readout.oral import OralReadoutParameters
 
             OralReadoutParameters.from_config(values["oral_readout"])
         if (values.get("provenance") or {}).get("model_id") == "model_0923":

@@ -22,8 +22,8 @@ from ...evaluation.oral import structure_0923
 from ...evaluation.oral.structure_0923 import encode_report
 from ...hypothesis_space.spaces import continuous
 from ...hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
-from ...model import oral_report_space
-from ...model.oral_report_space import (
+from ...model.modules.readout import report_space as oral_report_space
+from ...model.modules.readout.report_space import (
     CatalogueReportSpace, ReportKernelParameters, report_code,
 )
 from .prepare_model_0923 import _boolean, _rows, _write_csv

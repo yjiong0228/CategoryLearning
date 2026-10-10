@@ -145,6 +145,9 @@ def test_probe_keeps_labels_masks_and_original_files(tmp_path):
     assert result['counts']['structural_gain_but_label_unresolved'] == 1
     assert result['geometry_check']['valid_categories'] == 48
     assert result['interpretation']['fit_performed'] is False
+    source_paths = {source['path'] for source in result['sources']}
+    for name in ['report_space.py', 'observation.py', 'oral_kernel.py', 'shared.py']:
+        assert str(ROOT / 'src/Bayesian_state/model/modules/readout' / name) in source_paths
     trials = pd.read_csv(kwargs['output_dir'] / 'trials.csv')
     assert trials.choice.tolist() == [3, 4, 1]
     assert trials.original_scored.tolist() == [False, True, False]

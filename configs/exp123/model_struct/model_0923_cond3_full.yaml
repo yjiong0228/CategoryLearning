@@ -1,11 +1,11 @@
-# Model 0923 M1: illustrative parameters and shared edit costs, not fitted estimates.
+# Model 0923 full: illustrative parameters and shared edit costs, not fitted estimates.
 # One initial candidate; capacity is an upper limit. Oral readout uses the execution rule.
 provenance:
   model_id: model_0923
-  variant: M1
-  condition: 2
+  variant: full
+  condition: 3
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-M1-v1
+  specification_version: 0923-full-v1
   scientific_status: mechanism_candidate_implemented_not_fitted
   hypothesis_space_status: adopted_axis_pair_overlap_128
   catalogue_adoption_basis: user_approved_structure_not_fit_comparison
@@ -19,6 +19,7 @@ provenance:
     interpretation: fixed_label_functional_agreement_with_category_correspondence
   label_mapping:
     mode: fixed_task_labels
+  pairing_initialization: uniform_per_rule_no_true_pairing_prior
   structure_grammar_version: judgment_program_edits_v1
   edit_cost_status: shared_initial_assumptions_not_psychologically_calibrated
 partition:
@@ -36,6 +37,7 @@ likelihood:
   distance_mode: boundary
   beta_source: action
   default_beta: 5.0
+  feedback_likelihood_mode: hierarchical_pairing
 modules:
   perception_mod:
     class: src.Bayesian_state.model.modules.perception.PerceptionModule
@@ -47,7 +49,7 @@ modules:
       beta_max: 25.0
       decrease_rate: 0.15
       increase_rate: 0.04
-      beta_update_mode: probabilistic_feedback
+      beta_update_mode: hierarchical_feedback
       update_scope: active_hypotheses
       probabilistic_feedback_lapse: 0.0
       use_prior_scaling: false
@@ -75,7 +77,7 @@ modules:
         global_search: 0.2
         global_search_failure_gain: 0.5
   memory_mod:
-    class: src.Bayesian_state.model.modules.memory.DualMemoryModule
+    class: src.Bayesian_state.model.modules.pairing_memory.HierarchicalPairingMemoryModule
     kwargs:
       gamma: 0.8
       w0: 0.0

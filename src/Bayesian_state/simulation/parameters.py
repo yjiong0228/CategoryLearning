@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any, Dict, Mapping
 
 from .config import expand_profile_candidate_hyperparams
+from ..model.model_0923 import is_model_0923_full
 from ..utils.seeding import derive_hyper_candidate_seed
 
 DEFAULT_FIXED_HYPERPARAM_PATHS = (
@@ -131,8 +132,8 @@ def infer_fixed_hyperparams_from_engine_config(engine_config: Mapping[str, Any])
     inferred: Dict[str, Any] = {}
     paths = DEFAULT_FIXED_HYPERPARAM_PATHS
     provenance = engine_config.get("provenance") or {}
-    if provenance.get("model_id") == "model_0923" and provenance.get("variant") == "M1":
-        # Restrict new provenance fields to M1: adding search_controller to the
+    if is_model_0923_full(provenance):
+        # Restrict full-model provenance fields: adding search_controller to the
         # global list would also change historical B0 candidate-derived seeds.
         prefix = "engine.modules.hypo_transitions_mod.kwargs."
         paths += tuple(prefix + name for name in (

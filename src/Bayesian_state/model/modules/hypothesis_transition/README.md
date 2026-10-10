@@ -5,12 +5,12 @@ Model 0923 B0 新增 `unified_rule_search.py` 公共模式：一条失败痕迹�
 它复用下述 select → assign-prior 生命周期；旧模式保留原二项计数与随机流。
 参见[0923 规范](../../../docs/model_architecture/model_0923.md)。
 
-Model 0923 M1 已接入公共模式
+Model 0923 完整模型已接入公共模式
 MechanisticRuleSearchHypothesisTransitionModule（mechanistic_rule_search.py），
-配置版本为 0923-M1-v1。它沿用本包的两步生命周期、反馈学习、BetaModule、粒子过滤
+配置版本为 0923-full-v1。它沿用本包的两步生命周期、反馈学习、BetaModule、粒子过滤
 及选择／口述读出，不改变 B0 或 0826 配置的含义。
 
-M1 初始只抽取一个候选，max_capacity 是数量上限。每题非执行候选按
+完整模型初始只抽取一个候选，max_capacity 是数量上限。每题非执行候选按
 exit_rate × (1 − posterior) 退出；退出与新搜索分别发生，不自动补满。
 搜索读取最新已完成反馈，failure_decay 是可按被试覆盖的参数；
 基础搜索、失败增益、失败保持、基础全局比例和失败范围增益共用一条失败状态。
@@ -41,7 +41,7 @@ replacement_fraction 用旧实际候选数量作分母。PF 的 predictive_explo
 保存搜索概率 E，predictive_search_range 保存全局比例 g。
 不能将搜索尝试、候选入场与执行切换解释为同一个事件。
 
-三条件示例配置为 configs/exp123/model_struct/model_0923_cond{1,2,3}_M1.yaml。
+三条件示例配置为 configs/exp123/model_struct/model_0923_cond{1,2,3}_full.yaml。
 数值仅用于运行和机制审查。初始化、退出函数、单候选提议、执行保护及准入竞争
 仍是需要审视的模型假设；完整拟合、参数恢复和 0826 表现保持尚未验证。
 
@@ -93,7 +93,7 @@ hypothesis_transition/
 | `feedback_reactive.py` | 只读取上一 feedback 的一步反应 H3 参照模式 |
 | `nested_feedback_accumulator.py` | 严格嵌套 constant/reactive/accumulator 的 H4 模式 |
 | `unified_rule_search.py` | 0923 B0：统一失败控制与单候选修订 |
-| `mechanistic_rule_search.py` | 0923 M1：可变候选数量、结构与功能提出、关系驱动支持迁移 |
+| `mechanistic_rule_search.py` | 0923 完整模型：可变候选数量、结构与功能提出、关系驱动支持迁移 |
 | `selection.py` / `prior_assignment.py` | 选择和 prior 分配的共享机制 |
 | `workspace.py` / `execution.py` | bounded workspace 状态与执行逻辑 |
 

@@ -112,7 +112,9 @@ choice 前只执行 `process()`。完成 choice/feedback 后，`complete_trial()
 - `memory.py`：整合 likelihood 与 prior/posterior memory；
 - `beta.py`：更新每个 hypothesis 的 inverse temperature。
 
-`readout.py` 与 `state_model.py` 一样属于必要的模型基础设施，不是可插入 agenda 的 module。
+`modules/readout/` 集中实现输出层，内部区分 choice 和 oral，并保留反应时接口。
+`StateModel` 在作答和口述阶段调用 readout；engine 的 agenda 继续管理认知状态更新。
+原 `readout.py` 与 `oral_readout.py` 等路径保留兼容导入。详见 [readout 说明](modules/readout/README.md)。
 
 公式和各模块细节见 `modules/README.md`。
 
@@ -178,7 +180,7 @@ python -m src.Bayesian_state.hypothesis_space.analysis
 
 ## Oral readout：选择后的口述观测层
 
-`oral_readout.py` 提供 `OralReadout`、`OralReadoutParameters` 与 `OralPrediction`。
+`modules/readout/oral.py` 提供 `OralReadout`、`OralReadoutParameters` 与 `OralPrediction`。
 它与 decision readout 共用潜在规则，属于观测层，不放入学习模块的 agenda。
 在 engine 配置顶层加入 `oral_readout: {method: rule_content_v1, kwargs: ...}`；
 参数字段见 `configs/exp123/model_struct/model_0923_cond{1,2,3}_B0.yaml`。

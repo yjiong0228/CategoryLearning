@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from src.Bayesian_state.hypothesis_space.geometry import (
     dykstra_numba_available,
 )
+from ..model.model_0923 import is_model_0923_full
 
 
 def _mapping_path(mapping: Mapping[str, Any], path: str) -> Any:
@@ -70,7 +71,7 @@ def build_model_provenance(
     if declared is not None and not isinstance(declared, Mapping):
         raise ValueError("engine_config.provenance must be a mapping when provided.")
     declared = dict(declared or {})
-    mechanistic = declared.get("model_id") == "model_0923" and declared.get("variant") == "M1"
+    mechanistic = is_model_0923_full(declared)
     if mechanistic:
         initialization.update(method="single_prior_weighted_candidate", active_count=1)
     declared_similarity = declared.get("hypothesis_similarity", {})
