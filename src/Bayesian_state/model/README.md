@@ -114,7 +114,7 @@ choice 前只执行 `process()`。完成 choice/feedback 后，`complete_trial()
 
 `modules/readout/` 集中实现输出层，内部区分 choice 和 oral，并保留反应时接口。
 `StateModel` 在作答和口述阶段调用 readout；engine 的 agenda 继续管理认知状态更新。
-原 `readout.py` 与 `oral_readout.py` 等路径保留兼容导入。详见 [readout 说明](modules/readout/README.md)。
+调用统一使用 `modules/readout/` 下的对应分支。详见 [readout 说明](modules/readout/README.md)。
 
 公式和各模块细节见 `modules/README.md`。
 

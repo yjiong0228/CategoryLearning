@@ -9,7 +9,7 @@ import yaml
 
 from CategoryLearning_codes.Bayesian_model.inference import run_inference_backend
 from CategoryLearning_codes.Bayesian_model.model import ModelContext, StateModel
-from CategoryLearning_codes.Bayesian_model.model.readout import (
+from src.Bayesian_state.model.modules.readout.choice import (
     read_choice_probabilities_from_model,
     resolve_executed_hypothesis,
 )

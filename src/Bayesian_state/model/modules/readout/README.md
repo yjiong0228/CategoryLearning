@@ -18,6 +18,5 @@
 选择和口述配置分别保留在 `choice_readout` 与 `oral_readout`，由 `StateModel` 调用。
 engine 的 `agenda` 继续管理知觉、假设转换、记忆和精度的学习步骤。
 
-新代码使用 `src.Bayesian_state.model.modules.readout.choice` 和 `.oral`。
-原 `model/readout.py`、`model/oral_readout.py`、`model/oral_observation.py`、
-`model/oral_report_space.py` 提供兼容导入，算法统一保存在本目录。
+代码统一使用 `src.Bayesian_state.model.modules.readout.choice` 和 `.oral`，
+口述词表及联合概率分别使用 `.report_space` 和 `.observation`。

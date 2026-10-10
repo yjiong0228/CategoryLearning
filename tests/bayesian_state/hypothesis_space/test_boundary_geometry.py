@@ -17,7 +17,7 @@ from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPart
 from src.Bayesian_state.hypothesis_space.observation_model import ObservationLikelihood
 from src.Bayesian_state.model.assembly import build_observation_likelihood
 from src.Bayesian_state.model import ModelContext, StateModel
-from src.Bayesian_state.model.readout import read_choice_probabilities_from_model
+from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
 from src.Bayesian_state.model.modules.hypothesis_transition.selection import (
     HypothesisSelectionPolicy,
 )

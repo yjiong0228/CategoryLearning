@@ -104,7 +104,7 @@ def test_current_choice_does_not_leak_into_current_predictions(case):
 
 
 def test_pairing_summaries_use_choice_importance_weights(case):
-    from src.Bayesian_state.model.readout import read_choice_probabilities_from_model
+    from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
 
     direct = _direct_case(case)
     direct["resample_threshold_fraction"] = 0.0

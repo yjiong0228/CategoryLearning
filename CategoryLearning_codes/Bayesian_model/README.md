@@ -21,6 +21,10 @@
 `src.Bayesian_state`，不再增加兼容文件。期刊参数空间加载器保留只接受 0826 的限制，
 共享加载器继续兼容 0818。相似度矩阵仅保留共享目录中的一份。
 
+Readout 统一从 `src.Bayesian_state.model.modules.readout` 导入：选择使用 `.choice`，
+口述使用 `.oral`，词表及联合观测分别使用 `.report_space` 和 `.observation`。
+恢复流程的来源记录指向该目录的实际实现文件。
+
 ## 日常工作流
 
 从仓库根目录运行；无需复制模型或调整 PYTHONPATH：

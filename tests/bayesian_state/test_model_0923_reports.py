@@ -11,8 +11,8 @@ import pytest
 
 from src.Bayesian_state.evaluation.oral.structure_0923 import encode_report
 from src.Bayesian_state.hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
-from src.Bayesian_state.model.oral_observation import predict_choice_oral
-from src.Bayesian_state.model.oral_report_space import (
+from src.Bayesian_state.model.modules.readout.observation import predict_choice_oral
+from src.Bayesian_state.model.modules.readout.report_space import (
     CatalogueReportSpace, ReportKernelParameters, body_token, facet_token, report_code,
 )
 from src.Bayesian_state.workflows.analysis.audit_model_0923_reports import audit_reports

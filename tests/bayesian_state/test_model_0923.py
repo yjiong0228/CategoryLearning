@@ -13,7 +13,7 @@ from src.Bayesian_state.model.modules.hypothesis_transition.contracts import Hyp
 from src.Bayesian_state.model.modules.hypothesis_transition.unified_rule_search import (
     UnifiedRuleSearchHypothesisTransitionModule,
 )
-from src.Bayesian_state.model.oral_observation import predict_choice_oral
+from src.Bayesian_state.model.modules.readout.observation import predict_choice_oral
 
 ROOT = Path(__file__).resolve().parents[2]
 

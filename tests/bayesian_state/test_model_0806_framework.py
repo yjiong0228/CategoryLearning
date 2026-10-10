@@ -43,12 +43,12 @@ from src.Bayesian_state.model.modules.hypothesis_transition.fixed_strategy impor
 from src.Bayesian_state.model.modules.hypothesis_transition.feedback_reactive import (
     FeedbackReactiveHypothesisTransitionModule,
 )
-from src.Bayesian_state.model.readout import (
+from src.Bayesian_state.model.modules.readout.choice import (
     apply_rule_commitment_choice_confidence,
     apply_strategy_conditioned_choice_confidence,
-    read_oral_report,
-    read_reaction_time,
 )
+from src.Bayesian_state.model.modules.readout.oral_kernel import read_oral_report
+from src.Bayesian_state.model.modules.readout.reaction_time import read_reaction_time
 from src.Bayesian_state.simulation.autonomous import (
     run_autonomous_category_learning,
 )

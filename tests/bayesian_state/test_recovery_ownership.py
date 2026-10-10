@@ -57,6 +57,21 @@ def test_recovery_fingerprint_tracks_each_split_implementation(monkeypatch):
         'workflows/recovery/generation.py', 'workflows/recovery/run.py',
         'model/modules/memory.py', 'model/modules/beta.py',
         'model/modules/hypothesis_transition/prior_assignment.py',
+        'model/modules/readout/choice.py', 'model/modules/readout/shared.py',
     ]:
         changed['path'] = ROOT / 'src/Bayesian_state' / relative
         assert run_recovery._design_fingerprint(design) != before, relative
+
+
+def test_recovery_provenance_records_actual_readout_sources(tmp_path):
+    import json
+    from hashlib import sha256
+
+    design = load_recovery_design(ROOT / 'configs/exp123/specific_models/model_0826_recovery_v1.yaml')
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text('{}')
+    run_recovery._record_run_provenance(design, tmp_path)
+    sources = json.loads(manifest.read_text())['provenance']['source_files']
+    for key, filename in [('choice_readout', 'choice.py'), ('readout_shared', 'shared.py')]:
+        path = ROOT / 'src/Bayesian_state/model/modules/readout' / filename
+        assert sources[key] == {'path': str(path), 'sha256': sha256(path.read_bytes()).hexdigest()}

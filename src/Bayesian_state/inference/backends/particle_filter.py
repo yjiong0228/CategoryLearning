@@ -19,7 +19,7 @@ import numpy as np
 from ..results import InferenceResult, ParticleFilterResult
 from ...model.config import ModelContext
 from ...model.modules.base_module import ModuleRole
-from ...model.readout import (
+from ...model.modules.readout.choice import (
     apply_hypothesis_mapping,
     apply_strategy_conditioned_choice_confidence,
 )
@@ -240,7 +240,7 @@ def _choice_probability(
 ) -> np.ndarray | tuple[np.ndarray, dict[str, float]]:
     """Read a choice and optionally sharpen commitment from controller state."""
 
-    from ...model.readout import (
+    from ...model.modules.readout.choice import (
         apply_rule_commitment_choice_confidence,
         apply_strategy_conditioned_choice_confidence,
         read_choice_probabilities_from_model,
@@ -371,7 +371,7 @@ def _choice_layer_audit(
     sharpened_no_lapse = _normalize(
         sharpened_weights @ category_by_hypothesis
     )
-    from ...model.readout import (
+    from ...model.modules.readout.choice import (
         apply_rule_commitment_choice_confidence,
         apply_strategy_conditioned_choice_confidence,
         resolve_executed_hypothesis,

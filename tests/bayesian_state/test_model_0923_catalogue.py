@@ -15,8 +15,8 @@ from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import (
 from src.Bayesian_state.model import ModelContext, StateModel
 from src.Bayesian_state.model.assembly import build_partition
 from src.Bayesian_state.model.config import ModelConfig
-from src.Bayesian_state.model.oral_observation import predict_choice_oral
-from src.Bayesian_state.model.oral_report_space import CatalogueReportSpace, ReportKernelParameters
+from src.Bayesian_state.model.modules.readout.observation import predict_choice_oral
+from src.Bayesian_state.model.modules.readout.report_space import CatalogueReportSpace, ReportKernelParameters
 
 ROOT = Path(__file__).resolve().parents[2]
 

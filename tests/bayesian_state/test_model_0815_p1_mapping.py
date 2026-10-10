@@ -12,7 +12,7 @@ from src.Bayesian_state.inference.backends.particle_filter import (
 )
 from src.Bayesian_state.model import ModelContext, StateModel
 from src.Bayesian_state.model.modules import ModuleRole
-from src.Bayesian_state.model.readout import read_choice_probabilities_from_model
+from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
 from src.Bayesian_state.simulation.autonomous import (
     run_autonomous_category_learning,
 )

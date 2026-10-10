@@ -13,7 +13,7 @@ from src.Bayesian_state.model.modules.hypothesis_transition.feedback_reactive im
 from src.Bayesian_state.model.modules.hypothesis_transition.nested_feedback_accumulator import (
     NestedFeedbackAccumulatorHypothesisTransitionModule,
 )
-from src.Bayesian_state.model.readout import read_choice_probabilities_from_model
+from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
 from src.Bayesian_state.simulation.parameters import (
     infer_fixed_hyperparams_from_engine_config,
 )

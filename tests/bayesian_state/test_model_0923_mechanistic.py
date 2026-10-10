@@ -16,7 +16,7 @@ from src.Bayesian_state.model.modules.base_module import ModuleRole
 from src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search import (
     MechanisticRuleSearchHypothesisTransitionModule,
 )
-from src.Bayesian_state.model.readout import resolve_choice_readout_config, resolve_output_noise_config
+from src.Bayesian_state.model.modules.readout.choice import resolve_choice_readout_config, resolve_output_noise_config
 from src.Bayesian_state.simulation.parameters import infer_fixed_hyperparams_from_engine_config
 from src.Bayesian_state.simulation.provenance import build_model_provenance
 

@@ -281,7 +281,8 @@ def _record_run_provenance(
             ROOT
             / "src/Bayesian_state/inference/backends/particle_filter.py"
         ),
-        "choice_readout": ROOT / "src/Bayesian_state/model/readout.py",
+        "choice_readout": ROOT / "src/Bayesian_state/model/modules/readout/choice.py",
+        "readout_shared": ROOT / "src/Bayesian_state/model/modules/readout/shared.py",
     }
     provenance = {
         "dependencies": _design_dependencies(design),

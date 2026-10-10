@@ -30,7 +30,7 @@ from sklearn.metrics import silhouette_score
 from ..inference.dispatcher import run_inference_backend
 from ..model import StateModel
 from ..model.config import ModelContext
-from ..model.readout import (
+from ..model.modules.readout.choice import (
     resolve_choice_readout_config,
     resolve_output_noise_config,
 )

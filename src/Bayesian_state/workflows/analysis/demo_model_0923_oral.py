@@ -17,7 +17,7 @@ import yaml
 
 from ...evaluation.oral.structure_0923 import encode_report
 from ...model import ModelContext, StateModel
-from ...model.oral_readout import OralReadout, OralReadoutParameters
+from ...model.modules.readout.oral import OralReadout, OralReadoutParameters
 from ...model.modules.readout.report_space import report_code
 from ...model.modules.readout.choice import resolve_choice_readout_config, resolve_output_noise_config
 

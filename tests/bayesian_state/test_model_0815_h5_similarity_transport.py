@@ -9,7 +9,7 @@ import yaml
 
 from src.Bayesian_state.inference import run_inference_backend
 from src.Bayesian_state.model import ModelContext, StateModel
-from src.Bayesian_state.model.readout import (
+from src.Bayesian_state.model.modules.readout.choice import (
     read_choice_probabilities_from_model,
     resolve_executed_hypothesis,
 )

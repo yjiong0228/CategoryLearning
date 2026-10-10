@@ -13,7 +13,7 @@ from CategoryLearning_codes.Bayesian_model.model.modules.hypothesis_transition.f
 from CategoryLearning_codes.Bayesian_model.model.modules.hypothesis_transition.nested_feedback_accumulator import (
     NestedFeedbackAccumulatorHypothesisTransitionModule,
 )
-from CategoryLearning_codes.Bayesian_model.model.readout import read_choice_probabilities_from_model
+from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
 from CategoryLearning_codes.Bayesian_model.simulation.parameters import (
     infer_fixed_hyperparams_from_engine_config,
 )

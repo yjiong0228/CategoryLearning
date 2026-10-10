@@ -13,9 +13,9 @@ from src.Bayesian_state.hypothesis_space.spaces.continuous import build_continuo
 from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import build_axis_pair_overlap_space
 from src.Bayesian_state.model import ModelContext, StateModel
 from src.Bayesian_state.model.config import ModelConfig
-from src.Bayesian_state.model.oral_readout import OralReadout, OralReadoutParameters
-from src.Bayesian_state.model.oral_report_space import EMPTY_REPORT, OTHER_REPORT, component_tokens, report_code
-from src.Bayesian_state.model.readout import (
+from src.Bayesian_state.model.modules.readout.oral import OralReadout, OralReadoutParameters
+from src.Bayesian_state.model.modules.readout.report_space import EMPTY_REPORT, OTHER_REPORT, component_tokens, report_code
+from src.Bayesian_state.model.modules.readout.choice import (
     CHOICE_READOUT_SAMPLE, CHOICE_READOUT_MAP, CHOICE_READOUT_EXPECTATION,
     resolve_choice_readout_config, resolve_output_noise_config,
 )

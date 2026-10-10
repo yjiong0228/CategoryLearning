@@ -11,7 +11,7 @@ from ..utils.parallel import parallel_job_count, single_threaded_processes
 from scipy.stats import spearmanr
 from src.Bayesian_state.inference.backends.particle_filter import run_state_model_particle_filter
 from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
-from src.Bayesian_state.model.readout import (
+from src.Bayesian_state.model.modules.readout.choice import (
     resolve_choice_readout_config,
     resolve_output_noise_config,
 )

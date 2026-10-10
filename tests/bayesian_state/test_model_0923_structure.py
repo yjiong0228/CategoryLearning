@@ -13,7 +13,7 @@ from src.Bayesian_state.evaluation.oral.structure_0923 import encode_report
 from src.Bayesian_state.hypothesis_space.geometry.boundary import BoundaryGeometry
 from src.Bayesian_state.hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
 from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import build_axis_pair_overlap_probe_space
-from src.Bayesian_state.model.oral_report_space import CatalogueReportSpace, ReportKernelParameters, report_code
+from src.Bayesian_state.model.modules.readout.report_space import CatalogueReportSpace, ReportKernelParameters, report_code
 from src.Bayesian_state.workflows.analysis.audit_model_0923_reports import audit_reports
 from src.Bayesian_state.workflows.analysis.prepare_model_0923 import _write_csv
 from src.Bayesian_state.workflows.analysis.probe_model_0923_structure import probe_structure

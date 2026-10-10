@@ -30,7 +30,7 @@ if str(ROOT) not in sys.path:
 from src.Bayesian_state.inference.backends.particle_filter import (  # noqa: E402
     run_state_model_particle_filter,
 )
-from src.Bayesian_state.model.readout import (  # noqa: E402
+from src.Bayesian_state.model.modules.readout.choice import (  # noqa: E402
     resolve_choice_readout_config,
     resolve_output_noise_config,
 )
