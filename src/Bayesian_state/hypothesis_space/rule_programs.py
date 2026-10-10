@@ -8,6 +8,7 @@ from typing import Mapping
 import numpy as np
 
 from .spaces.continuous import ContinuousHypothesisSpace, ContinuousHypothesisSpec
+from .spaces.structural_0923 import FAMILY_SIMILARITY_AXIS
 
 
 GRAMMAR_VERSION = "judgment_program_edits_v1"
@@ -110,7 +111,7 @@ def _category_patterns(spec: ContinuousHypothesisSpec, order: list[int]) -> tupl
 
 
 def compile_rule_program(spec: ContinuousHypothesisSpec) -> RuleProgram:
-    """Represent all adopted 29/128 rules without changing their labels."""
+    """Represent the adopted 29/128/152 catalogues without changing labels."""
     params = spec.parameters
     if spec.family == "univariate_center_band":
         test = Judgment("center_band", (int(params["dimension"]),), (),
@@ -120,6 +121,15 @@ def compile_rule_program(spec: ContinuousHypothesisSpec) -> RuleProgram:
         test = Judgment("difference_band", tuple(params["dimensions"]), (),
                         (float(params["tolerance"]),))
         return RuleProgram("binary", (test,), tuple(spec.label_permutation))
+    if spec.family == FAMILY_SIMILARITY_AXIS:
+        # The near/far band is the SAME single predicate as in binary rules;
+        # its two geometric faces must not be interpreted as a decision tree.
+        tests = (
+            Judgment("axis", (int(params["axis_dimension"]),), (), (float(params["threshold"]),)),
+            Judgment("difference_band", tuple(params["related_dimensions"]), (),
+                     (float(params["tolerance"]),)),
+        )
+        return RuleProgram("cross", tests, (((1, 1),), ((1, -1),), ((-1, 1),), ((-1, -1),)))
     if spec.family in {"dimension_max", "dimension_min"}:
         kind = "maximum" if spec.family == "dimension_max" else "minimum"
         dims = tuple(range(len(spec.categories)))

@@ -98,7 +98,8 @@ def run_demo(config_path: Path, output_dir: Path) -> dict:
                              'hypotheses': list(oral.hypothesis_indices),
                              'rule_weights_given_choice': oral.rule_weights_given_choice.tolist(),
                              'posterior_sum_after_feedback': float(posterior.sum()),
-                             'vocabulary_size': len(oral.codes)})
+                             'vocabulary_size': len(oral.codes),
+                             'rule_count': len(model.partition_model.hypothesis_space)})
     if parameters is None or not illustration:
         raise ValueError('no matching model for the configured illustration')
     result = {'status': 'synthetic_uncalibrated_demonstration', 'config': config,
@@ -141,7 +142,7 @@ def run_demo(config_path: Path, output_dir: Path) -> dict:
               '| Condition | 规则数 | 报告词表大小 | 最大口述概率和误差 |', '|---|---:|---:|---:|']
     for condition, resolved in model_configs.items():
         trials = [r for r in live if str(r['condition']) == condition]
-        count = 29 if resolved['partition']['kwargs']['n_cats'] == 2 else 128
+        count = trials[0]['rule_count']
         error = max(abs(t['oral_probability_sum'] - 1) for t in trials)
         lines.append(f"| {condition} | {count} | {trials[0]['vocabulary_size']} | {error:.3g} |")
     lines += ['', 'condition 3 的三题实际经过 0、0.5、1 反馈。相似度只用 64 个采样点，知觉噪声置零，',

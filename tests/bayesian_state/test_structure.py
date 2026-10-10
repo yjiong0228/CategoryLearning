@@ -104,6 +104,7 @@ def test_transition_modes_and_shared_mechanisms_are_separate() -> None:
         "feedback_reactive.py",
         "nested_feedback_accumulator.py",
         "unified_rule_search.py",
+        "mechanistic_rule_search.py",
     }
     shared_mechanisms = {
         "contracts.py",

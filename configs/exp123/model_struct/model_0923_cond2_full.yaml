@@ -5,9 +5,9 @@ provenance:
   variant: full
   condition: 2
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-full-v1
+  specification_version: 0923-full-v2
   scientific_status: mechanism_candidate_implemented_not_fitted
-  hypothesis_space_status: adopted_axis_pair_overlap_128
+  hypothesis_space_status: adopted_relational_152
   catalogue_adoption_basis: user_approved_structure_not_fit_comparison
   hypothesis_similarity:
     basis: boundary_fixed_labels
@@ -26,7 +26,8 @@ partition:
   kwargs:
     n_dims: 4
     n_cats: 4
-    structural_extension: axis_pair_overlap_0923
+    structural_extension: relational_152_0923
+    pairwise_similarity_tolerance: 0.10  # Same near/far convention as binary rules.
     similarity_n_samples: 100000
 inference:
   backend: particle_filter

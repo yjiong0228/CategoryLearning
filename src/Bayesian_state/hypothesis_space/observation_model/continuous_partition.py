@@ -18,8 +18,11 @@ from ..spaces import (
 )
 from ..spaces.structural_0923 import (
     AXIS_PAIR_OVERLAP_EXTENSION,
+    RELATIONAL_EXTENSION,
     build_axis_pair_overlap_space,
+    build_relational_0923_space,
 )
+from ..spaces.continuous import DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE
 from ..geometry import BoundaryGeometry, PrototypeGeometry
 from ..geometry.distance_cache import ExactDistanceCache
 from ..geometry.stimuli import as_stimuli
@@ -45,7 +48,7 @@ class ContinuousPartition(BasePartition):
         self,
         n_dims: int,
         n_cats: int,
-        pairwise_similarity_tolerance: float = 0.10,
+        pairwise_similarity_tolerance: float = DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE,
         center_band_tolerance: float = 0.10,
         prototype_method: str = PrototypeGeometry.METHOD_COMPONENT_VOLUME_CENTROID,
         boundary_distance_method: str = BoundaryGeometry.METHOD_DYKSTRA,
@@ -79,13 +82,16 @@ class ContinuousPartition(BasePartition):
             )
         )
         if structural_extension is not None:
-            if structural_extension != AXIS_PAIR_OVERLAP_EXTENSION:
+            if structural_extension not in {AXIS_PAIR_OVERLAP_EXTENSION, RELATIONAL_EXTENSION}:
                 raise ValueError(f"Unsupported structural_extension {structural_extension!r}")
             if (self.hypothesis_space.n_dims, self.hypothesis_space.n_cats) != (4, 4):
-                raise ValueError("axis_pair_overlap_0923 requires four dimensions and four categories")
+                raise ValueError(f"{structural_extension} requires four dimensions and four categories")
             if self.hypothesis_space.parameters["label_permutation_policy"] != LABEL_PERMUTATION_IDENTITY:
-                raise ValueError("axis_pair_overlap_0923 retains fixed labels")
-            self.hypothesis_space = build_axis_pair_overlap_space()
+                raise ValueError(f"{structural_extension} retains fixed labels")
+            self.hypothesis_space = (
+                build_relational_0923_space(pairwise_similarity_tolerance=pair_tolerance)
+                if structural_extension == RELATIONAL_EXTENSION else build_axis_pair_overlap_space()
+            )
         self.structural_extension = structural_extension
         super().__init__(n_dims, n_cats)
         self.pairwise_similarity_tolerance = pair_tolerance

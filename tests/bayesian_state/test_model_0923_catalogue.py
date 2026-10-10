@@ -28,13 +28,13 @@ def _config(condition, tmp_path):
     config['modules']['perception_mod']['kwargs'] = {
         'features': 4, 'mean': [0.] * 4, 'std': [0.] * 4,
     }
-    # This fixed initialization draws [40, 92, 120] in the four-class space,
+    # This fixed initialization draws [48, 109, 143] in the four-class space,
     # exercising an adopted rule through feedback rather than just counting it.
     config['modules']['hypo_transitions_mod']['kwargs']['module_seed'] = 0
     return config
 
 
-@pytest.mark.parametrize('condition,expected', [(1, 29), (2, 128), (3, 128)])
+@pytest.mark.parametrize('condition,expected', [(1, 29), (2, 152), (3, 152)])
 def test_adopted_rules_participate_in_prior_search_and_feedback(condition, expected, tmp_path):
     config = _config(condition, tmp_path)
     model = StateModel(config, context=ModelContext(condition=condition, subject_id=314))
@@ -43,16 +43,16 @@ def test_adopted_rules_participate_in_prior_search_and_feedback(condition, expec
     np.testing.assert_allclose(transition.base_prior, np.full(expected, 1 / expected))
     prepared = model.begin_trial([.8, .2, .4, .6])
     if condition != 1:
-        assert 120 in prepared.log['active_indices']
-        assert prepared.prior[120] > 0
+        assert 143 in prepared.log['active_indices']
+        assert prepared.prior[143] > 0
     model.complete_trial(1, .5 if condition == 3 else 1.)
     posterior = model.engine.posterior
     assert posterior.shape == (expected,)
     assert np.isfinite(posterior).all() and np.all(posterior >= 0.)
     np.testing.assert_allclose(posterior.sum(), 1.)
     if condition != 1:
-        assert posterior[120] > 0
-        assert posterior[120] != pytest.approx(prepared.prior[120])
+        assert posterior[143] > 0
+        assert posterior[143] != pytest.approx(prepared.prior[143])
     inactive = np.setdiff1d(np.arange(expected), transition.active)
     proposal = transition._newcomer_proposal(posterior, inactive)
     assert proposal.shape == inactive.shape
@@ -61,9 +61,9 @@ def test_adopted_rules_participate_in_prior_search_and_feedback(condition, expec
     assert transition._local_kernel.shape == (expected, expected)
     if condition == 3:
         memory = model.engine.modules['memory_mod']
-        assert memory.joint.shape == (128, 3)
+        assert memory.joint.shape == (152, 3)
         np.testing.assert_allclose(memory.joint.sum(axis=1), posterior)
-        assert not np.allclose(memory.conditional_pairing()[120], np.full(3, 1 / 3))
+        assert not np.allclose(memory.conditional_pairing()[143], np.full(3, 1 / 3))
 
 
 def test_production_and_probe_use_the_same_geometry():
@@ -95,7 +95,7 @@ def test_saved_v1_configs_and_default_catalogue_still_have_116_rules(condition, 
     assert ContinuousPartition(4, 4).length == 116
 
 
-def test_v2_rejects_a_config_or_injected_partition_that_drops_the_extension(tmp_path):
+def test_current_version_rejects_a_config_or_injected_partition_that_drops_the_extension(tmp_path):
     config = _config(2, tmp_path)
     mismatched = deepcopy(config)
     del mismatched['partition']['kwargs']['structural_extension']
@@ -143,10 +143,10 @@ def test_report_interface_consumes_the_adopted_partition(tmp_path):
     partition = build_partition(_config(2, tmp_path), 2)
     reports = CatalogueReportSpace.from_catalogue(partition.hypothesis_space)
     kernel = reports.matrix(ReportKernelParameters(.8, .02, .5, .75, .1))
-    assert kernel.shape == (128, 4, 506)
+    assert kernel.shape == (152, 4, 692)
     choices = np.stack([partition.get_category_probabilities(
         h, (np.array([[.8, .2, .4, .6]]),), 5., distance_mode='boundary').reshape(4)
-        for h in range(128)])
-    predicted = predict_choice_oral(np.full(128, 1 / 128), choices, kernel)
+        for h in range(152)])
+    predicted = predict_choice_oral(np.full(152, 1 / 152), choices, kernel)
     np.testing.assert_allclose(predicted.joint_probabilities.sum(axis=1), choices.mean(axis=0))
     np.testing.assert_allclose(predicted.joint_probabilities.sum(), 1.)

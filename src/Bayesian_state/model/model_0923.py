@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
-from ..hypothesis_space.spaces.structural_0923 import AXIS_PAIR_OVERLAP_EXTENSION
+from ..hypothesis_space.spaces.structural_0923 import AXIS_PAIR_OVERLAP_EXTENSION, RELATIONAL_EXTENSION
+from ..hypothesis_space.spaces.continuous import DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE
 
 
 TRANSITION_CLASS = (
@@ -23,7 +24,8 @@ PAIRING_MEMORY_CLASS = (
 
 # Saved configurations keep their original provenance. New runs declare full.
 FULL_MODEL_VARIANTS = frozenset({"full", "M1"})
-FULL_MODEL_VERSIONS = frozenset({"0923-full-v1", "0923-M1-v1"})
+FULL_MODEL_VERSIONS = frozenset({"0923-full-v1", "0923-M1-v1", "0923-full-v2"})
+RELATIONAL_CATALOGUE_VERSIONS = frozenset({"0923-B0-v3", "0923-full-v2"})
 
 
 def is_model_0923_full(provenance: Mapping[str, Any]) -> bool:
@@ -45,14 +47,16 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
     partition_kwargs = partition.get("kwargs") or {}
     if partition_kwargs.get("n_cats") != (2 if condition == 1 else 4):
         raise ValueError("0923 category count disagrees with its condition")
-    # Keep saved v1 configurations executable; v2 explicitly adopts the 12
-    # feature-overlap rules. The catalogue change is not a new search mechanism.
+    # Version the representation separately from the learning equations.
+    # Saved 116/128-rule configurations retain their original catalogues.
     version = provenance.get("specification_version", "0923-B0-v1")
-    versions = FULL_MODEL_VERSIONS if mechanistic else {"0923-B0-v1", "0923-B0-v2"}
+    versions = FULL_MODEL_VERSIONS if mechanistic else {"0923-B0-v1", "0923-B0-v2", "0923-B0-v3"}
     if version not in versions:
         raise ValueError("unsupported 0923 specification_version")
-    adopted = version in {"0923-B0-v2", *FULL_MODEL_VERSIONS}
-    extension = AXIS_PAIR_OVERLAP_EXTENSION if adopted and condition != 1 else None
+    adopted = version != "0923-B0-v1"
+    extension = None if condition == 1 or not adopted else (
+        RELATIONAL_EXTENSION if version in RELATIONAL_CATALOGUE_VERSIONS else AXIS_PAIR_OVERLAP_EXTENSION
+    )
     if partition_kwargs.get("structural_extension") != extension:
         raise ValueError("0923 structural_extension disagrees with its specification_version/condition")
     if adopted:
@@ -113,12 +117,20 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
 
 
 def validate_model_0923_partition(config: Mapping[str, Any], partition: Any) -> None:
-    """Reject an injected partition that silently bypasses the v2 catalogue."""
+    """Reject an injected partition that bypasses the declared catalogue."""
     provenance = config.get("provenance") or {}
-    if provenance.get("specification_version") not in {"0923-B0-v2", *FULL_MODEL_VERSIONS}:
+    version = provenance.get("specification_version")
+    if version not in {"0923-B0-v2", *RELATIONAL_CATALOGUE_VERSIONS, *FULL_MODEL_VERSIONS}:
         return
     binary = provenance["condition"] == 1
-    expected_extension = None if binary else AXIS_PAIR_OVERLAP_EXTENSION
+    relational = version in RELATIONAL_CATALOGUE_VERSIONS and not binary
+    expected_extension = None if binary else (RELATIONAL_EXTENSION if relational else AXIS_PAIR_OVERLAP_EXTENSION)
     if (getattr(partition, "structural_extension", None) != expected_extension
-            or partition.length != (29 if binary else 128)):
+            or partition.length != (29 if binary else 152 if relational else 128)):
         raise ValueError("0923 partition does not match its adopted catalogue")
+    if relational:
+        kwargs = (config.get("partition") or {}).get("kwargs") or {}
+        expected = float(kwargs.get("pairwise_similarity_tolerance", DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE))
+        actual = partition.hypothesis_space.parameters["pairwise_similarity_tolerance"]
+        if actual != expected:
+            raise ValueError("0923 injected partition disagrees with its configured similarity tolerance")

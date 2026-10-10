@@ -104,6 +104,7 @@ FAMILY_PAIRWISE_SUM_THRESHOLD = "pairwise_sum_threshold"
 FAMILY_PAIRED_SUM_ORDER = "paired_sum_order"
 FAMILY_PAIRWISE_SIMILARITY_BAND = "pairwise_similarity_band"
 FAMILY_UNIVARIATE_CENTER_BAND = "univariate_center_band"
+DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE = 0.10
 
 BINARY_FAMILY_LABELS = {
     FAMILY_UNIVARIATE_THRESHOLD: "single feature below/above 0.5",
@@ -502,7 +503,7 @@ def build_continuous_hypothesis_space(
     n_dims: int,
     n_cats: int,
     *,
-    pairwise_similarity_tolerance: float = 0.10,
+    pairwise_similarity_tolerance: float = DEFAULT_PAIRWISE_SIMILARITY_TOLERANCE,
     center_band_tolerance: float = 0.10,
     label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
 ) -> ContinuousHypothesisSpace:

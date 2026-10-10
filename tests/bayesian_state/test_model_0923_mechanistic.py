@@ -92,7 +92,7 @@ def test_profiles_are_declared_and_keep_the_adopted_catalogue(condition):
     ModelConfig.from_mapping(config)
     assert config == before
     model = _model(condition)
-    assert model.engine.set_size == (29 if condition == 1 else 128)
+    assert model.engine.set_size == (29 if condition == 1 else 152)
     assert isinstance(_module(model), MechanisticRuleSearchHypothesisTransitionModule)
     assert len(_module(model).active) == 1
 
@@ -361,7 +361,11 @@ def test_fixed_parameter_provenance_captures_full_without_changing_b0_seed_input
 def test_full_name_and_saved_legacy_alias_have_identical_seeded_paths(condition):
     config = _config(condition)
     assert config["provenance"]["variant"] == "full"
-    assert config["provenance"]["specification_version"] == "0923-full-v1"
+    assert config["provenance"]["specification_version"] == "0923-full-v2"
+    # Compare the two SAVED v1 names on their original 128-rule catalogue.
+    config["provenance"]["specification_version"] = "0923-full-v1"
+    if condition != 1:
+        config["partition"]["kwargs"]["structural_extension"] = "axis_pair_overlap_0923"
     legacy = deepcopy(config)
     legacy["provenance"].update(variant="M1", specification_version="0923-M1-v1")
     assert infer_fixed_hyperparams_from_engine_config(config) == infer_fixed_hyperparams_from_engine_config(legacy)

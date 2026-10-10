@@ -5,7 +5,7 @@ provenance:
   variant: full
   condition: 1
   specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
-  specification_version: 0923-full-v1
+  specification_version: 0923-full-v2
   scientific_status: mechanism_candidate_implemented_not_fitted
   hypothesis_space_status: retained_binary_29
   catalogue_adoption_basis: user_approved_structure_not_fit_comparison

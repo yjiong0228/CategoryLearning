@@ -9,7 +9,7 @@ dataset:
   perception_summary: Task1b_errorsummary_24.csv
   perception_summary_72: Task1b_errorsummary_72.csv
   feature_order_data: Task2_processed.csv
-output_dir: ../../../results/model_0923/cond3_full_smoke_20261010_v1
+output_dir: ../../../results/model_0923/cond3_full_v2_smoke_20261011_v1
 fixed_hyperparams:
   engine.inference.particle_count: 8
 n_jobs: 1
