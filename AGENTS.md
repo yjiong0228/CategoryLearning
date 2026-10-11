@@ -165,6 +165,11 @@ They also apply when using academic-writing skills or journal templates.
 Before handing off documentation, read the prose independently of its equations
 and check both requirements paragraph by paragraph. A keyword scan is only a
 supplement to this review. Keep necessary definitions and limitations explicit.
+For a full-document revision, also compare all module headings, abbreviation
+expansions, overview tables and cross-references. Use the same naming pattern
+for peer modules, align each chapter opening with its inputs and outputs, and
+read adjacent chapters together to catch abrupt changes in tone or scope.
+Check linked headings after renaming sections.
 For example, write “各规则对作答的影响随试次变化。权重分散时，多条规则共同影响回答；
 权重集中时，一条规则主导回答。”
 
