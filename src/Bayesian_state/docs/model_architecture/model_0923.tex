@@ -1,5 +1,5 @@
 % !TeX program = xelatex
-% Revised design: 2026-10-11; implementation status is stated in the section labelled sec:implementation.
+% Revised design: 2026-10-11.
 % Existing scientific code: 4c1ccd79.
 \documentclass[12pt]{article}
 \usepackage[a4paper,margin=2.5cm]{geometry}
@@ -43,12 +43,12 @@
 \begin{figure}[!ht]
 \centering
 \includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{figures/model_0923_framework.png}
-\caption{Model 0923 的机制总览。知觉模块形成内部刺激，各条规则的类别预测供选择读出和反馈评价共用。选择读出汇总作答概率。收到反馈后，证据记忆与精度更新并行调整规则信念和预测精度，假设更新为下一题准备候选。虚线表示跨试次状态传递。选择数据用于估计参数和更新粒子权重。图示为修订设计，代码接入状态见第\ref{sec:implementation}节。图中反馈更新以二值任务为例，条件3的配对学习见第\ref{sec:pairing}节。}
+\caption{Model 0923 的机制总览。知觉模块形成内部刺激，各条规则的类别预测供选择读出和反馈评价共用。选择读出汇总作答概率。收到反馈后，证据记忆与精度更新并行调整规则信念和预测精度，假设更新为下一题准备候选。虚线表示跨试次状态传递。选择数据用于估计参数和更新粒子权重。图示为修订设计。图中反馈更新以二值任务为例，条件3的配对学习见第\ref{sec:pairing}节。}
 \label{fig:model-framework}
 \end{figure}
 \clearpage
 
-本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、信念与精度更新已有实现；本文重写的候选准入与连续作答权重机制尚待同步代码。实现对应与验证范围见第\ref{sec:implementation}节。
+本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、信念与精度更新已有实现；本文重写的候选准入与连续作答权重机制尚待同步代码。
 
 正文先介绍任务、规则表示和证据更新，再说明各认知模块怎样完成一次学习过程。第\ref{sec:hypothesis}节统一说明假设更新模块的搜索与候选管理，第\ref{sec:execution}节说明选择读出。被试参数在同一被试内保持不变，状态随试次递推。
 
@@ -263,7 +263,7 @@ p_{t,h}(c)=
 
 例如，两条规则原有信念为0.9和0.1，比例为9比1。$\gamma_s=0.5$ 时，加入新反馈前的比例变为3比1；本题反馈再根据两条规则的似然改变这一比例。$\gamma_s$ 越大，旧差异保留得越多；越小，差异压缩得越强。$\gamma_s=1$ 表示完整保留旧证据的顺序更新；$\gamma_s=0$ 时，活跃候选按当前反馈重新比较。
 
-规则信念随反馈递推。候选管理负责设置新集合的初始信念，证据记忆模块负责将后续反馈累积到这些信念中。共同数值设置见第\ref{sec:implementation}节。
+规则信念随反馈递推。候选管理负责设置新集合的初始信念，证据记忆模块负责将后续反馈累积到这些信念中。
 
 所有活跃候选都接受同一结果的评价，包括贡献很小的备选，表示“如果按另一条候选判断，能不能解释这个结果”。反馈学习作用于当前活跃集合。
 
@@ -821,86 +821,6 @@ q_t^+(k\mid h),&h\text{为保留的旧规则},\\
 只改一个特征就可能改变很多分类；两条分类结果相近的规则，也可能包含很不同的判断步骤。分析编辑类型、功能距离和来源，有助于区分调整思路与想到功能相近的另一解释。共同距离和编辑成本给出可复现的关系定义。
 
 后续机理图可以展示候选何时进入、信念怎样积累、作答权重何时集中、主导规则何时切换，以及精度怎样变化。图中同时呈现不同粒子路径的不确定性。快速学会、逐渐改善和晚期突变是模型需要解释的行为现象；拟合时输入选择及历史反馈，通过上述轨迹检验模型的解释。
-
-\section{共同设置、代码对应与验证边界}
-\label{sec:implementation}
-
-\subsection{固定定义与试次状态}
-
-候选管理的共同约定包括：各被试使用相同目录与类别标签；第一题按均匀先验初始化一条候选；每次搜索提出一条新规则；退出后至少保留一个有效候选；容量已满时删除信念最低的旧规则，再向新规则分配支持。主导规则并列时的处理也按正文约定执行。
-
-规则关系使用共同的编辑语法、编辑成本和参考刺激分布。功能关系由100,000个均匀样本估计，随机种子为0，搜索距离尺度为 $\tau_{\rm prop}=0.10$。精度上下界、反馈增益1和永久记忆权重0为共同学习设置。
-
-计算机可能把极小的正数存成0，这称为指数下溢。支持分配需采用能保留这些微弱支持的计算方法，并在正式运行前检查 $\tau_{{\rm tr},s}$ 的取值范围，使候选仍能随反馈提高支持。
-
-这些共同设置也是模型假设。改变参考分布、成本、标签或初始化须记录版本与比较，保持各被试的定义一致。实际候选数、集合、信念、精度、失败状态、主导规则和配对信念随试次递推；粒子数、重复次数与随机种子属于数值计算设置。
-
-\subsection{主要代码和配置}
-
-机制位于共享 \path{src/Bayesian_state/}，下面文件相对该目录：
-
-{\small
-\renewcommand{\arraystretch}{1.08}
-\begin{longtable}{L{7.0cm}L{6.6cm}}
-\toprule
-位置 & 对应内容\\
-\midrule
-\endhead
-\path{model/modules/perception.py} & 知觉。\\
-\path{hypothesis_space/geometry/boundary.py} & 类别区域距离。\\
-\path{model/modules/memory.py} & 二值反馈的信念更新。\\
-\path{model/modules/pairing_memory.py} & 配对学习与迁移。\\
-\path{model/modules/hypothesis_transition/}\newline
-\path{mechanistic_rule_search.py} & 搜索控制与修订前的候选、执行实现。\\
-\path{hypothesis_space/rule_programs.py} & 判断程序和合法编辑。\\
-\path{hypothesis_space/similarity.py} & 类别对应张量与一致率。\\
-\path{model/modules/beta.py} & 精度更新。\\
-\path{model/modules/readout/choice.py} & 选择概率与作答状态。\\
-\path{model/state_model.py} & 试次接口和时序。\\
-\bottomrule
-\end{longtable}
-}
-
-三条件配置位于 \path{configs/exp123/model_struct/}：
-\begin{itemize}
-\item \path{model_0923_cond1_full.yaml}；
-\item \path{model_0923_cond2_full.yaml}；
-\item \path{model_0923_cond3_full.yaml}。
-\end{itemize}
-现有配置将搜索、候选管理及使用惯性参数存放在 \path{modules.hypo_transitions_mod.kwargs}，其中搜索控制五项位于 \path{search_controller} 下。记忆和精度分别使用自身配置块；数学符号与配置字段的对应见配套 Markdown 第14.1节。
-
-机制初版代码基于 \texttt{4c1ccd79}。152条四分类目录在 \texttt{ac0164ae} 中接入。当前运行规范为 \texttt{0923-full-v2}。本文的候选管理与连续作答权重需完成代码接入后运行。配套 \path{model_0923.md} 保留讨论、接入状态与历史，目录更新记录见其第15节。
-
-\Needspace{16\baselineskip}
-{\small
-\begin{longtable}{L{2.5cm}L{8.8cm}L{2.3cm}}
-\toprule
-部分 & 本文修订设计 & 实现状态\\
-\midrule
-\endhead
-候选退出 & 所有旧候选可退出，仅保留有效集合。 & 待同步\\
-容量管理 & 容量已满时，先删除信念最低的旧规则，再加入新规则。 & 待同步\\
-信念分配 & 在保留的旧集合内归一化信念，再按功能关系分配支持。 & 待同步\\
-选择读出 & 结合信念与使用惯性，按作答权重汇总类别概率。 & 待同步\\
-\bottomrule
-\end{longtable}
-}
-
-\subsection{验证状态}
-
-以下记录属于修订前的既有实现。该实现于2026年10月10日通过475项相关测试，覆盖规则程序与几何标签的对应、两种局部搜索的抽取概率及无可用编辑时的处理、类别对应张量、失败状态保持、候选数量收缩、容量限制与信念总和守恒、精度重置、配对继承、固定种子重现、粒子重采样和试次顺序。检查包含统一readout入口的粒子滤波和恢复调用，恢复来源哈希，以及新旧模型标识在固定种子下的轨迹一致性。期刊已保存的独立数值参考逐值通过。
-
-三个条件分别用 S122、S206、S314，各32题、8粒子、一次重复、一个 worker 做真实数据流程检查，通过概率归一化、容量、反馈时序与配对分布检查。输出在独立临时目录。环境为 Python 3.11.10、NumPy 1.26.4、SciPy 1.13.1、PyYAML 6.0.2。
-
-本文修订设计完成公式和文档复核，代码接入尚待完成。新机制的实现测试、完整行为拟合、参数恢复和与0826的可比效果检查仍待完成。
-
-机制修订时的公式检查覆盖1,008个候选情境，通过容量、概率归一化和新规则初始支持上界检查；作答权重另检查零惯性端点。两个极小支持尺度边界显示浮点下溢，需在后续实现中处理。检查使用 NumPy 1.26.4、种子20261011，未调用模型或研究数据。
-
-\subsection{本文的生成与复核}
-
-源文件为 \path{model_0923.tex}，可读文件为 \path{model_0923.pdf}。运行 \path{compile_model_0923.sh} 用 XeLaTeX 或 XeTeX 的 LaTeX 格式编译三遍，使目录和交叉引用稳定。日志保留在新的系统临时目录；脚本不覆盖已有 PDF，重编译时指定新输出路径。
-
-本文与实际配置一起阅读。例值用于解释和运行检查，正式估计与搜索范围另行记录。
 
 \Needspace{25\baselineskip}
 \appendix
