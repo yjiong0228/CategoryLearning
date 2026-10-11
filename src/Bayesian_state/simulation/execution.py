@@ -1089,6 +1089,13 @@ def _evaluate_state_model_particle_filter_run(
             }
             for index in range(trial_arrays.choices.size)
         ]
+        oral_state_log = {
+            key: result.observation_probabilities[key]
+            for key in ("oral_report_codes", "oral_report_probabilities", "oral_report_valid_mask")
+            if key in result.observation_probabilities
+        }
+        if oral_state_log:
+            oral_state_log["oral_readout_metadata"] = result.metadata["oral_readout"]
         state_log = {
             "marginal_prior": state_probabilities["hypothesis_prior"],
             "marginal_active_probability": state_probabilities["active_probability"],
@@ -1210,6 +1217,7 @@ def _evaluate_state_model_particle_filter_run(
             "resampled": diagnostics["resampled"],
             **audit_state_log,
             **pairing_state_log,
+            **oral_state_log,
         }
         if "executed_probability" in state_probabilities:
             state_log.update(

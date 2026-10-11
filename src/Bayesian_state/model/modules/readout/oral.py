@@ -12,7 +12,7 @@ import numpy as np
 
 from ....hypothesis_space.geometry.boundary import BoundaryGeometry
 from ....hypothesis_space.spaces.continuous import ContinuousHypothesisSpace
-from .observation import predict_choice_oral
+from .oral_kernel import read_oral_report
 from .report_space import (
     EMPTY_REPORT, OTHER_REPORT, ReportKernelParameters,
     _component_distribution, component_tokens, facet_token, report_code,
@@ -25,11 +25,14 @@ class OralReadoutParameters(ReportKernelParameters):
     """Shared expression parameters; no participant-specific learning state."""
 
     extra_probability: float = 0.0
+    extra_selection: str = 'uniform'
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if not np.isfinite(self.extra_probability) or not 0 <= self.extra_probability <= 1:
             raise ValueError('extra_probability must be finite and in [0,1]')
+        if self.extra_selection not in {'uniform', 'salience'}:
+            raise ValueError("extra_selection must be 'uniform' or 'salience'")
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> OralReadoutParameters:
@@ -73,10 +76,11 @@ class OralReadout:
 
     A disconnected category uses its nearest component(s), with uniform ties.
     Every core predicate is independently omitted/worded using the existing R1
-    kernel. At most one ordinary .5-threshold description is added, uniformly
-    among dimensions unused by that complete component, even if core clauses
-    were omitted. These restrictions prevent duplicate/contradictory extras.
-    No eligible extra (including an exact .5 value) means no extra event.
+    kernel. At most one ordinary .5-threshold description is added among
+    dimensions unused by that complete component, even if core clauses were
+    omitted. Selection is uniform by default; ``salience`` weights dimensions
+    by their perceived distance from .5. No eligible extra (including an exact
+    .5 value) means no extra event.
     """
 
     def __init__(self, space: ContinuousHypothesisSpace, parameters: OralReadoutParameters,
@@ -130,14 +134,26 @@ class OralReadout:
         scale = (1 - self.parameters.other_probability) / len(selected)
         for index in selected:
             core, unused = components[index]
+            eligible = [dim for dim in unused if stimulus[dim] != .5]
             additions = [self._long[dim] if stimulus[dim] > .5 else self._short[dim]
-                         for dim in unused if stimulus[dim] != .5]
+                         for dim in eligible]
+            addition_weights = np.empty(0)
+            if eligible:
+                if self.parameters.extra_selection == 'salience':
+                    addition_weights = normalize_probability_vector(
+                        np.abs(stimulus[eligible] - .5), strict=True)
+                else:
+                    addition_weights = np.full(len(eligible), 1 / len(eligible))
             chance = self.parameters.extra_probability if additions else 0.0
             for report, mass in core.items():
                 probabilities[self._lookup[report_code(report)]] += scale * mass * (1 - chance)
-                for extra in additions:
+                for extra, extra_weight in zip(additions, addition_weights):
                     code = self._lookup[report_code(report + (extra,))]
-                    contribution = scale * mass * chance / len(additions)
+                    contribution = (
+                        scale * mass * chance * extra_weight
+                        if self.parameters.extra_selection == 'salience'
+                        else scale * mass * chance / len(additions)
+                    )
                     probabilities[code] += contribution
                     extras[code] += contribution
         return probabilities, extras
@@ -177,17 +193,25 @@ class OralReadout:
         active = np.flatnonzero(weights > 0)
         selected_weights = weights[active]
         selected_choices = choices[active]
-        kernel = np.zeros((len(active), self.space.n_cats, len(self.codes)))
+        if not np.all(np.isfinite(selected_choices)) or np.any(selected_choices < 0):
+            raise ValueError('category_probabilities must be finite and non-negative')
+        if not np.allclose(selected_choices.sum(axis=-1), 1., rtol=0., atol=1e-10):
+            raise ValueError('category_probabilities rows must sum to 1')
+        category = int(choice) - 1
+        joint_weights = normalize_probability_vector(selected_weights, strict=True)
+        choice_mass = joint_weights @ selected_choices
+        if choice_mass[category] <= 0:
+            raise ValueError('cannot condition a report on an impossible choice')
+        kernel = np.zeros((len(active), len(self.codes)))
         extra_kernel = np.zeros_like(kernel)
         for i, source in enumerate(active):
-            for y in range(self.space.n_cats):
-                kernel[i, y], extra_kernel[i, y] = self._distribution(indices[source], y, stimulus)
-        prediction = predict_choice_oral(selected_weights, selected_choices, kernel)
-        category = int(choice) - 1
-        probabilities = prediction.report_given_choice(category)
+            kernel[i], extra_kernel[i] = self._distribution(indices[source], category, stimulus)
         posterior = selected_weights * selected_choices[:, category]
+        report = read_oral_report(joint_weights * selected_choices[:, category], kernel)
+        # Match joint-mass conditioning while computing only the chosen branch.
+        probabilities = choice_mass[category] * report.probabilities / choice_mass[category]
         posterior /= posterior.sum()
-        extra_mass = posterior @ extra_kernel[:, category]
+        extra_mass = posterior @ extra_kernel
         all_weights = np.zeros(len(indices)); all_weights[active] = posterior
         return OralPrediction(self.codes, probabilities, extra_mass, int(choice),
-                              float(prediction.choice_probabilities[category]), indices, all_weights)
+                              float(choice_mass[category]), indices, all_weights)

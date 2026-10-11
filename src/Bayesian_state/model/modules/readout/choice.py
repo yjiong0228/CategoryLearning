@@ -71,7 +71,11 @@ CHOICE_READOUT_KWARG_KEYS = (
 
 @dataclass(frozen=True)
 class DecisionRuleSnapshot:
-    """The actual pre-feedback rule mixture, retained for coupled readouts."""
+    """The actual pre-feedback rule mixture, retained for coupled readouts.
+
+    Columns use the model's response coordinates. In condition 3 the pairing
+    state affects feedback learning; these columns remain opaque choice IDs.
+    """
 
     hypothesis_indices: tuple[int, ...]
     rule_weights: np.ndarray
@@ -579,8 +583,14 @@ def read_choice_probabilities_from_model(
     *,
     power: float = 1.0,
     lapse: float = 0.0,
-) -> np.ndarray:
-    """Map an engine's current active prior to category probabilities."""
+    return_snapshot: bool = False,
+) -> np.ndarray | tuple[np.ndarray, DecisionRuleSnapshot]:
+    """Map an engine's current active prior to response probabilities.
+
+    The optional snapshot retains the weights and per-rule predictions used
+    in this calculation, before the aggregate output lapse. It consumes no
+    random draws and can be shared with the oral observation layer.
+    """
 
     engine = model.engine
     n_categories = int(model.n_cats)
@@ -615,7 +625,11 @@ def read_choice_probabilities_from_model(
         readout_weights = np.ones(1, dtype=float)
     cognitive = np.zeros(n_categories, dtype=float)
     stimulus = np.asarray(perceived_stimulus, dtype=float)
-    for weight, hypothesis in zip(readout_weights, active):
+    category_by_hypothesis = (
+        np.zeros((active.size, n_categories), dtype=float)
+        if return_snapshot else None
+    )
+    for row, (weight, hypothesis) in enumerate(zip(readout_weights, active)):
         raw = model.partition_model.get_category_probabilities(
             hypo=int(hypothesis),
             data=([stimulus], [1], [1.0]),
@@ -630,12 +644,22 @@ def read_choice_probabilities_from_model(
             int(hypothesis),
             probability,
         )
+        if category_by_hypothesis is not None:
+            category_by_hypothesis[row] = probability
         cognitive += float(weight) * probability
     cognitive = normalize_probability_vector(cognitive, strict=True)
-    return normalize_probability_vector(
+    observed = normalize_probability_vector(
         (1.0 - lapse_value) * cognitive + lapse_value / float(n_categories),
         strict=True,
     )
+    if not return_snapshot:
+        return observed
+    arrays = [np.array(value, copy=True) for value in
+              (readout_weights, category_by_hypothesis, stimulus)]
+    for value in arrays:
+        value.setflags(write=False)
+    snapshot = DecisionRuleSnapshot(tuple(int(h) for h in active), *arrays)
+    return observed, snapshot
 
 
 def predict_choice_from_model(

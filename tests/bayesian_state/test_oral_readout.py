@@ -13,10 +13,13 @@ from src.Bayesian_state.hypothesis_space.spaces.continuous import build_continuo
 from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import build_axis_pair_overlap_space
 from src.Bayesian_state.model import ModelContext, StateModel
 from src.Bayesian_state.model.config import ModelConfig
+from src.Bayesian_state.model.modules.base_module import ModuleRole
+from src.Bayesian_state.model.modules.readout.observation import predict_choice_oral
 from src.Bayesian_state.model.modules.readout.oral import OralReadout, OralReadoutParameters
 from src.Bayesian_state.model.modules.readout.report_space import EMPTY_REPORT, OTHER_REPORT, component_tokens, report_code
 from src.Bayesian_state.model.modules.readout.choice import (
     CHOICE_READOUT_SAMPLE, CHOICE_READOUT_MAP, CHOICE_READOUT_EXPECTATION,
+    read_choice_probabilities_from_model,
     resolve_choice_readout_config, resolve_output_noise_config,
 )
 
@@ -71,6 +74,107 @@ def test_extras_follow_same_perception_without_changing_vocab_or_core(reader):
     assert first[core] == second[core]
     assert first[short] == second[long] > 0
     assert first[long] == second[short] == 0
+
+
+def test_salience_additions_match_relative_perceived_distances(reader):
+    salient = OralReadout(reader.space, _parameters(extra_selection='salience'))
+    assert salient.codes == reader.codes
+    probabilities, extras = salient.distribution(117, 4, X)
+    # This component uses neck and tail. Leg and head distances are .2 and .1.
+    core_mass = .8 * .2
+    assert probabilities[salient.codes.index(_code('脖子长，且腿短。'))] == pytest.approx(
+        core_mass * .2 * (2 / 3))
+    assert probabilities[salient.codes.index(_code('脖子长，且头短。'))] == pytest.approx(
+        core_mass * .2 * (1 / 3))
+    assert extras.sum() == pytest.approx(.2)
+    np.testing.assert_allclose(probabilities.sum(), 1., atol=1e-12)
+    assert np.all(extras <= probabilities + 1e-15)
+    for values, eligible_code in [
+        ([.8, .5, .2, .4], '脖子长，且头短。'),
+        ([.8, .3, .2, .5], '脖子长，且腿短。'),
+    ]:
+        mass, extra = salient.distribution(117, 4, np.array(values))
+        assert mass[salient.codes.index(_code(eligible_code))] == pytest.approx(core_mass * .2)
+        np.testing.assert_allclose(mass.sum(), 1., atol=1e-12)
+        assert extra.sum() == pytest.approx(.2)
+    mass, extra = salient.distribution(117, 4, np.array([.8, .5, .2, .5]))
+    assert extra.sum() == 0
+    assert mass[salient.codes.index(_code('脖子长。'))] == pytest.approx(core_mass)
+    np.testing.assert_allclose(mass.sum(), 1., atol=1e-12)
+
+
+@pytest.mark.parametrize('selection', ['uniform', 'salience'])
+def test_selected_category_readout_equals_full_joint_and_reads_only_chosen_branch(reader, selection, monkeypatch):
+    instance = OralReadout(reader.space, _parameters(extra_selection=selection, other_probability=.02))
+    indices = (0, 100, 117)
+    weights = np.array([.13, .27, .6])
+    choices = np.array([[.4, .2, .1, .3], [.1, .2, .3, .4], [.05, .1, .15, .7]])
+    kernel = np.zeros((3, 4, len(instance.codes)))
+    extra_kernel = np.zeros_like(kernel)
+    for row, hypothesis in enumerate(indices):
+        for category in range(4):
+            kernel[row, category], extra_kernel[row, category] = instance.distribution(
+                hypothesis, category + 1, X)
+    reference = predict_choice_oral(weights, choices, kernel)
+    visited = []
+    original = instance._distribution
+
+    def selected_distribution(hypothesis, category_index, stimulus):
+        visited.append((hypothesis, category_index))
+        return original(hypothesis, category_index, stimulus)
+
+    monkeypatch.setattr(instance, '_distribution', selected_distribution)
+    actual = instance.predict(hypothesis_indices=indices, rule_weights=weights,
+                              category_probabilities=choices, choice=4, perceived_stimulus=X)
+    np.testing.assert_array_equal(actual.probabilities, reference.report_given_choice(3))
+    assert actual.choice_probability == reference.choice_probabilities[3]
+    posterior = weights * choices[:, 3]
+    posterior /= posterior.sum()
+    np.testing.assert_array_equal(actual.rule_weights_given_choice, posterior)
+    np.testing.assert_array_equal(actual.extra_probabilities, posterior @ extra_kernel[:, 3])
+    assert visited == [(hypothesis, 3) for hypothesis in indices]
+
+
+@pytest.mark.parametrize('condition', [1, 2, 3])
+@pytest.mark.parametrize('execution', [False, True])
+def test_pf_choice_snapshot_preserves_default_probability_and_current_source(condition, execution, tmp_path):
+    config = yaml.safe_load((ROOT / f'configs/exp123/model_struct/pmh_model_cond{condition}_0826.yaml').read_text())
+    config['partition']['kwargs'].update(similarity_n_samples=64, similarity_cache_dir=str(tmp_path))
+    config['modules']['perception_mod']['kwargs'] = {'features': 4, 'mean': [0.] * 4, 'std': [0.] * 4}
+    config['modules']['hypo_transitions_mod']['kwargs']['persistent_execution']['enabled'] = execution
+    model = StateModel(config, context=ModelContext(condition=condition))
+    prepared = model.begin_trial(X)
+    before = pickle.dumps(model.engine.state_dict())
+    for power, lapse in [(1., 0.), (2., .07)]:
+        default = read_choice_probabilities_from_model(
+            model, prepared.perceived_stimulus, power=power, lapse=lapse)
+        actual, snapshot = read_choice_probabilities_from_model(
+            model, prepared.perceived_stimulus, power=power, lapse=lapse, return_snapshot=True)
+        np.testing.assert_array_equal(actual, default)
+        cognitive = snapshot.rule_weights @ snapshot.category_probabilities
+        expected = (1 - lapse) * cognitive + lapse / model.n_cats
+        np.testing.assert_allclose(actual, expected, rtol=0., atol=1e-15)
+        np.testing.assert_array_equal(snapshot.perceived_stimulus, prepared.perceived_stimulus)
+        assert all(not value.flags.writeable for value in (
+            snapshot.rule_weights, snapshot.category_probabilities, snapshot.perceived_stimulus))
+        transition = model.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+        if execution:
+            assert snapshot.hypothesis_indices == (transition.executed_hypothesis,)
+            np.testing.assert_array_equal(snapshot.rule_weights, [1.])
+        else:
+            active = np.flatnonzero(model.engine.hypotheses_mask > 0.)
+            assert snapshot.hypothesis_indices == tuple(active)
+        assert pickle.dumps(model.engine.state_dict()) == before
+    if condition == 3:
+        # The three pairings govern feedback events. Choice emissions stay in
+        # response-ID coordinates, preserving the rule's selected region.
+        memory = model.engine.get_module(ModuleRole.MEMORY)
+        memory.joint[:] = 0.
+        memory.joint[:, 2] = model.engine.prior
+        changed, retained = read_choice_probabilities_from_model(
+            model, prepared.perceived_stimulus, power=power, lapse=lapse, return_snapshot=True)
+        np.testing.assert_array_equal(changed, actual)
+        np.testing.assert_array_equal(retained.category_probabilities, snapshot.category_probabilities)
 
 
 @pytest.mark.parametrize('mention,extra,other', [(0., 0., 0.), (0., 1., 0.), (1., 1., 0.), (1., 0., 1.), (.8, .2, .02)])

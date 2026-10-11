@@ -20,6 +20,7 @@ from ..results import InferenceResult, ParticleFilterResult
 from ...model.config import ModelContext
 from ...model.modules.base_module import ModuleRole
 from ...model.modules.readout.choice import (
+    DecisionRuleSnapshot,
     apply_hypothesis_mapping,
     apply_strategy_conditioned_choice_confidence,
 )
@@ -237,7 +238,12 @@ def _choice_probability(
     failure_pressure: float = np.nan,
     mastery_evidence: float = np.nan,
     return_details: bool = False,
-) -> np.ndarray | tuple[np.ndarray, dict[str, float]]:
+    return_snapshot: bool = False,
+) -> (
+    np.ndarray | tuple[np.ndarray, dict[str, float]]
+    | tuple[np.ndarray, DecisionRuleSnapshot]
+    | tuple[np.ndarray, dict[str, float], DecisionRuleSnapshot]
+):
     """Read a choice and optionally sharpen commitment from controller state."""
 
     from ...model.modules.readout.choice import (
@@ -246,12 +252,16 @@ def _choice_probability(
         read_choice_probabilities_from_model,
     )
 
-    cognitive = read_choice_probabilities_from_model(
-        model,
-        perceived_stimulus,
-        power=float(rho),
-        lapse=0.0,
-    )
+    snapshot = None
+    if return_snapshot:
+        cognitive, snapshot = read_choice_probabilities_from_model(
+            model, perceived_stimulus, power=float(rho), lapse=0.0,
+            return_snapshot=True,
+        )
+    else:
+        cognitive = read_choice_probabilities_from_model(
+            model, perceived_stimulus, power=float(rho), lapse=0.0,
+        )
     conditioned, details = apply_strategy_conditioned_choice_confidence(
         cognitive,
         mastery_evidence=float(mastery_evidence),
@@ -282,7 +292,29 @@ def _choice_probability(
         (1.0 - float(epsilon)) * conditioned
         + float(epsilon) / float(n_categories)
     )
+    if return_snapshot:
+        return (observed, details, snapshot) if return_details else (observed, snapshot)
     return (observed, details) if return_details else observed
+
+
+def _pool_oral_report_probabilities(
+    weights: np.ndarray,
+    particle_choice_probabilities: np.ndarray,
+    particle_joint_probabilities: np.ndarray,
+) -> np.ndarray:
+    """Pool P(choice, report) with pre-choice weights, then condition on choice."""
+
+    denominator = float(np.asarray(weights) @ particle_choice_probabilities)
+    if denominator <= 0.0:
+        return np.full(particle_joint_probabilities.shape[1], np.nan)
+    probabilities = np.asarray(weights) @ particle_joint_probabilities / denominator
+    if (
+        not np.all(np.isfinite(probabilities))
+        or np.any(probabilities < 0.0)
+        or not np.isclose(probabilities.sum(), 1.0, rtol=1e-10, atol=1e-12)
+    ):
+        raise RuntimeError("pooled oral report probabilities must sum to one.")
+    return probabilities
 
 
 def _map_hypothesis_choice_probability(
@@ -555,6 +587,12 @@ def run_state_model_particle_filter(
     Conditions 1 and 2 have two and four fixed task labels, respectively.
     Condition 3 requires explicit hierarchical-pairing feedback and joint memory;
     its four choice IDs are opaque response coordinates.
+
+    Configuring ``engine_config['oral_readout']`` additionally predicts the
+    current report conditional on the observed choice, before its feedback.
+    Joint choice/report mass is pooled using pre-choice particle weights.
+    Reports are prediction outputs and never enter particle weights or learning.
+    Invalid trials and zero-probability choices have NaN report rows.
     The optional transmission audit infers the correct category from binary
     feedback and is therefore restricted to condition 1.
 
@@ -685,6 +723,17 @@ def run_state_model_particle_filter(
         if valid.shape[0] != n_trials:
             raise ValueError("valid_trial_mask length does not match trials.")
 
+    oral_enabled = engine_config.get("oral_readout") is not None
+    if oral_enabled and (
+        confidence_gain_value != 0.0
+        or commitment_gain_value != 0.0
+        or np.any(epsilon_by_trial != 0.0)
+    ):
+        raise ValueError(
+            "oral batch prediction requires the untransformed rule-mixture choice "
+            "with zero output lapse and zero aggregate confidence gains."
+        )
+
     models = []
     shared_partition = None
     shared_space = None
@@ -709,6 +758,21 @@ def run_state_model_particle_filter(
     if int(models[0].n_cats) != n_categories:
         raise ValueError("partition category count does not match condition.")
     n_hypotheses = int(models[0].engine.set_size)
+    oral_readout = None
+    oral_report_probabilities = None
+    oral_report_valid_mask = None
+    if oral_enabled:
+        from ...model.modules.readout.oral import OralReadout, OralReadoutParameters
+
+        if any(model.engine.get_module(ModuleRole.MAPPING) is not None for model in models):
+            raise ValueError("oral batch prediction requires a joint report/category mapping model.")
+        oral_readout = OralReadout(
+            models[0].partition_model.hypothesis_space,
+            OralReadoutParameters.from_config(engine_config["oral_readout"]),
+            boundary_geometry=models[0].partition_model.boundary_geometry,
+        )
+        oral_report_probabilities = np.full((n_trials, len(oral_readout.codes)), np.nan)
+        oral_report_valid_mask = np.zeros(n_trials, dtype=bool)
     marginal_hypothesis_prior = np.zeros((n_trials, n_hypotheses), dtype=float)
     marginal_active_probability = np.zeros((n_trials, n_hypotheses), dtype=float)
     pairing_prior = np.zeros((n_trials, 3), dtype=float) if condition == 3 else None
@@ -1030,6 +1094,11 @@ def run_state_model_particle_filter(
 
     for trial_index in range(n_trials):
         particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
+        oral_trial = oral_readout is not None and bool(valid[trial_index])
+        particle_oral_joint = (
+            np.zeros((n_particles, len(oral_readout.codes)), dtype=float)
+            if oral_trial else None
+        )
         particle_priors = np.zeros((n_particles, n_hypotheses), dtype=float)
         particle_active = np.zeros((n_particles, n_hypotheses), dtype=float)
         particle_pairing = (
@@ -1265,19 +1334,35 @@ def run_state_model_particle_filter(
                     particle_executed_orientation_joint[
                         particle_index, executed_hypothesis
                     ] = (orientation, 1.0 - orientation)
-            particle_predictions[particle_index], confidence_details = (
-                _choice_probability(
-                    model,
-                    perceived,
-                    rho=rho_value,
-                    epsilon=float(epsilon_by_trial[trial_index]),
-                    strategy_confidence_gain=confidence_gain_value,
-                    rule_commitment_confidence_gain=commitment_gain_value,
-                    failure_pressure=failure_pressures[particle_index],
-                    mastery_evidence=mastery_evidences[particle_index],
-                    return_details=True,
-                )
+            choice_result = _choice_probability(
+                model,
+                perceived,
+                rho=rho_value,
+                epsilon=float(epsilon_by_trial[trial_index]),
+                strategy_confidence_gain=confidence_gain_value,
+                rule_commitment_confidence_gain=commitment_gain_value,
+                failure_pressure=failure_pressures[particle_index],
+                mastery_evidence=mastery_evidences[particle_index],
+                return_details=True,
+                return_snapshot=oral_trial,
             )
+            particle_predictions[particle_index], confidence_details = choice_result[:2]
+            if oral_trial:
+                snapshot = choice_result[2]
+                # Condition each particle on this response, then restore its
+                # joint choice/report mass for pre-choice-weight pooling.
+                choice_mass = particle_predictions[particle_index, observed_choice_index]
+                if choice_mass > 0.0:
+                    report = oral_readout.predict(
+                        hypothesis_indices=snapshot.hypothesis_indices,
+                        rule_weights=snapshot.rule_weights,
+                        category_probabilities=snapshot.category_probabilities,
+                        choice=int(observed_choices[trial_index]),
+                        perceived_stimulus=snapshot.perceived_stimulus,
+                    )
+                    if not np.isclose(report.choice_probability, choice_mass, rtol=1e-10, atol=1e-12):
+                        raise RuntimeError("oral rule snapshot disagrees with particle choice probability.")
+                    particle_oral_joint[particle_index] = choice_mass * report.probabilities
             choice_confidence_signals[particle_index] = float(
                 confidence_details["strategy_confidence_signal"]
             )
@@ -1428,6 +1513,13 @@ def run_state_model_particle_filter(
             axis=0,
         )
         marginal[trial_index] = _normalize(marginal[trial_index])
+        if oral_trial:
+            oral_report_probabilities[trial_index] = _pool_oral_report_probabilities(
+                weights, particle_predictions[:, observed_choice_index], particle_oral_joint,
+            )
+            oral_report_valid_mask[trial_index] = np.isfinite(
+                oral_report_probabilities[trial_index]
+            ).all()
         if pairing_prior is not None:
             assert particle_pairing is not None
             pairing_prior[trial_index] = _normalize(weights @ particle_pairing)
@@ -1949,7 +2041,7 @@ def run_state_model_particle_filter(
             "pairing_confidence_definition": "maximum_particle_marginal_probability",
         }
 
-    return ParticleFilterResult(
+    result = ParticleFilterResult(
         marginal_probabilities=marginal,
         pairing_prior=pairing_prior,
         pairing_posterior=pairing_posterior,
@@ -2102,6 +2194,21 @@ def run_state_model_particle_filter(
         choice_transmission_counterfactual_gain=counterfactual_gain_value,
         filter_seed=int(filter_seed),
     )
+    if oral_readout is not None:
+        result.observation_probabilities.update(
+            oral_report_codes=np.asarray(oral_readout.codes),
+            oral_report_probabilities=oral_report_probabilities,
+            oral_report_valid_mask=oral_report_valid_mask,
+        )
+        result.metadata["oral_readout"] = {
+            "method": engine_config["oral_readout"]["method"],
+            "timing": "after_observed_choice_before_current_feedback",
+            "aggregation": "pre_choice_weighted_joint_choice_report_then_condition",
+            "invalid_trials": "NaN report rows; oral_report_valid_mask=False",
+            "data_use": "report prediction only; choices determine particle weights",
+            "probability_coordinate": "choice",
+        }
+    return result
 
 
 __all__ = [

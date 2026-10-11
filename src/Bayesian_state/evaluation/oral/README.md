@@ -107,3 +107,28 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 `model/modules/readout/report_space.py` 中生成。当前 Model 0923 用事先固定的表达设置
 生成口述预测，与真实内容比较；真实口述不进入参数拟合或 PF 权重更新。
 详见[口述表示说明](../../docs/model_architecture/model_0923_oral.md)。
+
+## 从模型生成口述并检验预测
+
+`generative_scoring.py` 评价本题真实完整报告的预测概率和 top-1／top-3 命中率。
+报告先由 `structure_0923.encode_report` 按被试的特征顺序编码；同一组判断内容得到同一代码。
+主分母包含所有行为计分试次中的完整编码报告。词表外的完整报告记零概率，
+缺失和待审查报告单列。top-k 遇到同分时，计入随机打破并列排名后的期望命中比例。
+零概率报告的严格负对数似然为无穷；正概率报告的平均负对数似然另列，并给出报告数。
+
+配置 `oral_readout` 后，PF 在作答后、反馈前生成报告预测。它沿用本题的规则权重、
+类别概率和内部刺激，先汇总各粒子的选择—口述联合概率，再按实际选择条件化。
+报告分布经 `simulation.execution` 返回到 `state_log`：
+`oral_report_codes`、`oral_report_probabilities`、`oral_report_valid_mask` 和
+`oral_readout_metadata`。口述仅用于检验预测。当前批量接口支持原规则混合读出的
+零输出 lapse、零整体置信转换配置。无效试次保留 NaN 行及 False mask。
+
+`extra_selection: salience` 按未使用特征的 `|内部刺激值 - 0.5|` 分配补充描述的概率，
+对应 Model 0923 第 8 节。`uniform` 是已有配置的默认方式。本次 0826 评价明确启用
+`salience`，六项共用表达参数预设为 `.8, .2, .02, .5, .75, .1`
+（依次为说出核心判断、尝试补充、OTHER、躯干措辞概率、参照中心及宽度）。
+
+保存拟合的评价入口为 `workflows.analysis.evaluate_saved_oral_readout`，用原提名参数、
+原粒子数和 `selected_00` 的原种子各重放一次。条件 2 沿用拟合时的精度更新方法，
+从 Git 读取的源码哈希须与拟合 manifest 一致；随后逐题核对原选择预测和保存的认知状态。
+这批 12 人已参与机制及解析语法开发，自动结构编码仍需人工复核。
