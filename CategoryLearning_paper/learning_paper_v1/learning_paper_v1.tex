@@ -1,0 +1,59 @@
+% Separate English article draft based on the current Model 0923 specification.
+% Empirical Results and Discussion remain placeholders.
+% The sn_article/ manuscript and model specification are maintained separately.
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}
+
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs,tabularx,array,longtable}
+\usepackage{xcolor}
+\usepackage{needspace}
+
+\raggedbottom
+\setlength{\emergencystretch}{2em}
+\allowdisplaybreaks
+\newcommand{\ind}{\mathbb I}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\sigmoid}{\operatorname{sigmoid}}
+\newcommand{\draftslot}[1]{\par\smallskip\noindent{\color{gray}\textit{[#1]}}\par\smallskip}
+
+\begin{document}
+
+\title{Beyond behavioural fit: Reconstructing belief dynamics reveals cognitive bottlenecks and adaptive mechanisms in human flexible learning}
+\abstract{
+Inferring internal cognitive processes from behavior is an ill-posed inverse problem: distinct latent beliefs and strategies can generate the same observable choices. Here we introduce a modular Bayesian modeling architecture for trial-resolved inference of each individual's latent cognitive states, jointly capturing two sources of individual differences: cognitive resources that limit information availability and inductive biases that shape evidence interpretation and strategy sampling.
+
+Applied to novel category learning in a four-dimensional feature space under three rules of increasing complexity, our model and several alternative deep neural-network models all accurately predicted individual choices; only our model, however, faithfully reconstructed each learner's evolving feature-use strategies, independently validated against trial-by-trial verbal reports never used for model fitting.
+
+Analysis of the reconstructed dynamics revealed how the interplay of hypothesis search, belief updating, and belief-to-choice mapping gave rise to distinct learning profiles. Rapid learners focused search on simpler hypotheses and sustained belief accumulation despite occasional errors, whereas slow learners searched broadly and repeatedly reset beliefs, compensating for limited memory but delaying stabilization. Interestingly, the model traced “aha” moments to the sudden access to prior learning rather than sudden rule discovery, suggesting that useful beliefs accumulated outside awareness before becoming consciously available to guide choice reliably.
+
+Together, these findings provide a mechanistic account of why individuals learn differently, laying a computational foundation for individualized learning interventions and the design of human-inspired AI that learns flexibly under resource constraints.
+}
+\maketitle
+
+% Unheaded Introduction follows the organization of the reference article.
+Learning a category structure from feedback involves several related changes.
+A learner may discover a useful rule, accumulate evidence for a rule already
+under consideration, or apply a familiar rule more consistently. Each change
+can improve the probability of a correct response. A computational account of
+learning must therefore connect observable choices to the processes that make
+rules available, support them with evidence and determine their influence on
+behavior.
+
+We formulate a model in which these processes operate over a limited,
+changing set of rule hypotheses. The model tracks the availability of each
+rule, its relative belief, its contribution to the current choice and the
+precision of its category predictions. Feedback updates these quantities and
+controls the introduction of new hypotheses. This formulation provides a
+basis for examining how rule discovery, evidence accumulation and persistent
+rule use contribute to individual learning trajectories across different
+feedback conditions.
+
+\input{sections/results}
+
+\section*{Discussion}\label{sec:discussion}
+\draftslot{Discussion to be completed after the empirical results.}
+
+\input{sections/methods}
+
+\end{document}

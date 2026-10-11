@@ -1,7 +1,7 @@
-# Model 0923 article draft
+# Learning paper v1
 
-The independent manuscript entry point is [model_0923_article.tex](model_0923_article.tex).
-The readable version is [model_0923_article.pdf](model_0923_article.pdf).
+The independent manuscript entry point is [learning_paper_v1.tex](learning_paper_v1.tex).
+The readable version is [learning_paper_v1.pdf](learning_paper_v1.pdf).
 [results.tex](sections/results.tex) contains the main-text model account and reserved
 empirical subsections. [methods.tex](sections/methods.tex) contains the mathematical
 specification and inference procedures.
@@ -52,6 +52,7 @@ and notation follow the current specification.
 
 | Component | Current basis or status |
 |---|---|
+| Title and abstract | Author-supplied text |
 | Model architecture and equations | Current specified design |
 | Revised candidate management and continuous choice readout | Code synchronization pending |
 | Behavioral findings and model comparison | Results reserved |
@@ -59,10 +60,10 @@ and notation follow the current specification.
 | Generative predictions and identifiability | Results reserved |
 | Parameter-search settings, evaluation split and inferential statistics | To be specified for the final analyses |
 
-The article describes the revised full model. Its empirical claims will be
-written from the corresponding completed analyses. The abstract and Discussion
-will be completed after those results. Participant recruitment, exclusions,
-ethics and the final analysis cohort also require verified study information.
+The title and abstract were supplied by the author. The empirical Results and
+Discussion remain to be completed from the corresponding analyses. Participant
+recruitment, exclusions, ethics and the final analysis cohort also require
+verified study information.
 
 ## Compile
 
@@ -71,9 +72,9 @@ fresh temporary build directory. `latexmk` repeats LaTeX as needed to resolve
 cross-references:
 
 ```bash
-cd CategoryLearning_paper/model_0923_article
-model0923_article_build="$(mktemp -d /tmp/model0923-article-build.XXXXXXXX)"
-latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir="$model0923_article_build" model_0923_article.tex
+cd CategoryLearning_paper/learning_paper_v1
+learning_paper_build="$(mktemp -d /tmp/learning-paper-v1-build.XXXXXXXX)"
+latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir="$learning_paper_build" learning_paper_v1.tex
 ```
 
 The compiled PDF and logs are in the new build directory. After review, copy

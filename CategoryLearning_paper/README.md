@@ -5,7 +5,7 @@
 | 稿件 | PDF | LaTeX 主文件 | 内容说明 |
 | --- | --- | --- | --- |
 | 旧工作稿 | [sn-article.pdf](sn_article/sn-article.pdf) | [sn-article.tex](sn_article/sn-article.tex) | 原有 Results 文稿；[目录说明](sn_article/README.md) |
-| Model 0923 英文稿 | [model_0923_article.pdf](model_0923_article/model_0923_article.pdf) | [model_0923_article.tex](model_0923_article/model_0923_article.tex) | Results 中的模型主干与 Methods 中的机制细节，实证结果留空；[目录说明](model_0923_article/README.md) |
+| Learning paper v1 英文稿 | [learning_paper_v1.pdf](learning_paper_v1/learning_paper_v1.pdf) | [learning_paper_v1.tex](learning_paper_v1/learning_paper_v1.tex) | Results 中的模型主干与 Methods 中的机制细节，实证结果留空；[目录说明](learning_paper_v1/README.md) |
 
 ## 目录结构
 
@@ -20,9 +20,9 @@ CategoryLearning_paper/
 │   ├── sn-bibliography.bib
 │   ├── sections/
 │   └── README.md
-├── model_0923_article/
-│   ├── model_0923_article.tex
-│   ├── model_0923_article.pdf
+├── learning_paper_v1/
+│   ├── learning_paper_v1.tex
+│   ├── learning_paper_v1.pdf
 │   ├── sections/
 │   └── README.md
 ├── latex/
@@ -54,6 +54,6 @@ CategoryLearning_paper/
 | --- | --- |
 | `sn-article.tex/pdf/bbl`、`sn-bibliography.bib` | `sn_article/` |
 | `sections/` | `sn_article/sections/` |
-| `model_0923_article.tex/pdf` | `model_0923_article/` |
-| `model_0923_article/results.tex`、`methods.tex` | `model_0923_article/sections/` |
+| `model_0923_article.tex/pdf` | `learning_paper_v1/learning_paper_v1.tex/pdf` |
+| `model_0923_article/results.tex`、`methods.tex` | `learning_paper_v1/sections/` |
 | 根目录下的 `.cls`、`.bst` 和模板 `.eps` | `latex/` |

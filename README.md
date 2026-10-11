@@ -19,7 +19,7 @@
 | `src/Bayesian_state/` | 期刊与博士论文共享的模型实现，修改机制的唯一维护位置 |
 | `src/Bayesian/`、其他 `src/` 模型目录 | 基线、历史或其他模型家族，按各自研究用途保留 |
 | `CategoryLearning_codes/` | 期刊配置、工作流、分析、配图代码和未确认图产物 |
-| `CategoryLearning_paper/` | 并列的 `sn_article/` 旧稿和 `model_0923_article/` 英文新稿，共享 LaTeX 模板与参考资料；`figures/` 只放已确认图 |
+| `CategoryLearning_paper/` | 并列的 `sn_article/` 旧稿和 `learning_paper_v1/` 英文新稿，共享 LaTeX 模板与参考资料；`figures/` 只放已确认图 |
 | `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史模型定义；当前依据为 `model_0826.tex` |
 | `data/exp123/` | 期刊数据，也是博士论文数据的一部分 |
 | `data/exp4/`、`data/exp5/`、`data/meg/` | 博士论文其他实验数据 |

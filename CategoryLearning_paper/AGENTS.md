@@ -5,7 +5,7 @@ Root AGENTS.md applies.
 - This directory owns manuscript sources and references. Development code and
   draft figures belong in CategoryLearning_codes.
 - Working manuscripts are parallel directories: sn_article/ contains the
-  previous manuscript; model_0923_article/ contains the revised English draft.
+  previous manuscript; learning_paper_v1/ contains the revised English draft.
   Each owns its main TeX, readable PDF and sections/. Keep the navigation in
   README.md current when moving manuscript files.
 - latex/ holds the shared journal class, bibliography styles and template

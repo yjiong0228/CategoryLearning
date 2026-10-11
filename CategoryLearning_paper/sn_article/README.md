@@ -2,7 +2,7 @@
 
 阅读入口为 [sn-article.pdf](sn-article.pdf)，主文件为
 [sn-article.tex](sn-article.tex)。这份稿件与相邻的
-[Model 0923 英文稿](../model_0923_article/README.md) 分别维护。
+[Learning paper v1 英文稿](../learning_paper_v1/README.md) 分别维护。
 
 | 文件 | 用途 |
 | --- | --- |
