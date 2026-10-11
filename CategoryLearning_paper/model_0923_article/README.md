@@ -1,9 +1,9 @@
 # Model 0923 article draft
 
-The independent manuscript entry point is [model_0923_article.tex](../model_0923_article.tex).
-The readable version is [model_0923_article.pdf](../model_0923_article.pdf).
-[results.tex](results.tex) contains the main-text model account and reserved
-empirical subsections. [methods.tex](methods.tex) contains the mathematical
+The independent manuscript entry point is [model_0923_article.tex](model_0923_article.tex).
+The readable version is [model_0923_article.pdf](model_0923_article.pdf).
+[results.tex](sections/results.tex) contains the main-text model account and reserved
+empirical subsections. [methods.tex](sections/methods.tex) contains the mathematical
 specification and inference procedures.
 
 ## Scope and source
@@ -13,7 +13,9 @@ Its primary scientific source is the unchanged
 [model specification](../../src/Bayesian_state/docs/model_architecture/model_0923.tex),
 with the current hypothesis-updating and choice-readout sections in the
 [Markdown document](../../src/Bayesian_state/docs/model_architecture/model_0923.md).
-The existing `sn-article.tex` manuscript is maintained separately.
+The [previous manuscript](../sn_article/README.md) is maintained in the parallel
+`sn_article/` directory. Shared journal class and bibliography styles are in
+`../latex/`; `.latexmkrc` supplies their search paths.
 
 The organization follows the supplied
 [Weiss et al. (2021) article](<../references/Weiss et al_2021_Interacting with volatile environments stabilizes hidden-state inference and.pdf>),
@@ -64,17 +66,17 @@ ethics and the final analysis cohort also require verified study information.
 
 ## Compile
 
-From the repository root, create a fresh temporary build directory and compile
-three times to resolve cross-references:
+From the repository root, enter this manuscript directory and compile into a
+fresh temporary build directory. `latexmk` repeats LaTeX as needed to resolve
+cross-references:
 
 ```bash
+cd CategoryLearning_paper/model_0923_article
 model0923_article_build="$(mktemp -d /tmp/model0923-article-build.XXXXXXXX)"
-cd CategoryLearning_paper
-pdflatex -interaction=nonstopmode -halt-on-error -output-directory="$model0923_article_build" model_0923_article.tex
-pdflatex -interaction=nonstopmode -halt-on-error -output-directory="$model0923_article_build" model_0923_article.tex
-pdflatex -interaction=nonstopmode -halt-on-error -output-directory="$model0923_article_build" model_0923_article.tex
+latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir="$model0923_article_build" model_0923_article.tex
 ```
 
 The compiled PDF and logs are in the new build directory. After review, copy
 the PDF to the article's readable path. LaTeX intermediate files remain in the
-temporary directory.
+temporary directory. `build/previous/` retains local compiler state from the
+earlier layout; its recorded paths predate the current directory structure.
