@@ -4,15 +4,12 @@
 \documentclass[pdflatex,sn-mathphys-num]{sn-jnl}
 
 \usepackage{amsmath,amssymb,bm}
-\usepackage{booktabs,tabularx,array,longtable}
 \usepackage{xcolor}
-\usepackage{needspace}
 
 \raggedbottom
 \setlength{\emergencystretch}{2em}
 \allowdisplaybreaks
 \newcommand{\ind}{\mathbb I}
-\newcommand{\clip}{\operatorname{clip}}
 \newcommand{\logit}{\operatorname{logit}}
 \newcommand{\sigmoid}{\operatorname{sigmoid}}
 \newcommand{\draftslot}[1]{\par\smallskip\noindent{\color{gray}\textit{[#1]}}\par\smallskip}
@@ -32,22 +29,31 @@ Together, these findings provide a mechanistic account of why individuals learn 
 \maketitle
 
 % Unheaded Introduction follows the organization of the reference article.
-Learning a category structure from feedback involves several related changes.
-A learner may discover a useful rule, accumulate evidence for a rule already
-under consideration, or apply a familiar rule more consistently. Each change
-can improve the probability of a correct response. A computational account of
-learning must therefore connect observable choices to the processes that make
-rules available, support them with evidence and determine their influence on
-behavior.
+A category choice can be supported by different internal explanations. Two
+learners may give the same answer while attending to different features,
+considering different rules or drawing on different amounts of accumulated
+evidence. Understanding individual learning therefore requires an account of
+how these internal processes develop across trials. The central problem is
+to infer their dynamics from an observable sequence of stimuli, choices and
+feedback.
 
-We formulate a model in which these processes operate over a limited,
-changing set of rule hypotheses. The model tracks the availability of each
-rule, its relative belief, its contribution to the current choice and the
-precision of its category predictions. Feedback updates these quantities and
-controls the introduction of new hypotheses. This formulation provides a
-basis for examining how rule discovery, evidence accumulation and persistent
-rule use contribute to individual learning trajectories across different
-feedback conditions.
+The model distinguishes three aspects of a learner's strategy: the rules
+currently considered, the evidence supporting each rule and each rule's
+influence on choice. These aspects can change at different times. A useful
+rule may become available and accumulate support while a previously used
+rule continues to guide responses. This distinction allows learning to be
+examined in terms of rule discovery, evidence retention and the translation
+of belief into behavior.
+
+We formulated a modular Bayesian architecture that connects these processes
+within a single learning trajectory. Capacity, memory and perceptual
+uncertainty constrain the information available to the learner; search
+preferences and persistence in rule use shape how that information affects
+subsequent choices. Fitting the model to choices yields a distribution of
+possible internal trajectories for each individual. These trajectories
+provide the basis for independent strategy validation and for examining how
+cognitive resources and adaptive mechanisms contribute to different
+learning profiles.
 
 \input{sections/results}
 

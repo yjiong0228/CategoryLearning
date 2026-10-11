@@ -3,13 +3,13 @@
 The independent manuscript entry point is [learning_paper_v1.tex](learning_paper_v1.tex).
 The readable version is [learning_paper_v1.pdf](learning_paper_v1.pdf).
 [results.tex](sections/results.tex) contains the main-text model account and reserved
-empirical subsections. [methods.tex](sections/methods.tex) contains the mathematical
-specification and inference procedures.
+empirical subsections. [methods.tex](sections/methods.tex) explains the core
+computations and inference procedures.
 
 ## Scope and source
 
-This draft reorganizes the current Model 0923 design for a research article.
-Its primary scientific source is the unchanged
+This draft develops a research-article account of how latent belief dynamics
+can explain individual learning. Its primary scientific source is the unchanged
 [model specification](../../src/Bayesian_state/docs/model_architecture/model_0923.tex),
 with the current hypothesis-updating and choice-readout sections in the
 [Markdown document](../../src/Bayesian_state/docs/model_architecture/model_0923.md).
@@ -28,12 +28,22 @@ uses that division to develop an account of rule discovery and use.
 
 ## Reading structure
 
-The opening frames how discovery, evidence accumulation and persistent rule
-use can each change choices. Results first introduces the task and reserves
-the behavioral findings, then develops the model in connected paragraphs.
-Later Results subsections and the Discussion remain explicit placeholders.
-Methods provides the definitions, trial timing, probability distributions and
-parameter domains needed to reproduce the specified model.
+The Introduction starts from the ambiguity of inferring internal processes
+from choices. Results develops three connected aspects of learning: hypothesis
+availability, belief support and influence on choice. Perception, feedback
+learning and hypothesis search explain how these quantities change together.
+The reserved empirical sections proceed from choice prediction to independent
+strategy validation, individual learning profiles and rapid improvements.
+Recovery and robustness provide the final validation step. Empirical results
+and the Discussion remain explicit placeholders.
+
+Methods defines the states and the main probability relationships needed to
+understand the model. It explains the role of each cognitive module, the
+feedback-learning cycle, hierarchical relations and inference uncertainty.
+The original model specification retains the full rule catalogue, numerical
+constants, exact precision and belief-transfer formulas, and algorithmic
+boundary handling. Numerical fitting settings and strategy-validation
+definitions remain to be specified for the final analyses.
 
 | Term | Definition used throughout the draft |
 |---|---|

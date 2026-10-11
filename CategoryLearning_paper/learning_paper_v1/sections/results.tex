@@ -1,118 +1,96 @@
 \section*{Results}\label{sec:results}
 
-\subsection*{Category learning under binary and hierarchical feedback}
-\label{r:task}
+\subsection*{Category learning and individual learning trajectories}
+\label{r:task}\label{r:behavior}
 
-The model is formulated for three category-learning conditions using stimuli
-defined by four normalized feature lengths. Condition~1 involves two
-categories and binary feedback; condition~2 involves four categories and
-binary feedback. Condition~3 also involves four categories, organized into
-two families containing two species each. Feedback in this condition
-distinguishes a correct species response, a response identifying the correct
-family but the wrong species, and a response identifying the wrong family.
-The learner is informed of the family--species structure and learns which
-response labels belong to the same family. These conditions vary the
-information available from a response and its feedback while retaining the
-same model architecture.
+The task required learning to classify stimuli defined by four feature
+lengths. Feedback distinguished correct and incorrect category responses;
+in the hierarchical condition, partial credit additionally identified a
+response from the correct family but the wrong species. These observations
+provide a trial-by-trial record of the information available to the learner
+and the choices made from it. We used this setting to formulate a common
+account of how candidate rules are discovered, evaluated and expressed in
+behavior across feedback conditions.
 
-\subsection*{Individual learning trajectories}
-\label{r:behavior}
-\draftslot{Results to be added.}
+\draftslot{Behavioral results to be added.}
 
-\subsection*{A dynamic rule model links hypothesis discovery to choice}
+\subsection*{A modular model separates hypothesis availability, belief and choice}
 \label{r:model}
 
-We formulated a dynamic rule model to describe how a learner discovers,
-evaluates and uses candidate explanations of the category structure. The
-model represents a rule as a partition of the stimulus space into labeled
-category regions. A learner begins with one candidate and can subsequently
-consider several rules, up to an individual capacity limit. Membership in
-this candidate set determines which rules are available for prediction and
-feedback learning. Each available rule has a relative belief that expresses
-the support it receives within the current set, and a precision that
-determines how concentrated its category predictions are.
-These quantities jointly define a possible internal learning state.
+The model represents learning as a changing set of explanations for the
+category structure. A rule specifies how stimulus features determine a
+category, for example through a feature threshold or a comparison between
+features. Three quantities distinguish its role in learning. Membership in
+the candidate set determines whether a rule is currently considered. Rule
+belief measures its relative support from feedback. Choice weight determines
+how strongly it influences the current response. A finite capacity limits
+the number of candidates, while search and abandonment allow their identities
+and number to change across trials.
 
-Choices depend on both the perceived stimulus and the influence of the
-available rules. Perception (P) introduces feature-specific uncertainty,
-calibrated by independent perceptual measurements. Each candidate uses this
-internal stimulus to predict categories from distances to its category
-regions. Higher rule precision concentrates the prediction on nearby
-regions. Choice readout (RC) combines these predictions using weights
-derived from rule beliefs and an additional preference for the previous
-trial's dominant rule. The dominant rule is the candidate with the largest
-choice weight. Its continued influence allows an established response policy
-to persist while evidence for alternatives accumulates. As beliefs and the
-candidate set change, contributions to choice can become more dispersed or
-more concentrated within the same participant (see \hyperref[m:choice]{Methods}).
+Before feedback arrives, the available rules jointly generate a choice.
+Perception introduces uncertainty into the feature values supplied to each
+rule. A rule then assigns probabilities to categories, with its precision
+controlling how concentrated these predictions are. Choice readout combines
+the predictions according to rule beliefs while giving an advantage to the
+previous trial's dominant rule, which had the largest choice weight. This
+inertia permits persistent rule use while
+evidence for alternatives accumulates. As beliefs change, choice weights
+can spread across several rules or concentrate on one rule within the same
+learner (see \hyperref[m:choice]{Methods}).
 
-Feedback changes both the relative support for rules and the precision of
-their predictions. Evidence memory (M) combines the probability of the
-received feedback under each candidate with the evidence retained from
-preceding trials. Precision updating (B) uses the same predictions to
-evaluate whether the feedback was more or less probable than under uniform
-category predictions. Supporting feedback increases precision, whereas
-contradictory feedback lowers it. All available candidates undergo these
-updates, including candidates that contributed little to the response.
-Belief and precision consequently describe different aspects of learning:
-the former expresses support among competing explanations, and the latter
-controls the concentration of a particular rule's predictions.
+Feedback changes the relative support for every available rule according to
+how well it predicts the observed outcome. Evidence memory determines how
+much earlier support is retained when new feedback is
+incorporated. Precision updating adjusts how sharply each rule predicts
+categories: feedback that is more probable than under uniform category
+predictions increases precision, while less probable feedback decreases it.
+The learner can therefore increase its belief in a rule and sharpen that
+rule's predictions through distinct updates. In the hierarchical condition,
+feedback also updates beliefs about which response categories belong to the
+same family. This knowledge carries forward as the candidate rules change.
 
-Hypothesis updating (H) changes the set of explanations considered on the
-next trial. A state that summarizes recent failure controls the probability
-of searching and the balance between local and global search. Local search
-either edits a judgment in an existing rule or samples a rule with similar
-classification outcomes. Global search samples from the remaining rule
-catalogue. Rules with lower relative belief have a higher probability of
-leaving the candidate set. The number of candidates can therefore grow as
-new hypotheses enter and shrink as weak hypotheses are abandoned, within
-the participant's capacity limit. A new candidate receives a share of each
-retained rule's belief, with larger shares transferred from rules with more
-similar classification outcomes. This operation expresses the
-generalization of existing classification knowledge to a newly considered
-explanation (see \hyperref[m:hypothesis]{Methods}).
+Hypothesis updating regulates access to alternative explanations. Recent
+failure can increase search and favor a broader range of candidates. Local
+search modifies an existing rule or considers a rule with similar
+classification outcomes; global search draws from the wider rule catalogue.
+Rules with weak support are more likely to leave the candidate set. A newly
+considered rule inherits a share of existing support according to its
+classification agreement with retained rules. Subsequent feedback then
+updates its belief and precision alongside the other candidates.
 
-The feedback conditions also determine which latent relations are learned.
-In the hierarchical condition, the model maintains joint beliefs over
-classification rules and the three possible pairings of response labels
-into families. Fully correct, partially correct and incorrect responses
-provide evidence about this joint state. When a new rule enters, it inherits
-the accumulated marginal belief about response pairings. This preserves
-learned family relations as the candidate classification rules change
-(see \hyperref[m:pairing]{Methods}).
+Together, these processes distinguish the discovery of a rule from the
+accumulation of belief and its expression in choice. Their timing can
+diverge: an increase in belief can precede a change in the rule that dominates
+responses. Perceptual uncertainty, candidate capacity and evidence retention
+constrain what information is available; search preferences and rule-use
+inertia shape its use. The resulting trajectories connect observable learning
+profiles to specific points at which information is acquired, retained or
+translated into behavior.
 
-The model thus defines several points at which learning can change. A useful
-rule can enter the candidate set before it receives substantial belief;
-increasing belief can precede its becoming dominant; and its predictions can
-become more precise while it remains dominant. Candidate-set size measures
-how many explanations are available, whereas effective participation
-measures how concentrated their contributions to choice are. These states
-provide separate quantities for examining rule discovery, belief
-accumulation, changes in rule use and increasing prediction precision
-(see \hyperref[m:measures]{Methods}).
-
-Participant-level parameters govern capacity, evidence retention, search,
-choice inertia and precision learning. They remain fixed within a
-participant, while the candidate set and its associated states evolve across
-trials. Particle filtering approximates the distribution of internal paths
-consistent with the available choice and feedback history. Predictions are
-averaged using path weights determined before the current choice and its
-feedback, defining the choice likelihood. Weighted states describe
-uncertainty about the inferred learning process
+The learner's internal trajectory remains uncertain. For each participant,
+particle inference tracks multiple possible trajectories and evaluates how
+well their predicted choices match the observed sequence. Participant
+parameters remain fixed while the internal states evolve. The inferred
+states are distributions over supported explanations of behavior, providing
+a basis for subsequent validation and mechanistic analysis
 (see \hyperref[m:inference]{Methods}).
 
-\subsection*{Behavioral prediction and model comparison}
+\subsection*{Choice prediction and model comparison}
 \label{r:prediction}
 \draftslot{Results to be added.}
 
-\subsection*{Latent trajectories of hypothesis discovery and use}
-\label{r:trajectories}
+\subsection*{Independent validation of reconstructed strategies}
+\label{r:validation}
 \draftslot{Results to be added.}
 
-\subsection*{Effects of feedback structure on learning}
-\label{r:feedback}
+\subsection*{Cognitive resources and adaptive mechanisms across learning profiles}
+\label{r:trajectories}\label{r:feedback}
 \draftslot{Results to be added.}
 
-\subsection*{Generative predictions and model identifiability}
+\subsection*{Belief-to-choice transitions during rapid learning improvements}
+\label{r:transitions}
+\draftslot{Results to be added.}
+
+\subsection*{Recovery and robustness of inferred dynamics}
 \label{r:recovery}
 \draftslot{Results to be added.}

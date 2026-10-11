@@ -5,7 +5,7 @@
 | 稿件 | PDF | LaTeX 主文件 | 内容说明 |
 | --- | --- | --- | --- |
 | 旧工作稿 | [sn-article.pdf](sn_article/sn-article.pdf) | [sn-article.tex](sn_article/sn-article.tex) | 原有 Results 文稿；[目录说明](sn_article/README.md) |
-| Learning paper v1 英文稿 | [learning_paper_v1.pdf](learning_paper_v1/learning_paper_v1.pdf) | [learning_paper_v1.tex](learning_paper_v1/learning_paper_v1.tex) | Results 中的模型主干与 Methods 中的机制细节，实证结果留空；[目录说明](learning_paper_v1/README.md) |
+| Learning paper v1 英文稿 | [learning_paper_v1.pdf](learning_paper_v1/learning_paper_v1.pdf) | [learning_paper_v1.tex](learning_paper_v1/learning_paper_v1.tex) | 围绕信念动态组织模型主干与核心计算，实证结果留空；[目录说明](learning_paper_v1/README.md) |
 
 ## 目录结构
 
