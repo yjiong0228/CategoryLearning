@@ -597,131 +597,42 @@ N_{{\rm eff},t}=\frac{1}{\sum_{h\in \mathcal A_t}w_t(h)^2},
 
 候选数量描述当前考虑多少条规则，有效参与数量描述这些规则的贡献有多集中。1.8这样的数值是权重分布的描述指标。$\lambda_s$ 在同一被试内保持稳定，作答权重和有效参与数量随信念、候选集合与上一主导规则逐题变化。
 
+\Needspace{38\baselineskip}
 \section{口述读出模块（RO）：从判断依据到口述报告}
 \label{sec:oral}
 
-口述读出模块使用本题的作答状态和实际选择，预测学习者会怎样表达判断依据。它先确定可能的来源规则，再读取所选类别的局部判断，依次考虑内容省略、参照措辞和刺激补充，最后汇总各种报告的概率。
-
-行为参数由选择数据估计，口述表达设置在预测比较前固定。真实口述用于评价这些预测；选择与口述的联合概率用于保留两种输出的共同来源。
+口述读出模块使用反馈前的作答状态和本题实际选择，预测被试会说出的判断依据。真实口述仅用于检验预测；行为参数由选择数据估计，口述表达设置在比较前固定。口述概率不进入参数估计、粒子权重或学习更新。
 
 \subsection{报告来源：结合本题实际选择}
 
-本题顺序为作答、口述、收到反馈。口述读出读取作答状态快照中的权重 $w_t$、各规则类别概率和内部刺激。给定实际回答 $y_t$，规则对这次回答的贡献为 $w_t(h)p_{t,h}(y_t)$，归一化得到口述来源权重：
+本题顺序为作答、口述、收到反馈。模型将每条规则的作答权重 $w_t(h)$ 乘以它对实际选择 $y_t$ 的预测概率 $p_{t,h}(y_t)$，得到这条规则对本次回答的贡献，再归一化得到口述来源权重：
 \begin{equation}
 \nu_t(h\mid y_t)=
 \frac{w_t(h)p_{t,h}(y_t)}{\sum_{v\in \mathcal A_t}w_t(v)p_{t,v}(y_t)}.
 \label{eq:oral-source}
 \end{equation}
-表达层假设，学习者从支持这次回答的候选中说出一条主要依据，来源按 $\nu_t$ 描述。对多个可能来源汇总得到报告预测。该来源可以与作答贡献最大的 $h_t^{\star}$ 不同：某备选整体贡献较小，却更支持本次实际选出的类别。
+对本次回答贡献越大的规则，越可能成为口述来源。模型将每份报告的核心判断归于一条来源规则，并保留各条规则成为来源的概率。口述来源可以与本题主导规则不同。
 
-来源权重 $\nu_t$ 用于本题口述预测，主导规则 $h_t^{\star}$ 已由选择读出确定。
+\subsection{报告内容：读取判断并形成表达}
 
-\subsection{局部内容：确定要表达的判断}
+模型读取来源规则对本次所选类别的局部判断，正确和错误作答均按实际选择处理。在这些判断的基础上，允许三种表达变化：
+\begin{itemize}
+\item 内容省略：每个核心判断独立地决定是否说出。
+\item 参照措辞：符合条件的单特征阈值判断可以用“比躯干长／短”表达，保留原判断方向。
+\item 刺激补充：最多描述一个未用于完整局部判断的部位，明显偏长或偏短的部位更容易被提到。补充内容使用本题已有的内部刺激。
+\end{itemize}
 
-给定来源规则和已经选择的类别，读取该类别区域的局部判断。例如，局部条件包含“脖子长”和“脖子长于尾巴”，这两个条件构成本题可表达的核心内容。
-
-所选类别包含多个分离区域时，使用距离本题内部刺激最近的区域；并列最近时等概率选择。这样可以得到所选类别中最贴近当前刺激的局部解释。正确和错误作答都按实际选择及反馈前内部刺激计算报告预测，并分别评价。
-
-局部判断记为 $\mathcal P_b=\{\psi_1,\ldots,\psi_{|\mathcal P_b|}\}$，其中 $b$ 表示选中的区域分量，$\psi_i$ 表示界定这个分量的一个判断条件。模型随后决定哪些条件被说出、怎样措辞，以及是否补充描述。最终内容组合对应一个报告代码，预测与真实口述使用同一套编码比较。带状区域的上下界合成一个判断，例如“脖子长度接近某个参照”。
-
-报告词表由规则目录和允许的表达组合预先生成，随后用于所有刺激和参数设置。二分类词表包含390个代码，四分类包含1,996个。其中，\texttt{EMPTY} 表示最终没有表达内容，\texttt{OTHER} 表示经编码确认的词表外内容。
-
-\subsection{内容省略：每个核心判断独立决定是否说出}
-
-每个判断独立地以 $q_{\rm say}$ 被说出、以 $1-q_{\rm say}$ 省略。两个判断都说、只说第一个、只说第二个、都不说的概率为
-\begin{equation}
-q_{\rm say}^2,\quad q_{\rm say}(1-q_{\rm say}),\quad q_{\rm say}(1-q_{\rm say}),\quad(1-q_{\rm say})^2.
-\end{equation}
-$q_{\rm say}=0.8$ 时为0.64、0.16、0.16、0.04。模型用共同的独立省略过程描述表达。
-
-核心判断全部省略后，仍可能通过补充句形成有内容的报告。所有表达都为空时才生成 \texttt{EMPTY}；实际记录缺失时单独标记为缺测。
-
-\subsection{参照措辞：用躯干描述单特征阈值}
-
-单特征、单方向阈值判断可改说“比躯干长／短”。用 $i$ 标记核心判断，其阈值为 $\vartheta_i$。给定该判断被说出，采用躯干参照措辞的条件概率为
-\begin{equation}
-p_{{\rm body},i}=q_{\rm body}\exp[-(\vartheta_i-\mu_{\rm body})^2/(2\sigma_{\rm body}^2)],
-\qquad q_{\rm body}\in[0,1],\quad \sigma_{\rm body}>0.
-\label{eq:body-wording}
-\end{equation}
-不说、普通表达、躯干表达的概率依次为
-\begin{equation}
-1-q_{\rm say},\qquad q_{\rm say}(1-p_{{\rm body},i}),\qquad q_{\rm say}p_{{\rm body},i}.
-\end{equation}
-符合条件的单特征判断按上述概率使用躯干参照措辞，并保留比较方向；其余判断令 $p_{{\rm body},i}=0$。
-
-$\mu_{\rm body}=0.75$ 取已确认的物理躯干位置作为共同措辞中心，$\sigma_{\rm body}=0.10$ 是固定措辞容忍度，$q_{\rm body}=0.5$ 是共同命名倾向。这些表达约定保持行为规则的分类边界，并在比较前固定。
-
-\subsection{刺激补充：描述一个未用于规则的部位}
-
-在非 \texttt{OTHER} 分支，以 $q_{\rm add}$ 尝试补充一句。特征须在完整局部判断中从未使用。令可用特征集合为 $\mathcal J_b$，显著度与选择概率为
-\begin{equation}
-\Delta_{t,j}=|\widetilde x_{t,j}-0.5|,\qquad
-a_{t,b}(j)=\frac{\Delta_{t,j}}{\sum_{j'\in\mathcal J_b}\Delta_{t,j'}},\quad j\in \mathcal J_b.
-\label{eq:extra-salience}
-\end{equation}
-明显偏长或偏短的部位更容易被顺带提到。分母为0或没有未使用特征时不补充；恰好为0.5的特征权重为0。显著度由本题已有的内部刺激直接计算。
-
-“未使用”按完整局部规则计算，包括后来省略的核心判断所用特征。每题最多补充一个普通长短句；大于0.5说长，小于0.5说短。显著度只选择描述对象，核心规则保持自己的判断关系。
-
-原规则使用脖子和尾巴，省略了“脖子长于尾巴”后再描述腿短，可能说“脖子长，而且腿短”。腿在这里属于对刺激的补充描述。相同句子也可能来自真正使用脖子和腿的规则，模型因此保留多种可能来源及其概率。
-
-\subsection{表达核：计算完整报告概率}
-
-表达核表示：给定来源规则和实际选择，各种报告分别有多大概率。先通过内容省略和参照措辞得到核心内容集合 $\mathcal V$，其概率记为 $K_b^{\rm core}(\mathcal V)$；再决定是否加入一个补充句。编码函数 $\operatorname{code}$ 将最终内容组合转换成报告代码。
-
-$\mathcal B_t(h,y)$ 表示所选类别中与本题内部刺激并列最近的区域分量集合。每个分量 $b$ 都有自己的核心判断与可补充特征集合 $\mathcal J_b$；$\psi^{\rm extra}_{t,j}$ 表示按本题内部刺激生成的特征 $j$ 的长短描述。下标 $t$ 标明这些量使用本题知觉。存在正显著度时，补充表达核为
-\begin{equation}
-K_{t,b}^{\rm add}(o\mid\mathcal V)=
-(1-q_{\rm add})\ind[o=\operatorname{code}(\mathcal V)]
-+q_{\rm add}\sum_{j\in \mathcal J_b}a_{t,b}(j)
-\ind[o=\operatorname{code}(\mathcal V\cup\{\psi^{\rm extra}_{t,j}\})].
-\end{equation}
-公式第一项对应直接报告核心内容，第二项对应加入一个补充句。无正显著度时 $K_{t,b}^{\rm add}=\ind[o=\operatorname{code}(\mathcal V)]$，只报告核心内容。
-
-完整表达核对所有可能的核心内容和并列区域分量求和，并以 $q_{\rm other}$ 生成预定义的 \texttt{OTHER}：
-\begin{align}
-\mathcal O_t(o\mid h,y)
-={}&q_{\rm other}\ind(o=\texttt{OTHER})\nonumber\\
-&+\frac{1-q_{\rm other}}{|\mathcal B_t(h,y)|}\sum_{b\in\mathcal B_t(h,y)}\sum_{\mathcal V}
-K_b^{\rm core}(\mathcal V)K_{t,b}^{\rm add}(o\mid\mathcal V).
-\label{eq:oral-kernel}
-\end{align}
-省略、措辞变化和补充表达分别形成归一化的概率分布，最终报告概率之和为1。给定有正显著度的局部分支，总补充事件概率为 $(1-q_{\rm other})q_{\rm add}$，示例0.02和0.2得到0.196。若并列分支只有部分可以补充，则再按分支比例汇总该概率。
-
-真实口述经编码和人工审查后，映射到一个合法报告代码。经确认属于词表外内容的报告统一编码为 \texttt{OTHER}。接口接收报告代码；输入未定义的代码时，返回概率0。
+例如，局部判断是“脖子长”和“脖子长于尾巴”，表达时可以省略第二个判断，再补充“腿短”，形成“脖子长，腿短”。
 
 \subsection{预测汇总：结合各条规则的报告概率}
 
-使用式\eqref{eq:oral-source}的来源权重，
+令 $\mathcal O_t(o\mid h,y)$ 表示给定来源规则 $h$ 和实际选择 $y$ 时，生成报告 $o$ 的概率。模型按来源权重汇总各规则的报告预测：
 \begin{equation}
 P(o_t\mid y_t,z_t)=\sum_{h\in \mathcal A_t}\nu_t(h\mid y_t)
 \mathcal O_t(o_t\mid h,y_t).
 \label{eq:conditional-oral}
 \end{equation}
-等价的联合预测为
-\begin{equation}
-P(y_t,o_t\mid z_t)=
-\sum_h w_t(h)p_{t,h}(y_t)
-\mathcal O_t(o_t\mid h,y_t).
-\label{eq:choice-oral}
-\end{equation}
-联合概率描述“选择这个类别，并说出这份报告”同时发生的可能性。已知实际选择后，将联合概率除以该选择的概率，得到条件口述概率。每条规则先贡献其选择概率与表达概率，再由模型汇总；预测的口述依据因此与本题回答使用同一组规则状态。
-
-\Needspace{14\baselineskip}
-\subsection{预测调用与共同设置}
-
-表达设置统一列在第\ref{sec:parameters}节。
-
-接口顺序为：
-\begin{quote}
-\small
-\path{begin_trial}\ $\to$\ \path{predict_choice}\ $\to$\ 确定选择\\
-$\to$\ \path{predict_oral}\ $\to$\ \path{complete_trial}。
-\end{quote}
-口述读出使用保存的作答状态快照，抽样时使用独立的口述随机流。
-
-共同表达设置在比较前固定，并事先规定敏感性检查范围。现有接口支持单条路径的口述预测；连续作答权重、显著度补充和批量预测的接入状态见第\ref{sec:implementation}节。
+同一句报告可能来自不同规则。汇总后的概率保留这些可能来源，用于与按同一词表编码的真实口述比较。完整表达概率与调用细节见附录\ref{app:oral-details}，共同表达设置见第\ref{sec:parameters}节，代码接入状态见第\ref{sec:implementation}节。
 
 \section{单试次顺序：哪些信息何时使用}
 \label{sec:trial}
@@ -1143,4 +1054,98 @@ $\ind[\cdot]$ & 指示函数，条件成立时为1，否则为0。\\
 \bottomrule
 \end{longtable}
 }
+\clearpage
+\section{口述读出的表达细节}
+\label{app:oral-details}
+
+第\ref{sec:oral}节说明核心流程。这里列出表达概率和接口约定，供核对和实现使用。
+
+\subsection{局部判断与核心表达}
+
+所选类别包含多个分离区域时，取距离本题内部刺激最近的区域分量；并列最近时等概率选择。分量 $b$ 的核心判断记为 $\mathcal P_b=\{\psi_1,\ldots,\psi_{|\mathcal P_b|}\}$，$\psi_i$ 表示一个判断。带状区域的上下界合成一个判断。
+
+每个判断独立地以 $q_{\rm say}$ 被说出、以 $1-q_{\rm say}$ 省略。两个判断都说、只说第一个、只说第二个、都不说的概率依次为：
+
+\begin{equation}
+q_{\rm say}^2,\quad q_{\rm say}(1-q_{\rm say}),\quad q_{\rm say}(1-q_{\rm say}),\quad(1-q_{\rm say})^2.
+\end{equation}
+
+单特征、单方向阈值判断可以采用躯干参照措辞。设判断 $i$ 的阈值为 $\vartheta_i$，给定该判断被说出，使用躯干措辞的概率为：
+
+\begin{equation}
+p_{{\rm body},i}=q_{\rm body}\exp[-(\vartheta_i-\mu_{\rm body})^2/(2\sigma_{\rm body}^2)],
+\qquad q_{\rm body}\in[0,1],\quad \sigma_{\rm body}>0.
+\label{eq:body-wording}
+\end{equation}
+
+不说、普通表达、躯干表达的概率依次为：
+
+\begin{equation}
+1-q_{\rm say},\qquad q_{\rm say}(1-p_{{\rm body},i}),\qquad q_{\rm say}p_{{\rm body},i}.
+\end{equation}
+
+躯干措辞保留比较方向，其余判断令 $p_{{\rm body},i}=0$。共同中心 $\mu_{\rm body}=0.75$ 取物理躯干位置，容忍度 $\sigma_{\rm body}=0.10$，命名倾向 $q_{\rm body}=0.5$。这些措辞约定保持行为规则的分类边界。
+
+报告词表由规则目录和允许的表达组合预先生成，二分类包含390个代码，四分类包含1,996个。\texttt{EMPTY} 表示最终没有表达内容，\texttt{OTHER} 表示经编码确认的词表外内容。核心判断全部省略后仍可补充；最终内容全部为空时才生成 \texttt{EMPTY}。实际记录缺失单独标为缺测。
+
+\subsection{刺激补充}
+
+在非 \texttt{OTHER} 分支，以 $q_{\rm add}$ 尝试补充一句。完整局部判断中从未使用的特征构成可用集合 $\mathcal J_b$，被省略判断所用的特征仍按已使用处理。根据本题已有的内部刺激计算长短显著度，并据此选择补充对象：
+
+\begin{equation}
+\Delta_{t,j}=|\widetilde x_{t,j}-0.5|,\qquad
+a_{t,b}(j)=\frac{\Delta_{t,j}}{\sum_{j'\in\mathcal J_b}\Delta_{t,j'}},\quad j\in \mathcal J_b.
+\label{eq:extra-salience}
+\end{equation}
+
+偏离0.5越明显，特征越容易被补充。没有可用特征或分母为0时不补充；值恰好为0.5的特征权重为0。每题最多补充一个普通长短句，大于0.5说长，小于0.5说短。
+
+\subsection{完整报告概率与联合预测}
+
+省略和参照措辞形成核心内容集合 $\mathcal V$，其概率为 $K_b^{\rm core}(\mathcal V)$。$\operatorname{code}$ 将内容组合转换成报告代码。$\mathcal B_t(h,y)$ 是本题所选类别的并列最近分量集合，$\psi^{\rm extra}_{t,j}$ 是按内部刺激生成的特征 $j$ 的长短描述。存在正显著度时，核心内容与补充句形成报告 $o$ 的概率为：
+
+\begin{equation}
+K_{t,b}^{\rm add}(o\mid\mathcal V)=
+(1-q_{\rm add})\ind[o=\operatorname{code}(\mathcal V)]
++q_{\rm add}\sum_{j\in \mathcal J_b}a_{t,b}(j)
+\ind[o=\operatorname{code}(\mathcal V\cup\{\psi^{\rm extra}_{t,j}\})].
+\end{equation}
+
+第一项对应直接报告核心内容，第二项对应加入一个补充句。无正显著度时，$K_{t,b}^{\rm add}=\ind[o=\operatorname{code}(\mathcal V)]$。
+
+完整报告概率以 $q_{\rm other}$ 生成预定义的 \texttt{OTHER}，其余概率对核心内容及并列区域分量汇总：
+
+\begin{align}
+\mathcal O_t(o\mid h,y)
+={}&q_{\rm other}\ind(o=\texttt{OTHER})\nonumber\\
+&+\frac{1-q_{\rm other}}{|\mathcal B_t(h,y)|}\sum_{b\in\mathcal B_t(h,y)}\sum_{\mathcal V}
+K_b^{\rm core}(\mathcal V)K_{t,b}^{\rm add}(o\mid\mathcal V).
+\label{eq:oral-kernel}
+\end{align}
+
+各表达环节都形成归一化的分布，最终报告概率之和为1。有正显著度的局部分支，其总补充事件概率为 $(1-q_{\rm other})q_{\rm add}$；并列分支仅部分可补充时，再按可补充分支比例汇总。
+
+选择与口述共享本题的规则状态，联合概率为：
+
+\begin{equation}
+P(y_t,o_t\mid z_t)=
+\sum_h w_t(h)p_{t,h}(y_t)
+\mathcal O_t(o_t\mid h,y_t).
+\label{eq:choice-oral}
+\end{equation}
+
+将联合概率除以实际选择的概率，得到第\ref{sec:oral}节的条件口述概率。真实口述经编码和人工审查后映射到合法报告代码；确认属于词表外的内容编码为 \texttt{OTHER}，未定义代码的接口概率为0。
+
+\subsection{调用顺序与共同设置}
+
+接口顺序为：
+
+\begin{quote}
+\small
+\path{begin_trial}\ $\to$\ \path{predict_choice}\ $\to$\ 确定选择\\
+$\to$\ \path{predict_oral}\ $\to$\ \path{complete_trial}。
+\end{quote}
+
+口述读出使用作答前状态快照，抽样使用独立的口述随机流。共同表达设置及敏感性检查范围在比较前固定，见第\ref{sec:parameters}节。现有接口支持单条路径的预测，连续作答权重、显著度补充及批量预测的接入状态见第\ref{sec:implementation}节。
+
 \end{document}
