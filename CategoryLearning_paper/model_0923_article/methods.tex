@@ -1,0 +1,402 @@
+\section*{Methods}
+
+\subsection*{Task observations and rule representation}
+\label{m:task}
+
+The model describes learning from category choices and subsequent feedback. For participant $s$ on trial $t$, the observed stimulus is $\bm x_{s,t}\in[0,1]^4$, the response is $y_{s,t}\in\{1,\ldots,C\}$, and the feedback is $r_{s,t}$. Stimulus coordinates encode normalized lengths of four anatomical features in the order used in the task. Condition 1 has two categories and binary feedback, $r_t\in\{0,1\}$. Condition 2 has four categories and binary feedback. Condition 3 has four categories and graded feedback, $r_t\in\{0,0.5,1\}$: full credit denotes the correct species, partial credit another species in the correct family, and zero credit a species from the other family. Participants in condition 3 know that two families each contain two species, and learn which response labels belong together. Participant subscripts are retained for parameters and omitted for observations and states. Recruitment, sample sizes, task administration and exclusions: [To be specified].
+
+Choices use a consistent response code across the observed data and model category probabilities. Feedback learning conditions on this response and its received feedback. The environment's true category is available for scoring and evaluating predictions. The two four-category conditions share the target classification structure and differ in feedback and instructed hierarchical knowledge. Reaction time is outside the present observation model.
+
+A rule $h$ assigns fixed category labels to regions $\mathcal C_{h,1},\ldots,\mathcal C_{h,C}$ of stimulus space. The catalogue $\mathcal H=\{1,\ldots,J\}$ contains $J=29$ rules for condition 1 and $J=152$ rules for conditions 2 and 3. Table~\ref{tab:rule-catalogue} gives the constituent families. Thresholds are 0.5 for single-feature judgments and 1 for two-feature sums; the tolerance for proximity judgments is 0.10. The catalogue includes overlapping feature use, conditional branches and disconnected category regions. Category labels remain fixed within each rule. The base prior is uniform over catalogue entries,
+\begin{equation}
+p_0(h)=\frac{1}{J},\qquad h\in\mathcal H.
+\label{eq:catalogue-prior}
+\end{equation}
+This prior supplies initial rule sampling and global search. Family-level prior mass consequently depends on the number of rules in each family.
+
+{\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.28\linewidth}>{\raggedright\arraybackslash}p{0.54\linewidth}r}
+\caption{Rule families in the fixed catalogue. Crossed judgments combine two binary decisions into four categories; conditional rules use a first judgment to determine the subsequent branch. Feature indices follow the catalogue's fixed ordering.}\label{tab:rule-catalogue}\\
+\toprule
+Family & Decision structure & Count\\
+\midrule
+\endfirsthead
+\toprule
+Family & Decision structure & Count\\
+\midrule
+\endhead
+\multicolumn{3}{l}{\textit{Two-category catalogue}}\\*
+Single-feature threshold & $x_i\leq0.5$ & 4\\
+Feature ordering & $x_i\leq x_j$ & 6\\
+Feature sum & $x_i+x_j\leq1$ & 6\\
+Ordering of two sums & $x_i+x_j\leq x_k+x_l$, with disjoint pairs & 3\\
+Feature proximity & $|x_i-x_j|\leq0.10$ & 6\\
+Central feature interval & $|x_i-0.5|\leq0.10$ & 4\\
+\textbf{Total} & & \textbf{29}\\
+\midrule
+\multicolumn{3}{l}{\textit{Four-category catalogue}}\\*
+Two thresholds & Crossed single-feature thresholds & 6\\
+Ordering and sum & Crossed ordering and sum for the same feature pair & 6\\
+Threshold and ordering & One threshold crossed with ordering of two other features & 12\\
+Threshold and sum & One threshold crossed with the sum of two other features & 12\\
+Three thresholds & Conditional branches using three feature thresholds & 24\\
+Threshold, ordering and sum & A threshold branch followed by ordering or sum judgments & 24\\
+Two orderings & Crossed ordering judgments on disjoint feature pairs & 3\\
+Two sums & Crossed sum judgments on disjoint feature pairs & 3\\
+Ordering and thresholds & Ordering branches followed by thresholds on remaining features & 12\\
+Sum and thresholds & Sum branches followed by thresholds on remaining features & 12\\
+Feature extrema & Classification by the maximum or minimum feature & 2\\
+Threshold and overlapping ordering & Threshold crossed with an ordering that shares its feature & 12\\
+Two shared-feature comparisons & Two ordering judgments with one common feature & 12\\
+Proximity and disjoint threshold & Pairwise proximity crossed with a third-feature threshold & 12\\
+\textbf{Total} & & \textbf{152}\\
+\bottomrule
+\end{longtable}
+}
+
+\subsection*{Initial state and trial sequence}
+\label{m:state}
+
+The learner maintains an active candidate set $\mathcal A_t\subset\mathcal H$, normalized rule beliefs $\pi_t^-$, rule-specific precisions $\beta_t(h)$, accumulated failure $F_t$, and the previous dominant rule $h_{t-1}^{\star}$. Condition 3 additionally maintains rule--pairing beliefs. Candidate count varies subject to
+\begin{equation}
+1\leq N_t=|\mathcal A_t|\leq M_s^{\max},\qquad
+2\leq M_s^{\max}<J,
+\label{eq:capacity-bound}
+\end{equation}
+where $M_s^{\max}$ is an integer participant parameter. On the first trial, one rule is sampled from $p_0$, assigned belief 1 and precision $\beta_{0,s}$, and $F_1=0$. There is no previous dominant rule. Pairing beliefs initially assign probability $1/3$ to each possible pairing.
+
+Each trial comprises perception, rule prediction and choice readout, followed by feedback learning. Rule beliefs and precisions are updated using the same predictions formed before feedback. Hypothesis updating then prepares the next trial's candidate set and initial beliefs. Superscripts $-$ and $+$ denote beliefs before choice and after feedback; $\mathrm{ret}$ and $\mathrm{keep}$ denote intermediate states after exits and capacity management. Feedback-induced changes affect subsequent choices. Failure state follows the complete chronological trial sequence across sessions. The pre-choice state $z_t$ collects the internal stimulus and these latent variables, including the joint pairing distribution in condition 3.
+
+\subsection*{Perception and rule-specific predictions}
+\label{m:perception}
+
+Perception (P) converts each physical feature into an internal observation,
+\begin{equation}
+\widetilde x_{t,j}=\clip(x_{t,j}+\varepsilon_{t,j},0,1),\qquad
+\clip(v,0,1)=\min\{1,\max\{0,v\}\}.
+\label{eq:internal-stimulus}
+\end{equation}
+The feature-specific error distribution and its parameters are determined by independent perceptual measurements obtained before category learning. The model accommodates the measured Gaussian or uniform error distribution. Distribution, measurement protocol and feature ordering for the reported analyses: [To be specified]. Within an internal trajectory, all rules use the same perceived stimulus on a given trial.
+
+Rule predictions depend on the shortest Euclidean distance to each category region,
+\begin{align}
+d_{t,h,c}&=\inf_{\bm\xi\in\mathcal C_{h,c}}
+\|\widetilde{\bm x}_t-\bm\xi\|_2,\\
+p_{t,h}(c)&=\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{a=1}^{C}\exp[-\beta_t(h)d_{t,h,a}]}.
+\label{eq:category-prediction}
+\end{align}
+Distance is zero inside a region and is taken to the nearest component for a disconnected region. Precision $\beta_t(h)$ determines how strongly distance differences influence category probabilities. These probabilities supply both choice readout and subsequent feedback evaluation.
+
+Perceptual error changes the stimulus supplied to every candidate, while precision changes the conversion of that candidate's distances into probabilities. A rule can therefore generate a concentrated category prediction and still receive little relative belief when earlier feedback favors other candidates. The model tracks these quantities separately throughout learning.
+
+\subsection*{Choice readout and rule-use inertia}
+\label{m:choice}
+
+Choice readout (RC) combines rule beliefs with persistence in rule use. The previous dominant rule receives a multiplicative advantage $e^{\lambda_s}$, yielding normalized choice weights
+\begin{equation}
+w_t(h)=\frac{\pi_t^-(h)e^{\lambda_s\ind(h=h_{t-1}^{\star})}}
+{\sum_{v\in\mathcal A_t}\pi_t^-(v)e^{\lambda_s\ind(v=h_{t-1}^{\star})}},
+\qquad h\in\mathcal A_t.
+\label{eq:choice-weights}
+\end{equation}
+The inertia parameter $\lambda_s\geq0$ is constant within a participant. Weights vary with candidate membership, beliefs and the previous dominant rule. With $\lambda_s=0$, weights equal beliefs. On trial 1, or when the previous dominant rule has left the active set, all inertia multipliers equal 1.
+
+The trajectory-level response probability is
+\begin{equation}
+P(y_t=c\mid z_t)=\sum_{h\in\mathcal A_t}w_t(h)p_{t,h}(c).
+\label{eq:choice-mixture}
+\end{equation}
+Simulated responses are drawn from this categorical distribution. The dominant rule is recorded before the response as $h_t^{\star}\in\arg\max_{h\in\mathcal A_t}w_t(h)$. Ties preserve the previous dominant rule when it belongs to the tied set; otherwise they are resolved uniformly. This record supplies inertia on the next trial. The lapse probability is fixed to zero. Choice variability arises from internal perception, candidate dynamics and the rule-specific category probabilities.
+
+The inertia multiplier permits a previously dominant rule to retain the largest choice contribution after another rule has acquired greater evidence support. Dominance switches when a competitor's belief exceeds the inertia-adjusted belief of the previous dominant rule. Thus, belief changes and changes in the strongest contribution to choices can occur at different times within the same trajectory.
+
+\subsection*{Feedback likelihood and evidence memory}
+\label{m:memory}
+
+Evidence memory (M) updates beliefs by evaluating how well each active rule predicts the feedback received after the observed response. For binary feedback,
+\begin{equation}
+\ell_t(h)=r_tp_{t,h}(y_t)+(1-r_t)[1-p_{t,h}(y_t)].
+\label{eq:feedback-likelihood}
+\end{equation}
+Correct feedback supports the selected category; incorrect feedback supports the combined probability of the remaining categories. In the four-category binary task, the incorrect event therefore includes three alternatives.
+
+Previous evidence is retained through exponent $\gamma_s$, and current evidence enters through the feedback likelihood:
+\begin{equation}
+\pi_t^+(h)=
+\frac{[\pi_t^-(h)]^{\gamma_s}\ell_t(h)}
+{\sum_{v\in\mathcal A_t}[\pi_t^-(v)]^{\gamma_s}\ell_t(v)},
+\qquad 0\leq\gamma_s\leq1.
+\label{eq:evidence-memory}
+\end{equation}
+Larger $\gamma_s$ retains more of the existing belief differences. At $\gamma_s=0$, active candidates receive equal weight before incorporation of current feedback; at $\gamma_s=1$, previous beliefs are retained in full. Nonactive rules have zero belief. Every active rule is evaluated, including candidates with small choice weights. Condition 3 applies this update to the joint distribution over rules and response pairings, as defined below.
+
+Exponentiation compresses previous odds when $0<\gamma_s<1$, and multiplication by the likelihood incorporates the current observation. Normalization produces relative beliefs over the active set. A single active candidate has belief 1 because all relative support belongs to that explanation; its precision and the failure state continue to respond to feedback.
+
+\subsection*{Feedback-dependent precision updating}
+\label{m:precision}
+
+Precision updating (B) adjusts the concentration of each rule's category predictions. For binary feedback, the neutral reference is the probability of the observed feedback under uniform category predictions,
+\begin{equation}
+\ell_{\rm chance}(r_t)=\frac{r_t}{C}+(1-r_t)\left(1-\frac1C\right).
+\label{eq:binary-chance}
+\end{equation}
+Correct and incorrect feedback have reference probabilities $1/C$ and $1-1/C$, respectively. The normalized support is
+\begin{equation}
+\kappa_t(h)=
+\begin{cases}
+\dfrac{\ell_t(h)-\ell_{\rm chance}(r_t)}{1-\ell_{\rm chance}(r_t)},
+&\ell_t(h)\geq\ell_{\rm chance}(r_t),\\[5pt]
+\dfrac{\ell_t(h)-\ell_{\rm chance}(r_t)}{\ell_{\rm chance}(r_t)},
+&\ell_t(h)<\ell_{\rm chance}(r_t).
+\end{cases}
+\label{eq:binary-support}
+\end{equation}
+Positive support indicates that a rule explains the observed feedback better than the uniform reference, and negative support indicates poorer prediction. Thus, incorrect feedback can support a rule that assigns sufficient probability to other responses.
+
+Every active rule updates precision according to
+\begin{equation}
+\beta_{t+1}(h)=
+\begin{cases}
+\min\{\beta_t(h)+\eta_{+,s}\kappa_t(h)[\beta_{\max}-\beta_t(h)],\beta_{\max}\},
+&\kappa_t(h)\geq0,\\[4pt]
+\max\{\beta_t(h)-\eta_{-,s}\beta_t(h)\min[1,-\kappa_t(h)],\beta_{\min}\},
+&\kappa_t(h)<0,
+\end{cases}
+\label{eq:precision-learning}
+\end{equation}
+with shared bounds $\beta_{\min}=0.1$ and $\beta_{\max}=25$. Positive changes depend on the remaining distance to the upper bound; negative changes scale with current precision. The participant parameters $\eta_{+,s}$ and $\eta_{-,s}$ determine the respective rates. Support is computed from predictions made before feedback. Beliefs and precisions therefore update in parallel from the same evidence, and the new precision affects the next trial. Condition 3 uses its graded-feedback support measure in Eq.~\ref{eq:precision-learning}.
+
+\subsection*{Hypothesis updating: search control and candidate retention}
+\label{m:hypothesis}
+
+Hypothesis updating (H) regulates which explanations remain available. The trial's shortfall is $f_t=1-r_t$, and accumulated failure is
+\begin{equation}
+F_{t+1}=\delta_sF_t+(1-\delta_s)f_t,\qquad F_1=0.
+\label{eq:failure-accumulator}
+\end{equation}
+The retention parameter $\delta_s\in[0,1)$ controls the persistence of past failures. Binary feedback contributes 0 or 1; graded feedback contributes 0, 0.5 or 1. This state governs both the probability of searching and the conditional probability of using a global source:
+\begin{align}
+e_{t+1}&=\sigmoid[\logit(e_{0,s})+a_{e,s}F_{t+1}],\\
+g_{t+1}&=g_{0,s}+(1-g_{0,s})a_{g,s}F_{t+1}.
+\label{eq:search-control}
+\end{align}
+Here $e_{0,s}$ and $g_{0,s}$ are baseline probabilities; $a_{e,s}$ and $a_{g,s}$ control their sensitivity to failure. We use $\sigmoid(v)=1/(1+e^{-v})$ and $\logit(p)=\log[p/(1-p)]$.
+
+Accumulated failure can increase opportunities to search and shift search toward the complete catalogue. Success reduces the accumulator toward zero, returning both probabilities toward their baselines. Failure retention $\delta_s$ determines the temporal persistence of performance information, while evidence retention $\gamma_s$ determines the persistence of relative support for specific rules.
+
+After feedback learning, each old rule independently proposes exit with probability
+\begin{equation}
+P(h\text{ proposes exit})=\rho_s[1-\pi_t^+(h)].
+\label{eq:candidate-exit}
+\end{equation}
+Low-belief candidates are consequently more likely to leave. The dominant rule follows the same criterion. If all candidates exit, or survivors have zero total belief, a rule with the highest original belief is restored, with uniform tie-breaking. Denoting the actual exit set by $\mathcal D_t$, the retained set and beliefs are
+\begin{equation}
+\mathcal A_t^{\rm ret}=\mathcal A_t\setminus\mathcal D_t,
+\qquad
+\pi_t^{\rm ret}(h)=\frac{\pi_t^+(h)}
+{\sum_{v\in\mathcal A_t^{\rm ret}}\pi_t^+(v)}.
+\label{eq:retained-candidates}
+\end{equation}
+One search event is drawn from $\operatorname{Bernoulli}(e_{t+1})$. Without search, $\mathcal A_{t+1}=\mathcal A_t^{\rm ret}$ and $\pi_{t+1}^-=\pi_t^{\rm ret}$. With search, one new rule is generated. A lone candidate has belief 1 and zero exit probability, while subsequent search can expand the set.
+
+\subsection*{Structural and functional rule proposals}
+\label{m:proposals}
+
+An entrant is sampled from $\mathcal U_t=\mathcal H\setminus\mathcal A_t$. Eligibility excludes all rules active on the current trial, including those that have just exited. Global proposals use the base prior restricted to this set. Local proposals begin from a retained rule and combine structural editing with functional similarity.
+
+A structural edit changes one feature, changes a comparison relation together with its standard reference, changes one reference value, or rewrites one lower judgment in a conditional tree. Their respective costs are 1, 1.5, 1 and 2. A branch edit preserves other judgments and the category-output layout. Equivalent judgments are placed in a common representation, and legal edits must yield another complete catalogue rule. The edit distance $d_{\rm edit}(h,u)$ is the minimum cost of a legal single edit from $h$ to $u$, or infinity when no such edit exists. For the eligible neighborhood $\mathcal N_t(h)=\{u\in\mathcal U_t:d_{\rm edit}(h,u)<\infty\}$,
+\begin{equation}
+K_{{\rm edit},t}(u\mid h)=
+\frac{\ind[u\in\mathcal N_t(h)]e^{-d_{\rm edit}(h,u)}}
+{\sum_{v\in\mathcal N_t(h)}e^{-d_{\rm edit}(h,v)}}.
+\label{eq:structural-proposal}
+\end{equation}
+
+Functional distance quantifies disagreement between fixed-label classifications. Let $c_h(\bm x)$ be a rule's deterministic category label and $\mu_X$ the uniform distribution on $[0,1]^4$. The shared correspondence matrix, agreement and distance are
+\begin{align}
+T_{cc'}(h,u)&=\Pr_{\bm x\sim\mu_X}[c_h(\bm x)=c,c_u(\bm x)=c'],\\
+S(h,u)&=\sum_{c=1}^{C}T_{cc}(h,u),
+\qquad d_{\rm func}(h,u)=1-S(h,u).
+\label{eq:functional-distance-paper}
+\end{align}
+These quantities use 100,000 uniformly sampled reference stimuli with random seed 0, shared across participants. Agreement depends on the prevalence of each category in the reference distribution. Functional proposals use
+\begin{equation}
+K_{{\rm func},t}(u\mid h)=
+\frac{\ind(u\in\mathcal U_t)p_0(u)e^{-d_{\rm func}(h,u)/\tau_{\rm prop}}}
+{\sum_{v\in\mathcal U_t}p_0(v)e^{-d_{\rm func}(h,v)/\tau_{\rm prop}}},
+\qquad\tau_{\rm prop}=0.10.
+\label{eq:functional-proposal-paper}
+\end{equation}
+The shared proposal scale determines how strongly local proposals favor classification agreement.
+
+When $\mathcal N_t(h)$ is nonempty, the participant's local source preference gives $K_{{\rm loc},t}=\omega_sK_{{\rm edit},t}+(1-\omega_s)K_{{\rm func},t}$. If it is empty, $K_{{\rm loc},t}=K_{{\rm func},t}$. Retained beliefs weight the possible local starting points, and the global probability mixes the two sources:
+\begin{align}
+Q_{{\rm loc},t}(u)&=\sum_{h\in\mathcal A_t^{\rm ret}}\pi_t^{\rm ret}(h)K_{{\rm loc},t}(u\mid h),\\
+Q_{{\rm glob},t}(u)&=\frac{\ind(u\in\mathcal U_t)p_0(u)}
+{\sum_{v\in\mathcal U_t}p_0(v)},\\
+Q_t(u)&=(1-g_{t+1})Q_{{\rm loc},t}(u)+g_{t+1}Q_{{\rm glob},t}(u).
+\label{eq:combined-proposal}
+\end{align}
+One entrant $u$ is drawn from $Q_t$. Structural preference $\omega_s$ is constant within a participant; global-source probability $g_{t+1}$ varies with accumulated failure.
+
+\subsection*{Capacity management and belief transfer}
+\label{m:transfer}
+
+After generating an entrant, all retained rules remain if there is unused capacity. At capacity, one rule with the lowest retained belief is removed, with uniform tie-breaking:
+\begin{equation}
+h_t^{\rm drop}\in\arg\min_{h\in\mathcal A_t^{\rm ret}}\pi_t^{\rm ret}(h),
+\qquad
+\mathcal A_t^{\rm keep}=\mathcal A_t^{\rm ret}\setminus\{h_t^{\rm drop}\}.
+\label{eq:capacity-removal}
+\end{equation}
+Otherwise $\mathcal A_t^{\rm keep}=\mathcal A_t^{\rm ret}$. The retained old beliefs are normalized within the final old set,
+\begin{equation}
+\pi_t^{\rm keep}(h)=\frac{\pi_t^{\rm ret}(h)}
+{\sum_{v\in\mathcal A_t^{\rm keep}}\pi_t^{\rm ret}(v)},
+\qquad h\in\mathcal A_t^{\rm keep}.
+\label{eq:pre-transfer-belief}
+\end{equation}
+Dominant rules receive the same capacity criterion, and the capacity bound leaves at least one old rule available for transfer.
+
+Functional affinity determines the support transferred to the entrant:
+\begin{align}
+\chi_s(h,u)&=e^{-d_{\rm func}(h,u)/\tau_{{\rm tr},s}},\\
+\pi_{t+1}^-(h)&=\frac{\pi_t^{\rm keep}(h)}{1+\chi_s(h,u)},
+\qquad h\in\mathcal A_t^{\rm keep},\\
+\pi_{t+1}^-(u)&=\sum_{h\in\mathcal A_t^{\rm keep}}
+\frac{\pi_t^{\rm keep}(h)\chi_s(h,u)}{1+\chi_s(h,u)}.
+\label{eq:belief-transfer-paper}
+\end{align}
+The participant scale $\tau_{{\rm tr},s}>0$ controls the breadth of support generalization. Each old rule divides its belief in the ratio $1:\chi_s(h,u)$ between itself and the entrant, conserving total belief. Since $\chi_s\leq1$, initial entrant belief is at most $1/2$. The next active set is $\mathcal A_{t+1}=\mathcal A_t^{\rm keep}\cup\{u\}$. This allocation applies to every proposal source. Retained rules keep their updated precisions; new and re-entering rules start at $\beta_{0,s}$ and first learn from feedback on their next active trial.
+
+Proposal probabilities determine which rule enters, and affinity determines its initial evidence support. Greater old-rule belief and greater functional agreement both increase the entrant's received support. The shared scale $\tau_{\rm prop}$ governs selection under functional search; participant scale $\tau_{{\rm tr},s}$ governs transfer after selection. Subsequent feedback updates the entrant together with the retained candidates.
+
+\subsection*{Joint learning of rules and response pairings}
+\label{m:pairing}
+
+Condition 3 represents the three possible response pairings as
+\begin{equation}
+\mathcal G_1=\{\{1,2\},\{3,4\}\},\quad
+\mathcal G_2=\{\{1,3\},\{2,4\}\},\quad
+\mathcal G_3=\{\{1,4\},\{2,3\}\}.
+\label{eq:response-pairings}
+\end{equation}
+For each rule, $q_t^-(k\mid h)$ denotes the conditional belief in pairing $k$, with initial value $1/3$. The joint prior is $\Pi_t^-(h,k)=\pi_t^-(h)q_t^-(k\mid h)$. Writing $\operatorname{mate}_k(y)$ for the other response paired with $y$, graded-feedback likelihoods are
+\begin{equation}
+\ell_t(h,k)=
+\begin{cases}
+p_{t,h}(y_t),&r_t=1,\\
+p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
+1-p_{t,h}(y_t)-p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.
+\end{cases}
+\label{eq:graded-likelihood}
+\end{equation}
+The three mutually exclusive events exhaust the predicted category probabilities. Joint evidence memory is
+\begin{equation}
+\Pi_t^+(h,k)=\frac{[\Pi_t^-(h,k)]^{\gamma_s}\ell_t(h,k)}
+{\sum_{v\in\mathcal A_t}\sum_{k'=1}^{3}[\Pi_t^-(v,k')]^{\gamma_s}\ell_t(v,k')}.
+\label{eq:joint-evidence}
+\end{equation}
+Rule beliefs are the marginals $\pi_t^+(h)=\sum_k\Pi_t^+(h,k)$, and $q_t^+(k\mid h)=\Pi_t^+(h,k)/\pi_t^+(h)$. A zero rule marginal receives a uniform conditional pairing. At $\gamma_s=0$, active rule--pairing combinations receive equal pre-evidence weight.
+
+When pairing beliefs are uniform, half-credit likelihood marginalized over pairings equals $[1-p_{t,h}(y_t)]/3$, and zero-credit likelihood is twice this value. The common multiplier gives identical relative rule support after normalization, although the two outcomes can support different pairings. As pairing knowledge accumulates, graded feedback can provide more specific evidence about classification rules.
+
+For precision learning, pairing probabilities are computed after evidence retention and before incorporation of current feedback:
+\begin{align}
+\widetilde q_t^-(k\mid h)&=
+\frac{[\Pi_t^-(h,k)]^{\gamma_s}}
+{\sum_{k'=1}^{3}[\Pi_t^-(h,k')]^{\gamma_s}},\\
+\ell_t(h)&=\sum_{k=1}^{3}\widetilde q_t^-(k\mid h)\ell_t(h,k),\\
+\kappa_t^{(3)}(h)&=\frac{\ell_t(h)-\ell_{\rm chance}(r_t)}
+{\ell_t(h)+\ell_{\rm chance}(r_t)}.
+\label{eq:graded-precision-support}
+\end{align}
+Uniform conditional pairing is used when a rule has zero joint mass or $\gamma_s=0$. The graded-feedback chance probabilities are $1/4$, $1/4$ and $1/2$ for feedback 1, 0.5 and 0, respectively. This support enters Eq.~\ref{eq:precision-learning}; half-credit feedback can increase or decrease precision according to its predicted probability.
+
+Before candidate exits or capacity removal, the model saves the overall posterior pairing marginal $\bar q_t^+(k)=\sum_{h\in\mathcal A_t}\Pi_t^+(h,k)$. Candidate updating retains each old rule's conditional pairing knowledge and assigns the saved overall distribution to an entrant:
+\begin{equation}
+\Pi_{t+1}^-(h,k)=\pi_{t+1}^-(h)
+\begin{cases}
+q_t^+(k\mid h),&h\text{ is retained},\\
+\bar q_t^+(k),&h\text{ is an entrant}.
+\end{cases}
+\label{eq:pairing-state-transfer}
+\end{equation}
+This inheritance applies to local and global entrants and preserves accumulated response-pair knowledge during candidate changes.
+
+\subsection*{Particle inference and choice likelihood}
+\label{m:inference}
+
+Particle filtering represents uncertainty about the learner's hidden trajectory. Particle $n$ carries its own perceived observations, candidate set, beliefs, precisions, failure state, dominant rule and conditional pairing state. Its pre-choice weight $W_t^{(n),{\rm pre}}$ describes the researcher's relative support for that trajectory, with $\sum_nW_t^{(n),{\rm pre}}=1$. The predictive choice probability and subsequent choice-conditioned weights are
+\begin{align}
+\widehat P_t(c)&=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm pre}}p_t^{(n)}(c),\\
+W_t^{(n),{\rm choice}}&=
+\frac{W_t^{(n),{\rm pre}}p_t^{(n)}(y_t)}
+{\sum_{n'=1}^{N_{\rm PF}}W_t^{(n'),{\rm pre}}p_t^{(n')}(y_t)},
+\label{eq:particle-prediction}
+\end{align}
+where $p_t^{(n)}(c)$ is Eq.~\ref{eq:choice-mixture} evaluated in that particle. Each trajectory then learns from the observed response and feedback. Particle weights, learner rule beliefs and learner choice weights operate at their respective levels.
+
+Effective particle sample size is $\mathrm{ESS}_t=1/\sum_n[W_t^{(n),{\rm choice}}]^2$. Resampling below a prescribed threshold concentrates computation on trajectories supported by choices. Resampled particles inherit cognitive states and receive independent subsequent random streams. Particle count, ESS threshold, resampling scheme and random seeds: [To be specified].
+
+The fitting objective is mean choice negative log-likelihood,
+\begin{equation}
+\mathrm{NLL}(\bm\theta_s)=
+-\frac1{T_{\rm score}}\sum_{t\in\mathcal T_{\rm score}}
+\log\widehat P_t(y_t;\bm\theta_s),
+\qquad T_{\rm score}=|\mathcal T_{\rm score}|.
+\label{eq:choice-nll}
+\end{equation}
+Probabilities are evaluated before current feedback enters learning. For repeated independent filters, trial-level category probabilities are averaged before calculating the logarithm. Scoring trials, training and evaluation boundaries, repeat count, free versus fixed parameters, finite search ranges, optimization and stopping criteria: [To be specified]. Parameters selected using the evaluated sequence yield an in-sample fit. Parameter recovery, numerical stability checks, uncertainty estimation and inferential statistics: [To be specified].
+
+\subsection*{Participant parameters and latent process measures}
+\label{m:measures}
+
+The full specification contains 14 participant-level behavioral parameters (Table~\ref{tab:behavior-parameters}). Parameters remain constant within a participant; beliefs, precision, failure, candidate membership and dominant-rule identity evolve across trials. Perceptual parameters are supplied by independent measurements.
+
+The information available about these parameters depends on the learning trajectory. Weak failure sensitivity provides little information about $\delta_s$; a global baseline near 1 limits information about $a_{g,s}$. Similar structural and functional proposal distributions reduce sensitivity to $\omega_s$, and infrequent saturation limits information about capacity. Transfer, inertia, precision and evidence retention can have compensating effects on choices. Recovery and model comparison are therefore required to assess their practical identifiability.
+
+{\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.18\linewidth}>{\raggedright\arraybackslash}p{0.46\linewidth}>{\raggedright\arraybackslash}p{0.24\linewidth}}
+\caption{Participant parameters and mathematical domains.}\label{tab:behavior-parameters}\\
+\toprule
+Parameter & Function & Domain\\
+\midrule
+\endfirsthead
+\toprule
+Parameter & Function & Domain\\
+\midrule
+\endhead
+$e_{0,s}$ & Baseline search probability & $(0,1)$\\
+$a_{e,s}$ & Failure sensitivity of search & $[0,\infty)$\\
+$\delta_s$ & Retention of accumulated failure & $[0,1)$\\
+$g_{0,s}$ & Baseline global-source probability & $[0,1]$\\
+$a_{g,s}$ & Failure sensitivity of global-source probability & $[0,1]$\\
+$M_s^{\max}$ & Maximum active candidate count & Integer, $2\leq M_s^{\max}<J$\\
+$\rho_s$ & Candidate exit rate & $[0,1]$\\
+$\omega_s$ & Structural-source probability within local search & $[0,1]$\\
+$\tau_{{\rm tr},s}$ & Functional belief-transfer scale & $(0,\infty)$\\
+$\lambda_s$ & Rule-use inertia & $[0,\infty)$\\
+$\gamma_s$ & Evidence retention & $[0,1]$\\
+$\beta_{0,s}$ & Initial rule precision & $[0.1,25]$\\
+$\eta_{+,s}$ & Precision increase rate & $[0,1]$\\
+$\eta_{-,s}$ & Precision decrease rate & $[0,1]$\\
+\bottomrule
+\end{longtable}
+}
+
+Candidate availability is the probability that a rule belongs to the active set. Its pre-choice estimate and the expected candidate count are
+\begin{align}
+\widehat P_t(h\in\mathcal A_t)&=
+\sum_nW_t^{(n),{\rm pre}}\ind(h\in\mathcal A_t^{(n)}),\\
+\overline N_t&=\sum_nW_t^{(n),{\rm pre}}|\mathcal A_t^{(n)}|.
+\label{eq:availability-measures}
+\end{align}
+The concentration of rule contributions within a trajectory is measured by
+\begin{equation}
+N_{{\rm eff},t}=\frac1{\sum_{h\in\mathcal A_t}w_t(h)^2},
+\qquad 1\leq N_{{\rm eff},t}\leq N_t.
+\label{eq:effective-rule-participation}
+\end{equation}
+This measure is averaged across particles after calculation within each trajectory. Dominant-rule probabilities similarly aggregate indicators of $h_t^{\star}$. Joint examination of candidate availability, rule belief, choice weight and precision separates when a rule is considered, supported, expressed in choices and sharpened through feedback. The delay from entry to dominance, transition edit types and functional distances provide additional process measures. Pairing concentration, pairing correctness and family-level categorization quantify distinct aspects of hierarchical learning. Each analysis identifies whether summaries use pre-choice weights or choice-conditioned weights, together with their trial timing.
