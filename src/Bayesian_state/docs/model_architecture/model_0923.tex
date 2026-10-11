@@ -1,5 +1,5 @@
 % !TeX program = xelatex
-% Revised design: 2026-10-11; implementation status is stated in section 15.
+% Revised design: 2026-10-11; implementation status is stated in the section labelled sec:implementation.
 % Existing scientific code: 4c1ccd79; oral-readout origin: 8019f29e.
 \documentclass[12pt]{article}
 \usepackage[a4paper,margin=2.5cm]{geometry}
@@ -30,7 +30,6 @@
 \newcommand{\logit}{\operatorname{logit}}
 \newcommand{\sigmoid}{\operatorname{sigmoid}}
 \newcommand{\clip}{\operatorname{clip}}
-\newcommand{\R}{\mathcal R}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \title{Model 0923：有限候选、反馈学习与口述表达\\[0.4em]
 \large 以认知模块为线索的完整模型说明}
@@ -39,9 +38,9 @@
 \begin{document}
 \maketitle
 
-本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、记忆与精度学习已有实现；本文重写的候选准入、连续作答权重和口述补充选择尚待同步代码。实现对应与验证范围见第15节。
+本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、记忆与精度学习已有实现；本文重写的候选准入、连续作答权重和口述补充选择尚待同步代码。实现对应与验证范围见第\ref{sec:implementation}节。
 
-正文按照“看到刺激、想到规则、做出选择、说出判断、收到反馈、准备下一题”的顺序组织。第5节和第6节分别说明搜索控制与候选管理，第9节完整说明 oral 模块。被试参数在同一被试内保持不变，状态随试次递推。
+正文先介绍任务、规则表示和证据更新，再说明各认知模块怎样完成一次学习过程。第\ref{sec:hypothesis}节统一说明 H 模块的搜索与候选管理，第\ref{sec:execution}节说明规则参与及选择输出，第\ref{sec:oral}节说明口述输出。被试参数在同一被试内保持不变，状态随试次递推。
 
 行为参数仅由选择数据估计。口述模块读取行为模型的内部状态，产出预测的口述内容，与真实口述进行外部比较；表达设置事先固定，真实口述不进入参数估计、粒子权重或学习更新。
 
@@ -68,10 +67,10 @@
 知觉模块 & 被试看到了怎样的刺激？ & 内部刺激 $\widetilde{\bm x}_t$。\\
 规则预测 & 某条规则会怎样分类这幅刺激？ & 类别概率 $p_{t,h}(c)$。\\
 证据记忆 & 反馈怎样改变对候选的信任？ & 反馈后信念 $\pi_t^+$；三值任务还更新配对知识。\\
-搜索控制 & 下一题有多大机会想到新规则？偏局部还是全局？ & 失败状态 $F_{t+1}$、搜索概率 $E_{t+1}$、全局比例 $g_{t+1}$。\\
-候选管理 & 哪些规则继续保留？新人怎样入场并获得支持？ & 集合 $A_{t+1}$ 和信念 $\pi_{t+1}^-$。\\
+H：搜索控制 & 下一题有多大机会想到新规则？偏局部还是全局？ & 失败状态 $F_{t+1}$、搜索概率 $e_{t+1}$、全局比例 $g_{t+1}$。\\
+H：候选管理 & 哪些规则继续保留？新规则怎样入场并获得支持？ & 集合 $\mathcal A_{t+1}$ 和信念 $\pi_{t+1}^-$。\\
 精度学习 & 反馈使规则预测更明确还是更模糊？ & 精度 $\beta_{t+1}(h)$。\\
-规则参与与选择 & 各候选怎样影响本题回答？ & 作答权重 $w_t$、主导候选 $m_t$ 与选择 $y_t$。\\
+规则参与与选择 & 各候选怎样影响本题回答？ & 作答权重 $w_t$、主导候选 $h_t^{\star}$ 与选择 $y_t$。\\
 口述模块 & 怎样把本题判断说出来？ & 给定选择的报告分布 $P(o_t\mid y_t)$。\\
 \bottomrule
 \end{longtable}
@@ -93,7 +92,7 @@ R（readout，输出层）包含 choice 和 oral 两个分支。choice 将内部
 \bm x_{s,t}\in[0,1]^4,\qquad
 y_{s,t}\in\{1,\ldots,C\},\qquad r_{s,t},\qquad o_{s,t}.
 \end{equation}
-四维刺激按该被试任务的实际特征顺序排列。下文省略被试下标。Condition 1 为二分类二值反馈，$C=2$，$r_t\in\{0,1\}$；condition 2 为四分类二值反馈，$C=4$，$r_t\in\{0,1\}$；condition 3 为四分类三值反馈，$r_t\in\{0,0.5,1\}$。
+四维刺激按该被试任务的实际特征顺序排列。下文省略观测量和状态量的被试下标 $s$，被试层面参数始终保留 $s$。Condition 1 为二分类二值反馈，$C=2$，$r_t\in\{0,1\}$；condition 2 为四分类二值反馈，$C=4$，$r_t\in\{0,1\}$；condition 3 为四分类三值反馈，$r_t\in\{0,0.5,1\}$。
 
 实际选择用于计算行为分数和修正粒子权重，选择与反馈随后用于被试模型的学习。真实口述仅用于评价模型生成的报告，其内容不参与拟合和学习。反应时不进入本版模型。
 
@@ -132,13 +131,13 @@ p_0(h)=1/J,\qquad h\in\mathcal H.
 
 \subsection{容量上限与初始候选}
 
-容量参数为 $M_s^{\max}$，实际集合为 $A_t$，数量为 $N_t$：
+容量参数为 $M_s^{\max}$，实际集合为 $\mathcal A_t$，数量为 $N_t$：
 \begin{equation}
-A_t\subset\mathcal H,\qquad N_t=|A_t|,\qquad
+\mathcal A_t\subset\mathcal H,\qquad N_t=|\mathcal A_t|,\qquad
 1\leq N_t\leq M_s^{\max}.
 \label{eq:capacity}
 \end{equation}
-实际候选数量随学习过程变化。第一题从 $p_0$ 抽取一条规则，令 $A_1=\{h_1\}$，由它作答。要求整数 $2\leq M_s^{\max}<J$，以允许旧候选和新人同时保留，并使目录中存在非活跃候选；实际数量仍可以为1。
+实际候选数量随学习过程变化。第一题从 $p_0$ 抽取一条规则，令 $\mathcal A_1=\{h_1\}$，由它作答。要求整数 $2\leq M_s^{\max}<J$，以允许旧候选和新规则同时保留，并使目录中存在非活跃候选；实际数量仍可以为1。
 
 只保留一条候选时，其候选内信念为1，因为当前比较集合只有这个解释。精度和失败状态继续反映反馈对它的支持。模型从一条候选开始，后续数量受容量上限约束。
 
@@ -146,31 +145,45 @@ A_t\subset\mathcal H,\qquad N_t=|A_t|,\qquad
 
 每条内部路径在作答前保存
 \begin{equation}
-z_t=\bigl(\widetilde{\bm x}_t,A_t,\pi_t^-,F_t,
-\bm\beta_t,m_{t-1},\Pi_t^-\ \text{（仅condition 3）}\bigr).
+z_t=\bigl(\widetilde{\bm x}_t,\mathcal A_t,\pi_t^-,F_t,
+\bm\beta_t,h_{t-1}^{\star},\Pi_t^-\ \text{（仅condition 3）}\bigr).
 \end{equation}
-$\pi_t^-$ 在活跃集合内归一化，非活跃概率为0；$m_{t-1}$ 是上一题贡献最大的候选，它可以已退出当前集合。第一题尚无上一主导，惯性加成统一为1。$\Pi_t^-$ 为规则与配对的联合信念。由本题状态计算 $w_t,m_t$，并保存到 decision 快照供口述读取。
+$\pi_t^-$ 在活跃集合内归一化，非活跃概率为0；$h_{t-1}^{\star}$ 是上一题贡献最大的候选，它可以已退出当前集合。第一题尚无上一主导，惯性加成统一为1。$\Pi_t^-$ 为规则与配对的联合信念。由本题状态计算 $w_t,h_t^{\star}$，并保存到 decision 快照供口述读取。
 
-本文统一使用以下术语和符号：
+\subsection{符号约定与阅读方法}
+\label{sec:notation}
+
+下标 $t$ 表示试次，$s$ 表示被试，$j$ 表示刺激特征，$h$ 表示规则，$k$ 表示 Condition 3 的配对方案。参数保留被试下标，状态和观测省略这一层下标。粗体表示向量，花体表示集合；附录\ref{app:notation}集中列出各模块的辅助符号，个体参数和共同表达设置见第\ref{sec:parameters}节。
+
+规则信念的上标用于标明时点或处理阶段：$-$ 表示候选管理完成后的作答前信念，$+$ 表示本题反馈更新后的信念，$\mathrm{ret}$ 表示退出处理后，$\mathrm{keep}$ 表示容量处理后。后两个量都是从第 $t$ 题走向第 $t+1$ 题时的中间结果。这些上标均为标签。
 
 {\small
-\begin{longtable}{L{2.0cm}L{12.0cm}}
+\begin{longtable}{L{3.5cm}L{10.5cm}}
 \toprule
 符号 & 含义\\
 \midrule
 \endhead
-$\pi_t^-,\pi_t^+$ & 作答前、反馈后的相对规则信念。\\
-$\beta_t(h)$ & 规则把类别距离转成概率时使用的精度。\\
-$w_t(h)$ & 规则对本题作答的贡献权重。\\
-$m_t$ & 本题作答权重最大的主导候选。\\
-$F_t$ & 进入当前题的失败状态，供搜索控制使用。\\
-$E_t,g_t$ & 搜索启动概率、提出时的全局来源比例。\\
-$\gamma_s,\delta_s$ & 分别控制旧规则证据、失败状态的保持。\\
-$\omega_s$ & 局部搜索中选择结构编辑的倾向。\\
-$q_t(k\mid h)$ & Condition 3 的条件配对信念，不与 $\omega_s$ 混用。\\
+$\bm x_t,\widetilde{\bm x}_t$ & 物理刺激与知觉形成的内部刺激。\\
+$y_t,r_t,o_t$ & 实际选择、外部反馈与口述报告。\\
+$\mathcal H,J,C$ & 完整规则目录、规则总数与类别总数。\\
+$\mathcal A_t,N_t,M_s^{\max}$ & 活跃候选集合、实际候选数与被试容量上限。\\
+$\pi_t^-(h),\pi_t^+(h)$ & 作答前、反馈后的相对规则信念。\\
+$\pi_t^{\rm ret},\pi_t^{\rm keep}$ & 退出后、容量处理后的旧规则信念，各自在对应集合内归一化。\\
+$\beta_t(h),p_{t,h}(c)$ & 规则精度，以及该规则给类别 $c$ 的预测概率。\\
+$\ell_t(h),\kappa_t(h)$ & 反馈似然，以及用于精度更新的反馈支持量。\\
+$f_t,F_t$ & 本题失败程度，以及进入本题的累计失败状态。\\
+$e_t,g_t$ & 搜索启动概率，以及搜索发生时采用全局来源的概率。\\
+$w_t(h),h_t^\star$ & 规则的作答贡献，以及贡献最大的主导规则。\\
+$\nu_t(h\mid y_t)$ & 已知本题选择后，各规则成为口述来源的概率。\\
+$\Pi_t^{\pm}(h,k)$ & 规则与配对方案的联合信念。\\
+$q_t^{\pm}(k\mid h),\bar q_t^+(k)$ & 给定规则的条件配对信念，以及反馈后的整体配对信念。\\
+$z_t,\bm\theta_s$ & 一条内部路径的作答前状态，以及被试行为参数向量。\\
+$N_{\rm PF},W_t^{(n),{\rm pre}}$ & 粒子数，以及第 $n$ 条路径的作答前权重。\\
 \bottomrule
 \end{longtable}
 }
+
+$\pi_t$、$w_t$ 和 $W_t^{(n),{\rm pre}}$ 分别描述规则可信程度、规则作答贡献和研究者对内部路径的权重。前两者在一条路径内部定义，粒子权重用于汇总多条路径的预测。
 
 \section{知觉模块：从刺激到单条规则的预测}
 \label{sec:perception}
@@ -179,19 +192,19 @@ $q_t(k\mid h)$ & Condition 3 的条件配对信念，不与 $\omega_s$ 混用。
 
 同一物理刺激在不同试次可以引起略有差异的知觉：
 \begin{equation}
-\widetilde x_{t,j}=\clip(x_{t,j}+\varepsilon_{s,t,j},0,1).
+\widetilde x_{t,j}=\clip(x_{t,j}+\varepsilon_{t,j},0,1).
 \label{eq:perception}
 \end{equation}
-误差参数来自学习任务前的独立知觉测量，并按实际特征顺序排列。当前个体化配置通常使用测量得到的逐维正态误差；共享模块也允许按测量定义使用均匀误差。具体分布与参数以运行配置为准。
+$\clip(v,0,1)=\min\{1,\max\{0,v\}\}$ 将内部刺激限制在合法特征范围。误差参数来自学习任务前的独立知觉测量，并按实际特征顺序排列。当前个体化配置通常使用测量得到的逐维正态误差；共享模块也允许按测量定义使用均匀误差。具体分布与参数以运行配置为准。
 
 同一内部刺激用于规则预测与口述补充描述，不为口述重新感知一次。粒子使用独立且可复现的知觉随机流，汇总不可直接观察的知觉差异。
 
 \subsection{单条规则怎样给出类别概率}
 
-规则 $h$ 对应类别区域 $R_{h,1},\ldots,R_{h,C}$。先算内部刺激到区域的最短欧氏距离：
+规则 $h$ 对应类别区域 $\mathcal C_{h,1},\ldots,\mathcal C_{h,C}$。先算内部刺激到区域的最短欧氏距离：
 \begin{equation}
-d_{t,h,c}=\inf_{\bm z\in R_{h,c}}
-\|\widetilde{\bm x}_t-\bm z\|_2.
+d_{t,h,c}=\inf_{\bm \xi\in\mathcal C_{h,c}}
+\|\widetilde{\bm x}_t-\bm \xi\|_2.
 \label{eq:distance}
 \end{equation}
 区域内部距离为0；一个类别有多个分离部分时取最近部分。随后
@@ -218,15 +231,15 @@ p_{t,h}(c)=
 \end{equation}
 答对支持能预测已选类别的规则；答错支持倾向其他类别的规则。四分类错误反馈提供“当前所选答案错误”这一信息，对应其余三个类别的总概率 $1-p_{t,h}(y_t)$。
 
-把 $\ell_t(h)$ 在活跃集合内归一化为 $L_t(h)$ 不改变似然比，在归一化的信念更新中等价。Condition 3 的0分和半分含义不同，使用第\ref{sec:pairing}节的联合概率。
+Condition 3 的0分和半分含义不同，使用第\ref{sec:pairing}节的联合概率。
 
 \subsection{保留旧证据，再加入新证据}
 
 反馈后信念为
 \begin{equation}
 \pi_t^+(h)=
-\frac{\ind(h\in A_t)[\pi_t^-(h)]^{\gamma_s}\ell_t(h)}
-{\sum_{v\in A_t}[\pi_t^-(v)]^{\gamma_s}\ell_t(v)},
+\frac{\ind(h\in \mathcal A_t)[\pi_t^-(h)]^{\gamma_s}\ell_t(h)}
+{\sum_{v\in \mathcal A_t}[\pi_t^-(v)]^{\gamma_s}\ell_t(v)},
 \qquad 0\leq\gamma_s\leq1.
 \label{eq:memory}
 \end{equation}
@@ -236,248 +249,215 @@ p_{t,h}(c)=
 
 所有活跃候选都接受同一结果的评价，包括贡献很小的备选，表示“如果按另一条候选判断，能不能解释这个结果”。反馈学习作用于当前活跃集合。
 
-\section{搜索控制模块：何时搜索，向哪里搜索}
+\section{假设模块（H）：搜索与候选管理}
+\label{sec:hypothesis}
+
+H 模块管理学习者当前考虑的规则。收到第 $t$ 题反馈后，证据记忆模块已经得到规则信念 $\pi_t^+$。H 模块利用这些信念和近期失败经历，准备下一题的候选集合 $\mathcal A_{t+1}$ 及其初始信念 $\pi_{t+1}^-$。这一过程决定哪些解释继续被考虑、何时引入新解释，以及新解释从已有知识中获得多少支持。
+
+本节按一次候选更新的顺序展开：先更新失败状态，确定搜索概率与搜索范围；再处理旧候选退出；发生搜索时，生成一条新规则，按容量保留旧规则，最后分配新旧规则的信念。第一题按第\ref{sec:states}节初始化，从第二题起执行这套过程。规则对本题作答的贡献由第\ref{sec:execution}节说明。
+
+\subsection{近期失败：保留多少过去的反馈影响}
 \label{sec:search}
 
-\subsection{用一条失败状态概括近期经历}
-
-本题失败程度为 $f_t=1-r_t$。二值反馈对应0或1；三值对应0、0.5或1。半分对应部分达到目标。
-
-下一题失败状态为
+本题失败程度为 $f_t=1-r_t$。二值反馈对应0或1；三值反馈对应0、0.5或1。它表示本题目标还有多少未达到。模型用失败状态 $F_t$ 汇总近期经历：
 \begin{equation}
 F_{t+1}=\delta_sF_t+(1-\delta_s)f_t,\qquad
 F_1=0,\qquad 0\leq\delta_s<1.
 \label{eq:failure}
 \end{equation}
-最新反馈立即进入，随后衰减。较小的 $\delta_s$ 使状态对最新反馈变化较大、恢复较快；较大的值使变化较慢、影响更久。例如 $\delta_s=0.6$ 时，从0开始连续两次失败产生0.4、0.64，再成功一次降到0.384。
+$\delta_s$ 是被试层面的失败保持参数，决定旧状态在更新中占多少比例。较小的值使状态更快响应最新反馈；较大的值使单次反馈改变较小、影响持续更久。例如 $\delta_s=0.6$ 时，从0开始连续两次失败得到0.4、0.64，再成功一次降到0.384。0.6在这里用于演示计算。
 
-$\delta_s$ 是被试参数，0.6只是示例。它控制失败对探索的持续影响；证据记忆 $\gamma_s$ 控制规则支持的保持。完整试次顺序连续递推，session 边界不自动清零。
+失败状态按完整试次顺序递推，session 边界延续已有状态。它为搜索提供近期表现的信息；证据记忆参数 $\gamma_s$ 则控制各规则保留多少旧证据。
 
-\subsection{失败状态怎样提高搜索机会}
+\subsection{搜索控制：是否搜索，以及采用哪种来源}
 
-启动概率为
+下一题的搜索概率为
 \begin{equation}
-E_{t+1}=\sigmoid[\logit(E_{0,s})+a_sF_{t+1}],
+e_{t+1}=\sigmoid[\logit(e_{0,s})+a_{e,s}F_{t+1}],
 \label{eq:search-probability}
 \end{equation}
-其中 $\sigmoid(v)=1/(1+e^{-v})$，$\logit(p)=\log[p/(1-p)]$。$E_{0,s}\in(0,1)$ 是无失败影响时的基础搜索概率；$a_s\geq0$ 是失败推动搜索的增益。
+其中 $\sigmoid(v)=1/(1+e^{-v})$，$\logit(p)=\log[p/(1-p)]$。基础概率 $e_{0,s}\in(0,1)$ 表示近期没有失败影响时，仍有多大机会搜索；增益 $a_{e,s}\geq0$ 表示失败使搜索概率上升得多快。连续成功使搜索逐渐回到基础水平，连续失败提高搜索机会。
 
-连续成功使搜索回到基础水平，反复失败提高搜索机会。基础搜索允许已有办法奏效时仍偶尔想到别的解释；$a_s=0$ 时失败不影响启动。
-
-从第二题起，每题只抽一次
+搜索发生后，以概率 $g_{t+1}$ 使用全局来源，以概率 $1-g_{t+1}$ 使用局部来源：
 \begin{equation}
-Z_{t+1}\sim\operatorname{Bernoulli}(E_{t+1}).
-\end{equation}
-第一题按初始先验抽取候选。$Z_{t+1}=1$ 触发一次新人提议；候选管理腾出容量并让新人入场，下一题的作答权重决定它参与判断的程度。
-
-\subsection{失败状态怎样扩大范围}
-
-有搜索时，全局来源比例为
-\begin{equation}
-g_{t+1}=g_{0,s}+(1-g_{0,s})c_{G,s}F_{t+1},
-\qquad g_{0,s},c_{G,s}\in[0,1].
+g_{t+1}=g_{0,s}+(1-g_{0,s})a_{g,s}F_{t+1},
+\qquad g_{0,s},a_{g,s}\in[0,1].
 \label{eq:global-range}
 \end{equation}
-$g_{0,s}$ 是基础全局比例，$c_{G,s}$ 控制失败使提出更偏整个目录的程度。失败为0时 $g=g_0$，为1时 $g=g_0+(1-g_0)c_G$，始终为合法概率。
+$g_{0,s}$ 是基础全局比例，$a_{g,s}$ 控制失败使搜索偏向整个目录的程度。失败状态为0时，全局比例为 $g_{0,s}$；达到1时，为 $g_{0,s}+(1-g_{0,s})a_{g,s}$。局部来源利用现有候选，全局来源在可引入的规则中按基础先验搜索。
 
-启动和范围都读取当前失败状态。$E$ 决定有没有搜索，$g$ 决定搜索采用局部还是全局来源。
+因此，$e_{t+1}$ 控制搜索是否发生，$g_{t+1}$ 控制发生搜索时采用哪类来源。下一步先确定哪些旧候选保留，再据此生成新规则。
 
-\section{候选管理模块：怎样放下旧想法、想到新规则}
+\subsection{候选退出：逐渐减少低信念规则}
 \label{sec:management}
 
-假设学习者正在考虑三种解释：“看脖子长短”“看尾巴长短”和“比较脖子与尾巴”。做完一题、收到反馈后，他对这三种解释的信任可能发生变化。接下来，他可能放下一种越来越不可信的解释，也可能想到一种新的解释。本节说明模型怎样完成这些步骤。
-
-“候选”就是当前还在考虑的规则。每条候选的信念表示：在这些解释中，相对有多相信它。以下把信念的概率大小也称为“支持”。例如，三条候选的支持为0.72、0.18和0.10，总和为1，表示第一条最被相信。容量参数 $M_s^{\max}$ 规定最多能同时保留多少条，实际数量随学习过程变化。
-
-整个过程依次回答四个问题：先放下哪些旧想法？这次想到什么新规则？如果已经满员，给新规则腾出哪个位置？新规则一开始得到多少信任？下面沿着这个顺序解释。第一题从一条规则开始；从第二题起，模型根据上一题的反馈运行这些步骤。
-
-\subsection{第一步：逐渐放下不太相信的旧规则}
-
-一条规则在当前候选中得到的支持越低，学习者越容易把它放下。模型用一次随机判断表示这件事。每条旧规则独立产生一个退出提议，概率为
+每条旧候选根据反馈后信念，独立产生一次退出提议：
 \begin{equation}
-P(h\text{提议退出}\mid A_t,\pi_t^+)
-=\rho_s[1-\pi_t^+(h)],\qquad h\in A_t,\quad\rho_s\in[0,1].
+P(h\text{提议退出}\mid\mathcal A_t,\pi_t^+)
+=\rho_s[1-\pi_t^+(h)],\qquad h\in\mathcal A_t,\quad\rho_s\in[0,1].
 \label{eq:exit}
 \end{equation}
-这里，$A_t$ 是刚做完第 $t$ 题时仍在考虑的规则集合，$h$ 是其中一条规则，$\pi_t^+(h)$ 是收到该题反馈后对它的支持。被试参数 $\rho_s$ 决定放下候选的速度；数值越大，低支持候选退出得越快。上一题最常用的规则也按这个概率接受判断。
+$\rho_s$ 是被试的退出率参数。相对信念越低，候选越容易退出；上一题的主导候选也按同一概率判断。例如，三条候选的信念为0.72、0.18和0.10，$\rho_s=0.2$ 时，退出提议概率分别为0.056、0.164和0.18。
 
-沿用开头的例子，若 $\rho_s=0.2$，支持为0.72、0.18和0.10的三条规则，退出提议概率分别为0.056、0.164和0.18。最被相信的规则较容易保留，另外两条更容易被放下。这一步根据候选之间的相对支持作出判断。若三条规则各占 $1/3$，它们各自的退出提议概率就是 $2\rho_s/3$。
-
-学习者至少保留一个可用解释。如果抽到的退出提议会使集合为空，或留下的规则支持总和为0，模型就把一条原本支持最高的规则放回集合；最高值并列时，从中等概率选一条。
-
-放下一些规则后，把剩余规则的支持按原来的比例放大，使总和重新成为1。这个计算叫作归一化。假如支持为0.10的第三条退出，剩下的0.72和0.18就变为0.8和0.2。
-
-用 $D_t$ 表示实际退出的规则，$R_t=A_t\setminus D_t$ 表示留下的规则，重新分配后的支持记为 $\Gamma_t$：
+学习者至少保留一个可用解释。若退出提议使集合为空，或保留规则的信念总和为0，模型恢复一条原本信念最高的规则；最高值并列时等概率选取。用 $\mathcal D_t$ 表示处理这一情况后实际退出的规则，保留集合及其信念为
 \begin{equation}
-\Gamma_t(h)=
-\frac{\pi_t^+(h)}{\sum_{v\in R_t}\pi_t^+(v)},\qquad h\in R_t.
+\mathcal A_t^{\rm ret}=\mathcal A_t\setminus\mathcal D_t,\qquad
+\pi_t^{\rm ret}(h)=\frac{\pi_t^+(h)}{\sum_{v\in\mathcal A_t^{\rm ret}}\pi_t^+(v)},
+\quad h\in\mathcal A_t^{\rm ret}.
 \label{eq:remaining-belief}
 \end{equation}
-分母是所有留下规则的支持总和。每条规则除以同一个总和，因此它们之间的支持比例保持原样。
+上标 $\mathrm{ret}$ 表示退出后保留的阶段。归一化使集合内的信念总和恢复为1，同时保留各规则之间的比例。上例中，若第三条退出，剩下的0.72和0.18就归一化为0.8和0.2。
 
-退出后留下的空位可以一直保留到后续搜索。若这次没有搜索，$R_t$ 和 $\Gamma_t$ 就是下一题使用的集合与信念。只剩一条时，它的相对支持为1，退出提议概率为0；后续失败仍可通过搜索带来新的解释。
+每次候选更新抽取一次搜索事件：
+\begin{equation}
+I_{t+1}^{\rm search}\sim\operatorname{Bernoulli}(e_{t+1}).
+\end{equation}
+事件取0时，令 $\mathcal A_{t+1}=\mathcal A_t^{\rm ret}$、$\pi_{t+1}^-=\pi_t^{\rm ret}$，空位留待后续搜索。事件取1时，按以下步骤引入一条新规则。只剩一条候选时，其相对信念为1，退出提议概率为0；后续搜索仍可引入其他规则。
 
-退出表示停止主动考虑这条规则。模型同时结束它的精度记录和反馈学习；以后重新想到它时，按新规则处理。记忆参数 $\gamma_s$ 则控制仍在考虑的规则保留多少旧证据。这两步分别改变“还在考虑谁”和“对它保留多少过去的信任”。
+退出表示停止主动考虑该规则，其精度记录与反馈学习随之结束。仍在集合中的候选继续积累证据，旧证据由 $\gamma_s$ 控制保持程度。
 
-\subsection{第二步：沿着现有想法调整，或寻找另一种解释}
+\subsection{候选生成：结合结构编辑与功能相似性}
 
-第5节的搜索控制给出两个概率：$E_{t+1}$ 决定这次是否寻找新规则，$g_{t+1}$ 决定搜索时有多大比例采用全局来源。每次搜索提出一条新规则，下文用 $u$ 表示。
+用 $u$ 表示这次提出的新规则。搜索范围为 $\mathcal U_t=\mathcal H\setminus\mathcal A_t$，即本轮管理开始时未被考虑的规则。刚刚退出的规则从后续试次起才有机会重新进入。
 
-局部搜索从仍在考虑的某条旧规则出发，全局搜索从整个规则目录寻找。新规则的范围记为 $I_t=\mathcal H\setminus A_t$，即本轮管理开始时未被考虑的规则。刚刚退出的规则从后续试次起才有机会再次被想到。
+局部搜索包含两种关系：结构关系描述规则的判断步骤怎样改变，功能关系描述规则对刺激的分类结果有多接近。例如，把“看脖子长短”改成“看尾巴长短”，只修改一个判断特征，却可能改变许多刺激的分类。模型用两个提出核分别表达这两种关系；提出核是给定旧规则时，各条新规则被想到的概率分布。
 
-局部搜索有两条路径。一条是把当前想法改一点，另一条是寻找分类结果相近的解释。例如，把“看脖子长短”改成“看尾巴长短”，只换了一个判断特征，却可能改变许多刺激的分类。结构关系描述修改步骤，功能关系描述分类结果。
+\subsubsection{结构提出核：通过一次合法编辑得到新规则}
 
-\subsubsection{沿着判断步骤，修改规则的一处}
+每条规则由判断特征、比较关系、参照值、分支和类别输出组成。一次合法编辑可以更换一个特征、更换比较关系及相应的标准参照、修改一个参照值，或改写条件树的一条下级判断。编辑结果须对应目录中的完整规则。共同编辑成本依次为1、1.5、1和2；改写分支时，其余判断和类别输出布局保持原样。
 
-模型把每条规则写成一组具体判断：看哪个特征、怎样比较、用哪个参照、条件成立后进入哪个分支，以及最后给出哪个类别。一次修改可以更换一个特征、更换比较方式及相应的标准参照、修改一个参照值，或改写条件树中的一条下级判断。修改结果须对应目录中的一条完整合法规则。
-
-不同修改有不同成本。这里共同设定：更换特征的成本为1，更换比较方式为1.5，修改参照为1，改写下级分支为2。改分支时，其余判断和类别输出布局保持原样。成本越低，这种修改越容易被想到。
-
-用 $\mathcal M(h)$ 表示从旧规则 $h$ 出发的一次合法修改，用 $m$ 表示其中一个操作，$c(m)$ 表示它的成本。若一次修改能得到新规则 $u$，就用最低的可用成本表示两者的编辑距离：
+用 $\mathcal E(h)$ 表示规则 $h$ 的合法编辑集合，$\mathrm{op}$ 表示一次编辑，$c_{\rm edit}(\mathrm{op})$ 表示成本。编辑距离取能够得到 $u$ 的一次编辑中的最低成本：
 \begin{equation}
 d_{\rm edit}(h,u)=
 \begin{cases}
-\min_{m\in\mathcal M(h):\,m(h)=u}c(m),&\text{有合法编辑},\\
+\min_{\mathrm{op}\in\mathcal E(h):\,\mathrm{op}(h)=u}c_{\rm edit}(\mathrm{op}),&\text{有合法编辑},\\
 \infty,&\text{否则}.
 \end{cases}
 \end{equation}
-同一个判断的等价写法先整理成统一形式，再计算修改成本。上式中的无穷大表示这两条规则无法通过这里规定的一次修改相连。
+等价判断先整理为统一形式，再计算成本。这里的无穷大表示两条规则无法通过规定的一次编辑相连。
 
-把当前可以这样得到的新规则放入集合 $\mathcal N_t(h)=\{u\in I_t:d_{\rm edit}(h,u)<\infty\}$。当这个集合非空时，先给每条新规则一个 $e^{-d_{\rm edit}}$ 的权重，再除以所有权重之和，得到抽取概率：
+令 $\mathcal N_t(h)=\{u\in\mathcal U_t:d_{\rm edit}(h,u)<\infty\}$ 为可引入的编辑邻居。该集合非空时，结构提出核为
 \begin{equation}
 K_{{\rm edit},t}(u\mid h)=
 \frac{\ind[u\in\mathcal N_t(h)]e^{-d_{\rm edit}(h,u)}}
 {\sum_{v\in\mathcal N_t(h)}e^{-d_{\rm edit}(h,v)}}.
 \label{eq:edit-proposal}
 \end{equation}
-$K_{{\rm edit},t}(u\mid h)$ 表示从旧规则 $h$ 出发，通过修改判断想到 $u$ 的概率。符号 $\ind[\cdot]$ 在括号内条件成立时取1，否则取0，用来限定可抽取的规则。
+成本越低，权重越大，经过归一化后被抽取的概率也越高。指示函数 $\ind[\cdot]$ 在条件成立时取1，否则取0，用于限定合法候选。
 
-\subsubsection{根据分类结果，寻找功能接近的规则}
+\subsubsection{功能提出核：根据分类一致率寻找邻近规则}
 
-另一条局部路径关心：两条规则对同一批刺激，会有多少次给出相同类别？相同的次数越多，它们的功能就越接近。例如，在100个参考刺激上，80个得到相同分类，一致率就是0.8，功能距离就是0.2。
-
-计算时，先记录各种类别组合出现的比例。$C_{ab}^{h,u}$ 表示旧规则 $h$ 判为类别 $a$、新规则 $u$ 判为类别 $b$ 的比例：
+功能相似性用两条规则在同一批参考刺激上的分类一致率定义。先记录各类别组合的联合比例：
 \begin{equation}
-C_{ab}^{h,u}=\Pr_{\bm x\sim\mu_X}[c_h(\bm x)=a,\ c_u(\bm x)=b],
+T_{cc'}(h,u)=\Pr_{\bm x\sim\mu_X}[c_h(\bm x)=c,\ c_u(\bm x)=c'].
 \end{equation}
-这里，$c_h(\bm x)$ 是规则 $h$ 对刺激 $\bm x$ 给出的确定类别，$\mu_X$ 规定参考刺激怎样分布。把两条规则给出相同类别的比例加起来，就得到一致率 $S$；用1减去它，得到功能距离：
+$c_h(\bm x)$ 是规则的确定类别，$c,c'$ 是类别编号，$\mu_X$ 是参考刺激分布。$T_{cc'}(h,u)$ 记录规则 $h$ 判为 $c$、规则 $u$ 判为 $c'$ 的比例。对角线之和就是分类一致率，功能距离取其补数：
 \begin{equation}
-S(h,u)=\sum_{a=1}^{C}C_{aa}^{h,u},\qquad
+S(h,u)=\sum_{c=1}^{C}T_{cc}(h,u),\qquad
 d_{\rm func}(h,u)=1-S(h,u).
 \label{eq:functional-distance}
 \end{equation}
-$C$ 是类别总数。距离为0表示分类结果完全一致；距离越大，分歧越多。这里始终按规则原有的类别标签比较。
+例如，100个参考刺激中有80个分类相同，一致率为0.8，功能距离为0.2。比较始终使用规则原有类别标签。计算时，在 $[0,1]^4$ 中均匀抽取100,000个刺激，固定种子为0，各被试共用这批样本及得到的类别对应比例。
 
-本模型在四个特征的 $[0,1]^4$ 空间中均匀抽取100,000个参考刺激，用固定种子0生成这批样本，所有被试共用。逐一比较各对规则的分类，得到上述比例的数值估计。完整类别组合记录保存了哪些类别相同、哪些类别不同；搜索和支持分配使用其中的一致率。
+一致率也受各类别覆盖范围影响。例如，两条规则各把20\%的刺激判为带内、80\%判为带外，且判断独立时，一致率为 $0.2^2+0.8^2=0.68$。其中0.64来自共同判为带外。因此，这个距离具体衡量分类结果的重合程度。
 
-一致率也受各类别覆盖范围影响。例如，两条规则各把20\%的刺激判为带内、80\%判为带外，且两者判断独立，那么一致率为 $0.2^2+0.8^2=0.68$。其中0.64来自两者都判为带外。这个例子说明，功能距离具体衡量的是分类结果重合的程度。
-
-从旧规则 $h$ 出发时，给新规则 $u$ 的权重为 $p_0(u)e^{-d_{\rm func}(h,u)/\tau_P}$，再归一化为抽取概率：
+功能提出核为
 \begin{equation}
 K_{{\rm func},t}(u\mid h)=
-\frac{\ind(u\in I_t)p_0(u)e^{-d_{\rm func}(h,u)/\tau_P}}
-{\sum_{v\in I_t}p_0(v)e^{-d_{\rm func}(h,v)/\tau_P}},
-\qquad \tau_P=0.10.
+\frac{\ind(u\in\mathcal U_t)p_0(u)e^{-d_{\rm func}(h,u)/\tau_{\rm prop}}}
+{\sum_{v\in\mathcal U_t}p_0(v)e^{-d_{\rm func}(h,v)/\tau_{\rm prop}}},
+\qquad\tau_{\rm prop}=0.10.
 \label{eq:functional-proposal}
 \end{equation}
-$p_0(u)$ 是规则目录中的基础先验，本模型在合法规则上取均匀分布。$\tau_P$ 控制抽取概率随功能距离下降得多快，所有被试共用0.10；数值越小，搜索越集中在分类结果接近的规则上。
+基础先验 $p_0$ 在目录内均匀。共同尺度 $\tau_{\rm prop}$ 控制提出概率随距离下降得多快：尺度越小，搜索越集中在功能接近的规则上。
 
-\subsubsection{把两条局部路径和全局搜索接起来}
+\subsubsection{汇总局部来源与全局来源}
 
-局部搜索先按 $\Gamma_t(h)$ 选一条旧规则作为起点：当前越相信哪条，就越容易沿着它继续想。选定起点后，以 $\omega_s$ 的概率修改判断，以 $1-\omega_s$ 的概率寻找功能接近的规则。因此，局部抽取概率为
+局部搜索先按退出后的信念 $\pi_t^{\rm ret}$ 选择一条旧规则作为起点。随后以被试参数 $\omega_s$ 所规定的比例使用结构提出核，其余使用功能提出核：
 \begin{equation}
-K_{L,t}(u\mid h)=
-\omega_sK_{{\rm edit},t}(u\mid h)
-+(1-\omega_s)K_{{\rm func},t}(u\mid h).
+K_{{\rm loc},t}(u\mid h)=\omega_sK_{{\rm edit},t}(u\mid h)
++(1-\omega_s)K_{{\rm func},t}(u\mid h),\qquad\omega_s\in[0,1].
 \end{equation}
-被试参数 $\omega_s$ 描述两条局部路径的偏好。某个起点没有可用的一步修改时，从它出发的局部搜索采用功能路径，并记录这次处理。
+若起点没有合法编辑邻居，该起点的局部搜索使用功能提出核，并记录这次回退。
 
-不同旧规则都可能成为起点，把它们的贡献加起来，就得到总的局部概率 $Q_{L,t}$。全局搜索直接在可引入规则中按基础先验抽取，得到 $Q_{G,t}$。最后，用第5节给出的全局比例 $g_{t+1}$ 合并两者：
+汇总所有可能起点，得到局部提出分布 $Q_{{\rm loc},t}$。全局提出分布 $Q_{{\rm glob},t}$ 直接使用可引入集合中的基础先验。两者按搜索控制给出的 $g_{t+1}$ 混合：
 \begin{align}
-Q_{L,t}(u)&=\sum_{h\in R_t}\Gamma_t(h)K_{L,t}(u\mid h),\\
-Q_{G,t}(u)&=\frac{\ind(u\in I_t)p_0(u)}{\sum_{v\in I_t}p_0(v)},\\
-Q_t(u)&=(1-g_{t+1})Q_{L,t}(u)+g_{t+1}Q_{G,t}(u).
+Q_{{\rm loc},t}(u)&=\sum_{h\in\mathcal A_t^{\rm ret}}\pi_t^{\rm ret}(h)K_{{\rm loc},t}(u\mid h),\\
+Q_{{\rm glob},t}(u)&=\frac{\ind(u\in\mathcal U_t)p_0(u)}{\sum_{v\in\mathcal U_t}p_0(v)},\\
+Q_t(u)&=(1-g_{t+1})Q_{{\rm loc},t}(u)+g_{t+1}Q_{{\rm glob},t}(u).
 \label{eq:proposal-mixture}
 \end{align}
-模型从 $Q_t$ 抽出一条新规则。到这里，已经确定这次想到什么，接下来安排它的位置和初始信任。
+从 $Q_t$ 抽出一条新规则后，模型确定保留哪些旧规则，再计算新旧规则的信念。
 
-\subsection{第三步：满员时，先放下一条旧规则}
+\subsection{容量管理：确定最终保留的旧规则}
 
-有空位时，保留所有留下的旧规则，让新规则加入。若当前已经达到容量上限，就放下支持最低的一条旧规则，给新规则腾出位置。几条规则并列最低时，从中等概率选择；上一题的主导规则也按同一标准处理。
-
-仍用开头的三条规则举例。假设容量上限是3，三条都在，支持为0.72、0.18和0.10。模型先放下第三条，再把前两条的支持归一化为0.8和0.2。若第三条已在第一步退出，就直接使用已有空位。
-
-公式中，有空位时令 $O_t=R_t$，$O_t$ 表示接下来保留的旧规则。满员时，记支持最低者为 $v_t$：
+容量上限 $M_s^{\max}$ 规定最多同时考虑多少条规则。有空位时，保留全部旧候选，令 $\mathcal A_t^{\rm keep}=\mathcal A_t^{\rm ret}$。达到上限时，删除退出后信念最低的一条旧规则：
 \begin{equation}
-v_t\in\arg\min_{h\in R_t}\Gamma_t(h),\qquad
-O_t=R_t\setminus\{v_t\}.
+h_t^{\rm drop}\in\arg\min_{h\in\mathcal A_t^{\rm ret}}\pi_t^{\rm ret}(h),\qquad
+\mathcal A_t^{\rm keep}=\mathcal A_t^{\rm ret}\setminus\{h_t^{\rm drop}\}.
 \label{eq:capacity-release}
 \end{equation}
-$\arg\min$ 表示取到最小支持的规则。决定放下谁时，使用旧规则已有的支持；新规则得到多少支持，在下一步计算。
+$\arg\min$ 表示达到最小值的规则；并列最低时等概率选择。上一题的主导规则也适用这一标准。上标 $\mathrm{keep}$ 表示容量处理后最终保留的旧集合。
 
-把保留旧规则的支持重新归一化，记为 $\zeta_t$，并把新规则加入下一题的候选集合：
+将这个集合的信念归一化，再加入新规则：
 \begin{equation}
-\zeta_t(h)=\frac{\Gamma_t(h)}{\sum_{v\in O_t}\Gamma_t(v)},
-\qquad h\in O_t,
-\quad A_{t+1}=O_t\cup\{u\}.
+\pi_t^{\rm keep}(h)=\frac{\pi_t^{\rm ret}(h)}{\sum_{v\in\mathcal A_t^{\rm keep}}\pi_t^{\rm ret}(v)},
+\quad h\in\mathcal A_t^{\rm keep},\qquad
+\mathcal A_{t+1}=\mathcal A_t^{\rm keep}\cup\{u\}.
 \label{eq:retained-belief}
 \end{equation}
-$\cup\{u\}$ 表示加入新规则 $u$。容量上限至少为2，满员腾位后仍有旧规则保留；删去最低支持者后，保留者的支持总和也为正。
+例如，容量为3，三条旧规则的信念为0.72、0.18和0.10时，先删除第三条，前两条归一化为0.8和0.2，再向新规则分配支持。容量下限为2，因此容量处理后仍有旧规则参与分配。
 
-新规则进入下一题后，会和其他活跃候选一起接受该题反馈的评价。完成这次评价，模型才会再次判断它是否退出。这样，一次搜索带来的新想法就有机会通过反馈积累支持。
+\subsection{信念分配：按功能关系形成新规则的初始支持}
 
-\subsection{第四步：根据与旧规则的关系，给新规则初始信任}
-
-刚想到一条规则时，学习者还没有用它经历下一次反馈。模型先用保留下来的旧知识评价它：如果它与一条较可信的旧规则给出相近分类，就可以从这条旧规则获得一部分初始支持。
-
-先把功能距离换算成亲和度。这里的“亲和度”表示新旧规则在分享支持时有多接近：
+新规则的初始信念来自保留的旧规则。功能接近且已有较高信念的旧规则，可以为新规则提供较多支持。先将功能距离转为亲和度：
 \begin{equation}
-B_s(h,u)=e^{-d_{\rm func}(h,u)/\tau_{T,s}},\qquad\tau_{T,s}>0.
+\chi_s(h,u)=e^{-d_{\rm func}(h,u)/\tau_{{\rm tr},s}},\qquad\tau_{{\rm tr},s}>0.
 \label{eq:affinity}
 \end{equation}
-功能距离越小，$B_s(h,u)$ 越接近1；距离越大，亲和度越低。被试参数 $\tau_{T,s}$ 表示愿意把已有信任延伸多远：取值小时，主要分享给功能很近的新规则；取值大时，较远的新规则也能获得一些支持。
+亲和度描述两条规则在支持分配中的接近程度，取值在0到1之间。被试参数 $\tau_{{\rm tr},s}$ 是信念迁移尺度：值较小时，支持主要分配给功能很近的新规则；值较大时，较远的新规则也能得到支持。
 
-每条保留的旧规则都把自身支持按 $1:B_s(h,u)$ 分成两份：第一份留给自己，第二份给新规则。新规则把各条旧规则分来的支持加起来，得到自己的初始信念：
+每条旧规则将自身信念按 $1:\chi_s(h,u)$ 分为两份，分别留给自己和新规则。新规则汇总各条旧规则分配的部分：
 \begin{equation}
-\pi_{t+1}^-(h)=\frac{\zeta_t(h)}{1+B_s(h,u)},\quad h\in O_t,
+\pi_{t+1}^-(h)=\frac{\pi_t^{\rm keep}(h)}{1+\chi_s(h,u)},\quad h\in\mathcal A_t^{\rm keep},
 \qquad
-\pi_{t+1}^-(u)=\sum_{h\in O_t}
-\frac{\zeta_t(h)B_s(h,u)}{1+B_s(h,u)}.
+\pi_{t+1}^-(u)=\sum_{h\in\mathcal A_t^{\rm keep}}
+\frac{\pi_t^{\rm keep}(h)\chi_s(h,u)}{1+\chi_s(h,u)}.
 \label{eq:transport}
 \end{equation}
-分母 $1+B_s(h,u)$ 就是上述两份的总比例。每条旧规则分出的两份加起来等于原有支持，因此全部候选的支持总和仍为1。
+每条旧规则分出的两份之和等于原有信念，所以新集合中的信念总和仍为1。
 
-例如，腾位后两条旧规则的支持是0.8和0.2。假设新规则对它们的亲和度分别为0.5和0.1，第一条就把0.8按 $1:0.5$ 分开，自己保留约0.533，给新规则约0.267；第二条把0.2按 $1:0.1$ 分开，自己保留约0.182，给新规则约0.018。合起来，下一题两条旧规则和新规则的支持约为0.533、0.182和0.285。
+沿用0.8和0.2的例子，若两条旧规则与新规则的亲和度分别为0.5和0.1，最终信念约为0.533、0.182和0.285。若亲和度都只有0.02，新规则的初始信念约为0.020。关系远近由此影响新规则开始时获得多少支持。
 
-如果两条旧规则与新规则的亲和度都只有0.02，新规则得到的总支持就约为0.020。它依然进入下一题接受评价，只是开始时较少被相信。后续反馈决定这份信任怎样变化。
+由于亲和度至多为1，每条旧规则最多分出自身信念的一半，新规则的总初始信念也至多为 $1/2$。新规则进入下一题后接受一次实际反馈的评价，再参与下一轮退出判断；后续反馈可以继续提高或降低它的信念。
 
-亲和度最多为1，所以每条旧规则最多分出自己支持的一半，新规则的总初始支持也最多为 $1/2$。下一题反馈可以继续提高它的支持。
+\subsection{状态衔接：保留精度与配对知识}
 
-\subsection{新旧规则各自保留哪些学习经验}
+保留的旧规则继续使用各自更新后的精度。新规则从被试的初始精度 $\beta_{0,s}$ 开始，之后按实际反馈调整。曾经退出的规则重新进入时，也从这一初值开始。
 
-保留下来的旧规则继续使用各自的精度。新规则从被试的初始精度 $\beta_{0,s}$ 开始，之后每次处于活跃集合时，都根据实际反馈调整。重新想到一条曾退出的规则，也按这个初值开始。
+Condition 3 还保存反应的配对知识，即哪两个反应属于同一个科。候选管理开始前，先保存全部旧规则形成的整体配对信念；最终保留的旧规则沿用各自的条件配对，新规则继承这份整体信念。具体公式见第\ref{sec:pairing-transfer}节。
 
-Condition 3 还要学习哪两个反应属于同一个科，这里把这种关系称为配对知识。改变分类想法时，学习者可以继续使用此前学到的配对关系。模型先保存所有旧规则共同形成的整体配对信念；幸存规则保留各自的条件配对信念，新规则以这份整体信念作为起点。具体公式见第\ref{sec:pairing-transfer}节。规则支持变化后，各规则对整体配对信念的贡献也会随之变化。
+完成这些步骤后，$\mathcal A_{t+1}$、$\pi_{t+1}^-$、精度和配对状态共同进入下一题。集合记录正在考虑哪些规则，信念记录它们在当前集合中的相对可信程度。
 
 \section{精度学习模块：预测怎样变得明确}
 \label{sec:precision}
 
 \subsection{实际结果是否比机会水平更符合规则}
 
-精度更新使用反馈前预测。二值任务令 $b_t(h)=\ell_t(h)$，机会概率为
+精度更新使用反馈前预测。二值任务使用式\eqref{eq:binary-feedback}的反馈似然 $\ell_t(h)$，机会概率为
 \begin{equation}
-b_{\rm chance}(r_t)=\frac{r_t}{C}+(1-r_t)(1-1/C).
+\ell_{\rm chance}(r_t)=\frac{r_t}{C}+(1-r_t)(1-1/C).
 \end{equation}
-二分类两种反馈均为0.5；四分类正确为0.25、错误为0.75。支持量为
+二分类两种反馈均为0.5；四分类正确为0.25、错误为0.75。下式中的 $\ell_{\rm chance}$ 均指本题反馈的机会概率 $\ell_{\rm chance}(r_t)$。支持量为
 \begin{equation}
 \kappa_t(h)=
 \begin{cases}
-\dfrac{b_t(h)-b_{\rm chance}}{1-b_{\rm chance}},&b_t(h)\geq b_{\rm chance},\\[6pt]
-\dfrac{b_t(h)-b_{\rm chance}}{b_{\rm chance}},&b_t(h)<b_{\rm chance}.
+\dfrac{\ell_t(h)-\ell_{\rm chance}}{1-\ell_{\rm chance}},&\ell_t(h)\geq \ell_{\rm chance},\\[6pt]
+\dfrac{\ell_t(h)-\ell_{\rm chance}}{\ell_{\rm chance}},&\ell_t(h)<\ell_{\rm chance}.
 \end{cases}
 \label{eq:binary-precision-support}
 \end{equation}
-二分类等价于 $2[b_t(h)-0.5]$。四分类按该反馈的机会概率居中，使均匀预测在正确与错误时都得到中性评价。计算 $b_t(h)$ 时，取该规则独立预测本次反馈的概率。
+二分类等价于 $2[\ell_t(h)-0.5]$。四分类按该反馈的机会概率居中，使均匀预测在正确与错误时都得到中性评价。计算 $\ell_t(h)$ 时，取该规则独立预测本次反馈的概率。
 
 \subsection{支持时增加，反驳时降低}
 
@@ -501,14 +481,14 @@ b_{\rm chance}(r_t)=\frac{r_t}{C}+(1-r_t)(1-1/C).
 \section{规则参与与选择：从多个候选到一个回答}
 \label{sec:execution}
 
-\subsection{信念与使用习惯形成作答权重}
+\subsection{H 模块形成规则的作答权重}
 
-候选管理完成后，以作答前信念为基础，给上一题主导候选一个惯性加成：
+H 模块的规则参与过程以候选管理得到的作答前信念为基础，给上一题主导候选一个惯性加成：
 \begin{equation}
 w_t(h)=
-\frac{\pi_t^-(h)e^{\lambda_s\ind(h=m_{t-1})}}
-{\sum_{v\in A_t}\pi_t^-(v)e^{\lambda_s\ind(v=m_{t-1})}},
-\qquad h\in A_t,\quad\lambda_s\geq0.
+\frac{\pi_t^-(h)e^{\lambda_s\ind(h=h_{t-1}^{\star})}}
+{\sum_{v\in \mathcal A_t}\pi_t^-(v)e^{\lambda_s\ind(v=h_{t-1}^{\star})}},
+\qquad h\in \mathcal A_t,\quad\lambda_s\geq0.
 \label{eq:execution}
 \end{equation}
 $w_t$ 表示本题作答贡献。$\lambda_s$ 是被试稳定的沿用倾向，给上一主导的基础权重乘以 $e^{\lambda_s}$。第一题无上一主导；上一主导已退出时，对当前候选均无加成。
@@ -521,18 +501,18 @@ $w_t$ 表示本题作答贡献。$\lambda_s$ 是被试稳定的沿用倾向，�
 
 本题主导候选是
 \begin{equation}
-m_t\in\arg\max_{h\in A_t}w_t(h).
+h_t^{\star}\in\arg\max_{h\in \mathcal A_t}w_t(h).
 \label{eq:dominant-rule}
 \end{equation}
-并列最大时优先沿用上一主导；若它不在并列集合内，则等权选择。$m_t$ 在选择和口述前确定，仅给下一题提供惯性对象。候选退出和腾位按信念进行，每条规则适用相同规则。
+并列最大时优先沿用上一主导；若它不在并列集合内，则等权选择。$h_t^{\star}$ 在选择和口述前确定，仅给下一题提供惯性对象。候选退出和容量释放按信念进行，每条规则适用相同规则。
 
 随着支持变化，旧主导可以继续主导，也可以被其他候选超过。主导身份切换会改变下一题的惯性对象，这是一项跨试次的使用习惯假设。
 
-\subsection{统一权重表达单候选主导与多候选参与}
+\subsection{Choice 输出按规则权重汇总类别预测}
 
-各候选用相同内部刺激、各自精度产生类别概率，再按贡献加总：
+各候选用同一内部刺激、各自精度产生类别概率，再按贡献加总：
 \begin{equation}
-P(y_t=c\mid z_t)=\sum_{h\in A_t}w_t(h)p_{t,h}(c).
+P(y_t=c\mid z_t)=\sum_{h\in \mathcal A_t}w_t(h)p_{t,h}(c).
 \label{eq:path-choice}
 \end{equation}
 权重为 $(0.5,0.5)$ 时，两条规则都明显影响作答；为 $(0.98,0.02)$ 时，回答基本由第一条决定。只剩一条候选时严格由它作答。被试参数保持稳定，规则参与程度随信念和上一主导逐题变化。
@@ -541,13 +521,13 @@ P(y_t=c\mid z_t)=\sum_{h\in A_t}w_t(h)p_{t,h}(c).
 
 可用有效参与数量描述集中程度：
 \begin{equation}
-N_{{\rm eff},t}=\frac{1}{\sum_{h\in A_t}w_t(h)^2},
-\qquad 1\leq N_{{\rm eff},t}\leq|A_t|.
+N_{{\rm eff},t}=\frac{1}{\sum_{h\in \mathcal A_t}w_t(h)^2},
+\qquad 1\leq N_{{\rm eff},t}\leq|\mathcal A_t|.
 \label{eq:effective-participation}
 \end{equation}
 它是由权重计算的诊断量，区分“仍在考虑多少规则”和“本题有多少规则明显影响作答”。这一作答机制是一项心理假设，需要结合连续试次的选择和口述预测检验。
 
-输出层直接使用式\eqref{eq:path-choice}的类别概率，置信变换取恒等映射，lapse 概率为0。作答变异来自知觉、候选状态和各规则的类别概率。
+输出层直接使用式\eqref{eq:path-choice}的类别概率，置信变换取恒等映射，随机失误（lapse）概率为0。作答变异来自知觉、候选状态和各规则的类别概率。
 
 \section{口述模块：从本题判断到说出来的话}
 \label{sec:oral}
@@ -561,12 +541,12 @@ N_{{\rm eff},t}=\frac{1}{\sum_{h\in A_t}w_t(h)^2},
 口述读取 decision 保存的作答权重 $w_t$、各规则类别概率和内部刺激。给定实际回答 $y_t$，规则对这次回答的贡献为 $w_t(h)p_{t,h}(y_t)$，归一化得到口述来源权重：
 \begin{equation}
 \nu_t(h\mid y_t)=
-\frac{w_t(h)p_{t,h}(y_t)}{\sum_{v\in A_t}w_t(v)p_{t,v}(y_t)}.
+\frac{w_t(h)p_{t,h}(y_t)}{\sum_{v\in \mathcal A_t}w_t(v)p_{t,v}(y_t)}.
 \label{eq:oral-source}
 \end{equation}
-表达层假设，学习者从支持这次回答的候选中说出一条主要依据，来源按 $\nu_t$ 描述。对多个可能来源汇总得到报告预测。该来源可以与作答贡献最大的 $m_t$ 不同：某备选整体贡献较小，却更支持本次实际选出的类别。
+表达层假设，学习者从支持这次回答的候选中说出一条主要依据，来源按 $\nu_t$ 描述。对多个可能来源汇总得到报告预测。该来源可以与作答贡献最大的 $h_t^{\star}$ 不同：某备选整体贡献较小，却更支持本次实际选出的类别。
 
-报告来源权重用于表达预测，$m_t$ 在口述前确定。信念由反馈更新，行为粒子权重由实际选择更新。
+报告来源权重用于表达预测，$h_t^{\star}$ 在口述前确定。信念由反馈更新，行为粒子权重由实际选择更新。
 
 给定规则和已经选择的类别，先读取该类别区域的局部判断，作为本题表达的内容。例如局部条件为“脖子长”和“脖子长于尾巴”，本题可能只说一句。
 
@@ -574,42 +554,42 @@ N_{{\rm eff},t}=\frac{1}{\sum_{h\in A_t}w_t(h)^2},
 
 \subsection{步骤一：整理局部内容}
 
-局部判断记为 $D_m=\{d_1,\ldots,d_K\}$，$m$ 为选中分量。带状区域的上下界合成一个带状判断，把“接近某个参照”作为一个表达单元。
+局部判断记为 $\mathcal P_b=\{\psi_1,\ldots,\psi_{|\mathcal P_b|}\}$，$b$ 为选中的类别区域分量，$\psi_i$ 为其中第 $i$ 个判断。带状区域的上下界合成一个带状判断，把“接近某个参照”作为一个表达单元。
 
 词表由规则目录和允许的表达组合预先生成，随后用于所有刺激和参数设置。二分类390个代码，四分类1,996个，包括 \texttt{EMPTY/OTHER}，分别表示可能的表达结果。
 
 \subsection{步骤二：每个核心判断可以省略}
 
-每个判断独立地以 $q$ 被说出、以 $1-q$ 省略。两个判断都说、只说第一个、只说第二个、都不说的概率为
+每个判断独立地以 $q_{\rm say}$ 被说出、以 $1-q_{\rm say}$ 省略。两个判断都说、只说第一个、只说第二个、都不说的概率为
 \begin{equation}
-q^2,\quad q(1-q),\quad q(1-q),\quad(1-q)^2.
+q_{\rm say}^2,\quad q_{\rm say}(1-q_{\rm say}),\quad q_{\rm say}(1-q_{\rm say}),\quad(1-q_{\rm say})^2.
 \end{equation}
-$q=0.8$ 时为0.64、0.16、0.16、0.04。模型用共同的独立省略过程描述表达。
+$q_{\rm say}=0.8$ 时为0.64、0.16、0.16、0.04。模型用共同的独立省略过程描述表达。
 
 \texttt{EMPTY} 表示最终表达为空。核心全省略时，补充句仍可能使报告具有内容；记录缺失单独保留为缺测。
 
 \subsection{步骤三：核心单特征判断可以用躯干作模糊参照}
 
-单特征、单方向阈值判断可改说“比躯干长／短”。该判断阈值为 $\theta_j$，命名概率为
+单特征、单方向阈值判断可改说“比躯干长／短”。用 $i$ 标记核心判断，其阈值为 $\vartheta_i$，命名概率为
 \begin{equation}
-b_j=\rho_B\exp[-(\theta_j-\mu_B)^2/(2s_B^2)],
-\qquad\rho_B\in[0,1],\quad s_B>0.
+p_{{\rm body},i}=q_{\rm body}\exp[-(\vartheta_i-\mu_{\rm body})^2/(2\sigma_{\rm body}^2)],
+\qquad q_{\rm body}\in[0,1],\quad \sigma_{\rm body}>0.
 \label{eq:body-wording}
 \end{equation}
 不说、普通表达、躯干表达的概率依次为
 \begin{equation}
-1-q,\qquad q(1-b_j),\qquad qb_j.
+1-q_{\rm say},\qquad q_{\rm say}(1-p_{{\rm body},i}),\qquad q_{\rm say}p_{{\rm body},i}.
 \end{equation}
-符合条件的单特征判断按上述概率使用躯干参照措辞，并保留比较方向；其余判断令 $b_j=0$。
+符合条件的单特征判断按上述概率使用躯干参照措辞，并保留比较方向；其余判断令 $p_{{\rm body},i}=0$。
 
-$\mu_B=0.75$ 取已确认的物理躯干位置作为共同措辞中心，$s_B=0.10$ 是固定措辞容忍度，$\rho_B=0.5$ 是共同命名倾向。这些表达约定保持行为规则的分类边界，并在比较前固定。
+$\mu_{\rm body}=0.75$ 取已确认的物理躯干位置作为共同措辞中心，$\sigma_{\rm body}=0.10$ 是固定措辞容忍度，$q_{\rm body}=0.5$ 是共同命名倾向。这些表达约定保持行为规则的分类边界，并在比较前固定。
 
 \subsection{步骤四：可以补充一个未参与局部规则的部位}
 
-在非 \texttt{OTHER} 分支，以 $\alpha_O$ 尝试补充一句。特征须在完整局部判断中从未使用。令可用特征集合为 $U_m$，显著程度与选择概率为
+在非 \texttt{OTHER} 分支，以 $q_{\rm add}$ 尝试补充一句。特征须在完整局部判断中从未使用。令可用特征集合为 $\mathcal J_b$，显著程度与选择概率为
 \begin{equation}
-s_{t,j}=|\widetilde x_{t,j}-0.5|,\qquad
-a_{m,t}(j)=\frac{s_{t,j}}{\sum_{k\in U_m}s_{t,k}},\quad j\in U_m.
+\Delta_{t,j}=|\widetilde x_{t,j}-0.5|,\qquad
+a_{t,b}(j)=\frac{\Delta_{t,j}}{\sum_{j'\in\mathcal J_b}\Delta_{t,j'}},\quad j\in \mathcal J_b.
 \label{eq:extra-salience}
 \end{equation}
 明显偏长或偏短的部位更容易被顺带提到。分母为0或没有未使用特征时不补充；恰好为0.5的特征权重为0。显著程度由本题已有的内部刺激直接计算。
@@ -620,24 +600,24 @@ a_{m,t}(j)=\frac{s_{t,j}}{\sum_{k\in U_m}s_{t,k}},\quad j\in U_m.
 
 \subsection{完整报告概率}
 
-令 $\mathcal B(h,y,\widetilde{\bm x})$ 为并列最近的类别分量集合，$K_m(v)$ 为省略与命名后核心报告 $v$ 的概率，$U_m$ 为可补充特征，$a_j$ 为普通长短句，$\operatorname{code}$ 为规范组合代码。
+给定本题内部刺激 $\widetilde{\bm x}_t$，令 $\mathcal B_t(h,y)$ 为所选类别中并列最近的区域分量集合，$K_b^{\rm core}(\mathcal V)$ 为省略与命名后核心报告内容集合 $\mathcal V$ 的概率，$\mathcal J_b$ 为可补充特征，$\psi^{\rm extra}_{t,j}$ 为按本题内部刺激生成的普通长短句，$\operatorname{code}$ 为规范组合代码。
 
-存在正显著度时，添加核为
+下标 $t$ 表明最近分量与补充表达都使用本题内部刺激。存在正显著度时，补充表达核为
 \begin{equation}
-H_m(o\mid v,\widetilde{\bm x})=
-(1-\alpha_O)\ind[o=\operatorname{code}(v)]
-+\alpha_O\sum_{j\in U_m}a_{m,t}(j)
-\ind[o=\operatorname{code}(v\cup\{a_j\})].
+K_{t,b}^{\rm add}(o\mid\mathcal V)=
+(1-q_{\rm add})\ind[o=\operatorname{code}(\mathcal V)]
++q_{\rm add}\sum_{j\in \mathcal J_b}a_{t,b}(j)
+\ind[o=\operatorname{code}(\mathcal V\cup\{\psi^{\rm extra}_{t,j}\})].
 \end{equation}
-无正显著度时 $H_m=\ind[o=\operatorname{code}(v)]$。以 $\eta_O$ 生成预定义的 \texttt{OTHER}，最终
+无正显著度时 $K_{t,b}^{\rm add}=\ind[o=\operatorname{code}(\mathcal V)]$。以 $q_{\rm other}$ 生成预定义的 \texttt{OTHER}，最终
 \begin{align}
-\R(o\mid h,y,\widetilde{\bm x})
-={}&\eta_O\ind(o=\texttt{OTHER})\nonumber\\
-&+\frac{1-\eta_O}{|\mathcal B|}\sum_{m\in\mathcal B}\sum_v
-K_m(v)H_m(o\mid v,\widetilde{\bm x}).
+\mathcal O_t(o\mid h,y)
+={}&q_{\rm other}\ind(o=\texttt{OTHER})\nonumber\\
+&+\frac{1-q_{\rm other}}{|\mathcal B_t(h,y)|}\sum_{b\in\mathcal B_t(h,y)}\sum_{\mathcal V}
+K_b^{\rm core}(\mathcal V)K_{t,b}^{\rm add}(o\mid\mathcal V).
 \label{eq:oral-kernel}
 \end{align}
-每步归一化。给定有正显著度的局部分支，总补充事件概率为 $(1-\eta_O)\alpha_O$，示例0.02和0.2得到0.196。若并列分支只有部分可以补充，则再按分支比例汇总该概率。
+每步归一化。给定有正显著度的局部分支，总补充事件概率为 $(1-q_{\rm other})q_{\rm add}$，示例0.02和0.2得到0.196。若并列分支只有部分可以补充，则再按分支比例汇总该概率。
 
 \texttt{OTHER} 汇总经编码确认的词表外内容。真实文字经编码和人工审查后对应到报告代码；未知代码的接口概率为0。
 
@@ -645,15 +625,15 @@ K_m(v)H_m(o\mid v,\widetilde{\bm x}).
 
 使用式\eqref{eq:oral-source}的来源权重，
 \begin{equation}
-P(o_t\mid y_t,z_t)=\sum_{h\in A_t}\nu_t(h\mid y_t)
-\R(o_t\mid h,y_t,\widetilde{\bm x}_t).
+P(o_t\mid y_t,z_t)=\sum_{h\in \mathcal A_t}\nu_t(h\mid y_t)
+\mathcal O_t(o_t\mid h,y_t).
 \label{eq:conditional-oral}
 \end{equation}
 等价的联合预测为
 \begin{equation}
 P(y_t,o_t\mid z_t)=
 \sum_h w_t(h)p_{t,h}(y_t)
-\R(o_t\mid h,y_t,\widetilde{\bm x}_t).
+\mathcal O_t(o_t\mid h,y_t).
 \label{eq:choice-oral}
 \end{equation}
 给定实际选择，报告概率为联合质量除以选择概率。报告核描述一条主要依据怎样变成具体表达。
@@ -663,7 +643,7 @@ P(y_t,o_t\mid z_t)=
 \Needspace{14\baselineskip}
 \subsection{口述调用与记录}
 
-表达参数统一列在第12节。$\rho_s$ 表示退出、$\rho_B$ 表示命名、$\alpha_O$ 表示补充。
+表达设置统一列在第\ref{sec:parameters}节。
 
 接口顺序为：
 \begin{quote}
@@ -680,12 +660,12 @@ $\to$\ \path{predict_oral}\ $\to$\ \path{complete_trial}。
 
 完整步骤如下：
 \begin{enumerate}
-\item 第一题初始化一条候选及其精度、配对先验，完成第2步知觉后进入第6步预测与作答。从第二题起，读取上一题反馈与状态，递推 $F_t,E_t,g_t$，依次执行后续步骤。
+\item 第一题初始化一条候选及其精度、配对先验，完成第2步知觉后进入第6步预测与作答。从第二题起，读取上一题反馈与状态，递推 $F_t,e_t,g_t$，依次执行后续步骤。
 \item 形成本题内部刺激 $\widetilde{\bm x}_t$；候选管理读取截至上一题的反馈与状态。
-\item 对旧候选抽取退出提议，保留有效集合并条件化支持；按 $E_t$ 决定是否提出一个新人。
-\item 有新人时先按容量腾位，条件化保留旧信念，再按新旧功能关系分配一次支持。
-\item 幸存者保留精度，新人恢复初值；condition 3 同步设置联合配对先验。
-\item 计算各候选类别概率，按信念与使用惯性形成 $w_t$，确定 $m_t$，汇总选择概率并保存快照。
+\item 对旧候选抽取退出提议，保留有效集合并条件化支持；按 $e_t$ 决定是否提出一个新规则。
+\item 有新规则时先释放容量，条件化保留旧信念，再按新旧功能关系分配一次支持。
+\item 保留旧规则的精度，新规则恢复初值；condition 3 同步设置联合配对先验。
+\item 计算各候选类别概率，按信念与使用惯性形成 $w_t$，确定 $h_t^{\star}$，汇总选择概率并保存快照。
 \item 自主生成抽取选择；行为拟合读取实际选择并修正粒子权重。需要口述时，从同一快照计算 $\nu_t$ 和报告预测。
 \item 收到反馈后计算活跃规则证据；condition 3 计算联合证据。
 \item 更新证据记忆，用缓存的反馈前证据更新精度，保存反馈供下一题搜索控制读取。
@@ -697,35 +677,35 @@ $\to$\ \path{predict_oral}\ $\to$\ \path{complete_trial}。
 
 \subsection{行为预测与路径权重}
 
-设 $L$ 个粒子的作答前权重为 $w_{t,l}^-$，路径预测为 $p_{t,l}(c)$：
+设粒子数为 $N_{\rm PF}$，用上标 $(n)$ 标记第 $n$ 条内部路径。其作答前权重为 $W_t^{(n),{\rm pre}}$，类别预测为 $p_t^{(n)}(c)=P(y_t=c\mid z_t^{(n)})$：
 \begin{equation}
-\widehat P_t(c)=\sum_{l=1}^{L}w_{t,l}^-p_{t,l}(c).
+\widehat P_t(c)=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm pre}}p_t^{(n)}(c).
 \label{eq:pf-prediction}
 \end{equation}
-实际选择后，
+权重满足 $\sum_n W_t^{(n),{\rm pre}}=1$。观察实际选择后，
 \begin{equation}
-w_{t,l}^{\rm choice}\propto w_{t,l}^-p_{t,l}(y_t).
+W_t^{(n),{\rm choice}}=\frac{W_t^{(n),{\rm pre}}p_t^{(n)}(y_t)}{\sum_{n'=1}^{N_{\rm PF}}W_t^{(n'),{\rm pre}}p_t^{(n')}(y_t)}.
 \end{equation}
 能解释选择的路径获得高权重；随后各路径按实际选择与反馈学习。路径权重是研究者对路径的判断，路径内规则信念是被试对候选的判断。
 
 例如，两条路径原来各占一半，分别以0.8和0.2预测被试实际选择的答案，总体预测为0.5。观察这个选择后，两条路径的权重变为0.8和0.2。这使第一条内部过程在研究者的推断中获得更高权重；各路径内的规则信念按自身反馈更新。
 
-有效样本量 $\mathrm{ESS}_t=1/\sum_l(w_{t,l}^{\rm choice})^2$。权重过度集中则按配置阈值重采样，保留候选、信念、精度、主导、失败与配对状态，再给未来随机流独立种子，不重新初始化学习。
+有效样本量 $\mathrm{ESS}_t=1/\sum_{n=1}^{N_{\rm PF}}(W_t^{(n),{\rm choice}})^2$。权重过度集中则按配置阈值重采样，保留候选、信念、精度、主导、失败与配对状态，再给未来随机流独立种子，不重新初始化学习。
 
 \subsection{汇总口述预测：使用选择约束路径}
 
 在行为参数固定后，多路径口述预测按同一时点的选择前粒子权重汇总：
 \begin{equation}
-\widehat P_t(y,o)=\sum_lw_{t,l}^-p_{t,l}(y)\R_l(o\mid y).
+\widehat P_t(y,o)=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm pre}}p_t^{(n)}(y)P(o\mid y,z_t^{(n)}).
 \label{eq:pf-oral-joint}
 \end{equation}
 给定实际选择 $y_t$，预测报告概率为
 \begin{equation}
 \widehat P_t(o\mid y_t)
 =\frac{\widehat P_t(y_t,o)}{\widehat P_t(y_t)}
-=\sum_lw_{t,l}^{\rm choice}\R_l(o\mid y_t).
+=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm choice}}P(o\mid y_t,z_t^{(n)}).
 \end{equation}
-实际选择调整各路径对报告预测的贡献；这里的 $w_{t,l}^{\rm choice}$ 仅由选择更新，并在本题反馈进入学习前读取。
+实际选择调整各路径对报告预测的贡献；这里的 $W_t^{(n),{\rm choice}}$ 仅由选择更新，并在本题反馈进入学习前读取。
 
 式\eqref{eq:pf-oral-joint}给出批量口述预测的汇总关系，当前批量 PF 尚未输出这项预测。真实报告 $o_t$ 仅用于评价预测分布。行为参数由选择数据估计，粒子权重按实际选择更新。比较保留试次身份、类别和统一编码口径，缺失报告单独标记。
 
@@ -733,9 +713,9 @@ w_{t,l}^{\rm choice}\propto w_{t,l}^-p_{t,l}(y_t).
 
 某规则出现在候选集合中的概率，可以按路径权重汇总其是否活跃：
 \begin{equation}
-\widehat P_t(h\in A_t)=\sum_lw_{t,l}^-\ind(h\in A_{t,l}),
+\widehat P_t(h\in \mathcal A_t)=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm pre}}\ind(h\in \mathcal A_t^{(n)}),
 \qquad
-\overline N_t=\sum_lw_{t,l}^-|A_{t,l}|.
+\overline N_t=\sum_{n=1}^{N_{\rm PF}}W_t^{(n),{\rm pre}}|\mathcal A_t^{(n)}|.
 \end{equation}
 每条路径的候选数量是整数，汇总平均却可以是2.3。2.3表示研究者在不同可能路径上的加权平均。有效参与数量按路径分别计算式\eqref{eq:effective-participation}，再汇总，描述作答贡献的集中程度。某规则成为主导的概率按各路径是否由它主导汇总，与候选可访问概率、规则信念和作答权重分别解释。
 
@@ -749,8 +729,8 @@ w_{t,l}^{\rm choice}\propto w_{t,l}^-p_{t,l}(y_t).
 
 搜索、候选与参与共10项，另加记忆1项、精度3项：
 \begin{align}
-\theta_s=(&E_{0,s},a_s,\delta_s,g_{0,s},c_{G,s},
-M_s^{\max},\rho_s,\omega_s,\tau_{T,s},\lambda_s,\nonumber\\
+\bm\theta_s=(&e_{0,s},a_{e,s},\delta_s,g_{0,s},a_{g,s},
+M_s^{\max},\rho_s,\omega_s,\tau_{{\rm tr},s},\lambda_s,\nonumber\\
 &\gamma_s,\beta_{0,s},\eta_{+,s},\eta_{-,s}).
 \end{align}
 修订设计保留14项行为参数。拟合前规定自由项、范围和固定项，并通过参数恢复检查可识别性。下表沿用现有三条件配置例值用于说明量级；新机制需同步实现后才能用于拟合，$\lambda_s$ 按修订后的作答惯性解释。
@@ -761,15 +741,15 @@ M_s^{\max},\rho_s,\omega_s,\tau_{T,s},\lambda_s,\nonumber\\
 参数 & 认知含义 & 数学范围 & 例值\\
 \midrule
 \endhead
-$E_{0,s}$ & 基础搜索概率。 & $(0,1)$ & 0.05\\
-$a_s$ & 失败推动搜索的增益。 & $[0,\infty)$ & 1.0\\
+$e_{0,s}$ & 基础搜索概率。 & $(0,1)$ & 0.05\\
+$a_{e,s}$ & 失败推动搜索的增益。 & $[0,\infty)$ & 1.0\\
 $\delta_s$ & 失败状态保持。 & $[0,1)$ & 0.6\\
 $g_{0,s}$ & 基础全局比例。 & $[0,1]$ & 0.2\\
-$c_{G,s}$ & 失败对范围的增益。 & $[0,1]$ & 0.5\\
+$a_{g,s}$ & 失败对范围的增益。 & $[0,1]$ & 0.5\\
 $M_s^{\max}$ & 候选数量上限。 & 整数；\newline $2\leq M_s^{\max}<J$ & 3\\
 $\rho_s$ & 候选退出率。 & $[0,1]$ & 0.1\\
 $\omega_s$ & 局部结构来源倾向。 & $[0,1]$ & 0.5\\
-$\tau_{T,s}$ & 功能支持泛化尺度。 & $(0,\infty)$ & 0.1\\
+$\tau_{{\rm tr},s}$ & 功能支持泛化尺度。 & $(0,\infty)$ & 0.1\\
 $\lambda_s$ & 上一主导候选的作答惯性。 & $[0,\infty)$ & 1.0\\
 $\gamma_s$ & 规则及联合配对证据保持。 & $[0,1]$ & 0.8\\
 $\beta_{0,s}$ & 新规则初始精度。 & $[\beta_{\min},\beta_{\max}]$ & 5.0\\
@@ -789,12 +769,12 @@ $\eta_{-,s}$ & 精度下降速率。 & $[0,1]$ & 0.15\\
 参数 & 含义 & 范围 & 例值\\
 \midrule
 \endhead
-$q$ & 每个核心判断说出概率。 & $[0,1]$ & 0.8\\
-$\alpha_O$ & 有可用特征时，非 \texttt{OTHER} 分支的补充概率。 & $[0,1]$ & 0.2\\
-$\eta_O$ & 预定义词表外内容概率。 & $[0,1]$ & 0.02\\
-$\rho_B$ & 核心单特征的躯干命名倾向。 & $[0,1]$ & 0.5\\
-$\mu_B$ & 共同躯干措辞中心。 & $[0,1]$ & 0.75\\
-$s_B$ & 共同措辞容忍度。 & $(0,\infty)$ & 0.1\\
+$q_{\rm say}$ & 每个核心判断说出概率。 & $[0,1]$ & 0.8\\
+$q_{\rm add}$ & 有可用特征时，非 \texttt{OTHER} 分支的补充概率。 & $[0,1]$ & 0.2\\
+$q_{\rm other}$ & 预定义词表外内容概率。 & $[0,1]$ & 0.02\\
+$q_{\rm body}$ & 核心单特征的躯干命名倾向。 & $[0,1]$ & 0.5\\
+$\mu_{\rm body}$ & 共同躯干措辞中心。 & $[0,1]$ & 0.75\\
+$\sigma_{\rm body}$ & 共同措辞容忍度。 & $(0,\infty)$ & 0.1\\
 \bottomrule
 \end{longtable}
 }
@@ -803,12 +783,12 @@ $s_B$ & 共同措辞容忍度。 & $(0,\infty)$ & 0.1\\
 
 行为目标可用平均选择负对数概率：
 \begin{equation}
-\mathrm{NLL}_{\rm choice}(\theta_s)=
+\mathrm{NLL}_{\rm choice}(\bm\theta_s)=
 -\frac1{T_{\rm score}}\sum_{t\in\mathcal T_{\rm score}}
-\log\widehat P_t(y_t;\theta_s).
+\log\widehat P_t(y_t;\bm\theta_s).
 \label{eq:nll}
 \end{equation}
-保存计分集合、顺序、训练／评价边界与随机预算，使用反馈前选择概率计分。多次运行应先逐题平均类别概率再评分；平均各次 NLL 是另一统计量。
+$\mathcal T_{\rm score}$ 是计分试次集合，$T_{\rm score}=|\mathcal T_{\rm score}|$ 是其大小。保存计分集合、顺序、训练／评价边界与随机预算，使用反馈前选择概率计分。多次运行应先逐题平均类别概率再评分；平均各次 NLL 是另一统计量。
 
 粒子与重复表达隐藏路径或数值不确定性，不自动给出参数置信区间。完整行为序列选出的参数在同序列上仍是样本内拟合，即使状态递推没有使用未来反馈。
 
@@ -816,7 +796,7 @@ $s_B$ & 共同措辞容忍度。 & $(0,\infty)$ & 0.1\\
 
 现有工具支持完整配置路径覆盖和候选比较。拟合可按记忆、搜索、候选、精度等相关块组织，共同随机数比较后再用独立种子检验稳定性。正式范围、网格、粒子预算、停止与恢复协议待冻结；smoke 配置用于短流程检查。
 
-失败增益小时 $\delta_s$ 难识别，$g_0$ 接近1时 $c_G$ 作用弱，两局部核相近或大量回退时 $\omega_s$ 难识别，少到达上限时容量可能只得宽范围。支持泛化、惯性、精度与记忆也可能共同解释行为，需恢复和针对性比较。
+失败增益小时 $\delta_s$ 难识别，$g_{0,s}$ 接近1时 $a_{g,s}$ 作用弱，两局部核相近或大量回退时 $\omega_s$ 难识别，少到达上限时容量可能只得宽范围。支持泛化、惯性、精度与记忆也可能共同解释行为，需恢复和针对性比较。
 
 达到与0826相当效果，要在可比数据、计分试次和预算下分别比较选择、学习过程与口述预测。表现保持由上述可比效果检查评价。
 
@@ -827,9 +807,9 @@ $s_B$ & 共同措辞容忍度。 & $(0,\infty)$ & 0.1\\
 
 被试知道两个科、每科两个种，但不知道哪两个反应同科。三种配对为
 \begin{equation}
-G_1=\{\{1,2\},\{3,4\}\},\quad
-G_2=\{\{1,3\},\{2,4\}\},\quad
-G_3=\{\{1,4\},\{2,3\}\}.
+\mathcal G_1=\{\{1,2\},\{3,4\}\},\quad
+\mathcal G_2=\{\{1,3\},\{2,4\}\},\quad
+\mathcal G_3=\{\{1,4\},\{2,3\}\}.
 \end{equation}
 开始等权。数据 \texttt{category} 为真实类别、\texttt{choice} 为统一反应编号、\texttt{presskey} 为实际按键；转换表用于读懂数据，不预告正确配对。
 
@@ -839,13 +819,13 @@ G_3=\{\{1,4\},\{2,3\}\}.
 \begin{equation}
 \Pi_t^-(h,k)=\pi_t^-(h)q_t^-(k\mid h),\qquad q_1^-(k\mid h)=1/3.
 \end{equation}
-令 $s_k(y)$ 为配对中同组的另一个反应：
+令 $\operatorname{mate}_k(y)$ 为配对中同组的另一个反应：
 \begin{equation}
 \ell_t(h,k)=
 \begin{cases}
 p_{t,h}(y_t),&r_t=1,\\
-p_{t,h}[s_k(y_t)],&r_t=0.5,\\
-1-p_{t,h}(y_t)-p_{t,h}[s_k(y_t)],&r_t=0.
+p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
+1-p_{t,h}(y_t)-p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.
 \end{cases}
 \label{eq:ternary-feedback}
 \end{equation}
@@ -855,10 +835,10 @@ p_{t,h}[s_k(y_t)],&r_t=0.5,\\
 \begin{equation}
 \Pi_t^+(h,k)=
 \frac{[\Pi_t^-(h,k)]^{\gamma_s}\ell_t(h,k)}
-{\sum_{v\in A_t}\sum_{j=1}^3[\Pi_t^-(v,j)]^{\gamma_s}\ell_t(v,j)}.
+{\sum_{v\in \mathcal A_t}\sum_{k'=1}^3[\Pi_t^-(v,k')]^{\gamma_s}\ell_t(v,k')}.
 \label{eq:joint-memory}
 \end{equation}
-规则边际为 $\sum_k\Pi_t^+(h,k)$，条件配对在规则内归一化。$\gamma_s$ 作用于规则与配对的联合信念，规则信念和配对信念都从更新后的联合分布计算。
+规则边际为 $\pi_t^+(h)=\sum_k\Pi_t^+(h,k)$，条件配对为 $q_t^+(k\mid h)=\Pi_t^+(h,k)/\pi_t^+(h)$。规则边际为0时，条件配对约定为均匀分布。$\gamma_s$ 作用于规则与配对的联合信念，规则信念和配对信念都从更新后的联合分布计算。
 
 配对均匀时，半分和0分的规则证据分别为 $[1-p_{t,h}(y_t)]/3$ 和 $2[1-p_{t,h}(y_t)]/3$，相对规则支持相同，配对支持却可以不同。随着配对知识积累，相同反馈可以给出更具体的类别线索。
 
@@ -868,14 +848,14 @@ p_{t,h}[s_k(y_t)],&r_t=0.5,\\
 遗忘后、加入本题反馈前的条件配对为
 \begin{equation}
 \widetilde q_t^-(k\mid h)=
-\frac{[\Pi_t^-(h,k)]^{\gamma_s}}{\sum_j[\Pi_t^-(h,j)]^{\gamma_s}}.
+\frac{[\Pi_t^-(h,k)]^{\gamma_s}}{\sum_{k'=1}^3[\Pi_t^-(h,k')]^{\gamma_s}}.
 \end{equation}
 活跃联合单元在 $\gamma_s=0$ 时按等权处理；某规则行的质量为0时，其条件配对使用均匀分布。
-边际反馈概率 $b_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$。均匀四类下，正确、半分、0分的机会概率为 $1/4,1/4,1/2$，支持量为
+边际反馈概率 $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$。均匀四类下，正确、半分、0分的机会概率为 $1/4,1/4,1/2$，支持量为
 \begin{equation}
 \kappa_t^{(3)}(h)=
-\frac{b_t(h)-b_{\rm chance}(r_t)}
-{b_t(h)+b_{\rm chance}(r_t)}.
+\frac{\ell_t(h)-\ell_{\rm chance}(r_t)}
+{\ell_t(h)+\ell_{\rm chance}(r_t)}.
 \label{eq:ternary-precision-support}
 \end{equation}
 进入式\eqref{eq:precision-update}。均匀预测三种反馈都中性，半分可以支持或反驳。代码保存反馈前计算的证据，供本题的精度更新使用。搜索读取 $1-r_t$，表示本题目标未达成的程度。
@@ -883,15 +863,15 @@ p_{t,h}[s_k(y_t)],&r_t=0.5,\\
 \subsection{候选变化后保留配对知识}
 \label{sec:pairing-transfer}
 
-迁移前保存整体边际 $\mu_t(k)=\sum_{h\in A_t}\Pi_t^+(h,k)$。幸存者保留条件配对，新人继承 $\mu_t$：
+迁移前保存整体边际 $\bar q_t^+(k)=\sum_{h\in \mathcal A_t}\Pi_t^+(h,k)$。保留旧规则的条件配对，新规则继承 $\bar q_t^+$：
 \begin{equation}
 \Pi_{t+1}^-(h,k)=\pi_{t+1}^-(h)
 \begin{cases}
-q_t^+(k\mid h),&h\text{幸存},\\
-\mu_t(k),&h\text{为新人}.
+q_t^+(k\mid h),&h\text{为保留的旧规则},\\
+\bar q_t^+(k),&h\text{为新规则}.
 \end{cases}
 \end{equation}
-新人继承此前积累的反应关系知识，局部与全局来源使用相同的继承规则。规则权重变化后，整体配对边际也可能变化。
+新规则继承此前积累的反应关系知识，局部与全局来源使用相同的继承规则。规则权重变化后，整体配对边际也可能变化。
 
 配对的集中程度、配对正确性和按刺激分科的能力分别评价，同时报告科、种和平均分表现。当前口述描述分类规则内容。
 
@@ -906,7 +886,7 @@ q_t^+(k\mid h),&h\text{幸存},\\
 
 \subsection{候选数量变化的含义}
 
-连续成功使失败回落、搜索减少，低支持候选仍可退出，集合可能收缩到一条。再次失败可以增加新人，集合扩张。低支持且仍在集合内的规则继续参与学习；已退出的规则通过后续搜索重新进入。参与权重集中也可在集合尚有多条时出现。
+连续成功使失败回落、搜索减少，低支持候选仍可退出，集合可能收缩到一条。再次失败可以增加新规则，集合扩张。低支持且仍在集合内的规则继续参与学习；已退出的规则通过后续搜索重新进入。参与权重集中也可在集合尚有多条时出现。
 
 \subsection{结构与功能变化分别量化}
 
@@ -925,9 +905,9 @@ q_t^+(k\mid h),&h\text{幸存},\\
 
 \subsection{固定定义与试次状态}
 
-共同定义包括目录与标签、均匀先验、初始一条、单新人、退出函数、有效集合保留、最低旧信念腾位、一次关系分配、主导并列处理、编辑语法与成本、均匀参考分布、100,000点与种子0、$\tau_P=0.10$、精度上下界、反馈增益1、永久记忆权重0。口述6项为共同表达设置，补充对象按内部刺激的长短显著度选择。
+共同定义包括目录与标签、均匀先验、初始一条、单新规则、退出函数、有效集合保留、最低旧信念容量释放、一次关系分配、主导并列处理、编辑语法与成本、均匀参考分布、100,000点与种子0、$\tau_{\rm prop}=0.10$、精度上下界、反馈增益1、永久记忆权重0。口述6项为共同表达设置，补充对象按内部刺激的长短显著度选择。
 
-计算机可能把极小的正数存成0，这称为指数下溢。支持分配需采用能保留这些微弱支持的计算方法，并在正式运行前检查 $\tau_{T,s}$ 的取值范围，使候选仍能随反馈提高支持。
+计算机可能把极小的正数存成0，这称为指数下溢。支持分配需采用能保留这些微弱支持的计算方法，并在正式运行前检查 $\tau_{{\rm tr},s}$ 的取值范围，使候选仍能随反馈提高支持。
 
 固定项仍是模型假设。改变参考分布、成本、标签或初始化须记录版本与比较，保持各被试的定义一致。实际数量、集合、信念、精度、失败、主导与配对为递推状态；粒子、重复和种子为数值预算。
 
@@ -976,7 +956,7 @@ q_t^+(k\mid h),&h\text{幸存},\\
 \midrule
 \endhead
 候选退出 & 所有旧候选可退出，仅保留有效集合。 & 待同步\\
-容量准入 & 先删除最低旧信念者，再接纳新人。 & 待同步\\
+容量准入 & 先删除最低旧信念者，再接纳新规则。 & 待同步\\
 支持分配 & 条件化保留集合，再进行一次关系分配。 & 待同步\\
 作答贡献 & 信念加主导惯性，按连续权重汇总回答。 & 待同步\\
 口述来源 & 从支持本次回答的贡献中表达一条依据。 & 条件来源接口已有；full权重待同步\\
@@ -993,7 +973,7 @@ q_t^+(k\mid h),&h\text{幸存},\\
 
 本文修订设计完成公式和文档复核，代码接入尚待完成。新机制的实现测试、完整行为拟合、参数恢复、批量口述预测比较和与0826的可比效果检查仍待完成。口述评价使用事先固定的表达设置。
 
-本轮公式检查覆盖1,008个候选情境、3,024个作答与口述联合情境和486个补充表达情境，通过容量、概率归一化、新人初始支持上界、零惯性端点及条件口述等价性检查。两个极小支持尺度边界显示浮点下溢，需在后续实现中处理。检查使用 NumPy 1.26.4、种子20261011，未调用模型或研究数据。
+本轮公式检查覆盖1,008个候选情境、3,024个作答与口述联合情境和486个补充表达情境，通过容量、概率归一化、新规则初始支持上界、零惯性端点及条件口述等价性检查。两个极小支持尺度边界显示浮点下溢，需在后续实现中处理。检查使用 NumPy 1.26.4、种子20261011，未调用模型或研究数据。
 
 \subsection{本文的生成与复核}
 
@@ -1034,4 +1014,51 @@ q_t^+(k\mid h),&h\text{幸存},\\
 \end{longtable}
 }
 程序用于表示审计与编辑邻居，实际类别预测调用共享几何。程序与几何的标签对应已核对，真实口述通过报告编码和表达核进一步比较。
+
+\section{辅助符号索引}
+\label{app:notation}
+
+核心状态见第\ref{sec:notation}节；这里按使用位置列出辅助符号。同一规则索引中的 $h,u,v$ 分别用于当前规则、新规则和求和中的其他规则。类别用 $c,c'$ 编号，口述区域分量用 $b$ 编号。上下标中的文字标签标明用途。
+
+{\small
+\begin{longtable}{L{4.5cm}L{9.5cm}}
+\toprule
+符号 & 定义或用途\\
+\midrule
+\endhead
+\multicolumn{2}{l}{\textbf{知觉、预测与反馈}}\\
+$\varepsilon_{t,j}$ & 本题第 $j$ 个特征的知觉误差。\\
+$\mathcal C_{h,c},\bm\xi,d_{t,h,c}$ & 规则的类别区域、区域中的几何点、内部刺激到该区域的距离。\\
+$c_h(\bm x),p_0(h)$ & 规则给出的确定类别，以及规则的基础先验。\\
+$\ell_t(h,k),\ell_{\rm chance}(r_t)$ & 规则与配对下的反馈似然，以及机会水平的反馈概率。\\
+$\kappa_t^{(3)}(h)$ & Condition 3 用于精度更新的反馈支持量。\\
+\multicolumn{2}{l}{\textbf{候选管理与搜索}}\\
+$\mathcal D_t,\mathcal A_t^{\rm ret},\mathcal A_t^{\rm keep}$ & 实际退出集合、退出后集合、容量处理后保留的旧集合。\\
+$\mathcal U_t,\mathcal N_t(h)$ & 本轮可引入的规则，以及其中可由 $h$ 一步编辑得到的邻居。\\
+$I_{t+1}^{\rm search},h_t^{\rm drop}$ & 下一题前是否搜索的二值事件，以及容量满时删除的旧规则。\\
+$\mathcal E(h),\mathrm{op},c_{\rm edit}(\mathrm{op})$ & 合法编辑集合、一次编辑及其成本。\\
+$d_{\rm edit}(h,u),d_{\rm func}(h,u)$ & 编辑距离与功能距离。\\
+$\mu_X,T_{cc'}(h,u),S(h,u)$ & 参考刺激分布、类别对应比例与分类一致率。\\
+$K_{{\rm edit},t},K_{{\rm func},t},K_{{\rm loc},t}$ & 给定旧规则的结构、功能、混合局部提出核。\\
+$Q_{{\rm loc},t},Q_{{\rm glob},t},Q_t$ & 汇总后的局部、全局、最终提出分布。\\
+$\tau_{\rm prop},\chi_s(h,u)$ & 功能提出的共同距离尺度，以及信念分配中的亲和度。\\
+\multicolumn{2}{l}{\textbf{规则参与与口述}}\\
+$N_{{\rm eff},t}$ & 由作答权重计算的有效参与数量。\\
+$\mathcal B_t(h,y),b$ & 本题所选类别的最近区域分量集合，以及其中一个分量。\\
+$\mathcal P_b,\psi_i,\vartheta_i$ & 分量的核心判断集合、一个判断，以及适用时的单特征阈值。\\
+$p_{{\rm body},i}$ & 核心判断 $i$ 采用躯干参照措辞的概率。\\
+$\mathcal J_b,\Delta_{t,j},a_{t,b}(j)$ & 可补充特征集合、特征长短显著度及其被选为补充对象的概率。\\
+$\mathcal V,\psi^{\rm extra}_{t,j},\operatorname{code}$ & 省略与命名后的核心内容、补充句，以及报告编码函数。\\
+$K_b^{\rm core},K_{t,b}^{\rm add},\mathcal O_t$ & 核心表达核、补充表达核，以及给定规则和选择的完整报告核。\\
+\multicolumn{2}{l}{\textbf{配对学习、粒子推断与计分}}\\
+$\mathcal G_k,\operatorname{mate}_k(y)$ & 第 $k$ 种反应配对，以及该配对下与 $y$ 同科的另一个反应。\\
+$\widetilde q_t^-(k\mid h)$ & 旧证据衰减后、本题反馈进入前的条件配对信念。\\
+$z_t^{(n)},p_t^{(n)}(c)$ & 第 $n$ 条内部路径的状态与类别预测。\\
+$W_t^{(n),{\rm choice}},\mathrm{ESS}_t$ & 按实际选择更新的粒子权重，以及粒子有效样本量。\\
+$\widehat P_t,\overline N_t$ & 粒子加权预测分布，以及候选数量的粒子加权平均。\\
+$\mathcal T_{\rm score},T_{\rm score}$ & 计分试次集合与其大小。\\
+$\ind[\cdot]$ & 指示函数，条件成立时为1，否则为0。\\
+\bottomrule
+\end{longtable}
+}
 \end{document}

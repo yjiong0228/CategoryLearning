@@ -142,14 +142,18 @@ writing and revision** in this repository, including Markdown, READMEs, model
 specifications, TeX/PDF documents, reports and manuscripts, in every language.
 They also apply when using academic-writing skills or journal templates.
 
-1. **Use plain, immediately understandable language.** Write with the clarity of
-   a careful conversation with the reader. Explain each mechanism in this order:
-   what happens, why it happens, a concrete example when helpful, and then its
-   formula. Define technical terms and symbols where they first become necessary.
-   A reader should be able to follow the process and its purpose from the prose
-   alone. Preserve exact mathematics and scientific meaning; explain operations
-   such as normalization in ordinary words before naming them. Avoid compressed
-   jargon, bureaucratic phrasing and decorative academic language.
+1. **Use precise, immediately understandable language.** Explain what each
+   mechanism does, why it is used, and how its steps connect. Retain standard
+   technical terms such as normalization, likelihood, edit distance and affinity;
+   explain their meaning at first use and connect them to the model's operation.
+   Plain language means reducing the reader's effort, not replacing professional
+   vocabulary with vague everyday substitutes or conversational metaphors.
+   Introduce each equation's purpose, define its symbols, and explain the result;
+   use concrete examples when they clarify a difficult step. Keep terminology,
+   notation and tone consistent across adjacent sections, especially when they
+   describe the same cognitive module. The prose alone should convey the process
+   and its purpose. Preserve exact mathematics and scientific meaning. Avoid
+   compressed jargon, bureaucratic phrasing and decorative academic language.
 2. **State the design directly; exclude defensive writing.** Describe what the
    model does, how it works and why that step is useful. Do not introduce an
    unrequested alternative merely to reject it or praise the chosen design.
