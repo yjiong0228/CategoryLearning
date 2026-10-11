@@ -1,5 +1,33 @@
 # 当前模型工作流
 
+## 已保存 0826 拟合的生成口述评价
+
+`analysis/evaluate_saved_oral_readout.py` 将 Model 0923 第 8 节的口述读出应用于已保存的
+0826 拟合。每个被试沿用原提名参数、128 粒子和 `selected_00` 的种子，各重放一次完整序列。
+表达参数按文档共用设置固定，补充描述按特征显著度分配。真实口述仅在预测完成后计分。
+
+```bash
+MPLCONFIGDIR=/tmp/model0826_oral_mpl \
+python -m src.Bayesian_state.workflows.analysis.evaluate_saved_oral_readout \
+  --cohort-config CategoryLearning_codes/figures/fig3/twelve_subject_config.json \
+  --states results/model_0826/fig34_twelve_subjects_20260921_v1/states \
+  --trials results/model_0826/fig34_twelve_subjects_20260921_v1/base_analysis/trials.csv \
+  --output results/model_0826/oral_readout_alignment_NEW --jobs 12
+```
+
+输出目录须不存在。短检查可加 `--subjects 102 206 307 --smoke-trials 16 --jobs 1`，
+保留这些被试的原粒子数和种子。条件 2 使用拟合时的精度更新，源码从 Git 读取并核对原哈希；
+每次重放逐题核对保存的选择预测和规则状态。`replays/` 保存反馈前的报告分布，
+`trials.csv` 保留原话、结构编码和逐题分数，`subjects.csv` 给出个人指标及分母，
+`replay_validation.json` 记录原结果一致性。完整编码但词表外的报告计零概率，
+缺失和待复核报告单列；详见[评价说明](../evaluation/oral/README.md)。
+
+12 人的图使用 `CategoryLearning_codes.figures.fig2.build_generated_oral_alignment`，
+输出到新的 Fig2 草稿目录。该指标检验完整报告内容的生成预测；原中心点编码的评价继续
+保留在已有结果中。本次单种子结果保留有限粒子的数值波动。
+
+## 模型开发与拟合入口
+
 Model 0923 的新开发入口见[机制规范](../docs/model_architecture/model_0923.md)。
 `analysis/prepare_model_0923.py` 生成现有被试的原话审查清单，不运行拟合，也不把
 编码有效当成规则目录覆盖。`analysis/audit_model_0923_reports.py` 进一步保守解析完整分句，

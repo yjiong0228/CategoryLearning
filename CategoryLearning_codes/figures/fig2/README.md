@@ -1,5 +1,27 @@
 # Fig2a framework draft
 
+[生成口述评价总览](../outputs/fig2/generated_oral_alignment_20261011_v3/oral_alignment_summary.png) ·
+[12 人学习轨迹](../outputs/fig2/generated_oral_alignment_20261011_v3/oral_alignment_trajectories.png)，
+2026-10-11，新审阅草稿。
+
+生成口述的 12 人评价入口为 `build_generated_oral_alignment.py`。它读取
+`results/model_0826/oral_readout_alignment_20261011_v1/` 的新评分表，展示完整报告
+的 top-1／top-3 命中率、真实报告的平均预测概率、表达覆盖率及逐人学习轨迹。
+选择模型沿用原拟合参数和保存的状态种子；口述使用 Model 0923 第 8 节的共用表达设置，
+在作答后、反馈前生成。结构编码采用自动解析，这 12 人属于开发样本。
+
+```bash
+MPLCONFIGDIR=/tmp/model0826_oral_mpl \
+python -m CategoryLearning_codes.figures.fig2.build_generated_oral_alignment \
+  --source results/model_0826/oral_readout_alignment_20261011_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig2/generated_oral_alignment_NEW
+```
+
+输出目录须不存在，保留 PNG、源表、图注、QA 和来源哈希。
+精确指标包含所有可完整编码的计分报告，词表外报告给零概率；覆盖图包括未解析及缺失报告。
+轨迹采用 64 个实际试次的滚动窗口，至少需要 16 条可计分报告，缺失题留断点。
+本次每人使用 128 粒子、一个固定种子，图中给出描述性指标。
+
 最新期刊版：[Fig2](../outputs/fig2/journal_20260921_v2/Figure2_journal.png) ·
 [设计与图注](JOURNAL_FIGURE.md) · [整套Fig1–4/S2](../JOURNAL_SET_20260921.md)。
 保留原 Fig2a 原生机制示意及 a/b–d/e–g 结构，补齐三任务与全部12人的检验。
