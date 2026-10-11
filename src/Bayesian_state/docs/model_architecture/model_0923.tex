@@ -5,6 +5,7 @@
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{amsmath,amssymb,bm}
 \usepackage{booktabs,tabularx,array,longtable}
+\usepackage{graphicx}
 \usepackage{fontspec}
 \usepackage{needspace}
 \usepackage[unicode,hidelinks]{hyperref}
@@ -23,6 +24,7 @@
 \allowdisplaybreaks
 \setcounter{tocdepth}{1}
 \renewcommand{\contentsname}{目录}
+\renewcommand{\figurename}{图}
 \makeatletter
 \renewcommand{\l@section}{\@dottedtocline{1}{0em}{1.8em}}
 \makeatother
@@ -37,6 +39,14 @@
 \date{2026年10月11日}
 \begin{document}
 \maketitle
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{figures/model_0923_framework.png}
+\caption{Model 0923 的机制总览。本题选择与口述共享反馈前状态。反馈分别更新规则信念和规则精度，假设更新为下一题准备候选。虚线表示跨试次状态传递。选择数据用于估计参数和更新粒子权重，真实口述用于评价预测。图示为修订设计，代码接入状态见第\ref{sec:implementation}节。图中反馈更新以二值任务为例，条件3的配对学习见第\ref{sec:pairing}节。}
+\label{fig:model-framework}
+\end{figure}
+\clearpage
 
 本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、信念与精度更新已有实现；本文重写的候选准入、连续作答权重和口述补充机制尚待同步代码。实现对应与验证范围见第\ref{sec:implementation}节。
 
