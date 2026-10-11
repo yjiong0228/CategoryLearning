@@ -1,4 +1,35 @@
-# Fig2a framework draft
+# Fig2 drafts
+
+[12 人口述分布总览](../outputs/fig2/generated_oral_distribution_20261011_v2/oral_distribution_overview.png) ·
+[逐人分布图与读图说明](../outputs/fig2/generated_oral_distribution_20261011_v2/README.md)，
+2026-10-11，新审阅草稿。
+
+口述分布入口为 `build_generated_oral_distribution.py`，使用已保存的生成口述概率。
+每行代表一种完整的口述内容，例如“脖子短 + 尾巴长”。每名被试的上方热图展示模型的
+平均预测概率，下方热图展示真实口述的出现频率，两图共用行顺序和 0–1 色阶。
+窗口包含当前试次在内的最近 64 个实际试次，至少需要 16 条可计分、完整编码的口述。
+模型平均概率与真实频率使用同一组试次。逐试次图另外保留每题的模型概率与单次口述观测。
+
+每张图的曲线给出完整口述空间中的分布重合度：逐种内容取两侧较小的概率，再相加。
+数值在 0–1 之间，1 表示两侧分布一致。完整空间包含模型词表与真实口述编码的并集，
+词表外口述的模型概率为 0，仍计入真实频率。窗口指标衡量口述内容的频率关系；
+逐题口述概率衡量具体试次的内容对应，两项结果可结合阅读。
+
+热图从完整空间中选出最多 24 种主要内容，星号标记模型词表外的内容。
+另外四行展示空描述（EMPTY）、模型定义的其他描述（OTHER）、其余词表内容和其余词表外内容。
+这些汇总行保留全部概率质量；重合度在汇总之前计算。每人完整编码、可读标签、显示行映射
+和滚动分布随图保存。不同被试的特征顺序及显示内容可以不同，逐人图提供对应行标签。
+
+```bash
+MPLCONFIGDIR=/tmp/model0826_oral_mpl \
+python -m CategoryLearning_codes.figures.fig2.build_generated_oral_distribution \
+  --source results/model_0826/oral_readout_alignment_20261011_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig2/generated_oral_distribution_NEW
+```
+
+输出目录须不存在。保留 12 人总览、每人的窗口图及逐试次图，共 25 张 PNG，
+以及完整空间源数组、指标表、图注、QA 与来源哈希。模型预测时点、表达参数和开发样本边界
+见下方生成口述评价说明及输出目录中的说明。
 
 [生成口述评价总览](../outputs/fig2/generated_oral_alignment_20261011_v3/oral_alignment_summary.png) ·
 [12 人学习轨迹](../outputs/fig2/generated_oral_alignment_20261011_v3/oral_alignment_trajectories.png)，

@@ -28,12 +28,20 @@ evaluation ─────────┘
 | `selection.py` | accuracy shape、history、switch 和代表轨迹选择所用的复合分数 |
 | `group.py` | 以被试等独立单位进行 paired delta、bootstrap 和 FDR 汇总 |
 | `residuals.py` | 逐试次顺序残差与因果状态诊断所需的纯数值函数 |
+| `oral_distribution_alignment.py` | 完整口述空间中的分布重合度、Jensen–Shannon 相似度，以及按实际试次窗口汇总的预测分布和真实口述频率 |
 | `numeric.py` | metric 模块复用的小型数值 helper |
 
 Condition 3 的 `condition3_task_metric_summaries()` 沿用调用方的 `valid_trial_mask`，
 不改变首试次排除规则。分别返回 observed/predicted 的种、科、平均得分；相同试次下
 `mean_reward = (species_accuracy + family_accuracy) / 2`。
 没有真实类别时，可由三值反馈计算观察指标，预测任务指标则保持缺失，不能用所选反应概率代替。
+
+口述分布比较使用模型词表与真实完整编码的并集。真实口述超出模型词表时，对应的预测概率为0，
+它仍进入真实口述频率的分母。窗口内的模型平均概率和真实频率使用相同的计分试次；默认窗口
+覆盖最近64个实际试次，至少包含16条可计分口述。分布重合度将每种口述内容两侧较小的概率
+相加，等于1减去总变差距离；Jensen–Shannon 相似度采用1减去以2为底的散度。两项指标均在
+0到1之间，1表示两个分布一致。窗口指标衡量内容出现频率的关系，逐题口述概率衡量具体试次
+内容的对应关系，两者分别保留。
 
 配置名 `accuracy_curve_berhu` 的实现是 `losses.accuracy_curve_berhu()`；更短的
 `accuracy_berhu()` 是同一实现的兼容入口。旧代码中的
