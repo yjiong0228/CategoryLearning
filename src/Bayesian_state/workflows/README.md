@@ -28,6 +28,41 @@ python -m src.Bayesian_state.workflows.analysis.evaluate_saved_oral_readout \
 
 ## 模型开发与拟合入口
 
+### Model 0923：已有0826结果的12人
+
+`configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml` 对固定开发样本估计13项行为参数。
+名单来自 `CategoryLearning_codes/figures/fig3/twelve_subject_config.json`，按原有0826结果选取：
+条件1为102、104、118、122；条件2为206、215、221、222；条件3为307、314、315、328。
+仿真基配置按被试组引用三个共享full-v3引擎，保留各条件的类别与反馈语义。
+数据取自 `data/exp123/processed/`；12人共有7,936个有效试次，第一条有效试次初始化状态，
+其余试次以反馈前选择概率计算负对数似然（NLL）。各人的完整有效序列用于参数估计，
+所得分数属于拟合内描述；这批人继续标为开发样本。
+
+13项参数的有限候选网格沿用当前0923拟合方案，候选值明确列在上述YAML中。
+每人依次执行粗搜、细搜及独立种子族复评分。粗搜使用两个随机起点、32粒子和4次重复；
+细搜从两个粗搜入围点出发，使用64粒子和8次重复；两阶段各起点最多三轮坐标搜索。
+完整一轮的平均NLL改善低于0.0001时停止。最多四个候选再以128粒子和16次重复评分，
+各试次概率先跨重复平均，再计算NLL并选择参数。最终记录保留停止原因及触边参数，
+搜索范围、起点覆盖和粒子滤波（PF）数值精度仍需结合结果检查。
+
+并行预算为128，每个进程使用一个数值线程，独立起点、候选、重复和粒子块共用一个进程池。
+被试按YAML顺序依次推进。关系参考刺激保持100,000个及种子0；知觉参数来自独立测量。
+搜索阶段关闭口述计算，口述用于选定行为参数后的独立预测检验。
+启动前将搜索YAML中的 `output_dir` 设为新目录，并固定源码及输入版本。
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
+python -m src.Bayesian_state.optimization.cli --backend cd \
+  --config configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+```
+
+同一源码、输入和配置下追加 `--resume` 继续本次搜索。
+各被试目录的 `parallel_progress_*.json` 记录评分进度；`restart_summary.json` 记录搜索停止原因，
+`final_rescore.jsonl` 与 `best_hyperparams.json` 保存独立复评分及入选参数。
+工期估计应同时考虑完整序列评分耗时、实际候选数、串行坐标依赖和机器负载。
+
+### MEG与其他开发入口
+
 MEG Task3b 的 Model 0923 full-v3 配置见 [MEG 配置说明](../../../configs/meg/README.md)。
 `runs/prepare_model_0923_meg.py` 核对16人输入，执行341号被试的32个有效试次拟合、独立复评分、
 固定种子复现和固定参数完整序列评分。它复用通用 Hyper-CD 与 simulation API，输出至新目录。

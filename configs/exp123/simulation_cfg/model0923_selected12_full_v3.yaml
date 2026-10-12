@@ -1,0 +1,31 @@
+# The fixed twelve-subject cohort with saved Model 0826 fits, four per condition.
+# Full observed histories; the Hyper-CD stages supply behavior parameters and PF budgets.
+engine_config_path: ../model_struct/model_0923_cond1_full_v3.yaml
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328]
+subject_overrides:
+  "206,215,221,222":
+    engine_config_path: ../model_struct/model_0923_cond2_full_v3.yaml
+  "307,314,315,328":
+    engine_config_path: ../model_struct/model_0923_cond3_full_v3.yaml
+dataset:
+  processed_dir: ../../../data/exp123/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary_24.csv
+  perception_summary_72: Task1b_errorsummary_72.csv
+  feature_order_data: Task2_processed.csv
+output_dir: ../../../results/model_0923/exp123_selected12_20261013_v1/fixed
+hyper_base_seed: 20261012
+n_jobs: 128
+simulation_repeats: 4
+repeat_aggregation: mean_probability
+window_size: 8
+stop_at: 1.0
+max_trials: null
+keep_logs: false
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

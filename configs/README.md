@@ -5,7 +5,11 @@
 - `exp123/`：原 configs 中的 condition 1 模型版本、运行/恢复设计、超参数搜索及口述编码适配。
 - `exp4/`：概率原型实验的原 configs/exp4 配置。
 - `exp5/`：原 configs/exp5 配置。
-- `meg/`：预留统一配置位置，目前没有已迁入的运行 YAML。
+- `meg/`：Task3b的Model 0923 full-v3拟合配置及单被试验证YAML，见[MEG配置说明](meg/README.md)。
+
+`exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml` 为已有0826结果的固定12人拟合0923。
+它引用 `exp123/simulation_cfg/model0923_selected12_full_v3.yaml`，按被试组选择三个共享full-v3引擎，
+以完整有效试次估计13项行为参数；名单、数值预算和运行方法见[工作流说明](../src/Bayesian_state/workflows/README.md#model-0923已有0826结果的12人)。
 
 期刊专用配置仍在 `CategoryLearning_codes/Bayesian_model/configs/`，调用同一共享模型。
 数据与输出的 `../` 相对路径以所在 YAML 为基准；迁移增加了一级目录，已相应调整。
