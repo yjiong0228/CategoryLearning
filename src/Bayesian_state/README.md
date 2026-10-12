@@ -15,7 +15,17 @@
 > 当前 full v3 / B0 v3 采用29条二分类 / 152条四分类目录；新增两组各12条规则，
 > 见[规范第17节](docs/model_architecture/model_0923.md#17-四分类目录扩展到-152-条2026-10-11)。
 > 提供三条件小规模配置、口述结构审查和允许模糊躯干参照的候选报告矩阵；
-> 报告参数校准、真实联合拟合和最终机制选择尚未完成。0826 继续作为现有比较基准。
+> 行为参数仅用选择数据拟合；口述使用事先固定的共同表达设置生成预测，与真实内容比较。
+> 批量口述预测比较和最终机制选择尚未完成。0826 继续作为现有比较基准。
+> 2026-10-10 已确认容量仅设上限，以及被试层面估计失败保持时间的五参数搜索控制，
+> 见机制规范第14节（对应 TeX/PDF 第5节的假设更新模块）。该节统一说明搜索控制、
+> 结构／功能候选生成、退出、容量管理和信念分配；第15节说明选择读出。
+> 已接入完整模型（full）及三条件配置；原 B0 v2 继续兼容。完整模型沿用共享精度学习，
+> 结构编辑成本是初版共同假设，被试拟合和 0826 表现保持尚未验证；运行入口见规范第 16 节。
+> 2026-10-11 已重写假设更新、选择读出和口述读出章节，采用容量处理后的一次信念分配、
+> 带主导惯性的作答贡献权重，以及显著度选择补充部位；其中行为修订已接入 full-v3，口述显著度设计尚待接入，
+> 设计与现有实现的对应见规范第16.4节。口述只用于生成预测并跟真实内容比较。
+> 文档按知觉、证据记忆、假设更新、精度更新、选择读出和口述读出组织，模块标识沿用 P、M、H、B、RC、RO。
 
 > 本目录是期刊与博士论文共同维护的模型实现。期刊的配置、入口和验证位于
 > [`CategoryLearning_codes/Bayesian_model`](../../CategoryLearning_codes/Bayesian_model/README.md)，
@@ -164,7 +174,7 @@ results/subjects/*.json + optional compressed run streams
 2. `model/state_model.py` 与 `model/assembly.py`：模型生命周期与 YAML 装配。
 3. `model/engine.py`：一个 trial 怎样按阶段和模块职责调度。
 4. `model/modules/README.md`：各认知模块的输入、状态与公式。
-   `model/readout.py` 集中 choice、output-noise、RT 和 oral-report 读出。
+   `model/modules/readout/` 集中输出层，内部区分 choice 与 oral，并包含反应时接口。
 5. `inference/dispatcher.py` 与 `inference/backends/`：怎样选择和运行推理后端。
 6. `metrics/README.md`：共享指标的数据契约与依赖边界。
 7. `simulation/execution.py`：单次 StateModel 执行怎样转换为公共指标和损失。
