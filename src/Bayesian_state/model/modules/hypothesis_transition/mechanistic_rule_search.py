@@ -109,10 +109,18 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.confusion_tensor = engine.partition.similarity.get_confusion_tensor(
             distance_mode="boundary", n_samples=self.relation_samples,
             random_state=self.relation_seed)
-        self.functional_similarity = np.trace(self.confusion_tensor, axis1=2, axis2=3)
-        self.functional_similarity.setflags(write=False)
-        self._distance_matrix = np.clip(1-self.functional_similarity, 0, 1)
-        self._distance_matrix.setflags(write=False)
+        relation_owner = engine.partition.similarity
+        resources = getattr(relation_owner, "_0923_relation_resources", None)
+        if resources is None or not np.shares_memory(resources[0], self.confusion_tensor):
+            agreement = np.trace(self.confusion_tensor, axis1=2, axis2=3)
+            distance = np.clip(1-agreement, 0, 1)
+            # These fixed catalogue relations are shared by the particles.
+            # Bytes-backed buffers prevent changes through a writable view.
+            agreement = np.frombuffer(agreement.tobytes(), dtype=float).reshape(agreement.shape)
+            distance = np.frombuffer(distance.tobytes(), dtype=float).reshape(distance.shape)
+            resources = self.confusion_tensor, agreement, distance
+            relation_owner._0923_relation_resources = resources
+        self.functional_similarity, self._distance_matrix = [array.view() for array in resources[1:]]
         self.base_prior = np.asarray(engine.prior, dtype=float).copy()
         if (self.base_prior.shape != (self.total_hypo,) or not np.isfinite(self.base_prior).all()
                 or np.any(self.base_prior <= 0)):

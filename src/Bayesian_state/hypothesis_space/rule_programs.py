@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -13,6 +14,8 @@ from .spaces.structural_0923 import FAMILY_SIMILARITY_AXIS
 
 GRAMMAR_VERSION = "judgment_program_edits_v1"
 EDIT_OPERATIONS = frozenset({"feature", "relation", "reference", "branch"})
+_EDIT_CACHE: OrderedDict[tuple, tuple[tuple["RuleProgram", ...], np.ndarray]] = OrderedDict()
+_EDIT_CACHE_SIZE = 8
 
 
 @dataclass(frozen=True)
@@ -185,6 +188,13 @@ def build_rule_edit_costs(
 ) -> tuple[tuple[RuleProgram, ...], np.ndarray]:
     """Return legal one-edit costs, using infinity for unavailable edits."""
     costs = validate_edit_costs(costs)
+    key = (GRAMMAR_VERSION, space.content_signature, tuple(sorted(costs.items())))
+    cached = _EDIT_CACHE.get(key)
+    if cached is not None:
+        _EDIT_CACHE.move_to_end(key)
+        programs, distance = cached
+        # An independent header prevents caller reshaping from changing the cache.
+        return programs, distance.view()
     programs = tuple(compile_rule_program(spec) for spec in space)
     if len(set(programs)) != len(programs):
         raise ValueError("the rule catalogue contains duplicate canonical programs")
@@ -205,5 +215,9 @@ def build_rule_edit_costs(
                 options.append(costs["branch"])
             if options:
                 distance[i, j] = distance[j, i] = min(options)
-    distance.setflags(write=False)
-    return programs, distance
+    # A bytes buffer also prevents callers from making shared costs writable.
+    distance = np.frombuffer(distance.tobytes(), dtype=float).reshape(distance.shape)
+    _EDIT_CACHE[key] = programs, distance
+    while len(_EDIT_CACHE) > _EDIT_CACHE_SIZE:
+        _EDIT_CACHE.popitem(last=False)
+    return programs, distance.view()

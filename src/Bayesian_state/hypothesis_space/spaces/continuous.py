@@ -5,6 +5,8 @@ from __future__ import annotations
 import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
+from hashlib import sha256
 from itertools import product
 from typing import Iterable, Iterator, Sequence
 
@@ -96,6 +98,28 @@ class ContinuousHypothesisSpace:
                 )
             ),
         )
+
+    @cached_property
+    def content_signature(self) -> str:
+        """Hash the immutable catalogue once, including exact region buffers.
+
+        Derived rule resources can be shared across particles and separately
+        constructed catalogues. Injected spaces with the same version but
+        different geometry receive different keys.
+        """
+        digest = sha256(repr(self.signature).encode())
+        for spec in self:
+            digest.update(repr((spec.index, spec.family, spec.hyperplanes,
+                                tuple(spec.parameters.items()), spec.feedback_neighbors,
+                                spec.base_hypothesis_index, spec.label_permutation,
+                                spec.is_label_permuted, len(spec.categories))).encode())
+            for category in spec.categories:
+                digest.update(repr(len(category.components)).encode())
+                for component in category.components:
+                    for array in (component.A, component.b):
+                        digest.update(repr((array.shape, array.dtype.str)).encode())
+                        digest.update(array.tobytes())
+        return digest.hexdigest()
 
 
 FAMILY_UNIVARIATE_THRESHOLD = "univariate_threshold"

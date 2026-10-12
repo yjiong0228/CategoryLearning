@@ -62,6 +62,7 @@ stages:
     simulation_overrides:
       simulation_repeats: 4
       engine_config:
+        oral_readout: null  # Predict reports after parameter selection.
         inference:
           particle_count: 32
   fine:
@@ -72,6 +73,7 @@ stages:
     simulation_overrides:
       simulation_repeats: 8
       engine_config:
+        oral_readout: null
         inference:
           particle_count: 64
 final_rescore:
@@ -82,5 +84,6 @@ final_rescore:
     simulation_repeats: 16
     repeat_aggregation: mean_probability
     engine_config:
+      oral_readout: null
       inference:
         particle_count: 128

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import os
 from pathlib import Path
+import tempfile
 import warnings
+from zipfile import BadZipFile
 
 import numpy as np
 
@@ -153,8 +156,8 @@ class ContinuousSimilarity:
     ) -> np.ndarray:
         """Return P(c_h=a,c_u=b); 0923 full model derives agreement from the same samples.
 
-        This separate in-memory cache never reads or overwrites legacy matrices,
-        whose resource generation seed is not always recorded.
+        Content-keyed memory and disk caches retain the fixed reference sample.
+        Disk publication is exclusive and atomic, including concurrent workers.
         """
         mode = str(distance_mode).strip().lower()
         if mode not in {"prototype", "boundary"}:
@@ -165,10 +168,18 @@ class ContinuousSimilarity:
         key = self._cache_key(distance_mode=mode, n_samples=count,
                               random_state=random_state, sample_distribution="uniform")
         # Include content as well as catalogue version for injected test spaces.
-        content = tuple(repr(spec.categories) for spec in self.space)
-        key = (*key, sha256(repr(content).encode()).hexdigest(), "confusion_tensor_v1")
+        geometry_settings = ((self.boundary.dykstra_backend, self.boundary.CACHE_VERSION)
+                             if mode == "boundary" else (self.prototype.method,))
+        key = (*key, self.space.content_signature, geometry_settings, "confusion_tensor_v1")
         if stimuli is None and key in self._confusion_cache:
-            return self._confusion_cache[key]
+            return self._confusion_cache[key].view()
+        key_digest = sha256(repr(key).encode()).hexdigest()
+        path = self.runtime_cache_dir / f"confusion_{key_digest}.npz"
+        if stimuli is None:
+            tensor = self._load_confusion_tensor(path, key_digest)
+            if tensor is not None:
+                self._remember_confusion(key, tensor)
+                return tensor.view()
         values = (np.random.default_rng(random_state).random((count, self.space.n_dims))
                   if stimuli is None else np.asarray(stimuli, dtype=float))
         if (values.ndim != 2 or values.shape[1] != self.space.n_dims
@@ -185,12 +196,52 @@ class ContinuousSimilarity:
                                      minlength=cats * cats).reshape(cats, cats)
                 tensor[h, u] = counts / len(values)
                 tensor[u, h] = tensor[h, u].T
-        tensor.setflags(write=False)
+        tensor = np.frombuffer(tensor.tobytes(), dtype=float).reshape(tensor.shape)
         if stimuli is None:
-            if len(self._confusion_cache) >= 8:
-                self._confusion_cache.pop(next(iter(self._confusion_cache)))
-            self._confusion_cache[key] = tensor
-        return tensor
+            self._save_confusion_tensor(path, key_digest, tensor)
+            self._remember_confusion(key, tensor)
+        return tensor.view()
+
+    def _remember_confusion(self, key: tuple, tensor: np.ndarray) -> None:
+        if len(self._confusion_cache) >= 8:
+            self._confusion_cache.pop(next(iter(self._confusion_cache)))
+        self._confusion_cache[key] = tensor
+
+    def _load_confusion_tensor(self, path: Path, key_digest: str) -> np.ndarray | None:
+        try:
+            with np.load(path, allow_pickle=False) as archive:
+                tensor = archive["tensor"]
+                if (str(archive["key_sha256"]) != key_digest
+                        or tensor.dtype != np.float64
+                        or tensor.shape != (len(self.space), len(self.space), self.space.n_cats, self.space.n_cats)
+                        or str(archive["tensor_sha256"]) != sha256(tensor.tobytes()).hexdigest()
+                        or not np.all(np.isfinite(tensor)) or np.any(tensor < 0.)
+                        or not np.allclose(tensor.sum(axis=(2, 3)), 1., rtol=0., atol=1e-12)
+                        or not np.array_equal(tensor, tensor.transpose(1, 0, 3, 2))):
+                    return None
+        except (OSError, ValueError, KeyError, EOFError, TypeError, BadZipFile):
+            return None
+        return np.frombuffer(tensor.tobytes(), dtype=float).reshape(tensor.shape)
+
+    @staticmethod
+    def _save_confusion_tensor(path: Path, key_digest: str, tensor: np.ndarray) -> None:
+        # Leave existing caches, including malformed files, untouched. An
+        # unwritable cache directory affects reuse only, not model execution.
+        if path.exists():
+            return
+        temporary = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".confusion_", suffix=".npz", delete=False) as stream:
+                temporary = Path(stream.name)
+                np.savez(stream, tensor=tensor, key_sha256=key_digest,
+                         tensor_sha256=sha256(tensor.tobytes()).hexdigest())
+            os.link(temporary, path)
+        except OSError:
+            pass
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     def _compatible_resource_path(
         self,
@@ -274,10 +325,15 @@ class ContinuousSimilarity:
             [geometry.category_assignments(item.index, values) for item in self.space],
             dtype=int,
         )
-        return np.mean(
-            assignments[:, None, :] == assignments[None, :, :],
-            axis=2,
-        )
+        # Count one upper-triangle row at a time. The former H × H × samples
+        # boolean temporary used 2.31 GB for 152 rules and 100,000 samples.
+        # Each row keeps the same mean arithmetic; symmetry halves the work.
+        matrix = np.eye(len(self.space), dtype=float)
+        for h in range(len(self.space) - 1):
+            agreement = np.mean(assignments[h + 1:] == assignments[h], axis=1)
+            matrix[h, h + 1:] = agreement
+            matrix[h + 1:, h] = agreement
+        return matrix
 
 
 def prototype_center_scores(

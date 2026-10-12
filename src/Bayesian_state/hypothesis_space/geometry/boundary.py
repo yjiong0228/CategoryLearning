@@ -398,9 +398,8 @@ class BoundaryGeometry:
         values = as_stimuli(stimuli, self.space.n_dims)
         tolerance = self.tolerance if tol is None else float(tol)
         categories = self.space[int(hypo)].categories
-        distances = self.category_distances(hypo, values)
         memberships = np.zeros((values.shape[0], len(categories)), dtype=bool)
-        violation_scores = np.full_like(distances, np.inf)
+        violation_scores = np.full(memberships.shape, np.inf, dtype=float)
         for category_index, category in enumerate(categories):
             for component in category.components:
                 constraints, bounds = self._bounded_constraints(component)
@@ -413,12 +412,18 @@ class BoundaryGeometry:
                     np.clip(violations, 0.0, None).sum(axis=1),
                 )
 
-        assignments = np.argmin(distances, axis=1).astype(int)
-        for row in np.flatnonzero(np.any(memberships, axis=1)):
-            candidates = np.flatnonzero(memberships[row])
-            assignments[row] = int(
-                candidates[np.argmin(violation_scores[row, candidates])]
-            )
+        covered = np.any(memberships, axis=1)
+        if self.method == self.METHOD_DYKSTRA and np.all(covered):
+            # Membership completely determines these hard labels. Reference
+            # samples in the task cube avoid projecting into every other region.
+            assignments = np.zeros(values.shape[0], dtype=int)
+        else:
+            # Keep the full-batch distance fallback and KKT solver validation.
+            assignments = np.argmin(self.category_distances(hypo, values), axis=1).astype(int)
+        # Preserve the first-category tie convention while assigning all
+        # covered rows together. Distances still handle uncovered stimuli.
+        scores = np.where(memberships[covered], violation_scores[covered], np.inf)
+        assignments[covered] = np.argmin(scores, axis=1)
         return assignments
 
 

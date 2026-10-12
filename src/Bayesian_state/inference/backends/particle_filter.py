@@ -18,6 +18,7 @@ import numpy as np
 
 from ..results import InferenceResult, ParticleFilterResult
 from ...model.config import ModelContext
+from ...model.engine import BayesianStateEngine
 from ...model.modules.base_module import ModuleRole
 from ...model.modules.readout.choice import (
     DecisionRuleSnapshot,
@@ -173,7 +174,12 @@ def _snapshot(model: Any) -> _CognitiveSnapshot:
     engine = model.engine
     if not hasattr(engine, "state_dict"):
         raise TypeError("StateModel engine does not implement state_dict().")
-    return _CognitiveSnapshot(payload=deepcopy(engine.state_dict()))
+    payload = engine.state_dict()
+    # The shared engine already owns every core/module buffer in its snapshot.
+    # Keep the defensive copy for custom engines with a weaker ownership contract.
+    return _CognitiveSnapshot(
+        payload=payload if type(engine) is BayesianStateEngine else deepcopy(payload)
+    )
 
 
 def _snapshot_ancestors(models: Sequence[Any], ancestors: np.ndarray) -> list[_CognitiveSnapshot]:
@@ -208,7 +214,11 @@ def _restore(
     engine = model.engine
     if not hasattr(engine, "load_state_dict"):
         raise TypeError("StateModel engine does not implement load_state_dict().")
-    engine.load_state_dict(deepcopy(snapshot.payload))
+    payload = (snapshot.payload if type(engine) is BayesianStateEngine
+               else deepcopy(snapshot.payload))
+    # Shared-engine restoration copies core values and each module payload;
+    # siblings therefore retain independent state without an outer copy.
+    engine.load_state_dict(payload)
     if hasattr(engine, "clear_module_logs"):
         engine.clear_module_logs()
 

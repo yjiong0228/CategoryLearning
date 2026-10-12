@@ -135,3 +135,24 @@ env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_T
 
 这些单任务时间不是完整拟合时间，也不是 128-worker 吞吐实测。估计完整工期还需结合
 实际搜索候选批次、seed 数、缓存命中、被试试次数和当前串行依赖。
+
+## Model 0923 性能与等价性检查
+
+`profile_model_0923.py` 使用正式数据加载器和 full-v3 引擎，对一名被试的短序列测量
+首次调用、预热后的重复时间和热点。默认16试次、8粒子、一个进程；数值库线程为1。
+关系参考样本默认保留100,000个，可在短检查中显式指定较小值。
+`--capture-states` 另行保存每个粒子反馈前后的完整状态和随机数状态，其开销与计时分开。
+输出保存数组、实际引擎配置、版本与源码/数据哈希，已有输出目录会报错。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 NUMBA_CACHE_DIR=/tmp/model0923_numba \
+  python -m src.Bayesian_state.workflows.benchmarks.profile_model_0923 \
+  --condition 3 --trials 16 --particles 8 --relation-samples 512 \
+  --capture-states --output-dir /tmp/model0923-check-new
+```
+
+通过 `--reference <修改前目录>/arrays.npz` 逐项要求完全相等；配置、种子、口述设置及
+状态捕获选项须与参考一致。`--without-oral` 测量选择拟合的计算路径；
+`--similarity-cache-dir <目录>` 允许不同进程复用固定资源，用于检查磁盘缓存的启动成本。
+此入口测量单次 PF；完整参数搜索和128进程吞吐需要另行计时。
+审查范围、实测收益和拟合配置建议见 [加速记录](../../docs/maintenance/model_0923_acceleration_20261012.md)。
