@@ -52,7 +52,31 @@ Correct feedback supports probability assigned to the chosen category; incorrect
 
 \subsection*{Precision updating (B): adjusting prediction precision}
 \label{m:precision}
-Precision updating (B) adjusts the concentration of each rule's predictions. Feedback is supporting when its likelihood exceeds the probability under uniform category predictions and contradictory when it falls below that reference. For binary feedback, the references are $1/C$ for a correct response and $1-1/C$ for an incorrect response. Supporting feedback increases precision toward an upper bound; contradictory feedback reduces current precision toward a lower bound. Separate learning rates $\eta_+$ and $\eta_-$ govern these changes. Belief and precision update in parallel using the predictions formed before feedback: belief measures support among explanations, whereas precision determines the sharpness of each explanation's predictions.
+Precision updating (B) adjusts the concentration of each rule's predictions according to how well it explains feedback. For binary feedback, uniform category predictions give the reference likelihood $\ell_{\mathrm{chance}}(r_t)=r_t/C+(1-r_t)(1-1/C)$. Comparing the rule's likelihood with this reference gives the normalized support
+\begin{equation}
+\kappa_t(h)=
+\begin{cases}
+\dfrac{\ell_t(h)-\ell_{\mathrm{chance}}}{1-\ell_{\mathrm{chance}}},
+&\ell_t(h)\geq\ell_{\mathrm{chance}},\\[6pt]
+\dfrac{\ell_t(h)-\ell_{\mathrm{chance}}}{\ell_{\mathrm{chance}}},
+&\ell_t(h)<\ell_{\mathrm{chance}},
+\end{cases}
+\label{eq:precision-support}
+\end{equation}
+where $\ell_{\mathrm{chance}}$ denotes the reference for the current feedback. Support ranges from $-1$ to $1$: positive values indicate that the rule explains the feedback better than uniform predictions, negative values indicate weaker agreement, and zero indicates equal likelihood.
+
+Support determines the direction and size of the precision change:
+\begin{equation}
+\beta_{t+1}(h)=
+\begin{cases}
+\min\{\beta_t(h)+\eta_+\kappa_t(h)[\beta_{\max}-\beta_t(h)],\,\beta_{\max}\},
+&\kappa_t(h)\geq0,\\[4pt]
+\max\{\beta_t(h)+\eta_-\kappa_t(h)\beta_t(h),\,\beta_{\min}\},
+&\kappa_t(h)<0.
+\end{cases}
+\label{eq:precision-update}
+\end{equation}
+The participant-level rates $\eta_+,\eta_-\in[0,1]$ control increases and decreases, with shared bounds $\beta_{\min}=0.1$ and $\beta_{\max}=25$. Supporting feedback moves precision toward the upper bound, with smaller increases as that bound approaches. Contradictory feedback reduces a fraction of current precision, subject to the lower bound; zero support leaves it unchanged. All active rules update, and the new precisions affect predictions on the next trial. Belief and precision update in parallel using the predictions formed before feedback: belief measures support among explanations, whereas precision determines the sharpness of each explanation's predictions.
 
 \subsection*{Hypothesis updating (H): managing available rules}
 \label{m:hypothesis}
@@ -93,7 +117,14 @@ p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
 \end{equation}
 Evidence memory applies the discounted update $\Pi_t^+(h,k)\propto[\Pi_t^-(h,k)]^{\gamma}\ell_t(h,k)$, normalized across active rule--pairing combinations. Summing over pairings yields each rule's belief. This joint representation lets partial feedback refine classification as response-pair knowledge develops.
 
-For precision updating, likelihoods are averaged over each rule's pairing beliefs after memory discounting and before current feedback is incorporated. Support is measured relative to uniform-prediction probabilities of $1/4$, $1/4$ and $1/2$ for full, partial and zero credit, respectively. As with binary feedback, positive support increases precision and negative support decreases it. During candidate changes, retained rules preserve their conditional pairing beliefs. An entrant inherits the overall pairing distribution obtained after feedback and before candidate removal, carrying learned family relations into the new hypothesis.
+For precision updating, let $\widetilde q_t^-(k\mid h)\propto[\Pi_t^-(h,k)]^{\gamma}$ denote each rule's pairing distribution after memory discounting, normalized over pairings and before current feedback is incorporated. The marginal feedback likelihood is $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$. Uniform-prediction probabilities $\ell_{\mathrm{chance}}(r_t)$ are $1/4$, $1/4$ and $1/2$ for full, partial and zero credit, respectively. Graded feedback uses the support
+\begin{equation}
+\kappa_t^{(3)}(h)=
+\frac{\ell_t(h)-\ell_{\mathrm{chance}}(r_t)}
+{\ell_t(h)+\ell_{\mathrm{chance}}(r_t)}.
+\label{eq:graded-precision-support}
+\end{equation}
+This support enters the precision update in Eq.~\eqref{eq:precision-update}: positive values increase precision and negative values decrease it. During candidate changes, retained rules preserve their conditional pairing beliefs. An entrant inherits the overall pairing distribution obtained after feedback and before candidate removal, carrying learned family relations into the new hypothesis.
 
 \subsection*{Inference from choices}
 \label{m:inference}

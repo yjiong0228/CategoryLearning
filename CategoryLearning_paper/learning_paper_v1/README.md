@@ -42,8 +42,10 @@ and the Discussion remain explicit placeholders.
 Methods defines the states and the main probability relationships needed to
 understand the model. It explains the role of each cognitive module, the
 feedback-learning cycle, hierarchical relations and inference uncertainty.
-The original model specification retains the full rule catalogue, numerical
-constants, exact precision and belief-transfer formulas, and algorithmic
+Precision updating includes the feedback-support formulas for binary and
+graded feedback, the bounded update equation and its learning rates.
+The original model specification retains the full rule catalogue, detailed
+numerical settings, exact belief-transfer formulas, and algorithmic
 boundary handling. Numerical fitting settings and strategy-validation
 definitions remain to be specified for the final analyses.
 
