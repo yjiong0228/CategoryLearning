@@ -43,6 +43,11 @@ and the Discussion remain explicit placeholders.
 Methods defines the states and the main probability relationships needed to
 understand the model. It explains the role of each cognitive module, the
 feedback-learning cycle, hierarchical relations and inference uncertainty.
+For graded feedback, rule beliefs and conditional pairing beliefs are discounted
+and normalized separately before the joint feedback update. They share the same
+retention parameter, `gamma`, which assumes equal retention at the two levels.
+Evidence memory and precision updating use the same discounted pairing beliefs
+formed before the current feedback.
 Precision updating uses the gradient of the log feedback likelihood to calibrate
 each rule's prediction precision. Binary and graded feedback share this gradient
 and a bounded additive update with one learning rate, `eta`. Its two participant
@@ -86,6 +91,7 @@ Mathematical notation follows the model specification.
 | Model architecture and equations | Current specified design |
 | Revised candidate management and continuous choice readout | Code synchronization pending |
 | Precision calibration with one learning rate (2026-10-12) | Code synchronization pending |
+| Separate discounting of rule and conditional pairing beliefs (2026-10-12) | Code synchronization pending |
 | Behavioral findings and model comparison | Results reserved |
 | Latent trajectories and feedback-condition effects | Results reserved |
 | Generative predictions and identifiability | Results reserved |
@@ -96,9 +102,10 @@ Discussion remain to be completed from the corresponding analyses. Participant
 recruitment, exclusions, ethics and the final analysis cohort also require
 verified study information.
 
-The revised precision updating, candidate management and choice readout require
-implementation in the shared model before fitting. Parameter fitting and
-validation of this revised design remain incomplete.
+Separate rule and conditional pairing discounting, revised precision updating,
+candidate management and choice readout require implementation in the shared
+model before fitting. Parameter fitting and validation of this revised design
+remain incomplete.
 
 ## Compile
 

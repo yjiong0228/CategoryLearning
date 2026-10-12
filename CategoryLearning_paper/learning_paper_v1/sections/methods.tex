@@ -95,7 +95,7 @@ If a search event would exceed capacity, the least-supported retained rule is re
 \subsection*{Learning hierarchical category relations}
 \label{m:pairing}
 
-Graded feedback provides evidence about both classification and family membership. In condition~3, the model maintains joint beliefs $\Pi_t(h,k)$ over rules and the three possible pairings $k$ of four response labels. Pairing beliefs initially assign equal probability to each possibility. Let $\operatorname{mate}_k(y)$ denote the other response in the same family under pairing $k$. The feedback likelihood is
+Graded feedback provides evidence about both classification and family membership. In condition~3, the model maintains joint beliefs $\Pi_t(h,k)$ over rules and the three possible pairings $k$ of four response labels. The conditional pairing belief is $q_t^-(k\mid h)=\Pi_t^-(h,k)/\pi_t^-(h)$. Pairing beliefs initially assign equal probability to each possibility. A rule with zero marginal belief uses a uniform conditional pairing distribution. Let $\operatorname{mate}_k(y)$ denote the other response in the same family under pairing $k$. The feedback likelihood is
 \begin{equation}
 \ell_t(h,k)=
 \begin{cases}
@@ -105,18 +105,23 @@ p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
 \end{cases}
 \label{eq:graded-likelihood}
 \end{equation}
-Evidence memory applies the discounted update $\Pi_t^+(h,k)\propto[\Pi_t^-(h,k)]^{\gamma}\ell_t(h,k)$, normalized across active rule--pairing combinations. Summing over pairings yields each rule's belief. This joint representation lets partial feedback refine classification as response-pair knowledge develops.
-
-For precision updating, the pairing distribution is evaluated after memory discounting and before incorporating the current feedback:
+Evidence memory discounts rule beliefs and conditional pairing beliefs separately, using the same retention parameter $\gamma$. This shared parameter assumes equal retention at the two levels. Rule beliefs are raised to $\gamma$ and normalized across active rules. Conditional pairing beliefs are normalized within each rule:
 \begin{equation}
 \widetilde q_t^-(k\mid h)=
-\frac{[\Pi_t^-(h,k)]^{\gamma}}
-{\sum_{k'=1}^{3}[\Pi_t^-(h,k')]^{\gamma}}.
+\frac{[q_t^-(k\mid h)]^{\gamma}}
+{\sum_{k'=1}^{3}[q_t^-(k'\mid h)]^{\gamma}}.
 \label{eq:discounted-pairing}
 \end{equation}
-When $\gamma=0$, active rule--pairing combinations receive equal weight. A rule with zero total joint belief uses a uniform conditional pairing distribution.
+Both distributions are computed from beliefs preceding the current feedback. At $\gamma=0$, rules receive equal weight and each conditional pairing distribution is uniform before feedback. At $\gamma=1$, the update retains all previous rule and pairing support.
 
-The pairing-averaged feedback likelihood is $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$. This likelihood enters the precision gradient and update in Eqs.~\eqref{eq:precision-gradient} and~\eqref{eq:precision-update}. Differentiation varies precision in the category predictions while holding the discounted pairing distribution and category distances fixed.
+Feedback then updates the joint belief:
+\begin{equation}
+\Pi_t^+(h,k)\propto[\pi_t^-(h)]^{\gamma}\widetilde q_t^-(k\mid h)\ell_t(h,k),
+\label{eq:joint-feedback-update}
+\end{equation}
+normalized across active rule--pairing combinations. Summing over pairings yields each rule's belief, and dividing by that belief yields its updated conditional pairing distribution. This joint update retains the dependence between classification and pairing knowledge.
+
+Evidence memory and precision updating use the same discounted, pre-feedback pairing distribution. The pairing-averaged feedback likelihood is $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$. This likelihood enters the precision gradient and update in Eqs.~\eqref{eq:precision-gradient} and~\eqref{eq:precision-update}. Differentiation varies precision in the category predictions while holding the discounted pairing distribution and category distances fixed.
 
 During candidate changes, retained rules preserve their conditional pairing beliefs. An entrant inherits the overall pairing distribution obtained after feedback and before candidate removal, carrying learned family relations into the new hypothesis.
 
@@ -141,7 +146,7 @@ The full model defines 13 participant-level parameters, including $\beta_0$ and 
 \end{equation}
 where $\mathcal T_{\mathrm{score}}$ is the set of scored trials and $T$ its size. Predictions are formed before current feedback. Choice likelihood is the fitting objective.
 
-\draftslot{Implementation and validation of the revised precision update remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
+\draftslot{Implementation and validation of the revised memory and precision updates remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
 
 \subsection*{Interpreting reconstructed trajectories}
 \label{m:measures}
