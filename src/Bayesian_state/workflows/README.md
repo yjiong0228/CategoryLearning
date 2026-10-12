@@ -28,6 +28,11 @@ python -m src.Bayesian_state.workflows.analysis.evaluate_saved_oral_readout \
 
 ## 模型开发与拟合入口
 
+MEG Task3b 的 Model 0923 full-v3 配置见 [MEG 配置说明](../../../configs/meg/README.md)。
+`runs/prepare_model_0923_meg.py` 核对16人输入，执行341号被试的32个有效试次拟合、独立复评分、
+固定种子复现和固定参数完整序列评分。它复用通用 Hyper-CD 与 simulation API，输出至新目录。
+全体拟合使用该目录的 Hyper-CD 配置；参数范围和 PF 预算为初始设定。
+
 Model 0923 的新开发入口见[机制规范](../docs/model_architecture/model_0923.md)。
 `analysis/prepare_model_0923.py` 生成现有被试的原话审查清单，不运行拟合，也不把
 编码有效当成规则目录覆盖。`analysis/audit_model_0923_reports.py` 进一步保守解析完整分句，
@@ -48,7 +53,8 @@ python -m src.Bayesian_state.workflows.analysis.probe_model_0923_structure \
 
 三个 `model0923_cond*_B0_smoke.yaml` 现使用 B0 v2 配置，经原 `run_simulation` 入口
 检查单人前 32 题：二分类 29 条、四分类 128 条，输出到新的 `cond*_B0_v2_smoke_20260923_v1` 目录。
-相似度首次按新空间生成并缓存；重跑必须使用新输出目录。尚无 0923 的正式多人拟合入口。
+相似度首次按新空间生成并缓存；重跑必须使用新输出目录。
+0923 的 MEG 多人拟合配置已建立，完整拟合及参数恢复待运行。
 
 新观察数据的 Model 0826 PMH 拟合默认走
 `python -m src.Bayesian_state.run_model_0826_fit`，见 [配置与用法](../optimization/ADAPTIVE_FIT.md)。

@@ -1,0 +1,10 @@
+# Subject 341 has an omission at raw trial 8, inside the short validation window.
+hyper_config_path: hyper_cd_cfg/model0923_task3b.yaml
+subject: 341
+max_trials: 32
+particle_count: 4
+final_particle_count: 8
+final_repeats: 2
+final_shortlist_size: 2
+hyper_base_seed: 20261012
+output_dir: ../../results/model_0923/meg/preparation_20261012_v1

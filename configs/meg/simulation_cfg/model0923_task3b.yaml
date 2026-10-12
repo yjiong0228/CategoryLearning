@@ -1,0 +1,38 @@
+# Full observed histories; behavior parameters are supplied by Hyper-CD.
+engine_config_path: ../../exp123/model_struct/model_0923_cond3_full_v3.yaml
+engine_config:
+  provenance:
+    dataset: meg_task3b
+  data:
+    subject_column: iSub
+    condition_column: condition
+    category_column: category
+    feature_columns: [feature1, feature2, feature3, feature4]
+    trial_order_columns: [iSession, iRun, iTrial]
+  modules:
+    perception_mod:
+      kwargs:
+        noise_mode: uniform
+subjects: [333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348]
+dataset:
+  processed_dir: ../../../data/meg/processed
+  learning_data: Task3b_processed.csv
+  perception_summary: Task1b_errorsummary.csv
+  perception_summary_72: Task1b_errorsummary.csv
+  feature_order_data: Task3b_processed.csv
+output_dir: ../../../results/model_0923/meg/task3b_fixed_v1
+hyper_base_seed: 20261012
+n_jobs: 128
+simulation_repeats: 4
+repeat_aggregation: mean_probability
+window_size: 8
+stop_at: 1.0
+max_trials: null
+keep_logs: false
+prediction_mode: prior_t
+selection_prediction_mode: prior_t
+loss_metric: choice_nll
+evaluation_protocol:
+  mode: all
+statistics_config:
+  enabled: false

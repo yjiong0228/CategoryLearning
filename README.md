@@ -23,7 +23,7 @@
 | `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史模型定义；当前依据为 `model_0826.tex` |
 | `data/exp123/` | 期刊数据，也是博士论文数据的一部分 |
 | `data/exp4/`、`data/exp5/`、`data/meg/` | 博士论文其他实验数据 |
-| `configs/{shared,exp123,exp4,exp5,meg}/` | 共享定义与按实验分组的配置；MEG 当前只预留位置 |
+| `configs/{shared,exp123,exp4,exp5,meg}/` | 共享定义与按实验分组的配置；MEG 提供 Task3b Model 0923 拟合与试跑配置 |
 | `src/Bayesian_state/workflows/`、`notebooks/` | 模型运行/分析/报告/性能检查，以及探索与预处理 |
 | `tests/` | 共享模型测试；期刊另有就近测试目录 |
 | `results/`、`logs/` | 研究输出、报告、运行日志；不按文件年龄自动删除 |

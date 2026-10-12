@@ -29,7 +29,8 @@ configurations, analysis scripts, and generated scientific results.
   `src/Cohen/` are separate model families. Do not change them merely to make
   an unrelated implementation uniform.
 - `configs/{exp123,exp4,exp5,meg}/` organize experiment configurations;
-  `configs/shared/` holds reusable definitions. MEG has no migrated YAML yet.
+  `configs/shared/` holds reusable definitions. MEG provides Task3b Model 0923
+  full-v3 fitting and one-subject validation YAMLs.
 - `data/{exp123,exp4,exp5,meg}/` contains source or processed research data.
 - `results/` (including report bundles) and `logs/` contain generated artifacts and may be
   expensive to reproduce.

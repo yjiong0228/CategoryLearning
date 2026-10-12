@@ -1,0 +1,86 @@
+# Initial bounded fitting plan. PF budgets and finite supports are provisional.
+base_sim_config_path: ../simulation_cfg/model0923_task3b.yaml
+subjects: [333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348]
+output_dir: ../../../results/model_0923/meg/task3b_hyper_cd_v1
+search_schema_version: 2
+hyperparam_selection_mode: per_subject
+hyper_base_seed: 20261012
+save_level: compact
+common_random_numbers_within_candidate_comparisons: true
+objective_order:
+  - path: simulation.mean_error
+    rel_tolerance: 0.0
+    abs_tolerance: 0.0
+    scale_floor: 0.0
+    anchor_guard: true
+statistics_config:
+  enabled: false
+cd:
+  n_restarts: 2
+  max_outer_iters: 3
+  init_strategy: random
+  coordinate_order: shuffle_per_restart
+  patience: 1
+  min_delta: 0.0001
+  parallel_budget: 128
+  resume_mode: explicit
+  checkpoint_every_coordinate: true
+refine_policy:
+  top_k: 2
+  fine_initialization: coarse_shortlist
+hyperparam_space: &behavior_space
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.baseline_probability:
+    values: [0.005, 0.02, 0.05, 0.15, 0.35, 0.65, 0.95]
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.error_gain:
+    values: [0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.failure_decay:
+    values: [0.0, 0.3, 0.6, 0.85, 0.95, 0.99]
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.global_search:
+    values: [0.0, 0.05, 0.2, 0.5, 0.8, 1.0]
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.global_search_failure_gain:
+    values: [0.0, 0.25, 0.5, 0.75, 1.0]
+  engine.modules.hypo_transitions_mod.kwargs.max_capacity:
+    values: [2, 3, 4, 6, 8]
+  engine.modules.hypo_transitions_mod.kwargs.exit_rate:
+    values: [0.0, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0]
+  engine.modules.hypo_transitions_mod.kwargs.local_structure_weight:
+    values: [0.0, 0.25, 0.5, 0.75, 1.0]
+  engine.modules.hypo_transitions_mod.kwargs.transfer_scale:
+    values: [0.01, 0.03, 0.1, 0.3, 1.0]
+  engine.modules.hypo_transitions_mod.kwargs.execution_inertia:
+    values: [0.0, 0.25, 1.0, 2.0, 4.0, 8.0]
+  engine.modules.memory_mod.kwargs.gamma:
+    values: [0.0, 0.3, 0.6, 0.8, 0.95, 0.99, 1.0]
+  engine.modules.beta_mod.kwargs.beta_init:
+    values: [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 25.0]
+  engine.modules.beta_mod.kwargs.learning_rate:
+    values: [0.0, 0.01, 0.03, 0.1, 0.3, 0.6, 1.0]
+stages:
+  coarse:
+    cd_parallel:
+      max_repeat_jobs: 4
+    simulation_overrides:
+      simulation_repeats: 4
+      engine_config:
+        inference:
+          particle_count: 32
+  fine:
+    # Revisit the same support with a larger PF budget from two coarse finalists.
+    hyperparam_space: *behavior_space
+    cd_parallel:
+      max_repeat_jobs: 8
+    simulation_overrides:
+      simulation_repeats: 8
+      engine_config:
+        inference:
+          particle_count: 64
+final_rescore:
+  enabled: true
+  shortlist_size: 4
+  seed_family: model0923_meg_task3b_final_v1
+  simulation_overrides:
+    simulation_repeats: 16
+    repeat_aggregation: mean_probability
+    engine_config:
+      inference:
+        particle_count: 128
