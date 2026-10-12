@@ -125,6 +125,32 @@ objective，再对被试等权平均后选择同一候选；不会因不同被�
 自动获得更高权重。共享模式的 `best_hyperparams.json` 用 `subject_id: -1` 表示群组结果，并在
 `search_context.subjects` 保存实际开发集。
 
+### 被试内并行
+
+`cd.parallel_restarts: true` 同时准备同一被试各起点的参数评分。各搜索链复用原坐标下降实现，
+按完整参数点共享已完成和正在计算的评分。评分准备结束后，原搜索按既定顺序生成正式记录，
+保留候选编号、随机种子、并列选择、停止规则和坐标断点。该模式要求候选使用共同随机数，
+坐标顺序为 `fixed` 或 `shuffle_per_restart`。已有配置默认沿用串行起点。
+
+`cd.parallel_final_rescore: true` 将最终候选与随机重复一起交给同一个进程池。
+每个候选仍先平均重复间的预测概率，再计算目标；正式记录按入围顺序写出。
+
+引擎的 `inference.particle_blocks` 默认1。大于1时，同一次滤波的粒子按全局编号分块更新，
+各块汇总本题预测与反馈后的状态，使用全部粒子的权重归一化和同一次重采样，再进入下一试次。
+这条路径使用共享进程池，当前验证覆盖关闭口述和选择传输审计的MEG condition-3拟合。
+单次固定参数调用也可以使用独立分块池；进程任务内部使用分块时，需要上层提供共享池。
+
+`cd.adaptive_particle_blocks: true` 将阶段的 `particle_blocks` 作为块数上限。
+调度器根据就绪的独立滤波任务数选用1、2或4块，减少任务充足时的同步开销。
+一次滤波的全部块共同申请进程额度，普通任务申请一个额度，总数受CPU和 `parallel_budget` 限制。
+各进程使用一个数值线程；粒子数、重复数和候选范围保持配置值。
+
+`parallel_scores_coarse.jsonl`、`parallel_scores_fine.jsonl` 和
+`parallel_scores_final_rescore.jsonl` 保存已完成的准备评分，供同一上下文续跑复用。
+`parallel_progress_coarse.json` 与 `parallel_progress_fine.json` 记录评分准备的进程预算和完成点数。
+准备期间，正式坐标断点可能暂时停留在 `starting` 或上一阶段。
+源码、配置和数据变化仍会触发原续跑指纹检查；跨代码版本的评分迁移需要独立的兼容性验证和新输出目录。
+
 Model 0818 的恢复前候选支持保存在
 `configs/exp123/specific_models/model_0818_cond1_parameter_space.yaml`。其中 `delta_E`、`c_A` 和
 `c_G` 使用 `spike_and_positive_grid`：精确零边界写在 `zero_value`，严格正值写在

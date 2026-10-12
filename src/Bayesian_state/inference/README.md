@@ -12,6 +12,7 @@ beta 都属于 `model/`；固定 likelihood evaluator 来自 `hypothesis_space/o
 | `results.py` | 所有 backend 共享的 `InferenceResult` 契约与兼容属性 |
 | `backends/trajectory.py` | 单条随机认知轨迹 |
 | `backends/particle_filter.py` | bootstrap particle filter、ESS、重采样和粒子边际 |
+| `particle_parallel.py` | 粒子分块、共享进程额度与逐试次同步 |
 | `posterior_predictive.py` | 观察前缀条件下的粒子后验预测与自主 suffix rollout |
 | `__init__.py` | 重导出稳定的公共推理接口 |
 
@@ -25,8 +26,15 @@ beta 都属于 `model/`；固定 likelihood evaluator 来自 `hypothesis_space/o
 inference:
   backend: particle_filter   # 或 trajectory
   particle_count: 512
+  particle_blocks: 1         # 同一滤波器的进程块数，默认1
   resample_threshold_fraction: 0.5
 ```
+
+`particle_blocks` 大于1时，每个块更新分配给它的全局粒子编号。预测和反馈后的摘要按原编号汇总，
+各块使用同一组全局权重和重采样祖先，再进入下一试次。临时共享内存文件传输逐试次数组，
+进程间管道协调同步并传递所需祖先状态。粒子总数及其种子保持原值。
+该模式当前用于关闭口述和选择传输审计的拟合；共享池的调度见
+[被试内并行](../optimization/README.md#被试内并行)。
 
 评价层需要定位 choice-transmission 瓶颈时，可在复制出的诊断配置中临时设置
 `choice_transmission_audit: true`。PF 会从相同 pre-choice 粒子状态旁路计算 MAP hypothesis、

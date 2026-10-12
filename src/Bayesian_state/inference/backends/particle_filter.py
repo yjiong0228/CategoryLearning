@@ -16,6 +16,9 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from ..particle_parallel import (
+    current_particle_block, execute_particle_blocks, gather_particle_arrays, particle_items,
+)
 from ..results import InferenceResult, ParticleFilterResult
 from ...model.config import ModelContext
 from ...model.engine import BayesianStateEngine
@@ -27,6 +30,69 @@ from ...model.modules.readout.choice import (
     resolve_continuous_choice_weights,
 )
 from ...utils.seeding import stable_seed
+
+
+PREDICTIVE_PARTICLE_FIELDS = (
+    'best_alternative_choice_compatibility',
+    'capture_eligible',
+    'capture_hold',
+    'capture_switch_events',
+    'choice_confidence_signals',
+    'executed_betas',
+    'executed_choice_compatibility',
+    'executed_orientation_probabilities',
+    'execution_dwell_trials',
+    'execution_switch_events',
+    'execution_switch_probabilities',
+    'exploration_targets',
+    'failure_pressures',
+    'feedback_surprises',
+    'feedback_uncertainties',
+    'global_targets',
+    'mastery_evidences',
+    'newcomer_distances',
+    'particle_active',
+    'particle_adaptive_sharpening',
+    'particle_best_active_correct_probability',
+    'particle_choice_weights',
+    'particle_correct_predicting_available',
+    'particle_correct_predicting_prior_mass',
+    'particle_dominant',
+    'particle_executed',
+    'particle_executed_orientation_joint',
+    'particle_exploration_lapse',
+    'particle_hypothesis_map',
+    'particle_oral_joint',
+    'particle_pairing',
+    'particle_persistent_execution_counterfactual_strategy_no_lapse',
+    'particle_persistent_execution_no_lapse',
+    'particle_persistent_execution_no_strategy_no_lapse',
+    'particle_predictions',
+    'particle_priors',
+    'particle_sharpened_no_lapse',
+    'particle_strategy_confidence_no_lapse',
+    'particle_unsharpened_expectation',
+    'peak_mastery_evidences',
+    'prior_reset_mass_shifts',
+    'prior_reset_strengths',
+    'removed_masses',
+    'replacement_counts',
+    'replacement_fractions',
+    'rule_commitment_active',
+    'rule_commitment_ages',
+    'rule_commitment_choice_precisions',
+    'rule_commitment_confidence_signals',
+    'rule_commitment_disconfirmation',
+    'rule_commitment_eligible',
+    'rule_commitment_entry_events',
+    'rule_commitment_exit_events',
+    'rule_commitment_margins',
+    'search_ranges',
+    'strategy_choice_precisions',
+    'swap_events',
+    'swap_probabilities',
+    'transition_rates',
+)
 
 
 @dataclass
@@ -185,6 +251,9 @@ def _snapshot(model: Any) -> _CognitiveSnapshot:
 def _snapshot_ancestors(models: Sequence[Any], ancestors: np.ndarray) -> list[_CognitiveSnapshot]:
     # Snapshot all parents before restoring any child. Each restore deep-copies
     # its payload, so sharing the immutable snapshot does not share child state.
+    block = current_particle_block()
+    if block is not None:
+        return block.gather_snapshots(models, ancestors)
     unique = dict.fromkeys(int(index) for index in ancestors)
     snapshots = {index: _snapshot(models[index]) for index in unique}
     return [snapshots[int(index)] for index in ancestors]
@@ -581,6 +650,7 @@ def run_state_model_particle_filter(
     choices: Sequence[int] | np.ndarray,
     feedback: Sequence[float] | np.ndarray,
     particle_count: int,
+    particle_blocks: int = 1,
     choice_readout_power: float,
     condition: int = 1,
     strategy_confidence_gain: float = 0.0,
@@ -628,6 +698,11 @@ def run_state_model_particle_filter(
     exactly the same pre-choice particles and weights.  It never changes the
     fitted likelihood, particle weights, resampling, or later cognitive state.
     """
+
+    if int(particle_blocks) < 1:
+        raise ValueError("particle_blocks must be positive")
+    if int(particle_blocks) > 1 and current_particle_block() is None:
+        return execute_particle_blocks(run_state_model_particle_filter, locals())
 
     from ...model import StateModel
     from ...utils.validation import response_ids
@@ -1230,7 +1305,7 @@ def run_state_model_particle_filter(
             else 1 - observed_choice_index
         ) if condition == 1 else None
 
-        for particle_index, model in enumerate(models):
+        for particle_index, model in particle_items(models):
             engine = model.engine
             prepared = model.begin_trial(x[trial_index])
             if particle_pairing is not None:
@@ -1508,6 +1583,9 @@ def run_state_model_particle_filter(
                     (1.0 - exploration) * particle_predictions[particle_index]
                     + exploration * np.full(n_categories, 1.0 / n_categories, dtype=float)
                 )
+
+        if current_particle_block() is not None:
+            gather_particle_arrays(locals(), PREDICTIVE_PARTICLE_FIELDS)
 
         if audit_choice_transmission:
             assert audit_particle_hypothesis_prior is not None
@@ -1908,7 +1986,7 @@ def run_state_model_particle_filter(
         post_orientation_probability = (
             np.zeros(n_particles, dtype=float) if orientation_enabled else None
         )
-        for particle_index, model in enumerate(models):
+        for particle_index, model in particle_items(models):
             engine = model.engine
             update_occurs = _learning_update_occurs(
                 update_probability, int(filter_seed), trial_index, particle_index
@@ -1942,6 +2020,11 @@ def run_state_model_particle_filter(
                 ] = (orientation, 1.0 - orientation)
             if hasattr(engine, "clear_module_logs"):
                 engine.clear_module_logs()
+
+        if current_particle_block() is not None:
+            gather_particle_arrays(locals(), (
+                "particle_pairing", "post_orientation_joint", "post_orientation_probability",
+            ))
 
         if pairing_posterior is not None:
             assert particle_pairing is not None
@@ -1977,7 +2060,7 @@ def run_state_model_particle_filter(
                 audit_parent_indices[trial_index] = ancestors
             snapshots = _snapshot_ancestors(models, ancestors)
             copied_swap_counts = particle_swap_counts[ancestors].copy()
-            for particle_index, snapshot in enumerate(snapshots):
+            for particle_index, snapshot in particle_items(snapshots):
                 _restore(
                     models[particle_index],
                     snapshot,

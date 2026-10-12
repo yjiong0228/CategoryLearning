@@ -12,6 +12,10 @@ import numpy as np
 from src.Bayesian_state.utils.provenance import FINGERPRINT_SCHEMA_VERSION
 from joblib import Parallel, delayed
 from ...utils.parallel import parallel_job_count, single_threaded_processes
+from .parallel_restarts import (
+    evaluate_with_bank, prepare_final_scores, prepare_restart_scores, score_process_context,
+)
+from ...inference.particle_parallel import evaluate_particle_jobs
 
 from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
 from src.Bayesian_state.optimization.artifacts import (
@@ -188,6 +192,17 @@ class HyperCDOptimizer(HyperSearchBase):
             cd_cfg.get("parallel_budget", 1),
             "cd.parallel_budget",
         )
+        self.parallel_restarts = bool(cd_cfg.get("parallel_restarts", False))
+        self.parallel_final_rescore = bool(cd_cfg.get("parallel_final_rescore", False))
+        self.adaptive_particle_blocks = bool(cd_cfg.get("adaptive_particle_blocks", True))
+        if self.parallel_restarts and (
+            not self.common_random_numbers_within_candidate_comparisons
+            or self.coordinate_order not in {"fixed", "shuffle_per_restart"}
+        ):
+            raise ValueError(
+                "cd.parallel_restarts requires common random numbers and "
+                "coordinate_order fixed or shuffle_per_restart"
+            )
         self.statistics_config = self._resolve_statistics_config(
             self.config.get("statistics_config")
         )
@@ -399,7 +414,7 @@ class HyperCDOptimizer(HyperSearchBase):
             dict(point),
         )
 
-    @single_threaded_processes()
+    @score_process_context
     def _simulate_runs_for_point(
         self,
         *,
@@ -456,37 +471,50 @@ class HyperCDOptimizer(HyperSearchBase):
             )
 
         warmup_dykstra_numba()
-        runs = list(
-            Parallel(n_jobs=parallel_job_count(max(1, int(n_jobs)), len(tasks)))(
-                delayed(evaluate_state_model_run)(
-                    int(subject_id),
-                    int(condition),
-                    arrays,
-                    dict(point),
-                    runner._engine_config_template,
-                    runner._processed_data_dir,
-                    int(window_size),
-                    dataset_paths,
-                    bool(keep_logs),
-                    bool(keep_logs),
-                    str(prediction_mode),
-                    str(selection_prediction_mode),
-                    str(loss_metric),
-                    loss_delta,
-                    simulation_point_seed=int(simulation_point_seed),
-                    trajectory_seed=task["trajectory_seed"],
-                    seed_context={
-                        "hyper_candidate_seed": int(hyper_candidate_seed),
-                        "simulation_point_seed": int(simulation_point_seed),
-                        "trajectory_seed": task["trajectory_seed"],
-                        "phase": "hyper_cd",
-                        "repeat_index": task["repeat_index"],
-                    },
-                    score_trial_mask=score_trial_mask,
-                )
-                for task in tasks
+        jobs = [
+            delayed(evaluate_state_model_run)(
+                int(subject_id),
+                int(condition),
+                arrays,
+                dict(point),
+                runner._engine_config_template,
+                runner._processed_data_dir,
+                int(window_size),
+                dataset_paths,
+                bool(keep_logs),
+                bool(keep_logs),
+                str(prediction_mode),
+                str(selection_prediction_mode),
+                str(loss_metric),
+                loss_delta,
+                simulation_point_seed=int(simulation_point_seed),
+                trajectory_seed=task["trajectory_seed"],
+                seed_context={
+                    "hyper_candidate_seed": int(hyper_candidate_seed),
+                    "simulation_point_seed": int(simulation_point_seed),
+                    "trajectory_seed": task["trajectory_seed"],
+                    "phase": "hyper_cd",
+                    "repeat_index": task["repeat_index"],
+                },
+                score_trial_mask=score_trial_mask,
             )
-        )
+            for task in tasks
+        ]
+        executor = getattr(self, "_shared_score_executor", None)
+        if executor is not None:
+            blocks = int((runner._engine_config_template.get("inference") or {}).get("particle_blocks", 1))
+            with executor.particle_admission.plan(
+                len(jobs), blocks, getattr(self, "adaptive_particle_blocks", True),
+            ) as effective_blocks:
+                adjusted = []
+                for function, args, kwargs in jobs:
+                    engine = deepcopy(args[4])
+                    engine.setdefault("inference", {})["particle_blocks"] = effective_blocks
+                    adjusted.append((function, (*args[:4], engine, *args[5:]), kwargs))
+                runs = evaluate_particle_jobs(adjusted, executor, self._shared_score_workers, effective_blocks)
+        else:
+            runs = list(Parallel(n_jobs=parallel_job_count(
+                max(1, int(n_jobs)), len(tasks)))(jobs))
         return (
             [run for run in runs if run is not None],
             int(condition),
@@ -593,24 +621,29 @@ class HyperCDOptimizer(HyperSearchBase):
                 f"final_rescore output already exists: {output_path}"
             )
 
+        prepared = (prepare_final_scores(
+            self, shortlist, cached, stage_sim_cfg, subjects, output_path, seed_family,
+        ) if getattr(self, "parallel_final_rescore", False) and self.parallel_budget > 1 else {})
         rescored: List[CombinationResult] = []
         for shortlist_rank, search_row in enumerate(shortlist):
             key = canonical_point_key(search_row.hyperparams)
             result = cached.get(key)
             if result is None:
-                combination_index = self._next_combination_index()
-                result = self._evaluate_point_with_index(
-                    stage_name="final_rescore",
-                    point=deepcopy(search_row.hyperparams),
-                    stage_sim_cfg=stage_sim_cfg,
-                    subjects=subjects,
-                    restart_id=-1,
-                    iter_id=0,
-                    coordinate="final_rescore",
-                    combination_index=combination_index,
-                    seed_family=seed_family,
-                    force_common_random_numbers=True,
-                )
+                result = prepared.get(key)
+                if result is None:
+                    combination_index = self._next_combination_index()
+                    result = self._evaluate_point_with_index(
+                        stage_name="final_rescore",
+                        point=deepcopy(search_row.hyperparams),
+                        stage_sim_cfg=stage_sim_cfg,
+                        subjects=subjects,
+                        restart_id=-1,
+                        iter_id=0,
+                        coordinate="final_rescore",
+                        combination_index=combination_index,
+                        seed_family=seed_family,
+                        force_common_random_numbers=True,
+                    )
                 record = self._serialize_combination_record(result)
                 record.update(
                     {
@@ -805,8 +838,15 @@ class HyperCDOptimizer(HyperSearchBase):
             coordinate=coordinate,
         )
 
-    @single_threaded_processes()
     def _evaluate_missing_entries_flat(
+        self, **arguments: Any,
+    ) -> tuple[List[CombinationResult], Dict[str, Any]]:
+        if getattr(self, "_parallel_score_bank", None) is not None:
+            return evaluate_with_bank(self, arguments, self._evaluate_missing_entries_uncached)
+        return self._evaluate_missing_entries_uncached(**arguments)
+
+    @score_process_context
+    def _evaluate_missing_entries_uncached(
         self,
         *,
         stage_name: str,
@@ -944,12 +984,26 @@ class HyperCDOptimizer(HyperSearchBase):
         flat_jobs = parallel_job_count(self.parallel_budget, flat_task_count)
         if flat_jobs > 1:
             warmup_dykstra_numba()
-        flat_results = list(
-            Parallel(n_jobs=flat_jobs)(
-                delayed(_evaluate_cd_flat_repeat_task)(task)
-                for task in flat_tasks
+        executor = getattr(self, "_shared_score_executor", None)
+        if executor is not None:
+            blocks = int((flat_tasks[0]["engine_config_template"].get("inference") or {}).get("particle_blocks", 1))
+            with executor.particle_admission.plan(
+                flat_task_count, blocks, getattr(self, "adaptive_particle_blocks", True),
+            ) as effective_blocks:
+                for task in flat_tasks:
+                    engine = deepcopy(task["engine_config_template"])
+                    engine.setdefault("inference", {})["particle_blocks"] = effective_blocks
+                    task["engine_config_template"] = engine
+                jobs = [(_evaluate_cd_flat_repeat_task, (task,), {}) for task in flat_tasks]
+                flat_results = evaluate_particle_jobs(jobs, executor, self._shared_score_workers, effective_blocks)
+            flat_jobs = min(self._shared_score_workers, flat_task_count * effective_blocks)
+        else:
+            flat_results = list(
+                Parallel(n_jobs=flat_jobs)(
+                    delayed(_evaluate_cd_flat_repeat_task)(task)
+                    for task in flat_tasks
+                )
             )
-        )
 
         runs_by_position: Dict[int, Dict[int, Dict[int, Any]]] = {
             position: {
@@ -1200,6 +1254,34 @@ class HyperCDOptimizer(HyperSearchBase):
         return {name: rng.choice(list(vals)) for name, vals in space.items()}
 
     def _coordinate_descent(
+        self,
+        stage_name: str,
+        stage_sim_cfg: Dict[str, Any],
+        subjects: Sequence[int],
+        space: Dict[str, List[Any]],
+        all_combinations_path: Path,
+        coordinate_trace_path: Path | None = None,
+        rng: random.Random | None = None,
+        initial_points: Sequence[Mapping[str, Any]] | None = None,
+        existing_combinations: Sequence[CombinationResult] | None = None,
+        checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> tuple[List[CombinationResult], List[Dict[str, Any]], CombinationResult]:
+        arguments = dict(
+            stage_name=stage_name, stage_sim_cfg=stage_sim_cfg, subjects=subjects,
+            space=space, all_combinations_path=all_combinations_path,
+            coordinate_trace_path=coordinate_trace_path, rng=rng,
+            initial_points=initial_points, existing_combinations=existing_combinations,
+            checkpoint_callback=checkpoint_callback,
+        )
+        if getattr(self, "parallel_restarts", False) and self.parallel_budget > 1:
+            self._parallel_score_bank = prepare_restart_scores(self, arguments)
+            try:
+                return self._coordinate_descent_serial(**arguments)
+            finally:
+                del self._parallel_score_bank
+        return self._coordinate_descent_serial(**arguments)
+
+    def _coordinate_descent_serial(
         self,
         stage_name: str,
         stage_sim_cfg: Dict[str, Any],

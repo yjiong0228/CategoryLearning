@@ -171,7 +171,8 @@ def run_preparation(config_path: Path, output_dir: Path | None = None) -> dict[s
                  output_dir=str(output / "hyper_cd"), hyperparam_space=space,
                  hyper_base_seed=int(settings["hyper_base_seed"]))
     smoke["cd"].update(n_restarts=1, max_outer_iters=1, init_strategy="anchor", anchor=anchor,
-                       coordinate_order="fixed", parallel_budget=1)
+                       coordinate_order="fixed", parallel_budget=1,
+                       parallel_restarts=False, parallel_final_rescore=False)
     smoke["refine_policy"]["top_k"] = 1
     for stage in smoke["stages"].values():
         stage.update(hyperparam_space=deepcopy(space), cd_parallel={"max_repeat_jobs": 1},

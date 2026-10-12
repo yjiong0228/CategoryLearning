@@ -23,6 +23,9 @@ cd:
   patience: 1
   min_delta: 0.0001
   parallel_budget: 128
+  parallel_restarts: true
+  parallel_final_rescore: true
+  adaptive_particle_blocks: true
   resume_mode: explicit
   checkpoint_every_coordinate: true
 refine_policy:
@@ -65,6 +68,7 @@ stages:
         oral_readout: null  # Predict reports after parameter selection.
         inference:
           particle_count: 32
+          particle_blocks: 4
   fine:
     # Revisit the same support with a larger PF budget from two coarse finalists.
     hyperparam_space: *behavior_space
@@ -76,6 +80,7 @@ stages:
         oral_readout: null
         inference:
           particle_count: 64
+          particle_blocks: 2
 final_rescore:
   enabled: true
   shortlist_size: 4
@@ -87,3 +92,4 @@ final_rescore:
       oral_readout: null
       inference:
         particle_count: 128
+        particle_blocks: 2

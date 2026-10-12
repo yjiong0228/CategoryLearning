@@ -23,6 +23,7 @@ class InferenceBackendConfig:
     particle_count: int | None = None
     resample_threshold_fraction: float | None = None
     choice_transmission_audit: bool = False
+    particle_blocks: int = 1
 
 
 def resolve_inference_backend(
@@ -43,6 +44,9 @@ def resolve_inference_backend(
             f"'particle_filter', got {backend!r}."
         )
     particle_count = int(raw.get("particle_count", 512))
+    particle_blocks = int(raw.get("particle_blocks", 1))
+    if particle_blocks < 1 or particle_blocks > particle_count:
+        raise ValueError("particle_blocks must lie between 1 and particle_count")
     threshold = float(raw.get("resample_threshold_fraction", 0.5))
     choice_transmission_audit = bool(raw.get("choice_transmission_audit", False))
     if particle_count < 2:
@@ -54,6 +58,7 @@ def resolve_inference_backend(
     return InferenceBackendConfig(
         backend=BACKEND_PARTICLE_FILTER,
         particle_count=particle_count,
+        particle_blocks=particle_blocks,
         resample_threshold_fraction=threshold,
         choice_transmission_audit=choice_transmission_audit,
     )
@@ -103,6 +108,7 @@ def run_inference_backend(
         choices=choices,
         feedback=feedback,
         particle_count=config.particle_count,
+        particle_blocks=config.particle_blocks,
         choice_readout_power=float(choice_readout_power),
         strategy_confidence_gain=float(strategy_confidence_gain),
         rule_commitment_confidence_gain=float(
