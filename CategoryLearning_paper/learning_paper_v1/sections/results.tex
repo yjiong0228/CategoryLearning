@@ -27,10 +27,17 @@ how strongly it influences the current response. A finite capacity limits
 the number of candidates, while search and abandonment allow their identities
 and number to change across trials.
 
+Five cognitive modules implement this learning process: perception (P),
+evidence memory (M), hypothesis updating (H), precision updating (B) and
+choice readout (R). P supplies the perceived stimulus to the active rules;
+R combines their category predictions into a choice distribution. After
+feedback, M updates rule beliefs, B adjusts prediction precision and H
+prepares the candidate set for the next trial.
+
 Before feedback arrives, the available rules jointly generate a choice.
-Perception introduces uncertainty into the feature values supplied to each
+Perception (P) introduces uncertainty into the feature values supplied to each
 rule. A rule then assigns probabilities to categories, with its precision
-controlling how concentrated these predictions are. Choice readout combines
+controlling how concentrated these predictions are. Choice readout (R) combines
 the predictions according to rule beliefs while giving an advantage to the
 previous trial's dominant rule, which had the largest choice weight. This
 inertia permits persistent rule use while
@@ -39,9 +46,9 @@ can spread across several rules or concentrate on one rule within the same
 learner (see \hyperref[m:choice]{Methods}).
 
 Feedback changes the relative support for every available rule according to
-how well it predicts the observed outcome. Evidence memory determines how
+how well it predicts the observed outcome. Evidence memory (M) determines how
 much earlier support is retained when new feedback is
-incorporated. Precision updating adjusts how sharply each rule predicts
+incorporated. Precision updating (B) adjusts how sharply each rule predicts
 categories: feedback that is more probable than under uniform category
 predictions increases precision, while less probable feedback decreases it.
 The learner can therefore increase its belief in a rule and sharpen that
@@ -49,7 +56,7 @@ rule's predictions through distinct updates. In the hierarchical condition,
 feedback also updates beliefs about which response categories belong to the
 same family. This knowledge carries forward as the candidate rules change.
 
-Hypothesis updating regulates access to alternative explanations. Recent
+Hypothesis updating (H) regulates access to alternative explanations. Recent
 failure can increase search and favor a broader range of candidates. Local
 search modifies an existing rule or considers a rule with similar
 classification outcomes; global search draws from the wider rule catalogue.

@@ -30,8 +30,10 @@ uses that division to develop an account of rule discovery and use.
 
 The Introduction starts from the ambiguity of inferring internal processes
 from choices. Results develops three connected aspects of learning: hypothesis
-availability, belief support and influence on choice. Perception, feedback
-learning and hypothesis search explain how these quantities change together.
+availability, belief support and influence on choice. The model overview
+names all five cognitive modules and connects their roles across a trial.
+Perception, feedback learning and hypothesis search explain how these
+quantities change together.
 The reserved empirical sections proceed from choice prediction to independent
 strategy validation, individual learning profiles and rapid improvements.
 Recovery and robustness provide the final validation step. Empirical results
@@ -54,9 +56,18 @@ definitions remain to be specified for the final analyses.
 | Dominant rule | Candidate with the largest choice weight, recorded before choice |
 | Particle weight | Researcher's weight on a possible internal learning path |
 
-The cognitive modules are perception (P), evidence memory (M), hypothesis
-updating (H), precision updating (B) and choice readout (RC). Their terminology
-and notation follow the current specification.
+The cognitive modules are named in the Results overview and in their Methods
+headings:
+
+| Module | Role in the learning process |
+|---|---|
+| Perception (P) | Represents uncertainty in stimulus features |
+| Evidence memory (M) | Retains earlier evidence and updates rule beliefs from feedback |
+| Hypothesis updating (H) | Searches for rules and manages the candidate set |
+| Precision updating (B) | Adjusts the concentration of each rule's predictions |
+| Choice readout (R) | Maps rule beliefs and rule-use inertia to choice probabilities |
+
+Mathematical notation follows the model specification.
 
 ## Evidence and completion status
 

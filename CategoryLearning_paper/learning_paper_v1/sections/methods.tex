@@ -12,7 +12,7 @@ Perception and choice precede feedback on each trial. Feedback then updates beli
 
 \draftslot{Participant recruitment, task administration, exclusions and ethics information to be added.}
 
-\subsection*{From perceived stimuli to category choices}
+\subsection*{Perception (P): representing stimulus uncertainty}
 \label{m:perception}
 
 Perception (P) introduces feature-specific uncertainty calibrated from independent perceptual measurements. All active rules receive the same perceived stimulus $\widetilde{\bm x}_t$ within a learning trajectory. A rule predicts categories according to the distance $d_{t,h,c}$ from this stimulus to its region for category $c$:
@@ -24,8 +24,9 @@ p_{t,h}(c)=
 \end{equation}
 where $C$ is the number of categories. Distance is the shortest Euclidean distance to the category region, and equals zero inside it. Greater precision makes category probabilities more sensitive to these distance differences.
 
+\subsection*{Choice readout (R): mapping beliefs to choices}
 \label{m:choice}
-Choice readout (RC) converts rule beliefs into contributions to the response. It also represents persistence in rule use: the previously dominant rule receives an advantage controlled by inertia $\lambda$. The choice weights and resulting category probabilities are
+Choice readout (R) converts rule beliefs into contributions to the response. It also represents persistence in rule use: the previously dominant rule receives an advantage controlled by inertia $\lambda$. The choice weights and resulting category probabilities are
 \begin{align}
 w_t(h)&=\frac{\pi_t^-(h)\exp[\lambda\ind(h=h_{t-1}^{\star})]}
 {\sum_{v\in\mathcal A_t}\pi_t^-(v)\exp[\lambda\ind(v=h_{t-1}^{\star})]},
@@ -35,7 +36,7 @@ P_t(c\mid z_t)&=\sum_{h\in\mathcal A_t}w_t(h)p_{t,h}(c),
 \end{align}
 where $\ind$ is the indicator function and $z_t$ denotes the internal state, including the perceived stimulus. The current dominant rule $h_t^{\star}$ has the largest choice weight and supplies inertia on the next trial. When there is no preceding active dominant rule, weights equal beliefs. Distributed weights allow several rules to influence choice; concentrated weights allow one rule to dominate. Inertia can therefore preserve an established policy while evidence for alternatives accumulates.
 
-\subsection*{Learning from feedback}
+\subsection*{Evidence memory (M): updating rule beliefs}
 \label{m:memory}
 
 Evidence memory (M) evaluates how well every active rule predicts the feedback received after the chosen response. For binary feedback, the likelihood $\ell_t(h)$ and updated belief are
@@ -49,10 +50,11 @@ Evidence memory (M) evaluates how well every active rule predicts the feedback r
 \end{align}
 Correct feedback supports probability assigned to the chosen category; incorrect feedback supports the remaining categories. The retention parameter $0\leq\gamma\leq1$ controls how much previous evidence persists. Values near~1 preserve accumulated belief differences, while smaller values reduce these differences before new evidence enters. Normalization produces relative support within the current candidate set. All active candidates undergo this update, including those contributing little to choice.
 
+\subsection*{Precision updating (B): adjusting prediction precision}
 \label{m:precision}
 Precision updating (B) adjusts the concentration of each rule's predictions. Feedback is supporting when its likelihood exceeds the probability under uniform category predictions and contradictory when it falls below that reference. For binary feedback, the references are $1/C$ for a correct response and $1-1/C$ for an incorrect response. Supporting feedback increases precision toward an upper bound; contradictory feedback reduces current precision toward a lower bound. Separate learning rates $\eta_+$ and $\eta_-$ govern these changes. Belief and precision update in parallel using the predictions formed before feedback: belief measures support among explanations, whereas precision determines the sharpness of each explanation's predictions.
 
-\subsection*{Adaptive hypothesis search and retention}
+\subsection*{Hypothesis updating (H): managing available rules}
 \label{m:hypothesis}
 
 Hypothesis updating (H) controls which rules are available for learning. Search responds to recent performance through an accumulated failure state,
