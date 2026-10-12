@@ -47,8 +47,8 @@ Precision updating uses the gradient of the log feedback likelihood to calibrate
 each rule's prediction precision. Binary and graded feedback share this gradient
 and a bounded additive update with one learning rate, `eta`. Its two participant
 parameters are initial precision and learning rate; the full model has 13
-participant-level parameters. The conditional category distribution used to
-compute the gradient is an intermediate quantity for the current trial.
+participant-level parameters. Methods presents the gradient definition and
+bounded update; the model specification gives the full gradient calculation.
 For graded feedback, differentiation holds the discounted pairing beliefs
 and category distances fixed.
 The original model specification retains the full rule catalogue, detailed
