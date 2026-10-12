@@ -149,14 +149,43 @@ class SubjectTrialDataLoader:
             raise ValueError(f"Subject {subject_id} not found in dataset")
 
         self._validate_trial_order(subject_frame)
-        self._validate_choices(subject_frame)
+        retained = np.ones(len(subject_frame), dtype=bool)
+        if "miss" in subject_frame:
+            missed = pd.to_numeric(subject_frame["miss"], errors="coerce")
+            if not missed.isin([0, 1]).all():
+                raise ValueError("miss flags must be finite values in {0, 1}")
+            retained = missed.eq(0).to_numpy()
+        answered_frame = subject_frame.loc[retained]
+        if answered_frame.empty:
+            raise ValueError(f"Subject {subject_id} has no answered trials")
+        self._validate_choices(answered_frame)
 
         # Encoding is fixed design metadata, inferred before either truncation.
         # It must not depend on correctness or initialize cognitive pairing state.
-        key_mapping = _response_key_mapping(subject_frame)
+        key_mapping = _response_key_mapping(answered_frame)
         stop_index = max(1, int(len(subject_frame) * stop_at + 0.5))
-        selected = subject_frame.iloc[:stop_index].copy()
+        # Skip the entire omitted trial before model execution. Keep the original
+        # stop_at prefix so omissions cannot move observations across that boundary.
+        selected = subject_frame.iloc[:stop_index].loc[retained[:stop_index]].copy()
+        if selected.empty:
+            raise ValueError(f"Subject {subject_id} has no answered trials in the selected prefix")
         selected.attrs["choice_to_presskey"] = key_mapping
+        if "miss" in subject_frame:
+            identifier_columns = self._trial_order_columns or [
+                key for key in ("iSession", "iRun", "iBlock", "iTrial") if key in subject_frame
+            ]
+            selected.attrs["trial_selection"] = {
+                "omission_policy": "skip_miss_1",
+                "source_trial_count": len(subject_frame),
+                "source_missed_trial_count": int(np.sum(~retained)),
+                "trial_identifier_columns": list(identifier_columns),
+                "retained_trial_identifiers": (
+                    selected[identifier_columns].to_numpy(dtype=int).tolist()
+                ),
+                "missed_trial_identifiers": (
+                    subject_frame.loc[~retained, identifier_columns].to_numpy(dtype=int).tolist()
+                ),
+            }
         return selected
 
     def _validate_trial_order(self, frame: pd.DataFrame) -> None:

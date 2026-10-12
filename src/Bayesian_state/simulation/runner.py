@@ -579,6 +579,15 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
             model_provenance=model_provenance,
         )
 
+        data_selection = {}
+        if "trial_selection" in subject_frame.attrs:
+            trial_selection = dict(subject_frame.attrs["trial_selection"])
+            trial_selection["modeled_trial_count"] = int(arrays.feedback.shape[0])
+            trial_selection["retained_trial_identifiers"] = trial_selection[
+                "retained_trial_identifiers"
+            ][:arrays.feedback.shape[0]]
+            data_selection["trial_selection"] = trial_selection
+
         return {
             "subject_id": subject_id,
             "condition": condition,
@@ -605,6 +614,7 @@ class StateModelSimulationRunner(SubjectTrialDataLoader):
                 "evaluation_role": str(evaluation_role),
                 "score_context": score_context,
                 "score_trial_count": int(score_context["score_trial_count"]),
+                **data_selection,
             },
         }
 

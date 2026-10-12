@@ -28,6 +28,10 @@ posterior-predictive validation 的生成基础，不在本文件中实现恢复
 公共结果对象位于 `results.py`，trial 数据契约位于 `data.py`。本目录不定义 loss、metric 公式或搜索策略：loss 和
 统计定义属于 `metrics/`，候选比较、容差和 anchor guard 属于 `optimization/`。
 
+数据表含 `miss` 列时，`miss=1` 的整条记录在进入模型前跳过，下一条有效试次继续已有状态。模型试次和历史窗口按有效记录递推。`miss` 必须为0或1；有效试次的选择和按键继续按原规则验证。
+
+原始与 processed 表保留漏答记录。`stop_at` 先确定原始记录的前缀，再跳过其中的漏答；`max_trials` 限制进入模型的有效试次数。顺序训练／评价协议按过滤后的有效试次数划分。含 `miss` 的运行在 `selection_meta.trial_selection` 保存源记录数、源漏答数、保留与跳过的原始试次标识；保留标识与模型概率数组逐行对应，可用于评分和 MEG 时序对齐。
+
 顶层 `run_simulation.py` 同时提供 CLI 和公开函数
 `run_simulation(config_path, subjects=..., subject_range=...)`。组合式 workflow 直接调用该函数，
 不再通过子进程重新进入 CLI；函数返回本次写出的 subject JSON 路径。
