@@ -9,9 +9,10 @@ computations and inference procedures.
 ## Scope and source
 
 This draft develops a research-article account of how latent belief dynamics
-can explain individual learning. Its primary scientific source is the unchanged
+can explain individual learning. Its primary scientific source is the
 [model specification](../../src/Bayesian_state/docs/model_architecture/model_0923.tex),
-with the current hypothesis-updating and choice-readout sections in the
+revised on 2026-10-12, with the current hypothesis-updating and choice-readout
+sections in the
 [Markdown document](../../src/Bayesian_state/docs/model_architecture/model_0923.md).
 The [previous manuscript](../sn_article/README.md) is maintained in the parallel
 `sn_article/` directory. Shared journal class and bibliography styles are in
@@ -42,8 +43,14 @@ and the Discussion remain explicit placeholders.
 Methods defines the states and the main probability relationships needed to
 understand the model. It explains the role of each cognitive module, the
 feedback-learning cycle, hierarchical relations and inference uncertainty.
-Precision updating includes the feedback-support formulas for binary and
-graded feedback, the bounded update equation and its learning rates.
+Precision updating uses the gradient of the log feedback likelihood to calibrate
+each rule's prediction precision. Binary and graded feedback share this gradient
+and a bounded additive update with one learning rate, `eta`. Its two participant
+parameters are initial precision and learning rate; the full model has 13
+participant-level parameters. The conditional category distribution used to
+compute the gradient is an intermediate quantity for the current trial.
+For graded feedback, differentiation holds the discounted pairing beliefs
+and category distances fixed.
 The original model specification retains the full rule catalogue, detailed
 numerical settings, exact belief-transfer formulas, and algorithmic
 boundary handling. Numerical fitting settings and strategy-validation
@@ -78,6 +85,7 @@ Mathematical notation follows the model specification.
 | Title and abstract | Author-supplied text |
 | Model architecture and equations | Current specified design |
 | Revised candidate management and continuous choice readout | Code synchronization pending |
+| Precision calibration with one learning rate (2026-10-12) | Code synchronization pending |
 | Behavioral findings and model comparison | Results reserved |
 | Latent trajectories and feedback-condition effects | Results reserved |
 | Generative predictions and identifiability | Results reserved |
@@ -87,6 +95,10 @@ The title and abstract were supplied by the author. The empirical Results and
 Discussion remain to be completed from the corresponding analyses. Participant
 recruitment, exclusions, ethics and the final analysis cohort also require
 verified study information.
+
+The revised precision updating, candidate management and choice readout require
+implementation in the shared model before fitting. Parameter fitting and
+validation of this revised design remain incomplete.
 
 ## Compile
 

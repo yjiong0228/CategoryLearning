@@ -52,31 +52,47 @@ Correct feedback supports probability assigned to the chosen category; incorrect
 
 \subsection*{Precision updating (B): adjusting prediction precision}
 \label{m:precision}
-Precision updating (B) adjusts the concentration of each rule's predictions according to how well it explains feedback. For binary feedback, uniform category predictions give the reference likelihood $\ell_{\mathrm{chance}}(r_t)=r_t/C+(1-r_t)(1-1/C)$. Comparing the rule's likelihood with this reference gives the normalized support
+Precision updating (B) calibrates the concentration of each rule's predictions using the feedback likelihood. It changes precision in the direction that increases the likelihood of the observed feedback under that rule. To express this update across feedback conditions, let $a_{t,h}(c)\in[0,1]$ denote feedback compatibility. It is the probability of the observed feedback given category $c$, the chosen response and the rule's existing knowledge. For binary feedback,
 \begin{equation}
-\kappa_t(h)=
+a_{t,h}(c)=
 \begin{cases}
-\dfrac{\ell_t(h)-\ell_{\mathrm{chance}}}{1-\ell_{\mathrm{chance}}},
-&\ell_t(h)\geq\ell_{\mathrm{chance}},\\[6pt]
-\dfrac{\ell_t(h)-\ell_{\mathrm{chance}}}{\ell_{\mathrm{chance}}},
-&\ell_t(h)<\ell_{\mathrm{chance}},
+\ind(c=y_t),&r_t=1,\\
+\ind(c\neq y_t),&r_t=0.
 \end{cases}
-\label{eq:precision-support}
+\label{eq:feedback-compatibility}
 \end{equation}
-where $\ell_{\mathrm{chance}}$ denotes the reference for the current feedback. Support ranges from $-1$ to $1$: positive values indicate that the rule explains the feedback better than uniform predictions, negative values indicate weaker agreement, and zero indicates equal likelihood.
+Correct feedback selects the chosen category, whereas incorrect feedback retains all other categories as possible explanations. Condition~3 averages these compatibilities over the learner's pairing beliefs, as defined below.
 
-Support determines the direction and size of the precision change:
+Write $p_{t,h}(c;\beta)$ for Eq.~\eqref{eq:category-prediction} evaluated at precision $\beta$, with the current stimulus and category distances held fixed. The feedback likelihood and the category distribution conditional on that feedback are
+\begin{align}
+\ell_t(h;\beta)&=\sum_{c=1}^{C}a_{t,h}(c)p_{t,h}(c;\beta),\\
+p_t^{\mathrm{fb}}(c\mid h)&=
+\frac{a_{t,h}(c)p_{t,h}(c)}{\ell_t(h;\beta_t(h))}.
+\label{eq:feedback-category-distribution}
+\end{align}
+The conditional distribution $p_t^{\mathrm{fb}}(c\mid h)$ identifies which category predictions can explain the feedback. It is computed for the current update and is discarded afterwards.
+
+The precision gradient compares the expected category distance before and after conditioning on feedback:
 \begin{equation}
-\beta_{t+1}(h)=
-\begin{cases}
-\min\{\beta_t(h)+\eta_+\kappa_t(h)[\beta_{\max}-\beta_t(h)],\,\beta_{\max}\},
-&\kappa_t(h)\geq0,\\[4pt]
-\max\{\beta_t(h)+\eta_-\kappa_t(h)\beta_t(h),\,\beta_{\min}\},
-&\kappa_t(h)<0.
-\end{cases}
+\begin{aligned}
+\kappa_t(h)
+&=\left.\frac{\partial\log\ell_t(h;\beta)}{\partial\beta}\right|_{\beta=\beta_t(h)}\\
+&=\sum_{c=1}^{C}p_{t,h}(c)d_{t,h,c}
+-\sum_{c=1}^{C}p_t^{\mathrm{fb}}(c\mid h)d_{t,h,c}.
+\end{aligned}
+\label{eq:precision-gradient}
+\end{equation}
+Distances and feedback compatibilities remain fixed when taking this derivative. A positive gradient indicates that increasing precision improves the feedback likelihood locally; a negative gradient favors decreasing precision. The gradient is zero when the two expected distances coincide.
+
+A single participant-level learning rate $\eta\in[0,1]$ controls the update in both directions:
+\begin{equation}
+\beta_{t+1}(h)=\operatorname{clip}
+\bigl(\beta_t(h)+\eta\kappa_t(h),\,\beta_{\min},\,\beta_{\max}\bigr).
 \label{eq:precision-update}
 \end{equation}
-The participant-level rates $\eta_+,\eta_-\in[0,1]$ control increases and decreases, with shared bounds $\beta_{\min}=0.1$ and $\beta_{\max}=25$. Supporting feedback moves precision toward the upper bound, with smaller increases as that bound approaches. Contradictory feedback reduces a fraction of current precision, subject to the lower bound; zero support leaves it unchanged. All active rules update, and the new precisions affect predictions on the next trial. Belief and precision update in parallel using the predictions formed before feedback: belief measures support among explanations, whereas precision determines the sharpness of each explanation's predictions.
+Here $\operatorname{clip}(v,l,u)=\min\{u,\max\{l,v\}\}$ restricts precision to the shared bounds $\beta_{\min}=0.1$ and $\beta_{\max}=25$. All active rules update, and the new precisions affect predictions on the next trial. Precision learning has two participant-level parameters: the initial precision $\beta_0$ and the learning rate $\eta$.
+
+Belief and precision update in parallel using the predictions formed before feedback. Belief measures relative support among rules, while precision calibrates the concentration of each rule's category predictions.
 
 \subsection*{Hypothesis updating (H): managing available rules}
 \label{m:hypothesis}
@@ -117,14 +133,34 @@ p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
 \end{equation}
 Evidence memory applies the discounted update $\Pi_t^+(h,k)\propto[\Pi_t^-(h,k)]^{\gamma}\ell_t(h,k)$, normalized across active rule--pairing combinations. Summing over pairings yields each rule's belief. This joint representation lets partial feedback refine classification as response-pair knowledge develops.
 
-For precision updating, let $\widetilde q_t^-(k\mid h)\propto[\Pi_t^-(h,k)]^{\gamma}$ denote each rule's pairing distribution after memory discounting, normalized over pairings and before current feedback is incorporated. The marginal feedback likelihood is $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$. Uniform-prediction probabilities $\ell_{\mathrm{chance}}(r_t)$ are $1/4$, $1/4$ and $1/2$ for full, partial and zero credit, respectively. Graded feedback uses the support
+For precision updating, the pairing distribution is evaluated after memory discounting and before incorporating the current feedback:
 \begin{equation}
-\kappa_t^{(3)}(h)=
-\frac{\ell_t(h)-\ell_{\mathrm{chance}}(r_t)}
-{\ell_t(h)+\ell_{\mathrm{chance}}(r_t)}.
-\label{eq:graded-precision-support}
+\widetilde q_t^-(k\mid h)=
+\frac{[\Pi_t^-(h,k)]^{\gamma}}
+{\sum_{k'=1}^{3}[\Pi_t^-(h,k')]^{\gamma}}.
+\label{eq:discounted-pairing}
 \end{equation}
-This support enters the precision update in Eq.~\eqref{eq:precision-update}: positive values increase precision and negative values decrease it. During candidate changes, retained rules preserve their conditional pairing beliefs. An entrant inherits the overall pairing distribution obtained after feedback and before candidate removal, carrying learned family relations into the new hypothesis.
+When $\gamma=0$, active rule--pairing combinations receive equal weight. A rule with zero total joint belief uses a uniform conditional pairing distribution.
+
+For each pairing $k$, define the set of categories compatible with the feedback:
+\begin{equation}
+\mathcal Y_k(y_t,r_t)=
+\begin{cases}
+\{y_t\},&r_t=1,\\
+\{\operatorname{mate}_k(y_t)\},&r_t=0.5,\\
+\{1,2,3,4\}\setminus\{y_t,\operatorname{mate}_k(y_t)\},&r_t=0.
+\end{cases}
+\label{eq:graded-feedback-categories}
+\end{equation}
+These sets contain the chosen category, its paired category, or the two categories in the other family, respectively. Averaging over the pairing distribution gives the feedback compatibility
+\begin{equation}
+a_{t,h}(c)=\sum_{k=1}^{3}\widetilde q_t^-(k\mid h)
+\ind\bigl(c\in\mathcal Y_k(y_t,r_t)\bigr).
+\label{eq:graded-feedback-compatibility}
+\end{equation}
+The resulting likelihood equals $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$. It enters the same precision gradient and update in Eqs.~\eqref{eq:precision-gradient} and~\eqref{eq:precision-update}. Differentiation holds the discounted pairing distribution and the category distances fixed. Thus, all three feedback levels calibrate precision using the pairing knowledge available before that feedback.
+
+During candidate changes, retained rules preserve their conditional pairing beliefs. An entrant inherits the overall pairing distribution obtained after feedback and before candidate removal, carrying learned family relations into the new hypothesis.
 
 \subsection*{Inference from choices}
 \label{m:inference}
@@ -139,7 +175,7 @@ W_t^{(n),\mathrm{choice}}&=
 \end{align}
 Each particle then updates the learner's states using the observed feedback. Within a trajectory, feedback changes the learner's beliefs about rules. Across trajectories, choices change the researcher's support for possible internal states. The likelihood thus averages over uncertainty about perception and candidate dynamics.
 
-Participant parameters $\bm\theta$ are estimated by minimizing mean choice negative log-likelihood,
+The full model defines 13 participant-level parameters, including $\beta_0$ and $\eta$ for precision learning. Free and fixed parameters are specified before estimation. Participant parameters $\bm\theta$ are estimated by minimizing mean choice negative log-likelihood,
 \begin{equation}
 \mathrm{NLL}(\bm\theta)=-\frac1T\sum_{t\in\mathcal T_{\mathrm{score}}}
 \log\widehat P_t(y_t;\bm\theta),
@@ -147,7 +183,7 @@ Participant parameters $\bm\theta$ are estimated by minimizing mean choice negat
 \end{equation}
 where $\mathcal T_{\mathrm{score}}$ is the set of scored trials and $T$ its size. Predictions are formed before current feedback. Choice likelihood is the fitting objective.
 
-\draftslot{Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
+\draftslot{Implementation and validation of the revised precision update remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
 
 \subsection*{Interpreting reconstructed trajectories}
 \label{m:measures}

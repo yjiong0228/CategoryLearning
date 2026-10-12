@@ -1,5 +1,5 @@
 % !TeX program = xelatex
-% Revised design: 2026-10-11.
+% Revised design: 2026-10-12 (single-rate precision calibration).
 % Existing scientific code: 4c1ccd79.
 \documentclass[12pt]{article}
 \usepackage[a4paper,margin=2.5cm]{geometry}
@@ -36,19 +36,19 @@
 \title{Model 0923：有限候选与反馈学习\\[0.4em]
 \large 以认知模块为线索的完整模型说明}
 \author{}
-\date{2026年10月11日}
+\date{2026年10月12日}
 \begin{document}
 \maketitle
 
 \begin{figure}[!ht]
 \centering
 \includegraphics[width=\linewidth,height=0.58\textheight,keepaspectratio]{figures/model_0923_framework.png}
-\caption{Model 0923 的机制总览。知觉模块形成内部刺激，各条规则的类别预测供选择读出和反馈评价共用。选择读出汇总作答概率。收到反馈后，证据记忆与精度更新并行调整规则信念和预测精度，假设更新为下一题准备候选。虚线表示跨试次状态传递。选择数据用于估计参数和更新粒子权重。图示为修订设计。图中反馈更新以二值任务为例，条件3的配对学习见第\ref{sec:pairing}节。}
+\caption{Model 0923 的机制总览。知觉模块形成内部刺激，各条规则的类别预测供选择读出和反馈评价共用。选择读出汇总作答概率。收到反馈后，证据记忆与精度更新并行调整规则信念和预测精度，假设更新为下一题准备候选。虚线表示跨试次状态传递。选择数据用于估计参数和更新粒子权重。图中 $\kappa$ 表示反馈对数似然对精度的梯度，定义见第\ref{sec:precision}节。图中反馈更新以二值任务为例，条件3的配对学习见第\ref{sec:pairing}节。}
 \label{fig:model-framework}
 \end{figure}
 \clearpage
 
-本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录、信念与精度更新已有实现；本文重写的候选准入与连续作答权重机制尚待同步代码。
+本文给出 Model 0923 的修订设计。目标是用简洁、容易解释的机制，保持0826的行为预测能力。搜索控制、规则目录和证据记忆已有实现；本文的候选管理、连续作答权重和单学习率精度校准尚待同步代码。2026年10月12日修订统一了三种反馈条件的精度更新，行为参数共13项。精度学习速度、参数恢复和行为预测的验收待完成。
 
 正文先介绍任务、规则表示和证据更新，再说明各认知模块怎样完成一次学习过程。第\ref{sec:hypothesis}节统一说明假设更新模块的搜索与候选管理，第\ref{sec:execution}节说明选择读出。被试参数在同一被试内保持不变，状态随试次递推。
 
@@ -77,7 +77,7 @@
 知觉（P） & 形成怎样的内部刺激？各条规则怎样预测类别？ & 内部刺激 $\widetilde{\bm x}_t$；类别概率 $p_{t,h}(c)$。\\
 证据记忆（M） & 反馈怎样改变候选的可信程度？ & 反馈后信念 $\pi_t^+$；条件3还更新配对信念。\\
 假设更新（H） & 何时搜索？哪些规则进入或退出候选集合？ & 失败状态 $F_{t+1}$、搜索概率 $e_{t+1}$、全局比例 $g_{t+1}$；下一题候选 $\mathcal A_{t+1}$ 及信念 $\pi_{t+1}^-$。\\
-精度更新（B） & 反馈使规则的类别预测更明确还是更模糊？ & 更新后的规则精度 $\beta_{t+1}(h)$。\\
+精度更新（B） & 怎样调整预测的明确程度，使规则更好地解释反馈？ & 更新后的规则精度 $\beta_{t+1}(h)$。\\
 选择读出（RC） & 各候选对本题作答有多大影响？选择概率是多少？ & 作答权重 $w_t$、主导规则 $h_t^{\star}$ 与选择概率 $P(y_t=c\mid z_t)$。\\
 \bottomrule
 \end{longtable}
@@ -181,7 +181,7 @@ $\mathcal A_t,N_t,M_s^{\max}$ & 活跃候选集合、实际候选数与被试容
 $\pi_t^-(h),\pi_t^+(h)$ & 作答前、反馈后的相对规则信念。\\
 $\pi_t^{\rm ret},\pi_t^{\rm keep}$ & 退出后、容量处理后的旧规则信念，各自在对应集合内归一化。\\
 $\beta_t(h),p_{t,h}(c)$ & 规则精度，以及该规则给类别 $c$ 的预测概率。\\
-$\ell_t(h),\kappa_t(h)$ & 反馈似然，以及用于精度更新的反馈支持量。\\
+$\ell_t(h),\kappa_t(h)$ & 反馈似然，以及反馈对数似然对精度的梯度。\\
 $f_t,F_t$ & 本题失败程度，以及进入本题的累计失败状态。\\
 $e_t,g_t$ & 搜索启动概率，以及搜索发生时采用全局来源的概率。\\
 $w_t(h),h_t^\star$ & 规则的作答贡献，以及贡献最大的主导规则。\\
@@ -484,45 +484,66 @@ $\pi_{t+1}^-(h)$ 是分配后旧规则保留的信念，$\pi_{t+1}^-(u)$ 是新�
 \section{精度更新模块（B）：调整规则预测的明确程度}
 \label{sec:precision}
 
-精度更新模块更新每条规则的 $\beta_t(h)$，从而调整类别预测的明确程度。能较好解释反馈的规则提高精度，受到反驳的规则降低精度；更新后的精度从下一题起使用。
+精度更新模块用反馈校准每条规则的类别预测。它判断精度略微提高时，本次实际反馈的预测概率会怎样变化，并据此提高或降低 $\beta_t(h)$。这一调整改变规则预测的明确程度，更新后的精度从下一题起使用。
 
-\subsection{实际结果是否比机会水平更符合规则}
+\subsection{反馈允许哪些类别}
 
-二值反馈任务中的精度更新，比较规则的反馈似然与均匀类别预测的基准。若对 $C$ 个类别都给出 $1/C$ 的概率，正确反馈的概率为 $1/C$，错误反馈的概率为 $1-1/C$。这个基准称为机会概率，根据本题实际反馈取值：
+先把实际反馈转为各类别与反馈的相容程度。用 $a_{t,h}(c)\in[0,1]$ 表示：假定类别为 $c$，在实际选择 $y_t$ 和该规则已有知识下，收到反馈 $r_t$ 的概率。二值反馈的相容系数为
 \begin{equation}
-\ell_{\rm chance}(r_t)=\frac{r_t}{C}+(1-r_t)(1-1/C).
+a_{t,h}(c)=
+\begin{cases}
+\ind(c=y_t),&r_t=1,\\
+\ind(c\ne y_t),&r_t=0.
+\end{cases}
+\label{eq:binary-feedback-compatibility}
 \end{equation}
-二分类两种反馈的机会概率均为0.5；四分类正确为0.25、错误为0.75。规则自身的反馈似然 $\ell_t(h)$ 按式\eqref{eq:binary-feedback}计算。将它与机会概率比较，得到支持量：
+正确反馈只允许已选类别，错误反馈允许其余类别。条件3还需对未知配对求平均，相容系数的定义见第\ref{sec:pairing-precision}节。
+
+为考察精度变化的影响，固定本题内部刺激与规则区域，将类别预测中的精度暂记为可变的 $\beta$，得到 $p_{t,h}(c;\beta)$。反馈似然以及按反馈重新加权的类别分布为
+\begin{align}
+\ell_t(h;\beta)&=\sum_{c=1}^{C}a_{t,h}(c)p_{t,h}(c;\beta),
+\label{eq:precision-feedback-likelihood}\\
+p_t^{\rm fb}(c\mid h)&=
+\frac{a_{t,h}(c)p_{t,h}(c)}{\ell_t(h)},
+\qquad \ell_t(h)=\ell_t(h;\beta_t(h)).
+\label{eq:feedback-category-distribution}
+\end{align}
+式中的 $p_{t,h}(c)$ 是本题作答时使用的类别预测。将它乘以相容系数，再除以反馈似然，便得到总和为1的 $p_t^{\rm fb}$。上标 $\mathrm{fb}$ 表示加入本题反馈后的类别条件分布。例如，正确反馈使该分布全部集中在已选类别；错误反馈使其在其余类别间按原预测比例分配。它用于本次精度计算，规则信念 $\pi_t^+$ 仍按证据记忆模块的公式更新。
+
+\subsection{根据预测距离确定调整方向}
+
+精度越高，预测越偏向距离较近的类别。因此，模型比较两种平均距离：作答时各类别按 $p_{t,h}$ 加权的平均距离，以及加入反馈后按 $p_t^{\rm fb}$ 加权的平均距离。两者的差恰好是反馈对数似然对精度的梯度：
 \begin{equation}
 \kappa_t(h)=
-\begin{cases}
-\dfrac{\ell_t(h)-\ell_{\rm chance}}{1-\ell_{\rm chance}},&\ell_t(h)\geq \ell_{\rm chance},\\[6pt]
-\dfrac{\ell_t(h)-\ell_{\rm chance}}{\ell_{\rm chance}},&\ell_t(h)<\ell_{\rm chance}.
-\end{cases}
-\label{eq:binary-precision-support}
+\left.\frac{\partial\log\ell_t(h;\beta)}{\partial\beta}\right|_{\beta=\beta_t(h)}
+=\sum_{c=1}^{C}p_{t,h}(c)d_{t,h,c}
+-\sum_{c=1}^{C}p_t^{\rm fb}(c\mid h)d_{t,h,c}.
+\label{eq:precision-gradient}
 \end{equation}
-式中的 $\ell_{\rm chance}$ 表示本题反馈的机会概率 $\ell_{\rm chance}(r_t)$。支持量 $\kappa_t(h)$ 取值在 $[-1,1]$：规则比均匀预测更能解释反馈时为正，两者相同时为0，更难解释时为负。二分类可简化为 $2[\ell_t(h)-0.5]$。
+梯度表示精度略微增加时，对数似然的变化速度。反馈允许的类别平均更近时，梯度为正，提高精度会增加本次反馈的预测概率；这些类别平均更远时，梯度为负，降低精度会增加该概率。两种平均距离相同时，梯度为0，精度保持原值。
 
-例如，四分类收到错误反馈时，机会概率为0.75。某规则给这次错误反馈的似然为0.90，支持量为0.60，表示错误反馈支持它原先对其他类别的判断；若似然为0.60，支持量为 $-0.20$，表示该规则受到反驳。
+例如，一条四分类规则给四个类别的距离为 $(0,0.1,0.4,\sqrt{0.17})$。精度为5时，类别预测约为 $(0.5350,0.3245,0.0724,0.0681)$，平均距离约为0.0895。若选择第二类并收到正确反馈，反馈后的类别分布集中在第二类，其距离为0.1。因此梯度约为 $0.0895-0.1=-0.0105$，这次反馈使精度降低。调整方向由反馈允许的类别与当前预测之间的距离差决定。
 
-\subsection{支持时增加，反驳时降低}
+\subsection{用同一学习率调整精度}
 
-支持量决定精度变化的方向和幅度。所有活跃规则按下式更新：
+所有活跃规则用一个被试层面的学习率 $\eta_s$ 更新精度：
 \begin{equation}
 \beta_{t+1}(h)=
-\begin{cases}
-\min\{\beta_t(h)+\eta_{+,s}\kappa_t(h)[\beta_{\max}-\beta_t(h)],
-\beta_{\max}\},&\kappa_t(h)\geq0,\\[4pt]
-\max\{\beta_t(h)-\eta_{-,s}\beta_t(h)\min[1,-\kappa_t(h)],
-\beta_{\min}\},&\kappa_t(h)<0.
-\end{cases}
+\clip\bigl(\beta_t(h)+\eta_s\kappa_t(h),\beta_{\min},\beta_{\max}\bigr),
+\qquad 0\leq\eta_s\leq1.
 \label{eq:precision-update}
 \end{equation}
-共同边界为 $\beta_{\min}=0.1,\beta_{\max}=25$。$\beta_{0,s}$ 是初值，$\eta_{+,s},\eta_{-,s}$ 是增长和下降速率。支持时增长取决于到上限的余量，反驳时按当前值的一定比例下降。
+这里 $\clip(v,l,u)=\min\{u,\max\{l,v\}\}$ 将更新后的数值限制在共同边界 $\beta_{\min}=0.1$ 与 $\beta_{\max}=25$ 之间。学习率越大，同样的梯度引起的调整越大；精度的增加和降低均使用 $\eta_s$。精度模块的个体参数为初值 $\beta_{0,s}$ 和学习率 $\eta_s$。
 
-所有活跃候选都更新，包括作答贡献很小的规则。新精度从下一题起影响预测。条件3使用第\ref{sec:pairing-precision}节的三值支持量进入同一更新结构。
+上述例子在 $\eta_s=1$ 时，将精度由5调整到约4.9895，第二类概率由约0.32450提高到0.32454。所有活跃候选都接受更新，包括作答贡献很小的规则。保留规则沿用更新后的精度，新规则从 $\beta_{0,s}$ 开始。证据记忆与精度更新共用反馈前的类别预测；条件3的精度计算还固定使用遗忘后、加入本题反馈前的条件配对信念。三种条件均按式\eqref{eq:precision-gradient}和式\eqref{eq:precision-update}更新。
 
-规则信念反映各候选之间的相对可信程度，规则精度控制单条规则的类别预测有多集中。两者根据同一次反馈更新，因此一条规则可以预测很明确，却因判断错误而具有较低信念。
+规则信念反映各候选之间的相对可信程度，规则精度控制单条规则的类别预测有多集中。反馈同时改变这两个量：证据记忆重新比较候选，精度更新调整每条候选解释反馈时的预测明确程度。
+
+\subsection{更新范围与拟合前检查}
+
+本模型的内部刺激和非空类别区域位于 $[0,1]^4$，因此 $0\leq d_{t,h,c}\leq2$。固定本题距离与相容系数时，反馈对数似然的二阶导数等于反馈条件分布与原类别预测下的距离方差之差，其绝对值至多为1。这一界限使 $0\leq\eta_s\leq1$ 的有界更新保持本次反馈似然不下降。该性质针对当前规则和本题固定状态，整体选择预测与学习轨迹的表现需另行评价。
+
+当反馈按该规则当前的反馈分布产生时，梯度的期望为0；对未作边界裁剪的更新，平均精度变化也为0。边界裁剪会改变这一性质。正式拟合前需检查精度变化速度、学习率是否触及上界，以及错误规则在降低精度后的存活时间。单学习率精度校准的代码接入、参数恢复和行为预测检验待完成。
 
 \section{选择读出模块（RC）：从规则权重到类别选择}
 \label{sec:execution}
@@ -670,15 +691,16 @@ W_t^{(n),{\rm choice}}=\frac{W_t^{(n),{\rm pre}}p_t^{(n)}(y_t)}{\sum_{n'=1}^{N_{
 
 \subsection{参数清单}
 
-搜索控制与候选管理共9项，选择读出中的使用惯性1项，证据记忆1项，精度更新3项：
+搜索控制与候选管理共9项，选择读出中的使用惯性1项，证据记忆1项，精度更新2项：
 \begin{align}
 \bm\theta_s=(&e_{0,s},a_{e,s},\delta_s,g_{0,s},a_{g,s},
 M_s^{\max},\rho_s,\omega_s,\tau_{{\rm tr},s},\lambda_s,\nonumber\\
-&\gamma_s,\beta_{0,s},\eta_{+,s},\eta_{-,s}).
+&\gamma_s,\beta_{0,s},\eta_s).
 \end{align}
-行为模型包含14项被试参数。拟合前规定哪些参数自由估计、哪些固定，以及各项的估计范围。参数恢复使用已知参数生成模拟数据，再重新估计参数，检查这些参数能否被辨认。下表沿用现有三条件配置例值用于说明量级；新机制需同步实现后才能用于拟合，$\lambda_s$ 按修订后的作答惯性解释。
+行为模型包含13项被试参数。拟合前规定哪些参数自由估计、哪些固定，以及各项的估计范围。参数恢复使用已知参数生成模拟数据，再重新估计参数，检查这些参数能否被辨认。下表的已有参数沿用现有三条件配置例值，新增单学习率的运行设置待校准。新机制需同步实现后才能用于拟合，$\lambda_s$ 按修订后的作答惯性解释。
 
 {\small
+\renewcommand{\arraystretch}{1.05}
 \begin{longtable}{L{1.8cm}L{6.8cm}L{3.4cm}L{1.5cm}}
 \toprule
 参数 & 认知含义 & 数学范围 & 例值\\
@@ -696,8 +718,7 @@ $\tau_{{\rm tr},s}$ & 功能支持泛化尺度。 & $(0,\infty)$ & 0.1\\
 $\lambda_s$ & 上一主导规则的作答惯性。 & $[0,\infty)$ & 1.0\\
 $\gamma_s$ & 规则及联合配对证据保持。 & $[0,1]$ & 0.8\\
 $\beta_{0,s}$ & 新规则初始精度。 & $[\beta_{\min},\beta_{\max}]$ & 5.0\\
-$\eta_{+,s}$ & 精度增长速率。 & $[0,1]$ & 0.04\\
-$\eta_{-,s}$ & 精度下降速率。 & $[0,1]$ & 0.15\\
+$\eta_s$ & 精度校准学习率。 & $[0,1]$ & 待校准\\
 \bottomrule
 \end{longtable}
 }
@@ -779,14 +800,24 @@ p_{t,h}[\operatorname{mate}_k(y_t)],&r_t=0.5,\\
 \frac{[\Pi_t^-(h,k)]^{\gamma_s}}{\sum_{k'=1}^3[\Pi_t^-(h,k')]^{\gamma_s}}.
 \end{equation}
 当 $\gamma_s=0$ 时，活跃规则与各配对方案的组合按等权处理；某条规则的联合信念总和为0时，其条件配对使用均匀分布。
-边际反馈概率 $\ell_t(h)=\sum_k\widetilde q_t^-(k\mid h)\ell_t(h,k)$。均匀四类下，正确、半分、0分的机会概率为 $1/4,1/4,1/2$，支持量为
+
+给定配对 $k$，用 $\mathcal Y_k(y_t,r_t)$ 表示与选择及实际反馈相容的类别集合：
 \begin{equation}
-\kappa_t^{(3)}(h)=
-\frac{\ell_t(h)-\ell_{\rm chance}(r_t)}
-{\ell_t(h)+\ell_{\rm chance}(r_t)}.
-\label{eq:ternary-precision-support}
+\mathcal Y_k(y_t,r_t)=
+\begin{cases}
+\{y_t\},&r_t=1,\\
+\{\operatorname{mate}_k(y_t)\},&r_t=0.5,\\
+\{1,2,3,4\}\setminus\{y_t,\operatorname{mate}_k(y_t)\},&r_t=0.
+\end{cases}
 \end{equation}
-将该支持量代入式\eqref{eq:precision-update}，更新规则精度。规则对实际反馈给出的概率等于机会水平时，支持量为0，精度保持不变；高于机会水平时提高精度，低于机会水平时降低精度。因此，半分反馈也可以提高或降低精度，取决于该规则原先有多大概率预测到半分。反馈证据由更新前的规则预测与配对信念计算，随后用于本题的精度更新。搜索控制使用 $1-r_t$，表示本题目标未达成的程度。
+三种集合分别包含已选类别、同科另一类别和另科两个类别。用反馈前的条件配对信念对这些集合求平均，得到第\ref{sec:precision}节所需的相容系数及反馈似然：
+\begin{align}
+a_{t,h}(c)&=\sum_{k=1}^3\widetilde q_t^-(k\mid h)\ind[c\in\mathcal Y_k(y_t,r_t)],
+\label{eq:ternary-feedback-compatibility}\\
+\ell_t(h)&=\sum_{c=1}^4a_{t,h}(c)p_{t,h}(c)
+=\sum_{k=1}^3\widetilde q_t^-(k\mid h)\ell_t(h,k).
+\end{align}
+相容系数表示当前配对知识下，各类别能够产生本次反馈的概率。将它代入式\eqref{eq:feedback-category-distribution}计算反馈条件分布，再按式\eqref{eq:precision-gradient}与式\eqref{eq:precision-update}调整精度。本次精度微分固定本题距离和 $\widetilde q_t^-$；反馈后的配对信念 $q_t^+$ 保存用于候选衔接和后续试次。半分和0分分别允许不同的类别集合，因此可以产生不同的精度调整方向和幅度。搜索控制继续使用 $1-r_t$，表示本题目标未达成的程度。
 
 \subsection{候选变化后保留配对知识}
 \label{sec:pairing-transfer}
@@ -873,8 +904,9 @@ q_t^+(k\mid h),&h\text{为保留的旧规则},\\
 $\varepsilon_{t,j}$ & 本题第 $j$ 个特征的知觉误差。\\
 $\mathcal C_{h,c},\bm\xi,d_{t,h,c}$ & 规则的类别区域、区域中的几何点、内部刺激到该区域的距离。\\
 $c_h(\bm x),p_0(h)$ & 规则给出的确定类别，以及规则的基础先验。\\
-$\ell_t(h,k),\ell_{\rm chance}(r_t)$ & 规则与配对下的反馈似然，以及机会水平的反馈概率。\\
-$\kappa_t^{(3)}(h)$ & 条件3用于精度更新的反馈支持量。\\
+$\ell_t(h,k),\ell_t(h;\beta)$ & 规则与配对下的反馈似然，以及固定本题其他状态时随精度变化的反馈似然。\\
+$a_{t,h}(c),p_t^{\rm fb}(c\mid h)$ & 类别与实际反馈的相容系数，以及按该反馈重新加权的类别分布。\\
+$\kappa_t(h),\eta_s$ & 反馈对数似然对精度的梯度，以及被试的精度学习率。\\
 \multicolumn{2}{l}{\textbf{候选管理与搜索}}\\
 $\mathcal D_t,\mathcal A_t^{\rm ret},\mathcal A_t^{\rm keep}$ & 实际退出集合、退出后集合、容量处理后保留的旧集合。\\
 $\mathcal U_t,\mathcal N_t(h)$ & 本轮可引入的规则，以及其中可由 $h$ 一步编辑得到的邻居。\\
@@ -890,6 +922,7 @@ $N_{{\rm eff},t}$ & 由作答权重计算的有效参与数量。\\
 \multicolumn{2}{l}{\textbf{配对学习、粒子推断与计分}}\\
 $\mathcal G_k,\operatorname{mate}_k(y)$ & 第 $k$ 种反应配对，以及该配对下与 $y$ 同科的另一个反应。\\
 $\widetilde q_t^-(k\mid h)$ & 旧证据衰减后、本题反馈进入前的条件配对信念。\\
+$\mathcal Y_k(y_t,r_t)$ & 给定配对 $k$ 时，与实际选择和反馈相容的类别集合。\\
 $z_t^{(n)},p_t^{(n)}(c)$ & 第 $n$ 条内部路径的状态与类别预测。\\
 $W_t^{(n),{\rm choice}},\mathrm{ESS}_t$ & 按实际选择更新的粒子权重，以及粒子有效样本量。\\
 $\widehat P_t,\overline N_t$ & 粒子加权预测分布，以及候选数量的粒子加权平均。\\

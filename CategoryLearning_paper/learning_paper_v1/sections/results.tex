@@ -48,11 +48,12 @@ learner (see \hyperref[m:choice]{Methods}).
 Feedback changes the relative support for every available rule according to
 how well it predicts the observed outcome. Evidence memory (M) determines how
 much earlier support is retained when new feedback is
-incorporated. Precision updating (B) adjusts how sharply each rule predicts
-categories: feedback that is more probable than under uniform category
-predictions increases precision, while less probable feedback decreases it.
-The learner can therefore increase its belief in a rule and sharpen that
-rule's predictions through distinct updates. In the hierarchical condition,
+incorporated. Precision updating (B) calibrates how sharply each rule predicts
+categories. The precision gradient indicates whether increasing or decreasing
+precision makes the observed feedback more likely under that rule. A single
+learning rate controls adjustment in both directions. Belief updating measures
+relative support among rules, while precision updating adjusts the
+concentration of each rule's category predictions. In the hierarchical condition,
 feedback also updates beliefs about which response categories belong to the
 same family. This knowledge carries forward as the candidate rules change.
 
