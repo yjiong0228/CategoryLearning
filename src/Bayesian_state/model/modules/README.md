@@ -112,8 +112,11 @@ engine 只在 `StateModel.complete_trial()` 收到 outcome 后统一广播一次
 - `features`：特征维度，默认 4
 - `mean`, `std`：正态噪声参数（可标量或长度=features 向量）
 - `subject_id`：用于读取被试特异统计
+- `noise_mode`：`auto` 按被试分组，`normal` 或 `uniform` 显式指定噪声机制
 - `normal_subject_ids`, `uniform_subject_ids`：两类被试对应不同噪声机制
 - `processed_data_dir`：统计文件目录
+
+`auto` 的默认正态组为125–132、225–232、325–332；默认均匀组为101–124、201–224、301–324，以及编号333及之后的所有被试。显式指定 `noise_mode` 或被试分组可覆盖自动选择，用于保留明确配置的实验设定。
 
 外部数据表：
 
@@ -121,9 +124,11 @@ engine 只在 `StateModel.complete_trial()` 收到 outcome 后统一广播一次
 - `Task1b_errorsummary_72.csv`：提供 `threshold_mean_mean`
 - `Task2_processed.csv`：提供 feature 顺序映射（`feature1_name...feature4_name`）
 
+MEG 与 exp4 的阈值表名为 `Task1b_errorsummary.csv`。运行配置通过 `dataset.perception_summary_72` 指向该表，通过 `dataset.feature_order_data` 指向相应学习数据；字段名中的 `72` 沿用已有接口，所指阈值表可属于其他实验。
+
 ### 3.3 两种噪声机制
 
-#### 机制 A：正态噪声（默认）
+#### 机制 A：正态噪声
 
 若被试属于 normal 组：
 
@@ -134,7 +139,7 @@ engine 只在 `StateModel.complete_trial()` 收到 outcome 后统一广播一次
 
 其中 `\mu_s, \sigma_s` 是被试 `s` 的 4 维向量，并已按 Task2 的 feature 呈现顺序重排。
 
-#### 机制 B：均匀噪声（72 名被试分支）
+#### 机制 B：均匀噪声
 
 若被试属于 uniform 组，使用 `threshold_mean_mean` 作为半宽 `a_s`：
 
@@ -142,6 +147,8 @@ engine 只在 `StateModel.complete_trial()` 收到 outcome 后统一广播一次
 \epsilon_{t,j} \sim \mathcal{U}(-a_{s,j},\,a_{s,j}),\quad
 \tilde{x}_{t,j} = x_{t,j} + \epsilon_{t,j}
 \]
+
+同一被试、同一特征的多个测量水平先取平均，得到该特征的半宽，再按学习任务的特征顺序排列。半宽为 $a_{s,j}$ 时，误差范围为 $[-a_{s,j},a_{s,j}]$，总宽为 $2a_{s,j}$。这一设置改变内部刺激，并进一步影响规则预测和学习轨迹。
 
 ### 3.4 边界处理
 

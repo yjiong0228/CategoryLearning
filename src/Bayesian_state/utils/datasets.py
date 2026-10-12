@@ -43,7 +43,7 @@ def resolve_dataset_paths(cfg: Mapping[str, Any], yaml_dir: Path, default_learni
         processed_dir: ../../data/meg/processed
         learning_data: Task3b_processed.csv
         perception_summary: Task1b_errorsummary.csv
-        perception_summary_72: Task1b_errorsummary_72.csv
+        perception_summary_72: Task1b_errorsummary.csv
         feature_order_data: Task3b_processed.csv
 
     Legacy style:

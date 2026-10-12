@@ -26,14 +26,15 @@ SUMMARY72_REQUIRED_COLUMNS = {"iSub", "feature_name", "threshold_mean_mean"}
 DEFAULT_NORMAL_SUBJECT_IDS = (
     list(range(125, 133))
     + list(range(225, 233))
-    + list(range(325, 336))
-    + list(range(401, 425))
+    + list(range(325, 333))
 )
 DEFAULT_UNIFORM_SUBJECT_IDS = (
     list(range(101, 125))
     + list(range(201, 225))
     + list(range(301, 325))
 )
+# From subject 333 onward, perception thresholds define uniform-noise half-widths.
+DEFAULT_UNIFORM_MIN_SUBJECT_ID = 333
 
 
 @lru_cache(maxsize=None)
@@ -439,6 +440,8 @@ class PerceptionModule(BaseModule):
             return "uniform"
         if subject_id in normal_subject_ids:
             return "normal"
+        if subject_id >= DEFAULT_UNIFORM_MIN_SUBJECT_ID:
+            return "uniform"
         return "normal"
 
     @staticmethod
