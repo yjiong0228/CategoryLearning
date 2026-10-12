@@ -105,26 +105,40 @@ class ParticleFilterEvaluationMixin:
         return np.asarray([], dtype=float), None
 
     @staticmethod
-    def _particle_capacity(info: Mapping[str, Any]) -> int:
+    def _particle_capacity_spec(info: Mapping[str, Any]) -> tuple[int, str]:
         params = info.get("best_params") or info.get("fixed_hyperparams") or {}
         if not isinstance(params, Mapping):
             params = {}
         transition_kwargs = params.get("engine.modules.hypo_transitions_mod.kwargs")
-        candidates = [
+        fixed_candidates = [
             params.get("capacity"),
             params.get("engine.modules.hypo_transitions_mod.kwargs.capacity"),
             transition_kwargs.get("capacity")
             if isinstance(transition_kwargs, Mapping)
             else None,
         ]
-        for value in candidates:
+        upper_candidates = [
+            params.get("max_capacity"),
+            params.get("engine.modules.hypo_transitions_mod.kwargs.max_capacity"),
+            transition_kwargs.get("max_capacity")
+            if isinstance(transition_kwargs, Mapping)
+            else None,
+        ]
+        for value, kind in (
+            [(value, "fixed") for value in fixed_candidates]
+            + [(value, "upper_bound") for value in upper_candidates]
+        ):
             try:
                 capacity = int(value)
             except (TypeError, ValueError):
                 continue
             if capacity > 0:
-                return capacity
+                return capacity, kind
         raise ValueError("Particle strategy profile requires a positive workspace capacity")
+
+    @classmethod
+    def _particle_capacity(cls, info: Mapping[str, Any]) -> int:
+        return cls._particle_capacity_spec(info)[0]
 
     @staticmethod
     def _causal_recent_accuracy(values: Any, window_size: int, n_trials: int) -> np.ndarray:
@@ -158,7 +172,7 @@ class ParticleFilterEvaluationMixin:
         )
         exact = [cls._particle_series(info, field) for field in exact_fields]
         has_exact = all(values.size for values in exact)
-        capacity = cls._particle_capacity(info)
+        capacity, capacity_kind = cls._particle_capacity_spec(info)
 
         if has_exact:
             n_trials = min(values.size for values in exact)
@@ -169,6 +183,10 @@ class ParticleFilterEvaluationMixin:
                 "predictive_swap_probability",
             )
         else:
+            if capacity_kind == "upper_bound":
+                raise ValueError(
+                    "Upper-bound workspaces require saved pre-choice strategy probabilities"
+                )
             transition_rate, rate_field = cls._first_particle_series(
                 info,
                 "predictive_transition_rate",
@@ -322,6 +340,7 @@ class ParticleFilterEvaluationMixin:
             "condition": int(info.get("condition", -1)),
             "trial": np.arange(1, n_trials + 1, dtype=int),
             "capacity": int(capacity),
+            "workspace_capacity_kind": capacity_kind,
             "strategy": strategy,
             "swap_probability": swap_probability,
             "realized": realized,
@@ -872,8 +891,13 @@ class ParticleFilterEvaluationMixin:
                     zorder=8,
                 )
                 self._add_particle_holdout_split(ax, info)
+                capacity_label = (
+                    f"M ≤ {profile['capacity']}"
+                    if profile["workspace_capacity_kind"] == "upper_bound"
+                    else f"M={profile['capacity']}"
+                )
                 ax.set(
-                    title=f"Subject {subject_id} (M={profile['capacity']})",
+                    title=f"Subject {subject_id} ({capacity_label})",
                     xlabel="Trial",
                     ylabel="Accuracy / strategy tendency",
                     xlim=(1, max(1, int(x[-1]))),
@@ -890,6 +914,7 @@ class ParticleFilterEvaluationMixin:
                         "condition": int(condition),
                         "n_trials": int(strategy.shape[0]),
                         "capacity": int(profile["capacity"]),
+                        "workspace_capacity_kind": profile["workspace_capacity_kind"],
                         "source_semantics": profile["source_semantics"],
                         "window_size": int(profile["window_size"]),
                         "low_accuracy_threshold": float(low_accuracy_threshold),
@@ -1090,15 +1115,51 @@ class ParticleFilterEvaluationMixin:
         *,
         window_size: int | None = None,
     ) -> dict[str, Any]:
-        """Build fixed-capacity PF workspace-composition counts.
+        """Build PF workspace counts using the saved workspace semantics.
 
+        Upper-bound workspaces use the summed marginal inclusion probability
+        to estimate the number of active hypotheses at each trial.
         Particle-filter transition logs do not contain the trajectory-only
         ``profile_policy.retained_count`` and ``newcomer_count`` fields. The
         expected PF counts instead follow directly from the particle-marginal
         replacement fraction: every replaced slot removes one incumbent and
         admits one newcomer while workspace capacity remains fixed.
         """
-        capacity = cls._particle_capacity(info)
+        capacity, capacity_kind = cls._particle_capacity_spec(info)
+        if capacity_kind == "upper_bound":
+            active = np.asarray(info.get("marginal_active_probability"), dtype=float)
+            if active.ndim != 2 or active.size == 0:
+                raise ValueError(
+                    "Upper-bound workspaces require saved marginal active probabilities"
+                )
+            if (
+                not np.all(np.isfinite(active))
+                or np.any(active < -1e-8)
+                or np.any(active > 1.0 + 1e-8)
+            ):
+                raise ValueError(
+                    "Marginal active probabilities must be finite and lie in [0, 1]"
+                )
+            active_total = active.sum(axis=1)
+            if np.any(active_total > capacity + 1e-8):
+                raise ValueError(
+                    "Expected active count exceeds the workspace capacity upper bound"
+                )
+            win = max(1, int(window_size or info.get("window_size") or 16))
+            # Variable occupancy does not identify admissions and exits from
+            # replacement fractions. Preserve only the observed active count.
+            raw = pd.DataFrame({
+                "trial": np.arange(1, active_total.size + 1, dtype=int),
+                "retained": np.nan, "newcomer": np.nan, "total": active_total,
+            })
+            smooth = raw.copy()
+            smooth["total"] = raw["total"].rolling(window=win, min_periods=1).mean()
+            return {
+                "capacity": int(capacity), "workspace_capacity_kind": capacity_kind,
+                "window_size": win, "source_field": "marginal_active_probability",
+                "source_semantics": "pre_choice_particle_marginal",
+                "raw": raw, "smooth": smooth,
+            }
         replacement_fraction, source_field = cls._first_particle_series(
             info,
             "predictive_replacement_fraction",
@@ -1161,6 +1222,7 @@ class ParticleFilterEvaluationMixin:
         )
         return {
             "capacity": int(capacity),
+            "workspace_capacity_kind": capacity_kind,
             "window_size": int(win),
             "source_field": source_field,
             "source_semantics": source_semantics,
@@ -1176,7 +1238,7 @@ class ParticleFilterEvaluationMixin:
         save_path=None,
         **kwargs,
     ):
-        """Plot expected retained/newcomer counts for fixed-capacity PF states."""
+        """Plot fixed-workspace composition or variable-workspace occupancy."""
 
         def body(ax, condition, iSub, info):
             counts = self._particle_filter_active_set_count_data(
@@ -1186,6 +1248,32 @@ class ParticleFilterEvaluationMixin:
             raw = counts["raw"]
             smooth = counts["smooth"]
             capacity = int(counts["capacity"])
+
+            if counts["workspace_capacity_kind"] == "upper_bound":
+                ax.step(
+                    raw["trial"], raw["total"], where="mid", color="#0072B2",
+                    linewidth=0.8, alpha=0.2, label="Expected active (per trial)",
+                )
+                ax.plot(
+                    smooth["trial"], smooth["total"], color="#0072B2",
+                    linewidth=2.2, label="Expected active (rolling mean)",
+                )
+                ax.axhline(
+                    capacity, color="#555555", linestyle="--",
+                    linewidth=1.5, label=f"Capacity upper bound = {capacity}",
+                )
+                self._add_particle_holdout_split(ax, info)
+                ax.set(
+                    title=(
+                        f"Subject {iSub} (Condition {condition}) | "
+                        f"rolling window={counts['window_size']}\npre-choice particle marginal"
+                    ),
+                    xlabel="Trial", ylabel="Expected active hypothesis count",
+                    ylim=(-0.08, float(capacity) + 0.35),
+                )
+                ax.legend(loc="best", fontsize=8)
+                ax.grid(axis="y", alpha=0.22)
+                return
 
             for field, color in (
                 ("retained", "#009E73"),
@@ -1249,10 +1337,7 @@ class ParticleFilterEvaluationMixin:
             results,
             subjects,
             save_path,
-            (
-                "Particle-Filter Active-Workspace Composition\n"
-                "Expected retained + expected newcomers = fixed capacity"
-            ),
+            "Particle-Filter Active-Workspace Counts",
             body,
             **kwargs,
         )

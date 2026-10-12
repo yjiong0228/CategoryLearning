@@ -485,6 +485,44 @@ def test_particle_filter_active_set_counts_use_pre_choice_replacement_fraction()
     np.testing.assert_allclose(counts["smooth"]["newcomer"], [0.0, 0.5, 1.5, 2.5])
 
 
+def test_particle_filter_max_capacity_uses_actual_variable_occupancy():
+    info = {
+        "window_size": 2,
+        "best_params": {"engine.modules.hypo_transitions_mod.kwargs.max_capacity": 4},
+        "marginal_active_probability": [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.5, 0.0]],
+        "predictive_replacement_fraction": [0.0, 0.25, 0.5],
+    }
+    counts = ModelEvaluator()._particle_filter_active_set_count_data(info)
+    assert counts["workspace_capacity_kind"] == "upper_bound"
+    assert counts["source_field"] == "marginal_active_probability"
+    np.testing.assert_allclose(counts["raw"]["total"], [1.0, 2.0, 1.5])
+    np.testing.assert_allclose(counts["smooth"]["total"], [1.0, 1.5, 1.75])
+    assert counts["raw"]["newcomer"].isna().all()
+    assert counts["raw"]["retained"].isna().all()
+    with pytest.raises(ValueError, match="exceeds"):
+        ModelEvaluator()._particle_filter_active_set_count_data({
+            **info, "marginal_active_probability": [[1.0] * 5],
+        })
+
+
+def test_particle_filter_max_capacity_strategy_requires_saved_exact_probabilities():
+    info = {
+        "best_params": {"engine.modules.hypo_transitions_mod.kwargs.max_capacity": 4},
+        "predictive_strategy_exploit": [1.0, 0.7],
+        "predictive_strategy_local_explore": [0.0, 0.2],
+        "predictive_strategy_global_explore": [0.0, 0.1],
+    }
+    profile = ModelEvaluator()._particle_continuous_strategy_data(info)
+    assert profile["workspace_capacity_kind"] == "upper_bound"
+    assert profile["capacity"] == 4
+    np.testing.assert_allclose(profile["strategy"], [[1.0, 0.0, 0.0], [0.7, 0.2, 0.1]])
+    with pytest.raises(ValueError, match="saved pre-choice"):
+        ModelEvaluator()._particle_continuous_strategy_data({
+            "best_params": info["best_params"],
+            "transition_rate": [0.1, 0.2], "search_range": [0.2, 0.3],
+        })
+
+
 def test_particle_continuous_strategy_profile_prefers_exact_pre_choice_fields():
     evaluator = ModelEvaluator()
     info = {
