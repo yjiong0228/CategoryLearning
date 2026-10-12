@@ -14,6 +14,9 @@ can explain individual learning. Its primary scientific source is the
 revised on 2026-10-12, with the current hypothesis-updating and choice-readout
 sections in the
 [Markdown document](../../src/Bayesian_state/docs/model_architecture/model_0923.md).
+The shared implementation is `0923-full-v3`; its configuration entries and
+execution steps are documented in the
+[implementation and run guide](../../src/Bayesian_state/docs/model_architecture/model_0923_implementation.md).
 The [previous manuscript](../sn_article/README.md) is maintained in the parallel
 `sn_article/` directory. Shared journal class and bibliography styles are in
 `../latex/`; `.latexmkrc` supplies their search paths.
@@ -89,9 +92,9 @@ Mathematical notation follows the model specification.
 |---|---|
 | Title and abstract | Author-supplied text |
 | Model architecture and equations | Current specified design |
-| Revised candidate management and continuous choice readout | Code synchronization pending |
-| Precision calibration with one learning rate (2026-10-12) | Code synchronization pending |
-| Separate discounting of rule and conditional pairing beliefs (2026-10-12) | Code synchronization pending |
+| Revised candidate management and continuous choice readout | Implemented in `0923-full-v3`; targeted checks cover transitions and choice weights |
+| Precision calibration with one learning rate (2026-10-12) | Implemented in `0923-full-v3`; targeted checks cover the gradient and bounded update |
+| Separate discounting of rule and conditional pairing beliefs (2026-10-12) | Implemented in `0923-full-v3`; targeted checks cover discounting and feedback timing |
 | Behavioral findings and model comparison | Results reserved |
 | Latent trajectories and feedback-condition effects | Results reserved |
 | Generative predictions and identifiability | Results reserved |
@@ -102,10 +105,11 @@ Discussion remain to be completed from the corresponding analyses. Participant
 recruitment, exclusions, ethics and the final analysis cohort also require
 verified study information.
 
-Separate rule and conditional pairing discounting, revised precision updating,
-candidate management and choice readout require implementation in the shared
-model before fitting. Parameter fitting and validation of this revised design
-remain incomplete.
+The revised mechanisms are connected to shared state transitions, choice readout
+and particle inference. Targeted checks include state restoration and prediction
+timing. Example configurations use `eta=0.1` for small workflow checks; this value
+requires calibration before estimation. Formal data fitting, parameter recovery
+and behavioral validation of this revised design remain incomplete.
 
 ## Compile
 

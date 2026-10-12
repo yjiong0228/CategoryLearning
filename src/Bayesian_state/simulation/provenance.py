@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from src.Bayesian_state.hypothesis_space.geometry import (
     dykstra_numba_available,
 )
-from ..model.model_0923 import is_model_0923_full
+from ..model.model_0923 import is_model_0923_full, is_model_0923_revised
 
 
 def _mapping_path(mapping: Mapping[str, Any], path: str) -> Any:
@@ -110,6 +110,22 @@ def build_model_provenance(
                 "replacement_count": "capacity_competition_replacements_only",
                 "replacement_fraction": "capacity_replacements_divided_by_previous_active_count",
             },
+        )
+    if is_model_0923_revised(declared):
+        resolved["evidence_memory"] = deepcopy(_mapping_path(config, "modules.memory_mod.kwargs") or {})
+        resolved["candidate_management"].update(
+            mechanism_version=transition.get("mechanism_version"),
+            exit_policy="all_candidates_relative_belief_with_nonempty_fallback",
+            capacity_policy="remove_lowest_belief_before_single_transfer",
+            transfer_policy="survivor_mass_split_by_one_to_affinity",
+        )
+        resolved["choice_readout"].update(
+            rule_weights="belief_times_previous_dominant_inertia_normalized",
+            dominant_rule="maximum_weight_previous_dominant_tie_preference",
+        )
+        resolved["transition_event_semantics"].update(
+            swap_probability="search_probability",
+            replacement_count="lowest_belief_capacity_replacements_only",
         )
     partition_kwargs = _mapping_path(config, "partition.kwargs") or {}
     partition_class = str(_mapping_path(config, "partition.class") or "")

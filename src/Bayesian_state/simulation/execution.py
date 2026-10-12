@@ -284,6 +284,19 @@ def _build_single_mode_prediction_payload(
             rng=readout_rng,
             sticky_state=sticky_state,
         )
+        if "choice_weights" in step_item:
+            # Replay the weights captured before this trial's feedback. The
+            # final engine state cannot reconstruct its past dominant rule.
+            saved_weights = np.asarray(step_item["choice_weights"], dtype=float)
+            if (
+                saved_weights.shape != (len(hypotheses),)
+                or not np.isfinite(saved_weights).all()
+                or np.any(saved_weights < 0.0)
+                or not np.isclose(saved_weights.sum(), 1.0)
+            ):
+                raise ValueError("step-log choice_weights must be normalized rule weights.")
+            readout_weights = saved_weights.copy()
+            readout_log.update(selected_arg=-1, continuous_choice_enabled=True)
         executed_hypothesis = step_item.get("executed_hypothesis")
         if executed_hypothesis is not None:
             executed_value = int(executed_hypothesis)
@@ -876,6 +889,19 @@ def _evaluate_state_model_particle_filter_run(
         "output_lapse_mean": float(output_lapse),
         "output_lapse_max": float(output_lapse),
     }
+    continuous_state_log = {}
+    if "choice_weights" in state_probabilities:
+        for key in (
+            "choice_weights", "dominant_probability",
+            "filtered_choice_weights", "filtered_dominant_probability",
+        ):
+            diagnostic_arrays[f"particle_{key}"] = state_probabilities[key]
+            continuous_state_log[key] = state_probabilities[key]
+        for key in ("effective_participation", "filtered_effective_participation"):
+            diagnostic_arrays[f"particle_{key}"] = latent[key]
+            continuous_state_log[key] = latent[key]
+        continuous_state_log["continuous_choice_metadata"] = result.metadata["continuous_choice"]
+        diagnostic_arrays["continuous_choice_metadata"] = result.metadata["continuous_choice"]
     pairing_state_log = {}
     if "pairing_prior" in state_probabilities:
         for key in ("pairing_prior", "pairing_posterior"):
@@ -1216,6 +1242,7 @@ def _evaluate_state_model_particle_filter_run(
             "post_choice_ess": diagnostics["post_choice_ess"],
             "resampled": diagnostics["resampled"],
             **audit_state_log,
+            **continuous_state_log,
             **pairing_state_log,
             **oral_state_log,
         }

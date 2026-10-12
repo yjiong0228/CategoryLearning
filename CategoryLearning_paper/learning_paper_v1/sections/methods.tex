@@ -146,7 +146,9 @@ The full model defines 13 participant-level parameters, including $\beta_0$ and 
 \end{equation}
 where $\mathcal T_{\mathrm{score}}$ is the set of scored trials and $T$ its size. Predictions are formed before current feedback. Choice likelihood is the fitting objective.
 
-\draftslot{Implementation and validation of the revised memory and precision updates remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
+The shared implementation, \texttt{0923-full-v3}, includes revised candidate management, continuous choice weights, precision calibration and separate discounting of rule and conditional pairing beliefs. Targeted checks cover update equations, state restoration and prediction timing. Example configurations use $\eta=0.1$ for small workflow checks; this value requires calibration before estimation.
+
+\draftslot{Formal data fitting, parameter recovery and behavioral validation remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
 
 \subsection*{Interpreting reconstructed trajectories}
 \label{m:measures}

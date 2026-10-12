@@ -156,13 +156,16 @@ def build_engine(
                              MechanisticRuleSearchHypothesisTransitionModule)
             ) else "full_success"
         )
+        from .model_0923 import is_model_0923_revised
+
+        beta_mode = "feedback_gradient" if is_model_0923_revised(provenance) else "hierarchical_feedback"
         if (observation_likelihood.beta_source != "action"
                 or observation_likelihood.distance_mode != "boundary"
-                or getattr(beta, "beta_update_mode", None) != "hierarchical_feedback"
+                or getattr(beta, "beta_update_mode", None) != beta_mode
                 or getattr(transition, "feedback_interpretation", None) != search_feedback
                 or not hasattr(transition, "prior_assignment_method")
                 or engine.get_module(ModuleRole.MAPPING) is not None):
-            raise ValueError(f"condition 3 requires boundary/action emissions, hierarchical_feedback beta, {search_feedback} workspace search and fixed response coordinates.")
+            raise ValueError(f"condition 3 requires boundary/action emissions, {beta_mode} beta, {search_feedback} workspace search and fixed response coordinates.")
         names = {module.role: name for name, module in engine.modules.items()}
         if engine.agenda.index(names[ModuleRole.MEMORY]) > engine.agenda.index(names[ModuleRole.BETA]):
             raise ValueError("condition 3 memory must precede beta in the post-choice agenda.")

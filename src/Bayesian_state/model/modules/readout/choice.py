@@ -550,6 +550,20 @@ def resolve_executed_hypothesis(engine: Any) -> int | None:
     return executed_index
 
 
+def resolve_continuous_choice_weights(engine: Any) -> np.ndarray | None:
+    """Return Model 0923 full-v3 weights across the complete rule catalogue."""
+    transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+    if transition is None or not bool(getattr(transition, "continuous_choice_enabled", False)):
+        return None
+    weights = np.asarray(transition.execution_probabilities, dtype=float)
+    mask = np.asarray(engine.hypotheses_mask, dtype=float).reshape(-1)
+    if (weights.shape != mask.shape or not np.isfinite(weights).all()
+            or np.any(weights < 0) or not np.isclose(weights.sum(), 1)
+            or np.any(weights[mask <= 0] != 0)):
+        raise RuntimeError("continuous choice weights must be normalized on active hypotheses")
+    return weights.copy()
+
+
 def apply_hypothesis_mapping(
     engine: Any,
     hypothesis: int,
@@ -585,7 +599,7 @@ def read_choice_probabilities_from_model(
     lapse: float = 0.0,
     return_snapshot: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, DecisionRuleSnapshot]:
-    """Map an engine's current active prior to response probabilities.
+    """Map an engine's current rule contributions to response probabilities.
 
     The optional snapshot retains the weights and per-rule predictions used
     in this calculation, before the aggregate output lapse. It consumes no
@@ -597,6 +611,7 @@ def read_choice_probabilities_from_model(
     prior = np.asarray(engine.prior, dtype=float)
     beta = np.asarray(engine.beta, dtype=float)
     executed_hypothesis = resolve_executed_hypothesis(engine)
+    continuous_weights = resolve_continuous_choice_weights(engine)
     raw_mask = getattr(engine, "hypotheses_mask", None)
     if raw_mask is None:
         active = np.arange(prior.size, dtype=int)
@@ -615,7 +630,11 @@ def read_choice_probabilities_from_model(
         raise ValueError("choice readout power must be finite and positive.")
     if not np.isfinite(lapse_value) or not 0.0 <= lapse_value <= 1.0:
         raise ValueError("choice lapse must lie in [0, 1].")
-    if executed_hypothesis is None:
+    if continuous_weights is not None:
+        if power_value != 1.0:
+            raise ValueError("0923 full-v3 continuous choice requires readout power=1")
+        readout_weights = continuous_weights[active]
+    elif executed_hypothesis is None:
         log_weights = power_value * np.log(np.clip(prior[active], 1e-300, None))
         log_weights -= float(np.max(log_weights))
         readout_weights = normalize_probability_vector(
@@ -692,7 +711,22 @@ def predict_choice_from_model(
         np.asarray(engine.prior, dtype=float), n_hypotheses, strict=True
     )
     executed_hypothesis = resolve_executed_hypothesis(engine)
-    if executed_hypothesis is None:
+    continuous_weights = resolve_continuous_choice_weights(engine)
+    if continuous_weights is not None:
+        if (choice_readout_config.get("method", CHOICE_READOUT_EXPECTATION) != CHOICE_READOUT_EXPECTATION
+                or float(choice_readout_config.get("power", 1.0)) != 1.0):
+            raise ValueError("0923 full-v3 continuous choice requires expectation readout with power=1")
+        transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION, required=True)
+        readout_weights = continuous_weights
+        readout_details = {
+            "method": CHOICE_READOUT_EXPECTATION, "selected_arg": -1,
+            "switched": bool(transition.current_execution_switch_event),
+            "confidence": float(readout_weights.max()),
+            "persistent_execution_enabled": False, "continuous_choice_enabled": True,
+            "dominant_hypothesis": int(transition.dominant_hypothesis),
+            "effective_participation": float(1 / np.sum(readout_weights ** 2)),
+        }
+    elif executed_hypothesis is None:
         readout_weights, readout_details = choice_readout_weights(
             distribution,
             trial_idx=int(trial_idx),

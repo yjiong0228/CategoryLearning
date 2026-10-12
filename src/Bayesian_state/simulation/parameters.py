@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any, Dict, Mapping
 
 from .config import expand_profile_candidate_hyperparams
-from ..model.model_0923 import is_model_0923_full
+from ..model.model_0923 import is_model_0923_full, is_model_0923_revised
 from ..utils.seeding import derive_hyper_candidate_seed
 
 DEFAULT_FIXED_HYPERPARAM_PATHS = (
@@ -140,6 +140,14 @@ def infer_fixed_hyperparams_from_engine_config(engine_config: Mapping[str, Any])
             "max_capacity", "exit_rate", "local_structure_weight", "transfer_scale",
             "execution_inertia", "search_controller", "tau_proposal", "edit_costs",
             "relation_samples", "relation_seed"))
+    if is_model_0923_revised(provenance):
+        # These fields identify the new scientific contract; old candidate seed
+        # payloads remain identical when the version is not explicitly selected.
+        paths += (
+            "engine.modules.beta_mod.kwargs.learning_rate",
+            "engine.modules.memory_mod.kwargs.forgetting_mode",
+            "engine.modules.hypo_transitions_mod.kwargs.mechanism_version",
+        )
     for key in paths:
         engine_path = key[len("engine."):]
         value = _get_by_path(engine_config, engine_path)

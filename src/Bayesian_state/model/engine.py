@@ -325,6 +325,20 @@ class BayesianStateEngine:
             self.likelihood = memory.prepare_feedback(kernel)
             return self.likelihood
 
+        beta_module = self.get_module(ModuleRole.BETA)
+        if getattr(beta_module, "beta_update_mode", None) == "feedback_gradient":
+            active = np.flatnonzero(np.asarray(self.hypotheses_mask) > 0.)
+            chance = 1. / self.partition.n_cats
+            if self.observation[2] == 0.:
+                chance = 1. - chance
+            self.likelihood = np.full(self.set_size, chance, dtype=float)
+            # The revised memory and precision gradient use the same absolute
+            # feedback probabilities, including very unlikely error events.
+            self.likelihood[active] = self.observation_likelihood.binary_feedback_likelihood(
+                self.observation, active, beta=np.asarray(self.beta)[active],
+            )
+            return self.likelihood
+
         hypothesis_args = tuple(
             self.hypotheses_set[hypothesis] for hypothesis in self.hypotheses_set
         )

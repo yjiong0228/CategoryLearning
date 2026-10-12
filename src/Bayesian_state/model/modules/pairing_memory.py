@@ -67,14 +67,22 @@ def transport_joint_belief(
 
 
 class HierarchicalPairingMemoryModule(BaseModule):
-    """Single joint power update, using the existing subject memory parameter."""
+    """Learn joint rule/pairing beliefs with a shared retention parameter.
+
+    ``joint`` retains the historical power update. ``factorized`` discounts
+    rule marginals and each conditional pairing distribution separately before
+    applying the same feedback kernel once.
+    """
 
     phase = ModulePhase.POST_CHOICE
     role = ModuleRole.MEMORY
 
     def __init__(self, engine, *, gamma: float = .8, w0: float = 0.,
-                 feedback_gain: float = 1., **kwargs) -> None:
+                 feedback_gain: float = 1., forgetting_mode: str = "joint", **kwargs) -> None:
         super().__init__(engine, **kwargs)
+        self.forgetting_mode = str(forgetting_mode).strip().lower()
+        if self.forgetting_mode not in ("joint", "factorized"):
+            raise ValueError("forgetting_mode must be 'joint' or 'factorized'.")
         self.gamma, self.w0, self.feedback_gain = float(gamma), float(w0), float(feedback_gain)
         if not np.isfinite(self.gamma) or not 0. <= self.gamma <= 1.:
             raise ValueError("gamma must be finite and lie in [0, 1].")
@@ -82,12 +90,21 @@ class HierarchicalPairingMemoryModule(BaseModule):
             raise ValueError("condition 3 joint memory requires w0=0 and feedback_gain=1.")
         self.joint = np.repeat(np.asarray(engine.prior, dtype=float)[:, None]/3., 3, axis=1)
         self.feedback_evidence: np.ndarray | None = None
+        self.feedback_pairing_weights: np.ndarray | None = None
         self._pending_joint: np.ndarray | None = None
         self.local_projection_fallback = False
 
     def initialize_prior(self) -> None:
         """Initialize after all modules have installed the finite workspace."""
         self.joint = np.repeat(np.asarray(self.engine.prior)[:, None]/3., 3, axis=1)
+        self.feedback_evidence = None
+        self.feedback_pairing_weights = None
+        self._pending_joint = None
+        self.local_projection_fallback = False
+
+    def reset(self) -> None:
+        """Start uniform pairing knowledge at the engine's current prior."""
+        self.initialize_prior()
 
     def pairing_marginal(self) -> np.ndarray:
         return self.joint.sum(axis=0).copy()
@@ -110,12 +127,28 @@ class HierarchicalPairingMemoryModule(BaseModule):
         mask = getattr(self.engine, "hypotheses_mask", None)
         active = prior > 0. if mask is None else np.asarray(mask) > 0.
         effective = np.zeros_like(self.joint)
-        # The gamma=0 boundary includes zero cells in the active workspace.
-        effective[active] = 1. if self.gamma == 0. else self.joint[active]**self.gamma
-        effective = _normalize_joint(effective)
-        marginal = effective.sum(axis=1, keepdims=True)
-        omega = np.divide(effective, marginal, out=np.full_like(effective, 1/3), where=marginal > 0.)
+        if self.forgetting_mode == "joint":
+            # Preserve the exact historical arithmetic, including gamma=0.
+            effective[active] = 1. if self.gamma == 0. else self.joint[active]**self.gamma
+            effective = _normalize_joint(effective)
+            marginal = effective.sum(axis=1, keepdims=True)
+            omega = np.divide(effective, marginal, out=np.full_like(effective, 1/3), where=marginal > 0.)
+        else:
+            if active.shape != prior.shape or not np.any(active):
+                raise ValueError("factorized memory requires a nonempty active rule mask.")
+            # Normalize within each rule before combining with its marginal.
+            # This makes rule forgetting independent of pairing dispersion.
+            omega = np.full_like(self.joint, 1/3)
+            if self.gamma == 0.:
+                rule_weights = np.ones(int(np.count_nonzero(active)))
+            else:
+                rule_weights = prior[active]**self.gamma
+                pairing_weights = self.conditional_pairing()[active]**self.gamma
+                omega[active] = pairing_weights / pairing_weights.sum(axis=1, keepdims=True)
+            rule_weights /= rule_weights.sum()
+            effective[active] = rule_weights[:, None] * omega[active]
         self.feedback_evidence = (omega * kernel).sum(axis=1)
+        self.feedback_pairing_weights = omega.copy()
         self._pending_joint = _normalize_joint(effective * kernel)
         return self.feedback_evidence.copy()
 
@@ -167,13 +200,18 @@ class HierarchicalPairingMemoryModule(BaseModule):
 
     def state_dict(self) -> dict[str, Any]:
         return {
+            "forgetting_mode": self.forgetting_mode,
             "joint": self.joint.copy(),
             "feedback_evidence": None if self.feedback_evidence is None else self.feedback_evidence.copy(),
+            "feedback_pairing_weights": (None if self.feedback_pairing_weights is None
+                                        else self.feedback_pairing_weights.copy()),
             "pending_joint": None if self._pending_joint is None else self._pending_joint.copy(),
             "local_projection_fallback": self.local_projection_fallback,
         }
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        if state.get("forgetting_mode", "joint") != self.forgetting_mode:
+            raise ValueError("snapshot forgetting_mode does not match the memory module.")
         joint = np.asarray(state["joint"], dtype=float)
         if joint.shape != (self.engine.set_size, 3):
             raise ValueError("snapshot joint belief has the wrong shape.")
@@ -181,12 +219,19 @@ class HierarchicalPairingMemoryModule(BaseModule):
         if not np.isclose(joint.sum(), 1., rtol=1e-10, atol=1e-12):
             raise ValueError("snapshot joint belief must be normalized.")
         evidence = state.get("feedback_evidence")
+        pairing_weights = state.get("feedback_pairing_weights")
         pending = state.get("pending_joint")
         if evidence is not None:
             evidence = np.asarray(evidence, dtype=float)
             if (evidence.shape != (self.engine.set_size,) or not np.all(np.isfinite(evidence))
                     or np.any(evidence < 0.) or np.any(evidence > 1.)):
                 raise ValueError("snapshot feedback evidence must be a valid per-rule probability vector.")
+        if pairing_weights is not None:
+            pairing_weights = np.asarray(pairing_weights, dtype=float)
+            if (pairing_weights.shape != joint.shape or not np.all(np.isfinite(pairing_weights))
+                    or np.any(pairing_weights < 0.)
+                    or not np.allclose(pairing_weights.sum(axis=1), 1., rtol=1e-10, atol=1e-12)):
+                raise ValueError("snapshot feedback pairing weights must be normalized per-rule distributions.")
         if pending is not None:
             pending = np.asarray(pending, dtype=float)
             if pending.shape != joint.shape:
@@ -197,5 +242,6 @@ class HierarchicalPairingMemoryModule(BaseModule):
         # Validate the complete payload before mutating the live particle.
         self.joint = joint.copy()
         self.feedback_evidence = None if evidence is None else np.asarray(evidence, dtype=float).copy()
+        self.feedback_pairing_weights = None if pairing_weights is None else pairing_weights.copy()
         self._pending_joint = None if pending is None else np.asarray(pending, dtype=float).copy()
         self.local_projection_fallback = bool(state.get("local_projection_fallback", False))

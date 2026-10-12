@@ -179,6 +179,15 @@ class StateModel:
             ).astype(int)
         transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
         if transition is not None and bool(
+            getattr(transition, "continuous_choice_enabled", False)
+        ):
+            weights = np.asarray(transition.execution_probabilities, dtype=float).copy()
+            log.update(
+                choice_weights=weights,
+                dominant_hypothesis=int(transition.dominant_hypothesis),
+                effective_participation=float(1.0 / np.sum(weights ** 2)),
+            )
+        if transition is not None and bool(
             getattr(transition, "persistent_execution_enabled", False)
         ):
             log.update(

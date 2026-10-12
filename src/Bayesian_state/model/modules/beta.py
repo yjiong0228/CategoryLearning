@@ -1,13 +1,10 @@
 """
 Beta Module: Per-Hypothesis Beta Evolution
 
-This module manages hypothesis-specific beta (inverse temperature) parameters
-with dynamic evolution rules that reflect learning behavior:
-- Beta is positively correlated with posterior (better hypotheses have higher beta)
-- Correct choices lead to small beta increases for consistent hypotheses
-- Incorrect choices lead to sharp beta decreases for inconsistent hypotheses
-- Updates can target either every active hypothesis or only the overtly executed
-  hypothesis, so confidence learning can be rule-specific.
+This module manages hypothesis-specific beta (inverse temperature) parameters.
+The explicit ``feedback_gradient`` mode calibrates all active rules by a single
+learning rate applied to the pre-feedback log-likelihood derivative. Historical
+support-based modes retain their existing two-rate dynamics and update scopes.
 """
 
 from __future__ import annotations
@@ -24,7 +21,7 @@ class BetaModule(BaseModule):
     - Low beta (~0-5): soft/noisy decisions
     - High beta (>30): sharp/deterministic decisions
     
-    Evolution rules:
+    Historical support-based evolution rules:
     1. Correct choice: beta increases slightly for consistent hypotheses
     2. Incorrect choice: beta decreases sharply for inconsistent hypotheses
     3. New hypotheses start with low beta, scaled by initial prior
@@ -58,11 +55,15 @@ class BetaModule(BaseModule):
             - update_scope: ``active_hypotheses`` (legacy default) or
               ``executed_hypothesis`` for rule-specific confidence learning
             - beta_update_mode: ``inferred_correct_category`` (legacy default),
-              ``probabilistic_feedback``, or ``hierarchical_feedback``. The
+              ``probabilistic_feedback``, ``hierarchical_feedback``, or
+              ``feedback_gradient``. The
               probabilistic mode centers binary feedback on the task's chance
               probability for the observed outcome. The hierarchical mode
               consumes absolute pre-feedback evidence cached by the memory
               module and requires zero feedback lapse.
+            - learning_rate: Required finite rate in [0, 1] for
+              ``feedback_gradient``. That mode uses all active hypotheses,
+              fixed beta initialization and zero feedback lapse.
             - use_prior_scaling: Whether to scale initial beta by prior (default: True)
             - prior_beta_scale: Scaling factor for prior-based initialization (default: 10.0)
         """
@@ -87,46 +88,59 @@ class BetaModule(BaseModule):
         ):
             raise ValueError("beta_init must lie within [beta_min, beta_max].")
         
-        # Evolution parameters (nonlinear dynamics)
-        self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))
-        if (
-            not np.isfinite(self.decrease_rate)
-            or not 0.0 <= self.decrease_rate <= 1.0
-        ):
-            raise ValueError("decrease_rate must be a finite rate in [0, 1].")
-        has_increase_rate = "increase_rate" in kwargs
-        has_correct_additive = "correct_additive" in kwargs
-        if has_increase_rate and has_correct_additive:
-            raise ValueError(
-                "Configure increase_rate or legacy correct_additive, not both."
-            )
-        if has_increase_rate:
-            self.increase_rate = float(kwargs["increase_rate"])
-            if (
-                not np.isfinite(self.increase_rate)
-                or not 0.0 <= self.increase_rate <= 1.0
-            ):
-                raise ValueError(
-                    "increase_rate must be a finite rate in [0, 1]."
-                )
-            # Retain a derived compatibility attribute for historical reports
-            # and scripts that inspect the module rather than its config.
-            self.correct_additive = self.increase_rate * self.beta_max
-            self.increase_parameterization = "increase_rate"
-        else:
-            self.correct_additive = float(kwargs.get("correct_additive", 0.5))
-            if not np.isfinite(self.correct_additive) or self.correct_additive < 0.0:
-                raise ValueError(
-                    "correct_additive must be finite and non-negative."
-                )
-            self.increase_rate = self.correct_additive / self.beta_max
-            self.increase_parameterization = "correct_additive_legacy"
         self.beta_update_mode = self._resolve_beta_update_mode(
             kwargs.get("beta_update_mode", "inferred_correct_category")
         )
+        if self.beta_update_mode == "feedback_gradient":
+            legacy_rates = {"increase_rate", "decrease_rate", "correct_additive"}.intersection(kwargs)
+            if legacy_rates:
+                raise ValueError("feedback_gradient uses learning_rate only; remove " + ", ".join(sorted(legacy_rates)))
+            if "learning_rate" not in kwargs:
+                raise ValueError("feedback_gradient requires an explicit learning_rate.")
+            self.learning_rate = float(kwargs["learning_rate"])
+            if not np.isfinite(self.learning_rate) or not 0. <= self.learning_rate <= 1.:
+                raise ValueError("learning_rate must be finite and lie in [0, 1].")
+            self.increase_parameterization = "feedback_gradient"
+        else:
+            if "learning_rate" in kwargs:
+                raise ValueError("learning_rate requires beta_update_mode='feedback_gradient'.")
+            # Preserve the historical rate conversion and arithmetic.
+            self.decrease_rate = float(kwargs.get("decrease_rate", 0.3))
+            if (
+                not np.isfinite(self.decrease_rate)
+                or not 0.0 <= self.decrease_rate <= 1.0
+            ):
+                raise ValueError("decrease_rate must be a finite rate in [0, 1].")
+            has_increase_rate = "increase_rate" in kwargs
+            has_correct_additive = "correct_additive" in kwargs
+            if has_increase_rate and has_correct_additive:
+                raise ValueError(
+                    "Configure increase_rate or legacy correct_additive, not both."
+                )
+            if has_increase_rate:
+                self.increase_rate = float(kwargs["increase_rate"])
+                if (
+                    not np.isfinite(self.increase_rate)
+                    or not 0.0 <= self.increase_rate <= 1.0
+                ):
+                    raise ValueError(
+                        "increase_rate must be a finite rate in [0, 1]."
+                    )
+                self.correct_additive = self.increase_rate * self.beta_max
+                self.increase_parameterization = "increase_rate"
+            else:
+                self.correct_additive = float(kwargs.get("correct_additive", 0.5))
+                if not np.isfinite(self.correct_additive) or self.correct_additive < 0.0:
+                    raise ValueError(
+                        "correct_additive must be finite and non-negative."
+                    )
+                self.increase_rate = self.correct_additive / self.beta_max
+                self.increase_parameterization = "correct_additive_legacy"
         self.update_scope = self._resolve_update_scope(
             kwargs.get("update_scope", "active_hypotheses")
         )
+        if self.beta_update_mode == "feedback_gradient" and self.update_scope != "active_hypotheses":
+            raise ValueError("feedback_gradient requires update_scope='active_hypotheses'.")
         self.probabilistic_feedback_lapse = float(
             kwargs.get("probabilistic_feedback_lapse", kwargs.get("feedback_lapse", 0.0))
         )
@@ -140,15 +154,19 @@ class BetaModule(BaseModule):
                 f"got {self.probabilistic_feedback_lapse!r}."
             )
         if (
-            self.beta_update_mode == "hierarchical_feedback"
+            self.beta_update_mode in ("hierarchical_feedback", "feedback_gradient")
             and self.probabilistic_feedback_lapse != 0.0
         ):
             raise ValueError(
-                "hierarchical_feedback requires probabilistic_feedback_lapse=0."
+                f"{self.beta_update_mode} requires probabilistic_feedback_lapse=0."
             )
 
         # Prior-based initialization
-        self.use_prior_scaling = bool(kwargs.get("use_prior_scaling", True))
+        self.use_prior_scaling = bool(kwargs.get(
+            "use_prior_scaling", self.beta_update_mode != "feedback_gradient"
+        ))
+        if self.beta_update_mode == "feedback_gradient" and self.use_prior_scaling:
+            raise ValueError("feedback_gradient requires use_prior_scaling=False.")
         self.prior_beta_scale = float(kwargs.get("prior_beta_scale", 10.0))
         
         # Initialize beta array
@@ -182,6 +200,7 @@ class BetaModule(BaseModule):
             "inferred_correct_category",
             "probabilistic_feedback",
             "hierarchical_feedback",
+            "feedback_gradient",
         }
         if resolved not in valid:
             raise ValueError(
@@ -435,6 +454,38 @@ class BetaModule(BaseModule):
                 penalty = self.decrease_rate * current_beta * min(1.0, -centered)
                 self.beta[hypo_idx] = max(current_beta - penalty, self.beta_min)
 
+    def _update_beta_feedback_gradient(
+        self,
+        stimulus: np.ndarray,
+        choice: int,
+        feedback: float,
+        update_indices: np.ndarray,
+    ) -> None:
+        """Calibrate predictive precision while holding pairing knowledge fixed."""
+        likelihood = getattr(self.engine, "observation_likelihood", None)
+        if not callable(getattr(likelihood, "feedback_precision_gradient", None)):
+            raise RuntimeError("feedback_gradient requires the observation likelihood gradient evaluator.")
+        if self.engine.get_module(ModuleRole.MAPPING) is not None:
+            raise ValueError("feedback_gradient requires fixed response coordinates.")
+        pairing_weights = None
+        if likelihood.feedback_likelihood_mode == "hierarchical_pairing":
+            memory = self.engine.get_module(ModuleRole.MEMORY)
+            cached = getattr(memory, "feedback_pairing_weights", None)
+            if cached is None:
+                raise RuntimeError("feedback_gradient requires current memory.feedback_pairing_weights.")
+            cached = np.asarray(cached, dtype=float)
+            if cached.shape != (len(self.beta), 3):
+                raise ValueError("feedback_pairing_weights must have shape (set_size, 3).")
+            pairing_weights = cached[update_indices]
+        current_beta = self.beta[update_indices]
+        gradient = likelihood.feedback_precision_gradient(
+            (stimulus, choice, feedback), update_indices, current_beta,
+            pairing_weights=pairing_weights,
+        )
+        self.beta[update_indices] = np.clip(
+            current_beta + self.learning_rate * gradient, self.beta_min, self.beta_max,
+        )
+
     def update_beta(self, 
                     stimulus: np.ndarray,
                     choice: int,
@@ -443,7 +494,9 @@ class BetaModule(BaseModule):
         """
         Update beta values based on trial outcome.
         
-        In ``hierarchical_feedback`` mode, consume the memory module's cached
+        In ``feedback_gradient`` mode, use one additive step along the
+        pre-feedback log-likelihood gradient. In ``hierarchical_feedback``
+        mode, consume the memory module's cached
         pre-feedback likelihood relative to the chance probability of this
         ternary outcome. In ``probabilistic_feedback`` mode, compare binary
         feedback evidence with outcome chance (1/C when correct, 1-1/C when
@@ -475,6 +528,11 @@ class BetaModule(BaseModule):
         
         active_indices = np.where(active_mask > 0)[0]
         update_indices = self._resolve_update_indices(active_indices)
+        if self.beta_update_mode == "feedback_gradient":
+            self._update_beta_feedback_gradient(stimulus, choice, feedback, update_indices)
+            self._zero_inactive_beta(active_indices)
+            self.engine.beta = self.beta
+            return
         if self.beta_update_mode == "hierarchical_feedback":
             self._update_beta_hierarchical_feedback(feedback, update_indices)
             self._zero_inactive_beta(active_indices)
@@ -601,14 +659,23 @@ class BetaModule(BaseModule):
         return self.beta[indices].copy()
 
     def state_dict(self) -> dict[str, Any]:
-        return {"beta": self.beta.copy()}
+        return {"beta": self.beta.copy(), "beta_update_mode": self.beta_update_mode}
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        mode = state.get("beta_update_mode")
+        if ((mode is None and self.beta_update_mode == "feedback_gradient")
+                or (mode is not None and mode != self.beta_update_mode)):
+            raise ValueError("snapshot beta_update_mode does not match the beta module.")
         beta = np.asarray(state["beta"], dtype=float).copy()
         if beta.shape != self.beta.shape:
             raise ValueError(
                 f"beta state shape mismatch: {beta.shape} vs {self.beta.shape}."
             )
+        if self.beta_update_mode == "feedback_gradient":
+            if (not np.all(np.isfinite(beta)) or np.any(beta < 0.)
+                    or np.any(beta > self.beta_max)
+                    or np.any((beta > 0.) & (beta < self.beta_min))):
+                raise ValueError("snapshot beta values must be inactive zeroes or within the configured bounds.")
         self.beta = beta
         self.engine.beta = self.beta
 

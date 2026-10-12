@@ -23,6 +23,7 @@ from ...model.modules.readout.choice import (
     DecisionRuleSnapshot,
     apply_hypothesis_mapping,
     apply_strategy_conditioned_choice_confidence,
+    resolve_continuous_choice_weights,
 )
 from ...utils.seeding import stable_seed
 
@@ -385,6 +386,11 @@ def _choice_layer_audit(
     sharpened_weights = _normalize(
         np.power(np.clip(prior[active], 1e-300, None), power_value)
     )
+    continuous_weights = resolve_continuous_choice_weights(engine)
+    if continuous_weights is not None:
+        # The belief-only audit remains the base layer; the readout layer must
+        # include the same dominant-rule inertia used by live predictions.
+        sharpened_weights = continuous_weights[active]
     category_by_hypothesis = np.zeros((active.size, n_categories), dtype=float)
     stimulus = np.asarray(perceived_stimulus, dtype=float)
     for active_arg, hypothesis in enumerate(active):
@@ -796,6 +802,28 @@ def run_state_model_particle_filter(
     if any(execution_flags) and not all(execution_flags):
         raise RuntimeError("persistent execution must be configured for every particle.")
     persistent_execution_enabled = bool(all(execution_flags))
+    continuous_flags = [
+        bool(getattr(model.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION),
+                     "continuous_choice_enabled", False))
+        for model in models
+    ]
+    if any(continuous_flags) and not all(continuous_flags):
+        raise RuntimeError("continuous choice must be configured for every particle.")
+    continuous_choice_enabled = bool(all(continuous_flags))
+    choice_weight_summaries = {}
+    participation_summaries = {}
+    if continuous_choice_enabled:
+        choice_weight_summaries = {
+            key: np.zeros((n_trials, n_hypotheses), dtype=float)
+            for key in ("choice_weights", "dominant_probability",
+                        "filtered_choice_weights", "filtered_dominant_probability")
+        }
+        participation_summaries = {
+            key: np.zeros(n_trials, dtype=float)
+            for key in ("effective_participation", "filtered_effective_participation")
+        }
+        particle_choice_weights = np.zeros((n_particles, n_hypotheses), dtype=float)
+        particle_dominant = np.zeros_like(particle_choice_weights)
     mapping_flags = [
         model.engine.get_module(ModuleRole.MAPPING) is not None for model in models
     ]
@@ -1203,6 +1231,10 @@ def run_state_model_particle_filter(
                     orientation_oracle[trial_index]
                 )
             perceived = prepared.perceived_stimulus
+            if continuous_choice_enabled:
+                particle_choice_weights[particle_index] = prepared.log["choice_weights"]
+                particle_dominant[particle_index].fill(0.0)
+                particle_dominant[particle_index, prepared.log["dominant_hypothesis"]] = 1.0
             transition = engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
             if transition is None:
                 event = {"swap_probability": 0.0, "swap_event": False}
@@ -1781,6 +1813,11 @@ def run_state_model_particle_filter(
                 )
 
         choice_index = int(observed_choices[trial_index]) - 1
+        if continuous_choice_enabled:
+            choice_weight_summaries["choice_weights"][trial_index] = weights @ particle_choice_weights
+            choice_weight_summaries["dominant_probability"][trial_index] = weights @ particle_dominant
+            particle_participation = 1.0 / np.sum(particle_choice_weights ** 2, axis=1)
+            participation_summaries["effective_participation"][trial_index] = weights @ particle_participation
         if valid[trial_index] and choice_conditioning:
             weights *= np.clip(
                 particle_predictions[:, choice_index],
@@ -1793,6 +1830,10 @@ def run_state_model_particle_filter(
             else:
                 weights /= weight_total
         post_ess[trial_index] = effective_sample_size(weights)
+        if continuous_choice_enabled:
+            choice_weight_summaries["filtered_choice_weights"][trial_index] = weights @ particle_choice_weights
+            choice_weight_summaries["filtered_dominant_probability"][trial_index] = weights @ particle_dominant
+            participation_summaries["filtered_effective_participation"][trial_index] = weights @ particle_participation
         if audit_choice_transmission and trial_index == n_trials - 1:
             audit_terminal_weights = weights.copy()
         if filtered_executed_probability is not None:
@@ -2194,6 +2235,17 @@ def run_state_model_particle_filter(
         choice_transmission_counterfactual_gain=counterfactual_gain_value,
         filter_seed=int(filter_seed),
     )
+    if continuous_choice_enabled:
+        result.state_probabilities.update(choice_weight_summaries)
+        result.latent_summaries.update(participation_summaries)
+        result.metadata["continuous_choice"] = {
+            "weights": "belief_times_previous_dominant_inertia_normalized",
+            "dominant": "maximum_choice_weight_rule",
+            "timing": "pre_feedback_state",
+            "unfiltered_weights": "pre_choice_particle_weights",
+            "filtered_weights": "post_choice_particle_weights",
+            "effective_participation": "particle_mean_of_inverse_sum_squared_rule_weights",
+        }
     if oral_readout is not None:
         result.observation_probabilities.update(
             oral_report_codes=np.asarray(oral_readout.codes),

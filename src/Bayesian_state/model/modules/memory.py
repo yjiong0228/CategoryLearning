@@ -20,6 +20,11 @@ class BayesianMemoryModule(BaseModule):
 
 
 class DualMemoryModule(BaseModule):
+    """Historical dual traces or an explicit, floor-free rule power update.
+
+    ``forgetting_mode='exact_power'`` implements the 0923 rule marginal with
+    w0=0 and feedback_gain=1. ``dual_trace`` preserves previous trace dynamics.
+    """
 
     phase = ModulePhase.POST_CHOICE
     role = ModuleRole.MEMORY
@@ -33,6 +38,9 @@ class DualMemoryModule(BaseModule):
 
     def __init__(self, engine, **kwargs):
         super().__init__(engine, **kwargs)
+        self.forgetting_mode = str(kwargs.get("forgetting_mode", "dual_trace")).strip().lower()
+        if self.forgetting_mode not in ("dual_trace", "exact_power"):
+            raise ValueError("forgetting_mode must be 'dual_trace' or 'exact_power'.")
         
         self.engine.state = kwargs.pop("default_state_init", {
             "fade": None,
@@ -58,6 +66,8 @@ class DualMemoryModule(BaseModule):
                 "feedback_gain must be a finite non-negative float, "
                 f"got {self.feedback_gain!r}."
             )
+        if self.forgetting_mode == "exact_power" and (self.w0 != 0. or self.feedback_gain != 1.):
+            raise ValueError("exact_power requires w0=0 and feedback_gain=1.")
 
 
         ##### For parameter optimization #####
@@ -105,7 +115,11 @@ class DualMemoryModule(BaseModule):
         # state 初始化为 prior
         self.prior = getattr(engine, "prior", np.ones_like(self.mask) / np.sum(self.mask)).copy()
         for key in self.state:
-            self.state[key] = self.translate_to_log(self.prior, mask=self.mask)
+            self.state[key] = (
+                self._exact_log(self.prior, self.mask.astype(bool))
+                if self.forgetting_mode == "exact_power"
+                else self.translate_to_log(self.prior, mask=self.mask)
+            )
         
         # Initialize baseline state (tracks a hypothetical hypothesis with uniform likelihood)
         # Initial value corresponds to log(1/N)
@@ -116,6 +130,48 @@ class DualMemoryModule(BaseModule):
             "static": init_log_val
         }
 
+    @staticmethod
+    def _exact_log(values: np.ndarray, active: np.ndarray) -> np.ndarray:
+        """Log positive active mass while preserving true zeroes as -inf."""
+        values = np.asarray(values, dtype=float)
+        if (values.shape != active.shape or not np.all(np.isfinite(values))
+                or np.any(values < 0.)):
+            raise ValueError("exact_power requires finite non-negative per-rule values.")
+        out = np.full(values.shape, -np.inf)
+        positive = active & (values > 0.)
+        out[positive] = np.log(values[positive])
+        return out
+
+    def _update_exact_power(self, likelihood: np.ndarray) -> None:
+        """Apply normalized prior**gamma * likelihood without probability floors."""
+        mask = getattr(self.engine, "hypotheses_mask", None)
+        mask = np.ones_like(self.mask) if mask is None else np.asarray(mask, dtype=float)
+        if (mask.shape != self.mask.shape or not np.all(np.isfinite(mask))
+                or np.any(mask < 0.) or not np.any(mask > 0.)):
+            raise ValueError("exact_power requires a finite nonempty active rule mask.")
+        active = mask > 0.
+        prior = np.asarray(self.engine.prior, dtype=float)
+        log_prior = self._exact_log(prior, active)
+        if not np.any(np.isfinite(log_prior)):
+            raise ValueError("exact_power requires positive prior mass among active rules.")
+        log_evidence = self._exact_log(likelihood, active)
+        if self.gamma == 0.:
+            # Include zero-prior active rules without evaluating 0 * (-inf).
+            log_weights = log_evidence.copy()
+        else:
+            log_weights = self.gamma * log_prior + log_evidence
+        maximum = np.max(log_weights)
+        if not np.isfinite(maximum):
+            raise ValueError("exact_power feedback must leave positive active posterior mass.")
+        weights = np.exp(log_weights - maximum)
+        total = weights.sum()
+        posterior = weights / total
+        normalized_log = log_weights - maximum - np.log(total)
+        self.mask = mask.copy()
+        self.prior = prior.copy()
+        for key in self.state:
+            self.state[key] = normalized_log.copy()
+        self.engine.posterior = posterior
 
     @staticmethod
     def translate_from_log(log: np.ndarray, mask=None) -> np.ndarray:
@@ -246,6 +302,9 @@ class DualMemoryModule(BaseModule):
         Args:
             likelihood (np.ndarray): Likelihoods of the new observation for each hypothesis
         """
+        if self.forgetting_mode == "exact_power":
+            self._update_exact_power(likelihood)
+            return
         # NEW: Update baseline state with fake likelihood
         n_total = len(self.mask)
         # n_total = np.sum(self.mask)
@@ -282,6 +341,10 @@ class DualMemoryModule(BaseModule):
         """在 engine 调度 memory 前，对齐 active mask 和当前 prior。"""
 
         del kwargs
+        if self.forgetting_mode == "exact_power":
+            # The exact update reads the transition's current engine.prior
+            # directly, retaining arbitrarily small entrant masses.
+            return
         new_mask = getattr(self.engine, "hypotheses_mask", None)
         if new_mask is None:
             new_mask = np.ones_like(self.mask, dtype=float)
@@ -294,6 +357,8 @@ class DualMemoryModule(BaseModule):
         likelihood = kwargs.get("likelihood", self.engine.likelihood)
         
         self.state_update(likelihood)
+        if self.forgetting_mode == "exact_power":
+            return
 
         # Avoid 0 * (-inf) when w0 is at boundaries; memory semantics remain unchanged.
         w0 = float(self.w0)
@@ -328,6 +393,7 @@ class DualMemoryModule(BaseModule):
 
     def state_dict(self) -> Dict[str, Any]:
         return {
+            "forgetting_mode": self.forgetting_mode,
             "state": {
                 str(key): np.asarray(value, dtype=float).copy()
                 for key, value in self.state.items()
@@ -341,6 +407,8 @@ class DualMemoryModule(BaseModule):
         }
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        if state.get("forgetting_mode", "dual_trace") != self.forgetting_mode:
+            raise ValueError("snapshot forgetting_mode does not match the memory module.")
         self.state = {
             str(key): np.asarray(value, dtype=float).copy()
             for key, value in state["state"].items()

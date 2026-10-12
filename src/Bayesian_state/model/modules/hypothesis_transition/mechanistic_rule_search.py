@@ -33,15 +33,17 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
 
 
 class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitionMixin, BaseModule):
-    """Implement specification sections 14–15 using the shared trial lifecycle.
+    """Manage candidate rules and their contribution to the next choice.
 
-    Initialization, exit, capacity competition and execution protection remain
-    explicit model assumptions. Parameters are not fitted by constructing 0923 full model.
+    ``0923-full-v3`` implements unprotected exits, capacity release before
+    support transfer, and continuous choice weights. The default ``legacy``
+    preserves the saved full-v1/v2 transition and execution mechanism.
     """
 
     MODE = "mechanistic_rule_search_0923_v1"
     prior_assignment_method = "relation_driven_transport_0923_v1"
     persistent_execution_enabled = True
+    continuous_choice_enabled = False
     uses_outcome_feedback_controller = True
     feedback_interpretation = "graded"
     _STATE_FIELDS = (
@@ -55,9 +57,17 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         super().__init__(engine, **kwargs)
         fields = {"max_capacity", "exit_rate", "local_structure_weight", "transfer_scale",
                   "execution_inertia", "tau_proposal", "edit_costs", "search_controller",
-                  "relation_samples", "relation_seed", "module_seed"}
+                  "relation_samples", "relation_seed", "module_seed", "mechanism_version"}
         if set(kwargs) - fields:
             raise ValueError(f"0923 full model has unsupported transition keys: {sorted(set(kwargs)-fields)}")
+        self.mechanism_version = kwargs.get("mechanism_version", "legacy")
+        if self.mechanism_version not in ("legacy", "0923-full-v3"):
+            raise ValueError("mechanism_version must be legacy or 0923-full-v3")
+        self.continuous_choice_enabled = self.mechanism_version == "0923-full-v3"
+        self.persistent_execution_enabled = not self.continuous_choice_enabled
+        if self.continuous_choice_enabled:
+            self.MODE = "mechanistic_rule_search_0923_v3"
+            self.prior_assignment_method = "retained_rule_affinity_transfer_0923_v3"
         self.total_hypo = int(engine.set_size)
         raw_capacity = kwargs.get("max_capacity", 3)
         self.capacity = int(raw_capacity)
@@ -141,6 +151,11 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.engine.prior = self.execution_probabilities.copy()
         self._apply_mask()
 
+    @property
+    def dominant_hypothesis(self) -> int:
+        """Return the current dominant rule used for next-trial inertia."""
+        return self.executed_hypothesis
+
     def _apply_mask(self) -> None:
         mask = np.zeros(self.total_hypo)
         mask[self.active] = 1
@@ -200,6 +215,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         return float(proposal @ probabilities)
 
     def select_hypotheses(self, context: TransitionContext, **kwargs: Any) -> HypothesisSelection:
+        if self.continuous_choice_enabled:
+            return self._select_v3(context)
         before = context.active_before
         diagnostics: dict[str, Any] = {"search_event": False, "proposal_source": None,
                                      "proposal_parent": None, "proposed_hypothesis": None,
@@ -255,7 +272,63 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 after = np.delete(after, index)
         return HypothesisSelection.from_active_sets(before, after, diagnostics=diagnostics)
 
+    def _select_v3(self, context: TransitionContext) -> HypothesisSelection:
+        """Exit old rules, propose one newcomer, then release capacity."""
+        before = context.active_before
+        diagnostics: dict[str, Any] = {
+            "search_event": False, "proposal_source": None, "proposal_parent": None,
+            "proposed_hypothesis": None, "structural_fallback": False,
+            "capacity_dropped": None, "autonomous_exits": [],
+            "remaining": before.copy(), "gamma": context.posterior[before].copy(),
+            "admission_probability_given_search": 0.0, "zero_support_fallback": False,
+        }
+        if context.trial_index == 0:
+            return HypothesisSelection.from_active_sets(before, before, diagnostics=diagnostics)
+        mass = context.posterior[before]
+        exits = self.trial_rng.random(len(before)) < self.exit_rate * (1 - mass)
+        if not np.any(~exits) or mass[~exits].sum() == 0:
+            # Recover a highest-belief old rule before conditioning on retention.
+            tied = np.flatnonzero(mass == mass.max())
+            exits[int(self.trial_rng.choice(tied))] = False
+            diagnostics["zero_support_fallback"] = True
+        remaining = before[~exits]
+        gamma = context.posterior[remaining].copy()
+        gamma /= gamma.sum()
+        diagnostics.update(remaining=remaining.copy(), gamma=gamma.copy(),
+                           autonomous_exits=before[exits].tolist(),
+                           admission_probability_given_search=1.0)
+        after = remaining.copy()
+        if self.trial_rng.random() < self.current_event_probability:
+            diagnostics["search_event"] = True
+            # The pool excludes every rule considered on the preceding trial,
+            # including rules that have just exited.
+            inactive = np.setdiff1d(np.arange(self.total_hypo), before)
+            if self.trial_rng.random() < self.current_g:
+                q = self.base_prior[inactive] / self.base_prior[inactive].sum()
+                source = "global"
+            else:
+                parent = int(self.trial_rng.choice(len(remaining), p=gamma))
+                diagnostics["proposal_parent"] = int(remaining[parent])
+                functional, structural, fallback = self._proposal_kernels(remaining[parent:parent+1], inactive)
+                if self.trial_rng.random() < self.local_structure_weight:
+                    q = structural[0]
+                    source = "functional" if fallback[0] else "structural"
+                    diagnostics["structural_fallback"] = bool(fallback[0])
+                else:
+                    q, source = functional[0], "functional"
+            newcomer = int(self.trial_rng.choice(inactive, p=q))
+            diagnostics.update(proposal_source=source, proposed_hypothesis=newcomer)
+            if len(remaining) == self.capacity:
+                tied = np.flatnonzero(gamma == gamma.min())
+                drop_index = int(self.trial_rng.choice(tied))
+                diagnostics["capacity_dropped"] = int(remaining[drop_index])
+                after = np.delete(remaining, drop_index)
+            after = np.r_[after, newcomer]
+        return HypothesisSelection.from_active_sets(before, after, diagnostics=diagnostics)
+
     def assign_prior(self, context: TransitionContext, selection: HypothesisSelection, **kwargs: Any) -> np.ndarray:
+        if self.continuous_choice_enabled:
+            return self._assign_v3_prior(context, selection)
         remaining = np.asarray(selection.diagnostics["remaining"], dtype=int)
         gamma = np.asarray(selection.diagnostics["gamma"], dtype=float)
         final = selection.active_after
@@ -279,6 +352,25 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             memory.assign_relation_prior(prior, selection)
         return prior
 
+    def _assign_v3_prior(self, context: TransitionContext, selection: HypothesisSelection) -> np.ndarray:
+        """Normalize retained old support, then split it once by affinity."""
+        retained = selection.survivors
+        support = context.posterior[retained].copy()
+        support /= support.sum()
+        prior = np.zeros(self.total_hypo)
+        if selection.newcomers.size:
+            newcomer = int(selection.newcomers[0])
+            split = self._temporary_weights(retained, support, newcomer)
+            prior[retained], prior[newcomer] = split[:-1], split[-1]
+        else:
+            prior[retained] = support
+        memory = self.engine.get_module(ModuleRole.MEMORY)
+        if isinstance(memory, HierarchicalPairingMemoryModule):
+            # Its joint state still contains all pre-exit rules, so the new
+            # rule inherits their complete posterior pairing marginal.
+            memory.assign_relation_prior(prior, selection)
+        return prior
+
     def _finish_hypothesis_transition(self, context: TransitionContext, selection: HypothesisSelection,
                                      prior: np.ndarray, **kwargs: Any) -> Mapping[str, Any]:
         beta = self.engine.get_module(ModuleRole.BETA)
@@ -292,8 +384,16 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         logits[positive] = np.log(prior[positive])
         logits[previous] += self.execution_inertia
         self.execution_probabilities = _softmax(logits)
-        self.executed_hypothesis = int(self.execution_rng.choice(self.total_hypo, p=self.execution_probabilities))
-        self.current_execution_switch_probability = float(1-self.execution_probabilities[previous])
+        if self.continuous_choice_enabled:
+            tied = np.flatnonzero(logits == logits.max())
+            if previous in tied:
+                self.executed_hypothesis = previous
+            else:
+                self.executed_hypothesis = int(tied[0] if len(tied) == 1 else self.execution_rng.choice(tied))
+            self.current_execution_switch_probability = float(self.executed_hypothesis != previous)
+        else:
+            self.executed_hypothesis = int(self.execution_rng.choice(self.total_hypo, p=self.execution_probabilities))
+            self.current_execution_switch_probability = float(1-self.execution_probabilities[previous])
         self.current_execution_switch_event = self.executed_hypothesis != previous
         self.execution_switch_count += int(self.current_execution_switch_event)
         self.execution_dwell_trials = 1 if self.current_execution_switch_event else self.execution_dwell_trials+1
@@ -331,6 +431,17 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             "execution_switch_event": self.current_execution_switch_event,
             "execution_dwell_trials": self.execution_dwell_trials,
         })
+        if self.continuous_choice_enabled:
+            event.pop("executed_hypothesis")
+            event.pop("executed_hypothesis_previous")
+            event.update(
+                persistent_execution_enabled=False, continuous_choice_enabled=True,
+                mechanism_version=self.mechanism_version,
+                dominant_hypothesis=self.dominant_hypothesis,
+                dominant_hypothesis_previous=previous,
+                choice_weights=self.execution_probabilities.tolist(),
+                effective_participation=float(1 / np.sum(self.execution_probabilities ** 2)),
+            )
         self.transition_log.append(event)
         self.transition_rate_log.append(event.copy())
         self.trial_index += 1
@@ -342,15 +453,22 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.trial_rng, self.execution_rng = [np.random.default_rng(seed) for seed in seeds]
 
     def state_dict(self) -> dict[str, Any]:
-        return {name: deepcopy(getattr(self, name)) for name in self._STATE_FIELDS} | {
+        state = {name: deepcopy(getattr(self, name)) for name in self._STATE_FIELDS} | {
                 "mode": self.MODE, "capacity": self.capacity,
                 "configuration_signature": self.configuration_signature,
                 "trial_rng": deepcopy(self.trial_rng.bit_generator.state),
                 "execution_rng": deepcopy(self.execution_rng.bit_generator.state)}
+        if self.continuous_choice_enabled:
+            state["mechanism_version"] = self.mechanism_version
+        return state
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
         expected = set(self._STATE_FIELDS) | {
             "mode", "capacity", "configuration_signature", "trial_rng", "execution_rng"}
+        if state.get("mechanism_version", "legacy") != self.mechanism_version:
+            raise ValueError("0923 full model snapshot does not match the configured mechanism version")
+        if self.continuous_choice_enabled:
+            expected.add("mechanism_version")
         if set(state) != expected:
             raise ValueError("0923 full model snapshot has incomplete or unsupported state fields")
         if (state["mode"] != self.MODE or state["capacity"] != self.capacity
@@ -380,6 +498,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 or np.any(probability < 0) or not np.isclose(probability.sum(), 1)
                 or np.any(probability[np.setdiff1d(np.arange(self.total_hypo), active)] != 0)):
             raise ValueError("0923 full model snapshot has invalid execution probabilities")
+        if self.continuous_choice_enabled and probability[int(state["executed_hypothesis"])] != probability.max():
+            raise ValueError("0923 full-v3 snapshot dominant rule must maximize choice weights")
         trial_rng, execution_rng = deepcopy(self.trial_rng), deepcopy(self.execution_rng)
         trial_rng.bit_generator.state = deepcopy(state["trial_rng"])
         execution_rng.bit_generator.state = deepcopy(state["execution_rng"])

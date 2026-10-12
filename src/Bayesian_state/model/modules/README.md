@@ -14,6 +14,24 @@ Condition 3 的 PMH 使用 `pairing_memory.HierarchicalPairingMemoryModule`：�
 `feedback_interpretation: full_success`，但 observation 中仍保留原始三值反馈。
 完整原理见 [Model 0826 第 13 节](../../docs/model_architecture/model_0826.tex)。
 
+Model 0923 full-v3 显式设置 `forgetting_mode: factorized`。记忆模块先将规则信念
+取 `gamma` 次幂并在活跃规则间归一化，再将每条规则的条件配对信念取同一次幂、
+在该规则的三种配对间归一化。两者相乘后接受一次反馈更新。这样，规则可信度的
+遗忘由规则旧信念决定，配对知识继续按规则分别保存。`feedback_pairing_weights`
+缓存遗忘后、加入当前反馈前的条件配对分布，供精度梯度共用。
+`gamma=0` 显式使用均匀分布；零规则边际对应均匀条件配对。默认
+`forgetting_mode: joint` 保留既有联合幂更新。快照记录模式和反馈缓存，恢复时检查
+模式一致；旧快照按 `joint` 读取。`initialize_prior()` 和 `reset()` 清空待更新证据。
+
+Full-v3 的二值反馈使用 `DualMemoryModule` 的
+`forgetting_mode: exact_power`，固定 `w0=0`、`feedback_gain=1`。每题直接读取候选管理
+给出的规则先验，在对数域计算归一化的 `prior**gamma * likelihood`，保留极小的新规则
+信念；`gamma=0` 将所有活跃规则作为等权起点。新精度模式的二值反馈似然由
+`ObservationLikelihood.binary_feedback_likelihood()` 返回绝对事件概率，错误反馈直接
+汇总其余类别的概率。这条路径取消原记忆的 `1e-15` 下限和连续 partition 的 `1e-7`
+反馈概率下限，使记忆与精度更新使用同一反馈证据。默认 `dual_trace` 及旧观测路径
+保留已有数值运算；这两处概率下限调整仅接入 full-v3。
+
 `readout/` 实现输出层，包含 choice 与 oral 两个分支，读取本题内部状态并返回观测分布。
 由 `StateModel` 在反馈前调用；学习步骤仍按 engine agenda 执行。
 代码组织和兼容接口见 [readout/README.md](readout/README.md)。
@@ -419,7 +437,7 @@ p_t(h)=\frac{\exp(\log q_t(h))\,m_t(h)}{\sum_u \exp(\log q_t(u))\,m_t(u)}
 
 其中 `\lambda=prior_beta_scale`，随后截断到 `[beta_min,beta_max]`。
 
-### 7.4 Trial 内更新（基于反馈一致性）
+### 7.4 历史模式的 trial 内更新（基于反馈一致性）
 
 先根据 `(choice, feedback)` 推断正确类别（2 类情形下错误时取另一类）。
 
@@ -485,6 +503,24 @@ choice-compatible rule，并可要求历史 `peak_mastery_evidence` 达标；rel
 更新后的 `engine.beta` 在下一 trial 同时进入 choice readout 与配置为
 `beta_source: action` 的 `ObservationLikelihood`，直接影响 softmax/距离映射的陡峭程度。
 H5 因而使用一个统一的动态 beta，而不是相互独立的 choice/evidence beta。
+
+### 7.6 Model 0923 的单学习率精度校准
+
+`beta_update_mode: feedback_gradient` 要求显式配置有限的
+`learning_rate`，范围为 `[0,1]`。该模式更新全部活跃候选；新规则和重新进入的规则
+统一使用 `beta_init`，配置中的 `use_prior_scaling` 为 `false`。
+共享模块继续读取 `beta_min` 与 `beta_max`，0923 配置固定为 `0.1` 与 `25`。
+
+每条规则的更新方向是其反馈对数似然对精度的梯度。梯度等于作答前的平均类别距离，
+减去按实际反馈重新加权后的平均类别距离。将梯度乘以 `learning_rate` 加到当前
+精度，再限制到上下界。计算固定本题内部刺激与类别距离；条件3使用记忆模块缓存的
+`feedback_pairing_weights`，更新后的精度从下一题起生效。
+
+`ObservationLikelihood.feedback_precision_gradient()` 计算这一步，使用
+`boundary` 距离、`action` 精度与零反馈失误率，并复用几何的距离缓存。
+新模式的参数校验拒绝 `increase_rate`、`decrease_rate`、`correct_additive` 和
+`executed_hypothesis` 更新范围。旧精度模式继续采用第7.4节的运算。
+精度快照记录更新模式，恢复时校验模式一致；缺少模式标记的旧快照可恢复至旧精度模式。
 
 ## 8. `readout.py`：可观测读出
 

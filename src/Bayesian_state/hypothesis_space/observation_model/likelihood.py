@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from .pairing import pairing_feedback_kernel
+from .pairing import PAIRING_SIBLINGS, pairing_feedback_kernel
 
 
 class ObservationLikelihood:
@@ -185,6 +185,147 @@ class ObservationLikelihood:
             for h, b in zip(hypotheses, beta_values)
         ])
         return pairing_feedback_kernel(probabilities, choice, feedback)
+
+    def binary_feedback_likelihood(
+        self,
+        observation: Sequence[Any],
+        hypotheses: Sequence[int],
+        beta: float | Sequence[float] | np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return absolute binary-feedback probabilities without an EPS floor.
+
+        The 0923 gradient profile shares these emissions with precision learning.
+        The historical ``process`` path keeps its existing partition clipping.
+        """
+        if self.feedback_likelihood_mode != "category_feedback" or self.feedback_lapse != 0.:
+            raise ValueError("exact binary feedback requires category_feedback and feedback_lapse=0.")
+        if observation is None or len(observation) != 3:
+            raise ValueError("observation must contain stimulus, choice and feedback.")
+        stimulus, choice, feedback = observation
+        n_categories = int(self.partition.n_cats)
+        if (choice is None or not np.isfinite(choice) or choice != int(choice)
+                or not 1 <= int(choice) <= n_categories):
+            raise ValueError("choice must be an integer within the category range.")
+        if feedback not in (0., 1.):
+            raise ValueError("binary feedback must be 0 or 1.")
+        indices = tuple(int(h) for h in hypotheses)
+        if not indices:
+            raise ValueError("at least one hypothesis is required.")
+        beta_value = self.default_beta if beta is None or self.beta_source == self.BETA_SOURCE_FIXED else beta
+        betas = np.broadcast_to(np.asarray(beta_value, dtype=float), (len(indices),))
+        if not np.all(np.isfinite(betas)) or np.any(betas < 0.):
+            raise ValueError("predictive precisions must be finite and non-negative.")
+        data = ([stimulus], [choice], [feedback])
+        probabilities = np.asarray([
+            self.partition.get_category_probabilities(h, data, float(b), distance_mode=self.distance_mode)[:, 0]
+            for h, b in zip(indices, betas)
+        ], dtype=float)
+        if (probabilities.shape != (len(indices), n_categories)
+                or not np.all(np.isfinite(probabilities)) or np.any(probabilities < 0.)
+                or not np.allclose(probabilities.sum(axis=1), 1., rtol=1e-10, atol=1e-12)):
+            raise ValueError("predictive category probabilities must be finite and normalized.")
+        if feedback == 1.:
+            return probabilities[:, int(choice) - 1].copy()
+        # A sum retains tiny alternatives even when p(choice) rounds to one.
+        return probabilities[:, np.arange(n_categories) != int(choice) - 1].sum(axis=1)
+
+    def feedback_precision_gradient(
+        self,
+        observation: Sequence[Any],
+        hypotheses: Sequence[int],
+        beta: float | Sequence[float] | np.ndarray,
+        *,
+        pairing_weights: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return the per-rule log-feedback derivative at predictive precision.
+
+        Distances, the perceived stimulus and pairing weights stay fixed during
+        differentiation. Callers pass the pre-feedback pairing distribution;
+        memory may already have updated its joint posterior. The geometry's
+        exact distance cache reuses the distances used for the choice emission.
+        """
+        if (self.beta_source != self.BETA_SOURCE_ACTION
+                or self.distance_mode != "boundary" or self.feedback_lapse != 0.):
+            raise ValueError(
+                "feedback_gradient requires boundary/action emissions and feedback_lapse=0."
+            )
+        if self.feedback_likelihood_mode not in ("category_feedback", "hierarchical_pairing"):
+            raise ValueError("feedback_gradient requires binary or hierarchical category feedback.")
+        if observation is None or len(observation) != 3:
+            raise ValueError("observation must contain stimulus, choice and feedback.")
+        stimulus, choice, feedback = observation
+        n_categories = int(self.partition.n_cats)
+        if (choice is None or not np.isfinite(choice) or choice != int(choice)
+                or not 1 <= int(choice) <= n_categories):
+            raise ValueError("choice must be an integer within the category range.")
+        values = np.asarray(stimulus, dtype=float)
+        if (values.shape != (4,) or not np.all(np.isfinite(values))
+                or np.any(values < 0.) or np.any(values > 1.)):
+            raise ValueError("feedback_gradient requires a finite stimulus in [0, 1]^4.")
+        indices = tuple(int(h) for h in hypotheses)
+        if not indices:
+            raise ValueError("feedback_gradient requires at least one active hypothesis.")
+        betas = np.broadcast_to(np.asarray(beta, dtype=float), (len(indices),))
+        if not np.all(np.isfinite(betas)) or np.any(betas <= 0.):
+            raise ValueError("feedback_gradient requires finite positive predictive precisions.")
+        geometry = getattr(self.partition, "boundary_geometry", None)
+        if not callable(getattr(geometry, "category_distances", None)):
+            raise TypeError("feedback_gradient requires boundary category distances.")
+        data = ([values], [choice], [feedback])
+        distances = np.asarray([
+            geometry.category_distances(h, [values])[0] for h in indices
+        ], dtype=float)
+        probabilities = np.asarray([
+            self.partition.get_category_probabilities(
+                h, data, float(b), distance_mode=self.distance_mode,
+            )[:, 0] for h, b in zip(indices, betas)
+        ], dtype=float)
+        expected_shape = (len(indices), n_categories)
+        if (distances.shape != expected_shape or probabilities.shape != expected_shape
+                or not np.all(np.isfinite(distances)) or np.any(distances < 0.)
+                or np.any(distances > 2. + 1e-8)):
+            raise ValueError("category distances must have shape (rules, categories) and lie in [0, 2].")
+        if (not np.all(np.isfinite(probabilities)) or np.any(probabilities < 0.)
+                or not np.allclose(probabilities.sum(axis=1), 1., rtol=1e-10, atol=1e-12)):
+            raise ValueError("predictive category probabilities must be finite and normalized.")
+
+        chosen = int(choice) - 1
+        if self.feedback_likelihood_mode == "hierarchical_pairing":
+            if pairing_weights is None:
+                raise ValueError("hierarchical feedback_gradient requires pre-feedback pairing weights.")
+            weights = np.asarray(pairing_weights, dtype=float)
+            if (weights.shape != (len(indices), 3) or not np.all(np.isfinite(weights))
+                    or np.any(weights < 0.)
+                    or not np.allclose(weights.sum(axis=1), 1., rtol=1e-10, atol=1e-12)):
+                raise ValueError("pairing weights must be normalized with shape (rules, 3).")
+            if feedback not in (0., .5, 1.):
+                raise ValueError("hierarchical feedback must be 0, 0.5 or 1.")
+            categories = np.arange(n_categories)[None, :]
+            siblings = PAIRING_SIBLINGS[:, chosen, None]
+            if feedback == 1.:
+                compatible = np.broadcast_to(categories == chosen, (3, n_categories))
+            elif feedback == .5:
+                compatible = categories == siblings
+            else:
+                compatible = (categories != chosen) & (categories != siblings)
+            compatibility = weights @ compatible
+        else:
+            if pairing_weights is not None:
+                raise ValueError("binary feedback_gradient does not use pairing weights.")
+            if feedback not in (0., 1.):
+                raise ValueError("binary feedback must be 0 or 1.")
+            compatible = np.arange(n_categories) == chosen
+            if feedback == 0.:
+                compatible = ~compatible
+            compatibility = np.broadcast_to(compatible, expected_shape)
+
+        joint = probabilities * compatibility
+        evidence = joint.sum(axis=1, keepdims=True)
+        if np.any(evidence <= 0.):
+            raise ValueError("feedback_gradient requires positive feedback probability for each active rule.")
+        # Direct sums retain tiny error-event mass that 1 - p(choice) can lose.
+        conditioned = joint / evidence
+        return np.sum(probabilities * distances, axis=1) - np.sum(conditioned * distances, axis=1)
 
 
 __all__ = ["ObservationLikelihood"]

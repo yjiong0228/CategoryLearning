@@ -1,0 +1,107 @@
+# Model 0923 full-v3: 2026-10-12 behavior specification.
+# Values are implementation-check examples, not fitted estimates.
+# One initial candidate; continuous choice weights; shared precision learning rate.
+provenance:
+  model_id: model_0923
+  variant: full
+  condition: 2
+  specification_path: src/Bayesian_state/docs/model_architecture/model_0923.md
+  specification_version: 0923-full-v3
+  scientific_status: mechanism_candidate_implemented_not_fitted
+  hypothesis_space_status: adopted_relational_152
+  catalogue_adoption_basis: user_approved_structure_not_fit_comparison
+  hypothesis_similarity:
+    basis: boundary_fixed_labels
+    version: confusion_tensor_v1
+    sample_distribution: uniform
+    sample_count: 100000
+    computation_seed: 0
+    storage: separate_readonly_in_memory_confusion_tensor
+    interpretation: fixed_label_functional_agreement_with_category_correspondence
+  label_mapping:
+    mode: fixed_task_labels
+  structure_grammar_version: judgment_program_edits_v1
+  edit_cost_status: shared_initial_assumptions_not_psychologically_calibrated
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.continuous_partition.ContinuousPartition
+  kwargs:
+    n_dims: 4
+    n_cats: 4
+    structural_extension: relational_152_0923
+    pairwise_similarity_tolerance: 0.10  # Same near/far convention as binary rules.
+    similarity_n_samples: 100000
+inference:
+  backend: particle_filter
+  particle_count: 32
+  resample_threshold_fraction: 0.5
+likelihood:
+  distance_mode: boundary
+  beta_source: action
+  default_beta: 5.0
+modules:
+  perception_mod:
+    class: src.Bayesian_state.model.modules.perception.PerceptionModule
+  beta_mod:
+    class: src.Bayesian_state.model.modules.beta.BetaModule
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      learning_rate: 0.1  # Explicit smoke value; calibrate before fitting.
+      beta_update_mode: feedback_gradient
+      update_scope: active_hypotheses
+      probabilistic_feedback_lapse: 0.0
+      use_prior_scaling: false
+      prior_beta_scale: 0.0
+  hypo_transitions_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search.MechanisticRuleSearchHypothesisTransitionModule
+    kwargs:
+      mechanism_version: 0923-full-v3
+      max_capacity: 3
+      exit_rate: 0.1
+      local_structure_weight: 0.5
+      transfer_scale: 0.1
+      execution_inertia: 1.0
+      tau_proposal: 0.1
+      relation_samples: 100000
+      relation_seed: 0
+      edit_costs:
+        feature: 1.0
+        relation: 1.5
+        reference: 1.0
+        branch: 2.0
+      search_controller:
+        baseline_probability: 0.05
+        error_gain: 1.0
+        failure_decay: 0.6
+        global_search: 0.2
+        global_search_failure_gain: 0.5
+  memory_mod:
+    class: src.Bayesian_state.model.modules.memory.DualMemoryModule
+    kwargs:
+      forgetting_mode: exact_power
+      gamma: 0.8
+      w0: 0.0
+      feedback_gain: 1.0
+choice_readout:
+  kwargs:
+    method: expectation
+    power: 1.0
+    strategy_confidence_gain: 0.0
+output_noise:
+  kwargs:
+    enabled: false
+agenda:
+- perception_mod
+- hypo_transitions_mod
+- memory_mod
+- beta_mod
+oral_readout:
+  method: rule_content_v1
+  kwargs:
+    mention_probability: 0.8
+    extra_probability: 0.2
+    other_probability: 0.02
+    body_naming_probability: 0.5
+    body_reference_center: 0.75
+    body_reference_width: 0.1

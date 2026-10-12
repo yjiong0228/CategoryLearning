@@ -24,8 +24,9 @@ PAIRING_MEMORY_CLASS = (
 
 # Saved configurations keep their original provenance. New runs declare full.
 FULL_MODEL_VARIANTS = frozenset({"full", "M1"})
-FULL_MODEL_VERSIONS = frozenset({"0923-full-v1", "0923-M1-v1", "0923-full-v2"})
-RELATIONAL_CATALOGUE_VERSIONS = frozenset({"0923-B0-v3", "0923-full-v2"})
+REVISED_FULL_VERSION = "0923-full-v3"
+FULL_MODEL_VERSIONS = frozenset({"0923-full-v1", "0923-M1-v1", "0923-full-v2", REVISED_FULL_VERSION})
+RELATIONAL_CATALOGUE_VERSIONS = frozenset({"0923-B0-v3", "0923-full-v2", REVISED_FULL_VERSION})
 
 
 def is_model_0923_full(provenance: Mapping[str, Any]) -> bool:
@@ -34,12 +35,19 @@ def is_model_0923_full(provenance: Mapping[str, Any]) -> bool:
             and provenance.get("variant") in FULL_MODEL_VARIANTS)
 
 
+def is_model_0923_revised(provenance: Mapping[str, Any]) -> bool:
+    """Identify the 2026-10-12 contract without changing saved full-model runs."""
+    return (is_model_0923_full(provenance)
+            and provenance.get("specification_version") == REVISED_FULL_VERSION)
+
+
 def validate_model_0923_config(config: Mapping[str, Any]) -> None:
     """Validate the declared full-model or baseline scientific contract."""
     provenance = config.get("provenance") or {}
     if provenance.get("model_id") != "model_0923" or provenance.get("variant") not in {"B0", *FULL_MODEL_VARIANTS}:
         raise ValueError("Model 0923 requires an explicitly declared full or B0 variant")
     mechanistic = is_model_0923_full(provenance)
+    revised = is_model_0923_revised(provenance)
     condition = provenance.get("condition")
     if isinstance(condition, bool) or condition not in (1, 2, 3):
         raise ValueError("0923 requires an explicit condition in {1, 2, 3}")
@@ -87,6 +95,9 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
                 or "correct_additive" in beta_kwargs):
             raise ValueError("0923 full requires unscaled newcomer precision and active feedback updates")
         transition = modules["hypo_transitions_mod"].get("kwargs") or {}
+        expected_mechanism = REVISED_FULL_VERSION if revised else "legacy"
+        if transition.get("mechanism_version", "legacy") != expected_mechanism:
+            raise ValueError("0923 transition mechanism_version disagrees with its specification_version")
         similarity = provenance.get("hypothesis_similarity") or {}
         if (similarity.get("sample_count") != transition.get("relation_samples", 100_000)
                 or similarity.get("computation_seed") != transition.get("relation_seed", 0)
@@ -102,12 +113,35 @@ def validate_model_0923_config(config: Mapping[str, Any]) -> None:
     gamma = float(memory_kwargs.get("gamma", float("nan")))
     if not math.isfinite(gamma) or not 0.0 <= gamma <= 1.0:
         raise ValueError("0923 gamma must be finite and in [0, 1]")
+    if condition == 3:
+        expected_forgetting = "factorized" if revised else "joint"
+        if memory_kwargs.get("forgetting_mode", "joint") != expected_forgetting:
+            raise ValueError("0923 condition-3 forgetting_mode disagrees with its specification_version")
+    else:
+        expected_forgetting = "exact_power" if revised else "dual_trace"
+        if memory_kwargs.get("forgetting_mode", "dual_trace") != expected_forgetting:
+            raise ValueError("0923 binary forgetting_mode disagrees with its specification_version")
     likelihood = config.get("likelihood") or {}
     feedback_mode = likelihood.get("feedback_likelihood_mode", "category_feedback")
     if feedback_mode != ("hierarchical_pairing" if condition == 3 else "category_feedback"):
         raise ValueError("0923 feedback likelihood disagrees with its condition")
     if likelihood.get("beta_source") != "action":
         raise ValueError("0923 uses the same rule precision for choice and evidence")
+    if revised:
+        if (beta_kwargs.get("beta_update_mode") != "feedback_gradient"
+                or any(key in beta_kwargs for key in ("increase_rate", "decrease_rate", "correct_additive"))):
+            raise ValueError("0923 full-v3 requires feedback_gradient with one learning_rate")
+        rate = beta_kwargs.get("learning_rate")
+        if (isinstance(rate, bool) or not isinstance(rate, (int, float))
+                or not math.isfinite(rate) or not 0.0 <= rate <= 1.0):
+            raise ValueError("0923 full-v3 requires an explicit finite learning_rate in [0, 1]")
+        if (beta_kwargs.get("beta_min") != 0.1 or beta_kwargs.get("beta_max") != 25.0
+                or beta_kwargs.get("probabilistic_feedback_lapse", 0.0) != 0.0
+                or beta_kwargs.get("feedback_lapse", 0.0) != 0.0
+                or likelihood.get("distance_mode") != "boundary"):
+            raise ValueError("0923 full-v3 requires boundary distances, beta bounds [0.1, 25] and zero feedback lapse")
+    elif beta_kwargs.get("beta_update_mode") == "feedback_gradient" or "learning_rate" in beta_kwargs:
+        raise ValueError("0923 feedback_gradient requires specification_version='0923-full-v3'")
     readout = (config.get("choice_readout") or {}).get("kwargs") or {}
     if readout != {"method": "expectation", "power": 1.0, "strategy_confidence_gain": 0.0}:
         raise ValueError("0923 requires its documented choice readout settings")
