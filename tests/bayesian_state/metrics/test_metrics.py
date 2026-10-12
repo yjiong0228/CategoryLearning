@@ -492,6 +492,7 @@ def test_metrics_and_model_evaluation_module_boundaries_are_explicit():
     }
     assert metric_modules == {
         "numeric.py",
+        "oral_distribution_alignment.py",
         "behavior.py",
         "group.py",
         "losses.py",
