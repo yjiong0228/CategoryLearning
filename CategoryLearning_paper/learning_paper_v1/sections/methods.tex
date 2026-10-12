@@ -5,6 +5,8 @@
 
 Each trial presents a stimulus $\bm x_t\in[0,1]^4$, followed by a category response $y_t$ and feedback $r_t$. The four coordinates encode normalized feature lengths. Condition~1 has two categories and binary feedback; condition~2 has four categories and binary feedback. Condition~3 has four categories grouped into two families. Its feedback distinguishes the correct species ($r_t=1$), the correct family but incorrect species ($r_t=0.5$), and the incorrect family ($r_t=0$). Participants in this condition know the family--species structure and learn the response-label pairings.
 
+Trials marked as missed responses are excluded before model execution. Learning states advance across answered trials and carry forward across omissions. Original trial identifiers are retained for alignment with behavioral and neural observations.
+
 \label{m:state}
 The model represents a classification rule as a partition of stimulus space into labeled category regions. A finite catalogue $\mathcal H$ contains rules based on feature thresholds, comparisons and conditional judgments. The learner considers an active subset $\mathcal A_t$, with size bounded by the participant's capacity $M^{\max}$. Each active rule $h$ has a normalized belief $\pi_t^-(h)$ and a prediction precision $\beta_t(h)$. The learner starts with one uniformly sampled rule, belief~1 and initial precision $\beta_0$. Superscripts $-$ and $+$ denote beliefs before choice and after feedback. Participant indices are omitted; parameters remain fixed within a participant while these states evolve.
 
@@ -144,9 +146,9 @@ The full model defines 13 participant-level parameters, including $\beta_0$ and 
 \log\widehat P_t(y_t;\bm\theta),
 \label{eq:choice-nll}
 \end{equation}
-where $\mathcal T_{\mathrm{score}}$ is the set of scored trials and $T$ its size. Predictions are formed before current feedback. Choice likelihood is the fitting objective.
+where $\mathcal T_{\mathrm{score}}$ is the set of scored trials and $T$ its size. Predictions are formed before current feedback. The first answered trial initializes the sequence and is excluded from predictive scoring; the analysis split determines the remaining scored trials. Choice likelihood is the fitting objective.
 
-The shared implementation, \texttt{0923-full-v3}, includes revised candidate management, continuous choice weights, precision calibration and separate discounting of rule and conditional pairing beliefs. Targeted checks cover update equations, state restoration and prediction timing. Example configurations use $\eta=0.1$ for small workflow checks; this value requires calibration before estimation.
+The shared implementation, \texttt{0923-full-v3}, includes revised candidate management, continuous choice weights, precision calibration and separate discounting of rule and conditional pairing beliefs. Targeted checks cover update equations, state restoration and prediction timing. Example configurations use $\eta=0.1$ for small workflow checks. When treated as a free parameter, $\eta$ is estimated jointly with the other participant parameters from choices.
 
 \draftslot{Formal data fitting, parameter recovery and behavioral validation remain pending. Analysis cohort, estimation settings, training and evaluation boundaries, and uncertainty procedures to be specified.}
 

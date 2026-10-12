@@ -107,8 +107,9 @@ verified study information.
 
 The revised mechanisms are connected to shared state transitions, choice readout
 and particle inference. Targeted checks include state restoration and prediction
-timing. Example configurations use `eta=0.1` for small workflow checks; this value
-requires calibration before estimation. Formal data fitting, parameter recovery
+timing. Example configurations use `eta=0.1` for small workflow checks. When free,
+the learning rate is estimated jointly with the other participant parameters.
+Formal data fitting, parameter recovery
 and behavioral validation of this revised design remain incomplete.
 
 ## Compile
