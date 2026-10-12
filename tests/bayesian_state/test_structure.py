@@ -87,6 +87,7 @@ def test_oral_evaluation_separates_mapping_scoring_and_reporting() -> None:
         "alignment.py",
         "mapping.py",
         "scoring.py",
+        "generative_scoring.py",
         "reporting.py",
         "structure_0923.py",
     }
