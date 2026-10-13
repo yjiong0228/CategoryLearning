@@ -1,0 +1,6 @@
+postfit_run: ../../../results/model_0923/exp123_selected12_postfit_20261013_v1
+output_dir: ../../../results/model_0923/exp123_selected12_followup_20261013_v1/task_criterion
+source_program: ../../../exp_program/exp123/Task2_learning.m
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328]
+block_size: 64
+accuracy_threshold: 0.9

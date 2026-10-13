@@ -23,6 +23,7 @@ figures/
 - [Fig3 瓶颈个案预演，2026-09-17](outputs/fig3/bottleneck_cases_20260917_v2/README.md)：两份现有记录的考虑、支持、执行与口述对照，以及连续阶段画像。
 - [九人 Fig3，2026-09-20](outputs/fig3/nine_subjects_20260920_v2/Figure3_nine_subjects.png) · [九人 Fig4](outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png)：三任务各三人、完整信念轨迹与机制诊断；[设计和证据边界](fig3/nine_subject_fig34_design.md)。均为待审阅草稿。
 - [Fig4 代码与说明](fig4/README.md)
+- [Model 0923：12人后分析全部图，2026-10-13](../../results/model_0923/exp123_selected12_postfit_20261013_v1/report.html) · [26张PNG所在目录](outputs/fig3/model0923_postfit_20261013_v1/)：2张总体图，每人行为与内在表征各1张；同一结果目录的`findings.html`为文字摘要。
 - [图产物索引](outputs/README.md)
 
 从仓库根目录运行，使用新的输出版本目录：

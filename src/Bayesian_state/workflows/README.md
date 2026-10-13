@@ -522,3 +522,46 @@ python -m CategoryLearning_codes.figures.fig3.model0923_postfit \
 主报告为 `report.html`，逐人CSV与完整规则目录供每张图追溯。
 本阶段交付搜索审查、行为检查和在线表征分布；参数区间与恢复、留出重新拟合、
 机制比较和口述验证继续作为后续验收项目。
+
+## Model 0923：固定候选与自主学习的定向检查
+
+`analysis/followup_model_0923_postfit.py`核对归档输入，读取已保存的四组入围参数，
+并使用第一阶段独立于搜索的16组共同粒子滤波种子，以128粒子重新评分。
+原入选点复用第一阶段的概率文件，其余候选在新目录计算。逐题概率先跨种子平均，
+再计算负对数似然（NLL）；原拟合参数和报告保留原记录。
+两半种子的排名及配对Jackknife标准误用于评价当前数值预算下的排序变化。
+Jackknife逐次删除一组种子，并重新计算候选间的NLL差值；所得标准误描述数值积分波动，
+参数统计区间与参数恢复另行评价。
+
+同一入口读取原来的64条自主轨迹，按32题分段，并比较早期与晚期64题。
+第一条有效记录用于初始化，精确正确率从第二条开始；条件3的半分记为未完全正确。
+各轨迹的预期正确概率描述其当时学习状态下的预测。窗口正确率达到80%的比例保留为
+描述指标；持续掌握、自适应终止时间和具体机制的归因继续作为后续检查。
+
+配置为`configs/exp123/specific_models/model_0923_selected12_followup.yaml`。
+输出目录必须不存在。`figures.html`展示第一阶段的全部26张PNG，并链接原图文报告；
+`report.html`展示候选与学习阶段检查，配套CSV、逐种子概率和哈希清单用于复核。
+此入口保持模型方程与原参数配置，计算范围限于已保存候选。
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+MPLCONFIGDIR=/tmp/model0923_followup_mpl NUMBA_CACHE_DIR=/tmp/model0923_followup_numba \
+python -m src.Bayesian_state.workflows.analysis.followup_model_0923_postfit
+```
+
+短检查使用一个被试、16题、4粒子、两组共同种子与一个进程，追加
+`--smoke --output-dir /tmp/model0923_followup_smoke_NEW`。
+
+`analysis/audit_model_0923_task_criterion.py`对同一批已有自主轨迹追加任务达标检查。
+它读取原实验程序的64题区块及90%阈值，按区块排除模糊刺激，要求每个类别的精确正确率
+均达到阈值。真实记录与模拟使用同一类别、区块及模糊标记，并保留逐区块与首次达标记录。
+任务达标统计包含区块首题；模型选择似然的初始化排除约定保持原定义。
+原实验还根据表现调整下一块的类别采样，当前检查对真实刺激顺序条件化。
+完整自主任务生成需同时接入按模型表现采样和达标终止。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.audit_model_0923_task_criterion
+```
+
+配置为`configs/exp123/specific_models/model_0923_selected12_task_criterion.yaml`。
+此步骤读取已有轨迹，结果写入新建的`task_criterion/`子目录，原模拟与报告保留原记录。

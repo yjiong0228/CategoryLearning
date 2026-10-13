@@ -21,6 +21,8 @@ Condition 3 的自主与内部轨迹评价保留 `0/0.5/1` 浮点反馈；种正
 | `fft_clustering.py` | 保存后的 run-level 轨迹 FFT 聚类 |
 | `autonomous_trajectories.py` | 冻结参数下的完整自主学习轨迹、whole-curve 中央区域、medoid、形态聚类与持续掌握起点 |
 | `internal_cognitive_trajectories.py` | 条件于被试完整观察历史的 PF 完整祖先路径、形态 archetype 与 genealogy 充分性诊断 |
+| `model_0923_followup.py` | 固定入围候选的共同PF种子评分、数值误差及已有自主轨迹的分段正确率 |
+| `model_0923_task_criterion.py` | 排除模糊刺激，按类别评价保存区块的任务达标标准 |
 | `oral/mapping.py` | oral center/region 到共享 hypothesis space 的映射 |
 | `oral/scoring.py` | latest-by-category oral state、oral/model 分布构造及五类对齐计算 |
 | `oral/reporting.py` | 对齐结果汇总、CSV 保存与绘图 |

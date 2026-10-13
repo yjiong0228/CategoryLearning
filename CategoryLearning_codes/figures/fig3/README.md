@@ -161,3 +161,8 @@ python -m CategoryLearning_codes.figures.fig3.build_fig3 --output CategoryLearni
 图中的隐藏状态区间以固定入选参数为条件；自主行为阴影为模拟轨迹的逐点10%–90%范围。
 所有有效试次及完整规则目录保留在配套源表中。当前图为分析报告草稿，使用183毫米宽、
 300 dpi的PNG。运行方法与证据边界见[工作流说明](../../../src/Bayesian_state/workflows/README.md#model-092312人拟合后的第一阶段分析)。
+
+2026-10-13完成的12人分析入口为[完整图文报告](../../../results/model_0923/exp123_selected12_postfit_20261013_v1/report.html)。
+[图文件夹](../outputs/fig3/model0923_postfit_20261013_v1/)保留26张PNG：
+`cohort_behavior.png`和`parameter_audit.png`是总体图；每个`subject_编号/`下各有
+`behavior.png`和`representations.png`。同一结果目录的`findings.html`提供文字摘要。

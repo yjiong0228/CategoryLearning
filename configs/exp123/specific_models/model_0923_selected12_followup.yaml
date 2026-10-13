@@ -1,0 +1,12 @@
+# Compare saved finalists and describe saved autonomous learning at fixed parameters.
+fit_run: ../../../results/model_0923/exp123_selected12_20261013_v1
+postfit_run: ../../../results/model_0923/exp123_selected12_postfit_20261013_v1
+output_dir: ../../../results/model_0923/exp123_selected12_followup_20261013_v1
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328]
+pf_repeats: 16
+particle_count: 128
+parallel_budget: 128
+segment_size: 32
+late_window: 64
+# Descriptive window threshold; no claim about sustained mastery.
+target_accuracy: 0.8
