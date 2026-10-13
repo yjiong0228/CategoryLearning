@@ -89,6 +89,38 @@
 
 粒子滤波（particle filter，PF）用于推断这些隐藏过程。每个粒子代表一条可能的内部学习路径。把多条路径的预测按权重汇总，可以同时计算行为预测和内部状态的不确定性。
 
+\noindent\begin{minipage}{\linewidth}
+\textbf{模块分工与被试参数总览}
+
+按一次试次中的职责，知觉与选择读出构成决策核：先形成内部刺激，再计算各类别的作答概率。证据记忆、精度更新与假设更新构成学习核：收到反馈后，更新信念、精度和候选集合，为下一题作答准备状态。各模块对应的被试参数如下。
+
+\medskip
+{\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}L{2.6cm}L{1.7cm}>{\raggedright\arraybackslash}X L{4.0cm}@{}}
+\toprule
+认知模块 & 功能分组 & 在模型中的作用 & 被试层拟合参数\\
+\midrule
+P 知觉 & 决策核 & 将物理刺激转为本题各规则共用的内部刺激，并据此形成类别预测。 & 知觉参数来自独立测量。\\
+\addlinespace[0.35em]
+RC 选择读出 & 决策核 & 结合规则预测、信念和上一题主导规则的惯性，汇总作答概率。 & $\lambda_s$\\
+\midrule
+M 证据记忆 & 学习核 & 用反馈评价所有活跃候选，结合保留的证据更新相对信念；条件3还更新配对信念。 & $\gamma_s$\\
+\addlinespace[0.35em]
+B 精度更新 & 学习核 & 结合反馈与反馈前的类别预测，调整各规则分类的明确程度。 & $\beta_{0,s},\ \eta_s$\\
+\addlinespace[0.35em]
+H 假设更新 & 学习核 & 根据近期失败控制搜索，按退出、容量和迁移机制调整候选集合及其信念。 & $e_{0,s},\ a_{e,s},\ \delta_s$\newline
+$g_{0,s},\ a_{g,s},\ M_s^{\max}$\newline
+$\rho_s,\ \omega_s,\ \tau_{{\rm tr},s}$\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+下标 $s$ 表示被试。RC、M、B、H 分别对应1、1、2、9项行为参数，共13项；具体拟合配置规定各项自由估计或固定。参数的含义、范围和搜索设置见第\ref{sec:parameters}节。规则信念、作答权重和当前精度等状态随试次变化；其中 $\beta_{0,s}$ 规定新规则的初始精度。
+}
+\end{minipage}
+
 \section{任务输入、规则目录与潜在状态}
 \label{sec:states}
 
