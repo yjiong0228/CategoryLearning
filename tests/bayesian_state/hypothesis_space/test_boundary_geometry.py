@@ -10,7 +10,9 @@ import yaml
 
 from src.Bayesian_state.hypothesis_space.geometry import (
     BoundaryGeometry,
+    active_set_numba_available,
     dykstra_numba_available,
+    warmup_active_set_numba,
     warmup_dykstra_numba,
 )
 from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPartition
@@ -72,9 +74,23 @@ def test_dykstra_auto_backend_and_warmup_follow_numba_availability() -> None:
         dykstra_backend="auto",
     )
 
+    # ``auto`` keeps the historical Numba Dykstra loop; the exact active-set
+    # solver is opt-in because it showed no end-to-end gain through the cache.
     expected = "numba" if dykstra_numba_available() else "python"
     assert geometry.dykstra_backend == expected
     assert warmup_dykstra_numba() is dykstra_numba_available()
+    assert warmup_active_set_numba() is active_set_numba_available()
+
+
+def test_explicit_active_set_backend_is_selectable_when_compiled() -> None:
+    if not active_set_numba_available():
+        pytest.skip("Numba is unavailable")
+    geometry = BoundaryGeometry(
+        build_continuous_hypothesis_space(2, 2),
+        method="dykstra_iterative_projection",
+        dykstra_backend="active_set_numba",
+    )
+    assert geometry.dykstra_backend == "active_set_numba"
 
 
 def test_dykstra_backend_names_are_strict() -> None:
@@ -83,6 +99,7 @@ def test_dykstra_backend_names_are_strict() -> None:
             build_continuous_hypothesis_space(2, 2),
             dykstra_backend="compiled_sometimes",
         )
+
 
 
 def test_bounded_polytope_constraints_are_reused() -> None:
