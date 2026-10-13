@@ -57,7 +57,7 @@
 平均NLL 0.001时记录平台。随后做联合挑战和90个分散点，并检查近优人为边界。
 冻结提名及挑战代表后，独立审查从128×16开始，必要时升级至256×32，最多两个搜索循环。
 实用容差为平均NLL 0.005，alpha与bootstrap设置沿用Plus的单层分级审查。
-详细计算、判断及未解决状态见PDF第10.3节。
+详细计算、判断及未解决状态见PDF第11.3节。
 
 这次新增基础种子`2026101401`和`model0923_adaptive_full_v1`命名空间，发现、引导和各循环
 审查使用不同种子族。概率先跨重复平均，再计分；所有角色都保存逐题概率和掩码供复用。
@@ -79,6 +79,33 @@ python -m src.Bayesian_state.run_model_0923_fit \
 307输入为exp123，使用该实验的知觉测量和block边界。已有报告、概率、状态与旧参数保留。
 新输出保存发现、引导、独立审查的缓存和停止状态；参数选定后的概率可直接用于条件行为图。
 详细内部状态精度与自主行为仍作为后分析验收。
+
+## 逐被试评估 v1
+
+[PDF第12节](model_0923.pdf)规定固定参数后的五步评估。[评估README](../../evaluation/README.md#model-0923逐被试评估-v1)列出指标、状态与产物契约。
+统一入口强制提供行为、表征、诊断三种绘图器，复用共享核心的后分析和指标计算。
+初始Hyper-CD与完整自适应结果由输入适配器读取，原入选参数与验收状态均保留。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml --dry-run
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/meg/model0923_evaluation_v1.yaml --dry-run
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/meg/model0923_evaluation_v1.yaml --smoke --output-dir NEW_SMOKE
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml \
+  --output-dir NEW_REPORT \
+  --figure-output-dir CategoryLearning_codes/figures/outputs/fig3/NEW_FIGURES
+```
+
+两份配置分别指向335→307队列的逐人完整拟合目录；源程序完成后才能进行评估。配置中的被试列表可显式扩展到同一源拟合的其他被试。
+`--dry-run`核对配置、源记录和实验标准，返回计划，保留现有文件。
+正式输出使用新的报告目录与fig3图目录；短检查的图默认位于其新报告目录下。
+每人配对比较128与256粒子，真实预测、隐藏状态和自主行为的不确定性分别说明。
+exp123采用原程序的逐类90%区块达标标准，MEG结束标准标为未配置。
+数值稳定性的共同验收门槛尚待规定；参数恢复、留出预测、口述验证等专项检验逐人保留尚未执行状态。
+数据或数值核心指纹与源拟合不一致时入口报告具体文件，旧结果仍按冻结版本解释。
 
 ## 固定参数的小规模运行
 

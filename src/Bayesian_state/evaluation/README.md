@@ -39,6 +39,70 @@ evaluator。
 
 ## 正式入口
 
+### Model 0923逐被试评估 v1
+
+当前Model 0923标准报告执行 `model0923_subject_evaluation_v1`，对应[PDF第12节](../docs/model_architecture/model_0923.pdf)。
+统一入口注入固定的三种绘图器，初始Hyper-CD与完整自适应搜索均由只读输入适配器解析。
+报告保留原入选参数和验收状态；源程序完成及有限范围内搜索验收分别记录。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml --dry-run
+python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
+  --config configs/meg/model0923_evaluation_v1.yaml --smoke --output-dir NEW_SMOKE
+```
+
+正式执行将 `--dry-run` 去掉，并指定新的 `--output-dir` 和
+`--figure-output-dir CategoryLearning_codes/figures/outputs/fig3/NEW_FIGURES`。
+两份配置指向335→307队列的逐人完整结果，源程序完成后才能执行。
+短检查使用配置中的首位被试、16个有效试次、4粒子、2组种子、2条自主轨迹、一个worker，
+并用8粒子做配对预算检查；原完整评分复现与任务达标标记为短检查未执行。
+短检查图默认存入新报告目录，正式图存入fig3的草稿输出目录。
+
+| 顺序 | 每人固定检查 | 结果用途 |
+|---|---|---|
+| 1. 输入与搜索 | 数据、源码、环境指纹；试次标识；参数端点、关闭的影响通道；原候选与停止记录 | 确定输入及搜索证据范围 |
+| 2. 选择预测 | 反馈前类别概率、平均选择NLL、多类别Brier、相对均匀选择改善、逐题误差及滚动残差 | 完整序列估计参数后的样本内描述 |
+| 3. 数值稳定性 | 原种子和粒子预算重放、半数与全部重复的NLL差值、配对128/256粒子检查、ESS及重采样 | 固定数据与参数的数值敏感性；共同验收门槛尚待规定 |
+| 4. 内部状态 | 作答前与观察当前选择后两组边际、完整规则状态、候选/参与数、精度与配对知识 | 固定参数下的逐点状态范围 |
+| 5. 自主学习 | 自主选择及反馈、整体/早期/末期/分段学习、任务区块与首次达标 | 真实刺激顺序和记录长度内的生成能力 |
+
+默认使用128粒子×16组PF种子，每人将前4组相同种子用256粒子重算。
+分析种子为 `2026101301`；原始重放使用源拟合自身的预算，NLL绝对容差为 `1e-12`。
+跨种子先逐题平均类别概率再计算NLL/Brier。所有有效试次按原序递推，首条有效试次用于初始化，后续试次计分。
+ESS、预算差值与种子变化属于数值诊断，参数统计区间由专项检验确定。
+
+自主轨迹默认为64条，滚动窗口32题。分段从第二条有效试次开始，每64题一段；早期和末期各最多64个计分试次。
+描述性正确率目标为0.8。条件3分别保存种正确率、科正确率和平均得分的观察值、条件预测及自主分布。
+exp123的实验达标标准按原程序核对：正式区块64题、排除模糊刺激、各类别精确正确率均达到90%，包含区块首题。
+漏答造成区块不完整时，保留 `incomplete_blocks`，总体曾达标比例留空，完整区块的结果仍逐项保存。
+MEG Task3b的结束标准配置为 `not_configured`，原因与状态保留在报告中。
+
+每人固定生成以下内容，缺失必需文件时清单保留未完成状态：
+
+- `summary.csv`、`trials.csv`：逐人和逐题指标，包含原试次键、类别概率、计分掩码、ESS及状态。
+- `rule_catalog.csv`、`rule_states.csv`、`pooled_states.npz`：完整规则目录和两个时点的状态边际。
+- `seed_nll.csv`、`budget_comparison.csv`、`original_seed_replay.npz`：种子评分、逐题配对预算差值及原始重放。
+- `autonomous_rollouts.npz`、`learning.csv`、`learning_segments.csv`、`task_metrics.json`：自主轨迹、分段描述及条件3的三个任务指标。
+- `task_criterion.json`、`criterion_blocks.csv`、`criterion_trajectories.csv`：达标状态、区块结果与各轨迹首次达标。
+- `evaluation.json`、`fixed_simulation.yaml`：五步状态、专项检验状态和固定仿真设置。
+- `behavior.png`、`representations.png`、`diagnostics.png`：行为、表征、数值与搜索诊断图；相应源表保留在图目录。
+
+总体固定交付 `subjects.csv`、`parameters.csv`、`restarts.csv`、`finalists.csv`、`search_summary.csv`、
+`original_replay_validation.json`、`effective_config.yaml`、`report.html`、`manifest.json`，以及两张总体PNG。
+`S`名被试共交付 `3S+2` 张PNG。清单保存实际设置、来源、文件指纹和全部必需产物的哈希。
+配置采用严格键名校验；输入缺失、指纹不一致及必需产物缺失均使任务终止，报告目录保留供检查。
+
+专项检验包含留出预测、参数统计区间、参数恢复、状态与模型恢复、机制比较、口述验证、完整内部路径和完整自适应实验生成。
+v1逐人记录这些项目为 `not_performed`；执行专项协议后，其产物和结论单独关联到该被试。
+搜索、样本内行为、数值诊断、状态描述和自主学习各保留自身的证据范围。
+
+协议与产物契约位于 `model_0923_protocol.py`，源结果适配位于 `model_0923_fit_source.py`；
+流程由 `workflows/analysis/evaluate_model_0923.py` 调度，统计与粒子执行复用 `model_0923_postfit.py` 和共享核心。
+历史12人后分析及通用 `run_model_evaluation.py` 保留各自用途。
+
+### 通用simulation评价
+
 自主轨迹入口 `--n-jobs`、内部认知轨迹入口 `--jobs` 和 hyper evaluation 的
 `--volatility-n-jobs` 默认进程预算均为 128。实际 worker 数受独立 rollout/filter-seed
 任务数和可用 CPU 限制，每个 worker 的数值线程为 1。预算不增加轨迹数或 PF 粒子数；

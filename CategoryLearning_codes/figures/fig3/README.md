@@ -154,6 +154,12 @@ python -m CategoryLearning_codes.figures.fig3.build_fig3 --output CategoryLearni
 
 ## Model 0923 的拟合后诊断草稿
 
+当前逐人标准报告使用 `python -m CategoryLearning_codes.figures.fig3.model0923_evaluation`。
+该入口执行[逐被试评估v1](../../../src/Bayesian_state/evaluation/README.md#model-0923逐被试评估-v1)，
+每人固定输出 `behavior.png`、`representations.png`、`diagnostics.png`，另有两张总体图，共 `3S+2` 张PNG。
+诊断图呈现ESS、重采样、搜索与候选进入事件，以及每人的配对粒子预算检查；逐图源表保留有效试次顺序。
+历史12人的初始后分析及以下26张图保留原报告与用途。
+
 `model0923_postfit.py` 提供12人参数端点图、独立粒子种子的评分对照，以及逐人的行为与表征图。
 行为面板比较真实序列上的条件预测和自主生成的学习曲线；表征面板区分候选可访问性、
 规则信念、作答贡献、有效参与数量及精度。条件3另显示反馈后的配对信念。
