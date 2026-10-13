@@ -1,0 +1,24 @@
+# Separate behavioral and oral alignment; v1 remains reproducible.
+protocol: model0923_subject_evaluation_v2
+fit_run: ../../results/model_0923/plus_335_then307_20261013_v1/subject_335
+output_dir: ../../results/model_0923/meg_335_evaluation_v2
+figure_output_dir: ../../CategoryLearning_codes/figures/outputs/fig3/model0923_meg_335_evaluation_v2
+subjects:
+- 335
+analysis_seed: 2026101301
+particle_count: 128
+pf_repeats: 16
+parallel_budget: 128
+window_size: 32
+autonomous_rollouts: 64
+calibration_particle_count: 256
+calibration_repeats: 4
+segment_size: 64
+late_window: 64
+target_accuracy: 0.8
+task_criterion:
+  mode: not_configured
+  reason: MEG Task3b 的实验结束标准尚待独立核对和配置。
+oral_alignment:
+  mode: not_available
+  reason: 当前MEG Task3b数据中S335的text列全部为空，口述内容尚未提供。

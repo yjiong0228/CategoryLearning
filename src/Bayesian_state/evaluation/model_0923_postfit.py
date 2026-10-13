@@ -6,6 +6,7 @@ inference times. All quantiles condition on the selected parameter point.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -104,6 +105,12 @@ def score_probabilities(probabilities: np.ndarray, choices: np.ndarray) -> dict[
 def run_particle_task(task: Mapping[str, Any]) -> str:
     """Run one independent fixed-parameter PF and publish a new seed artifact."""
     inputs = resolve_subject(Path(task['fit_run']), int(task['subject']), Path(task['cache']), task.get('max_trials'))
+    if task.get('oral_readout') is not None:
+        # Expression settings are fixed evaluation inputs. Reports only score
+        # predictions and never contribute to fitting or particle weights.
+        from ..model.modules.readout.oral import OralReadoutParameters
+        OralReadoutParameters.from_config(task['oral_readout'])
+        inputs['engine']['oral_readout'] = deepcopy(task['oral_readout'])
     collector = ParticleStateCollector() if task.get('record_states', True) else None
     np.random.seed(int(task['seed']))
     result = run_state_model_particle_filter(
@@ -124,6 +131,12 @@ def run_particle_task(task: Mapping[str, Any]) -> str:
               'post_choice_ess': result.diagnostics['post_choice_ess'],
               'resampled': result.diagnostics['resampled'],
               'mean_choice_nll': np.asarray(scores['mean_choice_nll'])}
+    if task.get('oral_readout') is not None:
+        for name in ('oral_report_codes', 'oral_report_probabilities', 'oral_report_valid_mask'):
+            values[name] = result.observation_probabilities[name]
+        oral_metadata = dict(result.metadata['oral_readout'], parameters=task['oral_readout']['kwargs'])
+        values['oral_readout_metadata_json'] = np.asarray(json.dumps(
+            oral_metadata, ensure_ascii=False, allow_nan=False))
     if collector is not None:
         values.update(collector.arrays())
         np.testing.assert_allclose(values['predictive_choice_weights'], result.state_probabilities['choice_weights'], atol=1e-15)

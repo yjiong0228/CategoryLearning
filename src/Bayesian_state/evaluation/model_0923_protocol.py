@@ -16,6 +16,7 @@ import yaml
 from .model_0923_task_criterion import block_criterion
 
 PROTOCOL = 'model0923_subject_evaluation_v1'
+PROTOCOL_V2 = 'model0923_subject_evaluation_v2'
 REQUIRED_KEYS = {
     'protocol', 'fit_run', 'output_dir', 'figure_output_dir', 'subjects',
     'analysis_seed', 'particle_count', 'pf_repeats', 'parallel_budget',
@@ -31,6 +32,10 @@ SUBJECT_ARTIFACTS = (
     'autonomous_rollouts.npz', 'original_seed_replay.npz', 'fixed_simulation.yaml',
 )
 SUBJECT_FIGURES = ('behavior.png', 'representations.png', 'diagnostics.png')
+ALIGNMENT_ARTIFACTS = ('behavior_alignment.json', 'behavior_alignment.csv',
+    'behavior_alignment_trials.csv', 'behavior_alignment_curves.csv',
+    'oral_alignment.json', 'oral_trials.csv', 'oral_summary.csv', 'oral_predictions.npz')
+ALIGNMENT_FIGURES = ('behavior_alignment.png', 'oral_alignment.png')
 EXTENSIONS = (
     'held_out_prediction', 'parameter_uncertainty', 'parameter_recovery',
     'state_and_model_recovery', 'mechanism_comparison', 'oral_validation',
@@ -46,10 +51,17 @@ def resolve(base: Path, value: str | Path) -> Path:
 def load_protocol(path: Path, *, smoke: bool = False) -> dict[str, Any]:
     """Reject silent omissions/unknown settings before creating output paths."""
     settings = yaml.safe_load(path.read_text())
-    if not isinstance(settings, dict) or set(settings) != REQUIRED_KEYS:
+    if not isinstance(settings, dict):
         raise ValueError('Unknown or missing subject evaluation configuration keys')
-    if settings['protocol'] != PROTOCOL:
+    protocol = settings.get('protocol')
+    if protocol not in (PROTOCOL, PROTOCOL_V2):
         raise ValueError('Unsupported Model 0923 subject evaluation protocol')
+    required = REQUIRED_KEYS | ({'oral_alignment'} if protocol == PROTOCOL_V2 else set())
+    if set(settings) != required:
+        raise ValueError('Unknown or missing subject evaluation configuration keys')
+    if protocol == PROTOCOL_V2:
+        from .model_0923_oral_alignment import validate_oral_spec
+        settings['oral_alignment'] = validate_oral_spec(settings['oral_alignment'], path.parent)
     subjects = settings['subjects']
     if (not isinstance(subjects, list) or not subjects or
             any(type(s) is not int for s in subjects) or len(set(subjects)) != len(subjects)):
@@ -145,7 +157,8 @@ def criterion_tables(frame: pd.DataFrame, feedback: np.ndarray, seeds: np.ndarra
     return summary, blocks, trajectories
 
 
-def artifact_manifest(output: Path, figures: Path, subjects: list[int]) -> dict[str, str]:
+def artifact_manifest(output: Path, figures: Path, subjects: list[int], *,
+                      protocol: str = PROTOCOL) -> dict[str, str]:
     """Require the fixed report bundle and hash each portable relative artifact."""
     paths = [output / name for name in ('subjects.csv', 'parameters.csv', 'restarts.csv',
              'finalists.csv', 'search_summary.csv', 'original_replay_validation.json',
@@ -157,6 +170,11 @@ def artifact_manifest(output: Path, figures: Path, subjects: list[int]) -> dict[
         paths += sorted((output / f'subject_{sid}' / 'seeds').glob('*.npz'))
         paths += [figures / f'subject_{sid}' / name for name in
                   ('behavior_plot_source.csv', 'diagnostics_plot_source.csv')]
+        if protocol == PROTOCOL_V2:
+            paths += [output / f'subject_{sid}' / name for name in ALIGNMENT_ARTIFACTS]
+            paths += [figures / f'subject_{sid}' / name for name in ALIGNMENT_FIGURES]
+            paths += [figures / f'subject_{sid}' / name for name in
+                      ('behavior_alignment_plot_source.csv', 'oral_alignment_plot_source.csv')]
     result = {}
     for path in paths:
         if not path.is_file():

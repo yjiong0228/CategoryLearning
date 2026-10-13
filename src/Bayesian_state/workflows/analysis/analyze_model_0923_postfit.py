@@ -78,6 +78,8 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
     inputs={sid:resolve_subject(fit,sid,cache,max_trials) for sid in subjects}
     for value in inputs.values():rule_catalog(value)  # Warm immutable shared rule resources before workers start.
     tasks=[]
+    oral_spec=settings.get('oral_alignment', {})
+    oral_readout=oral_spec.get('readout') if oral_spec.get('mode') == 'predict' else None
     by_subject={sid:[] for sid in subjects}
     calibration={sid:[] for sid in subjects}
     for sid in subjects:
@@ -87,7 +89,8 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
             path=directory/'seeds'/f'pf_{repeat:02d}.npz'
             by_subject[sid].append(str(path))
             tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),max_trials=max_trials,
-                              particles=particles,seed=postfit_seed(settings['analysis_seed'],sid,repeat),output=str(path)))
+                              particles=particles,seed=postfit_seed(settings['analysis_seed'],sid,repeat),
+                              oral_readout=oral_readout,output=str(path)))
         path=directory/'original_seed_replay.npz'
         if not smoke:
             replay=original_replay_spec(fit,sid)

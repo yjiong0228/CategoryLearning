@@ -1,9 +1,8 @@
-"""Fixed PNG report panels for the Model 0923 subject-evaluation protocol.
+"""Evaluate Model 0923 with separate behavioral and oral reports.
 
-The existing behavior and representation panels retain their scientific meaning.
-The diagnostics panel adds numerical integration checks and pre-choice search
-states. Every subject receives the same filenames; a particle-budget comparison
-that has not been performed remains explicitly marked in its panel.
+The default v2 configuration compares responses, accuracy curves and complete
+oral reports, then describes internal states, autonomous learning and numerical
+checks. Explicit v1 configurations retain their original report contract.
 """
 from __future__ import annotations
 
@@ -18,6 +17,7 @@ import pandas as pd
 from .model0923_postfit import (
     BLUE, GRAY, ORANGE, cohort_figures, save, style, subject_figures,
 )
+from .model0923_alignment import behavior_alignment_figures, oral_alignment_figures
 
 
 TRIAL_COLUMNS = (
@@ -188,7 +188,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--config", type=Path,
-        default=Path("configs/exp123/specific_models/model_0923_evaluation_v1.yaml"),
+        default=Path("configs/exp123/specific_models/model_0923_evaluation_v2.yaml"),
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--figure-output-dir", type=Path)
@@ -207,6 +207,8 @@ def main() -> None:
             figure_output=resolve(args.figure_output_dir), dry_run=args.dry_run,
             plot_subject=subject_figures, plot_cohort=cohort_figures,
             plot_diagnostics=diagnostics_figures,
+            plot_behavior_alignment=behavior_alignment_figures,
+            plot_oral_alignment=oral_alignment_figures,
         )
     summary = {"status": result["status"]}
     if args.dry_run and 'settings' in result:
@@ -217,6 +219,7 @@ def main() -> None:
                        output_dir=result['output_dir'], figure_directory=result['figure_directory'],
                        particle_count=settings['particle_count'], pf_repeats=settings['pf_repeats'],
                        autonomous_rollouts=settings['autonomous_rollouts'], smoke=args.smoke)
+        summary['oral_alignment'] = settings.get('oral_alignment', {'mode': 'not_part_of_v1'})['mode']
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

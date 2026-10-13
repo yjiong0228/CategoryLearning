@@ -1,0 +1,36 @@
+# Separate behavioral and oral alignment; v1 remains reproducible.
+protocol: model0923_subject_evaluation_v2
+fit_run: ../../../results/model_0923/plus_335_then307_20261013_v1/subject_307
+output_dir: ../../../results/model_0923/exp123_307_evaluation_v2
+figure_output_dir: ../../../CategoryLearning_codes/figures/outputs/fig3/model0923_exp123_307_evaluation_v2
+subjects:
+- 307
+analysis_seed: 2026101301
+particle_count: 128
+pf_repeats: 16
+parallel_budget: 128
+window_size: 32
+autonomous_rollouts: 64
+calibration_particle_count: 256
+calibration_repeats: 4
+segment_size: 64
+late_window: 64
+target_accuracy: 0.8
+task_criterion:
+  mode: exp123
+  source_program: ../../../exp_program/exp123/Task2_learning.m
+  block_size: 64
+  accuracy_threshold: 0.9
+oral_alignment:
+  mode: predict
+  trials_path: ../../../data/exp123/processed/Task2_processed.csv
+  readout:
+    method: rule_content_v1
+    kwargs:
+      mention_probability: 0.8
+      extra_probability: 0.2
+      other_probability: 0.02
+      body_naming_probability: 0.5
+      body_reference_center: 0.75
+      body_reference_width: 0.1
+      extra_selection: salience
