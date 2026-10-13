@@ -195,3 +195,15 @@ choice-probability RMSE、executed-rule posterior 的 Jensen--Shannon divergence
 - 新的 filter/smoother 应放在 `backends/`，通过快照协议操作 engine。
 - backend 只返回推理状态、预测概率和诊断；loss、模型选择与结果写盘属于 `optimization/`。
 - 不要在 engine 中硬编码某个模型名、被试数据路径、评价指标或绘图逻辑。
+
+## Model 0923 的逐题状态记录
+
+`run_state_model_particle_filter` 提供可选 `state_observer(trial_index, phase, snapshot)` 回调，
+用于连续规则混合作答模型的固定参数分析。`predictive` 阶段位于当前选择进入滤波之前；
+`filtered` 阶段位于当前选择更新粒子权重之后。两阶段都读取本题反馈进入学习前的认知状态。
+回调收到粒子权重、规则信念、活跃标记、作答权重、主导标记、精度及搜索状态的独立只读数组。
+条件3同时提供反馈前的整体配对信念。数组副本将分析记录与学习状态隔开。
+
+回调路径使用 `particle_blocks=1`；独立种子之间通过一个进程池并行。
+默认拟合与已有粒子分块入口保持既定计算路径。该记录功能用于评价层导出状态分布，
+粒子滤波继续负责选择重加权、反馈学习、随机流与重采样。

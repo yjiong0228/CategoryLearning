@@ -12,7 +12,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
+from types import MappingProxyType
 
 import numpy as np
 
@@ -642,6 +643,22 @@ def _trace_ancestral_indices(parent_indices: np.ndarray) -> np.ndarray:
     return paths
 
 
+def _observe_particle_state(
+    observer: Callable[[int, str, Mapping[str, np.ndarray]], None],
+    trial_index: int,
+    phase: str,
+    values: Mapping[str, np.ndarray | None],
+) -> None:
+    """Publish detached arrays so an analysis cannot mutate the filter state."""
+    snapshot = {}
+    for name, value in values.items():
+        if value is not None:
+            array = np.array(value, copy=True)
+            array.setflags(write=False)
+            snapshot[name] = array
+    observer(trial_index, phase, MappingProxyType(snapshot))
+
+
 def run_state_model_particle_filter(
     *,
     engine_config: Mapping[str, Any],
@@ -667,6 +684,7 @@ def run_state_model_particle_filter(
     valid_trial_mask: Sequence[bool] | np.ndarray | None = None,
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
+    state_observer: Callable[[int, str, Mapping[str, np.ndarray]], None] | None = None,
 ) -> InferenceResult:
     """Filter an observed task trajectory using bootstrap particles.
 
@@ -697,8 +715,19 @@ def run_state_model_particle_filter(
     executed-rule prediction with the supplied strategy-confidence gain on
     exactly the same pre-choice particles and weights.  It never changes the
     fitted likelihood, particle weights, resampling, or later cognitive state.
+
+    ``state_observer`` receives detached, read-only arrays for continuous
+    rule-mixture models with one particle block. It is called at "predictive"
+    (before choice conditioning) and "filtered" (after choice conditioning)
+    phases, both before current feedback. Callbacks record analysis outputs;
+    the filter owns all cognitive updates, random streams and resampling.
     """
 
+    if state_observer is not None:
+        if not callable(state_observer):
+            raise TypeError("state_observer must be callable")
+        if int(particle_blocks) != 1:
+            raise ValueError("state_observer requires particle_blocks=1")
     if int(particle_blocks) < 1:
         raise ValueError("particle_blocks must be positive")
     if int(particle_blocks) > 1 and current_particle_block() is None:
@@ -895,6 +924,8 @@ def run_state_model_particle_filter(
     if any(continuous_flags) and not all(continuous_flags):
         raise RuntimeError("continuous choice must be configured for every particle.")
     continuous_choice_enabled = bool(all(continuous_flags))
+    if state_observer is not None and not continuous_choice_enabled:
+        raise ValueError("state_observer requires continuous rule-mixture choice")
     choice_weight_summaries = {}
     participation_summaries = {}
     if continuous_choice_enabled:
@@ -1206,6 +1237,10 @@ def run_state_model_particle_filter(
     resampling_log: list[dict[str, Any]] = []
 
     for trial_index in range(n_trials):
+        observer_beta = (np.zeros((n_particles, n_hypotheses), dtype=float)
+                         if state_observer is not None else None)
+        observer_search_event = (np.zeros(n_particles, dtype=float)
+                                 if state_observer is not None else None)
         particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
         oral_trial = oral_readout is not None and bool(valid[trial_index])
         particle_oral_joint = (
@@ -1316,6 +1351,8 @@ def run_state_model_particle_filter(
                     orientation_oracle[trial_index]
                 )
             perceived = prepared.perceived_stimulus
+            if observer_beta is not None:
+                observer_beta[particle_index] = prepared.beta
             if continuous_choice_enabled:
                 particle_choice_weights[particle_index] = prepared.log["choice_weights"]
                 particle_dominant[particle_index].fill(0.0)
@@ -1329,6 +1366,8 @@ def run_state_model_particle_filter(
                         "hypothesis transition module did not record a pre-choice event"
                     )
                 event = transition.transition_log[-1]
+            if observer_search_event is not None:
+                observer_search_event[particle_index] = float(bool(event.get("search_event", False)))
             particle_priors[particle_index] = _normalize(
                 np.asarray(engine.prior, dtype=float)
             )
@@ -1900,6 +1939,17 @@ def run_state_model_particle_filter(
                     np.sum(signal_weights * source[finite])
                 )
 
+        if state_observer is not None:
+            observer_values = {
+                "weights": weights, "belief": particle_priors,
+                "active": particle_active, "beta": observer_beta,
+                "choice_weights": particle_choice_weights,
+                "dominant": particle_dominant, "pairing": particle_pairing,
+                "prediction": particle_predictions, "search": transition_rates,
+                "global_search": search_ranges, "failure": failure_pressures,
+                "search_event": observer_search_event, "admission_event": swap_events,
+            }
+            _observe_particle_state(state_observer, trial_index, "predictive", observer_values)
         choice_index = int(observed_choices[trial_index]) - 1
         if continuous_choice_enabled:
             choice_weight_summaries["choice_weights"][trial_index] = weights @ particle_choice_weights
@@ -1918,6 +1968,8 @@ def run_state_model_particle_filter(
             else:
                 weights /= weight_total
         post_ess[trial_index] = effective_sample_size(weights)
+        if state_observer is not None:
+            _observe_particle_state(state_observer, trial_index, "filtered", observer_values)
         if continuous_choice_enabled:
             choice_weight_summaries["filtered_choice_weights"][trial_index] = weights @ particle_choice_weights
             choice_weight_summaries["filtered_dominant_probability"][trial_index] = weights @ particle_dominant

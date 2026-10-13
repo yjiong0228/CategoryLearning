@@ -1,0 +1,16 @@
+# Fixed-parameter first-stage analysis; the source fit and its inputs remain read-only.
+fit_run: ../../../results/model_0923/exp123_selected12_20261013_v1
+output_dir: ../../../results/model_0923/exp123_selected12_postfit_20261013_v1
+figure_output_dir: ../../../CategoryLearning_codes/figures/outputs/fig3/model0923_postfit_20261013_v1
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328]
+analysis_seed: 2026101301
+particle_count: 128
+pf_repeats: 16
+parallel_budget: 128
+window_size: 32
+# Each autonomous trajectory follows the observed stimulus schedule and valid length.
+autonomous_rollouts: 64
+calibration_subjects: [102, 206, 307]
+calibration_particle_count: 256
+calibration_repeats: 4
+# Smoke overrides are exposed by the workflow CLI, using a new output directory.

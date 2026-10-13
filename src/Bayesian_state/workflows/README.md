@@ -483,3 +483,42 @@ python -m src.Bayesian_state.workflows.analysis.demo_model_0923_oral \
 源码哈希的 `demonstration.json`。演示将知觉噪声置零、相似度采样缩为 64，缓存放临时目录；
 这些覆盖记录在输出中，不改正式配置。口述抽样与行为使用独立随机数流。
 现有演示：`results/model_0923/oral_readout_demo_20261005_v1/`。
+
+## Model 0923：12人拟合后的第一阶段分析
+
+`analysis/analyze_model_0923_postfit.py` 读取完成的full-v3拟合，核对归档输入哈希，
+审查13项参数的网格端点、停止原因与最终入围点。端点区分数学边界和搜索支持边界；
+参数作用随其他入选参数消失时，记录为条件性不可辨识。现有候选的配对种子分数描述计算波动，
+参数的统计区间与恢复检查另行开展。
+
+配置位于 `configs/exp123/specific_models/model_0923_selected12_postfit.yaml`。
+每人固定已入选参数，使用128粒子和16组新种子执行完整有效序列；原最终评分的第一个种子
+另做逐人重放，并以保存的单次NLL核对。S102、S206、S307的前四组新种子还使用256粒子评分，
+用于检查粒子预算敏感性。所有评分先平均逐题概率，再计算NLL，首条有效试次用于初始化。
+参数来自完整观察序列，因此这些预测属于拟合内描述。
+
+逐题保存作答前与当前选择后的反馈前状态。候选数和有效参与数先在粒子内部计算，
+再按权重汇总；10%–90%区间表示固定参数条件下的隐藏状态范围。
+完整规则表同时保留活跃概率、信念、作答贡献、主导概率及活跃条件下的平均精度。
+规则活跃概率为0时，其条件平均精度记为空值。连续祖先路径和转变时点属于后续分析。
+
+每人还生成64条自主行为轨迹。它们沿用该人的刺激顺序和有效长度，分别抽取回答，
+并由自己的回答及任务规则生成反馈。模型在模拟期间延续自身学习状态。
+这组轨迹用于比较学习曲线，实验的自适应终止机制需单独检验。
+
+共享分析入口导出CSV、NPZ与HTML报告；期刊图入口注入Python绘图函数并导出PNG，
+共享核心依赖方向保持不变。报告与数值结果写入新results目录；草稿图写入新的Fig3版本目录。
+进程预算为128，每个进程一个数值线程。
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+MPLCONFIGDIR=/tmp/model0923_postfit_mpl NUMBA_CACHE_DIR=/tmp/model0923_postfit_numba \
+python -m CategoryLearning_codes.figures.fig3.model0923_postfit \
+  --smoke --output-dir /tmp/model0923_postfit_smoke_NEW
+```
+
+短检查使用S102的16条有效记录、4粒子、两组种子、两条自主轨迹及一个进程。
+完整分析使用同一命令，去掉 `--smoke --output-dir`，由YAML确定两个新的输出目录。
+主报告为 `report.html`，逐人CSV与完整规则目录供每张图追溯。
+本阶段交付搜索审查、行为检查和在线表征分布；参数区间与恢复、留出重新拟合、
+机制比较和口述验证继续作为后续验收项目。
