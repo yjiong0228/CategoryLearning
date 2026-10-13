@@ -28,6 +28,30 @@ python -m src.Bayesian_state.workflows.analysis.evaluate_saved_oral_readout \
 
 ## 模型开发与拟合入口
 
+### Model 0923：完整Plus流程与335→307顺序运行
+
+`python -m src.Bayesian_state.run_model_0923_fit`复用共享自适应控制器。
+流程与状态见[Model 0923完整估计说明](../docs/model_architecture/model_0923_implementation.md#完整参数搜索与独立验收2026-10-13)。
+45个分散起点、联合提案、平台、挑战和分级独立审查均由该控制器执行。
+原两起点Hyper-CD结果保留为初始搜索记录；兼容旧候选进入新引导评分，旧分数保留原角色。
+
+`runs/run_model_0923_plus_queue.py`将源码、配置和所需处理后数据保存为只读运行快照，
+随后依次执行MEG 335和exp123 307。335流程结束后再运行307；到预算上限的未解决状态保留。
+每个任务一层进程并行，最多128个worker，每个一个数值线程。
+
+```bash
+python -m src.Bayesian_state.workflows.runs.run_model_0923_plus_queue \
+  --output-dir results/model_0923/plus_335_then307_NEW --prepare-only
+python -m src.Bayesian_state.workflows.runs.run_model_0923_plus_queue \
+  --output-dir results/model_0923/plus_335_then307_NEW --run-prepared
+```
+
+准备步骤使用新目录；执行或恢复使用该目录的冻结计划。
+`queue_status.json`记录当前被试和进程，`subject_335.log`与`subject_307.log`记录批次进度。
+各任务的`cache/`保存逐种子类别概率、选择和计分掩码，`batches/`保存提案与评分角色，
+`subjects/<编号>/fit_result.json`保存入选参数、近优候选、独立审查、边界和停止状态。
+输入与源码改变时，恢复校验会拒绝混用。旧研究输出保留原记录。
+
 ### Model 0923：已有0826结果的12人
 
 `configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml` 对固定开发样本估计13项行为参数。

@@ -1,7 +1,8 @@
-"""Default bounded PMH fit controller for observed exp123 Model 0826 data.
+"""Shared bounded fit controller, with the Model 0826 PMH default entry point.
 
 Software stopping flags describe only tested search/finite-particle precision.
 They never certify recovery, latent-state precision or a global optimum.
+Model 0923 supplies parameter operations and data contexts through its adapter.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from copy import deepcopy
 import fcntl
 import json
 from pathlib import Path
+from typing import Callable, Protocol
 
 import numpy as np
 import pandas as pd
@@ -43,6 +45,11 @@ def load_fit_config(path: Path, smoke: bool = False) -> dict:
     if not config['conditions'] or any(type(c) is not int or c not in (1, 2, 3) for c in config['conditions']):
         raise ValueError('Only exp123 conditions 1, 2, 3 are supported')
     config['conditions'] = {str(c): str((path.parent/v).resolve()) for c, v in config['conditions'].items()}
+    return validate_fit_policy(config, smoke)
+
+
+def validate_fit_policy(config: dict, smoke: bool = False, *, smoke_cover_count: int = 9) -> dict:
+    """Validate the shared bounded search and numerical audit policy."""
     for name in ('base_seed', 'parallel_budget'):
         if type(config[name]) is not int or config[name] < 1:
             raise ValueError(f'{name} must be a positive integer')
@@ -85,10 +92,10 @@ def load_fit_config(path: Path, smoke: bool = False) -> dict:
         config['parallel_budget'] = 1
         for budget in budgets:
             budget.update(particle_count=2, filter_seed_count=2)
-        search.update(initial_count=9, max_rounds=2, max_cycles=1, elite_count=1,
-                      proposals_per_elite=2, fresh_global_count=9, guide_top=1,
+        search.update(initial_count=smoke_cover_count, max_rounds=2, max_cycles=1, elite_count=1,
+                      proposals_per_elite=2, fresh_global_count=smoke_cover_count, guide_top=1,
                       guide_diverse=1, guide_random=1, challenge_rounds=1,
-                      challenge_global_count=9, audit_top_per_source=2)
+                      challenge_global_count=smoke_cover_count, audit_top_per_source=2)
         precision['tiers'] = [precision['tiers'][0]]
         precision['bootstrap_replicates'] = 100
         boundary.update(max_candidates=1, proposals_per_elite=2)
@@ -159,9 +166,11 @@ def merge_proposals(groups: list[tuple[str, list[dict]]]) -> list[dict]:
     return list(bank.values())
 
 
-def shortlist(rows: list[dict], config: dict, seed: int) -> list[dict]:
+def shortlist(rows: list[dict], config: dict, seed: int, *,
+              elite_selector: Callable | None = None) -> list[dict]:
     search = config['search']
-    picked = ranking(rows)[:search['guide_top']] + select_elites(rows, search['guide_diverse'])
+    selector = select_elites if elite_selector is None else elite_selector
+    picked = ranking(rows)[:search['guide_top']] + selector(rows, search['guide_diverse'])
     used = {r['id'] for r in picked}
     remaining = [r for r in rows if r['id'] not in used]
     rng = np.random.default_rng(seed)
@@ -239,21 +248,37 @@ def streamlined_stop_status(plateau: bool, audit: str, challenge: str,
     return ('unresolved' if issues else 'provisional_stop_within_tested_scope'), issues
 
 
+class AdaptiveModelPolicy(Protocol):
+    """Model-specific parameter coverage, names and boundary interpretation."""
+    def initial_points(self, space: dict, anchor: dict, count: int, seed: int) -> list[dict]: ...
+    def select_elites(self, rows: list[dict], count: int) -> list[dict]: ...
+    def boundary_report(self, rows: list[dict], support: dict, tolerance: float, max_candidates: int) -> dict: ...
+    def extract_parameters(self, point: dict) -> dict: ...
+
+
 def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: dict,
-                 support: dict, root: Path, smoke: bool) -> dict:
+                 support: dict, root: Path, smoke: bool, *,
+                 model_policy: AdaptiveModelPolicy | None = None,
+                 seed_candidates: dict[int, list[dict]] | None = None) -> dict:
+    """Run the common adaptive protocol with model-specific parameter operations."""
     scorer = Scorer(root, config, contexts)
+    starts = initial_points if model_policy is None else model_policy.initial_points
+    elites_for = select_elites if model_policy is None else model_policy.select_elites
+    edges = boundary_report if model_policy is None else model_policy.boundary_report
+    named_parameters = extract_model_0826_parameters if model_policy is None else model_policy.extract_parameters
     search, precision = config['search'], config['precision']
     streamlined = config['schema_version'] == 2
     states = {sid: {'guided': {}, 'seen': set(), 'trace': [], 'rejected': set()} for sid in contexts}
     active = list(contexts)
     results: dict[int, dict] = {}
 
-    def evaluate(banks: dict[int, list[dict]], label: str, *, direct: bool = False) -> dict[int, list[dict]]:
+    def evaluate(banks: dict[int, list[dict]], label: str, *, direct: bool = False,
+                 direct_source: str = 'mandatory_boundary') -> dict[int, list[dict]]:
         # A mandatory point bypasses screening; scoring it at discovery budget
         # cannot affect its admission or its independent guide-seed score.
         low = banks if direct and streamlined else scorer.batch(banks, search['discovery'], 'discovery', label+'/discovery')
-        guides = {sid: (merge_proposals([('mandatory_boundary', rows)]) if direct else
-                       shortlist(rows, config, proposal_seed(config, sid, label))) for sid, rows in low.items()}
+        guides = {sid: (merge_proposals([(direct_source, rows)]) if direct else
+                       shortlist(rows, config, proposal_seed(config, sid, label), elite_selector=elites_for)) for sid, rows in low.items()}
         high = scorer.batch(guides, search['guide'], 'guide', label+'/guide')
         for sid, rows in low.items():
             states[sid]['seen'].update(row['id'] for row in rows)
@@ -268,9 +293,14 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
         stagnant = {sid: 0 for sid in active}
         plateau = {sid: False for sid in active}
         if cycle == 0:
-            banks = {sid: [candidate(p, 'initial') for p in initial_points(
+            banks = {sid: [candidate(p, 'initial') for p in starts(
                 space, anchor, search['initial_count'], proposal_seed(config, sid, 'initial'))] for sid in active}
             evaluate(banks, cycle_name+'/initial')
+            if seed_candidates:
+                # Imported candidates are retained discoveries. Every one enters
+                # the new guide family; historical scores never enter rankings.
+                imported = {sid: seed_candidates.get(sid, []) for sid in active}
+                evaluate(imported, cycle_name+'/imported_candidates', direct=True, direct_source='historical_finalist')
         previous = {sid: ranking(list(states[sid]['guided'].values()))[0]['mean_nll'] for sid in active}
         working = list(active)
         for iteration in range(search['max_rounds']):
@@ -278,13 +308,13 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
             banks = {}
             for sid in working:
                 state = states[sid]
-                elites = select_elites(list(state['guided'].values()), search['elite_count'])
+                elites = elites_for(list(state['guided'].values()), search['elite_count'])
                 if state.get('preferred'):
                     preferred = state['guided'][state['preferred']]
                     elites = [preferred] + [r for r in elites if r['id'] != preferred['id']][:search['elite_count']-1]
                 proposals = propose_round(elites, space, state['seen'], search['proposals_per_elite'],
                                           proposal_seed(config, sid, label), search['local_fraction'], search['jump_fraction'])
-                proposals += [candidate(p, 'fresh_global') for p in initial_points(
+                proposals += [candidate(p, 'fresh_global') for p in starts(
                     space, anchor, search['fresh_global_count'], proposal_seed(config, sid, label+'/global'))]
                 banks[sid] = [r for r in merge_proposals([('search', proposals)]) if r['id'] not in state['seen']]
             evaluate(banks, label)
@@ -309,10 +339,10 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
             banks = {}
             for sid in active:
                 state = states[sid]
-                proposals = propose_round(select_elites(list(state['guided'].values()), search['elite_count']),
+                proposals = propose_round(elites_for(list(state['guided'].values()), search['elite_count']),
                     space, state['seen'], search['proposals_per_elite'], proposal_seed(config, sid, label), .25, .25)
                 if iteration == 0:
-                    proposals += [candidate(p, 'challenge_global') for p in initial_points(
+                    proposals += [candidate(p, 'challenge_global') for p in starts(
                         space, anchor, search['challenge_global_count'], proposal_seed(config, sid, label+'/global'))]
                 banks[sid] = [r for r in merge_proposals([('challenge', proposals)]) if r['id'] not in state['seen']]
             high = evaluate(banks, label)
@@ -323,7 +353,7 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
         boundary_banks = {}
         for sid in active:
             state = states[sid]; rows = list(state['guided'].values())
-            report = boundary_report(rows, support, config['boundary']['near_tolerance'], config['boundary']['max_candidates'])
+            report = edges(rows, support, config['boundary']['near_tolerance'], config['boundary']['max_candidates'])
             ids = {h['candidate'] for h in report['hits'] if h['kind'] == 'artificial_boundary'}
             elites = [r for r in rows if r['id'] in ids]
             count = config['boundary']['proposals_per_elite']
@@ -367,12 +397,12 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
                 audit, challenge = check['audit'], check['challenge']
                 near_rows = [r for r in check['rows'] if r['id'] == primary[sid] or
                              r['mean_nll'] <= min(audit['scores'].values()) + config['boundary']['near_tolerance']]
-                edge = boundary_report(near_rows, support, float('inf'), len(near_rows))
+                edge = edges(near_rows, support, float('inf'), len(near_rows))
                 status, issues = streamlined_stop_status(plateau[sid], audit['status'], challenge['status'], edge['review_required'])
                 selected = next(r for r in banks[sid] if r['id'] == primary[sid])
                 result = {'subject': sid, 'condition': contexts[sid]['condition'], 'status': status,
                           'issues': issues, 'smoke_only': smoke, 'selected': primary[sid],
-                          'hyperparams': selected['hyperparams'], 'parameters': extract_model_0826_parameters(selected['hyperparams']),
+                          'hyperparams': selected['hyperparams'], 'parameters': named_parameters(selected['hyperparams']),
                           'candidate_bank': banks[sid], 'near_candidates': [r['id'] for r in near_rows],
                           'selected_mean_nll': audit['scores'][primary[sid]], 'tiers': check['tiers'],
                           'independent_audit': audit, 'boundary': edge, 'search_trace': states[sid]['trace'],
@@ -421,12 +451,12 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
             near_rows = [r for r in audits[sid] if r['id'] == primary[sid] or r['mean_nll'] <= min(audit['scores'].values()) + config['boundary']['near_tolerance']]
             # Include the nominated representative even if numerical inspection
             # later shows it inferior; boundaries must not disappear with rank.
-            edge = boundary_report(near_rows, support, float('inf'), len(near_rows))
+            edge = edges(near_rows, support, float('inf'), len(near_rows))
             status, issues = stop_status(plateau[sid], improved[sid], decisions[sid]['status'], audit['status'], edge['review_required'])
             selected = next(r for r in banks[sid] if r['id'] == primary[sid])
             result = {'subject': sid, 'condition': contexts[sid]['condition'], 'status': status,
                       'issues': issues, 'smoke_only': smoke, 'selected': primary[sid],
-                      'hyperparams': selected['hyperparams'], 'parameters': extract_model_0826_parameters(selected['hyperparams']),
+                      'hyperparams': selected['hyperparams'], 'parameters': named_parameters(selected['hyperparams']),
                       'candidate_bank': banks[sid], 'near_candidates': [r['id'] for r in near_rows],
                       'selected_mean_nll': audit['scores'][primary[sid]], 'tiers': tier_history[sid],
                       'independent_audit': audit, 'boundary': edge, 'search_trace': states[sid]['trace'],
@@ -447,7 +477,7 @@ def fit_subjects(config: dict, contexts: dict[int, dict], space: dict, anchor: d
                 results[sid] = result
                 freeze_json(root/'subjects'/str(sid)/'fit_result.json', result)
         active = next_cycle
-    return {'schema_version': config['schema_version'], 'backend': 'model0826_adaptive', 'smoke_only': smoke,
+    return {'schema_version': config['schema_version'], 'backend': config['backend'], 'smoke_only': smoke,
             'subjects': {str(sid): result for sid, result in results.items()},
             'scope': 'Representative parameters and choice-scoring diagnostics; latent-state output precision, recovery and global optimality unverified.'}
 

@@ -50,7 +50,8 @@ def main() -> None:
         cfg_path = (ROOT_DIR / cfg_path).resolve()
 
     cfg = load_yaml(cfg_path)
-    backend = args.backend or ("adaptive" if cfg.get("backend") == "model0826_adaptive" else "cd")
+    adaptive_backends = {"model0826_adaptive", "model0923_adaptive"}
+    backend = args.backend or ("adaptive" if cfg.get("backend") in adaptive_backends else "cd")
     if backend == "adaptive":
         from .adaptive_fit import run_fit
         if args.stage != "all" or args.resume_from_coarse:
@@ -60,11 +61,18 @@ def main() -> None:
         subjects = args.subjects
         if args.subject_range:
             subjects = list(range(args.subject_range[0], args.subject_range[1] + 1))
-        result = run_fit(cfg_path, args.output_dir, subjects, args.conditions,
-                         smoke=args.smoke, resume=args.resume, dry_run=args.dry_run)
+        if cfg.get("backend") == "model0923_adaptive":
+            from .model_0923_adaptive import run_fit as run_0923_fit
+            if args.conditions:
+                raise ValueError("Model 0923 conditions are declared by its dataset configuration")
+            result = run_0923_fit(cfg_path, args.output_dir, subjects,
+                                 smoke=args.smoke, resume=args.resume, dry_run=args.dry_run)
+        else:
+            result = run_fit(cfg_path, args.output_dir, subjects, args.conditions,
+                             smoke=args.smoke, resume=args.resume, dry_run=args.dry_run)
         print(json.dumps(to_builtin(result), ensure_ascii=False, indent=2, allow_nan=False))
         return
-    if cfg.get("backend") == "model0826_adaptive":
+    if cfg.get("backend") in adaptive_backends:
         raise ValueError("Adaptive configuration cannot be passed to legacy grid/CD")
     if args.output_dir or args.conditions or args.smoke or args.dry_run:
         raise ValueError("output-dir/conditions/smoke/dry-run are adaptive backend options")

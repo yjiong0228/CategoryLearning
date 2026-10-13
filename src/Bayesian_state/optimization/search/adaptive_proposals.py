@@ -13,12 +13,13 @@ def point_id(point: dict) -> str:
     return hashlib.sha256(canonical_point_key(point).encode()).hexdigest()[:16]
 
 
-def initial_points(space: dict, anchor: dict, count: int, seed: int) -> list[dict]:
+def initial_points(space: dict, anchor: dict, count: int, seed: int, *,
+                   cover_key: str = WORKSPACE_PROFILE_KEY) -> list[dict]:
     """Cover all workspace cells at the standard anchor, then stratify all blocks."""
-    cells = space[WORKSPACE_PROFILE_KEY]
+    cells = space[cover_key]
     if count < len(cells):
         raise ValueError('initial_count must cover every workspace cell')
-    points = [dict(deepcopy(anchor), **{WORKSPACE_PROFILE_KEY: deepcopy(cell)}) for cell in cells]
+    points = [dict(deepcopy(anchor), **{cover_key: deepcopy(cell)}) for cell in cells]
     n = count - len(points)
     rng = np.random.default_rng(seed)
     draws = {key: np.minimum(((rng.permutation(n) + .5) / max(n, 1) * len(values)).astype(int),
@@ -30,14 +31,15 @@ def initial_points(space: dict, anchor: dict, count: int, seed: int) -> list[dic
     return list(unique.values())
 
 
-def select_elites(rows: list[dict], count: int) -> list[dict]:
+def select_elites(rows: list[dict], count: int, *,
+                  exclude_key: str = WORKSPACE_PROFILE_KEY) -> list[dict]:
     """Require two non-workspace blocks to differ when sufficient points exist."""
     ordered = sorted(rows, key=lambda r: (r['mean_nll'], r['id']))
     selected = []
     for row in ordered:
         p = row['hyperparams']
         if all(sum(point_id({k: p[k]}) != point_id({k: old['hyperparams'][k]})
-                   for k in p if k != WORKSPACE_PROFILE_KEY) >= 2 for old in selected):
+                   for k in p if k != exclude_key) >= 2 for old in selected):
             selected.append(row)
         if len(selected) == count:
             return selected

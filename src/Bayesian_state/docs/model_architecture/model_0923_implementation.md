@@ -1,6 +1,6 @@
 # Model 0923 full-v3：实现与运行
 
-`0923-full-v3` 实现2026年10月12日确认的行为模型，共13项被试参数。算法位于共享核心 `src/Bayesian_state/`；完整公式见 [模型规范](model_0923.pdf)。正式拟合、参数恢复及与0826的预测比较尚未完成。
+`0923-full-v3` 实现2026年10月12日确认的行为模型，共13项被试参数。算法位于共享核心 `src/Bayesian_state/`；完整公式见 [模型规范](model_0923.pdf)。已有12人完成初始有限预算搜索及后分析；完整搜索验收、参数恢复及与0826的预测比较分别记录。
 
 [拟合前最终核对](model_0923_final_check_20261012.md)记录最新测试、参数搜索入口和文档一致性检查。
 
@@ -45,7 +45,42 @@
 
 例值用于实现检查。学习率 `0.1` 是运行示例值；设为自由参数时，由选择数据与其他自由参数联合估计。拟合前还需确定自由与固定参数、有限搜索范围、训练与评价边界，以及粒子数和重复次数。知觉参数由独立测量提供。口述的现有 `rule_content_v1` 读出可使用连续规则权重；显著度选择补充部位的新设计及批量口述比较尚待接入。
 
-## 小规模运行
+## 完整参数搜索与独立验收（2026-10-13）
+
+`python -m src.Bayesian_state.run_model_0923_fit`复用0826 Plus的共享自适应控制器。
+0923适配器负责13项参数支持、容量覆盖、边界含义、数据和引擎装配；模型方程保持full-v3。
+参数支持见`configs/shared/model0923_adaptive_parameter_space.yaml`，当前各字段作为一个参数块，
+联合提案同时改变两个字段。5种容量替代0826的容量／执行结构组合。
+
+完整流程使用45个分散起点、32粒子×4种子的发现评分和128粒子×16种子的引导评分。
+每循环最多四轮，每轮最多两个起点、各48个混合提案和18个分散点；连续两轮改善不超过
+平均NLL 0.001时记录平台。随后做联合挑战和90个分散点，并检查近优人为边界。
+冻结提名及挑战代表后，独立审查从128×16开始，必要时升级至256×32，最多两个搜索循环。
+实用容差为平均NLL 0.005，alpha与bootstrap设置沿用Plus的单层分级审查。
+详细计算、判断及未解决状态见PDF第10.3节。
+
+这次新增基础种子`2026101401`和`model0923_adaptive_full_v1`命名空间，发现、引导和各循环
+审查使用不同种子族。概率先跨重复平均，再计分；所有角色都保存逐题概率和掩码供复用。
+原Hyper-CD的两起点结果保留为初始候选，原分数不参与新种子下的排名。
+307的四组旧候选经数据、引擎与支持核对后直接进入新引导评分。
+
+```bash
+python -m src.Bayesian_state.run_model_0923_fit \
+  --config configs/meg/model0923_adaptive_335.yaml --dry-run
+python -m src.Bayesian_state.run_model_0923_fit \
+  --config configs/meg/model0923_adaptive_335.yaml --smoke --output-dir NEW_SMOKE
+python -m src.Bayesian_state.run_model_0923_fit \
+  --config configs/meg/model0923_adaptive_335.yaml --output-dir NEW_335
+python -m src.Bayesian_state.run_model_0923_fit \
+  --config configs/exp123/specific_models/model0923_adaptive_307.yaml --output-dir NEW_307
+```
+
+按335→307顺序执行。335输入为MEG Task3b，均匀知觉误差与run边界由原配置提供；
+307输入为exp123，使用该实验的知觉测量和block边界。已有报告、概率、状态与旧参数保留。
+新输出保存发现、引导、独立审查的缓存和停止状态；参数选定后的概率可直接用于条件行为图。
+详细内部状态精度与自主行为仍作为后分析验收。
+
+## 固定参数的小规模运行
 
 从仓库根目录运行：
 

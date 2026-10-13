@@ -10,6 +10,13 @@
 > [拟合前最终核对](docs/model_architecture/model_0923_final_check_20261012.md)记录公式与代码对应、计分约定及拟合准备事项。
 > 新机制的学习速度、参数恢复和行为预测尚待验收。
 
+> **2026-10-13 完整参数搜索入口：** `python -m src.Bayesian_state.run_model_0923_fit`
+> 复用0826 Plus的分散发现、联合追加、挑战和分级独立审查。45个起点与有上限的验收规则
+> 见[Model 0923第10节](docs/model_architecture/model_0923.pdf)和
+> [运行说明](docs/model_architecture/model_0923_implementation.md#完整参数搜索与独立验收2026-10-13)。
+> 已有12人结果保留为初始搜索记录，新流程可导入兼容候选并保存逐题概率供复用。
+> 本次按MEG 335、exp123 307顺序运行，完整停止状态与程序完成状态分别记录。
+
 > **Model 0923 开发入口**：[机制规范与分阶段验证](docs/model_architecture/model_0923.md)。
 > 当前目标（2026-10-05）是保持 0826 的模型表现，同时改进机制的合理性与可解释性；
 > 最简 B0 的效果验证不作为主任务，也不作为保留 0826 相关机制能力的前置条件。

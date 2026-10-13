@@ -1,5 +1,11 @@
 # 优化
 
+Model 0923 full-v3的完整估计入口为`python -m src.Bayesian_state.run_model_0923_fit`。
+它复用本目录的自适应搜索与单层分级独立审查，适配13项参数和明确的数据配置。
+45个分散起点、联合追加、挑战、边界与停止规则见
+[Model 0923实现说明](../docs/model_architecture/model_0923_implementation.md#完整参数搜索与独立验收2026-10-13)。
+兼容旧候选进入新引导评分；逐种子的类别概率、选择和掩码保存为可复用缓存。
+
 Model 0826 观察数据 PMH 拟合现在默认使用
 `python -m src.Bayesian_state.run_model_0826_fit`，统一 CLI 也会按新配置的 backend 分派。
 当前 v2 包括分散/联合搜索、一层分级独立审查、边界标记和续跑；v1、旧 Grid/CD 与恢复配置

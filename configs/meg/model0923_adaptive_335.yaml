@@ -1,0 +1,49 @@
+schema_version: 2
+backend: model0923_adaptive
+analysis_id: model0923_plus_335_v1
+parameter_space: ../shared/model0923_adaptive_parameter_space.yaml
+base_sim_config_path: simulation_cfg/model0923_task3b.yaml
+subjects:
+- 335
+base_seed: 2026101401
+seed_namespace: model0923_adaptive_full_v1
+parallel_budget: 128
+search:
+  discovery:
+    particle_count: 32
+    filter_seed_count: 4
+  guide:
+    particle_count: 128
+    filter_seed_count: 16
+  initial_count: 45
+  max_rounds: 4
+  max_cycles: 2
+  elite_count: 2
+  proposals_per_elite: 48
+  fresh_global_count: 18
+  local_fraction: 0.25
+  jump_fraction: 0.25
+  guide_top: 8
+  guide_diverse: 4
+  guide_random: 2
+  patience: 2
+  min_improvement: 0.001
+  challenge_rounds: 1
+  challenge_global_count: 90
+  audit_top_per_source: 4
+precision:
+  tiers:
+  - particle_count: 128
+    filter_seed_count: 16
+  - particle_count: 256
+    filter_seed_count: 32
+  alpha: 0.05
+  tolerance: 0.005
+  bootstrap_replicates: 6000
+boundary:
+  extensions: {}
+  near_tolerance: 0.005
+  max_candidates: 2
+  proposals_per_elite: 4
+warm_start:
+  fit_runs: []

@@ -5,6 +5,11 @@
 
 ## 模型与拟合配置
 
+完整Plus流程的单人入口为`model0923_adaptive_335.yaml`，使用45个分散起点、联合追加、
+挑战和128×16到256×32的独立审查。定义见
+[Model 0923运行说明](../../src/Bayesian_state/docs/model_architecture/model_0923_implementation.md#完整参数搜索与独立验收2026-10-13)。
+下述Hyper-CD配置保留为初始有限预算搜索和历史复现入口。
+
 `simulation_cfg/model0923_task3b.yaml` 引用共享的 condition-3 full-v3 引擎。
 模型使用152条四分类规则，学习未知的类别反应配对。反馈1表示所选类别正确，0.5表示同科但类别错误，0表示另一科。
 配对信念按规则初始化为均匀分布；本题选择在反馈前预测，本题反馈影响后续试次。

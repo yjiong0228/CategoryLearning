@@ -1,4 +1,4 @@
-"""Reproducible compact PF scoring for Model 0826 adaptive fitting.
+"""Reproducible compact PF scoring for shared adaptive fitting.
 
 One process layer spans subjects, candidates and seeds. Each complete seed is
 published atomically, so interrupted batches can be resumed without discarding
@@ -76,8 +76,9 @@ def verify_manifest(manifest: dict) -> None:
             raise ValueError(f'Input changed during run: {path}')
 
 
-def phase_seeds(base: int, subject: int, family: str, count: int) -> list[int]:
-    seeds = [stable_seed({'role': 'model0826_adaptive_fit_v1', 'base': base,
+def phase_seeds(base: int, subject: int, family: str, count: int, *,
+                namespace: str = 'model0826_adaptive_fit_v1') -> list[int]:
+    seeds = [stable_seed({'role': namespace, 'base': base,
                           'subject': subject, 'family': family, 'repeat': i}) for i in range(count)]
     if len(set(seeds)) != count:
         raise ValueError('Seed collision')
@@ -118,6 +119,7 @@ def score_seed(context: dict, point: dict, particles: int, seed: int, path: Path
     result = evaluate_state_model_run(
         subject_id=context['subject'], condition=context['condition'], arrays=context['arrays'],
         params={}, engine_config_template=engine, processed_data_dir=context['processed_dir'],
+        dataset_paths=context.get('dataset_paths'),
         window_size=16, keep_logs=False, prediction_mode='prior_t',
         selection_prediction_mode='prior_t', loss_metric='choice_nll', trajectory_seed=seed)
     metrics = result.metrics_by_mode['prior_t']
@@ -137,7 +139,8 @@ class Scorer:
 
     def arrays(self, subject: int, row: dict, budget: dict, family: str) -> dict:
         particles = budget['particle_count']
-        seeds = phase_seeds(self.config['base_seed'], subject, family, budget['filter_seed_count'])
+        seeds = phase_seeds(self.config['base_seed'], subject, family, budget['filter_seed_count'],
+                            namespace=self.config.get('seed_namespace', 'model0826_adaptive_fit_v1'))
         runs = [read_seed(cache_path(self.root, subject, row['id'], particles, seed), particles, seed, row['id']) for seed in seeds]
         for run in runs[1:]:
             np.testing.assert_array_equal(run['observed'], runs[0]['observed'])
@@ -167,7 +170,8 @@ class Scorer:
             for row in rows:
                 if point_id(row['hyperparams']) != row['id']:
                     raise ValueError('Candidate ID mismatch')
-                for seed in phase_seeds(self.config['base_seed'], sid, family, budget['filter_seed_count']):
+                for seed in phase_seeds(self.config['base_seed'], sid, family, budget['filter_seed_count'],
+                                       namespace=self.config.get('seed_namespace', 'model0826_adaptive_fit_v1')):
                     path = cache_path(self.root, sid, row['id'], particles, seed)
                     tasks.append((self.contexts[sid], row['hyperparams'], particles, seed, path))
         # Completed seeds stay cached, and do not consume pool slots on resume.

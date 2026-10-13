@@ -1,0 +1,215 @@
+schema_version: 1
+model_id: model_0923
+specification_version: 0923-full-v3
+parameters:
+  baseline_probability:
+    path: engine.modules.hypo_transitions_mod.kwargs.search_controller.baseline_probability
+    values:
+    - 0.005
+    - 0.02
+    - 0.05
+    - 0.15
+    - 0.35
+    - 0.65
+    - 0.95
+    anchor: 0.05
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: false
+      upper_closed: false
+      integer: false
+  error_gain:
+    path: engine.modules.hypo_transitions_mod.kwargs.search_controller.error_gain
+    values:
+    - 0.0
+    - 0.25
+    - 0.5
+    - 1.0
+    - 2.0
+    - 4.0
+    - 8.0
+    anchor: 1.0
+    domain:
+      lower: 0
+      upper: null
+      lower_closed: true
+      upper_closed: false
+      integer: false
+  failure_decay:
+    path: engine.modules.hypo_transitions_mod.kwargs.search_controller.failure_decay
+    values:
+    - 0.0
+    - 0.3
+    - 0.6
+    - 0.85
+    - 0.95
+    - 0.99
+    anchor: 0.6
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: false
+      integer: false
+  global_search:
+    path: engine.modules.hypo_transitions_mod.kwargs.search_controller.global_search
+    values:
+    - 0.0
+    - 0.05
+    - 0.2
+    - 0.5
+    - 0.8
+    - 1.0
+    anchor: 0.2
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  global_search_failure_gain:
+    path: engine.modules.hypo_transitions_mod.kwargs.search_controller.global_search_failure_gain
+    values:
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    anchor: 0.5
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  max_capacity:
+    path: engine.modules.hypo_transitions_mod.kwargs.max_capacity
+    values:
+    - 2
+    - 3
+    - 4
+    - 6
+    - 8
+    anchor: 3
+    domain:
+      lower: 2
+      upper: null
+      lower_closed: true
+      upper_closed: false
+      integer: true
+  exit_rate:
+    path: engine.modules.hypo_transitions_mod.kwargs.exit_rate
+    values:
+    - 0.0
+    - 0.01
+    - 0.05
+    - 0.1
+    - 0.25
+    - 0.5
+    - 1.0
+    anchor: 0.1
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  local_structure_weight:
+    path: engine.modules.hypo_transitions_mod.kwargs.local_structure_weight
+    values:
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    anchor: 0.5
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  transfer_scale:
+    path: engine.modules.hypo_transitions_mod.kwargs.transfer_scale
+    values:
+    - 0.01
+    - 0.03
+    - 0.1
+    - 0.3
+    - 1.0
+    anchor: 0.1
+    domain:
+      lower: 0
+      upper: null
+      lower_closed: false
+      upper_closed: false
+      integer: false
+  execution_inertia:
+    path: engine.modules.hypo_transitions_mod.kwargs.execution_inertia
+    values:
+    - 0.0
+    - 0.25
+    - 1.0
+    - 2.0
+    - 4.0
+    - 8.0
+    anchor: 1.0
+    domain:
+      lower: 0
+      upper: null
+      lower_closed: true
+      upper_closed: false
+      integer: false
+  gamma:
+    path: engine.modules.memory_mod.kwargs.gamma
+    values:
+    - 0.0
+    - 0.3
+    - 0.6
+    - 0.8
+    - 0.95
+    - 0.99
+    - 1.0
+    anchor: 0.8
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  beta_init:
+    path: engine.modules.beta_mod.kwargs.beta_init
+    values:
+    - 0.1
+    - 0.5
+    - 1.0
+    - 2.0
+    - 5.0
+    - 10.0
+    - 15.0
+    - 25.0
+    anchor: 5.0
+    domain:
+      lower: 0.1
+      upper: 25
+      lower_closed: true
+      upper_closed: true
+      integer: false
+  learning_rate:
+    path: engine.modules.beta_mod.kwargs.learning_rate
+    values:
+    - 0.0
+    - 0.01
+    - 0.03
+    - 0.1
+    - 0.3
+    - 0.6
+    - 1.0
+    anchor: 0.1
+    domain:
+      lower: 0
+      upper: 1
+      lower_closed: true
+      upper_closed: true
+      integer: false
