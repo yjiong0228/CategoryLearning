@@ -5,20 +5,14 @@ from .active_set_acceleration import (
     active_set_numba_available,
     warmup_active_set_numba,
 )
-from .dykstra_acceleration import (
-    dykstra_numba_available,
-    warmup_dykstra_numba,
-)
 from .discrete_rule import DiscreteRuleGeometry
 from .prototype import PrototypeGeometry
 
 __all__ = [
     "BoundaryGeometry",
     "BoundaryProjectionError",
-    "active_set_numba_available",
-    "dykstra_numba_available",
     "DiscreteRuleGeometry",
     "PrototypeGeometry",
+    "active_set_numba_available",
     "warmup_active_set_numba",
-    "warmup_dykstra_numba",
 ]

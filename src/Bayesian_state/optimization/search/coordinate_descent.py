@@ -17,7 +17,7 @@ from .parallel_restarts import (
 )
 from ...inference.particle_parallel import evaluate_particle_jobs
 
-from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
+from src.Bayesian_state.hypothesis_space.geometry import warmup_active_set_numba
 from src.Bayesian_state.optimization.artifacts import (
     HYPER_RESULT_SCHEMA_VERSION,
     build_root_best_payload,
@@ -470,7 +470,7 @@ class HyperCDOptimizer(HyperSearchBase):
                 }
             )
 
-        warmup_dykstra_numba()
+        warmup_active_set_numba()
         jobs = [
             delayed(evaluate_state_model_run)(
                 int(subject_id),
@@ -983,7 +983,7 @@ class HyperCDOptimizer(HyperSearchBase):
         flat_task_count = len(flat_tasks)
         flat_jobs = parallel_job_count(self.parallel_budget, flat_task_count)
         if flat_jobs > 1:
-            warmup_dykstra_numba()
+            warmup_active_set_numba()
         executor = getattr(self, "_shared_score_executor", None)
         if executor is not None:
             blocks = int((flat_tasks[0]["engine_config_template"].get("inference") or {}).get("particle_blocks", 1))

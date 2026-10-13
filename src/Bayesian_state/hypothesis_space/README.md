@@ -71,7 +71,6 @@ partition:
     n_dims: 4
     n_cats: 2
     boundary_distance_method: dykstra_iterative_projection
-    boundary_dykstra_backend: auto
     boundary_distance_tolerance: 1.0e-9
     boundary_projection_iterations: 100
     label_permutation_policy: identity_only
@@ -85,16 +84,17 @@ active constraints。二者都计算 stimulus 到单位立方体内 category reg
 boundary distance 另有实例级有界缓存（见下文）。`label_permutation_policy` 还可显式设为
 `binary_identity_and_reverse`；它仅支持二分类，并在原规则之后追加标签反转规则。
 
-当使用兼容默认 Dykstra solver 时，`boundary_dykstra_backend` 可为 `auto`、`numba`、
-`active_set_numba` 或 `python`。`auto` 在 Numba 可用时编译历史循环（保持 100 次投影、
-更新顺序和 `fastmath=False`），否则回退到 Python；`python` 主要用于数值等价审计。
-`active_set_numba` 显式启用精确的 active-set 求解器：真实 polytope 只有 1–3 个半空间约束，
-枚举其行子集比 100 轮投影快约 10–16 倍，结果与历史循环一致到 2.3e-16。
-实测端到端运行没有可测收益，因为距离层只占约 11% 且求解内核只占约 2%，
-因此 `auto` 仍解析为 `numba`。测量与用法见
+`dykstra_iterative_projection` 只保留为配置与 provenance 中的名称：它现在由**精确的
+active-set 求解器**实现，不再有可选后端。求解器枚举约束的活跃子集，对每个子集解一次性
+等式系统并检验可行性，取最近可行候选。真实 polytope 只有 1–3 个半空间约束，因此该枚举
+是精确的，且比原来的 100 轮投影快约 10–16 倍（内核层面）。
+`kkt_active_set_projection` 是另一种精确方法，保留用于独立交叉验证。
+测量、设计与数值验收见
 [距离求解器记录](../docs/maintenance/distance_solver_active_set_20261013.md)。
-单位立方体约束和固定知觉统计会在进程内复用；刺激距离只按精确输入缓存，
-不对刺激进行量化或舍入。
+
+刺激必须是单位立方体内的有限点：感知模块已把采样刺激截断到 `[0, 1]`，因此越界刺激按调用
+错误直接报错，而不是把投影结果外推到区域定义之外。单位立方体约束和固定知觉统计会在进程
+内复用；刺激距离只按精确输入缓存，不对刺激进行量化或舍入。
 
 代码有意不提供 `Partition` 这类过于宽泛的名称，也不提供 `.splits`、
 `.regions`、`.rules` 和 `.prototypes` 这类重复视图。

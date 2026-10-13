@@ -7,10 +7,7 @@ import hashlib
 import json
 from typing import Any, Mapping
 
-from src.Bayesian_state.hypothesis_space.geometry import (
-    active_set_numba_available,
-    dykstra_numba_available,
-)
+from src.Bayesian_state.hypothesis_space.geometry import BoundaryGeometry
 from ..model.model_0923 import is_model_0923_full, is_model_0923_revised
 
 
@@ -132,18 +129,10 @@ def build_model_provenance(
     partition_class = str(_mapping_path(config, "partition.class") or "")
     is_continuous = partition_class.endswith("ContinuousPartition")
     likelihood = config.get("likelihood", {})
-    dykstra_backend_requested = (
-        str(partition_kwargs.get("boundary_dykstra_backend", "auto"))
-        if is_continuous
-        else None
-    )
-    dykstra_backend_resolved = dykstra_backend_requested
-    if dykstra_backend_requested == "auto":
-        # Keep this in step with BoundaryGeometry's own auto resolution, which
-        # keeps the historical Numba loop as the default.
-        dykstra_backend_resolved = (
-            "numba" if dykstra_numba_available() else "python"
-        )
+    # The boundary solver is fixed: the exact active-set enumeration.  These
+    # fields stay in the encoding record so previously generated provenance and
+    # downstream readers keep the same keys.
+    boundary_solver = BoundaryGeometry.SOLVER_NAME if is_continuous else None
     resolved["encoding"] = {
         "distance_mode": _mapping_path(config, "likelihood.distance_mode"),
         "boundary_distance_method": partition_kwargs.get(
@@ -155,8 +144,7 @@ def build_model_provenance(
         "boundary_projection_iterations": partition_kwargs.get(
             "boundary_projection_iterations", 100
         ) if is_continuous else None,
-        "boundary_dykstra_backend_requested": dykstra_backend_requested,
-        "boundary_dykstra_backend": dykstra_backend_resolved,
+        "boundary_solver": boundary_solver,
         "label_permutation_policy": partition_kwargs.get(
             "label_permutation_policy", "identity_only"
         ) if is_continuous else None,

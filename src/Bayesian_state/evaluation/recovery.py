@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 from ..utils.parallel import parallel_job_count, single_threaded_processes
 from scipy.stats import spearmanr
 from src.Bayesian_state.inference.backends.particle_filter import run_state_model_particle_filter
-from src.Bayesian_state.hypothesis_space.geometry import warmup_dykstra_numba
+from src.Bayesian_state.hypothesis_space.geometry import warmup_active_set_numba
 from src.Bayesian_state.model.modules.readout.choice import (
     resolve_choice_readout_config,
     resolve_output_noise_config,
@@ -286,7 +286,7 @@ def score_pf_bank_parallel(
             candidates=candidate_rows,
             filter_seeds=seeds,
         )
-    warmup_dykstra_numba()
+    warmup_active_set_numba()
     single_rows = Parallel(n_jobs=jobs, verbose=10)(
         delayed(_score_pf_candidate_seed)(
             common_kwargs=common_kwargs,
@@ -791,7 +791,7 @@ def score_frozen_candidate(
     if jobs == 1:
         probability_runs = [run_seed(filter_seed) for filter_seed in seeds]
     else:
-        warmup_dykstra_numba()
+        warmup_active_set_numba()
         probability_runs = list(
             Parallel(n_jobs=jobs, verbose=10)(
                 delayed(run_seed)(filter_seed) for filter_seed in seeds

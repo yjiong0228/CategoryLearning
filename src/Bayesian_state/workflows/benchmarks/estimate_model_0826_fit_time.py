@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ...hypothesis_space.geometry import warmup_dykstra_numba
+from ...hypothesis_space.geometry import warmup_active_set_numba
 from ...simulation.data import SubjectTrialDataLoader
 from ...simulation.execution import evaluate_state_model_run
 from ...utils.parallel import parallel_job_count, single_threaded_processes
@@ -33,7 +33,7 @@ def time_case(case: dict) -> dict:
     frame = loader._get_subject_frame(case['subject'], 1.)
     arrays = loader._extract_arrays(frame, case.get('max_trials'))
     with single_threaded_processes():
-        warmup_dykstra_numba()
+        warmup_active_set_numba()
         started = perf_counter()
         result = evaluate_state_model_run(
             subject_id=case['subject'], condition=case['condition'], arrays=arrays,

@@ -11,9 +11,7 @@ import yaml
 from src.Bayesian_state.hypothesis_space.geometry import (
     BoundaryGeometry,
     active_set_numba_available,
-    dykstra_numba_available,
     warmup_active_set_numba,
-    warmup_dykstra_numba,
 )
 from src.Bayesian_state.hypothesis_space.observation_model import ContinuousPartition
 from src.Bayesian_state.hypothesis_space.observation_model import ObservationLikelihood
@@ -37,9 +35,9 @@ def _geometry(method: str, *, n_dims: int = 2) -> BoundaryGeometry:
     return BoundaryGeometry(space, method=method)
 
 
-def test_numba_dykstra_matches_historical_python_path() -> None:
-    if not dykstra_numba_available():
-        pytest.skip("Numba is not installed in this environment")
+def test_distance_solver_matches_slsqp_oracle_on_unit_cube_points() -> None:
+    """The single solver must reproduce a general-purpose QP oracle."""
+
     polytope = Polytope(
         np.asarray([[1.0, 1.0], [-1.0, 0.25], [0.5, -1.0]]),
         np.asarray([0.75, 0.10, 0.20]),
@@ -48,58 +46,67 @@ def test_numba_dykstra_matches_historical_python_path() -> None:
         [
             [0.20, 0.20],
             [0.90, 0.90],
-            [-0.25, 0.40],
-            [1.25, -0.10],
+            [0.05, 0.40],
+            [0.95, 0.10],
+            [0.00, 0.00],
+            [1.00, 1.00],
         ]
     )
     space = build_continuous_hypothesis_space(2, 2)
-    historical = BoundaryGeometry(
-        space,
-        method="dykstra_iterative_projection",
-        dykstra_backend="python",
-    ).distances_to_polytope(points, polytope)
-    accelerated = BoundaryGeometry(
-        space,
-        method="dykstra_iterative_projection",
-        dykstra_backend="numba",
+    observed = BoundaryGeometry(
+        space, method="dykstra_iterative_projection"
     ).distances_to_polytope(points, polytope)
 
-    assert np.allclose(accelerated, historical, atol=1e-14, rtol=0.0)
+    constraint = LinearConstraint(polytope.A, -np.inf, polytope.b)
+    expected = []
+    for point in points:
+        result = minimize(
+            lambda value: 0.5 * float(np.sum((value - point) ** 2)),
+            x0=point,
+            method="SLSQP",
+            bounds=Bounds(0.0, 1.0),
+            constraints=(constraint,),
+            options={"ftol": 1e-12, "maxiter": 500},
+        )
+        assert result.success, result.message
+        expected.append(np.linalg.norm(point - result.x))
+    assert np.allclose(observed, expected, atol=1e-7, rtol=1e-6)
 
 
-def test_dykstra_auto_backend_and_warmup_follow_numba_availability() -> None:
-    geometry = BoundaryGeometry(
-        build_continuous_hypothesis_space(2, 2),
-        method="dykstra_iterative_projection",
-        dykstra_backend="auto",
-    )
+def test_out_of_cube_stimuli_are_rejected() -> None:
+    """Category regions are only defined inside the unit cube."""
 
-    # ``auto`` keeps the historical Numba Dykstra loop; the exact active-set
-    # solver is opt-in because it showed no end-to-end gain through the cache.
-    expected = "numba" if dykstra_numba_available() else "python"
-    assert geometry.dykstra_backend == expected
-    assert warmup_dykstra_numba() is dykstra_numba_available()
+    geometry = _geometry("dykstra_iterative_projection")
+    polytope = Polytope(np.eye(2), np.asarray([0.5, 0.5]))
+    with pytest.raises(ValueError, match="unit cube"):
+        geometry.distances_to_polytope(np.asarray([[1.2, 1.2]]), polytope)
+    with pytest.raises(ValueError, match="unit cube"):
+        geometry.distances_to_polytope(np.asarray([[-0.1, 0.5]]), polytope)
+    with pytest.raises(ValueError, match="finite"):
+        geometry.distances_to_polytope(np.asarray([[np.nan, 0.5]]), polytope)
+
+
+def test_boundary_geometry_uses_the_single_exact_solver() -> None:
+    """There is one solver; no backend selection remains."""
+
+    geometry = BoundaryGeometry(build_continuous_hypothesis_space(2, 2))
+    assert geometry.dykstra_backend == BoundaryGeometry.SOLVER_NAME
+    assert not hasattr(BoundaryGeometry, "VALID_DYKSTRA_BACKENDS")
+    assert not hasattr(BoundaryGeometry, "resolve_dykstra_backend")
     assert warmup_active_set_numba() is active_set_numba_available()
 
 
-def test_explicit_active_set_backend_is_selectable_when_compiled() -> None:
-    if not active_set_numba_available():
-        pytest.skip("Numba is unavailable")
-    geometry = BoundaryGeometry(
-        build_continuous_hypothesis_space(2, 2),
-        method="dykstra_iterative_projection",
-        dykstra_backend="active_set_numba",
-    )
-    assert geometry.dykstra_backend == "active_set_numba"
 
 
-def test_dykstra_backend_names_are_strict() -> None:
-    with pytest.raises(ValueError, match="Unsupported Dykstra backend"):
+
+def test_backend_arguments_are_no_longer_accepted() -> None:
+    """The solver is fixed, so the old backend key must fail loudly."""
+
+    with pytest.raises(TypeError):
         BoundaryGeometry(
             build_continuous_hypothesis_space(2, 2),
             dykstra_backend="compiled_sometimes",
         )
-
 
 
 def test_bounded_polytope_constraints_are_reused() -> None:
@@ -119,7 +126,7 @@ def test_bounded_polytope_constraints_are_reused() -> None:
     [
         ([0.75, 0.25], 0.25),
         ([0.75, 0.75], np.sqrt(0.125)),
-        ([1.2, 1.2], np.sqrt(0.98)),
+        ([1.0, 1.0], np.sqrt(0.5)),
     ],
 )
 def test_kkt_projects_to_face_edge_and_box_vertex(point, expected) -> None:
@@ -130,11 +137,24 @@ def test_kkt_projects_to_face_edge_and_box_vertex(point, expected) -> None:
     assert np.allclose(observed, [expected], atol=1e-10, rtol=1e-10)
 
 
+def test_distances_reject_stimuli_outside_the_unit_cube() -> None:
+    """Regions live in the cube; a stimulus outside it is a caller error."""
+
+    polytope = Polytope(np.eye(2), np.asarray([0.5, 0.5]))
+    geometry = _geometry("dykstra_iterative_projection")
+    with pytest.raises(ValueError, match="unit cube"):
+        geometry.distances_to_polytope(np.asarray([[1.2, 1.2]]), polytope)
+    with pytest.raises(ValueError, match="unit cube"):
+        geometry.distances_to_category(
+            np.asarray([[1.2, 1.2]]), CategoryRegion((polytope,))
+        )
+
+
 def test_two_solvers_match_for_slanted_plane_and_multiple_components() -> None:
     first = Polytope(np.asarray([[1.0, 1.0]]), np.asarray([1.0]))
     second = Polytope(np.asarray([[-1.0, -1.0]]), np.asarray([-1.4]))
     category = CategoryRegion((first, second))
-    points = np.asarray([[0.2, 0.2], [0.8, 0.8], [0.8, 0.4], [1.1, -0.1]])
+    points = np.asarray([[0.2, 0.2], [0.8, 0.8], [0.8, 0.4], [0.95, 0.05]])
     dykstra = _geometry("dykstra_iterative_projection").distances_to_category(
         points, category
     )
@@ -173,10 +193,16 @@ def test_assignment_membership_includes_unit_box(monkeypatch) -> None:
         lambda hypo, stimuli: np.asarray([[1.0, 0.1]]),
     )
 
-    # The point satisfies the left rule halfspace, but it is outside the unit
-    # cube and therefore must not be treated as a member of that category.
-    assignment = geometry.category_assignments(0, np.asarray([[-1.0]]))
+    # An in-cube point that is not a member of the left component falls back to
+    # the distance-based assignment.
+    assignment = geometry.category_assignments(0, np.asarray([[0.9]]))
     assert assignment.tolist() == [1]
+
+    # Distances themselves are monkeypatched for this membership check, so the
+    # cube validation is asserted separately below.
+    assert geometry.distances_to_polytope(
+        np.asarray([[0.9]]), right.components[0]
+    ).shape == (1,)
 
 
 def test_kkt_matches_slsqp_oracle() -> None:
@@ -184,7 +210,7 @@ def test_kkt_matches_slsqp_oracle() -> None:
         np.asarray([[1.0, 1.0], [-1.0, 0.0]]),
         np.asarray([0.8, -0.1]),
     )
-    points = np.asarray([[0.8, 0.8], [0.0, 0.6], [1.2, -0.2]])
+    points = np.asarray([[0.8, 0.8], [0.0, 0.6], [0.9, 0.1]])
     geometry = _geometry("kkt_active_set_projection")
     observed = geometry.distances_to_polytope(points, polytope)
     constraint = LinearConstraint(polytope.A, -np.inf, polytope.b)
@@ -238,9 +264,9 @@ def test_prototype_config_rejects_explicit_boundary_only_parameters() -> None:
         build_observation_likelihood(config, partition)
 
 
-def test_prototype_config_rejects_explicit_dykstra_backend() -> None:
+def test_prototype_config_rejects_boundary_only_parameters() -> None:
     config = {
-        "partition": {"kwargs": {"boundary_dykstra_backend": "python"}},
+        "partition": {"kwargs": {"boundary_distance_tolerance": 1e-6}},
         "likelihood": {"distance_mode": "prototype"},
     }
     partition = ContinuousPartition(4, 2, similarity_n_samples=8)

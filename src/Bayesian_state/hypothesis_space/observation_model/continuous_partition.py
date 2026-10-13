@@ -54,7 +54,6 @@ class ContinuousPartition(BasePartition):
         boundary_distance_method: str = BoundaryGeometry.METHOD_DYKSTRA,
         boundary_distance_tolerance: float = 1e-9,
         boundary_projection_iterations: int = 100,
-        boundary_dykstra_backend: str = BoundaryGeometry.DYKSTRA_BACKEND_AUTO,
         label_permutation_policy: str = LABEL_PERMUTATION_IDENTITY,
         similarity_n_samples: int = ContinuousSimilarity.DEFAULT_N_SAMPLES,
         similarity_cache_dir: str | Path | None = None,
@@ -102,7 +101,6 @@ class ContinuousPartition(BasePartition):
             method=boundary_distance_method,
             tolerance=boundary_distance_tolerance,
             projection_iterations=boundary_projection_iterations,
-            dykstra_backend=boundary_dykstra_backend,
             distance_cache_max_entries=boundary_distance_cache_max_entries,
             distance_cache_max_bytes=boundary_distance_cache_max_bytes,
         )

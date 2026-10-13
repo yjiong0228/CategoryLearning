@@ -159,8 +159,10 @@ def test_similarity_rows_equal_frozen_full_boolean_reduction(n_categories, mode)
 @pytest.mark.parametrize("n_categories", [2, 4])
 def test_batched_assignments_preserve_region_ties_and_distance_fallback(n_categories):
     geometry = _partition(n_categories).boundary_geometry
+    # Every probe is an in-cube stimulus; out-of-cube values are rejected by
+    # the geometry rather than assigned.
     points = np.r_[np.random.default_rng(9).random((8, 4)),
-                   np.array([[.5]*4, [0.]*4, [1.]*4, [-.2, .4, .8, 1.2]])]
+                   np.array([[.5]*4, [0.]*4, [1.]*4, [.2, .4, .8, 1.]])]
     # Frozen pre-optimization assignment procedure, including its tie order.
     for spec in geometry.space:
         distances = geometry.category_distances(spec.index, points)

@@ -14,7 +14,7 @@ from src.Bayesian_state.simulation.provenance import build_model_provenance
 
 @pytest.fixture(scope="module")
 def partition():
-    return ContinuousPartition(4, 4, boundary_dykstra_backend="python")
+    return ContinuousPartition(4, 4)
 
 
 @pytest.mark.parametrize("mode", ["category_feedback", "category", "legacy"])

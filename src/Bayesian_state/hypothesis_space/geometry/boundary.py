@@ -18,10 +18,6 @@ from .active_set_acceleration import (
     build_active_sets,
     fused_single_stimulus,
 )
-from .dykstra_acceleration import (
-    dykstra_distances_numba,
-    dykstra_numba_available,
-)
 from .stimuli import as_stimuli
 from .distance_cache import ExactDistanceCache
 
@@ -51,17 +47,8 @@ class BoundaryGeometry:
     METHOD_DYKSTRA = "dykstra_iterative_projection"
     METHOD_KKT_ACTIVE_SET = "kkt_active_set_projection"
     VALID_METHODS = (METHOD_DYKSTRA, METHOD_KKT_ACTIVE_SET)
-    DYKSTRA_BACKEND_AUTO = "auto"
-    DYKSTRA_BACKEND_PYTHON = "python"
-    DYKSTRA_BACKEND_NUMBA = "numba"
-    DYKSTRA_BACKEND_ACTIVE_SET = "active_set_numba"
-    VALID_DYKSTRA_BACKENDS = (
-        DYKSTRA_BACKEND_AUTO,
-        DYKSTRA_BACKEND_PYTHON,
-        DYKSTRA_BACKEND_NUMBA,
-        DYKSTRA_BACKEND_ACTIVE_SET,
-    )
-    CACHE_VERSION = "boundary_geometry_v3"
+    SOLVER_NAME = "active_set_exact"
+    CACHE_VERSION = "boundary_geometry_v4"
     _compilation_cache: dict[str, _CompiledPolytope] = {}
     _active_sets_cache: dict[int, tuple] = {}
 
@@ -71,46 +58,25 @@ class BoundaryGeometry:
         method: str = METHOD_DYKSTRA,
         tolerance: float = 1e-9,
         projection_iterations: int = 100,
-        dykstra_backend: str = DYKSTRA_BACKEND_AUTO,
         distance_cache_max_entries: int = ExactDistanceCache.DEFAULT_MAX_ENTRIES,
         distance_cache_max_bytes: int = ExactDistanceCache.DEFAULT_MAX_BYTES,
     ) -> None:
         self.space = hypothesis_space
         self.method = self.resolve_method(method)
         self.tolerance = float(tolerance)
+        # Retained for provenance compatibility: the historical loop repeated
+        # this many projections.  The exact solver does not iterate, so the
+        # value no longer affects distances.
         self.projection_iterations = int(projection_iterations)
-        self.dykstra_backend_requested = self.resolve_dykstra_backend(
-            dykstra_backend
-        )
-        # ``auto`` deliberately keeps the historical Numba Dykstra loop.
-        # The exact active-set solver is faster per projection, but the shared
-        # task space already resolves distances through the bounded cache, so
-        # switching the default would change production numerics and recorded
-        # provenance without a measured end-to-end gain.  Select
-        # ``active_set_numba`` explicitly to use it.  See
-        # docs/maintenance/distance_solver_active_set_20261013.md.
-        self.dykstra_backend = (
-            self.DYKSTRA_BACKEND_NUMBA
-            if self.dykstra_backend_requested == self.DYKSTRA_BACKEND_AUTO
-            and dykstra_numba_available()
-            else self.DYKSTRA_BACKEND_PYTHON
-            if self.dykstra_backend_requested == self.DYKSTRA_BACKEND_AUTO
-            else self.dykstra_backend_requested
-        )
-        if (
-            self.dykstra_backend == self.DYKSTRA_BACKEND_NUMBA
-            and not dykstra_numba_available()
-        ):
+        # The exact active-set solver is the only boundary solver.  These field
+        # names are kept so recorded provenance and downstream diagnostics keep
+        # a stable place to read the active solver from.
+        self.dykstra_backend = self.SOLVER_NAME
+        self.dykstra_backend_requested = self.SOLVER_NAME
+        if not active_set_numba_available():
             raise RuntimeError(
-                "The Numba Dykstra backend was requested, but Numba is unavailable."
-            )
-        if (
-            self.dykstra_backend == self.DYKSTRA_BACKEND_ACTIVE_SET
-            and not active_set_numba_available()
-        ):
-            raise RuntimeError(
-                "The active-set Dykstra backend was requested, but Numba is "
-                "unavailable."
+                "Boundary distances require Numba; the exact active-set solver "
+                "is not available in this environment."
             )
         if not np.isfinite(self.tolerance) or self.tolerance <= 0.0:
             raise ValueError("boundary tolerance must be positive and finite.")
@@ -120,14 +86,6 @@ class BoundaryGeometry:
             distance_cache_max_entries, distance_cache_max_bytes
         )
 
-    def clear_distance_cache(self) -> None:
-        """Release stimulus distances without changing geometry or cognitive state."""
-        self._distance_cache.clear()
-
-    def distance_cache_info(self) -> dict[str, int]:
-        """Return cache bounds, current payload size and diagnostic counters."""
-        return self._distance_cache.info()
-
     @classmethod
     def resolve_method(cls, method: str) -> str:
         resolved = str(method).strip().lower()
@@ -135,16 +93,6 @@ class BoundaryGeometry:
             raise ValueError(
                 f"Unsupported boundary distance method '{method}'. "
                 f"Expected one of: {cls.VALID_METHODS}."
-            )
-        return resolved
-
-    @classmethod
-    def resolve_dykstra_backend(cls, backend: str) -> str:
-        resolved = str(backend).strip().lower()
-        if resolved not in cls.VALID_DYKSTRA_BACKENDS:
-            raise ValueError(
-                f"Unsupported Dykstra backend '{backend}'. Expected one of: "
-                f"{cls.VALID_DYKSTRA_BACKENDS}."
             )
         return resolved
 
@@ -237,126 +185,80 @@ class BoundaryGeometry:
         return {"size": len(cls._compilation_cache)}
 
     @staticmethod
-    def _project_to_halfspace(
-        point: np.ndarray,
-        normal: np.ndarray,
-        bound: float,
-    ) -> np.ndarray:
-        excess = float(np.dot(normal, point) - bound)
-        if excess <= 0.0:
-            return point
-        return point - excess / float(np.dot(normal, normal)) * normal
-
-    @classmethod
-    def _project_dykstra(
-        cls,
-        point: np.ndarray,
-        polytope: Polytope,
-        projection_iterations: int,
-    ) -> np.ndarray:
-        # Preserve the historical solver: Dykstra corrections apply to the
-        # declared halfspaces and the unit-box projection follows each cycle.
-        projected = np.asarray(point, dtype=float).copy()
-        corrections = [np.zeros_like(projected) for _ in range(len(polytope.A))]
-        for _ in range(projection_iterations):
-            for index, (normal, bound) in enumerate(zip(polytope.A, polytope.b)):
-                candidate = projected + corrections[index]
-                updated = cls._project_to_halfspace(candidate, normal, float(bound))
-                corrections[index] = candidate - updated
-                projected = updated
-            projected = np.clip(projected, 0.0, 1.0)
-        return projected
+    def _polytope_signature(polytope: Polytope, tolerance: float) -> str:
+        """Content signature of one polytope's own halfspace constraints."""
+        digest = sha256()
+        digest.update(b"boundary_active_sets_v1")
+        digest.update(np.ascontiguousarray(polytope.A, dtype=float).tobytes())
+        digest.update(np.ascontiguousarray(polytope.b, dtype=float).tobytes())
+        digest.update(np.asarray([tolerance], dtype=np.float64).tobytes())
+        return digest.hexdigest()
 
     def _active_sets_for(self, polytope: Polytope) -> tuple:
-        """Return cached candidate active sets for one polytope.
+        """Return cached candidate active-set families for one polytope.
 
-        The unit cube is handled by clamping inside the compiled kernel, so only
-        the declared halfspaces contribute candidate subsets.  Polytopes are
-        immutable and long-lived, so the cache is keyed by object identity and
-        keeps a reference to the polytope; a recycled ``id`` therefore cannot
-        alias a stale entry.  Deriving active sets costs more than the distance
-        call it accelerates, so the lookup must stay allocation-free.
+        Returns ``(cheap, exact)``.  The cheap family enumerates the polytope's
+        own halfspaces and clamps into the cube; the exact family enumerates the
+        cube faces as well and answers the rare stimuli the cheap family cannot.
+        Polytopes are immutable and long-lived, so the cache is keyed by object
+        identity and keeps a reference to the polytope; a recycled ``id``
+        therefore cannot alias a stale entry.
         """
 
         key = id(polytope)
         entry = self._active_sets_cache.get(key)
         if entry is not None and entry[0] is polytope:
             return entry[1]
-        prepared = build_active_sets(polytope.A, polytope.b, self.tolerance)
+        constraints, bounds = self._bounded_constraints(polytope)
+        prepared = build_active_sets(
+            constraints, bounds, int(polytope.A.shape[0]), self.tolerance
+        )
         self._active_sets_cache[key] = (polytope, prepared)
         return prepared
 
-    def _distances_dykstra(
+    def _distances_exact(
         self,
         stimuli: np.ndarray,
         polytope: Polytope,
     ) -> np.ndarray:
+        """Exact distance to ``polytope`` intersected with the unit cube.
+
+        Stimuli are validated unit-cube points, so every row either lies inside
+        the region or resolves against one of the enumerated halfspace subsets.
+        The single-stimulus branch fuses the inside test into the kernel because
+        the model issues one stimulus per call, and the equivalent NumPy
+        reduction costs more than the projection itself at that size.
+        """
+
         constraints, bounds = self._bounded_constraints(polytope)
+        cheap, exact = self._active_sets_for(polytope)
+        if stimuli.shape[0] == 1:
+            return np.asarray(
+                [
+                    fused_single_stimulus(
+                        stimuli[0],
+                        constraints,
+                        bounds,
+                        cheap,
+                        exact,
+                        self.tolerance,
+                    )
+                ],
+                dtype=float,
+            )
         violations = stimuli @ constraints.T - bounds[None, :]
-        outside = np.any(violations > self.tolerance, axis=1)
-        distances = np.zeros(stimuli.shape[0], dtype=float)
-        outside_rows = np.flatnonzero(outside)
-        if self.dykstra_backend == self.DYKSTRA_BACKEND_ACTIVE_SET:
-            active_sets = self._active_sets_for(polytope)
-            if stimuli.shape[0] == 1:
-                # The model issues one stimulus per call.  Fusing the outside
-                # test into the kernel removes a NumPy reduction and broadcast
-                # that cost more than the projection itself at this size.
-                value = fused_single_stimulus(
-                    stimuli[0],
-                    constraints,
-                    bounds,
-                    polytope.A,
-                    polytope.b,
-                    active_sets[0],
-                    active_sets[1],
-                    active_sets[2],
-                    self.tolerance,
-                )
-                if value >= 0.0:
-                    distances[0] = value
-                    return distances
-            resolved = active_set_distances_numba(
-                stimuli,
-                outside_rows,
-                constraints,
-                bounds,
-                active_sets[0],
-                active_sets[1],
-                active_sets[2],
-                self.tolerance,
-            )
-            unresolved = ~np.isfinite(resolved)
-            distances[~unresolved] = resolved[~unresolved]
-            # Degenerate zero-width polytopes and stimuli outside the unit cube
-            # can leave rows without a feasible halfspace subset.  Those rows
-            # keep the historical clamp-in-the-loop solver, so behaviour stays
-            # defined for every input the Numba Dykstra backend accepted.
-            fallback_rows = outside_rows[unresolved[outside_rows]]
-            if fallback_rows.size:
-                fallback = dykstra_distances_numba(
-                    stimuli,
-                    np.ascontiguousarray(fallback_rows, dtype=np.int64),
-                    polytope.A,
-                    polytope.b,
-                    self.projection_iterations,
-                )
-                distances[fallback_rows] = fallback[fallback_rows]
-            return distances
-        if self.dykstra_backend == self.DYKSTRA_BACKEND_NUMBA:
-            return dykstra_distances_numba(
-                stimuli,
-                outside_rows,
-                polytope.A,
-                polytope.b,
-                self.projection_iterations,
-            )
-        for row in outside_rows:
-            projection = self._project_dykstra(
-                stimuli[row], polytope, self.projection_iterations
-            )
-            distances[row] = float(np.linalg.norm(stimuli[row] - projection))
-        return distances
+        outside_rows = np.flatnonzero(
+            np.any(violations > self.tolerance, axis=1)
+        )
+        return active_set_distances_numba(
+            stimuli,
+            np.ascontiguousarray(outside_rows, dtype=np.int64),
+            constraints,
+            bounds,
+            cheap,
+            exact,
+            self.tolerance,
+        )
 
     def _distances_kkt_active_set(
         self,
@@ -423,7 +325,7 @@ class BoundaryGeometry:
     ) -> np.ndarray:
         values = as_stimuli(stimuli, self.space.n_dims)
         if self.method == self.METHOD_DYKSTRA:
-            return self._distances_dykstra(values, polytope)
+            return self._distances_exact(values, polytope)
         return self._distances_kkt_active_set(values, polytope, context=context)
 
     def distances_to_category(
