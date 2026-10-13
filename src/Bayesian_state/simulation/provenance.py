@@ -8,6 +8,7 @@ import json
 from typing import Any, Mapping
 
 from src.Bayesian_state.hypothesis_space.geometry import (
+    active_set_numba_available,
     dykstra_numba_available,
 )
 from ..model.model_0923 import is_model_0923_full, is_model_0923_revised
@@ -138,6 +139,8 @@ def build_model_provenance(
     )
     dykstra_backend_resolved = dykstra_backend_requested
     if dykstra_backend_requested == "auto":
+        # Keep this in step with BoundaryGeometry's own auto resolution, which
+        # keeps the historical Numba loop as the default.
         dykstra_backend_resolved = (
             "numba" if dykstra_numba_available() else "python"
         )

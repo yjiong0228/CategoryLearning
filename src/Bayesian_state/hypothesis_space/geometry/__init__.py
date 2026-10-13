@@ -1,6 +1,10 @@
 """Category geometry over shared continuous or discrete spaces."""
 
 from .boundary import BoundaryGeometry, BoundaryProjectionError
+from .active_set_acceleration import (
+    active_set_numba_available,
+    warmup_active_set_numba,
+)
 from .dykstra_acceleration import (
     dykstra_numba_available,
     warmup_dykstra_numba,
@@ -11,8 +15,10 @@ from .prototype import PrototypeGeometry
 __all__ = [
     "BoundaryGeometry",
     "BoundaryProjectionError",
+    "active_set_numba_available",
     "dykstra_numba_available",
     "DiscreteRuleGeometry",
     "PrototypeGeometry",
+    "warmup_active_set_numba",
     "warmup_dykstra_numba",
 ]

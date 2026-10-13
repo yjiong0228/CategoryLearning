@@ -12,6 +12,12 @@ import numpy as np
 
 from ...utils.numeric import softmax
 from ..spaces import CategoryRegion, ContinuousHypothesisSpace, Polytope
+from .active_set_acceleration import (
+    active_set_distances_numba,
+    active_set_numba_available,
+    build_active_sets,
+    fused_single_stimulus,
+)
 from .dykstra_acceleration import (
     dykstra_distances_numba,
     dykstra_numba_available,
@@ -48,13 +54,16 @@ class BoundaryGeometry:
     DYKSTRA_BACKEND_AUTO = "auto"
     DYKSTRA_BACKEND_PYTHON = "python"
     DYKSTRA_BACKEND_NUMBA = "numba"
+    DYKSTRA_BACKEND_ACTIVE_SET = "active_set_numba"
     VALID_DYKSTRA_BACKENDS = (
         DYKSTRA_BACKEND_AUTO,
         DYKSTRA_BACKEND_PYTHON,
         DYKSTRA_BACKEND_NUMBA,
+        DYKSTRA_BACKEND_ACTIVE_SET,
     )
-    CACHE_VERSION = "boundary_geometry_v2"
+    CACHE_VERSION = "boundary_geometry_v3"
     _compilation_cache: dict[str, _CompiledPolytope] = {}
+    _active_sets_cache: dict[int, tuple] = {}
 
     def __init__(
         self,
@@ -73,6 +82,13 @@ class BoundaryGeometry:
         self.dykstra_backend_requested = self.resolve_dykstra_backend(
             dykstra_backend
         )
+        # ``auto`` deliberately keeps the historical Numba Dykstra loop.
+        # The exact active-set solver is faster per projection, but the shared
+        # task space already resolves distances through the bounded cache, so
+        # switching the default would change production numerics and recorded
+        # provenance without a measured end-to-end gain.  Select
+        # ``active_set_numba`` explicitly to use it.  See
+        # docs/maintenance/distance_solver_active_set_20261013.md.
         self.dykstra_backend = (
             self.DYKSTRA_BACKEND_NUMBA
             if self.dykstra_backend_requested == self.DYKSTRA_BACKEND_AUTO
@@ -87,6 +103,14 @@ class BoundaryGeometry:
         ):
             raise RuntimeError(
                 "The Numba Dykstra backend was requested, but Numba is unavailable."
+            )
+        if (
+            self.dykstra_backend == self.DYKSTRA_BACKEND_ACTIVE_SET
+            and not active_set_numba_available()
+        ):
+            raise RuntimeError(
+                "The active-set Dykstra backend was requested, but Numba is "
+                "unavailable."
             )
         if not np.isfinite(self.tolerance) or self.tolerance <= 0.0:
             raise ValueError("boundary tolerance must be positive and finite.")
@@ -204,6 +228,11 @@ class BoundaryGeometry:
         cls._compilation_cache.clear()
 
     @classmethod
+    def clear_active_sets_cache(cls) -> None:
+        """Release cached candidate active sets without changing geometry."""
+        cls._active_sets_cache.clear()
+
+    @classmethod
     def compilation_cache_info(cls) -> dict[str, int]:
         return {"size": len(cls._compilation_cache)}
 
@@ -238,6 +267,25 @@ class BoundaryGeometry:
             projected = np.clip(projected, 0.0, 1.0)
         return projected
 
+    def _active_sets_for(self, polytope: Polytope) -> tuple:
+        """Return cached candidate active sets for one polytope.
+
+        The unit cube is handled by clamping inside the compiled kernel, so only
+        the declared halfspaces contribute candidate subsets.  Polytopes are
+        immutable and long-lived, so the cache is keyed by object identity and
+        keeps a reference to the polytope; a recycled ``id`` therefore cannot
+        alias a stale entry.  Deriving active sets costs more than the distance
+        call it accelerates, so the lookup must stay allocation-free.
+        """
+
+        key = id(polytope)
+        entry = self._active_sets_cache.get(key)
+        if entry is not None and entry[0] is polytope:
+            return entry[1]
+        prepared = build_active_sets(polytope.A, polytope.b, self.tolerance)
+        self._active_sets_cache[key] = (polytope, prepared)
+        return prepared
+
     def _distances_dykstra(
         self,
         stimuli: np.ndarray,
@@ -248,6 +296,53 @@ class BoundaryGeometry:
         outside = np.any(violations > self.tolerance, axis=1)
         distances = np.zeros(stimuli.shape[0], dtype=float)
         outside_rows = np.flatnonzero(outside)
+        if self.dykstra_backend == self.DYKSTRA_BACKEND_ACTIVE_SET:
+            active_sets = self._active_sets_for(polytope)
+            if stimuli.shape[0] == 1:
+                # The model issues one stimulus per call.  Fusing the outside
+                # test into the kernel removes a NumPy reduction and broadcast
+                # that cost more than the projection itself at this size.
+                value = fused_single_stimulus(
+                    stimuli[0],
+                    constraints,
+                    bounds,
+                    polytope.A,
+                    polytope.b,
+                    active_sets[0],
+                    active_sets[1],
+                    active_sets[2],
+                    self.tolerance,
+                )
+                if value >= 0.0:
+                    distances[0] = value
+                    return distances
+            resolved = active_set_distances_numba(
+                stimuli,
+                outside_rows,
+                constraints,
+                bounds,
+                active_sets[0],
+                active_sets[1],
+                active_sets[2],
+                self.tolerance,
+            )
+            unresolved = ~np.isfinite(resolved)
+            distances[~unresolved] = resolved[~unresolved]
+            # Degenerate zero-width polytopes and stimuli outside the unit cube
+            # can leave rows without a feasible halfspace subset.  Those rows
+            # keep the historical clamp-in-the-loop solver, so behaviour stays
+            # defined for every input the Numba Dykstra backend accepted.
+            fallback_rows = outside_rows[unresolved[outside_rows]]
+            if fallback_rows.size:
+                fallback = dykstra_distances_numba(
+                    stimuli,
+                    np.ascontiguousarray(fallback_rows, dtype=np.int64),
+                    polytope.A,
+                    polytope.b,
+                    self.projection_iterations,
+                )
+                distances[fallback_rows] = fallback[fallback_rows]
+            return distances
         if self.dykstra_backend == self.DYKSTRA_BACKEND_NUMBA:
             return dykstra_distances_numba(
                 stimuli,
