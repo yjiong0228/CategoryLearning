@@ -80,7 +80,7 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False, *,
     figures = (figure_output or (output / 'figures' if smoke else Path(settings['figure_output_dir']))).resolve()
     if output.exists() or figures.exists():
         raise FileExistsError('Choose new evaluation and figure output directories')
-    if not smoke and not figures.is_relative_to(Path(__file__).resolve().parents[4] / 'CategoryLearning_codes/figures/outputs'):
+    if not smoke and not figures.is_relative_to((Path(__file__).resolve().parents[4] / 'CategoryLearning_codes/figures/outputs').resolve()):
         raise ValueError('Standard draft PNGs belong under CategoryLearning_codes/figures/outputs')
     if dry_run:
         return dict(**plan, status='planned', output_dir=str(output), figure_directory=str(figures))

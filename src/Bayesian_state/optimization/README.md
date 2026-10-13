@@ -6,6 +6,11 @@ Model 0923 full-v3的完整估计入口为`python -m src.Bayesian_state.run_mode
 [Model 0923实现说明](../docs/model_architecture/model_0923_implementation.md#完整参数搜索与独立验收2026-10-13)。
 兼容旧候选进入新引导评分；逐种子的类别概率、选择和掩码保存为可复用缓存。
 
+完整队列在拟合后自动接上一次有上限的边界补查、独立评分和逐人评估，
+每个结果的参数验收状态随报告交付。新增的优化操作复用共享评分器与数值诊断，
+预算集中在`configs/shared/model0923_continuation.yaml`。
+运行与复用方法见[完整队列说明](../workflows/runs/MODEL0923_COMPLETE_PIPELINE.md)。
+
 Model 0826 观察数据 PMH 拟合现在默认使用
 `python -m src.Bayesian_state.run_model_0826_fit`，统一 CLI 也会按新配置的 backend 分派。
 当前 v2 包括分散/联合搜索、一层分级独立审查、边界标记和续跑；v1、旧 Grid/CD 与恢复配置

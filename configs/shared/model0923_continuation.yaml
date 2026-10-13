@@ -1,0 +1,30 @@
+# One bounded continuation, followed by the versioned individual evaluation.
+protocol: model0923_complete_pipeline_v1
+base_seed: 2026101302
+parallel_budget: 128
+screen:
+  particle_count: 128
+  filter_seed_count: 16
+audit:
+  particle_count: 256
+  filter_seed_count: 64
+alpha: 0.05
+tolerance: 0.005
+bootstrap_replicates: 6000
+max_new_candidates: 48
+audit_new_candidates: 6
+evaluation_attempts: 2
+extensions:
+  baseline_probability:
+    lower: [0.001, 0.0025]
+    upper: [0.975, 0.995]
+  transfer_scale:
+    lower: [0.003, 0.005]
+    upper: [2.0, 3.0]
+  max_capacity:
+    upper: [10, 12]
+jobs:
+  - subject: 335
+    evaluation_config: ../meg/model0923_evaluation_v2.yaml
+  - subject: 307
+    evaluation_config: ../exp123/specific_models/model_0923_evaluation_v2.yaml

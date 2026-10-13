@@ -1,4 +1,10 @@
-"""Freeze a read-only snapshot, then run MEG 335 and exp123 307 sequentially."""
+"""Freeze the model, fit subjects in order, and automatically finish evaluation.
+
+The default queue continues completed fits once at artificial support edges,
+independently audits the frozen candidates, then generates individual reports.
+Use --fit-only for the explicit fitting-only workflow. Existing run snapshots
+retain their original behavior and can feed the separate continuation entry.
+"""
 from __future__ import annotations
 
 import argparse
@@ -140,6 +146,9 @@ def main() -> None:
     parser.add_argument('--configs', nargs='+', type=Path, default=DEFAULT_CONFIGS)
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--run-prepared', action='store_true')
+    parser.add_argument('--fit-only', action='store_true')
+    parser.add_argument('--continuation-policy', type=Path,
+                        default=ROOT_DIR / 'configs/shared/model0923_continuation.yaml')
     args = parser.parse_args()
     if args.prepare_only and args.run_prepared:
         parser.error('Choose prepare-only or run-prepared')
@@ -148,7 +157,14 @@ def main() -> None:
         if args.prepare_only:
             print(json.dumps(dict(source=plan['source'], jobs=plan['jobs']), ensure_ascii=False, indent=2))
             return
-    print(json.dumps(run_prepared(args.output_dir), ensure_ascii=False, indent=2))
+    fitted = run_prepared(args.output_dir)
+    if not args.fit_only:
+        from .run_model_0923_complete_pipeline import prepare as prepare_complete, run_prepared as run_complete
+        complete = args.output_dir.resolve() / 'complete_pipeline'
+        if not complete.exists():
+            prepare_complete(args.output_dir, complete, args.continuation_policy)
+        fitted = dict(fit_queue=fitted, complete_pipeline=run_complete(complete))
+    print(json.dumps(fitted, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
