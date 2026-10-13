@@ -113,7 +113,7 @@ def cohort_figures(summary: pd.DataFrame, parameters: pd.DataFrame, output: Path
     axes[1].set(ylabel='NLL improvement over uniform',title='b  Fit improvement within each task')
     for ax in axes:
         ax.set_xticks(index,ordered['subject'].astype(str),rotation=60)
-        ax.set_xlabel('Subject · four per condition')
+        ax.set_xlabel('Subject')
     save(fig,output/'cohort_behavior.png')
     estimate=parameters.pivot(index='parameter',columns='subject',values='estimate')
     scaled=parameters.assign(position=(parameters.estimate-parameters.grid_min)/(parameters.grid_max-parameters.grid_min)).pivot(index='parameter',columns='subject',values='position')

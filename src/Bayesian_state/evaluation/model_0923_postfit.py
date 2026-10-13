@@ -6,7 +6,6 @@ inference times. All quantiles condition on the selected parameter point.
 """
 from __future__ import annotations
 
-from copy import deepcopy
 import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -17,24 +16,14 @@ import pandas as pd
 from ..inference.backends.particle_filter import run_state_model_particle_filter
 from ..metrics import TrialPrediction, choice_brier, choice_nll
 from ..model import ModelContext, StateModel
-from ..simulation.config import load_yaml, resolve_engine_config
-from ..simulation.data import SubjectTrialDataLoader
-from ..simulation.parameters import apply_fixed_hyperparams_to_engine_config
-from ..utils.datasets import resolve_dataset_paths
-from ..utils.seeding import stable_seed, derive_trajectory_seed
-from ..utils.subjects import resolve_subject_config
+from ..utils.seeding import stable_seed
+from .model_0923_fit_source import (
+    PARAMETER_DOMAINS, audit_fit_source, original_replay_spec, resolve_fit_subject,
+)
 
 PHASES = ('predictive', 'filtered')
 SCALARS = ('candidate_count', 'effective_participation', 'choice_weighted_beta', 'belief_entropy')
 RULE_FIELDS = ('belief', 'active', 'choice_weights', 'dominant')
-PARAMETER_DOMAINS = {
-    'baseline_probability': (None, None), 'error_gain': (0., None),
-    'failure_decay': (0., None), 'global_search': (0., 1.),
-    'global_search_failure_gain': (0., 1.), 'max_capacity': (2, None),
-    'exit_rate': (0., 1.), 'local_structure_weight': (0., 1.),
-    'transfer_scale': (None, None), 'execution_inertia': (0., None),
-    'gamma': (0., 1.), 'beta_init': (.1, 25.), 'learning_rate': (0., 1.),
-}
 
 
 def weighted_quantiles(values: np.ndarray, weights: np.ndarray,
@@ -99,29 +88,8 @@ class ParticleStateCollector:
 
 def resolve_subject(fit_run: Path, subject: int, cache: Path,
                     max_trials: int | None = None) -> dict[str, Any]:
-    """Resolve archived inputs and selected parameters without altering them."""
-    base_path = fit_run / 'runtime/simulation.yaml'
-    config = resolve_subject_config(load_yaml(base_path), subject)
-    engine = resolve_engine_config(config, base_path.parent, subject_id=subject)
-    best = json.loads((fit_run / 'hyper_cd' / f'subject_{subject}' / 'best_hyperparams.json').read_text())
-    point = best['final_rescore_best']['hyperparams']
-    engine = apply_fixed_hyperparams_to_engine_config(engine, point)
-    engine['oral_readout'] = None
-    engine['partition']['kwargs']['similarity_cache_dir'] = str(cache.resolve())
-    engine['inference']['particle_blocks'] = 1
-    paths = resolve_dataset_paths(config, base_path.parent)
-    loader = SubjectTrialDataLoader(engine, dataset_paths=paths)
-    loader.prepare_data(paths['learning_data'])
-    frame = loader._get_subject_frame(subject, 1.)
-    arrays = loader._extract_arrays(frame, max_trials)
-    if 'miss' in frame:
-        frame = frame.loc[frame['miss'] != 1]
-    frame = frame.iloc[:len(arrays.choices)].copy()
-    if len(frame) != len(arrays.choices):
-        raise ValueError('Source trial identifiers and model arrays are not aligned')
-    return dict(subject=subject, condition=loader._get_condition_value(frame),
-                engine=engine, paths=paths, arrays=arrays, frame=frame,
-                point=point, best=best)
+    """Resolve either saved fit layout through the shared read-only adapter."""
+    return resolve_fit_subject(fit_run, subject, cache, max_trials)
 
 
 def score_probabilities(probabilities: np.ndarray, choices: np.ndarray) -> dict[str, float]:
@@ -151,6 +119,7 @@ def run_particle_task(task: Mapping[str, Any]) -> str:
     if not np.isfinite(list(scores.values())).all():
         raise ValueError('Non-finite fixed-parameter score')
     values = {'probabilities': probabilities, 'seed': np.asarray(task['seed']),
+              'particles': np.asarray(task['particles']),
               'pre_choice_ess': result.diagnostics['pre_choice_ess'],
               'post_choice_ess': result.diagnostics['post_choice_ess'],
               'resampled': result.diagnostics['resampled'],
@@ -174,67 +143,13 @@ def postfit_seed(base_seed: int, subject: int, repeat: int) -> int:
 
 
 def original_final_seed(fit_run: Path, subject: int, repeat: int = 0) -> int:
-    search = load_yaml(fit_run / 'runtime/hyper.yaml')
-    base = stable_seed({'seed_role': 'hyper_cd_stage_common_random_numbers',
-                        'hyper_base_seed': search['hyper_base_seed'], 'stage': 'final_rescore',
-                        'subject_id': subject, 'seed_family': search['final_rescore']['seed_family']})
-    return derive_trajectory_seed(base, 'simulation', repeat)
+    """Return the recorded final scoring seed for either saved fit layout."""
+    return original_replay_spec(fit_run, subject, repeat)['seed']
 
 
 def audit_search(fit_run: Path, subjects: Sequence[int], output: Path) -> pd.DataFrame:
-    """Audit the saved candidate bank, stopping rules and parameter domains."""
-    space = load_yaml(fit_run / 'runtime/hyper.yaml')['hyperparam_space']
-    parameters, restarts, finalists, summaries = [], [], [], []
-    for sid in subjects:
-        directory = fit_run / 'hyper_cd' / f'subject_{sid}'
-        best = json.loads((directory / 'best_hyperparams.json').read_text())['final_rescore_best']
-        point = best['hyperparams']
-        names = {key.split('.')[-1]: value for key, value in point.items()}
-        inactive = {}
-        if names['global_search'] == 1:
-            inactive.update(global_search_failure_gain='global_search=1', local_structure_weight='global_search=1')
-        if names['error_gain'] == 0 and (names['global_search'] == 1 or names['global_search_failure_gain'] == 0):
-            inactive['failure_decay'] = 'failure has no effect on search probability or range'
-        for key, value in point.items():
-            name = key.split('.')[-1]
-            grid = space[key]['values']
-            edge = 'lower' if value == grid[0] else 'upper' if value == grid[-1] else 'interior'
-            bound = PARAMETER_DOMAINS[name][0 if edge == 'lower' else 1] if edge != 'interior' else None
-            parameters.append(dict(subject=sid, condition=sid // 100, parameter=name, path=key,
-                                   estimate=value, grid_min=min(grid), grid_max=max(grid), edge=edge,
-                                   boundary_kind=('mathematical' if bound == value else 'search_support') if edge != 'interior' else 'interior',
-                                   inactive_at_selected_point=name in inactive, inactive_reason=inactive.get(name, ''),
-                                   parameter_uncertainty='pending_profile_or_recovery'))
-        stop = json.loads((directory / 'restart_summary.json').read_text())
-        limited = False
-        for stage, rows in stop.items():
-            for row in rows:
-                limited |= row['stopped_by'] == 'max_outer_iters'
-                restarts.append(dict(subject=sid, stage=stage, restart=row['restart_id'],
-                                     rounds=row['outer_iters_completed'], stopped_by=row['stopped_by'],
-                                     start_nll=row['initial_error'], end_nll=row['best_error'],
-                                     evaluated=row['num_new_evaluations'], cache_hits=row['num_cache_hits']))
-        records = [json.loads(line) for line in (directory / 'final_rescore.jsonl').read_text().splitlines()]
-        winner = next(row for row in records if row['hyperparams'] == point)
-        errors = np.asarray(winner['subject_metrics'][str(sid)]['simulation']['sample_errors'])
-        for rank, row in enumerate(sorted(records, key=lambda r: r['aggregated_error'])):
-            sample = np.asarray(row['subject_metrics'][str(sid)]['simulation']['sample_errors'])
-            delta = sample - errors
-            finalists.append(dict(subject=sid, rank=rank + 1, selected=row['hyperparams'] == point,
-                                   mean_probability_nll=row['aggregated_error'],
-                                   gap_to_selected=row['aggregated_error'] - best['aggregated_error'],
-                                   mean_paired_single_run_nll_delta=delta.mean(),
-                                   sd_paired_single_run_nll_delta=delta.std(ddof=1),
-                                   fraction_single_seeds_better=float(np.mean(delta < 0)),
-                                   interpretation='paired PF seed diagnostics; parameter confidence pending'))
-        gaps = sorted(row['aggregated_error'] for row in records)
-        summaries.append(dict(subject=sid, condition=sid // 100, selected_fit_nll=best['aggregated_error'],
-                              some_restart_at_round_cap=limited, finalist_gap=gaps[1] - gaps[0],
-                              parameters_at_edge=sum(p['edge'] != 'interior' for p in parameters if p['subject'] == sid),
-                              inactive_parameters=','.join(sorted(inactive))))
-    for name, rows in [('parameters', parameters), ('restarts', restarts), ('finalists', finalists), ('search_summary', summaries)]:
-        pd.DataFrame(rows).to_csv(output / f'{name}.csv', index=False)
-    return pd.DataFrame(summaries)
+    """Write the stable saved-selection audit tables for either fit layout."""
+    return audit_fit_source(fit_run, subjects, output)
 
 
 def rule_catalog(inputs: Mapping[str, Any]) -> pd.DataFrame:
@@ -253,6 +168,38 @@ def summarize_subject(inputs: Mapping[str, Any], files: Sequence[str], output: P
     for file in files:
         with np.load(file) as saved:
             runs.append({name: saved[name] for name in saved.files})
+    if not runs:
+        raise ValueError('At least one saved PF seed is required')
+    seeds = [int(run['seed']) for run in runs]
+    if len(set(seeds)) != len(seeds):
+        raise ValueError('Saved PF seeds must be distinct')
+    seed_rows = []
+    for run in runs:
+        p = np.asarray(run['probabilities'])
+        if p.ndim != 2 or len(p) != len(inputs['arrays'].choices) or p.shape != runs[0]['probabilities'].shape or not np.isfinite(p).all() or np.any(p < 0):
+            raise ValueError('Saved seed probability arrays must be finite and aligned')
+        np.testing.assert_allclose(p.sum(axis=1), 1., rtol=0, atol=1e-10)
+        scores = score_probabilities(p, inputs['arrays'].choices)
+        if not np.isclose(scores['mean_choice_nll'], float(run['mean_choice_nll']), rtol=0, atol=1e-12):
+            raise ValueError('Saved seed NLL differs from its probability array')
+        particles = int(run.get('particles', run['predictive_weights'].shape[1]))
+        if run['predictive_weights'].shape[1] != particles:
+            raise ValueError('Saved particle count differs from the state arrays')
+        for phase in PHASES:
+            weights = np.asarray(run[phase+'_weights'])
+            if weights.shape != (len(p), particles) or not np.isfinite(weights).all() or np.any(weights < 0):
+                raise ValueError('Saved PF state weights must be finite and aligned')
+            np.testing.assert_allclose(weights.sum(axis=1), 1., rtol=0, atol=1e-10)
+        if run['resampled'].shape != (len(p),) or not np.isin(run['resampled'], [False, True]).all():
+            raise ValueError('Saved resampling indicators must be trial-aligned booleans')
+        for name in ('pre_choice_ess', 'post_choice_ess'):
+            ess = np.asarray(run[name])
+            if ess.shape != (len(p),) or not np.isfinite(ess).all() or np.any(ess < 1-1e-10) or np.any(ess > particles+1e-10):
+                raise ValueError('Saved ESS is outside its particle budget')
+        seed_rows.append(dict(seed=int(run['seed']), particles=particles, **scores))
+    if len({row['particles'] for row in seed_rows}) != 1:
+        raise ValueError('Seed aggregation requires a common particle budget')
+    pd.DataFrame(seed_rows).to_csv(output / 'seed_nll.csv', index=False)
     probabilities = np.mean([r['probabilities'] for r in runs], axis=0)
     arrays = inputs['arrays']
     summary = dict(subject=inputs['subject'], condition=inputs['condition'],
@@ -269,6 +216,9 @@ def summarize_subject(inputs: Mapping[str, Any], files: Sequence[str], output: P
     trial = inputs['frame'][[name for name in ('iSub', 'condition', 'iSession', 'iRun', 'iBlock', 'iTrial', 'choice', 'category', 'feedback') if name in inputs['frame']]].reset_index(drop=True)
     trial['valid_trial'] = np.arange(1, len(arrays.choices)+1)
     trial['scored'] = np.arange(len(arrays.choices)) > 0
+    trial['predictive_ess_fraction'] = np.mean([r['pre_choice_ess']/n['particles'] for r,n in zip(runs,seed_rows)],axis=0)
+    trial['filtered_ess_fraction'] = np.mean([r['post_choice_ess']/n['particles'] for r,n in zip(runs,seed_rows)],axis=0)
+    trial['resampled_fraction'] = np.mean([r['resampled'] for r in runs],axis=0)
     trial['observed_choice_probability'] = probabilities[np.arange(len(arrays.choices)), arrays.choices-1]
     trial['choice_nll'] = -np.log(np.clip(trial['observed_choice_probability'], 1e-12, 1))
     correct = probabilities[np.arange(len(arrays.choices)), arrays.categories-1]

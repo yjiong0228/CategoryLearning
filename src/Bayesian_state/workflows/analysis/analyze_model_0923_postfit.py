@@ -22,8 +22,11 @@ from joblib import Parallel, delayed
 import yaml
 
 from src.Bayesian_state.evaluation.model_0923_postfit import (
-    audit_search, original_final_seed, postfit_seed, resolve_subject,
+    audit_search, postfit_seed, resolve_subject,
     rule_catalog, run_particle_task, score_probabilities, summarize_subject,
+)
+from src.Bayesian_state.evaluation.model_0923_fit_source import (
+    original_replay_spec, validate_fit_source,
 )
 from src.Bayesian_state.evaluation.autonomous_trajectories import (
     generate_autonomous_ensemble, load_autonomous_evaluation_spec,
@@ -42,11 +45,13 @@ def write_json(path: Path, value: dict) -> None:
 
 
 def run(config_path: Path, output: Path | None = None, smoke: bool = False,
-        plot_subject: Callable | None = None, plot_cohort: Callable | None = None) -> dict:
-    settings=yaml.safe_load(config_path.read_text())
+        plot_subject: Callable | None = None, plot_cohort: Callable | None = None,
+        *, settings_override: dict | None = None, figure_output: Path | None = None) -> dict:
+    settings=deepcopy(settings_override) if settings_override is not None else yaml.safe_load(config_path.read_text())
     fit=resolve(config_path.parent,settings['fit_run'])
     output=output or resolve(config_path.parent,settings['output_dir'])
-    figures=(output/'figures') if smoke else resolve(config_path.parent,settings['figure_output_dir'])
+    figures=figure_output or ((output/'figures') if smoke else resolve(config_path.parent,settings['figure_output_dir']))
+    source_manifest=validate_fit_source(fit)
     output.mkdir(parents=True,exist_ok=False)
     figures.mkdir(parents=True,exist_ok=False)
     started=perf_counter()
@@ -55,18 +60,9 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
     for plotter in (plot_subject, plot_cohort):
         if plotter is not None:
             core_paths.append(Path(inspect.getsourcefile(plotter)))
-    source_hashes = {str(p.relative_to(ROOT_DIR)): hashlib.sha256(p.read_bytes()).hexdigest()
+    source_hashes = {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest()
                      for p in core_paths}
-    source_manifest=json.loads((fit/'run_manifest.json').read_text())
-    if json.loads((fit/'run_status.json').read_text())['status']!='completed':
-        raise ValueError('The source fit is not complete')
-    for name,digest in source_manifest['snapshot_files_sha256'].items():
-        if hashlib.sha256((fit/'source'/name).read_bytes()).hexdigest()!=digest:
-            raise ValueError(f'Archived fit input changed: {name}')
-    for name,digest in source_manifest['runtime_files_sha256'].items():
-        if hashlib.sha256((fit/name).read_bytes()).hexdigest()!=digest:
-            raise ValueError(f'Archived runtime config changed: {name}')
-    subjects=[102] if smoke else settings['subjects']
+    subjects=settings['subjects'][:1] if smoke else settings['subjects']
     repeats=2 if smoke else int(settings['pf_repeats'])
     particles=4 if smoke else int(settings['particle_count'])
     max_trials=16 if smoke else None
@@ -92,16 +88,22 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
             by_subject[sid].append(str(path))
             tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),max_trials=max_trials,
                               particles=particles,seed=postfit_seed(settings['analysis_seed'],sid,repeat),output=str(path)))
+        path=directory/'original_seed_replay.npz'
         if not smoke:
-            path=directory/'original_seed_replay.npz'
+            replay=original_replay_spec(fit,sid)
+            tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),particles=replay['particles'],
+                              seed=replay['seed'],record_states=False,output=str(path)))
+        else:
             tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),particles=particles,
-                              seed=original_final_seed(fit,sid),record_states=False,output=str(path)))
-            if sid in settings['calibration_subjects']:
-                for repeat in range(settings['calibration_repeats']):
-                    path=directory/'seeds'/f'calibration_{repeat:02d}.npz'
-                    calibration[sid].append(str(path))
-                    tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),particles=settings['calibration_particle_count'],
-                                      seed=postfit_seed(settings['analysis_seed'],sid,repeat),record_states=False,output=str(path)))
+                              max_trials=max_trials,seed=postfit_seed(settings['analysis_seed'],sid,0),
+                              record_states=False,output=str(path)))
+        if sid in settings['calibration_subjects'] and (not smoke or settings_override is not None):
+            for repeat in range(settings['calibration_repeats']):
+                path=directory/'seeds'/f'calibration_{repeat:02d}.npz'
+                calibration[sid].append(str(path))
+                tasks.append(dict(fit_run=str(fit),subject=sid,cache=str(cache),max_trials=max_trials,
+                                  particles=settings['calibration_particle_count'],
+                                  seed=postfit_seed(settings['analysis_seed'],sid,repeat),record_states=False,output=str(path)))
     def progress(phase,completed=0,total=0):
         write_json(output/'progress.json',{'phase':phase,'completed':completed,'total':total,
                                          'updated_at':datetime.now(ZoneInfo('Asia/Shanghai')).isoformat()})
@@ -115,15 +117,14 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
     original_checks=[]
     if not smoke:
         for sid in subjects:
-            selected=inputs[sid]['best']['final_rescore_best']
-            records=[json.loads(line) for line in (fit/'hyper_cd'/f'subject_{sid}'/'final_rescore.jsonl').read_text().splitlines()]
-            selected_record=next(r for r in records if r['hyperparams']==selected['hyperparams'])
-            expected=selected_record['subject_metrics'][str(sid)]['simulation']['sample_errors'][0]
-            with np.load(output/f'subject_{sid}'/'original_seed_replay.npz') as replay:
-                actual=float(replay['mean_choice_nll'])
+            replay_spec=original_replay_spec(fit,sid)
+            expected=replay_spec['expected_mean_choice_nll']
+            with np.load(output/f'subject_{sid}'/'original_seed_replay.npz') as replay_data:
+                actual=float(replay_data['mean_choice_nll'])
             if not np.isclose(actual,expected,rtol=0,atol=1e-12):
                 raise ValueError(f'Original final seed replay disagrees for S{sid}: {actual} vs {expected}')
-            original_checks.append({'subject':sid,'original':expected,'replayed':actual,'absolute_difference':abs(actual-expected)})
+            original_checks.append({'subject':sid,'original':expected,'replayed':actual,'absolute_difference':abs(actual-expected),
+                                    'particles':replay_spec['particles'],'seed':replay_spec['seed']})
     write_json(output/'original_replay_validation.json',{'checks':original_checks,'tolerance':1e-12,'smoke':smoke})
     summaries=[]
     figure_paths={}
@@ -157,6 +158,9 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
             low=np.mean([probabilities_from(path) for path in by_subject[sid][:len(calibration[sid])]],axis=0)
             summary['calibration_high_minus_base_nll']=score_probabilities(high,value['arrays'].choices)['mean_choice_nll']-score_probabilities(low,value['arrays'].choices)['mean_choice_nll']
             summary['calibration_mean_abs_probability_difference']=float(np.mean(np.abs(high-low)))
+            pd.DataFrame({'valid_trial':np.arange(1,len(high)+1),
+                          'mean_abs_probability_difference':np.mean(np.abs(high-low),axis=1),
+                          'max_abs_probability_difference':np.max(np.abs(high-low),axis=1)}).to_csv(directory/'budget_comparison.csv',index=False)
         summaries.append(summary)
         figure_dir=figures/f'subject_{sid}'
         figure_dir.mkdir()
@@ -171,11 +175,11 @@ def run(config_path: Path, output: Path | None = None, smoke: bool = False,
         plot_cohort(summary,pd.read_csv(output/'parameters.csv'),figures)
     report_html(output,figures,summary,figure_paths,repeats,particles,rollouts,plot_subject is not None)
     elapsed=perf_counter()-started
-    if any(hashlib.sha256((ROOT_DIR/path).read_bytes()).hexdigest()!=digest
+    if any(hashlib.sha256(Path(path).read_bytes()).hexdigest()!=digest
            for path,digest in source_hashes.items()):
         raise ValueError('Analysis source changed during computation')
     manifest={'status':'completed','scope':'first_stage_fixed_parameter_postfit','source_fit':str(fit),
-              'source_fit_commit':source_manifest['git_commit'],
+              'source_fit_commit':source_manifest.get('git_commit'), 'fit_source_validation':source_manifest,
               'analysis_commit_at_start':analysis_commit,
               'analysis_source_sha256':source_hashes,
               'settings':settings,'elapsed_seconds':elapsed,'modeled_trials':int(summary.modeled_trials.sum()),

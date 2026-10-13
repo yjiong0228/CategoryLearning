@@ -1,0 +1,23 @@
+# Frozen subject evaluation; run only after the declared fit is complete.
+protocol: model0923_subject_evaluation_v1
+fit_run: ../../../results/model_0923/plus_335_then307_20261013_v1/subject_307
+output_dir: ../../../results/model_0923/exp123_307_evaluation_v1
+figure_output_dir: ../../../CategoryLearning_codes/figures/outputs/fig3/model0923_exp123_307_evaluation_v1
+subjects: [307]
+analysis_seed: 2026101301
+particle_count: 128
+pf_repeats: 16
+parallel_budget: 128
+window_size: 32
+autonomous_rollouts: 64
+# Every subject receives the same paired particle-budget check.
+calibration_particle_count: 256
+calibration_repeats: 4
+segment_size: 64
+late_window: 64
+target_accuracy: 0.8
+task_criterion:
+  mode: exp123
+  source_program: ../../../exp_program/exp123/Task2_learning.m
+  block_size: 64
+  accuracy_threshold: 0.9
