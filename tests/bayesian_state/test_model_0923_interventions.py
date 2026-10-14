@@ -125,7 +125,11 @@ def test_invalid_interventions_rejected(make, intervention):
 
 
 @pytest.mark.parametrize('condition', [1,2,3])
-@pytest.mark.parametrize('intervention', [{'kind':'S1'}, {'kind':'R1','window':4}, {'kind':'C1'}])
+@pytest.mark.parametrize('intervention', [{'kind':'S1'}, {'kind':'R1','window':4}, {'kind':'C1'},
+    {'kind':'E','decay':'memory','capacity':'posterior'},
+    {'kind':'E','decay':.95,'capacity':'evidence'},
+    {'kind':'J','decay':'memory','cost':0.,'refresh':'every_trial'},
+    {'kind':'J','decay':.95,'cost':-2.,'refresh':'search'}])
 def test_full_model_state_resume_includes_causal_intervention_state(condition, intervention, monkeypatch, tmp_path):
     monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
     path = Path(f'configs/exp123/model_struct/model_0923_cond{condition}_full_v3.yaml')
@@ -202,3 +206,51 @@ def test_r0_configuration_changes_only_exit_rate_and_preserves_fitted_input():
     expected['modules']['hypo_transitions_mod']['kwargs'].update(exit_rate=0.,intervention={'kind':'B'})
     assert variant_engine(cfg,settings,'R0') == expected
     assert cfg == saved
+
+
+def test_continuous_evidence_uses_completed_feedback_and_explicit_decay(make):
+    model=make({'kind':'E','decay':.8,'capacity':'posterior'})
+    install(model)
+    model.engine.likelihood=np.full(model.total_hypo,.25)
+    for _ in range(3):
+        model.record_outcome((None,1,1.));model._prepare_hypothesis_transition()
+    expected=np.log(.5)*(1+.8+.8**2)
+    np.testing.assert_allclose(model.retention_evidence[:2],expected)
+    model._prepare_hypothesis_transition()
+    np.testing.assert_allclose(model.retention_evidence[:2],expected)
+    assert np.all(model.retention_evidence[2:]==0)
+
+
+def test_evidence_capacity_ranking_can_preserve_low_relative_belief(make):
+    model=make({'kind':'E','decay':.95,'capacity':'evidence'},exit_rate=0.)
+    install(model)
+    model.retention_evidence[:2]=[-3.,3.]
+    model.trial_rng=Draws()
+    model.process()
+    assert model.active.tolist()==[1,2]
+    assert model.transition_log[-1]['capacity_dropped']==0
+    assert model.retention_evidence[0]==model.retention_evidence[2]==0
+    assert model.retention_evidence[1]==3
+
+
+def test_joint_can_remove_all_old_rules_and_initialize_newcomer(make, monkeypatch):
+    model=make({'kind':'J','decay':.95,'cost':0.,'refresh':'every_trial'})
+    install(model)
+    monkeypatch.setattr(model,'_draw_v3_proposal',lambda *args:2)
+    monkeypatch.setattr('src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search.sample_candidate_set',
+                        lambda scores,capacity,rng:(np.array([0]),.75))
+    model.process()
+    assert model.active.tolist()==[2]
+    assert model.engine.prior[2]==1
+    event=model.transition_log[-1]
+    assert event['joint_dropped']==[0,1] and not event['autonomous_exits']
+    assert event['capacity_dropped'] is None
+
+
+def test_joint_search_refresh_keeps_set_without_search(make):
+    model=make({'kind':'J','decay':.95,'cost':2.,'refresh':'search'})
+    install(model);model.current_event_probability=0.
+    model.retention_evidence[:2]=-100
+    model.process()
+    assert model.active.tolist()==[0,1]
+    assert not model.transition_log[-1]['joint_dropped']

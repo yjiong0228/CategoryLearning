@@ -34,6 +34,15 @@ def ratio(numerator: float, denominator: float) -> float:
     return float(numerator / denominator) if denominator else np.nan
 
 
+def removal_cause(a: dict, trial: int, path: int, rule: int) -> str:
+    """Keep joint set omissions distinct from legacy exit/replacement events."""
+    if 'joint_dropped' in a and rule in a['joint_dropped'][trial,path]:
+        return 'joint_selection'
+    if rule in a['exits'][trial,path]:
+        return 'autonomous_exit'
+    return 'capacity' if a['capacity_dropped'][trial,path] == rule else 'retained'
+
+
 def summarize_trace(a: dict, rules: list[int], late_window: int, support: float, horizon: int):
     ids = a['rule']
     n, paths, _ = ids.shape
@@ -61,11 +70,11 @@ def summarize_trace(a: dict, rules: list[int], late_window: int, support: float,
     # A rule's t+1 exit is associated with its post-feedback state at t.
     for trial, path, slot in zip(*np.where(mask[:-1])):
         rule = int(ids[trial, path, slot])
-        cause = ('autonomous_exit' if rule in a['exits'][trial+1, path] else
-                 'capacity' if a['capacity_dropped'][trial+1, path] == rule else 'retained')
+        cause = removal_cause(a, trial+1, path, rule)
         high = bool(a['posterior'][trial, path, slot] >= support)
         gain = float(a['posterior'][trial, path, slot]-a['forgotten'][trial, path, slot])
-        exposure.append(dict(high_support=high, exited=cause == 'autonomous_exit', capacity=cause == 'capacity'))
+        exposure.append(dict(high_support=high, exited=cause == 'autonomous_exit', capacity=cause == 'capacity',
+                             joint=cause == 'joint_selection'))
         if cause != 'retained':
             exits.append(dict(path=int(path), rule=rule, last_trial=int(trial+1), cause=cause,
                 posterior=float(a['posterior'][trial, path, slot]),

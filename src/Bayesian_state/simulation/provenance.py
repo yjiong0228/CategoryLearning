@@ -139,6 +139,17 @@ def build_model_provenance(
                 resolved["candidate_management"]["exit_rate_multiplier"] = intervention["factor"]
             elif kind == "R1":
                 resolved["candidate_management"]["exit_policy"] = "relative_belief_gated_by_negative_recent_log_feedback_ratio"
+            elif kind == "E":
+                resolved['candidate_management'].update(
+                    exit_policy='relative_belief_gated_by_negative_discounted_log_feedback_ratio',
+                    evidence_decay=intervention['decay'], capacity_policy=intervention['capacity'])
+            elif kind == "J":
+                resolved['candidate_management'].update(exit_policy='joint_nonempty_capacity_constrained_subset',
+                    capacity_policy='same_subset_distribution', evidence_decay=intervention['decay'],
+                    retention_cost=intervention['cost'], refresh=intervention['refresh'])
+                resolved['transition_event_semantics'].update(
+                    swap_probability='search_probability_times_newcomer_inclusion_marginal',
+                    replacement_count='legacy_capacity_replacements_zero_joint_dropped_separate')
             elif kind == "C1":
                 resolved["candidate_management"]["capacity_policy"] = "compare_all_temporary_weights_then_single_final_transfer"
                 resolved["transition_event_semantics"]["swap_probability"] = "search_probability_times_conditional_admission_probability"

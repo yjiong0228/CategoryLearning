@@ -17,6 +17,7 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -26,6 +27,7 @@ import time
 
 REPO = Path(__file__).resolve().parents[4]
 TRANSITION = 'src/Bayesian_state/model/modules/hypothesis_transition/mechanistic_rule_search.py'
+RETENTION = 'src/Bayesian_state/model/modules/hypothesis_transition/candidate_retention.py'
 
 
 def load_source(name: str, relative: str):
@@ -44,6 +46,7 @@ def install_transition() -> None:
     """Replace one implementation in process; archived files remain read-only."""
     import src.Bayesian_state.model.assembly as assembly
     import src.Bayesian_state.model.modules.hypothesis_transition as package
+    load_source('src.Bayesian_state.model.modules.hypothesis_transition.candidate_retention', RETENTION)
     module = load_source('src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search', TRANSITION)
     cls = module.MechanisticRuleSearchHypothesisTransitionModule
     assembly.MechanisticRuleSearchHypothesisTransitionModule = cls
@@ -87,7 +90,8 @@ def prepare(job: dict, c, d) -> None:
         raise ValueError('Requested path budget differs from saved seeds')
     c.write_json(directory / 'source_validation.json', validation)
     c.write_json(directory / 'prepared.json', dict(previous, trials=len(observed), seeds=seeds,
-        baseline_sha256=baseline, smoke=job['smoke'], intervention_source_sha256=c.digest(REPO / TRANSITION)))
+        baseline_sha256=baseline, smoke=job['smoke'], intervention_source_sha256=c.digest(REPO / TRANSITION),
+        intervention_dependency_sha256={RETENTION:c.digest(REPO/RETENTION)}))
     for variant in settings['variants']:
         (directory / variant / 'traces').mkdir(parents=True)
 
@@ -122,6 +126,8 @@ def reuse_traces(job: dict, variant: str, c) -> int:
     for key in ('seeds', 'trials', 'condition', 'cognitive_source_sha256', 'intervention_source_sha256'):
         if prepared[key] != before[key]:
             raise ValueError(f'Reused trace inputs differ: {key}')
+    if prepared.get('intervention_dependency_sha256', {}) != before.get('intervention_dependency_sha256', {}):
+        raise ValueError('Reused cognitive dependencies differ')
     for name in ('parameters.json', 'observed_trials.csv', 'rule_catalog.csv'):
         if c.digest(directory/name) != c.digest(old/name):
             raise ValueError(f'Reused data differ: {name}')
@@ -151,6 +157,9 @@ def trace(job: dict, c, d) -> None:
     prepared = c.load_json(directory / 'prepared.json')
     if c.digest(REPO / TRANSITION) != prepared['intervention_source_sha256']:
         raise ValueError('Intervention implementation changed during run')
+    for name, expected in prepared.get('intervention_dependency_sha256', {}).items():
+        if c.digest(REPO/name) != expected:
+            raise ValueError('Intervention dependency changed during run')
     install_transition()
     inputs = c.resolve_record(job['record'], directory / 'resources_cache', settings['smoke_trials'] if job['smoke'] else None)
     original_exit_rate = inputs['engine']['modules']['hypo_transitions_mod']['kwargs']['exit_rate']
@@ -171,7 +180,10 @@ def trace(job: dict, c, d) -> None:
             for key in ('search_probability', 'failure_pressure', 'accumulated_failure'):
                 self.arrays[key] = np.full(shape, np.nan)
             self.arrays['evidence_score'] = np.full(self.arrays['rule'].shape, np.nan)
+            self.arrays['retention_score_pre'] = np.full(self.arrays['rule'].shape, np.nan)
+            self.arrays['retention_score_post'] = np.full(self.arrays['rule'].shape, np.nan)
             self.histories = [{} for _ in seeds]
+            self.continuous = [{} for _ in seeds]
 
         def before(self, model, choice, feedback):
             token = super().before(model, choice, feedback)
@@ -185,10 +197,16 @@ def trace(job: dict, c, d) -> None:
                 self.arrays[key][t, path] = getattr(transition, field, np.nan)
             history = self.histories[path]
             self.histories[path] = {int(h): history.get(int(h), []) for h in ids}
-            if job['variant'] == 'R1':
+            if transition.intervention_kind == 'R1':
                 # Independent observer history uses recorded pre-beta evidence.
                 np.testing.assert_allclose(transition.recent_log_evidence[ids].sum(axis=1),
                     [sum(self.histories[path][int(h)]) for h in ids], atol=1e-12, rtol=0)
+            if transition.intervention_kind in ('E','J'):
+                previous = self.continuous[path]
+                self.continuous[path] = {int(h):previous.get(int(h),0.) for h in ids}
+                expected = np.array([self.continuous[path][int(h)] for h in ids])
+                np.testing.assert_allclose(transition.retention_evidence[ids], expected, atol=1e-12, rtol=1e-13)
+                self.arrays['retention_score_pre'][row] = expected
             return token
 
         def after(self, model, token, result):
@@ -198,10 +216,15 @@ def trace(job: dict, c, d) -> None:
             feedback = self.arrays['feedback'][t, path]
             neutral = (.5 if feedback == 0 else .25) if inputs['condition'] == 3 else (1/categories if feedback == 1 else 1-1/categories)
             evidence = np.log(np.maximum(self.arrays['evidence'][row], np.finfo(float).tiny))-np.log(neutral)
+            transition = model.engine.get_module(d.ModuleRole.HYPOTHESIS_TRANSITION)
             for slot, (h, value) in enumerate(zip(ids, evidence)):
                 history = (self.histories[path][int(h)]+[float(value)])[-settings['evidence_window']:]
                 self.histories[path][int(h)] = history
                 self.arrays['evidence_score'][t, path, slot] = sum(history)
+                if transition.intervention_kind in ('E','J'):
+                    score = transition.retention_decay*self.continuous[path][int(h)]+float(value)
+                    self.continuous[path][int(h)] = score
+                    self.arrays['retention_score_post'][t,path,slot] = score
 
     recorder = Recorder()
     kwargs = dict(engine_config=engine, subject_id=inputs['subject'], condition=inputs['condition'],
@@ -277,8 +300,10 @@ def run(config: Path, output: Path, smoke: bool, only: list[int] | None) -> None
     if output.exists():
         raise FileExistsError('Choose a new output directory')
     variants = settings['variants']
-    if 'B' not in variants or not set(variants) <= {'B','S_control','S1','R_control','R1','C1','R0'}:
-        raise ValueError('Expected B and supported intervention labels')
+    allowed = {'B','S_control','S1','R_control','R1','C1','E','J'}
+    if variants.get('B') != {'kind':'B'} or any(not re.fullmatch(r'[A-Za-z0-9_-]+', name)
+            or value.get('kind') not in allowed for name,value in variants.items()):
+        raise ValueError('Expected original B and safe labels with supported intervention kinds')
     overrides = settings.get('variant_parameter_overrides', {})
     if 'B' in overrides or not set(overrides) <= set(variants):
         raise ValueError('Parameter interventions must name a nonbaseline variant')
@@ -327,7 +352,7 @@ def run(config: Path, output: Path, smoke: bool, only: list[int] | None) -> None
         new_paths=sum(len(j['indices']) for j in pending), reused_paths=reused_paths,
         refits=0, elapsed_seconds=time.monotonic()-start,
         scientific_status='fixed_parameter_intervention_not_refitted',
-        source_sha256={str(p.relative_to(REPO)):c.digest(p) for p in (config.resolve(), Path(__file__).resolve(), REPO/TRANSITION)},
+        source_sha256={str(p.relative_to(REPO)):c.digest(p) for p in (config.resolve(), Path(__file__).resolve(), REPO/TRANSITION, REPO/RETENTION)},
         versions={name:importlib.metadata.version(name) for name in ('numpy','scipy','pandas','joblib','PyYAML','numba')}, python=sys.version.split()[0]))
     print(f'Completed simulations: {output}', flush=True)
 

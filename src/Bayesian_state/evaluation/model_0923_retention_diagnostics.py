@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .model_0923_cohort_paths import removal_cause
 
 
 def retention_diagnostics(a: dict, rules: list[int], condition: int, late_window: int,
@@ -32,15 +33,15 @@ def retention_diagnostics(a: dict, rules: list[int], condition: int, late_window
             late_incompatible_contribution=float(np.where(incompatible[late,path],a['contribution'][late,path],0.).sum(axis=1).mean()),
             total_autonomous_exits=int((a['exits'][:,path]>=0).sum()),
             total_capacity_replacements=int((a['capacity_dropped'][:,path]>=0).sum()),
+            total_joint_removals=int((a['joint_dropped'][:,path]>=0).sum()) if 'joint_dropped' in a else 0,
             total_old_rule_exposure=int(active[:-1,path].sum())))
         opened={}
         for trial in range(n+1):
             ids={int(a['rule'][trial,path,slot]):int(slot) for slot in np.flatnonzero(incompatible[trial,path])} if trial<n else {}
             for h in set(opened)-set(ids):
                 state=opened.pop(h)
-                cause=('right_censored' if trial==n else 'autonomous_exit' if h in a['exits'][trial,path] else
-                       'capacity' if a['capacity_dropped'][trial,path]==h else 'unexplained')
-                if cause=='unexplained':
+                cause='right_censored' if trial==n else removal_cause(a,trial,path,h)
+                if cause=='retained':
                     raise ValueError('A rule disappeared without a logged cause')
                 row=dict(path=path,rule=h,start_trial=state['start']+1,last_trial=trial,
                          duration=trial-state['start'],right_censored=trial==n,cause=cause)

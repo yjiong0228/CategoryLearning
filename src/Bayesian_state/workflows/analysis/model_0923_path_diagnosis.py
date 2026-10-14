@@ -85,6 +85,7 @@ class PathRecorder:
         for key in ("proposed", "capacity_dropped", "source"):
             self.arrays[key] = np.full(shape[:2], -1, dtype=np.int16)
         self.arrays["exits"] = np.full(shape, -1, dtype=np.int16)
+        self.arrays["joint_dropped"] = np.full(shape, -1, dtype=np.int16)
         self.arrays["prediction"] = np.full((*shape[:2], category_count), np.nan)
         self.arrays["choice"] = np.zeros(shape[:2], dtype=np.int16)
         self.arrays["feedback"] = np.full(shape[:2], np.nan)
@@ -126,6 +127,8 @@ class PathRecorder:
         a["source"][trial, path] = EVENT_CODES.get(event["proposal_source"], -1)
         exits = event["autonomous_exits"]
         a["exits"][trial, path, :len(exits)] = exits
+        joint = event.get('joint_dropped', [])
+        a['joint_dropped'][trial,path,:len(joint)] = joint
         return row, ids, pairing, forgotten
 
     def after(self, model, token: tuple, result: tuple) -> None:
@@ -282,6 +285,7 @@ def extract_episodes(a: dict[str, np.ndarray], subject: int, kind: str, batch: s
                 start = entry.pop("start_index")
                 values = entry.pop("values")
                 cause = "censored" if trial == n else (
+                    "joint_selection" if 'joint_dropped' in a and rule in a['joint_dropped'][trial,path] else
                     "capacity" if a["capacity_dropped"][trial, path] == rule else
                     "autonomous_exit" if rule in a["exits"][trial, path] else "unknown")
                 if cause == "unknown":

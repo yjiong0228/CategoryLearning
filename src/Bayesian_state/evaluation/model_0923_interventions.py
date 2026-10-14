@@ -93,6 +93,7 @@ def summarize(source: Path) -> None:
                     mean_search_probability=float(a['search_probability'][1:,path].mean()),
                     compatible_autonomous_exits=sum(x['path']==path and x['cause']=='autonomous_exit' for x in exits),
                     compatible_capacity_exits=sum(x['path']==path and x['cause']=='capacity' for x in exits),
+                    compatible_joint_exits=sum(x['path']==path and x['cause']=='joint_selection' for x in exits),
                     high_support_exits=sum(x['path']==path and x['cause']=='autonomous_exit' and x['high_support'] for x in exits))
             frame = pd.DataFrame(p)
             row = dict(tag, paths=len(frame), trials=len(observed), rules=','.join(map(str,rules)), fit_status=prepared['fit_status'])
@@ -139,7 +140,8 @@ def summarize(source: Path) -> None:
     metrics = ['late_correct','late_active','ever_active','useful_proposed','useful_admitted',
                'proposed','compatible_autonomous_exits','compatible_capacity_exits','high_support_exits']
     metrics.extend(key for key in ('mean_active_candidates','late_incompatible_contribution',
-        'late_incompatible_candidates','total_autonomous_exits','total_capacity_replacements') if key in paths)
+        'late_incompatible_candidates','total_autonomous_exits','total_capacity_replacements',
+        'total_joint_removals','compatible_joint_exits') if key in paths)
     for record in manifest['records']:
         s = paths.loc[paths.id==record['id']]
         pairs = settings.get('comparisons', [(v,'B') for v in settings['variants'] if v!='B']+
