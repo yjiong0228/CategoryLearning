@@ -1,0 +1,17 @@
+protocol: model0923_path_diagnosis_v1
+subjects:
+  - subject: 335
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_335/evaluation
+  - subject: 307
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_307/evaluation
+history_control_dir: results/model_0923/history_control_335_307_20261014_v1
+# Replay the first four saved B seeds and all 64 saved C trajectories per subject.
+b_repeats: 4
+autonomous_chunk_size: 16
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+geometry_beta: 1.0
+smoke_trials: 8

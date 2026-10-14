@@ -26,6 +26,8 @@
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
 
+- [Model 0923规则路径诊断](model_architecture/model_0923_path_diagnosis.md)：335与307的规则提出、驻留、反馈支持和作答贡献；重放已有路径，定位困难环节，并规定下一项退出机制假设及验收证据。
+
 - [Condition 3：类别、按键与配对学习](model_architecture/model_0826_condition3_design.md)：Task2 编码约定、联合配对学习实现、运行入口和验证范围；正式拟合及恢复实验尚未开展。
 
 - [Model 0826：从文献论证到科学问题](model_architecture/model_0826_scientific_questions_20260916.md)：基于人类认知文献地图，评估反馈利用、学习瓶颈与知识继承等八个问题，区分竞争解释、关键证据、模型边界和三条候选文章主线。
