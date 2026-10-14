@@ -68,6 +68,29 @@ def checked_arrays(source: Path, row: dict) -> dict:
     with np.load(file) as z:return {k:z[k] for k in z.files}
 
 
+def aggregate_choices(test: pd.DataFrame, contrasts: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+    """Retain both participant-equal and trial-weighted held-out choice scores."""
+    aggregate=[]
+    for model in models:
+        group=test[test.model==model].sort_values('subject')
+        baseline=test[test.model=='B'].sort_values('subject')
+        np.testing.assert_array_equal(group.subject,baseline.subject)
+        np.testing.assert_array_equal(group.trials,baseline.trials)
+        difference=group.choice_nll.to_numpy()-baseline.choice_nll.to_numpy()
+        numerical=contrasts[contrasts.model==model].sort_values('subject').choice_nll_mc_se.to_numpy() if model!='B' else np.zeros(len(group))
+        lengths=group.trials.to_numpy()
+        aggregate.append(dict(model=model,participants=len(group),test_trials=int(lengths.sum()),
+            participant_mean_nll=float(group.choice_nll.mean()),
+            trial_weighted_nll=float(np.average(group.choice_nll,weights=lengths)),
+            total_negative_log_score=float((group.choice_nll*lengths).sum()),
+            delta_participant_mean_nll=float(difference.mean()),
+            delta_total_negative_log_score=float(difference@lengths),
+            delta_participant_mc_se=float(np.linalg.norm(numerical)/len(group)),
+            delta_total_mc_se=float(np.linalg.norm(numerical*lengths)),
+            participants_lower_nll=int((difference<0).sum())))
+    return pd.DataFrame(aggregate)
+
+
 def score_screen(source: Path, output: Path) -> None:
     """Apply the same distribution scores to complete fixed-parameter screens."""
     if output.exists():raise FileExistsError('Use a new screen score destination')
@@ -159,8 +182,11 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
             contrast['delta_'+metric]=float(left[metric]-right[metric])
         contrasts.append(contrast)
     output.mkdir(parents=True)
+    test=frame[frame.phase=='test']
+    contrast_frame=pd.DataFrame(contrasts)
+    aggregate=aggregate_choices(test,contrast_frame,list(frozen['settings']['models']))
     for name,data in [('scores',frame),('blocks',pd.DataFrame(blocks)),('parameters',pd.DataFrame(parameters)),
-                      ('test_contrasts',pd.DataFrame(contrasts))]:data.to_csv(output/(name+'.csv'),index=False)
+                      ('test_contrasts',contrast_frame),('aggregate_choice_scores',aggregate)]:data.to_csv(output/(name+'.csv'),index=False)
     manifest=dict(status='complete',fit=str(fit.resolve()),conditional=str(conditional.resolve()),autonomous=str(autonomous.resolve()),
         subjects=sorted(set(k[0] for k in expected)),models=list(frozen['settings']['models']),
         nomination_sha256=nomination_hash,source_sha256=digest(Path(__file__)),

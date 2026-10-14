@@ -1,0 +1,5 @@
+protocol: model0923_h_training_audit_v1
+parallel_budget: 128
+finalists: 8
+particles: 256
+seeds: 4

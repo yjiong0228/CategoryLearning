@@ -44,3 +44,17 @@ def test_seed_jackknife_keeps_all_trials_and_pools_before_log():
                                             (np.array([[np.nan]]),np.array([0.]))])
 def test_invalid_distribution_rejected(samples,observed):
     with pytest.raises(ValueError):distribution_scores(samples,observed)
+
+
+def test_participant_and_trial_weighted_scores_can_have_opposite_directions():
+    import pandas as pd
+    from src.Bayesian_state.evaluation.model_0923_h_validation import aggregate_choices
+    test=pd.DataFrame([dict(subject=s,model=m,trials=n,choice_nll=p)
+        for s,n,b,e in [(101,100,.4,.3),(201,1000,.8,.82)] for m,p in [('B',b),('E',e)]])
+    contrasts=pd.DataFrame([dict(subject=101,model='E',choice_nll_mc_se=.01),
+                            dict(subject=201,model='E',choice_nll_mc_se=.02)])
+    row=aggregate_choices(test,contrasts,['B','E']).set_index('model').loc['E']
+    assert row.delta_participant_mean_nll==pytest.approx(-.04)
+    assert row.delta_total_negative_log_score==pytest.approx(10.)
+    assert row.delta_total_mc_se==pytest.approx(np.sqrt(401))
+    assert row.participants_lower_nll==1

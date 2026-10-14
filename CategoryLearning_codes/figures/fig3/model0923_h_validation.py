@@ -34,6 +34,7 @@ def build(source: Path, output: Path) -> None:
     frozen=load(fit/'nominees.json');autonomous=Path(manifest['autonomous'])
     models=manifest['models'];subjects=manifest['subjects']
     scores=pd.read_csv(source/'scores.csv');contrasts=pd.read_csv(source/'test_contrasts.csv')
+    aggregate=pd.read_csv(source/'aggregate_choice_scores.csv')
     blocks=pd.read_csv(source/'blocks.csv');parameters=pd.read_csv(source/'parameters.csv')
     plt.rcParams.update({'font.family':'sans-serif','font.sans-serif':['Arial','DejaVu Sans'],
         'font.size':7,'axes.titlesize':8,'axes.spines.right':False,'axes.spines.top':False,
@@ -97,13 +98,15 @@ def build(source: Path, output: Path) -> None:
         '<h2>测试段：逐人评分与等权平均</h2>',
         '<p>负对数评分检验每题的实际选项；energy score检验整条块曲线分布，CRPS检验各块分布，interval score同时计入区间宽度及未覆盖观测的距离。这些评分均越低越好。区间覆盖率和宽度合并解释。算法定义见<a href="https://sites.stat.washington.edu/people/raftery/Research/PDF/Gneiting2007jasa.pdf">Gneiting与Raftery，2007</a>。同一被试的块并不独立，这里报告描述性结果。</p>',
         '<div class="scroll">'+means.to_html(float_format=lambda x:f'{x:.4f}')+'</div>',
+        '<p>以下另列按试次数加权的选择评分与总负对数评分。每名被试等权的结果和全部试次的总评分共同保留；较长序列在总评分中占更多权重。</p>',
+        '<div class="scroll">'+aggregate.to_html(index=False,float_format=lambda x:f'{x:.4f}')+'</div>',
         '<div class="scroll">'+test[['subject','model','trials','choice_nll','choice_nll_mc_se','energy','crps','interval_score','interval_coverage','interval_width']].to_html(index=False,float_format=lambda x:f'{x:.4f}')+'</div>',
         '<p>choice_nll_mc_se由完整滤波种子的删一法计算，只表示数值误差。参数解释还需检查不同参数能否产生相近行为，以及模拟数据能否恢复原设定。相关方法见<a href="https://elifesciences.org/articles/49547">Wilson与Collins，2019</a>。</p>',
         '<h2>全部路径</h2>']
     for subject in subjects:html.append(f'<details open><summary>被试{subject}</summary><img src="{rel(output/f"subject_{subject}.png")}" alt="被试{subject}全部路径"></details>')
     html.extend(['<h2>参数与可复核数据</h2><p>以下为有限搜索预算下选出的参数点。不同结构的参数对应各自的更新机制，数值须连同机制解释。</p>',
         '<div class="scroll">'+parameters.to_html(index=False)+'</div>',
-        '<ul>'+''.join(f'<li><a href="{name}">{name}</a></li>' for name in ['scores.csv','blocks.csv','parameters.csv','test_contrasts.csv','summary_manifest.json'])+'</ul></html>'])
+        '<ul>'+''.join(f'<li><a href="{name}">{name}</a></li>' for name in ['scores.csv','blocks.csv','parameters.csv','test_contrasts.csv','aggregate_choice_scores.csv','summary_manifest.json'])+'</ul></html>'])
     with (source/'review.html').open('x') as f:f.write('\n'.join(html))
     qa=dict(backend='python',archetype='quantitative_grid',format='PNG',dpi=300,width_mm=183,
         purpose='development_report',paths=sum(path_counts.values()),path_counts=path_counts,exclusions=[],
