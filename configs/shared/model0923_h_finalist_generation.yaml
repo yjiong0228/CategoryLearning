@@ -1,0 +1,6 @@
+protocol: model0923_h_finalist_generation_v1
+seed: 2026101505
+parallel_budget: 128
+finalists: 8
+paths_per_candidate: 16
+chunk_size: 8
