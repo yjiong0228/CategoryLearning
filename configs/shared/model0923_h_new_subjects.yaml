@@ -1,0 +1,9 @@
+protocol: model0923_h_new_subjects_v1
+source_fit: results/model_0923/exp123_selected12_20261013_v1
+subjects: [[101, 1], [103, 1], [201, 2], [202, 2], [301, 3], [302, 3]]
+training_fraction: 0.7
+parallel_budget: 128
+cache_sources:
+  '1': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_104_initial/resources_cache
+  '2': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_206_initial/resources_cache
+  '3': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_307_plus/resources_cache

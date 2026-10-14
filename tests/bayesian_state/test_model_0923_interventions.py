@@ -278,3 +278,13 @@ def test_incumbent_bias_is_applied_only_to_old_candidates(make,monkeypatch):
     monkeypatch.setattr('src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search.sample_candidate_set',check)
     model.process()
     assert model.active.tolist()==[0,1]
+
+
+def test_joint_admission_probability_precedes_realized_search_event(make):
+    model=make({'kind':'J','decay':.95,'cost':0.,'refresh':'search'})
+    install(model);model.current_event_probability=0.
+    model.process()
+    event=model.transition_log[-1]
+    assert not event['search_event']
+    assert event['admission_probability_given_search']==pytest.approx(.5)
+    assert event['swap_probability']==0.

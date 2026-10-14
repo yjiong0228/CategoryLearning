@@ -13,7 +13,7 @@ from ....hypothesis_space.rule_programs import GRAMMAR_VERSION, build_rule_edit_
 from ..base_module import BaseModule, ModuleRole
 from ..pairing_memory import HierarchicalPairingMemoryModule
 from .contracts import HypothesisSelection, TransitionContext, TwoStepHypothesisTransitionMixin
-from .candidate_retention import sample_candidate_set
+from .candidate_retention import sample_candidate_set, subset_distribution
 
 
 def _number(value: Any, name: str, *, low: float = 0, high: float = np.inf,
@@ -502,6 +502,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             admission_probability_given_search=0., zero_support_fallback=False)
         if context.trial_index == 0:
             return HypothesisSelection.from_active_sets(before, before, diagnostics=diagnostics)
+        # All inactive rules start with zero evidence. Their hypothetical
+        # admission marginal is therefore independent of the proposed identity.
+        old_scores = (self._retention_scores(before,self.intervention.get('score','sum')=='mean')
+                      - self.intervention['cost'] + self.intervention.get('stay_bias',0.))
+        _, _, marginal = subset_distribution(np.r_[-self.intervention['cost'],old_scores],self.capacity)
+        diagnostics['admission_probability_given_search'] = marginal
         search = self.trial_rng.random() < self.current_event_probability
         diagnostics['search_event'] = bool(search)
         if not search and self.intervention['refresh'] == 'search':
