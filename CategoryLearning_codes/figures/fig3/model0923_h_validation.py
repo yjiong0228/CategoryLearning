@@ -56,7 +56,9 @@ def build(source: Path, output: Path) -> None:
     fig.savefig(output/'test_score_comparison.png',dpi=300);plt.close(fig)
     path_counts={}
     for subject in subjects:
-        fig,axes=plt.subplots(3,2,figsize=(183/25.4,180/25.4),layout='constrained',sharex=True,sharey=True)
+        panel_rows=(len(models)+1)//2
+        fig,axes=plt.subplots(panel_rows,2,figsize=(183/25.4,60*panel_rows/25.4),
+                             layout='constrained',sharex=True,sharey=True,squeeze=False)
         for ax,model in zip(axes.flat,models):
             nominee=next(r for r in frozen['nominees'] if r['subject']==subject and r['model']==model)
             file=autonomous/'evaluate'/f'subject_{subject}'/model/(nominee['candidate']['id']+'.npz')
@@ -75,6 +77,7 @@ def build(source: Path, output: Path) -> None:
             ax.axvline(cut+.5,color='#555555',ls=':',lw=.8)
             ax.set(title=model,xlim=(1,n),ylim=(0,1.03),yticks=[0,.25,.5,.75,1])
             path_counts[f'{subject}/{model}']=len(p)
+        for ax in axes.flat[len(models):]:ax.set_visible(False)
         for ax in axes[:,0]:ax.set_ylabel('Correct probability / rate')
         for ax in axes[-1,:]:ax.set_xlabel('Valid trial (32-trial blocks)')
         handles,labels=axes[0,0].get_legend_handles_labels()
