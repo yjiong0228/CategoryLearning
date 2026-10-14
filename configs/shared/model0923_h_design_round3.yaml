@@ -1,0 +1,46 @@
+protocol: model0923_h_design_round3_v1
+cohort_config: configs/shared/model0923_cohort_path_diagnosis.yaml
+source_diagnosis: results/model_0923/cohort_path_diagnosis_20261014_v1
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328, 334, 335, 336]
+# Seeds 0:32 were used in development; 32:64 are an independent simulation check.
+# All people remain development participants, irrespective of simulation seed.
+variants:
+  B: {kind: B}
+  R0: {kind: B}
+  ECM: {kind: E, decay: 0.95, capacity: evidence_mean}
+  ECM_R0: {kind: E, decay: 0.95, capacity: evidence_mean}
+  ECM_S: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  ECM_S_R0: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  ECM_S_d060: {kind: E, decay: 0.6, capacity: evidence_mean, search: accumulate}
+  ECM_S_d080: {kind: E, decay: 0.8, capacity: evidence_mean, search: accumulate}
+  ECM_S_d090: {kind: E, decay: 0.9, capacity: evidence_mean, search: accumulate}
+  ECM_S_d099: {kind: E, decay: 0.99, capacity: evidence_mean, search: accumulate}
+  ECM_S_d100: {kind: E, decay: 1.0, capacity: evidence_mean, search: accumulate}
+  JS_S: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 3.0, search: accumulate}
+variant_parameter_overrides:
+  R0: {engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0}
+  ECM_R0: {engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0}
+  ECM_S_R0: {engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0}
+comparisons:
+  - [R0, B]
+  - [ECM, B]
+  - [ECM_R0, ECM]
+  - [ECM_S, ECM]
+  - [ECM_S_R0, ECM_S]
+  - [ECM_S_d060, ECM_S]
+  - [ECM_S_d080, ECM_S]
+  - [ECM_S_d090, ECM_S]
+  - [ECM_S_d099, ECM_S]
+  - [ECM_S_d100, ECM_S]
+  - [JS_S, ECM_S]
+paths: 64
+chunk_size: 8
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+evidence_window: 4
+counterevidence_windows: [1, 4, 8]
+residence_horizons: [8, 32, 64]
+smoke_trials: 8
