@@ -73,3 +73,15 @@ def test_reused_seed_halves_keep_declared_development_labels(tmp_path):
     score_screen(source,tmp_path/'scores')
     scores=pd.read_csv(tmp_path/'scores/scores.csv')
     assert set(scores.seed_group)=={'all','development_first32','development_second32'}
+
+
+def test_parameter_channels_depend_on_both_capacity_and_exit_mechanism():
+    from src.Bayesian_state.evaluation.model_0923_h_validation import inactive_parameter_channels
+    h='engine.modules.hypo_transitions_mod.kwargs.'
+    point={h+'search_controller.global_search':1.,h+'search_controller.global_search_failure_gain':.75,
+        h+'local_structure_weight':.3,h+'exit_rate':0.,h+'intervention.decay':.95}
+    frozen=dict(settings=dict(models=dict(E=dict(kind='E',capacity='posterior'),ECM=dict(kind='E',capacity='evidence_mean'))),
+        nominees=[dict(subject=101,model=m,candidate=dict(hyperparams=point)) for m in ['E','ECM']])
+    rows=inactive_parameter_channels(frozen)
+    assert set(rows[rows.model=='E'].parameter)=={h+'search_controller.global_search_failure_gain',h+'local_structure_weight',h+'intervention.decay'}
+    assert set(rows[rows.model=='ECM'].parameter)=={h+'search_controller.global_search_failure_gain',h+'local_structure_weight'}

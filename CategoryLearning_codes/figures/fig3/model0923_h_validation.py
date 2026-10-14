@@ -35,6 +35,7 @@ def build(source: Path, output: Path) -> None:
     models=manifest['models'];subjects=manifest['subjects']
     scores=pd.read_csv(source/'scores.csv');contrasts=pd.read_csv(source/'test_contrasts.csv')
     aggregate=pd.read_csv(source/'aggregate_choice_scores.csv')
+    inactive=pd.read_csv(source/'inactive_parameter_channels.csv')
     blocks=pd.read_csv(source/'blocks.csv');parameters=pd.read_csv(source/'parameters.csv')
     plt.rcParams.update({'font.family':'sans-serif','font.sans-serif':['Arial','DejaVu Sans'],
         'font.size':7,'axes.titlesize':8,'axes.spines.right':False,'axes.spines.top':False,
@@ -106,7 +107,9 @@ def build(source: Path, output: Path) -> None:
     for subject in subjects:html.append(f'<details open><summary>被试{subject}</summary><img src="{rel(output/f"subject_{subject}.png")}" alt="被试{subject}全部路径"></details>')
     html.extend(['<h2>参数与可复核数据</h2><p>以下为有限搜索预算下选出的参数点。不同结构的参数对应各自的更新机制，数值须连同机制解释。</p>',
         '<div class="scroll">'+parameters.to_html(index=False)+'</div>',
-        '<ul>'+''.join(f'<li><a href="{name}">{name}</a></li>' for name in ['scores.csv','blocks.csv','parameters.csv','test_contrasts.csv','aggregate_choice_scores.csv','summary_manifest.json'])+'</ul></html>'])
+        '<p>下表标记当前参数点上明确关闭的H作用通道。对应参数的数值须结合这一条件解释。未列出的参数仍需要敏感性与恢复检验。</p>',
+        '<div class="scroll">'+inactive.to_html(index=False)+'</div>',
+        '<ul>'+''.join(f'<li><a href="{name}">{name}</a></li>' for name in ['scores.csv','blocks.csv','parameters.csv','test_contrasts.csv','aggregate_choice_scores.csv','inactive_parameter_channels.csv','summary_manifest.json'])+'</ul></html>'])
     with (source/'review.html').open('x') as f:f.write('\n'.join(html))
     qa=dict(backend='python',archetype='quantitative_grid',format='PNG',dpi=300,width_mm=183,
         purpose='development_report',paths=sum(path_counts.values()),path_counts=path_counts,exclusions=[],

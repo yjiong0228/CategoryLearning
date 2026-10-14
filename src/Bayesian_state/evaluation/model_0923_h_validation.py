@@ -91,6 +91,23 @@ def aggregate_choices(test: pd.DataFrame, contrasts: pd.DataFrame, models: list[
     return pd.DataFrame(aggregate)
 
 
+def inactive_parameter_channels(frozen: dict) -> pd.DataFrame:
+    """Flag exact H-channel closures at a point; this is not identifiability."""
+    prefix='engine.modules.hypo_transitions_mod.kwargs.';rows=[]
+    for nominee in frozen['nominees']:
+        point=nominee['candidate']['hyperparams'];mechanism=frozen['settings']['models'][nominee['model']]
+        closed={}
+        if point.get(prefix+'search_controller.global_search')==1.:
+            for name in ['search_controller.global_search_failure_gain','local_structure_weight']:
+                closed[prefix+name]='基础全局搜索比例为1；当前参数点只产生全局提案'
+        if mechanism['kind']=='E' and mechanism.get('capacity','posterior')=='posterior' and point.get(prefix+'exit_rate')==0.:
+            closed[prefix+'intervention.decay']='自主退出率为0且容量按信念排序；连续证据不改变H决策'
+        for parameter,reason in closed.items():
+            if parameter in point:rows.append(dict(subject=nominee['subject'],model=nominee['model'],
+                parameter=parameter,value=point[parameter],reason=reason))
+    return pd.DataFrame(rows,columns=['subject','model','parameter','value','reason'])
+
+
 def score_screen(source: Path, output: Path) -> None:
     """Apply the same distribution scores to complete fixed-parameter screens."""
     if output.exists():raise FileExistsError('Use a new screen score destination')
@@ -189,7 +206,8 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
     contrast_frame=pd.DataFrame(contrasts)
     aggregate=aggregate_choices(test,contrast_frame,list(frozen['settings']['models']))
     for name,data in [('scores',frame),('blocks',pd.DataFrame(blocks)),('parameters',pd.DataFrame(parameters)),
-                      ('test_contrasts',contrast_frame),('aggregate_choice_scores',aggregate)]:data.to_csv(output/(name+'.csv'),index=False)
+                      ('test_contrasts',contrast_frame),('aggregate_choice_scores',aggregate),
+                      ('inactive_parameter_channels',inactive_parameter_channels(frozen))]:data.to_csv(output/(name+'.csv'),index=False)
     manifest=dict(status='complete',fit=str(fit.resolve()),conditional=str(conditional.resolve()),autonomous=str(autonomous.resolve()),
         subjects=sorted(set(k[0] for k in expected)),models=list(frozen['settings']['models']),
         nomination_sha256=nomination_hash,source_sha256=digest(Path(__file__)),
