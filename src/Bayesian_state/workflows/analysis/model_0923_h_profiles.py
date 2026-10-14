@@ -20,6 +20,7 @@ import yaml
 from .model_0923_h_validation import REPO,H_PATH,digest,read,write,source_hashes,execute,model_space
 from ...optimization.search.adaptive_proposals import candidate
 from ...utils.seeding import stable_seed
+from ...evaluation.model_0923_h_validation import jackknife_scores,jackknife_se
 
 
 def initialized(fit: Path, config: Path, output: Path, role: str) -> tuple[dict,dict]:
@@ -30,7 +31,9 @@ def initialized(fit: Path, config: Path, output: Path, role: str) -> tuple[dict,
         if digest(REPO/name)!=sha:raise ValueError('Fit source changed')
     output.mkdir(parents=True)
     write(output/'protocol.json',dict(role=role,fit=str(fit.resolve()),nomination_sha256=digest(fit/'nominees.json'),
-        settings=settings,source_sha256=digest(Path(__file__)),all_unvaried_coordinates='frozen_nominee',
+        settings=settings,source_sha256=digest(Path(__file__)),
+        numerical_scoring_sha256=digest(REPO/'src/Bayesian_state/evaluation/model_0923_h_validation.py'),
+        all_unvaried_coordinates='frozen_nominee',
         actual_data_boundary='training arrays only; held-out choices excluded'))
     return frozen,settings
 
@@ -59,6 +62,14 @@ def profile_points(point: dict, space: dict, axes: list[str], pairs: list[list[s
     return bank,members
 
 
+def numerical_scores(file: Path) -> tuple[np.ndarray,np.ndarray]:
+    """Retain whole-seed dependence when measuring numerical scoring error."""
+    row=read(file)
+    if digest(file.with_suffix('.npz'))!=row['predictions_sha256']:raise ValueError('Profile predictions changed')
+    with np.load(file.with_suffix('.npz')) as z:
+        return z['seeds'],jackknife_scores(z['observed_probability'])
+
+
 def profiles(fit: Path, config: Path, output: Path) -> None:
     frozen,settings=initialized(fit,config,output,'conditional_training_profiles')
     jobs=[];members=[]
@@ -77,17 +88,29 @@ def profiles(fit: Path, config: Path, output: Path) -> None:
             jobs.append(job)
     write(output/'profile_membership.json',dict(rows=members,unique_points=len(jobs)))
     execute(jobs,output,settings['parallel_budget'])
-    lookup={}
+    lookup={};numerical={};anchors={}
+    for row in frozen['nominees']:
+        if row['model'] in settings['profile_models']:
+            anchors[(row['subject'],row['model'])]=row['candidate']['id']
     for job in jobs:
-        row=read(Path(job['target']).with_suffix('.json'))
-        lookup[(row['subject'],row['model'],row['candidate']['id'])]=row
+        file=Path(job['target']).with_suffix('.json');row=read(file)
+        key=(row['subject'],row['model'],row['candidate']['id'])
+        lookup[key]=row;numerical[key]=numerical_scores(file)
     result=[]
     for link in members:
         row=lookup[(link['subject'],link['model'],link['candidate'])]
-        result.append(dict(link,mean_nll=row['mean_nll'],trials=row['trials'],particles=row['particles']))
+        key=(link['subject'],link['model']);anchor_key=(*key,anchors[key])
+        seeds,values=numerical[(*key,link['candidate'])];anchor_seeds,anchor_values=numerical[anchor_key]
+        np.testing.assert_array_equal(seeds,anchor_seeds)
+        result.append(dict(link,mean_nll=row['mean_nll'],trials=row['trials'],particles=row['particles'],
+            mean_nll_mc_se=jackknife_se(values),
+            delta_anchor_nll=row['mean_nll']-lookup[anchor_key]['mean_nll'],
+            delta_anchor_mc_se=jackknife_se(values-anchor_values)))
     frame=pd.DataFrame(result)
     frame['delta_nll']=frame.mean_nll-frame.groupby(['subject','model','profile']).mean_nll.transform('min')
     frame['delta_total_nll']=frame.delta_nll*frame.trials
+    frame['delta_anchor_total_nll']=frame.delta_anchor_nll*frame.trials
+    frame['delta_anchor_total_mc_se']=frame.delta_anchor_mc_se*frame.trials
     frame.to_csv(output/'profiles.csv',index=False)
     write(output/'completion.json',dict(status='complete',unique_points=len(jobs),
         scientific_status='conditional_profiles_with_fixed_nuisance_parameters; not_full_identifiability'))
@@ -155,9 +178,18 @@ def recovery(fit: Path, config: Path, output: Path) -> None:
                     replicate=replicate,candidate_decay=value,score_file=job['target']+'.json'))
     execute(jobs,output,settings['parallel_budget'])
     for item in membership:
-        row=read(Path(item['score_file']));item.update(mean_nll=row['mean_nll'],trials=row['trials'])
+        row=read(Path(item['score_file']));_,values=numerical_scores(Path(item['score_file']))
+        item.update(mean_nll=row['mean_nll'],trials=row['trials'],mean_nll_mc_se=jackknife_se(values))
     scores=pd.DataFrame(membership);scores.to_csv(output/'recovery_scores.csv',index=False)
     estimates=scores.sort_values(['mean_nll','candidate_decay']).groupby(['subject','true_decay','replicate'],sort=True).first().reset_index()
+    gaps=[]
+    for _,group in scores.groupby(['subject','true_decay','replicate'],sort=True):
+        ordered=group.sort_values(['mean_nll','candidate_decay']);best,second=ordered.iloc[:2].to_dict('records')
+        seeds,best_values=numerical_scores(Path(best['score_file']))
+        second_seeds,second_values=numerical_scores(Path(second['score_file']))
+        np.testing.assert_array_equal(seeds,second_seeds)
+        gaps.append((second['mean_nll']-best['mean_nll'],jackknife_se(second_values-best_values)))
+    estimates['top_gap_nll']=[g[0] for g in gaps];estimates['top_gap_mc_se']=[g[1] for g in gaps]
     estimates.to_csv(output/'recovered_decay.csv',index=False)
     write(output/'completion.json',dict(status='complete',synthetic_sequences=len(estimates),score_jobs=len(jobs),
         scientific_status='evidence_decay_only_recovery_with_all_nuisance_parameters_known; not_joint_parameter_recovery'))

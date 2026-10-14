@@ -66,9 +66,11 @@ def build(profiles: Path, recovery: Path, output: Path) -> None:
             fig,axes=plt.subplots(2,3,figsize=(183/25.4,110/25.4),layout='constrained')
             for ax,(parameter,group) in zip(axes.flat,rows.groupby('profile',sort=False)):
                 group=group.sort_values('first')
-                ax.plot(group['first'],group.delta_total_nll,color='#326C98',marker='o',ms=2,lw=1)
-                ax.set(xlabel=label(parameter),ylabel='Total negative log-score increase')
-                ax.set_ylim(bottom=0)
+                ax.errorbar(group['first'],group.delta_anchor_total_nll,
+                    yerr=2*group.delta_anchor_total_mc_se,color='#326C98',marker='o',ms=2,lw=1,
+                    elinewidth=.6,capsize=1.5)
+                ax.axhline(0,color='#777777',lw=.6,ls=':')
+                ax.set(xlabel=label(parameter),ylabel='Change in total negative log score')
             for ax in axes.flat[rows.profile.nunique():]:ax.set_visible(False)
             fig.suptitle(f'Participant {subject}; {model}: one-parameter training profiles',fontsize=9)
             file=output/f'subject_{subject}_{model}_axes.png';fig.savefig(file,dpi=300);plt.close(fig);image_files.append(file)
@@ -88,11 +90,12 @@ def build(profiles: Path, recovery: Path, output: Path) -> None:
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}details{margin:20px 0}</style>',
         '<h1>H模块参数解释检查</h1>',
         '<p>所有剖面只使用新增被试的训练数据。每次改变一个参数或指定的一对参数，其余参数固定在已冻结的估计点。剖面显示局部敏感性与参数补偿；它们尚未整合其余参数的不确定性。</p>',
-        '<p>二维图中白圈是冻结参数点，颜色是各图最低总负对数评分之上的增量，采用log10(1＋增量)颜色刻度。全部网格值保留。单参数曲线同样相对各自剖面的最低值计算。</p>',
+        '<p>二维图中白圈是冻结参数点，颜色是各图最低总负对数评分之上的增量，采用log10(1＋增量)颜色刻度。全部网格值保留。单参数曲线相对同批种子重新评分的冻结参数点计算，误差线为差值的正负2倍模拟标准误，负值表示该参数点得到更低评分。模拟误差只衡量滤波的随机波动；参数和被试总体的不确定性须另外检验。完整CSV也提供二维网格与冻结点差值的模拟标准误。</p>',
         '<h2>保持率恢复</h2>',
         '<p>每个条件使用预先指定的一名被试的训练刺激顺序，其余参数固定为该人的ECM_S训练估计值。改变真实保持率并生成模型自己的选择及反馈，然后估计保持率。图中每个点是一条合成序列，横向位置轻微错开便于查看，黑线表示真值。此处只检验保持率，完整参数共同估计的恢复仍待检验。</p>',
         '<img src="decay_recovery.png" alt="全部合成序列的保持率恢复">',
-        estimates[['subject','true_decay','replicate','candidate_decay','mean_nll','trials']].to_html(index=False,float_format=lambda x:f'{x:.4f}'),
+        '<p>恢复结果表同时报告最佳两点的分数差和该差值的模拟标准误；差异接近数值波动时，最优保持率的排序仍不稳定。</p>',
+        estimates[['subject','true_decay','replicate','candidate_decay','mean_nll','trials','top_gap_nll','top_gap_mc_se']].to_html(index=False,float_format=lambda x:f'{x:.4f}'),
         '<h2>全部参数剖面</h2>']
     for subject in subjects:
         files=[f for f in image_files if f.name.startswith(f'subject_{subject}_')]
