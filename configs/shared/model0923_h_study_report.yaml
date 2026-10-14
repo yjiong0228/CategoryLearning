@@ -1,0 +1,25 @@
+title: Model 0923 H模块：整夜研究汇总
+decision: 连续证据保留、平均证据容量处理及失败驱动搜索作为优先工作候选；最终机制与个体参数解释继续验证。
+summary: results/model_0923/h_design_new_subject_summary_20261015_v1
+training_audit: results/model_0923/h_design_new_subject_audit_20261015_v1
+profiles: results/model_0923/h_design_parameter_profiles_20261015_v1
+profile_audit: results/model_0923/h_design_profile_audit_20261015_v1
+recovery: results/model_0923/h_design_decay_recovery_20261015_v1
+pair_audit: results/model_0923/h_design_decay_pair_audit_20261015_v1
+uncertainty: results/model_0923/h_design_generation_uncertainty_20261015_v1
+criterion: results/model_0923/h_design_task_criterion_20261015_v1
+links:
+  - [研究说明与结构判断, src/Bayesian_state/docs/model_architecture/model_0923_h_design_study.md]
+  - [新增6名被试：逐题预测及全部自主路径, results/model_0923/h_design_new_subject_summary_20261015_v1/review.html]
+  - [全部训练候选的生成敏感性, results/model_0923/h_design_finalist_generation_20261015_v1/review.html]
+  - [参数敏感性与合成恢复, CategoryLearning_codes/figures/outputs/fig3/h_design_parameter_diagnostics_20261015_v1/review.html]
+  - [训练参数最低分数的独立复核, results/model_0923/h_design_profile_audit_20261015_v1/contrasts.csv]
+  - [逐人过程指标, results/model_0923/h_design_new_subject_process_20261015_v1/process_means.csv]
+  - [自主生成的数值误差, results/model_0923/h_design_generation_uncertainty_20261015_v1/primary.csv]
+  - [固定刺激日程内的任务达标, results/model_0923/h_design_task_criterion_20261015_v1/subjects.csv]
+  - [预测文件与概率数值核对, results/model_0923/h_design_study_20261015_v1/prediction_audit.json]
+  - [150项选定测试与源码一致性, results/model_0923/h_design_study_20261015_v1/validation_with_criterion.json]
+  - [第一轮：连续证据与联合保留, results/model_0923/h_design_round1_20261015_v1/review_v2.html]
+  - [第二轮：容量排序与搜索组合, results/model_0923/h_design_round2_20261015_v1/review_v2.html]
+  - [第三轮：退出消融与证据保持率, results/model_0923/h_design_round3_20261015_v1/review.html]
+  - [第四轮：联合选择的执行时点, results/model_0923/h_design_round4_20261015_v1/review.html]
