@@ -9,6 +9,36 @@ S1和R1的新增状态随快照保存，R1在下一题读取上一题已完成�
 该入口用于固定参数的机制对照，详细定义、配置和结果见
 [第一轮机制干预](../../../docs/model_architecture/model_0923_mechanism_interventions.md)。
 
+**2026-10-15 连续证据与联合保留实验：** 同一入口增加`E`与`J`两类配置，
+用于连续证据筛查、训练前缀拟合和参数诊断。研究设计、数据分界及结果见
+[H模块连续研究](../../../docs/model_architecture/model_0923_h_design_study.md)。
+
+E为每条在场规则记录折扣反馈证据`retention_evidence`及折扣观察量`retention_exposure`。
+下一题开始时，模型用上一题学习更新前的反馈似然更新这两个量。
+证据增量是规则反馈似然与无类别知识时反馈概率之比的自然对数；正值表示该条反馈支持规则。
+`decay`可取0至1的保持率，或`memory`以共享记忆模块的保持率。
+累计证据为负时，规则按原full-v3概率自主退出；证据为非负值时，本步骤的退出概率为0。
+若抽样后没有获得旧信念支持的规则，恢复原信念最高的一条，再进入搜索步骤。
+容量不足时，`capacity`指定旧规则的淘汰分数：`posterior`使用相对信念，
+`evidence`使用累计证据，`evidence_mean`使用累计证据除以折扣观察量。
+满容量的搜索事件移除分数最低的一条旧规则，并纳入新规则。
+尚未获得反馈的规则分数为0；旧规则离开或规则重新进入时，相应历史重置。
+
+J先按原局部／全局核提出新规则，再从旧规则和该候选中选择符合容量的非空集合。
+集合权重是成员分数之和的指数。每条规则的分数为反馈证据减去`cost`，
+旧规则另加非负的`stay_bias`；新规则从证据0开始。
+`score: sum`使用累计证据，`score: mean`使用平均证据。
+`refresh: every_trial`每题重新选择集合，`refresh: search`只在发生搜索时选择。
+`candidate_retention.py`用动态规划精确汇总允许的集合，并按该分布抽样。
+J的移除记录在`joint_dropped`，原自主退出与容量替换字段分别保留各自的事件含义。
+日志中的条件准入概率在搜索抽样前计算，表示假定本题发生搜索时，新规则进入集合的概率。
+
+E与J均可设置`search: accumulate`以使用S1的累积失败搜索，默认值`original`使用原搜索控制器。
+集合确定后，按full-v3的规则归一化幸存者信念，并通过affinity（规则功能相似性）向新规则分配支持。
+J仅留下新规则时，其信念为1；若幸存者的旧信念总和为0，按基础先验重新分配支持。
+连续证据、折扣观察量及适用的累积失败状态都参与快照保存和恢复。
+当前B仍为默认配置；E、J及其组合的机制去留按连续研究中的证据判断。
+
 以下full-v1说明保留旧版流程；当前full-v3使用连续作答贡献、无执行保护的自主退出和最终集合的一次信念分配。
 
 Model 0923 B0 新增 `unified_rule_search.py` 公共模式：一条失败痕迹、
@@ -87,6 +117,7 @@ hypothesis_transition/
 ├── nested_feedback_accumulator.py
 ├── unified_rule_search.py
 ├── mechanistic_rule_search.py
+├── candidate_retention.py
 ├── selection.py
 ├── prior_assignment.py
 ├── workspace.py
@@ -105,10 +136,11 @@ hypothesis_transition/
 | `nested_feedback_accumulator.py` | 严格嵌套 constant/reactive/accumulator 的 H4 模式 |
 | `unified_rule_search.py` | 0923 B0：统一失败控制与单候选修订 |
 | `mechanistic_rule_search.py` | 0923 完整模型：可变候选数量、结构与功能提出、关系驱动支持迁移 |
+| `candidate_retention.py` | 非空、容量受限候选集合的精确分布与采样 |
 | `selection.py` / `prior_assignment.py` | 选择和 prior 分配的共享机制 |
 | `workspace.py` / `execution.py` | bounded workspace 状态与执行逻辑 |
 
-表中前八个文件定义认知模式或公共契约；后四个是共享机制，不能在
+表中前八个文件定义认知模式或公共契约；后五个是共享机制，不能在
 model YAML 中当作独立 H 模式配置。被试级 candidate 资源位于
 `configs/shared/candidates/hypothesis_transition/`，不保存 trial-level state trajectory。
 
@@ -787,7 +819,7 @@ prior_t[newcomers] = m_drop * z_tilde[newcomers]
 - candidate/profile 是被试级配置资源，不应保存某次运行产生的 (z_{1:T}) 或 (c_{1:T})。
 - `capacity` 可以作为被试级候选由 Hyper-CD 选择；选定后必须在该被试内保持固定。若要实现
   trial-varying capacity，应新增显式状态转移，而不是在运行中直接修改 `capacity`。
-- `selection.py`、`prior_assignment.py`、`workspace.py` 与 `execution.py`
+- `candidate_retention.py`、`selection.py`、`prior_assignment.py`、`workspace.py` 与 `execution.py`
   是共享实现而非稳定配置入口，配置文件不得直接引用。
 
 本子包不提供重构前的 H class path 或兼容入口。新增 H 设计时，应先明确它改变的是 selection、
