@@ -1,0 +1,12 @@
+protocol: model0923_h_parameter_diagnostics_v1
+seed: 2026101504
+parallel_budget: 128
+particles: 64
+seeds: 4
+profile_models: [ECM_S, JS_S]
+# First preselected participant in each task condition; no outcome selection.
+recovery_subjects: [101, 201, 301]
+recovery_model: ECM_S
+recovery_decay: [0.6, 0.95]
+recovery_repeats: 4
+decay_support: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
