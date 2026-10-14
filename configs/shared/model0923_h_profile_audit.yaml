@@ -1,0 +1,5 @@
+protocol: model0923_h_profile_audit_v1
+seed: 2026101507
+parallel_budget: 128
+particles: 256
+seeds: 8
