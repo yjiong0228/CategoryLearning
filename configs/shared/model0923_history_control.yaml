@@ -1,0 +1,12 @@
+protocol: model0923_history_control_v1
+subjects:
+  - subject: 335
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_335/evaluation
+  - subject: 307
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_307/evaluation
+particle_count: 128
+pf_repeats: 16
+parallel_budget: 128
+window_size: 32
+late_window: 64
+replay_trials: 8
