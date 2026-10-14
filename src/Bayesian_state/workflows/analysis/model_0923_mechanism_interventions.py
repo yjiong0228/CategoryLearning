@@ -182,8 +182,10 @@ def trace(job: dict, c, d) -> None:
             self.arrays['evidence_score'] = np.full(self.arrays['rule'].shape, np.nan)
             self.arrays['retention_score_pre'] = np.full(self.arrays['rule'].shape, np.nan)
             self.arrays['retention_score_post'] = np.full(self.arrays['rule'].shape, np.nan)
+            self.arrays['retention_mean_post'] = np.full(self.arrays['rule'].shape, np.nan)
             self.histories = [{} for _ in seeds]
             self.continuous = [{} for _ in seeds]
+            self.exposure_histories = [{} for _ in seeds]
 
         def before(self, model, choice, feedback):
             token = super().before(model, choice, feedback)
@@ -207,6 +209,10 @@ def trace(job: dict, c, d) -> None:
                 expected = np.array([self.continuous[path][int(h)] for h in ids])
                 np.testing.assert_allclose(transition.retention_evidence[ids], expected, atol=1e-12, rtol=1e-13)
                 self.arrays['retention_score_pre'][row] = expected
+                previous = self.exposure_histories[path]
+                self.exposure_histories[path] = {int(h):previous.get(int(h),0.) for h in ids}
+                np.testing.assert_allclose(transition.retention_exposure[ids],
+                    [self.exposure_histories[path][int(h)] for h in ids],atol=1e-12,rtol=1e-13)
             return token
 
         def after(self, model, token, result):
@@ -225,6 +231,9 @@ def trace(job: dict, c, d) -> None:
                     score = transition.retention_decay*self.continuous[path][int(h)]+float(value)
                     self.continuous[path][int(h)] = score
                     self.arrays['retention_score_post'][t,path,slot] = score
+                    exposure=transition.retention_decay*self.exposure_histories[path][int(h)]+1.
+                    self.exposure_histories[path][int(h)]=exposure
+                    self.arrays['retention_mean_post'][t,path,slot]=score/exposure
 
     recorder = Recorder()
     kwargs = dict(engine_config=engine, subject_id=inputs['subject'], condition=inputs['condition'],

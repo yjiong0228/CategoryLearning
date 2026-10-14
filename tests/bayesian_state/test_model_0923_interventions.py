@@ -129,7 +129,9 @@ def test_invalid_interventions_rejected(make, intervention):
     {'kind':'E','decay':'memory','capacity':'posterior'},
     {'kind':'E','decay':.95,'capacity':'evidence'},
     {'kind':'J','decay':'memory','cost':0.,'refresh':'every_trial'},
-    {'kind':'J','decay':.95,'cost':-2.,'refresh':'search'}])
+    {'kind':'J','decay':.95,'cost':-2.,'refresh':'search'},
+    {'kind':'E','decay':.95,'capacity':'evidence_mean','search':'accumulate'},
+    {'kind':'J','decay':.95,'cost':0.,'refresh':'every_trial','stay_bias':3.,'score':'mean','search':'accumulate'}])
 def test_full_model_state_resume_includes_causal_intervention_state(condition, intervention, monkeypatch, tmp_path):
     monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
     path = Path(f'configs/exp123/model_struct/model_0923_cond{condition}_full_v3.yaml')
@@ -254,3 +256,25 @@ def test_joint_search_refresh_keeps_set_without_search(make):
     model.process()
     assert model.active.tolist()==[0,1]
     assert not model.transition_log[-1]['joint_dropped']
+
+
+def test_normalized_evidence_capacity_distinguishes_quality_from_duration(make):
+    model=make({'kind':'E','decay':.95,'capacity':'evidence_mean'},exit_rate=0.)
+    install(model)
+    model.retention_evidence[:2]=[10.,2.]
+    model.retention_exposure[:2]=[100.,2.]
+    model.trial_rng=Draws();model.process()
+    assert model.active.tolist()==[1,2]
+    assert model.retention_exposure[0]==model.retention_exposure[2]==0
+
+
+def test_incumbent_bias_is_applied_only_to_old_candidates(make,monkeypatch):
+    model=make({'kind':'J','decay':.95,'cost':1.,'refresh':'every_trial','stay_bias':3.})
+    install(model);model.retention_evidence[:2]=[2.,4.]
+    monkeypatch.setattr(model,'_draw_v3_proposal',lambda *args:2)
+    def check(scores,capacity,rng):
+        np.testing.assert_allclose(scores,[-1.,4.,6.])
+        return np.array([1,2]),.1
+    monkeypatch.setattr('src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search.sample_candidate_set',check)
+    model.process()
+    assert model.active.tolist()==[0,1]

@@ -1,0 +1,34 @@
+protocol: model0923_h_design_round2_v1
+cohort_config: configs/shared/model0923_cohort_path_diagnosis.yaml
+source_diagnosis: results/model_0923/cohort_path_diagnosis_20261014_v1
+# All 15 primary participants are development data; 8 extend the initial 7.
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328, 334, 335, 336]
+variants:
+  B: {kind: B}
+  R1: {kind: R1, window: 4}
+  E_memory: {kind: E, decay: memory, capacity: posterior}
+  E_long: {kind: E, decay: 0.95, capacity: posterior}
+  EC_memory: {kind: E, decay: memory, capacity: evidence}
+  EC_long: {kind: E, decay: 0.95, capacity: evidence}
+  ECM_memory: {kind: E, decay: memory, capacity: evidence_mean}
+  ECM_long: {kind: E, decay: 0.95, capacity: evidence_mean}
+  JS_long1: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 1.0}
+  JS_long3: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 3.0}
+  JS_long5: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 5.0}
+  JS_memory3: {kind: J, decay: memory, cost: 0.0, refresh: every_trial, stay_bias: 3.0}
+  JSM_long3: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 3.0, score: mean}
+  JS_search3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0}
+  E_long_S: {kind: E, decay: 0.95, capacity: posterior, search: accumulate}
+  ECM_long_S: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  JS_long3_S: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 3.0, search: accumulate}
+paths: 32
+chunk_size: 4
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+evidence_window: 4
+counterevidence_windows: [1, 4, 8]
+residence_horizons: [8, 32, 64]
+smoke_trials: 8

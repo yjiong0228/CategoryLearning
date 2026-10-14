@@ -70,24 +70,25 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self._validate_intervention()
         self.intervention_kind = self.intervention["kind"]
         self._STATE_FIELDS = tuple(type(self)._STATE_FIELDS)
-        if self.intervention_kind == "S1":
+        if self.intervention_kind == "S1" or self.intervention.get('search') == 'accumulate':
             self._STATE_FIELDS += ("accumulated_failure",)
-        elif self.intervention_kind == "R1":
+        if self.intervention_kind == "R1":
             self._STATE_FIELDS += ("recent_log_evidence", "recent_evidence_count")
         elif self.intervention_kind in ("E", "J"):
-            self._STATE_FIELDS += ("retention_evidence",)
+            self._STATE_FIELDS += ("retention_evidence", "retention_exposure")
         self.persistent_execution_enabled = not self.continuous_choice_enabled
         if self.continuous_choice_enabled:
             self.MODE = "mechanistic_rule_search_0923_v3"
             self.prior_assignment_method = "retained_rule_affinity_transfer_0923_v3"
         self.total_hypo = int(engine.set_size)
-        if self.intervention_kind == "S1":
+        if self.intervention_kind == "S1" or self.intervention.get('search') == 'accumulate':
             self.accumulated_failure = 0.
-        elif self.intervention_kind == "R1":
+        if self.intervention_kind == "R1":
             self.recent_log_evidence = np.zeros((self.total_hypo, self.intervention["window"]))
             self.recent_evidence_count = np.zeros(self.total_hypo, dtype=int)
         elif self.intervention_kind in ("E", "J"):
             self.retention_evidence = np.zeros(self.total_hypo)
+            self.retention_exposure = np.zeros(self.total_hypo)
         raw_capacity = kwargs.get("max_capacity", 3)
         self.capacity = int(raw_capacity)
         if isinstance(raw_capacity, bool) or float(raw_capacity) != self.capacity or not 2 <= self.capacity < self.total_hypo:
@@ -152,6 +153,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                     self.relation_samples, self.relation_seed)
         if self.intervention_kind != "B":
             settings += (tuple(sorted(self.intervention.items())),)
+        if self.intervention_kind in ('E','J'):
+            settings += ('continuous_retention_v2',)
         self.configuration_signature = sha256(
             repr(settings).encode() + self.edit_distances.tobytes()
             + self._distance_matrix.tobytes() + self.base_prior.tobytes()).hexdigest()
@@ -188,7 +191,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         fields = {"B": {"kind"}, "S_control": {"kind", "factor"}, "S1": {"kind"},
                   "R_control": {"kind", "factor"}, "R1": {"kind", "window"}, "C1": {"kind"},
                   "E": {"kind", "decay", "capacity"}, "J": {"kind", "decay", "cost", "refresh"}}
-        if kind not in fields or set(self.intervention) != fields[kind]:
+        optional = {'search'} if kind == 'E' else {'search','stay_bias','score'} if kind == 'J' else set()
+        if kind not in fields or not fields[kind] <= set(self.intervention) or set(self.intervention)-fields[kind]-optional:
             raise ValueError("intervention kind or settings are unsupported")
         if kind != "B" and not self.continuous_choice_enabled:
             raise ValueError("interventions require 0923-full-v3")
@@ -208,12 +212,17 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 if isinstance(decay, (bool, str)):
                     raise ValueError("evidence decay must be memory or a number in [0, 1]")
                 _number(decay, "evidence decay", high=1)
-            if kind == "E" and self.intervention["capacity"] not in ("posterior", "evidence"):
-                raise ValueError("E capacity policy must be posterior or evidence")
+            if self.intervention.get('search','original') not in ('original','accumulate'):
+                raise ValueError('Search controller must be original or accumulate')
+            if kind == "E" and self.intervention["capacity"] not in ("posterior", "evidence", "evidence_mean"):
+                raise ValueError("E capacity policy must be posterior, evidence or evidence_mean")
             if kind == "J":
                 _number(self.intervention["cost"], "retention cost", low=-np.inf)
                 if self.intervention["refresh"] not in ("every_trial", "search"):
                     raise ValueError("J refresh must be every_trial or search")
+                _number(self.intervention.get('stay_bias',0.),'incumbent retention bias')
+                if self.intervention.get('score','sum') not in ('sum','mean'):
+                    raise ValueError('Joint score must be sum or mean')
 
     def _previous_log_evidence(self) -> np.ndarray:
         """Score completed feedback using its pre-learning likelihood."""
@@ -278,11 +287,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             elif self.intervention_kind in ("E", "J"):
                 self.retention_evidence[self.active] = (self.retention_decay*self.retention_evidence[self.active]
                                                         + self._previous_log_evidence())
+                self.retention_exposure[self.active] = self.retention_decay*self.retention_exposure[self.active]+1.
             self.failure_pressure = (self.failure_decay * self.failure_pressure
                                      + (1-self.failure_decay) * (1-self.previous_feedback))
             logit = np.log(self.baseline_probability) - np.log1p(-self.baseline_probability)
             pressure = self.failure_pressure
-            if self.intervention_kind == "S1":
+            if self.intervention_kind == "S1" or self.intervention.get('search') == 'accumulate':
                 if self.previous_feedback == 1:
                     self.accumulated_failure *= self.failure_decay
                 else:
@@ -440,8 +450,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             if len(remaining) == self.capacity:
                 weights = (self._temporary_weights(remaining, gamma, newcomer)
                            if self.intervention_kind == "C1" else gamma)
-                if self.intervention_kind == "E" and self.intervention["capacity"] == "evidence":
-                    weights = self.retention_evidence[remaining]
+                if self.intervention_kind == "E" and self.intervention["capacity"] in ('evidence','evidence_mean'):
+                    weights = self._retention_scores(remaining,self.intervention['capacity']=='evidence_mean')
                 tied = np.flatnonzero(weights == weights.min())
                 drop_index = int(self.trial_rng.choice(tied))
                 if drop_index == len(remaining):
@@ -475,6 +485,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         diagnostics.update(proposal_source=source, proposed_hypothesis=newcomer)
         return newcomer
 
+    def _retention_scores(self, rules: np.ndarray, mean: bool = False) -> np.ndarray:
+        values = self.retention_evidence[rules].copy()
+        if mean:
+            np.divide(values,self.retention_exposure[rules],out=values,where=self.retention_exposure[rules]>0)
+        return values
+
     def _select_joint(self, context: TransitionContext) -> HypothesisSelection:
         """Propose first, then choose a nonempty set using one retention score."""
         before = context.active_before
@@ -492,7 +508,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             return HypothesisSelection.from_active_sets(before, before, diagnostics=diagnostics)
         newcomer = self._draw_v3_proposal(before, before, gamma, diagnostics) if search else None
         pool = np.r_[newcomer, before].astype(int) if search else before
-        scores = self.retention_evidence[pool]-self.intervention['cost']
+        scores = self._retention_scores(pool,self.intervention.get('score','sum')=='mean')-self.intervention['cost']
+        scores[np.isin(pool,before)] += self.intervention.get('stay_bias',0.)
         selected, marginal = sample_candidate_set(scores, self.capacity, self.trial_rng)
         chosen = pool[selected]
         # Preserve old rule order, then append a surviving newcomer.
@@ -567,6 +584,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             self.recent_evidence_count[cleared] = 0
         elif self.intervention_kind in ("E", "J"):
             self.retention_evidence[np.r_[selection.dropped, selection.newcomers]] = 0.
+            self.retention_exposure[np.r_[selection.dropped, selection.newcomers]] = 0.
         beta = self.engine.get_module(ModuleRole.BETA)
         if beta is not None:
             beta.initialize_beta_for_hypotheses(selection.newcomers, priors=prior)
@@ -638,13 +656,14 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             )
         if self.intervention_kind != "B":
             event["intervention"] = deepcopy(self.intervention)
-        if self.intervention_kind == "S1":
+        if self.intervention_kind == "S1" or self.intervention.get('search') == 'accumulate':
             event["accumulated_failure"] = self.accumulated_failure
-        elif self.intervention_kind == "R1":
+        if self.intervention_kind == "R1":
             event["recent_log_evidence"] = self.recent_log_evidence[self.active].sum(axis=1).tolist()
             event["recent_evidence_count"] = self.recent_evidence_count[self.active].tolist()
         elif self.intervention_kind in ("E", "J"):
             event['retention_evidence'] = self.retention_evidence[self.active].tolist()
+            event['retention_exposure'] = self.retention_exposure[self.active].tolist()
         self.transition_log.append(event)
         self.transition_rate_log.append(event.copy())
         self.trial_index += 1
@@ -686,9 +705,9 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         _number(state["current_event_probability"], "saved search probability", high=1)
         _number(state["current_g"], "saved global fraction", high=1)
         _number(state["current_execution_switch_probability"], "saved execution switch probability", high=1)
-        if self.intervention_kind == "S1":
+        if self.intervention_kind == "S1" or self.intervention.get('search') == 'accumulate':
             _number(state["accumulated_failure"], "saved accumulated failure")
-        elif self.intervention_kind == "R1":
+        if self.intervention_kind == "R1":
             evidence = np.asarray(state["recent_log_evidence"])
             count = np.asarray(state["recent_evidence_count"])
             inactive = np.setdiff1d(np.arange(self.total_hypo), active)
@@ -699,9 +718,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 raise ValueError("invalid R1 feedback history snapshot")
         elif self.intervention_kind in ("E", "J"):
             evidence = np.asarray(state['retention_evidence'])
+            exposure = np.asarray(state['retention_exposure'])
             inactive = np.setdiff1d(np.arange(self.total_hypo), active)
             if evidence.shape != (self.total_hypo,) or not np.isfinite(evidence).all() or np.any(evidence[inactive] != 0):
                 raise ValueError('Invalid continuous retention evidence snapshot')
+            if exposure.shape != (self.total_hypo,) or not np.isfinite(exposure).all() or np.any(exposure<0) or np.any(exposure[inactive]!=0):
+                raise ValueError('Invalid continuous retention exposure snapshot')
         for name in ("trial_index", "execution_dwell_trials", "execution_switch_count"):
             value = state[name]
             if isinstance(value, bool) or int(value) != value or value < 0:
