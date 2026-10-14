@@ -26,7 +26,8 @@
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
 
-- [Model 0923规则路径诊断](model_architecture/model_0923_path_diagnosis.md)：335与307的规则提出、驻留、反馈支持和作答贡献；重放已有路径，定位困难环节，并规定下一项退出机制假设及验收证据。
+- [Model 0923全被试路径诊断](model_architecture/model_0923_cohort_path_diagnosis.md)：15人、17份拟合、1088条自主路径，统一检查规则发现、持续保留和容量准入，并给出机制比较与参数解释的验收顺序。
+- [Model 0923两人规则路径诊断](model_architecture/model_0923_path_diagnosis.md)：保留335与307的规则提出、驻留、反馈支持和作答贡献个案，以及真实历史等权路径对照。
 
 - [Condition 3：类别、按键与配对学习](model_architecture/model_0826_condition3_design.md)：Task2 编码约定、联合配对学习实现、运行入口和验证范围；正式拟合及恢复实验尚未开展。
 

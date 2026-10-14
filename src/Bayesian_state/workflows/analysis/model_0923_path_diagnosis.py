@@ -75,15 +75,17 @@ def true_pairing_index() -> int:
 class PathRecorder:
     """Store sparse active-rule states, with stable path identity and event timing."""
 
-    def __init__(self, categories: np.ndarray, paths: int, capacity: int) -> None:
+    def __init__(self, categories: np.ndarray, paths: int, capacity: int,
+                 category_count: int = 4, has_pairing: bool = True) -> None:
         self.categories = np.asarray(categories, dtype=int)
+        self.has_pairing = has_pairing
         shape = (len(categories), paths, capacity)
         self.arrays = {key: np.full(shape, np.nan) for key in SLOT_FLOATS}
         self.arrays["rule"] = np.full(shape, -1, dtype=np.int16)
         for key in ("proposed", "capacity_dropped", "source"):
             self.arrays[key] = np.full(shape[:2], -1, dtype=np.int16)
         self.arrays["exits"] = np.full(shape, -1, dtype=np.int16)
-        self.arrays["prediction"] = np.full((*shape[:2], 4), np.nan)
+        self.arrays["prediction"] = np.full((*shape[:2], category_count), np.nan)
         self.arrays["choice"] = np.zeros(shape[:2], dtype=np.int16)
         self.arrays["feedback"] = np.full(shape[:2], np.nan)
         self.counts = np.zeros(paths, dtype=int)
@@ -96,8 +98,9 @@ class PathRecorder:
             raise ValueError("Nonsequential path callback")
         transition = model.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
         memory = model.engine.get_module(ModuleRole.MEMORY)
-        if memory.forgetting_mode != "factorized":
-            raise ValueError("This diagnostic requires full-v3 factorized forgetting")
+        expected_mode = "factorized" if self.has_pairing else "exact_power"
+        if memory.forgetting_mode != expected_mode:
+            raise ValueError(f"This diagnostic requires full-v3 {expected_mode} forgetting")
         prediction, snapshot = read_choice_probabilities_from_model(
             model, prepared.perceived_stimulus, power=1., lapse=0., return_snapshot=True)
         ids = np.asarray(snapshot.hypothesis_indices, int)
@@ -112,8 +115,9 @@ class PathRecorder:
         forgotten = prepared.prior[ids] ** memory.gamma
         forgotten /= forgotten.sum()
         a["forgotten"][row] = forgotten
-        pairing = true_pairing_index()
-        a["pairing_pre_true"][row] = prepared.log["conditional_pairing_pre"][ids, pairing]
+        pairing = true_pairing_index() if self.has_pairing else None
+        if self.has_pairing:
+            a["pairing_pre_true"][row] = prepared.log["conditional_pairing_pre"][ids, pairing]
         a["prediction"][trial, path] = prediction
         a["choice"][trial, path], a["feedback"][trial, path] = choice, feedback
         for key in ("proposed", "capacity_dropped"):
@@ -128,7 +132,9 @@ class PathRecorder:
         row, ids, pairing, forgotten = token
         posterior, _, log = result
         memory = model.engine.get_module(ModuleRole.MEMORY)
-        evidence = memory.feedback_evidence[ids]
+        # Binary feedback uses the engine likelihood directly; condition 3
+        # marginalizes feedback over the forgotten conditional pairing belief.
+        evidence = (memory.feedback_evidence if self.has_pairing else model.engine.likelihood)[ids]
         expected = forgotten * evidence
         expected /= expected.sum()
         np.testing.assert_allclose(posterior[ids], expected, atol=2e-12, rtol=0)
@@ -136,7 +142,8 @@ class PathRecorder:
         a["posterior"][row] = posterior[ids]
         a["evidence"][row] = evidence
         a["beta_post"][row] = model.engine.beta[ids]
-        a["pairing_post_true"][row] = log["conditional_pairing_post"][ids, pairing]
+        if self.has_pairing:
+            a["pairing_post_true"][row] = log["conditional_pairing_post"][ids, pairing]
         self.counts[model.diagnostic_path] += 1
 
     def validate(self) -> None:
@@ -144,6 +151,10 @@ class PathRecorder:
             raise ValueError("Incomplete path recording")
         active = self.arrays["rule"] >= 0
         for key in SLOT_FLOATS:
+            if key.startswith("pairing_") and not self.has_pairing:
+                if not np.isnan(self.arrays[key]).all():
+                    raise ValueError("Pairing is undefined for binary-feedback tasks")
+                continue
             if not np.isfinite(self.arrays[key][active]).all():
                 raise ValueError(f"Nonfinite active state: {key}")
         for key in ("prior", "posterior", "forgotten", "contribution"):
@@ -196,7 +207,9 @@ def replay_task(inputs: dict, kind: str, source: Path, indices: list[int], outpu
             expected = saved["expected_correct_probability"][indices, :n].T.copy()
             expected_choices = saved["choices"][indices, :n].T.copy()
             expected_feedback = saved["feedback"][indices, :n].T.copy()
-    recorder = PathRecorder(arrays.categories, paths, capacity)
+    recorder = PathRecorder(arrays.categories, paths, capacity,
+                            category_count=2 if inputs["condition"] == 1 else 4,
+                            has_pairing=inputs["condition"] == 3)
     with record_lifecycle(recorder):
         if kind == "B":
             np.random.seed(seed)

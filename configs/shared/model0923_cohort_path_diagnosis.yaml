@@ -1,0 +1,20 @@
+protocol: model0923_cohort_path_diagnosis_v1
+initial_fit: results/model_0923/exp123_selected12_20261013_v1
+initial_evaluation: results/model_0923/exp123_selected12_postfit_20261013_v1
+plus_root: results/model_0923/plus_335_then307_continuation_20261013_v1
+previous_diagnosis: results/model_0923/path_diagnosis_335_307_20261014_v1
+meg_fit: results/model_0923/meg/task3b_334_336_parallel_20261012_v2
+initial_subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328]
+plus_subjects: [307, 335]
+meg_subjects: [334, 335, 336]
+# New fixed-parameter autonomous paths only for older MEG fits without saved paths.
+new_meg_paths: 64
+new_meg_seed: 2026101402
+chunk_size: 16
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+geometry_beta: 1.0
+smoke_trials: 8
