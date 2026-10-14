@@ -1,0 +1,6 @@
+protocol: model0923_h_generated_process_v1
+parallel_budget: 128
+chunk_size: 8
+# Same retrospective geometric definition as the existing cohort diagnosis.
+geometry_beta: 1.0
+compatibility_threshold: 0.8
