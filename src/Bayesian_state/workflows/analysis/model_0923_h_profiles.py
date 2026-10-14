@@ -76,8 +76,9 @@ def profiles(fit: Path, config: Path, output: Path) -> None:
     for row in frozen['nominees']:
         if row['model'] not in settings['profile_models']:continue
         space,_=model_space(frozen['settings'],row['model'])
+        joint=frozen['settings']['models'][row['model']]['kind']=='J'
         axes=[H_PATH+'intervention.decay','engine.modules.memory_mod.kwargs.gamma',
-              H_PATH+('intervention.stay_bias' if row['model']=='JS_S' else 'exit_rate'),
+              H_PATH+('intervention.stay_bias' if joint else 'exit_rate'),
               H_PATH+'max_capacity',H_PATH+'search_controller.baseline_probability']
         bank,links=profile_points(row['candidate']['hyperparams'],space,axes,[axes[:2]])
         for item in links:members.append(dict(subject=row['subject'],model=row['model'],**item))
