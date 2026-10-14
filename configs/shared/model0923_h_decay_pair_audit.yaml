@@ -1,0 +1,6 @@
+protocol: model0923_h_decay_pair_audit_v1
+seed: 2026101506
+parallel_budget: 128
+particles: 256
+seeds: 8
+retention_values: [0.6, 0.95]
