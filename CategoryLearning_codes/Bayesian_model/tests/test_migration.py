@@ -1,5 +1,6 @@
 """Shared-core regressions against saved pre-consolidation numerical outputs."""
 from pathlib import Path
+import ast
 import importlib
 import hashlib
 import json
@@ -30,9 +31,40 @@ def test_compatibility_modules_are_the_same_object(module):
     assert old is shared
 
 
+def journal_imports(source):
+    # Artifact paths and downstream plotting CLI names are valid metadata.
+    # The shared implementation must not import the journal wrapper package.
+    names = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.append(node.module or '')
+        elif isinstance(node, ast.Call) and node.args:
+            function = node.func
+            name = function.id if isinstance(function, ast.Name) else function.attr if isinstance(function, ast.Attribute) else ''
+            if name in ('__import__', 'import_module') and isinstance(node.args[0], ast.Constant):
+                names.append(str(node.args[0].value))
+    return [name for name in names if name.split('.')[0] == 'CategoryLearning_codes']
+
+
+@pytest.mark.parametrize('source', [
+    'import CategoryLearning_codes.Bayesian_model',
+    'from CategoryLearning_codes import Bayesian_model',
+    "importlib.import_module('CategoryLearning_codes.Bayesian_model')",
+    "__import__('CategoryLearning_codes.Bayesian_model')",
+])
+def test_dependency_check_detects_static_and_literal_dynamic_imports(source):
+    assert journal_imports(source)
+
+
+def test_dependency_check_accepts_artifact_paths():
+    assert not journal_imports("path = 'CategoryLearning_codes/figures/outputs'")
+
+
 def test_shared_core_has_no_journal_dependency():
     for file in (ROOT / 'src/Bayesian_state').rglob('*.py'):
-        assert 'CategoryLearning_codes' not in file.read_text(), str(file)
+        assert not journal_imports(file.read_text()), str(file)
 
 
 def test_recovery_entrypoints_share_implementation():
