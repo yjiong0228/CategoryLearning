@@ -125,6 +125,24 @@ def build_model_provenance(
             swap_probability="search_probability",
             replacement_count="lowest_belief_capacity_replacements_only",
         )
+        intervention = transition.get("intervention", {"kind": "B"})
+        kind = intervention.get("kind", "B")
+        if kind != "B":
+            resolved["intervention"] = deepcopy(intervention)
+            resolved["scientific_status"] = "fixed_parameter_intervention_not_refitted"
+            if kind == "S1":
+                resolved["search_control"]["event_signal"] = "failure_accumulates_success_multiplies_by_decay"
+                resolved["search_control"]["range_signal"] = "original_bounded_failure_average"
+            elif kind == "S_control":
+                resolved["search_control"]["odds_multiplier"] = intervention["factor"]
+            elif kind == "R_control":
+                resolved["candidate_management"]["exit_rate_multiplier"] = intervention["factor"]
+            elif kind == "R1":
+                resolved["candidate_management"]["exit_policy"] = "relative_belief_gated_by_negative_recent_log_feedback_ratio"
+            elif kind == "C1":
+                resolved["candidate_management"]["capacity_policy"] = "compare_all_temporary_weights_then_single_final_transfer"
+                resolved["transition_event_semantics"]["swap_probability"] = "search_probability_times_conditional_admission_probability"
+                resolved["transition_event_semantics"]["replacement_count"] = "old_rule_loses_joint_temporary_weight_competition"
     partition_kwargs = _mapping_path(config, "partition.kwargs") or {}
     partition_class = str(_mapping_path(config, "partition.class") or "")
     is_continuous = partition_class.endswith("ContinuousPartition")

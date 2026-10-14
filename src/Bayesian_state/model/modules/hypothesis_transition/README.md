@@ -2,6 +2,15 @@
 
 Model 0923 将其称为“假设更新模块（H）”，负责搜索与候选管理。
 
+**2026-10-14 full-v3实验干预：** `mechanistic_rule_search.py`接受可选的`intervention`映射。
+`B`保留原流程；`S_control`乘搜索赔率，`S1`累计失败；`R_control`乘退出率，`R1`按近期规则反馈证据控制退出；
+`C1`让满容量时的新旧候选比较临时权重。省略配置时使用B。
+S1和R1的新增状态随快照保存，R1在下一题读取上一题已完成的反馈似然。
+该入口用于固定参数的机制对照，详细定义、配置和结果见
+[第一轮机制干预](../../../docs/model_architecture/model_0923_mechanism_interventions.md)。
+
+以下full-v1说明保留旧版流程；当前full-v3使用连续作答贡献、无执行保护的自主退出和最终集合的一次信念分配。
+
 Model 0923 B0 新增 `unified_rule_search.py` 公共模式：一条失败痕迹、
 每题最多一个候选修订、固定局部/全局比例，以及保留规则质量不变的迁移。
 它复用下述 select → assign-prior 生命周期；旧模式保留原二项计数与随机流。

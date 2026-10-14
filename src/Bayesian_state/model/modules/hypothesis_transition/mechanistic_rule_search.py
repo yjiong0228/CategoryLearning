@@ -57,18 +57,32 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         super().__init__(engine, **kwargs)
         fields = {"max_capacity", "exit_rate", "local_structure_weight", "transfer_scale",
                   "execution_inertia", "tau_proposal", "edit_costs", "search_controller",
-                  "relation_samples", "relation_seed", "module_seed", "mechanism_version"}
+                  "relation_samples", "relation_seed", "module_seed", "mechanism_version",
+                  "intervention"}
         if set(kwargs) - fields:
             raise ValueError(f"0923 full model has unsupported transition keys: {sorted(set(kwargs)-fields)}")
         self.mechanism_version = kwargs.get("mechanism_version", "legacy")
         if self.mechanism_version not in ("legacy", "0923-full-v3"):
             raise ValueError("mechanism_version must be legacy or 0923-full-v3")
         self.continuous_choice_enabled = self.mechanism_version == "0923-full-v3"
+        self.intervention = deepcopy(kwargs.get("intervention") or {"kind": "B"})
+        self._validate_intervention()
+        self.intervention_kind = self.intervention["kind"]
+        self._STATE_FIELDS = tuple(type(self)._STATE_FIELDS)
+        if self.intervention_kind == "S1":
+            self._STATE_FIELDS += ("accumulated_failure",)
+        elif self.intervention_kind == "R1":
+            self._STATE_FIELDS += ("recent_log_evidence", "recent_evidence_count")
         self.persistent_execution_enabled = not self.continuous_choice_enabled
         if self.continuous_choice_enabled:
             self.MODE = "mechanistic_rule_search_0923_v3"
             self.prior_assignment_method = "retained_rule_affinity_transfer_0923_v3"
         self.total_hypo = int(engine.set_size)
+        if self.intervention_kind == "S1":
+            self.accumulated_failure = 0.
+        elif self.intervention_kind == "R1":
+            self.recent_log_evidence = np.zeros((self.total_hypo, self.intervention["window"]))
+            self.recent_evidence_count = np.zeros(self.total_hypo, dtype=int)
         raw_capacity = kwargs.get("max_capacity", 3)
         self.capacity = int(raw_capacity)
         if isinstance(raw_capacity, bool) or float(raw_capacity) != self.capacity or not 2 <= self.capacity < self.total_hypo:
@@ -131,6 +145,8 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                     self.tau_proposal, self.baseline_probability, self.error_gain,
                     self.failure_decay, self.global_search, self.global_search_failure_gain,
                     self.relation_samples, self.relation_seed)
+        if self.intervention_kind != "B":
+            settings += (tuple(sorted(self.intervention.items())),)
         self.configuration_signature = sha256(
             repr(settings).encode() + self.edit_distances.tobytes()
             + self._distance_matrix.tobytes() + self.base_prior.tobytes()).hexdigest()
@@ -159,6 +175,57 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         self.engine.prior = self.execution_probabilities.copy()
         self._apply_mask()
 
+    def _validate_intervention(self) -> None:
+        """Require one explicit experimental change; B keeps saved v3 snapshots."""
+        if not isinstance(self.intervention, Mapping):
+            raise ValueError("intervention must be a mapping")
+        kind = self.intervention.get("kind")
+        fields = {"B": {"kind"}, "S_control": {"kind", "factor"}, "S1": {"kind"},
+                  "R_control": {"kind", "factor"}, "R1": {"kind", "window"}, "C1": {"kind"}}
+        if kind not in fields or set(self.intervention) != fields[kind]:
+            raise ValueError("intervention kind or settings are unsupported")
+        if kind != "B" and not self.continuous_choice_enabled:
+            raise ValueError("interventions require 0923-full-v3")
+        if kind in ("S_control", "R_control"):
+            value = self.intervention["factor"]
+            if isinstance(value, bool):
+                raise ValueError("intervention factor must be numeric")
+            _number(value, "intervention factor", open_low=True,
+                    high=1 if kind == "R_control" else np.inf)
+        if kind == "R1":
+            window = self.intervention["window"]
+            if isinstance(window, bool) or not isinstance(window, (int, np.integer)) or window < 1:
+                raise ValueError("intervention window must be a positive integer")
+
+    def _consume_previous_evidence(self) -> None:
+        """At t+1, retain the likelihood computed before the beta update at t.
+
+        engine.begin_trial changes the stimulus and prior but retains the last
+        completed likelihood. Hierarchical likelihood already marginalizes over
+        the model's forgotten pairing belief. Inactive histories are cleared on
+        selection, so revisiting a rule starts a new evidence window.
+        """
+        likelihood = np.asarray(self.engine.likelihood, dtype=float)[self.active]
+        if not np.isfinite(likelihood).all() or np.any(likelihood < 0) or np.any(likelihood > 1):
+            raise ValueError("R1 needs valid completed feedback likelihoods")
+        n_cats = self.engine.partition.n_cats
+        pairing = isinstance(self.engine.get_module(ModuleRole.MEMORY), HierarchicalPairingMemoryModule)
+        if pairing:
+            neutral = .5 if self.previous_feedback == 0 else .25
+        else:
+            if self.previous_feedback == .5:
+                raise ValueError("binary-feedback R1 does not accept half credit")
+            neutral = 1/n_cats if self.previous_feedback == 1 else 1-1/n_cats
+        # Clipping only defines the log of a numerically zero event; it never
+        # changes the memory likelihood, beliefs, or sampling probabilities.
+        log_ratio = np.log(np.maximum(likelihood, np.finfo(float).tiny)) - np.log(neutral)
+        history = self.recent_log_evidence[self.active]
+        history[:, :-1] = history[:, 1:]
+        history[:, -1] = log_ratio
+        self.recent_log_evidence[self.active] = history
+        self.recent_evidence_count[self.active] = np.minimum(
+            self.recent_evidence_count[self.active]+1, self.intervention["window"])
+
     @property
     def dominant_hypothesis(self) -> int:
         """Return the current dominant rule used for next-trial inertia."""
@@ -180,10 +247,21 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
 
     def _prepare_hypothesis_transition(self, **kwargs: Any) -> None:
         if self.outcome_pending:
+            if self.intervention_kind == "R1":
+                self._consume_previous_evidence()
             self.failure_pressure = (self.failure_decay * self.failure_pressure
                                      + (1-self.failure_decay) * (1-self.previous_feedback))
             logit = np.log(self.baseline_probability) - np.log1p(-self.baseline_probability)
-            self.current_event_probability = float(expit(logit + self.error_gain * self.failure_pressure))
+            pressure = self.failure_pressure
+            if self.intervention_kind == "S1":
+                if self.previous_feedback == 1:
+                    self.accumulated_failure *= self.failure_decay
+                else:
+                    self.accumulated_failure += 1-self.previous_feedback
+                pressure = self.accumulated_failure
+            if self.intervention_kind == "S_control":
+                logit += np.log(self.intervention["factor"])
+            self.current_event_probability = float(expit(logit + self.error_gain * pressure))
             self.current_g = (self.global_search + (1-self.global_search)
                               * self.global_search_failure_gain * self.failure_pressure)
             self.outcome_pending = False
@@ -293,7 +371,12 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         if context.trial_index == 0:
             return HypothesisSelection.from_active_sets(before, before, diagnostics=diagnostics)
         mass = context.posterior[before]
-        exits = self.trial_rng.random(len(before)) < self.exit_rate * (1 - mass)
+        exit_probability = self.exit_rate * (1 - mass)
+        if self.intervention_kind == "R_control":
+            exit_probability *= self.intervention["factor"]
+        elif self.intervention_kind == "R1":
+            exit_probability *= self.recent_log_evidence[before].sum(axis=1) < 0
+        exits = self.trial_rng.random(len(before)) < exit_probability
         if not np.any(~exits) or mass[~exits].sum() == 0:
             # Recover a highest-belief old rule before conditioning on retention.
             tied = np.flatnonzero(mass == mass.max())
@@ -306,6 +389,18 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                            autonomous_exits=before[exits].tolist(),
                            admission_probability_given_search=1.0)
         after = remaining.copy()
+        if self.intervention_kind == "C1" and len(remaining) == self.capacity:
+            inactive = np.setdiff1d(np.arange(self.total_hypo), before)
+            functional, structural, _ = self._proposal_kernels(remaining, inactive)
+            local = gamma @ (self.local_structure_weight*structural + (1-self.local_structure_weight)*functional)
+            global_q = self.base_prior[inactive]/self.base_prior[inactive].sum()
+            proposal = self.current_g*global_q + (1-self.current_g)*local
+            affinity = np.exp(-self._distance_matrix[np.ix_(remaining, inactive)]/self.transfer_scale)
+            old_weights = gamma[:, None]/(1+affinity)
+            weights = np.vstack((old_weights, (gamma[:, None]*affinity/(1+affinity)).sum(axis=0)))
+            ties = weights == weights.min(axis=0)
+            rejection = ties[-1]/ties.sum(axis=0)
+            diagnostics["admission_probability_given_search"] = float(proposal @ (1-rejection))
         if self.trial_rng.random() < self.current_event_probability:
             diagnostics["search_event"] = True
             # The pool excludes every rule considered on the preceding trial,
@@ -327,8 +422,13 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
             newcomer = int(self.trial_rng.choice(inactive, p=q))
             diagnostics.update(proposal_source=source, proposed_hypothesis=newcomer)
             if len(remaining) == self.capacity:
-                tied = np.flatnonzero(gamma == gamma.min())
+                weights = (self._temporary_weights(remaining, gamma, newcomer)
+                           if self.intervention_kind == "C1" else gamma)
+                tied = np.flatnonzero(weights == weights.min())
                 drop_index = int(self.trial_rng.choice(tied))
+                if drop_index == len(remaining):
+                    diagnostics["newcomer_rejected"] = True
+                    return HypothesisSelection.from_active_sets(before, after, diagnostics=diagnostics)
                 diagnostics["capacity_dropped"] = int(remaining[drop_index])
                 after = np.delete(remaining, drop_index)
             after = np.r_[after, newcomer]
@@ -381,6 +481,10 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
 
     def _finish_hypothesis_transition(self, context: TransitionContext, selection: HypothesisSelection,
                                      prior: np.ndarray, **kwargs: Any) -> Mapping[str, Any]:
+        if self.intervention_kind == "R1":
+            cleared = np.r_[selection.dropped, selection.newcomers]
+            self.recent_log_evidence[cleared] = 0
+            self.recent_evidence_count[cleared] = 0
         beta = self.engine.get_module(ModuleRole.BETA)
         if beta is not None:
             beta.initialize_beta_for_hypotheses(selection.newcomers, priors=prior)
@@ -450,6 +554,13 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 choice_weights=self.execution_probabilities.tolist(),
                 effective_participation=float(1 / np.sum(self.execution_probabilities ** 2)),
             )
+        if self.intervention_kind != "B":
+            event["intervention"] = deepcopy(self.intervention)
+        if self.intervention_kind == "S1":
+            event["accumulated_failure"] = self.accumulated_failure
+        elif self.intervention_kind == "R1":
+            event["recent_log_evidence"] = self.recent_log_evidence[self.active].sum(axis=1).tolist()
+            event["recent_evidence_count"] = self.recent_evidence_count[self.active].tolist()
         self.transition_log.append(event)
         self.transition_rate_log.append(event.copy())
         self.trial_index += 1
@@ -491,6 +602,17 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         _number(state["current_event_probability"], "saved search probability", high=1)
         _number(state["current_g"], "saved global fraction", high=1)
         _number(state["current_execution_switch_probability"], "saved execution switch probability", high=1)
+        if self.intervention_kind == "S1":
+            _number(state["accumulated_failure"], "saved accumulated failure")
+        elif self.intervention_kind == "R1":
+            evidence = np.asarray(state["recent_log_evidence"])
+            count = np.asarray(state["recent_evidence_count"])
+            inactive = np.setdiff1d(np.arange(self.total_hypo), active)
+            if (evidence.shape != self.recent_log_evidence.shape or not np.isfinite(evidence).all()
+                    or count.shape != (self.total_hypo,) or not np.issubdtype(count.dtype, np.integer)
+                    or np.any(count < 0) or np.any(count > self.intervention["window"])
+                    or np.any(evidence[inactive] != 0) or np.any(count[inactive] != 0)):
+                raise ValueError("invalid R1 feedback history snapshot")
         for name in ("trial_index", "execution_dwell_trials", "execution_switch_count"):
             value = state[name]
             if isinstance(value, bool) or int(value) != value or value < 0:
