@@ -1,0 +1,27 @@
+protocol: model0923_no_autonomous_exit_v1
+cohort_config: configs/shared/model0923_cohort_path_diagnosis.yaml
+source_diagnosis: results/model_0923/cohort_path_diagnosis_20261014_v1
+subjects: [104, 215, 206, 307, 222, 334, 335]
+variants:
+  B: {kind: B}
+  R_control: {kind: R_control, factor: 0.25}
+  R1: {kind: R1, window: 4}
+  R0: {kind: B}
+# R0 uses the existing model at delta=0; keep the exit random draws unchanged.
+variant_parameter_overrides:
+  R0:
+    engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0
+reuse_source: results/model_0923/mechanism_interventions_20261014_v1
+reuse_variants: [B, R_control, R1]
+comparisons: [[R_control, B], [R1, B], [R0, B], [R1, R_control], [R0, R1]]
+paths: 64
+chunk_size: 2
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+evidence_window: 4
+counterevidence_windows: [1, 4, 8]
+residence_horizons: [8, 32, 64]
+smoke_trials: 8

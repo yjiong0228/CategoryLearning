@@ -176,3 +176,29 @@ def test_c1_admission_probability_includes_random_tie_rejection(make):
     assert model.transition_log[-1]['newcomer_rejected']
     assert model.transition_log[-1]['swap_probability'] == pytest.approx(2/3)
     np.testing.assert_array_equal(model.active,[0,1])
+
+
+@pytest.mark.parametrize('search', [False, True])
+def test_zero_exit_retains_old_rules_until_capacity_replacement(make, search):
+    model = make({'kind':'B'}, exit_rate=0.)
+    install(model)
+    model.current_event_probability = float(search)
+    model.trial_rng = Draws()
+    model.trial_rng.random = lambda size=None: np.zeros(size) if size is not None else 0.
+    model.process()
+    event = model.transition_log[-1]
+    assert event['autonomous_exits'] == []
+    assert event['admission_event'] == search
+    assert event['capacity_dropped'] == (1 if search else None)
+    np.testing.assert_array_equal(model.active, [0,2] if search else [0,1])
+
+
+def test_r0_configuration_changes_only_exit_rate_and_preserves_fitted_input():
+    from src.Bayesian_state.workflows.analysis.model_0923_mechanism_interventions import variant_engine
+    settings = yaml.safe_load(Path('configs/shared/model0923_no_autonomous_exit.yaml').read_text())
+    cfg = yaml.safe_load(Path('configs/exp123/model_struct/model_0923_cond3_full_v3.yaml').read_text())
+    saved = deepcopy(cfg)
+    expected = deepcopy(cfg)
+    expected['modules']['hypo_transitions_mod']['kwargs'].update(exit_rate=0.,intervention={'kind':'B'})
+    assert variant_engine(cfg,settings,'R0') == expected
+    assert cfg == saved

@@ -28,3 +28,24 @@ def test_reentry_opens_a_new_counterevidence_episode():
     assert [r['first_negative_trial'] for r in rows]==[1,4]
     assert [r['duration'] for r in rows]==[2,2]
     assert not any(r['cleared_within_horizon'] for r in rows)
+
+
+def test_residence_sensitivity_uses_one_based_event_timing_and_records_censoring():
+    from src.Bayesian_state.evaluation.model_0923_retention_diagnostics import retention_diagnostics
+    ids=np.array([1,1,1,0,1,1])[:,None,None]
+    a=dict(rule=ids,prediction=np.ones((6,1,2))*.5,feedback=np.ones((6,1)),
+           evidence=np.ones(ids.shape)*.25,contribution=np.ones(ids.shape),
+           exits=np.full(ids.shape,-1),capacity_dropped=np.full((6,1),-1))
+    a['exits'][3,0,0]=1
+    a['capacity_dropped'][4,0]=0
+    paths,episodes,summary=retention_diagnostics(a,[0],1,6,[1,4,8],[1,3,4])
+    assert len(episodes)==2
+    assert episodes[0]['duration']==3 and episodes[0]['cause']=='autonomous_exit'
+    assert episodes[1]['right_censored'] and episodes[1]['start_trial']==5
+    assert paths[0]['total_autonomous_exits']==1
+    assert paths[0]['total_capacity_replacements']==1
+    assert paths[0]['incompatible_residences_eligible_3']==1
+    assert paths[0]['incompatible_residences_retained_3']==1
+    for row in summary:
+        assert row['eligible']==(2 if row['horizon']==1 else 1)
+        assert row['cleared']==(0 if row['horizon']==1 else 1)

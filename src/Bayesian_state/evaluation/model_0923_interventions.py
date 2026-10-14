@@ -3,6 +3,8 @@
 The independent unit for Monte Carlo comparisons is a complete seeded path.
 Wrong-rule clearance starts at the first negative rolling evidence score in
 one residence, and distinguishes right censoring from an observed exit.
+Optional counterevidence_windows/residence_horizons add rule residence and
+window-sensitivity tables. comparisons explicitly selects variant pairs.
 """
 from __future__ import annotations
 
@@ -49,6 +51,7 @@ def summarize(source: Path) -> None:
     if any((source/name).exists() for name in destinations):
         raise FileExistsError('Analysis already exists; retain previous research results')
     summaries, paths_all, episodes_all, exits_all, wrong_all, curves_all, checks = [],[],[],[],[],[],[]
+    incompatible_all, sensitivity_all = [], []
     for record in manifest['records']:
         directory = source / record['id']
         prepared = json.loads((directory/'prepared.json').read_text())
@@ -73,7 +76,16 @@ def summarize(source: Path) -> None:
             p, episodes, exits, risks, curve, slots, correct = summarize_trace(a,rules,
                 settings['late_window'], settings['support_threshold'],settings['retention_trials'])
             wrong = wrong_rule_clearance(a,rules,settings['retention_trials'])
+            extra = []
+            if settings.get('counterevidence_windows'):
+                from .model_0923_retention_diagnostics import retention_diagnostics
+                extra, incompatible, sensitivity = retention_diagnostics(a,rules,prepared['condition'],
+                    settings['late_window'],settings['counterevidence_windows'],settings['residence_horizons'])
+                incompatible_all.extend(dict(item,**tag) for item in incompatible)
+                sensitivity_all.extend(dict(item,**tag) for item in sensitivity)
             for path,row in enumerate(p):
+                if extra:
+                    row.update(extra[path])
                 row.update(seed=int(a['seeds'][path]), batch=path//16,
                     admitted=int(a['admitted'][:,path].sum()), rejected=int(a['rejected'][:,path].sum()),
                     useful_admitted=int((a['admitted'][:,path]&np.isin(a['proposed'][:,path],rules)).sum()),
@@ -126,9 +138,12 @@ def summarize(source: Path) -> None:
     comparisons, batches = [],[]
     metrics = ['late_correct','late_active','ever_active','useful_proposed','useful_admitted',
                'proposed','compatible_autonomous_exits','compatible_capacity_exits','high_support_exits']
+    metrics.extend(key for key in ('mean_active_candidates','late_incompatible_contribution',
+        'late_incompatible_candidates','total_autonomous_exits','total_capacity_replacements') if key in paths)
     for record in manifest['records']:
         s = paths.loc[paths.id==record['id']]
-        pairs = [(v,'B') for v in settings['variants'] if v!='B']+[('S1','S_control'),('R1','R_control')]
+        pairs = settings.get('comparisons', [(v,'B') for v in settings['variants'] if v!='B']+
+            [(v,r) for v,r in [('S1','S_control'),('R1','R_control')] if v in settings['variants'] and r in settings['variants']])
         for target,reference in pairs:
             left,right = [s.loc[s.variant==v].sort_values('path') for v in (target,reference)]
             np.testing.assert_array_equal(left.seed,right.seed)
@@ -144,10 +159,15 @@ def summarize(source: Path) -> None:
     for name,rows in [('subjects',summary),('paths',paths),('set_residences',episodes_all),('exits',exits_all),
         ('wrong_rule_clearance',wrong_all),('curves',curves_all),('comparisons',comparisons),('batch_comparisons',batches)]:
         pd.DataFrame(rows).to_csv(source/(name+'.csv'),index=False)
+    if settings.get('counterevidence_windows'):
+        pd.DataFrame(incompatible_all).to_csv(source/'incompatible_residences.csv',index=False)
+        pd.DataFrame(sensitivity_all).to_csv(source/'clearance_sensitivity.csv',index=False)
     validation = dict(status='passed',participants=len(manifest['records']),variants=len(settings['variants']),
         paths=len(paths),baseline_exact_paths=sum(c['baseline_exact_paths'] for c in checks),
         all_numeric_pools_single_thread=all(pool['num_threads']==1 for c in checks for pool in c['numeric_pools']),
-        trace_cpu_seconds=sum(c['cpu_seconds'] for c in checks),checks=checks)
+        trace_cpu_seconds=sum(c['cpu_seconds'] for c in checks if not c.get('reused',False)),
+        new_paths=sum(c['paths'] for c in checks if not c.get('reused',False)),
+        reused_paths=sum(c['paths'] for c in checks if c.get('reused',False)),checks=checks)
     (source/'analysis_validation.json').write_text(json.dumps(validation,indent=2,allow_nan=False)+'\n')
 
 

@@ -4,6 +4,9 @@ Run with --output pointing to a new directory. --smoke uses one path, eight
 trials and one worker. The sole cognitive override is the shared transition
 module; every other cognitive module runs from the validated fit snapshot.
 Baseline sparse traces must reproduce the independent saved cohort traces.
+Optional variant_parameter_overrides applies named fitted-parameter interventions.
+reuse_source/reuse_variants reference hash-validated full traces; smoke runs every
+variant anew. The manifest separates newly simulated and reused paths.
 """
 from __future__ import annotations
 
@@ -89,6 +92,58 @@ def prepare(job: dict, c, d) -> None:
         (directory / variant / 'traces').mkdir(parents=True)
 
 
+def variant_engine(engine: dict, settings: dict, variant: str) -> dict:
+    """Apply explicit parameter interventions to a copy of the fitted engine."""
+    from src.Bayesian_state.simulation.parameters import apply_fixed_hyperparams_to_engine_config
+    overrides = settings.get('variant_parameter_overrides', {}).get(variant, {})
+    changed = apply_fixed_hyperparams_to_engine_config(deepcopy(engine), overrides)
+    changed['modules']['hypo_transitions_mod']['kwargs']['intervention'] = settings['variants'][variant]
+    return changed
+
+
+def reuse_traces(job: dict, variant: str, c) -> int:
+    """Reference immutable traces after checking design, inputs, code and hashes."""
+    import numpy as np
+    directory, settings = Path(job['directory']), job['settings']
+    source = REPO / settings['reuse_source']
+    original = c.load_json(source / 'simulation_manifest.json')
+    delivery = c.load_json(source / 'delivery_validation.json')
+    previous_settings = original['settings']
+    if original['smoke'] or original['status'] != 'complete' or delivery['status'] != 'passed':
+        raise ValueError('Reuse requires a validated complete full run')
+    if previous_settings['variants'].get(variant) != settings['variants'][variant]:
+        raise ValueError('Reused mechanism configuration differs')
+    if previous_settings.get('variant_parameter_overrides', {}).get(variant, {}) != settings.get('variant_parameter_overrides', {}).get(variant, {}):
+        raise ValueError('Reused parameter intervention differs')
+    if previous_settings['evidence_window'] != settings['evidence_window']:
+        raise ValueError('Recorded evidence windows differ')
+    old = source / job['record']['id']
+    prepared, before = c.load_json(directory/'prepared.json'), c.load_json(old/'prepared.json')
+    for key in ('seeds', 'trials', 'condition', 'cognitive_source_sha256', 'intervention_source_sha256'):
+        if prepared[key] != before[key]:
+            raise ValueError(f'Reused trace inputs differ: {key}')
+    for name in ('parameters.json', 'observed_trials.csv', 'rule_catalog.csv'):
+        if c.digest(directory/name) != c.digest(old/name):
+            raise ValueError(f'Reused data differ: {name}')
+    seen = []
+    for file in sorted((old/variant/'traces').glob('C_*.npz')):
+        for check_file in (file, file.with_suffix('.json')):
+            if c.digest(check_file) != delivery['artifact_sha256'][str(check_file.relative_to(source))]:
+                raise ValueError(f'Reused artifact changed: {check_file}')
+        check = c.load_json(file.with_suffix('.json'))
+        if c.digest(file) != check['sha256']:
+            raise ValueError('Trace and per-chunk checksum differ')
+        with np.load(file) as z:
+            seen.extend(z['seeds'].astype(int).tolist())
+        target = directory/variant/'traces'/file.name
+        target.symlink_to(file.resolve())
+        c.write_json(target.with_suffix('.json'), dict(check, reused=True,
+            source_trace=str(file.resolve()), source_manifest_sha256=c.digest(source/'simulation_manifest.json')))
+    if seen != prepared['seeds']:
+        raise ValueError('Reused paths do not match requested seeds')
+    return len(seen)
+
+
 def trace(job: dict, c, d) -> None:
     import numpy as np
     from threadpoolctl import threadpool_info
@@ -98,8 +153,9 @@ def trace(job: dict, c, d) -> None:
         raise ValueError('Intervention implementation changed during run')
     install_transition()
     inputs = c.resolve_record(job['record'], directory / 'resources_cache', settings['smoke_trials'] if job['smoke'] else None)
-    engine = deepcopy(inputs['engine'])
-    engine['modules']['hypo_transitions_mod']['kwargs']['intervention'] = settings['variants'][job['variant']]
+    original_exit_rate = inputs['engine']['modules']['hypo_transitions_mod']['kwargs']['exit_rate']
+    engine = variant_engine(inputs['engine'], settings, job['variant'])
+    effective_exit_rate = engine['modules']['hypo_transitions_mod']['kwargs']['exit_rate']
     arrays = inputs['arrays']
     indices = job['indices']
     seeds = [prepared['seeds'][i] for i in indices]
@@ -156,8 +212,11 @@ def trace(job: dict, c, d) -> None:
         for seed in seeds:
             d.autonomous.run_autonomous_category_learning(**kwargs, trajectory_seed=seed)
     recorder.validate()
+    if effective_exit_rate == 0 and np.any(recorder.arrays['exits'] >= 0):
+        raise ValueError('Zero exit rate produced an autonomous exit')
     baseline_checks = 0
-    if job['variant'] == 'B':
+    same_as_baseline = job['variant'] == 'B' or (job['variant'] == 'R0' and original_exit_rate == 0)
+    if same_as_baseline:
         for name, expected in prepared['baseline_sha256'].items():
             if not name.endswith('.npz'):
                 continue
@@ -181,7 +240,9 @@ def trace(job: dict, c, d) -> None:
     c.write_json(file.with_suffix('.json'), dict(variant=job['variant'], paths=len(seeds), trials=len(arrays.choices),
         baseline_exact_paths=baseline_checks, sha256=c.digest(file), cpu_seconds=time.process_time()-cpu_start,
         wall_seconds=time.monotonic()-wall_start, numeric_pools=threadpool_info(), pid=os.getpid(),
-        intervention=settings['variants'][job['variant']], intervention_source_sha256=prepared['intervention_source_sha256']))
+        intervention=settings['variants'][job['variant']], intervention_source_sha256=prepared['intervention_source_sha256'],
+        parameter_overrides=settings.get('variant_parameter_overrides', {}).get(job['variant'], {}),
+        original_exit_rate=original_exit_rate, effective_exit_rate=effective_exit_rate))
 
 
 def worker(file: Path) -> None:
@@ -215,8 +276,18 @@ def run(config: Path, output: Path, smoke: bool, only: list[int] | None) -> None
     settings = yaml.safe_load(config.read_text())
     if output.exists():
         raise FileExistsError('Choose a new output directory')
-    if set(settings['variants']) != {'B','S_control','S1','R_control','R1','C1'}:
-        raise ValueError('Expected the six predeclared variants')
+    variants = settings['variants']
+    if 'B' not in variants or not set(variants) <= {'B','S_control','S1','R_control','R1','C1','R0'}:
+        raise ValueError('Expected B and supported intervention labels')
+    overrides = settings.get('variant_parameter_overrides', {})
+    if 'B' in overrides or not set(overrides) <= set(variants):
+        raise ValueError('Parameter interventions must name a nonbaseline variant')
+    if 'R0' in variants and (variants['R0'] != {'kind':'B'} or overrides.get('R0') != {
+            'engine.modules.hypo_transitions_mod.kwargs.exit_rate': 0.0}):
+        raise ValueError('R0 must change only the baseline exit rate to zero')
+    reuse = settings.get('reuse_variants', []) if not smoke else []
+    if not set(reuse) <= set(variants) or (reuse and not settings.get('reuse_source')):
+        raise ValueError('Reuse needs a source and configured variants')
     wanted = only or settings['subjects']
     records = [r for r in c.records_from_config(yaml.safe_load((REPO/settings['cohort_config']).read_text())) if r['primary'] and r['subject'] in wanted]
     if set(r['subject'] for r in records) != set(wanted):
@@ -240,15 +311,21 @@ def run(config: Path, output: Path, smoke: bool, only: list[int] | None) -> None
 
     execute(jobs)
     pending = []
+    reused_paths = 0
     for job in jobs:
         n = len(c.load_json(Path(job['directory'])/'prepared.json')['seeds'])
         for variant in settings['variants']:
+            if variant in reuse:
+                reused_paths += reuse_traces(job, variant, c)
+                continue
             for first in range(0, n, settings['chunk_size']):
                 pending.append(dict(job, phase='trace', variant=variant, indices=list(range(first,min(first+settings['chunk_size'],n)))))
     workers = execute(pending)
     c.write_json(output/'simulation_manifest.json', dict(status='complete', protocol=settings['protocol'],
         records=records, settings=settings, smoke=smoke, actual_workers=workers, numeric_threads=1,
-        paths=sum(len(j['indices']) for j in pending), refits=0, elapsed_seconds=time.monotonic()-start,
+        paths=sum(len(j['indices']) for j in pending)+reused_paths,
+        new_paths=sum(len(j['indices']) for j in pending), reused_paths=reused_paths,
+        refits=0, elapsed_seconds=time.monotonic()-start,
         scientific_status='fixed_parameter_intervention_not_refitted',
         source_sha256={str(p.relative_to(REPO)):c.digest(p) for p in (config.resolve(), Path(__file__).resolve(), REPO/TRANSITION)},
         versions={name:importlib.metadata.version(name) for name in ('numpy','scipy','pandas','joblib','PyYAML','numba')}, python=sys.version.split()[0]))
