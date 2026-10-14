@@ -1,0 +1,32 @@
+protocol: model0923_h_design_round4_v1
+cohort_config: configs/shared/model0923_cohort_path_diagnosis.yaml
+source_diagnosis: results/model_0923/cohort_path_diagnosis_20261014_v1
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328, 334, 335, 336]
+# Both halves have already been inspected in round 3 and remain development.
+seed_group_labels: [development_first32, development_second32]
+variants:
+  B: {kind: B}
+  ECM_S: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  JS_S: {kind: J, decay: 0.95, cost: 0.0, refresh: every_trial, stay_bias: 3.0, search: accumulate}
+  JS_search_S1: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 1.0, search: accumulate}
+  JS_search_S3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, search: accumulate}
+  JS_search_S5: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 5.0, search: accumulate}
+  JSM_search_S3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, score: mean, search: accumulate}
+comparisons:
+  - [ECM_S, B]
+  - [JS_S, ECM_S]
+  - [JS_search_S1, JS_S]
+  - [JS_search_S3, JS_S]
+  - [JS_search_S5, JS_S]
+  - [JSM_search_S3, JS_S]
+paths: 64
+chunk_size: 8
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+evidence_window: 4
+counterevidence_windows: [1, 4, 8]
+residence_horizons: [8, 32, 64]
+smoke_trials: 8

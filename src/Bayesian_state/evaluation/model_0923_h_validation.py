@@ -105,7 +105,10 @@ def score_screen(source: Path, output: Path) -> None:
             with np.load(file) as z:
                 realized=z['realized'].T;probability=z['correct_probability'].T
             groups=[('all',slice(None))]
-            if len(realized)>=64:groups.extend([('development_seeds',slice(0,32)),('independent_seeds',slice(32,64))])
+            if len(realized)>=64:
+                labels=manifest['settings'].get('seed_group_labels',['development_seeds','independent_seeds'])
+                if len(labels)!=2 or len(set(labels))!=2 or 'all' in labels:raise ValueError('Need two distinct seed-group labels')
+                groups.extend([(labels[0],slice(0,32)),(labels[1],slice(32,64))])
             for group,index in groups:
                 r=block_paths(realized[index],0,len(y));p=block_paths(probability[index],0,len(y))
                 rows.append(dict(subject=record['subject'],model=model,seed_group=group,paths=len(r),

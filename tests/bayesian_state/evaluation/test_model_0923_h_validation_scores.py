@@ -58,3 +58,18 @@ def test_participant_and_trial_weighted_scores_can_have_opposite_directions():
     assert row.delta_total_negative_log_score==pytest.approx(10.)
     assert row.delta_total_mc_se==pytest.approx(np.sqrt(401))
     assert row.participants_lower_nll==1
+
+
+def test_reused_seed_halves_keep_declared_development_labels(tmp_path):
+    import json
+    import pandas as pd
+    from src.Bayesian_state.evaluation.model_0923_h_validation import score_screen
+    source=tmp_path/'source';case=source/'case';(case/'B').mkdir(parents=True)
+    pd.DataFrame(dict(choice=[1]*32,category=[1]*32)).to_csv(case/'observed_trials.csv',index=False)
+    np.savez(case/'B/correct_paths.npz',realized=np.ones((32,64)),correct_probability=np.ones((32,64)))
+    (source/'simulation_manifest.json').write_text(json.dumps(dict(status='complete',smoke=False,
+        records=[dict(id='case',subject=101)],settings=dict(variants=dict(B={}),
+        seed_group_labels=['development_first32','development_second32']))))
+    score_screen(source,tmp_path/'scores')
+    scores=pd.read_csv(tmp_path/'scores/scores.csv')
+    assert set(scores.seed_group)=={'all','development_first32','development_second32'}
