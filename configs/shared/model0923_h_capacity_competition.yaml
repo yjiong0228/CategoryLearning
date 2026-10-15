@@ -1,0 +1,44 @@
+protocol: model0923_h_capacity_competition_v1
+cohort_config: configs/shared/model0923_cohort_path_diagnosis.yaml
+source_diagnosis: results/model_0923/cohort_path_diagnosis_20261014_v1
+subjects: [102, 104, 118, 122, 206, 215, 221, 222, 307, 314, 315, 328, 334, 335, 336]
+seed_group_labels: [development_first32]
+variants:
+  B: {kind: B}
+  R0: {kind: B}
+  ECM_S: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  ECM_S_R0: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  JS_search_S3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, search: accumulate}
+  JF_sum0: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 0.0, search: accumulate}
+  JF_sum1: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 1.0, search: accumulate}
+  JF_sum3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, search: accumulate}
+  JF_mean0: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 0.0, score: mean, search: accumulate}
+  JF_mean1: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 1.0, score: mean, search: accumulate}
+  JF_mean3: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, score: mean, search: accumulate}
+  JF_sum3_bounded: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0}
+  JF_mean3_bounded: {kind: J, decay: 0.95, cost: 0.0, refresh: search, stay_bias: 3.0, score: mean}
+fixed_size_variants: [JF_sum0, JF_sum1, JF_sum3, JF_mean0, JF_mean1, JF_mean3, JF_sum3_bounded, JF_mean3_bounded]
+variant_parameter_overrides:
+  R0:
+    engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0
+  ECM_S_R0:
+    engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0
+comparisons:
+  - [ECM_S, B]
+  - [JF_sum3, JS_search_S3]
+  - [JF_sum3, ECM_S]
+  - [JF_sum3, ECM_S_R0]
+  - [JF_mean3, JF_sum3]
+  - [JF_sum3_bounded, JF_sum3]
+  - [JF_mean3_bounded, JF_mean3]
+paths: 32
+chunk_size: 8
+parallel_budget: 128
+late_window: 64
+retention_trials: 8
+support_threshold: 0.5
+geometric_accuracy_threshold: 0.8
+evidence_window: 4
+counterevidence_windows: [1, 4, 8]
+residence_horizons: [8, 32, 64]
+smoke_trials: 8

@@ -41,6 +41,27 @@ class Draws:
         return 2 if p is not None and not isinstance(values, int) else (0 if isinstance(values, int) else values[0])
 
 
+@pytest.mark.parametrize('capacity,search,expected,admitted', [(2,True,2,False),(3,True,3,True),(2,False,2,False)])
+def test_single_proposal_competition_preserves_slots_and_allows_rejection(make, monkeypatch, capacity, search, expected, admitted):
+    from src.Bayesian_state.model.modules.hypothesis_transition import mechanistic_rule_search as implementation
+    from src.Bayesian_state.model.modules.hypothesis_transition.single_proposal_competition import install_worker_intervention
+    adapter = SimpleNamespace(); install_worker_intervention(adapter)
+    monkeypatch.setattr(implementation, 'subset_distribution', adapter.subset_distribution)
+    monkeypatch.setattr(implementation, 'sample_candidate_set', adapter.sample_candidate_set)
+    model = make(dict(kind='J', decay=.95, cost=0., refresh='search', stay_bias=3.), max_capacity=capacity)
+    install(model); model.trial_rng = Draws()
+    if not search:
+        model.current_event_probability = 0.
+        model.trial_rng.random = lambda size=None: 1.
+    model.process()
+    assert len(model.active) == expected
+    assert bool(model.transition_log[-1]['admission_event']) == admitted
+    assert model.transition_log[-1]['autonomous_exits'] == []
+    if not admitted:
+        np.testing.assert_array_equal(model.active, [0,1])
+        np.testing.assert_allclose(model.engine.prior[:2], [.8,.2])
+
+
 def install(model, mass=(.8, .2)):
     model.active = np.array([0, 1])
     model.executed_hypothesis = 0
