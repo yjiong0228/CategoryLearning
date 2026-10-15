@@ -132,4 +132,83 @@ def test_whole_feature_path_jackknife_matches_training_score_uncertainty():
     from src.Bayesian_state.evaluation.model_0923_h_validation import jackknife_se
     samples = np.array([[.1,.2], [.4,.6], [.2,.8], [.9,.3], [.7,.5]])
     target = np.array([.3,.4])
+    np.testing.assert_allclose(feature_jackknife(samples,target),
+        [energy_u(np.delete(samples,i,axis=0),target)['value'] for i in range(len(samples))])
     assert jackknife_se(feature_jackknife(samples,target)) == pytest.approx(energy_u(samples,target)['mc_se'])
+
+
+@pytest.mark.parametrize('message,excluded', [('Original task order is ambiguous',True),
+                                             ('Prepared sequence changed',False)])
+def test_task_audit_separates_scope_exclusion_from_changed_inputs(tmp_path,monkeypatch,message,excluded):
+    from src.Bayesian_state.workflows.analysis import model_0923_h_objective_task_audit as audit
+    v=objective.validation();fit=tmp_path/'fit';fit.mkdir()
+    v.write(fit/'nominees.json',dict(smoke=False,status='frozen_before_test',
+        nominees=[dict(subject=101,model='NLL'),dict(subject=101,model='GEN')]))
+    config=tmp_path/'task.yaml';config.write_text('excluded_subjects: {}\n')
+    def check(*args):raise ValueError(message)
+    monkeypatch.setattr(audit,'prepare_schedules',check)
+    output=tmp_path/'audit'
+    if excluded:
+        audit.run(fit,config,output)
+        assert yaml.safe_load((output/'task_config.yaml').read_text())['excluded_subjects']=={101:message}
+        assert len(v.read(fit/'nominees.json')['nominees'])==2
+    else:
+        with pytest.raises(ValueError,match=message):audit.run(fit,config,output)
+        assert not (output/'completion.json').exists()
+
+
+def test_recovery_ordering_keeps_generating_points_as_the_units():
+    import pandas as pd
+    from src.Bayesian_state.workflows.analysis.model_0923_h_objective_recovery import recovery_aggregate
+    rows=[]
+    for model in ('NLL','GEN'):
+        for subject,truth in enumerate((1.,2.,3.)):
+            for replicate in (0,1):
+                fitted=truth+(-.1 if replicate==0 else .1) if model=='NLL' else 2.
+                rows.append(dict(model=model,parameter='p',case_id=subject*2+replicate,original_subject=subject,
+                    replicate=replicate,truth=truth,estimate=fitted,normalized_absolute_error=abs(fitted-truth)/4,
+                    grid_absolute_error=abs(fitted-truth),exact=fitted==truth,estimate_at_boundary=False,truth_at_boundary=False))
+    result=recovery_aggregate(pd.DataFrame(rows),{'p':[0.,1.,2.,3.,4.]}).set_index('model')
+    assert result.loc['NLL','cases']==6 and result.loc['NLL','generating_points']==3
+    assert result.loc['NLL','spearman_mean_estimate']==pytest.approx(1.)
+    assert result.loc['NLL','normalized_replicate_gap']==pytest.approx(.05)
+    assert np.isnan(result.loc['GEN','spearman_mean_estimate'])
+    assert result.loc['GEN','normalized_replicate_gap']==0.
+
+
+def test_recovery_summary_requires_complete_paired_cases(tmp_path):
+    from src.Bayesian_state.workflows.analysis.model_0923_h_objective_recovery import recovery_inputs
+    v=objective.validation();prepared=tmp_path/'prepared';prepared.mkdir();fit=tmp_path/'fit';fit.mkdir()
+    v.write(prepared/'truths.json',dict(rows=[dict(case_id=900001)]))
+    v.write(fit/'nominees.json',dict(smoke=False,status='frozen_before_test',data=str(prepared/'prepared_data'),
+        nominees=[dict(subject=900001,model='NLL')]))
+    with pytest.raises(ValueError,match='both objective arms'):recovery_inputs(prepared,fit)
+
+
+@pytest.mark.parametrize('arm',['NLL','GEN'])
+def test_truth_score_chunks_pool_before_nonlinear_scoring(tmp_path,arm):
+    from src.Bayesian_state.workflows.analysis.model_0923_h_objective_recovery import truth_chunks,combine_truth_chunks
+    v=objective.validation()
+    job=dict(name='test_'+arm,model=arm,seeds=list(range(12)),target=str(tmp_path/'pooled'))
+    chunks=truth_chunks([job],generation_chunk=4)
+    probability=np.linspace(.1,.9,36).reshape(12,3)
+    features=np.column_stack([np.linspace(.05,.95,12),np.linspace(.2,.5,12)])
+    observed=np.array([.4,.3]);scores=[]
+    for chunk in chunks:
+        ids=chunk['seeds'];target=Path(chunk['target']);target.parent.mkdir(exist_ok=True)
+        data=(dict(features=features[ids],observed_features=observed,choices=np.ones((len(ids),3),int),categories=np.ones(3,int))
+              if arm=='GEN' else dict(observed_probability=probability[ids],correct_probability=probability[ids]))
+        with target.with_suffix('.npz').open('xb') as handle:np.savez_compressed(handle,**data,seeds=ids)
+        v.write(target.with_suffix('.json'),dict(numeric_pools=[],cpu_seconds=1.,seconds=2.,
+            predictions_sha256=v.digest(target.with_suffix('.npz'))))
+        scores.append(energy_u(features[ids],observed)['value'] if arm=='GEN' else v.pooled_nll(probability[ids]))
+    combine_truth_chunks(job,chunks)
+    with np.load(tmp_path/'pooled.npz') as saved:
+        np.testing.assert_array_equal(saved['seeds'],job['seeds'])
+        np.testing.assert_array_equal(saved['features'] if arm=='GEN' else saved['observed_probability'],features if arm=='GEN' else probability)
+    row=v.read(tmp_path/'pooled.json')
+    actual=row['objective_score'] if arm=='GEN' else row['mean_nll']
+    expected=energy_u(features,observed)['value'] if arm=='GEN' else float(-np.log(probability.mean(axis=0)).mean())
+    assert actual==pytest.approx(expected)
+    assert actual!=pytest.approx(np.mean(scores))
+    assert row['cpu_seconds']==len(chunks)

@@ -16,7 +16,7 @@ import pandas as pd
 import yaml
 
 from . import model_0923_h_validation as v
-from .model_0923_h_objective_comparison import validate_settings
+from .model_0923_h_objective_comparison import validate_settings, training_jobs, execute
 from ...utils.seeding import stable_seed
 
 
@@ -104,11 +104,104 @@ def prepare(config: Path, output: Path) -> None:
         truths=len(rows), estimated_coordinates=len(space), nuisance_parameters_fixed=False))
 
 
+def recovery_aggregate(frame: pd.DataFrame, space: dict) -> pd.DataFrame:
+    """Describe error, ordering and variability across independent sequences.
+
+    Rank correlation uses the six generating points after averaging their two
+    estimates. It is descriptive; constant estimates yield an undefined rank
+    correlation. Replicate gaps combine sequence and search variability.
+    """
+    from scipy.stats import spearmanr
+    aggregate = frame.groupby(['model','parameter'], sort=False).agg(cases=('case_id','size'),
+        distinct_truth_values=('truth','nunique'),truth_min=('truth','min'),truth_max=('truth','max'),
+        normalized_mae=('normalized_absolute_error','mean'), grid_mae=('grid_absolute_error','mean'),
+        exact_fraction=('exact','mean'), boundary_fraction=('estimate_at_boundary','mean'),
+        truth_boundary_fraction=('truth_at_boundary','mean')).reset_index()
+    descriptions=[]
+    for (model,parameter),group in frame.groupby(['model','parameter'],sort=False):
+        points=group.groupby('original_subject').agg(truth=('truth','first'),estimate=('estimate','mean'))
+        if not (group.groupby('original_subject').truth.nunique()==1).all():
+            raise ValueError('Generating point differs across its replicates')
+        estimates=group.pivot(index='original_subject',columns='replicate',values='estimate')
+        if list(estimates.columns)!=[0,1] or estimates.isna().any().any():
+            raise ValueError('Each generating point needs its two independent sequences')
+        span=max(space[parameter])-min(space[parameter])
+        rank=(float(spearmanr(points.truth,points.estimate).statistic)
+              if points.truth.nunique()>1 and points.estimate.nunique()>1 else np.nan)
+        descriptions.append(dict(model=model,parameter=parameter,generating_points=len(points),
+            spearman_mean_estimate=rank,
+            normalized_replicate_gap=float(abs(estimates[1]-estimates[0]).mean()/span) if span else 0.))
+    return aggregate.merge(pd.DataFrame(descriptions),on=['model','parameter'],validate='one_to_one')
+
+
+def recovery_inputs(prepared: Path, fit: Path) -> tuple[dict,dict]:
+    """Require a complete paired fit of these exact synthetic cases."""
+    truths=v.read(prepared/'truths.json')['rows'];truth={r['case_id']:r for r in truths}
+    frozen=v.read(fit/'nominees.json')
+    if frozen['smoke'] or frozen['status']!='frozen_before_test':
+        raise ValueError('Recovery estimates must be frozen before accessing generating points')
+    if Path(frozen['data']).resolve()!=(prepared/'prepared_data').resolve():
+        raise ValueError('Recovery fit uses another synthetic dataset')
+    expected={(case,arm) for case in truth for arm in ('NLL','GEN')}
+    actual=[(r['subject'],r['model']) for r in frozen['nominees']]
+    if len(truth)!=len(truths) or len(actual)!=len(expected) or set(actual)!=expected:
+        raise ValueError('Recovery requires both objective arms for every unique synthetic case')
+    return frozen,truth
+
+
+def truth_chunks(jobs: list[dict], generation_chunk: int = 128) -> list[dict]:
+    """Split independent simulations without changing seeds or state updates."""
+    if generation_chunk<3:raise ValueError('Generation chunks need at least three paths')
+    chunks=[]
+    for job in jobs:
+        n=len(job['seeds'])
+        if n<(3 if job['model']=='GEN' else 1):raise ValueError('Insufficient independent simulations')
+        count=min(max(1,int(np.ceil(n/generation_chunk))),n//3) if job['model']=='GEN' else n
+        for index,indices in enumerate(np.array_split(np.arange(n),count)):
+            item=deepcopy(job);target=Path(job['target'])
+            item.update(seeds=[job['seeds'][i] for i in indices],parent_name=job['name'],
+                name=job['name']+f'_C{index:03d}',target=str(target.parent/'chunks'/(target.name+f'_C{index:03d}')))
+            chunks.append(item)
+    return chunks
+
+
+def combine_truth_chunks(job: dict, chunks: list[dict]) -> None:
+    """Pool complete independent simulations before computing either objective."""
+    from ...metrics.autonomous_fit import energy_u
+    arrays=[];records=[]
+    for chunk in chunks:
+        file=Path(chunk['target']).with_suffix('.npz');record=v.read(file.with_suffix('.json'))
+        if v.digest(file)!=record['predictions_sha256']:raise ValueError('Truth-score chunk changed')
+        if any(pool['num_threads']!=1 for pool in record['numeric_pools']):raise ValueError('Numeric thread budget exceeded')
+        records.append(record)
+        with np.load(file) as saved:arrays.append({k:saved[k] for k in saved.files})
+    shared={'categories','observed_features'} if job['model']=='GEN' else set()
+    combined={}
+    for key in arrays[0]:
+        if key in shared:
+            for other in arrays[1:]:np.testing.assert_array_equal(arrays[0][key],other[key])
+            combined[key]=arrays[0][key]
+        else:combined[key]=np.concatenate([part[key] for part in arrays],axis=0)
+    np.testing.assert_array_equal(combined['seeds'],job['seeds'])
+    target=Path(job['target']);target.parent.mkdir(parents=True,exist_ok=True)
+    with target.with_suffix('.npz').open('xb') as handle:np.savez_compressed(handle,**combined)
+    record=deepcopy(records[0])
+    record.update(predictions_sha256=v.digest(target.with_suffix('.npz')),
+        cpu_seconds=sum(r['cpu_seconds'] for r in records),seconds=sum(r['seconds'] for r in records),
+        chunk_seconds_definition='sum of individual chunk wall times',chunk_files=[c['target'] for c in chunks])
+    if job['model']=='GEN':
+        score=energy_u(combined['features'],combined['observed_features'])
+        record.update(paths=len(job['seeds']),state_updates=int(combined['choices'].size),
+            objective_score=score['value'],objective_mc_se=score['mc_se'])
+    else:record.update(seeds=job['seeds'],mean_nll=v.pooled_nll(combined['observed_probability']))
+    v.write(target.with_suffix('.json'),record)
+
+
 def summarize(prepared: Path, fit: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new recovery-summary destination')
-    truth = {r['case_id']: r for r in v.read(prepared/'truths.json')['rows']}
-    frozen = v.read(fit/'nominees.json'); space, _ = v.model_space(frozen['settings'], 'NLL')
+    frozen,truth=recovery_inputs(prepared,fit)
+    space, _ = v.model_space(frozen['settings'], 'NLL')
     rows = []
     for estimate in frozen['nominees']:
         target = truth[estimate['subject']]
@@ -122,24 +215,80 @@ def summarize(prepared: Path, fit: Path, output: Path) -> None:
                 grid_absolute_error=abs(values.index(fitted)-values.index(actual)), exact=fitted==actual,
                 estimate_at_boundary=fitted in (min(values), max(values)), truth_at_boundary=actual in (min(values), max(values))))
     frame = pd.DataFrame(rows)
-    aggregate = frame.groupby(['model','parameter'], sort=False).agg(cases=('case_id','size'),
-        normalized_mae=('normalized_absolute_error','mean'), grid_mae=('grid_absolute_error','mean'),
-        exact_fraction=('exact','mean'), boundary_fraction=('estimate_at_boundary','mean')).reset_index()
+    aggregate = recovery_aggregate(frame,space)
     output.mkdir(parents=True)
+    shutil.copy2(__file__,output/'analysis_source.py')
     frame.to_csv(output/'parameters.csv',index=False); aggregate.to_csv(output/'aggregate.csv',index=False)
     v.write(output/'completion.json',dict(status='complete',cases=len(truth),coordinates=len(space),
+        source_sha256=v.digest(Path(__file__)),
         source_truths_sha256=v.digest(prepared/'truths.json'),nomination_sha256=v.digest(fit/'nominees.json'),
         scientific_status='bounded_joint_recovery_pilot; six_truth_points_with_two_replicates_each; descriptive_not_population_reliability'))
 
 
+def score_truths(prepared: Path, fit: Path, output: Path) -> None:
+    """Diagnose bounded search after estimates freeze; never alter nominees.
+
+    Each true point receives the same confirmation seeds as its corresponding
+    estimate. A better true-point score flags search limitations. A worse score
+    alone cannot establish identifiability from one finite synthetic sequence.
+    """
+    from ...optimization.search.adaptive_proposals import candidate
+    from ...metrics.autonomous_fit import energy_u
+    from ...evaluation.model_0923_h_validation import nll, jackknife_scores, jackknife_se
+    from ...evaluation.model_0923_h_objective_comparison import feature_jackknife
+    if output.exists():
+        raise FileExistsError('Use a new recovery-truth diagnostic destination')
+    frozen,truth=recovery_inputs(prepared,fit)
+    banks = {(case, arm): [candidate(row['hyperparams'], 'postfit_recovery_truth')]
+             for case, row in truth.items() for arm in ('NLL', 'GEN')}
+    output.mkdir(parents=True)
+    shutil.copy2(__file__,output/'diagnostic_source.py')
+    v.write(output/'protocol.json',dict(nomination_sha256=v.digest(fit/'nominees.json'),
+        truths_sha256=v.digest(prepared/'truths.json'),source_sha256=v.digest(Path(__file__)),
+        parallel_units='one complete NLL filter seed or up to 128 GEN paths; pooled before scoring',
+        role='postfit_truth_score_diagnostic; estimates_and_search_budget_unchanged'))
+    jobs = training_jobs(v,Path(frozen['data']),output,frozen['settings'],banks,'confirmation',False)
+    chunks=truth_chunks(jobs)
+    execute(chunks,output,frozen['settings']['parallel_budget'])
+    for job in jobs:combine_truth_chunks(job,[c for c in chunks if c['parent_name']==job['name']])
+    rows=[]
+    for nominee in frozen['nominees']:
+        case,arm=nominee['subject'],nominee['model']
+        true_id=banks[(case,arm)][0]['id'];estimate_id=nominee['candidate']['id']
+        arrays=[]
+        for folder,point in [(output,true_id),(fit,estimate_id)]:
+            file=folder/'confirmation'/f'subject_{case}'/arm/(point+'.npz')
+            record=v.read(file.with_suffix('.json'))
+            if v.digest(file)!=record['predictions_sha256']:raise ValueError('Recovery score changed')
+            with np.load(file) as saved:arrays.append({k:saved[k] for k in saved.files})
+        actual,estimate=arrays
+        np.testing.assert_array_equal(actual['seeds'],estimate['seeds'])
+        if arm=='NLL':
+            left,right=nll(estimate['observed_probability']),nll(actual['observed_probability'])
+            se=jackknife_se(jackknife_scores(estimate['observed_probability'])-jackknife_scores(actual['observed_probability']))
+        else:
+            np.testing.assert_array_equal(actual['observed_features'],estimate['observed_features'])
+            target=actual['observed_features']
+            left=energy_u(estimate['features'],target)['value'];right=energy_u(actual['features'],target)['value']
+            se=jackknife_se(feature_jackknife(estimate['features'],target)-feature_jackknife(actual['features'],target))
+        rows.append(dict(case_id=case,original_subject=truth[case]['original_subject'],replicate=truth[case]['replicate'],
+            model=arm,estimated_point_score=left,generating_point_score=right,
+            estimate_minus_truth=left-right,paired_mc_se=se))
+    pd.DataFrame(rows).to_csv(output/'truth_scores.csv',index=False)
+    v.write(output/'completion.json',dict(status='complete',cases=len(truth),scores=len(rows),
+        numerical_uncertainty='paired confirmation-seed or complete-path jackknife',
+        interpretation='A positive estimate-minus-truth gap diagnoses bounded-search loss; finite-sequence variation also affects parameter recovery'))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--phase',choices=['prepare','summarize'],required=True)
+    parser.add_argument('--phase',choices=['prepare','summarize','score-truths'],required=True)
     for name in ('config','prepared','fit','output'):
         parser.add_argument('--'+name,type=Path)
     args=parser.parse_args()
     if args.phase=='prepare':prepare(args.config,args.output)
-    else:summarize(args.prepared,args.fit,args.output)
+    elif args.phase=='summarize':summarize(args.prepared,args.fit,args.output)
+    else:score_truths(args.prepared,args.fit,args.output)
 
 
 if __name__=='__main__':main()
