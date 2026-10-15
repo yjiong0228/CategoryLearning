@@ -1,0 +1,12 @@
+protocol: model0923_h_adaptive_environment_v1
+seed: 2026101508
+parallel_budget: 128
+paths: 64
+chunk_size: 8
+policies: [fixed, balanced, adaptive, adaptive_repeat]
+# Administrative censoring; experimental stopping is per-category accuracy.
+max_blocks: 20
+blocks_per_session: 5
+threshold: 0.9
+beta: 0.2
+ambiguity_width: 0.1
