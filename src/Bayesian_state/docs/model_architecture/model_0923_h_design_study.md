@@ -641,3 +641,9 @@ B的预测与原独立工作流程逐值一致，原流程对带JF标记的配�
 流程记录为`results/model_0923/h_prefix_forecast_pipeline_check_20261015_v1`，
 完整前缀检查为`results/model_0923/h_prefix_forecast_exact_prefix_20261015_v1`。
 全量比较接在本轮参数复核及更新后的预测之后。
+
+图形入口为`python -m CategoryLearning_codes.figures.fig3.model0923_h_prefix_forecast`。
+每位被试以两列分别展示起点生成与训练后续跑，每个面板保留全部路径；条件预测和实际曲线作为共同参照。
+连续32题取块均值，最后不足32题时使用实际题数。均值、路径变异和模拟作答的80%区间分别编码，
+逐人评分、分组数值误差及全部数据链接保存在配套报告中。输出为183毫米宽、300 dpi的PNG。
+小规模数据的两张图已检查标签、图例、路径显示及8个本地链接；正式比较的图形在全量计算后另行检查。
