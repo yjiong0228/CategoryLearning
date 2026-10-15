@@ -585,3 +585,23 @@ ECM_S在101、103、201、202、301、302上的20组内达标路径数依次为6
 单人、8题、每版本1条路径的13版本流程已完成，B路径与独立保存的参考逐值一致。
 入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_capacity_competition`，
 配置为`configs/shared/model0923_h_capacity_competition.yaml`。全量对照排在当前参数复核之后，使用同一128进程预算。
+
+JF的参数拟合入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_candidate_validation`。
+它复用已有参数提案、训练评分、训练复核及预测汇总，在独立工作进程中安装固定容量抽样器。
+配置通过`fixed_size_models`列出相应版本，并在每个版本中记录
+`candidate_sampler: single_proposal_fixed_cardinality`。专用入口核对并处理该标记；
+原流程遇到这个标记会报告不支持该配置，使拟合和评估使用的抽样机制保持明确。
+`autonomous`阶段沿用准备好的刺激序列。自适应任务下的JF评估仍需接入相同抽样器。
+
+该入口的9项测试通过。B、JF累计证据和JF平均证据完成单人、8题训练及8题测试的完整软件验证，
+每组使用2粒子、2种子及2条自主路径。57份预测数组与加入显式机制标记前逐值一致，
+B的预测与原独立工作流程逐值一致，原流程对带JF标记的配置明确报错。
+这些检查验证软件接入，机制效果由后续完整资料上的比较评价。
+验证记录保存于`results/model_0923/h_candidate_validation_software_check_20261015_v2`。
+
+路径评分的Monte Carlo误差入口现可直接读取结构筛查，或读取重新拟合后的预测。
+每次删除一条完整路径，按相同种子配对计算energy score与CRPS差值的jackknife标准误；
+逐人差值及被试等权均值分别保存。原两张误差汇总表逐值复现，3项评分测试通过。
+参数不确定性和被试总体差异需另行估计。新入口使用
+`model_0923_h_generation_uncertainty --screen SCREEN --scores SCORES --output NEW_OUTPUT`，
+重新拟合的预测使用`--summary SUMMARY --output NEW_OUTPUT`。
