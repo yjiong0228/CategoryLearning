@@ -1,0 +1,8 @@
+protocol: model0923_h_complete_coordinate_check_v1
+seed: 2026101510
+parallel_budget: 128
+seed_chunk: 2
+mcse_multiplier: 2.0
+budgets:
+  screen: {particles: 64, seeds: 4}
+  confirm: {particles: 512, seeds: 8}
