@@ -3,8 +3,9 @@
 All scores concern the same future trials on the recorded stimulus schedule.
 The filtered-prefix bank uses complete filter seeds as Monte Carlo clusters;
 the task-start bank uses independent complete paths. Their simulation streams
-are separate. Parameters remain fixed, and these participants are development
-data. Conditional prediction is retained as a mean-curve diagnostic only.
+are separate. Parameters remain fixed, and the forecast protocol records whether
+participants are development or reserved validation data. Conditional prediction
+is retained as a mean-curve diagnostic only.
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ def summarize(summary: Path, forecast: Path, output: Path) -> None:
     import json
     if output.exists():raise FileExistsError('Use a new forecast-comparison destination')
     original = load(summary / 'summary_manifest.json'); protocol = load(forecast / 'forecast_protocol.json')
+    data_role = protocol.get('data_use_status', 'development')
     completed = load(forecast / 'forecast.json')
     if completed['status'] != 'complete' or completed['smoke'] or protocol['smoke']:
         raise ValueError('Need a complete scientific forecast')
@@ -123,7 +125,8 @@ def summarize(summary: Path, forecast: Path, output: Path) -> None:
                 str(forecast/'forecast.json'):digest(forecast/'forecast.json'), **hashes},
             conditioning='task_start: fitted parameters only; filtered_prefix: fitted parameters and observed training prefix',
             uncertainty='fixed-parameter simulation error; paired complete filters for prefix forecasts, complete paths for task-start generation',
-            boundary='development participants on recorded future stimulus schedule; future choices do not update forecasts'), handle, indent=2)
+            data_use_status=data_role,
+            boundary=f'{data_role} participants on recorded future stimulus schedule; future choices do not update forecasts'), handle, indent=2)
 
 
 def main() -> None:

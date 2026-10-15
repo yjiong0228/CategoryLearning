@@ -31,6 +31,8 @@ COLORS = {'task_start': '#326C98', 'filtered_prefix': '#B67947'}
 def build(source: Path, output: Path) -> None:
     if output.exists() or (source/'review.html').exists():raise FileExistsError('Use new figure/report destinations')
     manifest = load(source/'comparison_manifest.json'); summary = Path(manifest['summary']); forecast = Path(manifest['forecast'])
+    data_role = manifest.get('data_use_status', 'development')
+    participant_role = '预留验证被试' if data_role == 'reserved_validation' else '开发被试'
     original = load(summary/'summary_manifest.json'); autonomous = Path(original['autonomous'])
     a_rows = {(r['subject'],r['model']):r for r in load(autonomous/'evaluation.json')['rows']}
     f_rows = {(r['subject'],r['model']):r for r in load(forecast/'forecast.json')['rows']}
@@ -38,7 +40,8 @@ def build(source: Path, output: Path) -> None:
     contrasts = pd.read_csv(source/'start_contrasts.csv'); model_contrasts = pd.read_csv(source/'model_contrasts.csv')
     subjects = sorted(scores.subject.unique().tolist()); models = list(dict.fromkeys(scores.model))
     output.mkdir(parents=True)
-    preflight = dict(backend='python',archetype='quantitative_grid',purpose='development_process_diagnosis',
+    preflight = dict(backend='python',archetype='quantitative_grid',purpose=data_role+'_process_diagnosis',
+        data_use_status=data_role,
         question='Does the inferred training state sustain learning without future observed-choice conditioning?',
         comparison='same parameters and future stimulus schedule; different state initialization',
         unit='participant; simulation intervals at fixed parameters',
@@ -113,7 +116,7 @@ def build(source: Path, output: Path) -> None:
     html = ['<!doctype html><html lang="zh"><meta charset="utf-8"><title>H模块训练后自主续跑</title>',
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}.scroll{overflow:auto}</style>',
         '<h1>H模块：从任务起点生成与从训练状态续跑</h1>',
-        f'<p>{len(subjects)}名开发被试，{len(models)}个版本。两种生成使用相同拟合参数和后续刺激日程。训练后续跑先用真实训练选择形成状态分布，随后依靠模型自身的选择和反馈继续学习。逐题条件预测在后续试次中继续吸收此前真实选择。</p>',
+        f'<p>{len(subjects)}名{participant_role}，{len(models)}个版本。两种生成使用相同拟合参数和后续刺激日程。训练后续跑先用真实训练选择形成状态分布，随后依靠模型自身的选择和反馈继续学习。逐题条件预测在后续试次中继续吸收此前真实选择。</p>',
         '<p>两种生成使用的起点信息不同，评分差值用于定位发现过程和后续维持的问题。此处固定后续刺激日程；自适应刺激及达标停止的检验另行报告。</p>',
         '<p>每个面板的浅色细线包含该组全部正确概率路径，粗线是等权均值，阴影是实际模拟作答正确率的中央80%区间，黑线是被试，灰色虚线是条件预测。参数估计的不确定性尚未整合到区间中。</p>',
         f'<img src="{rel(output/"energy_comparison.png")}" alt="两种起点与模型间的路径评分差异">',

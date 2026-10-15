@@ -191,9 +191,11 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
                 filter_seed=seed, source_sha256=hashes, reference=str(file.resolve()), reference_sha256=old['predictions_sha256'],
                 target=str((output / 'chunks' / name).resolve()))
             groups[key].append(job); jobs.append(job)
+    data_role = ('development' if frozen['status'] == 'frozen_for_development_evaluation' else
+                 frozen.get('data_use_status', frozen['settings'].get('data_use_status', 'development')))
     v.write(output / 'forecast_protocol.json', dict(fit=str(fit.resolve()), reference=str(reference.resolve()),
         nomination_sha256=v.digest(fit / 'nominees.json'), settings=settings, smoke=smoke, source_sha256=hashes,
-        data_use_status='development', conditioning='observed training prefix; subsequent recorded stimulus schedule',
+        data_use_status=data_role, conditioning='observed training prefix; subsequent recorded stimulus schedule',
         future_behavior='model choices and task-produced feedback only', uncertainty_unit='complete filter seed with all its branches'))
     lengths = {j['folder']: v.read(Path(j['folder']) / 'prepared.json')['training_trials'] for j in jobs}
     jobs.sort(key=lambda j: -lengths[j['folder']])
