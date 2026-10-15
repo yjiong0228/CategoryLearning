@@ -4,7 +4,7 @@ from copy import deepcopy
 import pytest
 
 from src.Bayesian_state.workflows.analysis.model_0923_h_candidate_validation import (
-    HELPER, SAMPLER, configure, core_job, fixed_models, validation,
+    HELPER, SAMPLER, configure, constrained_space, core_job, fixed_models, validation,
 )
 
 
@@ -62,3 +62,26 @@ def test_adapter_preserves_scoring_search_and_preparation_implementations():
     assert all(hashes[name] == sha for name, sha in baseline_hashes.items())
     assert HELPER in hashes
     assert 'src/Bayesian_state/workflows/analysis/model_0923_h_candidate_validation.py' in hashes
+
+
+def test_exit_free_model_keeps_fixed_coordinate_in_saved_parameter_points():
+    original = dict(models={'E0': {'kind': 'E'}}, fixed_parameters={'E0': {'rho': 0.}})
+    base = lambda config, model: ({'rho': [0., .5, 1.], 'gamma': [0., 1.]}, {'rho': .5, 'gamma': 1.})
+    assert fixed_models(original) == set()
+    space, anchor = constrained_space(base, original, 'E0')
+    assert space == {'rho': [0.], 'gamma': [0., 1.]}
+    assert anchor == {'rho': 0., 'gamma': 1.}
+    assert base(original, 'E0')[0]['rho'] == [0., .5, 1.]
+    job = dict(mechanism={'kind': 'E'}, candidate_sampler='original',
+        fixed_parameters={'rho': 0.}, candidate={'hyperparams': anchor})
+    assert core_job(job)['candidate']['hyperparams']['rho'] == 0.
+    job['candidate']['hyperparams']['rho'] = .5
+    with pytest.raises(ValueError, match='constraint'):
+        core_job(job)
+
+
+@pytest.mark.parametrize('fixed', [{'missing': {'rho': 0.}}, {'B': {'missing': 0.}}, {'B': {'rho': .25}}, {'B': {'rho': False}}])
+def test_parameter_constraints_must_belong_to_declared_support(fixed):
+    base = lambda config, model: ({'rho': [0., 1.]}, {'rho': 1.})
+    with pytest.raises(ValueError):
+        constrained_space(base, dict(models={'B': {}}, fixed_parameters=fixed), 'B')

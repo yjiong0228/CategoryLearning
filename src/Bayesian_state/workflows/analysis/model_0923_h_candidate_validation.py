@@ -1,13 +1,18 @@
-"""Fit and evaluate fixed-cardinality H candidates in isolated archived workers.
+"""Fit and evaluate explicit H candidates in isolated archived workers.
 
 The existing H validation workflow owns parameter proposals, training scores,
-chronological boundaries and prediction assembly. This adapter changes only
-the worker launcher and the explicitly named models' set sampler. A YAML
+chronological boundaries and prediction assembly. This adapter installs the
+explicitly named models' set sampler and enforces fixed parameter values. A YAML
 ``fixed_size_models`` list identifies those models; each must use J with
 refresh='search' and candidate_sampler='single_proposal_fixed_cardinality'.
 The sampler marker makes unadapted workers reject that configuration. This
 adapter consumes the marker after installing the named sampler. All other
 models use the original sampler.
+
+Optional ``fixed_parameters`` maps model names to supported parameter values.
+Those coordinates have singleton search support, remain in every saved point,
+and are checked again in each worker. This supports refitting an exit-free
+mechanism with exit_rate=0 while fitting its other parameters normally.
 
 Examples, after freezing a candidate protocol:
   python -m src.Bayesian_state.workflows.analysis.model_0923_h_candidate_validation \
@@ -37,6 +42,7 @@ import tempfile
 REPO = Path(__file__).resolve().parents[4]
 BASE = 'src/Bayesian_state/workflows/analysis/model_0923_h_validation.py'
 HELPER = 'src/Bayesian_state/model/modules/hypothesis_transition/single_proposal_competition.py'
+PROPOSALS = 'src/Bayesian_state/optimization/search/adaptive_proposals.py'
 SAMPLER = 'single_proposal_fixed_cardinality'
 
 
@@ -50,7 +56,7 @@ def validation():
 def fixed_models(settings: dict) -> set[str]:
     """Validate the declared sampler intervention without changing H settings."""
     names = settings.get('fixed_size_models', [])
-    if not names or len(names) != len(set(names)) or not set(names) <= set(settings['models']):
+    if (not names and not settings.get('fixed_parameters')) or len(names) != len(set(names)) or not set(names) <= set(settings['models']):
         raise ValueError('Need distinct fixed-size model names from the model protocol')
     for name in names:
         mechanism = settings['models'][name]
@@ -63,6 +69,22 @@ def fixed_models(settings: dict) -> set[str]:
     return set(names)
 
 
+def constrained_space(base_space, settings: dict, model: str) -> tuple[dict, dict]:
+    """Keep fixed coordinates explicit and validate them against original support."""
+    fixed = settings.get('fixed_parameters', {})
+    if not isinstance(fixed, dict) or not set(fixed) <= set(settings['models']):
+        raise ValueError('Fixed parameters must name declared models')
+    space, anchor = deepcopy(base_space(settings, model))
+    values = fixed.get(model, {})
+    if not isinstance(values, dict) or not set(values) <= set(space):
+        raise ValueError('Fixed parameters must name active search coordinates')
+    for key, value in values.items():
+        if isinstance(value, bool) or value not in space[key]:
+            raise ValueError('Fixed parameter value is outside declared support')
+        space[key] = [value]; anchor[key] = value
+    return space, anchor
+
+
 def core_job(job: dict) -> dict:
     """Consume the verified workflow marker before calling the shared model."""
     result = deepcopy(job)
@@ -70,6 +92,9 @@ def core_job(job: dict) -> dict:
     expected = SAMPLER if job['candidate_sampler'] == SAMPLER else None
     if marker != expected:
         raise ValueError('Declared and installed candidate samplers differ')
+    for key, value in job.get('fixed_parameters', {}).items():
+        if job['candidate']['hyperparams'].get(key) != value:
+            raise ValueError('Candidate violates the frozen parameter constraint')
     return result
 
 
@@ -112,10 +137,15 @@ def configure(v, settings: dict) -> None:
     """Route existing search/evaluation operations through the recorded worker."""
     names = fixed_models(settings)
     original_hashes = v.source_hashes
+    if settings.get('fixed_parameters'):
+        original_space = v.model_space
+        for model in settings['models']:
+            constrained_space(original_space, settings, model)
+        v.model_space = lambda config, model: constrained_space(original_space, config, model)
 
     def hashes():
         result = original_hashes()
-        for file in (REPO / HELPER, Path(__file__).resolve()):
+        for file in (REPO / HELPER, REPO / PROPOSALS, Path(__file__).resolve()):
             result[str(file.relative_to(REPO))] = v.digest(file)
         return result
 
@@ -127,6 +157,8 @@ def configure(v, settings: dict) -> None:
         def launch(original):
             job = deepcopy(original)
             job['candidate_sampler'] = 'single_proposal_fixed_cardinality' if job['model'] in names else 'original'
+            job['fixed_parameters'] = deepcopy(settings.get('fixed_parameters', {}).get(job['model'], {}))
+            core_job(job)
             file = directory / (job['name'] + '.json'); v.write(file, job)
             launcher = ('import runpy,sys;source,script=sys.argv[1:3];sys.path.insert(0,source);'
                         'sys.argv=[script]+sys.argv[3:];runpy.run_path(script,run_name="__main__")')
