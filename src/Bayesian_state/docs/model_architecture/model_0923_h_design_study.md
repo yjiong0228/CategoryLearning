@@ -67,6 +67,13 @@ ECM_S在101、103、201、202、301、302上的20组内达标路径数依次为6
 入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_training_refinement`，
 参数`--fit`、`--config`、`--output`分别指定原冻结拟合、配置及新输出目录；`--smoke`检查三个阶段的连接。
 
+确认后的开发复评入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_development_evaluation`。
+参数`--fit`指定更新后的冻结参数，`--conditional-reference`及`--autonomous-reference`指向原预测，
+`--output`指定新目录。参数保持原值的组通过哈希校验后只读链接原预测；接受了新参数的组使用相同随机种子重新计算。
+输出同时保留复用与重算记录，按实际纳入的模型汇总，报告标题和数据用途标明开发复评。
+单人、B和R1两个变化参数点的完整有效序列已完成2粒子、2种子、每点2条自主路径的端到端验证。
+预测复用、参数变化拒绝复用及源文件校验的3项测试通过。
+
 按编号及条件元数据另行预留105、106、203、204、303、304，分别为三个条件中尚未进入本轮开发资料的最小两个编号。
 选择过程中仅读取`iSub`和`condition`列，记录于`configs/shared/model0923_h_reserved_validation_subjects.yaml`。
 候选机制、训练预算及时间分界需先写入后续冻结协议，再打开这些人的行为数组。

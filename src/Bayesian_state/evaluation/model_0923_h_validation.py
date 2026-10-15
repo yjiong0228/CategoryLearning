@@ -204,15 +204,20 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
     output.mkdir(parents=True)
     test=frame[frame.phase=='test']
     contrast_frame=pd.DataFrame(contrasts)
-    aggregate=aggregate_choices(test,contrast_frame,list(frozen['settings']['models']))
+    # A continuation may evaluate only selected models from the original
+    # configuration. Coverage is defined by its frozen nominee manifest.
+    models=list(dict.fromkeys(row['model'] for row in frozen['nominees']))
+    aggregate=aggregate_choices(test,contrast_frame,models)
     for name,data in [('scores',frame),('blocks',pd.DataFrame(blocks)),('parameters',pd.DataFrame(parameters)),
                       ('test_contrasts',contrast_frame),('aggregate_choice_scores',aggregate),
                       ('inactive_parameter_channels',inactive_parameter_channels(frozen))]:data.to_csv(output/(name+'.csv'),index=False)
     manifest=dict(status='complete',fit=str(fit.resolve()),conditional=str(conditional.resolve()),autonomous=str(autonomous.resolve()),
-        subjects=sorted(set(k[0] for k in expected)),models=list(frozen['settings']['models']),
+        subjects=sorted(set(k[0] for k in expected)),models=models,
         nomination_sha256=nomination_hash,source_sha256=digest(Path(__file__)),
         inputs_sha256={str(p):digest(p) for p in [fit/'nominees.json',conditional/'evaluation.json',autonomous/'evaluation.json']},
-        scientific_status='six_preselected_participants_bounded_prefix_fit_with_sequential_test_and_from_start_generation',
+        scientific_status=('development_reevaluation_after_training_only_refinement'
+            if frozen.get('status')=='frozen_for_development_evaluation' else
+            'six_preselected_participants_bounded_prefix_fit_with_sequential_test_and_from_start_generation'),
         uncertainty='filter-seed jackknife measures numerical uncertainty; parameters remain point estimates',
         distribution_score='empirical equal-weight sampled choice paths; RMS-scaled energy; mean block CRPS; central 80 percent interval')
     with (output/'summary_manifest.json').open('x') as f:json.dump(manifest,f,ensure_ascii=False,indent=2)

@@ -32,6 +32,7 @@ def build(source: Path, output: Path) -> None:
     output.mkdir(parents=True)
     manifest=load(source/'summary_manifest.json');fit=Path(manifest['fit'])
     frozen=load(fit/'nominees.json');autonomous=Path(manifest['autonomous'])
+    development = frozen.get('data_use_status') == 'development' or frozen.get('status') == 'frozen_for_development_evaluation'
     models=manifest['models'];subjects=manifest['subjects']
     scores=pd.read_csv(source/'scores.csv');contrasts=pd.read_csv(source/'test_contrasts.csv')
     aggregate=pd.read_csv(source/'aggregate_choice_scores.csv')
@@ -89,10 +90,13 @@ def build(source: Path, output: Path) -> None:
     rel=lambda path:escape(os.path.relpath(path,source))
     test=scores[scores.phase=='test']
     means=test.groupby('model',sort=False)[['choice_nll','energy','crps','interval_score','interval_coverage','interval_width']].mean().reindex(models)
-    html=['<!doctype html><html lang="zh"><meta charset="utf-8"><title>H模块新增被试留出比较</title>',
+    report_title = 'H模块：开发被试参数复核后的比较' if development else 'H模块：新增被试的冻结方案比较'
+    boundary = (f'{len(subjects)}名开发被试；参数更新只用训练前缀，并经过独立随机种子的数值确认。后续序列已在此前机制开发中查看，本报告记录开发复评。'
+                if development else f'{len(subjects)}名预先按编号选定的被试；每人{len(models)}个结构、相同搜索预算。全部参数只用训练前缀估计；所有候选冻结后才计算测试段评分。')
+    html=[f'<!doctype html><html lang="zh"><meta charset="utf-8"><title>{report_title}</title>',
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}.scroll{overflow:auto}details{margin:20px 0}</style>',
-        '<h1>H模块：新增被试的冻结方案比较</h1>',
-        f'<p>{len(subjects)}名预先按编号选定的被试；每人{len(models)}个结构、相同搜索预算。全部参数只用训练前缀估计；所有候选冻结后才计算测试段评分。</p>',
+        f'<h1>{report_title}</h1>',
+        f'<p>{boundary}</p>',
         '<p>逐题条件预测先预测当前选择，再吸收真实选择更新状态。自主生成从任务起点开始，使用训练所得参数和模型自己的选择及反馈；任务刺激顺序与序列长度沿用实际实验。</p>',
         '<p>预测区间由模拟的实际作答正确率计算，包含路径和作答变异。浅色细线是全部自主路径的正确概率，粗线是等权均值，黑线是被试，灰色虚线是条件预测。竖虚线标记训练／测试边界。参数保持为估计点，区间未整合参数估计的不确定性。</p>',
         f'<img src="{rel(output/"test_score_comparison.png")}" alt="全部留出评分对照">',

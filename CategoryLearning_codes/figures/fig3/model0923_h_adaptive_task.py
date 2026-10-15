@@ -108,15 +108,20 @@ def build(source: Path, output: Path) -> None:
     pd.DataFrame(contrasts).to_csv(output / 'paired_contrasts.csv',index=False)
     aggregate = summary.groupby(['model','policy'],sort=False)[['pass_by_observed_fraction','pass_fraction','mean_blocks_to_stop_or_censor']].mean()
     aggregate.to_csv(output / 'participant_equal_summary.csv')
+    adaptive = aggregate.xs('adaptive',level='policy')
+    timing_summary = (f'按被试等权平均，各模型在实际完成时长内的达标比例为'
+        f'{adaptive.pass_by_observed_fraction.min():.3f}至{adaptive.pass_by_observed_fraction.max():.3f}；'
+        f'延长至{protocol["settings"]["max_blocks"]}组时为{adaptive.pass_fraction.min():.3f}至{adaptive.pass_fraction.max():.3f}。逐人曲线保留模型之间的差异。')
+    task_checks = len(load(source/'task_policy_audit.json')['checks'])
     relative = lambda p: escape(os.path.relpath(p, source))
     html = ['<!doctype html><html lang="zh"><meta charset="utf-8"><title>H模块：自适应实验与达标时间</title>',
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}.scroll{overflow:auto}</style>',
         '<h1>H模块：自适应实验与达标时间</h1>',
-        '<p>当前冻结参数下，自适应刺激及达标停止仍留下明显的学习时间差距。ECM_S在延长观察期限后的达标比例较高；逐人差异和其他机制的优势个案同时保留。</p>',
+        f'<p>{timing_summary}</p>',
         f'<p>{len(subjects)}名开发被试、{len(models)}种模型、{len(policies)}种任务流程，每组{n}条路径，共{len(paths)}条。参数保持为原训练前缀拟合值。任务每64题检查一次：排除模糊刺激后，每个类别正确率都达到0.9即停止。条件3按物种完全正确计算。</p>',
         '<p>曲线分母始终包含全部64条路径。固定刺激版本的截尾点为被试实际长度；重新采样版本最多20组。虚线标出被试完成时间；曲线之外的未达标路径属于截尾。0/64表示本次有限模拟未观察到达标。图中没有按成功筛选路径，也没有在停止后延长学习曲线。</p>',
         '<p>按实验规则更新类别比例时，使用模型自己的选择。均衡版本保持每种物种16题；两种自适应版本分别使用会话间独立与重复随机创新。首组刺激及顺序固定为被试的实际首组，模型状态跨会话保持。NumPy采样复现任务分布，MATLAB显示时长等步骤的随机数没有重放。</p>',
-        '<p>类别配额与原实验31次可核对的转移全部一致；2,304条固定刺激路径在首次达标前与原独立保存路径逐值一致。来源数据已在此前检验中查看，本报告属于开发诊断。</p>',
+        f'<p>类别配额与原实验{task_checks}次可核对的转移全部一致；{completion["exact_fixed_replay_paths"]:,}条固定刺激路径在首次达标前与已保存路径逐值一致。来源数据已在此前检验中查看，本报告属于开发诊断。</p>',
         '<h2>逐人等权平均</h2><p>pass_by_observed_fraction表示在各人实际完成时长内达标的比例；pass_fraction表示在该流程截尾前达标的比例。mean_blocks_to_stop_or_censor同时包含停止与截尾时间，其均值不能解释为成功路径的平均学习时长。</p>',
         '<div class="scroll">'+aggregate.to_html(float_format=lambda x:f'{x:.3f}')+'</div>']
     for subject in subjects:
