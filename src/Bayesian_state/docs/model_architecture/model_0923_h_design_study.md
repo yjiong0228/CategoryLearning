@@ -606,6 +606,13 @@ B的预测与原独立工作流程逐值一致，原流程对带JF标记的配�
 `model_0923_h_generation_uncertainty --screen SCREEN --scores SCORES --output NEW_OUTPUT`，
 重新拟合的预测使用`--summary SUMMARY --output NEW_OUTPUT`。
 
+固定容量的准入诊断记录每次新规则提案，包括被拒绝的提案。依据上一试次反馈后的证据，
+重建本次竞争时旧规则的分数及新规则的准入概率，并区分空余容量与满容量两种情况。
+几何相容规则的提案数、接纳数和移除数分别保存，用于定位搜索供给和容量准入的影响。
+实际接纳数与理论期望的差值按完整路径计算Monte Carlo标准误；事件比例同时报告分母。
+入口为`python -m src.Bayesian_state.evaluation.model_0923_h_capacity_competition --source SCREEN --output NEW_OUTPUT`。
+两项测试验证强旧证据下新规则可能被拒绝，以及空余容量下的直接接纳；全量记录的交叉检查随筛查完成后执行。
+
 ### 从训练末尾状态继续生成
 
 从任务起点自主生成同时检验规则发现和后续维持。新增的过程诊断先用训练前缀运行原粒子滤波，
