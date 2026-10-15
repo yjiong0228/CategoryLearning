@@ -1,0 +1,15 @@
+protocol: model0923_h_training_refinement_v1
+seed: 2026101509
+parallel_budget: 128
+models: [B, R1, ECM_S, JS_S]
+archived_finalists: 8
+elites: 4
+rays_per_elite: 8
+joint_per_elite: 4
+audit_candidates: 5
+seed_chunk: 2
+mcse_multiplier: 2.0
+budgets:
+  screen: {particles: 128, seeds: 4}
+  audit: {particles: 256, seeds: 8}
+  confirm: {particles: 512, seeds: 8}
