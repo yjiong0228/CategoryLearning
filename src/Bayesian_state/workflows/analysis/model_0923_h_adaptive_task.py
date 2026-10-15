@@ -161,7 +161,7 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
     v = validation(); frozen = v.read(fit / 'nominees.json'); settings = yaml.safe_load(config.read_text())
     if output.exists():
         raise FileExistsError('Use a new adaptive-task study destination')
-    if frozen['smoke'] or frozen['status'] != 'frozen_before_test':
+    if frozen['smoke'] or frozen['status'] not in ('frozen_before_test', 'frozen_for_development_evaluation'):
         raise ValueError('Need frozen scientific fits')
     for name, sha in frozen['source_sha256'].items():
         if v.digest(REPO / name) != sha:

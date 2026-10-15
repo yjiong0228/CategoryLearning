@@ -1,0 +1,14 @@
+protocol: model0923_h_next_validation_reservation_v1
+selected_on: '2026-10-15'
+selection_columns: [iSub, condition]
+selection_rule: two_smallest_unused_ids_per_condition
+subjects_by_condition:
+  1: [105, 106]
+  2: [203, 204]
+  3: [303, 304]
+role: reserved_for_later_frozen_mechanism_validation
+behavior_inspected_for_this_reservation: false
+fit_or_evaluation_started: false
+# Freeze the candidate mechanisms, fitting budget and chronological split in
+# a separate protocol before opening these participants' behavior arrays.
+validation_protocol_status: pending_mechanism_selection
