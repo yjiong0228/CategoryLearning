@@ -1,0 +1,6 @@
+protocol: model0923_h_objective_prefix_v1
+seed: 2026101522
+parallel_budget: 128
+particles: 256
+filters: 8
+branches_per_filter: 16

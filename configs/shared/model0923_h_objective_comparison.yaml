@@ -1,0 +1,32 @@
+protocol: model0923_h_objective_comparison_v1
+seed: 2026101521
+data_use_status: reserved_objective_validation
+parallel_budget: 128
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+models:
+  NLL: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  GEN: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+objectives: {NLL: predictive_nll, GEN: autonomous_energy_u}
+evidence_decay_values: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
+features: {block_width: 32, temporal_weight: 0.5}
+initial_candidates: 64
+refinement_rounds: 2
+elites: 4
+proposals_per_elite: 16
+union_per_arm: 4
+confirmation_per_arm: 2
+budgets:
+  screen: {particles: 32, seeds: 2, paths: 64}
+  refine: {particles: 64, seeds: 2, paths: 128}
+  selection: {particles: 128, seeds: 4, paths: 512}
+  confirmation: {particles: 256, seeds: 4, paths: 1024}
+  evaluate: {particles: 256, seeds: 8}
+autonomous_paths: 128
+autonomous_chunk: 8
+evaluate_seed_chunk: 1
+recovery:
+  source_fit: results/model_0923/h_coordinate_check_20261015_v1
+  model: ECM_S
+  subjects: [101, 103, 201, 202, 301, 302]
+  replicates: 2
+  estimate_all_coordinates: true

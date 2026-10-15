@@ -1,0 +1,13 @@
+protocol: model0923_h_objective_environment_v1
+seed: 2026101523
+parallel_budget: 128
+paths: 128
+chunk_size: 8
+policies: [fixed, balanced, adaptive, adaptive_repeat]
+max_blocks: 20
+blocks_per_session: 5
+threshold: 0.9
+beta: 0.2
+ambiguity_width: 0.1
+# Scope exclusions, if needed, are recorded by task-source audit after fitting.
+excluded_subjects: {}
