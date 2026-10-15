@@ -5,6 +5,7 @@ including a path still censored at H, belongs to the single H+1 category.
 CRPS in block units penalizes predictions that are too early or too late.
 This supplements frozen comparisons; it never selects or changes parameters.
 Run from the repository root with --source ADAPTIVE_OUTPUT --output NEW_OUTPUT.
+--reference-model names the comparison baseline; the existing default is B.
 Observed first-passing times must be available; early-censored observations
 need a separately specified survival score.
 """
@@ -35,7 +36,7 @@ def capped_first_pass_times(blocks: np.ndarray, passed: np.ndarray, horizon: int
     return np.where(events, lengths, horizon + 1).astype(float)
 
 
-def run(source: Path, output: Path) -> None:
+def run(source: Path, output: Path, reference_model: str = 'B') -> None:
     if output.exists():
         raise FileExistsError('Use a new stopping-score destination')
     protocol=load(source/'protocol.json');done=load(source/'completion.json')
@@ -50,6 +51,8 @@ def run(source: Path, output: Path) -> None:
     included=set(protocol.get('included_subjects',[r['subject'] for r in nominees['nominees']]))
     expected={(r['subject'],r['model']) for r in nominees['nominees'] if r['subject'] in included}
     assert set(zip(paths.subject,paths.model))==expected
+    if not reference_model or any((subject,reference_model) not in expected for subject in included):
+        raise ValueError('Reference model must be present for every included participant')
     observed={};observed_rows=[];hashes={str(source/'paths.csv'):digest(source/'paths.csv')}
     for subject in sorted(paths.subject.unique()):
         folder=Path(nominees['data'])/f'subject_{subject}'
@@ -106,9 +109,9 @@ def run(source: Path, output: Path) -> None:
             by_observed_fraction=float((samples<=target).mean())))
     comparisons=[]
     for (subject,model),value in numeric.items():
-        reference=numeric[(subject,'B')]
+        reference=numeric[(subject,reference_model)]
         np.testing.assert_array_equal(value['seeds'],reference['seeds'])
-        comparisons.append(dict(subject=subject,model=model,reference='B',
+        comparisons.append(dict(subject=subject,model=model,reference=reference_model,
             delta_crps_blocks=value['score']-reference['score'],
             delta_crps_mc_se=jackknife_se(value['jk']-reference['jk'])))
     c=pd.DataFrame(comparisons);s=pd.DataFrame(scored);aggregate=[]
@@ -130,6 +133,7 @@ def run(source: Path, output: Path) -> None:
             nomination_sha256=protocol['nomination_sha256'],data_use_status=protocol['data_use_status'],
             included_subjects=sorted(included),excluded_subjects=protocol.get('excluded_subjects',[]),
             horizon_blocks=horizon,censored_category=horizon+1,inputs_sha256=hashes,
+            reference_model=reference_model,
             score='empirical CRPS for T*=min(first_passing_block,H+1), block units; all censored mass retained',
             uncertainty='paired whole-path jackknife; fixed parameters; population and parameter uncertainty excluded',
             scope='Supplementary diagnostic; frozen primary comparisons and selected parameters unchanged'),f,indent=2)
@@ -138,4 +142,5 @@ def run(source: Path, output: Path) -> None:
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
-    args=parser.parse_args();run(args.source,args.output)
+    parser.add_argument('--reference-model',default='B')
+    args=parser.parse_args();run(args.source,args.output,args.reference_model)

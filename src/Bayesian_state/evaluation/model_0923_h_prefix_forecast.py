@@ -4,7 +4,7 @@ All scores concern the same future trials on the recorded stimulus schedule.
 The filtered-prefix bank uses complete filter seeds as Monte Carlo clusters;
 the task-start bank uses independent complete paths. Their simulation streams
 are separate. Parameters remain fixed, and the forecast protocol records whether
-participants are development or reserved validation data. Conditional prediction
+participants are development or reserved validation data. The baseline follows the summary manifest, or --reference-model. Conditional prediction
 is retained as a mean-curve diagnostic only.
 """
 from __future__ import annotations
@@ -30,11 +30,12 @@ def filter_cluster_jackknife(samples: np.ndarray, observed: np.ndarray, labels: 
     return clusters, {metric: np.array([row[metric] for row in scores]) for metric in ('energy', 'crps')}
 
 
-def summarize(summary: Path, forecast: Path, output: Path) -> None:
+def summarize(summary: Path, forecast: Path, output: Path, reference_model: str | None = None) -> None:
     import json
     if output.exists():raise FileExistsError('Use a new forecast-comparison destination')
     original = load(summary / 'summary_manifest.json'); protocol = load(forecast / 'forecast_protocol.json')
     data_role = protocol.get('data_use_status', 'development')
+    reference_model = reference_model or original.get('reference_model', 'B')
     completed = load(forecast / 'forecast.json')
     if completed['status'] != 'complete' or completed['smoke'] or protocol['smoke']:
         raise ValueError('Need a complete scientific forecast')
@@ -91,10 +92,10 @@ def summarize(summary: Path, forecast: Path, output: Path) -> None:
                     probability_mean=probability[:, index].mean(), realized_mean=samples[:, index].mean(),
                     realized_q10=lower[index], realized_q90=upper[index]))
     for (subject, model, start), row in numeric.items():
-        baseline = numeric[(subject, 'B', start)]
+        baseline = numeric[(subject, reference_model, start)]
         np.testing.assert_array_equal(row['units'], baseline['units'])
         np.testing.assert_array_equal(row['branch_seeds'], baseline['branch_seeds'])
-        contrast = dict(subject=subject, model=model, reference='B', start=start, independent_units=len(row['units']))
+        contrast = dict(subject=subject, model=model, reference=reference_model, start=start, independent_units=len(row['units']))
         for metric in ('energy', 'crps'):
             contrast['delta_' + metric] = row['metrics'][metric] - baseline['metrics'][metric]
             contrast['delta_' + metric + '_mc_se'] = jackknife_se(row['jackknife'][metric] - baseline['jackknife'][metric])
@@ -125,14 +126,15 @@ def summarize(summary: Path, forecast: Path, output: Path) -> None:
                 str(forecast/'forecast.json'):digest(forecast/'forecast.json'), **hashes},
             conditioning='task_start: fitted parameters only; filtered_prefix: fitted parameters and observed training prefix',
             uncertainty='fixed-parameter simulation error; paired complete filters for prefix forecasts, complete paths for task-start generation',
-            data_use_status=data_role,
+            data_use_status=data_role,reference_model=reference_model,
             boundary=f'{data_role} participants on recorded future stimulus schedule; future choices do not update forecasts'), handle, indent=2)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('summary', 'forecast', 'output'):parser.add_argument('--' + name, type=Path, required=True)
-    args = parser.parse_args(); summarize(args.summary, args.forecast, args.output)
+    parser.add_argument('--reference-model')
+    args = parser.parse_args(); summarize(args.summary, args.forecast, args.output, args.reference_model)
 
 
 if __name__ == '__main__':main()

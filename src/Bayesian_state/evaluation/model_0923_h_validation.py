@@ -3,6 +3,7 @@
 Probability scores use pre-choice predictions. Autonomous scores use complete
 sampled choice paths, including observation variability. Each participant keeps
 their chronological boundary; all summaries retain every configured model.
+--reference-model selects the comparison baseline (default B).
 Energy and CRPS use the equal-weight empirical predictive distribution (V-statistic).
 Gneiting & Raftery (2007), doi:10.1198/016214506000001437, equations 21, 22, 43.
 This module creates new summaries and never changes the evaluated fits.
@@ -68,16 +69,17 @@ def checked_arrays(source: Path, row: dict) -> dict:
     with np.load(file) as z:return {k:z[k] for k in z.files}
 
 
-def aggregate_choices(test: pd.DataFrame, contrasts: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+def aggregate_choices(test: pd.DataFrame, contrasts: pd.DataFrame, models: list[str],
+                      reference_model: str = 'B') -> pd.DataFrame:
     """Retain both participant-equal and trial-weighted held-out choice scores."""
     aggregate=[]
     for model in models:
         group=test[test.model==model].sort_values('subject')
-        baseline=test[test.model=='B'].sort_values('subject')
+        baseline=test[test.model==reference_model].sort_values('subject')
         np.testing.assert_array_equal(group.subject,baseline.subject)
         np.testing.assert_array_equal(group.trials,baseline.trials)
         difference=group.choice_nll.to_numpy()-baseline.choice_nll.to_numpy()
-        numerical=contrasts[contrasts.model==model].sort_values('subject').choice_nll_mc_se.to_numpy() if model!='B' else np.zeros(len(group))
+        numerical=contrasts[contrasts.model==model].sort_values('subject').choice_nll_mc_se.to_numpy() if model!=reference_model else np.zeros(len(group))
         lengths=group.trials.to_numpy()
         aggregate.append(dict(model=model,participants=len(group),test_trials=int(lengths.sum()),
             participant_mean_nll=float(group.choice_nll.mean()),
@@ -141,7 +143,8 @@ def score_screen(source: Path, output: Path) -> None:
         artifacts_sha256=hashes,boundary='development participants with original whole-sequence fitted parameters'),f,indent=2)
 
 
-def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> None:
+def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path,
+              reference_model: str = 'B') -> None:
     if output.exists():raise FileExistsError('Use a new validation summary destination')
     frozen=load(fit/'nominees.json');nomination_hash=digest(fit/'nominees.json')
     for source in (conditional,autonomous):
@@ -149,6 +152,8 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
             raise ValueError('Evaluation was produced from a different frozen fit')
         if load(source/'evaluation.json')['status']!='complete':raise ValueError('Evaluation is incomplete')
     expected={(r['subject'],r['model']):r for r in frozen['nominees']}
+    if any((subject,reference_model) not in expected for subject,_ in expected):
+        raise ValueError('Reference model must be present for every participant')
     inputs=[]
     for source in (conditional,autonomous):
         rows=load(source/'evaluation.json')['rows'];indexed={(r['subject'],r['model']):r for r in rows}
@@ -196,11 +201,11 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
             parameters.append(dict(tag,parameter=name,value=value))
     frame=pd.DataFrame(rows)
     for (subject,model),scores in seed_scores.items():
-        if model=='B':continue
-        np.testing.assert_array_equal(seeds[(subject,model)],seeds[(subject,'B')])
+        if model==reference_model:continue
+        np.testing.assert_array_equal(seeds[(subject,model)],seeds[(subject,reference_model)])
         left=frame[(frame.subject==subject)&(frame.model==model)&(frame.phase=='test')].iloc[0]
-        right=frame[(frame.subject==subject)&(frame.model=='B')&(frame.phase=='test')].iloc[0]
-        contrast=dict(subject=subject,model=model,reference='B',choice_nll_mc_se=jackknife_se(scores-seed_scores[(subject,'B')]))
+        right=frame[(frame.subject==subject)&(frame.model==reference_model)&(frame.phase=='test')].iloc[0]
+        contrast=dict(subject=subject,model=model,reference=reference_model,choice_nll_mc_se=jackknife_se(scores-seed_scores[(subject,reference_model)]))
         for metric in ['choice_nll','choice_brier','energy','crps','interval_score','interval_coverage',
                        'interval_width','probability_mean_mae','conditional_mean_mae']:
             contrast['delta_'+metric]=float(left[metric]-right[metric])
@@ -211,17 +216,18 @@ def summarize(fit: Path, conditional: Path, autonomous: Path, output: Path) -> N
     # A continuation may evaluate only selected models from the original
     # configuration. Coverage is defined by its frozen nominee manifest.
     models=list(dict.fromkeys(row['model'] for row in frozen['nominees']))
-    aggregate=aggregate_choices(test,contrast_frame,models)
+    aggregate=aggregate_choices(test,contrast_frame,models,reference_model)
     for name,data in [('scores',frame),('blocks',pd.DataFrame(blocks)),('parameters',pd.DataFrame(parameters)),
                       ('test_contrasts',contrast_frame),('aggregate_choice_scores',aggregate),
                       ('inactive_parameter_channels',inactive_parameter_channels(frozen))]:data.to_csv(output/(name+'.csv'),index=False)
     manifest=dict(status='complete',fit=str(fit.resolve()),conditional=str(conditional.resolve()),autonomous=str(autonomous.resolve()),
-        subjects=sorted(set(k[0] for k in expected)),models=models,
+        subjects=sorted(set(k[0] for k in expected)),models=models,reference_model=reference_model,
+        data_use_status=frozen['settings'].get('data_use_status','development'),
         nomination_sha256=nomination_hash,source_sha256=digest(Path(__file__)),
         inputs_sha256={str(p):digest(p) for p in [fit/'nominees.json',conditional/'evaluation.json',autonomous/'evaluation.json']},
         scientific_status=('development_reevaluation_after_training_only_refinement'
             if frozen.get('status')=='frozen_for_development_evaluation' else
-            'six_preselected_participants_bounded_prefix_fit_with_sequential_test_and_from_start_generation'),
+            'preselected_participants_bounded_prefix_fit_with_sequential_test_and_from_start_generation'),
         uncertainty='filter-seed jackknife measures numerical uncertainty; parameters remain point estimates',
         distribution_score='empirical equal-weight sampled choice paths; RMS-scaled energy; mean block CRPS; central 80 percent interval')
     with (output/'summary_manifest.json').open('x') as f:json.dump(manifest,f,ensure_ascii=False,indent=2)
@@ -231,9 +237,10 @@ def main() -> None:
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('fit','conditional','autonomous','screen'):p.add_argument('--'+name,type=Path)
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--reference-model',default='B')
     args=p.parse_args()
     if args.screen:score_screen(args.screen,args.output)
-    elif all([args.fit,args.conditional,args.autonomous]):summarize(args.fit,args.conditional,args.autonomous,args.output)
+    elif all([args.fit,args.conditional,args.autonomous]):summarize(args.fit,args.conditional,args.autonomous,args.output,args.reference_model)
     else:p.error('Supply --screen or all of --fit, --conditional and --autonomous')
 
 

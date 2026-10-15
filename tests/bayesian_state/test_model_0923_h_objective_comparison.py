@@ -96,3 +96,40 @@ def test_generation_fit_does_not_open_future_or_transmit_observed_responses(tmp_
     assert record['data_boundary'] == 'training_only'
     assert record['objective_score'] > 0
     assert record['state_updates'] == 16
+
+
+def test_recovery_fixture_changes_behavior_and_preserves_physical_inputs(tmp_path):
+    from src.Bayesian_state.workflows.analysis.model_0923_h_objective_recovery import fixture
+    v = objective.validation(); original = tmp_path/'original'; original.mkdir()
+    v.write(original/'engine.json', {'example': 1})
+    v.write(original/'prepared.json', {'subject': 101, 'condition': 1, 'paths': {'example': 'preserved'},
+                                     'training_trials': 99, 'test_trials': 99})
+    arrays = dict(stimulus=np.arange(16).reshape(4,4), categories=np.array([1,2,1,2]),
+                  choices=np.array([2,2,1,1]), feedback=np.array([0,1,1,0]))
+    meta = fixture(original, tmp_path/'synthetic', arrays)
+    assert meta['subject'] == 101 and meta['training_trials'] == 4 and meta['test_trials'] == 0
+    assert 'hyperparams' not in meta and 'synthetic_truth' not in meta
+    with np.load(tmp_path/'synthetic/training.npz') as saved:
+        for key,value in arrays.items():np.testing.assert_array_equal(saved[key], value)
+    with np.load(tmp_path/'synthetic/sealed_test.npz') as saved:
+        assert all(len(saved[key]) == 0 for key in saved.files)
+
+
+def test_choice_aggregation_accepts_a_named_objective_baseline():
+    import pandas as pd
+    from src.Bayesian_state.evaluation.model_0923_h_validation import aggregate_choices
+    frame = pd.DataFrame([dict(subject=1,model='NLL',trials=10,choice_nll=.3),
+                          dict(subject=1,model='GEN',trials=10,choice_nll=.5)])
+    contrasts = pd.DataFrame([dict(subject=1,model='GEN',choice_nll_mc_se=.01)])
+    result = aggregate_choices(frame,contrasts,['NLL','GEN'],'NLL').set_index('model')
+    assert result.loc['NLL','delta_total_negative_log_score']==0
+    assert result.loc['GEN','delta_total_negative_log_score']==pytest.approx(2.)
+    assert result.loc['GEN','delta_total_mc_se']==pytest.approx(.1)
+
+
+def test_whole_feature_path_jackknife_matches_training_score_uncertainty():
+    from src.Bayesian_state.evaluation.model_0923_h_objective_comparison import feature_jackknife
+    from src.Bayesian_state.evaluation.model_0923_h_validation import jackknife_se
+    samples = np.array([[.1,.2], [.4,.6], [.2,.8], [.9,.3], [.7,.5]])
+    target = np.array([.3,.4])
+    assert jackknife_se(feature_jackknife(samples,target)) == pytest.approx(energy_u(samples,target)['mc_se'])

@@ -93,4 +93,31 @@ GEN组从任务起点生成独立行为路径，每条路径以自身选择获�
 当前状态：28项目标、预算与数据边界测试通过；一人8题的两组各10个评分任务完成，数值线程数为1。
 GEN的4条模拟选择与原自主生成入口逐值一致。软件验证位于
 `results/model_0923/h_objective_software_check_20261015_v1`和
-`results/model_0923/h_objective_software_replay_20261015_v1`。新六人的科学拟合将在本协议冻结后启动。
+`results/model_0923/h_objective_software_replay_20261015_v1`。
+协议在提交`415be172`冻结，新六人的科学拟合已启动，结果使用前缀
+`results/model_0923/h_objective_*_20261015_v1`。
+
+共同评价入口`python -m src.Bayesian_state.evaluation.model_0923_h_validation`
+接受`--reference-model NLL`；训练状态续跑和自主轨迹误差评价沿用该汇总中的参照组。
+既有调用默认仍以B为参照。新增特征评价入口为
+`python -m src.Bayesian_state.evaluation.model_0923_h_objective_comparison
+--fit FIT --conditional CONDITIONAL --autonomous AUTONOMOUS --output NEW_OUTPUT`。
+该入口保存双方所选点的两目标交叉评分、留出特征分布分数和实际计算预算。
+
+完整任务的资料核对入口为
+`python -m src.Bayesian_state.workflows.analysis.model_0923_h_objective_task_audit
+--fit FIT --config TASK_CONFIG --output NEW_OUTPUT`。
+核对在参数冻结后读取完整任务记录。试次顺序、块长度或刺激分配无法重建时，
+在新的任务配置中记录对应被试及原因；这项排除仅影响任务环境诊断。
+输入文件校验失败时停止执行。达标时间评价接受`--reference-model NLL`。
+
+参数恢复入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_objective_recovery`。
+`--phase prepare --config CONFIG --output NEW_OUTPUT`生成12份合成训练数据及拟合配置；
+真值另存于`truths.json`，拟合数据目录只含行为、刺激及执行所需元数据。
+随后使用原目标对照入口拟合新生成的`prepared_data`，配置为`fit_config.yaml`。
+`--phase summarize --prepared RECOVERY_DATA --fit RECOVERY_FIT --output NEW_OUTPUT`
+输出全部14个坐标的恢复误差、离散网格偏差和边界比例。
+
+扩展后的50项相关测试通过。与历史结果独立核对时，13张选择、轨迹与数值误差表，
+以及4张达标时间表保持逐值一致；新增NLL参照组的达标时间差值也通过核对。
+科学结论待正式拟合、留出评价及参数恢复全部完成后记录。

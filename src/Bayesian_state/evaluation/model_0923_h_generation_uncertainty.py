@@ -6,7 +6,8 @@ The resulting standard errors measure finite simulation, not population or
 parameter uncertainty. Existing predictions and summaries remain unchanged.
 
 Use --summary SUMMARY --output NEW_OUTPUT for fitted predictions, optionally
-adding --finalists FINALISTS. Use --screen SCREEN --scores SCORES --output
+adding --finalists FINALISTS. The reference follows the summary manifest or
+--reference-model. Use --screen SCREEN --scores SCORES --output
 NEW_OUTPUT for fixed-parameter intervention paths and their existing scores.
 """
 from __future__ import annotations
@@ -26,18 +27,19 @@ def path_jackknife(samples: np.ndarray, observed: np.ndarray) -> dict[str,np.nda
     return {key:np.array([row[key] for row in scores]) for key in ['energy','crps']}
 
 
-def run(summary: Path, finalists: Path | None, output: Path) -> None:
+def run(summary: Path, finalists: Path | None, output: Path, reference_model: str | None = None) -> None:
     if output.exists():raise FileExistsError('Use a new simulation-uncertainty destination')
     manifest=load(summary/'summary_manifest.json');fit=Path(manifest['fit']);frozen=load(fit/'nominees.json')
     generated=Path(manifest['autonomous']);conditional=Path(manifest['conditional'])
+    reference_model=reference_model or manifest.get('reference_model','B')
     if finalists is not None:
         if load(finalists/'protocol.json')['nomination_sha256']!=manifest['nomination_sha256']:
             raise ValueError('Finalists and primary predictions use different nominees')
         if load(finalists/'completion.json')['status']!='complete':raise ValueError('Finalist generation is incomplete')
     targets={};cuts={};primary={};candidate_results={}
     for row in load(conditional/'evaluation.json')['rows']:
-        if row['model']!='B':continue
-        with np.load(conditional/'evaluate'/f'subject_{row["subject"]}'/'B'/(row['candidate']['id']+'.npz')) as z:
+        if row['model']!=reference_model:continue
+        with np.load(conditional/'evaluate'/f'subject_{row["subject"]}'/reference_model/(row['candidate']['id']+'.npz')) as z:
             targets[row['subject']]=(z['choices']==z['categories']).astype(float)
         cuts[row['subject']]=row['training_trials']
     def read_generated(source: Path, row: dict) -> dict:
@@ -54,8 +56,8 @@ def run(summary: Path, finalists: Path | None, output: Path) -> None:
             candidate_results[(row['subject'],row['model'],row['candidate']['id'])]=read_generated(finalists,row)
     primary_rows=[];candidate_rows=[]
     for (subject,model),row in primary.items():
-        baseline=primary[(subject,'B')];np.testing.assert_array_equal(row['seeds'],baseline['seeds'])
-        result=dict(subject=subject,model=model,reference='B',paths=len(row['seeds']))
+        baseline=primary[(subject,reference_model)];np.testing.assert_array_equal(row['seeds'],baseline['seeds'])
+        result=dict(subject=subject,model=model,reference=reference_model,paths=len(row['seeds']))
         for metric in ['energy','crps']:
             result.update({metric:row['metrics'][metric],metric+'_mc_se':jackknife_se(row['jackknife'][metric]),
                 'delta_'+metric:row['metrics'][metric]-baseline['metrics'][metric],
@@ -88,7 +90,7 @@ def run(summary: Path, finalists: Path | None, output: Path) -> None:
     pd.DataFrame(aggregate).to_csv(output/'aggregate.csv',index=False)
     import json
     with (output/'completion.json').open('x') as f:json.dump(dict(status='complete',source_sha256=digest(Path(__file__)),
-        summary=str(summary.resolve()),finalists=str(finalists.resolve()) if finalists is not None else None,nomination_sha256=manifest['nomination_sha256'],
+        summary=str(summary.resolve()),reference_model=reference_model,finalists=str(finalists.resolve()) if finalists is not None else None,nomination_sha256=manifest['nomination_sha256'],
         interpretation='whole-path jackknife Monte Carlo standard errors; parameter points fixed; participant population uncertainty excluded'),f,indent=2)
 
 
@@ -151,11 +153,12 @@ def main() -> None:
     p=argparse.ArgumentParser(description=__doc__)
     for name in ['summary','finalists','screen','scores']:p.add_argument('--'+name,type=Path)
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--reference-model')
     args=p.parse_args()
     if args.screen and args.scores and not args.summary and not args.finalists:
         screen_comparisons(args.screen,args.scores,args.output)
     elif args.summary and not args.screen and not args.scores:
-        run(args.summary,args.finalists,args.output)
+        run(args.summary,args.finalists,args.output,args.reference_model)
     else:p.error('Supply --summary [--finalists], or --screen and --scores')
 
 
