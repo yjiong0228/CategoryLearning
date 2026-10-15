@@ -53,7 +53,11 @@ def build(source: Path, output: Path, report_name: str = 'review.html') -> None:
                           ('late_active','Late compatible-rule presence')]:
         matrix=summary.pivot(index='variant',columns='subject',values=metric).reindex(index=variants,columns=subjects)
         delta=matrix.subtract(matrix.loc['B'],axis=1)*100
-        fig,ax=plt.subplots(figsize=(183/25.4,max(80,5*len(variants)+25)/25.4),layout='constrained')
+        # Reserve room for the colorbar's tick labels and rotated explanation
+        # at the exported resolution, including two-digit negative limits.
+        fig=plt.figure(figsize=(183/25.4,max(80,5*len(variants)+25)/25.4),dpi=300)
+        grid=fig.add_gridspec(1,2,width_ratios=[40,1.1],left=.17,right=.91,bottom=.12,top=.93,wspace=.08)
+        ax=fig.add_subplot(grid[0]);colorbar_axis=fig.add_subplot(grid[1])
         limit=max(1.,float(np.nanmax(abs(delta.to_numpy()))))
         im=ax.imshow(delta.to_numpy(),aspect='auto',cmap=palette,norm=TwoSlopeNorm(vmin=-limit,vcenter=0,vmax=limit))
         for i,variant in enumerate(variants):
@@ -65,7 +69,7 @@ def build(source: Path, output: Path, report_name: str = 'review.html') -> None:
         ax.set_xticks(range(len(subjects)),list(map(str,subjects)))
         ax.set_yticks(range(len(variants)),variants)
         ax.set_xlabel('Participant');ax.set_title(title+' — change from B')
-        fig.colorbar(im,ax=ax,label='Percentage points; '+('lower is better' if metric=='block_mean_absolute_error' else 'descriptive difference'))
+        fig.colorbar(im,cax=colorbar_axis,label='Percentage points; '+('lower is better' if metric=='block_mean_absolute_error' else 'descriptive difference'))
         fig.savefig(output/(metric+'.png'),dpi=300);plt.close(fig)
     pd.DataFrame(matrices).to_csv(output/'heatmap_source.csv',index=False)
     path_images={};path_counts={};source_hashes={}
