@@ -37,6 +37,26 @@ def test_joint_proposal_escapes_single_coordinate_trap():
     assert all(r['origin']['kind'] == 'joint' for r in proposals)
 
 
+def test_joint_proposals_preserve_fixed_coordinates():
+    point = {'fixed': 0., 'a': 0., 'b': 0.}
+    space = {'fixed': [0.], 'a': [0., 1.], 'b': [0., 1.]}
+    elite = candidate(point, 'initial')
+    proposals = propose_round([elite], space, {elite['id']}, 1, 93, 0., 0.)
+    assert [row['hyperparams'] for row in proposals] == [{'fixed': 0., 'a': 1., 'b': 1.}]
+
+
+def test_one_mutable_coordinate_supports_only_single_coordinate_proposals():
+    point = {'fixed': 0., 'a': 0.}; elite = candidate(point, 'initial')
+    space = {'fixed': [0.], 'a': [0., 1.]}
+    assert propose_round([elite], space, {elite['id']}, 1, 93, 0., 0.) == []
+    assert propose_round([elite], space, {elite['id']}, 1, 93, 1., 0.)[0]['hyperparams'] == {'fixed': 0., 'a': 1.}
+
+
+def test_fully_fixed_support_has_no_new_candidates():
+    elite = candidate({'fixed': 0.}, 'initial')
+    assert propose_round([elite], {'fixed': [0.]}, {elite['id']}, 4, 93, .5, .25) == []
+
+
 def test_boundary_distinguishes_zero_and_artificial_upper(setup):
     config, original, space, anchor, support = setup
     point = deepcopy(anchor); point[GAMMA_PATH] = .97

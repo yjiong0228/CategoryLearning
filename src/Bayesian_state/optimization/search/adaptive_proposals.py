@@ -1,6 +1,7 @@
 """Bounded, diverse Model 0826 proposals shared by fitting and historical pilots.
 
-Promoted unchanged from the validated pilots; no model equations live here.
+Promoted from the validated pilots; no model equations live here. Singleton
+coordinates stay fixed and are excluded from joint proposal selection.
 """
 from __future__ import annotations
 from copy import deepcopy
@@ -66,10 +67,15 @@ def neighbor_values(key: str, value: object, values: list) -> list:
 
 def propose_round(elites: list[dict], space: dict, seen: set[str], per_elite: int,
                   seed: int, local_fraction: float, jump_fraction: float) -> list[dict]:
-    """Balance local moves, whole-block jumps and joint two-block moves."""
+    """Balance local moves, whole-block jumps and joint two-block moves.
+
+    Joint moves require two coordinates with alternatives. Fixed coordinates
+    remain in each candidate. Exhausted proposal quotas can return fewer points
+    so callers can report insufficient search support explicitly.
+    """
     rng = np.random.default_rng(seed)
     pending = {}
-    keys = list(space)
+    keys = [key for key, values in space.items() if len(values) > 1]
     for elite in elites:
         anchor = elite['hyperparams']
         pools = [[], [], []]
@@ -79,7 +85,7 @@ def propose_round(elites: list[dict], space: dict, seen: set[str], per_elite: in
             for value in values:
                 if value != anchor[key]:
                     pools[1].append({**deepcopy(anchor), key: deepcopy(value)})
-        for _ in range(max(100, per_elite * 10)):
+        for _ in range(max(100, per_elite * 10) if len(keys) >= 2 else 0):
             a, b = rng.choice(keys, 2, replace=False)
             candidate = deepcopy(anchor)
             for key in (a, b):
