@@ -622,4 +622,22 @@ B的预测与原独立工作流程逐值一致，原流程对带JF标记的配�
 三类任务的B和ECM_S共6组完成8题训练、8题续跑的小规模检查，每组4粒子、3条分支。
 记录末尾状态前后的滤波预测和权重逐值一致，分支可精确重放，交换分支运行顺序保持相应结果一致，
 生成后恢复的认知状态与起点逐值一致。验证记录位于
-`results/model_0923/h_prefix_forecast_software_check_20261015_v2`。批量评估待接入本轮冻结参数。
+`results/model_0923/h_prefix_forecast_software_check_20261015_v2`。
+
+批量入口为`python -m src.Bayesian_state.workflows.analysis.model_0923_h_prefix_forecast`，
+使用`configs/shared/model0923_h_prefix_forecast.yaml`。每组256粒子、8个滤波种子，
+每个滤波分布抽取8条未来分支，共64条续跑路径。每个种子的训练预测须与同一参数点、
+同一粒子数下保存的条件预测逐值一致，随后才生成未来路径。最多128个工作进程，
+每个工作进程负责一个完整滤波种子，其分支顺序运行。
+
+评分入口为`python -m src.Bayesian_state.evaluation.model_0923_h_prefix_forecast`，
+将同一后续试次上的起点生成和训练后续跑并列，条件预测作为均值曲线参照。
+续跑的Monte Carlo标准误每次删除一个滤波种子对应的全部分支；起点生成仍每次删除一条独立路径。
+两种生成方式使用各自的随机数流，其差值的数值标准误合并两侧方差。模型间比较保留共同种子的配对。
+
+流程、分组评分及生成适配器共8项测试通过。B与两种JF版本在小规模完整流程中共生成12条续跑路径，
+起点生成的8项评分与已有记录逐值一致。另以101号被试的完整224题训练前缀和256粒子验证，
+训练预测与已保存条件预测逐值一致，随后成功生成96题续跑。
+流程记录为`results/model_0923/h_prefix_forecast_pipeline_check_20261015_v1`，
+完整前缀检查为`results/model_0923/h_prefix_forecast_exact_prefix_20261015_v1`。
+全量比较接在本轮参数复核及更新后的预测之后。

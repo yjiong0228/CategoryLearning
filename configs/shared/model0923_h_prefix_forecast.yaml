@@ -1,0 +1,6 @@
+protocol: model0923_h_prefix_forecast_v1
+seed: 2026101512
+parallel_budget: 128
+particles: 256
+filters: 8
+branches_per_filter: 8
