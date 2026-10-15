@@ -192,6 +192,48 @@ def test_r1_preserves_positive_evidence_rule_and_clears_exited_history(make):
     assert model.transition_log[-1]['autonomous_exits'] == [0]
 
 
+@pytest.mark.parametrize('condition', [1, 2, 3])
+@pytest.mark.parametrize('window', [1, 4, 8])
+def test_r1_with_zero_exit_is_behaviorally_identical_to_b(condition, window, monkeypatch, tmp_path):
+    """A fitted zero exit rate closes R1's gate, including capacity updates."""
+    from src.Bayesian_state.model.modules.readout.choice import (
+        resolve_choice_readout_config, resolve_output_noise_config,
+    )
+    monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
+    config = yaml.safe_load(Path(f'configs/exp123/model_struct/model_0923_cond{condition}_full_v3.yaml').read_text())
+    config['modules']['perception_mod']['kwargs'] = dict(features=4, mean=[0.]*4, std=[0.]*4, module_seed=2)
+    transition = config['modules']['hypo_transitions_mod']['kwargs']
+    transition.update(max_capacity=2, exit_rate=0., relation_samples=128, module_seed=3)
+    transition['search_controller']['baseline_probability'] = .8
+    config['provenance']['hypothesis_similarity']['sample_count'] = 128
+    models = []
+    for mechanism in ({'kind':'B'}, {'kind':'R1','window':window}):
+        current = deepcopy(config)
+        current['modules']['hypo_transitions_mod']['kwargs']['intervention'] = mechanism
+        models.append(StateModel(current, context=ModelContext(condition=condition)))
+    stimuli = np.random.default_rng(91).uniform(.1, .9, (12, 4))
+    choices = np.tile([1, 2, 1, 2], 3)
+    feedback = np.tile([0., .5 if condition==3 else 0., 1., 0.], 3)
+    modules = [model.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION) for model in models]
+    for trial, stimulus in enumerate(stimuli):
+        decisions = []
+        for model in models:
+            model.begin_trial(stimulus)
+            decisions.append(model.predict_choice(choices=choices[:trial], feedback=feedback[:trial],
+                choice_readout_config=resolve_choice_readout_config(None, model.engine_config),
+                output_noise_config=resolve_output_noise_config(None, model.engine_config),
+                rng=np.random.default_rng(12), sticky_state={}, post_error_lapse_state=0.))
+            model.complete_trial(int(choices[trial]), float(feedback[trial]))
+        np.testing.assert_array_equal(decisions[0].observed_probabilities, decisions[1].observed_probabilities)
+        for field in ('prior', 'posterior', 'beta'):
+            np.testing.assert_array_equal(getattr(models[0].engine,field), getattr(models[1].engine,field))
+        np.testing.assert_array_equal(modules[0].active, modules[1].active)
+        assert modules[0].trial_rng.bit_generator.state == modules[1].trial_rng.bit_generator.state
+    assert any(event['capacity_dropped'] is not None for event in modules[0].transition_log)
+    assert all(not event['autonomous_exits'] for event in modules[1].transition_log)
+    assert modules[1].recent_evidence_count.max() > 0
+
+
 def test_c1_admission_probability_includes_random_tie_rejection(make):
     # Scale 1 makes exp(-log(2)) exactly 0.5 in floating point.
     model = make({'kind':'C1'}, transfer_scale=1.)
