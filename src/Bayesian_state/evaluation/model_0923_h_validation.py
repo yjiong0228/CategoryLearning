@@ -100,6 +100,10 @@ def inactive_parameter_channels(frozen: dict) -> pd.DataFrame:
         if point.get(prefix+'search_controller.global_search')==1.:
             for name in ['search_controller.global_search_failure_gain','local_structure_weight']:
                 closed[prefix+name]='基础全局搜索比例为1；当前参数点只产生全局提案'
+        if (point.get(prefix+'search_controller.error_gain')==0. and
+            (point.get(prefix+'search_controller.global_search')==1. or
+             point.get(prefix+'search_controller.global_search_failure_gain')==0.)):
+            closed[prefix+'search_controller.failure_decay']='失败历史对搜索发生及全局搜索比例的调节均为0；失败保持率不影响H决策'
         if mechanism['kind']=='E' and mechanism.get('capacity','posterior')=='posterior' and point.get(prefix+'exit_rate')==0.:
             closed[prefix+'intervention.decay']='自主退出率为0且容量按信念排序；连续证据不改变H决策'
         for parameter,reason in closed.items():

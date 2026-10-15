@@ -85,3 +85,16 @@ def test_parameter_channels_depend_on_both_capacity_and_exit_mechanism():
     rows=inactive_parameter_channels(frozen)
     assert set(rows[rows.model=='E'].parameter)=={h+'search_controller.global_search_failure_gain',h+'local_structure_weight',h+'intervention.decay'}
     assert set(rows[rows.model=='ECM'].parameter)=={h+'search_controller.global_search_failure_gain',h+'local_structure_weight'}
+
+
+def test_failure_decay_requires_both_search_channels_to_be_closed():
+    from src.Bayesian_state.evaluation.model_0923_h_validation import inactive_parameter_channels
+    h='engine.modules.hypo_transitions_mod.kwargs.'
+    cases=[(0.,0.,.5,True),(1.,0.,.5,False),(0.,.5,.5,False),(0.,1.,1.,True),(1.,1.,1.,False)]
+    for error_gain,global_gain,global_base,expected in cases:
+        point={h+'search_controller.error_gain':error_gain,h+'search_controller.global_search':global_base,
+            h+'search_controller.global_search_failure_gain':global_gain,h+'search_controller.failure_decay':.95}
+        frozen=dict(settings=dict(models={'B':dict(kind='B')}),
+            nominees=[dict(subject=101,model='B',candidate=dict(hyperparams=point))])
+        rows=inactive_parameter_channels(frozen)
+        assert (h+'search_controller.failure_decay' in set(rows.parameter))==expected
