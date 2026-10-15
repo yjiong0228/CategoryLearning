@@ -3,6 +3,9 @@
 This diagnostic measures sensitivity to the retained parameter points. It does
 not select a new nominee or interpret the candidate bank as a parameter posterior.
 The original generator, archived cognitive runtime and outer worker pool are reused.
+The frozen fit's data-use role is preserved in the diagnostic protocol.
+Optional seed_role='autonomous', with the primary protocol name and seed,
+reuses the primary generator's path seeds. Omitting it preserves earlier seeds.
 """
 from __future__ import annotations
 
@@ -19,6 +22,16 @@ from ...utils.seeding import stable_seed
 from ...evaluation.model_0923_h_validation import block_paths,distribution_scores
 
 
+def trajectory_seeds(settings: dict, subject: int) -> list[int]:
+    """Keep earlier seed banks, or explicitly share a primary simulation role."""
+    role = settings.get('seed_role')
+    if role is not None and (not isinstance(role, str) or not role):
+        raise ValueError('seed_role must be a nonempty string when specified')
+    fields = {'role': role} if role is not None else {}
+    return [stable_seed(dict(protocol=settings['protocol'], base=settings['seed'],
+                subject=subject, path=i, **fields)) for i in range(settings['paths_per_candidate'])]
+
+
 def run(fit: Path, config: Path, output: Path) -> None:
     frozen=read(fit/'nominees.json');settings=yaml.safe_load(config.read_text())
     if output.exists():raise FileExistsError('Use a new finalist generation destination')
@@ -32,6 +45,7 @@ def run(fit: Path, config: Path, output: Path) -> None:
     hashes=source_hashes();hashes[str(Path(__file__).resolve().relative_to(REPO))]=digest(Path(__file__))
     write(output/'protocol.json',dict(fit=str(fit.resolve()),nomination_sha256=digest(fit/'nominees.json'),
         settings=settings,source_sha256=hashes,
+        data_use_status=frozen['settings'].get('data_use_status','development'),
         diagnostic_scoring_sha256=digest(REPO/'src/Bayesian_state/evaluation/model_0923_h_validation.py'),
         role='equal_generation_budget_at_all_frozen_training_finalists; nominees_remain_unchanged',
         interpretation='parameter-point sensitivity; candidate bank is not a posterior sample'))
@@ -40,8 +54,7 @@ def run(fit: Path, config: Path, output: Path) -> None:
     for job in jobs:
         subject=read(Path(job['folder'])/'prepared.json')['subject']
         job.update(phase='autonomous',source_sha256=hashes,
-            seeds=[stable_seed(dict(protocol=settings['protocol'],base=settings['seed'],subject=subject,path=i))
-                   for i in range(settings['paths_per_candidate'])])
+            seeds=trajectory_seeds(settings,subject))
         groups[job['name']]=[]
         for first in range(0,len(job['seeds']),settings['chunk_size']):
             chunk=deepcopy(job);target=Path(job['target'])

@@ -1,0 +1,8 @@
+# Match the primary generator's seed definition for exact nominee replay.
+protocol: model0923_h_reserved_validation_v1
+seed: 2026101513
+seed_role: autonomous
+parallel_budget: 128
+finalists: 8
+paths_per_candidate: 64
+chunk_size: 8
