@@ -1,0 +1,80 @@
+protocol: model0923_h_reserved_validation_v1
+data_use_status: reserved_validation
+seed: 2026101513
+parallel_budget: 128
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+models:
+  B:
+    kind: B
+  R1:
+    kind: R1
+    window: 4
+  ECM_S:
+    kind: E
+    decay: 0.95
+    capacity: evidence_mean
+    search: accumulate
+  ECM_S_R0:
+    kind: E
+    decay: 0.95
+    capacity: evidence_mean
+    search: accumulate
+  JF_sum:
+    kind: J
+    decay: 0.95
+    cost: 0.0
+    refresh: search
+    stay_bias: 3.0
+    search: accumulate
+    candidate_sampler: single_proposal_fixed_cardinality
+retention_cost_values:
+- -4.0
+- -2.0
+- -1.0
+- 0.0
+- 1.0
+- 2.0
+- 4.0
+stay_bias_values:
+- 0.0
+- 1.0
+- 2.0
+- 3.0
+- 4.0
+- 5.0
+- 7.0
+evidence_decay_values:
+- 0.0
+- 0.3
+- 0.6
+- 0.8
+- 0.9
+- 0.95
+- 0.99
+- 1.0
+initial_candidates: 64
+refinement_rounds: 2
+elites: 4
+proposals_per_elite: 16
+finalists: 8
+autonomous_paths: 64
+autonomous_chunk: 8
+evaluate_seed_chunk: 2
+budgets:
+  screen:
+    particles: 32
+    seeds: 2
+  refine:
+    particles: 64
+    seeds: 2
+  selection:
+    particles: 128
+    seeds: 4
+  evaluate:
+    particles: 256
+    seeds: 8
+fixed_size_models:
+- JF_sum
+fixed_parameters:
+  ECM_S_R0:
+    engine.modules.hypo_transitions_mod.kwargs.exit_rate: 0.0

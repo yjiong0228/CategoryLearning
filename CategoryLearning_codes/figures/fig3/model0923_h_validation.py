@@ -24,7 +24,8 @@ import pandas as pd
 
 from src.Bayesian_state.evaluation.model_0923_h_validation import block_paths,digest,load
 
-COLORS={'B':'#777777','R1':'#704C86','E':'#326C98','ECM':'#397E79','ECM_S':'#668548','JS_S':'#B67947'}
+COLORS={'B':'#777777','R1':'#704C86','E':'#326C98','ECM':'#397E79','ECM_S':'#668548','JS_S':'#B67947',
+        'ECM_S_R0':'#397E79','JF_sum':'#B67947'}
 
 
 def build(source: Path, output: Path) -> None:

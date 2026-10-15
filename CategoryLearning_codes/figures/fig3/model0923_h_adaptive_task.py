@@ -18,6 +18,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -46,6 +47,8 @@ def build(source: Path, output: Path) -> None:
     if len(paths) != completion['paths'] or paths.duplicated(['subject', 'model', 'policy', 'seed']).any():
         raise ValueError('Path coverage differs from completed generation')
     models = paths.model.drop_duplicates().tolist(); subjects = sorted(paths.subject.unique())
+    if len(models) > len(LINE_STYLES):
+        raise ValueError('Need a distinct line style for every displayed model')
     policies = protocol['settings']['policies']; n = protocol['settings']['paths']
     expected = {(s, m, p) for s in subjects for m in models for p in policies}
     if set(paths.groupby(['subject','model','policy']).groups) != expected or not (paths.groupby(['subject','model','policy']).size() == n).all():
@@ -68,7 +71,10 @@ def build(source: Path, output: Path) -> None:
     curves = []
     for subject in subjects:
         observed = int(paths.loc[paths.subject == subject, 'observed_blocks'].iloc[0])
-        fig, axes = plt.subplots(2, 2, figsize=(183/25.4, 145/25.4), layout='constrained', sharex=True, sharey=True)
+        panel_rows = (len(policies)+1)//2
+        fig, axes = plt.subplots(panel_rows, 2, figsize=(183/25.4, (65*panel_rows+15)/25.4),
+            layout='constrained', sharex=True, sharey=True, squeeze=False)
+        display_horizon = max(observed, protocol['settings']['max_blocks'])
         for index, (ax, policy) in enumerate(zip(axes.flat, policies)):
             horizon = observed if policy == 'fixed' else protocol['settings']['max_blocks']
             x = np.arange(horizon + 1)
@@ -79,11 +85,12 @@ def build(source: Path, output: Path) -> None:
                 curves.extend(dict(subject=int(subject), model=model, policy=policy, block=int(b), first_pass_fraction=float(v), paths=n)
                               for b, v in zip(x, y))
             ax.axvline(observed, color='#222222', lw=.8, ls=':')
-            ax.set(title=POLICY_NAMES[policy], ylim=(0,1.03), xlim=(0,protocol['settings']['max_blocks']),
-                yticks=[0,.25,.5,.75,1], xticks=[0,5,10,15,20])
+            ax.set(title=POLICY_NAMES[policy], ylim=(0,1.03), xlim=(0,display_horizon), yticks=[0,.25,.5,.75,1])
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4, integer=True))
             ax.text(-.06, 1.07, chr(97+index), transform=ax.transAxes, fontweight='bold', fontsize=8)
             if policy == 'fixed':
                 ax.text(.98,.05,f'Administrative end: block {observed}',transform=ax.transAxes,ha='right',fontsize=6)
+        for ax in axes.flat[len(policies):]:ax.set_visible(False)
         for ax in axes[:,0]:
             ax.set_ylabel('Fraction reaching criterion')
         for ax in axes[-1,:]:
@@ -113,15 +120,19 @@ def build(source: Path, output: Path) -> None:
         f'{adaptive.pass_by_observed_fraction.min():.3f}至{adaptive.pass_by_observed_fraction.max():.3f}；'
         f'延长至{protocol["settings"]["max_blocks"]}组时为{adaptive.pass_fraction.min():.3f}至{adaptive.pass_fraction.max():.3f}。逐人曲线保留模型之间的差异。')
     task_checks = len(load(source/'task_policy_audit.json')['checks'])
+    reserved = protocol.get('data_use_status') == 'reserved_validation'
+    cohort_label = '预先保留的验证被试' if reserved else '开发被试'
+    boundary_text = ('机制、参数搜索预算及本项评价在打开这些被试的行为资料前确定。'
+                     if reserved else '来源数据已在此前检验中查看，本报告属于开发诊断。')
     relative = lambda p: escape(os.path.relpath(p, source))
     html = ['<!doctype html><html lang="zh"><meta charset="utf-8"><title>H模块：自适应实验与达标时间</title>',
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}.scroll{overflow:auto}</style>',
         '<h1>H模块：自适应实验与达标时间</h1>',
         f'<p>{timing_summary}</p>',
-        f'<p>{len(subjects)}名开发被试、{len(models)}种模型、{len(policies)}种任务流程，每组{n}条路径，共{len(paths)}条。参数保持为原训练前缀拟合值。任务每64题检查一次：排除模糊刺激后，每个类别正确率都达到0.9即停止。条件3按物种完全正确计算。</p>',
-        '<p>曲线分母始终包含全部64条路径。固定刺激版本的截尾点为被试实际长度；重新采样版本最多20组。虚线标出被试完成时间；曲线之外的未达标路径属于截尾。0/64表示本次有限模拟未观察到达标。图中没有按成功筛选路径，也没有在停止后延长学习曲线。</p>',
+        f'<p>{len(subjects)}名{cohort_label}、{len(models)}种模型、{len(policies)}种任务流程，每组{n}条路径，共{len(paths)}条。参数保持为原训练前缀拟合值。任务每64题检查一次：排除模糊刺激后，每个类别正确率都达到0.9即停止。条件3按物种完全正确计算。</p>',
+        f'<p>曲线分母始终包含全部{n}条路径。固定刺激版本的截尾点为被试实际长度；重新采样版本最多{protocol["settings"]["max_blocks"]}组。虚线标出被试完成时间；曲线之外的未达标路径属于截尾。0/{n}表示本次有限模拟未观察到达标。首次达标即停止记录学习路径。</p>',
         '<p>按实验规则更新类别比例时，使用模型自己的选择。均衡版本保持每种物种16题；两种自适应版本分别使用会话间独立与重复随机创新。首组刺激及顺序固定为被试的实际首组，模型状态跨会话保持。NumPy采样复现任务分布，MATLAB显示时长等步骤的随机数没有重放。</p>',
-        f'<p>类别配额与原实验{task_checks}次可核对的转移全部一致；{completion["exact_fixed_replay_paths"]:,}条固定刺激路径在首次达标前与已保存路径逐值一致。来源数据已在此前检验中查看，本报告属于开发诊断。</p>',
+        f'<p>类别配额与原实验{task_checks}次可核对的转移全部一致；{completion["exact_fixed_replay_paths"]:,}条固定刺激路径在首次达标前与已保存路径逐值一致。{boundary_text}</p>',
         '<h2>逐人等权平均</h2><p>pass_by_observed_fraction表示在各人实际完成时长内达标的比例；pass_fraction表示在该流程截尾前达标的比例。mean_blocks_to_stop_or_censor同时包含停止与截尾时间，其均值不能解释为成功路径的平均学习时长。</p>',
         '<div class="scroll">'+aggregate.to_html(float_format=lambda x:f'{x:.3f}')+'</div>']
     for subject in subjects:
@@ -133,7 +144,7 @@ def build(source: Path, output: Path) -> None:
         handle.write('\n'.join(html))
     with (output/'qa.json').open('x') as handle:
         json.dump(dict(backend='python',format='PNG',dpi=300,width_mm=183,archetype='quantitative_grid',
-            purpose='development_stopping_distribution_review',source_sha256=digest(Path(__file__)),
+            purpose='stopping_distribution_review',data_use_status=protocol.get('data_use_status','development'),source_sha256=digest(Path(__file__)),
             inputs_sha256={str(p):digest(p) for p in [source/'paths.csv',source/'summary.csv',source/'protocol.json']},
             all_paths=len(paths),exclusions=[],data_unit='whole simulated path within participant/model/policy',
             uncertainty='paired whole-path Monte Carlo SE; no population test or p-values',

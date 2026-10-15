@@ -43,6 +43,12 @@ def worker(file: Path) -> None:
     for name, sha in job['source_sha256'].items():
         if v.digest(REPO / name) != sha:
             raise ValueError('Executing source changed')
+    if 'candidate_sampler' in job['mechanism']:
+        adapter = load_source('adaptive_candidate_validation', REPO / 'src/Bayesian_state/workflows/analysis/model_0923_h_candidate_validation.py')
+        adapter.fixed_models(dict(models={job['model']:job['mechanism']}, fixed_size_models=[job['model']]))
+        sampler = workflow.load_source('src.Bayesian_state.model.modules.hypothesis_transition.single_proposal_competition', adapter.HELPER)
+        sampler.install_worker_intervention(sys.modules['src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search'])
+        job = adapter.core_job(dict(job, candidate_sampler=job['mechanism']['candidate_sampler']))
     task_module = load_source('src.Bayesian_state.simulation.exp123_adaptive_task', REPO / TASK_FILES[0])
     runner = load_source('src.Bayesian_state.simulation.adaptive_autonomous', REPO / TASK_FILES[1])
     from src.Bayesian_state.simulation.parameters import apply_fixed_hyperparams_to_engine_config
@@ -177,7 +183,7 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
     rows = {(r['subject'], r['model']): r for r in v.read(reference / 'evaluation.json')['rows']}
     banks = {(r['subject'], r['model']): [r['candidate']] for r in selected}
     bases = v.score_jobs(Path(frozen['data']), output, frozen['settings'], banks, 'evaluate', False)
-    hashes = v.source_hashes()
+    hashes = dict(frozen['source_sha256'])
     for name in TASK_FILES + [str(Path(__file__).resolve().relative_to(REPO))]:
         hashes[name] = v.digest(REPO / name)
     jobs = []
@@ -207,7 +213,8 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
     v.write(output / 'protocol.json', dict(fit=str(fit.resolve()), reference=str(reference.resolve()),
         nomination_sha256=v.digest(fit / 'nominees.json'), settings=settings, source_sha256=hashes, smoke=smoke,
         original_task_source_sha256={name:v.digest(REPO / name) for name in program_files},
-        role='post_test_environment_diagnostic; six previously held-out participants now development',
+        data_use_status=frozen['settings'].get('data_use_status', 'development'),
+        role='task_environment_and_stopping_diagnostic',
         assumptions=['first observed block repeated in observed order at session starts', 'cognition persists across sessions',
             'NumPy distributional sampling; MATLAB random timing draws not replayed', 'explicit administrative horizon',
             'all failed and censored paths retained; no successful-path selection']))
