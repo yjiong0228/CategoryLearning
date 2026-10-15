@@ -159,6 +159,27 @@ def prepare_schedules(v, frozen: dict, output: Path, subjects: list[int]) -> lis
     return checks
 
 
+def select_task_nominees(frozen: dict, settings: dict, smoke: bool = False) -> tuple[list[dict], list[dict]]:
+    """Apply explicit participant exclusions to this task diagnostic only.
+
+    excluded_subjects maps integer participant IDs to documented task-provenance
+    reasons. The original fitted cohort and chronological predictions are kept.
+    Every retained participant keeps all fitted models.
+    """
+    excluded = settings.get('excluded_subjects', {})
+    available = {row['subject'] for row in frozen['nominees']}
+    if (not isinstance(excluded, dict)
+            or any(isinstance(k, bool) or not isinstance(k, int) or k not in available
+                   or not isinstance(v, str) or not v.strip() for k, v in excluded.items())):
+        raise ValueError('excluded_subjects must map fitted integer IDs to task-provenance reasons')
+    selected = [row for row in frozen['nominees'] if row['subject'] not in excluded]
+    if not selected:
+        raise ValueError('Task diagnostic must retain at least one participant')
+    records = [dict(subject=subject, scope='adaptive_task_only', reason=reason)
+               for subject, reason in sorted(excluded.items())]
+    return (selected[:1] if smoke else selected), records
+
+
 def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> None:
     import numpy as np
     import pandas as pd
@@ -174,7 +195,7 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
             raise ValueError('Fitted scientific implementation changed')
     if v.read(reference / 'evaluation_protocol.json')['nomination_sha256'] != v.digest(fit / 'nominees.json'):
         raise ValueError('Replay reference uses another fit')
-    selected = frozen['nominees'][:1] if smoke else frozen['nominees']
+    selected, exclusions = select_task_nominees(frozen, settings, smoke)
     if smoke:
         settings.update(paths=1, max_blocks=2, parallel_budget=1, chunk_size=1)
     output.mkdir(parents=True); (output / 'jobs').mkdir(); (output / 'schedules').mkdir()
@@ -212,6 +233,7 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
     program_files = ['exp_program/exp123/Task2_learning.m', 'exp_program/exp123/sample_2.m']
     v.write(output / 'protocol.json', dict(fit=str(fit.resolve()), reference=str(reference.resolve()),
         nomination_sha256=v.digest(fit / 'nominees.json'), settings=settings, source_sha256=hashes, smoke=smoke,
+        included_subjects=sorted({r['subject'] for r in selected}), excluded_subjects=exclusions,
         original_task_source_sha256={name:v.digest(REPO / name) for name in program_files},
         data_use_status=frozen['settings'].get('data_use_status', 'development'),
         role='task_environment_and_stopping_diagnostic',

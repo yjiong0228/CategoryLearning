@@ -47,7 +47,8 @@ def run(source: Path, output: Path) -> None:
     assert digest(fit/'nominees.json')==protocol['nomination_sha256']
     settings=protocol['settings'];horizon=settings['max_blocks'];threshold=settings['threshold']
     paths=pd.read_csv(source/'paths.csv').query("policy == 'adaptive'")
-    expected={(r['subject'],r['model']) for r in nominees['nominees']}
+    included=set(protocol.get('included_subjects',[r['subject'] for r in nominees['nominees']]))
+    expected={(r['subject'],r['model']) for r in nominees['nominees'] if r['subject'] in included}
     assert set(zip(paths.subject,paths.model))==expected
     observed={};observed_rows=[];hashes={str(source/'paths.csv'):digest(source/'paths.csv')}
     for subject in sorted(paths.subject.unique()):
@@ -127,6 +128,7 @@ def run(source: Path, output: Path) -> None:
                 'src/Bayesian_state/evaluation/model_0923_h_validation.py':
                 digest(Path('src/Bayesian_state/evaluation/model_0923_h_validation.py'))},
             nomination_sha256=protocol['nomination_sha256'],data_use_status=protocol['data_use_status'],
+            included_subjects=sorted(included),excluded_subjects=protocol.get('excluded_subjects',[]),
             horizon_blocks=horizon,censored_category=horizon+1,inputs_sha256=hashes,
             score='empirical CRPS for T*=min(first_passing_block,H+1), block units; all censored mass retained',
             uncertainty='paired whole-path jackknife; fixed parameters; population and parameter uncertainty excluded',

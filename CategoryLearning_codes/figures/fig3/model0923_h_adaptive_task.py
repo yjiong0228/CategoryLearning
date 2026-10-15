@@ -124,6 +124,10 @@ def build(source: Path, output: Path) -> None:
     cohort_label = '预先保留的验证被试' if reserved else '开发被试'
     boundary_text = ('机制、参数搜索预算及本项评价在打开这些被试的行为资料前确定。'
                      if reserved else '来源数据已在此前检验中查看，本报告属于开发诊断。')
+    exclusions = protocol.get('excluded_subjects', [])
+    if exclusions:
+        boundary_text += ' 本项任务复现的可用被试根据原始分组及配额核对确定；其他预测保留原拟合被试范围。'
+        boundary_text += ' '.join(f'被试{row["subject"]}仅在本项排除：{escape(row["reason"])}。' for row in exclusions)
     relative = lambda p: escape(os.path.relpath(p, source))
     html = ['<!doctype html><html lang="zh"><meta charset="utf-8"><title>H模块：自适应实验与达标时间</title>',
         '<style>body{max-width:1150px;margin:30px auto;padding:0 20px;font:16px/1.65 sans-serif;color:#222}img{width:100%;height:auto}table{border-collapse:collapse;font-size:13px}td,th{padding:4px 8px;border-bottom:1px solid #ddd}.scroll{overflow:auto}</style>',
@@ -146,7 +150,7 @@ def build(source: Path, output: Path) -> None:
         json.dump(dict(backend='python',format='PNG',dpi=300,width_mm=183,archetype='quantitative_grid',
             purpose='stopping_distribution_review',data_use_status=protocol.get('data_use_status','development'),source_sha256=digest(Path(__file__)),
             inputs_sha256={str(p):digest(p) for p in [source/'paths.csv',source/'summary.csv',source/'protocol.json']},
-            all_paths=len(paths),exclusions=[],data_unit='whole simulated path within participant/model/policy',
+            all_paths=len(paths),exclusions=exclusions,data_unit='whole simulated path within participant/model/policy',
             uncertainty='paired whole-path Monte Carlo SE; no population test or p-values',
             adaptation='style-only palette/typography; stopping CDF constructed anew',visual_qa='pending',
             export_exceptions='PNG-only repository instruction; 300 dpi development review'),handle,indent=2)

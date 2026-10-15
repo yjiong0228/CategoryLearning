@@ -1,0 +1,14 @@
+protocol: model0923_h_adaptive_environment_v1
+seed: 2026101508
+parallel_budget: 128
+paths: 64
+chunk_size: 8
+policies: [fixed, balanced, adaptive, adaptive_repeat]
+max_blocks: 20
+blocks_per_session: 5
+threshold: 0.9
+beta: 0.2
+ambiguity_width: 0.1
+# This affects the task-environment diagnostic; the primary five-person fit stays fixed.
+excluded_subjects:
+  303: 原始行为文件首两组为63和65题，刺激库第二组保持均衡配额，与当前64题自适应程序不一致；原因尚未确定
