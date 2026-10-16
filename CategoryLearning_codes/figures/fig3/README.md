@@ -1,5 +1,15 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 精度学习与共同H参数重拟合（2026-10-16—17）
+
+[九张比较图与全部源表](../outputs/fig3/model0923_precision_refit_20261016_v3/index.html) ·
+[方案、结果及复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_precision_refit.md)。
+九人分别比较四种精度更新方案，每人每方案搜索48个参数点；冻结后完成288次独立滤波与4608条自主路径。
+另在109上固定其余参数，使用1024粒子、八个新种子逐值比较学习率。
+图中呈现训练候选、后段预测、全部路径及参数边界。更宽的加法学习率范围值得继续检验，
+207的条件预测与自主生成仍有明显分离。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_precision_refit`，输出PNG讨论稿。
+
 ## Model 0923 反馈与精度原型（2026-10-16）
 
 [十张比较图与全部源表](../outputs/fig3/model0923_feedback_prototypes_20261016_v5/index.html) ·

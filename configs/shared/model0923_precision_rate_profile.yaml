@@ -1,0 +1,9 @@
+protocol: model0923_precision_rate_profile_v1
+seed: 2026101672
+parallel_budget: 128
+subject: 109
+model: ADD10
+effective_rates: [0.0, 0.03, 0.1, 0.3, 0.6, 1.0, 3.0, 6.0, 10.0]
+particles: 1024
+seeds: 8
+scope: training_only_rate_profile_at_frozen_joint_estimate
