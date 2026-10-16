@@ -1,5 +1,13 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 个体参数选择解释（2026-10-16）
+
+[六名被试图文报告](../outputs/fig3/model0923_parameter_selection_20261016_v3/index.html) ·
+[目标建议与复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_parameter_selection.md)。
+覆盖107、108、205、207、305、306的全部23组共同最终候选；同图比较选择NLL、自主特征分数、
+逐试次似然贡献和全部1024条自主路径的区块分布。误差条表示配对计算标准误差，
+参数不确定性仍需单独估计。全部图使用原训练段，并复算既有评分；本次没有新增拟合。
+
 ## 当前期刊版（2026-09-21）
 
 [Fig3](../outputs/fig3/journal_20260921_v3/Figure3.png) · [独立图注](../outputs/fig3/journal_20260921_v3/legend.md) ·
