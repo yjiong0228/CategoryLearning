@@ -1,0 +1,8 @@
+protocol: model0923_h_retention_refit_prefix_v1
+seed: 2026101628
+parallel_budget: 128
+particles: 1024
+particle_overrides: {305: 4096}
+filters: 8
+branches_per_filter: 16
+scope: autonomous_suffix_from_filtered_training_state

@@ -1,0 +1,32 @@
+protocol: model0923_h_retention_refit_v1
+seed: 2026101627
+parallel_budget: 128
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+warm_start_fit: results/model_0923/h_objective_fit_20261015_v1
+development_subjects: [107, 108, 205, 207, 305, 306]
+new_validation_subjects: [109, 208, 308]
+models:
+  FREE: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+  CUMULATIVE: {kind: E, decay: 1.0, capacity: evidence_mean, search: accumulate}
+  SHARED: {kind: E, decay: memory, capacity: evidence_mean, search: accumulate}
+evidence_decay_values: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
+initial_candidates: 48
+refinement_rounds: 2
+elites: 3
+proposals_per_elite: 12
+selection_candidates: 6
+confirmation_candidates: 2
+seed_chunk: 1
+budgets:
+  screen: {particles: 32, seeds: 2}
+  refine: {particles: 64, seeds: 2}
+  selection: {particles: 256, seeds: 4}
+  confirmation: {particles: 1024, seeds: 8}
+  evaluate: {particles: 1024, seeds: 8}
+confirmation_particle_overrides: {305: 4096}
+autonomous_paths: 512
+autonomous_chunk: 16
+evaluate_seed_chunk: 1
+features: {block_width: 32, temporal_weight: 0.5}
+scope: bounded_equal_budget_refit_with_training_only_selection
+interpretation: development_and_new_validation_subjects_reported_separately

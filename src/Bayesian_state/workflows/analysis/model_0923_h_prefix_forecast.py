@@ -9,6 +9,10 @@ branches share one filter; their filter-seed grouping is retained in outputs.
 --smoke uses one participant/model, two four-particle filters and two branches
 per filter, with eight consecutive prefix trials and eight continuation trials.
 It checks prefix predictions against the unmodified original filter execution.
+Optional particle_overrides maps subject IDs to counts when the conditional
+reference used different numerical budgets. Each count must match its reference.
+Participant data roles follow the frozen fit and are carried into the forecast
+protocol; the conditional reference supplies the fallback group description.
 """
 from __future__ import annotations
 
@@ -36,6 +40,26 @@ def load_source(name: str, file: str):
 
 def validation():
     return load_source('prefix_forecast_validation', BASE)
+
+
+def configured_particles(settings: dict, subject: int, smoke: bool = False) -> int:
+    value = 4 if smoke else settings.get('particle_overrides', {}).get(subject, settings['particles'])
+    if isinstance(value, bool) or not isinstance(value, int) or value < 2:
+        raise ValueError('Prefix particle counts must be integers >= 2')
+    return value
+
+
+def data_use_roles(frozen: dict, subjects: list[int], reference: dict) -> tuple[str,dict]:
+    if frozen['status']=='frozen_for_development_evaluation':
+        return 'development',{subject:'development' for subject in subjects}
+    settings=frozen['settings']
+    overall=frozen.get('data_use_status',settings.get('data_use_status',reference.get('data_use_status','development')))
+    roles={}
+    for subject in subjects:
+        if subject in settings.get('new_validation_subjects',[]):roles[subject]='new_validation'
+        elif subject in settings.get('development_subjects',[]):roles[subject]='development'
+        else:roles[subject]=overall
+    return overall,roles
 
 
 def worker(file: Path) -> None:
@@ -160,7 +184,8 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
         raise ValueError('Need frozen scientific parameters')
     for name, sha in frozen['source_sha256'].items():
         if v.digest(REPO / name) != sha:raise ValueError('Fitted scientific source changed')
-    if v.read(reference / 'evaluation_protocol.json')['nomination_sha256'] != v.digest(fit / 'nominees.json'):
+    reference_protocol=v.read(reference / 'evaluation_protocol.json')
+    if reference_protocol['nomination_sha256'] != v.digest(fit / 'nominees.json'):
         raise ValueError('Conditional reference uses another frozen fit')
     if v.read(reference / 'evaluation.json')['status'] != 'complete':
         raise ValueError('Need complete conditional references')
@@ -178,7 +203,8 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
         old = indexed[key]
         if old['candidate']['hyperparams'] != base['candidate']['hyperparams']:
             raise ValueError('Reference parameters differ')
-        if not smoke and old['particles'] != settings['particles']:
+        particles = configured_particles(settings, subject, smoke)
+        if not smoke and old['particles'] != particles:
             raise ValueError('Exact prefix replay requires the reference particle count')
         file = reference / 'evaluate' / f'subject_{subject}' / base['model'] / (base['candidate']['id'] + '.npz')
         if v.digest(file) != old['predictions_sha256']:raise ValueError('Conditional reference changed')
@@ -187,18 +213,18 @@ def run(fit: Path, reference: Path, config: Path, output: Path, smoke: bool) -> 
         groups[key] = []
         for index, seed in enumerate(seeds):
             name = f'S{subject}_{base["model"]}_F{index:03d}'
-            job = dict(base, name=name, smoke=smoke, settings=settings, particles=settings['particles'],
+            job = dict(base, name=name, smoke=smoke, settings=settings, particles=particles,
                 filter_seed=seed, source_sha256=hashes, reference=str(file.resolve()), reference_sha256=old['predictions_sha256'],
                 target=str((output / 'chunks' / name).resolve()))
             groups[key].append(job); jobs.append(job)
-    data_role = ('development' if frozen['status'] == 'frozen_for_development_evaluation' else
-                 frozen.get('data_use_status', frozen['settings'].get('data_use_status', 'development')))
+    data_role,participant_roles=data_use_roles(frozen,sorted({key[0] for key in groups}),reference_protocol)
     v.write(output / 'forecast_protocol.json', dict(fit=str(fit.resolve()), reference=str(reference.resolve()),
         nomination_sha256=v.digest(fit / 'nominees.json'), settings=settings, smoke=smoke, source_sha256=hashes,
-        data_use_status=data_role, conditioning='observed training prefix; subsequent recorded stimulus schedule',
+        data_use_status=data_role, participant_roles=participant_roles,
+        conditioning='observed training prefix; subsequent recorded stimulus schedule',
         future_behavior='model choices and task-produced feedback only', uncertainty_unit='complete filter seed with all its branches'))
     lengths = {j['folder']: v.read(Path(j['folder']) / 'prepared.json')['training_trials'] for j in jobs}
-    jobs.sort(key=lambda j: -lengths[j['folder']])
+    jobs.sort(key=lambda j: -lengths[j['folder']] * j['particles'])
     workers = parallel_job_count(settings['parallel_budget'], len(jobs))
 
     def launch(job):

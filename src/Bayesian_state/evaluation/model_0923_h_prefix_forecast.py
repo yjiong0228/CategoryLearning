@@ -126,7 +126,7 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
                 str(forecast/'forecast.json'):digest(forecast/'forecast.json'), **hashes},
             conditioning='task_start: fitted parameters only; filtered_prefix: fitted parameters and observed training prefix',
             uncertainty='fixed-parameter simulation error; paired complete filters for prefix forecasts, complete paths for task-start generation',
-            data_use_status=data_role,reference_model=reference_model,
+            data_use_status=data_role,participant_roles=protocol.get('participant_roles',{}),reference_model=reference_model,
             boundary=f'{data_role} participants on recorded future stimulus schedule; future choices do not update forecasts'), handle, indent=2)
 
 

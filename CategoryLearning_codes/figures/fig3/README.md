@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 证据保持机制重拟合（2026-10-16）
+
+[五张比较图与源表](../outputs/fig3/model0923_h_retention_refit_20261016_v1/index.html) ·
+[方案、结果与复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_h_retention_refit.md)。
+九名被试分别拟合独立保持率、持续累积、共享记忆保持率三套方案；原六人与新增三人分别汇总。
+相同预算重新估计全部共同参数，独立确认后冻结，再比较留出选择预测、起点自主生成和训练末尾自主续跑。
+图中呈现逐人分差、完整路径分布、参数保持率及训练搜索误差，区分模拟波动和参数解释的限制。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_h_retention_refit`，使用Python、PNG及新输出目录。
+
 ## Model 0923 参数精度与207机制复核（2026-10-16）
 
 [四张诊断图与源表](../outputs/fig3/model0923_parameter_precision_20261016_v2/index.html) ·
