@@ -2,6 +2,8 @@
 
 Delete one complete autonomous path at a time, preserving dependence across
 trials and blocks. Common trajectory seeds pair model or parameter comparisons.
+Pair-distance sums evaluate every deletion in quadratic time, preserving the
+empirical-distribution Energy and CRPS definitions used by the full scores.
 The resulting standard errors measure finite simulation, not population or
 parameter uncertainty. Existing predictions and summaries remain unchanged.
 
@@ -17,14 +19,25 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.spatial.distance import cdist
 
 from .model_0923_h_validation import load,digest,block_paths,distribution_scores,jackknife_se
 
 
 def path_jackknife(samples: np.ndarray, observed: np.ndarray) -> dict[str,np.ndarray]:
-    if len(samples)<2:raise ValueError('Need multiple complete generated paths')
-    scores=[distribution_scores(np.delete(samples,index,axis=0),observed) for index in range(len(samples))]
-    return {key:np.array([row[key] for row in scores]) for key in ['energy','crps']}
+    """Delete each path by removing its target term and both pair-distance rows."""
+    x,y=np.asarray(samples,float),np.asarray(observed,float)
+    if (x.ndim!=2 or len(x)<2 or x.shape[1]<1 or y.shape!=(x.shape[1],)
+        or not np.isfinite(x).all() or not np.isfinite(y).all()):
+        raise ValueError('Need multiple finite paths and aligned observed blocks')
+    remaining=len(x)-1;result={}
+    for key,metric,normalizer in [('energy','euclidean',np.sqrt(x.shape[1])),('crps','cityblock',x.shape[1])]:
+        target=np.linalg.norm(x-y,axis=1) if key=='energy' else np.abs(x-y).sum(axis=1)
+        pairs=cdist(x,x,metric=metric);row_sums=pairs.sum(axis=1)
+        # The diagonal is zero; deleting a path removes its row and column.
+        result[key]=((target.sum()-target)/remaining-
+            .5*(row_sums.sum()-2*row_sums)/remaining**2)/normalizer
+    return result
 
 
 def run(summary: Path, finalists: Path | None, output: Path, reference_model: str | None = None) -> None:

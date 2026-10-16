@@ -3,7 +3,25 @@ import numpy as np
 import pytest
 
 from src.Bayesian_state.evaluation.model_0923_h_generation_uncertainty import path_jackknife
-from src.Bayesian_state.evaluation.model_0923_h_validation import jackknife_se
+from src.Bayesian_state.evaluation.model_0923_h_validation import distribution_scores,jackknife_se
+
+
+@pytest.mark.parametrize('paths,blocks',[(2,1),(3,4),(11,7),(64,9)])
+def test_pair_sums_match_direct_recalculation_of_every_deleted_path(paths,blocks):
+    rng=np.random.default_rng(27)
+    samples=rng.integers(0,33,(paths,blocks))/32
+    target=rng.uniform(0,1,blocks);before=samples.copy()
+    direct=[distribution_scores(np.delete(samples,i,axis=0),target) for i in range(paths)]
+    actual=path_jackknife(samples,target)
+    for metric in ['energy','crps']:
+        np.testing.assert_allclose(actual[metric],[row[metric] for row in direct],rtol=0,atol=1e-12)
+    np.testing.assert_array_equal(samples,before)
+
+
+def test_path_jackknife_rejects_invalid_shapes_and_nonfinite_values():
+    for samples,target in [(np.ones((1,2)),np.ones(2)),(np.ones((2,0)),np.ones(0)),
+                           (np.ones((2,2)),np.ones(3)),(np.array([[0.],[np.nan]]),np.array([0.]))]:
+        with pytest.raises(ValueError):path_jackknife(samples,target)
 
 
 def test_identical_paths_have_zero_simulation_error():
