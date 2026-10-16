@@ -1,0 +1,39 @@
+protocol: model0923_feedback_prototypes_v1
+fit: results/model_0923/h_retention_refit_20261016_v1
+reference: results/model_0923/h_retention_evaluation_20261016_v1/autonomous
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+parallel_budget: 128
+chunk: 4
+arms:
+  BASE: {proposal: false, admission: false, precision: base, upper: 25.0}
+  P: {proposal: true, admission: false, precision: base, upper: 25.0}
+  A: {proposal: false, admission: true, precision: base, upper: 25.0}
+  PA: {proposal: true, admission: true, precision: base, upper: 25.0}
+  FAST: {proposal: false, admission: false, precision: fast, upper: 25.0}
+  WIDE: {proposal: false, admission: false, precision: base, upper: 100.0}
+  LOG: {proposal: false, admission: false, precision: log, upper: 100.0}
+  PA_LOG: {proposal: true, admission: true, precision: log, upper: 100.0}
+oracle:
+  subjects: [207, 208, 308]
+  models: [FREE, CUMULATIVE, SHARED]
+  arms: [BASE, FAST, WIDE, LOG]
+  paths: 32
+autonomous:
+  subjects: [107, 108, 109, 205, 207, 208, 305, 306, 308]
+  models: [FREE, CUMULATIVE, SHARED]
+  arms: [BASE, P, A, PA, FAST, WIDE, LOG, PA_LOG]
+  paths: 32
+score:
+  subjects: [107, 108, 109, 205, 207, 208, 305, 306, 308]
+  models: [FREE]
+  arms: [BASE, P, A, PA, FAST, WIDE, LOG, PA_LOG]
+  particles: 64
+  seeds: [591021, 591022]
+score_confirm:
+  # Numerical instability or apparent H gains in the 64-particle screen.
+  # Independent seeds; training data only; no new parameter selection.
+  subjects: [108, 305, 306, 308]
+  models: [FREE]
+  arms: [BASE, P, A, PA]
+  particles: 256
+  seeds: [592101, 592102, 592103, 592104, 592105, 592106, 592107, 592108]

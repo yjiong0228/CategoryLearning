@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 反馈与精度原型（2026-10-16）
+
+[十张比较图与全部源表](../outputs/fig3/model0923_feedback_prototypes_20261016_v5/index.html) ·
+[机制定义、结果及复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_feedback_prototypes.md)。
+九人、三套已有参数、八方案的完整自主比较，加上固定正确规则的精度诊断，共8064条路径。
+训练选择NLL先做低预算筛查，再对四人的H方案用256粒子、八个独立种子复核。
+图中同时显示全过程曲线、全部路径的末段分布及数值预算导致的排名变化。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_feedback_prototypes`，输出PNG讨论稿。
+
 ## Model 0923 规则发现、保留与使用诊断（2026-10-16）
 
 [五张诊断图与源表](../outputs/fig3/model0923_h_rule_diagnosis_20261016_v3/index.html) ·
