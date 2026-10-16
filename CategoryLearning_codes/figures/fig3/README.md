@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 参数精度与207机制复核（2026-10-16）
+
+[四张诊断图与源表](../outputs/fig3/model0923_parameter_precision_20261016_v2/index.html) ·
+[结果解释与复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_parameter_precision.md)。
+固定107、207、305、306的15组原最终候选，用独立种子和更高粒子预算检验排名。
+完整重放207两组参数各1024条自主路径，追踪规则发现、保留及正确／错误回答的似然贡献，
+并补充搜索与证据保持的固定参数对照。图中区分计算误差、路径分布与参数解释的限制。
+全部使用原训练段，未重新拟合参数；局部对照的三个新参数点和原结果分别保存。
+
 ## Model 0923 个体参数选择解释（2026-10-16）
 
 [六名被试图文报告](../outputs/fig3/model0923_parameter_selection_20261016_v3/index.html) ·

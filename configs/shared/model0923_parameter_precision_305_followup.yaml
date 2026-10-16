@@ -1,0 +1,15 @@
+# Same audit seed family pairs the 4096-particle check with 256/1024 particles.
+# Subject 305's ranking changes and score shifts exceed the declared 0.002 scale.
+protocol: model0923_parameter_precision_v1
+seed: 2026101611
+parallel_budget: 128
+subjects: [305]
+particle_counts: [4096]
+filter_repeats: 8
+replay_subjects: []
+replay_models: [NLL, GEN]
+replay_chunk: 8
+mean_nll_tolerance: 0.002
+mc_multiplier: 2.0
+followup_max_particles: 4096
+data_use: training_only_numerical_and_mechanism_diagnosis

@@ -1,0 +1,18 @@
+protocol: model0923_207_search_retention_probe_v1
+subject: 207
+reference_model: NLL
+filter_particles: 256
+filter_repeats: 8
+generation_paths: 1024
+generation_chunk: 16
+# Other active precision runs occupy at most 64 of the shared 128-worker budget.
+parallel_budget: 64
+variants:
+  search:
+    engine.modules.hypo_transitions_mod.kwargs.search_controller.error_gain: 0.5
+  retention:
+    engine.modules.hypo_transitions_mod.kwargs.intervention.decay: 1.0
+  both:
+    engine.modules.hypo_transitions_mod.kwargs.search_controller.error_gain: 0.5
+    engine.modules.hypo_transitions_mod.kwargs.intervention.decay: 1.0
+scope: fixed_parameter_factorial_diagnosis_no_refit
