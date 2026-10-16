@@ -1,5 +1,15 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 规则发现、保留与使用诊断（2026-10-16）
+
+[五张诊断图与源表](../outputs/fig3/model0923_h_rule_diagnosis_20261016_v3/index.html) ·
+[具体操作、结果与复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_h_rule_diagnosis.md)。
+九人规则目录核对通过；207、208、308各保留三套已有参数，完成8064条自主诊断路径。
+对照一次提供正确规则、持续保留、当题均匀先验、独用正确规则，以及固定候选记录后的可拒绝准入。
+另在1152条独用正确规则路径上检查知觉输入与β对即时作答概率的作用。
+所有方案和路径均纳入图表；任务答案仅用于明确标记的诊断干预。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_h_rule_diagnosis`，使用Python和PNG。
+
 ## Model 0923 证据保持机制重拟合（2026-10-16）
 
 [五张比较图与源表](../outputs/fig3/model0923_h_retention_refit_20261016_v1/index.html) ·

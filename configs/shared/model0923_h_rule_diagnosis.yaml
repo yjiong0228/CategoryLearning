@@ -1,0 +1,13 @@
+protocol: model0923_h_rule_diagnosis_v1
+fit: results/model_0923/h_retention_refit_20261016_v1
+reference: results/model_0923/h_retention_evaluation_20261016_v1/autonomous
+audit_subjects: [107, 108, 205, 207, 305, 306, 109, 208, 308]
+subjects: [207, 208, 308]
+models: [FREE, CUMULATIVE, SHARED]
+paths: 128
+chunk: 4
+parallel_budget: 128
+geometry_beta: 100.0
+onset: training_boundary
+arms: [BASE, ONCE, ONCE_EQUAL, KEEP, KEEP_EQUAL, ONLY, REJECT]
+data_use: development_diagnostic_with_privileged_task_rule
