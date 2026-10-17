@@ -255,3 +255,11 @@ BOTH相对SEARCH的额外收益也不稳定。因此下一轮优先检验SEARCH�
 工作流及原重拟合边界的6项测试通过。八题、2粒子的短验证完成全部五个搜索阶段；
 新入口中的POOL与原工作进程逐数组精确一致。首个短验证暴露了归档环境的工作流导入路径问题，
 改为按文件加载现有编排模块后，v2短验证通过。正式运行使用`recalled_search_refit_20261018_v1`。
+
+固定参数对照图位于`CategoryLearning_codes/figures/outputs/fig3/recalled_evidence_20261018_v4`。
+`autonomous_curves.png`逐人、逐方案显示真实曲线、自主均值和路径的10%至90%分位范围；
+`discovery_and_use.png`并列展示正确规则发现率、末段作答贡献和曲线Energy。
+每格64条路径，未发现正确规则的路径仍保留在分母中。Energy误差线表示两倍整条路径的模拟标准误。
+绘图入口`CategoryLearning_codes.figures.fig3.model0923_recalled_evidence`读取`--summary`并写入新的`--output`。
+PNG已核对数值、坐标、图例和文字布局，源表与设计说明一并保存。
+静态预检11项适用检查通过，矢量及TIFF格式要求依仓库PNG规则省略；讨论稿采用300dpi。
