@@ -1,0 +1,17 @@
+protocol: model0923_capacity_memory_recovery_v1
+seed: 2026101827
+source: results/model_0923/recalled_capacity_memory_probe_20261018_v1
+parallel_budget: 128
+wait_for_completion: results/model_0923/recalled_memory_recovery_20261018_v1/completion.json
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
+replicates: 2
+particles: 256
+seeds: 4
+subjects:
+  306:
+    memory: [0.0, 0.8]
+    capacity: [2, 8]
+  308:
+    memory: [0.3, 0.8]
+    capacity: [2, 4]
+scope: conditional_joint_capacity_and_belief_retention_recovery_other_parameters_known
