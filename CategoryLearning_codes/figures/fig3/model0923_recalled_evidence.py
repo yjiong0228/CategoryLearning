@@ -1,6 +1,7 @@
 """PNG diagnostics of the fixed-parameter recalled-evidence factorial study.
 
 --summary names a validated evaluation directory; --output must be new.
+--subjects optionally selects a complete subset for readable multi-page exports.
 Bands show the central 80% of autonomous paths, not uncertainty of the mean.
 The process comparison retains all paths, including undiscovered target rules.
 """
@@ -28,7 +29,7 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def plot(summary: Path, output: Path) -> None:
+def plot(summary: Path, output: Path, *, subjects: list[int] | None = None) -> None:
     if output.exists():
         raise FileExistsError('Use a new figure directory')
     manifest = json.loads((summary / 'manifest.json').read_text())
@@ -41,10 +42,16 @@ def plot(summary: Path, output: Path) -> None:
             raise ValueError('Scored input changed')
         tables[name] = pd.read_csv(file)
     curves = tables['curves']; scores = tables['scores'].query("phase == 'whole'")
-    subjects = sorted(scores.subject.unique())
+    available_subjects = sorted(scores.subject.unique())
     if scores.duplicated(['subject', 'arm']).any() or set(zip(scores.subject, scores.arm)) != {
-            (s, a) for s in subjects for a in ORDER}:
+            (s, a) for s in available_subjects for a in ORDER}:
         raise ValueError('Incomplete factorial cells')
+    if subjects is not None and (not subjects or len(set(subjects)) != len(subjects)
+                                or not set(subjects) <= set(available_subjects)):
+        raise ValueError('Select a unique nonempty subset of evaluated participants')
+    subjects = available_subjects if subjects is None else sorted(subjects)
+    curves = curves.loc[curves.subject.isin(subjects)].copy()
+    scores = scores.loc[scores.subject.isin(subjects)].copy()
     if curves[['mean', 'lower', 'upper', 'observed']].isna().any().any():
         raise ValueError('Missing curves')
     output.mkdir(parents=True)
@@ -106,7 +113,7 @@ def plot(summary: Path, output: Path) -> None:
     fig.savefig(output / 'discovery_and_use.png', dpi=300)
     plt.close(fig)
     contract = dict(backend='python', formats=['PNG'], dpi=300, width_mm=183,
-        claim='History-guided proposals improve discovery in 207 and 308 at fixed parameters; belief reconstruction adds no consistent benefit.',
+        claim='Compare discovery, use and autonomous learning across the declared participants at fixed POOL parameters.',
         source=str(summary.resolve()), source_manifest_sha256=digest(summary / 'manifest.json'),
         subjects=[int(s) for s in subjects], arms=ORDER, paths_per_cell=sorted(int(n) for n in scores.paths.unique()),
         sample_role='development; frozen POOL parameters; no refitted-model ranking',
@@ -115,7 +122,7 @@ def plot(summary: Path, output: Path) -> None:
         uncertainty={'bands': '10th and 90th path quantiles, descriptive predictive spread',
                      'energy_bars': 'two whole-path jackknife Monte Carlo SE',
                      'excluded': 'parameter and participant sampling uncertainty'},
-        limitations=['fixed observed stimulus schedule', 'three selected development participants',
+        limitations=['fixed observed stimulus schedule', f'{len(subjects)} selected development participants',
                      'target identity used for recording only', 'no oral input or parameter selection'],
         export_exceptions=['PNG only by standing repository instruction; discussion figures use 300 dpi'])
     (output / 'figure_contract.json').write_text(json.dumps(contract, indent=2) + '\n')
@@ -127,4 +134,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--summary', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args(); plot(args.summary, args.output)
+    parser.add_argument('--subjects', type=int, nargs='+', help='Complete participant subset on this page')
+    args = parser.parse_args(); plot(args.summary, args.output, subjects=args.subjects)

@@ -1,0 +1,14 @@
+# Extend the frozen-parameter factorial probe to the remaining six development
+# participants. The 20-worker cap leaves 108 slots for the concurrent refit's
+# largest remaining fitting stage. All cells retain the same 64 saved path seeds.
+protocol: model0923_recalled_evidence_factorial_v1
+reference: results/model_0923/episodic_refit_evaluation_20261017_v1
+subjects: [107, 108, 109, 205, 305, 306]
+parallel_budget: 20
+paths: 64
+block_width: 32
+arms:
+  POOL: {proposal: false, prior: false}
+  PRIOR: {proposal: false, prior: true}
+  SEARCH: {proposal: true, prior: false}
+  BOTH: {proposal: true, prior: true}
