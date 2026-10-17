@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 候选准入机制联合重拟合（2026-10-17）
+
+[13张比较图与全部源表](../outputs/fig3/model0923_episodic_refit_20261017_v2/index.html) ·
+[参数范围、结果及复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_episodic_refit.md)。
+九人分别拟合BASE、NEW、POOL和DRAW，四方案使用共同起点及相同阶段预算，并交换各自发现的候选参数。
+冻结参数后比较独立训练重复、后段选择预测、完整自主路径和正确规则过程。
+NEW的平均自主Energy最低，BASE的平均后段选择NLL最低；结果明确显示两类表现的取舍。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_episodic_refit`，输出PNG讨论稿。
+
 ## Model 0923 历史反馈与候选准入（2026-10-17）
 
 [比较图与全部源表](../outputs/fig3/model0923_episodic_admission_20261017_v1/index.html) ·
