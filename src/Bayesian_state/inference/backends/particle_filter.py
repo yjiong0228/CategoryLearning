@@ -685,6 +685,7 @@ def run_state_model_particle_filter(
     processed_data_dir: Path | str | None = None,
     dataset_paths: Mapping[str, Path | str] | None = None,
     state_observer: Callable[[int, str, Mapping[str, np.ndarray]], None] | None = None,
+    observe_decision_basis: bool = False,
 ) -> InferenceResult:
     """Filter an observed task trajectory using bootstrap particles.
 
@@ -721,6 +722,10 @@ def run_state_model_particle_filter(
     (before choice conditioning) and "filtered" (after choice conditioning)
     phases, both before current feedback. Callbacks record analysis outputs;
     the filter owns all cognitive updates, random streams and resampling.
+
+    ``observe_decision_basis`` adds the perceived stimulus and per-rule choice
+    probabilities to that observer. It requires the untransformed continuous
+    mixture and records its existing decision snapshot without extra draws.
     """
 
     if state_observer is not None:
@@ -728,6 +733,8 @@ def run_state_model_particle_filter(
             raise TypeError("state_observer must be callable")
         if int(particle_blocks) != 1:
             raise ValueError("state_observer requires particle_blocks=1")
+    if observe_decision_basis and state_observer is None:
+        raise ValueError("observe_decision_basis requires state_observer")
     if int(particle_blocks) < 1:
         raise ValueError("particle_blocks must be positive")
     if int(particle_blocks) > 1 and current_particle_block() is None:
@@ -844,13 +851,13 @@ def run_state_model_particle_filter(
             raise ValueError("valid_trial_mask length does not match trials.")
 
     oral_enabled = engine_config.get("oral_readout") is not None
-    if oral_enabled and (
+    if (oral_enabled or observe_decision_basis) and (
         confidence_gain_value != 0.0
         or commitment_gain_value != 0.0
         or np.any(epsilon_by_trial != 0.0)
     ):
         raise ValueError(
-            "oral batch prediction requires the untransformed rule-mixture choice "
+            "oral or decision-basis observation requires the untransformed rule-mixture choice "
             "with zero output lapse and zero aggregate confidence gains."
         )
 
@@ -1241,6 +1248,10 @@ def run_state_model_particle_filter(
                          if state_observer is not None else None)
         observer_search_event = (np.zeros(n_particles, dtype=float)
                                  if state_observer is not None else None)
+        observer_rule_prediction = (np.zeros((n_particles, n_hypotheses, n_categories))
+                                    if observe_decision_basis else None)
+        observer_perceived = (np.zeros((n_particles, x.shape[1]))
+                              if observe_decision_basis else None)
         particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
         oral_trial = oral_readout is not None and bool(valid[trial_index])
         particle_oral_joint = (
@@ -1500,9 +1511,18 @@ def run_state_model_particle_filter(
                 failure_pressure=failure_pressures[particle_index],
                 mastery_evidence=mastery_evidences[particle_index],
                 return_details=True,
-                return_snapshot=oral_trial,
+                return_snapshot=oral_trial or observe_decision_basis,
             )
             particle_predictions[particle_index], confidence_details = choice_result[:2]
+            if observe_decision_basis:
+                snapshot = choice_result[2]
+                indices = np.asarray(snapshot.hypothesis_indices, dtype=int)
+                observer_rule_prediction[particle_index, indices] = snapshot.category_probabilities
+                observer_perceived[particle_index] = snapshot.perceived_stimulus
+                if not np.allclose(snapshot.rule_weights,
+                                   particle_choice_weights[particle_index, indices],
+                                   atol=1e-12, rtol=0):
+                    raise RuntimeError("Decision snapshot and continuous contribution weights disagree")
             if oral_trial:
                 snapshot = choice_result[2]
                 # Condition each particle on this response, then restore its
@@ -1948,6 +1968,8 @@ def run_state_model_particle_filter(
                 "prediction": particle_predictions, "search": transition_rates,
                 "global_search": search_ranges, "failure": failure_pressures,
                 "search_event": observer_search_event, "admission_event": swap_events,
+                "rule_choice_probabilities": observer_rule_prediction,
+                "perceived_stimulus": observer_perceived,
             }
             _observe_particle_state(state_observer, trial_index, "predictive", observer_values)
         choice_index = int(observed_choices[trial_index]) - 1

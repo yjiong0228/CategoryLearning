@@ -146,3 +146,11 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 九名被试的原始口述连接、解析范围和分量判定已完成审查，拟合状态重放尚待接入。
 方法、实例、真实数据结果及后续状态接口见
 [口述约束检验说明](../../docs/model_architecture/model_0923_oral_constraints.md)。
+
+`decision_basis.py` 从粒子滤波的选择前快照导出局部依据的联合概率质量，保留各规则、各类别分量，
+以及按本题选择条件化的活跃集合。多分量类别沿用内部刺激距离最近、并列等权的读出约定。
+文件保存粒子活跃集合的压缩位编码和条件权重，使后续评价可以计算“至少一条支持规则存在”的概率。
+这些输出只依赖行为推断。跨滤波种子汇总时，先平均选择—依据联合质量，再用平均选择概率归一化。
+完整轨迹重放入口为 `workflows.analysis.model_0923_decision_basis_replay`，使用
+`configs/shared/model0923_decision_basis_replay.yaml`；`--smoke` 用一个原始种子重放前16题。
+研究阶段和运行状态见[持续研究记录](../../docs/model_architecture/model_0923_research_progress_20261018.md)。

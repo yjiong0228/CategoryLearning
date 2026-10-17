@@ -1,0 +1,7 @@
+protocol: model0923_decision_basis_replay_v1
+source: results/model_0923/episodic_refit_evaluation_20261017_v1
+subjects: [207, 308, 208, 108, 107, 109, 205, 305, 306]
+arms: [BASE, NEW, POOL, DRAW]
+seeds_per_arm: 8
+workers: 128
+sample_role: development

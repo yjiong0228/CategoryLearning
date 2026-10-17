@@ -38,7 +38,8 @@ def test_observer_preserves_filter_and_collects_current_choice_timing(tmp_path,c
         # Even making a detached array writable cannot alter the owning filter.
         snapshot['belief'].setflags(write=True)
         snapshot['belief'].fill(-99.)
-    observed=run_state_model_particle_filter(**arguments,state_observer=observer)
+    observed=run_state_model_particle_filter(**arguments,state_observer=observer,
+                                             observe_decision_basis=True)
     for name in ('observation_probabilities','state_probabilities','latent_summaries','diagnostics'):
         first,second=getattr(original,name),getattr(observed,name)
         assert first.keys()==second.keys()
@@ -49,6 +50,11 @@ def test_observer_preserves_filter_and_collects_current_choice_timing(tmp_path,c
     for t in range(4):
         before,after=captured[2*t][2],captured[2*t+1][2]
         selected=before['prediction'][:,choices[t]-1]
+        reconstructed=np.einsum('ph,phc->pc', before['choice_weights'],
+                                 before['rule_choice_probabilities'])
+        np.testing.assert_allclose(reconstructed,before['prediction'],atol=1e-14,rtol=0)
+        np.testing.assert_array_equal(before['perceived_stimulus'],
+                                       np.broadcast_to(stimulus[t],(4,4)))
         posterior=before['weights']*selected
         posterior/=posterior.sum()
         np.testing.assert_allclose(after['weights'],posterior,atol=1e-15)
@@ -85,3 +91,13 @@ def test_particle_blocks_are_rejected_before_observer_dispatch(tmp_path):
         run_state_model_particle_filter(engine_config=config(1,tmp_path),subject_id=1,
             stimulus=[[.2]*4],choices=[1],feedback=[1.],particle_count=4,particle_blocks=2,
             choice_readout_power=1.,state_observer=lambda *a:None)
+
+
+def test_decision_basis_requires_observer_and_explicit_mixture(tmp_path):
+    arguments=dict(engine_config=config(1,tmp_path),subject_id=1,
+                   stimulus=[[.2]*4],choices=[1],feedback=[1.],particle_count=4,
+                   choice_readout_power=1.,observe_decision_basis=True)
+    with pytest.raises(ValueError,match='requires state_observer'):
+        run_state_model_particle_filter(**arguments)
+    with pytest.raises(ValueError,match='untransformed rule-mixture'):
+        run_state_model_particle_filter(**arguments,state_observer=lambda *a:None,output_lapse=.1)

@@ -207,3 +207,9 @@ choice-probability RMSE、executed-rule posterior 的 Jensen--Shannon divergence
 回调路径使用 `particle_blocks=1`；独立种子之间通过一个进程池并行。
 默认拟合与已有粒子分块入口保持既定计算路径。该记录功能用于评价层导出状态分布，
 粒子滤波继续负责选择重加权、反馈学习、随机流与重采样。
+
+设置 `observe_decision_basis=True` 后，回调另外收到 `rule_choice_probabilities`（粒子×规则×反应）
+和 `perceived_stimulus`（粒子×特征）。这些值来自本题原有的选择快照，用于在同一粒子内
+计算规则对实际选择的贡献，再跨粒子汇总。此模式要求同时提供 `state_observer`，采用连续规则混合，
+整体输出 lapse 和整体置信转换均为零。未启用的回调保留原字段。
+当前口述和报告匹配分数均不进入这个接口。
