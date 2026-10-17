@@ -1,0 +1,14 @@
+protocol: model0923_recalled_evidence_factorial_v1
+reference: results/model_0923/episodic_refit_evaluation_20261017_v1
+subjects: [207, 208, 308]
+parallel_budget: 128
+paths: 64
+block_width: 32
+arms:
+  POOL: {proposal: false, prior: false}
+  PRIOR: {proposal: false, prior: true}
+  SEARCH: {proposal: true, prior: false}
+  BOTH: {proposal: true, prior: true}
+wait_for:
+  - results/model_0923/decision_basis_replay_20261018_v1
+  - results/model_0923/episodic_adaptive_task_20261018_v1

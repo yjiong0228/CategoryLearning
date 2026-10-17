@@ -825,3 +825,22 @@ prior_t[newcomers] = m_drop * z_tilde[newcomers]
 本子包不提供重构前的 H class path 或兼容入口。新增 H 设计时，应先明确它改变的是 selection、
 prior assignment，还是二者；再明确 trial-level policy state 是不存在、离散还是连续，最后才决定
 使用哪种 optimization 和 inference backend。
+
+## 11. Model 0923 历史证据实验
+
+`episodic_admission.py`通过已完成反馈评价新规则，并在POOL方案中用同一段折扣历史比较新旧规则。
+`episodic_proposal.py`在POOL之上提供两个独立的实验开关：历史证据引导候选身份，以及新规则入集时
+依据共同历史重建规则信念。其入口为`workflows.analysis.model_0923_recalled_evidence_study`，
+配置为`configs/shared/model0923_recalled_evidence_study.yaml`。正式默认模型的装配保持原配置。
+
+历史证据是各次反馈的对数似然比之折扣和；似然表示规则对已经观察到的反馈赋予的概率，
+比较基准为相应条件下的随机选择反馈概率。折扣率沿用保留证据的保持参数，所有规则均在初始精度上回顾。
+条件3使用每条反馈产生前记录的配对分布。SEARCH以该证据调整原提议概率，保留原局部／全局路线、
+父规则及语法允许的候选范围。PRIOR在候选被接纳后，从基础规则权重与共同历史证据重新形成最终集合的信念。
+两次集合变更之间沿用原在线信念更新。
+
+历史重建假设被试在纳入新解释时重新评估既往经验，其计算精度与当时在线精度可以不同。
+这项假设需要行为重拟合和表征检验。历史证据缓存保存已完成事件链所确定的数值和，随粒子快照共享，
+搜索时只计算缓存之后新增的事件；缓存复用不增加独立学习参数。
+试验采用POOL、PRIOR、SEARCH和BOTH四种组合，全部保留自主轨迹。
+设计依据、检验边界及计算状态见[持续研究记录](../../../docs/model_architecture/model_0923_research_progress_20261018.md)。
