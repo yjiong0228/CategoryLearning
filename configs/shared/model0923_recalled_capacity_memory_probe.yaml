@@ -1,0 +1,16 @@
+protocol: model0923_recalled_capacity_memory_probe_v1
+parallel_budget: 20
+paths: 64
+window: 128
+block_width: 32
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+subjects:
+  306:
+    source: results/model_0923/recalled_evidence_extension_20261018_v1
+    memory: [0.0, 0.8]
+    capacity: [2, 4, 8]
+  308:
+    source: results/model_0923/recalled_evidence_study_20261018_v2
+    memory: [0.3, 0.8]
+    capacity: [2, 3, 4]
