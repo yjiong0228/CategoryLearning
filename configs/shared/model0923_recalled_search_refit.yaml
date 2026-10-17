@@ -1,0 +1,41 @@
+protocol: model0923_recalled_search_refit_v1
+seed: 2026101807
+parallel_budget: 128
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+data: results/model_0923/h_retention_data_20261016_v1
+warm_start_fit: results/model_0923/episodic_refit_20261017_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+subjects: [207, 208, 308]
+mechanism: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+evidence_decay_values: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
+arms:
+  POOL: &precision
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.0, 0.001, 0.003, 0.01, 0.03, 0.06, 0.1, 0.3, 0.6, 1.0]
+  SEARCH: *precision
+initial_ray_coordinates:
+  - engine.modules.memory_mod.kwargs.gamma
+  - engine.modules.hypo_transitions_mod.kwargs.intervention.decay
+  - engine.modules.hypo_transitions_mod.kwargs.max_capacity
+  - engine.modules.hypo_transitions_mod.kwargs.execution_inertia
+initial_candidates: 40
+elites: 2
+proposals_per_elite: 8
+exchange_per_arm: 3
+selection_candidates: 4
+confirmation_candidates: 2
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine: {particles: 128, seeds: 2}
+  exchange: {particles: 256, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 512, seeds: 8}
+  evaluate: {particles: 512, seeds: 8}
+particle_overrides: {}
+autonomous_paths: 128
+autonomous_chunk: 4
+features: {block_width: 32}
+scope: equal_budget_joint_refit_development_participants_no_oral_selection
