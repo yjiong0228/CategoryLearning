@@ -135,6 +135,10 @@ DRAW对208和305的口述支持改善分别为0.0345和0.1035，配对滤波模�
 
 九人图在`CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1`，
 包括覆盖与表征质量，以及行为和口述指标的取舍。逐题结果、各窗口及配对模拟误差保存在完整汇总目录。
+绘图入口`CategoryLearning_codes.figures.fig3.model0923_decision_basis`根据汇总协议读取方案及比较基准，
+后续POOL与SEARCH可沿用同一图形定义。原九人的绘图源表与旧入口逐项一致，
+三名真实被试的POOL与BASE子集另用于两方案布局检查。九人PNG已人工核对；
+静态预检11项通过，矢量及TIFF要求依仓库PNG规则省略，讨论稿采用300dpi。
 
 ### 完整任务环境的接入
 

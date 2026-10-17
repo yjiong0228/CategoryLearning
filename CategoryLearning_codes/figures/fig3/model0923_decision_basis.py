@@ -22,9 +22,8 @@ from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
-ORDER = ['BASE', 'NEW', 'POOL', 'DRAW']
-COLORS = {'BASE': '#68778B', 'NEW': '#78A7AD', 'POOL': '#277F8E', 'DRAW': '#A16F99'}
-MARKERS = {'BASE': 'o', 'NEW': 's', 'POOL': 'D', 'DRAW': '^'}
+COLORS = {'BASE': '#68778B', 'NEW': '#78A7AD', 'POOL': '#277F8E', 'DRAW': '#A16F99', 'SEARCH': '#277F8E'}
+MARKERS = {'BASE': 'o', 'NEW': 's', 'POOL': 'D', 'DRAW': '^', 'SEARCH': 's'}
 WIDTH_MM = 183
 
 
@@ -49,28 +48,39 @@ def plot(alignment: Path, behavior: Path, output: Path) -> None:
         if digest(alignment / name) != manifest['artifacts'][name]:
             raise ValueError('Alignment source changed')
     subjects = sorted(manifest['subjects'])
+    order = manifest['arms']
+    reference = manifest.get('reference_model', 'BASE')
+    if reference not in order or len(set(order)) != len(order) or len(order) < 2 or not set(order) <= COLORS.keys():
+        raise ValueError('Need distinct supported arms including the declared reference')
+    comparisons = [arm for arm in order if arm != reference]
+    pair_order = [reference, comparisons[0]]
+    colors = dict(COLORS)
+    if order == ['POOL', 'SEARCH']:
+        colors['POOL'] = '#68778B'
     summary = pd.read_csv(alignment / 'summary.csv')
     full = summary.loc[summary.window.eq('test') & summary.domain.eq('structural') & summary.subset.eq('complete')].copy()
     represented = summary.loc[summary.window.eq('test') & summary.domain.eq('structural') & summary.subset.eq('catalogue_supported')]
     contrasts = pd.read_csv(alignment / 'contrasts.csv')
     contrasts = contrasts.loc[contrasts.window.eq('test') & contrasts.domain.eq('structural') & contrasts.subset.eq('complete')]
+    if set(contrasts.reference) != {reference}:
+        raise ValueError('Contrast reference differs from the alignment protocol')
     scores = pd.read_csv(behavior / 'scores.csv')
-    if len(full) != len(subjects) * 4 or set(full.arm) != set(ORDER):
-        raise ValueError('Need all four fitted arms per declared participant')
+    if len(full) != len(subjects) * len(order) or set(full.arm) != set(order):
+        raise ValueError('Need all declared fitted arms per participant')
     if full.duplicated(['subject', 'arm']).any():
         raise ValueError('Ambiguous alignment summary')
-    base = full.loc[full.arm.eq('BASE')].set_index('subject').loc[subjects]
-    available = represented.loc[represented.arm.eq('BASE')].set_index('subject').loc[subjects]
+    base = full.loc[full.arm.eq(reference)].set_index('subject').loc[subjects]
+    available = represented.loc[represented.arm.eq(reference)].set_index('subject').loc[subjects]
     data = []
     for subject in subjects:
-        for arm in ORDER:
+        for arm in order:
             row = full.loc[full.subject.eq(subject) & full.arm.eq(arm)].iloc[0].to_dict()
             for phase, metric in [('test', 'choice_nll'), ('whole', 'energy')]:
                 values = scores.loc[scores.subject.eq(subject) & scores.phase.eq(phase)].set_index('model')[metric]
                 row[metric] = values.loc[arm]
-                row[f'{metric}_difference'] = values.loc[arm] - values.loc['BASE']
+                row[f'{metric}_difference'] = values.loc[arm] - values.loc[reference]
             row['support_difference'] = row['support'] - base.loc[subject, 'support']
-            row['support_difference_mcse'] = (np.nan if arm == 'BASE' else
+            row['support_difference_mcse'] = (np.nan if arm == reference else
                 contrasts.loc[contrasts.subject.eq(subject) & contrasts.arm.eq(arm), 'support_difference_mcse'].item())
             row['catalogue_supported_reports'] = int(available.loc[subject, 'reports'])
             data.append(row)
@@ -81,12 +91,12 @@ def plot(alignment: Path, behavior: Path, output: Path) -> None:
         claim='Content coverage, behavior-conditioned rule use and autonomous learning provide distinct evidence about a fitted mechanism.',
         archetype='cohort diagnosis plus paired mechanism tradeoffs', backend='python',
         panels={'overview_a': 'complete encoding and catalogue-supported report counts',
-                'overview_b': 'BASE support/conflict/undetermined mass over all complete reports',
-                'overview_c': 'paired arm-minus-BASE whole-report support and filter MCSE',
-                'overview_d': 'availability bounds and actual decision-basis support, BASE and NEW',
+                'overview_b': f'{reference} support/conflict/undetermined mass over all complete reports',
+                'overview_c': f'paired arm-minus-{reference} whole-report support and filter MCSE',
+                'overview_d': f'availability bounds and actual decision-basis support, {pair_order}',
                 'tradeoffs_a': 'later-trial choice NLL difference versus support difference',
                 'tradeoffs_b': 'autonomous whole-curve Energy difference versus support difference'},
-        subjects=subjects, arms=ORDER, sample_role='development', width_mm=WIDTH_MM,
+        subjects=subjects, arms=order, reference_model=reference, sample_role='development', width_mm=WIDTH_MM,
         overview_height_mm=160, tradeoffs_height_mm=83, dpi=300, formats=['PNG'],
         statistics={'n': 'participants shown separately; eight independent filters per arm',
                     'center': 'mean over each participant\'s complete later-trial reports',
@@ -130,32 +140,34 @@ def plot(alignment: Path, behavior: Path, output: Path) -> None:
         value = base[label].to_numpy()
         ax.barh(y, value, left=left, color=color, height=.62, label=label.capitalize())
         left += value
-    ax.set(yticks=y, yticklabels=subjects, xlim=(0, 1), xlabel='Mean content mass; BASE')
+    ax.set(yticks=y, yticklabels=subjects, xlim=(0, 1), xlabel=f'Mean content mass; {reference}')
     ax.invert_yaxis(); ax.legend(frameon=False, ncol=3, loc='lower left', bbox_to_anchor=(0, 1.01), columnspacing=.8, borderaxespad=0)
     finish(ax, 'b', 'Complete reports retain unresolved content', legend_above=True)
     ax = axes[1, 0]
-    for offset, arm in zip([-.20, 0, .20], ORDER[1:]):
+    offsets = np.linspace(-.20, .20, len(comparisons)) if len(comparisons) > 1 else [0.]
+    for offset, arm in zip(offsets, comparisons):
         rows = data.loc[data.arm.eq(arm)].set_index('subject').loc[subjects]
         ax.errorbar(rows.support_difference, y + offset, xerr=2 * rows.support_difference_mcse,
-                    fmt=MARKERS[arm], color=COLORS[arm], markersize=3.2, elinewidth=.7, capsize=1.5, label=arm)
+                    fmt=MARKERS[arm], color=colors[arm], markersize=3.2, elinewidth=.7, capsize=1.5, label=arm)
     ax.axvline(0, color='#9A9A9A', linewidth=.6)
-    ax.set(yticks=y, yticklabels=subjects, xlabel='Support difference from BASE')
+    ax.set(yticks=y, yticklabels=subjects, xlabel=f'Support difference from {reference}')
     ax.invert_yaxis(); ax.legend(frameon=False, ncol=3, loc='lower left', bbox_to_anchor=(0, 1.01), borderaxespad=0)
     finish(ax, 'c', 'Mechanism differences; bars = 2 MCSE', legend_above=True)
     ax = axes[1, 1]
     ax.plot([0, 1], [0, 1], color='#B5B5B5', linewidth=.7, linestyle=':')
     for subject in subjects:
-        pair = data.loc[data.subject.eq(subject) & data.arm.isin(['BASE', 'NEW'])].set_index('arm').loc[['BASE', 'NEW']]
+        pair = data.loc[data.subject.eq(subject) & data.arm.isin(pair_order)].set_index('arm').loc[pair_order]
         ax.plot(pair.availability_any_component, pair.support, color='#CFD2D6', linewidth=.7, zorder=1)
-    for arm in ['BASE', 'NEW']:
+    for arm in pair_order:
         rows = data.loc[data.arm.eq(arm)]
         lower, upper = rows.availability_all_components, rows.availability_any_component
-        ax.hlines(rows.support, lower, upper, color=COLORS[arm], linewidth=.8)
-        ax.scatter(upper, rows.support, s=18, marker=MARKERS[arm], color=COLORS[arm], label=arm)
+        ax.hlines(rows.support, lower, upper, color=colors[arm], linewidth=.8)
+        ax.scatter(upper, rows.support, s=18, marker=MARKERS[arm], color=colors[arm], label=arm)
         for row in rows.itertuples():
-            if arm == 'NEW' and row.subject in (207, 208, 308):
+            if arm == comparisons[0] and row.subject in (207, 208, 308):
                 ax.annotate(str(row.subject), (row.availability_any_component, row.support),
-                            xytext=(4, -8), textcoords='offset points', fontsize=6, color=COLORS[arm])
+                            xytext=(4, {207: 6, 208: -8, 308: -12}[row.subject]),
+                            textcoords='offset points', fontsize=6, color=colors[arm])
     ax.set(xlim=(-.02, 1.05), ylim=(-.02, 1.05), xlabel='Supporting-rule availability; all–any bound',
            ylabel='Decision-basis support')
     ax.legend(frameon=False, ncol=2, loc='lower left', bbox_to_anchor=(0, 1.01), borderaxespad=0)
@@ -168,21 +180,21 @@ def plot(alignment: Path, behavior: Path, output: Path) -> None:
     for ax, metric, title, letter in zip(axes, ['choice_nll', 'energy'],
                                        ['Later-trial prediction', 'Autonomous learning curves'], ['a', 'b']):
         ax.axhline(0, color='#AAAAAA', linewidth=.6); ax.axvline(0, color='#AAAAAA', linewidth=.6)
-        for arm in ORDER[1:]:
+        for arm in comparisons:
             rows = data.loc[data.arm.eq(arm)]
             ax.scatter(rows[f'{metric}_difference'], rows.support_difference, marker=MARKERS[arm],
-                       color=COLORS[arm], s=21, linewidths=.4, edgecolors='white', label=arm)
+                       color=colors[arm], s=21, linewidths=.4, edgecolors='white', label=arm)
         ax.margins(x=.12, y=.18)
         for subject in (207, 208, 308):
-            rows = data.loc[data.subject.eq(subject) & data.arm.ne('BASE')]
+            rows = data.loc[data.subject.eq(subject) & data.arm.ne(reference)]
             if len(rows):
                 ax.annotate(str(subject), (rows[f'{metric}_difference'].mean(), rows.support_difference.mean()),
                             xytext=(4, 7 if subject == 308 else -12), textcoords='offset points',
                             fontsize=6, color='#444444')
-        ax.set(xlabel=f'{"Choice NLL" if metric == "choice_nll" else "Curve Energy"} difference from BASE (lower is better)',
+        ax.set(xlabel=f'{"Choice NLL" if metric == "choice_nll" else "Curve Energy"} difference from {reference} (lower is better)',
                ylabel='Oral support difference (higher is better)')
         finish(ax, letter, title)
-    fig.legend(handles=[Line2D([], [], color=COLORS[a], marker=MARKERS[a], linestyle='none', label=a) for a in ORDER[1:]],
+    fig.legend(handles=[Line2D([], [], color=colors[a], marker=MARKERS[a], linestyle='none', label=a) for a in comparisons],
                loc='upper center', ncol=3, frameon=False, bbox_to_anchor=(.5, .99))
     fig.text(.5, .04, 'Development participants; paired fitted-model differences. Points do not include parameter uncertainty.',
              ha='center', fontsize=6)
