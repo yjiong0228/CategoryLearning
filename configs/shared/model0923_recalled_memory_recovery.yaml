@@ -1,0 +1,10 @@
+protocol: model0923_recalled_memory_recovery_v1
+seed: 2026101817
+parallel_budget: 128
+subjects: [207, 308]
+memory_values: [0.0, 0.8]
+decay_values: [0.8, 1.0]
+replicates: 2
+particles: 256
+seeds: 4
+scope: coarse_two_coordinate_recovery_other_parameters_known_training_stimuli_only
