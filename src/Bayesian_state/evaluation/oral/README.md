@@ -132,3 +132,17 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 原粒子数和 `selected_00` 的原种子各重放一次。条件 2 沿用拟合时的精度更新方法，
 从 Git 读取的源码哈希须与拟合 manifest 一致；随后逐题核对原选择预测和保存的认知状态。
 这批 12 人已参与机制及解析语法开发，自动结构编码仍需人工复核。
+
+## 用实际口述约束检验作答依据
+
+`constraint_alignment.py` 将实际报告的整组判断与一个局部规则分量比较，分别记录显式谓词支持
+和几何蕴含，并将结果分为支持、冲突和未确定。规则中未被提及的判断允许保留；多项口述在同一
+分量内联合检验。躯干参照保持符号形式，缺失和编码矛盾单列。
+`choice_conditioned_weights` 对粒子与规则的联合贡献按本题选择条件化，
+`summarize_matches` 汇总完整状态权重。输出是内容支持质量，报告生成似然需要另行定义表达过程。
+
+`workflows.analysis.model_0923_oral_constraint_audit` 提供方法实例和开发语料的目录审查，
+配置为 `configs/shared/model0923_oral_constraint_audit.yaml`，结果写入新目录。
+九名被试的原始口述连接、解析范围和分量判定已完成审查，拟合状态重放尚待接入。
+方法、实例、真实数据结果及后续状态接口见
+[口述约束检验说明](../../docs/model_architecture/model_0923_oral_constraints.md)。
