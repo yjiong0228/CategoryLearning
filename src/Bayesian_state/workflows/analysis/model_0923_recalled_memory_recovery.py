@@ -58,11 +58,20 @@ def run(fit: Path, config: Path, output: Path, smoke: bool) -> None:
         hashes[str(module.resolve().relative_to(ROOT))] = v.digest(module)
     output.mkdir(parents=True)
     refit.base.archive(output, config, hashes)
-    # Reuse the validated dispatcher. Production recovery starts after the
-    # preceding refit/evaluation queues, so only the old replay can reserve slots.
+    # Reuse the validated dispatcher after fitting/evaluation. The explicitly
+    # declared state-replay queue reserves its remaining worker slots.
     execution = dict(frozen['settings'], parallel_budget=1 if smoke else settings['parallel_budget'])
+    execution['resource_predecessor'] = settings.get('resource_predecessor', execution['resource_predecessor'])
+    predecessor = ROOT / execution['resource_predecessor']
+    predecessor_hash = None
+    if not smoke:
+        previous = v.read(predecessor / 'protocol.json')
+        if previous['smoke'] or previous['role'] != 'fixed_parameter_replay_no_oral_input':
+            raise ValueError('Recovery CPU reservation needs the declared scientific state replay')
+        predecessor_hash = v.digest(predecessor / 'protocol.json')
     v.write(output / 'protocol.json', dict(fit=str(fit.resolve()), nomination_sha256=v.digest(fit / 'nominees.json'),
         settings=execution, recovery=settings, smoke=smoke, source_sha256=hashes,
+        resource_predecessor=str(predecessor.resolve()), predecessor_protocol_sha256=predecessor_hash,
         scope='two_memory_grid_recovery_with_all_other_parameters_known',
         data_boundary='original training stimuli only; synthetic choices and own task feedback',
         estimated_coordinates=[MEMORY, DECAY], other_coordinates='fixed to generating values'))

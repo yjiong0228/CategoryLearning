@@ -1,0 +1,7 @@
+protocol: model0923_recalled_search_decision_basis_v1
+source: results/model_0923/recalled_search_evaluation_20261018_v1
+subjects: [207, 208, 308]
+arms: [POOL, SEARCH]
+workers: 128
+seeds_per_arm: 8
+sample_role: development

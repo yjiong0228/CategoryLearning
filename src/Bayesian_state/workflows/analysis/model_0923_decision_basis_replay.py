@@ -28,6 +28,7 @@ ENTRY = 'src/Bayesian_state/workflows/analysis/model_0923_decision_basis_replay.
 PF = 'src/Bayesian_state/inference/backends/particle_filter.py'
 COLLECTOR = 'src/Bayesian_state/evaluation/oral/decision_basis.py'
 REFIT = 'src/Bayesian_state/workflows/analysis/model_0923_episodic_refit.py'
+PROPOSAL = 'src/Bayesian_state/model/modules/hypothesis_transition/episodic_proposal.py'
 
 
 def digest(path: Path) -> str:
@@ -120,7 +121,11 @@ def worker(file: Path) -> None:
         stack.enter_context(precision.precision_intervention(BetaModule, mode=arm['precision'], upper=arm['upper']))
         recall_fixes = []
         if job['model'] != 'BASE':
-            recall_fixes = stack.enter_context(history.episodic_admission(cls, mode=job['model']))
+            mode = 'POOL' if job['model'] == 'SEARCH' else job['model']
+            recall_fixes = stack.enter_context(history.episodic_admission(cls, mode=mode))
+        if job['model'] == 'SEARCH':
+            proposal = refit.base.load('src.Bayesian_state.model.modules.hypothesis_transition.episodic_proposal', PROPOSAL)
+            stack.enter_context(proposal.episodic_proposal(cls, proposal=True))
         result = capture.run_state_model_particle_filter(
             engine_config=engine, subject_id=meta['subject'], condition=meta['condition'],
             stimulus=arrays['stimulus'], choices=arrays['choices'], feedback=arrays['feedback'],
@@ -165,6 +170,8 @@ def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
     if read(source / 'completion.json')['status'] != 'complete':
         raise ValueError('Original evaluation must be complete')
     hashes = {name: digest(ROOT / name) for name in (ENTRY, PF, COLLECTOR, REFIT)}
+    if 'SEARCH' in settings['arms']:
+        hashes[PROPOSAL] = digest(ROOT / PROPOSAL)
     jobs = []
     subjects = settings['subjects'][:1] if smoke else settings['subjects']
     arms = settings['arms'][:1] if smoke else settings['arms']

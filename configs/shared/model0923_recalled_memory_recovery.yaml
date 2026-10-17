@@ -1,6 +1,7 @@
 protocol: model0923_recalled_memory_recovery_v1
 seed: 2026101817
 parallel_budget: 128
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
 subjects: [207, 308]
 memory_values: [0.0, 0.8]
 decay_values: [0.8, 1.0]
