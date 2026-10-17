@@ -1,0 +1,15 @@
+protocol: model0923_episodic_adaptive_environment_v1
+seed: 2026101801
+fit: results/model_0923/episodic_refit_20261017_v1
+reference: results/model_0923/episodic_refit_evaluation_20261017_v1
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+subjects: [107, 108, 109, 205, 207, 208, 305, 306, 308]
+arms: [BASE, NEW, POOL, DRAW]
+parallel_budget: 128
+paths: 128
+policies: [fixed, balanced, adaptive]
+max_blocks: 20
+blocks_per_session: 5
+threshold: 0.9
+beta: 0.2
+ambiguity_width: 0.1

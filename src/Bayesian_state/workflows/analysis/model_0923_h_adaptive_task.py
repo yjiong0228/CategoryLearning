@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import ExitStack, contextmanager
 import importlib.util
 import os
 from pathlib import Path
@@ -32,6 +33,40 @@ def load_source(name: str, path: Path):
 
 def validation():
     return load_source('adaptive_task_validation', REPO / 'src/Bayesian_state/workflows/analysis/model_0923_h_validation.py')
+
+
+@contextmanager
+def cognitive_adapters(job: dict):
+    """Restore the frozen episodic-refit interventions when explicitly supplied.
+
+    The ordinary H-study jobs retain their original implementation. Episodic
+    jobs carry the precision settings and admission identity from their saved
+    autonomous reference; task generation changes neither of these settings.
+    """
+    settings = job.get('episodic_arm_settings')
+    corrections = {}
+    with ExitStack() as stack:
+        if settings is not None:
+            if job['model'] not in ('BASE', 'NEW', 'POOL', 'DRAW'):
+                raise ValueError('Unsupported episodic task arm')
+            prefix = 'src/Bayesian_state/model/modules/'
+            feedback = load_source('src.Bayesian_state.model.modules.hypothesis_transition.feedback_guided',
+                                   REPO / (prefix + 'hypothesis_transition/feedback_guided.py'))
+            precision = load_source('src.Bayesian_state.model.modules.precision_interventions',
+                                    REPO / (prefix + 'precision_interventions.py'))
+            guard = load_source('src.Bayesian_state.model.modules.pairing_snapshot_roundoff',
+                                REPO / (prefix + 'pairing_snapshot_roundoff.py'))
+            history = load_source('src.Bayesian_state.model.modules.hypothesis_transition.episodic_admission',
+                                  REPO / (prefix + 'hypothesis_transition/episodic_admission.py'))
+            from src.Bayesian_state.model.modules.beta import BetaModule
+            from src.Bayesian_state.model.modules.pairing_memory import HierarchicalPairingMemoryModule
+            cls = sys.modules['src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search'].MechanisticRuleSearchHypothesisTransitionModule
+            corrections['feedback'] = stack.enter_context(feedback.retention_roundoff_guard(cls))
+            corrections['snapshot'] = stack.enter_context(guard.pairing_snapshot_roundoff_guard(HierarchicalPairingMemoryModule))
+            stack.enter_context(precision.precision_intervention(BetaModule, mode=settings['precision'], upper=settings['upper']))
+            if job['model'] != 'BASE':
+                corrections['recall'] = stack.enter_context(history.episodic_admission(cls, mode=job['model']))
+        yield corrections
 
 
 def worker(file: Path) -> None:
@@ -72,7 +107,7 @@ def worker(file: Path) -> None:
         reference = {key: data[key] for key in ('seeds', 'choices', 'feedback', 'correct_probability')}
     records = []
     start, cpu = time.monotonic(), time.process_time()
-    with diagnosis.single_threaded_processes():
+    with diagnosis.single_threaded_processes(), cognitive_adapters(job) as corrections:
         for seed in job['seeds']:
             task_seed = stable_seed(dict(protocol=job['settings']['protocol'], base=job['settings']['seed'],
                                          subject=meta['subject'], trajectory_seed=seed, role='task'))
@@ -106,8 +141,12 @@ def worker(file: Path) -> None:
                 mean_search_probability=float(arrays['search_probability'].mean()),
                 near_one_search_fraction=float((arrays['search_probability'] >= .95).mean()),
                 path=str(target.resolve()), path_sha256=v.digest(target)))
+    for name, sha in job['source_sha256'].items():
+        if v.digest(REPO / name) != sha:
+            raise ValueError('Executing source changed during task generation')
     v.write(Path(job['target']), dict(records=records, seconds=time.monotonic()-start, cpu_seconds=time.process_time()-cpu,
-        numeric_pools=threadpool_info(), exact_fixed_replay_paths=len(records) if job['policy'] == 'fixed' else 0))
+        numeric_pools=threadpool_info(), exact_fixed_replay_paths=len(records) if job['policy'] == 'fixed' else 0,
+        episodic_arm_settings=job.get('episodic_arm_settings'), corrections=corrections))
 
 
 def prepare_schedules(v, frozen: dict, output: Path, subjects: list[int]) -> list[dict]:
