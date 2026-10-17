@@ -1,5 +1,13 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 历史反馈与候选准入（2026-10-17）
+
+[比较图与全部源表](../outputs/fig3/model0923_episodic_admission_20261017_v1/index.html) ·
+[机制、结果及复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_episodic_admission.md)。
+九人固定ADD10参数，五方案各生成64条自主路径；训练似然另做独立滤波和更高预算复核。
+比较候选历史证据、新旧规则共同评价与随机记忆权重，保留每人的完整路径分布。
+绘图入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_episodic_admission`，输出PNG讨论稿。
+
 ## Model 0923 精度学习与共同H参数重拟合（2026-10-16—17）
 
 [九张比较图与全部源表](../outputs/fig3/model0923_precision_refit_20261016_v3/index.html) ·

@@ -1,0 +1,16 @@
+protocol: model0923_episodic_admission_v1
+fit: results/model_0923/precision_refit_20261016_v2
+reference: results/model_0923/precision_evaluation_20261016_v1/autonomous
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+parameter_family: ADD10
+parallel_budget: 128
+subjects: [107, 108, 109, 205, 207, 208, 305, 306, 308]
+arms: [BASE, LAST, NEW, POOL, DRAW]
+paths: 64
+chunk: 4
+score:
+  particles: 256
+  particle_overrides: {305: 1024}
+  seeds: [6170101, 6170102, 6170103, 6170104]
+features: {block_width: 32}
+scope: fixed_parameters_development_mechanism_screen
