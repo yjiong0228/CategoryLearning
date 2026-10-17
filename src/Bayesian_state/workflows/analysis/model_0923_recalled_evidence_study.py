@@ -2,7 +2,8 @@
 
 --smoke uses one subject, all four arms, two original seeds and sixteen trials.
 The control replays the saved POOL paths exactly. Full runs use the declared
-first 64 common path seeds on 207/208/308 and wait for prior production queues.
+first 64 common path seeds on 207/208/308 and share the remaining CPU budget
+with the preceding state-replay queue.
 This is a mechanism probe at frozen POOL parameters, not a refitted ranking.
 """
 from __future__ import annotations
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[4]
 ENTRY = str(Path(__file__).resolve().relative_to(ROOT))
 HELPER = 'src/Bayesian_state/model/modules/hypothesis_transition/episodic_proposal.py'
 REFIT = 'src/Bayesian_state/workflows/analysis/model_0923_episodic_refit.py'
+BUDGET = 'src/Bayesian_state/workflows/analysis/model_0923_episodic_adaptive_task.py'
 
 
 def digest(path: Path) -> str:
@@ -145,7 +147,7 @@ def prepare(config: Path, output: Path, smoke: bool, subjects: list[int] | None)
                 'SEARCH': dict(proposal=True, prior=False), 'BOTH': dict(proposal=True, prior=True)}
     if settings['arms'] != expected:
         raise ValueError('Require the declared two-by-two mechanism comparison')
-    hashes = {name: digest(ROOT / name) for name in (ENTRY, HELPER)}
+    hashes = {name: digest(ROOT / name) for name in (ENTRY, HELPER, BUDGET)}
     jobs = []
     for subject in selected:
         left = 2 if smoke else settings['paths']
@@ -177,19 +179,30 @@ def prepare(config: Path, output: Path, smoke: bool, subjects: list[int] | None)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / name, destination)
     shutil.copy2(config, output / 'protocol.yaml')
-    protocol = dict(settings=settings, smoke=smoke, subjects=selected, jobs=len(jobs),
-        workers=min(1 if smoke else settings['parallel_budget'], len(os.sched_getaffinity(0)), len(jobs)),
+    cpu_budget = min(1 if smoke else settings['parallel_budget'], len(os.sched_getaffinity(0)))
+    protocol = dict(settings=settings, smoke=smoke, subjects=selected, jobs=len(jobs), cpu_budget=cpu_budget,
+        workers=min(cpu_budget, len(jobs)),
         source_sha256=all_sources, config_sha256=digest(config), reference=str(source.resolve()),
         original_completion_sha256=digest(source / 'completion.json'), python=sys.version,
         versions={name: importlib.metadata.version(name) for name in ('numpy', 'scipy', 'pandas', 'PyYAML')},
         git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         scope='fixed-POOL-parameter development mechanism probe; no parameter fitting; all paths retained')
+    if not smoke and settings.get('resource_predecessor'):
+        predecessor = ROOT / settings['resource_predecessor']
+        previous = read(predecessor / 'protocol.json')
+        if previous['smoke'] or not (predecessor / 'states').is_dir():
+            raise ValueError('Need the declared scientific state-replay predecessor')
+        protocol.update(resource_predecessor=str(predecessor.resolve()),
+                        predecessor_protocol_sha256=digest(predecessor / 'protocol.json'))
     write(output / 'protocol.json', protocol)
     return protocol, jobs
 
 
 def run(config: Path, output: Path, smoke: bool, subjects: list[int] | None = None) -> None:
+    from src.Bayesian_state.workflows.analysis.model_0923_episodic_adaptive_task import SharedWorkerBudget
     protocol, jobs = prepare(config, output, smoke, subjects)
+    budget = SharedWorkerBudget(protocol['cpu_budget'],
+                               Path(protocol['resource_predecessor']) if 'resource_predecessor' in protocol else None)
     if not smoke:
         for relative in protocol['settings'].get('wait_for', []):
             predecessor = ROOT / relative
@@ -204,7 +217,7 @@ def run(config: Path, output: Path, smoke: bool, subjects: list[int] | None = No
                    MKL_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1')
         launcher = ('import runpy,sys;root,script=sys.argv[1:3];sys.path.insert(0,root);'
                     "sys.argv=[script]+sys.argv[3:];runpy.run_path(script,run_name='__main__')")
-        with tempfile.TemporaryDirectory(prefix='recalled_evidence_') as cache, file.with_suffix('.log').open('x') as log:
+        with budget.slot(), tempfile.TemporaryDirectory(prefix='recalled_evidence_') as cache, file.with_suffix('.log').open('x') as log:
             env.update(NUMBA_CACHE_DIR=cache, MPLCONFIGDIR=cache)
             result = subprocess.run([sys.executable, '-c', launcher, job['runtime'], str(ROOT / ENTRY),
                                      '--worker', str(file.resolve())], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)

@@ -10,5 +10,5 @@ arms:
   SEARCH: {proposal: true, prior: false}
   BOTH: {proposal: true, prior: true}
 wait_for:
-  - results/model_0923/decision_basis_replay_20261018_v1
   - results/model_0923/episodic_adaptive_task_20261018_v1
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
