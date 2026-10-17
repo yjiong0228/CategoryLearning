@@ -18,7 +18,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 
 | 要检查的问题 | 结果入口 | 分析范围 |
 |---|---|---|
-| 新参数能否自主生成学习过程 | [冻结参数后的自主结果](#冻结参数后的自主生成结果) | 三人、两方案，每组128条路径；条件预测与口述仍待完成 |
+| 新参数能否自主生成学习过程 | [全部自主路径图](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_autonomous_20261018_v3/autonomous_paths.png)；[图与源表](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_autonomous_20261018_v3/index.html)；[结果解释](#冻结参数后的自主生成结果) | 三人、两方案，每组128条路径；条件预测与口述仍待完成 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
 | 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
@@ -498,6 +498,28 @@ PNG已核对数值、坐标、图例和文字布局，源表与设计说明一�
 
 自主部分的192份数组哈希、六组参数身份、全部路径种子、真实任务数据哈希和类别概率归一化均已核对。
 表中数值由现有评分函数从原路径复算；完整评价结束后还将与统一汇总核对。
+
+六格轨迹图保留每格全部128条等权路径，黑线表示被试，彩线表示模型均值，竖虚线表示训练段末尾。
+路径从第一题开始，根据自身回答连续学习。虚线后的路径因此也继承各自模拟出的训练经历。
+仓库已有的[训练状态续跑框架](../../workflows/analysis/model_0923_h_prefix_forecast.py)可用于另一项检验：
+先依据真实训练段选择推断内部状态，再从这些状态自主生成后段行为。
+该框架对本轮POOL、SEARCH配置的适配与运行尚待完成；两项检验的初始状态及条件信息分别记录。
+
+新增绘图入口只读取已完成的自主任务，可在条件滤波继续运行时生成可核验的完整路径图：
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model0923_frozen_autonomous \
+  --fit results/model_0923/recalled_search_refit_20261018_v1 \
+  --evaluation results/model_0923/recalled_search_evaluation_20261018_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/recalled_search_autonomous_NEW
+```
+
+输出目录必须为新目录，包含PNG、逐格评分、配对差值、均值曲线、768条路径记录、19,456行路径分组数据，
+以及绘图源码、版本和输入哈希。v3的396项输入哈希与11项产物哈希均通过核验；均值从全部路径分组复算一致。
+缺失任务、重复任务、来源不符、候选不符、缺失整组及已有输出目录六类异常均被拒绝。
+最终PNG与已逐格检查排版的v2逐字节相同。静态图检报告11项通过、2项警告、1项失败；
+后三项均涉及导出格式或分辨率，按项目要求保留PNG，并按讨论图用途采用300 dpi。
+相应检查和适用范围保存在图目录的`qa_preflight.json`与`qa_notes.json`。
 
 ### 固定参数对照扩展至九人
 
