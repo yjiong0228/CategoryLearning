@@ -1,5 +1,9 @@
 """
 对 Task2 行为和口头汇报数据进行预处理。
+
+feature1_use–feature4_use 表示口述语义涉及的特征，包括直接点名的部位和
+现有解析器识别出的指代、比较及排序参与部位。结果按被试的 feature*_name
+映射到 F1–F4；缺失口述记为全 0。运行预处理后生成这些字段。
 """
 
 from __future__ import annotations

@@ -44,9 +44,25 @@ Recording duration is not asserted to be mastery time. Curves use trailing 32 tr
 session boundaries are marked. Nine illustrative participants remain fixed from v3.
 
 Oral fields come exclusively from process_use and FEATURE_NAME_TO_PART reordering
-in Preprocessor_B. F1–F4 task-colored short marks are explicit mentions; missing text is gray.
+in Preprocessor_B. From 2026-10-17, process_use combines directly named features
+with the existing semantic parser's resolved references, comparison operands and
+rankings. Both “脖子长，其他短” and “脖子最长” involve all four features;
+“脖子在头和脖子中最长” involves the neck and head. These fields describe report
+content. Missing text is encoded as zero and displayed in gray.
 The mean report feature count uses reports containing at least one recognized
-feature. Zero-coded missing text is never treated as an observed zero-feature report.
+feature.
+
+Coverage follows the existing semantic parser. It currently treats the scope in
+“头和脖子中，脖子最长” as an unparsed clause and expands the following superlative
+to all four parts. Resolving scopes across clauses remains a shared-parser task.
+
+The code update leaves the saved Task2_processed.csv and existing figures at their
+previous explicit-mention definition. Refreshing the four feature*_use columns
+requires a separate data update with a backup and a field-level audit. build_fig1
+checks saved values against the current encoder and will reject that older CSV.
+After the data update, regenerate figures in a new output directory and review the
+changed counts and recognized-report denominators. Earlier revision notes and
+figure bundles record the definition used when they were generated.
 
 Panel d retains oral feature count and adds paired first/last median choice RT.
 Both use disjoint 64-trial periods; S105's 64-trial record cannot form a pair.

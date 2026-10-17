@@ -1457,6 +1457,16 @@ class Recording_Processor_Center:
         self.center_encoder = CenterEncoder(body_value=0.5, parts=self.parts)
 
     def process_use(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Mark features involved in each report, in ``self.parts`` order.
+
+        Combine directly named parts with the existing parser's semantic claims,
+        including resolved complements, universal statements, comparison operands
+        and rankings. Thus both "脖子长，其他短" and "脖子最长" involve all four
+        body parts. Direct mentions also count in negated or unparsed statements.
+        Missing text yields zeros; unparsed expressions retain direct mentions.
+        These indicators describe report content, with coverage determined by
+        ``SemanticParser``.
+        """
         results = {
             "iSession": df["iSession"],
             "iTrial": df["iTrial"],
@@ -1468,8 +1478,11 @@ class Recording_Processor_Center:
             if pd.isna(text) or not str(text).strip():
                 continue
             text = self.semantic_parser.normalize_text(text)
+            parsed = self.semantic_parser.parse(text)
+            involved_parts = set(self.semantic_parser.parts_in_text(text))
+            involved_parts.update(self.semantic_parser._parts_from_claims(parsed.claims))
             for part, col in use_columns.items():
-                if part in text:
+                if part in involved_parts:
                     results[col][idx] = 1
         return pd.DataFrame(results)
 

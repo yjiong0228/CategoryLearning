@@ -12,6 +12,13 @@ from src.preprocess_b import Preprocessor_B
     (['tail','head','leg','neck'],'其他都一样',[0,0,0,0]),
     (['tail','head','leg','neck'],None,[0,0,0,0]),
     (['blue','pink','green','yellow'],'绿色比蓝长',[1,0,1,0]),
+    (['tail','head','leg','neck'],'脖子长，其他短',[1,1,1,1]),
+    (['head','neck','leg','tail'],'四个部位都比较长',[1,1,1,1]),
+    (['tail','leg','neck','head'],'脖子最长',[1,1,1,1]),
+    (['tail','leg','neck','head'],'脖子在头和脖子中最长',[0,0,1,1]),
+    (['blue','pink','green','yellow'],'绿色最长',[1,1,1,1]),
+    (['blue','pink','green','yellow'],'绿色长，其他短',[1,1,1,1]),
+    (['blue','pink','green','yellow'],'绿色在蓝色和绿色中最长',[1,0,1,0]),
 ])
 def test_process_codes_mentions_in_feature_order(names,text,expected):
     stimulus=pd.DataFrame({'stiID':[1],**{f'feature{i}_name':[n] for i,n in enumerate(names,1)},
