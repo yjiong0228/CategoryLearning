@@ -92,6 +92,18 @@ def test_incremental_cache_matches_full_episode_recall_and_survives_clone(monkey
         advance_recall(chain[0], cached, **options)
 
 
+def _config(condition):
+    cfg = yaml.safe_load(Path(f'configs/exp123/model_struct/model_0923_cond{condition}_full_v3.yaml').read_text())
+    cfg['oral_readout'] = None
+    cfg['modules']['perception_mod']['kwargs'] = dict(features=4, mean=[0.]*4, std=[0.]*4, module_seed=2)
+    h_cfg = cfg['modules']['hypo_transitions_mod']['kwargs']
+    h_cfg.update(intervention=dict(kind='E', decay=.8, capacity='evidence_mean', search='accumulate'),
+                 relation_samples=128, module_seed=3, max_capacity=2, exit_rate=0.)
+    h_cfg['search_controller']['baseline_probability'] = .999
+    cfg['provenance']['hypothesis_similarity']['sample_count'] = 128
+    return cfg
+
+
 @pytest.mark.parametrize('condition', [1, 2, 3])
 @pytest.mark.parametrize('proposal,prior', [(True, False), (False, True), (True, True)])
 def test_real_engine_clone_preserves_new_mechanisms_and_full_recall(condition, proposal, prior, monkeypatch, tmp_path):
@@ -102,14 +114,7 @@ def test_real_engine_clone_preserves_new_mechanisms_and_full_recall(condition, p
     from src.Bayesian_state.model.modules.hypothesis_transition.episodic_admission import (
         episodic_admission, recalled_episodes, recalled_log_evidence)
     monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
-    cfg = yaml.safe_load(Path(f'configs/exp123/model_struct/model_0923_cond{condition}_full_v3.yaml').read_text())
-    cfg['oral_readout'] = None
-    cfg['modules']['perception_mod']['kwargs'] = dict(features=4, mean=[0.]*4, std=[0.]*4, module_seed=2)
-    h_cfg = cfg['modules']['hypo_transitions_mod']['kwargs']
-    h_cfg.update(intervention=dict(kind='E', decay=.8, capacity='evidence_mean', search='accumulate'),
-                 relation_samples=128, module_seed=3, max_capacity=2, exit_rate=0.)
-    h_cfg['search_controller']['baseline_probability'] = .999
-    cfg['provenance']['hypothesis_similarity']['sample_count'] = 128
+    cfg = _config(condition)
     with episodic_admission(Transition, mode='POOL'), episodic_proposal(Transition, proposal=proposal, prior=prior):
         a = StateModel(cfg, context=ModelContext(condition=condition))
         for _ in range(3):
@@ -134,3 +139,31 @@ def test_real_engine_clone_preserves_new_mechanisms_and_full_recall(condition, p
                 np.testing.assert_allclose(cache.total, weights @ evidence, atol=1e-11, rtol=1e-12)
             for m in (a, b):
                 m.complete_trial(1, float(t % 2))
+
+
+@pytest.mark.parametrize('condition', [1, 2, 3])
+@pytest.mark.parametrize('proposal', [False, True])
+def test_transfer_scale_has_no_behavior_channel_under_recalled_prior(condition, proposal, monkeypatch, tmp_path):
+    from src.Bayesian_state.hypothesis_space.similarity import ContinuousSimilarity
+    from src.Bayesian_state.model import ModelContext, StateModel
+    from src.Bayesian_state.model.modules.base_module import ModuleRole
+    from src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search import MechanisticRuleSearchHypothesisTransitionModule as Transition
+    from src.Bayesian_state.model.modules.hypothesis_transition.episodic_admission import episodic_admission
+    monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
+    with episodic_admission(Transition, mode='POOL'), episodic_proposal(Transition, proposal=proposal, prior=True):
+        models = []
+        for scale in (.01, .5):
+            cfg = _config(condition)
+            cfg['modules']['hypo_transitions_mod']['kwargs']['transfer_scale'] = scale
+            models.append(StateModel(cfg, context=ModelContext(condition=condition)))
+        transitions = [m.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION) for m in models]
+        admitted = 0
+        for trial in range(8):
+            predictions = [m.begin_trial([.8, .3, .2, .4]) for m in models]
+            np.testing.assert_array_equal(predictions[0].prior, predictions[1].prior)
+            np.testing.assert_array_equal(transitions[0].execution_probabilities, transitions[1].execution_probabilities)
+            np.testing.assert_array_equal(transitions[0].active, transitions[1].active)
+            admitted += int(transitions[0].last_transition_result.selection.newcomers.size > 0)
+            for m in models:
+                m.complete_trial(1, .5 if condition == 3 and trial % 2 else float(trial % 2))
+        assert admitted > 0

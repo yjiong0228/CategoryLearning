@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .model_0923_h_validation import block_paths, distribution_scores, jackknife_se
+from .model_0923_h_validation import block_paths, distribution_scores, jackknife_se, inactive_parameter_channels
 from .model_0923_h_generation_uncertainty import path_jackknife
 from ..workflows.analysis.model_0923_recalled_evidence_study import digest, read, write
 
@@ -41,9 +41,17 @@ def summarize(source: Path, output: Path) -> None:
     settings = protocol['settings']; subjects = protocol['subjects']
     if set(groups) != {(s, m) for s in subjects for m in settings['arms']}:
         raise ValueError('Missing declared mechanism cell')
-    score_rows, path_rows, curve_rows, banks = [], [], [], {}
+    score_rows, path_rows, curve_rows, inactive_rows, banks = [], [], [], [], {}
     for (subject, arm), chunks in sorted(groups.items()):
         job, record, first = chunks[0]
+        closed = inactive_parameter_channels(dict(nominees=[dict(subject=subject, model=arm, candidate=job['candidate'])],
+                                                  settings=dict(models={arm: job['mechanism']})))
+        inactive_rows.extend(dict(row, status='inactive_at_parameter_point') for row in closed.to_dict('records'))
+        if job['prototype']['prior']:
+            parameter = 'engine.modules.hypo_transitions_mod.kwargs.transfer_scale'
+            inactive_rows.append(dict(subject=subject, model=arm, parameter=parameter,
+                value=job['candidate']['hyperparams'][parameter], status='structurally_unused_in_variant',
+                reason='入集时由共同回顾证据重建信念，原相似度转移尺度的作用通道关闭'))
         categories = first['categories']
         for _, _, part in chunks[1:]:
             np.testing.assert_array_equal(part['categories'], categories)
@@ -113,7 +121,9 @@ def summarize(source: Path, output: Path) -> None:
         contrasts.append(row)
     output.mkdir(parents=True)
     tables = dict(scores=pd.DataFrame(score_rows), paths=pd.DataFrame(path_rows),
-                  curves=pd.DataFrame(curve_rows), contrasts=pd.DataFrame(contrasts))
+                  curves=pd.DataFrame(curve_rows), contrasts=pd.DataFrame(contrasts),
+                  inactive_parameters=pd.DataFrame(inactive_rows,
+                      columns=['subject', 'model', 'parameter', 'value', 'status', 'reason']))
     for name, table in tables.items():
         table.to_csv(output / f'{name}.csv', index=False)
     shown = tables['scores'].loc[tables['scores'].phase.eq('whole'),
@@ -126,6 +136,8 @@ def summarize(source: Path, output: Path) -> None:
             '口述和正确规则身份不参与学习；正确规则身份用于路径诊断。</p>'
             '<p>Energy评价32题分组的完整自主正确率曲线分布。模拟误差以完整路径为单位计算，'
             '被试抽样和参数不确定性另需检验。路径使用固定真实刺激日程；参数尚未按新机制重拟合。</p>'
+            '<p>PRIOR/BOTH中原相似度信念转移尺度的通道关闭，后续重拟合将固定该字段。'
+            '其他已关闭通道见inactive_parameters.csv；其余参数的可辨识性仍需检验。</p>'
             + ('<p><strong>16题软件短验证，结果不用于科学机制排序。</strong></p>' if protocol['smoke'] else '')
             + shown.to_html(index=False, float_format=lambda x: f'{x:.4f}') + '</html>')
     (output / 'index.html').write_text(page)
