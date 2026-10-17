@@ -844,3 +844,13 @@ prior assignment，还是二者；再明确 trial-level policy state 是不存�
 搜索时只计算缓存之后新增的事件；缓存复用不增加独立学习参数。
 试验采用POOL、PRIOR、SEARCH和BOTH四种组合，全部保留自主轨迹。
 设计依据、检验边界及计算状态见[持续研究记录](../../../docs/model_architecture/model_0923_research_progress_20261018.md)。
+
+在SEARCH中，活跃集合限制当前可用于作答的规则；历史记录还可为未活跃规则提供检索依据。
+因此，容量参数表示在线活跃规则数的上限。将其解释为人的工作记忆容量，需要容量操纵或相应恢复证据。
+历史证据保持率控制过去反馈对检索和准入的影响，在线信念保持率控制活跃规则信念跨反馈的延续。
+两者具有不同的计算步骤，其行为可区分性由定向参数恢复检验。
+当前实现对完整目录计算候选检索概率；所需心理计算成本尚未检验。
+
+固定参数对照后，`workflows.analysis.model_0923_recalled_search_refit`以相同预算比较POOL和SEARCH，
+仅用训练选择估计参数。`workflows.analysis.model_0923_recalled_memory_recovery`进一步检查两种记忆保持率，
+该恢复阶段固定其余参数为生成值。各入口的协议、科学结果和限制保存在持续研究记录中。
