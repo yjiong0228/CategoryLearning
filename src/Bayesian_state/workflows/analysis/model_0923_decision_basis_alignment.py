@@ -4,6 +4,7 @@ Use --source REPLAY --oral-audit AUDIT --output NEW_DIRECTORY. Optional
 --subjects selects a declared subset, whose complete seed groups must exist.
 Whole-report scores use the unchanged complete-encoding mask. Fragment scores
 remain identified in the trial table. Monte Carlo SE uses whole filter seeds.
+--reference-model defaults to BASE; POOL supports the recalled-search comparison.
 """
 from __future__ import annotations
 
@@ -177,7 +178,8 @@ def group_scores(source: Path, records: list[tuple[Path, dict]], oral: pd.DataFr
     return result, summaries, jackknife
 
 
-def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = None) -> None:
+def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = None,
+        reference_model: str = 'BASE') -> None:
     if output.exists():
         raise FileExistsError('Use a new oral-state alignment directory')
     protocol = read(source / 'protocol.json')
@@ -193,6 +195,8 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
     settings = protocol['settings']
     selected = subjects if subjects is not None else settings['subjects'][:1] if protocol['smoke'] else settings['subjects']
     arms = settings['arms'][:1] if protocol['smoke'] else settings['arms']
+    if len(arms) > 1 and reference_model not in arms:
+        raise ValueError('Reference model must be present in the declared comparison')
     if not set(selected) <= set(settings['subjects']) or len(set(selected)) != len(selected):
         raise ValueError('Subjects must be a unique subset of the declared replay cohort')
     groups = {}
@@ -217,15 +221,15 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
         print(f'Aligned subject {key[0]} {key[1]}: {len(table)} trials, {len(records)} seeds', flush=True)
     contrasts = []
     for (subject, arm), estimates in jackknife.items():
-        if arm == 'BASE' or (subject, 'BASE') not in jackknife:
+        if arm == reference_model or (subject, reference_model) not in jackknife:
             continue
         for key, estimate in estimates.items():
-            base = jackknife[subject, 'BASE'][key]
+            base = jackknife[subject, reference_model][key]
             np.testing.assert_array_equal(estimate['seeds'], base['seeds'])
             difference = estimate['values'] - base['values']
             n = len(difference)
             error = np.sqrt((n - 1) / n * np.sum((difference - difference.mean(axis=0)) ** 2, axis=0)) if n > 1 else np.full(3, np.nan)
-            row = dict(subject=subject, arm=arm, reference='BASE', window=key[0], domain=key[1], subset=key[2])
+            row = dict(subject=subject, arm=arm, reference=reference_model, window=key[0], domain=key[1], subset=key[2])
             for k, label in enumerate(LABELS):
                 row[f'{label}_difference'] = estimate['point'][k] - base['point'][k]
                 row[f'{label}_difference_mcse'] = error[k]
@@ -242,8 +246,8 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
             '<style>body{font:16px sans-serif;max-width:1300px;margin:30px auto}td,th{padding:6px;border:1px solid #ccc}'
             'table{border-collapse:collapse}</style><h1>口述约束与行为条件作答依据</h1>'
             '<p>参数、状态和分量权重仅由行为模型确定。整组口述判断在同一局部依据内检验。'
-            '结果为内容支持质量；完整报告的生成概率仍需表达过程模型。九人均为开发样本。</p>'
-            '<p>八次滤波先合并选择—依据联合质量，再按实际选择归一化。mcse为删除一次完整滤波重复所得的'
+            f'结果为内容支持质量；完整报告的生成概率仍需表达过程模型。本次{len(selected)}人均为开发样本。</p>'
+            '<p>各次滤波先合并选择—依据联合质量，再按实际选择归一化。mcse为删除一次完整滤波重复所得的'
             'jackknife模拟标准误，未包含参数和被试抽样不确定性。完整解析报告保留共同分母。</p>'
             '<p>固定基准对训练段各类别的依据分布取试次平均，冻结后用于后段。动态与固定基准的差异同时涉及'
             '状态变化和刺激相关的局部读出，单项差异尚不足以定位其原因。</p>'
@@ -254,7 +258,7 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
     (output / 'index.html').write_text(page)
     source_paths = [Path(__file__), ROOT / 'src/Bayesian_state/evaluation/oral/decision_basis.py',
                     ROOT / 'src/Bayesian_state/evaluation/oral/decision_basis_scoring.py']
-    result = dict(status='complete', smoke=protocol['smoke'], subjects=selected, arms=arms,
+    result = dict(status='complete', smoke=protocol['smoke'], subjects=selected, arms=arms, reference_model=reference_model,
                   source=str(source.resolve()), oral_audit=str(audit.resolve()), state_arrays=hashes,
                   source_protocol_sha256=digest(source / 'protocol.json'), oral_manifest_sha256=digest(audit / 'manifest.json'),
                   source_sha256={str(p.relative_to(ROOT)): digest(p) for p in source_paths},
@@ -272,8 +276,9 @@ def main() -> None:
     parser.add_argument('--oral-audit', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--subjects', type=int, nargs='+')
+    parser.add_argument('--reference-model', default='BASE')
     args = parser.parse_args()
-    run(args.source, args.oral_audit, args.output, args.subjects)
+    run(args.source, args.oral_audit, args.output, args.subjects, args.reference_model)
 
 
 if __name__ == '__main__':
