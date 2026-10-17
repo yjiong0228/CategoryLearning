@@ -56,13 +56,22 @@ Coverage follows the existing semantic parser. It currently treats the scope in
 “头和脖子中，脖子最长” as an unparsed clause and expands the following superlative
 to all four parts. Resolving scopes across clauses remains a shared-parser task.
 
-The code update leaves the saved Task2_processed.csv and existing figures at their
-previous explicit-mention definition. Refreshing the four feature*_use columns
-requires a separate data update with a backup and a field-level audit. build_fig1
-checks saved values against the current encoder and will reject that older CSV.
-After the data update, regenerate figures in a new output directory and review the
-changed counts and recognized-report denominators. Earlier revision notes and
-figure bundles record the definition used when they were generated.
+Task2_processed.csv was refreshed on 2026-10-17 with this semantic definition.
+Across 62,720 rows and 96 participants, 10,098 rows changed, totaling 29,039 cells
+in feature1_use–feature4_use. The other 23 fields, row order and original text
+formatting are byte-identical to the backup. Reports with at least one recognized
+feature increased from 59,703 to 61,350; missing reports retain four zeros.
+The [audit bundle](../outputs/fig1/semantic_use_update_20261017_v1/audit.json)
+contains file hashes and validation results, with an
+[input backup](../outputs/fig1/semantic_use_update_20261017_v1/Task2_processed_before.csv),
+[row-level changes](../outputs/fig1/semantic_use_update_20261017_v1/changes.csv),
+an update script and source snapshots in the same directory.
+
+build_fig1 checks saved values against the current encoder. Existing figure
+bundles retain their earlier values and definitions. Regenerate figures in a new
+output directory to use the refreshed fields, and review the changed counts and
+recognized-report denominators. Earlier revision notes record the definition used
+when each bundle was generated.
 
 Panel d retains oral feature count and adds paired first/last median choice RT.
 Both use disjoint 64-trial periods; S105's 64-trial record cannot form a pair.
