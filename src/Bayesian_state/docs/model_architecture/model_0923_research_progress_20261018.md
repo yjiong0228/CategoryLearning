@@ -252,6 +252,10 @@ BOTH相对SEARCH的额外收益也不稳定。因此下一轮优先检验SEARCH�
 两方案预算相同，三名被试均标记为开发样本。命令使用`--phase search --config ... --output 新目录`，
 随后使用`--phase evaluate --fit 拟合目录 --output 新目录`。
 
+行为汇总复用`evaluation.model_0923_episodic_refit`，增加`--reference-model POOL`指定比较基准，
+默认值BASE保持原有用途。拟合保存的`parameter_spaces.json`记录每个参数的完整支持，汇总逐项核对候选。
+原九人结果重新汇总后，13张数值表与已有结果逐项一致；三项评分测试通过。
+
 工作流及原重拟合边界的6项测试通过。八题、2粒子的短验证完成全部五个搜索阶段；
 新入口中的POOL与原工作进程逐数组精确一致。首个短验证暴露了归档环境的工作流导入路径问题，
 改为按文件加载现有编排模块后，v2短验证通过。正式运行使用`recalled_search_refit_20261018_v1`。

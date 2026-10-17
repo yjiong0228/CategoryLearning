@@ -3,6 +3,9 @@
 Scores reuse the established trial NLL and empirical Energy definitions.
 Whole-filter/whole-path jackknife errors measure Monte Carlo resolution at
 fixed parameters. Each participant remains a development participant.
+--reference-model defaults to BASE; use POOL for recalled-search comparisons.
+The saved parameter_spaces.json defines the scored support. An additionally
+archived parameter_support.yaml is recorded when supplied by the fit workflow.
 """
 from __future__ import annotations
 
@@ -38,7 +41,7 @@ def active_precision_mean(beta: np.ndarray, present: np.ndarray) -> float:
     return float(beta[present].mean()) if present.any() else np.nan
 
 
-def summarize(fit: Path, evaluation: Path, output: Path) -> None:
+def summarize(fit: Path, evaluation: Path, output: Path, reference_model: str = 'BASE') -> None:
     if output.exists(): raise FileExistsError('Use a new episodic-refit summary directory')
     frozen = load(fit/'nominees.json'); settings = frozen['settings']
     if frozen['smoke'] or frozen['status'] != 'frozen_before_test': raise ValueError('Need scientific frozen fits')
@@ -49,14 +52,25 @@ def summarize(fit: Path, evaluation: Path, output: Path) -> None:
     if len(expected) != len(frozen['nominees']) or set(expected) != {
             (s,m) for s in settings['subjects'] for m in settings['arms']}:
         raise ValueError('Incomplete fitted comparison')
+    if reference_model not in settings['arms']:
+        raise ValueError('Reference model must be one of the fitted arms')
+    spaces = load(fit/'parameter_spaces.json')
+    if set(spaces) != set(settings['arms']):
+        raise ValueError('Missing archived parameter support')
+    for row in frozen['nominees']:
+        point, space = row['candidate']['hyperparams'], spaces[row['model']]
+        if set(point) != set(space) or any(point[k] not in values for k,values in space.items()):
+            raise ValueError('Nominee outside archived parameter support')
     inputs = {}
     def record(path): inputs[str(path)] = digest(path)
     metric_sources = [Path(__file__).with_name(name) for name in
         ('model_0923_h_validation.py','model_0923_h_generation_uncertainty.py')]
     for path in (fit/'nominees.json', fit/'protocol.json', fit/'parameter_spaces.json',
-                 fit/'parameter_support.yaml', evaluation/'protocol.json', evaluation/'completion.json',
+                 evaluation/'protocol.json', evaluation/'completion.json',
                  *metric_sources):
         record(path)
+    if (fit/'parameter_support.yaml').exists():
+        record(fit/'parameter_support.yaml')
     roles = {}
     for role in ('conditional', 'autonomous'):
         path = evaluation/role/'evaluation.json'; record(path)
@@ -148,7 +162,7 @@ def summarize(fit: Path, evaluation: Path, output: Path) -> None:
     frame = pd.DataFrame(scores); contrasts = []
     indexed = frame.set_index(['subject','model','phase'])
     for row in frame.itertuples():
-        key = row.subject,row.model,row.phase; baseline = row.subject,'BASE',row.phase
+        key = row.subject,row.model,row.phase; baseline = row.subject,reference_model,row.phase
         ref = indexed.loc[baseline]
         for a,b in zip(seed_bank[key],seed_bank[baseline]): np.testing.assert_array_equal(a,b)
         result = dict(subject=row.subject, model=row.model, phase=row.phase)
@@ -232,7 +246,7 @@ def summarize(fit: Path, evaluation: Path, output: Path) -> None:
         source_sha256=digest(Path(__file__)),inputs_sha256=inputs,
         metric_sources_sha256={p.name:digest(p) for p in metric_sources},
         summary_sha256={name+'.csv':digest(output/(name+'.csv')) for name in tables},
-        participants=len(settings['subjects']),arms=list(settings['arms']),block_width=width,
+        participants=len(settings['subjects']),arms=list(settings['arms']),block_width=width,reference_model=reference_model,
         data_use='all participants development; training-only estimation; chronological later-trial evaluation',
         uncertainty='whole-filter/whole-path jackknife Monte Carlo standard errors at frozen parameters'))
 
@@ -240,4 +254,5 @@ def summarize(fit: Path, evaluation: Path, output: Path) -> None:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('fit','evaluation','output'): parser.add_argument('--'+name,type=Path,required=True)
-    args = parser.parse_args(); summarize(args.fit,args.evaluation,args.output)
+    parser.add_argument('--reference-model',default='BASE')
+    args = parser.parse_args(); summarize(args.fit,args.evaluation,args.output,args.reference_model)
