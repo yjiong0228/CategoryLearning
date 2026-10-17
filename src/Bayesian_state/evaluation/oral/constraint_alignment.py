@@ -1,7 +1,7 @@
 """Validate partial oral constraints against local category components.
 
 Support is evidence about represented content, not a report likelihood. The
-existing encoder defines numerical semantics; symbolic body references remain
+existing encoder defines numerical semantics; symbolic body and half references remain
 unresolved. No fitted state, current stimulus, feedback or correct rule is used
 to reinterpret a report. Explicit-facet matches describe geometric predicates,
 not the order of cognitive operations in a decision program.
@@ -68,11 +68,11 @@ def _interior(A: np.ndarray, b: np.ndarray, n_dims: int) -> float:
 def _report_rows(tokens: tuple[str, ...], n_dims: int, tolerance: float):
     rows, symbolic = [], 0
     for token in tokens:
-        if token.startswith("body:"):
+        if token.startswith(("body:", "half_unknown:")):
             fields = token.split(":")
             if (len(fields) != 3 or not fields[1].isdigit()
                     or int(fields[1]) >= n_dims or fields[2] not in {"lt", "gt"}):
-                raise ValueError("Invalid symbolic body reference")
+                raise ValueError("Invalid symbolic reference")
             symbolic += 1
         elif token.startswith("facet:"):
             values = np.asarray(json.loads(token[6:]), dtype=float)
@@ -85,8 +85,9 @@ def _report_rows(tokens: tuple[str, ...], n_dims: int, tolerance: float):
             raise ValueError("Unrecognized report token")
     values = np.asarray(rows, dtype=float).reshape(-1, n_dims + 1)
     A, b = values[:, :-1], values[:, -1]
-    if any(f"body:{i}:lt" in tokens and f"body:{i}:gt" in tokens for i in range(n_dims)):
-        raise InconsistentReportError("Report has opposing symbolic body directions")
+    for kind in ("body", "half_unknown"):
+        if any(f"{kind}:{i}:lt" in tokens and f"{kind}:{i}:gt" in tokens for i in range(n_dims)):
+            raise InconsistentReportError(f"Report has opposing symbolic {kind} directions")
     if len(rows) and _interior(A, b, n_dims) <= tolerance:
         raise InconsistentReportError("Report has no positive-volume numerical interpretation")
     return A, b, symbolic
@@ -97,7 +98,8 @@ def validate_report_constraints(report_tokens: Sequence[str], n_dims: int = 4,
     """Check joint content before evaluating it against model states.
 
     Inconsistency is an annotation issue to retain separately from model
-    conflict. Symbolic body directions are checked without a numerical anchor.
+    conflict. Symbolic directions are checked within each reference type without
+    a numerical anchor. Bare half references share an unknown within-report referent.
     """
     if (not isinstance(n_dims, int) or n_dims < 1
             or not np.isfinite(tolerance) or tolerance <= 0):

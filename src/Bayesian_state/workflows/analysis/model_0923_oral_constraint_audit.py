@@ -5,6 +5,8 @@ Usage: python -m src.Bayesian_state.workflows.analysis.model_0923_oral_constrain
 
 Catalogue counts describe representability, not fitted-model alignment. This
 workflow never loads fitted weights, changes the parser, or fits oral data.
+Optional YAML ``symbolic_half_reference: true`` preserves bare half references
+with an unknown referent; its default is false and retains the original coding.
 """
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ import yaml
 from ...evaluation.oral.constraint_alignment import (
     VERSION, InconsistentReportError, evaluate_component, validate_report_constraints,
 )
-from ...evaluation.oral.structure_0923 import VERSION as ENCODER_VERSION, encode_report
+from ...evaluation.oral.structure_0923 import (
+    VERSION as ENCODER_VERSION, SYMBOLIC_HALF_VERSION, encode_report,
+)
 from ...hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
 from ...hypothesis_space.spaces.structural_0923 import build_relational_0923_space
 
@@ -56,7 +60,8 @@ def run_examples(config: dict) -> pd.DataFrame:
     rows = []
     for example in config['examples']:
         names = tuple(config['feature_order'])
-        report = encode_report(example['report'], names)
+        report = encode_report(example['report'], names,
+                               symbolic_half_reference=config.get('symbolic_half_reference', False))
         rule = encode_report(example['rule'], names)
         if rule.status != 'coded' or report.status not in {'coded', 'missing'}:
             raise ValueError(f"Unresolved method example: {example['name']}")
@@ -104,14 +109,17 @@ def load_reports(config: dict, root: Path = ROOT) -> tuple[pd.DataFrame, dict[st
     return pd.concat(frames, ignore_index=True), hashes
 
 
-def encode_observations(frame: pd.DataFrame, *, tolerance: float = 1e-9) -> tuple[pd.DataFrame, list[dict]]:
+def encode_observations(frame: pd.DataFrame, *, tolerance: float = 1e-9,
+                        symbolic_half_reference: bool = False) -> tuple[pd.DataFrame, list[dict]]:
+    if not isinstance(symbolic_half_reference, bool):
+        raise ValueError('symbolic_half_reference must be boolean')
     cache, queries, rows = {}, {}, []
     for row in frame.itertuples(index=False):
         names = tuple(getattr(row, f'feature{i}_name') for i in range(1, 5))
         text = '' if pd.isna(row.text) else str(row.text)
         key = (text, names)
         if key not in cache:
-            cache[key] = encode_report(text, names)
+            cache[key] = encode_report(text, names, symbolic_half_reference=symbolic_half_reference)
         report = cache[key]
         scope = ('complete' if report.status == 'coded' else 'parsed_fragment'
                  if report.tokens else report.status)
@@ -199,7 +207,9 @@ def run(config_path: Path, output: Path, workers_override: int | None = None) ->
         os.environ[key] = '1'
     examples = run_examples(config)
     frame, hashes = load_reports(config)
-    observations, queries = encode_observations(frame, tolerance=config['tolerance'])
+    symbolic_half = config.get('symbolic_half_reference', False)
+    observations, queries = encode_observations(frame, tolerance=config['tolerance'],
+                                               symbolic_half_reference=symbolic_half)
     jobs = [dict(query, tolerance=config['tolerance']) for query in queries]
     workers = min(requested, len(os.sched_getaffinity(0)), len(jobs)) if jobs else 0
     output.mkdir(parents=True)
@@ -209,7 +219,8 @@ def run(config_path: Path, output: Path, workers_override: int | None = None) ->
                     ROOT / 'src/Bayesian_state/hypothesis_space/spaces/continuous.py',
                     ROOT / 'src/Bayesian_state/hypothesis_space/spaces/structural_0923.py',
                     ROOT / 'src/Bayesian_state/hypothesis_space/spaces/regions.py']
-    manifest = dict(status='running', protocol=VERSION, encoder=ENCODER_VERSION, config=config,
+    manifest = dict(status='running', protocol=VERSION,
+                    encoder=SYMBOLIC_HALF_VERSION if symbolic_half else ENCODER_VERSION, config=config,
                     config_sha256=digest(config_path), input_sha256=hashes,
                     source_sha256={str(p.relative_to(ROOT)): digest(p) for p in source_paths},
                     git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

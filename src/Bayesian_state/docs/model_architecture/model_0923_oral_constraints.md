@@ -113,7 +113,7 @@ S_t=\sum_{p,h,m}q_{phm}\,\mathbf{1}\{\text{本题报告在该分量上得到支�
 
 人工复核应直接阅读原话及约定的实验上下文，保留依据、刺激描述、数量关系、参照和不确定角色。
 评审者对待比较模型的拟合权重保持盲态。角色含混的句子继续保留多种解释及未确定标记。
-不得根据哪种解释提高模型得分来决定其角色。编码器目前保持原版本；本轮只增加评价前的约束一致性检查。
+内容角色依据独立语义证据确定。当前机制比较使用冻结的原版编码，并在评价前检查约束一致性。
 
 每题单独保存以下范围：
 
@@ -128,6 +128,25 @@ S_t=\sum_{p,h,m}q_{phm}\,\mathbf{1}\{\text{本题报告在该分量上得到支�
 一致性检查同时检查数值区域和相反的躯干方向。
 当前编码中的矛盾可能来自语境省略、转录或编码尺度；需要回到原话复核。
 `complete` 表示自动解析完整，人工语义核验尚待完成。
+
+### “一半”参照的可选符号编码
+
+2026-10-18增加可选设置`symbolic_half_reference: true`，默认值为`false`。
+它完整解析“脖子和头均短于一半”等分句，保存部位、比较方向、分数1/2和原话，
+将参照对象与数值阈值标为未知。`half_unknown:0:lt`表示第0个特征短于未明确参照的一半；
+编号按本题特征顺序确定。`一半`、`1/2`和`二分之一`使用相同表示。
+同一报告中的此类省略参照暂按同一参照处理；同一部位同时长于和短于该参照时，标为约束不一致。
+带明确参照、否定或近似表达的其他句式继续保留待复核。
+
+这些符号可记录完整的报告内容；它们的数值几何解释仍未确定。
+完整内容支持因此保留为未确定。同句中已明确的数值判断若与规则冲突，仍记录该冲突。
+完整解析率和可进行数值检验的比例须分别解释。
+
+补充审查位于`results/model_0923/oral_symbolic_half_audit_20261018_v1`：
+九人5,376题中，308的157题新增完整符号编码，完整解析总数由3,707变为3,864；
+其第643—800题的158份报告中，157份得到完整符号编码，1份仍待复核。
+新增157题均没有完整内容的目录支持。机制比较继续使用`oral_constraint_audit_20261018_v2`。
+补充编码版本为`0923-oral-structure-v1+symbolic-half-v1`，配置、17个方法实例及源码哈希见其manifest。
 
 ## 5. 九名开发被试的审查结果
 
@@ -216,6 +235,7 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_oral_constraint_audit
 
 配置中的数据路径相对于仓库根目录。默认上限为 128 个工作进程，按 CPU 配额和待处理约束数限流，
 每个进程使用一个数值线程。`--workers 1` 用于小规模核查。
+复制配置并设置`symbolic_half_reference: true`可运行独立的符号参照审查，输出使用新目录。
 输出包括 `method_examples.csv`、`trials.csv`、`constraint_queries.csv`、`component_matches.csv`、
 `windows.csv`、`review_examples.csv`、`index.html` 和 `manifest.json`。
 manifest 保存输入、分析源码、配置及产物哈希、目录版本、环境版本和样本用途；运行结束再次核对源文件。
@@ -236,3 +256,7 @@ python -m pytest -q \
   tests/bayesian_state/evaluation/test_generative_oral_scoring.py \
   tests/bayesian_state/test_oral_readout.py tests/test_oral_coding.py
 ```
+
+符号参照扩展另通过97项相关测试，包括`evaluation/test_oral_symbolic_half.py`中的15项边界测试；
+原版全部5,376题的状态、范围、约束问题、查询标识、谓词、标记、未解析分句和谓词数逐项一致。
+补充审查以8个单线程进程完成742个查询，与当前重拟合共享总CPU预算。

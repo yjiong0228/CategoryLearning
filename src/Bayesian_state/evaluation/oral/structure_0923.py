@@ -21,6 +21,7 @@ from src.oral_coding import (
 from ...model.modules.readout.report_space import body_token, component_tokens, facet_token, Report
 
 VERSION = "0923-oral-structure-v1"
+SYMBOLIC_HALF_VERSION = VERSION + "+symbolic-half-v1"
 BODY = r"(?:躯干|身体)"
 OP = r"(?:长于|短于|大于|小于|高于|低于)"
 MOD = r"(?:都|均|也|的长度|长度|很|比较|非常|特别|较|略|稍微|稍|偏|挺|更)*"
@@ -45,13 +46,19 @@ def _invert(direction: str) -> str:
     return "lt" if direction == "gt" else "gt"
 
 
-def encode_report(text: Any, feature_names: tuple[str, ...]) -> StructuredReport:
+def encode_report(text: Any, feature_names: tuple[str, ...], *,
+                  symbolic_half_reference: bool = False) -> StructuredReport:
     """Encode without choice, feedback, correctness or fitted model state.
 
     Bare long/short use the existing 0.5 coding convention. Body comparisons
     remain symbolic. Unequal weighted sums retain coefficients but require a
     verified physical affine transform before numerical geometry is assigned.
+    The optional half-reference grammar preserves feature and direction with
+    an unknown referent. It assigns no numerical threshold. Repeated bare half
+    references within a report are treated as sharing that unknown referent.
     """
+    if not isinstance(symbolic_half_reference, bool):
+        raise ValueError("symbolic_half_reference must be boolean")
     if len(feature_names) != 4 or len(set(feature_names)) != 4:
         raise ValueError("four distinct ordered feature names are required")
     try:
@@ -90,6 +97,18 @@ def encode_report(text: Any, feature_names: tuple[str, ...]) -> StructuredReport
         if previous_body_subject and re.fullmatch(rf"{OP}{group}", item):
             item = "躯干" + item
         previous_body_subject = False
+        half = re.fullmatch(rf"(?P<parts>{group}){MOD}(?P<op>{OP})(?:一半|1/2|二分之一)", item)
+        if symbolic_half_reference and half:
+            direction = _direction(half['op'])
+            for name in parts_in_text(half['parts'], parts):
+                dimension = parts.index(name)
+                tokens.append(f"half_unknown:{dimension}:{direction}")
+                relations.append({"kind": "fraction_reference", "item": original,
+                                  "feature": name, "dimension": dimension,
+                                  "direction": direction, "fraction": [1, 2],
+                                  "reference": None, "numerical_threshold": None})
+            flags.add("half_reference_unknown")
+            continue
         # Strict linear comparisons, including body on either side.
         match = re.fullmatch(rf"(?P<left>{endpoint})(?P<op>{OP})(?P<right>{endpoint})", item)
         if match is None:
@@ -190,6 +209,10 @@ def encode_report(text: Any, feature_names: tuple[str, ...]) -> StructuredReport
         if body_token(dimension, 'gt') in unique and body_token(dimension, 'lt') in unique:
             flags.add('contradictory_body_relations')
             unparsed.append('opposing body directions')
+        if (f'half_unknown:{dimension}:gt' in unique
+                and f'half_unknown:{dimension}:lt' in unique):
+            flags.add('contradictory_half_relations')
+            unparsed.append('opposing half-reference directions')
     if unique and not unparsed:
         numeric_rows = [row for token in unique if token.startswith('facet:')
                         for row in json.loads(token[6:])]
