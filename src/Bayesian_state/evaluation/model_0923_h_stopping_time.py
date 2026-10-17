@@ -6,6 +6,7 @@ CRPS in block units penalizes predictions that are too early or too late.
 This supplements frozen comparisons; it never selects or changes parameters.
 Run from the repository root with --source ADAPTIVE_OUTPUT --output NEW_OUTPUT.
 --reference-model names the comparison baseline; the existing default is B.
+The source protocol supplies its data-use status through data_use_status or role.
 Observed first-passing times must be available; early-censored observations
 need a separately specified survival score.
 """
@@ -41,6 +42,9 @@ def run(source: Path, output: Path, reference_model: str = 'B') -> None:
         raise FileExistsError('Use a new stopping-score destination')
     protocol=load(source/'protocol.json');done=load(source/'completion.json')
     assert done['status']=='complete' and not done['smoke']
+    data_use_status=protocol.get('data_use_status',protocol.get('role'))
+    if not isinstance(data_use_status,str) or not data_use_status.strip():
+        raise ValueError('Source protocol must declare its data-use status or role')
     task_source=Path('src/Bayesian_state/simulation/exp123_adaptive_task.py')
     if digest(task_source)!=protocol['source_sha256'][str(task_source)]:
         raise ValueError('Task criterion implementation changed since simulation')
@@ -130,7 +134,7 @@ def run(source: Path, output: Path, reference_model: str = 'B') -> None:
             dependency_sha256={str(task_source):digest(task_source),
                 'src/Bayesian_state/evaluation/model_0923_h_validation.py':
                 digest(Path('src/Bayesian_state/evaluation/model_0923_h_validation.py'))},
-            nomination_sha256=protocol['nomination_sha256'],data_use_status=protocol['data_use_status'],
+            nomination_sha256=protocol['nomination_sha256'],data_use_status=data_use_status,
             included_subjects=sorted(included),excluded_subjects=protocol.get('excluded_subjects',[]),
             horizon_blocks=horizon,censored_category=horizon+1,inputs_sha256=hashes,
             reference_model=reference_model,
