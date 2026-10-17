@@ -10,6 +10,20 @@
 本记录保存已完成工作、当前计算、研究判断和后续检验。原始数据、已有拟合及科研结果保留。
 每轮新运行使用独立目录，代码和方法说明在相关验证后本地提交。
 
+## 结果查看入口
+
+下表连接已完成的图表与汇总。九名被试均用于机制开发，各项分析的数据范围分别列出。
+当前SEARCH重拟合的候选确认见[确认记录](#高精度选择完成独立确认运行中)，
+H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与定型条件)。
+
+| 要检查的问题 | 结果入口 | 分析范围 |
+|---|---|---|
+| 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
+| 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
+| 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
+| 容量与信念保持怎样影响规则使用 | [两参数干预图](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_capacity_memory_20261018_v2/capacity_memory.png) | 306与308的12个固定参数组合，每组合64条路径 |
+| 口述数值约定与原试次连接是否一致 | [物理刺激核对与固定偏移对照](../../../../results/model_0923/oral_literal_audit_20261018_v2/index.html) | 全部5,376份报告保留，数值、符号及部分解析分别记录 |
+
 ## 起点与判断标准
 
 九名开发被试的BASE、NEW、POOL、DRAW联合重拟合已经完成。
