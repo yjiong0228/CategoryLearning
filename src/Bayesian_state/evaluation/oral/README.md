@@ -154,3 +154,10 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 完整轨迹重放入口为 `workflows.analysis.model_0923_decision_basis_replay`，使用
 `configs/shared/model0923_decision_basis_replay.yaml`；`--smoke` 用一个原始种子重放前16题。
 研究阶段和运行状态见[持续研究记录](../../docs/model_architecture/model_0923_research_progress_20261018.md)。
+
+`decision_basis_scoring.py` 按上述联合质量计算三类结果，使用完整滤波种子估计模拟误差。
+`workflows.analysis.model_0923_decision_basis_alignment` 将重放输出与审查表按被试、session和trial连接，
+同时核对原选择、刺激与反馈数组。完整编码报告使用所有方案共同的分母；目录可表达的完整报告另列为
+过程诊断子集。训练段内各类别的平均依据分布冻结后用作后段静态基准。
+输出逐题表、分段汇总、相对BASE的配对差值及HTML。静态基准与动态结果的差异同时涉及学习状态和
+刺激相关的局部读出，需要结合过程诊断解释。
