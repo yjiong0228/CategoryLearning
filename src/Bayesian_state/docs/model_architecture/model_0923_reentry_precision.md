@@ -622,3 +622,33 @@ python -m CategoryLearning_codes.figures.fig3.model0923_capacity_precision_recov
 该入口要求完整运行的完成记录，并逐项核对候选参数、实际精度机制、配对种子、预测数组及恢复选择。
 新增8项测试与共用评分的16项测试通过，CLI和已有短流程绘图通过。
 短图使用`--allow-smoke`显式标为实现检查，正式16条序列完成后再生成完整恢复图。
+
+### 已选模拟前缀中的机制事件
+
+在评分运行期间，对协议预先选定的16条生成路径读取前384题的已知内部状态。
+全部路径及原种子选择保持不变。四种生成条件各四条，这些前缀均曾发现正确规则42。
+下面的事件数量描述恢复实验实际覆盖的过程；各组使用不同种子，组间均值另有路径抽样波动。
+
+| 生成条件 | 正确规则发生重入的路径数 | 正确规则重入总次数 | 正确规则被容量移除次数 |
+|---|---:|---:|---:|
+| K2／RESET | 4/4 | 10 | 10 |
+| K2／RETAIN | 4/4 | 8 | 8 |
+| K4／RESET | 1/4 | 1 | 1 |
+| K4／RETAIN | 1/4 | 2 | 3 |
+
+四组正确规则的自主退出均为零。容量移除共22次，重入共21次；一条K4／RETAIN路径在前缀结束时
+尚未重新纳入最后一次移除的正确规则。所有RESET路径中，该规则的每次进入精度均为初值1。
+
+八条RETAIN路径共记录337次精度恢复，其中正确规则10次、其他规则327次。
+每条RETAIN路径均包含23–67次恢复，所有恢复值与初值1的差均大于数值核对阈值10⁻¹²。
+正确规则的十次恢复值与对应试次的实际作答精度逐值一致。
+精度保持同时作用于正确规则和竞争规则，K4／RETAIN中正确规则重入较少的路径仍有其他规则的精度恢复。
+后续将按这些过程记录解释各条序列的评分差距和恢复结果。
+
+[全部16条前缀](../../../../results/model_0923/capacity_precision_recovery_generating_process_20261018_v1/prefixes.csv)、
+[逐32题过程](../../../../results/model_0923/capacity_precision_recovery_generating_process_20261018_v1/blocks.csv)和
+[全部恢复事件](../../../../results/model_0923/capacity_precision_recovery_generating_process_20261018_v1/retained_precision_events.csv)
+保存于`capacity_precision_recovery_generating_process_20261018_v1`，分析源码随结果保存。
+独立检查重算了464项数值、全部进入／移除关系及恢复精度，61项输入哈希通过。
+验证为`capacity_precision_recovery_process_validation_20261018_v1`。
+这些记录描述已知生成过程，参数恢复成绩仍待评分完成后确定。
