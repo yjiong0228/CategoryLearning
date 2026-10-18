@@ -1,0 +1,9 @@
+protocol: model0923_scope_decision_basis_v1
+source: results/model_0923/estimation_scope_20261018_v1
+source_kind: scope_confirmation
+estimation_objective: full
+subjects: [308]
+arms: [POOL, SEARCH]
+workers: 128
+seeds_per_arm: 8
+sample_role: development

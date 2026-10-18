@@ -5,6 +5,9 @@ arm and saved seed, sixteen trials and one worker. Original particles and seeds
 are retained to check every replayed choice probability against saved results.
 Workers import the archived cognitive runtime and the existing experimental
 adapters; the current shared PF adds observational capture only.
+The optional source_kind=scope_confirmation selects one frozen prefix/full
+nominee per arm from an estimation-scope comparison. Both scopes retain their
+retrospective development label; oral reports never select the parameters.
 """
 from __future__ import annotations
 
@@ -61,6 +64,78 @@ def verify_sources(job: dict) -> None:
         raise ValueError('Archived particle filter changed')
     if digest(Path(job['reference'])) != job['reference_sha256']:
         raise ValueError('Original probability reference changed')
+    if digest(Path(job['original_job'])) != job['original_job_sha256']:
+        raise ValueError('Original replay job changed')
+
+
+def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
+    """Bind saved seeds to the declared selection scope before replaying states."""
+    done = read(source / 'completion.json')
+    if done['status'] != 'complete' or (done.get('smoke', False) and not smoke):
+        raise ValueError('Need a completed evaluation; smoke sources require --smoke')
+    kind = settings.get('source_kind', 'evaluation')
+    if kind not in ('evaluation', 'scope_confirmation'):
+        raise ValueError('source_kind must be evaluation or scope_confirmation')
+    subjects = settings['subjects'][:1] if smoke else settings['subjects']
+    arms = settings['arms'][:1] if smoke else settings['arms']
+    if (not subjects or not arms or len(set(settings['subjects'])) != len(settings['subjects'])
+            or len(set(settings['arms'])) != len(settings['arms']) or settings['seeds_per_arm'] < 1):
+        raise ValueError('Need unique subjects, arms and a positive saved-seed count')
+    metadata = dict(parameter_estimation_scope='original_evaluation_protocol',
+                    evaluation_use='original_evaluation_protocol')
+    selected = {}
+    if kind == 'scope_confirmation':
+        objective = settings.get('estimation_objective')
+        if objective not in ('prefix', 'full'):
+            raise ValueError('Scope confirmation needs estimation_objective prefix or full')
+        frozen = read(source / 'nominees.json')
+        original = read(source / 'protocol.json')
+        if (frozen['status'] != 'frozen_for_retrospective_diagnostics'
+                or frozen['smoke'] != done['smoke'] or original['smoke'] != done['smoke']
+                or done['nomination_sha256'] != digest(source / 'nominees.json')
+                or original['source_sha256'] != frozen['source_sha256']):
+            raise ValueError('Scope nomination status, provenance or checksum changed')
+        for row in frozen['nominees']:
+            if row['objective'] == objective:
+                key = row['subject'], row['model']
+                if key in selected:
+                    raise ValueError('Duplicate scope nominee')
+                selected[key] = row['candidate']
+        if not {(s, a) for s in subjects for a in arms} <= selected.keys():
+            raise ValueError('Missing requested scope nominee')
+        metadata.update(parameter_estimation_scope=objective,
+                        evaluation_use='development_retrospective_comparison',
+                        scope_nomination_sha256=digest(source / 'nominees.json'),
+                        source_protocol_sha256=digest(source / 'protocol.json'))
+    files = []
+    for subject in subjects:
+        for arm in arms:
+            point = selected.get((subject, arm))
+            pattern = (f'confirmation_S{subject}_{arm}_{point["id"]}_C*.json' if point is not None
+                       else f'evaluate_S{subject}_{arm}_*_C*.json')
+            group = sorted((source / 'jobs').glob(pattern))
+            if len(group) != settings['seeds_per_arm']:
+                raise ValueError(f'Expected all saved independent seeds for {subject} {arm}')
+            seeds = []
+            for file in group:
+                job = read(file)
+                if (job['phase'] != 'evaluate' or job['model'] != arm or job['name'] != file.stem
+                        or len(job['seeds']) != 1
+                        or read(Path(job['folder']) / 'prepared.json')['subject'] != subject):
+                    raise ValueError('Saved job has a different identity or seed grouping')
+                seeds.extend(job['seeds'])
+                if point is not None:
+                    if (any(job['candidate'][key] != point[key] for key in ('id', 'hyperparams'))
+                            or job['particles'] != point['particles']
+                            or job['source_sha256'] != frozen['source_sha256']
+                            or job['arm_settings'] != original['settings']['arms'][arm]
+                            or job['mechanism'] != original['settings']['mechanism']
+                            or Path(job['folder']).resolve() != (Path(frozen['data']) / f'subject_{subject}').resolve()):
+                        raise ValueError('Saved confirmation differs from its frozen scope nominee')
+            if len(set(seeds)) != len(seeds) or (point is not None and sorted(seeds) != sorted(point['seeds'])):
+                raise ValueError('Missing, repeated or changed confirmation seeds')
+            files.extend(group[:1] if smoke else group)
+    return files, metadata
 
 
 def worker(file: Path) -> None:
@@ -154,6 +229,8 @@ def worker(file: Path) -> None:
         catalogue_version=space.version,
         catalogue_signature=space.signature, component_policy='nearest_internal_stimulus_uniform_ties',
         timing='after_choice_before_current_feedback', data_use='behavior_only; no_oral_input',
+        parameter_estimation_scope=job.get('parameter_estimation_scope', 'original_evaluation_protocol'),
+        evaluation_use=job.get('evaluation_use', 'original_evaluation_protocol'),
         seconds=time.monotonic() - start, cpu_seconds=time.process_time() - cpu,
         numeric_pools=threadpool_info(), array_sha256=digest(target.with_suffix('.npz')),
         feedback_corrections=feedback_fixes, snapshot_corrections=snapshot_fixes, recall_corrections=recall_fixes))
@@ -167,32 +244,25 @@ def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
     if settings['sample_role'] != 'development' or settings['workers'] < 1:
         raise ValueError('Expected a development protocol with positive worker budget')
     source = ROOT / settings['source']
-    if read(source / 'completion.json')['status'] != 'complete':
-        raise ValueError('Original evaluation must be complete')
+    files, scope_metadata = source_jobs(settings, source, smoke)
     hashes = {name: digest(ROOT / name) for name in (ENTRY, PF, COLLECTOR, REFIT)}
     if 'SEARCH' in settings['arms']:
         hashes[PROPOSAL] = digest(ROOT / PROPOSAL)
     jobs = []
-    subjects = settings['subjects'][:1] if smoke else settings['subjects']
-    arms = settings['arms'][:1] if smoke else settings['arms']
-    for subject in subjects:
-        for arm in arms:
-            files = sorted((source / 'jobs').glob(f'evaluate_S{subject}_{arm}_*_C*.json'))
-            if len(files) != settings['seeds_per_arm']:
-                raise ValueError(f'Expected all saved independent seeds for {subject} {arm}')
-            for file in files[:1] if smoke else files:
-                job = read(file)
-                reference = Path(job['target']).with_suffix('.npz')
-                record = read(reference.with_suffix('.json'))
-                if digest(reference) != record['predictions_sha256']:
-                    raise ValueError('Original evaluation array changed')
-                job.update(reference=str(reference), reference_sha256=digest(reference),
-                           original_job=str(file.resolve()), original_job_sha256=digest(file),
-                           replay_source_sha256=hashes, archived_pf_sha256=digest(Path(job['runtime']) / PF),
-                           trial_limit=16 if smoke else 0,
-                           target=str((output / 'states' / job['name']).resolve()))
-                verify_sources(job)
-                jobs.append(job)
+    for file in files:
+        job = read(file)
+        reference = Path(job['target']).with_suffix('.npz')
+        record = read(reference.with_suffix('.json'))
+        if (digest(reference) != record['predictions_sha256']
+                or any(record[key] != job[key] for key in ('candidate', 'seeds', 'particles', 'model'))):
+            raise ValueError('Original evaluation array or parameter identity changed')
+        job.update(reference=str(reference), reference_sha256=digest(reference),
+                   original_job=str(file.resolve()), original_job_sha256=digest(file),
+                   replay_source_sha256=hashes, archived_pf_sha256=digest(Path(job['runtime']) / PF),
+                   trial_limit=16 if smoke else 0, **scope_metadata,
+                   target=str((output / 'states' / job['name']).resolve()))
+        verify_sources(job)
+        jobs.append(job)
     output.mkdir(parents=True)
     (output / 'jobs').mkdir()
     for relative in hashes:
@@ -207,7 +277,7 @@ def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
                     versions={name: importlib.metadata.version(name) for name in ('numpy', 'scipy', 'pandas', 'PyYAML')},
                     original_completion_sha256=digest(source / 'completion.json'),
                     git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                    role='fixed_parameter_replay_no_oral_input')
+                    role='fixed_parameter_replay_no_oral_input', **scope_metadata)
     write(output / 'protocol.json', protocol)
     return protocol, jobs
 

@@ -178,11 +178,30 @@ def group_scores(source: Path, records: list[tuple[Path, dict]], oral: pd.DataFr
     return result, summaries, jackknife
 
 
+def estimation_context(protocol: dict) -> tuple[dict, str]:
+    """Carry parameter data use into oral reports while retaining time-window keys."""
+    scope = protocol.get('parameter_estimation_scope', 'original_evaluation_protocol')
+    use = protocol.get('evaluation_use', 'original_evaluation_protocol')
+    metadata = dict(parameter_estimation_scope=scope, evaluation_use=use,
+                    window_definition='original_chronological_boundary')
+    if use == 'development_retrospective_comparison':
+        if scope not in ('prefix', 'full'):
+            raise ValueError('Retrospective oral replay needs a declared selection scope')
+        selected = '完整行为序列' if scope == 'full' else '原前段行为序列'
+        note = (f'<p>参数按{selected}的选择似然选定。候选筛选同时使用前段与全程目标，'
+                '本次属于回顾性开发诊断。表中的training／test沿用原时间分段标记；'
+                '后段行为属于本次已使用数据。口述内容仅用于检验冻结参数后的表征。</p>')
+    else:
+        note = ''
+    return metadata, note
+
+
 def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = None,
         reference_model: str = 'BASE') -> None:
     if output.exists():
         raise FileExistsError('Use a new oral-state alignment directory')
     protocol = read(source / 'protocol.json')
+    scope_metadata, scope_note = estimation_context(protocol)
     manifest = read(audit / 'manifest.json')
     if manifest['status'] != 'complete':
         raise ValueError('Oral audit is incomplete')
@@ -251,7 +270,8 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
             'jackknife模拟标准误，未包含参数和被试抽样不确定性。完整解析报告保留共同分母。</p>'
             '<p>固定基准对训练段各类别的依据分布取试次平均，冻结后用于后段。动态与固定基准的差异同时涉及'
             '状态变化和刺激相关的局部读出，单项差异尚不足以定位其原因。</p>'
-            + ('<p><strong>短序列流程验证，尚未进入后段。</strong></p>' if protocol['smoke'] else '')
+            + scope_note
+            + ('<p><strong>短序列流程验证。</strong></p>' if protocol['smoke'] else '')
             + '<h2>后段结果</h2>' + display.to_html(index=False, float_format=lambda x: f'{x:.4f}')
             + '<ul>' + ''.join(f'<li><a href="{html.escape(name)}">{name}</a></li>' for name in ('trials.csv','summary.csv','contrasts.csv'))
             + '</ul></html>')
@@ -266,7 +286,7 @@ def run(source: Path, audit: Path, output: Path, subjects: list[int] | None = No
                   full_replay_complete=(source / 'completion.json').exists(),
                   primary_denominator='unchanged_complete_reports_shared_by_all_arms',
                   secondary_denominator='complete_reports_with_catalogue_support_fixed_independently_of_fitted_states',
-                  uncertainty='delete_one_whole_filter_seed_jackknife_mcse')
+                  uncertainty='delete_one_whole_filter_seed_jackknife_mcse', **scope_metadata)
     (output / 'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
 
 
