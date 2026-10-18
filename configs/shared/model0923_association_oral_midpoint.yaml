@@ -1,0 +1,7 @@
+protocol: model0923_association_oral_v1
+source: results/model_0923/association_autonomous_20261018_v1
+oral_audit: results/model_0923/oral_midpoint_audit_20261018_v1
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
+# Four slots cover the concurrently running alignment/report tasks.
+parallel_budget: 124
+replay_tolerance: 1.0e-12
