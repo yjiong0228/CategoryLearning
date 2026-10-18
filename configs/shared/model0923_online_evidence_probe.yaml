@@ -1,0 +1,4 @@
+# Existing H evidence drives belief in all frozen baseline cells of this probe.
+source: results/model_0923/continuous_recall_probe_20261018_v1
+paths: 64
+parallel_budget: 64

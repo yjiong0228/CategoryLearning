@@ -27,6 +27,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 | 生成结论是否依赖最优参数点 | [行为选参与生成敏感性](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_finalists_20261018_v3/index.html)；[解释](model_0923_reentry_precision.md#两个行为候选的自主过程敏感性) | 208同一RETAIN机制、两个冻结候选、每方案每点128条路径；另一候选末段正确率高约3个百分点，原行为选参保持冻结 |
 | 容量和提议概率分别影响哪个环节 | [全部1024条路径的交叉对照](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_capacity_search_20261018_v1/index.html)；[解释](model_0923_reentry_precision.md#容量与全局提议概率的独立作用) | 固定其余12个参数；较低全局提议概率提前发现规则，容量从4增至6削弱规则贡献，末段正确率下降约4.4–5.0个百分点 |
 | 每题回顾历史是否改善规则使用 | [方法、评分与下一项检验](model_0923_continuous_rule_use.md) | 208两种容量、两种提议、三种时机，共768条路径；共同初始精度的每题回顾降低贡献，末段正确率下降约3.9–5.7个百分点 |
+| 让H已有在线证据直接参与信念是否有用 | [全部轨迹图](../../../../CategoryLearning_codes/figures/outputs/fig3/online_evidence_20261018_v3/index.html)；[机制与结果](model_0923_continuous_rule_use.md#让已有在线证据形成信念) | 新增256条路径；四格末段正确率提高约9.7–14.7个百分点，正确规则贡献提高约0.29–0.38；容量4仍有前期生成取舍 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
 | 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
@@ -128,8 +129,10 @@ SEARCH按完整目录计算历史提议证据，其心理计算成本仍需进�
 容量从4增至6降低正确规则末段贡献约0.11–0.13，末段正确率降低约4.4–5.0个百分点；
 基础全局提议概率从0.8降至0.2，则使正确规则平均提前约22–38题出现。
 这组参数的信念保持率为0，活跃集合后期几乎总是满容量。连续作答时的贡献分配已进入定向检验。
-共同初始精度的每题回顾在四格中均降低正确规则贡献，下一项候选将检查按经验发生时精度积累的支持。
-当前搜索、准入与精度对照保留，详见[连续规则使用检验](model_0923_continuous_rule_use.md)。
+共同初始精度的每题回顾在四格中均降低正确规则贡献。随后让H已有的在线证据直接参与信念，
+四格末段正确率由约0.70–0.76升至0.84–0.86，正确规则贡献由约0.46–0.60升至0.85–0.90。
+这一方向列入下一版候选，继续检验选择似然及跨被试表现。容量4的前期生成差距增大，仍需解释阶段间取舍。
+当前搜索、准入与精度对照保留，完整路径、实现和验证见[连续规则使用检验](model_0923_continuous_rule_use.md)。
 详见[受控干预及验证范围](model_0923_reentry_precision.md#容量与全局提议概率的独立作用)。
 
 参数的心理解释按实际作用范围限定：

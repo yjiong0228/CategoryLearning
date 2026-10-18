@@ -1,0 +1,7 @@
+# A fixed-nominee choice screen; no search or oral-driven selection.
+reference_evaluation: results/model_0923/reentry_precision_refit_s208_evaluation_20261018_v1
+autonomous: results/model_0923/online_evidence_probe_20261018_v1
+subject: 208
+particles: 128
+filter_seeds: 4
+parallel_budget: 128
