@@ -1,5 +1,18 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 重估后的联合证据（2026-10-19）
+
+[RETAIN重估后的四面板图与源表](../outputs/fig3/refit_joint_precision_20261019_v2/index.html)。
+上排显示前段、后段和全程的选择NLL及自主Energy差值；下排显示双读法的口述支持、冲突和未确定质量差值。
+两方案均保留POOL与SEARCH，差值同时包括机制变化与行为重新估参；同一人的提议方案和重叠时间窗口分别标明。
+图中误差为配对模拟标准误，所有完整报告均计入。行为、口述使用相同冻结参数的身份和逐题汇总在绘图前核对。
+RETAIN的训练选择收益伴随后段选择与口述支持下降，口述下降主要转为未确定质量；具体机制解释见
+[研究记录](../../../src/Bayesian_state/docs/model_architecture/model_0923_research_progress_20261018.md#当前结论与下一项决定)。
+
+入口为`python -m CategoryLearning_codes.figures.fig3.model0923_refit_joint_evidence --comparison precision --output 新目录`。
+`--comparison online`要求完整ONLINE重估比较及行为、口述独立核验均已完成；该图的自动等待队列已经启动。
+当前已验证的是RETAIN完整结果的282项源表核对和PNG视觉检查，ONLINE数值及图形仍待现有计算完成。
+
 ## Model 0923 保留当前刺激的冻结规则对照（2026-10-19）
 
 [四人双读法图与源表](../outputs/fig3/stimulus_controls_20261019_v1/index.html) ·
