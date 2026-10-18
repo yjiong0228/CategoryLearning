@@ -65,7 +65,7 @@ def test_both_refitted_arms_keep_frozen_points_and_actual_retention(retained_eva
     assert len(files)==4
     assert {replay.read(file)['model'] for file in files}=={'POOL','SEARCH'}
     assert metadata['parameter_estimation_scope']=='prefix'
-    assert metadata['parameter_candidate_policy']=='equal_budget_behavior_refit'
+    assert metadata['parameter_candidate_policy']=='common_search_policy_behavior_refit'
     assert metadata['selected_parameters']==[dict(subject=208,arm='POOL',parameter_id='pool'),
                                              dict(subject=208,arm='SEARCH',parameter_id='search')]
     assert str(fit/'nominees.json') in metadata['refit_replay_inputs']

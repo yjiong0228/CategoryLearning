@@ -145,14 +145,16 @@ def refitted_identities():
     return before,after
 
 
-def test_refitted_retention_explicitly_allows_changed_behavior_parameters():
+@pytest.mark.parametrize('policy',['common_search_policy_behavior_refit','equal_budget_behavior_refit'])
+def test_refitted_retention_explicitly_allows_changed_behavior_parameters(policy):
     before,after=refitted_identities()
+    after['parameter_candidate_policy']=policy
     comparison.validate_comparison(before,after,'precision_retention_refit')
     with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention')
     with pytest.raises(ValueError):comparison.validate_comparison(before,after,'parameters')
     after['parameter_candidate_policy']='oral_selected'
     with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention_refit')
-    after['parameter_candidate_policy']='equal_budget_behavior_refit'
+    after['parameter_candidate_policy']=policy
     after['parameter_estimation_scope']='full'
     with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention_refit')
 

@@ -15,8 +15,9 @@ source_kind=reentry_precision_scores replays one declared fixed parameter point
 after its retained-precision choice evaluation completes. It preserves that
 structural intervention and verifies exact behavioral predictions before oral use.
 source_kind=reentry_precision_refit selects the frozen POOL/SEARCH nominees from
-a completed equal-budget retained-precision evaluation. It verifies both the
-saved evaluation plan and the executed intervention jobs against the behavior fit.
+a completed retained-precision evaluation under the original search policy.
+It verifies both the saved evaluation plan and the executed intervention jobs
+against the behavior fit.
 """
 from __future__ import annotations
 
@@ -294,7 +295,7 @@ def refitted_reentry_source_jobs(settings: dict, source: Path, smoke: bool) -> t
             files.extend(group[:1] if smoke else group)
             selected.append(dict(subject=subject, arm=arm, parameter_id=point['id']))
     metadata = dict(parameter_estimation_scope='prefix', evaluation_use='development_precision_retention_refit',
-        parameter_candidate_policy='equal_budget_behavior_refit', structural_intervention=refit.INTERVENTION,
+        parameter_candidate_policy='common_search_policy_behavior_refit', structural_intervention=refit.INTERVENTION,
         selected_parameters=selected, retained_fit=str(fit.resolve()), refit_nomination_sha256=nomination_hash,
         refit_replay_inputs=bindings)
     return files, metadata

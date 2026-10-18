@@ -193,13 +193,15 @@ def estimation_context(protocol: dict) -> tuple[dict, str]:
     metadata = dict(parameter_estimation_scope=scope, evaluation_use=use,
                     window_definition='original_chronological_boundary')
     if use == 'development_precision_retention_refit':
-        if (scope != 'prefix' or protocol.get('parameter_candidate_policy') != 'equal_budget_behavior_refit'
+        if (scope != 'prefix' or protocol.get('parameter_candidate_policy') not in
+                ('common_search_policy_behavior_refit', 'equal_budget_behavior_refit')
                 or protocol.get('structural_intervention') != 'retained_rule_precision'
                 or not protocol.get('retained_fit') or not protocol.get('refit_nomination_sha256')):
             raise ValueError('Retained refit oral report needs its behavior-selection and mechanism provenance')
         for key in ('parameter_candidate_policy', 'structural_intervention', 'retained_fit', 'refit_nomination_sha256'):
             metadata[key] = protocol[key]
-        note = ('<p>本次参数由启用精度保持后的前段选择数据重新估计，候选范围、起点、预算和种子与原拟合一致。'
+        note = ('<p>本次参数由启用精度保持后的前段选择数据重新估计，候选范围、起点、搜索设置、预算上限和种子与原拟合一致。'
+                '交换阶段按候选身份去重，实际计算量可随两方案的候选重叠程度变化。'
                 '口述只用于冻结参数后的表征检验。training／test沿用原时间分段；此被试此前已参与机制开发，'
                 '后段用于时间外推诊断。与原机制的差值包含精度保持及重新估参的共同作用。</p>')
     elif use == 'fixed_parameter_mechanism_diagnostic':

@@ -12,7 +12,7 @@ labels. This is retrospective development; oral content does not select paramete
 same existing parameter point. It requires explicit retained-precision provenance
 and keeps every other task, cognitive mechanism and numerical setting matched.
 --contrast-kind precision_retention_refit additionally binds --reset-fit and
---retained-fit to the completed equal-budget behavior fits. Its difference
+--retained-fit to the completed behavior fits under the common search policy. Its difference
 includes both precision retention and re-estimation of behavioral parameters.
 """
 from __future__ import annotations
@@ -180,7 +180,8 @@ def validate_comparison(before: dict, after: dict, contrast_kind: str) -> None:
             if (after['parameter_candidate_policy'] != 'declared_point_no_new_selection'
                     or after['selected_parameter_id'] != after['candidate']['id']):
                 raise ValueError('Precision contrast needs explicit fixed-point intervention provenance')
-        elif (after['parameter_candidate_policy'] != 'equal_budget_behavior_refit'
+        elif (after['parameter_candidate_policy'] not in
+                ('common_search_policy_behavior_refit', 'equal_budget_behavior_refit')
                 or after['parameter_estimation_scope'] != 'prefix'):
             raise ValueError('Refitted precision contrast requires behavior-only prefix refit provenance')
     if any(after['model_sources'].get(name) != sha for name, sha in before['model_sources'].items()):
@@ -189,7 +190,7 @@ def validate_comparison(before: dict, after: dict, contrast_kind: str) -> None:
 
 def bind_refit_contrast(before: dict, after: dict, subject: int, arm: str,
                        reset_fit: Path, retained_fit: Path) -> dict[str, str]:
-    """Bind both displayed points to actual completed matched-budget nominations."""
+    """Bind both displayed points to completed nominations under the same search policy."""
     from . import model_0923_reentry_precision_refit as refit
     read, digest = alignment.read, alignment.digest
     required = ('nominees.json', 'protocol.json', 'completion.json', 'retention_protocol.json')
@@ -266,8 +267,9 @@ def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
         description = ('两组沿用同一个已有行为参数点，结构差异为规则再次进入时恢复最近在场精度。'
                        '口述编码、试次与完整报告分母保持一致。差值为RETAIN减RESET。')
     else:
-        title, heading = '精度保持重拟合与口述表征', '等预算行为重拟合后的口述表征对照'
-        description = ('两个机制分别使用前段选择数据，在相同参数范围、起点、搜索预算和种子下估参。'
+        title, heading = '精度保持重拟合与口述表征', '共同搜索设置下行为重拟合后的口述表征对照'
+        description = ('两个机制分别使用前段选择数据，在相同参数范围、起点、搜索设置、预算上限和种子下估参。'
+                       '交换候选按身份去重，实际计算量可随候选重叠程度变化。'
                        '口述编码、试次与完整报告分母保持一致。差值为重拟合RETAIN减原RESET，'
                        '包含保留已学精度和重新估参的共同作用。')
     page = ('<!doctype html><html lang="zh"><meta charset="utf-8"><title>'+title+'</title>'
@@ -290,7 +292,7 @@ def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
                      'independent_sum_of_delete_one_complete_filter_variances_mcse'),
         data_use={'parameters': 'retrospective development; both parameter points behavior-selected; oral evaluation only',
                   'precision_retention': 'fixed existing behavior parameter; RESET versus RETAIN; development oral evaluation only',
-                  'precision_retention_refit': 'equal-budget prefix behavior refits; combined mechanism and parameter effect; development oral evaluation only'}[contrast_kind],
+                  'precision_retention_refit': 'common search settings and limits; exchange work may differ after deduplication; combined mechanism and parameter effect; development oral evaluation only'}[contrast_kind],
         input_sha256=inputs, source_sha256={str(p.relative_to(alignment.ROOT)):alignment.digest(p) for p in sources},
         artifacts={p.name:alignment.digest(p) for p in output.iterdir()})
     (output/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
@@ -304,7 +306,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed-relation', choices=('paired', 'independent'), default='paired',
                         help='Use paired errors for common seeds, or independent errors for disjoint banks')
     parser.add_argument('--contrast-kind', choices=('parameters', 'precision_retention', 'precision_retention_refit'), default='parameters',
-                        help='Compare parameters, fixed-point retention, or matched-budget refitted retention')
+                        help='Compare parameters, fixed-point retention, or retention refitted under the common search policy')
     parser.add_argument('--reset-fit', type=Path, help='Completed original RESET fit for the refitted contrast')
     parser.add_argument('--retained-fit', type=Path, help='Completed RETAIN fit for the refitted contrast')
     args = parser.parse_args()

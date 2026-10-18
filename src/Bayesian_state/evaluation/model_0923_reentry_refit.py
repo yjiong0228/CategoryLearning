@@ -3,7 +3,9 @@
 Use --reset-summary ORIGINAL --retained-summary RETAINED --output NEW_DIRECTORY
 after summarizing both complete fits with model_0923_episodic_refit. The retained
 fit must name the original RESET fit and preserve its candidate supports,
-initial points, seeds and computational budgets. Each contrast includes both
+initial points, seeds and search limits. Actual exchange work can differ when
+the same union rule removes different numbers of repeated candidates; audit
+and report that difference explicitly. Each contrast includes both
 the mechanism change and re-estimation of behavioral parameters. All subjects
 are development subjects; oral reports do not enter these scores.
 """
@@ -19,6 +21,7 @@ import pandas as pd
 from .model_0923_episodic_refit import loss_parts
 from .model_0923_estimation_scope import paired_difference, validate_generation
 from .model_0923_h_generation_uncertainty import path_jackknife
+from .model_0923_refit_budget import audit_exchange, budget_contrasts
 from .model_0923_h_validation import (
     block_paths, checked_arrays, digest, distribution_scores, jackknife_scores,
     jackknife_se, load, nll,
@@ -107,6 +110,14 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
         inputs[str((refit.ROOT/name).resolve())] = expected
     subjects, arms = settings['subjects'], list(settings['arms'])
     keys = [(subject, arm) for subject in subjects for arm in arms]
+    exchange_audits = []
+    for fit in (Path(old['fit']), Path(new['fit'])):
+        audit, more = audit_exchange(fit, subjects)
+        exchange_audits.append(audit)
+        inputs.update(more)
+    budget_tables = [t['budgets'].loc[t['budgets'].subject.isin(subjects)
+                                    & t['budgets'].model.isin(arms)] for t in (old_tables,new_tables)]
+    actual_budgets = budget_contrasts(*budget_tables, *exchange_audits)
     scores, curves, parameters, path_differences, contrasts = [], [], [], [], []
     banks = {}
     for label, manifest, frozen, tables in [('RESET', old, old_frozen, old_tables),
@@ -145,12 +156,6 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
     for subject, arm in keys:
         cell = (subject, arm)
         match_task(banks['RESET', cell], banks['RETAIN', cell])
-        b = []
-        for tables in (old_tables, new_tables):
-            table = tables['budgets']
-            b.append(table[(table.subject == subject) & (table.model == arm)]
-                     .set_index('stage')[['state_updates', 'filter_runs']].sort_index())
-        pd.testing.assert_frame_equal(*b)
         c, _, row = banks['RESET', cell]
         cut, n = row['training_trials'], len(c['choices'])
         if not 0 < cut < n:
@@ -200,7 +205,9 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
             raise ValueError('Missing executed precision-retention intervention')
         inputs.update({str(file.resolve()): digest(file), str(sidecar.resolve()): digest(sidecar)})
     tables = dict(scores=pd.concat(scores), curves=pd.concat(curves), parameters=pd.concat(parameters),
-                  contrasts=pd.DataFrame(contrasts), path_contrasts=pd.DataFrame(path_differences))
+                  contrasts=pd.DataFrame(contrasts), path_contrasts=pd.DataFrame(path_differences),
+                  budgets=actual_budgets, exchange_candidates=pd.concat([
+                      a.assign(variant=v) for a,v in zip(exchange_audits, ('RESET','RETAIN'))]))
     for name, expected in inputs.items():
         if digest(Path(name)) != expected:
             raise ValueError('Comparison input changed during scoring')
@@ -209,7 +216,7 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
         table.to_csv(output/(name+'.csv'), index=False)
     sources = [Path(__file__), *[Path(__file__).with_name(name) for name in
         ('model_0923_episodic_refit.py', 'model_0923_estimation_scope.py',
-         'model_0923_h_generation_uncertainty.py', 'model_0923_h_validation.py')]]
+         'model_0923_h_generation_uncertainty.py', 'model_0923_h_validation.py', 'model_0923_refit_budget.py')]]
     (output/'source').mkdir()
     for file in sources:
         shutil.copy2(file, output/'source'/file.name)
@@ -218,6 +225,8 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
         inputs_sha256=inputs, sources_sha256={p.name: digest(p) for p in sources},
         tables_sha256={name+'.csv': digest(output/(name+'.csv')) for name in tables},
         contrast='RETAIN refit minus original RESET; mechanism and re-estimation jointly change',
+        budget_matching='common settings and limits; only verified exchange-union deduplication may change actual work',
+        actual_search_compute_equal=bool(actual_budgets.actual_compute_equal.all()),
         data_use='behavior-prefix estimation; later windows are development diagnostics; oral excluded',
         uncertainty='paired complete-filter/path Monte Carlo standard errors at frozen nominated parameters'))
 
