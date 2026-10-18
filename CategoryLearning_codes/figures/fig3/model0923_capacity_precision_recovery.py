@@ -3,7 +3,8 @@
 Run with --source completed_recovery --output NEW_DIRECTORY. Four panels show
 the generating capacity/storage cells. Rows are independently generated choice
 sequences; columns are all scored cells. Values are NLL relative to the known
-generating cell, with paired whole-filter-seed Monte Carlo SE. Other parameters
+generating cell, with paired whole-filter-seed Monte Carlo SE. Four decimal
+places preserve small differences and nonzero simulation errors. Other parameters
 are known. --allow-smoke labels a short implementation check explicitly.
 """
 from __future__ import annotations
@@ -151,7 +152,7 @@ def plot(source: Path, output: Path, allow_smoke: bool = False) -> None:
                 row = group.loc[group.case.eq(case) & group.cell.eq(cell)].iloc[0]
                 rgb = shown.cmap(norm(row.delta_to_truth))[:3]
                 color = 'black' if np.dot(rgb, [.2126, .7152, .0722]) > .52 else 'white'
-                ax.text(x, y, f'{row.delta_to_truth:+.3f}\n±{row.delta_to_truth_mcse:.3f}',
+                ax.text(x, y, f'{row.delta_to_truth:+.4f}\n±{row.delta_to_truth_mcse:.4f}',
                         ha='center', va='center', color=color, fontsize=6)
                 if row.is_truth:
                     ax.add_patch(Rectangle((x-.47, y-.46), .94, .92, fill=False, color='black', linewidth=1))
