@@ -1,0 +1,8 @@
+protocol: model0923_s208_capacity_memory_scores_v1
+subject: 208
+probe: results/model_0923/s208_capacity_memory_probe_20261018_v1
+reference: results/model_0923/recalled_search_evaluation_20261018_v1
+particles: 512
+reference_seed_count: 8
+parallel_budget: 40
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
