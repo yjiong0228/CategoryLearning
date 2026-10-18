@@ -1,0 +1,10 @@
+protocol: model0923_reentry_precision_scores_v1
+reference: results/model_0923/s208_capacity_memory_scores_20261018_v1
+autonomous: results/model_0923/reentry_precision_probe_20261018_v1
+subject: 208
+points: [8badbc55273a9839, aa77bb9e20511f3d]
+particles: 512
+filter_seeds: 8
+parallel_budget: 16
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+scope: fixed_parameter_reentry_precision_choice_likelihood_no_oral_selection

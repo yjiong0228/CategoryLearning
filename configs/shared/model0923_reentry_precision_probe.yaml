@@ -1,0 +1,10 @@
+protocol: model0923_reentry_precision_probe_v1
+source: results/model_0923/s208_capacity_memory_probe_20261018_v1
+points: [8badbc55273a9839, aa77bb9e20511f3d]
+paths: 64
+parallel_budget: 32
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+window: 128
+block_width: 32
+scope: fixed_behavior_selected_parameters_all_rule_precision_retention_no_oral_selection
