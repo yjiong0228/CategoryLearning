@@ -43,6 +43,44 @@ def test_paired_common_filter_variation_cancels_in_parameter_difference():
     assert summary.conflict_difference.iloc[0]==pytest.approx(-.1)
 
 
+def test_independent_errors_add_variances_without_cancelling_equal_fluctuations():
+    original=scores();revised=deepcopy(original)
+    estimate=next(iter(revised[2].values()));estimate['seeds']+=100
+    summary,_=paired_scores(original,revised,seed_relation='independent')
+    assert summary.support_difference.iloc[0]==0
+    # Each bank has jackknife variance (3-1)/3 * (.1**2 + .1**2).
+    expected=np.sqrt(2*(2/3)*.02)
+    assert summary.support_difference_mcse.iloc[0]==pytest.approx(expected)
+    assert summary.conflict_difference_mcse.iloc[0]==pytest.approx(expected)
+    assert summary.undetermined_difference_mcse.iloc[0]==pytest.approx(0)
+    estimate['seeds']=estimate['seeds'][::-1]
+    estimate['values']=estimate['values'][::-1]
+    reordered,_=paired_scores(original,revised,seed_relation='independent')
+    pd.testing.assert_frame_equal(summary,reordered)
+
+
+@pytest.mark.parametrize('seeds',[[3,5,7],[3,105,107],[103,103,107]])
+def test_independent_mode_rejects_overlap_or_duplicates(seeds):
+    original=scores();revised=deepcopy(original)
+    next(iter(revised[2].values()))['seeds']=np.array(seeds)
+    with pytest.raises(ValueError):paired_scores(original,revised,seed_relation='independent')
+
+
+def test_declaring_independence_does_not_relax_report_boundaries_or_budget():
+    original=scores();revised=deepcopy(original)
+    next(iter(revised[2].values()))['seeds']+=100
+    revised[0].loc[0,'training_trials']=2
+    with pytest.raises(AssertionError):paired_scores(original,revised,seed_relation='independent')
+    revised[0].loc[0,'training_trials']=1
+    revised[1][0]['filter_seeds']=4
+    with pytest.raises(AssertionError):paired_scores(original,revised,seed_relation='independent')
+
+
+def test_unknown_seed_relation_is_rejected():
+    with pytest.raises(ValueError,match='Seed relation'):
+        paired_scores(scores(),scores(),seed_relation='automatic')
+
+
 @pytest.mark.parametrize('fault',['trial','text','query','scope','boundary','reports','seed_order','duplicate_seed','missing_estimate','short_estimate','point'])
 def test_misaligned_reports_or_random_units_are_rejected(fault):
     original=scores();revised=deepcopy(original);estimate=next(iter(revised[2].values()))
