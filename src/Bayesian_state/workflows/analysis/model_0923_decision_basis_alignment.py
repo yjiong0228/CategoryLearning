@@ -5,6 +5,8 @@ Use --source REPLAY --oral-audit AUDIT --output NEW_DIRECTORY. Optional
 Whole-report scores use the unchanged complete-encoding mask. Fragment scores
 remain identified in the trial table. Monte Carlo SE uses whole filter seeds.
 --reference-model defaults to BASE; POOL supports the recalled-search comparison.
+Parameter-selection scope and candidate policy remain in the oral report.
+Explicit eight-trial prepared fixtures join to the same ordered source prefix.
 """
 from __future__ import annotations
 
@@ -71,6 +73,12 @@ def align_identities(oral: pd.DataFrame, job: dict, n_trials: int) -> tuple[pd.D
         with np.load(folder / name) as values:
             parts.append({key: values[key] for key in ('stimulus', 'choices', 'feedback')})
     arrays = {key: np.concatenate([part[key] for part in parts]) for key in parts[0]}
+    if meta.get('smoke', False):
+        if (meta.get('split') != 'eight_trial_smoke_fixture' or meta.get('trials') != 8
+                or len(arrays['choices']) != 8):
+            raise ValueError('Unrecognized short prepared-behavior fixture')
+        # This explicit fixture retains the first eight observed trials in order.
+        frame = frame.iloc[:8]
     np.testing.assert_array_equal(frame[[f'feature{i}' for i in range(1, 5)]].to_numpy(), arrays['stimulus'])
     np.testing.assert_array_equal(frame.choice.to_numpy(), arrays['choices'])
     np.testing.assert_array_equal(frame.feedback.to_numpy(), arrays['feedback'])
@@ -188,7 +196,13 @@ def estimation_context(protocol: dict) -> tuple[dict, str]:
         if scope not in ('prefix', 'full'):
             raise ValueError('Retrospective oral replay needs a declared selection scope')
         selected = '完整行为序列' if scope == 'full' else '原前段行为序列'
-        note = (f'<p>参数按{selected}的选择似然选定。候选筛选同时使用前段与全程目标，'
+        policy = protocol.get('parameter_candidate_policy')
+        if policy == 'fixed_capacity_memory_grid':
+            metadata['parameter_candidate_policy'] = policy
+            candidate_note = '候选来自固定的容量与信念保持率网格，按所声明的行为目标选择，'
+        else:
+            candidate_note = '候选筛选同时使用前段与全程目标，'
+        note = (f'<p>参数按{selected}的选择似然选定。'+candidate_note+
                 '本次属于回顾性开发诊断。表中的training／test沿用原时间分段标记；'
                 '后段行为属于本次已使用数据。口述内容仅用于检验冻结参数后的表征。</p>')
     else:

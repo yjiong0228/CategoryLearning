@@ -8,6 +8,9 @@ adapters; the current shared PF adds observational capture only.
 The optional source_kind=scope_confirmation selects one frozen prefix/full
 nominee per arm from an estimation-scope comparison. Both scopes retain their
 retrospective development label; oral reports never select the parameters.
+source_kind=capacity_memory_scores selects the lowest choice NLL in a completed
+capacity/retention grid. The selected point and score-table hash are recorded;
+the original point can bind to its reused evaluation seeds.
 """
 from __future__ import annotations
 
@@ -68,19 +71,89 @@ def verify_sources(job: dict) -> None:
         raise ValueError('Original replay job changed')
 
 
+def grid_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
+    """Select a completed grid point using only its recorded choice score."""
+    import numpy as np
+    import pandas as pd
+    done, protocol = read(source/'completion.json'), read(source/'protocol.json')
+    objective = settings.get('estimation_objective')
+    if (objective not in ('prefix', 'full') or done['status'] != 'complete'
+            or done['smoke'] != protocol['smoke'] or (done['smoke'] and not smoke)
+            or settings['subjects'] != [done['subject']] or settings['arms'] != ['SEARCH']):
+        raise ValueError('Grid replay requires one SEARCH subject and a prefix/full choice objective')
+    score_file = source/'scores.csv'
+    if digest(score_file) != done['artifacts_sha256']['scores.csv']:
+        raise ValueError('Grid selection scores changed')
+    scores = pd.read_csv(score_file)
+    plans = {plan['candidate']['id']: plan for plan in protocol['plans']}
+    selected = scores[scores.phase.eq(objective)].copy()
+    if (len(plans) != len(protocol['plans']) or len(plans) != done['points']
+            or selected.point.duplicated().any() or set(selected.point) != set(plans)
+            or selected.anchor.sum() != 1
+            or not selected.subject.eq(done['subject']).all() or not selected.model.eq('SEARCH').all()
+            or not np.isfinite(selected.choice_nll.to_numpy()).all()
+            or not selected.particles.eq(protocol['particles']).all()
+            or not selected.seeds.eq(len(protocol['seeds'])).all()):
+        raise ValueError('Incomplete grid choice scores or inconsistent numerical budget')
+    selected = selected.sort_values(['choice_nll', 'point'])
+    winner = selected.iloc[0]
+    plan = plans[winner.point]
+    expected = plan['job']
+    seeds = protocol['seeds']
+    if (len(set(seeds)) != len(seeds) or len(seeds) != settings['seeds_per_arm']
+            or expected['seeds'] != seeds or expected['particles'] != protocol['particles']
+            or any(expected['candidate'][key] != plan['candidate'][key] for key in ('id','hyperparams'))):
+        raise ValueError('Grid replay must retain every independent filter seed')
+    if plan['reused']:
+        group = sorted((Path(protocol['reference'])/'jobs').glob(
+            f'evaluate_S{done["subject"]}_SEARCH_{winner.point}_C*.json'))
+    else:
+        group = [source/'jobs'/(chunk['name']+'.json') for chunk in plan['chunks']]
+        if len(group) != len(set(group)):
+            raise ValueError('Duplicate grid job references')
+        for file, chunk in zip(group, plan['chunks']):
+            if read(file) != chunk:
+                raise ValueError('Grid scoring job differs from its saved plan')
+    if len(group) != len(seeds):
+        raise ValueError('Incomplete grid filter job bank')
+    actual = []
+    for file in group:
+        job = read(file)
+        if (job['phase'] != 'evaluate' or job['model'] != 'SEARCH' or job['name'] != file.stem
+                or len(job['seeds']) != 1 or job['candidate']['id'] != winner.point
+                or job['candidate']['hyperparams'] != plan['candidate']['hyperparams']
+                or any(job[key] != expected[key] for key in ('particles','folder','runtime','mechanism','arm_settings'))
+                or read(Path(job['folder'])/'prepared.json')['subject'] != done['subject']
+                or any(expected['source_sha256'].get(name) != value for name,value in job['source_sha256'].items())):
+            raise ValueError('Grid selected point differs from its saved filter jobs')
+        actual.extend(job['seeds'])
+    if actual != seeds:
+        raise ValueError('Grid filter seed identities or ordering changed')
+    metadata = dict(parameter_estimation_scope=objective, evaluation_use='development_retrospective_comparison',
+        parameter_candidate_policy='fixed_capacity_memory_grid', selected_parameter_id=str(winner.point),
+        selection_score=float(winner.choice_nll), selection_score_sha256=digest(score_file),
+        selection_source_protocol_sha256=digest(source/'protocol.json'),
+        selection_rule='minimum pooled choice NLL; parameter id breaks exact ties; no oral input',
+        selection_candidates=selected[['point','choice_nll','choice_nll_mc_se']].to_dict('records'),
+        selected_original_point=bool(winner.anchor), reused_reference_filters=bool(plan['reused']))
+    return group[:1] if smoke else group, metadata
+
+
 def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
     """Bind saved seeds to the declared selection scope before replaying states."""
     done = read(source / 'completion.json')
     if done['status'] != 'complete' or (done.get('smoke', False) and not smoke):
         raise ValueError('Need a completed evaluation; smoke sources require --smoke')
     kind = settings.get('source_kind', 'evaluation')
-    if kind not in ('evaluation', 'scope_confirmation'):
-        raise ValueError('source_kind must be evaluation or scope_confirmation')
+    if kind not in ('evaluation', 'scope_confirmation', 'capacity_memory_scores'):
+        raise ValueError('source_kind must be evaluation, scope_confirmation or capacity_memory_scores')
     subjects = settings['subjects'][:1] if smoke else settings['subjects']
     arms = settings['arms'][:1] if smoke else settings['arms']
     if (not subjects or not arms or len(set(settings['subjects'])) != len(settings['subjects'])
             or len(set(settings['arms'])) != len(settings['arms']) or settings['seeds_per_arm'] < 1):
         raise ValueError('Need unique subjects, arms and a positive saved-seed count')
+    if kind == 'capacity_memory_scores':
+        return grid_source_jobs(settings, source, smoke)
     metadata = dict(parameter_estimation_scope='original_evaluation_protocol',
                     evaluation_use='original_evaluation_protocol')
     selected = {}
