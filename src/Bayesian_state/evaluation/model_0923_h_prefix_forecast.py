@@ -6,6 +6,9 @@ the task-start bank uses independent complete paths. Their simulation streams
 are separate. Parameters remain fixed, and the forecast protocol records whether
 participants are development or reserved validation data. The baseline follows the summary manifest, or --reference-model. Conditional prediction
 is retained as a mean-curve diagnostic only.
+Both the original H summary manifest and the recalled-search summary manifest
+are supported. Late accuracy and target-rule metrics use the final 128 trials
+(or the entire future if shorter). Their uncertainty keeps filter clusters.
 """
 from __future__ import annotations
 
@@ -17,6 +20,36 @@ import pandas as pd
 
 from .model_0923_h_validation import load, digest, checked_arrays, block_paths, distribution_scores, jackknife_se
 from .model_0923_h_generation_uncertainty import path_jackknife
+
+
+def resolve_summary(summary: Path) -> tuple[dict, Path]:
+    """Read either completed summary layout and retain its nomination identity."""
+    legacy = summary / 'summary_manifest.json'
+    if legacy.exists():
+        return load(legacy), legacy
+    file = summary / 'manifest.json'
+    original = load(file)
+    evaluation = Path(original['evaluation'])
+    protocol = load(evaluation / 'protocol.json')
+    completed = load(evaluation / 'completion.json')
+    nomination = digest(Path(original['fit']) / 'nominees.json')
+    if (original['status'] != 'complete' or completed['status'] != 'complete'
+            or protocol['nomination_sha256'] != nomination
+            or completed['nomination_sha256'] != nomination):
+        raise ValueError('Summary and evaluation must use the same completed frozen fit')
+    return dict(original, conditional=str(evaluation / 'conditional'), autonomous=str(evaluation / 'autonomous'),
+                nomination_sha256=nomination), file
+
+
+def clustered_mean_se(values: np.ndarray, labels: np.ndarray) -> float:
+    """Monte Carlo SE of a path statistic, using equally sized filter groups."""
+    values, labels = np.asarray(values, float), np.asarray(labels)
+    units, counts = np.unique(labels, return_counts=True)
+    if (values.ndim != 1 or values.shape != labels.shape or len(units) < 2
+            or np.any(counts != counts[0]) or not np.isfinite(values).all()):
+        raise ValueError('Need finite path statistics and multiple equal-sized independent groups')
+    means = np.array([values[labels == unit].mean() for unit in units])
+    return float(means.std(ddof=1) / np.sqrt(len(means)))
 
 
 def filter_cluster_jackknife(samples: np.ndarray, observed: np.ndarray, labels: np.ndarray) -> tuple[np.ndarray, dict]:
@@ -33,7 +66,8 @@ def filter_cluster_jackknife(samples: np.ndarray, observed: np.ndarray, labels: 
 def summarize(summary: Path, forecast: Path, output: Path, reference_model: str | None = None) -> None:
     import json
     if output.exists():raise FileExistsError('Use a new forecast-comparison destination')
-    original = load(summary / 'summary_manifest.json'); protocol = load(forecast / 'forecast_protocol.json')
+    original, summary_file = resolve_summary(summary)
+    protocol = load(forecast / 'forecast_protocol.json')
     data_role = protocol.get('data_use_status', 'development')
     reference_model = reference_model or original.get('reference_model', 'B')
     completed = load(forecast / 'forecast.json')
@@ -48,7 +82,7 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
     if set(rows) != set(references[0]) or set(rows) != set(references[1]):
         raise ValueError('Forecast model/participant coverage differs')
     results, blocks, model_contrasts, start_contrasts, numeric = [], [], [], [], {}
-    hashes = {}
+    hashes = {str(folder / 'evaluation.json'): digest(folder / 'evaluation.json') for folder in (conditional, autonomous)}
     for key, row in rows.items():
         c = checked_arrays(conditional, references[0][key]); a = checked_arrays(autonomous, references[1][key])
         file = Path(row['target']).with_suffix('.npz')
@@ -56,6 +90,12 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
         hashes[str(file)] = row['predictions_sha256']
         with np.load(file) as saved:f = {name: saved[name] for name in saved.files}
         cut = references[0][key]['training_trials']; end = len(c['choices'])
+        if (row['candidate'] != references[0][key]['candidate'] or row['candidate'] != references[1][key]['candidate']
+                or row['training_trials'] != cut or row['forecast_trials'] != end-cut):
+            raise ValueError('Forecast and reference candidates or chronological boundaries differ')
+        for folder, record in ((conditional, references[0][key]), (autonomous, references[1][key])):
+            path = folder / 'evaluate' / f'subject_{key[0]}' / key[1] / (record['candidate']['id'] + '.npz')
+            hashes[str(path)] = record['predictions_sha256']
         np.testing.assert_array_equal(a['categories'], c['categories'])
         np.testing.assert_array_equal(f['categories'], c['categories'][cut:])
         observed = block_paths((c['choices'] == c['categories'])[None, :], cut, end)[0]
@@ -67,6 +107,9 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
                 probability = block_paths(a['correct_probability'], cut, end)
                 units, jackknife = a['seeds'], path_jackknife(samples, observed)
                 branch_seeds = a['seeds']
+                realized = (a['choices'][:, cut:] == a['categories'][None, cut:]).astype(float)
+                correct_probability = a['correct_probability'][:, cut:]
+                group_labels = a['seeds']
             else:
                 samples = block_paths((f['choices'] == f['categories'][None, :]).astype(float), 0, end - cut)
                 correct = np.take_along_axis(f['probabilities'], (f['categories'] - 1)[None, :, None], axis=2)[..., 0]
@@ -74,12 +117,35 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
                 units, jackknife = filter_cluster_jackknife(samples, observed, f['branch_filter_seed'])
                 np.testing.assert_array_equal(units, np.sort(f['filter_seed']))
                 branch_seeds = f['branch_seeds']
+                realized = (f['choices'] == f['categories'][None, :]).astype(float)
+                correct_probability = correct
+                group_labels = f['branch_filter_seed']
             metrics = distribution_scores(samples, observed)
             numeric[(key[0], key[1], start)] = dict(metrics=metrics, jackknife=jackknife, units=units, branch_seeds=branch_seeds)
             result = dict(tag, start=start, paths=len(samples), independent_units=len(units), training_trials=cut, future_trials=end-cut,
                 probability_mean_mae=float(abs(probability.mean(axis=0)-observed).mean()),
                 conditional_mean_mae=float(abs(conditional_curve-observed).mean()), **metrics)
             for metric in ('energy', 'crps'):result[metric + '_mc_se'] = jackknife_se(jackknife[metric])
+            late = min(128, end-cut)
+            late_paths = realized[:, -late:].mean(axis=1)
+            late_observed = float((c['choices'][-late:] == c['categories'][-late:]).mean())
+            result.update(late_trials=late, late_observed_accuracy=late_observed,
+                          late_generated_accuracy=float(late_paths.mean()),
+                          late_generated_accuracy_mc_se=clustered_mean_se(late_paths, group_labels),
+                          late_correct_probability=float(correct_probability[:, -late:].mean()),
+                          paths_reaching_observed_late_accuracy=int((late_paths >= late_observed).sum()))
+            target = references[1][key].get('target_rule')
+            if target is not None and 'present' in a:
+                present = a['present'][:, cut:] if start == 'task_start' else (f['rule'] == target).any(axis=2)
+                contribution = a['contribution'][:, cut:] if start == 'task_start' else (
+                    f['contribution'] * (f['rule'] == target)).sum(axis=2)
+                result['target_rule'] = target
+                for label, value in [('target_present', present), ('target_contribution', contribution)]:
+                    per_path = value[:, -late:].mean(axis=1)
+                    result['late_' + label] = float(per_path.mean())
+                    result['late_' + label + '_mc_se'] = clustered_mean_se(per_path, group_labels)
+                result['first_future_target_present'] = float(present[:, 0].mean())
+                result['future_target_ever_present_paths'] = int(present.any(axis=1).sum())
             if start == 'filtered_prefix':
                 result.update(mean_search_probability=float(f['search_probability'].mean()),
                     late_search_probability=float(f['search_probability'][:, -64:].mean()),
@@ -121,7 +187,8 @@ def summarize(summary: Path, forecast: Path, output: Path, reference_model: str 
     with (output / 'comparison_manifest.json').open('x') as handle:
         json.dump(dict(status='complete', summary=str(summary.resolve()), forecast=str(forecast.resolve()),
             nomination_sha256=protocol['nomination_sha256'], source_sha256=digest(Path(__file__)),
-            inputs_sha256={str(summary/'summary_manifest.json'):digest(summary/'summary_manifest.json'),
+            outputs_sha256={file.name: digest(file) for file in output.glob('*.csv')},
+            inputs_sha256={str(summary_file):digest(summary_file),
                 str(forecast/'forecast_protocol.json'):digest(forecast/'forecast_protocol.json'),
                 str(forecast/'forecast.json'):digest(forecast/'forecast.json'), **hashes},
             conditioning='task_start: fitted parameters only; filtered_prefix: fitted parameters and observed training prefix',

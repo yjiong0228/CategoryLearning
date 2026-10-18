@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from src.Bayesian_state.evaluation.model_0923_h_validation import block_paths, digest, load
+from src.Bayesian_state.evaluation.model_0923_h_prefix_forecast import resolve_summary
 
 COLORS = {'task_start': '#326C98', 'filtered_prefix': '#B67947'}
 
@@ -31,9 +32,14 @@ COLORS = {'task_start': '#326C98', 'filtered_prefix': '#B67947'}
 def build(source: Path, output: Path) -> None:
     if output.exists() or (source/'review.html').exists():raise FileExistsError('Use new figure/report destinations')
     manifest = load(source/'comparison_manifest.json'); summary = Path(manifest['summary']); forecast = Path(manifest['forecast'])
+    for file, expected in manifest['inputs_sha256'].items():
+        if digest(Path(file)) != expected:raise ValueError('Comparison input changed')
+    for name, expected in manifest.get('outputs_sha256', {}).items():
+        if digest(source / name) != expected:raise ValueError('Comparison score table changed')
     data_role = manifest.get('data_use_status', 'development')
     participant_role = '预留验证被试' if data_role == 'reserved_validation' else '开发被试'
-    original = load(summary/'summary_manifest.json'); autonomous = Path(original['autonomous'])
+    original, _ = resolve_summary(summary); autonomous = Path(original['autonomous'])
+    reference = manifest.get('reference_model', original.get('reference_model', 'B'))
     a_rows = {(r['subject'],r['model']):r for r in load(autonomous/'evaluation.json')['rows']}
     f_rows = {(r['subject'],r['model']):r for r in load(forecast/'forecast.json')['rows']}
     scores = pd.read_csv(source/'scores.csv'); blocks = pd.read_csv(source/'blocks.csv')
@@ -51,12 +57,13 @@ def build(source: Path, output: Path) -> None:
         source_sha256={name:digest(source/name) for name in ['comparison_manifest.json','scores.csv','blocks.csv','start_contrasts.csv']})
     with (output/'preflight.json').open('x') as handle:json.dump(preflight,handle,indent=2)
     plt.rcParams.update({'font.family':'sans-serif','font.sans-serif':['Arial','DejaVu Sans'],
+        'svg.fonttype':'none','pdf.fonttype':42,
         'font.size':7,'axes.titlesize':8,'axes.spines.right':False,'axes.spines.top':False,
         'axes.linewidth':.6,'legend.frameon':False})
     palette = LinearSegmentedColormap.from_list('forecast_change',['#397E79','#FFFFFF','#B67947'])
     fig,axes = plt.subplots(2,1,figsize=(183/25.4,112/25.4),layout='constrained')
     tables = [contrasts,model_contrasts[model_contrasts.start=='filtered_prefix']]
-    for ax,table,title in zip(axes,tables,['Training-state forecast minus task-start generation','Training-state model minus training-state B']):
+    for ax,table,title in zip(axes,tables,['Training-state forecast minus task-start generation',f'Training-state model minus training-state {reference}']):
         matrix = table.pivot(index='model',columns='subject',values='delta_energy').reindex(index=models,columns=subjects)
         limit = max(1e-4,float(np.abs(matrix.to_numpy()).max()))
         im = ax.imshow(matrix,aspect='auto',cmap=palette,norm=TwoSlopeNorm(vmin=-limit,vcenter=0,vmax=limit))
