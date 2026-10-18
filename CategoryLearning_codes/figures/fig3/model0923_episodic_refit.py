@@ -105,7 +105,7 @@ def run(source: Path, output: Path) -> None:
         ax.set(title=f'S{subject}',xticks=range(len(order)),xticklabels=order,ylabel='Confirmation NLL / trial')
         ax.tick_params(axis='x',rotation=30)
     fig.suptitle(f'Why the selected parameters win within the finalist set ({n_filters} filters per point)\nFilled: selected; open: alternative; black ring: old reference; bars: ± 2 Monte Carlo SE',fontsize=8,y=.99)
-    fig.subplots_adjust(left=.1,right=.98,bottom=.08,top=.91,wspace=.5,hspace=.6)
+    fig.subplots_adjust(left=.1,right=.98,bottom=.17,top=.81,wspace=.5,hspace=.6)
     save(fig,'parameter_finalists.png')
 
     fig,axes = plt.subplots(grid_rows,grid_columns,figsize=(183/25.4,(50+45*grid_rows)/25.4),squeeze=False)
@@ -122,9 +122,9 @@ def run(source: Path, output: Path) -> None:
     fig.legend(handles=[Line2D([],[],color='#78A7AD',lw=5,label='Correct-answer contribution'),
         Line2D([],[],color='#B49A7B',lw=5,label='Error-answer contribution'),
         Line2D([],[],color='#222222',ls='',marker='D',ms=3,label='Total change')],
-        loc='upper center',ncol=3,bbox_to_anchor=(.5,.945))
+        loc='upper center',ncol=3,bbox_to_anchor=(.5,.91))
     fig.suptitle(f'Which observed answers explain the likelihood change?\nIndependent repeat ({n_filters} filters); both contributions divided by all training trials',fontsize=8,y=.99)
-    fig.subplots_adjust(left=.11,right=.98,bottom=.07,top=.88,wspace=.58,hspace=.5)
+    fig.subplots_adjust(left=.11,right=.98,bottom=.12,top=.79,wspace=.58,hspace=.5)
     save(fig,'correct_error_losses.png')
 
     scores = tables['scores']; whole = scores[scores.phase=='whole'].set_index(['subject','model'])
@@ -174,7 +174,7 @@ def run(source: Path, output: Path) -> None:
                          Line2D([],[],color='#68778B',ls='--',lw=1,label='Conditional probability')]
         fig.legend(handles=handles_curve,loc='upper center',ncol=3,bbox_to_anchor=(.5,.947))
         fig.suptitle(f'S{subject}: learning distribution at frozen fitted parameters\n32-trial blocks; band: 10th–90th path percentiles; vertical dotted line: training end',fontsize=8,y=.985)
-        fig.subplots_adjust(left=.1,right=.98,bottom=.065,top=.89,wspace=.3,hspace=.6)
+        fig.subplots_adjust(left=.1,right=.98,bottom=.09,top=.83,wspace=.3,hspace=.6)
         save(fig,f'subject_{subject}.png')
     shutil.copy2(__file__,output/'figure_source.py')
     write(output/'qa_render.json',dict(images={name:digest(output/name) for name in images},
