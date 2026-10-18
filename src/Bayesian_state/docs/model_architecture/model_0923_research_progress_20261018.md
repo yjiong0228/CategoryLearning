@@ -22,6 +22,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 | 完整行为评价如何比较两种方案 | [七张图与全部源表](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_refit_20261018_v2/index.html)；[条件预测核对](#三人的完整条件预测核对) | 48次滤波、768条自主路径；训练参数冻结后检验后段选择 |
 | 306的负效应在重新估参后是否保留 | [全部256条自主路径](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_s306_20261018_v2/subject_306.png)；[五张图与源表](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_s306_20261018_v2/index.html)；[解释](#306重拟合后仍保留生成与后段预测损失) | 两方案各8次512粒子滤波、128条自主路径；双读法口述也已完成，SEARCH后段支持略低 |
 | 精度保持能否同时改善三类证据 | [K2联合证据图](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_k2_oral_20261018_v2/precision_oral_tradeoff.png)；[K4联合证据图](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_k4_oral_20261018_v1/precision_oral_tradeoff.png)；[解释](model_0923_reentry_precision.md#两种容量下的行为收益与口述取舍) | 208两种容量的选择与自主过程改善，口述支持略降、冲突基本不变；联合重拟合已完成，冻结参数评价正在运行 |
+| 口述支持下降发生在什么回答中 | [反馈分层结果](model_0923_reentry_precision.md#固定参数下的口述下降主要发生在哪类回答) | 208两种容量、双读法；后段119份完整报告中，正确回答的108份贡献了93.9%–98.6%的总下降；去掉本题选择加权后仍有下降 |
 | 重新估参后能否保持生成收益 | [全部512条新旧自主路径](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_refit_autonomous_20261018_v1/index.html)；[结果解释](model_0923_reentry_precision.md#重估参数后的自主过程) | 208两方案各128条路径；正确规则更早、更稳定在场，作答贡献下降约0.13，末段正确率仍约0.70；新参数选择评分运行中 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
@@ -2941,3 +2942,21 @@ SEARCH对应为−7.734889、+6.516410和−1.218479。全部试次保留，同�
 后续11步执行计划已启动等待完整选择评分，包括两份行为汇总、两种提议方案的短状态验证、
 16个完整状态重放、双读法口述对齐和四项同方案新旧比较。每步完成记录及执行源码均检查，
 口述语义、参数和数值预算保持既定约定。记录目录为`reentry_precision_refit_followthrough_20261018_v1`。
+
+### 用反馈分层定位口述表征的取舍
+
+新增按实际反馈分层的评价入口，先复核208两种容量、双读法的固定参数RETAIN对照。
+全部试次及口述编码保留，前段与后段各自区分错误、部分正确和正确反馈。
+每层同时报告选择条件支持、去掉本题选择加权的支持及二者差值。
+方法见[口述反馈分层](model_0923_oral_constraints.md#按实际反馈分层的表征比较)。
+
+后段完整报告包括正确回答108份、错误回答11份。正确回答层的结构支持差值为：
+K2绝对−0.015594、K2相对−0.009292、K4绝对−0.019835、K4相对−0.012736。
+按各层报告数加权后，这一层贡献了总支持下降的93.9%–98.6%。
+去掉本题选择加权后，四项差值仍分别为−0.012705、−0.007842、−0.012463和−0.008129。
+这是一名开发被试的四种分析视角，表征差距主要定位到后期正确回答时的内部依据分配。
+
+四份结果均保留576题、391份完整报告和72行分层评分，原未分层分数逐项复现。
+独立核对35,712项数值、272项输入哈希及反馈层加权关系；原比较CSV和HTML逐字节一致。
+8项新分层测试、7项共用评分测试与CLI检查通过，数值和配对误差见[完整结果](model_0923_reentry_precision.md#固定参数下的口述下降主要发生在哪类回答)。
+新参数口述完成后继续使用同一方法，当前16次选择评价仍在运行。
