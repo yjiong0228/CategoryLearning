@@ -422,3 +422,38 @@ SEARCH的14类状态数组与既有完整重放的对应前缀逐值一致；重
 `reentry_precision_refit_state_worker_validation_20261018_v1`。
 新来源选择使用明确的测试实例检验，实际工作器验证使用已完成的固定参数短序列。
 真实重拟合参数的完整行为评价、状态重放与口述比较仍待运行中的拟合完成后执行。
+
+### 重新估参后的行为与自主轨迹比较
+
+行为比较入口为`src.Bayesian_state.evaluation.model_0923_reentry_refit`。
+它读取两轮完整拟合各自的汇总，分别比较POOL、SEARCH的原RESET与新RETAIN。
+每组使用各自前段行为选定的参数，因此差值包含精度保持和参数调整的共同作用。
+固定参数实验继续提供机制单独改变时的对照；两类结果共同用于判断精度保持是否值得采用。
+
+两轮汇总均由`model_0923_episodic_refit`生成，参照方案设为`POOL`。
+新比较入口复用拟合程序核对原参数范围、起点和随机种子，并逐阶段核对实际滤波次数与粒子更新次数。
+评价使用相同任务、前后段边界、粒子数、完整滤波种子和自主路径种子。
+RETAIN实际工作器的精度执行记录也须与启动计划一致。
+
+```bash
+python -m src.Bayesian_state.evaluation.model_0923_reentry_refit \
+  --reset-summary results/model_0923/recalled_search_summary_20261018_v1 \
+  --retained-summary results/model_0923/reentry_precision_refit_summary_NEW \
+  --output results/model_0923/reentry_precision_refit_comparison_NEW
+```
+
+`scores.csv`保留两组原始分数，`contrasts.csv`报告RETAIN减RESET的选择NLL、Energy和CRPS差值。
+三个指标均为越低越好，前段、后段与全程分别计算。差值的模拟标准误按共同种子配对，
+逐次删除一次完整滤波或一条完整自主路径，保留试次间依赖。
+`path_contrasts.csv`补充目标规则的在场、作答贡献、退出、容量移除与搜索事件；
+`parameters.csv`和`curves.csv`分别保留两轮参数与时间曲线。
+所有被试仍为开发样本，后段分数用于时间外推诊断。参数估计与被试间差异的不确定性另行评价。
+
+训练预算汇总已识别新增的`.precision.json`执行记录，每个实际滤波任务只计数一次。
+49项相关测试和两个CLI检查通过；旧306汇总的13张CSV逐字节复现。
+从208原评价数组独立重算两个方案、三个窗口的NLL和Energy，六行分数与原汇总一致，
+同一结果与自身配对时差值及模拟误差均为零。
+RETAIN已完成的80个筛选任务与36个细化任务，其实际预算均与原208拟合一致。
+513项输入及产物哈希通过，运行中拟合的19项源码保持一致。
+验证为`reentry_refit_summary_validation_20261018_v1`。
+真实新参数的完整跨拟合比较尚待拟合与评价完成后运行。

@@ -41,6 +41,21 @@ def active_precision_mean(beta: np.ndarray, present: np.ndarray) -> float:
     return float(beta[present].mean()) if present.any() else np.nan
 
 
+def training_chunk_budgets(stage: Path) -> list[dict]:
+    """Count filter results once; intervention sidecars describe the same runs."""
+    rows = []
+    for file in stage.glob('subject_*/*/chunks/*.json'):
+        if file.name.endswith(('.experiment.json', '.precision.json')):
+            continue
+        result = load(file)
+        if any(pool['num_threads'] != 1 for pool in result['numeric_pools']):
+            raise ValueError('Nested numeric threads')
+        rows.append(dict(subject=result['subject'], model=result['model'], stage=stage.name,
+            state_updates=result['particles']*len(result['seeds'])*result['trials'],
+            filter_runs=len(result['seeds']), cpu_seconds=result['cpu_seconds']))
+    return rows
+
+
 def summarize(fit: Path, evaluation: Path, output: Path, reference_model: str = 'BASE') -> None:
     if output.exists(): raise FileExistsError('Use a new episodic-refit summary directory')
     frozen = load(fit/'nominees.json'); settings = frozen['settings']
@@ -192,12 +207,7 @@ def summarize(fit: Path, evaluation: Path, output: Path, reference_model: str = 
                 record(file.with_suffix('.npz'))
                 candidates.append(dict(subject=subject,model=arm,stage=stage,candidate=row['id'],nll=row['mean_nll'],
                     source=';'.join(row['sources']),**row['hyperparams']))
-        for file in (fit/stage).glob('subject_*/*/chunks/*.json'):
-            if file.name.endswith('.experiment.json'): continue
-            r = load(file)
-            if any(pool['num_threads'] != 1 for pool in r['numeric_pools']): raise ValueError('Nested numeric threads')
-            budgets.append(dict(subject=r['subject'],model=r['model'],stage=stage,
-                state_updates=r['particles']*len(r['seeds'])*r['trials'],filter_runs=len(r['seeds']),cpu_seconds=r['cpu_seconds']))
+        budgets.extend(training_chunk_budgets(fit/stage))
     budget = pd.DataFrame(budgets).groupby(['subject','model','stage'],as_index=False).sum()
     if not (budget.groupby(['subject','stage']).state_updates.nunique()==1).all(): raise ValueError('Unequal per-subject budgets')
     candidate_frame = pd.DataFrame(candidates)

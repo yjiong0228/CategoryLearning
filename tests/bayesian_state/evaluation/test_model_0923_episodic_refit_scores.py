@@ -1,7 +1,11 @@
+import json
+
 import numpy as np
 import pytest
 
-from src.Bayesian_state.evaluation.model_0923_episodic_refit import loss_parts, active_precision_mean
+from src.Bayesian_state.evaluation.model_0923_episodic_refit import (
+    loss_parts, active_precision_mean, training_chunk_budgets,
+)
 from src.Bayesian_state.evaluation.model_0923_h_validation import nll
 
 
@@ -23,3 +27,21 @@ def test_absent_rule_is_not_zero_precision_observation():
     assert active_precision_mean([5.,0.,10.],[1,0,1]) == 7.5
     assert np.isnan(active_precision_mean([0.,0.],[0,0]))
     with pytest.raises(ValueError): active_precision_mean([5.,0.],[1])
+
+
+def test_precision_sidecar_does_not_double_count_filter_budget(tmp_path):
+    stage = tmp_path/'screen'
+    chunks = stage/'subject_208'/'POOL'/'chunks'
+    chunks.mkdir(parents=True)
+    result = dict(subject=208, model='POOL', particles=128, seeds=[4, 8], trials=384,
+                  cpu_seconds=12.5, numeric_pools=[dict(num_threads=1)])
+    (chunks/'point_C000.json').write_text(json.dumps(result))
+    # Sidecars have another schema and refer to the same completed filter job.
+    (chunks/'point_C000.experiment.json').write_text('{"feedback_corrections": []}')
+    (chunks/'point_C000.precision.json').write_text('{"restores": 17}')
+    assert training_chunk_budgets(stage) == [dict(subject=208, model='POOL', stage='screen',
+        state_updates=98304, filter_runs=2, cpu_seconds=12.5)]
+    result['numeric_pools'][0]['num_threads'] = 2
+    (chunks/'point_C000.json').write_text(json.dumps(result))
+    with pytest.raises(ValueError, match='Nested numeric threads'):
+        training_chunk_budgets(stage)
