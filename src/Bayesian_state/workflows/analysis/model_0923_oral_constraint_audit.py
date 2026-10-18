@@ -7,6 +7,8 @@ Catalogue counts describe representability, not fitted-model alignment. This
 workflow never loads fitted weights, changes the parser, or fits oral data.
 Optional YAML ``symbolic_half_reference: true`` preserves bare half references
 with an unknown referent; its default is false and retains the original coding.
+YAML ``half_reference: range_midpoint`` uses the independently confirmed length
+range midpoint (normalized 0.5). These two half-reference modes are exclusive.
 """
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ from ...evaluation.oral.constraint_alignment import (
     VERSION, InconsistentReportError, evaluate_component, validate_report_constraints,
 )
 from ...evaluation.oral.structure_0923 import (
-    VERSION as ENCODER_VERSION, SYMBOLIC_HALF_VERSION, encode_report,
+    encode_report, report_encoding_version,
 )
 from ...hypothesis_space.spaces.continuous import build_continuous_hypothesis_space
 from ...hypothesis_space.spaces.structural_0923 import build_relational_0923_space
@@ -61,7 +63,8 @@ def run_examples(config: dict) -> pd.DataFrame:
     for example in config['examples']:
         names = tuple(config['feature_order'])
         report = encode_report(example['report'], names,
-                               symbolic_half_reference=config.get('symbolic_half_reference', False))
+                               symbolic_half_reference=config.get('symbolic_half_reference', False),
+                               half_reference=config.get('half_reference'))
         rule = encode_report(example['rule'], names)
         if rule.status != 'coded' or report.status not in {'coded', 'missing'}:
             raise ValueError(f"Unresolved method example: {example['name']}")
@@ -110,16 +113,17 @@ def load_reports(config: dict, root: Path = ROOT) -> tuple[pd.DataFrame, dict[st
 
 
 def encode_observations(frame: pd.DataFrame, *, tolerance: float = 1e-9,
-                        symbolic_half_reference: bool = False) -> tuple[pd.DataFrame, list[dict]]:
-    if not isinstance(symbolic_half_reference, bool):
-        raise ValueError('symbolic_half_reference must be boolean')
+                        symbolic_half_reference: bool = False,
+                        half_reference: str | None = None) -> tuple[pd.DataFrame, list[dict]]:
+    report_encoding_version(symbolic_half_reference=symbolic_half_reference, half_reference=half_reference)
     cache, queries, rows = {}, {}, []
     for row in frame.itertuples(index=False):
         names = tuple(getattr(row, f'feature{i}_name') for i in range(1, 5))
         text = '' if pd.isna(row.text) else str(row.text)
         key = (text, names)
         if key not in cache:
-            cache[key] = encode_report(text, names, symbolic_half_reference=symbolic_half_reference)
+            cache[key] = encode_report(text, names, symbolic_half_reference=symbolic_half_reference,
+                                       half_reference=half_reference)
         report = cache[key]
         scope = ('complete' if report.status == 'coded' else 'parsed_fragment'
                  if report.tokens else report.status)
@@ -208,8 +212,10 @@ def run(config_path: Path, output: Path, workers_override: int | None = None) ->
     examples = run_examples(config)
     frame, hashes = load_reports(config)
     symbolic_half = config.get('symbolic_half_reference', False)
+    half_reference = config.get('half_reference')
     observations, queries = encode_observations(frame, tolerance=config['tolerance'],
-                                               symbolic_half_reference=symbolic_half)
+                                               symbolic_half_reference=symbolic_half,
+                                               half_reference=half_reference)
     jobs = [dict(query, tolerance=config['tolerance']) for query in queries]
     workers = min(requested, len(os.sched_getaffinity(0)), len(jobs)) if jobs else 0
     output.mkdir(parents=True)
@@ -220,7 +226,8 @@ def run(config_path: Path, output: Path, workers_override: int | None = None) ->
                     ROOT / 'src/Bayesian_state/hypothesis_space/spaces/structural_0923.py',
                     ROOT / 'src/Bayesian_state/hypothesis_space/spaces/regions.py']
     manifest = dict(status='running', protocol=VERSION,
-                    encoder=SYMBOLIC_HALF_VERSION if symbolic_half else ENCODER_VERSION, config=config,
+                    encoder=report_encoding_version(symbolic_half_reference=symbolic_half,
+                                                    half_reference=half_reference), config=config,
                     config_sha256=digest(config_path), input_sha256=hashes,
                     source_sha256={str(p.relative_to(ROOT)): digest(p) for p in source_paths},
                     git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

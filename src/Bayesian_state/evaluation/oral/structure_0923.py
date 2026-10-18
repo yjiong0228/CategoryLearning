@@ -22,6 +22,7 @@ from ...model.modules.readout.report_space import body_token, component_tokens, 
 
 VERSION = "0923-oral-structure-v1"
 SYMBOLIC_HALF_VERSION = VERSION + "+symbolic-half-v1"
+MIDPOINT_HALF_VERSION = VERSION + "+range-midpoint-half-v1"
 BODY = r"(?:躯干|身体)"
 OP = r"(?:长于|短于|大于|小于|高于|低于)"
 MOD = r"(?:都|均|也|的长度|长度|很|比较|非常|特别|较|略|稍微|稍|偏|挺|更)*"
@@ -46,19 +47,33 @@ def _invert(direction: str) -> str:
     return "lt" if direction == "gt" else "gt"
 
 
+def report_encoding_version(*, symbolic_half_reference: bool = False,
+                            half_reference: str | None = None) -> str:
+    """Validate the independently supplied half-reference convention."""
+    if not isinstance(symbolic_half_reference, bool):
+        raise ValueError("symbolic_half_reference must be boolean")
+    if half_reference is not None and half_reference != 'range_midpoint':
+        raise ValueError("half_reference must be None or 'range_midpoint'")
+    if symbolic_half_reference and half_reference is not None:
+        raise ValueError("Choose either an unknown symbolic half or a specified reference")
+    return (MIDPOINT_HALF_VERSION if half_reference is not None else
+            SYMBOLIC_HALF_VERSION if symbolic_half_reference else VERSION)
+
+
 def encode_report(text: Any, feature_names: tuple[str, ...], *,
-                  symbolic_half_reference: bool = False) -> StructuredReport:
+                  symbolic_half_reference: bool = False,
+                  half_reference: str | None = None) -> StructuredReport:
     """Encode without choice, feedback, correctness or fitted model state.
 
     Bare long/short use the existing 0.5 coding convention. Body comparisons
     remain symbolic. Unequal weighted sums retain coefficients but require a
     verified physical affine transform before numerical geometry is assigned.
     The optional half-reference grammar preserves feature and direction with
-    an unknown referent. It assigns no numerical threshold. Repeated bare half
-    references within a report are treated as sharing that unknown referent.
+    an unknown referent. Alternatively, half_reference='range_midpoint' uses
+    the independently confirmed midpoint of the stimulus length range, x=0.5.
+    Repeated bare half references within a report share the specified referent.
     """
-    if not isinstance(symbolic_half_reference, bool):
-        raise ValueError("symbolic_half_reference must be boolean")
+    report_encoding_version(symbolic_half_reference=symbolic_half_reference, half_reference=half_reference)
     if len(feature_names) != 4 or len(set(feature_names)) != 4:
         raise ValueError("four distinct ordered feature names are required")
     try:
@@ -98,16 +113,22 @@ def encode_report(text: Any, feature_names: tuple[str, ...], *,
             item = "躯干" + item
         previous_body_subject = False
         half = re.fullmatch(rf"(?P<parts>{group}){MOD}(?P<op>{OP})(?:一半|1/2|二分之一)", item)
-        if symbolic_half_reference and half:
+        if (symbolic_half_reference or half_reference is not None) and half:
             direction = _direction(half['op'])
             for name in parts_in_text(half['parts'], parts):
                 dimension = parts.index(name)
-                tokens.append(f"half_unknown:{dimension}:{direction}")
+                if half_reference == 'range_midpoint':
+                    sign = 1. if direction == 'lt' else -1.
+                    tokens.extend(component_tokens(sign * np.eye(4)[dimension:dimension+1],
+                                                   np.array([sign * .5])))
+                else:
+                    tokens.append(f"half_unknown:{dimension}:{direction}")
                 relations.append({"kind": "fraction_reference", "item": original,
                                   "feature": name, "dimension": dimension,
                                   "direction": direction, "fraction": [1, 2],
-                                  "reference": None, "numerical_threshold": None})
-            flags.add("half_reference_unknown")
+                                  "reference": half_reference,
+                                  "numerical_threshold": .5 if half_reference is not None else None})
+            flags.add("half_reference_range_midpoint" if half_reference is not None else "half_reference_unknown")
             continue
         # Strict linear comparisons, including body on either side.
         match = re.fullmatch(rf"(?P<left>{endpoint})(?P<op>{OP})(?P<right>{endpoint})", item)

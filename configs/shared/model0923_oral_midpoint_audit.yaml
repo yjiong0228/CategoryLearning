@@ -1,0 +1,135 @@
+protocol: oral_partial_constraints_v1
+processed: data/exp123/processed/Task2_processed.csv
+raw_directory: data/exp123/raw/Task2
+subjects:
+- 107
+- 108
+- 109
+- 205
+- 207
+- 208
+- 305
+- 306
+- 308
+sample_role: development
+window: 64
+workers: 128
+tolerance: 1.0e-09
+feature_order:
+- neck
+- head
+- leg
+- tail
+examples:
+- name: direct_support
+  report: 脖子短
+  rule: 脖子短
+  expected:
+  - support
+  - support
+- name: omitted_rule_predicate
+  report: 脖子短
+  rule: 脖子短，头长
+  expected:
+  - support
+  - support
+- name: unrelated_basis
+  report: 脖子短
+  rule: 头长
+  expected:
+  - undetermined
+  - undetermined
+- name: opposite_direction
+  report: 脖子短
+  rule: 脖子长
+  expected:
+  - conflict
+  - conflict
+- name: functional_entailment_without_explicit_relation
+  report: 头比腿长
+  rule: 头长，腿短
+  expected:
+  - undetermined
+  - support
+- name: reverse_entailment_does_not_hold
+  report: 头长，腿短
+  rule: 头比腿长
+  expected:
+  - undetermined
+  - undetermined
+- name: unassigned_supplement
+  report: 脖子短，尾巴长
+  rule: 脖子短
+  expected:
+  - undetermined
+  - undetermined
+- name: externally_annotated_core
+  original_report: 脖子短，尾巴长
+  role_assumption: synthetic_example_tail_annotated_as_supplement_before_scoring
+  report: 脖子短
+  rule: 脖子短
+  expected:
+  - support
+  - support
+- name: joint_content_supported
+  report: 脖子短，尾巴长
+  rule: 脖子短，尾巴长，头长
+  expected:
+  - support
+  - support
+- name: joint_content_conflicted
+  report: 脖子短，尾巴长
+  rule: 脖子短，尾巴短
+  expected:
+  - conflict
+  - conflict
+- name: uncertain_body_reference
+  report: 脖子比躯干短
+  rule: 脖子短
+  expected:
+  - undetermined
+  - undetermined
+- name: missing_report
+  report: ''
+  rule: 脖子短
+  expected:
+  - undetermined
+  - undetermined
+  available: false
+- name: conjunction_order
+  report: 尾巴长，脖子短
+  rule: 脖子短，尾巴长
+  expected:
+  - support
+  - support
+- name: comparison_direction
+  report: 头比腿长
+  rule: 腿比头长
+  expected:
+  - conflict
+  - conflict
+- name: confirmed_midpoint_support
+  report: 脖子短于一半
+  rule: 脖子短
+  expected:
+  - support
+  - support
+- name: confirmed_midpoint_conflict
+  report: 脖子长于一半
+  rule: 脖子短
+  expected:
+  - conflict
+  - conflict
+- name: confirmed_midpoint_conjunction
+  report: 脖子和头均短于一半
+  rule: 脖子短，头短
+  expected:
+  - support
+  - support
+half_reference: range_midpoint
+semantic_provenance:
+  source: user clarification in research conversation
+  date: '2026-10-18'
+  statement: 一半指长度范围的中点
+  normalized_threshold: 0.5
+  parameter_fitting_use: false
