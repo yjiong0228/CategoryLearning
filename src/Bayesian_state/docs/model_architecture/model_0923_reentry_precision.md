@@ -254,3 +254,52 @@ K4与K2的8次滤波分别记录324,622与175,766次粒子内精度恢复，
 两个短口述对齐均被完整科学比较入口拒绝。机制对照的合法输入、混杂拒绝和结果标签已通过方法实例验证，
 正式效应仍等待完整RETAIN状态。验证材料位于
 `results/model_0923/reentry_precision_oral_comparison_validation_20261018_v1`。
+
+## 原预算下的联合重拟合
+
+固定参数检验已同时支持选择与自主过程，下一项检验允许参数重新调整，检查机制收益能否保留。
+208沿用原POOL／SEARCH联合拟合的40个共同起点、14项参数范围、各阶段粒子数与种子数、
+局部提议数、候选交换和独立确认流程。新运行中的POOL与SEARCH均启用精度保持，
+每个提议方案与其原RESET拟合分别比较。原拟合、预测及口述结果保留。
+
+配置为`configs/shared/model0923_reentry_precision_refit_s208.yaml`。
+配置保留原`protocol`编号，因为该编号参与随机种子生成；
+`structural_intervention: retained_rule_precision`标识新机制，`reset_reference_fit`指定完整原拟合。
+入口检查两轮科学设置相同，允许调整被试子集、执行并行度和用途说明。
+它逐项核对原候选文件、运行协议、原代码来源以及40个起点，防止把实现变化或预算差异解释为精度保持作用。
+
+参数仍由前384题选择估计，后192题按冻结参数评价。208此前的完整行为已用于机制开发，
+因此后段评价属于开发样本上的时间外推。独立预留被试继续保持原边界。
+口述内容不进入候选搜索、排序和确认。原参数范围中的精度初值、学习率、容量与信念保持率均可重新调整。
+重拟合结果将与固定参数差值并列，以判断参数补偿是否改变机制收益及容量解释。
+
+从仓库根目录运行，输出目录须为新目录：
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_0923_reentry_precision_refit \
+  --phase search --config configs/shared/model0923_reentry_precision_refit_s208.yaml \
+  --output results/model_0923/reentry_precision_refit_s208_NEW
+
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_0923_reentry_precision_refit \
+  --phase evaluate --fit results/model_0923/reentry_precision_refit_s208_NEW \
+  --output results/model_0923/reentry_precision_refit_s208_evaluation_NEW
+```
+
+搜索使用64个单数值线程工作进程上限，与已运行的16次新机制状态重放及306最多32个确认任务
+共用128进程预算。确认参数后，每方案的选择评价沿用8个种子和512粒子，自主评价沿用128条路径。
+新入口复用原搜索、评分和自主引擎，仅在工作器中安装已验证的精度保持上下文。
+每个任务记录结构干预、原拟合来源哈希、转换次数及恢复次数，粒子事件与自主事件分别标记。
+正式主模型的配置入口仍保持原实现。
+
+18项相关测试通过，覆盖科学设置与种子命名保持、原实现变化拒绝以及两方案的机制标记。
+单进程、2粒子、8题短运行完成52个任务和全部五个搜索阶段，所有评分只使用训练段。
+原40个实际起点、14项参数、各阶段种子及数值预算均与原拟合一致。
+额外执行两方案的512粒子8题选择验证和各一条576题自主验证；
+SEARCH的全部预测数组分别精确复现已有RETAIN评分及自主路径，两方案均实际触发精度恢复。
+83项来源及产物哈希、合法概率及单数值线程检查通过。
+最后补充的启动前来源检查不改变工作器执行；相关函数与短运行保存版本的语法树一致。
+验证位于`reentry_precision_refit_validation_20261018_v1`，实际工作器复现位于
+`reentry_precision_refit_worker_validation_20261018_v1`。
+这些检查证明重拟合入口可用，科学拟合结果在完整运行结束后另行报告。
