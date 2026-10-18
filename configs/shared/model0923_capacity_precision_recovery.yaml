@@ -1,0 +1,10 @@
+protocol: model0923_capacity_precision_recovery_v1
+seed: 2026101837
+source: results/model_0923/reentry_precision_probe_20261018_v1
+subject: 208
+replicates: 4
+particles: 256
+seeds: 4
+parallel_budget: 128
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+scope: capacity_and_precision_storage_recovery_other_parameters_known_training_prefix_only
