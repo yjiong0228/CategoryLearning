@@ -14,6 +14,9 @@ the original point can bind to its reused evaluation seeds.
 source_kind=reentry_precision_scores replays one declared fixed parameter point
 after its retained-precision choice evaluation completes. It preserves that
 structural intervention and verifies exact behavioral predictions before oral use.
+source_kind=reentry_precision_refit selects the frozen POOL/SEARCH nominees from
+a completed equal-budget retained-precision evaluation. It verifies both the
+saved evaluation plan and the executed intervention jobs against the behavior fit.
 """
 from __future__ import annotations
 
@@ -39,6 +42,7 @@ COLLECTOR = 'src/Bayesian_state/evaluation/oral/decision_basis.py'
 REFIT = 'src/Bayesian_state/workflows/analysis/model_0923_episodic_refit.py'
 PROPOSAL = 'src/Bayesian_state/model/modules/hypothesis_transition/episodic_proposal.py'
 REENTRY = 'src/Bayesian_state/model/modules/hypothesis_transition/reentry_precision.py'
+REENTRY_REFIT = 'src/Bayesian_state/workflows/analysis/model_0923_reentry_precision_refit.py'
 
 
 def digest(path: Path) -> str:
@@ -73,6 +77,9 @@ def verify_sources(job: dict) -> None:
         raise ValueError('Original probability reference changed')
     if digest(Path(job['original_job'])) != job['original_job_sha256']:
         raise ValueError('Original replay job changed')
+    for name, expected in job.get('refit_replay_inputs', {}).items():
+        if digest(Path(name)) != expected:
+            raise ValueError('Retained-precision fit or evaluation binding changed')
 
 
 def grid_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
@@ -194,13 +201,113 @@ def reentry_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list
     return group[:1] if smoke else group, metadata
 
 
+def refitted_reentry_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
+    """Bind executed precision-retention jobs to their behavior-only refit."""
+    from src.Bayesian_state.utils.seeding import stable_seed
+    from src.Bayesian_state.workflows.analysis import model_0923_reentry_precision_refit as refit
+
+    completed, evaluation = read(source/'completion.json'), read(source/'protocol.json')
+    fit = Path(evaluation['fit'])
+    required = ('protocol.json', 'nominees.json', 'completion.json', 'retention_protocol.json')
+    if not all((fit/name).is_file() for name in required):
+        raise ValueError('Need a completed retained-precision behavior refit')
+    protocol, frozen, done, retention = (read(fit/name) for name in required)
+    nomination_hash = digest(fit/'nominees.json')
+    if (done['status'] != 'complete' or done['test_choices_used'] is not False
+            or done['smoke'] or protocol['smoke'] or frozen['smoke']
+            or frozen['status'] != 'frozen_before_test'
+            or any(item['nomination_sha256'] != nomination_hash for item in (done, evaluation, completed))
+            or frozen['settings'] != protocol['settings']
+            or frozen['source_sha256'] != protocol['source_sha256']
+            or evaluation['source_sha256'] != frozen['source_sha256']):
+        raise ValueError('Retained-precision nomination or completed evaluation changed')
+    original = frozen['settings']
+    if (original.get('structural_intervention') != refit.INTERVENTION
+            or retention.get('structural_intervention') != refit.INTERVENTION
+            or not set(settings['subjects']) <= set(original['subjects'])
+            or not set(settings['arms']) <= {'POOL', 'SEARCH'}
+            or not set(settings['arms']) <= set(original['arms'])):
+        raise ValueError('Require declared retained-precision subjects and POOL/SEARCH arms')
+    for name in (REENTRY, REENTRY_REFIT):
+        if frozen['source_sha256'].get(name) != digest(ROOT/name):
+            raise ValueError('Missing retained-precision fitting implementation')
+    for name, expected in frozen['source_sha256'].items():
+        if digest(ROOT/name) != expected:
+            raise ValueError('Retained-precision fitting source changed')
+    references = refit.reference_inputs(refit.helpers(), original)
+    if references != retention['input_sha256']:
+        raise ValueError('Retained-precision RESET reference changed')
+    bindings = dict(references)
+    for file in [*(fit/name for name in required), source/'protocol.json', source/'completion.json']:
+        bindings[str(file.resolve())] = digest(file)
+    budget = original['budgets']['evaluate']
+    if settings['seeds_per_arm'] != budget['seeds']:
+        raise ValueError('Retained refit replay must preserve the complete evaluation seed bank')
+    nominees = {(row['subject'], row['model']): row['candidate'] for row in frozen['nominees']}
+    if len(nominees) != len(frozen['nominees']):
+        raise ValueError('Duplicate retained-precision behavior nominee')
+    plans = {job['name']: job for job in evaluation['jobs']}
+    if len(plans) != len(evaluation['jobs']) or completed['jobs'] != len(plans):
+        raise ValueError('Incomplete or duplicate retained-precision evaluation plan')
+    subjects = settings['subjects'][:1] if smoke else settings['subjects']
+    arms = settings['arms'][:1] if smoke else settings['arms']
+    files, selected = [], []
+    for subject in subjects:
+        for arm in arms:
+            point = nominees.get((subject, arm))
+            if point is None:
+                raise ValueError('Missing requested retained-precision nominee')
+            folder = (Path(frozen['data'])/f'subject_{subject}').resolve()
+            if read(folder/'prepared.json')['subject'] != subject:
+                raise ValueError('Retained refit uses a different prepared participant')
+            seeds = [stable_seed(dict(protocol=original['protocol'], base=original['seed'],
+                                     stage='evaluate', subject=subject, repeat=i))
+                     for i in range(budget['seeds'])]
+            particles = {int(k): v for k, v in original['particle_overrides'].items()}.get(subject, budget['particles'])
+            group = sorted((source/'jobs').glob(f'evaluate_S{subject}_{arm}_*_C*.json'))
+            if len(group) != len(seeds):
+                raise ValueError('Incomplete retained-precision evaluation seed group')
+            for index, (file, seed) in enumerate(zip(group, seeds)):
+                name = f'evaluate_S{subject}_{arm}_{point["id"]}_C{index:03d}'
+                plan = plans.get(name)
+                if (plan is None or file.stem != name or plan['phase'] != 'evaluate'
+                        or plan['model'] != arm or plan['candidate'] != point or plan['smoke']
+                        or plan['seeds'] != [seed] or plan['particles'] != particles
+                        or Path(plan['folder']).resolve() != folder
+                        or plan['arm_settings'] != original['arms'][arm]
+                        or plan['mechanism'] != original['mechanism']
+                        or plan['source_sha256'] != frozen['source_sha256']):
+                    raise ValueError('Saved evaluation plan differs from the retained-precision nominee')
+                # The fitter records the plan before its adapter tags actual jobs.
+                # Check both objects so an untagged plan cannot masquerade as RESET.
+                expected = dict(plan, structural_intervention=refit.INTERVENTION,
+                                retain_precision=True, retention_reference_inputs=references)
+                actual = read(file)
+                if actual.get('retain_precision') is not True or actual != expected:
+                    raise ValueError('Executed retained-precision job differs from its saved plan')
+                precision_file = Path(plan['target']).with_suffix('.precision.json')
+                precision = read(precision_file)
+                if (precision.get('structural_intervention') != refit.INTERVENTION
+                        or precision.get('retained_precision') is not True):
+                    raise ValueError('Need the completed precision-retention execution record')
+                bindings[str(precision_file.resolve())] = digest(precision_file)
+            files.extend(group[:1] if smoke else group)
+            selected.append(dict(subject=subject, arm=arm, parameter_id=point['id']))
+    metadata = dict(parameter_estimation_scope='prefix', evaluation_use='development_precision_retention_refit',
+        parameter_candidate_policy='equal_budget_behavior_refit', structural_intervention=refit.INTERVENTION,
+        selected_parameters=selected, retained_fit=str(fit.resolve()), refit_nomination_sha256=nomination_hash,
+        refit_replay_inputs=bindings)
+    return files, metadata
+
+
 def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
     """Bind saved seeds to the declared selection scope before replaying states."""
     done = read(source / 'completion.json')
     if done['status'] != 'complete' or (done.get('smoke', False) and not smoke):
         raise ValueError('Need a completed evaluation; smoke sources require --smoke')
     kind = settings.get('source_kind', 'evaluation')
-    if kind not in ('evaluation', 'scope_confirmation', 'capacity_memory_scores', 'reentry_precision_scores'):
+    if kind not in ('evaluation', 'scope_confirmation', 'capacity_memory_scores', 'reentry_precision_scores',
+                    'reentry_precision_refit'):
         raise ValueError('Unknown state-replay source_kind')
     subjects = settings['subjects'][:1] if smoke else settings['subjects']
     arms = settings['arms'][:1] if smoke else settings['arms']
@@ -211,6 +318,8 @@ def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], 
         return grid_source_jobs(settings, source, smoke)
     if kind == 'reentry_precision_scores':
         return reentry_source_jobs(settings, source, smoke)
+    if kind == 'reentry_precision_refit':
+        return refitted_reentry_source_jobs(settings, source, smoke)
     metadata = dict(parameter_estimation_scope='original_evaluation_protocol',
                     evaluation_use='original_evaluation_protocol')
     selected = {}
@@ -249,6 +358,8 @@ def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], 
             seeds = []
             for file in group:
                 job = read(file)
+                if job.get('retain_precision', False) or job.get('structural_intervention'):
+                    raise ValueError('Retained precision requires its explicit state-replay source_kind')
                 if (job['phase'] != 'evaluate' or job['model'] != arm or job['name'] != file.stem
                         or len(job['seeds']) != 1
                         or read(Path(job['folder']) / 'prepared.json')['subject'] != subject):
@@ -333,8 +444,8 @@ def worker(file: Path) -> None:
             stack.enter_context(proposal.episodic_proposal(cls, proposal=True))
         retained_events = []
         if job.get('retain_precision', False):
-            if job['model'] != 'SEARCH' or job['retain_precision'] is not True:
-                raise ValueError('Retained precision requires an explicit SEARCH intervention')
+            if job['model'] not in ('POOL', 'SEARCH') or job['retain_precision'] is not True:
+                raise ValueError('Retained precision requires an explicit POOL/SEARCH intervention')
             retained = refit.base.load('src.Bayesian_state.model.modules.hypothesis_transition.reentry_precision', REENTRY)
             retained_events = stack.enter_context(retained.reentry_precision(cls))
         result = capture.run_state_model_particle_filter(
@@ -390,8 +501,10 @@ def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
     hashes = {name: digest(ROOT / name) for name in (ENTRY, PF, COLLECTOR, REFIT)}
     if 'SEARCH' in settings['arms']:
         hashes[PROPOSAL] = digest(ROOT / PROPOSAL)
-    if settings.get('source_kind') == 'reentry_precision_scores':
+    if settings.get('source_kind') in ('reentry_precision_scores', 'reentry_precision_refit'):
         hashes[REENTRY] = digest(ROOT / REENTRY)
+    if settings.get('source_kind') == 'reentry_precision_refit':
+        hashes[REENTRY_REFIT] = digest(ROOT / REENTRY_REFIT)
     jobs = []
     for file in files:
         job = read(file)
