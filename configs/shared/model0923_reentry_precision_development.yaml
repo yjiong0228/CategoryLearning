@@ -1,0 +1,12 @@
+protocol: model0923_reentry_precision_development_v1
+paths: 64
+parallel_budget: 64
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+window: 128
+block_width: 32
+subjects:
+  107: results/model_0923/recalled_evidence_extension_20261018_v1
+  207: results/model_0923/recalled_search_evaluation_20261018_v1
+  306: results/model_0923/recalled_evidence_extension_20261018_v1
+scope: three_task_development_checks_at_existing_SEARCH_parameters_no_oral_selection
