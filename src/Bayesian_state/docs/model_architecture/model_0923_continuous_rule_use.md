@@ -211,6 +211,57 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_state
 `online_evidence_states_pool_20261018_v1`和`online_evidence_states_search_20261018_v1`。
 口述结果尚未产生，完成后将同时检查支持、冲突、未确定质量及当前选择加权前的支持。
 
+独立口述核验直接读取分量质量与粒子活跃集合，分别重算联合质量归一化、支持规则在场概率和前段固定基线。
+它保留正确、部分正确、错误及全部回答四个反馈分组，空组保留未定义值。
+每个分组同时评价本题选择加权后的依据、去掉本题选择加权的依据及两者之差；误差以完整滤波重复为单位。
+两种读法在相同报告和相同状态上分别执行。
+短验证在两组16题状态上通过1012项数值核对；另用不等选择概率的两个滤波重复检查先合并联合质量再归一化的计算。
+完整核验已排入`online_evidence_oral_audit_followthrough_20261018_v1`，等待四份口述对齐结束。
+
+## 在线证据的参数空间与行为重估
+
+ONLINE将活跃规则信念改为由H证据计算，亲和度信念转移参数`transfer_scale`的作用通道关闭。
+三种条件、POOL与SEARCH两种提议，共六组16题实际模型对照中，该参数从0.01改为1.0时，
+规则信念、精度、活跃集合、执行贡献、反馈后验、证据与随机状态逐值一致；条件3的配对信念也一致。
+每组均发生新规则实际入场。相同操作在原信念机制中改变了规则信念，验证了此处的通道差异。
+七项机制通道测试通过。
+
+本轮重估把这一坐标固定为原比较点的0.01，其余13个可变坐标保留原支持范围。
+固定值随参数记录保存，个体心理解释针对仍有实际作用的通道。
+δ直接控制用于作答信念的证据保持，同时参与准入与SEARCH回顾；γ继续影响反馈后验及后续搜索、退出和配对过程。
+两者的个体可区分性仍需结合重估结果与恢复检查。
+
+重估配置为`configs/shared/model0923_online_evidence_refit_s208.yaml`，入口为
+`src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit`。
+比较参照为已完成的208 RETAIN拟合。新拟合继续只使用前384题选择数据，
+后192题用于开发中的时间外推诊断，口述在参数冻结后独立评价。
+初始候选、联合细化、交换、选择与确认的预算上限和种子约定均沿用参照。
+原共同热启动仅在关闭的坐标上投影，去重后补足每种提议方案共同的40个起点。
+13个可变坐标的取值已逐项与原拟合保存的参数空间核对。
+两种机制的实际候选数、滤波次数和粒子更新量将在完成后分别审查。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit \
+  --phase search --config configs/shared/model0923_online_evidence_refit_s208.yaml --output 新拟合目录
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit \
+  --phase evaluate --fit 已完成的新拟合目录 --output 新评价目录
+```
+
+`--smoke`运行一个被试、每种提议方案6个初始点、2粒子、短序列及一个工作进程，并经过完整五阶段选参流程。
+8项预算保护与投影测试、实际40点共同起点检查及CLI检查已通过。
+五阶段短验证已完成44个任务、60次2粒子滤波，每次8题；所有任务均使用训练选择。
+840次ONLINE证据更新的时点一致，480个实际选择概率及其NLL经过独立重算。
+两个选择控制分别用512和128粒子复现POOL与SEARCH的原8题ONLINE预测，全部130个数组元素一致；
+两条自主控制也逐数组复现原16题路径。初次独立控制的临时编译缓存配置缺失，补齐环境后在新目录完成；
+科研拟合入口沿用原有临时缓存配置。
+
+完整重拟合已经启动，目录为`online_evidence_refit_s208_20261018_v1`。
+首阶段有80个现成任务，每个进程使用一个数值线程；与当时24个活跃状态进程合计104个计算进程。
+后续任务数量由原阶段预算限定。执行计划`online_evidence_refit_followthrough_20261018_v1`
+在选择参数冻结后继续原预算评价，输出`online_evidence_refit_s208_evaluation_20261018_v1`。
+此次重估用于检验新机制能否同时改善学习时程与错误概率，完整拟合结论尚待计算。
+准备核验记录位于`online_evidence_refit_readiness_20261018_v2`。
+
 ## 在线证据的实现与复现
 
 机制位于[在线证据信念](../../model/modules/hypothesis_transition/online_evidence_belief.py)，

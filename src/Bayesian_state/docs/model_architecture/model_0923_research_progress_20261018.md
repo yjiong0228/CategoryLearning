@@ -30,6 +30,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 | 让H已有在线证据直接参与信念是否有用 | [全部轨迹图](../../../../CategoryLearning_codes/figures/outputs/fig3/online_evidence_20261018_v3/index.html)；[机制与结果](model_0923_continuous_rule_use.md#让已有在线证据形成信念) | 新增256条路径；四格末段正确率提高约9.7–14.7个百分点，正确规则贡献提高约0.29–0.38；容量4仍有前期生成取舍 |
 | 在线证据信念的作用是否超出208 | [三人全部路径与贡献分布](../../../../CategoryLearning_codes/figures/outputs/fig3/online_evidence_development_20261018_v1/index.html)；[参数来源与结果](model_0923_continuous_rule_use.md#三名开发被试的扩展检验) | 107、207、306共384条路径；207与306末段正确率提高约8.7及11.9个百分点，107变化接近模拟误差；306前期学得过快 |
 | 在线证据信念能否同时解释实际选择 | [分阶段评分与错误分解](model_0923_continuous_rule_use.md#在线证据的固定参数选择预测) | 208两方案各4种子128粒子；后段NLL降低约0.098，前段增加约0.055–0.057；正确回答预测改善，错误回答损失增加，参数保持原值 |
+| 在线机制重估时哪些参数应当估计 | [通道检查与重估协议](model_0923_continuous_rule_use.md#在线证据的参数空间与行为重估) | 亲和度转移通道已关闭，三条件实际模型检查通过；固定该坐标，其余13个取值范围与原RETAIN拟合一致；完整行为重估已启动 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
 | 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
@@ -141,6 +142,9 @@ SEARCH按完整目录计算历史提议证据，其心理计算成本仍需进�
 306的后期贡献接近1，同时出现前期学得过快的代价。208选择筛查也显示阶段取舍：后段改善，前段错误回答损失增加。
 这一方向列入下一版候选，继续口述与行为参数重估检验。
 208容量4的前期生成差距也增大，阶段间取舍单独保留。
+ONLINE的POOL状态已完成8次精确重放，SEARCH的8次重放仍在运行，随后统一进行双读法口述评价。
+独立口述重算已通过短序列核验，完整检验包含规则在场、实际贡献、静态基线和正确／错误反馈分层。
+13个可变坐标的共同预算重估已启动；关闭的亲和度转移坐标固定保存，口述不进入选参。
 当前搜索、准入与精度对照保留，完整路径、实现和验证见[连续规则使用检验](model_0923_continuous_rule_use.md)。
 详见[受控干预及验证范围](model_0923_reentry_precision.md#容量与全局提议概率的独立作用)。
 
