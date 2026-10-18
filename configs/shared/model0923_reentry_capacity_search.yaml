@@ -1,0 +1,7 @@
+protocol: model0923_reentry_capacity_search_v1
+# Both original finalists and all 128 paired paths per cell are preserved.
+# Only the two missing cells per proposal arm require generation.
+source: results/model_0923/reentry_precision_finalist_generation_20261018_v1
+levels:
+  engine.modules.hypo_transitions_mod.kwargs.max_capacity: [4, 6]
+  engine.modules.hypo_transitions_mod.kwargs.search_controller.global_search: [0.2, 0.8]
