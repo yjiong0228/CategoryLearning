@@ -1,0 +1,9 @@
+protocol: model0923_reentry_precision_k2_state_replay_v1
+source: results/model_0923/reentry_precision_scores_20261018_v1
+source_kind: reentry_precision_scores
+parameter_point: aa77bb9e20511f3d
+subjects: [208]
+arms: [SEARCH]
+workers: 8
+seeds_per_arm: 8
+sample_role: development

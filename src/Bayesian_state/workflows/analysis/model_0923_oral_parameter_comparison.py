@@ -117,7 +117,8 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
         current = dict(candidate=record['candidate'],
             scientific={name: record[name] for name in ('particles', 'trials', 'training_trials',
                         'condition', 'catalogue_signature', 'component_policy', 'timing')},
-            mechanism=job['mechanism'], arm_settings=job['arm_settings'], archived_pf_sha256=job['archived_pf_sha256'],
+            mechanism=dict(job['mechanism'], retain_learned_precision=job.get('retain_precision', False)),
+            arm_settings=job['arm_settings'], archived_pf_sha256=job['archived_pf_sha256'],
             model_sources=job['source_sha256'], task_sha256={p.name:digest(p) for p in task_files})
         if identity is not None and current != identity: raise ValueError('Seed groups use different scientific settings')
         identity = current; records.append((file, record))

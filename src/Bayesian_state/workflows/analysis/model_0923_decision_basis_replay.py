@@ -11,6 +11,9 @@ retrospective development label; oral reports never select the parameters.
 source_kind=capacity_memory_scores selects the lowest choice NLL in a completed
 capacity/retention grid. The selected point and score-table hash are recorded;
 the original point can bind to its reused evaluation seeds.
+source_kind=reentry_precision_scores replays one declared fixed parameter point
+after its retained-precision choice evaluation completes. It preserves that
+structural intervention and verifies exact behavioral predictions before oral use.
 """
 from __future__ import annotations
 
@@ -35,6 +38,7 @@ PF = 'src/Bayesian_state/inference/backends/particle_filter.py'
 COLLECTOR = 'src/Bayesian_state/evaluation/oral/decision_basis.py'
 REFIT = 'src/Bayesian_state/workflows/analysis/model_0923_episodic_refit.py'
 PROPOSAL = 'src/Bayesian_state/model/modules/hypothesis_transition/episodic_proposal.py'
+REENTRY = 'src/Bayesian_state/model/modules/hypothesis_transition/reentry_precision.py'
 
 
 def digest(path: Path) -> str:
@@ -139,14 +143,65 @@ def grid_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Pa
     return group[:1] if smoke else group, metadata
 
 
+def reentry_source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
+    """Bind one predeclared retained-precision point without outcome selection."""
+    done, protocol = read(source/'completion.json'), read(source/'protocol.json')
+    point = settings.get('parameter_point')
+    if (done['status'] != 'complete' or done['smoke'] != protocol['smoke']
+            or (done['smoke'] and not smoke) or settings['subjects'] != [protocol['settings']['subject']]
+            or settings['arms'] != ['SEARCH'] or point not in protocol['settings']['points']):
+        raise ValueError('Precision replay requires a completed declared SEARCH parameter point')
+    plans = [p for p in protocol['plans'] if p['point'] == point and p['variant'] == 'RETAIN']
+    records = [r for r in done['records'] if r['point'] == point and r['variant'] == 'RETAIN']
+    if len(plans) != 1 or len(records) != 1:
+        raise ValueError('Require one completed retained-precision point')
+    plan, result = plans[0], records[0]
+    expected, record = plan['job'], result['record']
+    seeds = protocol['seeds']
+    if (len(set(seeds)) != len(seeds) or len(seeds) != settings['seeds_per_arm']
+            or done['filter_seeds'] != len(seeds) or done['particles'] != protocol['particles']
+            or expected['seeds'] != seeds or expected['retain_precision'] is not True
+            or expected['particles'] != protocol['particles'] or expected['model'] != 'SEARCH'
+            or expected['candidate']['id'] != point or expected['source_sha256'] != protocol['source_sha256']
+            or any(record[key] != expected[key] for key in ('candidate', 'seeds', 'particles', 'model'))
+            or Path(result['target']) != Path(expected['target']).with_suffix('.npz')
+            or digest(Path(result['target'])) != record['predictions_sha256']):
+        raise ValueError('Precision point identity, completion or numerical budget changed')
+    if protocol['source_sha256'].get(REENTRY) != digest(ROOT/REENTRY):
+        raise ValueError('Retained-precision mechanism changed after choice scoring')
+    group = [source/'jobs'/(chunk['name']+'.json') for chunk in plan['chunks']]
+    if len(group) != len(seeds) or len(set(group)) != len(group):
+        raise ValueError('Incomplete precision filter job bank')
+    actual = []
+    for file, chunk in zip(group, plan['chunks']):
+        job = read(file)
+        if (job != chunk or job['name'] != file.stem or job['phase'] != 'evaluate'
+                or job['model'] != 'SEARCH' or job['retain_precision'] is not True
+                or len(job['seeds']) != 1 or job['particles'] != protocol['particles']
+                or any(job[key] != expected[key] for key in
+                       ('candidate', 'folder', 'runtime', 'mechanism', 'arm_settings', 'source_sha256'))
+                or read(Path(job['folder'])/'prepared.json')['subject'] != settings['subjects'][0]):
+            raise ValueError('Precision replay differs from its completed choice job')
+        actual.extend(job['seeds'])
+    if actual != seeds:
+        raise ValueError('Precision replay seed identities or ordering changed')
+    metadata = dict(parameter_estimation_scope='existing_behavior_parameters',
+        evaluation_use='fixed_parameter_mechanism_diagnostic',
+        parameter_candidate_policy='declared_point_no_new_selection', selected_parameter_id=point,
+        structural_intervention='retained_rule_precision',
+        precision_source_protocol_sha256=digest(source/'protocol.json'),
+        precision_source_completion_sha256=digest(source/'completion.json'))
+    return group[:1] if smoke else group, metadata
+
+
 def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], dict]:
     """Bind saved seeds to the declared selection scope before replaying states."""
     done = read(source / 'completion.json')
     if done['status'] != 'complete' or (done.get('smoke', False) and not smoke):
         raise ValueError('Need a completed evaluation; smoke sources require --smoke')
     kind = settings.get('source_kind', 'evaluation')
-    if kind not in ('evaluation', 'scope_confirmation', 'capacity_memory_scores'):
-        raise ValueError('source_kind must be evaluation, scope_confirmation or capacity_memory_scores')
+    if kind not in ('evaluation', 'scope_confirmation', 'capacity_memory_scores', 'reentry_precision_scores'):
+        raise ValueError('Unknown state-replay source_kind')
     subjects = settings['subjects'][:1] if smoke else settings['subjects']
     arms = settings['arms'][:1] if smoke else settings['arms']
     if (not subjects or not arms or len(set(settings['subjects'])) != len(settings['subjects'])
@@ -154,6 +209,8 @@ def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], 
         raise ValueError('Need unique subjects, arms and a positive saved-seed count')
     if kind == 'capacity_memory_scores':
         return grid_source_jobs(settings, source, smoke)
+    if kind == 'reentry_precision_scores':
+        return reentry_source_jobs(settings, source, smoke)
     metadata = dict(parameter_estimation_scope='original_evaluation_protocol',
                     evaluation_use='original_evaluation_protocol')
     selected = {}
@@ -274,6 +331,12 @@ def worker(file: Path) -> None:
         if job['model'] == 'SEARCH':
             proposal = refit.base.load('src.Bayesian_state.model.modules.hypothesis_transition.episodic_proposal', PROPOSAL)
             stack.enter_context(proposal.episodic_proposal(cls, proposal=True))
+        retained_events = []
+        if job.get('retain_precision', False):
+            if job['model'] != 'SEARCH' or job['retain_precision'] is not True:
+                raise ValueError('Retained precision requires an explicit SEARCH intervention')
+            retained = refit.base.load('src.Bayesian_state.model.modules.hypothesis_transition.reentry_precision', REENTRY)
+            retained_events = stack.enter_context(retained.reentry_precision(cls))
         result = capture.run_state_model_particle_filter(
             engine_config=engine, subject_id=meta['subject'], condition=meta['condition'],
             stimulus=arrays['stimulus'], choices=arrays['choices'], feedback=arrays['feedback'],
@@ -291,6 +354,11 @@ def worker(file: Path) -> None:
     np.testing.assert_allclose(recorded['choice_component_joint_mass'].sum(axis=(1, 2)),
                                expected[np.arange(n), arrays['choices'] - 1], atol=1e-12, rtol=0)
     verify_sources(job)
+    intervention_metadata = {}
+    if job.get('retain_precision', False):
+        intervention_metadata = dict(structural_intervention='retained_rule_precision',
+            particle_transitions=len(retained_events),
+            particle_precision_restores=sum(len(e['precision_restored_rules']) for e in retained_events))
     target = Path(job['target'])
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.with_suffix('.npz').open('xb') as stream:
@@ -306,7 +374,8 @@ def worker(file: Path) -> None:
         evaluation_use=job.get('evaluation_use', 'original_evaluation_protocol'),
         seconds=time.monotonic() - start, cpu_seconds=time.process_time() - cpu,
         numeric_pools=threadpool_info(), array_sha256=digest(target.with_suffix('.npz')),
-        feedback_corrections=feedback_fixes, snapshot_corrections=snapshot_fixes, recall_corrections=recall_fixes))
+        feedback_corrections=feedback_fixes, snapshot_corrections=snapshot_fixes, recall_corrections=recall_fixes,
+        **intervention_metadata))
 
 
 def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
@@ -321,6 +390,8 @@ def prepare(config: Path, output: Path, smoke: bool) -> tuple[dict, list[dict]]:
     hashes = {name: digest(ROOT / name) for name in (ENTRY, PF, COLLECTOR, REFIT)}
     if 'SEARCH' in settings['arms']:
         hashes[PROPOSAL] = digest(ROOT / PROPOSAL)
+    if settings.get('source_kind') == 'reentry_precision_scores':
+        hashes[REENTRY] = digest(ROOT / REENTRY)
     jobs = []
     for file in files:
         job = read(file)

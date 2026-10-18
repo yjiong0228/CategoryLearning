@@ -155,6 +155,14 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 `configs/shared/model0923_decision_basis_replay.yaml`；`--smoke` 用一个原始种子重放前16题。
 研究阶段和运行状态见[持续研究记录](../../docs/model_architecture/model_0923_research_progress_20261018.md)。
 
+精度保持机制沿用同一状态入口，配置为
+`configs/shared/model0923_reentry_precision_k4_state_replay.yaml`与
+`configs/shared/model0923_reentry_precision_k2_state_replay.yaml`。
+`source_kind: reentry_precision_scores`要求完整选择评分已结束，`parameter_point`指定既有行为参数点。
+每个点单独输出，保留全部原滤波种子；工作器同时恢复已学精度缓存和原SEARCH流程。
+输出记录结构干预身份，并要求选择概率逐值复现，再进行口述评分。
+当前短序列验证已通过，完整行为评分和新机制口述效果仍在后续计算范围内。
+
 `decision_basis_scoring.py` 按上述联合质量计算三类结果，使用完整滤波种子估计模拟误差。
 `workflows.analysis.model_0923_decision_basis_alignment` 将重放输出与审查表按被试、session和trial连接，
 同时核对原选择、刺激与反馈数组。完整编码报告使用所有方案共同的分母；目录可表达的完整报告另列为

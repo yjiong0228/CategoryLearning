@@ -192,7 +192,18 @@ def estimation_context(protocol: dict) -> tuple[dict, str]:
     use = protocol.get('evaluation_use', 'original_evaluation_protocol')
     metadata = dict(parameter_estimation_scope=scope, evaluation_use=use,
                     window_definition='original_chronological_boundary')
-    if use == 'development_retrospective_comparison':
+    if use == 'fixed_parameter_mechanism_diagnostic':
+        if (scope != 'existing_behavior_parameters'
+                or protocol.get('parameter_candidate_policy') != 'declared_point_no_new_selection'
+                or protocol.get('structural_intervention') != 'retained_rule_precision'
+                or not protocol.get('selected_parameter_id')):
+            raise ValueError('Precision diagnostic needs its fixed point and structural intervention')
+        for key in ('parameter_candidate_policy', 'selected_parameter_id', 'structural_intervention'):
+            metadata[key] = protocol[key]
+        note = ('<p>本次沿用已保存的行为参数，检验规则再次进入时保留已学精度的结构改变。'
+                '参数点在状态重放前已指定，口述用于外部表征评价。此项属于固定参数的开发诊断；'
+                'training／test沿用原时间分段标记，新机制的独立留出检验另行进行。</p>')
+    elif use == 'development_retrospective_comparison':
         if scope not in ('prefix', 'full'):
             raise ValueError('Retrospective oral replay needs a declared selection scope')
         selected = '完整行为序列' if scope == 'full' else '原前段行为序列'
