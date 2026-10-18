@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from src.Bayesian_state.evaluation.model_0923_episodic_refit import (
-    loss_parts, active_precision_mean, training_chunk_budgets,
+    loss_parts, active_precision_mean, training_chunk_budgets, refit_inactive_channels,
 )
 from src.Bayesian_state.evaluation.model_0923_h_validation import nll
 
@@ -39,9 +39,25 @@ def test_precision_sidecar_does_not_double_count_filter_budget(tmp_path):
     # Sidecars have another schema and refer to the same completed filter job.
     (chunks/'point_C000.experiment.json').write_text('{"feedback_corrections": []}')
     (chunks/'point_C000.precision.json').write_text('{"restores": 17}')
+    (chunks/'point_C000.online.json').write_text('{"enabled": true, "reconstructions": 98048}')
     assert training_chunk_budgets(stage) == [dict(subject=208, model='POOL', stage='screen',
         state_updates=98304, filter_runs=2, cpu_seconds=12.5)]
     result['numeric_pools'][0]['num_threads'] = 2
     (chunks/'point_C000.json').write_text(json.dumps(result))
     with pytest.raises(ValueError, match='Nested numeric threads'):
         training_chunk_budgets(stage)
+
+
+def test_online_reports_fixed_transfer_and_preserves_the_evidence_decay_channel():
+    prefix='engine.modules.hypo_transitions_mod.kwargs.'
+    frozen=dict(settings=dict(models={'POOL':dict(kind='E',capacity='posterior')},
+                              belief_intervention='online_retention_evidence'),
+        nominees=[dict(subject=208,model='POOL',candidate=dict(hyperparams={
+            prefix+'exit_rate':0.,prefix+'intervention.decay':.8,prefix+'transfer_scale':.01}))])
+    rows=refit_inactive_channels(frozen)
+    assert rows.parameter.tolist()==[prefix+'transfer_scale']
+    assert rows.value.tolist()==[.01]
+    assert '固定值仅用于复现' in rows.reason.iloc[0]
+    del frozen['settings']['belief_intervention']
+    original=refit_inactive_channels(frozen)
+    assert original.parameter.tolist()==[prefix+'intervention.decay']

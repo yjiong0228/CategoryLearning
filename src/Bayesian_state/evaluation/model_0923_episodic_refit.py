@@ -6,6 +6,8 @@ fixed parameters. Each participant remains a development participant.
 --reference-model defaults to BASE; use POOL for recalled-search comparisons.
 The saved parameter_spaces.json defines the scored support. An additionally
 archived parameter_support.yaml is recorded when supplied by the fit workflow.
+ONLINE execution sidecars describe existing filters and do not add budget units.
+Its inactive affinity-transfer coordinate is listed with the closed channels.
 """
 from __future__ import annotations
 
@@ -45,7 +47,7 @@ def training_chunk_budgets(stage: Path) -> list[dict]:
     """Count filter results once; intervention sidecars describe the same runs."""
     rows = []
     for file in stage.glob('subject_*/*/chunks/*.json'):
-        if file.name.endswith(('.experiment.json', '.precision.json')):
+        if file.name.endswith(('.experiment.json', '.precision.json', '.online.json')):
             continue
         result = load(file)
         if any(pool['num_threads'] != 1 for pool in result['numeric_pools']):
@@ -54,6 +56,23 @@ def training_chunk_budgets(stage: Path) -> list[dict]:
             state_updates=result['particles']*len(result['seeds'])*result['trials'],
             filter_runs=len(result['seeds']), cpu_seconds=result['cpu_seconds']))
     return rows
+
+
+def refit_inactive_channels(frozen: dict) -> pd.DataFrame:
+    """Keep the interpretation of closed channels consistent with ONLINE belief."""
+    rows = inactive_parameter_channels(frozen)
+    if frozen['settings'].get('belief_intervention') != 'online_retention_evidence':
+        return rows
+    prefix = 'engine.modules.hypo_transitions_mod.kwargs.'
+    # ONLINE uses accumulated evidence for every active belief reconstruction,
+    # so its decay still operates when autonomous exit is disabled.
+    rows = rows.loc[rows.parameter.ne(prefix+'intervention.decay')]
+    transfer = prefix+'transfer_scale'
+    added = [dict(subject=n['subject'],model=n['model'],parameter=transfer,
+                  value=n['candidate']['hyperparams'][transfer],
+                  reason='ONLINE直接按H在线证据重建活跃规则信念；亲和度转移通道关闭，固定值仅用于复现')
+             for n in frozen['nominees']]
+    return pd.concat([rows,pd.DataFrame(added)],ignore_index=True)
 
 
 def summarize(fit: Path, evaluation: Path, output: Path, reference_model: str = 'BASE') -> None:
@@ -246,7 +265,7 @@ def summarize(fit: Path, evaluation: Path, output: Path, reference_model: str = 
         cohort_pairwise=pd.DataFrame(pairwise),curves=pd.DataFrame(curves),
         paths=pd.DataFrame(paths),path_blocks=pd.DataFrame(blocks),parameters=pd.DataFrame(parameters),
         training_finalists=pd.DataFrame(finalists),training_repeatability=pd.DataFrame(repeatability),
-        candidates=candidate_frame,budgets=budget,inactive_parameters=inactive_parameter_channels(channels))
+        candidates=candidate_frame,budgets=budget,inactive_parameters=refit_inactive_channels(channels))
     output.mkdir(parents=True)
     for name,table in tables.items(): table.to_csv(output/(name+'.csv'),index=False)
     shutil.copy2(__file__,output/'analysis_source.py')
