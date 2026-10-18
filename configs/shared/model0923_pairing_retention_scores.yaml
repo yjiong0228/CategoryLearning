@@ -1,0 +1,8 @@
+reference: results/model_0923/online_evidence_development_scores_20261018_v1/subject_306
+subject: 306
+particles: 128
+filter_seeds: 4
+# The first diagnostic rate matches this participant's fixed H history decay.
+# The second retains pairing knowledge fully; neither is fitted from oral data.
+pairing_rates: [0.95, 1.0]
+parallel_budget: 16
