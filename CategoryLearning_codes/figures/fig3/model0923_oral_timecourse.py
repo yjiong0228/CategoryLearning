@@ -54,6 +54,9 @@ def plot(alignment: Path, output: Path) -> None:
         raise ValueError('Need completed scientific oral alignment')
     if digest(alignment / 'trials.csv') != manifest['artifacts']['trials.csv']:
         raise ValueError('Aligned trials changed')
+    retrospective = manifest.get('evaluation_use') == 'development_retrospective_comparison'
+    estimation_scope = manifest.get('parameter_estimation_scope', 'original_evaluation_protocol')
+    boundary_label = 'original time split' if retrospective else 'training boundary'
     order, reference = manifest['arms'], manifest.get('reference_model', 'BASE')
     subjects = sorted(manifest['subjects'])
     if reference not in order or not set(order) <= COLORS.keys():
@@ -74,6 +77,7 @@ def plot(alignment: Path, output: Path) -> None:
     contract = dict(claim='Time-resolved oral support distinguishes changing report coverage, supporting-rule availability and decision contribution.',
         backend='python', archetype='individual longitudinal diagnosis', subjects=subjects, arms=order,
         reference_model=reference, block_width=32, width_mm=183, height_mm=145, dpi=300, formats=['PNG'],
+        parameter_estimation_scope=estimation_scope, evaluation_use=manifest.get('evaluation_use', 'original_evaluation_protocol'),
         panels=['complete and catalogue-supported report counts', 'whole-report decision support with frozen-prefix reference',
                 'posterior supporting-rule availability: all-component to any-component bounds'],
         statistics={'center': 'mean of pooled eight-filter support over complete reports in each display block',
@@ -124,14 +128,17 @@ def plot(alignment: Path, output: Path) -> None:
         axes[0].text(cut + .5, 35, 'Later trials →', ha='left', va='bottom', fontsize=6)
         fig.suptitle(f'Subject {subject}: oral alignment through learning', x=.12, ha='left', fontsize=9, y=.98)
         fig.text(.12, .045, '32-trial display blocks; complete reports only in b/c. Shading in c denotes component bounds.', fontsize=6)
-        fig.text(.12, .02, 'Dashed vertical line: training boundary. Dotted line: category-specific basis frozen at that boundary.', fontsize=6)
+        fig.text(.12, .02, f'Dashed line: {boundary_label}. Dotted line: category-specific basis frozen at that boundary.', fontsize=6)
+        if retrospective:
+            fig.text(.12, .91, f'{estimation_scope.capitalize()}-scope parameter selection; retrospective development diagnostic.', fontsize=6)
         fig.savefig(output / f'subject_{subject}.png', dpi=300)
         plt.close(fig)
     (output / 'index.html').write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><title>口述对齐时间过程</title>'
         '<h1>口述覆盖、作答支持和规则存在概率</h1><p>每32题汇总。上图显示完整报告数及其中目录可支持的报告数。'
-        '中图显示完整报告的平均显式支持质量，下图显示支持规则存在概率的分量上下界。竖虚线表示训练边界。</p>'
+        '中图显示完整报告的平均显式支持质量，下图显示支持规则存在概率的分量上下界。竖虚线表示原时间划分边界。</p>'
         '<p>八次滤波先合并联合质量，再按实际选择概率归一化。中下图只评价完整报告；空窗口保留空缺。'
         '阴影表示分量歧义，数值模拟误差请查完整汇总。训练段静态基准同时冻结状态与试次刺激读出。</p>'
+        + ('<p>本轮候选筛选使用完整行为序列，后段为回顾性诊断。口述仅用于冻结参数后的表征检验。</p>' if retrospective else '')
         + ''.join(f'<h2>{s}</h2><img src="subject_{s}.png" style="max-width:100%;width:900px">' for s in subjects))
     (output / 'manifest.json').write_text(json.dumps(dict(status='complete', subjects=subjects, arms=order,
         plotting_source_sha256=digest(Path(__file__)), artifacts={p.name: digest(p) for p in output.iterdir()}), indent=2) + '\n')
