@@ -1,0 +1,5 @@
+# Three existing development subjects; their frozen parameter provenance is retained.
+source: results/model_0923/reentry_precision_development_20261018_v1
+subjects: [107, 207, 306]
+paths: 64
+parallel_budget: 104
