@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 逐判断口述覆盖（2026-10-19）
+
+[四人双读法比较图与源表](../outputs/fig3/predicate_alignment_20261019_v2/index.html) ·
+[定义、九人补充评价与复现](../../../src/Bayesian_state/docs/model_architecture/model_0923_oral_constraints.md#单项判断与整句联合支持的表达范围)。
+每份报告先对全部判断等权平均，再对报告等权汇总；原整句指标保留。
+上排展示后段支持、冲突和未确定质量，下排展示前后阶段ONLINE减BASE的支持差及配对模拟误差。
+四人均为开发样本，208的POOL与SEARCH是同一人的敏感性分析；参数和状态沿用已有行为拟合。
+入口为`python -m CategoryLearning_codes.figures.fig3.model0923_predicate_alignment --output 新目录`，输出PNG讨论稿。
+
 ## Model 0923 候选准入机制联合重拟合（2026-10-17）
 
 [13张比较图与全部源表](../outputs/fig3/model0923_episodic_refit_20261017_v2/index.html) ·
