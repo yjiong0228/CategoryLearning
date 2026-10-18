@@ -106,7 +106,8 @@ def plot(alignment: Path, output: Path) -> None:
         axes[0].bar(baseline.midpoint, baseline.reports, width=29, color='#DBDFE4', label='Complete reports')
         axes[0].bar(baseline.midpoint, baseline.catalogue_reports, width=29, color='#68778B', label='Catalogue supports report')
         axes[0].set(ylabel='Reports per block', ylim=(0, 34), yticks=[0, 16, 32])
-        axes[0].legend(frameon=False, loc='upper left', bbox_to_anchor=(0, 1.44), ncol=2)
+        axes[0].legend(frameon=False, loc='upper left',
+                       bbox_to_anchor=(0, 1.30 if retrospective else 1.44), ncol=2)
         for arm in order:
             part = own[own.arm.eq(arm)]
             axes[1].plot(part.midpoint, part.structural_support, color=colors[arm], linewidth=1.1, label=arm)
@@ -130,7 +131,7 @@ def plot(alignment: Path, output: Path) -> None:
         fig.text(.12, .045, '32-trial display blocks; complete reports only in b/c. Shading in c denotes component bounds.', fontsize=6)
         fig.text(.12, .02, f'Dashed line: {boundary_label}. Dotted line: category-specific basis frozen at that boundary.', fontsize=6)
         if retrospective:
-            fig.text(.12, .91, f'{estimation_scope.capitalize()}-scope parameter selection; retrospective development diagnostic.', fontsize=6)
+            fig.text(.12, .94, f'{estimation_scope.capitalize()}-scope parameter selection; retrospective development diagnostic.', fontsize=6)
         fig.savefig(output / f'subject_{subject}.png', dpi=300)
         plt.close(fig)
     (output / 'index.html').write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><title>口述对齐时间过程</title>'
