@@ -1,0 +1,6 @@
+protocol: model0923_association_oral_v1
+source: results/model_0923/association_autonomous_20261018_v1
+oral_audit: results/model_0923/oral_constraint_audit_20261018_v2
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
+parallel_budget: 128
+replay_tolerance: 1.0e-12
