@@ -14,6 +14,8 @@ and keeps every other task, cognitive mechanism and numerical setting matched.
 --contrast-kind precision_retention_refit additionally binds --reset-fit and
 --retained-fit to the completed behavior fits under the common search policy. Its difference
 includes both precision retention and re-estimation of behavioral parameters.
+ONLINE state records carry their belief mechanism into the comparison identity;
+changing that mechanism cannot be reported as a parameter-only comparison.
 """
 from __future__ import annotations
 
@@ -30,6 +32,20 @@ from ...evaluation.oral.information_controls import jackknife_error
 
 IDENTITY = ['iSub', 'arm', 'iSession', 'iTrial', 'state_trial', 'choice', 'text', 'tokens',
             'query_id', 'scope', 'catalogue_version', 'training_trials', 'phase']
+
+
+def online_state_identity(job: dict, record: dict, protocol: dict, manifest: dict) -> bool:
+    """Bind the executed belief mode, rather than infer it from a directory name."""
+    enabled = job.get('online_belief', False)
+    if type(enabled) is not bool or record.get('online_belief', False) is not enabled:
+        raise ValueError('Job and saved state disagree on ONLINE belief')
+    if enabled:
+        if (any(value.get('belief_intervention') != 'online_retention_evidence'
+                for value in (job, protocol, manifest))
+                or record.get('online_evidence_matches_retained_state') is not True
+                or record.get('online_reconstructions') != record['particles']*(record['trials']-1)):
+            raise ValueError('Missing executed ONLINE belief provenance or transition count')
+    return enabled
 
 
 def paired_scores(original: tuple, revised: tuple, *, seed_relation: str = 'paired') -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -125,6 +141,7 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
                 or protocol.get('structural_intervention') != intervention
                 or manifest.get('structural_intervention') != intervention):
             raise ValueError('State and oral alignment disagree on the structural intervention')
+        online = online_state_identity(job, record, protocol, manifest)
         folder = Path(job['folder'])
         task_files = [folder/name for name in ('training.npz', 'sealed_test.npz', 'engine.json')]
         current = dict(candidate=record['candidate'],
@@ -133,6 +150,8 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
             mechanism=dict(job['mechanism'], retain_learned_precision=job.get('retain_precision', False)),
             arm_settings=job['arm_settings'], archived_pf_sha256=job['archived_pf_sha256'],
             model_sources=job['source_sha256'], task_sha256={p.name:digest(p) for p in task_files})
+        if online:
+            current['mechanism']['online_belief'] = True
         if identity is not None and current != identity: raise ValueError('Seed groups use different scientific settings')
         identity = current; records.append((file, record))
         files.extend([file, array, job_file, Path(job['original_job']), Path(job['reference']),

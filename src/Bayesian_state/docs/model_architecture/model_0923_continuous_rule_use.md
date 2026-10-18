@@ -348,6 +348,43 @@ ONLINE更新分别为3584和896次，观察器汇总舍入差最大为1.11×10�
 `online_evidence_refit_oral_{midpoint,relative}_20261018_v1`，数值控制保存于
 `online_evidence_refit_state_worker_control_20261018_v1`。完整科研结果仍待计算。
 
+### 重估后的比较入口与参数解释
+
+行为汇总继续使用`evaluation.model_0923_episodic_refit`。预算按实际滤波结果计数，
+每次滤波附带的ONLINE更新记录、精度保持记录和实验记录描述同一计算。
+关闭通道表明确列出ONLINE的亲和度转移坐标；历史证据保持率仍参与活跃信念计算。
+这一汇总接入通过35项相关测试，原RETAIN的13张汇总表逐字节复现。
+已完成的ONLINE首阶段80个任务对应160次滤波，细化36个任务对应72次滤波，
+分别产生7,864,320和3,538,944次粒子更新，与实际任务逐项核对一致。
+验证结果位于`online_summary_sidecar_validation_20261019_v1`。
+
+新旧口述比较以各机制自己从前段行为中选出的参数为依据，差值包含ONLINE信念机制和重新估参的共同作用。
+入口核对行为提名、原时间边界、实际执行的ONLINE更新与精度保持记录、状态重放、口述编码和滤波预算，
+随后按共同种子计算整句差值及删除完整滤波所得的模拟标准误。
+实际信念机制进入比较身份记录，参数比较与机制比较分别标明。
+拟合工作器引用的共同代码也绑定到实际执行时检查的哈希。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit_oral \
+  --original 已完成的RETAIN口述目录 --revised 已完成的ONLINE口述目录 \
+  --subject 208 --arm SEARCH --output 新比较目录
+```
+
+`scores.csv`保存全部时间范围的整句评分与配对差，`trials.csv`保留原试次身份和逐题差值。
+`feedback_scores.csv`保留错误、部分正确、正确及全部反馈层，同时呈现选择条件支持、
+去掉本题选择加权的支持和二者差值；空层保留为未定义。
+`feedback_jackknife.npz`保存完整滤波删除结果。
+逐判断内容覆盖沿用[已固定的补充评价](model_0923_oral_constraints.md#单项判断与整句联合支持的表达范围)，
+在新状态完成后自动计算。
+
+84项比较身份、前段选参、种子配对和反馈分层测试通过。
+八个已有完整口述组的参数身份、逐题表和全部窗口精确复现；
+两个既有短状态控制的实际ONLINE更新身份也通过检查。
+完整新参数的科研比较尚待拟合、评价与状态重放完成。
+执行队列`online_evidence_refit_comparison_followthrough_20261019_v1`已启动：
+行为评价完成后生成新汇总，状态口述完成后运行四项新旧比较，再直接从原始联合质量独立重算。
+逐判断队列为`predicate_online_refit_followthrough_20261019_v1`；两个队列均使用新输出目录，原结果保留。
+
 ## 在线证据的实现与复现
 
 机制位于[在线证据信念](../../model/modules/hypothesis_transition/online_evidence_belief.py)，

@@ -103,6 +103,34 @@ def test_precision_contrast_accepts_only_its_declared_mechanism_change():
     with pytest.raises(ValueError):comparison.validate_comparison(before,after,'parameters')
 
 
+def test_executed_online_belief_is_distinct_from_a_parameter_change():
+    tag=dict(belief_intervention='online_retention_evidence')
+    job=dict(tag,online_belief=True)
+    record=dict(online_belief=True,particles=4,trials=8,online_reconstructions=28,
+                online_evidence_matches_retained_state=True)
+    assert comparison.online_state_identity(job,record,tag,tag)
+    assert comparison.online_state_identity({}, {}, {}, {}) is False
+    before,after=intervention_identities()
+    before=deepcopy(after);after['mechanism']['online_belief']=True
+    with pytest.raises(ValueError,match='Parameter comparison'):
+        comparison.validate_comparison(before,after,'parameters')
+
+
+@pytest.mark.parametrize('fault',['job','record','count','evidence','protocol','manifest'])
+def test_online_state_identity_requires_actual_executed_updates(fault):
+    tag=dict(belief_intervention='online_retention_evidence')
+    job=dict(tag,online_belief=True);protocol=dict(tag);manifest=dict(tag)
+    record=dict(online_belief=True,particles=4,trials=8,online_reconstructions=28,
+                online_evidence_matches_retained_state=True)
+    if fault=='job':job['online_belief']='true'
+    elif fault=='record':record['online_belief']=False
+    elif fault=='count':record['online_reconstructions']=27
+    elif fault=='evidence':record['online_evidence_matches_retained_state']=False
+    elif fault=='protocol':protocol.clear()
+    elif fault=='manifest':manifest.clear()
+    with pytest.raises(ValueError):comparison.online_state_identity(job,record,protocol,manifest)
+
+
 @pytest.mark.parametrize('fault',['task','budget','oral','parameter','parameter_id','other_mechanism',
     'disabled','reversed','selection','point_binding','source'])
 def test_precision_contrast_rejects_confounding_changes(fault):
