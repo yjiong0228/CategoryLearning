@@ -1,0 +1,9 @@
+protocol: model0923_recalled_prefix_forecast_v1
+source: results/model_0923/recalled_search_evaluation_20261018_v1
+subjects: [207, 208, 308]
+arms: [POOL, SEARCH]
+seed: 2026101831
+workers: 128
+filters: 8
+branches_per_filter: 16
+sample_role: development
