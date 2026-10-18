@@ -1,0 +1,8 @@
+protocol: model0923_association_autonomous_v1
+source: results/model_0923/association_diagnostic_20261018_v1
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
+parallel_budget: 128
+paths: 32
+chunk: 4
+seed: 2026101819
+block_width: 32
