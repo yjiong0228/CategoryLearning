@@ -169,3 +169,11 @@ quantile band。这与 `basic/accuracy_band.png` 的 trajectory ensemble 来源�
 过程诊断子集。训练段内各类别的平均依据分布冻结后用作后段静态基准。
 输出逐题表、分段汇总、相对BASE的配对差值及HTML。静态基准与动态结果的差异同时涉及学习状态和
 刺激相关的局部读出，需要结合过程诊断解释。
+
+`stimulus_controls.py` 补充保留当前刺激的冻结规则对照。每个方案的动态边际作答贡献、
+前段末端冻结贡献及前段平均贡献共用独立知觉采样和原归档几何读出；当前选择只指定待解释类别。
+原粒子读出保留，逐题列出公共知觉核组合造成的差异。冻结对照只评价原后段完整报告，
+完整滤波模拟误差与独立知觉采样敏感性分别保存。
+入口为`workflows.analysis.model_0923_oral_stimulus_controls`，使用
+`--alignment 已完成整句目录 --subject 被试 --output 新目录`。
+计算定义和四人双读法结果见[保留当前刺激的对照](../../docs/model_architecture/model_0923_oral_constraints.md#保留当前刺激的冻结规则对照)。
