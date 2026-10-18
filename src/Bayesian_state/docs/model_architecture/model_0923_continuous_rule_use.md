@@ -399,3 +399,37 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_devel
 全部122,688次ONLINE信念分配的证据均与H状态一致，其中119,002次没有新规则入场。
 6项输入保护测试及两个CLI检查通过。图源另核对888项数值，七张输入表逐字节一致，PNG完成视觉检查。
 口述、预留被试和新参数搜索均未进入本轮计算。
+
+## 三名开发被试的选择与表征扩展
+
+在上述自主结果基础上，继续对107、207、306比较BASE与ONLINE的实际选择预测及内部依据。
+每人保留原参数、SEARCH提议方案、精度保持机制和原时间分界，使用四个新的共同滤波种子与128粒子。
+107和306的参数来源仍为早期POOL选中点应用于SEARCH；207为SEARCH联合重拟合点。
+这一来源同时保存到逐人协议和状态配置中。
+
+新增入口为`src.Bayesian_state.workflows.analysis.model_0923_online_evidence_development_scores`，
+配置为`configs/shared/model0923_online_evidence_development_scores.yaml`。
+它复用已有ONLINE选择工作器，逐人导出兼容的`protocol.json`、`completion.json`、逐题概率和分段评分。
+后续既有状态入口按原种子精确重放，再统一应用两种冻结口述读法。
+条件3的错误、部分正确和正确反馈分别保留，反馈分层中的空组标为未定义。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_development_scores \
+  --config configs/shared/model0923_online_evidence_development_scores.yaml --output 新选择结果目录
+```
+
+`--smoke`对每人使用八题、两种机制各两个四粒子滤波和一个独立RETAIN控制，单进程运行。
+15个短任务已经完成，三条关闭ONLINE的控制逐数组精确复现原精度保持工作器。
+11项输入身份保护测试、10项已有状态保护测试及CLI检查通过。
+三份独立选择核验共重算117项数值，同时检查概率归一化、种子拼接及真实三值反馈。
+随后六次八题状态重放逐题精确复现原预测，每个ONLINE滤波发生28次证据信念更新。
+三份短口述读出及独立重算完成，2316项数值、625项输入绑定和216行反馈分层通过。
+这些短验证检验执行与计分；正式科学结论等待完整序列。
+
+完整流程已启动：24次选择滤波之后进行逐人独立核验、24次状态重放、六份口述对齐和统一独立重算。
+执行计划为`online_evidence_development_followthrough_20261018_v1`，绑定596项输入。
+选择结果写入`online_evidence_development_scores_20261018_v1/subject_{107,207,306}`；
+状态写入`online_evidence_development_states_{编号}_20261018_v1`；
+口述写入`online_evidence_development_oral_{编号}_{midpoint,relative}_20261018_v1`。
+本流程最多同时运行24个单数值线程计算进程，与已运行重拟合及状态重放的预算上限合计120个。
+全部参数继续冻结，预留被试保持未查看。

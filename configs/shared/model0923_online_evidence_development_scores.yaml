@@ -1,0 +1,9 @@
+# Same three development participants and fixed parameters as the completed paths.
+source: results/model_0923/online_evidence_development_20261018_v1
+worker_reference: results/model_0923/online_evidence_scores_20261018_v2
+subjects: [107, 207, 306]
+particles: 128
+filter_seeds: 4
+seed: 2026101901
+# 24 ready filters, alongside at most 80 refit and 16 state-replay workers.
+parallel_budget: 24
