@@ -2,7 +2,8 @@
 
 Use --scope SCOPE_FIT --generation GENERATION --output NEW_DIRECTORY. All
 choice comparisons use the scope experiment's common confirmation filters,
-including the original parameter points. Autonomous differences pair complete
+including the original parameter points. All shared confirmation candidates
+also compare mechanisms at exactly matched parameters. Autonomous differences pair complete
 original trajectory seeds. Original/prefix/full are parameter-selection labels;
 prefix/later/whole are chronological scoring windows. Every comparison is a
 development diagnostic. --smoke permits explicitly marked pipeline fixtures.
@@ -71,6 +72,59 @@ def paired_difference(target: dict, reference: dict) -> dict:
     return result
 
 
+def matched_choice_scores(confirmed: dict) -> tuple[list[dict], list[dict], dict]:
+    """Separate mechanism effects from parameter changes on the shared finalist bank."""
+    cache, inputs, scores, contrasts = {}, {}, [], []
+    for (subject, model, identity), point in confirmed.items():
+        file = Path(point['score_file']); record = load(file)
+        array = file.with_suffix('.npz')
+        data = verified_arrays(array, record['predictions_sha256'])
+        if ((record['subject'], record['model'], record['candidate']['id']) != (subject, model, identity)
+                or record['candidate']['hyperparams'] != point['hyperparams']
+                or record['seeds'] != data['seeds'].tolist()
+                or record['particles'] != point['particles']):
+            raise ValueError('Shared confirmation identity or numerical budget changed')
+        n, cut = len(data['choices']), record['training_trials']
+        p = data['probabilities']
+        if (p.shape[:2] != (len(data['seeds']), n) or not 0 < cut < n or len(data['seeds']) < 2
+                or len(set(data['seeds'].tolist())) != len(data['seeds'])
+                or not np.isfinite(p).all() or np.any(p < 0)):
+            raise ValueError('Need valid full sequences and independent confirmation filters')
+        np.testing.assert_allclose(p.sum(axis=-1), 1., atol=1e-12, rtol=0)
+        actual = np.take_along_axis(p, (data['choices']-1)[None, :, None], axis=2)[..., 0]
+        np.testing.assert_array_equal(actual, data['observed_probability'])
+        estimates = {}
+        for phase, first, last, field in [('prefix', 0, cut, 'prefix'), ('later', cut, n, 'later'),
+                                        ('whole', 0, n, 'full')]:
+            probability = actual[:, first:last]
+            value, deletions = nll(probability), jackknife_scores(probability)
+            np.testing.assert_allclose(value, point[field + '_nll'], atol=1e-12, rtol=0)
+            estimates[phase] = (value, deletions)
+            scores.append(dict(subject=subject, model=model, candidate_id=identity, phase=phase,
+                trials=last-first, particles=record['particles'], filter_seeds=len(data['seeds']),
+                choice_nll=value, choice_nll_mc_se=jackknife_se(deletions)))
+        cache[subject, model, identity] = (data, record, estimates)
+        inputs.update({str(file): digest(file), str(array): digest(array)})
+    identities = {(subject, identity) for subject, _, identity in confirmed}
+    if set(confirmed) != {(subject, arm, identity) for subject, identity in identities for arm in ('POOL', 'SEARCH')}:
+        raise ValueError('Mechanism comparison needs the identical confirmation candidate bank')
+    for subject, identity in sorted(identities):
+        pool, reference, baseline = cache[subject, 'POOL', identity]
+        search, target, estimate = cache[subject, 'SEARCH', identity]
+        if (reference['candidate']['hyperparams'] != target['candidate']['hyperparams']
+                or reference['particles'] != target['particles']
+                or reference['training_trials'] != target['training_trials']):
+            raise ValueError('Matched mechanisms need the same parameters, budget and trial boundary')
+        for field in ('seeds', 'choices', 'categories'):
+            np.testing.assert_array_equal(pool[field], search[field])
+        for phase in ('prefix', 'later', 'whole'):
+            contrasts.append(dict(subject=subject, candidate_id=identity, phase=phase,
+                target_model='SEARCH', reference_model='POOL',
+                delta_choice_nll=estimate[phase][0]-baseline[phase][0],
+                delta_choice_nll_mc_se=jackknife_se(estimate[phase][1]-baseline[phase][1])))
+    return scores, contrasts, inputs
+
+
 def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) -> None:
     if output.exists():
         raise FileExistsError('Use a new estimation-scope summary destination')
@@ -98,6 +152,8 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
     files = [scope / name for name in ('nominees.json', 'protocol.json', 'completion.json', 'confirmation_completion.json')]
     files += [generation / name for name in ('protocol.json', 'generation.json')]
     inputs = {str(file): digest(file) for file in files}
+    candidate_scores, matched_mechanisms, candidate_inputs = matched_choice_scores(confirmed)
+    inputs.update(candidate_inputs)
     cache = {}
     for key, row in generated.items():
         reference = confirmed[key]
@@ -193,7 +249,8 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
                     reference_model=reference_model, reference_scope=reference_scope, **paired_difference(target, reference)))
     output.mkdir(parents=True)
     for name, rows in [('scores', scores), ('curves', curves), ('paths', paths), ('parameters', parameters),
-                       ('contrasts', contrasts), ('inactive_parameters', inactive)]:
+                       ('contrasts', contrasts), ('inactive_parameters', inactive),
+                       ('candidate_scores', candidate_scores), ('matched_mechanisms', matched_mechanisms)]:
         frame = pd.DataFrame(rows)
         if name == 'inactive_parameters' and frame.empty:
             frame = pd.DataFrame(columns=['subject','model','objective','candidate_id','parameter','value','reason'])
@@ -207,6 +264,7 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
         uncertainty='fixed-parameter simulation error: paired complete confirmation filters and paired complete autonomous paths',
         identity='Repeated objective labels for the same parameter point share one path bank and one filter bank',
         original_parameters='rescored on the same confirmation seeds as prefix/full nominees',
+        matched_mechanisms='SEARCH minus POOL at each identical shared confirmation parameter point; common filter seeds',
         block_width=width, smoke_generation_prefix_only=smoke))
 
 

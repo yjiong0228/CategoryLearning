@@ -1,10 +1,14 @@
 """Scope scores preserve common random units and deterministic point identity."""
 from copy import deepcopy
+import json
 
 import numpy as np
 import pytest
 
-from src.Bayesian_state.evaluation.model_0923_estimation_scope import paired_difference, validate_generation
+from src.Bayesian_state.evaluation.model_0923_estimation_scope import (
+    digest, matched_choice_scores, paired_difference, validate_generation,
+)
+from src.Bayesian_state.workflows.analysis.model_0923_estimation_scope import score_scopes
 
 
 def point():
@@ -43,3 +47,48 @@ def test_generation_checks_task_feedback_and_absent_rule_contribution():
     arrays['contribution'][0, 0] = 0
     arrays['feedback'][0, 0] = 0
     with pytest.raises(AssertionError):validate_generation(arrays, record)
+
+
+@pytest.fixture
+def shared_bank(tmp_path):
+    confirmed = {}
+    observed = .2 + np.arange(3)[:, None]*.1 + np.arange(4)[None, :]*.02
+    for model, factor in [('POOL', 1.), ('SEARCH', 1.1)]:
+        file = tmp_path / (model + '.json'); array = file.with_suffix('.npz')
+        probability = factor*observed
+        np.savez(array, probabilities=np.stack([probability, 1-probability], axis=-1),
+                 observed_probability=probability, seeds=[3, 5, 7], choices=[1, 1, 1, 1], categories=[1, 2, 1, 2])
+        candidate = dict(id='same_point', hyperparams={'gamma': .9})
+        record = dict(subject=308, model=model, candidate=candidate, particles=512,
+                      seeds=[3, 5, 7], training_trials=2, predictions_sha256=digest(array))
+        file.write_text(json.dumps(record))
+        confirmed[308, model, 'same_point'] = dict(candidate, particles=512, score_file=str(file),
+                                                 **score_scopes(probability, 2))
+    return confirmed
+
+
+def test_matched_mechanisms_use_shared_parameters_and_paired_filters(shared_bank):
+    scores, contrasts, hashes = matched_choice_scores(shared_bank)
+    assert len(scores) == 6 and len(contrasts) == 3 and len(hashes) == 4
+    for row in contrasts:
+        assert row['delta_choice_nll'] == pytest.approx(-np.log(1.1))
+        assert row['delta_choice_nll_mc_se'] == pytest.approx(0., abs=1e-14)
+
+
+@pytest.mark.parametrize('change', ['parameters', 'seed_order', 'missing_point'])
+def test_matched_mechanisms_reject_misaligned_comparisons(shared_bank, change):
+    from pathlib import Path
+    point = shared_bank[308, 'SEARCH', 'same_point']
+    file = Path(point['score_file']); record = json.loads(file.read_text())
+    if change == 'parameters':
+        record['candidate']['hyperparams']['gamma'] = .8
+        point['hyperparams']['gamma'] = .8
+    elif change == 'seed_order':
+        array = file.with_suffix('.npz')
+        with np.load(array) as saved: data = {key: saved[key] for key in saved.files}
+        data['seeds'] = data['seeds'][::-1]; record['seeds'] = data['seeds'].tolist()
+        np.savez(array, **data); record['predictions_sha256'] = digest(array)
+    else:
+        shared_bank.pop((308, 'SEARCH', 'same_point'))
+    file.write_text(json.dumps(record))
+    with pytest.raises((ValueError, AssertionError)):matched_choice_scores(shared_bank)
