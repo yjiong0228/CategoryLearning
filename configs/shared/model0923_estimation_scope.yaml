@@ -1,0 +1,13 @@
+protocol: model0923_estimation_scope_v1
+seed: 2026101832
+fit: results/model_0923/recalled_search_refit_20261018_v1
+subjects: [308]
+sample_role: development
+parallel_budget: 128
+bank_stages: [screen, refine, exchange, selection, confirmation]
+screen_top_per_objective: 3
+selection_top_per_objective: 2
+budgets:
+  screen: {particles: 128, seeds: 2}
+  selection: {particles: 256, seeds: 4}
+  confirmation: {particles: 512, seeds: 8}
