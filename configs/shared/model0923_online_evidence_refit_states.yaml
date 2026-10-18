@@ -1,0 +1,8 @@
+protocol: model0923_online_evidence_refit_decision_basis_v1
+source_kind: online_evidence_refit
+source: results/model_0923/online_evidence_refit_s208_evaluation_20261018_v1
+subjects: [208]
+arms: [POOL, SEARCH]
+workers: 16
+seeds_per_arm: 8
+sample_role: development

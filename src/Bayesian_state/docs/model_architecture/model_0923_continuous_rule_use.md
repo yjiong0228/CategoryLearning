@@ -314,6 +314,40 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit
 此次重估用于检验新机制能否同时改善学习时程与错误概率，完整拟合结论尚待计算。
 准备核验记录位于`online_evidence_refit_readiness_20261018_v2`。
 
+### 重估参数的状态重放与口述检验
+
+新参数冻结后，状态入口从已完成的ONLINE拟合与选择评价中读取实际被选参数、原粒子数和全部原滤波种子。
+它同时核对评价前保存的计划、实际执行任务、精度保持记录和ONLINE更新记录。
+关闭的亲和度转移坐标必须保持已声明的固定值，原前段选择之外的数据使用会被拒绝。
+状态计算继续使用已有粒子滤波观察器和ONLINE机制，每题选择概率必须精确复现保存的原预测。
+随后在本题选择后、反馈前的同一状态上应用冻结口述编码。
+
+入口为`src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit_states`，
+配置为`configs/shared/model0923_online_evidence_refit_states.yaml`。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit_states \
+  --phase replay --config configs/shared/model0923_online_evidence_refit_states.yaml --output 新状态目录
+python -m src.Bayesian_state.workflows.analysis.model_0923_online_evidence_refit_states \
+  --phase align --source 已完成的新状态目录 --oral-audit 冻结口述编码目录 --output 新口述目录
+```
+
+状态阶段的`--smoke`使用首个声明方案的首个原种子，最多16题，粒子数保持原评价值。
+口述报告携带ONLINE机制、精度保持、前段选参范围、固定坐标及实际拟合来源，
+明确记录热启动投影和实际预算需另行核对。后续与原方案的比较包含机制与重新估参的共同变化。
+
+14项新增执行身份与选参边界测试、10项已有ONLINE状态保护测试及CLI检查通过。
+另在实际拟合工作器已经保存的两个八题输出上运行状态工作器：POOL为512粒子，SEARCH为128粒子。
+全部64个选择概率逐值一致，16个选择身份及16项选择—依据联合质量核对通过；
+ONLINE更新分别为3584和896次，观察器汇总舍入差最大为1.11×10⁻¹⁶。
+该数值控制使用旧固定参数，完整新参数的状态检验等待正在运行的拟合与评价完成。
+
+执行队列`online_evidence_refit_state_followthrough_20261018_v1`已启动等待，绑定31项输入。
+它先对实际新参数分别执行POOL和SEARCH短重放，随后运行16次完整状态重放和两种口述对齐。
+完整输出为`online_evidence_refit_states_20261018_v1`与
+`online_evidence_refit_oral_{midpoint,relative}_20261018_v1`，数值控制保存于
+`online_evidence_refit_state_worker_control_20261018_v1`。完整科研结果仍待计算。
+
 ## 在线证据的实现与复现
 
 机制位于[在线证据信念](../../model/modules/hypothesis_transition/online_evidence_belief.py)，
