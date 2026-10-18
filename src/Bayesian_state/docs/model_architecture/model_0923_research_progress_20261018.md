@@ -22,6 +22,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 | 完整行为评价如何比较两种方案 | [七张图与全部源表](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_refit_20261018_v2/index.html)；[条件预测核对](#三人的完整条件预测核对) | 48次滤波、768条自主路径；训练参数冻结后检验后段选择 |
 | 306的负效应在重新估参后是否保留 | [全部256条自主路径](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_s306_20261018_v2/subject_306.png)；[五张图与源表](../../../../CategoryLearning_codes/figures/outputs/fig3/recalled_search_s306_20261018_v2/index.html)；[解释](#306重拟合后仍保留生成与后段预测损失) | 两方案各8次512粒子滤波、128条自主路径；双读法口述也已完成，SEARCH后段支持略低 |
 | 精度保持能否同时改善三类证据 | [K2联合证据图](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_k2_oral_20261018_v2/precision_oral_tradeoff.png)；[K4联合证据图](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_k4_oral_20261018_v1/precision_oral_tradeoff.png)；[解释](model_0923_reentry_precision.md#两种容量下的行为收益与口述取舍) | 208两种容量的选择与自主过程改善，口述支持略降、冲突基本不变；联合重拟合已完成，冻结参数评价正在运行 |
+| 重新估参后能否保持生成收益 | [全部512条新旧自主路径](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_refit_autonomous_20261018_v1/index.html)；[结果解释](model_0923_reentry_precision.md#重估参数后的自主过程) | 208两方案各128条路径；正确规则更早、更稳定在场，作答贡献下降约0.13，末段正确率仍约0.70；新参数选择评分运行中 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
 | 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
@@ -135,7 +136,8 @@ SEARCH按完整目录计算历史提议证据，其心理计算成本仍需进�
 随后明确它对后段行为和口述的收益或代价，并检验重新估参后的结论。
 共同设计的冻结依据是这一证据组合、适用范围与实现复杂度。个体参数的心理解释另按恢复和补偿证据决定。
 
-当前RETAIN共同搜索设置下的重拟合已完成，POOL与SEARCH选中同一参数点，冻结参数的行为与自主评价正在运行。
+当前RETAIN共同搜索设置下的重拟合已完成，POOL与SEARCH选中同一参数点，全部256条新自主路径也已完成。
+正确规则更早、更稳定在场，作答贡献降低，末段生成正确率仍约0.70；新参数的条件选择评价正在运行。
 16条模拟前缀的交叉恢复已完成：容量选对15条，RESET／RETAIN选对9条，均以其余参数已知为条件。
 接下来依次完成新参数评价、精确复现原预测的状态重放、两种固定读法的口述比较。
 全部参数共同未知时的恢复，以及与其他模型家族的口述比较，属于后续验证范围。
@@ -2910,3 +2912,22 @@ K4／RETAIN的三条误判路径均未发生正确规则重入，但分别有44�
 保存全部结果。独立重算272项数值并核对645项输入哈希，绘图另重算128个差值与误差。
 图示保留四位小数，原始源表不变，8项绘图测试通过，PNG视觉检查通过。
 详见[恢复解释范围](model_0923_reentry_precision.md#完整恢复结果及其解释范围)。
+
+### 208重新估参后的规则在场与使用分离
+
+新RETAIN的256条自主路径已完成，原RESET的256条对应路径完整保留。
+末128题正确率为POOL 0.698853、SEARCH 0.701904，被试为0.906250；四个新旧组合均有0/128条路径达到被试末段正确率。
+全程Energy的RETAIN减RESET差为POOL −0.000683 ± 0.002698、SEARCH −0.004087 ± 0.002839；
+末192题差分别为+0.007426 ± 0.003236、+0.000595 ± 0.003606。
+误差按完整路径种子配对计算，固定参数下的生成收益在这轮重新估参后明显减弱。
+
+两方案的新参数容量均为6，基础全局搜索概率均为0.2；原参数对应值为4和0.8。
+SEARCH的基础搜索发生率另由0.15增至0.35。正确规则首次在场平均提前约30题与19题，
+末段在场率升至1.000与0.996，但末段作答贡献由约0.60降至0.47。
+两方案正确规则自主退出仍均为零，容量移除更少。
+当前轨迹把后续诊断聚焦到在场规则的贡献分配，具体参数与存储机制的作用继续结合固定参数对照判断。
+新参数的选择评分和口述检验尚待完成，最终取舍将结合这两类证据。
+
+[完整路径图与源表](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_refit_autonomous_20261018_v1/index.html)
+已保留全部512条路径及9216个分组点。独立重算182项数值、1536次完整路径删除评分，原六个分段分数精确复现。
+CLI、绘图源表核对与PNG视觉检查通过，详见[自主过程说明](model_0923_reentry_precision.md#重估参数后的自主过程)。
