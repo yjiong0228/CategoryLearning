@@ -7,7 +7,7 @@ import pytest
 
 from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import build_relational_0923_space
 from src.Bayesian_state.workflows.analysis.model_0923_oral_extreme_mapping_audit import (
-    classify_extreme, compare_mappings, extreme_signatures,
+    classify_extreme, compare_mappings, extreme_signatures, mapping_strata,
 )
 
 
@@ -75,3 +75,38 @@ def test_no_training_reports_does_not_choose_map_from_test():
                                dict(phase='training', dimension=1, choice=0)])
 def test_invalid_coordinate_or_boundary_rejected(bad):
     with pytest.raises(ValueError): compare_mappings(pd.DataFrame([bad]))
+
+
+def test_feedback_and_literal_strata_retain_partial_feedback_and_all_maps():
+    frame = pd.DataFrame([
+        dict(phase='training', dimension=1, choice=2, feedback=1., literal_holds=True),
+        dict(phase='training', dimension=2, choice=3, feedback=.5, literal_holds=False),
+        dict(phase='test', dimension=1, choice=2, feedback=0., literal_holds=True),
+        dict(phase='test', dimension=2, choice=1, feedback=.5, literal_holds=True),
+        dict(phase='test', dimension=2, choice=3, feedback=1., literal_holds=False),
+    ])
+    scores, _ = compare_mappings(frame); before = scores.copy(deep=True)
+    split = mapping_strata(frame, scores)
+    pd.testing.assert_frame_equal(scores, before)
+    assert len(split) == 24 * 2 * 3 * 2
+    assert split.groupby('mapping').reports.sum().eq(len(frame)).all()
+    assert split.loc[split.feedback.eq(.5)].groupby('mapping').reports.sum().eq(2).all()
+    expected = scores.set_index('mapping')
+    for phase in ('training', 'test'):
+        actual = split.loc[split.phase.eq(phase)].groupby('mapping').matches.sum()
+        pd.testing.assert_series_equal(actual, expected[phase + '_matches'].sort_index(), check_names=False)
+    assert split.groupby('mapping').training_best.nunique().eq(1).all()
+    assert set(split.loc[split.training_best, 'mapping']) == set(scores.loc[scores.training_best, 'mapping'])
+    best_errors = split.loc[split.training_best & split.phase.eq('test') & split.feedback.eq(0)]
+    assert best_errors.matches.sum() == 2  # Two training-tied maps retain the same error match.
+    best_partial = split.loc[split.training_best & split.phase.eq('test') & split.feedback.eq(.5)]
+    assert best_partial.matches.sum() == 0  # An unfavorable later stratum stays unfavorable.
+
+
+@pytest.mark.parametrize('feedback,holds', [(0.25, True), (0., None)])
+def test_unknown_strata_not_silently_assigned(feedback, holds):
+    frame = pd.DataFrame([dict(phase='training', dimension=1, choice=1,
+                              feedback=feedback, literal_holds=holds)])
+    scores, _ = compare_mappings(frame)
+    with pytest.raises(ValueError):
+        mapping_strata(frame, scores)

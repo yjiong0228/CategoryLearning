@@ -6,6 +6,8 @@ their four regions and responses are retained. Training-segment maxima and all
 their ties are evaluated unchanged on later reports. This developmental coding
 diagnostic supplies design evidence; it does not fit model parameters or replace
 the model's oral predictions. All original reports retain a coverage record.
+feedback_strata.csv separates feedback 0, 0.5 and 1 and literal agreement with
+the current stimulus, while preserving the original training-only selection.
 """
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ import pandas as pd
 from threadpoolctl import threadpool_limits
 
 from . import model_0923_decision_basis_alignment as alignment
+from . import model_0923_oral_literal_audit as literal
+from ...evaluation.oral import constraint_alignment
 from ...hypothesis_space.spaces import continuous, regions, structural_0923
 
 ROOT = alignment.ROOT
@@ -90,6 +94,27 @@ def compare_mappings(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return scores, summary
 
 
+def mapping_strata(frame: pd.DataFrame, scores: pd.DataFrame) -> pd.DataFrame:
+    """Retain all maps and feedback levels; strata never select a new map."""
+    if (not frame.feedback.isin([0., .5, 1.]).all()
+            or frame.literal_holds.isna().any()
+            or not frame.literal_holds.isin([True, False]).all()):
+        raise ValueError('Need known three-level feedback and literal verdicts')
+    rows = []
+    for item in scores.itertuples(index=False):
+        mapping = np.asarray(json.loads(item.mapping))
+        matched = mapping[frame.dimension.to_numpy(int) - 1] == frame.choice.to_numpy(int)
+        for phase in ('training', 'test'):
+            for feedback in (0., .5, 1.):
+                for holds in (False, True):
+                    mask = (frame.phase.eq(phase) & frame.feedback.eq(feedback)
+                            & frame.literal_holds.eq(holds)).to_numpy(dtype=bool)
+                    rows.append(dict(mapping=item.mapping, canonical=item.canonical,
+                        training_best=item.training_best, phase=phase, feedback=feedback,
+                        literal_holds=holds, reports=int(mask.sum()), matches=int((mask & matched).sum())))
+    return pd.DataFrame(rows)
+
+
 def run(audit: Path, prepared: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new extreme-mapping audit directory')
@@ -111,6 +136,14 @@ def run(audit: Path, prepared: Path, output: Path) -> None:
         count = int((oral.iSub == subject).sum())
         frame, cut = alignment.align_identities(oral, dict(folder=str(folder)), count)
         np.testing.assert_array_equal(frame.ordinal_trial, np.arange(1, count + 1))
+        parts = []
+        for name in ('training.npz', 'sealed_test.npz'):
+            with np.load(folder / name) as saved:
+                parts.append({key: saved[key] for key in ('stimulus', 'feedback')})
+        physical = np.concatenate([part['stimulus'] for part in parts])
+        frame['feedback'] = np.concatenate([part['feedback'] for part in parts])
+        frame['literal_holds'] = pd.Series(pd.NA, index=frame.index, dtype='boolean')
+        frame['literal_max_signed_violation'] = np.nan
         for name in ('prepared.json', 'training.npz', 'sealed_test.npz'):
             inputs[str((folder / name).resolve())] = digest(folder / name)
         data_path = Path(meta['paths']['learning_data']); inputs[str(data_path.resolve())] = digest(data_path)
@@ -132,13 +165,18 @@ def run(audit: Path, prepared: Path, output: Path) -> None:
                 raise ValueError('Frozen catalogue coverage differs from its extreme labels')
             frame.loc[index, ['extreme_kind', 'dimension', 'catalogue_rule', 'feature_name', 'canonical_match', 'audit_scope']] = [
                 kind, dimension, rule, row[f'feature{dimension}_name'], canonical, 'exact_single_extreme']
+            checked = literal.literal_check(json.loads(row.tokens), physical[int(row.state_trial)])
+            frame.loc[index, 'literal_holds'] = checked['numeric_holds']
+            frame.loc[index, 'literal_max_signed_violation'] = checked['max_signed_halfspace_violation']
         frames.append(frame)
     full = pd.concat(frames, ignore_index=True)
     selected = full.loc[full.audit_scope.eq('exact_single_extreme')].copy()
-    mapping_tables, summaries, cross = [], [], []
+    mapping_tables, summaries, cross, strata = [], [], [], []
     for (subject, kind), group in selected.groupby(['iSub', 'extreme_kind'], sort=True):
         table, summary = compare_mappings(group)
         table.insert(0, 'subject', subject); table.insert(1, 'kind', kind); mapping_tables.append(table)
+        split = mapping_strata(group, table)
+        split.insert(0, 'subject', subject); split.insert(1, 'kind', kind); strata.append(split)
         summaries.append(dict(subject=subject, kind=kind, **summary))
         for phase in ('training', 'test'):
             for dimension in range(1, 5):
@@ -155,8 +193,10 @@ def run(audit: Path, prepared: Path, output: Path) -> None:
             exact_single_extreme=int(exact.sum()), canonical_extreme_matches=int(group.loc[exact, 'canonical_match'].sum())))
     tables = dict(summary=pd.DataFrame(summaries), mappings=pd.concat(mapping_tables, ignore_index=True),
         crosstabs=pd.DataFrame(cross), coverage=pd.DataFrame(coverage),
+        feedback_strata=pd.concat(strata, ignore_index=True),
         reports=full[['iSub', 'condition', 'iSession', 'iTrial', 'ordinal_trial', 'phase', 'choice', 'scope',
-                      'audit_scope', 'extreme_kind', 'dimension', 'feature_name', 'catalogue_rule', 'canonical_match', 'text']])
+                      'audit_scope', 'extreme_kind', 'dimension', 'feature_name', 'catalogue_rule', 'canonical_match', 'text',
+                      'feedback', 'literal_holds', 'literal_max_signed_violation']])
     output.mkdir(parents=True)
     for name, table in tables.items():
         table.to_csv(output / (name + '.csv'), index=False)
@@ -165,14 +205,18 @@ def run(audit: Path, prepared: Path, output: Path) -> None:
         '训练段得分最高的所有对应均保留，后续段只核对这些对应。'
         '这些计数用于开发阶段的模型设计，口述未用于估计行为模型参数，也未替换模型的口述预测。'
         '报告可能包含刺激描述；报告与选择的关联也可能来自共同刺激。计数本身不能确定被试使用了该分类策略。'
-        '参与者均为开发样本，后续段计数属于描述性核对。')
+        '参与者均为开发样本，后续段计数属于描述性核对。'
+        '补充交叉表分别保留反馈0、0.5、1及口述是否符合本题刺激；0.5表示部分正确，单独记录。'
+        '这些分层沿用全部24种对应及原训练最优标记，各层均未重新选择对应。')
     page = ('<!doctype html><html lang="zh"><meta charset="utf-8"><title>极值报告与类别对应</title>'
         '<style>body{font:16px sans-serif;max-width:1200px;margin:30px auto}td,th{padding:5px}</style>'
         '<h1>极值报告与类别对应</h1><p>' + caption + '</p>' + tables['summary'].to_html(index=False)
         + '<p><a href="mappings.csv">全部24种对应</a> · <a href="crosstabs.csv">部位与选择交叉表</a> · '
-        '<a href="coverage.csv">完整覆盖记录</a> · <a href="reports.csv">逐份报告</a></p></html>')
+        '<a href="coverage.csv">完整覆盖记录</a> · <a href="reports.csv">逐份报告</a> · '
+        '<a href="feedback_strata.csv">反馈与字面一致性分层</a></p></html>')
     (output / 'index.html').write_text(page)
-    sources = [Path(__file__), Path(alignment.__file__), Path(continuous.__file__), Path(regions.__file__), Path(structural_0923.__file__)]
+    sources = [Path(__file__), Path(alignment.__file__), Path(continuous.__file__), Path(regions.__file__),
+               Path(structural_0923.__file__), Path(literal.__file__), Path(constraint_alignment.__file__)]
     archive = output / 'source'; archive.mkdir()
     for path in sources:
         shutil.copy2(path, archive / path.name)
@@ -181,6 +225,8 @@ def run(audit: Path, prepared: Path, output: Path) -> None:
         versions={name: importlib.metadata.version(name) for name in ('numpy', 'pandas', 'scipy', 'threadpoolctl')},
         catalogue_version=space.version, catalogue_signature=space.signature,
         selection='all training-best ties retained; later reports never select or resolve mappings',
+        feedback_levels=[0., .5, 1.], literal_tolerance=literal.TOLERANCE,
+        strata='all 24 mappings by phase, feedback and literal agreement; no within-stratum selection',
         data_use='oral-response descriptive diagnostic; no behavior-model fit and no model prediction replacement',
         artifacts={str(p.relative_to(output)): digest(p) for p in output.rglob('*') if p.is_file()})
     (output / 'manifest.json').write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
