@@ -1,0 +1,4 @@
+source: results/model_0923/online_evidence_scores_20261018_v2
+proposal_arm: POOL
+sample_role: development
+workers: 8
