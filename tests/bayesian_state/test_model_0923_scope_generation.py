@@ -1,10 +1,16 @@
 """Parameter scope labels share paths only for the same scientific point."""
 from copy import deepcopy
+import json
+from pathlib import Path
 
+import numpy as np
 import pytest
 
 from src.Bayesian_state.optimization.search.adaptive_proposals import candidate
-from src.Bayesian_state.workflows.analysis.model_0923_scope_generation import point_bindings, provisional_full_nominees
+from src.Bayesian_state.workflows.analysis.model_0923_scope_generation import (
+    point_bindings, provisional_full_nominees, reference_generation, validate_reused_bank,
+)
+from src.Bayesian_state.evaluation.model_0923_h_validation import digest
 
 
 def inputs():
@@ -90,3 +96,72 @@ def test_different_subjects_can_use_distinct_shared_seed_banks():
         for row in group['rows']:row['seeds'] = [53,61]
     stage['groups'] += more;stage['points'] *= 2;stage['seed_jobs'] *= 2
     assert len(provisional_full_nominees(stage,[208,308])) == 4
+
+
+@pytest.fixture
+def reuse_fixture(tmp_path):
+    source = tmp_path/'saved';source.mkdir()
+    (source/'source').mkdir()
+    engine = source/'source/engine.py';engine.write_text('frozen engine')
+    wrapper = source/'source/wrapper.py';wrapper.write_text('earlier generation wrapper')
+    task = tmp_path/'task';task.write_text('unchanged task')
+    settings = dict(mechanism='E', arms={'POOL':{'capacity':'pooled'}}, features=['neck'])
+    frozen = dict(settings=settings, source_sha256={'engine.py':digest(engine)}, input_sha256={str(task):digest(task)})
+    point = candidate({'engine.modules.hypo_transitions_mod.kwargs.max_capacity':2},'fixture')
+    array = source/'bank.npz';zero=np.zeros((2,2))
+    np.savez(array,seeds=[11,17],categories=[1,2],probabilities=np.full((2,2,4),.25),
+             choices=[[1,2],[2,1]],feedback=[[1,1],[0,0]],correct_probability=np.full((2,2),.25),
+             present=zero,contribution=zero,beta=zero,active_count=np.ones((2,2)),search=zero,
+             target_exited=zero,target_capacity_dropped=zero)
+    row = dict(subject=308,model='POOL',candidate_id=point['id'],candidate=point,paths=2,trials=2,
+               training_trials=1,condition=2,target_rule=42,role='autonomous_from_start',
+               target=str(array.with_suffix('')),predictions_sha256=digest(array))
+    scope = tmp_path/'scope';reference=tmp_path/'reference'
+    protocol=dict(smoke=False,scope=str(scope),reference=str(reference),bindings=[],settings=settings,
+                  source_sha256={**frozen['source_sha256'],'wrapper.py':digest(wrapper)},
+                  input_sha256=deepcopy(frozen['input_sha256']))
+    result=dict(status='complete',smoke=False,bindings=[],rows=[row])
+    for name,data in [('protocol',protocol),('generation',result)]:
+        (source/(name+'.json')).write_text(json.dumps(data))
+    return source,scope,reference,frozen,row
+
+
+def test_reuse_checks_archived_wrapper_without_requiring_new_wrapper_identity(reuse_fixture):
+    source,scope,reference,frozen,row = reuse_fixture
+    records,inputs = reference_generation(source,scope,reference,frozen)
+    assert list(records)==[(308,'POOL',row['candidate_id'])]
+    file=validate_reused_bank(row,row['candidate'],[11,17],row,np.array([1,2]))
+    assert file==source/'bank.npz' and str(source/'source/wrapper.py') in inputs
+
+
+@pytest.mark.parametrize('fault',['scope','incomplete','smoke','mechanism','source','archive','task','duplicate','identity'])
+def test_reuse_rejects_changed_provenance(reuse_fixture,fault):
+    source,scope,reference,frozen,row = reuse_fixture
+    p=json.loads((source/'protocol.json').read_text());g=json.loads((source/'generation.json').read_text())
+    if fault=='scope':p['scope']=str(scope/'other')
+    elif fault=='incomplete':g['status']='running'
+    elif fault=='smoke':g['smoke']=True
+    elif fault=='mechanism':p['settings']['mechanism']='J'
+    elif fault=='source':p['source_sha256']['engine.py']='changed'
+    elif fault=='archive':(source/'source/wrapper.py').write_text('changed')
+    elif fault=='task':Path(next(iter(frozen['input_sha256']))).write_text('changed')
+    elif fault=='duplicate':g['rows'].append(deepcopy(row))
+    else:g['rows'][0]['candidate']['hyperparams']['engine.modules.hypo_transitions_mod.kwargs.max_capacity']=4
+    (source/'protocol.json').write_text(json.dumps(p));(source/'generation.json').write_text(json.dumps(g))
+    with pytest.raises(ValueError):reference_generation(source,scope,reference,frozen)
+
+
+@pytest.mark.parametrize('fault',['parameters','count','trials','condition','target','seed_order','categories','array'])
+def test_reuse_requires_full_matching_path_bank(reuse_fixture,fault):
+    source,_,_,_,row = reuse_fixture
+    point=deepcopy(row['candidate']);original=deepcopy(row);seeds=[11,17];categories=np.array([1,2])
+    if fault=='parameters':point['hyperparams']['engine.modules.hypo_transitions_mod.kwargs.max_capacity']=4
+    elif fault=='count':row['paths']=1
+    elif fault=='trials':row['trials']=1
+    elif fault=='condition':row['condition']=3
+    elif fault=='target':row['target_rule']=43
+    elif fault=='seed_order':seeds.reverse()
+    elif fault=='categories':categories=categories[::-1]
+    else:(source/'bank.npz').write_bytes(b'changed')
+    with pytest.raises((ValueError,AssertionError)):
+        validate_reused_bank(row,point,seeds,original,categories)

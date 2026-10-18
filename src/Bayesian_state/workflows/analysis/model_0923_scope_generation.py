@@ -10,6 +10,8 @@ trials per distinct point and one worker, and checks original-point predictions.
 --selection-stage compares the completed selection stage's full-sequence winners
 with the originals while confirmation continues. Its provenance remains explicitly
 provisional. --parallel-budget bounds this independent generation queue.
+--reuse-generation COMPLETE_GENERATION references identical complete path banks
+from this scope experiment after checking task, implementation and seed identity.
 """
 from __future__ import annotations
 
@@ -87,8 +89,67 @@ def provisional_full_nominees(stage: dict, subjects: list[int]) -> list[dict]:
             for (subject, arm), rows in sorted(groups.items())]
 
 
+def reference_generation(source: Path, scope: Path, reference: Path, frozen: dict) -> tuple[dict, dict]:
+    """Verify a completed bank's task and archived executing implementation."""
+    v = recalled.base.validation()
+    protocol = v.read(source / 'protocol.json'); result = v.read(source / 'generation.json')
+    if (result['status'] != 'complete' or result['smoke'] or protocol['smoke']
+            or Path(protocol['scope']).resolve() != scope.resolve()
+            or Path(protocol['reference']).resolve() != reference.resolve()
+            or result['bindings'] != protocol['bindings']):
+        raise ValueError('Reusable generation must be complete and belong to this scope experiment')
+    for name in ('mechanism', 'arms', 'features'):
+        if protocol['settings'][name] != frozen['settings'][name]:
+            raise ValueError('Reusable generation mechanism or task settings changed')
+    for name, sha in frozen['source_sha256'].items():
+        if protocol['source_sha256'].get(name) != sha:
+            raise ValueError('Reusable generation executing implementation changed')
+    # The generation wrapper may have gained reuse/reporting options. Verify its
+    # archived executing copy, while requiring every frozen engine source to match.
+    inputs = {str(source / name): v.digest(source / name) for name in ('protocol.json', 'generation.json')}
+    for name, sha in protocol['source_sha256'].items():
+        file = source / 'source' / name
+        if v.digest(file) != sha: raise ValueError('Reusable generation archived source changed')
+        inputs[str(file)] = sha
+    for hashes in (protocol['input_sha256'], frozen['input_sha256']):
+        for name, sha in hashes.items():
+            if v.digest(Path(name)) != sha: raise ValueError('Reusable generation task or input changed')
+            inputs[name] = sha
+    records = {}
+    for row in result['rows']:
+        key = row['subject'], row['model'], row['candidate_id']
+        if (key in records or row['candidate_id'] != point_id(row['candidate']['hyperparams'])
+                or row['candidate']['id'] != row['candidate_id']):
+            raise ValueError('Duplicate or invalid reusable parameter identity')
+        records[key] = row
+    return records, inputs
+
+
+def validate_reused_bank(row: dict, point: dict, seeds: list[int], original: dict,
+                         categories: np.ndarray) -> Path:
+    """Require the same full task and random paths before sharing a saved bank."""
+    from ...evaluation.model_0923_estimation_scope import validate_generation
+    v = recalled.base.validation()
+    if (row['candidate']['hyperparams'] != point['hyperparams'] or row['candidate_id'] != point['id']
+            or row['paths'] != len(seeds) or row['role'] != 'autonomous_from_start'
+            or any(row[name] != original[name] for name in ('trials', 'training_trials', 'condition', 'target_rule'))):
+        raise ValueError('Reusable bank differs in parameters, path count or task')
+    file = Path(row['target']).with_suffix('.npz')
+    if v.digest(file) != row['predictions_sha256']:
+        raise ValueError('Reusable prediction bank changed')
+    with np.load(file) as saved:
+        arrays = dict(saved)
+    np.testing.assert_array_equal(arrays['seeds'], seeds)
+    np.testing.assert_array_equal(arrays['categories'], categories)
+    if arrays['probabilities'].shape[:2] != (len(seeds), row['trials']):
+        raise ValueError('Reusable bank must contain every complete trajectory')
+    validate_generation(arrays, row)
+    return file
+
+
 def run(scope: Path, reference: Path, output: Path, smoke: bool,
-        selection_stage: bool = False, parallel_budget: int | None = None) -> None:
+        selection_stage: bool = False, parallel_budget: int | None = None,
+        reuse_generation: Path | None = None) -> None:
     v = recalled.base.validation()
     protocol = v.read(scope / 'protocol.json')
     checkpoint = scope / ('selection_completion.json' if selection_stage else 'nominees.json')
@@ -128,6 +189,11 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
         reference / 'autonomous/evaluation.json']
     if not selection_stage: input_files.append(scope / 'completion.json')
     inputs = {str(file): v.digest(file) for file in input_files}
+    reusable = {}
+    if reuse_generation is not None:
+        if smoke: raise ValueError('Reusable generation requires full scientific paths')
+        reusable, reuse_inputs = reference_generation(reuse_generation, scope, reference, frozen)
+        inputs.update(reuse_inputs)
     if selection_stage:
         from .model_0923_estimation_scope import score_scopes
         for row in frozen['nominees']:
@@ -152,6 +218,7 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
         inputs[str(old_file)] = old['predictions_sha256']
         with np.load(old_file) as saved:
             seeds = saved['seeds'][:2 if smoke else settings['autonomous_paths']].tolist()
+            categories = saved['categories']
         count = 2 if smoke else settings['autonomous_paths']
         if len(seeds) != count or len(set(seeds)) != count:
             raise ValueError('Original paths do not provide the requested common seed bank')
@@ -164,6 +231,14 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
                 raise ValueError('Reference reuse requires the complete original path bank')
             plans.append(dict(subject=subject, model=model, candidate_id=identity, original_reference=str(old_file),
                               target=str(old_file.with_suffix('')), reused_reference=True, record=old))
+            continue
+        reused = reusable.get((subject, model, identity))
+        if reused is not None:
+            file = validate_reused_bank(reused, point, seeds, old, categories)
+            inputs[str(file)] = reused['predictions_sha256']
+            plans.append(dict(subject=subject, model=model, candidate_id=identity,
+                              target=str(file.with_suffix('')), reused_reference=False,
+                              reused_generation=str(reuse_generation.resolve()), record=reused))
             continue
         templates = sorted((reference / 'jobs').glob(f'AUTO_evaluate_S{subject}_{model}_*.json'))
         if not templates:
@@ -206,7 +281,7 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
         recalled.execute(jobs, output, settings['parallel_budget'])
     records, exact = [], 0
     for plan in plans:
-        row = plan['record'] if plan['reused_reference'] else v.combine_evaluation_chunks(plan['job'], plan['chunks'], True)
+        row = plan['record'] if 'record' in plan else v.combine_evaluation_chunks(plan['job'], plan['chunks'], True)
         target = Path(plan['target']).with_suffix('.npz')
         if v.digest(target) != row['predictions_sha256']:
             raise ValueError('Generated bank changed')
@@ -220,8 +295,10 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
                         expected = old[field][:len(new['seeds']), :new[field].shape[1]]
                     np.testing.assert_array_equal(new[field], expected, err_msg=f'Original autonomous prefix changed: {field}')
             exact += 1
-        records.append(dict(row, target=plan['target'], candidate_id=plan['candidate_id'],
-                            reused_reference=plan['reused_reference']))
+        record = dict(row, target=plan['target'], candidate_id=plan['candidate_id'],
+                      reused_reference=plan['reused_reference'])
+        if 'reused_generation' in plan: record['reused_generation'] = plan['reused_generation']
+        records.append(record)
     if smoke and exact != len(paths_by_subject)*2:
         raise ValueError('Smoke run must verify the original point for each mechanism')
     for name, sha in inputs.items():
@@ -241,8 +318,10 @@ def main() -> None:
     parser.add_argument('--smoke', action='store_true')
     parser.add_argument('--selection-stage', action='store_true')
     parser.add_argument('--parallel-budget', type=int)
+    parser.add_argument('--reuse-generation', type=Path)
     args = parser.parse_args()
-    run(args.scope, args.reference, args.output, args.smoke, args.selection_stage, args.parallel_budget)
+    run(args.scope, args.reference, args.output, args.smoke, args.selection_stage, args.parallel_budget,
+        args.reuse_generation)
 
 
 if __name__ == '__main__':
