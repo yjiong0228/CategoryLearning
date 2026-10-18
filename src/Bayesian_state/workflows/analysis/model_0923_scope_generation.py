@@ -7,6 +7,9 @@ points within a mechanism share one path bank; original banks are referenced
 without copying. New paths use the shared archived autonomous learning engine.
 All comparisons are development diagnostics. --smoke uses two paths of sixteen
 trials per distinct point and one worker, and checks original-point predictions.
+--selection-stage compares the completed selection stage's full-sequence winners
+with the originals while confirmation continues. Its provenance remains explicitly
+provisional. --parallel-budget bounds this independent generation queue.
 """
 from __future__ import annotations
 
@@ -24,15 +27,18 @@ ROOT = recalled.ROOT
 ENTRY = str(Path(__file__).resolve().relative_to(ROOT))
 
 
-def point_bindings(selected: list[dict], original: list[dict]) -> tuple[list[dict], dict]:
+def point_bindings(selected: list[dict], original: list[dict],
+                   objectives: tuple[str, ...] = ('prefix', 'full')) -> tuple[list[dict], dict]:
     """Share matching points within an arm while keeping objective identities."""
+    if not objectives or len(set(objectives)) != len(objectives) or not set(objectives) <= {'prefix', 'full'}:
+        raise ValueError('Need unique recognized selection objectives')
     subjects = {row['subject'] for row in selected}
     bindings, points, seen = [], {}, set()
     items = selected + [dict(row, objective='original') for row in original if row['subject'] in subjects]
     for row in items:
         subject, model, objective = row['subject'], row['model'], row['objective']
         key = subject, model, objective
-        if model not in ('POOL', 'SEARCH') or objective not in ('prefix', 'full', 'original') or key in seen:
+        if model not in ('POOL', 'SEARCH') or objective not in (*objectives, 'original') or key in seen:
             raise ValueError('Need unique original/prefix/full bindings for both mechanisms')
         seen.add(key)
         point = row['candidate']
@@ -42,22 +48,64 @@ def point_bindings(selected: list[dict], original: list[dict]) -> tuple[list[dic
         points.setdefault(identity, candidate(point['hyperparams'], 'frozen_scope_diagnostic'))
         bindings.append(dict(subject=subject, model=model, objective=objective, candidate_id=point['id']))
     expected = {(subject, model, objective) for subject in subjects
-                for model in ('POOL', 'SEARCH') for objective in ('prefix', 'full', 'original')}
+                for model in ('POOL', 'SEARCH') for objective in (*objectives, 'original')}
     if not subjects or seen != expected:
         raise ValueError('Incomplete original/prefix/full parameter comparison')
     return bindings, points
 
 
-def run(scope: Path, reference: Path, output: Path, smoke: bool) -> None:
+def provisional_full_nominees(stage: dict, subjects: list[int]) -> list[dict]:
+    """Select the full-NLL minimum only after every common-bank score is ready."""
+    if stage['status'] != 'complete' or stage['stage'] != 'selection':
+        raise ValueError('Require a completed selection stage')
+    groups, budgets, seed_jobs = {}, {}, 0
+    for group in stage['groups']:
+        key = group['subject'], group['model']
+        if key in groups or not group['rows']:
+            raise ValueError('Duplicate or empty selection group')
+        rows = {}
+        for row in group['rows']:
+            if (row['id'] != point_id(row['hyperparams']) or row['id'] in rows
+                    or not np.isfinite(row['full_nll']) or row['full_nll'] < 0
+                    or len(row['seeds']) < 2 or len(set(row['seeds'])) != len(row['seeds'])):
+                raise ValueError('Invalid selection candidate or independent seeds')
+            current = row['particles'], tuple(row['seeds'])
+            if group['subject'] in budgets and current != budgets[group['subject']]:
+                raise ValueError('Selection candidates must share the numerical budget')
+            budgets[group['subject']] = current; rows[row['id']] = row; seed_jobs += len(row['seeds'])
+        groups[key] = rows
+    expected = {(subject, arm) for subject in subjects for arm in ('POOL', 'SEARCH')}
+    if (not subjects or len(set(subjects)) != len(subjects) or set(groups) != expected
+            or stage['points'] != sum(map(len, groups.values()))
+            or stage['seed_jobs'] != seed_jobs):
+        raise ValueError('Incomplete selection checkpoint')
+    for subject in subjects:
+        if set(groups[subject, 'POOL']) != set(groups[subject, 'SEARCH']):
+            raise ValueError('Both mechanisms require the same selection bank')
+    return [dict(subject=subject, model=arm, objective='full',
+                 candidate=min(rows.values(), key=lambda row:(row['full_nll'], row['id'])))
+            for (subject, arm), rows in sorted(groups.items())]
+
+
+def run(scope: Path, reference: Path, output: Path, smoke: bool,
+        selection_stage: bool = False, parallel_budget: int | None = None) -> None:
     v = recalled.base.validation()
-    frozen = v.read(scope / 'nominees.json')
     protocol = v.read(scope / 'protocol.json')
+    checkpoint = scope / ('selection_completion.json' if selection_stage else 'nominees.json')
+    if selection_stage:
+        nominees = provisional_full_nominees(v.read(checkpoint), protocol['settings']['subjects'])
+        frozen = dict(protocol, nominees=nominees, original_nomination_sha256=protocol['nomination_sha256'])
+        binding_hash = dict(selection_checkpoint_sha256=v.digest(checkpoint))
+    else:
+        frozen = v.read(checkpoint)
+        binding_hash = dict(nomination_sha256=v.digest(checkpoint))
     original_fit = Path(protocol['fit'])
     original = v.read(original_fit / 'nominees.json')
     if output.exists():
         raise FileExistsError('Use a new autonomous scope destination')
-    if (frozen['status'] != 'frozen_for_retrospective_diagnostics' or (frozen['smoke'] and not smoke)
-            or v.read(scope / 'completion.json')['nomination_sha256'] != v.digest(scope / 'nominees.json')):
+    if (frozen['smoke'] and not smoke) or (not selection_stage and (
+            frozen['status'] != 'frozen_for_retrospective_diagnostics'
+            or v.read(scope / 'completion.json')['nomination_sha256'] != v.digest(checkpoint))):
         raise ValueError('Need completed scope selection; smoke fits require smoke diagnostics')
     if (original['smoke'] or v.digest(original_fit / 'nominees.json') != frozen['original_nomination_sha256']
             or v.read(reference / 'protocol.json')['nomination_sha256'] != frozen['original_nomination_sha256']
@@ -67,15 +115,34 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool) -> None:
         if v.digest(ROOT / name) != sha:
             raise ValueError(f'Frozen scope implementation changed: {name}')
     settings = deepcopy(frozen['settings'])
-    settings['parallel_budget'] = 1 if smoke else settings['parallel_budget']
-    bindings, points = point_bindings(frozen['nominees'], original['nominees'])
+    if parallel_budget is not None and not 1 <= parallel_budget <= settings['parallel_budget']:
+        raise ValueError('Generation budget must stay within the declared CPU limit')
+    settings['parallel_budget'] = 1 if smoke else parallel_budget or settings['parallel_budget']
+    bindings, points = point_bindings(frozen['nominees'], original['nominees'],
+                                      ('full',) if selection_stage else ('prefix', 'full'))
     references = {(row['subject'], row['model']): row for row in
                   v.read(reference / 'autonomous/evaluation.json')['rows']}
     hashes = dict(frozen['source_sha256'], **{ENTRY: v.digest(ROOT / ENTRY)})
-    inputs = {str(file): v.digest(file) for file in (
-        scope / 'nominees.json', scope / 'protocol.json', scope / 'completion.json',
+    input_files = [checkpoint, scope / 'protocol.json',
         original_fit / 'nominees.json', reference / 'protocol.json', reference / 'completion.json',
-        reference / 'autonomous/evaluation.json')}
+        reference / 'autonomous/evaluation.json']
+    if not selection_stage: input_files.append(scope / 'completion.json')
+    inputs = {str(file): v.digest(file) for file in input_files}
+    if selection_stage:
+        from .model_0923_estimation_scope import score_scopes
+        for row in frozen['nominees']:
+            point = row['candidate']; file = Path(point['score_file']); record = v.read(file)
+            array = file.with_suffix('.npz')
+            if (v.digest(array) != record['predictions_sha256']
+                    or record['candidate']['hyperparams'] != point['hyperparams']
+                    or (record['subject'], record['model']) != (row['subject'], row['model'])
+                    or record['particles'] != point['particles'] or record['seeds'] != point['seeds']):
+                raise ValueError('Selected candidate differs from its completed score arrays')
+            with np.load(array) as saved:
+                np.testing.assert_array_equal(saved['seeds'], point['seeds'])
+                scores = score_scopes(saved['observed_probability'], record['training_trials'])
+            np.testing.assert_allclose(scores['full_nll'], point['full_nll'], atol=1e-12, rtol=0)
+            inputs[str(file)] = v.digest(file); inputs[str(array)] = v.digest(array)
     jobs, plans, paths_by_subject = [], [], {}
     for (subject, model, identity), point in points.items():
         old = references[subject, model]
@@ -129,7 +196,8 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool) -> None:
         shutil.copy2(ROOT / name, target)
     v.write(output / 'protocol.json', dict(scope=str(scope.resolve()), reference=str(reference.resolve()),
         settings=settings, smoke=smoke, source_sha256=hashes, input_sha256=inputs, bindings=bindings,
-        nomination_sha256=v.digest(scope / 'nominees.json'),
+        **binding_hash, selection_phase='selection' if selection_stage else 'confirmation',
+        diagnostic_status='provisional_selection_stage' if selection_stage else 'confirmed_scope_comparison',
         data_use='development autonomous diagnostics at frozen points; complete behavior used in full selection; oral excluded',
         random_streams='same complete trajectory seeds as the original autonomous evaluation',
         path_sharing='same subject, mechanism and parameter identity share one bank; objectives are labels of selection'))
@@ -161,6 +229,7 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool) -> None:
     for name, sha in hashes.items():
         if v.digest(ROOT / name) != sha:raise ValueError(f'Diagnostic source changed: {name}')
     v.write(output / 'generation.json', dict(status='complete', smoke=smoke, bindings=bindings, rows=records,
+        selection_phase='selection' if selection_stage else 'confirmation',
         exact_original_prefix_checks=exact, distinct_points=len(records), new_chunks=len(jobs),
         distinct_paths=sum(row['paths'] for row in records)))
 
@@ -170,8 +239,10 @@ def main() -> None:
     for name in ('scope', 'reference', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--selection-stage', action='store_true')
+    parser.add_argument('--parallel-budget', type=int)
     args = parser.parse_args()
-    run(args.scope, args.reference, args.output, args.smoke)
+    run(args.scope, args.reference, args.output, args.smoke, args.selection_stage, args.parallel_budget)
 
 
 if __name__ == '__main__':

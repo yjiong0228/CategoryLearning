@@ -3,8 +3,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+import json
+import pytest
 
-from CategoryLearning_codes.figures.fig3.model0923_estimation_scope import ecdf
+from CategoryLearning_codes.figures.fig3.model0923_estimation_scope import ecdf, plot
 
 
 def test_undiscovered_paths_remain_in_discovery_denominator():
@@ -24,3 +26,13 @@ def test_absent_discoveries_plot_zero_through_the_task_end():
     assert x[0] == 0 and x[-1] == 8
     assert np.all(y == 0)
     plt.close(fig)
+
+
+@pytest.mark.parametrize('phase,selection_stage', [('selection', False), ('confirmation', True)])
+def test_figure_rejects_wrong_selection_stage_before_loading_data(tmp_path, phase, selection_stage):
+    source = tmp_path / 'summary'; source.mkdir()
+    (source / 'manifest.json').write_text(json.dumps(dict(status='complete', smoke=False, selection_phase=phase)))
+    output = tmp_path / 'figure'
+    with pytest.raises(ValueError, match='Selection-stage'):
+        plot(source, output, selection_stage=selection_stage)
+    assert not output.exists()

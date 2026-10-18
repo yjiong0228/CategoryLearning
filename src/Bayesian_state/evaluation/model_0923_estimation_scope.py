@@ -7,6 +7,8 @@ also compare mechanisms at exactly matched parameters. Autonomous differences pa
 original trajectory seeds. Original/prefix/full are parameter-selection labels;
 prefix/later/whole are chronological scoring windows. Every comparison is a
 development diagnostic. --smoke permits explicitly marked pipeline fixtures.
+--selection-stage summarizes provisional full-sequence nominees using the
+completed selection filter bank; confirmation remains a separate experiment.
 """
 from __future__ import annotations
 
@@ -125,15 +127,37 @@ def matched_choice_scores(confirmed: dict) -> tuple[list[dict], list[dict], dict
     return scores, contrasts, inputs
 
 
-def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) -> None:
+def available_comparisons(bindings: list[dict], subject: int) -> list[tuple]:
+    """Retain every planned contrast whose two objective labels are available."""
+    available = {(row['model'], row['objective']) for row in bindings if row['subject'] == subject}
+    comparisons = [(model, target, model, reference) for model in ('POOL', 'SEARCH')
+                   for target, reference in [('prefix', 'original'), ('full', 'original'), ('full', 'prefix')]]
+    comparisons += [('SEARCH', objective, 'POOL', objective) for objective in ('original', 'prefix', 'full')]
+    return [row for row in comparisons if (row[0], row[1]) in available and (row[2], row[3]) in available]
+
+
+def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False,
+              selection_stage: bool = False) -> None:
     if output.exists():
         raise FileExistsError('Use a new estimation-scope summary destination')
-    frozen = load(scope / 'nominees.json')
     g = load(generation / 'generation.json')
     g_protocol = load(generation / 'protocol.json')
-    if (frozen['status'] != 'frozen_for_retrospective_diagnostics' or g['status'] != 'complete'
-            or frozen['smoke'] != smoke or g['smoke'] != smoke
-            or g_protocol['nomination_sha256'] != digest(scope / 'nominees.json')):
+    phase_name = 'selection' if selection_stage else 'confirmation'
+    if g_protocol.get('selection_phase', 'confirmation') != phase_name:
+        raise ValueError('Generation selection phase differs; use the matching explicit mode')
+    if selection_stage:
+        from ..workflows.analysis.model_0923_scope_generation import provisional_full_nominees
+        if smoke: raise ValueError('Selection-stage summaries require complete autonomous sequences')
+        protocol = load(scope/'protocol.json')
+        stage = load(scope/'selection_completion.json')
+        frozen = dict(protocol, nominees=provisional_full_nominees(stage, protocol['settings']['subjects']))
+        correct_checkpoint = g_protocol['selection_checkpoint_sha256'] == digest(scope/'selection_completion.json')
+    else:
+        frozen = load(scope/'nominees.json')
+        correct_checkpoint = (frozen['status'] == 'frozen_for_retrospective_diagnostics'
+                              and g_protocol['nomination_sha256'] == digest(scope/'nominees.json'))
+    if (not correct_checkpoint or g['status'] != 'complete'
+            or frozen['smoke'] != smoke or g['smoke'] != smoke):
         raise ValueError('Need matching completed scope and generation records; fixtures require --smoke')
     if g['bindings'] != g_protocol['bindings']:
         raise ValueError('Generation scope bindings changed')
@@ -143,13 +167,15 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
         if binding['objective'] != 'original' and selected_bindings.get(
                 (binding['subject'], binding['model'], binding['objective'])) != binding['candidate_id']:
             raise ValueError('Generation uses another scope-selected parameter point')
-    confirmation = load(scope / 'confirmation_completion.json')
+    confirmation = load(scope / (phase_name+'_completion.json'))
     confirmed = {(group['subject'], group['model'], row['id']): row
                  for group in confirmation['groups'] for row in group['rows']}
     generated = {(row['subject'], row['model'], row['candidate_id']): row for row in g['rows']}
     if len(generated) != len(g['rows']):
         raise ValueError('Duplicate scientific point banks')
-    files = [scope / name for name in ('nominees.json', 'protocol.json', 'completion.json', 'confirmation_completion.json')]
+    scope_files = ('protocol.json', 'selection_completion.json') if selection_stage else (
+        'nominees.json', 'protocol.json', 'completion.json', 'confirmation_completion.json')
+    files = [scope / name for name in scope_files]
     files += [generation / name for name in ('protocol.json', 'generation.json')]
     inputs = {str(file): digest(file) for file in files}
     candidate_scores, matched_mechanisms, candidate_inputs = matched_choice_scores(confirmed)
@@ -238,10 +264,7 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
                 target_capacity_drops=int(a['target_capacity_dropped'][index, :n].sum())))
     contrasts = []
     for subject in sorted({row['subject'] for row in g['bindings']}):
-        comparisons = [(model, target, model, reference) for model in ('POOL', 'SEARCH')
-                       for target, reference in [('prefix', 'original'), ('full', 'original'), ('full', 'prefix')]]
-        comparisons += [('SEARCH', objective, 'POOL', objective) for objective in ('original', 'prefix', 'full')]
-        for target_model, target_scope, reference_model, reference_scope in comparisons:
+        for target_model, target_scope, reference_model, reference_scope in available_comparisons(g['bindings'], subject):
             for phase in ('prefix', 'later', 'whole'):
                 target = numeric[subject, target_model, target_scope, phase]
                 reference = numeric[subject, reference_model, reference_scope, phase]
@@ -261,10 +284,12 @@ def summarize(scope: Path, generation: Path, output: Path, smoke: bool = False) 
         metric_sources_sha256={name: digest(Path(__file__).with_name(name)) for name in
             ('model_0923_h_validation.py', 'model_0923_h_generation_uncertainty.py', 'model_0923_episodic_refit.py')},
         data_use='development; scope selection includes full behavior; later window is chronological, not heldout',
-        uncertainty='fixed-parameter simulation error: paired complete confirmation filters and paired complete autonomous paths',
+        selection_phase=phase_name,
+        diagnostic_status='provisional_selection_stage' if selection_stage else 'confirmed_scope_comparison',
+        uncertainty=f'fixed-parameter simulation error: paired complete {phase_name} filters and paired complete autonomous paths',
         identity='Repeated objective labels for the same parameter point share one path bank and one filter bank',
-        original_parameters='rescored on the same confirmation seeds as prefix/full nominees',
-        matched_mechanisms='SEARCH minus POOL at each identical shared confirmation parameter point; common filter seeds',
+        original_parameters=f'rescored on the same {phase_name} seeds as the selected points',
+        matched_mechanisms=f'SEARCH minus POOL at each identical shared {phase_name} parameter point; common filter seeds',
         block_width=width, smoke_generation_prefix_only=smoke))
 
 
@@ -273,8 +298,9 @@ def main() -> None:
     for name in ('scope', 'generation', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--selection-stage', action='store_true')
     args = parser.parse_args()
-    summarize(args.scope, args.generation, args.output, args.smoke)
+    summarize(args.scope, args.generation, args.output, args.smoke, args.selection_stage)
 
 
 if __name__ == '__main__':

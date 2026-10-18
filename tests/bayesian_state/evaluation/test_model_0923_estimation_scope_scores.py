@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from src.Bayesian_state.evaluation.model_0923_estimation_scope import (
-    digest, matched_choice_scores, paired_difference, validate_generation,
+    available_comparisons, digest, matched_choice_scores, paired_difference, summarize, validate_generation,
 )
 from src.Bayesian_state.workflows.analysis.model_0923_estimation_scope import score_scopes
 
@@ -92,3 +92,30 @@ def test_matched_mechanisms_reject_misaligned_comparisons(shared_bank, change):
         shared_bank.pop((308, 'SEARCH', 'same_point'))
     file.write_text(json.dumps(record))
     with pytest.raises((ValueError, AssertionError)):matched_choice_scores(shared_bank)
+
+
+def test_confirmed_scope_contrasts_remain_complete_and_ordered():
+    bindings = [dict(subject=308,model=model,objective=scope) for model in ('POOL','SEARCH')
+                for scope in ('original','prefix','full')]
+    rows = available_comparisons(bindings,308)
+    assert len(rows) == 9
+    assert rows[:3] == [('POOL','prefix','POOL','original'),('POOL','full','POOL','original'),
+                       ('POOL','full','POOL','prefix')]
+    assert rows[-1] == ('SEARCH','full','POOL','full')
+
+
+def test_full_only_probe_keeps_all_four_available_contrasts():
+    bindings = [dict(subject=308,model=model,objective=scope) for model in ('POOL','SEARCH')
+                for scope in ('original','full')]
+    assert available_comparisons(bindings,308) == [
+        ('POOL','full','POOL','original'),('SEARCH','full','SEARCH','original'),
+        ('SEARCH','original','POOL','original'),('SEARCH','full','POOL','full')]
+
+
+@pytest.mark.parametrize('stage', [True,False])
+def test_provisional_and_confirmed_outputs_require_their_explicit_mode(tmp_path, stage):
+    generation = tmp_path/'generation';generation.mkdir()
+    (generation/'generation.json').write_text(json.dumps(dict(status='complete')))
+    (generation/'protocol.json').write_text(json.dumps(dict(selection_phase='confirmation' if stage else 'selection')))
+    with pytest.raises(ValueError, match='selection phase'):
+        summarize(tmp_path/'scope',generation,tmp_path/'summary',selection_stage=stage)
