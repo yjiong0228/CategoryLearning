@@ -4,6 +4,11 @@ Use --config CONFIG --output NEW_DIRECTORY; --smoke keeps one subject, two
 saved path seeds and sixteen trials. All generation reuses the existing SEARCH
 worker. This is an exploratory parameter intervention, not parameter fitting.
 The unchanged point must exactly reproduce the archived SEARCH trajectories.
+Sources may be completed fixed-parameter SEARCH studies or recalled-search
+refit evaluations. Each source must identify one parameter point per subject.
+``window_alignment: end`` anchors descriptive windows at the last trial;
+the default ``start`` preserves previous output. The option controls process
+summaries, with model trajectories and curve-scoring blocks preserved.
 """
 from __future__ import annotations
 
@@ -40,6 +45,41 @@ def points(anchor: dict, memory: list[float], capacity: list[int]) -> list[dict]
         raise ValueError('Require distinct valid levels including both original coordinates')
     return [candidate(dict(anchor, **{MEMORY: g, CAPACITY: c}), 'capacity_memory_intervention')
             for g, c in product(memory, capacity)]
+
+
+def reference_jobs(source: Path, subject: int) -> list[Path]:
+    """Accept one saved SEARCH bank and reject mixtures of parameter points."""
+    legacy = sorted((source / 'jobs').glob(f'S{subject}_SEARCH_*.json'))
+    fitted = sorted((source / 'jobs').glob(f'AUTO_evaluate_S{subject}_SEARCH_*.json'))
+    if legacy and fitted:
+        raise ValueError('Ambiguous SEARCH source layouts')
+    files = legacy or fitted
+    anchor, seeds = None, set()
+    for file in files:
+        job = read(file)
+        point = job['candidate']['hyperparams']
+        if (job.get('smoke') is not False or job['phase'] != 'autonomous' or job['model'] != 'SEARCH'
+                or candidate(point, 'identity_check')['id'] != job['candidate']['id']):
+            raise ValueError('Invalid autonomous SEARCH reference')
+        if read(Path(job['folder']) / 'prepared.json')['subject'] != subject:
+            raise ValueError('SEARCH source subject differs from the requested subject')
+        if anchor is not None and point != anchor:
+            raise ValueError('SEARCH source mixes parameter points')
+        if len(set(job['seeds'])) != len(job['seeds']) or seeds.intersection(job['seeds']):
+            raise ValueError('SEARCH source repeats path seeds')
+        anchor = point
+        seeds.update(job['seeds'])
+    return files
+
+
+def descriptive_windows(trials: int, width: int, alignment: str = 'start') -> list[tuple[int, int]]:
+    """Partition all trials; place a partial window at the declared edge."""
+    if trials < 1 or width < 1 or alignment not in ('start', 'end'):
+        raise ValueError('Need positive window sizes and start/end alignment')
+    if alignment == 'start':
+        return [(start, min(start + width, trials)) for start in range(0, trials, width)]
+    boundaries = sorted({0, *range(trials, 0, -width)})
+    return list(zip(boundaries[:-1], boundaries[1:]))
 
 
 def summarize(output: Path, jobs: list[dict], settings: dict, smoke: bool) -> None:
@@ -110,8 +150,8 @@ def summarize(output: Path, jobs: list[dict], settings: dict, smoke: bool) -> No
             curve_rows.append(dict(base, trial=min((i+1)*settings['block_width'], n_trials),
                 observed=float(observed_blocks[i]), mean=float(blocks[:, i].mean()),
                 lower=float(np.quantile(blocks[:, i], .1)), upper=float(np.quantile(blocks[:, i], .9))))
-        for start in range(0, n_trials, settings['window']):
-            stop = min(start + settings['window'], n_trials)
+        for start, stop in descriptive_windows(n_trials, settings['window'],
+                                                settings.get('window_alignment', 'start')):
             for i, seed in enumerate(arrays['seeds']):
                 present = arrays['present'][i, start:stop].astype(bool)
                 path_rows.append(dict(base, seed=int(seed), start=start+1, stop=stop,
@@ -150,16 +190,17 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     settings = yaml.safe_load(config.read_text())
     if any(type(settings[k]) is not int or settings[k] < 1 for k in ('paths','window','block_width','parallel_budget')):
         raise ValueError('Paths, window sizes and worker budget must be positive integers')
+    descriptive_windows(1, settings['window'], settings.get('window_alignment', 'start'))
     jobs, hashes, sources = [], {}, {}
     for subject, spec in list(settings['subjects'].items())[:1] if smoke else settings['subjects'].items():
         source = ROOT / spec['source']
         completion = read(source / 'completion.json')
-        if completion['status'] != 'complete' or completion['smoke']:
+        if completion['status'] != 'complete' or completion.get('smoke', False):
             raise ValueError('Require completed scientific SEARCH paths')
         sources[str(source)] = digest(source / 'completion.json')
         requested = 2 if smoke else settings['paths']
         left = requested
-        for file in sorted((source / 'jobs').glob(f'S{subject}_SEARCH_*.json')):
+        for file in reference_jobs(source, subject):
             if left <= 0:
                 break
             original = read(file); reference = Path(original['target']).with_suffix('.npz')
@@ -189,7 +230,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     write(output / 'protocol.json', dict(settings=settings, smoke=smoke, source_sha256=hashes,
         source_completion_sha256=sources, jobs=len(jobs), python=sys.version,
         versions={name: importlib.metadata.version(name) for name in ('numpy','scipy','pandas','PyYAML')},
-        scope='fixed SEARCH parameter intervention; 306 adverse effect and 308 use gap; development',
+        scope='fixed SEARCH parameter intervention; declared subjects and coordinates; development',
         coordinates=[MEMORY,CAPACITY], data_use='no parameter fitting; autonomous own-choice feedback; oral excluded'))
     start = time.monotonic()
     refit.execute(jobs, output, 1 if smoke else settings['parallel_budget'])

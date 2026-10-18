@@ -1,0 +1,15 @@
+protocol: model0923_s208_capacity_memory_probe_v1
+# Scope screening is finishing; its next stage can use at most 112 workers.
+# This targeted probe uses the remaining 16 slots and precedes confirmation.
+parallel_budget: 16
+paths: 64
+window: 128
+window_alignment: end
+block_width: 32
+resource_predecessor: results/model_0923/decision_basis_replay_20261018_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+subjects:
+  208:
+    source: results/model_0923/recalled_search_evaluation_20261018_v1
+    memory: [0.0, 0.8, 0.99]
+    capacity: [2, 4]

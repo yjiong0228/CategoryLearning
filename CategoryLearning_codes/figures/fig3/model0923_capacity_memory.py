@@ -69,8 +69,11 @@ def plot(source: Path, output: Path) -> None:
     plt.rcParams.update({'font.family':'sans-serif', 'font.sans-serif':['DejaVu Sans'],
         'font.size':7, 'axes.titlesize':7, 'axes.labelsize':7, 'xtick.labelsize':6,
         'ytick.labelsize':6, 'svg.fonttype':'none', 'pdf.fonttype':42, 'savefig.dpi':300})
-    fig, axes = plt.subplots(len(subjects), 3, figsize=(183/25.4, 125/25.4), squeeze=False)
-    fig.subplots_adjust(left=.09, right=.96, bottom=.15, top=.84, hspace=.65, wspace=.7)
+    single = len(subjects) == 1
+    height_mm = 90 if single else 125
+    fig, axes = plt.subplots(len(subjects), 3, figsize=(183/25.4, height_mm/25.4), squeeze=False)
+    fig.subplots_adjust(left=.09, right=.96, bottom=.20 if single else .15,
+                        top=.74 if single else .84, hspace=.65, wspace=.7)
     for column, (metric, title, cmap) in enumerate(metrics):
         norm = Normalize(table[metric].min(), table[metric].max())
         for row, subject in enumerate(subjects):
@@ -95,7 +98,7 @@ def plot(source: Path, output: Path) -> None:
                 label += f'\nObserved {group.observed_accuracy.iloc[0]:.3f}'
             ax.set_title(label,pad=7)
             if row == 0:
-                ax.text(.5,1.34,title,ha='center',transform=ax.transAxes,fontsize=7)
+                ax.text(.5,1.25 if single else 1.34,title,ha='center',transform=ax.transAxes,fontsize=7)
         fig.colorbar(shown,ax=axes[:,column],fraction=.035,pad=.04).ax.tick_params(labelsize=6)
     fig.suptitle('Capacity and belief retention at fixed SEARCH parameters',fontsize=9,y=.98)
     counts=', '.join(str(int(n)) for n in sorted(table.paths.unique()))
@@ -103,7 +106,7 @@ def plot(source: Path, output: Path) -> None:
              ha='center',fontsize=7)
     output.mkdir(parents=True); table.to_csv(output/'plot_source.csv',index=False)
     fig.savefig(output/'capacity_memory.png',dpi=300);plt.close(fig)
-    contract = dict(backend='python', formats=['PNG'], dpi=300, width_mm=183,
+    contract = dict(backend='python', formats=['PNG'], dpi=300, width_mm=183, height_mm=height_mm,
         claim='Separate effects of belief retention and active capacity on autonomous learning and rule use.',
         source=str(source.resolve()), summary_sha256=digest(source/'summary.json'),
         subjects=[int(s) for s in subjects], paths_per_cell=[int(n) for n in sorted(table.paths.unique())],
