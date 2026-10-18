@@ -42,6 +42,8 @@ def run(source: Path, output: Path) -> None:
     tables = {Path(name).stem:pd.read_csv(source/name) for name in manifest['summary_sha256']}
     subjects = sorted(tables['scores'].subject.unique())
     if not subjects: raise ValueError('Need at least one participant')
+    comparison_top = .78 if len(subjects) == 1 else .82  # Keep the shared legend clear of panel titles.
+    participant_label = 'participant' if len(subjects) == 1 else 'participants'
     grid_columns = min(3, len(subjects)); grid_rows = int(np.ceil(len(subjects) / grid_columns))
     alternatives = order[1:]
     cohort = tables['cohort_scores']
@@ -87,8 +89,8 @@ def run(source: Path, output: Path) -> None:
             ylim=(len(subjects)-.4,-.6))
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
     fig.legend(handles=handles[1:],loc='upper center',ncol=3,bbox_to_anchor=(.5,.91))
-    fig.suptitle(f'Joint refits: frozen prediction and autonomous learning\n{len(subjects)} development participants; {n_filters} filters / {n_paths} paths per cell; bars: ± 2 Monte Carlo SE',y=.99,fontsize=8)
-    fig.subplots_adjust(left=.09,right=.98,bottom=.16,top=.82,wspace=.48)
+    fig.suptitle(f'Joint refits: frozen prediction and autonomous learning\n{len(subjects)} development {participant_label}; {n_filters} filters / {n_paths} paths per cell; bars: ± 2 Monte Carlo SE',y=.99,fontsize=8)
+    fig.subplots_adjust(left=.09,right=.98,bottom=.16,top=comparison_top,wspace=.48)
     save(fig,'comparison.png')
 
     finalist = tables['training_finalists']
@@ -138,7 +140,7 @@ def run(source: Path, output: Path) -> None:
                yticklabels=[f'S{s}' for s in subjects],xlabel='Fraction',title=title)
     fig.legend(handles=handles,loc='upper center',ncol=4,bbox_to_anchor=(.5,.91))
     fig.suptitle(f'Discovery, retention and use after joint refitting ({n_paths} paths per cell)\nLate = final 128 trials; target rule is used only for retrospective diagnosis',fontsize=8,y=.99)
-    fig.subplots_adjust(left=.09,right=.98,bottom=.12,top=.82,wspace=.45)
+    fig.subplots_adjust(left=.09,right=.98,bottom=.12,top=comparison_top,wspace=.45)
     save(fig,'rule_process.png')
 
     for subject in subjects:
