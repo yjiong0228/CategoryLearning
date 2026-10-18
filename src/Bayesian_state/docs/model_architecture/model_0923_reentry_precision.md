@@ -303,3 +303,35 @@ SEARCH的全部预测数组分别精确复现已有RETAIN评分及自主路径�
 验证位于`reentry_precision_refit_validation_20261018_v1`，实际工作器复现位于
 `reentry_precision_refit_worker_validation_20261018_v1`。
 这些检查证明重拟合入口可用，科学拟合结果在完整运行结束后另行报告。
+
+### 重拟合后的口述比较
+
+口述比较入口增加`--contrast-kind precision_retention_refit`，用于比较原RESET与等预算重拟合后的RETAIN。
+两个方案各自使用行为选定参数，差值包含精度保持和重新估参的共同作用。
+原`parameters`类型比较同一机制下的参数变化；`precision_retention`类型继续要求同一个固定参数点。
+三种比较分别保存身份和用途，逐题口述分母、状态时点、任务数据及数值预算保持一致。
+
+重拟合类型另需`--reset-fit`与`--retained-fit`。入口核对两份已完成行为拟合的选中参数，
+复用拟合程序对参数范围、原始起点、阶段预算、随机种子和执行源码的检查，
+并要求RETAIN的来源明确绑定相应RESET拟合。每个状态的参数与执行实现须与各自冻结候选相符。
+口述仅用于这些检查之后的表征评分。
+
+下面的命令用于新状态与口述结果完成后的SEARCH比较；POOL按同样规则另行比较。
+`revised_alignment_NEW`表示届时产生的新参数口述对齐目录，需与`original`使用同一固定读法。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_oral_parameter_comparison \
+  --original results/model_0923/recalled_search_oral_midpoint_20261018_v1 \
+  --revised results/model_0923/revised_alignment_NEW \
+  --subject 208 --arm SEARCH --contrast-kind precision_retention_refit \
+  --reset-fit results/model_0923/recalled_search_refit_20261018_v1 \
+  --retained-fit results/model_0923/reentry_precision_refit_s208_20261018_v1 \
+  --output results/model_0923/refitted_retention_oral_comparison_NEW
+```
+
+76项相关测试和CLI检查通过，包含完整候选绑定、未完成拟合拒绝、来源与预算约定及原比较方法。
+实际重算208已有完整参数对照，两张CSV与HTML逐字节复现；106项输入哈希通过。
+当前正在运行的RETAIN重拟合被未完成检查正确拒绝。
+验证位于`reentry_precision_refit_oral_comparison_validation_20261018_v1`。
+新类型的候选绑定使用受控完整拟合实例验证，真实重拟合口述结果尚未产生。
+新参数的POOL／SEARCH状态重放接入仍待实施，当前两组固定参数重放继续使用已冻结版本。

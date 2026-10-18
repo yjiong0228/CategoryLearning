@@ -2,7 +2,8 @@
 
 Use --original ALIGNMENT --revised ALIGNMENT --subject ID --arm ARM --output NEW.
 Both inputs must have complete behavior-only state replays, identical oral coding,
-task inputs, mechanism and numerical budgets. Recompute the existing oral scores
+task inputs and numerical budgets. Parameter-only contrasts use the same mechanism.
+Recompute the existing oral scores
 and pair delete-one-filter estimates for common seeds by default. For disjoint
 seed banks, --seed-relation independent combines the two delete-filter variances.
 Both modes require equal filter budgets. Parameter labels stay separate from model
@@ -10,6 +11,9 @@ labels. This is retrospective development; oral content does not select paramete
 --contrast-kind precision_retention compares RESET with RETAIN at exactly the
 same existing parameter point. It requires explicit retained-precision provenance
 and keeps every other task, cognitive mechanism and numerical setting matched.
+--contrast-kind precision_retention_refit additionally binds --reset-fit and
+--retained-fit to the completed equal-budget behavior fits. Its difference
+includes both precision retention and re-estimation of behavioral parameters.
 """
 from __future__ import annotations
 
@@ -153,7 +157,7 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
 
 def validate_comparison(before: dict, after: dict, contrast_kind: str) -> None:
     """Allow the declared parameter or precision change and preserve other inputs."""
-    if contrast_kind not in ('parameters', 'precision_retention'):
+    if contrast_kind not in ('parameters', 'precision_retention', 'precision_retention_refit'):
         raise ValueError('Unknown oral contrast kind')
     for key in ('scientific', 'arm_settings', 'archived_pf_sha256', 'task_sha256', 'oral_manifest_sha256'):
         if before[key] != after[key]:
@@ -167,23 +171,86 @@ def validate_comparison(before: dict, after: dict, contrast_kind: str) -> None:
                 or new_mechanism.pop('retain_learned_precision', None) is not True
                 or old_mechanism != new_mechanism):
             raise ValueError('Precision contrast must change only RESET to RETAIN')
-        if any(before['candidate'][key] != after['candidate'][key] for key in ('id', 'hyperparams')):
-            raise ValueError('Precision contrast requires identical fixed parameter points')
         if (before['structural_intervention'] is not None
-                or after['structural_intervention'] != 'retained_rule_precision'
-                or after['parameter_candidate_policy'] != 'declared_point_no_new_selection'
-                or after['selected_parameter_id'] != after['candidate']['id']):
-            raise ValueError('Precision contrast needs explicit fixed-point intervention provenance')
+                or after['structural_intervention'] != 'retained_rule_precision'):
+            raise ValueError('Precision contrast needs explicit intervention provenance')
+        if contrast_kind == 'precision_retention':
+            if any(before['candidate'][key] != after['candidate'][key] for key in ('id', 'hyperparams')):
+                raise ValueError('Precision contrast requires identical fixed parameter points')
+            if (after['parameter_candidate_policy'] != 'declared_point_no_new_selection'
+                    or after['selected_parameter_id'] != after['candidate']['id']):
+                raise ValueError('Precision contrast needs explicit fixed-point intervention provenance')
+        elif (after['parameter_candidate_policy'] != 'equal_budget_behavior_refit'
+                or after['parameter_estimation_scope'] != 'prefix'):
+            raise ValueError('Refitted precision contrast requires behavior-only prefix refit provenance')
     if any(after['model_sources'].get(name) != sha for name, sha in before['model_sources'].items()):
         raise ValueError('Revised replay changes an original executing dependency')
 
 
+def bind_refit_contrast(before: dict, after: dict, subject: int, arm: str,
+                       reset_fit: Path, retained_fit: Path) -> dict[str, str]:
+    """Bind both displayed points to actual completed matched-budget nominations."""
+    from . import model_0923_reentry_precision_refit as refit
+    read, digest = alignment.read, alignment.digest
+    required = ('nominees.json', 'protocol.json', 'completion.json', 'retention_protocol.json')
+    if not all((retained_fit/name).is_file() for name in required):
+        raise ValueError('Require the complete retained-precision behavior refit')
+    frozen = read(retained_fit/'nominees.json')
+    protocol = read(retained_fit/'protocol.json')
+    completed = read(retained_fit/'completion.json')
+    retention = read(retained_fit/'retention_protocol.json')
+    if (completed['status'] != 'complete' or completed['smoke'] or frozen['smoke'] or protocol['smoke']
+            or frozen['status'] != 'frozen_before_test'
+            or completed['nomination_sha256'] != digest(retained_fit/'nominees.json')
+            or frozen['settings'] != protocol['settings']
+            or frozen['source_sha256'] != protocol['source_sha256']):
+        raise ValueError('Require the complete retained-precision behavior refit')
+    if any(frozen['source_sha256'].get(name) != digest(refit.ROOT/name)
+           for name in (refit.ENTRY, refit.MECHANISM)):
+        raise ValueError('Missing retained-precision fitting implementation')
+    settings = frozen['settings']
+    if (settings.get('structural_intervention') != refit.INTERVENTION
+            or retention.get('structural_intervention') != refit.INTERVENTION
+            or (refit.ROOT/settings['reset_reference_fit']).resolve() != reset_fit.resolve()):
+        raise ValueError('Retained fit is not bound to the declared RESET reference')
+    # This reuses the fitter's checks of supports, budgets, seeds, initial banks
+    # and original execution code. Oral scores never enter those checks.
+    inputs = refit.reference_inputs(refit.helpers(), settings)
+    if inputs != retention['input_sha256']:
+        raise ValueError('Retained fit reference inputs changed')
+    for name, expected in frozen['source_sha256'].items():
+        if digest(alignment.ROOT/name) != expected:
+            raise ValueError('Retained fitting source changed')
+        inputs[str((alignment.ROOT/name).resolve())] = expected
+    original = read(reset_fit/'nominees.json')
+    for identity, nomination in ((before, original), (after, frozen)):
+        matches = [r for r in nomination['nominees'] if (r['subject'], r['model']) == (subject, arm)]
+        if (len(matches) != 1 or any(identity['candidate'][key] != matches[0]['candidate'][key]
+                                    for key in ('id', 'hyperparams'))):
+            raise ValueError('Oral parameter point differs from its behavior-selected nominee')
+        if any(identity['model_sources'].get(name) != value
+               for name, value in nomination['source_sha256'].items()):
+            raise ValueError('State replay does not use its nominated fitting implementation')
+    for name in required:
+        file = retained_fit/name
+        inputs[str(file.resolve())] = digest(file)
+    return inputs
+
+
 def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
-        *, seed_relation: str = 'paired', contrast_kind: str = 'parameters') -> None:
+        *, seed_relation: str = 'paired', contrast_kind: str = 'parameters',
+        reset_fit: Path | None = None, retained_fit: Path | None = None) -> None:
     if output.exists(): raise FileExistsError('Use a new oral parameter comparison directory')
+    if contrast_kind == 'precision_retention_refit':
+        if reset_fit is None or retained_fit is None:
+            raise ValueError('Refitted contrast requires --reset-fit and --retained-fit')
+    elif reset_fit is not None or retained_fit is not None:
+        raise ValueError('Fit references apply only to the declared refitted precision contrast')
     old, before, inputs = load_group(original, subject, arm)
     new, after, more = load_group(revised, subject, arm); inputs.update(more)
     validate_comparison(before, after, contrast_kind)
+    if contrast_kind == 'precision_retention_refit':
+        inputs.update(bind_refit_contrast(before, after, subject, arm, reset_fit, retained_fit))
     scores, trials = paired_scores(old, new, seed_relation=seed_relation)
     output.mkdir(parents=True)
     scores.to_csv(output/'scores.csv', index=False); trials.to_csv(output/'trials.csv', index=False)
@@ -194,10 +261,15 @@ def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
         title, heading = '参数变化与口述表征', '同一模型在两组冻结参数下的口述表征'
         description = ('两组参数均由行为数据确定，口述编码、试次与完整报告分母保持一致。'
                        '差值为修订参数减原参数。')
-    else:
+    elif contrast_kind == 'precision_retention':
         title, heading = '精度保持与口述表征', '同一参数下保留已学精度的口述表征对照'
         description = ('两组沿用同一个已有行为参数点，结构差异为规则再次进入时恢复最近在场精度。'
                        '口述编码、试次与完整报告分母保持一致。差值为RETAIN减RESET。')
+    else:
+        title, heading = '精度保持重拟合与口述表征', '等预算行为重拟合后的口述表征对照'
+        description = ('两个机制分别使用前段选择数据，在相同参数范围、起点、搜索预算和种子下估参。'
+                       '口述编码、试次与完整报告分母保持一致。差值为重拟合RETAIN减原RESET，'
+                       '包含保留已学精度和重新估参的共同作用。')
     page = ('<!doctype html><html lang="zh"><meta charset="utf-8"><title>'+title+'</title>'
             '<style>body{max-width:1300px;margin:30px auto;font:16px/1.6 sans-serif}td,th{padding:5px}</style>'
             '<h1>'+heading+'</h1><p>'+description+error_description+
@@ -216,9 +288,9 @@ def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
         revised_scores_reproduced=True, seed_relation=seed_relation, contrast_kind=contrast_kind,
         uncertainty=('paired_delete_one_complete_filter_seed_mcse' if seed_relation == 'paired' else
                      'independent_sum_of_delete_one_complete_filter_variances_mcse'),
-        data_use=('retrospective development; both parameter points behavior-selected; oral evaluation only'
-                  if contrast_kind == 'parameters' else
-                  'fixed existing behavior parameter; RESET versus RETAIN; development oral evaluation only'),
+        data_use={'parameters': 'retrospective development; both parameter points behavior-selected; oral evaluation only',
+                  'precision_retention': 'fixed existing behavior parameter; RESET versus RETAIN; development oral evaluation only',
+                  'precision_retention_refit': 'equal-budget prefix behavior refits; combined mechanism and parameter effect; development oral evaluation only'}[contrast_kind],
         input_sha256=inputs, source_sha256={str(p.relative_to(alignment.ROOT)):alignment.digest(p) for p in sources},
         artifacts={p.name:alignment.digest(p) for p in output.iterdir()})
     (output/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
@@ -231,8 +303,11 @@ if __name__ == '__main__':
     parser.add_argument('--arm', required=True)
     parser.add_argument('--seed-relation', choices=('paired', 'independent'), default='paired',
                         help='Use paired errors for common seeds, or independent errors for disjoint banks')
-    parser.add_argument('--contrast-kind', choices=('parameters', 'precision_retention'), default='parameters',
-                        help='Compare parameter points, or isolate precision retention at one fixed point')
+    parser.add_argument('--contrast-kind', choices=('parameters', 'precision_retention', 'precision_retention_refit'), default='parameters',
+                        help='Compare parameters, fixed-point retention, or matched-budget refitted retention')
+    parser.add_argument('--reset-fit', type=Path, help='Completed original RESET fit for the refitted contrast')
+    parser.add_argument('--retained-fit', type=Path, help='Completed RETAIN fit for the refitted contrast')
     args = parser.parse_args()
     run(args.original, args.revised, args.output, args.subject, args.arm,
-        seed_relation=args.seed_relation, contrast_kind=args.contrast_kind)
+        seed_relation=args.seed_relation, contrast_kind=args.contrast_kind,
+        reset_fit=args.reset_fit, retained_fit=args.retained_fit)

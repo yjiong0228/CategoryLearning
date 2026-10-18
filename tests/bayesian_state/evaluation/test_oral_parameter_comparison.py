@@ -1,5 +1,6 @@
 """Parameter contrasts retain report identities and paired simulation errors."""
 from copy import deepcopy
+import json
 
 import numpy as np
 import pandas as pd
@@ -133,6 +134,110 @@ def test_precision_contrast_exports_mechanism_labels_without_parameter_selection
     assert '同一参数下保留已学精度' in (output/'index.html').read_text()
     summary=pd.read_csv(output/'scores.csv')
     assert np.all(summary.filter(regex='difference').to_numpy()==0)
+
+
+def refitted_identities():
+    before,after=intervention_identities()
+    after['candidate']={'id':'refitted','hyperparams':{'gamma':.8}}
+    after['parameter_candidate_policy']='equal_budget_behavior_refit'
+    after['parameter_estimation_scope']='prefix'
+    after['selected_parameter_id']=None
+    return before,after
+
+
+def test_refitted_retention_explicitly_allows_changed_behavior_parameters():
+    before,after=refitted_identities()
+    comparison.validate_comparison(before,after,'precision_retention_refit')
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention')
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'parameters')
+    after['parameter_candidate_policy']='oral_selected'
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention_refit')
+    after['parameter_candidate_policy']='equal_budget_behavior_refit'
+    after['parameter_estimation_scope']='full'
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention_refit')
+
+
+def test_refit_requires_fit_bindings_and_reports_combined_effect(tmp_path,monkeypatch):
+    before,after=refitted_identities()
+    monkeypatch.setattr(comparison,'load_group',lambda directory,subject,arm:
+                        (scores(),before if directory.name=='original' else after,{}))
+    bound=[]
+    monkeypatch.setattr(comparison,'bind_refit_contrast',lambda *args: bound.append(args) or {})
+    with pytest.raises(ValueError,match='requires --reset-fit'):
+        comparison.run(tmp_path/'original',tmp_path/'revised',tmp_path/'missing',208,'SEARCH',
+                       contrast_kind='precision_retention_refit')
+    with pytest.raises(ValueError,match='apply only'):
+        comparison.run(tmp_path/'original',tmp_path/'revised',tmp_path/'wrong_kind',208,'SEARCH',
+                       reset_fit=tmp_path/'reset')
+    output=tmp_path/'refitted'
+    comparison.run(tmp_path/'original',tmp_path/'revised',output,208,'SEARCH',
+                   contrast_kind='precision_retention_refit',reset_fit=tmp_path/'reset',retained_fit=tmp_path/'retained')
+    assert len(bound)==1 and bound[0][2:4]==(208,'SEARCH')
+    result=comparison.alignment.read(output/'manifest.json')
+    assert result['contrast_kind']=='precision_retention_refit'
+    assert 'combined mechanism and parameter effect' in result['data_use']
+    assert '重新估参的共同作用' in (output/'index.html').read_text()
+
+
+@pytest.fixture
+def refit_files(tmp_path,monkeypatch):
+    from src.Bayesian_state.workflows.analysis import model_0923_reentry_precision_refit as refit
+    before,after=refitted_identities()
+    reset=tmp_path/'reset';reset.mkdir()
+    retained=tmp_path/'retained';retained.mkdir()
+    source_hashes={name:comparison.alignment.digest(refit.ROOT/name) for name in (refit.ENTRY,refit.MECHANISM)}
+    after['model_sources'].update(source_hashes)
+    settings=dict(reset_reference_fit=str(reset),structural_intervention=refit.INTERVENTION)
+    expected={str(reset/'nominees.json'):'checked_by_reference_inputs'}
+    original=dict(nominees=[dict(subject=208,model='SEARCH',candidate=before['candidate'])],
+                  source_sha256=before['model_sources'])
+    frozen=dict(status='frozen_before_test',smoke=False,settings=settings,source_sha256=source_hashes,
+                nominees=[dict(subject=208,model='SEARCH',candidate=after['candidate'])])
+    write=lambda path,value:path.write_text(json.dumps(value))
+    write(reset/'nominees.json',original)
+    write(retained/'nominees.json',frozen)
+    write(retained/'protocol.json',dict(smoke=False,settings=settings,source_sha256=source_hashes))
+    write(retained/'completion.json',dict(status='complete',smoke=False,
+        nomination_sha256=comparison.alignment.digest(retained/'nominees.json')))
+    write(retained/'retention_protocol.json',dict(structural_intervention=refit.INTERVENTION,input_sha256=expected))
+    monkeypatch.setattr(refit,'helpers',lambda:None)
+    monkeypatch.setattr(refit,'reference_inputs',lambda recalled,settings:deepcopy(expected))
+    return before,after,reset,retained
+
+
+def test_refit_binding_checks_actual_nominees_and_archives_fit_inputs(refit_files):
+    before,after,reset,retained=refit_files
+    inputs=comparison.bind_refit_contrast(before,after,208,'SEARCH',reset,retained)
+    assert str(retained/'nominees.json') in inputs
+    assert str(retained/'retention_protocol.json') in inputs
+
+
+@pytest.mark.parametrize('fault',['before_point','after_point','after_coordinate','replay_source',
+    'nomination_hash','missing_nomination','incomplete','smoke','reference','retention_identity','reference_hashes','fitting_source'])
+def test_refit_binding_rejects_incomplete_or_mismatched_fits(refit_files,fault):
+    before,after,reset,retained=refit_files
+    if fault=='before_point':before['candidate']=dict(before['candidate'],id='wrong')
+    elif fault=='after_point':after['candidate']=dict(after['candidate'],id='wrong')
+    elif fault=='after_coordinate':after['candidate']=dict(after['candidate'],hyperparams={'gamma':.3})
+    elif fault=='replay_source':after['model_sources'].clear()
+    elif fault=='missing_nomination':(retained/'nominees.json').unlink()
+    elif fault in ('nomination_hash','incomplete','smoke'):
+        file=retained/'completion.json';data=json.loads(file.read_text())
+        if fault=='nomination_hash':data['nomination_sha256']='changed'
+        elif fault=='incomplete':data['status']='running'
+        else:data['smoke']=True
+        file.write_text(json.dumps(data))
+    elif fault=='reference':reset=reset/'different'
+    elif fault in ('retention_identity','reference_hashes'):
+        file=retained/'retention_protocol.json';data=json.loads(file.read_text())
+        data['structural_intervention' if fault=='retention_identity' else 'input_sha256']='changed'
+        file.write_text(json.dumps(data))
+    else:
+        for name in ('nominees.json','protocol.json'):
+            file=retained/name;data=json.loads(file.read_text());data['source_sha256']={};file.write_text(json.dumps(data))
+        file=retained/'completion.json';data=json.loads(file.read_text())
+        data['nomination_sha256']=comparison.alignment.digest(retained/'nominees.json');file.write_text(json.dumps(data))
+    with pytest.raises(ValueError):comparison.bind_refit_contrast(before,after,208,'SEARCH',reset,retained)
 
 
 @pytest.mark.parametrize('fault',['trial','text','query','scope','boundary','reports','seed_order','duplicate_seed','missing_estimate','short_estimate','point'])
