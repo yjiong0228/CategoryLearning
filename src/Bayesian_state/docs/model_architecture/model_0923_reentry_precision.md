@@ -201,3 +201,16 @@ K2的后段正确规则精度提高，同时发现后缺失减少，平均作答
 兼容性短验证另用原K2参数重放16题，全部14类状态数组与已有完整状态的对应前缀逐值一致。
 原K2与K4参数比较的分数表、逐题表和HTML也逐字节复现。
 独立核对记录位于`results/model_0923/reentry_precision_state_validation_20261018_v1/validation.json`。
+
+完整口述对齐完成后，使用`workflows.analysis.model_0923_oral_parameter_comparison`
+并设置`--contrast-kind precision_retention`执行固定参数的机制比较。
+`--original`指定对应参数点的RESET对齐，`--revised`指定RETAIN对齐；其余参数为
+`--subject 208 --arm SEARCH --output 新目录`。两点与两种口述读法分别比较。
+程序要求参数坐标、参数编号和全部其他执行条件相同，差值统一为RETAIN减RESET。
+默认共同种子的误差沿用完整滤波重复配对；口述评分定义与完整报告分母保持一致。
+
+53项参数／机制身份、重放来源及口述误差测试通过，命令行通过检查。
+默认原参数比较的两张表和HTML逐字节复现，106项输入哈希通过核对。
+两个短口述对齐均被完整科学比较入口拒绝。机制对照的合法输入、混杂拒绝和结果标签已通过方法实例验证，
+正式效应仍等待完整RETAIN状态。验证材料位于
+`results/model_0923/reentry_precision_oral_comparison_validation_20261018_v1`。

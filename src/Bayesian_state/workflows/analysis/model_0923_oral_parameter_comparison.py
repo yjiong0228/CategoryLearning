@@ -7,6 +7,9 @@ and pair delete-one-filter estimates for common seeds by default. For disjoint
 seed banks, --seed-relation independent combines the two delete-filter variances.
 Both modes require equal filter budgets. Parameter labels stay separate from model
 labels. This is retrospective development; oral content does not select parameters.
+--contrast-kind precision_retention compares RESET with RETAIN at exactly the
+same existing parameter point. It requires explicit retained-precision provenance
+and keeps every other task, cognitive mechanism and numerical setting matched.
 """
 from __future__ import annotations
 
@@ -112,6 +115,12 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
                 or digest(Path(job['original_job'])) != job['original_job_sha256']
                 or digest(Path(job['reference'])) != job['reference_sha256']):
             raise ValueError('State, parameter or seed identity changed')
+        retained = job.get('retain_precision', False)
+        intervention = 'retained_rule_precision' if retained else None
+        if (type(retained) is not bool or record.get('structural_intervention') != intervention
+                or protocol.get('structural_intervention') != intervention
+                or manifest.get('structural_intervention') != intervention):
+            raise ValueError('State and oral alignment disagree on the structural intervention')
         folder = Path(job['folder'])
         task_files = [folder/name for name in ('training.npz', 'sealed_test.npz', 'engine.json')]
         current = dict(candidate=record['candidate'],
@@ -136,30 +145,62 @@ def load_group(directory: Path, subject: int, arm: str) -> tuple[tuple, dict, di
     pd.testing.assert_frame_equal(pd.DataFrame(scored[1]), old_summary, check_dtype=False, atol=1e-12, rtol=0)
     identity.update(oral_manifest_sha256=manifest['oral_manifest_sha256'],
                     parameter_estimation_scope=manifest.get('parameter_estimation_scope', 'original_evaluation_protocol'),
-                    parameter_candidate_policy=manifest.get('parameter_candidate_policy', 'original_evaluation_protocol'))
+                    parameter_candidate_policy=manifest.get('parameter_candidate_policy', 'original_evaluation_protocol'),
+                    structural_intervention=manifest.get('structural_intervention'),
+                    selected_parameter_id=manifest.get('selected_parameter_id'))
     return scored, identity, {str(p.resolve()):digest(p) for p in files}
 
 
+def validate_comparison(before: dict, after: dict, contrast_kind: str) -> None:
+    """Allow the declared parameter or precision change and preserve other inputs."""
+    if contrast_kind not in ('parameters', 'precision_retention'):
+        raise ValueError('Unknown oral contrast kind')
+    for key in ('scientific', 'arm_settings', 'archived_pf_sha256', 'task_sha256', 'oral_manifest_sha256'):
+        if before[key] != after[key]:
+            raise ValueError('Comparison requires the same task, mechanism, oral coding and budget')
+    if contrast_kind == 'parameters':
+        if before['mechanism'] != after['mechanism']:
+            raise ValueError('Parameter comparison requires the same task, mechanism, oral coding and budget')
+    else:
+        old_mechanism, new_mechanism = dict(before['mechanism']), dict(after['mechanism'])
+        if (old_mechanism.pop('retain_learned_precision', None) is not False
+                or new_mechanism.pop('retain_learned_precision', None) is not True
+                or old_mechanism != new_mechanism):
+            raise ValueError('Precision contrast must change only RESET to RETAIN')
+        if any(before['candidate'][key] != after['candidate'][key] for key in ('id', 'hyperparams')):
+            raise ValueError('Precision contrast requires identical fixed parameter points')
+        if (before['structural_intervention'] is not None
+                or after['structural_intervention'] != 'retained_rule_precision'
+                or after['parameter_candidate_policy'] != 'declared_point_no_new_selection'
+                or after['selected_parameter_id'] != after['candidate']['id']):
+            raise ValueError('Precision contrast needs explicit fixed-point intervention provenance')
+    if any(after['model_sources'].get(name) != sha for name, sha in before['model_sources'].items()):
+        raise ValueError('Revised replay changes an original executing dependency')
+
+
 def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
-        *, seed_relation: str = 'paired') -> None:
+        *, seed_relation: str = 'paired', contrast_kind: str = 'parameters') -> None:
     if output.exists(): raise FileExistsError('Use a new oral parameter comparison directory')
     old, before, inputs = load_group(original, subject, arm)
     new, after, more = load_group(revised, subject, arm); inputs.update(more)
-    for key in ('scientific', 'mechanism', 'arm_settings', 'archived_pf_sha256', 'task_sha256', 'oral_manifest_sha256'):
-        if before[key] != after[key]: raise ValueError('Parameter comparison requires the same task, mechanism, oral coding and budget')
-    if any(after['model_sources'].get(name) != sha for name, sha in before['model_sources'].items()):
-        raise ValueError('Revised parameter replay changes an original executing dependency')
+    validate_comparison(before, after, contrast_kind)
     scores, trials = paired_scores(old, new, seed_relation=seed_relation)
     output.mkdir(parents=True)
     scores.to_csv(output/'scores.csv', index=False); trials.to_csv(output/'trials.csv', index=False)
     display = scores[scores.subset.eq('complete') & scores.domain.eq('structural')]
     error_description = ('模拟标准误按共同种子逐次删除一个完整滤波重复计算。' if seed_relation == 'paired' else
                          '两组滤波种子互不重叠，分别删除一个完整滤波重算分数；差值的模拟标准误为两组方差之和的平方根。')
-    page = ('<!doctype html><html lang="zh"><meta charset="utf-8"><title>参数变化与口述表征</title>'
+    if contrast_kind == 'parameters':
+        title, heading = '参数变化与口述表征', '同一模型在两组冻结参数下的口述表征'
+        description = ('两组参数均由行为数据确定，口述编码、试次与完整报告分母保持一致。'
+                       '差值为修订参数减原参数。')
+    else:
+        title, heading = '精度保持与口述表征', '同一参数下保留已学精度的口述表征对照'
+        description = ('两组沿用同一个已有行为参数点，结构差异为规则再次进入时恢复最近在场精度。'
+                       '口述编码、试次与完整报告分母保持一致。差值为RETAIN减RESET。')
+    page = ('<!doctype html><html lang="zh"><meta charset="utf-8"><title>'+title+'</title>'
             '<style>body{max-width:1300px;margin:30px auto;font:16px/1.6 sans-serif}td,th{padding:5px}</style>'
-            '<h1>同一模型在两组冻结参数下的口述表征</h1>'
-            '<p>两组参数均由行为数据确定，口述编码、试次与完整报告分母保持一致。'
-            '差值为修订参数减原参数。'+error_description+
+            '<h1>'+heading+'</h1><p>'+description+error_description+
             '原有training／test标记表示时间范围。本次为回顾性开发比较，参数和被试不确定性另行评价。</p>'
             +display.to_html(index=False, float_format=lambda x:f'{x:.6f}')+
             '<p><a href="scores.csv">全部时间范围与两种口径</a> · <a href="trials.csv">全部逐题质量差值</a></p>')
@@ -172,10 +213,12 @@ def run(original: Path, revised: Path, output: Path, subject: int, arm: str,
                alignment.ROOT/'src/Bayesian_state/evaluation/oral/information_controls.py']
     result = dict(status='complete', subject=subject, arm=arm, original=str(original.resolve()), revised=str(revised.resolve()),
         original_parameters=before, revised_parameters=after, original_scores_reproduced=True,
-        revised_scores_reproduced=True, seed_relation=seed_relation,
+        revised_scores_reproduced=True, seed_relation=seed_relation, contrast_kind=contrast_kind,
         uncertainty=('paired_delete_one_complete_filter_seed_mcse' if seed_relation == 'paired' else
                      'independent_sum_of_delete_one_complete_filter_variances_mcse'),
-        data_use='retrospective development; both parameter points behavior-selected; oral evaluation only',
+        data_use=('retrospective development; both parameter points behavior-selected; oral evaluation only'
+                  if contrast_kind == 'parameters' else
+                  'fixed existing behavior parameter; RESET versus RETAIN; development oral evaluation only'),
         input_sha256=inputs, source_sha256={str(p.relative_to(alignment.ROOT)):alignment.digest(p) for p in sources},
         artifacts={p.name:alignment.digest(p) for p in output.iterdir()})
     (output/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
@@ -188,5 +231,8 @@ if __name__ == '__main__':
     parser.add_argument('--arm', required=True)
     parser.add_argument('--seed-relation', choices=('paired', 'independent'), default='paired',
                         help='Use paired errors for common seeds, or independent errors for disjoint banks')
+    parser.add_argument('--contrast-kind', choices=('parameters', 'precision_retention'), default='parameters',
+                        help='Compare parameter points, or isolate precision retention at one fixed point')
     args = parser.parse_args()
-    run(args.original, args.revised, args.output, args.subject, args.arm, seed_relation=args.seed_relation)
+    run(args.original, args.revised, args.output, args.subject, args.arm,
+        seed_relation=args.seed_relation, contrast_kind=args.contrast_kind)

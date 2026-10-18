@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from src.Bayesian_state.workflows.analysis.model_0923_oral_parameter_comparison import paired_scores
+from src.Bayesian_state.workflows.analysis import model_0923_oral_parameter_comparison as comparison
 
 
 def scores():
@@ -79,6 +80,59 @@ def test_declaring_independence_does_not_relax_report_boundaries_or_budget():
 def test_unknown_seed_relation_is_rejected():
     with pytest.raises(ValueError,match='Seed relation'):
         paired_scores(scores(),scores(),seed_relation='automatic')
+
+
+def intervention_identities():
+    before=dict(scientific={'particles':512,'trials':2},arm_settings={'precision':'fast'},
+        mechanism={'kind':'E','retain_learned_precision':False},archived_pf_sha256='same',
+        task_sha256={'training':'same'},oral_manifest_sha256='same',model_sources={'original.py':'original'},
+        candidate={'id':'point','hyperparams':{'gamma':0}},structural_intervention=None,
+        parameter_candidate_policy='original_evaluation_protocol',selected_parameter_id=None)
+    after=deepcopy(before)
+    after['mechanism']['retain_learned_precision']=True
+    after['structural_intervention']='retained_rule_precision'
+    after['parameter_candidate_policy']='declared_point_no_new_selection'
+    after['selected_parameter_id']='point';after['model_sources']['retention.py']='retention'
+    return before,after
+
+
+def test_precision_contrast_accepts_only_its_declared_mechanism_change():
+    before,after=intervention_identities()
+    comparison.validate_comparison(before,after,'precision_retention')
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'parameters')
+
+
+@pytest.mark.parametrize('fault',['task','budget','oral','parameter','parameter_id','other_mechanism',
+    'disabled','reversed','selection','point_binding','source'])
+def test_precision_contrast_rejects_confounding_changes(fault):
+    before,after=intervention_identities()
+    if fault=='task':after['task_sha256']['training']='changed'
+    elif fault=='budget':after['scientific']['particles']=256
+    elif fault=='oral':after['oral_manifest_sha256']='changed'
+    elif fault=='parameter':after['candidate']['hyperparams']['gamma']=.8
+    elif fault=='parameter_id':after['candidate']['id']='different'
+    elif fault=='other_mechanism':after['mechanism']['kind']='R1'
+    elif fault=='disabled':after['mechanism']['retain_learned_precision']=False
+    elif fault=='reversed':before,after=after,before
+    elif fault=='selection':after['parameter_candidate_policy']='oral_selected'
+    elif fault=='point_binding':after['selected_parameter_id']='different'
+    elif fault=='source':after['model_sources']['original.py']='changed'
+    with pytest.raises(ValueError):comparison.validate_comparison(before,after,'precision_retention')
+
+
+def test_precision_contrast_exports_mechanism_labels_without_parameter_selection(tmp_path,monkeypatch):
+    before,after=intervention_identities()
+    def load(directory,subject,arm):
+        return scores(),before if directory.name=='original' else after,{}
+    monkeypatch.setattr(comparison,'load_group',load)
+    output=tmp_path/'output'
+    comparison.run(tmp_path/'original',tmp_path/'revised',output,208,'SEARCH',contrast_kind='precision_retention')
+    manifest=comparison.alignment.read(output/'manifest.json')
+    assert manifest['contrast_kind']=='precision_retention'
+    assert 'RESET versus RETAIN' in manifest['data_use']
+    assert '同一参数下保留已学精度' in (output/'index.html').read_text()
+    summary=pd.read_csv(output/'scores.csv')
+    assert np.all(summary.filter(regex='difference').to_numpy()==0)
 
 
 @pytest.mark.parametrize('fault',['trial','text','query','scope','boundary','reports','seed_order','duplicate_seed','missing_estimate','short_estimate','point'])
