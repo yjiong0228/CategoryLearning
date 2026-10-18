@@ -575,3 +575,18 @@ RETAIN实际发生4次精度恢复，单数值线程检查通过。
 准备验证位于`capacity_precision_recovery_preparation_validation_20261018_v1`，
 实际短工作器验证位于`capacity_precision_recovery_worker_validation_20261018_v1`。
 正式结果目录为`capacity_precision_recovery_20261018_v1`，当前正在评分，恢复成绩尚未产生。
+
+恢复图按四种生成条件分面，每一行保留一条模拟序列，每一列对应一种评分候选。
+格内数值为候选相对生成点的每题NLL差，负值表示该候选比生成点更能预测这条序列。
+误差由完整滤波种子配对计算；生成点用边框标示，所有最低分候选均有圆点，同分完整保留。
+每个面板另列“唯一最低分且正确”的序列数量。其他参数固定为生成值，图中误差描述滤波计算波动。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model0923_capacity_precision_recovery \
+  --source results/model_0923/capacity_precision_recovery_20261018_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/capacity_precision_recovery_NEW
+```
+
+该入口要求完整运行的完成记录，并逐项核对候选参数、实际精度机制、配对种子、预测数组及恢复选择。
+新增8项测试与共用评分的16项测试通过，CLI和已有短流程绘图通过。
+短图使用`--allow-smoke`显式标为实现检查，正式16条序列完成后再生成完整恢复图。
