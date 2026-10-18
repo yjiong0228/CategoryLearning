@@ -125,6 +125,17 @@ def reference_generation(source: Path, scope: Path, reference: Path, frozen: dic
     return records, inputs
 
 
+def scope_input_hashes(frozen: dict, protocol: dict) -> dict:
+    """Bind final nominees to task hashes retained in their original protocol."""
+    for key in ('settings', 'source_sha256', 'data'):
+        if frozen[key] != protocol[key]:
+            raise ValueError('Frozen scope and original protocol disagree')
+    hashes = protocol['input_sha256']
+    if frozen.get('input_sha256', hashes) != hashes:
+        raise ValueError('Frozen scope input hashes disagree with its protocol')
+    return dict(hashes)
+
+
 def validate_reused_bank(row: dict, point: dict, seeds: list[int], original: dict,
                          categories: np.ndarray) -> Path:
     """Require the same full task and random paths before sharing a saved bank."""
@@ -160,6 +171,9 @@ def run(scope: Path, reference: Path, output: Path, smoke: bool,
     else:
         frozen = v.read(checkpoint)
         binding_hash = dict(nomination_sha256=v.digest(checkpoint))
+    # Final nominees store selections; the immutable run protocol owns task
+    # input hashes. Provisional nominees already carry the same protocol fields.
+    frozen = dict(frozen, input_sha256=scope_input_hashes(frozen, protocol))
     original_fit = Path(protocol['fit'])
     original = v.read(original_fit / 'nominees.json')
     if output.exists():

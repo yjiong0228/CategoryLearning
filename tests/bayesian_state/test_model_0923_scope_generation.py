@@ -7,10 +7,27 @@ import numpy as np
 import pytest
 
 from src.Bayesian_state.optimization.search.adaptive_proposals import candidate
-from src.Bayesian_state.workflows.analysis.model_0923_scope_generation import (
-    point_bindings, provisional_full_nominees, reference_generation, validate_reused_bank,
-)
 from src.Bayesian_state.evaluation.model_0923_h_validation import digest
+from src.Bayesian_state.workflows.analysis.model_0923_scope_generation import (
+    point_bindings, provisional_full_nominees, reference_generation, validate_reused_bank, scope_input_hashes,
+)
+
+
+def test_final_nominees_recover_task_hashes_from_matching_original_protocol():
+    frozen=dict(settings={'subjects':[308]},source_sha256={'core':'sha'},data='prepared')
+    protocol=dict(deepcopy(frozen),input_sha256={'task.npz':'task_sha'})
+    assert scope_input_hashes(frozen,protocol)==protocol['input_sha256']
+    assert 'input_sha256' not in frozen
+    provisional=deepcopy(protocol)
+    assert scope_input_hashes(provisional,protocol)==protocol['input_sha256']
+
+
+@pytest.mark.parametrize('key',['settings','source_sha256','data','input_sha256'])
+def test_scope_input_binding_rejects_protocol_mismatch(key):
+    protocol=dict(settings={'subjects':[308]},source_sha256={'core':'sha'},data='prepared',
+                  input_sha256={'task.npz':'task_sha'})
+    frozen=deepcopy(protocol);frozen[key]='changed'
+    with pytest.raises(ValueError):scope_input_hashes(frozen,protocol)
 
 
 def inputs():

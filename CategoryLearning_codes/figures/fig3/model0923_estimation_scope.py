@@ -146,7 +146,7 @@ def trajectory_figures(subject: int, tables: dict, arrays: dict, output: Path, w
         for column, title in enumerate(['Late sampled accuracy', 'First correct-rule discovery', 'Late correct-rule contribution']):
             axes[row, column].set(title=title, ylim=(0, 1.02), xlim=(0, n if column == 1 else 1))
             axes[row, column].set_xlabel('Trial' if column == 1 else 'Proportion')
-        axes[row, 1].legend(fontsize=6, loc='upper left' if selection_stage else 'lower right')
+        axes[row, 1].legend(fontsize=6, loc='upper left')
     fig.suptitle(prefix+f'Subject {subject}: learning outcome distributions', fontsize=9)
     fig.supxlabel('Late = last min(128, sequence length) trials. Dashed line: observed accuracy. Undiscovered paths stay censored.', fontsize=6)
     fig.savefig(output / f'subject_{subject}_distributions.png', dpi=300); plt.close(fig)
