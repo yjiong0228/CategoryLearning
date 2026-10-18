@@ -1,0 +1,13 @@
+protocol: model0923_fixed_catalogue_association_diagnostic_v1
+data: results/model_0923/h_retention_data_20261016_v1
+resource_predecessor: results/model_0923/recalled_search_state_replay_20261018_v1
+parallel_budget: 128
+subjects: [207, 208, 308]
+beta: [1.0, 5.0, 15.0, 30.0]
+rule_retention: [0.0, 0.3, 0.8, 0.99, 1.0]
+arms:
+  FIXED_SHARED: {learn_associations: false, association_retention: shared}
+  LEARN_SHARED: {learn_associations: true, association_retention: shared}
+  FIXED_STABLE: {learn_associations: false, association_retention: stable}
+  LEARN_STABLE: {learn_associations: true, association_retention: stable}
+scope: development_representation_diagnostic_all_geometries_available_no_H_no_oral_input

@@ -88,6 +88,7 @@ def association_choice_probabilities(
 
 def update_associations(
     conditional_weights: np.ndarray, kernel: np.ndarray, *, retention: float,
+    association_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return conditional posteriors and marginal evidence for each geometry.
 
@@ -97,6 +98,9 @@ its dispersion therefore does not reweight the geometry prior. Feedback is
 applied once. Zero-evidence geometries retain their effective conditional state
 and return evidence zero so that the caller can update the geometry marginal.
 The input arrays are never mutated. This helper does not update rule beliefs.
+    An optional Boolean mask of length 24 fixes the allowed associations. At
+    retention zero only allowed states are reset, preserving a fixed-label
+    comparison even at the memoryless boundary.
 """
     weights = _conditional(conditional_weights)
     likelihood = np.asarray(kernel, dtype=float)
@@ -105,7 +109,13 @@ The input arrays are never mutated. This helper does not update rule beliefs.
         raise ValueError('Feedback kernel must match conditional weights and lie in [0, 1].')
     if not np.isfinite(retention) or not 0. <= retention <= 1.:
         raise ValueError('Association retention must lie in [0, 1].')
-    effective = np.ones_like(weights) if retention == 0. else weights ** retention
+    allowed = np.ones(24, dtype=bool) if association_mask is None else np.asarray(association_mask)
+    if allowed.shape != (24,) or allowed.dtype != np.bool_ or not allowed.any():
+        raise ValueError('Association mask must be a nonempty Boolean vector of length 24.')
+    if np.any(weights[:, ~allowed, :] != 0.):
+        raise ValueError('Conditional mass outside the declared association support.')
+    effective = (np.broadcast_to(allowed[None, :, None], weights.shape).astype(float)
+                 if retention == 0. else weights ** retention)
     effective /= effective.sum(axis=(1, 2), keepdims=True)
     weighted = effective * likelihood
     evidence = weighted.sum(axis=(1, 2))
