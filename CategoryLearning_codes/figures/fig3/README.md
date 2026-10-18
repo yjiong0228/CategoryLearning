@@ -1,5 +1,14 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 0923 保留当前刺激的冻结规则对照（2026-10-19）
+
+[四人双读法图与源表](../outputs/fig3/stimulus_controls_20261019_v1/index.html) ·
+[方法与完整结果](../../../src/Bayesian_state/docs/model_architecture/model_0923_oral_constraints.md#保留当前刺激的冻结规则对照)。
+空心圆表示固定前段末端规则贡献，实心菱形表示每题动态贡献；二者保留当前刺激与共同知觉采样。
+BASE和ONLINE的绝对支持同时呈现。208的ONLINE较少出现后段支持下降；207、306的较高支持在前段末端已形成。
+107保留整句表达范围限制，208的两种提议属于同一被试的敏感性比较。
+入口为`python -m CategoryLearning_codes.figures.fig3.model0923_stimulus_controls --output 新目录`，输出PNG讨论稿。
+
 ## Model 0923 逐判断口述覆盖（2026-10-19）
 
 [四人双读法比较图与源表](../outputs/fig3/predicate_alignment_20261019_v2/index.html) ·
