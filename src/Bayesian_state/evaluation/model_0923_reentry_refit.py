@@ -84,6 +84,28 @@ def match_task(old: tuple, new: tuple) -> None:
         np.testing.assert_array_equal(old_a[field], new_a[field])
 
 
+def executed_retention_inputs(planned: dict, job: dict, settings: dict, references: dict) -> dict:
+    """Verify intervention tags and the launcher's bound autonomous audit input."""
+    expected = dict(planned, structural_intervention=refit.INTERVENTION,
+                    retain_precision=True, retention_reference_inputs=references)
+    inputs = {}
+    if planned['phase'] == 'autonomous':
+        prepared = Path(planned['folder']) / 'prepared.json'
+        subject = load(prepared)['subject']
+        audit = refit.ROOT / settings['audit'] / f'audit/subject_{subject}/audit.json'
+        expected.update(audit=str(audit), audit_sha256=digest(audit))
+        inputs.update({str(prepared.resolve()):digest(prepared), str(audit.resolve()):digest(audit)})
+    if job != expected:
+        raise ValueError('Executed evaluation job differs from the declared retained intervention')
+    sidecar = Path(job['target']).with_suffix('.precision.json')
+    execution = load(sidecar)
+    if (execution.get('retained_precision') is not True
+            or execution.get('structural_intervention') != refit.INTERVENTION):
+        raise ValueError('Missing executed precision-retention intervention')
+    inputs[str(sidecar.resolve())] = digest(sidecar)
+    return inputs
+
+
 def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new refitted-precision comparison directory')
@@ -195,15 +217,8 @@ def compare(reset_summary: Path, retained_summary: Path, output: Path) -> None:
         raise ValueError('Missing retained evaluation jobs')
     for file in files:
         job = load(file)
-        expected = dict(plans[file.stem], structural_intervention=refit.INTERVENTION,
-                        retain_precision=True, retention_reference_inputs=references)
-        sidecar = Path(job['target']).with_suffix('.precision.json')
-        execution = load(sidecar)
-        if (job != expected
-                or execution.get('retained_precision') is not True
-                or execution.get('structural_intervention') != refit.INTERVENTION):
-            raise ValueError('Missing executed precision-retention intervention')
-        inputs.update({str(file.resolve()): digest(file), str(sidecar.resolve()): digest(sidecar)})
+        inputs.update(executed_retention_inputs(plans[file.stem], job, settings, references))
+        inputs[str(file.resolve())] = digest(file)
     tables = dict(scores=pd.concat(scores), curves=pd.concat(curves), parameters=pd.concat(parameters),
                   contrasts=pd.DataFrame(contrasts), path_contrasts=pd.DataFrame(path_differences),
                   budgets=actual_budgets, exchange_candidates=pd.concat([
