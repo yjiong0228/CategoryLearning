@@ -26,6 +26,7 @@ H模块各环节的设计与待验证事项见[当前H候选](#当前h候选与�
 | 重新估参后能否保持生成收益 | [全部512条新旧自主路径](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_refit_autonomous_20261018_v1/index.html)；[结果解释](model_0923_reentry_precision.md#重估参数后的自主过程) | 208两方案各128条路径；正确规则更早、更稳定在场，作答贡献下降约0.13，末段正确率仍约0.70；新参数选择评分运行中 |
 | 生成结论是否依赖最优参数点 | [行为选参与生成敏感性](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_precision_finalists_20261018_v3/index.html)；[解释](model_0923_reentry_precision.md#两个行为候选的自主过程敏感性) | 208同一RETAIN机制、两个冻结候选、每方案每点128条路径；另一候选末段正确率高约3个百分点，原行为选参保持冻结 |
 | 容量和提议概率分别影响哪个环节 | [全部1024条路径的交叉对照](../../../../CategoryLearning_codes/figures/outputs/fig3/reentry_capacity_search_20261018_v1/index.html)；[解释](model_0923_reentry_precision.md#容量与全局提议概率的独立作用) | 固定其余12个参数；较低全局提议概率提前发现规则，容量从4增至6削弱规则贡献，末段正确率下降约4.4–5.0个百分点 |
+| 每题回顾历史是否改善规则使用 | [方法、评分与下一项检验](model_0923_continuous_rule_use.md) | 208两种容量、两种提议、三种时机，共768条路径；共同初始精度的每题回顾降低贡献，末段正确率下降约3.9–5.7个百分点 |
 | 推断的作答依据与完整口述是否对应 | [九人对齐图](../../../../CategoryLearning_codes/figures/outputs/fig3/decision_basis_20261018_v1/oral_decision_basis.png)；[逐人汇总](../../../../results/model_0923/decision_basis_alignment_20261018_v1/index.html) | 已完成的BASE、NEW、POOL、DRAW四方案行为重拟合 |
 | 表征与口述如何随试次变化 | [九人时间曲线](../../../../CategoryLearning_codes/figures/outputs/fig3/oral_timecourse_20261018_v2/index.html)；[正确规则时点核对](../../../../results/model_0923/target_state_timing_20261018_v1/index.html) | 固定拟合参数的行为条件状态；报告覆盖率与未确定内容同时保留 |
 | 历史引导搜索改善了哪些自主过程 | [207、208、308](../../../../results/model_0923/recalled_evidence_summary_20261018_v1/index.html)；[其余六人](../../../../results/model_0923/recalled_evidence_extension_summary_20261018_v1/index.html) | 四方案固定参数对照，每人每方案64条自主路径 |
@@ -126,8 +127,9 @@ SEARCH按完整目录计算历史提议证据，其心理计算成本仍需进�
 208的容量与基础全局提议概率交叉对照进一步分开了两种作用。在其余12个参数固定时，
 容量从4增至6降低正确规则末段贡献约0.11–0.13，末段正确率降低约4.4–5.0个百分点；
 基础全局提议概率从0.8降至0.2，则使正确规则平均提前约22–38题出现。
-这组参数的信念保持率为0，活跃集合后期几乎总是满容量。下一项H机制候选将聚焦
-连续作答时的贡献分配，检查历史证据如何持续影响规则使用。当前搜索、准入与精度对照保留。
+这组参数的信念保持率为0，活跃集合后期几乎总是满容量。连续作答时的贡献分配已进入定向检验。
+共同初始精度的每题回顾在四格中均降低正确规则贡献，下一项候选将检查按经验发生时精度积累的支持。
+当前搜索、准入与精度对照保留，详见[连续规则使用检验](model_0923_continuous_rule_use.md)。
 详见[受控干预及验证范围](model_0923_reentry_precision.md#容量与全局提议概率的独立作用)。
 
 参数的心理解释按实际作用范围限定：

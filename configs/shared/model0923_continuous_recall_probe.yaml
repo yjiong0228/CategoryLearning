@@ -1,0 +1,8 @@
+protocol: model0923_continuous_recall_probe_v1
+source: results/model_0923/reentry_capacity_search_20261018_v1
+models: [POOL, SEARCH]
+capacities: [4, 6]
+global_proposal: 0.2
+schedules: [entry, every_trial]
+paths: 64
+parallel_budget: 64
