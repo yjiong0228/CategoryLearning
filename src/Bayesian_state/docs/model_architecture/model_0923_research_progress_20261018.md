@@ -322,7 +322,23 @@ SEPARATE工作器。POOL与SEARCH各从40个共同参数点开始，参数坐标
 正式状态将保存到`separate_belief_refit_states_20261019_v1`，双读法结果分别保存到
 `separate_belief_refit_oral_midpoint_20261019_v1`和`separate_belief_refit_oral_relative_20261019_v1`。
 两种读法沿用原报告编码和共同局部依据评分，完整保留支持、冲突与未确定质量。
-新机制重估后与ONLINE的直接口述差值仍待接入专用比较，其机制身份将按实际执行记录核对。
+新机制重估后与ONLINE的直接口述比较已接入，机制身份按实际执行记录核对。
+
+2026-10-19 14:31，新增`workflows.analysis.model_0923_separate_belief_refit_oral`。
+它分别绑定ONLINE与SEPARATE的正式行为提名、完整评价和口述状态，检查共同参数支持、搜索政策、
+时间边界、报告集合和滤波种子，再使用已有整句评分与反馈分层计算。
+SEPARATE的状态身份包括实际信念更新次数、γ、反馈时点及原预测复现；比较结果明确记录这一机制。
+
+输出中的差值均为SEPARATE减ONLINE，涵盖重新估参和机制变化的共同作用。
+结构域、功能域及前段、后段、全程分别报告支持、冲突与未确定质量。
+反馈分层保留错误、部分正确和正确三类，以及去掉本题选择加权的读出；没有报告的层保留为空。
+各差值的模拟标准误按完整滤波种子成对删除计算。固定参数筛查的成对机制差继续单独解释。
+
+110项相关测试通过，涵盖实际机制身份、行为提名、相同报告匹配和反馈分层。
+两组实际短序列状态的执行字段也已通过新入口检查；完整科学比较仍等待正式重估与状态输出。
+自动队列为`separate_belief_refit_oral_comparison_followthrough_20261019_v1`，已冻结29项输入绑定，
+按中点／相对读法与POOL／SEARCH组成四组比较，最多四个单数值线程工作进程。
+结果将保存到`separate_belief_refit_oral_{midpoint,relative}_{pool,search}_comparison_20261019_v1`。
 
 ### 机制与参数的交叉对照
 
