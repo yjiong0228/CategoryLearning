@@ -207,7 +207,7 @@ def draw(tables: dict, labels: tuple[str, str], output: Path) -> None:
         ax.set_xlabel(('NLL' if metric == 'choice_nll' else 'Energy score')+' difference\nLower is better')
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
     oral = tables['oral_scores']; display = oral[oral.domain.eq('structural')&oral.subset.eq('complete')&oral.window.isin(PHASES)]
-    for ax, reading, title in zip(axes[1], ('midpoint', 'relative'), ('Absolute oral reading', 'Relative oral reading')):
+    for ax, reading, title in zip(axes[1], ('midpoint', 'relative'), ('Structural content (absolute)', 'Structural content (relative)')):
         for i, phase in enumerate(PHASES):
             for j, label in enumerate(LABELS):
                 y = i*3.6+j
@@ -260,7 +260,7 @@ def run(comparison: str, output: Path) -> None:
     links=' · '.join(f'<a href="{name}.csv">{name}</a>' for name in tables)
     note=('差值同时包含机制变化与行为重新估参。参数只由原训练选择确定；口述仅用于检验冻结参数后的表征。'
         '前段、后段和全程相互重叠，POOL与SEARCH属于同一被试的两种提议方案。误差线表示配对模拟标准误。'
-        'NLL与Energy越低越好；口述支持增加、冲突减少分别表示内容对应的改善，未确定质量单独保留。'
+        'NLL与Energy越低越好；口述面板展示整句结构内容。支持增加、冲突减少分别表示内容对应的改善，未确定质量单独保留。'
         '裸长短的两种读法统一用于全部方案，所有完整报告均计入；源表另保留功能域、目录条件子集及首末窗口。')
     (output/'index.html').write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><title>重估后的联合证据</title>'
         '<style>body{max-width:1100px;margin:30px auto;font:16px/1.6 sans-serif}img{max-width:100%}</style>'
