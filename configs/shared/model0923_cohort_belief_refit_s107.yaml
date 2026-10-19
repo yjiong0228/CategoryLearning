@@ -1,0 +1,7 @@
+# First cross-condition full refit after the completed subject 208 comparison.
+# Numerical policy, candidate supports and starts come from the existing adapter.
+# Up to 80 SELECT workers and 16 state replays run alongside these 32 workers.
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+development_reference: results/model_0923/online_evidence_development_20261018_v1
+subjects: [107]
+parallel_budget: 32
