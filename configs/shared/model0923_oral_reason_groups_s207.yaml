@@ -1,0 +1,8 @@
+subject: 207
+data: results/model_0923/h_retention_data_20261016_v1
+rule: 114
+alignments:
+  - {reading: midpoint, model: MIX, path: results/model_0923/cohort_belief_separate_s207_oral_midpoint_20261019_v1}
+  - {reading: midpoint, model: SELECT, path: results/model_0923/cohort_execution_s207_oral_midpoint_20261020_v1}
+  - {reading: relative, model: MIX, path: results/model_0923/cohort_belief_separate_s207_oral_relative_20261019_v1}
+  - {reading: relative, model: SELECT, path: results/model_0923/cohort_execution_oral_followthrough_20261020_v3/subject_207/oral_relative}
