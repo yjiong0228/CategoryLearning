@@ -38,6 +38,9 @@ SELECT让模型依据当前信念和惯性选出的主导规则负责回答；�
 50/128与128/128。306两方案几乎都曾发现正确规则，末期自主正确率仍约73%。
 这些结果分别定位发现不足及发现后的使用限制，详见
 [跨条件参照结果](model_0923_research_progress_20261018.md#207与306的参照结果区分发现与使用限制)。
+[207的完整路径图](../../../../CategoryLearning_codes/figures/outputs/fig3/cohort_belief_s207_20261020_v1/subject_207.png)
+和[306的完整路径图](../../../../CategoryLearning_codes/figures/outputs/fig3/cohort_belief_s306_20261020_v1/subject_306.png)
+已把条件预测、全部自主路径和被试曲线并列，每组128条路径均保留。
 两人的SELECT重估通过各自短验证后已并行启动，每人最多33个工作器；参照评价与状态读取继续接续，
 全部任务共用128进程上限，见[接续调度](model_0923_research_progress_20261018.md#207与306的select比较接续)。
 
