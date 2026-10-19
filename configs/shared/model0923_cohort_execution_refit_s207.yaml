@@ -1,0 +1,5 @@
+# SELECT inherits the completed SEPARATE reference's actual search policy.
+reference_fit: results/model_0923/cohort_belief_separate_s207_refit_20261019_v1
+execution_policy: SELECT
+parallel_budget: 48
+scope: development_cohort_dominant_execution_refit
