@@ -203,8 +203,11 @@ def compare(retained_summary: Path, online_summary: Path, output: Path) -> None:
                              for choice,category in zip(c['choices'],c['categories'])])
         f,t = feedback_scores(banks['RETAIN',cell][0],banks['ONLINE',cell][0],feedback,cut)
         feedback_rows.append(f.assign(subject=subject,model=arm));trial_rows.append(t.assign(subject=subject,model=arm))
-        paths = [table['paths'].query('subject == @subject and model == @arm').set_index('seed').sort_index()
-                 for table in (old_tables,new_tables)]
+        paths = []
+        for table in (old_tables,new_tables):
+            frame = table['paths']
+            selected = frame.loc[(frame['subject'] == subject) & (frame['model'] == arm)]
+            paths.append(selected.set_index('seed').sort_index())
         np.testing.assert_array_equal(paths[0].index,paths[1].index)
         for metric in ('late_accuracy','target_ever','target_late_present','target_late_contribution',
                        'target_exits','target_capacity_drops','search_events','target_proposals'):
