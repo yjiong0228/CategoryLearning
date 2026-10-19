@@ -1,0 +1,6 @@
+source: results/model_0923/separate_belief_probe_20261019_v1
+sample_role: development
+subjects: [208]
+arms: [ONLINE_RETAIN, SEPARATE_RETAIN, ONLINE_ONLINE, SEPARATE_ONLINE, ONLINE_NEAR, SEPARATE_NEAR]
+seeds_per_arm: 2
+workers: 128
