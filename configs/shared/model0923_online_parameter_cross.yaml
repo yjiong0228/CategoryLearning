@@ -1,0 +1,9 @@
+# Fixed SEARCH parameter points; behavioral nominations remain unchanged.
+subject: 208
+arm: SEARCH
+retained_summary: results/model_0923/reentry_precision_refit_s208_summary_20261018_v1
+online_summary: results/model_0923/online_evidence_refit_s208_summary_20261019_v1
+online_probe: results/model_0923/online_evidence_probe_20261018_v1
+confirmation: results/model_0923/online_search_confirmation_followthrough_20261019_v1
+challenger: aabe016808f42091
+parallel_budget: 128
