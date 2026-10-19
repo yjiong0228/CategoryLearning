@@ -1,0 +1,13 @@
+protocol: model0923_belief_precision_training_grid_v1
+seed: 2026101903
+subject: 208
+arm: SEARCH
+fit: results/model_0923/separate_belief_refit_s208_20261019_v1
+coverage: results/model_0923/separate_belief_search_coverage_20261019_v1
+anchor_gammas: [0.0, 1.0]
+gammas: [0.0, 0.6, 1.0]
+learning_rates: [0.003, 0.03, 0.3, 1.0]
+particles: 128
+filter_seeds: 2
+# At most80 frozen-evaluation jobs and24 original state replays can coexist.
+parallel_budget: 24
