@@ -1,0 +1,7 @@
+# Development screen at three existing SEARCH parameter points; no refitting.
+cross: results/model_0923/online_parameter_cross_20261019_v1
+smoke_cross: results/model_0923/online_parameter_cross_smoke_20261019_v2
+paths: 32
+particles: 128
+filter_seeds: 2
+parallel_budget: 128
