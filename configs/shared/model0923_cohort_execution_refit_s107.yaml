@@ -1,0 +1,5 @@
+# SELECT inherits every numerical search choice from the completed 107 reference.
+reference_fit: results/model_0923/cohort_belief_separate_s107_refit_20261019_v1
+execution_policy: SELECT
+parallel_budget: 32
+scope: development_cohort_dominant_execution_refit
