@@ -1,0 +1,13 @@
+subjects: [107, 207, 208, 306]
+data: results/model_0923/h_retention_data_20261016_v1
+expected_boundaries:
+  107: [1, 128, 64]
+  207: [2, 672, 288]
+  208: [2, 384, 192]
+  306: [3, 512, 256]
+# Original TinyRNN training settings, fixed before viewing this comparison.
+hidden_width: 16
+epochs: 150
+learning_rate: 0.001
+seeds: [202610201, 202610202, 202610203, 202610204]
+parallel_budget: 16
