@@ -1,0 +1,6 @@
+# Frozen MIX reference; SELECT overlaps its remaining evaluation/state tasks.
+# 2*33 SELECT + 2*16 reference + 14 precision/state + 14 recovery = 126 workers.
+reference_fit: results/model_0923/cohort_belief_separate_s207_refit_20261019_v1
+execution_policy: SELECT
+parallel_budget: 33
+scope: development_cohort_dominant_execution_refit

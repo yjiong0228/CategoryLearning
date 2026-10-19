@@ -1,0 +1,6 @@
+# The original condition3 feedback, starts and trial boundary are inherited.
+# Only concurrency differs from the original 48-worker SELECT configuration.
+reference_fit: results/model_0923/cohort_belief_separate_s306_refit_20261019_v1
+execution_policy: SELECT
+parallel_budget: 33
+scope: development_cohort_dominant_execution_refit
