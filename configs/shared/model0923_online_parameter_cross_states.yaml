@@ -1,0 +1,5 @@
+# The two original nominee banks already have their own state replays.
+source: results/model_0923/online_parameter_cross_20261019_v1
+sample_role: development
+cells: [ONLINE_RETAIN, RETAIN_ONLINE, ONLINE_NEAR]
+workers: 24
