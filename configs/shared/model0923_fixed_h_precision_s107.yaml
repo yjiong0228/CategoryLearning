@@ -1,0 +1,28 @@
+# Development diagnostic: chronological selection, fixed H coordinates.
+protocol: s107_fixed_h_precision_20261019_v1
+seed: 2026101907
+subject: 107
+arm: SEARCH
+references:
+  MIX: results/model_0923/cohort_belief_separate_s107_evaluation_20261019_v1
+  SELECT: results/model_0923/cohort_execution_s107_evaluation_20261019_v1
+initial_values: [0.1, 0.5, 1.0, 5.0]
+families:
+  ADD10:
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.01, 0.03, 0.1, 0.3, 1.0]
+    anchor: [0.1, 0.1]
+  LOG25:
+    precision: log
+    upper: 25.0
+    rate_scale: 1.0
+    rates: [0.01, 0.03, 0.1, 0.3, 1.0]
+    anchor: [0.5, 0.3]
+screen: {particles: 128, repeats: 2}
+confirmation: {particles: 512, repeats: 4, finalists: 2}
+evaluation: {particles: 512, repeats: 4, paths: 64, path_chunk: 4}
+block_width: 32
+# Coexists with two 48-worker fits, 16 state workers and 2 oral comparisons.
+parallel_budget: 14
