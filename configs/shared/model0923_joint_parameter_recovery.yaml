@@ -1,0 +1,16 @@
+protocol: model0923_separate_joint_parameter_recovery_v1
+seed: 20261020
+policy_reference_fit: results/model_0923/cohort_belief_separate_s107_refit_20261019_v1
+sources:
+  107: results/model_0923/fixed_h_precision_s107_20261019_v1
+  208: results/model_0923/fixed_h_precision_s208_20261020_v1
+cell: MIX_LOG25
+replicates: 2
+expected_training_trials:
+  107: 128
+  208: 384
+parallel_budget: 14
+precision_rates: [0.0, 0.001, 0.003, 0.01, 0.03, 0.06, 0.1, 0.3, 0.6, 1.0]
+initialization: support_midpoint_and_independent_stratified_starts
+path_selection: lowest_original_generation_seeds
+parameter_estimation: all_thirteen_variable_coordinates
