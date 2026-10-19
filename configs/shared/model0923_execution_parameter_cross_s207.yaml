@@ -1,0 +1,5 @@
+review: results/model_0923/cohort_execution_s207_autonomous_review_20261020_v1
+original: results/model_0923/cohort_belief_separate_s207_evaluation_20261019_v1
+revised: results/model_0923/cohort_execution_s207_evaluation_20261020_v1
+subject: 207
+parallel_budget: 32
