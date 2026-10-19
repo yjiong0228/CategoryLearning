@@ -1,0 +1,6 @@
+# Cross-condition SEPARATE reference with the original partial-feedback task.
+# Two 48-worker reference runs plus two 16-filter state jobs fit within 128.
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+development_reference: results/model_0923/online_evidence_development_20261018_v1
+subjects: [306]
+parallel_budget: 48
