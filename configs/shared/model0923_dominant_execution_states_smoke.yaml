@@ -1,0 +1,7 @@
+# Four actual eight-trial, two-particle archived filters; validation only.
+source: results/model_0923/dominant_execution_probe_smoke_20261019_v1
+sample_role: development
+subjects: [208]
+arms: [MIX_POOL, SELECT_POOL, MIX_SEARCH, SELECT_SEARCH]
+seeds_per_arm: 1
+workers: 1

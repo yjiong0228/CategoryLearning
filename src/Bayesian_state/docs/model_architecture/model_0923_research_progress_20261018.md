@@ -621,7 +621,36 @@ SELECT的逐题执行记录和原预测数组，并把执行附属记录从计�
 `dominant_execution_refit_s208_evaluation_20261019_v1`及
 `dominant_execution_refit_s208_summary_20261019_v1`。
 参数仍由原训练选择确定，口述用于随后对同一冻结模型的外部评价。
-SELECT口述状态读取还需接入其实际执行政策，并逐题复现该模型的条件预测。
+重估后的SELECT口述状态读取还需绑定新参数与执行政策，并逐题复现该模型的条件预测。
+
+#### SELECT固定参数的实际状态读取与双读法口述队列
+
+19:19，已接入固定参数筛查的四组状态读取。新入口为
+`workflows.analysis.model_0923_dominant_execution_states`，完整配置为
+`configs/shared/model0923_dominant_execution_states.yaml`。
+它读取MIX／SELECT与POOL／SEARCH的四种组合，各保留原两个滤波种子和128粒子。
+SELECT在每次实际滤波中执行；原状态观察器记录本题选择后、当前反馈前的分类依据，
+并要求全部试次的类别预测逐值复现原评价。随后使用相同口述约束和相同读出公式进行对齐。
+每个提议方案的参数点保持不变，成对差值单独写入`paired_execution_contrasts.csv`。
+这种比较检验执行政策在当前参数点的作用；重估后的口述比较仍需使用新参数自己的状态读取。
+
+验证使用已完成的四个8题、2粒子滤波。全部四组原预测、选择和种子精确复现；
+各组记录14次完成反馈后的信念更新与16次粒子状态转换。
+两组SELECT分别记录16次逐题执行，两组MIX的SELECT执行计数为0。
+19812个数值项的复现或概率有效性核对通过，197项输入绑定通过。
+相关56项测试与命令入口检查通过，短序列来源被明确拒绝作为完整口述评价。
+短重放结果为`dominant_execution_states_smoke_20261019_v1`。
+
+完整队列`dominant_execution_state_followthrough_20261019_v2`已启动8个工作器，
+与当前SELECT初筛80个工作器、原SEPARATE的16个工作器合计104个，每个使用一个数值线程。
+完整状态写入`dominant_execution_states_20261019_v1`，逐题重放检查通过后，
+自动生成`dominant_execution_oral_midpoint_20261019_v1`与
+`dominant_execution_oral_relative_20261019_v1`。
+两种“长／短”读法均统一用于全部四组，明确的“一半”仍按长度范围中点解释。
+完整状态及口述结果尚在计算，当前结论仍以已完成的行为筛查为依据。
+首个队列在按文件调用时因仓库包导入路径失败；v2沿用同一程序，使用仓库根目录下的
+`python -m results.model_0923.dominant_execution_state_followthrough_20261019_v2.run`启动。
+首个失败记录保留，完整科学重放仅由v2启动。
 
 #### 重估后的直接行为比较已排队
 
