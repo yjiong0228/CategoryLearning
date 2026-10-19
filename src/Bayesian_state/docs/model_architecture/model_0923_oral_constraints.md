@@ -580,6 +580,25 @@ DRAW在208、305的后段口述支持上优于BASE，306、308的BASE对应更�
 默认比较基准为BASE，`--reference-model POOL`用于后续POOL与SEARCH比较；
 `--subjects`可以汇总已完整结束的被试组。每个指定被试及方案都须具备全部八个种子。
 
+重新估参后的MIX与SELECT使用`workflows.analysis.model_0923_execution_refit_oral`直接比较：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_execution_refit_oral \
+  --original MIX口述目录 --revised SELECT口述目录 \
+  --subject 被试编号 --arm SEARCH --output 新比较目录
+```
+
+入口支持已有单被试重估与跨条件共同政策重估。每组先重现保存的逐题口述分数，再调用该组原状态入口，
+核对完整行为提名、实际评价滤波、SEPARATE信念更新、精度保持与SELECT执行次数。
+SELECT的参照拟合必须与输入的MIX一致。原记录中的`SELECT_SEARCH`等标签在核对后映射为共同提议标签，
+用于同报告、同种子配对；输入文件保持原值。两种执行方式可以具有不同的行为估计参数，差值同时包含
+执行机制与重新估参的作用。
+
+`scores.csv`保存整句支持、冲突、未确定及配对差；`trials.csv`保留试次身份；`feedback_scores.csv`
+按实际反馈分层，并比较包含与去掉本题选择加权的读出。模拟标准误继续按成对删除完整滤波重复计算，
+各读法分别运行。107的四组完整比较已通过，16项入口与来源测试及CLI检查通过。
+这些整句分数沿用单局部分量的支持定义，联合理由读出按前述方法单独检验。
+
 从仓库根目录运行，输出目录须为新目录：
 
 ```bash
