@@ -1,0 +1,6 @@
+source: results/model_0923/dominant_execution_refit_s208_evaluation_20261019_v1
+sample_role: development
+subjects: [208]
+arms: [SELECT_POOL, SELECT_SEARCH]
+seeds_per_arm: 8
+workers: 16
