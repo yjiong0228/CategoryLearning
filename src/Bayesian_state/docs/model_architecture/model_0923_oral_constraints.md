@@ -647,6 +647,27 @@ SELECT的参照拟合必须与输入的MIX一致。原记录中的`SELECT_SEARCH
 各读法分别运行。107的四组完整比较已通过，16项入口与来源测试及CLI检查通过。
 这些整句分数沿用单局部分量的支持定义，联合理由读出按前述方法单独检验。
 
+固定H后的精度比较使用`workflows.analysis.model_0923_fixed_h_precision_states`读取状态：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_fixed_h_precision_states \
+  --phase replay --source 已完成的精度比较目录 --workers 14 --output 新状态目录
+python -m src.Bayesian_state.workflows.analysis.model_0923_fixed_h_precision_states \
+  --phase align --source 新状态目录 --oral-audit 已冻结的口述审计目录 --output 新口述目录
+```
+
+四格为MIX／SELECT与ADD10／LOG25的组合。各格参数先由原训练选择确定，随后保留全部独立评价种子、
+粒子数、精度更新方式和完整试次。观察器逐值复现已保存的行为预测，状态时点为本题选择后、当前反馈前。
+每种执行方式中的两类精度更新使用相同报告集合，差值同时包含精度机制和两个精度坐标的变化。
+`paired_precision_contrasts.csv`分别报告MIX与SELECT内部的LOG25减ADD10差值及完整滤波配对模拟标准误。
+原始逐题支持、冲突和未确定质量随同保存，两种长短读法各自运行。
+
+`--smoke`在一个工作器中读取每格的第一个原评价种子，保留512粒子并只重放前16题。
+短验证用于检查实际机制执行与预测复现；正式口述入口要求全部完整状态。
+107的四格短重放已通过，正式107、208口述比较接在当前计算队列之后。
+这一比较检验行为改善是否伴随表征改善，报告中的各个特征及其作答作用继续按
+[固定状态特征效应](#固定作答状态下的特征效应)的方法保留。
+
 从仓库根目录运行，输出目录须为新目录：
 
 ```bash
