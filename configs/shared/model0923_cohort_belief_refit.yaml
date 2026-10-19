@@ -1,0 +1,6 @@
+# Shared search policy; each mechanism receives identical subject-specific starts.
+# Full runs remain conditional on the ongoing 208 mechanism comparison.
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+development_reference: results/model_0923/online_evidence_development_20261018_v1
+subjects: [107, 207, 306]
+parallel_budget: 128
