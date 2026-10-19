@@ -1,0 +1,10 @@
+# Fixed nominees; this screen changes response selection, with no refitting.
+evaluation: results/model_0923/separate_belief_refit_s208_evaluation_20261019_v1
+smoke_filter_data: results/model_0923/online_parameter_cross_smoke_20261019_v2/smoke_data/subject_208
+subject: 208
+arms: [POOL, SEARCH]
+paths: 32
+filter_repeats: 2
+particles: 128
+block_width: 32
+parallel_budget: 112
