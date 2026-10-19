@@ -95,6 +95,18 @@ def test_record_check_keeps_select_updates_and_after_choice_timing():
         states.check_record(job, dict(record, timing='after_feedback'))
 
 
+def test_alignment_entry_resolves_imports_and_rejects_short_states(tmp_path):
+    # Exercise the real dynamically loaded align entry: an ImportError here
+    # previously prevented the scientific-scope guard from running at all.
+    source = tmp_path / 'states'; source.mkdir()
+    (source / 'protocol.json').write_text(json.dumps(dict(context(), scientific_scope=False)))
+    (source / 'completion.json').write_text(json.dumps({'status': 'complete', 'smoke': True}))
+    output = tmp_path / 'oral'
+    with pytest.raises(ValueError):
+        states.align(source, tmp_path / 'audit', output)
+    assert not output.exists()
+
+
 def summary_fixture(tmp_path):
     from src.Bayesian_state.evaluation import model_0923_cohort_execution_refit as scores
 

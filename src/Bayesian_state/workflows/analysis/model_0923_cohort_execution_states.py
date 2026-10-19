@@ -117,7 +117,7 @@ def source_jobs(settings: dict, source: Path, smoke: bool) -> tuple[list[Path], 
 
 
 def observer():
-    module = helper('cohort_execution_observer', OBSERVER)
+    module = helper('src.Bayesian_state.workflows.analysis._cohort_execution_observer', OBSERVER)
     module.USE, module.ENTRY, module.CELLS = USE, ENTRY, CELLS
     module.source_jobs, module.estimation_context = source_jobs, estimation_context
     return module
