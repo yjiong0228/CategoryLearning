@@ -1,0 +1,7 @@
+base_config: configs/shared/model0923_rnn_comparator.yaml
+# Within each original H training prefix: fit [0, 1/2), predict [1/2, 3/4);
+# then fit [0, 3/4), predict [3/4, 1). Outer test and oral stay outside selection.
+fold_fractions: [0.5, 0.75, 1.0]
+# Existing TinyRNN.train(epochs=150) returns these completed-epoch checkpoints.
+checkpoint_epochs: [1, 51, 101, 150]
+parallel_budget: 16
