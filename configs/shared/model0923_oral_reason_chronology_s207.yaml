@@ -1,0 +1,14 @@
+subject: 207
+data: results/model_0923/h_retention_data_20261016_v1
+oral_audit: results/model_0923/oral_midpoint_audit_20261018_v1
+rule_audit: results/model_0923/h_rule_diagnosis_20261016_v1/audit/subject_207/audit.json
+states:
+  MIX: results/model_0923/cohort_belief_separate_s207_states_20261019_v1
+block_width: 64
+# Literal descriptions matching the four branches under the midpoint reading.
+# Their use is descriptive; bare long/short remains semantically ambiguous.
+templates:
+  "脖子短，尾巴短。": 1
+  "脖子短，尾巴长。": 2
+  "脖子长，头短。": 3
+  "脖子长，头长。": 4
