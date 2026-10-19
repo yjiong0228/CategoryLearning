@@ -1,0 +1,6 @@
+# Inherit all parameter supports, common starts, stages and seeds from the
+# completed SEPARATE fit. The response execution policy is the only model change.
+reference_fit: results/model_0923/separate_belief_refit_s208_20261019_v1
+execution_policy: SELECT
+parallel_budget: 112
+scope: development; training choices estimate SELECT parameters; oral excluded
