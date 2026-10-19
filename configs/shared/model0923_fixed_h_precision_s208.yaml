@@ -1,0 +1,30 @@
+# Cross-condition development check after S107; H coordinates remain frozen.
+protocol: s208_fixed_h_precision_20261020_v1
+seed: 2026102001
+subject: 208
+arm: SEARCH
+expected_boundary: {condition: 2, training_trials: 384, test_trials: 192}
+references:
+  MIX: results/model_0923/separate_belief_refit_s208_evaluation_20261019_v1
+  SELECT: results/model_0923/dominant_execution_refit_s208_evaluation_20261019_v1
+# Common grid includes both reference initials (MIX=2, SELECT=0.5).
+initial_values: [0.1, 0.5, 2.0, 5.0]
+families:
+  ADD10:
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.01, 0.06, 0.1, 0.3, 1.0]
+    anchor: reference
+  LOG25:
+    precision: log
+    upper: 25.0
+    rate_scale: 1.0
+    rates: [0.01, 0.03, 0.1, 0.3, 1.0]
+    anchor: [0.5, 0.3]
+screen: {particles: 128, repeats: 2}
+confirmation: {particles: 512, repeats: 4, finalists: 2}
+evaluation: {particles: 512, repeats: 4, paths: 64, path_chunk: 4}
+block_width: 32
+# Fits207/306 (96) + S208 state replay (16) + this probe (14) + comparisons(2).
+parallel_budget: 14
