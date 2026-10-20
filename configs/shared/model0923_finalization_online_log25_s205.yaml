@@ -1,0 +1,7 @@
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+development_reference: results/model_0923/online_evidence_development_20261018_v1
+development_cohort_fit: results/model_0923/episodic_refit_20261017_v1
+subjects: [205]
+parallel_budget: 64
+finalization_precision_family: LOG25
+finalization_scope: development_comparison
