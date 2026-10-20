@@ -335,6 +335,15 @@ NLL、Energy及成对模拟误差，共24个配对评分值通过，4118项来�
 末128题的被试正确率为89.84%，与上表后192题的窗口分别报告。
 两机制的16题、512粒子短状态重放已通过原概率和状态数组核对，32次完整状态重放正在运行。
 
+[四组完整路径与分阶段评分图](../../../../CategoryLearning_codes/figures/outputs/fig3/development_belief_s108_comparison_20261020_v1/index.html)
+已完成。路径图按信念机制和候选产生方案排列，展示全部512条路径、条件预测、被试曲线与10%–90%路径分位带；
+评分图分别呈现训练、后段和全程的NLL与Energy差值，误差线为两倍成对模拟标准误。
+10800项绘图数值与原数组一致，4102项来源绑定及两张PNG视觉检查通过，九张源表保留。
+实际绘图CLI和相关图表、期刊代码的171项测试通过。
+入口为`python -m CategoryLearning_codes.figures.fig3.model0923_belief_learning_comparison`，
+参数为`--comparison`完整比较目录和`--output`新图目录。核对记录位于
+`development_belief_s108_comparison_figure_review_20261020_v1`；本项新增绘图入口，科学模型与评分定义保持原值。
+
 #### 205的共同政策比较已启动
 
 205的ONLINE补充短验证已完成，五阶段共44个实际任务，每个任务使用8题、2粒子和一个数值工作器。
