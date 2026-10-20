@@ -1,0 +1,29 @@
+# Software validation only; the driver requires --smoke for this configuration.
+scope: software_validation
+protocol: finalization_precision_software_20261021_v1
+seed: 2026102101
+subject: 108
+belief_mechanism: ONLINE
+reference_evaluation: results/model_0923/development_belief_s108_online_evaluation_20261020_v1
+reference_arm: SEARCH
+expected_boundary: {condition: 1, training_trials: 448, test_trials: 192}
+cells: [SEARCH_ADD10, SEARCH_LOG25, POOL_LOG25]
+initial_values: [0.5, 10.0]
+families:
+  ADD10:
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.0, 0.1]
+    anchor: reference
+  LOG25:
+    precision: log
+    upper: 25.0
+    rate_scale: 1.0
+    rates: [0.01, 0.3]
+    anchor: [0.5, 0.3]
+screen: {particles: 2, repeats: 2}
+confirmation: {particles: 2, repeats: 2, finalists: 2}
+evaluation: {particles: 2, repeats: 2, paths: 4, path_chunk: 1}
+block_width: 32
+parallel_budget: 1

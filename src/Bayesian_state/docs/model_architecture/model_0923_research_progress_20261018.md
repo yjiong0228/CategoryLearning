@@ -76,6 +76,57 @@
 另两张精度行为表在本次读取时记录哈希，其数值检查沿用各自原独立复算。
 本次清单整理复用入口和缺口，候选冻结、共同比较及最终推荐仍待完成。
 
+### 接续后的205完整行为结果
+
+2026-10-21，205的SEPARATE已完成全部704题评价：每种候选提议方案包含8次512粒子选择滤波和
+128条完整自主路径。原480题训练及224题后段边界保持一致，两个方案的参数在后段评价前冻结。
+下表的NLL为逐题平均负对数预测概率；Energy评价完整区间正确率路径的生成分布，两者均越低越好。
+
+| 阶段 | POOL选择NLL | SEARCH选择NLL | POOL自主Energy | SEARCH自主Energy |
+| --- | ---: | ---: | ---: | ---: |
+| 训练480题 | 1.252834 | 1.252471 | 0.071623 | 0.067042 |
+| 后段224题 | 0.628356 | 0.627310 | 0.159697 | 0.110937 |
+| 全程704题 | 1.054136 | 1.053556 | 0.108333 | 0.084322 |
+
+两个方案的选择分数接近，SEARCH的自主分布评分更低；其末128题正确率为65.78%，POOL为58.07%。
+该结果保留了条件选择预测与自主学习过程各自的信息条件。方案差异同时包含候选提议方式与精度初值，
+按二者的共同作用解释。规则发现、在场和作答贡献的细分仍见此前的
+[205自主路径](#205的自主路径显示发现与作答贡献的分离)。
+[完整行为汇总](../../../../results/model_0923/development_belief_s205_separate_summary_20261020_v1/scores.csv)
+及其执行检查已生成。ONLINE确认、跨机制比较和口述接续仍在运行或等待前置结果。
+208一次预算扩展已完成160项初筛，进入72项细化任务；原定一次扩展上限保持。
+
+### 共同精度比较入口的小规模验证
+
+新增入口`workflows.analysis.model_0923_finalization_precision`接收一个已完成行为评价中的冻结参数点，
+支持ONLINE和SEPARATE，使用MIX作答。配置声明SEARCH／ADD10、SEARCH／LOG25、POOL／LOG25中的至多三格；
+可只运行需要补齐的格。各格共同保留该参考点的H与记忆参数，训练选择仅确定精度初值和学习率。
+POOL格改变候选提议方式。正式比较中的提议差异同时包含各格重新估计的两个精度参数，固定H范围明确保留。
+
+新入口调用现有的网格、选参、种子、实际模型工作进程、执行检查与评分函数。
+完成筛选和确认后先冻结参数，再评价完整自主路径及后段选择。每个计算进程使用一个数值线程，
+并行数受配置、可用CPU和就绪任务数限制。正式配置中的粒子、重复和路径预算在运行前声明，
+口述继续保留到行为参数冻结后评价。
+
+两份配置`model0923_finalization_precision_online_smoke.yaml`和
+`model0923_finalization_precision_separate_smoke.yaml`仅用于软件验证，入口要求显式传入`--smoke`。
+每种机制执行三格各一个8题、2粒子训练滤波，各一条16题自主路径，再执行一条原参数自主路径的前缀复现，
+共七个单工作器任务。两个机制均已完成，原结果中各112个概率、选择和状态值逐值一致。
+30项新旧相关测试及命令行入口检查通过。此项验证覆盖短任务的真实执行；
+完整筛选、确认、分段评分及后续口述接续仍须在正式比较中验收。
+
+从仓库根目录运行软件验证，输出目录须为新目录：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_precision \
+  --config configs/shared/model0923_finalization_precision_online_smoke.yaml \
+  --output results/model_0923/finalization_precision_online_smoke_new --smoke
+```
+
+本次记录位于`finalization_precision_online_smoke_20261021_v1`与
+`finalization_precision_separate_smoke_20261021_v1`。新的正式精度比较待共同H基线冻结后启动。
+
 ## 2026-10-20阶段总结与暂停
 
 本阶段已形成可以讨论的机制方向：分别诊断规则的发现、持续在场、作答贡献和分类精度，
