@@ -232,6 +232,38 @@ python -m src.Bayesian_state.evaluation.model_0923_finalization_evidence \
 按最多16个单数值线程工作器完成行为评价、状态重放和口述比较。
 九格完整汇总和推荐版本取舍继续等待这些结果。
 
+### 参数解释保留全部高粒子候选
+
+新增`evaluation.model_0923_finalization_parameter_support`读取共同证据表中各格的实际拟合来源，
+保留选择阶段与确认阶段的全部候选、14项参数差异及提名点的精确通道关闭记录。
+两阶段各用原训练序列及各自滤波重复计算，不跨阶段混合评分。
+相对序列点似然以本阶段最高似然点为1；差值的不确定性采用删除一次完整滤波的配对模拟标准误。
+这些结果描述已搜索候选的数据支持，个体参数的后验范围与联合恢复证据另行报告。
+
+从仓库根目录运行。完整九格使用默认设置；明确读取部分被试时加`--allow-partial`：
+
+```bash
+python -m src.Bayesian_state.evaluation.model_0923_finalization_parameter_support \
+  --source results/model_0923/finalization_evidence_complete_20261021_v1 \
+  --output results/model_0923/finalization_parameter_support_new
+```
+
+已实际读取108的三格拟合，保存18个阶段—参数点记录、252项逐坐标记录和42项提名参数记录。
+SEARCH在选择阶段的次优点相对似然为0.361，退出率为0，提名点为0.5；
+失败对全局搜索比例的增益同时由提名点的0变为0.25。二者总负对数似然差为1.018，配对模拟标准误为0.479。
+确认阶段中，保留参照点的相对似然为0.000180，其容量和退出率同时不同。
+两个阶段展示了不同范围的比较对象，退出率的单独心理解释需结合这些联合差异。
+ADD10与LOG25的SEARCH结果在此被试上相同，沿用已验证的零学习率等价范围。
+
+POOL／LOG25选择阶段次优点的相对似然为0.250，同时改变全局搜索、M证据保持与精度学习等坐标。
+三格提名点的失败保持率通道均关闭，亲和度转移系数固定且关闭；两类坐标保留复现值。
+其余坐标的解释继续结合联合恢复及规则在场、作答贡献和精度过程。
+[108核验](../../../../results/model_0923/finalization_parameter_support_s108_review_20261021_v1/completion.json)
+从原预测数组独立重算分数、成对误差及全部参数差异，43,836项检查通过，绑定3700项来源；
+20项相关测试及CLI检查通过，新增滤波次数为0。
+[参数证据表](../../../../results/model_0923/finalization_parameter_support_s108_20261021_v2/manifest.json)
+明确保留205、306尚缺的状态。完整九格汇总到齐后，再按同一入口形成全部参数的共同证据。
+
 ### 共同证据的图表入口
 
 新增`CategoryLearning_codes.figures.fig3.model0923_finalization_evidence`，
