@@ -1,0 +1,6 @@
+setup: results/model_0923/finalization_extension_setup_20261021_v1
+recommendation: results/model_0923/finalization_recommendation_20261021_v1/recommendation.json
+subjects: [110, 209, 309]
+parallel_budget: 128
+scope: extension_validation
+software_candidate: null

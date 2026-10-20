@@ -285,6 +285,49 @@ python -m src.Bayesian_state.evaluation.model_0923_finalization_evidence \
 直接按刺激阈值区域复核1728个任务类别，另核对1680个起点坐标和142项输入绑定。
 本步骤未执行选择似然评分、模型口述评分或参数拟合；正式扩展拟合继续等待推荐版本冻结。
 
+### 扩展拟合只运行冻结的推荐方案
+
+新增入口`workflows.analysis.model_0923_finalization_extension_fit`接收已保存的起点与任务规则检查结果，
+为110、209、309分别拟合最终推荐的一个方案。推荐记录须指定三个主候选之一，
+并绑定已经完成的九格开发证据、取舍理由及扩展名单。三人的既往开发影响继续记为未确定。
+正式配置为[`model0923_finalization_extension_fit.yaml`](../../../../configs/shared/model0923_finalization_extension_fit.yaml)；
+当前推荐记录尚未生成，正式拟合入口会在创建输出和启动评分前停止。
+
+每人使用已登记的40个起点，原训练段的选择序列似然决定参数。初筛、局部联合细化、
+增加粒子后的复筛、候选选择和独立确认均调用现有的候选生成与评分函数。
+复筛沿用`exchange`阶段名称，保留本方案排名前三的参数和中间水平参考点，
+用原定较大粒子数重新评分。各阶段的粒子数、种子规则、候选限额及参数范围
+继承共同政策；起点来自本次中性库，每人只计算推荐的候选提议与精度组合。
+这使扩展检验集中于冻结方案的学习过程和表征预测。
+
+参数确认后先保存提名，再执行完整自主生成和后段选择评价。
+现有行为评分函数继续计算选择NLL、Energy、完整滤波与路径的模拟误差以及参数表。
+正式配置最多使用128个单数值线程工作器，启动时仍按其他队列的占用和就绪任务数分配。
+扩展数据的完整状态重放和口述接续接口仍待接入。
+
+从仓库根目录运行，三个阶段分别使用新目录：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extension_fit \
+  --phase search --config configs/shared/model0923_finalization_extension_fit.yaml \
+  --output results/model_0923/finalization_extension_fit_new
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extension_fit \
+  --phase evaluate --fit results/model_0923/finalization_extension_fit_new \
+  --output results/model_0923/finalization_extension_evaluation_new
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extension_fit \
+  --phase summary --fit results/model_0923/finalization_extension_fit_new \
+  --evaluation results/model_0923/finalization_extension_evaluation_new \
+  --output results/model_0923/finalization_extension_summary_new
+```
+
+独立的软件测试配置显式标为`software_validation`，运行时须提供`--smoke`。
+在110的前8题上，SEARCH／LOG25已经以2粒子、单工作器走通五个阶段，共22项实际评分任务；
+另生成一条16题自主路径，验证同一归档模型的自主执行分支。
+[执行核对](../../../../results/model_0923/finalization_extension_fit_smoke_review_20261021_v1/completion.json)
+检查566项数值、309项来源绑定、共同参考点保留和最终提名次序。
+51项相关测试及CLI检查通过，软件拟合结果被正确拒绝用于正式评价。
+完整扩展拟合、行为评价及汇总仍待推荐版本冻结后执行；软件测试分数只用于检查流程。
+
 ### 接续后的205完整行为结果
 
 2026-10-21，205的SEPARATE已完成全部704题评价：每种候选提议方案包含8次512粒子选择滤波和

@@ -1,0 +1,6 @@
+setup: results/model_0923/finalization_extension_setup_20261021_v1
+recommendation: null
+subjects: [110]
+parallel_budget: 1
+scope: software_validation
+software_candidate: SEARCH_LOG25
