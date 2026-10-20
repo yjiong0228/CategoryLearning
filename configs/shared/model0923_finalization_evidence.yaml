@@ -1,0 +1,32 @@
+registration: results/model_0923/finalization_candidate_registration_20261021_v1/protocol.json
+candidates: [SEARCH_ADD10, SEARCH_LOG25, POOL_LOG25]
+subjects:
+  108:
+    ADD10:
+      summary: results/model_0923/development_belief_s108_online_summary_20261020_v1
+      oral_midpoint: results/model_0923/development_belief_s108_online_oral_midpoint_20261020_v1
+      oral_relative: results/model_0923/development_belief_s108_online_oral_relative_20261020_v1
+    LOG25:
+      fit: results/model_0923/finalization_online_log25_s108_fit_20261021_v1
+      equivalence: results/model_0923/finalization_precision_s108_zero_rate_equivalence_20261021_v1
+      summary: results/model_0923/development_belief_s108_online_summary_20261020_v1
+      oral_midpoint: results/model_0923/development_belief_s108_online_oral_midpoint_20261020_v1
+      oral_relative: results/model_0923/development_belief_s108_online_oral_relative_20261020_v1
+  205:
+    ADD10:
+      summary: results/model_0923/development_belief_s205_online_summary_20261020_v1
+      oral_midpoint: results/model_0923/development_belief_s205_online_oral_midpoint_20261020_v1
+      oral_relative: results/model_0923/development_belief_s205_online_oral_relative_20261020_v1
+    LOG25:
+      summary: results/model_0923/finalization_online_log25_s205_summary_20261021_v1
+      oral_midpoint: results/model_0923/finalization_online_log25_s205_oral_midpoint_20261021_v1
+      oral_relative: results/model_0923/finalization_online_log25_s205_oral_relative_20261021_v1
+  306:
+    ADD10:
+      summary: results/model_0923/finalization_online_add10_s306_summary_20261021_v1
+      oral_midpoint: results/model_0923/finalization_online_add10_s306_oral_midpoint_20261021_v1
+      oral_relative: results/model_0923/finalization_online_add10_s306_oral_relative_20261021_v1
+    LOG25:
+      summary: results/model_0923/finalization_online_log25_s306_summary_20261021_v1
+      oral_midpoint: results/model_0923/finalization_online_log25_s306_oral_midpoint_20261021_v1
+      oral_relative: results/model_0923/finalization_online_log25_s306_oral_relative_20261021_v1
