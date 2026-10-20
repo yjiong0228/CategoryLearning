@@ -10,6 +10,8 @@ support descriptive development checks, not population calibration.
 
 Use --source COMPLETED_SUMMARY --output NEW_DIRECTORY. Python/matplotlib, white
 background, 183 × 165 mm, PNG only at 300 dpi; exact source CSVs accompany plots.
+Trial ticks and sampling annotations use each sequence's recorded trial, filter
+and particle counts. All parameter groups in a sequence must share these counts.
 """
 from __future__ import annotations
 
@@ -54,6 +56,15 @@ def render(source: Path, output: Path) -> None:
     files = []
     for replicate, group in trials[trials.phase.eq('filtered')].groupby('replicate', sort=True):
         labels = list(dict.fromkeys(group.label))
+        sequence_scores = scores[scores.phase.eq('filtered') & scores.replicate.eq(replicate)]
+        counts = sequence_scores[['trials', 'filters', 'particles']].drop_duplicates().to_numpy()
+        if (set(sequence_scores.label) != set(labels) or sequence_scores.label.duplicated().any()
+                or counts.shape != (1, 3) or not np.isfinite(counts).all()
+                or np.any(counts <= 0) or np.any(counts != np.floor(counts))):
+            raise ValueError('Require matching groups and common trial, filter and particle counts')
+        n_trials, filters, particles = map(int, counts[0])
+        ticks = np.unique(np.r_[1, np.rint(np.linspace(0, n_trials, 5)[1:]).astype(int)])
+        ticks = ticks[(ticks >= 1) & (ticks <= n_trials)]
         fig, axes = plt.subplots(3, len(labels), figsize=(183/25.4, 165/25.4), sharex=True, squeeze=False)
         fig.subplots_adjust(left=.09, right=.98, bottom=.14, top=.82, hspace=.20, wspace=.18)
         fig.suptitle(f'Synthetic sequence {replicate+1}: target-rule state recovery', y=.98, fontsize=10)
@@ -63,7 +74,7 @@ def render(source: Path, output: Path) -> None:
             loc='upper center', bbox_to_anchor=(.5, .945), ncol=3, frameon=False)
         for column, label in enumerate(labels):
             data = group[group.label.eq(label)].sort_values('trial')
-            score = scores[scores.label.eq(label) & scores.phase.eq('filtered')].iloc[0]
+            score = sequence_scores[sequence_scores.label.eq(label)].iloc[0]
             if len(data) != score.trials or not np.array_equal(data.trial, np.arange(1, len(data)+1)):
                 raise ValueError('Missing or reordered plotted trials')
             x = data.trial.to_numpy()
@@ -89,14 +100,14 @@ def render(source: Path, output: Path) -> None:
             axes[2, column].set_xlabel('Trial')
             for row in range(3):
                 axes[row, column].set_xlim(1, len(data))
-                axes[row, column].set_xticks([1, 32, 64, 96, 128])
+                axes[row, column].set_xticks(ticks)
                 if column:
                     axes[row, column].tick_params(labelleft=False)
         for ax, label in zip(axes[:, 0], ['Target membership', 'Choice contribution', 'Precision given presence']):
             ax.set_ylabel(label)
-        fig.text(.5, .07, 'Estimates use all 128 trials; state after current choice and before feedback.',
+        fig.text(.5, .07, f'Estimates use all {n_trials} trials; state after current choice and before feedback.',
             ha='center', fontsize=6.6)
-        fig.text(.5, .045, 'Each point: 8 filters × 512 particles. Intervals omit parameter uncertainty.',
+        fig.text(.5, .045, f'Each point: {filters} filters × {particles} particles. Intervals omit parameter uncertainty.',
             ha='center', fontsize=6.6)
         name = f'sequence_{replicate+1}.png'
         fig.savefig(output/name, dpi=300, facecolor='white')
