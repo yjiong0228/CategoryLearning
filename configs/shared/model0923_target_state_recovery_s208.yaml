@@ -1,0 +1,21 @@
+# Fixed retrospective comparison after both declared synthetic fits finish.
+# Each group replays its eight original SEARCH confirmation seeds at 512 particles.
+prepared: results/model_0923/joint_parameter_recovery_s208_prepared_20261020_v1
+parallel_budget: 32
+groups:
+  - label: r0_truth
+    replicate: 0
+    source: results/model_0923/joint_parameter_recovery_s208_r0_truth_20261020_v2
+    point: truth
+  - label: r0_fit
+    replicate: 0
+    source: results/model_0923/joint_parameter_recovery_s208_r0_fit_20261020_v1
+    point: nominee
+  - label: r1_truth
+    replicate: 1
+    source: results/model_0923/joint_parameter_recovery_s208_r1_truth_20261020_v2
+    point: truth
+  - label: r1_fit
+    replicate: 1
+    source: results/model_0923/joint_parameter_recovery_s208_r1_fit_20261020_v2
+    point: nominee
