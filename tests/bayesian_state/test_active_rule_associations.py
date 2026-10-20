@@ -118,3 +118,19 @@ def test_invalid_snapshot_is_rejected_atomically(field, value):
 def test_invalid_rule_identity_is_rejected(rules):
     bank = ActiveRuleAssociations(2, 2, 2, learning_rate=1.)
     with pytest.raises(ValueError, match='rule IDs'): bank.associations(rules)
+
+
+def test_recalled_weight_scales_gradient_without_changing_scored_evidence():
+    bank = ActiveRuleAssociations(2, 2, 2, learning_rate=.8)
+    evidence = bank.evaluate_feedback([1], [[.3, .7]], 2, 1.)
+    before = evidence.log_event.copy()
+    bank.commit_feedback(evidence, learning_weight=.25)
+    expected = .2*evidence.association_gradient
+    expected -= expected.mean(-1, keepdims=True)
+    np.testing.assert_allclose(bank.state_dict()['logits'][[1]], expected, atol=1e-15, rtol=0)
+    np.testing.assert_array_equal(evidence.log_event, before)
+    assert bank.state_dict()['feedback_counts'][1] == 1
+    fresh = bank.evaluate_feedback([0], [[.3, .7]], 1, 0.)
+    for weight in (-.1, 1.1, np.nan):
+        with pytest.raises(ValueError, match='weight'): bank.commit_feedback(fresh, learning_weight=weight)
+    assert bank.state_dict()['feedback_counts'][0] == 0

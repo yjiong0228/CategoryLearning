@@ -99,8 +99,15 @@ class ActiveRuleAssociations:
             _readonly(logits), _readonly(self._counts[indices]),
         )
 
-    def commit_feedback(self, evidence: AssociationFeedback) -> None:
-        """Apply one evaluated update; reject another particle's or stale state."""
+    def commit_feedback(self, evidence: AssociationFeedback, *, learning_weight: float = 1.) -> None:
+        """Apply one update, optionally discounting a recalled feedback event.
+
+        Weight one is the online update. A recalled episode can use a weight
+        in [0,1]. Counts record update operations, including recalled ones;
+        the H rehearsal adapter separately records recalled count and exposure.
+        """
+        if not np.isfinite(learning_weight) or not 0 <= learning_weight <= 1:
+            raise ValueError('Feedback learning weight must be finite and in [0,1]')
         if (not isinstance(evidence, AssociationFeedback) or evidence._owner is not self
                 or evidence._generation is not self._generation):
             raise ValueError('Feedback belongs to another association state')
@@ -110,7 +117,7 @@ class ActiveRuleAssociations:
             raise ValueError('Feedback is stale or has already been committed')
         if np.any(self._counts[indices] == np.iinfo(np.int64).max):
             raise ValueError('Association feedback counts would overflow')
-        candidate = evidence._old_logits + self.learning_rate * evidence.association_gradient
+        candidate = evidence._old_logits + (self.learning_rate * learning_weight) * evidence.association_gradient
         candidate -= candidate.mean(axis=-1, keepdims=True)
         if not np.isfinite(candidate).all():
             raise ValueError('Association update produced invalid logits')

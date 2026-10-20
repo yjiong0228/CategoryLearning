@@ -6,6 +6,8 @@ Recall evaluates completed episodes using each rule's current associations
 and its active/last-active precision; unseen rules use beta_init and uniform
 associations. Recall performs no training. This is an explicit minimal-entry
 comparison, whose ability to admit untrained rules must be evaluated.
+The explicit rehearse_candidates switch initializes a new candidate from
+discounted completed feedback before this same frozen-state POOL evaluation.
 
 Install in a single worker process for the entire lifetime of its models.
 The adapter reuses maintained H selection, belief, geometry and learning
@@ -27,6 +29,7 @@ from ....inference.backends import particle_filter as filter_module
 from . import episodic_admission as admission_module
 from . import separate_belief_evidence as belief_module
 from .reentry_precision import reentry_precision
+from .region_candidate_rehearsal import rehearse_new_candidates
 
 
 class ActiveAssociationLikelihood(ObservationLikelihood):
@@ -86,7 +89,9 @@ class ActiveAssociationLikelihood(ObservationLikelihood):
         values = np.full(len(rules), module.beta_init, dtype=float)
         seen = h.reentry_precision_seen[rules]
         values[seen] = h.reentry_precision_values[rules[seen]]
-        active = np.isin(rules, h.active)
+        # Selection commits membership before assigning the new prior. A new
+        # member's beta is still zero until the later precision initialization.
+        active = np.isin(rules, h.active) & (h.engine.beta[rules] > 0.)
         values[active] = h.engine.beta[rules[active]]
         return values
 
@@ -128,11 +133,16 @@ def frozen_association_recall(likelihood, episodes, rules, beta):
 
 
 @contextmanager
-def finite_region_learning(cls, *, learning_rate: float):
-    """Install the explicit active-learning/frozen-recall comparison profile."""
+def finite_region_learning(cls, *, learning_rate: float, rehearse_candidates: bool = False):
+    """Install finite associations, optionally learning a new candidate by recall.
+
+    Rehearsal uses existing delta episode weights and the association learning
+    rate. It precedes POOL comparison; the default retains uniform newcomers.
+    """
     if not np.isfinite(learning_rate) or learning_rate < 0:
         raise ValueError('Require a finite nonnegative association learning rate')
-    with (admission_module.episodic_admission(cls, mode='POOL'), reentry_precision(cls),
+    with (rehearse_new_candidates(cls, enabled=rehearse_candidates),
+          admission_module.episodic_admission(cls, mode='POOL'), reentry_precision(cls),
           belief_module.separate_belief_evidence(cls, enabled=True)):
         methods = {name: getattr(cls, name) for name in ('__init__', 'state_dict', 'load_state_dict')}
         complete, mapping, oral = StateModel.complete_trial, choice_module.apply_hypothesis_mapping, StateModel.predict_oral
