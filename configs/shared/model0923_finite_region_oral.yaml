@@ -1,0 +1,10 @@
+fit: results/model_0923/finite_region_fit_20261020_v1
+states: results/model_0923/finite_region_states_20261020_v1
+basis: results/model_0923/finite_region_basis_20261020_v1
+readings:
+  midpoint:
+    audit: results/model_0923/oral_midpoint_audit_20261018_v1
+    queries: results/model_0923/association_oral_midpoint_20261018_v1
+  relative:
+    audit: results/model_0923/oral_relative_sensitivity_20261018_v1
+    queries: results/model_0923/association_oral_relative_20261018_v1
