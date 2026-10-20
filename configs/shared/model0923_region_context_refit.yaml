@@ -1,0 +1,4 @@
+reference_fit: results/model_0923/region_association_diagnostic_20261020_v1
+reference_fixed: results/model_0923/region_context_diagnostic_20261020_v1
+paths: 32
+workers: 64
