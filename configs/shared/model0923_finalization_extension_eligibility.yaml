@@ -1,0 +1,17 @@
+# Freeze eligibility before inspecting these participants' new model scores.
+protocol: model0923_finalization_extension_eligibility_v1
+reservation: results/model_0923/reserved_subjects_20261018_v2
+coding_reference: results/model_0923/oral_midpoint_audit_20261018_v1
+relative_reference: results/model_0923/oral_relative_sensitivity_20261018_v1
+subjects_by_condition:
+  1: [110, 111]
+  2: [209, 210]
+  3: [309, 310]
+selection: smallest_eligible_id_per_condition
+minimum_valid_trials: 128
+training_fraction: 0.7
+# Require one existing 32-trial block's worth of scorable reports in each phase.
+# This is a practical coverage threshold, not a measure of report fidelity.
+minimum_common_complete_per_phase: 32
+previous_development_influence: unknown
+evaluation_gate: recommended_version_frozen
