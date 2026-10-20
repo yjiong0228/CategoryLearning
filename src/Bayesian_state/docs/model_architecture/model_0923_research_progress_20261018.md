@@ -266,6 +266,25 @@ python -m src.Bayesian_state.evaluation.model_0923_finalization_evidence \
 [核验记录](../../../../results/model_0923/finalization_extension_data_review_20261021_v1/completion.json)
 保留三人的原切分位置和“既往开发影响未确定”。扩展样本的参数拟合等待推荐版本冻结。
 
+三人的[规则几何与起点准备](../../../../results/model_0923/finalization_extension_setup_20261021_v1/completion.json)
+也已完成。每人保存40个共同参数范围内的起点，包含各坐标中间水平组成的参考点、
+容量各水平及分层联合取值。起点只由参数范围、原基准种子和被试编号生成，
+覆盖13个可变坐标；亲和度转移系数保持固定值0.01。
+这些起点在精度方案最终取舍之前保存，后续行为拟合使用同一份记录。
+
+诊断用任务规则按训练刺激与类别确定：110对应目录规则0，209与309对应规则42。
+三人的训练段均只有一条目录规则完全符合任务类别，该规则也符合各自后段的全部任务类别。
+这一检查为后续记录规则发现、在场和作答贡献提供参照。规则仍由模型的搜索过程产生，
+诊断参照用于记录其是否出现。任务类别与被试实际选择分开处理。
+
+准备入口为`workflows.analysis.model_0923_finalization_extension_setup`，配置为
+[`model0923_finalization_extension_setup.yaml`](../../../../configs/shared/model0923_finalization_extension_setup.yaml)，
+参数为`--config`和新目录`--output`。它复用既有的参数起点生成和规则几何实现，
+三个几何任务采用单工作器顺序执行。25项相关测试及CLI检查通过；
+[独立核对](../../../../results/model_0923/finalization_extension_setup_review_20261021_v1/completion.json)
+直接按刺激阈值区域复核1728个任务类别，另核对1680个起点坐标和142项输入绑定。
+本步骤未执行选择似然评分、模型口述评分或参数拟合；正式扩展拟合继续等待推荐版本冻结。
+
 ### 接续后的205完整行为结果
 
 2026-10-21，205的SEPARATE已完成全部704题评价：每种候选提议方案包含8次512粒子选择滤波和

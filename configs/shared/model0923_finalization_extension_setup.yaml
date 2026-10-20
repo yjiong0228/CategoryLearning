@@ -1,0 +1,5 @@
+data: results/model_0923/finalization_extension_data_20261021_v1
+eligibility: results/model_0923/finalization_extension_eligibility_20261021_v1
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+geometry_beta: 100.0
+parallel_budget: 1
