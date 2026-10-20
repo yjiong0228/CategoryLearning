@@ -1,0 +1,7 @@
+subjects: [207, 208]
+data: results/model_0923/h_retention_data_20261016_v1
+geometry_source: results/model_0923/association_diagnostic_20261018_v1
+beta: [1.0, 5.0, 15.0, 30.0]
+rule_retention: [0.0, 0.3, 0.8, 0.99, 1.0]
+association_learning_rate: [0.1, 0.5, 2.0]
+workers: 64
