@@ -232,6 +232,36 @@ python -m src.Bayesian_state.evaluation.model_0923_finalization_evidence \
 按最多16个单数值线程工作器完成行为评价、状态重放和口述比较。
 九格完整汇总和推荐版本取舍继续等待这些结果。
 
+### 共同证据的图表入口
+
+新增`CategoryLearning_codes.figures.fig3.model0923_finalization_evidence`，
+从上述统一证据表生成四张183毫米、300 dpi的PNG：分阶段行为差值、全部自主路径、
+功能口述证据和结构口述证据。行为图同时呈现训练段、后段和全程，误差线为两倍成对模拟标准误。
+自主图保留每条已保存路径、模型平均值、被试正确率和路径的第10至90百分位带。
+口述图保留两种固定读法、前后两段的支持／冲突／未确定质量及完整报告数。
+其他口述集合、评分误差和被试间差异继续保存在随图交付的全部源表中。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model0923_finalization_evidence \
+  --source results/model_0923/finalization_evidence_s108_collection_20261021_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/finalization_evidence_partial_new \
+  --allow-partial
+```
+
+完整出图要求九格证据全部完成。显式提供`--allow-partial`可检查已有被试的图面，
+每张图均标出待完成被试；该模式保留部分结果的范围，不作最终版本取舍。
+三人完整矩阵另呈现被试等权的行为差值，模拟误差与被试间变异分别报告。
+
+108的[四张预览图](../../../../CategoryLearning_codes/figures/outputs/fig3/finalization_evidence_s108_20261021_v2/index.html)
+已经生成。三个比较格各展示128条路径；两个SEARCH格依照已完成的零学习率等价核验复用同一组路径。
+图中后段口述仍有较高未确定质量，保留了行为收益与口述证据覆盖的区别。
+[独立核验](../../../../results/model_0923/finalization_figures_s108_review_20261021_v1/completion.json)
+从原自主选择与任务类别重新计算全部路径块，并核对图中的点、误差线端点、轨迹及堆叠条形宽度，
+共23,422项数值与绘图元素检查通过。另有654项绘图入口检查、13项范围与缺失值测试及CLI检查通过。
+四张PNG已检查标签、边界、路径保留、颜色和部分结果标记。
+静态预检保留原输出；矢量、TIFF和600 dpi的投稿默认项按本仓库PNG-only、300 dpi讨论图约定处理。
+完整三人布局、等权均值图面及最终版本证据仍待九格结果完成后验收。
+
 ### 扩展样本的预先登记
 
 2026-10-21，在查看六名候选的新模型分数前，固定资料完整性与口述覆盖规则：
