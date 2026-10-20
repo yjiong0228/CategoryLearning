@@ -1,0 +1,7 @@
+source: results/model_0923/region_association_diagnostic_20261020_v1
+paths: 128
+chunk: 8
+workers: 64
+block_width: 32
+seed: 20261020
+protocol: region_association_own_history_v1
