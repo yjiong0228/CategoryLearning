@@ -1,0 +1,26 @@
+protocol: finite_region_behavior_only_v1
+seed: 20261020
+reference: results/model_0923/finite_region_full_20261020_v1
+subjects: [207, 208]
+workers: 96
+grid:
+  association_learning_rate: [0.1, 0.5, 2.0]
+  beta_init: [5.0, 15.0, 25.0]
+  delta: [0.99, 1.0]
+  gamma: [0.8, 1.0]
+anchor:
+  association_learning_rate: 0.5
+  beta_init: 5.0
+  delta: 0.99
+  gamma: 0.8
+screen:
+  particles: 16
+  repeats: 2
+finalists: 3
+confirmation:
+  particles: 64
+  repeats: 4
+evaluation:
+  particles: 128
+  repeats: 4
+autonomous_paths: 32
