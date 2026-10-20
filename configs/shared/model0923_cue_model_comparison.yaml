@@ -1,0 +1,5 @@
+cue_events: results/model_0923/oral_cue_persistence_20261020_v1
+finite_fit: results/model_0923/finite_region_fit_20261020_v1
+catalogue_reference: results/model_0923/region_context_diagnostic_20261020_v1
+subjects: [207, 208]
+diagnostic_rules: [42, 114]
