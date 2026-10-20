@@ -1,0 +1,13 @@
+oral_audit: results/model_0923/oral_midpoint_audit_20261018_v1
+data: results/model_0923/h_retention_data_20261016_v1
+subjects: [107, 108, 109, 205, 207, 208, 305, 306, 308]
+# Exact single-clause wording; compound and qualified reports remain in the data.
+templates:
+  "头最长。": {feature: head, direction: max}
+  "头最短。": {feature: head, direction: min}
+  "脖子最长。": {feature: neck, direction: max}
+  "脖子最短。": {feature: neck, direction: min}
+  "腿最长。": {feature: leg, direction: max}
+  "腿最短。": {feature: leg, direction: min}
+  "尾巴最长。": {feature: tail, direction: max}
+  "尾巴最短。": {feature: tail, direction: min}
