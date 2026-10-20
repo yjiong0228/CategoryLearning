@@ -1,0 +1,7 @@
+# Conventional-report development subject; original 448/192 trial boundary.
+# ONLINE and SEPARATE share the completed 208 numerical search policy.
+policy_reference_fit: results/model_0923/online_evidence_refit_s208_20261018_v1
+development_reference: results/model_0923/online_evidence_development_20261018_v1
+development_cohort_fit: results/model_0923/episodic_refit_20261017_v1
+subjects: [108]
+parallel_budget: 48
