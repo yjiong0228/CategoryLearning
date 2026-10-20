@@ -303,7 +303,7 @@ python -m src.Bayesian_state.evaluation.model_0923_finalization_evidence \
 参数确认后先保存提名，再执行完整自主生成和后段选择评价。
 现有行为评分函数继续计算选择NLL、Energy、完整滤波与路径的模拟误差以及参数表。
 正式配置最多使用128个单数值线程工作器，启动时仍按其他队列的占用和就绪任务数分配。
-扩展数据的完整状态重放和口述接续接口仍待接入。
+扩展数据的状态重放和口述接续入口已接入，当前完成情况见下节。
 
 从仓库根目录运行，三个阶段分别使用新目录：
 
@@ -327,6 +327,45 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extensio
 检查566项数值、309项来源绑定、共同参考点保留和最终提名次序。
 51项相关测试及CLI检查通过，软件拟合结果被正确拒绝用于正式评价。
 完整扩展拟合、行为评价及汇总仍待推荐版本冻结后执行；软件测试分数只用于检查流程。
+
+### 扩展状态重放与固定口述检验
+
+新增入口`workflows.analysis.model_0923_finalization_extension_states`读取完整的扩展行为汇总，
+沿用推荐方案、三人的行为参数、原评价粒子数及全部独立滤波种子。
+入口核对`extension_manifest.json`、实际执行记录和推荐来源，随后调用现有ONLINE状态观察器。
+每次重放须逐值复现保存的选择概率，口述读取本题选择后、当前反馈前的局部分类依据。
+完整口述评分继续使用现有的支持、冲突和未确定质量，分别呈现两种固定长短读法。
+扩展三人的既往开发影响保留“未确定”。
+
+从仓库根目录运行；先以`--smoke --workers 1`检查首个原评价滤波的前16题，
+通过后另用新目录运行完整重放：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extension_states \
+  --phase replay --summary results/model_0923/finalization_extension_summary_new \
+  --output results/model_0923/finalization_extension_states_new --workers 128
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_extension_states \
+  --phase align --source results/model_0923/finalization_extension_states_new \
+  --oral-audit results/model_0923/finalization_extension_oral_midpoint_audit_20261021_v1 \
+  --output results/model_0923/finalization_extension_oral_midpoint_new
+```
+
+相对读法使用`finalization_extension_oral_relative_audit_20261021_v1`，另建评分目录。
+这两份目录的生成已[排队](../../../../results/model_0923/finalization_extension_oral_preparation_20261021_v1/plan.json)：
+沿用原编码与规则目录匹配实现，固定110、209、309，不读取拟合模型分数。
+协调器在现有拟合分支释放额度后，使用最多16个单数值线程工作器；
+同时核对所有已登记分支后续可能达到的工作器上限，合计不超过128。
+完整匹配表及正式模型口述评分尚待完成。
+
+软件接入已用110的前8题、2粒子和单工作器实际运行一次选择滤波与一次状态重放。
+选择概率精确一致，作答依据联合质量之和等于实际选择的预测概率；ONLINE更新次数和反馈时序正确。
+短序列使用单独的4／4题测试切分，三人的正式时间边界保持原值。
+另将已登记的两读法报告与三人全部1728题逐题核对。
+[核验记录](../../../../results/model_0923/finalization_extension_states_smoke_review_20261021_v2/completion.json)
+包含24,680项数值与身份检查、200项输入绑定；65项相关测试及CLI检查通过。
+初次口述身份检查引用了只包含开发被试的旧报告表，原记录保留；
+复核使用扩展登记中的实际报告，复用已完成的数值任务。
+完整扩展拟合、完整状态重放和正式口述检验仍待执行，短序列结果只验证软件接入。
 
 ### 接续后的205完整行为结果
 
