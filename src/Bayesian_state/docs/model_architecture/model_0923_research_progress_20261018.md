@@ -85,6 +85,17 @@
 带噪声的口述支持及适用范围判断。单个坐标区分较弱时，报告数据能支持的参数组合或过程量。
 全部参数均进入清单，新增恢复保持两个生成点、每点两条序列的原上限。
 
+已生成[全部参数坐标清单](../../../../results/model_0923/finalization_parameter_evidence_20261021_v1/all_parameter_coordinates.csv)，
+覆盖108与205的ONLINE／SEPARATE、306的SEPARATE，共10个已完成拟合的方案、140个参数记录。
+每个方案保留14个配置坐标，其中亲和度转移系数固定；其余坐标是否影响当前决策还取决于参数组合。
+既有精确通道检查共标记20个关闭记录，含10个固定转移系数。其余记录保留“待结合联合恢复与过程证据分级”，
+未检出这些关闭条件只能说明该项检查的结果。
+
+同一目录保存[四条合成序列的联合恢复](../../../../results/model_0923/finalization_parameter_evidence_20261021_v1/joint_recovery_cases.csv)
+及[两组条件恢复的适用范围](../../../../results/model_0923/finalization_parameter_evidence_20261021_v1/conditional_recovery_scope.csv)。
+联合恢复表保留POOL与生成机制SEARCH的区别、真值与估计、通道关闭和边界标记，共112条坐标记录。
+208一次预算扩展完成后另行纳入。当前清单完整登记已有证据，推荐版本及最终解释分级仍待确定。
+
 ### 交付与结束条件
 
 完成候选比较和上述有限验证后，交付推荐配置及H／精度流程说明、包含全部指定比较格的证据表、
@@ -123,7 +134,7 @@
 按二者的共同作用解释。规则发现、在场和作答贡献的细分仍见此前的
 [205自主路径](#205的自主路径显示发现与作答贡献的分离)。
 [完整行为汇总](../../../../results/model_0923/development_belief_s205_separate_summary_20261020_v1/scores.csv)
-及其执行检查已生成。ONLINE确认、跨机制比较和口述接续仍在运行或等待前置结果。
+及其执行检查已生成。ONLINE拟合已完成，完整行为评价、跨机制比较和口述接续仍在运行或等待前置结果。
 208一次预算扩展已完成160项初筛，进入72项细化任务；原定一次扩展上限保持。
 
 ### 共同精度比较入口的小规模验证
@@ -156,6 +167,45 @@ python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_precisio
 
 本次记录位于`finalization_precision_online_smoke_20261021_v1`与
 `finalization_precision_separate_smoke_20261021_v1`。新的正式精度比较待共同H基线冻结后启动。
+
+### 共同H机制下的联合参数比较入口
+
+新增`workflows.analysis.model_0923_finalization_joint`，在固定共同H机制后，
+由训练选择联合估计H、记忆与精度参数。它复用已完成开发拟合的参数范围、原始起点、
+训练边界、种子命名和各阶段预算。ADD10与LOG25共用这些数值设置，分别执行十倍速率的加法更新
+和对数精度更新，精度上限均为25。学习率的心理解释随更新公式说明。
+
+每种精度方案内，POOL和SEARCH使用相同起点及搜索政策；除固定的亲和度转移系数外，
+其余坐标均进入原联合搜索。拟合先筛选起点，再联合调整和交换领先候选，使用独立种子选择与确认；
+参数冻结后执行完整选择预测和自主生成。实际候选数、粒子计算量及耗时保留在输出中。
+固定H参数的两维精度检查继续用于定位作用，联合拟合用于检查其他参数重新调整后的机制表现。
+
+入口复用现有认知工作进程、搜索器和数值汇总，增加精度方案及参与者来源的核对。
+正式候选和配置仍在共同H基线选择后冻结。软件配置
+`configs/shared/model0923_finalization_joint_smoke.yaml`只接受`--smoke`，
+完整运行使用单独登记的科学配置。
+
+从仓库根目录运行短验证：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_0923_finalization_joint \
+  --phase search --config configs/shared/model0923_finalization_joint_smoke.yaml \
+  --mechanism ONLINE --output results/model_0923/finalization_joint_smoke_new --smoke
+```
+
+后续完整运行依次使用`--phase evaluate --fit FIT --output NEW`和
+`--phase summary --fit FIT --evaluation EVALUATION --output NEW`。
+两阶段继续核对冻结的参数、原数据边界、实际工作进程和单数值线程设置。
+
+41项相关测试及命令行帮助检查通过。ONLINE短验证完成五阶段共44项真实训练工作，
+每项8题、2粒子，以一个工作进程执行。初筛的每组6个起点与原108共同政策的前6点逐值一致。
+另以四项真实工作进程检查精度模式：学习率为0时，两种更新的预测概率逐值相同；
+学习率为0.3时，预测出现差异，说明新入口实际执行了所声明的更新方式。
+[执行核对](../../../../results/model_0923/finalization_joint_online_smoke_review_20261021_v2/completion.json)
+保存五阶段、原政策、起点及337项输入绑定的检查。首轮附加检查遇到输出名称的小数点冲突，
+已有文件保护阻止了覆盖；原记录保留，修正名称后在新目录完成全部四项。
+完整序列评价与新入口的最终汇总尚待正式运行验收。
 
 ## 2026-10-20阶段总结与暂停
 
