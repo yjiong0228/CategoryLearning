@@ -1,0 +1,8 @@
+scope: software_validation
+recommendation: null
+software_candidate: SEARCH_ADD10
+evidence_config: configs/shared/model0923_finalization_evidence.yaml
+subjects: [205]
+replicates: 1
+parallel_budget: 1
+seed: 2026102102

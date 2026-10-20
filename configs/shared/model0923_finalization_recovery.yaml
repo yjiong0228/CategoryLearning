@@ -1,0 +1,8 @@
+scope: finalization_recovery
+recommendation: results/model_0923/finalization_recommendation_20261021_v1/recommendation.json
+software_candidate: null
+evidence_config: configs/shared/model0923_finalization_evidence.yaml
+subjects: [205, 306]
+replicates: 2
+parallel_budget: 32
+seed: 2026102102
