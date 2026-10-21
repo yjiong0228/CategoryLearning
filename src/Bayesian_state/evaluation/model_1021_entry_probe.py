@@ -1,9 +1,11 @@
-"""Compare a completed centered-entry diagnostic with its frozen COMPACT point.
+"""Compare a completed entry diagnostic with its frozen COMPACT point.
 
 Use --source PROBE --generation ORIGINAL_GENERATION --output NEW. Shared
 scoring routines preserve the original training boundary and paired seeds.
-The diagnostic changes entry support at fixed parameters; it is a development
+The diagnostic changes entry support or precision at fixed parameters; it is a development
 comparison. This summary performs no fitting and does not alter primary nominees.
+The source protocol's comparison_label is CENTERED (default), PRECISION or
+CENTERED_PRECISION. The original centering result keeps its existing labels.
 """
 from __future__ import annotations
 
@@ -23,6 +25,9 @@ def summarize(source: Path, generation: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new centered-entry comparison directory')
     done, protocol = read(source/'completion.json'), read(source/'protocol.json')
+    label = protocol.get('comparison_label', 'CENTERED')
+    if label not in ('CENTERED', 'PRECISION', 'CENTERED_PRECISION'):
+        raise ValueError('Unknown entry diagnostic label')
     if done['status'] != 'complete' or done['smoke']:
         raise ValueError('Require the complete scientific diagnostic')
     fit = Path(protocol['fit'])
@@ -51,7 +56,7 @@ def summarize(source: Path, generation: Path, output: Path) -> None:
     banks = {
         'COMPACT': (generation/'autonomous/evaluate/subject_205/COMPACT'/(key+'.json'),
                     Path(nominee['candidate']['score_file'])),
-        'CENTERED': (source/'autonomous'/(key+'.json'), source/'training'/(key+'.json')),
+        label: (source/'autonomous'/(key+'.json'), source/'training'/(key+'.json')),
     }
     scores, curves, lifetimes, jacks, seeds = [], [], [], {}, {}
     for arm, (gfile, tfile) in banks.items():
@@ -93,15 +98,15 @@ def summarize(source: Path, generation: Path, output: Path) -> None:
                 curves.extend(dict(arm=arm, trial=min((i+1)*32, length), training_trials=cut,
                     observed=float(y[i]), autonomous=float(x[:, i].mean())) for i in range(len(y)))
     for i in (0, 1):
-        np.testing.assert_array_equal(seeds['COMPACT'][i], seeds['CENTERED'][i])
+        np.testing.assert_array_equal(seeds['COMPACT'][i], seeds[label][i])
     table = pd.DataFrame(scores)
     differences = []
     for phase, group in table.groupby('phase'):
         group = group.set_index('arm')
         row = dict(phase=phase)
         for metric in ('training_nll', 'energy', 'crps'):
-            row['delta_'+metric] = group.loc['CENTERED', metric]-group.loc['COMPACT', metric]
-            row['delta_'+metric+'_mc_se'] = jackknife_se(jacks['CENTERED', phase][metric]-jacks['COMPACT', phase][metric])
+            row['delta_'+metric] = group.loc[label, metric]-group.loc['COMPACT', metric]
+            row['delta_'+metric+'_mc_se'] = jackknife_se(jacks[label, phase][metric]-jacks['COMPACT', phase][metric])
         differences.append(row)
     output.mkdir(parents=True)
     for name, value in dict(scores=table, contrasts=pd.DataFrame(differences), curves=pd.DataFrame(curves),

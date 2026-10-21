@@ -161,6 +161,16 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 汇总位于`results/model_1021/simplification_s205_centered_entry_summary_20261022_v1/`，
 使用`src.Bayesian_state.evaluation.model_1021_entry_probe`复现。
 
+本轮最后增加两个入集对照：新规则继承当前活跃规则按在线支持加权的平均精度，以及该精度继承与
+支持中心化的组合。首题仍使用个体精度初值，入集后各规则继续原有的反馈学习。继承只读取当前活跃
+规则的状态，个体参数数目保持不变。这两个对照检验新规则的初始精度，以及它与初始支持的相互作用。
+参数、128条生成路径种子及八次512粒子训练评分均沿用205的冻结点；口述继续保留为外部评价。
+六项三条件测试和两组短序列滤波、生成检查通过。入口为
+`src.Bayesian_state.workflows.analysis.model_1021_entry_precision_probe`，输出位于
+`results/model_1021/simplification_s205_entry_precision_20261022_v1/`。
+四例恢复扩展均完成筛选后，这两个对照最多使用56个进程；其余恢复工作最多64个进程，原主评价
+最多八个进程。三者合计不超过128。该组对照结束后，本轮机制探索收束，统一总结已有结果。
+
 ## 状态采集与连续评价
 
 后续入口等待正式拟合和采集验证完成，再运行评价。评价在原滤波中记录规则与局部表征的
