@@ -152,7 +152,14 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 生成种子和八次512粒子训练评分。该阶段用于机制诊断；最终比较需要在相同预算下重新估参。
 相关13项测试通过，覆盖权重比保持、三条件状态恢复及原 COMPACT 行为契约。
 两次八题两粒子滤波和两条16题自主路径均完成；正式对照位于
-`results/model_1021/simplification_s205_centered_entry_20261022_v1/`，结果尚待完成。
+`results/model_1021/simplification_s205_centered_entry_20261022_v1/`，40个作业已全部完成。
+
+中心化使发现目标规则的路径比例从0.828增加到0.930，最后128题的存在比例从0.526增加到0.607，
+但目标规则的平均作答贡献仅从0.470变为0.473。最后128题自主正确率从0.597降至0.537。
+后期Energy增加0.03575，配对蒙特卡洛标准误为0.00790；训练每题NLL增加0.01025，标准误为0.00013。
+该固定参数对照没有改善主要表现。后续设计需要同时解释规则的保留、精度发展及作答贡献。
+汇总位于`results/model_1021/simplification_s205_centered_entry_summary_20261022_v1/`，
+使用`src.Bayesian_state.evaluation.model_1021_entry_probe`复现。
 
 ## 状态采集与连续评价
 
@@ -210,7 +217,28 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 `--phase search --prepared PREPARED --output FIT`、
 `--phase score-truth --prepared PREPARED --fit FIT --output SCORES`。
 正式输入要求主比较的自主生成完整结束。三项调度与起点测试已通过，条件3前八题的软件案例也已完成四阶段
-估计及冻结后的评分；该软件案例使用原行为作为接口输入，属于流程检查。正式参数恢复尚待执行。
+估计及冻结后的评分；该软件案例使用原行为作为接口输入，属于流程检查。正式首轮参数恢复已完成，结果见下表。
+
+| 模拟序列 | 估计点训练NLL | 生成点训练NLL | 差值 | 配对蒙特卡洛标准误 |
+| --- | ---: | ---: | ---: | ---: |
+| 205，第1条 | 1.280239 | 1.279265 | +0.000974 | 0.000369 |
+| 205，第2条 | 1.107124 | 1.104332 | +0.002792 | 0.000341 |
+| 306，第1条 | 0.611982 | 0.602652 | +0.009331 | 0.001778 |
+| 306，第2条 | 0.584841 | 0.556557 | +0.028285 | 0.001342 |
+
+四个案例的估计点都逊于生成点，差值均超过两倍蒙特卡洛标准误。这首先指出本轮联合搜索覆盖不足，
+个体参数解释需要解决这一数值问题。已知生成参数时的状态推断也保留不确定性：例如205第1条序列
+的目标规则从未出现，模型仍给它一定存在概率，反映有限行为对内部路径的区分能力。
+
+追加一次有上限的搜索扩展：每例从八个不同的既有行为拟合候选产生64个新点，重新评价这些候选和
+原冻结点，随后选择四点、确认两点；原冻结点始终参与确认。评分采用新的独立种子，生成参数在
+四例估计再次冻结后评分。候选产生过程只读取已有行为拟合记录。入口为
+`src.Bayesian_state.workflows.analysis.model_1021_recovery_rescue`，使用
+`--parent FOLLOWTHROUGH --output NEW_DIRECTORY`。这一扩展限定为一次优化诊断，原恢复结果持续保留。
+四个候选计划均包含64个新点与八个既有候选，原冻结点在这八点之中。单案例短序列检查完成了
+筛选、选择、确认、冻结后的生成点评分及状态汇总。正式扩展使用最多120个数值工作进程，与仍在
+运行的八个主评价滤波合计不超过128；结果保存于
+`results/model_1021/simplification_recovery_rescue_20261022_v1/`。
 
 确认阶段同时记录实验目标规则的状态，分别保存当前选择之前和纳入当前选择之后的推断；两者均位于
 当前反馈之前。记录复用原滤波计算。状态评价比较目标规则的存在概率、作答权重和活跃时的精度，
@@ -221,7 +249,7 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 条件2、3的八题验证中，开启与关闭目标状态记录的行为概率完全相同，验证保存于
 `results/model_1021/simplification_recovery_capture_validation_20261021_v1/`。
 另一个条件3的八题自主生成案例完成了联合估参、生成参数评分和状态汇总，支持程序衔接；
-正式长序列的参数与状态恢复结果尚待产生。
+正式首轮长序列的参数与状态恢复均已产生，追加搜索的结果将单独保存并比较。
 
 比较图入口为`CategoryLearning_codes.figures.fig3.model1021_simplification`，使用
 `--source FOLLOWTHROUGH --output NEW_DIRECTORY`。图中保留全部128条自主路径，同时显示真实行为、
