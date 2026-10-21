@@ -23,6 +23,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -216,6 +217,7 @@ def behavior(data: dict, output: Path) -> None:
         ax.set_ylim(len(labels)-.5, -.5)
         ax.set_title(f'{title}\nWorking tolerance: +{tolerance:.2f}', fontsize=8)
         ax.set_xlabel('Compact − reference\nLower favors compact')
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
     fig.text(.5, .06, 'Bars: ±2 paired Monte Carlo SE at fitted parameters; uncertainty across people is not shown.', ha='center', fontsize=7)
     save(fig, output, 'later_behavior_comparison.png')
 

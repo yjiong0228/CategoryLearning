@@ -1,5 +1,17 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1021的H模块简化研究（2026-10-22）
+
+[三人主比较图与源表](../outputs/fig3/model1021_simplification_20261022_v2/index.html) ·
+[205搜索与保持对照](../outputs/fig3/model1021_retention_probe_20261022_v2/search_and_retention.png) ·
+[205初始支持与精度对照](../outputs/fig3/model1021_entry_diagnostics_20261022_v2/entry_support_and_precision.png) ·
+[机制、结果及限制](../../../src/Bayesian_state/docs/model_architecture/model_1021_simplification.md)。
+主比较在108、205、306重新估参，呈现全部128条自主路径、后期选择NLL、双读法口述相容性及训练候选。
+205的两组定向对照固定原COMPACT参数。精度继承改善该参数点的自主预测，候选机制仍待重新估参和跨被试验证。
+误差条为固定参数下的配对蒙特卡洛误差；口述未确定质量需要结合规则目录的表达范围理解。
+绘图入口分别为`model1021_simplification`、`model1021_retention_probe`和`model1021_entry_diagnostics`，
+均位于`CategoryLearning_codes.figures.fig3`。当前六张PNG为研究审阅稿，保留源表及视觉检查记录。
+
 ## Model 0923 重估后的联合证据（2026-10-19）
 
 [RETAIN重估后的四面板图与源表](../outputs/fig3/refit_joint_precision_20261019_v2/index.html)。
