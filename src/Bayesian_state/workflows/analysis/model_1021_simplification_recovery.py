@@ -10,6 +10,7 @@ after estimates freeze, using the same independent confirmation seed bank.
 
 Case controllers are waiting threads; all numerical subprocesses share one
 128-worker queue. Faster cases advance without waiting for slower cases.
+Post-freeze generating-point scores also share this queue across cases.
 """
 from __future__ import annotations
 
@@ -268,29 +269,39 @@ def score_truth(prepared: Path, fit: Path, output: Path) -> None:
     fitted = {r['case_id']: r for r in read(fit/'nominees.json')['nominees']}
     output.mkdir(parents=True)
     estimates, comparisons = [], []
+
+    def compare_case(case: dict) -> tuple[list[dict], dict]:
+        own = output/case['case_id']
+        own.mkdir()
+        point = candidate(truth[case['case_id']]['point'], 'generating_point_after_freeze')
+        settings, subject = case['settings'], case['subject']
+        write(own/'protocol.json', dict(settings=settings, smoke=smoke, use='after_estimation_truth_score'))
+        rows = driver.base.stage(settings, Path(settings['data']), own, {(subject, 'COMPACT'): [point]}, 'confirmation', smoke)
+        generated = rows[subject, 'COMPACT'][0]
+        selected = fitted[case['case_id']]['candidate']
+        with np.load(Path(generated['score_file']).with_suffix('.npz')) as a, np.load(Path(selected['score_file']).with_suffix('.npz')) as b:
+            np.testing.assert_array_equal(a['seeds'], b['seeds'])
+            difference = nll(b['observed_probability'])-nll(a['observed_probability'])
+            se = jackknife_se(jackknife_scores(b['observed_probability'])-jackknife_scores(a['observed_probability']))
+        comparison = dict(case_id=case['case_id'], subject=subject, replicate=case['replicate'],
+            estimate_nll=selected['mean_nll'], truth_nll=generated['mean_nll'], estimate_minus_truth=difference,
+            paired_mc_se=se, search_shortfall=difference > 2*se)
+        own_estimates = []
+        for key, levels in case['space'].items():
+            value, actual = selected['hyperparams'][key], point['hyperparams'][key]
+            own_estimates.append(dict(case_id=case['case_id'], subject=subject, replicate=case['replicate'],
+                parameter=key, estimated=value, generating=actual, fitted=len(levels)>1,
+                normalized_grid_error=abs(levels.index(value)-levels.index(actual))/max(1, len(levels)-1)))
+        return own_estimates, comparison
+
     with ThreadPoolExecutor(max_workers=1 if smoke else min(128, len(os.sched_getaffinity(0)))) as pool:
         configure_executor(pool)
-        for case in cases:
-            own = output/case['case_id']
-            own.mkdir()
-            point = candidate(truth[case['case_id']]['point'], 'generating_point_after_freeze')
-            settings, subject = case['settings'], case['subject']
-            write(own/'protocol.json', dict(settings=settings, smoke=smoke, use='after_estimation_truth_score'))
-            rows = driver.base.stage(settings, Path(settings['data']), own, {(subject, 'COMPACT'): [point]}, 'confirmation', smoke)
-            generated = rows[subject, 'COMPACT'][0]
-            selected = fitted[case['case_id']]['candidate']
-            with np.load(Path(generated['score_file']).with_suffix('.npz')) as a, np.load(Path(selected['score_file']).with_suffix('.npz')) as b:
-                np.testing.assert_array_equal(a['seeds'], b['seeds'])
-                difference = nll(b['observed_probability'])-nll(a['observed_probability'])
-                se = jackknife_se(jackknife_scores(b['observed_probability'])-jackknife_scores(a['observed_probability']))
-            comparisons.append(dict(case_id=case['case_id'], subject=subject, replicate=case['replicate'],
-                estimate_nll=selected['mean_nll'], truth_nll=generated['mean_nll'], estimate_minus_truth=difference,
-                paired_mc_se=se, search_shortfall=difference > 2*se))
-            for key, levels in case['space'].items():
-                value, actual = selected['hyperparams'][key], point['hyperparams'][key]
-                estimates.append(dict(case_id=case['case_id'], subject=subject, replicate=case['replicate'],
-                    parameter=key, estimated=value, generating=actual, fitted=len(levels)>1,
-                    normalized_grid_error=abs(levels.index(value)-levels.index(actual))/max(1, len(levels)-1)))
+        with ThreadPoolExecutor(max_workers=len(cases)) as controllers:
+            futures = [controllers.submit(compare_case, case) for case in cases]
+            for future in futures:
+                own_estimates, comparison = future.result()
+                estimates.extend(own_estimates)
+                comparisons.append(comparison)
     pd.DataFrame(estimates).to_csv(output/'parameters.csv', index=False)
     pd.DataFrame(comparisons).to_csv(output/'likelihood_comparison.csv', index=False)
     write(output/'completion.json', dict(status='complete', smoke=smoke, cases=len(cases),

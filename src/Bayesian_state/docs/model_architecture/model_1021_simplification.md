@@ -89,7 +89,8 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 参数点、每点两条序列，结论限定在这四个案例。拟合种子与行为生成种子分开，口述保持外部检验用途。
 
 恢复任务共用一个最多128进程的计算队列。各案例独立推进筛选、细化和确认，已完成的案例可以进入
-下一阶段。控制线程负责排队和等待，数值运算只在单层工作进程内运行。
+下一阶段。生成参数点的评分也按案例并行，共用这一计算队列。控制线程负责排队和等待，数值运算
+只在单层工作进程内运行。八题案例中，并行调度与原串行调度产生完全相同的参数表、似然表和状态表。
 
 入口为`src.Bayesian_state.workflows.analysis.model_1021_simplification_recovery`：
 依次执行`--phase prepare --evaluation EVALUATION --output PREPARED`、
