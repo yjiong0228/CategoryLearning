@@ -98,6 +98,17 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 正式输入要求主比较的自主生成完整结束。两项程序测试已通过，条件3前八题的软件案例也已完成四阶段
 估计及冻结后的评分；该软件案例使用原行为作为接口输入，属于流程检查。正式参数恢复尚待执行。
 
+确认阶段同时记录实验目标规则的状态，分别保存当前选择之前和纳入当前选择之后的推断；两者均位于
+当前反馈之前。记录复用原滤波计算。状态评价比较目标规则的存在概率、作答权重和活跃时的精度，
+精度条件分布无定义的试次单独计数。评价范围为各模拟序列中的这一条目标规则。
+
+状态汇总入口为`src.Bayesian_state.evaluation.model_1021_simplification_recovery_states`，使用
+`--prepared PREPARED --fit FIT --truth-score SCORES --output NEW_DIRECTORY`。
+条件2、3的八题验证中，开启与关闭目标状态记录的行为概率完全相同，验证保存于
+`results/model_1021/simplification_recovery_capture_validation_20261021_v1/`。
+另一个条件3的八题自主生成案例完成了联合估参、生成参数评分和状态汇总，支持程序衔接；
+正式长序列的参数与状态恢复结果尚待产生。
+
 比较图入口为`CategoryLearning_codes.figures.fig3.model1021_simplification`，使用
 `--source FOLLOWTHROUGH --output NEW_DIRECTORY`。图中保留全部128条自主路径，同时显示真实行为、
 自主均值和条件预测；另图呈现后期行为分数差及两种固定口述读法的支持、冲突、未确定质量。

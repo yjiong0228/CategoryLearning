@@ -34,6 +34,9 @@ from ...utils.seeding import stable_seed
 
 ROOT = Path(__file__).resolve().parents[4]
 ENTRY = str(Path(__file__).resolve().relative_to(ROOT))
+CAPTURE = 'src/Bayesian_state/workflows/analysis/model_1021_simplification_recovery_capture.py'
+PF = 'src/Bayesian_state/inference/backends/particle_filter.py'
+COLLECTOR = 'src/Bayesian_state/workflows/analysis/model_0923_target_state_recovery.py'
 read, write, digest = driver.io.read, driver.io.write, driver.io.digest
 
 
@@ -98,6 +101,7 @@ def prepare(evaluation: Path, output: Path) -> None:
             own.pop('warm_start_fits')
             own.update(subjects=[subject], arms=dict(COMPACT=own['arms']['COMPACT']), data=str(folder.parent.resolve()),
                 protocol='model1021_compact_recovery_v1', scope='synthetic_joint_recovery',
+                recovery_target_rule=int(row['target_rule']),
                 seed=stable_seed(dict(base=2026102192, subject=subject, replicate=replicate, role='recovery_fit')))
             starts = neutral_starts(space, 40, stable_seed(dict(base=own['seed'], role='neutral_starts')))
             case = dict(case_id=case_id, subject=subject, condition=meta['condition'], replicate=replicate,
@@ -107,8 +111,12 @@ def prepare(evaluation: Path, output: Path) -> None:
             write(output/case_id/'case.json', case)
             cases.append(dict(case_id=case_id, file=str((output/case_id/'case.json').resolve()),
                               sha256=digest(output/case_id/'case.json')))
+            state_file = output/case_id/'states_truth.npz'
+            with state_file.open('xb') as stream:
+                np.savez_compressed(stream, **{k: bank[k][index, :cut] for k in ('present', 'contribution', 'beta')})
             truths.append(dict(case_id=case_id, subject=subject, replicate=replicate, model='COMPACT',
-                point=chosen['candidate']['hyperparams'], generation_seed=int(bank['seeds'][index])))
+                point=chosen['candidate']['hyperparams'], generation_seed=int(bank['seeds'][index]),
+                states_truth=str(state_file.resolve()), states_truth_sha256=digest(state_file)))
         array = evaluation/'autonomous/evaluate'/f'subject_{subject}'/'COMPACT'/(row['candidate']['id']+'.npz')
         bindings[str(array.resolve())] = digest(array)
     write(output/'protocol.json', dict(cases=cases, generation_selection='Two lowest saved seeds per point; no outcome selection',
@@ -121,7 +129,8 @@ def prepare(evaluation: Path, output: Path) -> None:
 
 def recovery_hashes(v) -> dict:
     hashes = driver.source_hashes(v)
-    hashes[ENTRY] = digest(ROOT/ENTRY)
+    for name in (ENTRY, CAPTURE, PF, COLLECTOR):
+        hashes[name] = digest(ROOT/name)
     return hashes
 
 
@@ -134,6 +143,13 @@ def configure_executor(pool: ThreadPoolExecutor) -> None:
         job['mechanism']['capacity'] = 'evidence'
         if job['model'] != 'COMPACT' or job['phase'] != 'training':
             raise ValueError('Recovery fits use COMPACT synthetic training only')
+        entry = driver.ENTRY
+        if job['name'].startswith('confirmation_'):
+            settings = read(folder/'protocol.json')['settings']
+            job.update(target_rule=settings['recovery_target_rule'],
+                state_capture_target=str((folder/'state_capture'/job['name']).resolve()),
+                target_capture_sources={name: digest(ROOT/name) for name in (CAPTURE, PF, COLLECTOR)})
+            entry = CAPTURE
         directory = folder/'jobs'
         directory.mkdir(exist_ok=True)
         file = directory/(job['name']+'.json')
@@ -144,7 +160,7 @@ def configure_executor(pool: ThreadPoolExecutor) -> None:
             env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1',
                        MKL_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1', NUMBA_NUM_THREADS='1', NUMBA_CACHE_DIR=cache)
             with file.with_suffix('.log').open('x') as log:
-                result = subprocess.run([sys.executable, '-c', launcher, job['runtime'], str(ROOT/driver.ENTRY),
+                result = subprocess.run([sys.executable, '-c', launcher, job['runtime'], str(ROOT/entry),
                     '--worker', str(file)], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
         if result.returncode:
             raise RuntimeError('Recovery worker failed: '+str(file.with_suffix('.log')))
