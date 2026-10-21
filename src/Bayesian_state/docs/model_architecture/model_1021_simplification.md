@@ -76,3 +76,29 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 包含`evaluation`、`behavior_summary`、`oral_midpoint`和`oral_relative`。
 每阶段保存独立日志及完成标记；失败时保留现场并停止后续阶段。
 参数恢复和必要的单项机制对照依据这轮结果安排。
+
+## 联合参数恢复与比较图
+
+恢复检验使用205、306最终 COMPACT 参数下保存的自主路径。每个参数点固定取种子编号最小的两条路径，
+截取原训练长度，得到四条模拟行为序列。这一选择由种子决定，与路径表现无关。每条序列联合重估所有
+八项或九项可变参数。起点来自参数支持范围的中间值、容量覆盖和分层随机取点；真实生成参数另存，
+估计过程只读取模拟行为与支持范围。
+
+四组估计全部冻结后，再用相同的确认种子对生成参数评分。若估计点的似然明显较差，优先检查搜索是否
+充分；若似然接近而参数相差较大，则说明这条有限行为序列尚不能有效区分相关参数。该检验覆盖两个
+参数点、每点两条序列，结论限定在这四个案例。拟合种子与行为生成种子分开，口述保持外部检验用途。
+
+恢复任务共用一个最多128进程的计算队列。各案例独立推进筛选、细化和确认，已完成的案例可以进入
+下一阶段。控制线程负责排队和等待，数值运算只在单层工作进程内运行。
+
+入口为`src.Bayesian_state.workflows.analysis.model_1021_simplification_recovery`：
+依次执行`--phase prepare --evaluation EVALUATION --output PREPARED`、
+`--phase search --prepared PREPARED --output FIT`、
+`--phase score-truth --prepared PREPARED --fit FIT --output SCORES`。
+正式输入要求主比较的自主生成完整结束。两项程序测试已通过，条件3前八题的软件案例也已完成四阶段
+估计及冻结后的评分；该软件案例使用原行为作为接口输入，属于流程检查。正式参数恢复尚待执行。
+
+比较图入口为`CategoryLearning_codes.figures.fig3.model1021_simplification`，使用
+`--source FOLLOWTHROUGH --output NEW_DIRECTORY`。图中保留全部128条自主路径，同时显示真实行为、
+自主均值和条件预测；另图呈现后期行为分数差及两种固定口述读法的支持、冲突、未确定质量。
+误差条表示固定参数下的蒙特卡洛误差。输出保留PNG和来源表，正式结果生成后检查实际排版。
