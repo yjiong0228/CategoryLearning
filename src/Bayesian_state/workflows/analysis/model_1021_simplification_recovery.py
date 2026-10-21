@@ -54,6 +54,19 @@ def neutral_starts(space: dict, count: int, seed: int) -> list[dict]:
     return [candidate(p, 'support_only_start') for p in ordered]
 
 
+def compact_zero_effect_coordinates(point: dict) -> set[str]:
+    """Known zero-effect coordinates at a COMPACT point; not an identifiability test.
+
+    When the failure gain is zero, changing failure decay cannot change search
+    probability. COMPACT's fixed global-search fraction closes the other route
+    through which the failure accumulator affects the reference model.
+    """
+    control = driver.H + 'search_controller.'
+    if point[control + 'global_search_failure_gain'] != 0:
+        raise ValueError('Require COMPACT with fixed global-search probability')
+    return {control + 'failure_decay'} if point[control + 'error_gain'] == 0 else set()
+
+
 def prepare(evaluation: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new recovery preparation directory')
@@ -317,10 +330,13 @@ def score_truth(prepared: Path, fit: Path, output: Path) -> None:
             estimate_nll=selected['mean_nll'], truth_nll=generated['mean_nll'], estimate_minus_truth=difference,
             paired_mc_se=se, search_shortfall=difference > 2*se)
         own_estimates = []
+        inactive_true = compact_zero_effect_coordinates(point['hyperparams'])
+        inactive_estimated = compact_zero_effect_coordinates(selected['hyperparams'])
         for key, levels in case['space'].items():
             value, actual = selected['hyperparams'][key], point['hyperparams'][key]
             own_estimates.append(dict(case_id=case['case_id'], subject=subject, replicate=case['replicate'],
                 parameter=key, estimated=value, generating=actual, fitted=len(levels)>1,
+                zero_effect_at_generation=key in inactive_true, zero_effect_at_estimate=key in inactive_estimated,
                 normalized_grid_error=abs(levels.index(value)-levels.index(actual))/max(1, len(levels)-1)))
         return own_estimates, comparison
 

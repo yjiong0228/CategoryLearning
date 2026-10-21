@@ -93,6 +93,34 @@ def test_unused_m_posterior_cannot_change_selection(monkeypatch, tmp_path):
         assert a.diagnostics['proposal_parent'] == b.diagnostics['proposal_parent']
 
 
+@pytest.mark.parametrize('condition', [1, 2, 3])
+def test_failure_decay_has_zero_effect_when_gain_is_zero(condition, monkeypatch, tmp_path):
+    from src.Bayesian_state.hypothesis_space.similarity import ContinuousSimilarity
+    from src.Bayesian_state.model import ModelContext, StateModel
+    from src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search import MechanisticRuleSearchHypothesisTransitionModule as Transition
+    monkeypatch.setattr(ContinuousSimilarity, 'RUNTIME_CACHE_DIR', tmp_path)
+    cfg = compact_config(condition)
+    control = cfg['modules']['hypo_transitions_mod']['kwargs']['search_controller']
+    control.update(error_gain=0., baseline_probability=.35, failure_decay=0.)
+    other = deepcopy(cfg)
+    other['modules']['hypo_transitions_mod']['kwargs']['search_controller']['failure_decay'] = .99
+    with compact_evidence(Transition):
+        models = [StateModel(c, context=ModelContext(condition=condition)) for c in (cfg, other)]
+        hs = [m.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION) for m in models]
+        different_failure_states = False
+        for trial in range(12):
+            first, second = [m.begin_trial([.8, .3, .2, .4]) for m in models]
+            np.testing.assert_array_equal(first.prior, second.prior)
+            np.testing.assert_array_equal(first.beta, second.beta)
+            np.testing.assert_array_equal(hs[0].active, hs[1].active)
+            assert hs[0].current_event_probability == hs[1].current_event_probability
+            assert hs[0].current_g == hs[1].current_g
+            different_failure_states |= hs[0].accumulated_failure != hs[1].accumulated_failure
+            for model in models:
+                model.complete_trial(1, float(trial % 2))
+        assert different_failure_states
+
+
 def test_context_restores_methods_after_failure():
     from src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search import MechanisticRuleSearchHypothesisTransitionModule as Transition
     original = Transition._select_v3

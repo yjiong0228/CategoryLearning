@@ -36,6 +36,15 @@ def test_filter_splitting_preserves_seed_order_and_inputs():
         study.split_filter_jobs([dict(original, seeds=[])])
 
 
+def test_zero_failure_gain_marks_decay_as_without_behavioral_effect():
+    control = study.driver.H + 'search_controller.'
+    point = {control+'error_gain': 0., control+'global_search_failure_gain': 0.}
+    assert study.compact_zero_effect_coordinates(point) == {control+'failure_decay'}
+    assert study.compact_zero_effect_coordinates(dict(point, **{control+'error_gain': .25})) == set()
+    with pytest.raises(ValueError, match='fixed global-search'):
+        study.compact_zero_effect_coordinates(dict(point, **{control+'global_search_failure_gain': .5}))
+
+
 def test_case_controllers_share_one_worker_limit(monkeypatch, tmp_path):
     counts = dict(active=0, maximum=0, finished=0)
     lock = Lock()
