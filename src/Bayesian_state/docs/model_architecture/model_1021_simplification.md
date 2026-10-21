@@ -97,10 +97,18 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 205的完整参照在128条路径中都发现目标规则，并持续保留；COMPACT 有106条路径发现目标规则，
 71条路径发生过该规则被容量竞争移除的事件。这里的目标规则能完全解释这些已记录刺激的正确类别。
 
-下一步对205交叉设置搜索基线0.02／0.05与证据保持率0.95／0.99，其余参数保持不变。这四个点包含
+对205的定向对照交叉设置搜索基线0.02／0.05与证据保持率0.95／0.99，其余参数保持不变。这四个点包含
 原冻结点、原确认候选及两个交叉对照。对照检查搜索频率与证据保持分别如何影响发现和保留，复用
 原路径种子与已有候选评分。它属于开发诊断；原冻结参数和原比较持续保留。计划记录位于
 `results/model_1021/simplification_s205_retention_diagnostic_plan_20261022_v1/`。
+
+对照入口为`src.Bayesian_state.workflows.analysis.model_1021_simplification_retention_probe`，
+使用`--plan PLAN_JSON --output NEW_DIRECTORY`。原冻结点复用128条自主路径；其余三个点各生成
+128条路径。两个既有候选复用原确认评分，两个交叉点使用相同的八个种子及512个粒子计算训练似然。
+四个恢复案例均结束细化后，该对照使用最多16个工作进程；与主评价及恢复的剩余工作合计上限为128。
+程序拒绝改变其他参数，并在汇总时核对种子及训练边界。两条路径的前16题验证中，全部记录数组与
+已有完整路径的前缀完全一致；两项定向测试通过。正式对照输出位于
+`results/model_1021/simplification_s205_retention_diagnostic_20261022_v1/`，结果尚待完成。
 
 [自主路径图及来源表](../../../../CategoryLearning_codes/figures/outputs/fig3/model1021_simplification_autonomous_20261022_v1/index.html)
 保留全部路径。数值记录位于`results/model_1021/simplification_generation_review_20261022_v1/`。
