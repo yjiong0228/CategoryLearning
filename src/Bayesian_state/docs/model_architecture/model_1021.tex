@@ -1,0 +1,1047 @@
+% !TeX program = xelatex
+% Architecture specification, 2026-10-21. Compile twice with XeLaTeX.
+% Narrative source: model_clean_logic.docx (user-provided).
+% Mechanism: the frozen ONLINE / SEARCH / RETAIN / MIX / ADD10 reference.
+% This document does not change the model_0923 software defaults.
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.35cm,headheight=15pt]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage[no-config]{fontspec}
+\usepackage{needspace,enumitem,fancyhdr}
+\usepackage[unicode,hidelinks]{hyperref}
+\defaultfontfeatures{Ligatures=Common}
+\defaultfontfeatures[\rmfamily,\sffamily]{Ligatures=Common,Mapping=}
+\setmainfont[AutoFakeSlant=0.2]{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip=0pt plus 1pt minus 0.1pt
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.35em}
+\setlength{\emergencystretch}{3em}
+\setlength{\LTpre}{0.6em}
+\setlength{\LTpost}{0.6em}
+\renewcommand{\arraystretch}{1.22}
+\setlist{itemsep=0.2em,topsep=0.4em,leftmargin=2em}
+\allowdisplaybreaks[2]
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+\numberwithin{equation}{section}
+\renewcommand{\contentsname}{目录}
+\renewcommand{\tablename}{表}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Model 1021：学习与决策闭环}
+\fancyhead[R]{\small 2026-10-21 工作版本}
+\fancyfoot[C]{\thepage}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\ind}{\mathbb{I}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\sigmoid}{\operatorname{sigmoid}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\Hh}{\mathcal{H}}
+\newcommand{\Rr}{\mathcal{R}}
+\newcommand{\Dd}{\mathsf{D}}
+\newcommand{\Ll}{\mathsf{L}}
+\newcommand{\Ii}{\mathcal{I}}
+\newcommand{\Tt}{\mathcal{T}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\hypersetup{pdftitle={Model 1021：学习与决策闭环下的认知隐状态生成模型},pdfauthor={}}
+\title{Model 1021\\[0.5em]
+\Large 学习与决策闭环下的认知隐状态生成模型\\[0.5em]
+\large 决策、反馈学习、轨迹推断与系统演化}
+\author{}
+\date{2026年10月21日}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+概念学习包含一个不断重复的过程：学习者依据当前理解作出选择，再利用反馈调整规则及其使用方式。
+本模型用决策模块把认知状态转为行为，用学习模块更新认知状态，并由同一个生成过程推导行为序列的概率与内部学习路径的后验分布。
+研究目标是解释被试如何发现、保留和使用规则，并检验个体参数在这些过程中的心理含义。
+
+\paragraph{本文对应的工作版本。}
+本文采用截至2026年10月21日完成阶段验证的推荐配置：
+\textbf{ONLINE／SEARCH／RETAIN／MIX／ADD10}。
+它以在场规则的累计反馈证据形成规则信念，以历史反馈引导候选提出，按共同回顾证据处理容量竞争，
+在规则重新进入时恢复已学精度，以规则混合生成选择，并按加速的加法梯度更新精度。
+这是已比较方案中的共同工作参考；各过程的验证范围见第\ref{sec:validation}节。
+
+\paragraph{阅读顺序。}
+本文沿用用户提供的 \path{model_clean_logic.docx} 的组织思路：
+框架总览、实验与状态、决策和学习机制、单试次生成核、轨迹推断与演化算子、数值推断和参数估计、系统分析与验证。
+章节采用连续编号。机制公式按最新实际运行版本重写；13项自由参数及固定设置见附录\ref{app:parameters}。
+本文件的名称用于标识模型说明版本；软件仍复用共享核心及研究适配器。
+
+\paragraph{数据的作用。}
+个体参数由训练阶段的选择序列估计。自主生成轨迹用于检查整段学习过程的生成能力。
+口述描述被试选择当前选项的理由，为推断的局部作答依据提供带噪声的外部检验。
+口述的歧义、遗漏及表达噪声通过支持、冲突和未确定部分共同呈现。
+机制开发参考过开发样本的行为、口述和模型结果；个体估参及扩展评价的数据边界另行记录。
+
+\clearpage
+{\small\setlength{\parskip}{0pt}\tableofcontents}
+\clearpage
+
+\section{框架总览}
+\label{sec:overview}
+
+\subsection{两个心理模块与两个数学算子}
+面对刺激之前，学习者具有认知状态 $S_t$。决策模块接收当前刺激 $\bm x_t$，形成内部试次记录 $m_t$ 并生成选择 $y_t$。
+环境给出反馈 $r_t$，学习模块据此形成下一次决策所需的状态：
+\begin{equation}
+S_t \xrightarrow[\bm x_t]{\Dd_\theta}(m_t,y_t)
+\xrightarrow[r_t]{\Ll_\theta} S_{t+1}.
+\label{eq:cycle}
+\end{equation}
+内部记录包含本题的知觉结果、各规则的类别预测、作答贡献和主导规则。
+它使反馈学习能够使用作答时实际形成的预测。学习既改变规则预测的精度，也改变下一题可以使用的规则集合。
+
+研究者由这两个心理模块和环境反馈机制构造单试次联合生成核 $k_\theta$，
+再分别定义观测条件下的轨迹推断算子 $\Ii$ 与对所有可能观测求和的演化算子 $\Tt$：
+\begin{equation}
+\theta \longrightarrow (\Dd_\theta,\Ll_\theta)
+\longrightarrow k_\theta \longrightarrow (\Ii_{\theta,o}^{u},\Tt_{\theta,u}).
+\end{equation}
+其中 $u$ 指定刺激与实验协议，$o=(y,r)$ 表示实际选择和反馈。
+粒子滤波（particle filter，PF）通过一组带权的潜在路径近似执行轨迹推断。
+以下表格说明各层的输入与输出。
+
+{\small\noindent
+\begin{tabularx}{\linewidth}{L{2.65cm}YY}
+\toprule
+对象 & 接收的信息 & 形成的结果\\
+\midrule
+决策模块 $\Dd_\theta$ & 当前认知状态、刺激 & 内部试次记录与行为选择\\
+学习模块 $\Ll_\theta$ & 当前状态、内部记录、选择与反馈 & 下一决策就绪状态\\
+联合生成核 $k_\theta$ & 当前状态与实验协议 & 下一状态及外部观测的联合概率\\
+轨迹推断算子 $\Ii$ & 状态分布与实际观测 & 未归一化的下一状态分布；其总质量给出观测概率\\
+演化算子 $\Tt$ & 状态分布与实验协议 & 汇总可能行为及反馈后的下一状态分布\\
+粒子滤波 & 模型、观测序列与数值设置 & 选择概率、序列分数和状态后验的数值近似\\
+\bottomrule
+\end{tabularx}}
+
+\subsection{参数、状态与概率层级}
+个体参数 $\theta_s$ 在同一被试的任务过程中固定，认知状态随有效试次改变。
+例如，容量 $K_s$ 控制可同时活跃的规则数上限；实际候选数 $|\A_t|$ 随搜索、退出和准入而变化。
+精度初值 $\beta_{0,s}$ 是参数，某条规则在第 $t$ 题的精度 $\beta_t(h)$ 是学习状态。
+下文在机制公式中省略被试下标 $s$，所有参数均按被试取值。
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{L{2.9cm}L{2.0cm}Y}
+\toprule
+名称 & 符号 & 含义与用途\\
+\midrule
+规则信念 & $\pi_t(h)$ & 当前活跃规则之间的相对支持，由H累计证据形成\\
+反馈后支持 & $v_t(h)$ & M在本题反馈后形成的相对支持，用于退出与局部搜索父规则选择\\
+作答贡献 & $w_t(h)$ & 加入上一主导规则惯性后的混合权重，用于生成当前选择\\
+规则精度 & $\beta_t(h)$ & 控制单条规则的类别预测集中程度\\
+状态后验／粒子权重 & $b_t,\ W_t^{(n)}$ & 研究者依据行为观测对内部状态或路径的支持\\
+\bottomrule
+\end{tabularx}
+\caption{全文固定使用的术语。候选内相对支持、作答贡献及研究者后验分别归一化，并承担不同作用。}
+\label{tab:terms}
+\end{table}
+
+\subsection{认知机制的分工}
+决策模块包含知觉（P，perception）和选择读出（RC，choice readout）。
+学习模块包含证据记忆（M，memory）、精度校准（B，以精度 $\beta$ 命名）和假设管理（H，hypothesis management）。
+这些名称与既有实现对应；两个模块按心理功能组织这些计算。
+
+{\small\noindent
+\begin{tabularx}{\linewidth}{L{1.8cm}L{2.0cm}Y}
+\toprule
+功能模块 & 内部机制 & 职责及直接使用的个体参数\\
+\midrule
+决策 & P、RC & 形成内部刺激，混合规则预测；惯性参数 $\kappa$ 直接改变作答贡献。知觉噪声来自独立测量。\\
+学习 & M & 用反馈评价活跃规则，并在条件3中学习反应配对；证据保持率 $\gamma$。\\
+学习 & B & 根据反馈校准规则精度，并保存可恢复的已学精度；初值 $\beta_0$ 与学习率 $\eta$。\\
+学习 & H & 更新证据和失败状态，执行退出、搜索、准入与信念重建；$p_0,a_e,\lambda,g_0,a_g,\omega,K,\rho,\delta$。\\
+\bottomrule
+\end{tabularx}}
+
+学习可理解为把新经验写入认知状态，决策则把当前状态表达为行为。
+这一理解对应递归的经验编码与条件行为读出。模型的具体定义由下面的概率生成与状态更新公式给出。
+
+\section{实验设计、规则空间与认知状态}
+\label{sec:state}
+
+\subsection{实验条件与观测}
+第 $t$ 个有效试次包含四维物理刺激、实际选择与实际反馈：
+\begin{equation}
+\bm x_t\in[0,1]^4,\qquad y_t\in\{1,\ldots,C\},\qquad r_t\in\Rr.
+\end{equation}
+四维特征为部位长度的归一化表示，特征顺序按任务配置。
+条件1为二分类二值反馈，$C=2$、$\Rr=\{0,1\}$；
+条件2为四分类二值反馈，$C=4$、$\Rr=\{0,1\}$；
+条件3为四分类三值反馈，$C=4$、$\Rr=\{0,0.5,1\}$。
+条件3中，选对种类得1分，同科但种类错误得0.5分，另一科得0分。
+
+实验输入 $u_t$ 包含刺激、任务条件及环境反馈分布 $e_{u_t}(r\mid\bm x_t,y)$。
+真实类别和按键映射用于环境评分及数据坐标转换；被试模型根据获得的选择与反馈学习。
+条件3的类别编号、统一反应编号及实际按键分别保存，配对知识从均匀状态开始。
+行为拟合使用选择。漏答记录在入口跳过，模型按有效试次递推，输出保留原始试次编号。
+
+\subsection{规则目录、活跃集合与初始化}
+固定规则目录记为 $\Hh=\{1,\ldots,J\}$。二分类使用29条规则，四分类使用152条规则，分组见附录\ref{app:catalogue}。
+规则定义了程序判断、类别区域及其固定标签。当前活跃集合 $\A_t$ 包含学习者此时主动考虑的规则：
+\begin{equation}
+\mu(h)=\frac1J,\qquad \A_t\subset\Hh,\qquad
+1\leq |\A_t|\leq K<J.
+\label{eq:catalogue}
+\end{equation}
+$\mu$ 是基础规则权重，$K$ 为整数容量参数；当前估参范围要求 $K\geq2$。
+候选从目录中提出，目录之外的策略属于当前模型的表达边界。
+
+第一题抽取 $h_1\sim\mu$，令 $\A_1=\{h_1\}$、$\pi_1(h_1)=1$、$\beta_1(h_1)=\beta_0$。
+H累计证据与两类失败状态初始为0，事件历史为空，精度缓存尚无已学记录。
+条件3对三种配对赋予相同概率 $1/3$。首题只有一条规则，因此惯性不改变其作答权重。
+
+\subsection{决策就绪状态与内部试次记录}
+为使状态足以决定后续生成过程，$S_t$ 定义在第 $t$ 题决策开始之前，包含：
+\begin{equation}
+S_t=\bigl(\A_t,\pi_t,\bm\beta_t,\bm E_t,\bm n_t,
+F_t,B_t,h_{t-1}^{\star},\mathcal V_t,\mathcal C_t,\mathcal D_t,q_t\bigr).
+\label{eq:full-state}
+\end{equation}
+$E_t(h)$ 为H在线累计证据，$n_t(h)$ 为对应折扣暴露量；
+$F_t$ 为平滑失败压力，$B_t$ 为累计失败量；$h_{t-1}^{\star}$ 为上一主导规则。
+$\mathcal V_t$ 标记曾经活跃的规则，$\mathcal C_t(h)$ 保存其最近已学精度。
+$\mathcal D_t$ 保存此前已完成的事件；$q_t(k\mid h)$ 是条件3的规则条件配对信念。
+二值任务省略 $q_t$。固定目录和个体参数属于生成协议。
+
+上述表示允许保留可由其他状态推导的量。例如，$\pi_t$ 可由H证据重建，
+历史回顾总证据可由 $\mathcal D_t$ 计算并缓存。缓存用于减少重复计算，其数值由经验历史确定。
+记录完整历史与跨离场精度是当前版本的存储假设；容量 $K$ 专门约束活跃集合。
+
+决策阶段留下的本题记录写为
+\begin{equation}
+m_t=\bigl(\widetilde{\bm x}_t,\{d_{t,h,c}\},\{p_{t,h}(c)\},
+\{w_t(h)\},h_t^{\star}\bigr).
+\label{eq:record}
+\end{equation}
+各符号在第\ref{sec:decision}节定义。该记录连接本题决策与反馈学习。
+完成事件另外将所需内容追加到 $\mathcal D_t$，供未来候选回顾。
+
+实现把部分H更新延迟到下一有效试次开头。本文把这些仅依赖已完成事件的更新归入当前学习模块，
+使 $S_{t+1}$ 处于下一次决策就绪时点。H的这些计算读取此前事件和状态；
+下一刺激引起的知觉与类别预测归入下一次决策。此状态边界保留实际生成分布。
+
+\section{认知机制设计}
+\label{sec:mechanisms}
+
+\subsection{决策模块：从当前状态生成选择}
+\label{sec:decision}
+
+\subsubsection{模块接口}
+决策模块接收 $S_t$ 与 $\bm x_t$，输出本题内部记录及选择，其条件生成核记为
+\begin{equation}
+\Dd_\theta(dm,y\mid S,\bm x).
+\end{equation}
+它依次形成内部刺激、计算规则预测、确定作答贡献并生成选择。
+各规则共享同一次知觉结果，反馈学习也使用这一结果。
+
+\subsubsection{知觉与规则类别预测}
+每个特征的测量误差来自独立知觉任务，并按个体和特征顺序配置。
+共享实现支持配置指定的正态或均匀误差。本题内部刺激为
+\begin{equation}
+\widetilde x_{t,j}=\clip_{[0,1]}(x_{t,j}+\epsilon_{t,j}),\qquad j=1,\ldots,4.
+\label{eq:perception}
+\end{equation}
+规则 $h$ 的第 $c$ 类区域为 $\mathcal R_{h,c}$。内部刺激到该区域的最短欧氏距离及相应类别预测为
+\begin{align}
+d_{t,h,c}&=\inf_{\bm z\in\mathcal R_{h,c}}\norm{\widetilde{\bm x}_t-\bm z}_2,\\
+p_{t,h}(c)&=\frac{\exp[-\beta_t(h)d_{t,h,c}]}
+{\sum_{a=1}^{C}\exp[-\beta_t(h)d_{t,h,a}]}.
+\label{eq:category-probability}
+\end{align}
+刺激位于某区域内时，该距离为0；一个类别有多个分离分量时，取到最近分量的距离。
+精度 $\beta_t(h)$ 越大，距离较小的类别获得的概率越集中。
+规则区域固定，精度通过反馈校准。知觉噪声改变内部输入，精度改变距离对分类概率的作用。
+
+\subsubsection{规则信念、执行惯性与作答贡献}
+上一题主导规则若仍在集合中，其对数权重增加 $\kappa$，随后归一化：
+\begin{equation}
+w_t(h)=\frac{\pi_t(h)\exp\{\kappa\ind[h=h_{t-1}^{\star}]\}}
+{\sum_{v\in\A_t}\pi_t(v)\exp\{\kappa\ind[v=h_{t-1}^{\star}]\}},\qquad h\in\A_t.
+\label{eq:choice-weight}
+\end{equation}
+当 $\kappa=0$ 时，作答贡献等于规则信念。上一主导规则已离场时，所有候选均无惯性加成。
+例如，旧主导规则的信念为0.4，另一条为0.6，若 $\exp(\kappa)=3$，两者的作答贡献分别为 $2/3$ 和 $1/3$。
+惯性因而可以使信念变化与行为变化出现不同的时间过程。
+
+\subsubsection{混合选择与主导规则}
+当前工作版本MIX按作答贡献混合类别概率：
+\begin{equation}
+p_\theta(y_t=c\mid S_t,m_t)=\sum_{h\in\A_t}w_t(h)p_{t,h}(c).
+\label{eq:mixture}
+\end{equation}
+自主生成时从此分布抽取回答；拟合时读取实际回答的概率。
+额外随机作答率（lapse）固定为0。行为变异由知觉、规则状态、搜索过程和类别预测共同产生。
+
+本题主导标签取 $h_t^{\star}\in\argmax_h w_t(h)$。
+并列最大时优先保留上一主导标签，否则在并列规则间等概率抽取。
+标签用于下一题惯性；本题选择始终按式\eqref{eq:mixture}混合。
+可用 $N_{\mathrm{eff},t}=1/\sum_h w_t(h)^2$ 描述贡献分布的集中程度，
+其取值位于1与 $|\A_t|$ 之间，是模型权重的摘要。
+
+\subsection{学习模块：从反馈形成下一状态}
+\label{sec:learning}
+
+\subsubsection{模块接口与更新顺序}
+学习模块接收当前状态、内部记录、实际选择与反馈，输出下一决策就绪状态：
+\begin{equation}
+\Ll_\theta(dS'\mid S,m,y,r,u).
+\end{equation}
+M与B从同一份反馈前预测分别更新相对支持与精度；H同时累积规则证据，更新失败状态，
+继而执行退出、候选提出、容量准入和信念重建。新集合确定后，保留规则延续已学精度，
+重入规则恢复缓存。条件3还衔接配对知识。下面依计算依赖逐步说明。
+
+\subsubsection{反馈似然与M反馈后支持}
+\label{sec:memory}
+反馈似然 $\ell_t(h)$ 表示按规则 $h$ 的当前分类预测，获得实际反馈的概率。
+在二值任务中，正确反馈对应所选类别，错误反馈对应其余类别之和：
+\begin{equation}
+\ell_t(h)=
+\begin{cases}
+p_{t,h}(y_t),&r_t=1,\\
+1-p_{t,h}(y_t),&r_t=0.
+\end{cases}
+\label{eq:binary-feedback}
+\end{equation}
+M先用保持率 $\gamma$ 调整旧信念差异，再用本题反馈更新相对支持：
+\begin{equation}
+v_t(h)=\frac{\pi_t(h)^\gamma\ell_t(h)}
+{\sum_{v\in\A_t}\pi_t(v)^\gamma\ell_t(v)},\qquad h\in\A_t.
+\label{eq:memory}
+\end{equation}
+$\gamma=0$ 时，活跃规则以均匀旧支持进入更新；$\gamma=1$ 时完整保留旧信念比值。
+所有活跃规则均接受反馈评价。$v_t$ 决定退出概率中的支持项和局部搜索父规则的分布。
+下一题的作答信念由H证据重建，见第\ref{sec:online}节。
+
+\subsubsection{条件3：配对知识与分层反馈更新}
+\label{sec:pairing}
+条件3中，四个反应的两两配对有三种可能：
+\begin{equation}
+G_1=\{\{1,2\},\{3,4\}\},\quad
+G_2=\{\{1,3\},\{2,4\}\},\quad
+G_3=\{\{1,4\},\{2,3\}\}.
+\end{equation}
+令 $\operatorname{mate}_k(y)$ 为配对 $G_k$ 中与 $y$ 同组的另一个反应。
+决策前的规则—配对联合信念为 $\Pi_t(h,k)=\pi_t(h)q_t(k\mid h)$。
+每种配对下，规则对实际反馈的似然为
+\begin{equation}
+\ell_t(h,k)=
+\begin{cases}
+p_{t,h}(y_t),&r_t=1,\\
+p_{t,h}(\operatorname{mate}_k(y_t)),&r_t=0.5,\\
+1-p_{t,h}(y_t)-p_{t,h}(\operatorname{mate}_k(y_t)),&r_t=0.
+\end{cases}
+\label{eq:pairing-likelihood}
+\end{equation}
+M分别对规则边际与各规则的条件配对分布取幂、归一化：
+\begin{equation}
+\bar\pi_t(h)=\frac{\pi_t(h)^\gamma}{\sum_{v\in\A_t}\pi_t(v)^\gamma},\qquad
+\bar q_t(k\mid h)=\frac{q_t(k\mid h)^\gamma}{\sum_{j=1}^{3}q_t(j\mid h)^\gamma}.
+\label{eq:factorized-forgetting}
+\end{equation}
+$\gamma=0$ 时两层均直接置为相应均匀分布。
+随后同一次反馈更新联合分布，并得到规则边际似然：
+\begin{align}
+\ell_t(h)&=\sum_k\bar q_t(k\mid h)\ell_t(h,k),\\
+\Pi_t^+(h,k)&=\frac{\bar\pi_t(h)\bar q_t(k\mid h)\ell_t(h,k)}
+{\sum_{v\in\A_t}\sum_j\bar\pi_t(v)\bar q_t(j\mid v)\ell_t(v,j)},\\
+v_t(h)&=\sum_k\Pi_t^+(h,k),\qquad
+q_t^+(k\mid h)=\Pi_t^+(h,k)/v_t(h).
+\label{eq:pairing-posterior}
+\end{align}
+零边际规则的条件配对分布约定为均匀。
+分层归一化使规则支持的保持与配对分布的分散程度分别得到处理。
+这里的 $\bar q_t$ 同时供精度梯度使用，并固定在加入本题反馈之前的时点。
+
+\subsubsection{精度梯度与ADD10有界校准}
+\label{sec:precision}
+精度学习调整单条规则的分类明确程度，使其对反馈作出响应。
+令 $a_{t,h,c}$ 表示类别 $c$ 与实际反馈相容的程度。
+二值反馈下它是所选类别或其补集的指示量；条件3下定义为
+\begin{equation}
+a_{t,h,c}=\sum_k\bar q_t(k\mid h)\ind[c\in Y_k(y_t,r_t)],
+\end{equation}
+其中 $Y_k$ 在反馈为1、0.5、0时分别为所选类别、同科另一类别、另一科两个类别。
+临时把精度作为变量 $\beta$，有
+\begin{equation}
+\ell_t(h;\beta)=\sum_c a_{t,h,c}p_{t,h}(c;\beta),\qquad
+p_{t,h}^{\mathrm{fb}}(c)=\frac{a_{t,h,c}p_{t,h}(c)}{\ell_t(h)}.
+\end{equation}
+固定本题的知觉、距离及反馈前配对分布，对数似然对精度的导数为
+\begin{equation}
+g_t^\beta(h)=\left.\frac{\partial\log\ell_t(h;\beta)}{\partial\beta}\right|_{\beta_t(h)}
+=\sum_c p_{t,h}(c)d_{t,h,c}
+-\sum_c p_{t,h}^{\mathrm{fb}}(c)d_{t,h,c}.
+\label{eq:precision-gradient}
+\end{equation}
+反馈相容类别的平均距离较小时，梯度为正；较大时，梯度为负。
+因此，梯度同时取决于反馈、规则几何和本题预测。
+当前ADD10按下式更新所有活跃规则：
+\begin{equation}
+\beta_t^+(h)=\clip_{[0.1,25]}\bigl(\beta_t(h)+10\eta g_t^\beta(h)\bigr),
+\qquad 0\leq\eta\leq1.
+\label{eq:add10}
+\end{equation}
+系数10为共同固定尺度，$\eta$ 是个体学习率坐标，有效加法步长为 $10\eta$。
+更新方向来自本题反馈梯度；有限步长和边界截断后的实际变化需由生成与拟合结果评价。
+本版对每步反馈似然单调增加不作保证。M和H使用更新前精度计算的 $\ell_t(h)$，
+保证本题证据与作答时的预测一致。
+
+\subsubsection{H在线累计证据}
+\label{sec:evidence}
+H保存每条活跃规则相对于机会基线的累计反馈证据。
+令 $b_C(r_t)$ 为均匀类别预测下，实际反馈事件的概率：
+\begin{equation}
+b_C(r)=
+\begin{cases}
+1/C,&\text{二值任务，}r=1,\\
+1-1/C,&\text{二值任务，}r=0,\\
+1/4,&\text{条件3，}r\in\{1,0.5\},\\
+1/2,&\text{条件3，}r=0.
+\end{cases}
+\end{equation}
+本题证据与更新后的累计量定义为
+\begin{align}
+z_t(h)&=\log\ell_t(h)-\log b_C(r_t),\\
+E_t^+(h)&=\delta E_t(h)+z_t(h),\qquad
+n_t^+(h)=\delta n_t(h)+1.
+\label{eq:online-evidence}
+\end{align}
+保持率 $\delta\in[0,1]$ 规定历史证据的折扣；$n_t$ 记录对应暴露量。
+累计证据为正表示在该折扣历史上优于机会基线，为负表示低于机会基线。
+H将此证据用于退出资格和下一题规则信念。条件3中的 $\ell_t(h)$ 已按式\eqref{eq:pairing-posterior}的反馈前有效配对分布边缘化。
+
+\subsubsection{两类失败状态与搜索控制}
+\label{sec:search-control}
+搜索是否发生与搜索是否转向全局，分别读取两类失败状态。
+令本题失败程度为 $f_t=1-r_t$。平滑失败压力每题更新：
+\begin{equation}
+F_{t+1}=\lambda F_t+(1-\lambda)f_t,\qquad F_1=0.
+\end{equation}
+累计失败量在不完全正确时增加，在完全正确时按同一保持率衰减：
+\begin{equation}
+B_{t+1}=\begin{cases}
+\lambda B_t,&r_t=1,\\
+B_t+1-r_t,&r_t<1,
+\end{cases}\qquad B_1=0.
+\label{eq:failure}
+\end{equation}
+其中 $0\leq\lambda<1$。连续错误会持续累积 $B$；连续正确逐步降低它。
+下一题的搜索发生概率 $e_{t+1}$ 和搜索时的全局路线概率 $g_{t+1}$ 为
+\begin{align}
+e_{t+1}&=\sigmoid\bigl(\logit(p_0)+a_e B_{t+1}\bigr),\\
+g_{t+1}&=g_0+(1-g_0)a_gF_{t+1}.
+\label{eq:search-control}
+\end{align}
+$\logit(p)=\log[p/(1-p)]$ 为对数几率，$\sigmoid(x)=1/(1+e^{-x})$ 为其逆函数。
+$p_0$ 控制基础搜索率，$a_e$ 控制失败对搜索发生的影响；
+$g_0$ 控制基础全局比例，$a_g$ 控制失败压力对全局比例的影响。
+$\lambda$ 保持失败状态，$\delta$ 保持H规则证据，$\gamma$ 调整M反馈更新中的旧支持。
+
+\subsubsection{自主退出与最低保留}
+\label{sec:exit}
+每条旧候选依据累计证据和M反馈后支持提出退出：
+\begin{equation}
+P(h\text{提出退出})=\rho\,[1-v_t(h)]\ind[E_t^+(h)<0],\qquad h\in\A_t.
+\label{eq:exit}
+\end{equation}
+累计证据为负才具备自主退出资格；支持越弱，给定退出率 $\rho$ 下退出概率越高。
+各规则独立抽取退出提议。若全部退出或剩余M支持总和为0，恢复一条原本M支持最高的规则，
+并列时等概率选择。由此得到非空存留集合 $\A_t^{\mathrm{ret}}$。
+随后把 $v_t$ 限制到该集合并归一化，记为 $\widetilde v_t$。
+
+自主退出允许长期表现较差的规则离场；容量竞争还可以在接纳新候选时淘汰旧规则。
+两条途径均受集合非空及容量上限约束。
+
+\subsubsection{事件历史与共同精度回顾}
+\label{sec:recall}
+模型记录每个已完成事件的内部刺激、选择和反馈。
+条件3还记录\textbf{该次反馈进入前、遗忘前的整体配对边际}：
+\begin{equation}
+\zeta_t(k)=\sum_{h\in\A_t}\pi_t(h)q_t(k\mid h),\qquad
+\mathcal D_{t+1}=\mathcal D_t\mathbin{\Vert}\langle(\widetilde{\bm x}_t,y_t,r_t,\zeta_t)\rangle.
+\label{eq:episode}
+\end{equation}
+符号 $\Vert$ 表示按时间追加，重复内容的事件也分别保存。二值任务省略 $\zeta_t$。
+实现于反馈更新前保存该边际；下一次候选管理才使用完成的事件。
+这一历史量与精度梯度使用的规则条件分布 $\bar q_t(k\mid h)$ 分别承担回顾和在线学习的作用。
+
+回顾时，对所有参与比较的规则统一使用初始精度 $\beta_0$。
+记在第 $i$ 个保存事件上重算的类别概率为 $p_{i,h}^{0}(c)$。
+二值任务用式\eqref{eq:binary-feedback}得到 $\ell_i^0(h)$；条件3以保存的共同边际计算
+\begin{equation}
+\ell_i^0(h)=\sum_{k=1}^{3}\zeta_i(k)\ell_i^0(h,k).
+\end{equation}
+其中 $\ell_i^0(h,k)$ 按式\eqref{eq:pairing-likelihood}、使用 $p_{i,h}^{0}$ 计算。
+截至本题的回顾总证据、共同暴露量及平均证据为
+\begin{align}
+R_t(h)&=\sum_{i=1}^{t}\delta^{t-i}\left[\log\ell_i^0(h)-\log b_C(r_i)\right],\\
+Z_t&=\sum_{i=1}^{t}\delta^{t-i},\qquad \bar R_t(h)=R_t(h)/Z_t.
+\label{eq:recall}
+\end{align}
+最近事件权重为1；$\delta=0$ 时只保留最近事件的数值贡献，$\delta=1$ 时累计全部事件。
+公式按完整历史定义，数值实现省去下溢至机器精度以下的折扣项。
+回顾使候选可在相同事件、相同精度和相同配对参考下比较。
+
+\subsubsection{结构与功能路线及SEARCH候选提出}
+\label{sec:proposal}
+退出后，按 $e_{t+1}$ 抽取一次搜索事件。搜索发生时最多提出一条候选。
+候选范围为 $\mathcal U_t=\Hh\setminus\A_t$，排除上一题全部活跃规则，
+因此刚自主退出的规则最早可在后续试次重新提出。
+
+先以概率 $g_{t+1}$ 选全局路线，其基础候选分布为 $\mu$ 在 $\mathcal U_t$ 上的归一化。
+其余情况选局部路线，并按 $\widetilde v_t$ 从存留规则中抽取父规则 $h$。
+局部路线再以概率 $\omega$ 选结构编辑，以 $1-\omega$ 选功能相似关系。
+
+结构编辑距离 $d_{\mathrm{edit}}(h,u)$ 为合法单步编辑的最小成本，无法单步到达时为无穷。
+更换特征、改变比较关系及标准参照、修改参照值、改写条件树的一条下级判断的成本分别为1、1.5、1、2。
+合法结果须在目录中，并保留该编辑未改变的判断及类别输出布局。
+结构路线在合法非活跃邻居 $\mathcal N_t(h)$ 上归一化：
+\begin{equation}
+Q_{\mathrm{edit},t}(u\mid h)=
+\frac{\ind[u\in\mathcal N_t(h)]e^{-d_{\mathrm{edit}}(h,u)}}
+{\sum_{v\in\mathcal N_t(h)}e^{-d_{\mathrm{edit}}(h,v)}}.
+\end{equation}
+无合法非活跃邻居时，结构路线回退到功能路线。
+
+功能距离比较两条规则对固定参考刺激的分类结果。
+令 $c_h(\bm x)$ 为规则 $h$ 的确定类别标签，$\mu_X$ 为单位四维立方体上的均匀参考分布：
+\begin{equation}
+d_{\mathrm{func}}(h,u)=1-P_{\bm x\sim\mu_X}[c_h(\bm x)=c_u(\bm x)].
+\end{equation}
+实现共用100000个参考刺激、随机种子0，保持原类别标签。
+功能候选分布为
+\begin{equation}
+Q_{\mathrm{func},t}(u\mid h)=
+\frac{\ind[u\in\mathcal U_t]\mu(u)e^{-d_{\mathrm{func}}(h,u)/\tau_{\mathrm{prop}}}}
+{\sum_{v\in\mathcal U_t}\mu(v)e^{-d_{\mathrm{func}}(h,v)/\tau_{\mathrm{prop}}}},
+\quad \tau_{\mathrm{prop}}=0.10.
+\end{equation}
+该一致率衡量固定标签下的功能接近程度，也受类别区域大小影响。
+
+上述随机路线和父规则确定后，记得到的基础分布为 $Q_t^{(b)}(u)$，$b$ 表示这次选定的路线及父规则。
+SEARCH再用历史总证据调整该路线内的候选概率：
+\begin{equation}
+Q_{\mathrm{SEARCH},t}(u\mid b)=
+\frac{Q_t^{(b)}(u)\exp R_t(u)}
+{\sum_{v\in\mathcal U_t}Q_t^{(b)}(v)\exp R_t(v)}.
+\label{eq:search-tilt}
+\end{equation}
+基础概率为0的候选仍为0。路线发生概率和父规则概率保持上述定义；
+各路线内部先分别归一化，再按其发生概率组成总体分布。
+候选倾向由结构、功能接近程度及既往反馈共同决定。
+
+\subsubsection{共同回顾证据下的容量准入}
+\label{sec:admission}
+提出候选 $u$ 后，若 $|\A_t^{\mathrm{ret}}|<K$，则接纳并保留全部存留规则。
+若容量已满，则在 $\A_t^{\mathrm{ret}}\cup\{u\}$ 上比较共同回顾平均证据：
+\begin{equation}
+h^{\mathrm{drop}}\in\argmin_{h\in\A_t^{\mathrm{ret}}\cup\{u\}}\bar R_t(h),\qquad
+\A_{t+1}=(\A_t^{\mathrm{ret}}\cup\{u\})\setminus\{h^{\mathrm{drop}}\}.
+\label{eq:admission}
+\end{equation}
+并列最低时等概率移除一条。若移除的是候选，则本次提出被拒绝。
+上一主导规则也参加同一比较。未发生搜索时，$\A_{t+1}=\A_t^{\mathrm{ret}}$。
+所有竞争者使用相同 $Z_t$，因此本次平均证据的排序与总证据相同。
+实现中的 \texttt{POOL} 准入模式指这一共同事件比较。
+
+\subsubsection{ONLINE信念重建与配对衔接}
+\label{sec:online}
+活跃集合确定后，存留规则延续在线累计证据；新接纳规则用历史回顾总证据初始化：
+\begin{equation}
+E_{t+1}(h)=
+\begin{cases}
+E_t^+(h),&h\in\A_t\cap\A_{t+1},\\
+R_t(h),&h\in\A_{t+1}\setminus\A_t.
+\end{cases}
+\label{eq:evidence-admit}
+\end{equation}
+相应暴露量分别继承 $n_t^+(h)$ 或设置为 $Z_t$。离场规则的在线证据与暴露量清除。
+下一题规则信念为
+\begin{equation}
+\pi_{t+1}(h)=\frac{\mu(h)\exp E_{t+1}(h)}
+{\sum_{v\in\A_{t+1}}\mu(v)\exp E_{t+1}(v)},\qquad h\in\A_{t+1}.
+\label{eq:online-prior}
+\end{equation}
+即使没有新候选进入，也按同一公式更新。
+存留规则的证据来自其实际在场期间的变化精度；候选的初始证据来自共同精度回顾。
+这是当前模型对经验支持的操作定义。
+亲和度转移通道在ONLINE中关闭，配置中固定保存的转移系数0.01仅用于复现。
+
+条件3先保存全部旧规则反馈后的整体配对边际
+$q_t^{+,\mathrm{all}}(k)=\sum_h\Pi_t^+(h,k)$。
+存留规则延续自身配对知识，新进入规则继承这一整体边际：
+\begin{equation}
+q_{t+1}(k\mid h)=
+\begin{cases}
+q_t^+(k\mid h),&h\in\A_t\cap\A_{t+1},\\
+q_t^{+,\mathrm{all}}(k),&h\in\A_{t+1}\setminus\A_t,
+\end{cases}
+\quad \Pi_{t+1}(h,k)=\pi_{t+1}(h)q_{t+1}(k\mid h).
+\end{equation}
+这里的整体边际取自退出和容量处理之前。
+重新进入的规则按新进入规则处理配对知识；精度另按下一节的缓存规则恢复。
+
+\subsubsection{RETAIN：保存与恢复已学精度}
+\label{sec:retain}
+在清除非活跃精度之前，所有本题活跃规则都把更新后的 $\beta_t^+(h)$ 写入缓存，
+并记为曾经活跃。下一题精度为
+\begin{equation}
+\beta_{t+1}(h)=
+\begin{cases}
+\beta_t^+(h),&h\text{持续在场},\\
+\mathcal C_{t+1}(h),&h\text{离场后重新进入且有缓存},\\
+\beta_0,&h\text{首次进入}.
+\end{cases}
+\label{eq:retain}
+\end{equation}
+离场期间精度缓存保持不变，规则停止接受在线精度更新。
+缓存持续到任务结束。重新进入时，规则使用历史回顾重建初始支持，并恢复最近一次在场时的已学精度。
+这使活跃集合的更替与已有分类精度的保存分别得到表达。
+
+\subsubsection{一次完整有效试次}
+\label{sec:order}
+把以上步骤合并后，一次有效试次按以下顺序形成闭环：
+\begin{enumerate}
+\item 决策读取 $S_t$，形成一次内部刺激，计算各规则类别概率、作答贡献与主导标签，生成或计分 $y_t$。
+\item 环境给出 $r_t$。保存本题内部刺激、选择、反馈及条件3反馈前整体配对边际。
+\item 根据反馈前类别预测计算反馈似然。M更新支持及配对，B按ADD10更新精度；H累积同一反馈证据。
+\item 更新累计失败与平滑失败压力，得到下一题搜索发生概率和全局路线概率。
+\item 执行有证据条件的自主退出和非空保护；搜索发生时，按选定路线及历史证据提出至多一个候选。
+\item 有空位时接纳，满额时按共同回顾证据比较；确定 $\A_{t+1}$，按ONLINE重建信念并衔接配对。
+\item 保存本题活跃规则的更新后精度，对重入规则恢复缓存，对首次进入规则设置 $\beta_0$，形成 $S_{t+1}$。
+\end{enumerate}
+实际程序将第4至7步及部分H证据消费推迟到下一次有效试次开始。
+第\ref{sec:state}节的状态边界把它们统一归入反馈驱动的学习过程。
+
+\section{试次级隐状态生成}
+\label{sec:kernel}
+
+\subsection{联合生成核}
+决策、环境反馈与学习共同规定从当前状态出发，下一状态及观测如何联合产生：
+\begin{equation}
+k_\theta(dS',y,r\mid S,u)=
+\int \Dd_\theta(dm,y\mid S,\bm x)\,
+e_u(r\mid\bm x,y)\,
+\Ll_\theta(dS'\mid S,m,y,r,u).
+\label{eq:kernel}
+\end{equation}
+这里的积分消去内部试次记录 $m$，并保留该记录在决策与学习之间的依赖关系。
+核使用概率测度记法，以同时涵盖连续的知觉和精度、离散的规则集合及确定性的状态更新。
+固定 $S,u$ 后，对 $S'$ 积分并对全部 $y,r$ 求和的结果为1。
+
+\subsection{生成、计分与内部推断}
+自主生成从 $\Dd$ 抽取选择，由环境产生相应反馈，再经 $\Ll$ 更新状态。
+观测计分固定实际选择与反馈，对可能的知觉、规则集合和其他状态进行积分。
+内部推断则以这些观测重新分配潜在路径的概率。三者共享同一组参数与更新机制。
+
+当实验评分确定时，对有效记录有 $e_u(r_t\mid\bm x_t,y_t)=1$。
+因此研究者的行为似然由选择概率构成，反馈作为已给定的学习输入改变下一状态。
+M、H和B内部的反馈似然 $\ell_t(h)$ 用于被试模型的学习；粒子路径的观测权重按外显选择更新。
+这一区分保证同一反馈的认知更新与行为序列计分各有明确位置。
+
+\section{学习轨迹推断与状态分布演化}
+\label{sec:operators}
+
+\subsection{轨迹推断算子}
+令 $b$ 为当前决策就绪状态的概率分布，$A'$ 为下一状态空间中的可测集合。
+给定实际观测 $o=(y,r)$，定义未归一化算子
+\begin{equation}
+(\Ii_{\theta,o}^{u}b)(A')=\int k_\theta(A',o\mid S,u)\,b(dS).
+\label{eq:inference}
+\end{equation}
+它按实际观测的生成概率重加权路径，并把路径推进到学习后的状态。
+记 $\langle1,\nu\rangle$ 为测度 $\nu$ 的总质量，则
+\begin{equation}
+P_\theta(o\mid u,b)=\langle1,\Ii_{\theta,o}^{u}b\rangle,\qquad
+b_{t+1}=\frac{\Ii_{\theta,o_t}^{u_t}b_t}
+{\langle1,\Ii_{\theta,o_t}^{u_t}b_t\rangle}.
+\label{eq:filter}
+\end{equation}
+第一式给出观测概率，第二式给出观察本题并完成学习后的状态后验。
+未归一化的 $\Ii$ 对输入测度是正线性的；除以总质量的归一化过滤映射一般为非线性。
+
+对给定输入序列，完整观测序列概率可写为
+\begin{equation}
+P_\theta(o_{1:T}\mid u_{1:T})=
+\left\langle1,\Ii_{\theta,o_T}^{u_T}\cdots\Ii_{\theta,o_1}^{u_1}b_1\right\rangle.
+\label{eq:sequence-operator}
+\end{equation}
+算子从右向左按时间作用。式\eqref{eq:filter}给出各时点的过滤边际；
+完整路径的联合后验还需保留路径间的祖先关系。
+利用未来观测更新过去状态属于平滑推断。当前交付的逐题状态主要采用在线过滤，并注明选择前或选择后时点。
+输入若由历史自适应决定，则按已知实验策略条件化，记录其与此前观测的依赖。
+
+\subsection{演化算子}
+尚未给定实际选择和反馈时，对所有可能观测求和得到
+\begin{equation}
+\Tt_{\theta,u}=\sum_y\sum_{r\in\Rr}\Ii_{\theta,(y,r)}^{u},\qquad
+\langle1,\Tt_{\theta,u}b\rangle=1.
+\label{eq:evolution}
+\end{equation}
+演化算子把当前状态分布映射为完成一次决策与学习后的预测分布。
+给定预先确定的刺激和反馈协议序列，
+\begin{equation}
+b_{T+1}^{\mathrm{gen}}=\Tt_{\theta,u_T}\cdots\Tt_{\theta,u_1}b_1.
+\end{equation}
+自主轨迹模拟通过抽样近似这一传播。
+模拟中的反馈必须由模拟回答和实际任务评分规则产生。
+自适应输入协议则把输入策略一并放入前向生成过程。
+
+\subsection{各层的用途与分析条件}
+学习核 $\Ll$ 描述给定一次内部记录、选择和反馈后，单个认知状态怎样更新。
+$\Ii$ 描述观察实际行为后，研究者的状态分布怎样改变；$\Tt$ 描述尚未观察行为时，
+所有可能的决策和学习结果形成怎样的状态分布。这些对象由同一单试次核连接。
+
+在同一状态空间和兼容输入协议下，比较 $\Tt_{u_b}\Tt_{u_a}$ 与 $\Tt_{u_a}\Tt_{u_b}$
+可定义信息顺序对学习分布的影响。稳态与谱分析还要求明确平稳输入策略、状态空间及有限维近似。
+当前状态含增长的经验历史，长期分析须先处理这一存储结构。
+本文件给出算子定义，长期谱、稳态及前瞻干预结果尚待计算。
+
+\section{数值推断、个体估参与口述检验}
+\label{sec:inference}
+
+\subsection{粒子滤波的预测与更新}
+第 $n$ 个粒子表示一条可能的学习路径，作答前权重为 $W_t^{(n),\mathrm{pre}}$，
+由其当前状态和内部刺激得到选择概率 $p_t^{(n)}(c)$。
+观测本题回答之前的预测为
+\begin{equation}
+P_t(c)=\sum_{n=1}^{N_{\mathrm{PF}}}W_t^{(n),\mathrm{pre}}p_t^{(n)}(c),\qquad
+\sum_nW_t^{(n),\mathrm{pre}}=1.
+\label{eq:pf-predict}
+\end{equation}
+观察实际回答后，权重更新为
+\begin{equation}
+W_t^{(n),\mathrm{choice}}=
+\frac{W_t^{(n),\mathrm{pre}}p_t^{(n)}(y_t)}{P_t(y_t)}.
+\label{eq:pf-weight}
+\end{equation}
+随后各路径依据实际反馈完成学习。
+有效样本量 $\mathrm{ESS}=1/\sum_n(W_t^{(n),\mathrm{choice}})^2$ 低于预定阈值时重采样，
+子粒子继承完整状态及历史，并产生独立的后续随机分支。
+粒子数、种子、重采样阈值及重复次数是数值设置，认知容量 $K$ 是被试模型参数。
+
+候选在场概率、规则信念、作答贡献、精度和主导概率均可按指定时点的粒子权重汇总。
+路径区间以参数点固定为条件，参数不确定性需另外传播。
+图中的加权均值、潜在路径区间与蒙特卡洛估计误差须分别标记。
+
+\subsection{个体参数的估计目标}
+13项自由参数组成
+\begin{equation}
+\theta_s=(p_{0,s},a_{e,s},\lambda_s,g_{0,s},a_{g,s},\omega_s,
+K_s,\rho_s,\delta_s,\kappa_s,\gamma_s,\beta_{0,s},\eta_s).
+\label{eq:parameters}
+\end{equation}
+参数共同作用于整段学习过程。$\kappa$ 直接改变当前混合权重，
+其余参数通过初始化、证据学习、候选变化、配对或精度影响当前及后续选择。
+初始精度同时影响初始行为与历史回顾评价。
+
+训练目标为实际选择的平均负对数概率（negative log-likelihood，NLL）：
+\begin{equation}
+\mathrm{NLL}_{\mathrm{train}}(\theta_s)=
+-\frac{1}{|\mathcal J_{\mathrm{train}}|}
+\sum_{t\in\mathcal J_{\mathrm{train}}}\log P_t(y_t;\theta_s).
+\label{eq:objective}
+\end{equation}
+计分集合 $\mathcal J_{\mathrm{train}}$ 预先固定，并保存原始试次身份。
+最新冻结批次将传入的全部有效训练试次纳入计分，包含从初始状态产生的首题预测；
+每题选择与反馈随后进入学习。旧入口中的首题处理须按各自协议复现，跨版本比较先核对计分集合。
+多次独立滤波在每题先平均选择概率，再取对数，构成当前用于比较参数的数值分数。
+
+理论上，条件选择概率的乘积就是模型在给定任务协议下对该行为序列的生成概率。
+因此，提高准确计算的序列似然会提高观测行为序列的模型概率。
+粒子滤波以有限样本近似这一积分，估参需检查数值误差和参数搜索覆盖。
+训练分数较高的组合随后接受独立种子确认、后段顺序预测、自主轨迹及内部过程检验。
+
+\subsection{条件预测、自主生成与验证边界}
+条件预测每题使用此前真实选择与反馈；后段顺序预测可以继续吸收已发生的后段观测，
+但后段评分不参与该个体训练参数的选择。
+从初始状态开始的自主生成在固定任务刺激下自行作答、获得与模拟作答相应的反馈并继续学习。
+前者评价局部下一步预测，后者评价发现时间、学习形状、停滞、恢复及末段表现的分布。
+
+自主分布应在观测行为附近保留适当概率，同时反映被试间与路径间的合理变异。
+评估同时考察分布位置、离散程度、覆盖和分布评分。
+窄分布只有在位置与覆盖合理时才提供更精确的预测；状态恢复还需检查已知真值的覆盖。
+
+\subsection{口述：对当前作答依据的带噪声检验}
+\label{sec:oral}
+口述指导语要求被试描述当前刺激为何使其选择该选项。
+因此，主要检验对象为\textbf{本题选择之后、反馈之前的局部作答依据}。
+模型先仅由行为得到状态，再将实际口述编码为一组局部判断约束，检验这些约束得到多少模型质量的支持。
+多项判断在同一局部依据内联合评价；规则还可包含口述未提及的判断。
+
+设规则 $h$ 的所选类别含局部分量 $j$，$\alpha_{t,h,j}^{(n)}$ 为该粒子在这些分量上的权重。
+当前协议选择距内部刺激最近的分量，并列时均分。
+粒子、规则与分量联合条件于本题选择的质量为
+\begin{equation}
+A_t(n,h,j\mid y_t)=
+\frac{W_t^{(n),\mathrm{pre}}w_t^{(n)}(h)
+p_{t,h}^{(n)}(y_t)\alpha_{t,h,j}^{(n)}}{P_t(y_t)}.
+\label{eq:oral-responsibility}
+\end{equation}
+其在全部 $n,h,j$ 上求和为1。
+这个表达对实际回答条件化一次，用于描述各局部规则成分对该回答的解释质量。
+
+对实际口述的整组约束，分别作结构和功能评价。
+结构支持要求全部已编码谓词在局部规则中得到显式支持；
+功能支持要求整个局部分量区域蕴含这些数值约束。
+区域与口述约束没有正体积交集时记为冲突，其他信息不足的情况记为未确定。
+按式\eqref{eq:oral-responsibility}累积相应质量，得到
+\begin{equation}
+M_t^{\mathrm{support}}+M_t^{\mathrm{conflict}}+M_t^{\mathrm{undetermined}}=1.
+\end{equation}
+这些量表示内容相容性。报告是否说出某判断、采用何种措辞及遗漏多少内容，还涉及另一个表达过程。
+
+编码保留原话、完整解析覆盖、语义歧义及目录范围。
+“一半”按用户确认解释为长度范围的中点；无明确参照的“长／短”保留固定的中点与相对读法作敏感性分析。
+模型比较使用相同报告集合、读法和判定标准，并同时报告覆盖、支持、冲突和未确定质量。
+口述质量可按独立于模型成绩的预定标准分层；低质量或模糊报告的预测不足按该层的局限解释。
+当前机制开发已参考部分口述，严格的前瞻验证需保留独立资料和冻结标准。
+
+\section{系统分析、当前证据与验证范围}
+\label{sec:validation}
+
+\subsection{从机制轨迹得到可检验预测}
+模型输出应同时说明规则何时首次被提出、何时被接纳、持续在场多久、
+何时获得较大作答贡献，以及精度和实际正确率如何变化。
+这些过程能区分发现困难、保留困难及已有规则转化为准确作答的困难。
+按结构与功能距离记录搜索变化，还能检查相近行为对应怎样的规则程序。
+
+后续系统分析可在匹配刺激和反馈信息的条件下改变呈现顺序，比较候选到达时间、稳定使用概率与后续泛化。
+诊断刺激可使当前后验支持的规则给出不同类别预测，从而增加对内部状态的辨别信息。
+模型内干预产生待检验的人类实验预测；前瞻操纵及共同对照提供外部验证。
+MEG对齐需保持刺激、选择、反馈和运动时序，并独立控制这些变量及历史效应。
+本版尚未建立神经观测模型。
+
+\subsection{截至2026年10月21日的工作选择}
+阶段比较保留ONLINE／SEARCH／RETAIN／MIX／ADD10作为共同工作参考。
+开发比较覆盖108、205、306：在共同LOG25对照下，SEARCH的后段自主分布评分三人均改善；
+精度方案的取舍随被试变化，205支持ADD10，306在LOG25下部分行为指标改善，108在零学习率点上两者等价。
+这些比较包含机制改变后重新估参的作用。
+
+冻结后的110、209、309扩展均仅用训练行为选参数，每人完成128条自主轨迹与8次512粒子滤波。
+209和309的后段口述功能支持约为0.91和0.92，且在两种固定读法下均较高；
+110主要为未确定质量。三人的自主平均正确率仍低于真实后段正确率。
+209的目标规则已持续在场并获得较高贡献，剩余差距提示应继续检查分类精度与选择生成的联合过程。
+扩展被试的既往开发影响记录为“未确定”。
+
+四条ONLINE联合恢复来自两个生成参数点、每点两条序列。
+其中三条拟合点的行为分数差于已知生成点且超过配对模拟误差，说明当前优化覆盖仍有限；
+另一条行为分数略高的拟合点，其作答贡献恢复误差更大。
+因此，参数搜索充分性、参数恢复与状态恢复分别评价。
+当前13个可变坐标均用于整组参数下的过程解释；稳定个体特质、参数组合唯一性和跨模型表征优势仍待更广验证。
+
+\subsection{验证层次与保留的问题}
+{\small
+\begin{longtable}{L{2.65cm}L{5.7cm}L{6.4cm}}
+\toprule
+验证层次 & 主要检查 & 所支持的结论与当前边界\\
+\midrule\endhead
+实现一致性 & 时间顺序、概率归一化、状态保存、配对与精度更新 & 公式和执行机制的对应；本文更新的是规范，科学运行沿用已完成版本。\\
+行为预测与生成 & 训练、后段顺序预测、自主路径分布 & 分别评价局部概率及完整学习过程；扩展个案仍有自主表现偏低。\\
+优化与参数恢复 & 已知生成点比较、独立种子、联合恢复 & 当前存在搜索覆盖不足；参数点的心理含义按整组过程解释。\\
+状态恢复 & 在场、贡献、精度及区间覆盖 & 固定参数下的路径不确定性已有检查；参数不确定性尚待传播。\\
+口述检验 & 共同报告集、结构与功能、完整覆盖及歧义 & 部分被试与阶段获得相容性支持；报告噪声和目录覆盖限制保留。\\
+模型与外部验证 & 等预算重估、替代机制、独立数据及干预 & 跨模型整体优势与更一般个体特质仍待建立。\\
+\bottomrule
+\end{longtable}}
+
+当前存储机制允许完整历史回顾，并使精度缓存持续到任务结束；其心理成本需进一步检验。
+MIX与单规则选择的既有部分比较来自其他信念方案，ONLINE下的整体优劣尚待专门比较。
+后续优先改善联合估参的覆盖与不确定性表达，再针对已经发现规则如何变为稳定准确的作答开展定向检验。
+阶段证据及完整结果链接保存在附录\ref{app:provenance}所列来源中。
+
+\appendix
+\clearpage
+\section{个体参数与共同固定设置}
+\label{app:parameters}
+
+\subsection{13项自由参数的操作定义}
+下表的范围表示机制定义允许的范围，实际有限搜索取值另见下一节。
+符号与Word示例中的部分旧记号重新区分：$\lambda$ 专指失败保持，$\delta$ 专指H证据保持，$\kappa$ 专指执行惯性。
+
+{\small
+\begin{longtable}{L{1.6cm}L{2.3cm}L{10.8cm}}
+\toprule
+参数 & 定义域 & 模型内作用\\
+\midrule\endhead
+$p_0$ & $(0,1)$ & 失败累积为0时的搜索概率。\\
+$a_e$ & $[0,\infty)$ & 累计失败对搜索对数几率的增益。\\
+$\lambda$ & $[0,1)$ & 完全正确后累计失败的保持率，并控制平滑失败压力。\\
+$g_0$ & $[0,1]$ & 平滑失败压力为0时的全局路线概率。\\
+$a_g$ & $[0,1]$ & 失败压力提高全局路线比例的幅度。\\
+$\omega$ & $[0,1]$ & 局部路线中选择结构编辑的概率；无合法邻居时回退功能路线。\\
+$K$ & 整数，$2\leq K<J$ & 同时活跃的规则数上限。\\
+$\rho$ & $[0,1]$ & 负累计证据规则自主退出概率的总体尺度。\\
+$\delta$ & $[0,1]$ & H在线证据及历史回顾的保持率，影响退出、提出、准入和信念。\\
+$\kappa$ & $[0,\infty)$ & 上一主导规则的对数作答权重加成。\\
+$\gamma$ & $[0,1]$ & M反馈更新中规则支持及条件3配对知识的保持率。\\
+$\beta_0$ & $[0.1,25]$ & 首次进入规则的初始精度，也是候选回顾的共同精度。\\
+$\eta$ & $[0,1]$ & ADD10学习率坐标，有效加法步长为 $10\eta$。\\
+\bottomrule
+\end{longtable}}
+
+同一参数可能影响多个过程。$\delta$ 同时进入发现、准入、退出和作答信念；
+$\beta_0$ 同时影响分类与历史回顾。参数解释须结合共同参数及实际状态轨迹。
+当 $a_e=a_g=0$ 时，失败保持通道不影响选择；当 $g_0=1$ 时，局部结构权重和失败全局增益通道关闭。
+容量很少达到上限、精度频繁触边或候选路线很少发生时，相关个体参数的行为约束也会减弱。
+
+\subsection{冻结扩展批次的搜索取值}
+实际记录包含14个配置坐标，其中13个可变，转移系数固定为0.01且通道关闭。
+以下为已完成扩展批次的离散取值；这些取值是有界搜索设计。
+
+{\small
+\begin{longtable}{L{2.5cm}L{12.4cm}}
+\toprule
+坐标 & 实际候选值\\
+\midrule\endhead
+$p_0$ & $0.005,\ 0.02,\ 0.05,\ 0.15,\ 0.35,\ 0.65,\ 0.95$\\
+$a_e$ & $0,\ 0.25,\ 0.5,\ 1,\ 2,\ 4,\ 8$\\
+$\lambda$ & $0,\ 0.3,\ 0.6,\ 0.85,\ 0.95,\ 0.99$\\
+$g_0$ & $0,\ 0.05,\ 0.2,\ 0.5,\ 0.8,\ 1$\\
+$a_g,\ \omega$ & 各用 $0,\ 0.25,\ 0.5,\ 0.75,\ 1$\\
+$K$ & $2,\ 3,\ 4,\ 6,\ 8$\\
+$\rho$ & $0,\ 0.01,\ 0.05,\ 0.1,\ 0.25,\ 0.5,\ 1$\\
+$\delta$ & $0,\ 0.3,\ 0.6,\ 0.8,\ 0.9,\ 0.95,\ 0.99,\ 1$\\
+$\kappa$ & $0,\ 0.25,\ 1,\ 2,\ 4,\ 8$\\
+$\gamma$ & $0,\ 0.3,\ 0.6,\ 0.8,\ 0.95,\ 0.99,\ 1$\\
+$\beta_0$ & $0.1,\ 0.5,\ 1,\ 2,\ 5,\ 10,\ 15,\ 25$\\
+$\eta$ & $0,\ 0.001,\ 0.003,\ 0.01,\ 0.03,\ 0.06,\ 0.1,\ 0.3,\ 0.6,\ 1$\\
+\bottomrule
+\end{longtable}}
+
+目录、基础权重、搜索设置、精度边界与缓存采用正文规定的共同值。
+知觉参数来自独立测量；粒子数与计算预算按运行协议另列。
+
+\clearpage
+\section{规则目录}
+\label{app:catalogue}
+
+\subsection{二分类目录：29条}
+{\small\noindent
+\begin{tabularx}{\linewidth}{L{4.4cm}Yr}
+\toprule
+规则形式 & 判断例子或边界 & 数量\\
+\midrule
+单特征阈值 & $x_i\leq0.5$ & 4\\
+两个特征的顺序 & $x_i\leq x_j$ & 6\\
+两个特征的和 & $x_i+x_j\leq1$ & 6\\
+两组特征和的顺序 & $x_i+x_j\leq x_k+x_l$ & 3\\
+两个特征是否接近 & $|x_i-x_j|\leq0.10$ & 6\\
+单特征是否在中间 & $|x_i-0.5|\leq0.10$ & 4\\
+\midrule
+合计 & 类别区域与标签固定 & 29\\
+\bottomrule
+\end{tabularx}}
+
+\subsection{四分类目录：152条}
+{\small
+\begin{longtable}{L{5.5cm}L{8.2cm}r}
+\toprule
+代码家族 & 内容 & 数量\\
+\midrule\endhead
+\path{2d_axis_pair} & 两个单特征阈值交叉 & 6\\
+\path{2d_equality_sum} & 同一特征对的顺序与和交叉 & 6\\
+\path{3d_axis_equality} & 阈值与另两特征顺序 & 12\\
+\path{3d_axis_sum} & 阈值与另两特征和 & 12\\
+\path{3d_axis_triple} & 三阈值条件分支 & 24\\
+\path{3d_axis_equality_sum} & 阈值分支下顺序或和 & 24\\
+\path{4d_equality_pair} & 不重叠特征对的顺序交叉 & 3\\
+\path{4d_sum_pair} & 不重叠特征对的和交叉 & 3\\
+\path{4d_equality_axis_pair} & 顺序分支与剩余阈值 & 12\\
+\path{4d_sum_axis_pair} & 和分支与剩余阈值 & 12\\
+\path{dimension_max/min} & 最大或最小特征分类 & 2\\
+\path{axis_pair_overlap} & 阈值与共享特征顺序 & 12\\
+\path{shared_pair_comparisons} & 围绕同一部位两次比较 & 12\\
+\path{similarity_axis_disjoint} & 两部位接近与第三部位长短交叉 & 12\\
+\midrule
+合计 & 固定标签下的程序判断与几何区域 & 152\\
+\bottomrule
+\end{longtable}}
+
+\clearpage
+\section{实现对应与版本来源}
+\label{app:provenance}
+
+\subsection{主要实现位置}
+下表路径相对于 \path{src/Bayesian_state/}。模型共用现有实现，
+推荐工作方案通过研究适配器组合运行。仅加载原始 \texttt{0923-full-v3} 默认配置，仍需按冻结协议启用这些设置。
+
+{\small
+\begin{longtable}{L{3.4cm}L{11.5cm}}
+\toprule
+本文内容 & 对应源文件或入口\\
+\midrule\endhead
+试次记录与反馈时序 & \path{model/state_model.py}\\
+知觉 & \path{model/modules/perception.py}\\
+M反馈学习 & \path{model/modules/memory.py}；\path{model/modules/pairing_memory.py}\\
+H搜索、失败与退出 & \path{model/modules/hypothesis_transition/mechanistic_rule_search.py}\\
+事件回顾与共同准入 & \path{model/modules/hypothesis_transition/episodic_admission.py}\\
+SEARCH候选提出 & \path{model/modules/hypothesis_transition/episodic_proposal.py}\\
+ONLINE信念 & \path{model/modules/hypothesis_transition/online_evidence_belief.py}\\
+RETAIN精度保存 & \path{model/modules/hypothesis_transition/reentry_precision.py}\\
+ADD10精度校准 & \path{model/modules/beta.py}；\path{model/modules/precision_interventions.py}\\
+局部作答依据与口述 & \path{evaluation/oral/decision_basis.py}；\path{evaluation/oral/constraint_alignment.py}；\path{evaluation/oral/content_support.py}\\
+冻结扩展运行 & \path{workflows/analysis/model_0923_finalization_extension_fit.py}\\
+\bottomrule
+\end{longtable}}
+
+\subsection{可追溯的设计与结果}
+叙述顺序来自\href{model_clean_logic.docx}{用户提供的框架文档}，机制与结论以
+\href{model_0923_research_progress_20261018.md}{阶段研究记录的2026年10月21日最终结论及ONLINE共同流程}为依据。
+冻结机制见\href{../../../../results/model_0923/finalization_recommendation_20261021_v1/recommendation.json}{推荐版本记录}，
+实际配置见\href{../../../../configs/shared/model0923_finalization_extension_fit.yaml}{扩展拟合配置}。
+冻结记录保存当时状态，完成后的结果以
+\href{../../../../results/model_0923/finalization_completion_audit_20261021_v1/completion.json}{最终验收记录}为准。
+
+个体参数范围及解释见\href{../../../../results/model_0923/finalization_interpretation_20261021_v1/index.html}{参数解释报告}。
+口述方法详见\href{model_0923_oral_constraints.md}{口述局部约束检验说明}。
+相关源代码、参数、种子、数据边界和计算环境版本在各次运行的归档与协议中保存。
+本次编写与排版没有重新拟合参数，也没有更改科学运行结果。
+
+\clearpage
+\section{主要符号}
+\label{app:symbols}
+{\small
+\begin{longtable}{L{4.0cm}L{10.9cm}}
+\toprule
+符号 & 定义\\
+\midrule\endhead
+$u_t,\bm x_t,y_t,r_t,o_t$ & 实验协议、物理刺激、选择、反馈及联合观测 $(y_t,r_t)$\\
+$S_t,m_t$ & 决策就绪状态与本题内部试次记录\\
+$\Hh,J,\mu$ & 固定规则目录、规则数与基础规则权重\\
+$\A_t,K$ & 活跃规则集合与容量上限\\
+$\widetilde{\bm x}_t,d_{t,h,c},p_{t,h}(c)$ & 内部刺激、到类别区域的距离及规则类别预测\\
+$\pi_t,v_t,w_t$ & 规则信念、M反馈后支持及作答贡献\\
+$\beta_t,\beta_t^+,\beta_0,\eta$ & 当前精度、反馈后精度、初始精度及ADD10学习率\\
+$E_t,n_t,z_t$ & H累计证据、折扣暴露量及本题相对机会基线证据\\
+$\delta,\gamma,\lambda$ & H证据保持、M支持保持及失败状态保持\\
+$F_t,B_t,e_t,g_t$ & 平滑失败压力、累计失败量、搜索发生概率及全局路线概率\\
+$p_0,a_e,g_0,a_g,\omega,\rho$ & 搜索控制、局部结构路线与自主退出参数\\
+$h_t^\star,\kappa$ & 主导规则标签与执行惯性\\
+$\mathcal V_t,\mathcal C_t,\mathcal D_t$ & 曾活跃规则标记、精度缓存及完成事件历史\\
+$R_t,Z_t,\bar R_t$ & 共同精度下的回顾总证据、共同暴露量与平均证据\\
+$q_t,\bar q_t,q_t^+,\Pi_t,\Pi_t^+$ & 配对知识、遗忘后有效配对、反馈后配对及相应联合信念\\
+$\zeta_t$ & 保存事件时的反馈前整体配对边际\\
+$\ell_t(h),b_C(r)$ & 规则反馈似然与机会基线反馈概率\\
+$\Dd,\Ll,k,\Ii,\Tt$ & 决策核、学习核、联合生成核、轨迹推断算子与演化算子\\
+$b_t,W_t^{(n)},N_{\mathrm{PF}}$ & 研究者状态分布、粒子权重与粒子数\\
+$A_t(n,h,j\mid y_t)$ & 结合当前选择后的粒子—规则—局部分量解释质量\\
+\bottomrule
+\end{longtable}}
+
+\end{document}
