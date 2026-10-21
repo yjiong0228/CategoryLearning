@@ -108,11 +108,51 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overla
 四个恢复案例均结束细化后，该对照使用最多16个工作进程；与主评价及恢复的剩余工作合计上限为128。
 程序拒绝改变其他参数，并在汇总时核对种子及训练边界。两条路径的前16题验证中，全部记录数组与
 已有完整路径的前缀完全一致；两项定向测试通过。正式对照输出位于
-`results/model_1021/simplification_s205_retention_diagnostic_20261022_v1/`，结果尚待完成。
+`results/model_1021/simplification_s205_retention_diagnostic_20261022_v1/`，全部112个新作业已完成。
+
+| 搜索基线 | 证据保持率 | 训练NLL | 后期Energy | 发现目标规则的路径 | 发现后的平均保留比例 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.02 | 0.95 | 1.255616 | 0.148957 | 109/128 | 0.666 |
+| 0.02 | 0.99 | 1.258615 | 0.159450 | 91/128 | 0.565 |
+| 0.05 | 0.95 | 1.255366 | 0.147678 | 106/128 | 0.587 |
+| 0.05 | 0.99 | 1.258309 | 0.145287 | 92/128 | 0.649 |
+
+保留比例从每条路径第一次发现目标规则开始计算，再对已发现的路径取平均；未发现路径单独计数。
+证据保持率为0.95时，降低搜索基线提高了这一保留比例，但后期自主预测没有改善。
+相对原冻结点，各对照的自主差异均小于两倍配对蒙特卡洛标准误，训练似然也保留了原冻结点的优势。
+本次对照支持继续检查入集和早期学习的机制。
+[四个参数点的比较图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1021_retention_probe_20261022_v2/search_and_retention.png)
+同时展示训练代价、后期自主预测和规则可用性。
+
+原冻结点的128条路径共出现280次目标规则被容量竞争移除的事件，其中180次发生在入集后的下一题，
+234次发生在入集后四题以内。全部事件的前一题反馈前精度都低于1；这里记录的是前一题的精度，
+反馈更新后的移除时精度没有单独保存。该结果把瓶颈定位到新规则的早期支持与学习机会。
+逐事件记录位于`results/model_1021/simplification_s205_entry_lifetime_20261022_v1/`。
 
 [自主路径图及来源表](../../../../CategoryLearning_codes/figures/outputs/fig3/model1021_simplification_autonomous_20261022_v1/index.html)
 保留全部路径。数值记录位于`results/model_1021/simplification_generation_review_20261022_v1/`。
 条件预测、口述和恢复结果仍待完成；生成快照将在原评价最终汇总后再次逐数组核对。
+
+## 新规则初始支持的单项对照
+
+追加的中心化对照在每次反馈更新后，给当前活跃规则的支持值减去同一个常数，使其支持指数的
+基础权重加权平均值为1。设当前活跃集合为 $A$，规则的基础权重为 $b_h$、更新后的支持为 $E_h$，计算为：
+
+\[
+\widetilde E_h=E_h-\log\left(\frac{\sum_{j\in A}b_j\exp(E_j)}{\sum_{j\in A}b_j}\right).
+\]
+
+对这一步给定的旧规则集合，该平移保持各规则之间的权重比和容量竞争排序。新规则以零支持进入时，
+其支持指数为1，对应当前集合的平均参照水平；后续反馈继续更新同一个支持值。该对照检验累计支持的
+绝对尺度是否使新规则过早失去学习机会。参数数目、搜索、精度学习和容量上限保持原设定。
+
+该适配器仅在独立工作进程中启用，路径为`model/modules/hypothesis_transition/centered_evidence.py`。
+入口`src.Bayesian_state.workflows.analysis.model_1021_centered_entry_probe`接受
+`--plan RETENTION_PLAN_JSON --output NEW_DIRECTORY`，固定205的原 COMPACT 参数，使用原128条
+生成种子和八次512粒子训练评分。该阶段用于机制诊断；最终比较需要在相同预算下重新估参。
+相关13项测试通过，覆盖权重比保持、三条件状态恢复及原 COMPACT 行为契约。
+两次八题两粒子滤波和两条16题自主路径均完成；正式对照位于
+`results/model_1021/simplification_s205_centered_entry_20261022_v1/`，结果尚待完成。
 
 ## 状态采集与连续评价
 
