@@ -11,6 +11,8 @@ after estimates freeze, using the same independent confirmation seed bank.
 Case controllers are waiting threads; all numerical subprocesses share one
 128-worker queue. Faster cases advance without waiting for slower cases.
 Post-freeze generating-point scores also share this queue across cases.
+Each independent filter seed is one process task; its original seed order is
+preserved when pooling predictions. Completion records count actual filters.
 """
 from __future__ import annotations
 
@@ -135,6 +137,28 @@ def recovery_hashes(v) -> dict:
     return hashes
 
 
+def split_filter_jobs(jobs: list[dict]) -> tuple[list[dict], list[tuple[dict, list[dict]]]]:
+    """Give each independent seed its own queue slot; retain original seed order."""
+    expanded, groups = [], []
+    for original in jobs:
+        if not original['seeds']:
+            raise ValueError('A scoring job requires at least one filter seed')
+        if len(original['seeds']) == 1:
+            expanded.append(original)
+            continue
+        children = []
+        target = Path(original['target'])
+        for index, seed in enumerate(original['seeds']):
+            child = deepcopy(original)
+            suffix = f'_F{index:03d}'
+            child.update(seeds=[seed], name=original['name']+suffix,
+                         target=str(target.parent/'filter_chunks'/(target.name+suffix)))
+            children.append(child)
+        expanded.extend(children)
+        groups.append((original, children))
+    return expanded, groups
+
+
 def configure_executor(pool: ThreadPoolExecutor) -> None:
     """All cases dispatch into this one numerical process queue."""
     driver.base.source_hashes = recovery_hashes
@@ -167,8 +191,12 @@ def configure_executor(pool: ThreadPoolExecutor) -> None:
             raise RuntimeError('Recovery worker failed: '+str(file.with_suffix('.log')))
 
     def execute(jobs, folder, budget):
-        for future in as_completed([pool.submit(launch, job, folder) for job in jobs]):
+        from .model_0923_h_training_audit import combine
+        expanded, groups = split_filter_jobs(jobs)
+        for future in as_completed([pool.submit(launch, job, folder) for job in expanded]):
             future.result()
+        for original, children in groups:
+            combine(original, children)
 
     driver.base.execute = execute
 
@@ -242,6 +270,7 @@ def search(prepared: Path, output: Path, smoke: bool) -> None:
         shutil.copyfile(ROOT/name, archived)
     write(output/'protocol.json', dict(prepared=str(prepared.resolve()), smoke=smoke, cases=[c['case_id'] for c in cases],
         workers=workers, numeric_threads=1, source_sha256=recovery_hashes(driver.io),
+        parallel_unit='One complete independent particle filter',
         estimation='All variable coordinates; support-only initialization; truth unopened'))
     with ThreadPoolExecutor(max_workers=workers) as numerical:
         configure_executor(numerical)
@@ -250,6 +279,7 @@ def search(prepared: Path, output: Path, smoke: bool) -> None:
             nominees = [future.result() for future in futures]
     write(output/'nominees.json', dict(status='frozen_before_truth', smoke=smoke, nominees=nominees))
     write(output/'completion.json', dict(status='complete', smoke=smoke, cases=len(cases), truths_opened=False,
+                                        executed_filter_processes=len(list(output.glob('*/jobs/*.json'))),
                                         nomination_sha256=digest(output/'nominees.json')))
 
 
@@ -305,6 +335,7 @@ def score_truth(prepared: Path, fit: Path, output: Path) -> None:
     pd.DataFrame(estimates).to_csv(output/'parameters.csv', index=False)
     pd.DataFrame(comparisons).to_csv(output/'likelihood_comparison.csv', index=False)
     write(output/'completion.json', dict(status='complete', smoke=smoke, cases=len(cases),
+        executed_filter_processes=len(list(output.glob('*/jobs/*.json'))),
         search_shortfalls=sum(r['search_shortfall'] for r in comparisons),
         scope='Two generating points and two sequences each; finite-sequence joint recovery diagnostic',
         source_fit=str(fit.resolve()), prepared=str(prepared.resolve()), truths_opened_after_freeze=True,

@@ -91,12 +91,14 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 恢复任务共用一个最多128进程的计算队列。各案例独立推进筛选、细化和确认，已完成的案例可以进入
 下一阶段。生成参数点的评分也按案例并行，共用这一计算队列。控制线程负责排队和等待，数值运算
 只在单层工作进程内运行。八题案例中，并行调度与原串行调度产生完全相同的参数表、似然表和状态表。
+每次独立粒子滤波单独排队，多次重复按原种子顺序汇总。完成记录保存实际执行的滤波进程数。
+按种子拆分后的八题验证中，四阶段的10组候选评分数组及参数、状态表与原批量运行完全一致。
 
 入口为`src.Bayesian_state.workflows.analysis.model_1021_simplification_recovery`：
 依次执行`--phase prepare --evaluation EVALUATION --output PREPARED`、
 `--phase search --prepared PREPARED --output FIT`、
 `--phase score-truth --prepared PREPARED --fit FIT --output SCORES`。
-正式输入要求主比较的自主生成完整结束。两项程序测试已通过，条件3前八题的软件案例也已完成四阶段
+正式输入要求主比较的自主生成完整结束。三项调度与起点测试已通过，条件3前八题的软件案例也已完成四阶段
 估计及冻结后的评分；该软件案例使用原行为作为接口输入，属于流程检查。正式参数恢复尚待执行。
 
 确认阶段同时记录实验目标规则的状态，分别保存当前选择之前和纳入当前选择之后的推断；两者均位于
