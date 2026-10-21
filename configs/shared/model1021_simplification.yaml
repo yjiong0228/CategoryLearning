@@ -1,0 +1,36 @@
+protocol: model1021_simplification_v1
+seed: 2026102191
+parallel_budget: 128
+data: results/model_0923/h_retention_data_20261016_v1
+audit: results/model_0923/h_rule_diagnosis_20261016_v1
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+subjects: [108, 205, 306]
+warm_start_fits:
+  108: results/model_0923/development_belief_s108_online_fit_20261020_v1
+  205: results/model_0923/development_belief_s205_online_fit_20261020_v1
+  306: results/model_0923/finalization_online_add10_s306_fit_20261021_v1
+mechanism: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+evidence_decay_values: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
+arms:
+  REFERENCE: &precision
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.0, 0.001, 0.003, 0.01, 0.03, 0.06, 0.1, 0.3, 0.6, 1.0]
+  COMPACT: *precision
+initial_candidates: 40
+elites: 2
+proposals_per_elite: 8
+selection_candidates: 4
+confirmation_candidates: 2
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine: {particles: 128, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 512, seeds: 8}
+  evaluate: {particles: 512, seeds: 8}
+particle_overrides: {}
+autonomous_paths: 128
+autonomous_chunk: 4
+features: {block_width: 32}
+scope: simplification_development

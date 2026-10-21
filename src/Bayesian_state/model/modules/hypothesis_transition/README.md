@@ -851,6 +851,13 @@ prior assignment，还是二者；再明确 trial-level policy state 是不存�
 两者具有不同的计算步骤，其行为可区分性由定向参数恢复检验。
 当前实现对完整目录计算候选检索概率；所需心理计算成本尚未检验。
 
+`compact_evidence.py`提供显式启用的 H 简化对照。活跃规则的一份在线证据同时用于作答、父规则
+选择和容量竞争；搜索提出的新规则从零证据开始，集合满时替换支持最低的旧规则。搜索沿用失败
+累积控制，局部提出使用结构邻域。设计、参数关闭方式和比较协议见
+[Model 1021 简化研究](../../../docs/model_architecture/model_1021_simplification.md)。
+执行入口为`python -m src.Bayesian_state.workflows.analysis.model_1021_simplification`，
+配置为`configs/shared/model1021_simplification.yaml`；已有默认装配保持原行为。
+
 固定参数对照后，`workflows.analysis.model_0923_recalled_search_refit`以相同预算比较POOL和SEARCH，
 仅用训练选择估计参数。`workflows.analysis.model_0923_recalled_memory_recovery`进一步检查两种记忆保持率，
 该恢复阶段固定其余参数为生成值。各入口的协议、科学结果和限制保存在持续研究记录中。
