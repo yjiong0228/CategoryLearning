@@ -280,6 +280,15 @@ ONLINE下MIX相对SELECT的优势尚未建立。
 既有精确通道检查共标记20个关闭记录，含10个固定转移系数。其余记录保留“待结合联合恢复与过程证据分级”，
 未检出这些关闭条件只能说明该项检查的结果。
 
+推荐版本另有[六人参数清单](../../../../results/model_0923/finalization_interpretation_20261021_v1/fitted_coordinate_inventory.csv)，
+统一覆盖108、205、306及扩展样本110、209、309，共84条记录。
+[清单核对](../../../../results/model_0923/finalization_interpretation_20261021_v1/inventory_completion.json)
+从六个已冻结行为拟合点的原始确认概率重算训练NLL，并核对参数取值、训练长度和提名身份。
+当前共9条记录的作用通道关闭：六人的固定亲和度转移系数、108的失败保持率，
+以及309的失败对全局搜索增益和局部结构权重。
+108的两类失败调节增益均为0；309的基础全局搜索比例为1，因此这两个局部或增量通道不影响其决策。
+这些取值继续用于复现。其余75条记录的心理解释等级，将结合完整恢复和扩展评价确定。
+
 同一目录保存[四条合成序列的联合恢复](../../../../results/model_0923/finalization_parameter_evidence_20261021_v1/joint_recovery_cases.csv)
 及[两组条件恢复的适用范围](../../../../results/model_0923/finalization_parameter_evidence_20261021_v1/conditional_recovery_scope.csv)。
 联合恢复表保留POOL与生成机制SEARCH的区别、真值与估计、通道关闭和边界标记，共112条坐标记录。
@@ -375,7 +384,7 @@ ONLINE下MIX相对SELECT的优势尚未建立。
 ### ONLINE联合恢复结果
 
 四条预定合成序列中，205的两条和306的第二条已经完成拟合、真值评分与状态恢复，并通过独立复核。
-306的第一条仍在最终确认。本批使用推荐的ONLINE／SEARCH／RETAIN／MIX／ADD10，
+306的第一条已完成拟合，正在进行生成参数的对照评分。本批使用推荐的ONLINE／SEARCH／RETAIN／MIX／ADD10，
 每条从40个中性起点联合估计13个可变坐标。生成真值在提名冻结后评分。
 下表的差值为估计参数减生成参数的平均NLL，正值表示估计点给出的行为似然更低。
 误差来自八次512粒子完整滤波的配对模拟。
