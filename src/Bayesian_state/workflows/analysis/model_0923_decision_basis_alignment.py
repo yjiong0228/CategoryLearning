@@ -7,6 +7,9 @@ remain identified in the trial table. Monte Carlo SE uses whole filter seeds.
 --reference-model defaults to BASE; POOL supports the recalled-search comparison.
 Parameter-selection scope and candidate policy remain in the oral report.
 Explicit eight-trial prepared fixtures join to the same ordered source prefix.
+Original-filter captures can also be scored after their arrays are checked
+against the bound behavior result; capture and independent replay retain their
+separate provenance fields.
 """
 from __future__ import annotations
 
@@ -92,6 +95,28 @@ def align_identities(oral: pd.DataFrame, job: dict, n_trials: int) -> tuple[pd.D
     return joined.drop(columns='_merge'), min(meta['training_trials'], n_trials)
 
 
+def validate_basis_record(target: Path, record: dict) -> None:
+    """Require unchanged replay arrays or an exact, bound original-filter capture."""
+    if digest(target) != record['array_sha256']:
+        raise ValueError('Decision-basis arrays changed')
+    if record.get('exact_behavior_replay') is True:
+        return
+    if (record.get('exact_original_filter_capture') is not True or record.get('additional_filters') != 0
+            or record.get('timing') != 'after_choice_before_current_feedback'):
+        raise ValueError('Need exact replay or original-filter capture arrays')
+    score, job = Path(record['score_file']), Path(record['original_job'])
+    if digest(score) != record['score_sha256'] or digest(job) != record['original_job_sha256']:
+        raise ValueError('Original captured score or job changed')
+    declared = read(job)
+    if (Path(declared['target']).with_suffix('.npz') != score
+            or any(record[k] != declared[k] for k in ('particles', 'seeds', 'candidate'))):
+        raise ValueError('Capture differs from its original filter identity')
+    with np.load(target) as captured, np.load(score) as behavior:
+        np.testing.assert_array_equal(captured['prediction'], behavior['probabilities'][0])
+        np.testing.assert_array_equal(captured['choices'], behavior['choices'])
+        np.testing.assert_array_equal(captured['seeds'], behavior['seeds'])
+
+
 def group_scores(source: Path, records: list[tuple[Path, dict]], oral: pd.DataFrame,
                  matches: pd.DataFrame) -> tuple[pd.DataFrame, list[dict], dict]:
     records = sorted(records, key=lambda item: item[1]['seeds'][0])
@@ -102,8 +127,7 @@ def group_scores(source: Path, records: list[tuple[Path, dict]], oral: pd.DataFr
     labels = None
     for file, record in records:
         target = file.with_suffix('.npz')
-        if digest(target) != record['array_sha256'] or not record['exact_behavior_replay']:
-            raise ValueError('Need unchanged exact-replay arrays')
+        validate_basis_record(target, record)
         if record['catalogue_signature'] != first['catalogue_signature'] or record['trials'] != len(trials):
             raise ValueError('Incompatible seed trajectories')
         with np.load(target) as saved:

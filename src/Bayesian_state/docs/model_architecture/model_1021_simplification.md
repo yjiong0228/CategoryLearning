@@ -51,11 +51,28 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification \
   --output results/model_1021/simplification_fit_20261021_v1
 
 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
-python -m src.Bayesian_state.workflows.analysis.model_1021_simplification \
-  --phase evaluate --fit results/model_1021/simplification_fit_20261021_v1 \
-  --output results/model_1021/simplification_evaluation_20261021_v1
+python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_followthrough \
+  --fit results/model_1021/simplification_fit_20261021_v1 \
+  --capture-validation results/model_1021/simplification_capture_validation_20261021_v1 \
+  --output results/model_1021/simplification_followthrough_20261021_v1
 ```
 
 当前状态：相关25项测试通过；短序列拟合和三条件旧参照复现完成。
 正式比较已启动，输出为`results/model_1021/simplification_fit_20261021_v1/`，
 首阶段共240个候选任务，使用128个工作进程。比较结果尚未产生。
+
+## 状态采集与连续评价
+
+后续入口等待正式拟合和采集验证完成，再按顺序运行评价。评价在原滤波中记录规则与局部表征的
+联合质量，记录发生在观察当前选择之后、使用当前反馈之前。口述评分复用既有完整报告分母及
+支持／冲突／未确定的定义。中点与相对两种固定读法分别输出结果。
+
+采集验证覆盖三种条件、两套模型，共六个16题案例。开启记录与关闭记录时的行为概率完全相同，
+验证保留在`results/model_1021/simplification_capture_validation_20261021_v1/`。
+行为汇总和口述校验的相关69项测试通过，其中行为差值用可手算的案例核对。
+原滤波采集与独立重放保留各自来源标记；评分前核对数组、原始作业和行为预测的一致性。
+
+连续执行的目录为`results/model_1021/simplification_followthrough_20261021_v1/`，
+包含`evaluation`、`behavior_summary`、`oral_midpoint`和`oral_relative`。
+每阶段保存独立日志及完成标记；失败时保留现场并停止后续阶段。
+参数恢复和必要的单项机制对照依据这轮结果安排。
