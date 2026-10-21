@@ -26,11 +26,74 @@ from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
-from src.Bayesian_state.evaluation.model_0923_h_validation import block_paths, checked_arrays, digest, load
+from src.Bayesian_state.evaluation.model_0923_h_validation import (
+    block_paths, checked_arrays, digest, jackknife_scores, jackknife_se, load, nll,
+)
 
 COLORS = dict(REFERENCE='#527697', COMPACT='#3B8C85')
 NAMES = dict(REFERENCE='Reference', COMPACT='Compact')
 MASS = dict(support='#538B84', conflict='#C58B60', undetermined='#D9DDE2')
+
+
+def selection_candidates(fit: Path, frozen: dict, bind) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compare all selection points to the subsequently confirmed nominee.
+
+    Every difference uses the same complete filter seeds, including candidates
+    omitted from confirmation when the warm-start anchor occupies its second slot.
+    These training scores describe finite-budget selection, not validation.
+    """
+    stage = load(bind(fit / 'selection_completion.json'))
+    if stage['status'] != 'complete' or stage['stage'] != 'selection':
+        raise ValueError('Require complete selection scores')
+    settings = frozen['settings']
+    budget = settings['budgets']['selection']
+    nominees = {(r['subject'], r['model']): r for r in frozen['nominees']}
+    groups = {(g['subject'], g['model']): g['rows'] for g in stage['groups']}
+    if len(groups) != len(stage['groups']) or set(groups) != set(nominees):
+        raise ValueError('Selection and frozen subject-by-model cells differ')
+    scores, parameters = [], []
+    for (subject, model), points in groups.items():
+        nominee = nominees[subject, model]
+        chosen = nominee['candidate']['id']
+        prepared = load(bind(Path(frozen['data']) / f'subject_{subject}' / 'prepared.json'))
+        trials = prepared['training_trials']
+        if len(points) != settings['selection_candidates'] or len({p['id'] for p in points}) != len(points):
+            raise ValueError('Missing or duplicated selection candidates')
+        estimates, seeds = {}, None
+        for point in points:
+            file = bind(Path(point['score_file']))
+            record = load(file)
+            if (record['subject'], record['model'], record['candidate']['id']) != (subject, model, point['id']):
+                raise ValueError('Selection candidate identity changed')
+            if record['particles'] != budget['particles'] or record['candidate']['hyperparams'] != point['hyperparams']:
+                raise ValueError('Selection budget or parameters changed')
+            with np.load(bind(file.with_suffix('.npz'), record['predictions_sha256'])) as z:
+                probability, own_seeds = z['observed_probability'], z['seeds']
+            if record['trials'] != trials or probability.shape != (budget['seeds'], trials) or len(np.unique(own_seeds)) != budget['seeds']:
+                raise ValueError('Selection filter count or trial boundary differs')
+            if not np.isfinite(probability).all() or np.any((probability < 0) | (probability > 1)):
+                raise ValueError('Invalid selection probability')
+            np.testing.assert_array_equal(own_seeds, record['seeds'])
+            if seeds is not None:
+                np.testing.assert_array_equal(own_seeds, seeds)
+            seeds = own_seeds
+            value = nll(probability)
+            np.testing.assert_allclose(value, [point['mean_nll'], record['mean_nll']], atol=1e-12, rtol=0)
+            estimates[point['id']] = value, jackknife_scores(probability)
+            parameters.extend(dict(subject=subject, model=model, candidate=point['id'], parameter=k, value=v)
+                              for k, v in point['hyperparams'].items())
+        if chosen not in estimates:
+            raise ValueError('Confirmed nominee is absent from selection bank')
+        if next(p for p in points if p['id'] == chosen)['hyperparams'] != nominee['candidate']['hyperparams']:
+            raise ValueError('Confirmed nominee parameters changed')
+        reference, deleted = estimates[chosen]
+        for rank, point in enumerate(sorted(points, key=lambda p: (estimates[p['id']][0], p['id'])), 1):
+            value, own_deleted = estimates[point['id']]
+            scores.append(dict(subject=subject, model=model, candidate=point['id'], selection_rank=rank,
+                selected=point['id'] == chosen, warm_start=point['id'] == nominee['reference_id'],
+                nll=value, delta_nll=value-reference, paired_mc_se=jackknife_se(own_deleted-deleted),
+                particles=budget['particles'], filter_seeds=budget['seeds']))
+    return pd.DataFrame(scores), pd.DataFrame(parameters)
 
 
 def load_data(source: Path) -> dict:
@@ -54,6 +117,7 @@ def load_data(source: Path) -> dict:
         bind(file)
     for name, sha in done['artifacts_sha256'].items():
         tables[Path(name).stem] = pd.read_csv(bind(summary / name, sha))
+    tables['selection_candidates'], tables['selection_parameters'] = selection_candidates(fit, frozen, bind)
     oral_tables = []
     for reading in ('midpoint', 'relative'):
         folder = source / ('oral_' + reading)
@@ -188,6 +252,34 @@ def oral(data: dict, output: Path) -> None:
     save(fig, output, 'oral_compatibility.png')
 
 
+def candidates(data: dict, output: Path) -> None:
+    subjects = data['subjects']
+    fig, axes = plt.subplots(len(subjects), 2, figsize=(183/25.4, 161/25.4))
+    fig.subplots_adjust(left=.21, right=.975, top=.94, bottom=.15, hspace=.55, wspace=.78)
+    for row, subject in enumerate(subjects):
+        for col, model in enumerate(COLORS):
+            ax = axes[row, col]
+            points = data['tables']['selection_candidates']
+            points = points[(points.subject == subject) & (points.model == model)].sort_values('selection_rank')
+            labels = []
+            for i, point in enumerate(points.itertuples()):
+                role = 'Chosen' if point.selected else f'Candidate {point.selection_rank}'
+                labels.append(role + (' · start' if point.warm_start else ''))
+                ax.errorbar(point.delta_nll, i, xerr=2*point.paired_mc_se, fmt='o',
+                            color=COLORS[model], markerfacecolor=COLORS[model] if point.selected else 'white',
+                            ms=4, capsize=2, lw=.9)
+            ax.axvline(0, color='#80868E', lw=.7)
+            ax.set_yticks(range(len(points)), labels, fontsize=7)
+            ax.set_ylim(len(points)-.5, -.5)
+            ax.set_title(f'S{subject} · {NAMES[model]}', fontsize=8)
+            ax.tick_params(axis='x', labelsize=7)
+            if row == len(subjects)-1:
+                ax.set_xlabel('NLL / trial − chosen candidate', fontsize=7)
+    fig.text(.5, .065, 'All four selection candidates; bars: ±2 paired MCSE. Each panel has its own x scale.', ha='center', fontsize=7)
+    fig.text(.5, .025, 'Chosen: final confirmation nominee. Start: warm-start anchor. Training scores; fixed parameters.', ha='center', fontsize=7)
+    save(fig, output, 'parameter_candidates.png')
+
+
 def run(source: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new figure output directory')
@@ -198,6 +290,7 @@ def run(source: Path, output: Path) -> None:
         trajectories(data, output)
         behavior(data, output)
         oral(data, output)
+        candidates(data, output)
     inputs = output / 'source_data'
     inputs.mkdir()
     for name, frame in data['tables'].items():
@@ -208,11 +301,16 @@ def run(source: Path, output: Path) -> None:
         path_rows.extend(dict(subject=subject, model=model, seed=int(seed), trial=int(trial), accuracy=float(value))
                          for seed, path in zip(seeds, samples) for trial, value in zip(curve.trial, path))
     pd.DataFrame(path_rows).to_csv(inputs / 'autonomous_path_blocks.csv', index=False)
-    images = ['autonomous_and_conditional.png', 'later_behavior_comparison.png', 'oral_compatibility.png']
+    images = ['autonomous_and_conditional.png', 'later_behavior_comparison.png', 'oral_compatibility.png',
+              'parameter_candidates.png']
     page = ('<!doctype html><meta charset="utf-8"><title>H机制简化比较</title>'
             '<style>body{font:16px sans-serif;max-width:1100px;margin:32px auto}img{width:100%}</style>'
             '<h1>H机制简化比较</h1><p>三名开发被试；参数使用原训练段行为估计。细线包含全部自主路径。'
             '误差条表示固定参数下的蒙特卡洛误差。口述保留噪声、歧义和未确定质量。</p>'
+            '<p>候选参数图保留选择阶段的全部四个点，用同一组四次滤波比较其训练分数。'
+            '基准为随后独立确认选中的参数；零线左侧表示该候选在选择阶段得分更好。'
+            '确认阶段比较两个点，其中一个位置固定保留既有起点。图中的误差条反映数值误差，'
+            '参数的不确定性还需结合候选取值与恢复检验。</p>'
             + ''.join(f'<p><a href="{html.escape(n)}"><img src="{html.escape(n)}"></a></p>' for n in images))
     (output / 'index.html').write_text(page)
     (output / 'manifest.json').write_text(json.dumps(dict(status='complete', source=str(source.resolve()),
