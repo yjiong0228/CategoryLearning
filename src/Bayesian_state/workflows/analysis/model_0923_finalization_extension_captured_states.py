@@ -161,7 +161,7 @@ def align(source: Path, oral_audit: Path, output: Path) -> None:
 
     alignment.read = checked_read
     alignment.estimation_context = lambda _: (metadata, note)
-    alignment.json = SimpleNamespace(dumps=dumps)
+    alignment.json = SimpleNamespace(dumps=dumps, loads=alignment.json.loads)
     alignment.run(source, oral_audit, output, reference_model=protocol['settings']['arms'][0])
 
 

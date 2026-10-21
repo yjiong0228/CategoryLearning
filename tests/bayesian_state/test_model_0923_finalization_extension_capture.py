@@ -80,3 +80,30 @@ def test_replay_record_cannot_be_mislabelled_as_capture(tmp_path):
     capture.write(file, dict(status='complete', exact_behavior_replay=True))
     with pytest.raises(ValueError, match='original-filter'):
         states.validate_record(file)
+
+
+def test_alignment_adapter_preserves_json_reading_and_truthful_counts(tmp_path, monkeypatch):
+    """Exercise the shared reader after the adapter installs its JSON writer."""
+    source = tmp_path / 'states'
+    source.mkdir()
+    capture.write(source / 'protocol.json', dict(smoke=False, jobs=24,
+        source_sha256={states.ENTRY: states.digest(states.ROOT / states.ENTRY)},
+        state_recording='original_evaluation_filter_capture', settings=dict(arms=['SEARCH'])))
+    capture.write(source / 'completion.json', dict(status='complete', smoke=False, jobs=24,
+        original_filter_captures=24, exact_behavior_replays=0, additional_filters=0))
+    module = SimpleNamespace(json=json)
+    module.read = lambda path: module.json.loads(path.read_text())
+
+    def run(input_source, oral, output, **kwargs):
+        assert module.read(input_source / 'protocol.json')['jobs'] == 24
+        output.mkdir()
+        (output / 'manifest.json').write_text(module.json.dumps(
+            dict(source_sha256={}, full_replay_complete=True)))
+
+    module.run = run
+    monkeypatch.setattr(states.capture.driver, 'load_module', lambda *args: module)
+    monkeypatch.setattr(states.states, 'estimation_context', lambda protocol: ({}, 'validated fixture'))
+    states.align(source, tmp_path / 'unused_oral', tmp_path / 'aligned')
+    result = json.loads((tmp_path / 'aligned' / 'manifest.json').read_text())
+    assert result['full_capture_complete'] and not result['full_replay_complete']
+    assert result['original_filter_captures'] == 24 and result['additional_filters'] == 0
