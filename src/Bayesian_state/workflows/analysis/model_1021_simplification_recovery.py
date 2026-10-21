@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext
 from copy import deepcopy
 import os
 from pathlib import Path
@@ -270,22 +271,27 @@ def fit_case(case: dict, output: Path, smoke: bool) -> dict:
     return nominee
 
 
-def search(prepared: Path, output: Path, smoke: bool) -> None:
+def search(prepared: Path, output: Path, smoke: bool, *, numerical_pool: ThreadPoolExecutor | None = None) -> None:
     if output.exists():
         raise FileExistsError('Use a new recovery fit directory')
     cases = checked_cases(prepared)
     cases = cases[:1] if smoke else cases
     workers = 1 if smoke else min(128, len(os.sched_getaffinity(0)))
+    if numerical_pool is not None:
+        if numerical_pool._max_workers > workers:
+            raise ValueError('Shared numerical pool exceeds this run budget')
+        workers = numerical_pool._max_workers
     output.mkdir(parents=True)
     for name in recovery_hashes(driver.io):
         archived = output/'source'/name
         archived.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT/name, archived)
     write(output/'protocol.json', dict(prepared=str(prepared.resolve()), smoke=smoke, cases=[c['case_id'] for c in cases],
-        workers=workers, numeric_threads=1, source_sha256=recovery_hashes(driver.io),
+        workers=workers, numeric_threads=1, shared_numerical_pool=numerical_pool is not None,
+        source_sha256=recovery_hashes(driver.io),
         parallel_unit='One complete independent particle filter',
         estimation='All variable coordinates; support-only initialization; truth unopened'))
-    with ThreadPoolExecutor(max_workers=workers) as numerical:
+    with (nullcontext(numerical_pool) if numerical_pool is not None else ThreadPoolExecutor(max_workers=workers)) as numerical:
         configure_executor(numerical)
         with ThreadPoolExecutor(max_workers=len(cases)) as controllers:
             futures = [controllers.submit(fit_case, c, output/c['case_id'], smoke) for c in cases]
@@ -296,7 +302,7 @@ def search(prepared: Path, output: Path, smoke: bool) -> None:
                                         nomination_sha256=digest(output/'nominees.json')))
 
 
-def score_truth(prepared: Path, fit: Path, output: Path) -> None:
+def score_truth(prepared: Path, fit: Path, output: Path, *, numerical_pool: ThreadPoolExecutor | None = None) -> None:
     if output.exists():
         raise FileExistsError('Use a new recovery truth-scoring directory')
     completed = read(fit/'completion.json')
@@ -340,7 +346,10 @@ def score_truth(prepared: Path, fit: Path, output: Path) -> None:
                 normalized_grid_error=abs(levels.index(value)-levels.index(actual))/max(1, len(levels)-1)))
         return own_estimates, comparison
 
-    with ThreadPoolExecutor(max_workers=1 if smoke else min(128, len(os.sched_getaffinity(0)))) as pool:
+    workers = 1 if smoke else min(128, len(os.sched_getaffinity(0)))
+    if numerical_pool is not None and numerical_pool._max_workers > workers:
+        raise ValueError('Shared numerical pool exceeds this run budget')
+    with (nullcontext(numerical_pool) if numerical_pool is not None else ThreadPoolExecutor(max_workers=workers)) as pool:
         configure_executor(pool)
         with ThreadPoolExecutor(max_workers=len(cases)) as controllers:
             futures = [controllers.submit(compare_case, case) for case in cases]

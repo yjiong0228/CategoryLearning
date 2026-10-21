@@ -51,10 +51,10 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification \
   --output results/model_1021/simplification_fit_20261021_v1
 
 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
-python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_followthrough \
+python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_overlap \
   --fit results/model_1021/simplification_fit_20261021_v1 \
   --capture-validation results/model_1021/simplification_capture_validation_20261021_v1 \
-  --output results/model_1021/simplification_followthrough_20261021_v1
+  --output results/model_1021/simplification_followthrough_20261022_v1
 ```
 
 相关25项机制与流程测试通过；短序列拟合和三条件旧参照复现完成。
@@ -81,7 +81,7 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 
 ## 状态采集与连续评价
 
-后续入口等待正式拟合和采集验证完成，再按顺序运行评价。评价在原滤波中记录规则与局部表征的
+后续入口等待正式拟合和采集验证完成，再运行评价。评价在原滤波中记录规则与局部表征的
 联合质量，记录发生在观察当前选择之后、使用当前反馈之前。口述评分复用既有完整报告分母及
 支持／冲突／未确定的定义。中点与相对两种固定读法分别输出结果。
 
@@ -90,10 +90,22 @@ python -m src.Bayesian_state.workflows.analysis.model_1021_simplification_follow
 行为汇总和口述校验的相关69项测试通过，其中行为差值用可手算的案例核对。
 原滤波采集与独立重放保留各自来源标记；评分前核对数组、原始作业和行为预测的一致性。
 
-连续执行的目录为`results/model_1021/simplification_followthrough_20261021_v1/`，
+连续执行的目录为`results/model_1021/simplification_followthrough_20261022_v1/`，
 包含`evaluation`、`behavior_summary`、`oral_midpoint`和`oral_relative`。
-每阶段保存独立日志及完成标记；失败时保留现场并停止后续阶段。
-参数恢复和必要的单项机制对照依据这轮结果安排。
+联合参数恢复保存在同目录的`recovery_prepared`、`recovery_fit`、`recovery_scores`和`recovery_states`。
+每阶段保存来源与完成标记，失败记录保留在原目录。必要的单项机制对照依据这轮结果安排。
+
+条件滤波与恢复检验共用一个最多128进程的计算队列。所有自主生成工作进程成功退出后，先按原汇总
+程序整理路径，形成`generation_ready`快照，再启动下节规定的四个恢复案例。仍在运行的条件滤波与
+恢复任务共享空闲进程额度。完整评价结束后，逐数组检查快照与原评价最终汇总完全一致。该调度保留
+原有参数、种子、路径数和评分方式；恢复开始时间只取决于生成任务是否完成。
+
+共享队列的相关六项测试通过。三条件短序列检验中，每个模型、每个条件运行两次滤波和四条自主
+路径；所有预测数组及口述状态记录与原流程完全一致，同时完成一个联合恢复案例及其状态汇总。
+这一检查验证调度与程序衔接，记录位于`results/model_1021/simplification_overlap_validation_20261022_v1/`。
+
+首个等待器在三小时等待上限处退出，其记录保留于`results/model_1021/simplification_followthrough_20261021_v1/`。
+正式拟合持续运行，新的接续入口使用上述新目录。
 
 ## 联合参数恢复与比较图
 
