@@ -165,7 +165,8 @@ def save(fig, output: Path, name: str) -> None:
     plt.close(fig)
 
 
-def trajectories(data: dict, output: Path) -> None:
+def trajectories(data: dict, output: Path, *, include_conditional: bool = True) -> None:
+    """Draw autonomous paths, optionally before conditional evaluation completes."""
     subjects = data['subjects']
     fig, axes = plt.subplots(len(subjects), 2, figsize=(183/25.4, 172/25.4), sharey=True)
     fig.subplots_adjust(left=.08, right=.985, bottom=.105, top=.86, hspace=.38, wspace=.16)
@@ -177,7 +178,8 @@ def trajectories(data: dict, output: Path) -> None:
             ax.axvspan(cut, curve.trial.max(), color='#F3F4F6', zorder=0)
             ax.plot(curve.trial, samples.T, color=COLORS[model], alpha=.075, lw=.35, zorder=1)
             ax.plot(curve.trial, curve.autonomous, color=COLORS[model], lw=1.6, zorder=3)
-            ax.plot(curve.trial, curve.conditional, color=COLORS[model], lw=1., ls='--', zorder=4)
+            if include_conditional:
+                ax.plot(curve.trial, curve.conditional, color=COLORS[model], lw=1., ls='--', zorder=4)
             ax.plot(curve.trial, curve.observed, color='#222222', marker='o', ms=2.1, lw=1.05, zorder=5)
             ax.axvline(cut, color='#7B8087', ls=':', lw=.7)
             ax.set(xlim=(0, curve.trial.max()), ylim=(0, 1.02), yticks=[0, .5, 1.])
@@ -188,8 +190,9 @@ def trajectories(data: dict, output: Path) -> None:
                 ax.set_xlabel('Trial (32-trial blocks)')
     handles = [Line2D([], [], color='#222222', marker='o', ms=2, lw=1, label='Participant'),
         Line2D([], [], color='#527697', lw=1.6, label='Autonomous mean'),
-        Line2D([], [], color='#527697', lw=1, ls='--', label='Conditional prediction'),
         Line2D([], [], color='#527697', lw=.5, alpha=.4, label='All 128 autonomous paths')]
+    if include_conditional:
+        handles.insert(2, Line2D([], [], color='#527697', lw=1, ls='--', label='Conditional prediction'))
     fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(.5, .96), ncol=2, fontsize=7)
     fig.text(.5, .025, 'Shading: later trials excluded from parameter fitting. Three development participants.', ha='center', fontsize=7)
     save(fig, output, 'autonomous_and_conditional.png')
