@@ -11,7 +11,8 @@ Use --source COMPLETED_RECOVERY_STATES --output NEW. Python/matplotlib exports
 183 x 165 mm PNG review figures at 300 dpi, with source CSVs. Predictive summaries
 remain in the CSVs; panels show states after choice and before current feedback.
 These development cases assess inference on a few generating points, and the
-intervals omit parameter uncertainty.
+intervals omit parameter uncertainty. Point markers retain isolated true
+precision states, and each figure reports the true rule-presence denominator.
 """
 from __future__ import annotations
 
@@ -99,7 +100,8 @@ def render(source: Path, output: Path) -> None:
                     ax.fill_between(x, panel[prefix+'_q05'].to_numpy(), panel[prefix+'_q95'].to_numpy(),
                                     color=color, alpha=.18, lw=0)
                     ax.plot(x, panel[prefix+'_mean'], color=color, lw=1)
-                    ax.plot(x, known, color='#222222', ls='--', lw=.9)
+                    ax.plot(x, known, color='#222222', ls='--', lw=.9,
+                            marker='.' if row == 2 else None, markersize=1.5)
                 for row in (0, 1):
                     axes[row, col].set(ylim=(-.04, 1.04), yticks=[0, .5, 1])
                 axes[2, col].set(ylim=(0, upper_beta), xlabel='Trial')
@@ -114,7 +116,8 @@ def render(source: Path, output: Path) -> None:
                      f'{filters} filters × {particles} particles per point.', ha='center', fontsize=6.6)
             fig.text(.5, .055, 'Intervals condition on fixed parameters. Absent-rule precision is undefined.',
                      ha='center', fontsize=6.6)
-            fig.text(.5, .02, 'Both columns share scales within a case; precision scales vary between cases.',
+            fig.text(.5, .02, f'Known target present on {int(panel.truth_present.sum())} / {n_trials} trials. '
+                     'Precision dots include isolated states.',
                      ha='center', fontsize=6.6)
             name = case_id+'.png'
             fig.savefig(output/name, dpi=300, facecolor='white')
@@ -124,6 +127,8 @@ def render(source: Path, output: Path) -> None:
     page += '<style>body{max-width:1100px;margin:auto;font:16px sans-serif}img{width:100%}</style>'
     page += '<h1>Compact state recovery</h1><p>Few generating points and synthetic paths. '
     page += 'State intervals condition on fixed parameters; they omit parameter uncertainty.</p>'
+    page += '<p>Both columns share scales within a case; precision scales vary between cases. '
+    page += 'Black precision dots retain single-trial states. Each figure gives the number of trials with the true target present.</p>'
     page += ''.join('<h2>'+html.escape(name.removesuffix('.png'))+'</h2><img src="'+name+'">' for name in files)
     page += '<h2>Descriptive errors</h2>'+scores.query('phase == "filtered"').to_html(index=False)
     (output/'index.html').write_text(page, encoding='utf-8')
