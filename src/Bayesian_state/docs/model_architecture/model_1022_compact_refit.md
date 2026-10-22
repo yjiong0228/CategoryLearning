@@ -459,6 +459,29 @@ H的保留与使用流程可以先固定为当前候选。口述工作继续处�
 三条新增恢复序列与六名被试的输入检查通过。第一阶段正式计算已启动，目录为
 `results/model_1023/estimation_diagnostic_20261023_v1/`；各阶段结束后补充数值结论。
 
+后续评价保留每人冻结前确定的三组参数：本轮选中点、原参考点和另一组候选。
+原参考点复用已有预测；新参数使用与原评价相同的八个滤波种子和128条自主路径种子，
+从而计算配对差异及其模拟误差。评价种子与本轮参数搜索和独立复核种子分开。
+三组参数的行为预测、自主轨迹、规则状态和口述支持均保存，候选间差异用于描述解释的敏感性。
+这些候选构成有限的诊断集合；它们与选中点的分差及数值误差单独报告。
+
+完成阶段的预算核对入口为
+`python -m src.Bayesian_state.evaluation.model_1023_estimation_reliability --study COMPLETE_PHASE --output NEW`。
+六人参数冻结后的评价入口为
+`python -m src.Bayesian_state.workflows.analysis.model_1023_frozen_evaluate --study HUMAN_FIT --output NEW`，
+随后运行`python -m src.Bayesian_state.evaluation.model_1023_frozen_evaluate --evaluation COMPLETE_EVALUATION --config configs/shared/model1022_compact_evaluation.yaml --output NEW`。
+汇总保留两种既定口述读法、完整报告分母、原时间边界和全部自主路径。
+规则精度按规则存在的时刻统计；规则未出现时，该条件精度记为未定义。
+
+顺序续跑入口为`python -m src.Bayesian_state.workflows.analysis.model_1023_reliability_sequence --config CONFIG --diagnostic RUNNING_DIAGNOSTIC --output NEW`。
+它等待第一阶段完成并核对实际预算，再依次执行新增恢复、六人拟合、配对评价及汇总。
+同一时刻运行一个数值队列，每个队列最多使用128个单线程工作进程。任一步骤失败会停止下游任务，
+保留既有结果和日志；阶段性研究解释与图形在数值汇总完成后另行整理。
+
+配对评价的准备检查已覆盖六人共240个任务定义，准备检查新增的数值任务为零。
+新汇总复算的270项行为指标与原六人TRANSFER汇总一致。小规模阶段汇总核对了34次实际滤波，
+覆盖候选数、粒子数、共同种子、数据边界及独立复核。六人新参数的完整数值评价尚待拟合完成。
+
 ## 执行与复现
 
 配置为`configs/shared/model1022_compact_refit.yaml`。从仓库根目录运行：
