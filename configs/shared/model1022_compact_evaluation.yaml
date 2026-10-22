@@ -1,0 +1,13 @@
+protocol: model1022_compact_external_evaluation_v1
+oral_audits:
+  development:
+    midpoint: results/model_0923/oral_midpoint_audit_20261018_v1
+    relative: results/model_0923/oral_relative_sensitivity_20261018_v1
+  extension:
+    midpoint: results/model_0923/finalization_extension_oral_midpoint_audit_20261021_v1
+    relative: results/model_0923/finalization_extension_oral_relative_audit_20261021_v1
+working_tolerances:
+  choice_nll: 0.02
+  energy: 0.03
+report_cohorts_separately: true
+oral_use: noisy_external_content_compatibility
