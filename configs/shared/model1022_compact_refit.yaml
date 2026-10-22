@@ -1,0 +1,39 @@
+protocol: model1022_compact_refit_v1
+seed: 2026102207
+parallel_budget: 128
+previous_fit: results/model_1021/simplification_fit_20261021_v1
+previous_recovery: results/model_1021/simplification_recovery_rescue_20261022_v1
+original_recovery: results/model_1021/simplification_followthrough_20261022_v1
+variants: [COMPACT, TRANSFER]
+cohorts:
+  development:
+    subjects: [108, 205, 306]
+    data: results/model_0923/h_retention_data_20261016_v1
+    audit: results/model_0923/h_rule_diagnosis_20261016_v1
+    warm_fit: results/model_1021/simplification_fit_20261021_v1
+    warm_arm: COMPACT
+  extension:
+    subjects: [110, 209, 309]
+    data: results/model_0923/finalization_extension_data_20261021_v1
+    audit: results/model_0923/finalization_extension_setup_20261021_v1
+    warm_fit: results/model_0923/finalization_extension_fit_20261021_v1
+    warm_arm: SEARCH
+    previous_development_influence: unknown
+initial_candidates: 40
+rounds: 2
+elites: 2
+rays_per_elite: 24
+joint_per_elite: 8
+carry_candidates: 8
+selection_candidates: 6
+confirmation_candidates: 4
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine_1: {particles: 128, seeds: 2}
+  refine_2: {particles: 128, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 1024, seeds: 8}
+  evaluate: {particles: 1024, seeds: 8}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: registered_simplification_refit_and_optimizer_diagnosis

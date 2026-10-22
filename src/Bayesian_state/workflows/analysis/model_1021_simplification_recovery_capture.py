@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -18,7 +19,8 @@ PF = 'src/Bayesian_state/inference/backends/particle_filter.py'
 COLLECTOR = 'src/Bayesian_state/workflows/analysis/model_0923_target_state_recovery.py'
 
 
-def worker(file: Path) -> None:
+def worker(file: Path, *, model_worker: Callable[[Path], None] | None = None) -> None:
+    """Capture the original filter; an optional worker installs a declared variant."""
     import importlib.util
     import sys
     spec = importlib.util.spec_from_file_location('compact_recovery_capture_driver', ROOT/DRIVER)
@@ -52,7 +54,7 @@ def worker(file: Path) -> None:
 
     archived.run_state_model_particle_filter = observe
     try:
-        driver.worker(file)
+        (driver.worker if model_worker is None else model_worker)(file)
     finally:
         archived.run_state_model_particle_filter = original_filter
     if not captured:
