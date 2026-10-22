@@ -24,6 +24,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -72,7 +73,9 @@ def state_blocks(trials: pd.DataFrame, width: int = 32) -> pd.DataFrame:
             value = np.dot(weights[positive], precision[positive])/weights.sum() if weights.sum() else np.nan
             rows.append(dict(subject=subject, candidate=candidate, trial=int(part.trial.iloc[-1]),
                 training_trials=int(part.training_trials.iloc[0]), target_present=weights.mean(),
-                target_contribution=part.target_contribution.mean(), target_precision_given_presence=value))
+                target_contribution=part.target_contribution.mean(), target_precision_given_presence=value,
+                **{key: part[key].mean() for key in
+                   ('predictive_search', 'predictive_admission', 'expected_active_rules')}))
     return pd.DataFrame(rows)
 
 
@@ -205,6 +208,38 @@ def state_trajectories(data: dict, subject: int, output: Path) -> str:
     return save(fig, output, f'S{subject}_states.png')
 
 
+def process_trajectories(data: dict, subject: int, output: Path) -> str:
+    """Display existing search, admission and active-set moments across points."""
+    points = data['points'][subject]
+    fig, axes = plt.subplots(1, 3, figsize=(183/25.4, 105/25.4), sharex=True)
+    fig.subplots_adjust(left=.09, right=.98, bottom=.29, top=.70, wspace=.35)
+    metrics = [('predictive_search', 'Search probability'),
+               ('predictive_admission', 'Admission probability'),
+               ('expected_active_rules', 'Expected active rules')]
+    for col, (metric, label) in enumerate(metrics):
+        ax = axes[col]
+        for point in points:
+            candidate = point['candidate']
+            own = data['tables']['states/blocks'].query('subject == @subject and candidate == @candidate').sort_values('trial')
+            ax.plot(own.trial, own[metric], color=point['color'], lw=1.1)
+        ax.axvspan(points[0]['training_trials'], points[0]['trials'], color='#F3F4F6', zorder=-5)
+        ax.axvline(points[0]['training_trials'], color='#777777', ls=':', lw=.7)
+        ax.set(xlim=(0, points[0]['trials']), xlabel='Trial (32-trial blocks)')
+        ax.set_title(chr(97+col)+'  '+label, loc='left', fontsize=7.5)
+        if col < 2:
+            ax.set(ylim=(-.02, 1.02), yticks=[0, .5, 1], ylabel='Probability')
+        else:
+            ax.set_ylim(bottom=0)
+            ax.set_ylabel('Number of rules')
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True, nbins=4))
+    fig.suptitle(f'S{subject} · sensitivity of search and rule retention', y=.98, fontsize=9)
+    fig.legend(handles=[Line2D([], [], color=p['color'], lw=1.2, label=p['label']) for p in points],
+               loc='upper center', bbox_to_anchor=(.5, .90), ncol=3, fontsize=7)
+    fig.text(.5, .17, 'Search and admission: before current choice. Rule count: after current choice, before feedback.', ha='center', fontsize=6.5)
+    fig.text(.5, .10, 'Original eight-filter summaries; all fixed candidates retained. Shading marks the later evaluation segment.', ha='center', fontsize=6.5)
+    return save(fig, output, f'S{subject}_processes.png')
+
+
 def oral_trajectories(data: dict, cohort: str, reading: str, domain: str, output: Path) -> str:
     subjects = sorted(data['meta'].query('cohort == @cohort').subject.unique())
     raw, blocks = data['tables']['oral_'+reading+'/trials'], data['tables']['oral_'+reading+'/blocks']
@@ -256,6 +291,7 @@ def render(source: Path, states: Path, output: Path) -> None:
                     files.append(oral_trajectories(data, cohort, reading, domain, output))
         for subject in sorted(data['points']):
             files.append(state_trajectories(data, subject, output))
+            files.append(process_trajectories(data, subject, output))
     sources = output/'source_data'
     sources.mkdir()
     for name, table in data['tables'].items():
@@ -266,6 +302,8 @@ def render(source: Path, states: Path, output: Path) -> None:
     page += '两者重合时共用一列，其余列保留不同候选。所有候选均由前段行为确定，口述仅用于外部检验。</p>'
     page += '<p>行为图的细线包含全部128条自主轨迹。内部状态图比较自主生成和行为条件下的推断，'
     page += '精度只在目标规则存在时定义。三组参数的独立行为分差与内部状态差异并列保留，用于判断解释的敏感性。</p>'
+    page += '<p>搜索与保留图显示当前选择之前的搜索概率和新规则纳入概率，以及选择之后、反馈之前的活动规则期望数量。'
+    page += '这些量来自原滤波的状态记录。它们描述整体搜索和保留过程，目标规则图则描述具体规则的出现与使用。</p>'
     page += '<p>口述图保留中点与相对两种既定读法，绿色、橙色和灰色分别表示支持、冲突和未确定质量，'
     page += '蓝线表示目录覆盖。点为完整报告的逐题支持质量，趋势线为32题内的等报告权重均值。'
     page += '口述带有噪声，图中兼容性只提供对模型解释的支持程度。</p>'
@@ -273,6 +311,9 @@ def render(source: Path, states: Path, output: Path) -> None:
     columns = ['subject', 'candidate', 'selected', 'reference', 'window', 'audit_delta_nll',
                'audit_delta_mc_se', 'basis_total_variation', 'target_presence_absolute_change', 'target_precision_absolute_change']
     page += '<h2>行为评分与内部解释差异</h2>'+data['tables']['states/contrasts'][columns].to_html(index=False)
+    process_columns = ['subject', 'candidate', 'window', 'audit_delta_nll', 'predictive_search_absolute_change',
+                       'predictive_admission_absolute_change', 'expected_active_rules_absolute_change']
+    page += '<h2>搜索与保留过程对参数的敏感性</h2>'+data['tables']['states/contrasts'][process_columns].to_html(index=False)
     (output/'index.html').write_text(page, encoding='utf-8')
     shutil.copyfile(Path(__file__), output/'source_snapshot.py')
     write(output/'completion.json', dict(status='complete', source=str(source.resolve()), states=str(states.resolve()),
@@ -280,6 +321,7 @@ def render(source: Path, states: Path, output: Path) -> None:
         width_mm=183, all_autonomous_paths_retained=True, all_audited_candidates_retained=True,
         versions=dict(matplotlib=matplotlib.__version__, numpy=np.__version__, pandas=pd.__version__),
         oral_summary_checks=data['oral_summary_checks'], state_aggregation='Precision weighted by target presence',
+        process_timing='Search and admission before current choice; active-set size after choice and before feedback',
         figures={name: digest(output/name) for name in files}, visual_qa='pending'))
 
 

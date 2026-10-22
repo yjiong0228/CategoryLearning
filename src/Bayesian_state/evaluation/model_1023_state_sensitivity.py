@@ -75,7 +75,7 @@ def pooled_states(bank: dict, target: int) -> dict:
 
 
 def compare_states(a: dict, b: dict) -> dict:
-    """Separate rule-use distribution change from target-specific change."""
+    """Compare rule use, target states and search/admission/set-size processes."""
     aa, bb = a['trials'], b['trials']
     if a['basis'].shape != b['basis'].shape:
         raise ValueError('State comparisons require the same trial/rule identities')
@@ -86,6 +86,11 @@ def compare_states(a: dict, b: dict) -> dict:
         target_contribution_delta=aa['target_contribution']-bb['target_contribution'],
         target_precision_delta=aa['target_precision_given_presence']-bb['target_precision_given_presence'])
     for name in ('target_presence', 'target_contribution', 'target_precision'):
+        result[name+'_absolute_change'] = np.abs(result[name+'_delta'])
+    # Search and admission retain their pre-choice timing. Set size uses the
+    # choice-conditioned rule-membership probabilities already pooled above.
+    for name in ('predictive_search', 'predictive_admission', 'expected_active_rules'):
+        result[name+'_delta'] = aa[name]-bb[name]
         result[name+'_absolute_change'] = np.abs(result[name+'_delta'])
     return result
 

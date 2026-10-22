@@ -39,3 +39,21 @@ def test_total_variation_measures_rule_use_distribution_change():
     a = pooled_states(joint_state_bank([captured(.9, 0, 2), captured(.1, 1, 8)]), 0)
     b = pooled_states(joint_state_bank([captured(.1, 0, 2), captured(.9, 1, 8)]), 0)
     np.testing.assert_allclose(compare_states(a, b)['basis_total_variation'], [.8])
+
+
+def test_search_and_admission_keep_pre_choice_weights_while_set_size_conditions():
+    first, second = captured(.9, 0, 2), captured(.1, 1, 8)
+    first.update(predictive_search=np.array([.2]), predictive_admission=np.array([.05]),
+                 filtered_active=np.ones((1, 2)), filtered_active_beta=np.full((1, 2), 2.))
+    second.update(predictive_search=np.array([.8]), predictive_admission=np.array([.25]))
+    state = pooled_states(joint_state_bank([first, second]), 0)
+    np.testing.assert_allclose(state['trials']['predictive_search'], [.5])
+    np.testing.assert_allclose(state['trials']['predictive_admission'], [.15])
+    np.testing.assert_allclose(state['trials']['expected_active_rules'], [1.9])
+    baseline = pooled_states(joint_state_bank([captured(.5, 0, 2), captured(.5, 1, 8)]), 0)
+    difference = compare_states(state, baseline)
+    reverse = compare_states(baseline, state)
+    for key, expected in [('predictive_search', .2), ('predictive_admission', .05), ('expected_active_rules', .9)]:
+        np.testing.assert_allclose(difference[key+'_delta'], [expected])
+        np.testing.assert_allclose(reverse[key+'_delta'], [-expected])
+        np.testing.assert_allclose(reverse[key+'_absolute_change'], [expected])
