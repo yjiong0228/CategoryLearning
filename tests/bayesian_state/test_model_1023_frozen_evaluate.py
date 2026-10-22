@@ -61,3 +61,16 @@ def test_inactive_precision_is_rejected():
     a['beta'][1, 3] = 2
     with pytest.raises(ValueError, match='Inactive target precision'):
         score_arrays(c, a, 3, 3)
+
+
+def test_proposal_catalogue_ids_are_counted_as_events():
+    c, a = example_arrays()
+    a['proposed'][:] = -1
+    a['proposed'][0, 0] = 0
+    a['proposed'][1, 1] = 42
+    states = score_arrays(c, a, 3, 3, target_rule=42)[3]
+    assert states[0]['proposal_rate'] == 2/6
+    assert states[0]['target_proposal_rate'] == 1/6
+    assert states[1]['proposal_rate'] == 0
+    assert states[1]['target_proposal_rate'] == 0
+    assert 'proposed' not in states[0]

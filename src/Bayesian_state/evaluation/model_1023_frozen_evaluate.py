@@ -26,7 +26,7 @@ from ..workflows.analysis.model_1023_estimation_reliability import ROOT, read, w
 from ..optimization.search.compact_joint import behavior_key
 
 
-def score_arrays(c: dict, a: dict, cut: int, width: int) -> tuple:
+def score_arrays(c: dict, a: dict, cut: int, width: int, *, target_rule: int | None = None) -> tuple:
     """Score chronological windows and retain every generated block trajectory."""
     length = len(c['choices'])
     if not 0 < cut < length:
@@ -83,7 +83,11 @@ def score_arrays(c: dict, a: dict, cut: int, width: int) -> tuple:
             target_precision_given_presence=a['beta'][:, first:last][mask].mean() if mask.any() else np.nan,
             target_precision_observations=int(mask.sum()))
         row.update({k: a[k][:, first:last].mean() for k in
-                    ('search', 'proposed', 'rejected', 'target_capacity_dropped', 'active_count')})
+                    ('search', 'rejected', 'target_capacity_dropped', 'active_count')})
+        # Proposal records contain catalogue IDs; -1 denotes no proposal.
+        proposals = a['proposed'][:, first:last]
+        row['proposal_rate'] = (proposals >= 0).mean()
+        row['target_proposal_rate'] = (proposals == target_rule).mean() if target_rule is not None else np.nan
         states.append(row)
     return scores, curves, paths, states, knives
 
@@ -161,7 +165,8 @@ def summarize(evaluation: Path, config: Path, output: Path) -> None:
         tag = dict(subject=case['subject'], condition=case['condition'], cohort=case['cohort'],
             candidate=case['candidate'], roles='|'.join(case['roles']),
             selected='selected' in case['roles'], reference='reference' in case['roles'])
-        rows = score_arrays(c, a, cut, frozen['settings']['features']['block_width'])
+        rows = score_arrays(c, a, cut, frozen['settings']['features']['block_width'],
+                            target_rule=records['autonomous']['target_rule'])
         for target, source in zip((scores, curves, paths, states), rows[:4]):
             target.extend(dict(tag, **r) for r in source)
         knives[case['case_id']] = rows[4]
