@@ -1,0 +1,7 @@
+study: results/model_1022/compact_refit_20261022_v1
+evaluation: results/model_1022/compact_evaluation_20261022_v1
+subjects: [108, 205, 306, 110, 209, 309]
+variants: [COMPACT, TRANSFER]
+smoke_subjects: [108, 209, 306]
+workers: 128
+scope: Fixed-parameter autonomous execution diagnostic after the primary refits; all original path seeds retained.
