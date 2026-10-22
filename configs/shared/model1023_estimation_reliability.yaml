@@ -1,0 +1,33 @@
+protocol: model1023_estimation_reliability_v1
+seed: 2026102301
+parallel_budget: 128
+study: results/model_1022/compact_refit_20261022_v1
+evaluation: results/model_1022/compact_evaluation_20261022_v1
+diagnostic_study: results/model_1022/compact_scope_control_20261022_v1
+diagnostic_cases: [S306_TRANSFER_R0, S306_TRANSFER_R1]
+validation_sequences:
+  - {subject: 108, seed_rank: 0}
+  - {subject: 205, seed_rank: 2}
+  - {subject: 306, seed_rank: 2}
+human_subjects: [108, 205, 306, 110, 209, 309]
+initial_candidates: 64
+rounds: 3
+proposals: {elites: 4, rays: 4, pairs: 8, multi: 4, global_starts: 16}
+carry_candidates: 16
+carry_top: 8
+archive_per_stage: 3
+selection_candidates: 16
+confirmation_candidates: 6
+confirmation_top: 3
+audit_candidates: 3
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine_1: {particles: 128, seeds: 2}
+  refine_2: {particles: 128, seeds: 2}
+  refine_3: {particles: 128, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 1024, seeds: 8}
+  evaluate: {particles: 1024, seeds: 8}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: Fixed TRANSFER equations and original behavioral likelihood; bounded optimizer development, prospective sequence checks and six-person prefix refit
