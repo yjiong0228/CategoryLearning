@@ -1,0 +1,12 @@
+protocol: model1022_precision_pairing_profile_v1
+seed: 2026102247
+parallel_budget: 128
+study: results/model_1022/compact_scope_control_20261022_v1
+cases: [S306_TRANSFER_R0, S306_TRANSFER_R1]
+selection_candidates: 4
+confirmation_candidates: 3
+budgets:
+  screen: {particles: 128, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 1024, seeds: 8}
+scope: Retrospective two-coordinate optimizer diagnostic; all other fitted coordinates fixed
