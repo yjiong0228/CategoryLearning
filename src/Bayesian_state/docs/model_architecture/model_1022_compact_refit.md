@@ -512,6 +512,17 @@ H的保留与使用流程可以先固定为当前候选。口述工作继续处�
 三个任务条件的已有完整记录已通过联合矩归一化与状态一致性检查。该分析新增滤波次数为零，
 口述内容未进入状态差异计算。六人完整新结果的汇总仍待配对评价完成。
 
+模拟恢复另行比较全部已冻结候选。入口为
+`python -m src.Bayesian_state.evaluation.model_1023_recovery_candidates --study COMPLETE_RECOVERY_PHASE --audit-summary COMPLETE_AUDIT --output NEW`。
+原参考点、选中点、其他候选与生成点使用同一组独立复核种子，分别报告行为NLL、规则存在误差、
+作答贡献误差和存在条件下的精度误差。状态汇总沿用原恢复评价中各次滤波等权混合的定义。
+精度误差之差使用两组参数共同可评价、且真实规则存在的试次；删除单次滤波后该集合保持不变。
+删除后出现未定义精度时，相关模拟误差记为未定义。各候选与原参考点的差异及其配对数值误差单独保存。
+该分析读取原状态记录，新增滤波次数为零。短流程的48个原评分数值逐项一致；306既有完整序列的
+8次1024粒子滤波、512题、两个时间点共18个状态指标也与原汇总一致。相关五项检查及命令帮助入口通过。
+完整记录接入检查按旧协议中的路径读取案例文件，结果见
+`results/model_1023/recovery_candidates_read_validation_20261023_v3/`；此前接入尝试及原因保留在原检查目录。
+
 六人综合图入口为`python -m CategoryLearning_codes.figures.fig3.model1023_frozen_evaluate --source COMPLETE_EXTERNAL_SUMMARY --states COMPLETE_STATE_SENSITIVITY --output NEW`。
 它并列呈现三组参数的全部自主路径、行为预测、内部状态及两种读法的逐题口述支持。
 精度的32题分块均值按规则存在概率加权。状态联合权重、参数身份、分块分母及既有口述汇总相关的
