@@ -1,0 +1,12 @@
+protocol: model1022_full_behavior_and_transfer_recovery_v1
+seed: 2026102231
+parallel_budget: 128
+study: results/model_1022/compact_refit_20261022_v1
+evaluation: results/model_1022/compact_evaluation_20261022_v1
+budget_config: configs/shared/model1022_compact_refit.yaml
+subjects: [205, 306]
+variant: TRANSFER
+recovery_replicates: 2
+recovery_seed_selection: two_lowest_saved_seeds
+full_behavior_scope: descriptive_reconstruction_and_external_oral_check
+recovery_scope: two_fitted_points_four_sequences_limited_coverage
