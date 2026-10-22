@@ -154,7 +154,8 @@ def summarize(study: Path, audit: Path, output: Path, allow_smoke: bool = False)
             for phase in PHASES:
                 curve, metrics, trace = state_traces(bank, truth, phase)
                 traces[identity, phase] = trace
-                scores.append(dict(tag, phase=phase, choice_nll=nll(probability), filters=len(probability), **metrics))
+                scores.append(dict(tag, phase=phase, choice_nll=nll(probability), filters=len(probability),
+                                   particles=bank['predictive_weights'].shape[-1], **metrics))
                 trials.extend(dict(tag, phase=phase, trial=t+1,
                     **{'truth_'+k: v[t] for k, v in truth.items()}, **{k: v[t] for k, v in curve.items()})
                     for t in range(len(truth['present'])))

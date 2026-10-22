@@ -25,6 +25,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -106,6 +107,7 @@ def render(summary: Path, output: Path, allow_smoke: bool = False) -> None:
         ax.set_yticks(range(len(case_ids)), case_ids)
         ax.set_ylim(len(case_ids)-.5, -.5)
         ax.set_xlabel('NLL / trial relative to selected\nNegative: candidate fits better')
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4, min_n_ticks=3))
         ax.set_title('a  Independent candidate audit', loc='left', fontweight='bold', fontsize=8)
         if recovery:
             values = tables['recovery_likelihood_comparison'].set_index('case_id').loc[case_ids]
@@ -118,6 +120,7 @@ def render(summary: Path, output: Path, allow_smoke: bool = False) -> None:
             ax.set_yticks(range(len(case_ids)), case_ids)
             ax.set_ylim(len(case_ids)-.5, -.5)
             ax.set_xlabel('Selected minus generating-point\nNLL / trial (positive: search gap)')
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4, min_n_ticks=3))
             ax.set_title('b  Generating-point comparison', loc='left', fontweight='bold', fontsize=8)
         fig.suptitle(smoke_title+'Model 1022 · estimation '+done['phase'], y=.98, fontsize=9)
         fig.legend(handles=[Line2D([], [], color=color, marker=marker, ls='', label=label) for color, marker, label in
