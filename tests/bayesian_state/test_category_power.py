@@ -19,6 +19,20 @@ def test_power_is_stable_and_one_is_exact():
             with category_power_readout(value):pass
 
 
+def test_single_rule_power_matches_precision_scaling_but_mixture_does_not():
+    from src.Bayesian_state.hypothesis_space.geometry.boundary import BoundaryGeometry
+    from src.Bayesian_state.hypothesis_space.spaces.structural_0923 import build_relational_0923_space
+    geometry=BoundaryGeometry(build_relational_0923_space())
+    x=np.array([[.1,.8,.3,.2],[.9,.6,.1,.2]])
+    p=geometry.category_probabilities(42,x,8.).T
+    doubled=geometry.category_probabilities(42,x,16.).T
+    np.testing.assert_allclose(category_power(p,2.),doubled,atol=1e-12,rtol=0)
+    other=geometry.category_probabilities(0,x,5.).T
+    other_doubled=geometry.category_probabilities(0,x,10.).T
+    mixed=.6*p+.4*other
+    assert not np.allclose(category_power(mixed,2.),.6*doubled+.4*other_doubled,atol=1e-6)
+
+
 @pytest.mark.parametrize('condition',[1,2,3])
 def test_filter_and_generation_read_same_power_without_changing_states(condition,monkeypatch,tmp_path):
     from src.Bayesian_state.hypothesis_space.similarity import ContinuousSimilarity

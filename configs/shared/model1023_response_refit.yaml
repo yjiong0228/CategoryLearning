@@ -1,0 +1,32 @@
+protocol: model1023_response_refit_v1
+seed: 2026102307
+parallel_budget: 128
+study: results/model_1023/estimation_concurrent_20261023_v1/human
+subjects: [108, 205, 306, 110, 209, 309]
+response_exponents: [1.0, 2.0]
+initial_candidates: 64
+rounds: 3
+proposals: {elites: 4, rays: 4, pairs: 8, multi: 4, global_starts: 16}
+carry_candidates: 16
+carry_top: 8
+archive_per_stage: 3
+selection_candidates: 16
+confirmation_candidates: 6
+confirmation_top: 3
+audit_candidates: 3
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine_1: {particles: 128, seeds: 2}
+  refine_2: {particles: 128, seeds: 2}
+  refine_3: {particles: 128, seeds: 2}
+  selection: {particles: 512, seeds: 4}
+  confirmation: {particles: 1024, seeds: 8}
+  evaluate: {particles: 1024, seeds: 8}
+precision_check:
+  coordinates: [engine.modules.beta_mod.kwargs.beta_init, engine.modules.beta_mod.kwargs.learning_rate]
+  selection_candidates: 8
+  confirmation_candidates: 3
+  audit_candidates: 3
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: Fixed H and shared behavioral objective; bounded precision grid followed by equal-budget joint response comparisons

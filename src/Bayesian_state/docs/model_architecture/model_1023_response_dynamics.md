@@ -17,6 +17,12 @@ H模块保持当前TRANSFER设计。口述用于外部评价，参数估计继�
 第二方向保持原读出，在已声明范围内联合搜索精度初值和学习率，其余参数先固定在原估计点。
 按前段行为似然选择候选，再检查完整学习曲线。这一步评估当前简洁机制的解释空间。
 
+当前单条规则通过距离的softmax生成类别概率：距离越近，概率越高，精度β控制差异的陡峭程度。
+在单条规则的同一状态上，概率平方归一化与把β加倍给出相同的类别预测。多条规则先混合再平方，
+通常会得到不同于“各规则β加倍后再混合”的结果。精度参数还会改变反馈解释及后续学习。
+因此本轮需要联合比较参数与动态路径。若平方读出获益，还需检查收益是否主要涉及既有β上限25；
+固定状态上的改善本身不能确立两个心理过程的独立性。
+
 ## 分阶段计算
 
 第一阶段在六人的18个候选上运行平方读出的128条完整自主路径，以及8次1024粒子滤波各16条
@@ -67,7 +73,52 @@ w_h p(c|h)/p(c)，将其乘以变换后的选择概率q(c)，得到选择与报�
 每个阶段保存新目录、来源哈希、参数、种子和状态。阶段结束后交付PNG曲线、分布对照、明确的
 机制判断和仍需验证的心理解释。
 
-当前状态：动态读出已接入。三条件的18个短序列任务全部通过，原读出自主路径逐项复现既有结果。
-六人18个参数候选的792个正式任务运行中；精度检查和同预算重拟合流程已准备并排队。
-后续重拟合与口述连接的端到端验证仍待执行，当前接口测试已经覆盖两种数值读出的一致性、
-概率归一化、状态读取被动性、条件规则依据与粒子权重的计算。
+## 第一阶段结果
+
+六人18个参数候选的792个正式任务已经完成。以下数值来自每人的原估计点；全部候选保留在图和
+源表中。Q1为原读出，Q2为平方读出。末段正确率使用最后128题，完整学习评分使用全部试次。
+
+| 被试 | 实际末段正确率 | Q1自主末段均值 | Q2自主末段均值 | 完整学习Energy变化 | 前段状态续跑Energy变化 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 108 | 0.898 | 0.746 | 0.789 | −0.0024 ± 0.0016 | −0.0238 ± 0.0021 |
+| 205 | 0.836 | 0.623 | 0.761 | +0.0340 ± 0.0053 | −0.0405 ± 0.0038 |
+| 306 | 0.945 | 0.771 | 0.879 | −0.0007 ± 0.0030 | −0.0614 ± 0.0020 |
+| 110 | 0.883 | 0.771 | 0.807 | −0.0056 ± 0.0028 | −0.0337 ± 0.0023 |
+| 209 | 0.898 | 0.779 | 0.858 | −0.0038 ± 0.0040 | −0.0160 ± 0.0011 |
+| 309 | 0.859 | 0.697 | 0.804 | +0.0174 ± 0.0065 | −0.0427 ± 0.0022 |
+
+变化均为Q2减Q1，负值表示改善；±为一个配对Monte Carlo标准误，表示有限模拟的数值误差。
+六人的续跑评分均改善，提示作答确定性有助于解释已学习状态下的表现。从任务起点自主生成时，
+205和309的原估计点在前期与中期提升过快，整条曲线的分布评分变差。205的另外两个参数候选
+也出现完整学习评分变差。306的完整学习差异小于一个模拟标准误，当前证据主要来自后段。
+
+这些结果达到预先记录的重拟合启动条件。下一阶段通过训练段似然重新选择参数，检查较慢的
+前期学习能否与较高的后期正确率同时得到解释。平方读出仍为候选机制，当前主模型保持原设计。
+
+[完整曲线与分布图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1023_response_dynamics_20261023_v2/index.html)
+包含每人三个候选、两种读出、完整学习与前段状态续跑。每组图保留全部128条路径；色带为中央80%
+预测范围。表格与计算来源位于`results/model_1023/response_dynamics_summary_20261023_v1/`。
+
+## 复现与验证状态
+
+从仓库根目录运行，输出目录需为新路径：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1023_response_dynamics --config configs/shared/model1023_response_dynamics.yaml --output NEW_DYNAMICS
+python -m src.Bayesian_state.evaluation.model_1023_response_dynamics --study NEW_DYNAMICS --output NEW_DYNAMIC_SUMMARY
+python -m CategoryLearning_codes.figures.fig3.model1023_response_dynamics --source NEW_DYNAMIC_SUMMARY --output NEW_DYNAMIC_FIGURES
+python -m src.Bayesian_state.workflows.analysis.model_1023_response_refit --config configs/shared/model1023_response_refit.yaml --phase precision --output NEW_PRECISION_FIT
+python -m src.Bayesian_state.workflows.analysis.model_1023_response_refit --config configs/shared/model1023_response_refit.yaml --phase joint --decision NEW_DYNAMIC_SUMMARY/decision.json --output NEW_JOINT_FIT
+python -m src.Bayesian_state.evaluation.model_1023_response_refit --study NEW_JOINT_FIT --output NEW_FIT_AUDIT
+python -m src.Bayesian_state.workflows.analysis.model_1023_response_evaluate --study NEW_JOINT_FIT --output NEW_EVALUATION
+python -m src.Bayesian_state.evaluation.model_1023_response_evaluate --evaluation NEW_EVALUATION --config configs/shared/model1022_compact_evaluation.yaml --output NEW_EXTERNAL_SUMMARY
+python -m CategoryLearning_codes.figures.fig3.model1023_response_evaluate --source NEW_EXTERNAL_SUMMARY --output NEW_EXTERNAL_FIGURES
+```
+
+两个正式重拟合阶段依次执行，各自共享128进程上限。参数审查、外部评价和绘图也可用于精度检查的
+输出。小规模验证使用`--smoke`，拟合审查另加`--allow-smoke`；正式汇总仅接受完整科学计算。
+
+已完成三条件的18个短序列动态任务，原读出自主路径逐项复现既有结果；正式动态汇总核对了
+3,907,584个生成试次的任务反馈。精度检查与两种读出的联合重拟合均通过短序列端到端计算及
+独立种子审查。六人的正式精度检查正在运行，其后按顺序执行联合重拟合和外部评价。
+口述连接已通过接口测试，正式滤波中的端到端捕获验证仍待执行。
