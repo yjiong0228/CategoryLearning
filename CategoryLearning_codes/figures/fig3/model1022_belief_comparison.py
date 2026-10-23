@@ -3,11 +3,13 @@
 Figure contract: compare conditional prediction, autonomous learning and target
 rule use after separate bounded fits. Quantitative grid, one row per participant,
 32-trial blocks; all simulated paths contribute. Color and line style denote models,
-black denotes observed behavior. This is a development report, exported as PNG.
+black denotes observed behavior. This is an evaluation report, exported as PNG.
 Optional --reference adds the frozen SUPPORT from a completed earlier study.
 Its observed trials and split must match, and its simulation seeds must be
 independent. Every reference path is retained. Gray dotted curves distinguish
 this fixed benchmark from SUPPORT selected in the current study.
+Alternatively, --support-reference reads the original Model 1022 frozen
+support evaluation. The figure labels development and extension cohorts.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ import pandas as pd
 
 from src.Bayesian_state.workflows.analysis.model_1022_belief_summary import read, load_case, digest
 from src.Bayesian_state.evaluation.model_1022_belief_fixed_references import validate_comparison
+from src.Bayesian_state.evaluation.model_1022_belief_support_reference import load_support
 
 COLORS = {'SUPPORT': '#417CA8', 'BELIEF': '#D58A35', 'SLOT': '#8565A5', 'ADAPT': '#2B8C6F'}
 LABELS = {'SUPPORT': 'Support', 'BELIEF': 'Belief: uniform entry', 'SLOT': 'Belief: slot transfer',
@@ -48,9 +51,16 @@ def frozen_inputs(study: Path) -> tuple[list[dict], list[dict]]:
     return nomination['nominees'], read(study/'autonomous_jobs.json')['jobs']
 
 
-def run(study: Path, output: Path, reference: Path | None = None) -> None:
+def run(study: Path, output: Path, reference: Path | None = None,
+        *, support_reference: Path | None = None) -> None:
     if output.exists():
         raise FileExistsError('Use a new figure directory')
+    if reference is not None and support_reference is not None:
+        raise ValueError('Select one frozen-reference format per figure')
+    with_reference = reference is not None or support_reference is not None
+    cohort = read(study/'protocol.json')['policy'].get('cohort', 'development')
+    if cohort not in ('development', 'extension'):
+        raise ValueError('Require a declared development or extension cohort')
     nominees, jobs = frozen_inputs(study)
     subjects = sorted({n['subject'] for n in nominees})
     present_arms = {n['arm'] for n in nominees}
@@ -68,6 +78,7 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
         provenance.append(dict(subject=key[0], arm=key[1], source=str(study),
                                candidate=nominee['candidate']['id'], nomination_sha256=digest(study/'nominees.json')))
     colors, labels, styles = dict(COLORS), dict(LABELS), dict(STYLES)
+    reference_inputs = {}
     if reference is not None:
         if reference.resolve() == study.resolve():
             raise ValueError('Frozen reference must come from a distinct study')
@@ -81,6 +92,22 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
             cases[sid, REFERENCE] = case
             provenance.append(dict(subject=sid, arm=REFERENCE, source=str(reference),
                 candidate=matched[0]['candidate']['id'], nomination_sha256=digest(reference/'nominees.json')))
+    if support_reference is not None:
+        def bind(file, expected=None):
+            path = Path(file).resolve(); sha = digest(path)
+            if expected is not None and sha != expected:
+                raise ValueError('Historical support figure input changed: '+str(path))
+            reference_inputs[str(path)] = sha
+
+        for sid in subjects:
+            case = load_support(support_reference, sid, bind)
+            if case['cohort'] != cohort:
+                raise ValueError('Historical support has a different cohort label')
+            validate_comparison(case, cases[sid, 'SUPPORT'])
+            cases[sid, REFERENCE] = case
+            provenance.append(dict(subject=sid, arm=REFERENCE, source=str(support_reference),
+                candidate=case['candidate'], reference_format='original_model1022_support'))
+    if with_reference:
         arms.append(REFERENCE)
         colors[REFERENCE], styles[REFERENCE] = '#555555', ':'
         labels.update(SUPPORT='Support: current fit', SUPPORT_REFERENCE='Support: frozen reference')
@@ -89,7 +116,7 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
                          'svg.fonttype': 'none', 'pdf.fonttype': 42,
                          'font.size': 9, 'axes.spines.top': False,
                          'axes.spines.right': False, 'axes.linewidth': .7, 'legend.frameon': False})
-    extra = .5 if reference is not None else 0.
+    extra = .5 if with_reference else 0.
     fig, axes = plt.subplots(len(subjects), 2, figsize=(10, max(4., 2.5*len(subjects)+1.)+extra),
                              squeeze=False, sharey=True)
     process, state_axes = plt.subplots(len(subjects), 2, figsize=(10, max(4., 2.5*len(subjects)+.5)+extra),
@@ -132,14 +159,14 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
         for ax in grid[-1]:
             ax.set_xlabel('Trial (32-trial blocks)')
         canvas.legend(handles=handles if canvas is fig else handles[1:], loc='upper center',
-                      ncol=3 if reference is not None else len(handles),
+                      ncol=3 if with_reference else len(handles),
                       bbox_to_anchor=(.5, 1.005))
         height = canvas.get_figheight()
-        canvas.subplots_adjust(left=.10, right=.98, top=1-(.85 if reference is not None else .55)/height,
+        canvas.subplots_adjust(left=.10, right=.98, top=1-(.85 if with_reference else .55)/height,
                                bottom=.75/height, hspace=.40, wspace=.20)
     counts = sorted({r['paths'] for r in records})
     count_text = '/'.join(str(n) for n in counts)
-    fig.text(.10, .025, f'Development evaluation. Thin lines: all {count_text} autonomous paths per model. '
+    fig.text(.10, .025, f'{cohort.capitalize()} evaluation. Thin lines: all {count_text} autonomous paths per model. '
              'Dashed line: end of parameter-fitting prefix.', fontsize=8)
     process.text(.10, .025, f'Means over all {count_text} autonomous paths, including paths that never discover the target rule. '
                  'Dashed line: training boundary.', fontsize=8)
@@ -151,12 +178,17 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
     for item in provenance:
         case = cases[item['subject'], item['arm']]
         item.update(filters=len(case['prediction']['seeds']), paths=len(case['autonomous']['seeds']))
-    (output/'figure_sources.json').write_text(json.dumps(dict(cases=provenance,
+    for file, sha in reference_inputs.items():
+        if digest(Path(file)) != sha:
+            raise ValueError('Historical support input changed while plotting')
+    (output/'figure_sources.json').write_text(json.dumps(dict(cases=provenance, cohort=cohort,
+        reference_inputs_sha256=reference_inputs,
+        support_reference_reader_sha256=digest(Path(load_support.__code__.co_filename)) if support_reference else None,
         figure_source_sha256=digest(Path(__file__)), reference_matching='same observed trials and split; independent seeds'),
         indent=2)+'\n')
     reference_note = ('灰色点线表示较早研究中冻结的支持版，蓝色表示本轮选参的支持版。'
                       '参照只取当前图中被试的 SUPPORT，保留这些被试的全部模拟路径。\n\n'
-                      if reference is not None else '')
+                      if with_reference else '')
     (output/'README.md').write_text(
         '# 规则信念对照图\n\n'
         'behavior.png：左列为条件于此前真实行为的预测，右列为从任务起点自主学习。'
@@ -167,7 +199,8 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
         + reference_note +
         'rule_process.png：目标规则在场概率及作答贡献，均由全部自主路径计算。'
         '这些内部过程来自自主模拟，未用口述作验证。\n\n'
-        '图中路径差异描述模拟变异。该图用于开发评价，人群差异尚待检验。'
+        '图中路径差异描述模拟变异。该图用于'+('开发评价' if cohort == 'development' else '扩展检查')+
+        '，人群差异尚待检验。'
         '图稿为 Python 生成的 PNG；source_curves.csv 保存全部汇总曲线。'
         'figure_sources.json 记录各曲线的参数身份、来源、滤波与路径数量。\n')
 
@@ -176,6 +209,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--study', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--reference', type=Path, help='Optional completed study supplying frozen SUPPORT curves')
+    references = parser.add_mutually_exclusive_group()
+    references.add_argument('--reference', type=Path, help='Optional completed study supplying frozen SUPPORT curves')
+    references.add_argument('--support-reference', type=Path, help='Original Model 1022 compact evaluation supplying TRANSFER support curves')
     args = parser.parse_args()
-    run(args.study, args.output, args.reference)
+    run(args.study, args.output, args.reference, support_reference=args.support_reference)

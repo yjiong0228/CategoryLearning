@@ -634,8 +634,8 @@ python -m CategoryLearning_codes.figures.fig3.model1022_belief_mechanisms \
 接入验证已完成：67 项相关测试与新增的 3 项原训练参数保留检查通过；五个机制在直接拟合
 工作进程中逐值复现各自保存的预测数组，SUPPORT、SLOT、ADAPT 的训练生成逐值复现原
 自主路径前八题的选择。108 的小规模拟合完成共同起点、细化、共同确认及自主生成，三版
-使用相同的五个起点和六个确认点，原支持版训练参数保留到确认阶段。完整拟合效果待本轮
-科学计算完成后评价。
+使用相同的五个起点和六个确认点，原支持版训练参数保留到确认阶段。完整序列的独立拟合及
+行为结果在下文报告。
 
 ```bash
 python -m src.Bayesian_state.workflows.analysis.model_1022_belief_comparison \
@@ -649,6 +649,26 @@ python -m src.Bayesian_state.workflows.analysis.model_1022_belief_balanced_selec
   --generation results/model_1022/belief_adaptive_generation_20261024_v1 \
   --output results/model_1022/belief_adaptive_selection_20261024_v1
 ```
+
+独立拟合及仅按训练似然选参的行为评价现已完成。初筛、两轮细化与确认共评价 681 个候选点，
+九组的预算、参数身份、训练边界、源码快照及重新计算的分数均通过核对。随后完成 54 次独立
+评价滤波及 1,152 条自主路径。ADAPT 相对原冻结支持版的后段结果如下；差值均为 ADAPT
+减去原支持版，最后两列把两倍模拟标准误（MCSE）加到差值上。
+
+| 被试 | ADAPT NLL | ADAPT Energy | NLL 差值 | Energy 差值 | NLL 差值 + 2 MCSE | Energy 差值 + 2 MCSE |
+|---|---:|---:|---:|---:|---:|---:|
+| 108 | 0.3083 | 0.0948 | −0.0040 | −0.0013 | 0.0019 | 0.0129 |
+| 205 | 0.6152 | 0.1357 | −0.0271 | 0.0388 | −0.0267 | 0.0601 |
+| 306 | 0.3859 | 0.0984 | 0.0291 | 0.0291 | 0.0304 | 0.0384 |
+
+108 的两项指标进入工作容忍范围。205 的条件选择预测改善，自主行为距离超过容忍范围；其
+自主后段正确率为 0.5352，真实值为 0.7813。306 的两项差值在计入模拟误差后均超过工作
+容忍范围，自主后段正确率为 0.7260，真实值为 0.8867。本轮重新估参的 SUPPORT 在 306 上
+的后段 NLL 为 0.4026，原冻结支持版为 0.3567；两项参照同时报告。当前仅按似然选参的
+ADAPT 尚未达到整体目标，预定的受似然约束生成选参继续执行。完整结果见
+[行为汇总](../../../../results/model_1022/belief_adaptive_refit_20261024_v1/summary/summary.csv)、
+[原支持版比较](../../../../results/model_1022/belief_adaptive_refit_original_support_20261024_v1/comparisons.csv)和
+[拟合核查](../../../../results/model_1022/belief_adaptive_refit_20261024_v1/fit_audit_v1/completion.json)。
 
 ## 冻结后的图示与口述检查
 
@@ -812,3 +832,18 @@ python -m src.Bayesian_state.evaluation.model_1022_belief_support_reference \
 0.3123、0.6423、0.3567；按共同定义重算的后段 Energy 分别为 0.0961、0.0968、0.0693。
 原先两个支持版参照继续保留。新增读取及跨研究比较的 16 项相关检查通过，覆盖标签错位、
 路径缺失、种子重复、无效概率和不独立的种子集合。扩展组的效果比较将在模型方案冻结后执行。
+
+绘图入口的 `--support-reference` 读取同一份原支持版评价，与 `--reference` 二选一。
+图注按研究配置标明开发组或扩展组。原支持版的全部路径画为灰色细线，均值画为灰色点线。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model1022_belief_comparison \
+  --study results/model_1022/belief_refinement_20261023_v1 \
+  --support-reference results/model_1022/compact_evaluation_20261022_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/model1022_belief_original_support_20261024_v1
+```
+
+开发组的[行为图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_original_support_20261024_v1/behavior.png)和
+[规则过程图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_original_support_20261024_v1/rule_process.png)
+已检查。原参照的 66 个分块与原汇总中的真实、条件预测及自主行为曲线逐值一致；每个组合的
+128 条路径均保留。已有 `--reference` 调用方式生成的两张 PNG 及曲线表与先前结果逐字节相同。
