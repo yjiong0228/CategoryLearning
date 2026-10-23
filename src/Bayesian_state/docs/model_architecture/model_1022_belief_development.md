@@ -414,7 +414,39 @@ $\gamma=0.3$ 保留原对数比值的 30%，$\gamma=0.99$ 保留 99%；这些比
 它们的概率。本轮新提案沿用规则信念更新、搜索、替换及精度学习的原有参数。
 
 本轮 SLOT 的 NLL 首位候选为 `777a83efb52343e5`，训练 NLL 为 0.729537；提案需要通过
-相对该候选的独立似然复核。三版共六个复核参数点，48 次 1,024 粒子滤波正在执行。
+相对该候选的独立似然复核。三版共六个复核参数点，48 次 1,024 粒子滤波已经完成。
+
+| 模型 | 提案的 NLL 增量 | 配对模拟标准误 | 增量加两倍标准误 | 决定 |
+|---|---:|---:|---:|---|
+| SUPPORT | 0.005975 | 0.007632 | 0.021240 | 保留本轮 NLL 首位候选 |
+| BELIEF | 0.016343 | 0.002214 | 0.020771 | 保留本轮 NLL 首位候选 |
+| SLOT | −0.004861 | 0.002654 | 0.000447 | 接受新提案 |
+
+阈值仍为 0.02。SLOT 采用 `e8df919efe06a44a`，SUPPORT 回退至 `8f7c773c2e72eed0`，
+BELIEF 回退至 `01a10b893fe812db`。三个参数点已冻结。独立计算从保存的概率数组重算三项
+接受决定，并核对全部 48 个工作任务的机制、参数、种子与训练边界，结果完全一致，见
+[似然复核审查](../../../../results/model_1022/belief_joint_refinement_20261024_v1/guard_audit_v1/completion.json)。
+拟合核查同时完成确认与复核两个阶段的 57 个参数／机制评价。完整序列评价已使用 512 粒子、
+6 个新种子及每版 128 条自主路径完成。306 的结果如下。
+
+| 模型 | 后段 NLL | 自主后段正确率 | 后段 Energy | 目标规则在场 | 目标规则作答贡献 |
+|---|---:|---:|---:|---:|---:|
+| 本轮 SUPPORT | 0.4046 | 0.6451 | 0.1484 | 0.3677 | 0.2597 |
+| 本轮 BELIEF | 0.3898 | 0.6680 | 0.1297 | 0.6213 | 0.4715 |
+| 本轮 SLOT | 0.4029 | 0.7341 | 0.1029 | 0.8807 | 0.5329 |
+| 原冻结 SUPPORT | 0.3571 | 0.7841 | 0.0652 | 0.8901 | 0.7222 |
+
+SLOT 相对原冻结 SUPPORT 的后段 NLL 增量为 0.04583（模拟标准误 0.00344），Energy
+增量为 0.03767（0.00317），均超过工作容忍值。这轮联合细化尚未达到目标。已有正确规则的
+自主试次中，SLOT 的平均作答贡献为 0.6051，原 SUPPORT 为 0.8114；目标规则平均精度分别
+约为 15.00 和 18.40。目标规则在场率已接近参照，规则的影响权重和精度学习值得继续检查。
+这些比较使用开发被试，后续机制修改仍需独立重新估参和扩展检查。
+
+全部结果见[评价表](../../../../results/model_1022/belief_joint_refinement_20261024_v1/summary/summary.csv)及
+[固定参照比较](../../../../results/model_1022/belief_joint_fixed_references_20261024_v1/comparisons.csv)。
+加入原支持版的[行为图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_joint_reference_20261024_v1/behavior.png)与
+[规则过程图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_joint_reference_20261024_v1/rule_process.png)
+已检查；72 行本轮曲线与 24 行参照曲线均与各自原汇总逐值一致。
 
 另一个独立计算程序从全部保存的选择数组重新构造行为特征、Energy U 统计量及模拟标准误，
 并逐项检查工作任务的机制身份、数据边界、参数和种子。51 个分数及三项提案排序均与记录
@@ -431,6 +463,23 @@ $\gamma=0.3$ 保留原对数比值的 30%，$\gamma=0.99$ 保留 99%；这些比
 [行为图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_refinement_20261023_v1/behavior.png)及
 [规则过程图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_refinement_20261023_v1/rule_process.png)
 已经生成并逐图检查。全部 128 条自主路径保留在图示和源表中。
+
+绘图入口新增可选 `--reference` 参数，可把较早研究中冻结的 SUPPORT 同时画为灰色点线。
+蓝色曲线表示本轮选参的 SUPPORT。绘图前核对原始试次、训练边界及两组独立模拟种子，保留
+参照中对应被试的全部路径。`figure_sources.json` 保存每条曲线的参数身份、来源、滤波及
+路径数量，图例区分本轮模型与固定参照。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model1022_belief_comparison \
+  --study results/model_1022/belief_balanced_selection_20261024_v1 \
+  --reference results/model_1022/belief_refinement_20261023_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/model1022_belief_balanced_reference_20261024_v1
+```
+
+加入参照的[行为图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_balanced_reference_20261024_v1/behavior.png)与
+[规则过程图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_balanced_reference_20261024_v1/rule_process.png)
+已完成。198 行本轮曲线及 66 行原支持版曲线均与各自原汇总逐值相同。两张 PNG 的双行图例、
+坐标、说明与边界已检查，全部路径保留。单人图使用相应高度，原有不带参照的调用方式继续可用。
 
 口述检查分为状态重放和内容评价两步。状态重放重新执行已保存的评价滤波任务，使用完全相同
 的参数、粒子数、随机种子与行为输入。共享记录器保存当前反馈到来前的规则和内部成分概率质量。
