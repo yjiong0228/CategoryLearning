@@ -1,0 +1,11 @@
+protocol: model1023_compact_prefix_forecast_v1
+evaluation: results/model_1023/estimation_concurrent_20261023_v1/human_evaluation
+subjects: [205, 306, 309]
+seed: 2026102301
+filters: 8
+particles: 1024
+branches_per_filter: 16
+workers: 128
+block_width: 32
+late_trials: 128
+scope: Fixed TRANSFER candidates; retrospective development diagnosis of learning stages

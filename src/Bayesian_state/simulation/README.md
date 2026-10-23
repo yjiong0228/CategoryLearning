@@ -18,6 +18,17 @@
 | `parameters.py` | 固定超参数的提取、覆盖与可复现 candidate seed 解析 |
 | `provenance.py` | 结构配置哈希、容量、初始化、precision/readout 与 repeat 聚合溯源 |
 | `autonomous.py` | 在类别学习任务中运行模型自主选择并生成 feedback |
+| `filtered_continuation.py` | 捕获前段滤波的末端状态，按粒子权重抽取起点并自主续跑 |
+| `continuation_diagnostics.py` | 读取续跑中的规则在场、作答权重、判断精度和类别配对状态 |
+
+前段状态续跑使用 `capture_prefix()` 保存最后一次反馈后的模型状态和粒子权重，
+随后由 `generate_continuations()` 抽取起点。后段的输入为刺激和任务类别；类别仅用于
+模型作答后的任务反馈。每条分支恢复其起点状态，并使用独立的未来随机流。
+同一次滤波产生的分支共享后验近似，计算模拟误差时须保留滤波组。
+可选的 `observer(model, prediction)` 在当前选择抽样和反馈前读取状态，将结果保存为
+`diagnostic_*` 数组。观察器须保持模型状态和随机流不变。
+Model 1022 的冻结候选接入、数值预算及结果解释见
+[前段状态续跑诊断](../docs/model_architecture/model_1023_prefix_forecast.md)。
 
 `autonomous.py` 提供 `run_autonomous_category_learning()`。物理
 stimulus/category schedule 固定，但 category 只由任务环境在选择后用于产生 feedback，不会提前

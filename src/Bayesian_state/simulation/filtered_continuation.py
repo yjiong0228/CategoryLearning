@@ -13,7 +13,7 @@ uncertainty comparisons must retain the filter seed as a simulation cluster.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -56,8 +56,14 @@ def capture_prefix(**kwargs: Any) -> tuple[list[Any], Any]:
 def generate_continuations(*, models: list[Any], weights: np.ndarray,
                            observed_choices: np.ndarray, observed_feedback: np.ndarray,
                            stimulus: np.ndarray, categories: np.ndarray,
-                           branch_seeds: list[int], condition: int) -> dict[str, np.ndarray]:
-    """Generate equal-weight branches from sampled prefix posterior states."""
+                           branch_seeds: list[int], condition: int,
+                           observer: Callable[[Any, Any], dict[str, Any]] | None = None) -> dict[str, np.ndarray]:
+    """Generate equal-weight branches from sampled prefix posterior states.
+
+    An optional passive observer receives the model and its choice prediction
+    before choice sampling and feedback. Detached values are saved under
+    ``diagnostic_*`` keys, with the same branch/trial axes as choices.
+    """
     from ..metrics.task import category_learning_feedback
     from ..model.modules.base_module import ModuleRole
     from ..model.modules.readout.choice import (
@@ -112,6 +118,7 @@ def generate_continuations(*, models: list[Any], weights: np.ndarray,
             probabilities = np.empty((length, n_categories)); searches = np.empty(length)
             rules = np.full((length, capacity), -1, dtype=int); contributions = np.zeros((length, capacity))
             sticky = {}; lapse = 0.
+            diagnostics: dict[str, list[np.ndarray]] = {}
             for index, (physical, category) in enumerate(zip(x, labels)):
                 model.begin_trial(physical)
                 prediction = model.predict_choice(choices=choices, feedback=feedback,
@@ -131,6 +138,12 @@ def generate_continuations(*, models: list[Any], weights: np.ndarray,
                 contributions[index, :count] = choice_weights[active]
                 probabilities[index] = probability
                 searches[index] = transition.current_event_probability
+                if observer is not None:
+                    values = observer(model, prediction)
+                    if index and set(values) != set(diagnostics):
+                        raise ValueError('Observer fields changed within a branch')
+                    for key, value in values.items():
+                        diagnostics.setdefault(key, []).append(np.asarray(value).copy())
                 choice = int(rng.choice(n_categories, p=probability)) + 1
                 outcome = category_learning_feedback(choice, int(category), condition=condition)
                 model.complete_trial(choice, outcome)
@@ -139,6 +152,8 @@ def generate_continuations(*, models: list[Any], weights: np.ndarray,
             for key, value in dict(choices=choices[cut:], feedback=feedback[cut:], probabilities=probabilities,
                 search_probability=searches, rule=rules, contribution=contributions).items():
                 results[key].append(value.copy())
+            for key, values in diagnostics.items():
+                results.setdefault('diagnostic_' + key, []).append(np.asarray(values))
     finally:
         # Return the captured cloud to its original endpoint so independent
         # repeated checks can reuse it without inheriting generated feedback.
