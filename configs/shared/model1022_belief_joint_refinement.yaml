@@ -1,0 +1,26 @@
+protocol: model1022_belief_joint_refinement_v1
+seed: 2026102411
+source_study: results/model_1022/belief_refinement_20261023_v1
+seed_study: results/model_1022/belief_balanced_selection_20261024_v1
+seed_arm: SLOT
+subjects: [306]
+variants: [SUPPORT, BELIEF, SLOT]
+parallel_budget: 128
+axes:
+  engine.modules.memory_mod.kwargs.gamma: [0.3, 0.99]
+  engine.modules.beta_mod.kwargs.learning_rate: [0.001, 0.01, 0.1]
+  engine.modules.hypo_transitions_mod.kwargs.max_capacity: [4, 6]
+expected_candidates_per_subject: 17
+training_paths: 256
+training_chunk: 8
+features: {block_width: 32, temporal_weight: 0.5}
+training_nll_tolerance: 0.02
+guard_mcse_multiplier: 2.0
+budgets:
+  confirmation: {particles: 256, seeds: 4}
+  guard: {particles: 1024, seeds: 8}
+  evaluate: {particles: 512, seeds: 6}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: development_joint_training_bank_refinement
+fallback: retain_new_bank_nll_nominee
