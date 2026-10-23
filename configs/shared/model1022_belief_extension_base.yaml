@@ -1,0 +1,13 @@
+# Shared cognitive configuration for the frozen exp123 extension cohort.
+data: results/model_0923/finalization_extension_data_20261021_v1
+audit: results/model_0923/finalization_extension_setup_20261021_v1
+parameter_support: configs/exp123/hyper_cd_cfg/model0923_selected12_full_v3.yaml
+mechanism: {kind: E, decay: 0.95, capacity: evidence_mean, search: accumulate}
+evidence_decay_values: [0.0, 0.3, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0]
+arms:
+  COMPACT:
+    precision: fast
+    upper: 25.0
+    rate_scale: 10.0
+    rates: [0.0, 0.001, 0.003, 0.01, 0.03, 0.06, 0.1, 0.3, 0.6, 1.0]
+particle_overrides: {}

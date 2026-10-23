@@ -1,0 +1,25 @@
+protocol: model1022_belief_extension_v1
+seed: 2026102359
+subjects: [110, 209, 309]
+variants: [SUPPORT, BELIEF, SLOT]
+base_config: configs/shared/model1022_belief_extension_base.yaml
+warm_fit: results/model_1022/compact_refit_20261022_v1/human_fit
+parallel_budget: 128
+initial_candidates: 24
+refinement_rounds: 2
+refinement_candidates: 20
+proposal_fractions: {local: 0.4, jump: 0.2}
+elites: 2
+finalists_per_arm: 1
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine_1: {particles: 128, seeds: 2}
+  refine_2: {particles: 128, seeds: 2}
+  confirmation: {particles: 512, seeds: 4}
+  evaluate: {particles: 512, seeds: 6}
+autonomous_paths: 128
+autonomous_chunk: 4
+entry_belief: uniform_share_after_replacement
+scope: frozen_belief_framework_extension
+cohort: extension
+previous_development_influence: unknown
