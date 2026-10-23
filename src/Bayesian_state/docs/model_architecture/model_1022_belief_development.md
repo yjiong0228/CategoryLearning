@@ -670,6 +670,15 @@ ADAPT 尚未达到整体目标，预定的受似然约束生成选参继续执�
 [原支持版比较](../../../../results/model_1022/belief_adaptive_refit_original_support_20261024_v1/comparisons.csv)和
 [拟合核查](../../../../results/model_1022/belief_adaptive_refit_20261024_v1/fit_audit_v1/completion.json)。
 
+受似然约束的生成选参现已完成训练阶段：为共同确认中的 69 个被试、模型与参数组合各生成
+256 条训练路径，随后对九组原参数与提议参数完成 144 次独立确认滤波。九组提议均通过
+预设约束。ADAPT 在 108、205、306
+上的训练 NLL 差值加两倍模拟标准误分别为 0.0021、0.0132、0.0174，均低于 0.02。所有判定
+已从完整的逐种子概率数组重新核算，冻结参数与判定逐项一致；见
+[选择核查](../../../../results/model_1022/belief_adaptive_selection_20261024_v1/selection_audit_v1.json)。
+本阶段只使用训练选择，口述保持为外部检查。参数已冻结，新的独立完整序列评价正在运行；
+训练约束通过说明候选参数满足选参规则，后段效果由随后评价确定。
+
 扩展检查的配置已准备：
 [`独立拟合`](../../../../configs/shared/model1022_belief_adaptive_extension_refit.yaml)、
 [`训练自主生成`](../../../../configs/shared/model1022_belief_adaptive_extension_generation.yaml)与
