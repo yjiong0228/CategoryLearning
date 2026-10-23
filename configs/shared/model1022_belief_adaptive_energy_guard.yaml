@@ -1,0 +1,16 @@
+# One independent training-generation confirmation after development diagnosis.
+protocol: model1022_belief_adaptive_energy_guard_v1
+seed: 2026102461
+source_study: results/model_1022/belief_adaptive_selection_20261024_v1
+subjects: [108, 205, 306]
+variants: [SUPPORT, SLOT, ADAPT]
+parallel_budget: 128
+paths: 256
+chunk: 8
+features: {block_width: 32, temporal_weight: 0.5}
+guard_mcse_multiplier: 2.0
+acceptance: energy_difference_plus_mcse_strictly_below_zero
+fallback: retain_original_nll_nominee
+scope: independent_training_generation_guard
+cohort: development
+maximum_confirmation_batches: 1
