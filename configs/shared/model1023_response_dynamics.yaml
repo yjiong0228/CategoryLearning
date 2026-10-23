@@ -1,0 +1,15 @@
+protocol: model1023_response_dynamics_v1
+evaluation: results/model_1023/estimation_concurrent_20261023_v1/human_evaluation
+previous_prefix: results/model_1023/prefix_forecast_20261023_v1
+subjects: [108, 205, 306, 110, 209, 309]
+exponent: 2.0
+seed: 2026102301
+filters: 8
+particles: 1024
+branches_per_filter: 16
+autonomous_paths: 128
+autonomous_chunk: 4
+workers: 128
+block_width: 32
+late_trials: 128
+scope: Fixed TRANSFER points, paired autonomous dynamics and model-consistent prefix continuation
