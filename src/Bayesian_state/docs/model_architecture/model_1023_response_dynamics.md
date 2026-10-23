@@ -99,6 +99,38 @@ w_h p(c|h)/p(c)，将其乘以变换后的选择概率q(c)，得到选择与报�
 包含每人三个候选、两种读出、完整学习与前段状态续跑。每组图保留全部128条路径；色带为中央80%
 预测范围。表格与计算来源位于`results/model_1023/response_dynamics_summary_20261023_v1/`。
 
+## 后期改善来自哪一步
+
+已有路径可以进一步区分直接的作答变化和状态分布变化。对每个固定参数点，设p₁为Q1路径按
+原读出给正确类别的概率，p₂为Q2路径在同一规则状态上按原读出计算的正确概率，q₂为该Q2状态
+经平方归一化后的正确概率。三者均逐题计算，再在路径和指定试次范围内求平均。
+
+预期正确率的总变化满足`平均(q₂ − p₁) = 平均(q₂ − p₂) + 平均(p₂ − p₁)`。第一项在Q2的
+相同状态上比较两种读出，表示直接作答效应；第二项按相同的原读出比较两种路径，表示状态
+分布对应的预测差异。Q2的原类别分布可以由保存的q开平方后归一化恢复；这一逆运算已与续跑中
+另外保存的原概率逐项核对，共479,232个试次通过检查。整个分解使用已有结果。
+
+下表为原估计点、从任务起点自主生成、最后128题的结果，单位为正确率百分点。表内总变化是
+正确类别概率的变化，实际抽样答对率的变化另存于源表。
+
+| 被试 | 直接作答效应 | 状态分布对应的差异 | 总变化 |
+| --- | ---: | ---: | ---: |
+| 108 | +4.53 | 0.00 | +4.53 |
+| 205 | +12.18 | +1.09 | +13.27 |
+| 306 | +10.84 | +0.27 | +11.11 |
+| 110 | +3.37 | 0.00 | +3.37 |
+| 209 | +9.10 | −1.07 | +8.03 |
+| 309 | +9.47 | +1.45 | +10.92 |
+
+全部18个参数候选的后期提升均以直接作答效应为主。这支持继续检查作答概率的集中程度。
+在原估计点，205、306、209、309的状态项都约为一个模拟标准误，状态改善的证据有限。
+同时，平方读出也提高前期正确率，因此仍需通过完整学习曲线判断是否提升过早。上述等式分解
+预期正确率；Energy评分和口述支持分别评价。续跑中的状态差异还包含两种机制对前段行为的
+内部状态推断差异。这些描述性结果对独立心理过程的辨识提供线索，机制取舍继续依赖重拟合比较。
+
+全部候选、时间窗口、逐路径数值及配对模拟标准误位于
+`results/model_1023/response_decomposition_20261023_v1/`。
+
 ## 复现与验证状态
 
 从仓库根目录运行，输出目录需为新路径：
@@ -107,6 +139,7 @@ w_h p(c|h)/p(c)，将其乘以变换后的选择概率q(c)，得到选择与报�
 python -m src.Bayesian_state.workflows.analysis.model_1023_response_dynamics --config configs/shared/model1023_response_dynamics.yaml --output NEW_DYNAMICS
 python -m src.Bayesian_state.evaluation.model_1023_response_dynamics --study NEW_DYNAMICS --output NEW_DYNAMIC_SUMMARY
 python -m CategoryLearning_codes.figures.fig3.model1023_response_dynamics --source NEW_DYNAMIC_SUMMARY --output NEW_DYNAMIC_FIGURES
+python -m src.Bayesian_state.evaluation.model_1023_response_decomposition --source NEW_DYNAMIC_SUMMARY --output NEW_DECOMPOSITION
 python -m src.Bayesian_state.workflows.analysis.model_1023_response_refit --config configs/shared/model1023_response_refit.yaml --phase precision --output NEW_PRECISION_FIT
 python -m src.Bayesian_state.workflows.analysis.model_1023_response_refit --config configs/shared/model1023_response_refit.yaml --phase joint --decision NEW_DYNAMIC_SUMMARY/decision.json --output NEW_JOINT_FIT
 python -m src.Bayesian_state.evaluation.model_1023_response_refit --study NEW_JOINT_FIT --output NEW_FIT_AUDIT
