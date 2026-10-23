@@ -123,3 +123,34 @@ BELIEF 和 SLOT 相对 SUPPORT 的差值。
 本轮验证覆盖 34 项相关测试，包含各版模块恢复、状态续跑、后验概率、配对和精度继承、
 交叉参数调度、逐种子概率汇总和三版对照的差值方向。固定参数交换已完成全部 12 个组合，
 每组合 4 次 256 粒子滤波与 64 条自主路径。短序列结果只用于检查执行流程。
+
+## 冻结后的图示与口述检查
+
+行为图沿用 `CategoryLearning_codes.figures.fig3.model1022_belief_comparison`，自动读取结果中的
+全部模型和自主路径数量。蓝色实线表示 SUPPORT，橙色虚线表示 BELIEF，紫色点划线表示 SLOT。
+每位被试均展示此前真实历史下的条件预测、所有完整自主路径、目标规则在场比例与作答贡献。
+图稿使用 PNG，保留 32 题区块的原聚合定义。绘图入口已用首次对照的实际结果检查兼容性；
+三版的新图将在当前拟合和评价结束后生成。
+
+口述检查分为状态重放和内容评价两步。状态重放重新执行已保存的评价滤波任务，使用完全相同
+的参数、粒子数、随机种子与行为输入。共享记录器保存当前反馈到来前的规则和内部成分概率质量。
+每次重放的全部概率数组、选择标签和随机种子必须与原结果逐项相同，随后才接受该状态记录。
+这些重放属于额外数值计算，输出清楚记录其次数。重放过程读取行为数据。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1022_belief_capture \
+  --study results/model_1022/belief_refinement_20261023_v1 \
+  --output results/model_1022/belief_refinement_capture_20261023_v1
+python -m src.Bayesian_state.evaluation.model_1022_belief_oral \
+  --capture results/model_1022/belief_refinement_capture_20261023_v1 \
+  --config configs/shared/model1022_compact_evaluation.yaml \
+  --output results/model_1022/belief_refinement_oral_20261023_v1
+```
+
+内容评价沿用已有口述审查中的中点及相对参照两种读法，同时报告功能与结构相容性。完整报告
+的分母保持原定义，目录能覆盖的报告另行列出。各信念方案均与同一人的 SUPPORT 配对比较，
+模拟标准误以完整滤波重复为单位。前段静态表征对照也保留，便于区分总体偏好和随试次变化
+的表征解释。口述数据仅在这一步进入计算。
+
+新增的一项重放校验测试通过；条件 3 的三版短序列检查均获得逐项相同的行为数组。实际完整
+序列的口述记录与评价尚待当前参数冻结。现有图示检查和短序列结果不用于判断三版的模型效果。
