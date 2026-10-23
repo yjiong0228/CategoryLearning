@@ -62,7 +62,8 @@ def test_saved_prediction_identity_and_repeated_chunk_labels(tmp_path, repeated_
         load_case(study, nominee, jobs)
 
 
-def test_each_belief_variant_is_compared_with_support(tmp_path, monkeypatch):
+@pytest.mark.parametrize('cohort', ['development', 'extension'])
+def test_each_belief_variant_is_compared_with_support(tmp_path, monkeypatch, cohort):
     import pandas as pd
     from src.Bayesian_state.workflows.analysis import model_1022_belief_summary as summary
     study = tmp_path/'study'
@@ -70,6 +71,7 @@ def test_each_belief_variant_is_compared_with_support(tmp_path, monkeypatch):
     dump(study/'nominees.json', dict(status='frozen_before_test', smoke=False,
         nominees=[dict(subject=108, arm=arm, candidate={'id': arm}) for arm in arms]))
     dump(study/'autonomous_jobs.json', {'jobs': []})
+    dump(study/'protocol.json', dict(policy=dict(cohort=cohort)))
     categories = np.ones(64, dtype=int)
 
     def case(study, nominee, jobs):
@@ -86,3 +88,6 @@ def test_each_belief_variant_is_compared_with_support(tmp_path, monkeypatch):
     assert set(comparisons.index) == {'BELIEF', 'SLOT'}
     for arm in comparisons.index:
         assert comparisons.loc[arm, 'test_nll_difference'] == pytest.approx(np.log(.8/arms[arm]))
+    completion = json.loads((tmp_path/'summary/completion.json').read_text())
+    assert completion['cohort'] == cohort
+    assert completion['scope'].startswith(cohort + ' evaluation;')

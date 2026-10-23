@@ -4,8 +4,10 @@ Run --config YAML --output NEW [--smoke]. Original and proposed parameters
 receive matched fresh training-only paths. A paired whole-path uncertainty
 guard accepts a proposal only when its Energy difference plus the declared
 MCSE multiplier is negative and the previous likelihood guard passed.
-This development diagnostic preserves existing nominations and evaluations.
---smoke checks one participant with four eight-trial paths per parameter.
+The standalone development diagnostic preserves existing study records.
+The selection workflow also calls confirm before freezing its final parameters.
+--smoke checks one participant with four paths per parameter and up to eight
+training trials, preserving the shorter boundary of software-only fixtures.
 """
 from __future__ import annotations
 
@@ -75,33 +77,42 @@ def feature_paths(case: dict) -> tuple[np.ndarray, np.ndarray]:
     return np.concatenate(parts), observed
 
 
-def run(config: Path, output: Path, smoke: bool) -> None:
-    if output.exists():
-        raise FileExistsError('Use a new independent generation-guard directory')
-    policy = yaml.safe_load(config.read_text())
+def validate_policy(policy: dict) -> None:
+    """Keep one bounded confirmation batch and the registered acceptance rule."""
     if (policy['scope'] != 'independent_training_generation_guard'
             or policy['acceptance'] != 'energy_difference_plus_mcse_strictly_below_zero'
             or policy['fallback'] != 'retain_original_nll_nominee'
             or policy['maximum_confirmation_batches'] != 1
+            or policy['cohort'] not in ('development', 'extension')
             or not pilot.valid_variants(policy['variants'])
             or policy['paths'] < 4 or policy['chunk'] < 4
             or policy['paths'] % policy['chunk'] != 0
             or not 1 <= policy['parallel_budget'] <= 128
             or not np.isfinite(policy['guard_mcse_multiplier']) or policy['guard_mcse_multiplier'] < 0):
         raise ValueError('Require the registered single-batch independent generation guard')
+
+
+def bind_input(inputs: dict, file: Path, expected: str | None = None) -> None:
+    file = file.resolve()
+    sha = digest(file)
+    if expected is not None and sha != expected:
+        raise ValueError('Frozen selection input changed: ' + str(file))
+    inputs[str(file)] = sha
+
+
+def run(config: Path, output: Path, smoke: bool) -> None:
+    if output.exists():
+        raise FileExistsError('Use a new independent generation-guard directory')
+    policy = yaml.safe_load(config.read_text())
+    validate_policy(policy)
     study = ROOT / policy['source_study']
     inputs = {}
-
-    def bind(file: Path, expected: str | None = None) -> None:
-        file = file.resolve()
-        sha = digest(file)
-        if expected is not None and sha != expected:
-            raise ValueError('Frozen selection input changed: ' + str(file))
-        inputs[str(file)] = sha
+    bind = lambda file, expected=None: bind_input(inputs, file, expected)
 
     protocol, done, nomination, decisions, templates = [read(study / name) for name in
         ('protocol.json', 'completion.json', 'nominees.json', 'selection_decisions.json', 'autonomous_jobs.json')]
     if (done['status'] != 'complete' or done['smoke'] or nomination['smoke']
+            or protocol['policy'].get('generation_guard')
             or nomination['status'] != 'frozen_before_test' or nomination['later_choices_used']
             or nomination['oral_used'] or decisions['later_choices_used'] or decisions['oral_used']
             or protocol['policy']['cohort'] != policy['cohort']
@@ -126,15 +137,41 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     ranking_file = Path(protocol['generation']) / 'cases.json'
     ranking_cases = read(ranking_file)['cases']
     bind(ranking_file)
+    if smoke:
+        sid = policy['subjects'][0]
+        nomination = dict(nomination, nominees=[r for r in nomination['nominees'] if r['subject'] == sid])
+        decisions = dict(decisions, decisions=[r for r in decisions['decisions'] if r['subject'] == sid])
+    confirm(config, output, policy=policy, nomination=nomination, decisions=decisions,
+            old_nomination=old_nomination, templates=templates, old_jobs=old_jobs,
+            ranking_cases=ranking_cases, inputs=inputs, smoke=smoke, before_evaluation=False)
+
+
+def confirm(config: Path, output: Path, *, policy: dict, nomination: dict,
+            decisions: dict, old_nomination: dict, templates: dict, old_jobs: list[dict],
+            ranking_cases: list[dict], inputs: dict, smoke: bool, before_evaluation: bool,
+            extra_sources: dict | None = None) -> list[dict]:
+    """Confirm a validated proposal bank before evaluation or in a saved-study audit.
+
+    The caller supplies training-only nominations and complete generation
+    templates. This function preserves those records and returns new decisions;
+    the prospective caller freezes its final parameters only after this returns.
+    """
+    if output.exists():
+        raise FileExistsError('Use a new independent generation-guard directory')
+    validate_policy(policy)
+    inputs = dict(inputs)
+    bind = lambda file, expected=None: bind_input(inputs, file, expected)
     previous = {(r['subject'], r['arm']): r for r in old_nomination['nominees']}
     nominated = {(r['subject'], r['arm']): r for r in nomination['nominees']}
-    expected = {(sid, arm) for sid in policy['subjects'] for arm in policy['variants']}
+    selected_subjects = sorted({r['subject'] for r in nomination['nominees']}) if smoke else policy['subjects']
+    if not set(selected_subjects) <= set(policy['subjects']):
+        raise ValueError('Confirmation participants differ from the registered policy')
+    expected = {(sid, arm) for sid in selected_subjects for arm in policy['variants']}
     if ({(d['subject'], d['arm']) for d in decisions['decisions']} != expected
             or len(decisions['decisions']) != len(expected) or set(nominated) != expected
             or len(nomination['nominees']) != len(expected)):
         raise ValueError('Selection records must cover every participant/model once')
-    selected_subjects = policy['subjects'][:1] if smoke else policy['subjects']
-    hashes = dict(generation.sources(), **{ENTRY: digest(ROOT / ENTRY)})
+    hashes = {**generation.sources(), **(extra_sources or {}), ENTRY: digest(ROOT / ENTRY)}
     cases, jobs, active_decisions = [], [], []
     for sid in selected_subjects:
         forbidden = {seed for c in ranking_cases if c['subject'] == sid for seed in c['seeds']}
@@ -183,7 +220,8 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         inputs_sha256=inputs, python=sys.version,
         versions={name: importlib.metadata.version(name) for name in ('numpy', 'scipy', 'pandas', 'PyYAML')},
         decision='independent paired training Energy guard; existing study predictions and nominations remain unchanged',
-        development_review_preceded_guard=True, later_choices_read=False, oral_used=False))
+        development_review_preceded_guard=policy['cohort'] == 'development' and not before_evaluation,
+        before_evaluation=before_evaluation, later_choices_read=False, oral_used=False))
     write(output / 'cases.json', dict(cases=cases))
     generation.execute(jobs, output, 1 if smoke else policy['parallel_budget'])
     scores = [generation.combine(c, policy['features'], inputs) for c in cases]
@@ -210,8 +248,11 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     write(output / 'completion.json', dict(status='complete', smoke=smoke, groups=len(checked), cases=len(cases),
         paths=sum(len(c['seeds']) for c in cases), nominees_changed=False, later_choices_read=False, oral_used=False,
         inputs_sha256=inputs, source_sha256=hashes, decisions_sha256=digest(output / 'decisions.csv'),
-        scope='software check' if smoke else 'development confirmation after outcome diagnosis; extension evaluation pending'))
+        before_evaluation=before_evaluation,
+        scope=('software check' if smoke else 'prospective training confirmation before parameter freezing'
+               if before_evaluation else 'development confirmation after outcome diagnosis; extension evaluation pending')))
     print(pd.DataFrame(checked).to_string(index=False), flush=True)
+    return checked
 
 
 if __name__ == '__main__':

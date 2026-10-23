@@ -207,7 +207,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         rule_exponent=dict(BELIEF='delta', SLOT='delta', ENTRY='delta',
                            OUTCOME='delta+(1-delta)*current_feedback',
                            ADAPT='delta+(1-delta)*current_feedback'),
-        condition3='joint belief uses delta for rules and gamma for conditional pairings',
+        condition3='joint belief uses rule_exponent for rules and gamma for conditional pairings',
         entry_belief=dict(BELIEF='1 / active_count_after; preserve survivor odds',
                          SLOT='full workspace: preserve survivors and transfer removed mass; growth: uniform entry',
                          OUTCOME='SLOT entry; feedback-dependent rule exponent delta+(1-delta)*feedback',

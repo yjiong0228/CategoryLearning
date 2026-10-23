@@ -84,7 +84,9 @@ def combine(case: dict, features_policy: dict, inputs: dict) -> dict:
         raise ValueError('Training data changed')
     inputs[str(training)] = digest(training)
     with np.load(training) as z:
-        n = 8 if case['smoke'] else meta['training_trials']
+        # The selection smoke fixture contains four training trials; keep its
+        # boundary while also supporting the usual eight-trial prefix check.
+        n = min(8, meta['training_trials']) if case['smoke'] else meta['training_trials']
         categories, choices = z['categories'][:n], z['choices'][:n]
     kwargs = dict(n_categories=2 if meta['condition'] == 1 else 4, **features_policy)
     empirical = metrics.behavior_features(choices[None, :], categories, **kwargs)[0]

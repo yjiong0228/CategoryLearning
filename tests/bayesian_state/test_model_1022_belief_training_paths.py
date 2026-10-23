@@ -36,8 +36,10 @@ def generated(tmp_path):
     return case, policy, audit.metrics.energy_u(features, observed)
 
 
-def test_scores_pool_all_paths_without_opening_future_data(generated, monkeypatch):
+@pytest.mark.parametrize('smoke', [False, True])
+def test_scores_pool_all_paths_without_opening_future_data(generated, monkeypatch, smoke):
     case, policy, expected = generated
+    case['smoke'] = smoke
     original = np.load
 
     def guarded(path, *args, **kwargs):
@@ -46,6 +48,7 @@ def test_scores_pool_all_paths_without_opening_future_data(generated, monkeypatc
 
     monkeypatch.setattr(np, 'load', guarded)
     result = audit.combine(case, policy, {})
+    assert result['training_trials'] == 4
     assert result['paths'] == 6
     assert result['training_energy'] == expected['value']
     assert result['training_energy_mcse'] == expected['mc_se']

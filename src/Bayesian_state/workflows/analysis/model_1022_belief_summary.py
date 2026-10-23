@@ -89,6 +89,9 @@ def load_case(study: Path, nominee: dict, jobs: list[dict]) -> dict:
 def run(study: Path, output: Path) -> None:
     if output.exists():
         raise FileExistsError('Use a new summary directory')
+    cohort = read(study/'protocol.json').get('policy', {}).get('cohort', 'development')
+    if cohort not in ('development', 'extension'):
+        raise ValueError('Require a declared development or extension cohort')
     nomination = read(study/'nominees.json')
     if nomination['status'] != 'frozen_before_test' or nomination['smoke']:
         raise ValueError('Require frozen scientific pilot estimates')
@@ -139,7 +142,8 @@ def run(study: Path, output: Path) -> None:
     with (output/'completion.json').open('x') as stream:
         json.dump(dict(status='complete', cases=len(rows), source_study=str(study.resolve()),
             nominee_sha256=digest(study/'nominees.json'), summary_sha256=digest(output/'summary.csv'),
-            source_sha256=digest(Path(__file__)), scope='development pilot; Monte Carlo errors only',
+            source_sha256=digest(Path(__file__)), cohort=cohort,
+            scope=f'{cohort} evaluation; Monte Carlo errors only',
             validated='data hashes, identity/order, pre-choice probabilities, normalized matrices, complete autonomous paths'),
             stream, indent=2)
     print(table.to_string(index=False))

@@ -5,6 +5,8 @@ Eligible points lie within the declared original training-NLL tolerance.
 Independent training Energy selects one point per model. Fresh particle
 filters compare it with that model's original nominee; failure of the paired
 NLL guard retains the original point. Only then are later predictions scored.
+An optional generation_guard mapping adds fresh paired training paths before
+freezing. Both guards must pass to replace the original NLL nominee.
 This bounded selection keeps the searched candidate bank and cognitive model
 unchanged. --smoke exercises three arms on short sequences with one worker.
 """
@@ -22,6 +24,7 @@ import yaml
 
 from . import model_1022_belief_comparison as pilot
 from . import model_1022_belief_training_paths as generation
+from . import model_1022_belief_energy_guard as energy_guard
 from .model_1022_belief_summary import nll, jackknife_se
 from ...utils.seeding import stable_seed
 
@@ -32,7 +35,69 @@ SMOKE_FIXTURE = 'src/Bayesian_state/workflows/analysis/model_1022_compact_evalua
 
 def sources(v) -> dict:
     return dict(pilot.sources(v), **generation.sources(),
-                **{name: digest(ROOT / name) for name in (ENTRY, SMOKE_FIXTURE)})
+                **{name: digest(ROOT / name) for name in (ENTRY, SMOKE_FIXTURE, energy_guard.ENTRY)})
+
+
+def valid_scope(policy: dict) -> bool:
+    cohort = policy.get('cohort', 'development')
+    return (cohort in ('development', 'extension')
+            and policy['scope'] == f'{cohort}_training_likelihood_constrained_generation_selection')
+
+
+def generation_guard_policy(policy: dict, output: Path) -> dict | None:
+    """Inherit cohort and feature definitions without allowing conflicting overrides."""
+    if 'generation_guard' not in policy:
+        return None
+    supplied = policy['generation_guard']
+    required = {'protocol', 'seed', 'paths', 'chunk', 'guard_mcse_multiplier',
+                'maximum_confirmation_batches', 'acceptance'}
+    if not isinstance(supplied, dict) or set(supplied) != required:
+        raise ValueError('Generation guard must declare exactly its protocol, seeds, budget and acceptance rule')
+    result = dict(deepcopy(supplied), source_study=str(output.resolve()),
+                  scope='independent_training_generation_guard', fallback=policy['fallback'])
+    result.update({key: deepcopy(policy[key]) for key in
+                   ('subjects', 'variants', 'parallel_budget', 'features', 'cohort')})
+    energy_guard.validate_policy(result)
+    return result
+
+
+def confirm_generation(guard_policy: dict, study: Path, generated: Path,
+                       output: Path, nominees: list[dict], decisions: list[dict],
+                       templates: list[dict], inputs: dict, smoke: bool) -> None:
+    """Apply the generation decision before any final nomination or evaluation."""
+    likelihood_file = output / 'likelihood_decisions.json'
+    candidates_file = output / 'likelihood_candidates.json'
+    write(likelihood_file, dict(decisions=decisions, later_choices_used=False, oral_used=False))
+    write(candidates_file, dict(nominees=nominees, scope='provisional likelihood-guard candidates'))
+    guard_config = output / 'generation_guard_policy.yaml'
+    with guard_config.open('x') as stream:
+        yaml.safe_dump(guard_policy, stream, sort_keys=False)
+    confirmation_inputs = dict(inputs)
+    for file in (likelihood_file, candidates_file, guard_config, study / 'nominees.json',
+                 study / 'autonomous_jobs.json', generated / 'cases.json'):
+        confirmation_inputs[str(file.resolve())] = digest(file)
+    result = energy_guard.confirm(guard_config, output / 'generation_guard', policy=guard_policy,
+        nomination=dict(nominees=nominees), decisions=dict(decisions=decisions),
+        old_nomination=read(study / 'nominees.json'), templates=dict(jobs=templates),
+        old_jobs=read(study / 'autonomous_jobs.json')['jobs'],
+        ranking_cases=read(generated / 'cases.json')['cases'], inputs=confirmation_inputs,
+        smoke=smoke, before_evaluation=True, extra_sources=sources(pilot.driver.io))
+    by_key = {(r['subject'], r['arm']): r for r in result}
+    if len(by_key) != len(nominees) or set(by_key) != {(r['subject'], r['arm']) for r in nominees}:
+        raise ValueError('Generation confirmation omitted or duplicated a model case')
+    for row, decision in zip(nominees, decisions):
+        if (row['subject'], row['arm']) != (decision['subject'], decision['arm']):
+            raise ValueError('Likelihood decision order differs from the provisional candidate order')
+        checked = by_key[row['subject'], row['arm']]
+        if any(checked[key] != decision[key] for key in ('original', 'proposed')):
+            raise ValueError('Generation confirmation changed the parameter pair')
+        decision.update(likelihood_accepted=decision['accepted'], generation_accepted=checked['energy_accepted'],
+                        accepted=checked['accepted'], selected=checked['selected'],
+                        generation_guard_value=checked['guard_value'])
+        row['candidate'] = next(point for point in row['finalists'] if point['id'] == checked['selected'])
+    for name in ('completion.json', 'decisions.csv'):
+        file = output / 'generation_guard' / name
+        inputs[str(file.resolve())] = digest(file)
 
 
 def choose_energy(rows: list[dict], tolerance: float) -> dict:
@@ -147,9 +212,10 @@ def run(config: Path, generated: Path, output: Path, smoke: bool) -> None:
     policy = yaml.safe_load(config.read_text())
     if (not pilot.valid_variants(policy['variants'])
             or policy['fallback'] != 'retain_original_nll_nominee'
-            or policy['scope'] != 'development_training_likelihood_constrained_generation_selection'
+            or not valid_scope(policy)
             or not 1 <= policy['parallel_budget'] <= 128):
         raise ValueError('Require the registered balanced-selection policy')
+    guard_policy = generation_guard_policy(policy, output)
     scores, original, inputs = inspect_generation(policy, generated, smoke)
     study = ROOT / policy['source_study']
     settings = deepcopy(read(study / 'protocol.json')['settings'])
@@ -179,7 +245,8 @@ def run(config: Path, generated: Path, output: Path, smoke: bool) -> None:
         source_sha256=sources(pilot.driver.io), inputs_sha256=inputs, generation=str(generated.resolve()),
         python=sys.version, versions={name: importlib.metadata.version(name)
                                      for name in ('numpy', 'scipy', 'pandas', 'PyYAML')},
-        decision='training Energy inside original NLL tolerance, followed by an independent paired NLL guard'))
+        decision=('training Energy inside original NLL tolerance, followed by independent paired NLL'
+                  + (' and generation guards' if guard_policy else ' guard'))))
     write(output / 'energy_proposals.json', dict(proposals=proposals, candidate_scores=scores,
                                                later_choices_used=False, oral_used=False))
     stage = lambda bank, name: pilot.driver.base.stage(settings, ROOT / settings['data'], output,
@@ -206,6 +273,14 @@ def run(config: Path, generated: Path, output: Path, smoke: bool) -> None:
         chosen = new if decision['accepted'] else old
         decisions.append(dict(proposal, **decision, selected=chosen['id']))
         nominees.append(dict(subject=key[0], arm=key[1], candidate=chosen, finalists=checked[key]))
+    templates = read(study / 'autonomous_jobs.json')['jobs']
+    if guard_policy:
+        guard_templates = deepcopy(templates)
+        if smoke:
+            for job in guard_templates:
+                job['folder'] = str(Path(settings['data']) / f"subject_{job['subject']}")
+        confirm_generation(guard_policy, study, generated, output, nominees,
+                           decisions, guard_templates, inputs, smoke)
     for file, sha in inputs.items():
         if digest(Path(file)) != sha:
             raise ValueError('Selection input changed before freezing: ' + file)
@@ -213,7 +288,6 @@ def run(config: Path, generated: Path, output: Path, smoke: bool) -> None:
     write(output / 'nominees.json', dict(status='frozen_before_test', nominees=nominees, smoke=smoke,
                                         later_choices_used=False, oral_used=False))
     stage({(r['subject'], r['arm']): [r['candidate']] for r in nominees}, 'evaluate')
-    templates = read(study / 'autonomous_jobs.json')['jobs']
     jobs = []
     for row in nominees:
         sid, arm = row['subject'], row['arm']

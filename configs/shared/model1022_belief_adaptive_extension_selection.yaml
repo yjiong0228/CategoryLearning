@@ -17,3 +17,11 @@ autonomous_chunk: 4
 scope: extension_training_likelihood_constrained_generation_selection
 cohort: extension
 fallback: retain_original_nll_nominee
+generation_guard:
+  protocol: model1022_belief_adaptive_extension_energy_guard_v1
+  seed: 2026102463
+  paths: 256
+  chunk: 8
+  guard_mcse_multiplier: 2.0
+  maximum_confirmation_batches: 1
+  acceptance: energy_difference_plus_mcse_strictly_below_zero
