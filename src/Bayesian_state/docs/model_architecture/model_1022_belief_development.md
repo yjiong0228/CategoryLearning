@@ -498,7 +498,8 @@ python -m src.Bayesian_state.workflows.analysis.model_1022_belief_outcome_probe 
 当前 25 项相关测试通过，六个组合的小规模流程已完成；18 个工作任务的参数身份、机制激活
 和概率归一化检查均通过。首次流程检查发现子进程导入错误，已修复；两次软件检查记录分别
 保留在 `belief_outcome_probe_smoke_20261024_v1` 和 `belief_outcome_probe_smoke_20261024_v2`。
-完整诊断尚待完成。
+完整诊断已启动，输出位于 `results/model_1022/belief_outcome_probe_20261024_v1`；
+机制效果及是否进入独立重新拟合，等待六个组合全部完成后判断。
 
 ## 冻结后的图示与口述检查
 
@@ -590,6 +591,21 @@ SLOT 0.8123。SLOT 高于其前段静态分布对照 0.3785，并接近本轮 SU
 [覆盖表](../../../../results/model_1022/belief_balanced_oral_20261024_v1/coverage_audit_v1/coverage.csv)和
 [分解核查](../../../../results/model_1022/belief_balanced_oral_20261024_v1/coverage_audit_v1/mass_decomposition.json)。
 该检查保持口述编码、模型参数和评分分母。
+
+联合细化后的三版也已完成[精确状态重放](../../../../results/model_1022/belief_joint_capture_20261024_v1/completion.json)和
+[口述评价](../../../../results/model_1022/belief_joint_oral_20261024_v1/completion.json)。18 次滤波重放与
+各自原预测逐值相同，口述输入未参与状态计算。306 后段 255 份完整报告的功能兼容质量如下。
+
+| 本轮模型 | 中点解释 | 模拟标准误 | 相对解释 | 模拟标准误 |
+|---|---:|---:|---:|---:|
+| SUPPORT | 0.7854 | 0.0095 | 0.7856 | 0.0095 |
+| BELIEF | 0.9155 | 0.0048 | 0.9161 | 0.0047 |
+| SLOT | 0.7915 | 0.0146 | 0.7917 | 0.0146 |
+
+SLOT 的中点解释下，冲突质量为 0.0114，未确定质量为 0.1972；训练前缀静态参照的兼容
+质量为 0.3867。原冻结 SUPPORT 的相同功能指标约为 0.9068，当前 SLOT 仍有差距。
+这些数值是条件于真实作答及既往行为的口述内容兼容质量，范围保持为该开发被试。
+联合细化选定 SLOT 的全部 6 次评价滤波及 128 条自主路径中，零信念入场计数为 0。
 
 ## 参数搜索与数值核查
 
