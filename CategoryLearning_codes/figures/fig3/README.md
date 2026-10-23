@@ -1,5 +1,17 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1022估参与学习过程检验（2026-10-23）
+
+[51张图的总入口](../outputs/fig3/model1023_estimation_reliability_20261023_v1/index.html) ·
+[研究结论与复现](../../../src/Bayesian_state/docs/model_architecture/model_1022_compact_refit.md)。
+固定简化机制，完成五条模拟序列与六名被试的联合参数搜索、独立复核及冻结评价。
+六人图保留每个参数点全部128条自主路径、后期选择预测、逐题口述支持、规则状态和搜索过程。
+209、309的两类后期行为评分均改善；规则内容与过程参数的稳定程度分别报告。
+口述保留两种既定读法、功能与结构评价、完整报告分母及覆盖限制。
+全部图为183毫米宽、300 dpi的PNG审阅稿，来源、尺寸及显示已核对。
+入口为`model1023_estimation_reliability`、`model1023_recovery_candidates`和`model1023_frozen_evaluate`，
+均位于`CategoryLearning_codes.figures.fig3`。
+
 ## Model 1021的H模块简化研究（2026-10-22）
 
 [三人主比较图与源表](../outputs/fig3/model1021_simplification_20261022_v2/index.html) ·
