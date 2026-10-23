@@ -1,0 +1,17 @@
+protocol: model1022_belief_admission_retention_probe_v1
+seed: 2026102423
+subjects: [306]
+mechanisms: [SUPPORT, SLOT, OUTCOME, ENTRY, ADAPT]
+points:
+  REFERENCE:
+    study: results/model_1022/belief_refinement_20261023_v1
+    arm: SUPPORT
+  JOINT:
+    study: results/model_1022/belief_joint_refinement_20261024_v1
+    arm: SLOT
+parallel_budget: 128
+budgets:
+  evaluate: {particles: 256, seeds: 4}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: fixed_parameter_outcome_retention_development_diagnosis

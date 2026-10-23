@@ -7,7 +7,8 @@ from src.Bayesian_state.workflows.analysis import model_1022_belief_outcome_prob
 
 def test_routing_preserves_cells_and_restores_launcher(monkeypatch):
     jobs = [dict(model=cell, candidate={'id': cell}, target='/tmp/' + cell)
-            for cell in ('SUPPORT', 'SLOT_AT_REFERENCE', 'OUTCOME_AT_REFERENCE', 'OUTCOME_AT_JOINT')]
+            for cell in ('SUPPORT', 'SLOT_AT_REFERENCE', 'OUTCOME_AT_REFERENCE', 'OUTCOME_AT_JOINT',
+                         'ENTRY_AT_JOINT', 'ADAPT_AT_REFERENCE')]
     before, captured = deepcopy(jobs), []
     entry = probe.pilot.ENTRY
     def execute(mapped, output, budget):
@@ -20,7 +21,7 @@ def test_routing_preserves_cells_and_restores_launcher(monkeypatch):
     for original, routed in zip(before, captured):
         mechanism = original['model'].split('_AT_')[0]
         assert routed['belief_variant'] == mechanism
-        assert routed['model'] == ('SLOT' if mechanism == 'OUTCOME' else mechanism)
+        assert routed['model'] == ('SUPPORT' if mechanism == 'SUPPORT' else 'SLOT')
         assert routed['diagnosis_cell'] == original['model']
         assert routed['candidate'] == original['candidate']
         assert routed['target'] == original['target']

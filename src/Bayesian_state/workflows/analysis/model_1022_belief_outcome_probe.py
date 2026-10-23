@@ -5,6 +5,9 @@ shared numerical workers, likelihood and autonomous simulator. OUTCOME adds
 outcome-gated rule forgetting to SLOT. Each mechanism receives both unchanged
 parameter points, matched seeds and equal simulation budgets. This is a
 development diagnosis, not independent refitting or held-out model validation.
+The optional five-mechanism protocol adds ENTRY (error-dependent admission)
+and ADAPT (both outcome retention and error-dependent admission). This gives
+the two-by-two belief-mechanism comparison plus the SUPPORT reference.
 """
 from __future__ import annotations
 
@@ -27,17 +30,18 @@ spec.loader.exec_module(pilot)
 read, write, digest = pilot.read, pilot.write, pilot.digest
 ENTRY = str(Path(__file__).resolve().relative_to(ROOT))
 ADAPTER = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_outcome_retention.py'
-MECHANISMS = ('SUPPORT', 'SLOT', 'OUTCOME')
+ENTRY_ADAPTER = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_error_entry.py'
+MECHANISMS = ('SUPPORT', 'SLOT', 'OUTCOME', 'ENTRY', 'ADAPT')
 
 
 def sources(v) -> dict:
-    return dict(pilot.sources(v), **{name: digest(ROOT / name) for name in (ENTRY, ADAPTER)})
+    return dict(pilot.sources(v), **{name: digest(ROOT / name) for name in (ENTRY, ADAPTER, ENTRY_ADAPTER)})
 
 
 def worker(file: Path) -> None:
     job = read(file)
     variant = job['belief_variant']
-    expected = 'SLOT' if variant == 'OUTCOME' else variant
+    expected = 'SUPPORT' if variant == 'SUPPORT' else 'SLOT'
     if (variant not in MECHANISMS or job['comparison_arm'] != expected
             or job['source_sha256'] != sources(pilot.driver.io)):
         raise ValueError('Outcome probe mechanism or scientific source differs')
@@ -45,7 +49,7 @@ def worker(file: Path) -> None:
 
     def load(name, path):
         module = original_load(name, path)
-        if variant == 'OUTCOME' and path == pilot.ADAPTER:
+        if variant in ('OUTCOME', 'ADAPT') and path == pilot.ADAPTER:
             outcome = original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_outcome_retention',
                                     ADAPTER)
             original = module.compact_belief
@@ -57,6 +61,18 @@ def worker(file: Path) -> None:
                     yield audit
 
             module.compact_belief = install
+        if variant in ('ENTRY', 'ADAPT') and path == pilot.SLOT:
+            admission = original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_error_entry',
+                                      ENTRY_ADAPTER)
+            original_slot = module.belief_slot_transfer
+
+            @contextmanager
+            def install_entry(cls):
+                with original_slot(cls) as audit, admission.belief_error_entry(cls) as entries:
+                    audit['error_entry'] = entries
+                    yield audit
+
+            module.belief_slot_transfer = install_entry
         return module
 
     pilot.driver.base.load = load
@@ -74,7 +90,7 @@ def execute(jobs: list[dict], output: Path, budget: int) -> None:
         if variant not in MECHANISMS:
             raise ValueError('Unknown outcome-probe mechanism')
         job.update(diagnosis_cell=job['model'], belief_variant=variant,
-                   model='SLOT' if variant == 'OUTCOME' else variant)
+                   model='SUPPORT' if variant == 'SUPPORT' else 'SLOT')
     original_entry = pilot.ENTRY
     try:
         pilot.ENTRY = ENTRY
@@ -90,9 +106,10 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         raise FileExistsError('Use a new outcome-probe directory')
     policy = yaml.safe_load(config.read_text())
     if (policy['scope'] != 'fixed_parameter_outcome_retention_development_diagnosis'
-            or policy['mechanisms'] != list(MECHANISMS) or len(policy['points']) != 2
+            or policy['mechanisms'] not in (list(MECHANISMS[:3]), list(MECHANISMS))
+            or len(policy['points']) != 2
             or not 1 <= policy['parallel_budget'] <= 128):
-        raise ValueError('Require the registered six-cell development diagnosis')
+        raise ValueError('Require the registered six-cell or ten-cell development diagnosis')
     nominees, templates, inputs, settings = [], {}, {}, None
     for index, (label, point) in enumerate(policy['points'].items()):
         folder = ROOT / point['study']
@@ -112,7 +129,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
             selected, = [r for r in frozen['nominees'] if r['subject'] == sid and r['arm'] == point['arm']]
             template = next(j for j in read(folder / 'autonomous_jobs.json')['jobs']
                             if j['subject'] == sid and j['model'] == point['arm'])
-            for mechanism in MECHANISMS:
+            for mechanism in policy['mechanisms']:
                 cell = 'SUPPORT' if index == 0 and mechanism == 'SUPPORT' else f'{mechanism}_AT_{label}'
                 nominees.append(dict(subject=sid, arm=cell, mechanism=mechanism, parameter_source=point,
                                      candidate=deepcopy(selected['candidate'])))
@@ -135,7 +152,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         python=sys.version,
         versions={name: importlib.metadata.version(name) for name in ('numpy', 'scipy', 'pandas', 'PyYAML')},
         development_later_results_informed_hypothesis=True, parameters_refitted=False,
-        decision='All six fixed-parameter cells declared before simulation; no candidate selection'))
+        decision='All fixed-parameter cells declared before simulation; no candidate selection'))
     write(output / 'nominees.json', dict(status='frozen_before_test', nominees=nominees, smoke=smoke,
                                         later_choices_used=False, oral_used=False))
     pilot.driver.base.stage(settings, ROOT / settings['data'], output,
