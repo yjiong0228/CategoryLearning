@@ -670,6 +670,18 @@ ADAPT 尚未达到整体目标，预定的受似然约束生成选参继续执�
 [原支持版比较](../../../../results/model_1022/belief_adaptive_refit_original_support_20261024_v1/comparisons.csv)和
 [拟合核查](../../../../results/model_1022/belief_adaptive_refit_20261024_v1/fit_audit_v1/completion.json)。
 
+扩展检查的配置已准备：
+[`独立拟合`](../../../../configs/shared/model1022_belief_adaptive_extension_refit.yaml)、
+[`训练自主生成`](../../../../configs/shared/model1022_belief_adaptive_extension_generation.yaml)与
+[`生成选参`](../../../../configs/shared/model1022_belief_adaptive_extension_selection.yaml)。
+它们分别在 110、209、309 上比较 SUPPORT、SLOT 和 ADAPT，搜索预算、参数范围及两种选参
+规则沿用本轮开发配置。共同起点包含每位扩展被试原支持版的训练估计，该点同时进入共同确认。
+三人的 24 个共同起点、训练文件校验值和配置间的一致性已通过准备检查；后段行为及口述效果
+尚未读取。此前开发过程对这些被试的影响未知，因此结果将称为扩展检查。
+
+这些配置将在开发组的生成选参及口述检查完成、方案冻结后启动。执行前还需接通生成选参入口
+的扩展组范围标记，并运行短序列软件验证。当前完成状态仅涵盖配置准备，完整扩展拟合尚未执行。
+
 ## 冻结后的图示与口述检查
 
 行为图沿用 `CategoryLearning_codes.figures.fig3.model1022_belief_comparison`，自动读取结果中的

@@ -1,0 +1,19 @@
+protocol: model1022_belief_adaptive_extension_selection_v1
+seed: 2026102457
+source_study: results/model_1022/belief_adaptive_extension_refit_20261024_v1
+subjects: [110, 209, 309]
+variants: [SUPPORT, SLOT, ADAPT]
+parallel_budget: 128
+generation_confirmation_paths: 256
+generation_chunk: 8
+features: {block_width: 32, temporal_weight: 0.5}
+training_nll_tolerance: 0.02
+guard_mcse_multiplier: 2.0
+budgets:
+  guard: {particles: 1024, seeds: 8}
+  evaluate: {particles: 512, seeds: 6}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: extension_training_likelihood_constrained_generation_selection
+cohort: extension
+fallback: retain_original_nll_nominee
