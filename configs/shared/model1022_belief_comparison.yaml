@@ -1,0 +1,20 @@
+protocol: model1022_belief_comparison_pilot_v1
+seed: 2026102317
+subjects: [108, 205, 306]
+variants: [SUPPORT, BELIEF]
+base_config: configs/shared/model1021_simplification.yaml
+warm_fit: results/model_1022/compact_refit_20261022_v1/human_fit
+parallel_budget: 128
+initial_candidates: 12
+refinement_candidates: 8
+elites: 2
+finalists_per_arm: 2
+budgets:
+  screen: {particles: 64, seeds: 2}
+  refine: {particles: 64, seeds: 2}
+  confirmation: {particles: 128, seeds: 3}
+  evaluate: {particles: 256, seeds: 4}
+autonomous_paths: 48
+autonomous_chunk: 4
+entry_belief: uniform_share_after_replacement
+scope: development_pilot_independent_refits

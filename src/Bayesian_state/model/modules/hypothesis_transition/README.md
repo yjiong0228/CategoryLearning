@@ -861,3 +861,10 @@ prior assignment，还是二者；再明确 trial-level policy state 是不存�
 固定参数对照后，`workflows.analysis.model_0923_recalled_search_refit`以相同预算比较POOL和SEARCH，
 仅用训练选择估计参数。`workflows.analysis.model_0923_recalled_memory_recovery`进一步检查两种记忆保持率，
 该恢复阶段固定其余参数为生成值。各入口的协议、科学结果和限制保存在持续研究记录中。
+
+`compact_belief.py`提供保留 Model 1022 各模块的规则信念对照。记忆模块的规则后验用于作答、
+搜索父规则、容量替换及精度继承；新规则获得最终集合内的一份均匀先验质量，旧规则按原后验
+比例分配剩余质量。条件3分别保留规则与配对知识，再更新同一联合信念。参数数量保持八项／九项。
+配置、数据边界与评价解释见[信念对照说明](../../../docs/model_architecture/model_1022_belief_comparison.md)。
+运行入口为`python -m src.Bayesian_state.workflows.analysis.model_1022_belief_comparison`；
+使用独立工作进程启用，输出目录必须为新目录。
