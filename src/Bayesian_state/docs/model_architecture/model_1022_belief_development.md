@@ -596,6 +596,18 @@ Energy 对应值为 0.01165、0.01458，均进入预定的工作容忍范围。�
 核对实际启用的附加模块。两个审查版本均保留，最终记录见
 [诊断核查](../../../../results/model_1022/belief_admission_probe_20261024_v1/diagnostics_v2/completion.json)。
 
+全部十个组合的[机制对照图](../../../../CategoryLearning_codes/figures/outputs/fig3/model1022_belief_mechanisms_20261024_v3/mechanism_scores.png)
+把训练 NLL、后段 NLL 与后段自主 Energy 并列显示。每行使用同一组固定参数，五个机制均
+保留；误差棒为两倍模拟标准误，按完整滤波或完整自主路径计算。绘图从保存的概率和路径
+重新计算了 30 个分数及其标准误，全部与诊断表一致。图中组合修改的后段收益与训练似然
+代价同时呈现，独立重新拟合随后检验这一权衡。
+
+```bash
+python -m CategoryLearning_codes.figures.fig3.model1022_belief_mechanisms \
+  --study results/model_1022/belief_admission_probe_20261024_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/model1022_belief_mechanisms_20261024_v3
+```
+
 ## 反馈调节信念版的独立重新拟合
 
 本轮在 108、205、306 上分别拟合 SUPPORT、SLOT 和 ADAPT。每人每版使用 24 个共同起点，
