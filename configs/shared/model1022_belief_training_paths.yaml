@@ -1,0 +1,11 @@
+protocol: model1022_belief_training_paths_v1
+seed: 2026102403
+source_study: results/model_1022/belief_refinement_20261023_v1
+subjects: [108, 205, 306]
+smoke_subject: 306
+variants: [SUPPORT, BELIEF, SLOT]
+parallel_budget: 128
+paths: 128
+chunk: 4
+features: {block_width: 32, temporal_weight: 0.5}
+scope: training_finalist_generation_diagnosis
