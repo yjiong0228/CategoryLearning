@@ -1,5 +1,6 @@
 """Audit participant identities and seed banks independently of saved scores."""
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -68,3 +69,52 @@ def test_identity_error_is_not_hidden_by_recomputed_hashes(fitted, tmp_path, cha
     put(score_file, score)
     with pytest.raises((ValueError, AssertionError)):
         audit.run(fitted, tmp_path / 'invalid', ['screen'])
+
+
+def use_confirmation_first(study):
+    protocol = audit.read(study / 'protocol.json')
+    protocol['settings']['budgets'] = {'confirmation': protocol['settings']['budgets']['screen']}
+    protocol['policy'] = dict(variants=['SUPPORT', 'SLOT'], expected_candidates_per_subject=1)
+    put(study / 'protocol.json', protocol)
+    complete = audit.read(study / 'screen_completion.json')
+    for group in complete['groups']:
+        for row in group['rows']:
+            target = Path(row['score_file']).with_suffix('.npz')
+            with np.load(target) as z:
+                p = z['observed_probability']
+            seeds = [audit.stable_seed(dict(protocol='audit_test', base=3, stage='confirmation',
+                                           subject=108, repeat=i)) for i in range(2)]
+            np.savez_compressed(target, observed_probability=p, seeds=seeds)
+            score = audit.read(target.with_suffix('.json'))
+            score['predictions_sha256'] = audit.digest(target)
+            put(target.with_suffix('.json'), score)
+    put(study / 'confirmation_completion.json', complete)
+
+
+def test_first_stage_can_confirm_a_registered_fixed_bank(fitted, tmp_path):
+    use_confirmation_first(fitted)
+    output = tmp_path / 'audit'
+    audit.run(fitted, output, ['confirmation'])
+    assert audit.read(output / 'completion.json')['candidate_evaluations'] == 2
+
+
+def test_first_confirmation_cannot_omit_the_same_point_from_both_arms(fitted, tmp_path):
+    use_confirmation_first(fitted)
+    starting = audit.read(fitted / 'starting_banks.json')
+    for group in starting['banks']:
+        group['candidates'].append(dict(id='missing', hyperparams={'x': 2}))
+    put(fitted / 'starting_banks.json', starting)
+    protocol = audit.read(fitted / 'protocol.json')
+    protocol['policy']['expected_candidates_per_subject'] = 2
+    put(fitted / 'protocol.json', protocol)
+    with pytest.raises(ValueError, match='First fitting stage'):
+        audit.run(fitted, tmp_path / 'invalid', ['confirmation'])
+
+
+def test_candidate_labels_do_not_hide_changed_starting_parameters(fitted, tmp_path):
+    use_confirmation_first(fitted)
+    starting = audit.read(fitted / 'starting_banks.json')
+    starting['banks'][0]['candidates'][0]['hyperparams']['x'] = 2
+    put(fitted / 'starting_banks.json', starting)
+    with pytest.raises(ValueError, match='First fitting stage'):
+        audit.run(fitted, tmp_path / 'invalid', ['confirmation'])

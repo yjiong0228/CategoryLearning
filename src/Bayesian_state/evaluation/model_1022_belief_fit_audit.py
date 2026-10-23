@@ -3,7 +3,9 @@
 Use --study FIT --output NEW --stages screen refine_1. Every selected stage
 must be complete. Checks cover matched starting/confirmation banks, equal
 candidate budgets, data boundaries, source snapshots, independent seed banks,
-and scores recomputed from saved probabilities. Seed errors describe numerical
+and scores recomputed from saved probabilities. The first declared fitting
+stage must evaluate the complete starting bank with its exact parameter values,
+including workflows that start with confirmation. Seed errors describe numerical
 uncertainty only; the two-seed screening estimates remain coarse diagnostics.
 """
 from __future__ import annotations
@@ -52,10 +54,17 @@ def run(study: Path, output: Path, stages: list[str]) -> None:
     starting = read(study / 'starting_banks.json')
     for name, sha in starting['inputs_sha256'].items():
         bind(name, sha)
-    initial = {(r['subject'], r['arm']): [p['id'] for p in r['candidates']] for r in starting['banks']}
+    initial = {(r['subject'], r['arm']): {p['id']: p['hyperparams'] for p in r['candidates']}
+               for r in starting['banks']}
     keys = {(s, a) for s in settings['subjects'] for a in policy['variants']}
-    if set(initial) != keys:
+    if set(initial) != keys or len(starting['banks']) != len(keys):
         raise ValueError('Starting banks omit a declared participant/model case')
+    declared_count = policy.get('initial_candidates', policy.get('expected_candidates_per_subject'))
+    for group in starting['banks']:
+        bank = initial[group['subject'], group['arm']]
+        if (len(bank) != len(group['candidates'])
+                or (declared_count is not None and len(bank) != declared_count)):
+            raise ValueError('Starting candidate count differs from the declared budget')
     seen, seed_banks, points, budgets = {key: set() for key in keys}, {}, [], []
     for stage in stages:
         completion = study / (stage + '_completion.json')
@@ -76,6 +85,10 @@ def run(study: Path, output: Path, stages: list[str]) -> None:
             ids = {r['id'] for r in rows}
             if len(ids) != len(rows):
                 raise ValueError('A candidate was counted twice within a stage')
+            if stage == expected_order[0]:
+                actual = {r['id']: r['hyperparams'] for r in rows}
+                if actual != initial[key]:
+                    raise ValueError('First fitting stage differs from the declared starting bank')
             if stage == 'screen':
                 if len(rows) != policy['initial_candidates'] or ids != set(initial[key]):
                     raise ValueError('Initial candidate budget or identity changed')
