@@ -702,7 +702,19 @@ ADAPT 尚未达到整体目标，预定的受似然约束生成选参继续执�
 对每组原 NLL 参数及已提议参数分别使用 256 条新种子路径，两点共用对应种子。仅当提议参数
 相对原参数的训练 Energy 差值加两倍配对模拟标准误小于零时，接受该参数；否则保留原 NLL
 参数。九组使用相同规则，最多执行一批复核。该步骤在查看本轮开发结果后提出，属于开发
-阶段的方法调整；其推广效果仍需冻结后的扩展检查。当前已登记复核规则，执行入口尚待接入。
+阶段的方法调整；其推广效果仍需冻结后的扩展检查。
+
+执行入口已接入共享的训练生成和 Energy 评分函数，使用新输出目录保存两组参数的全部路径。
+24 项相关检查通过，覆盖配对误差、表面改善但误差较大的拒绝决定、原似然约束的保留，以及
+重复种子的拒绝。108 的短序列运行完成三版模型、六组参数和 24 条八题路径，输入校验值与
+原参数记录保持一致。首次短序列发现生成任务缺少记录标识，补齐后在新目录完成验证，原失败
+记录保留。短序列检查完成，完整的独立训练生成复核尚待运行。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1022_belief_energy_guard \
+  --config configs/shared/model1022_belief_adaptive_energy_guard.yaml \
+  --output results/model_1022/belief_adaptive_energy_guard_20261024_v1
+```
 
 扩展检查的配置已准备：
 [`独立拟合`](../../../../configs/shared/model1022_belief_adaptive_extension_refit.yaml)、
