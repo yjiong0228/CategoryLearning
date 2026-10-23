@@ -1,0 +1,12 @@
+protocol: model1022_belief_slot_cross_v1
+seed: 2026102401
+source_study: results/model_1022/belief_refinement_20261023_v1
+subjects: [306]
+mechanisms: [SUPPORT, SLOT]
+parameter_sources: [SUPPORT, SLOT]
+parallel_budget: 64
+budgets:
+  evaluate: {particles: 256, seeds: 4}
+autonomous_paths: 128
+autonomous_chunk: 4
+scope: fixed_parameter_development_diagnosis

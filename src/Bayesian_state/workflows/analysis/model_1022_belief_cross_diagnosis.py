@@ -1,8 +1,10 @@
-"""Cross frozen SUPPORT/BELIEF parameters with both mechanisms.
+"""Cross frozen parameters with two configured mechanisms.
 
 Run --config YAML --output NEW [--smoke]. Every original training nominee is
 evaluated under both mechanisms with matched filter and autonomous seeds.
-The four cells separate parameter changes from mechanism changes. No fitting
+The optional mechanisms and parameter_sources YAML lists each name two arms
+(SUPPORT, BELIEF or SLOT); both default to SUPPORT/BELIEF. The four cells
+separate parameter changes from mechanism changes. No fitting
 or mechanism selection occurs here; all later observations are development
 data. Cognitive code and audited prediction loading are shared with the pilot.
 """
@@ -10,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from functools import partial
 import importlib.metadata
 from pathlib import Path
 import sys
@@ -29,21 +32,36 @@ CELLS = {f'{mechanism}_AT_{origin}': (mechanism, origin)
          for mechanism in ('SUPPORT', 'BELIEF') for origin in ('SUPPORT', 'BELIEF')}
 
 
+def cell_spec(policy: dict) -> dict[str, tuple[str, str]]:
+    """Keep mechanism and parameter origin independent in a four-cell design."""
+    mechanisms = policy.get('mechanisms', ['SUPPORT', 'BELIEF'])
+    origins = policy.get('parameter_sources', ['SUPPORT', 'BELIEF'])
+    for names in (mechanisms, origins):
+        if len(names) != 2 or len(set(names)) != 2 or not set(names) <= {'SUPPORT', 'BELIEF', 'SLOT'}:
+            raise ValueError('Require two distinct supported arms on each crossed factor')
+    return {f'{mechanism}_AT_{origin}': (mechanism, origin)
+            for mechanism in mechanisms for origin in origins}
+
+
 def sources(v) -> dict:
     return dict(pilot.sources(v), **{ENTRY: digest(ROOT / ENTRY)})
 
 
-def execute(jobs: list[dict], output: Path, budget: int) -> None:
+def execute(jobs: list[dict], output: Path, budget: int, cells: dict | None = None) -> None:
+    cells = CELLS if cells is None else cells
     numerical = deepcopy(jobs)
     for job in numerical:
         job['diagnosis_cell'] = job['model']
-        job['model'] = CELLS[job['model']][0]
+        job['model'] = cells[job['model']][0]
     pilot.execute(numerical, output, budget)
 
 
 def summarize(output: Path) -> None:
     """Use complete paired repeats for numerical uncertainty and factorial effects."""
     nomination = read(output / 'nominees.json')
+    cells = cell_spec(read(output / 'protocol.json')['policy'])
+    mechanisms = list(dict.fromkeys(mechanism for mechanism, _ in cells.values()))
+    origins = list(dict.fromkeys(origin for _, origin in cells.values()))
     if nomination['smoke'] or nomination['status'] != 'frozen_before_test':
         raise ValueError('Scientific summary requires frozen full-sequence cells')
     jobs = read(output / 'autonomous_jobs.json')['jobs']
@@ -61,7 +79,7 @@ def summarize(output: Path) -> None:
         score = energy_u(f, empirical)
         present = auto['present'][:, later].astype(bool)
         p = pred['observed_probability'][:, later]
-        rows.append(dict(subject=sid, cell=arm, mechanism=CELLS[arm][0], parameter_source=CELLS[arm][1],
+        rows.append(dict(subject=sid, cell=arm, mechanism=cells[arm][0], parameter_source=cells[arm][1],
             candidate=nominee['candidate']['id'], condition=meta['condition'],
             training_nll=nll(pred['observed_probability'][:, :cut]), later_nll=nll(p),
             later_nll_mcse=jackknife_se(np.array([nll(np.delete(p, i, 0)) for i in range(len(p))])),
@@ -74,10 +92,10 @@ def summarize(output: Path) -> None:
             target_drops_per_path=float(auto['target_capacity_dropped'][:, later].sum(1).mean())))
     contrasts = []
     for sid in sorted({s for s, _ in cases}):
-        pairs = [(f'mechanism_at_{origin}', f'SUPPORT_AT_{origin}', f'BELIEF_AT_{origin}')
-                 for origin in ('SUPPORT', 'BELIEF')]
-        pairs += [(f'parameters_under_{mechanism}', f'{mechanism}_AT_SUPPORT', f'{mechanism}_AT_BELIEF')
-                  for mechanism in ('SUPPORT', 'BELIEF')]
+        pairs = [(f'mechanism_at_{origin}', f'{mechanisms[0]}_AT_{origin}', f'{mechanisms[1]}_AT_{origin}')
+                 for origin in origins]
+        pairs += [(f'parameters_under_{mechanism}', f'{mechanism}_AT_{origins[0]}', f'{mechanism}_AT_{origins[1]}')
+                  for mechanism in mechanisms]
         for name, left, right in pairs:
             a, b = cases[sid, left], cases[sid, right]
             np.testing.assert_array_equal(a['prediction']['seeds'], b['prediction']['seeds'])
@@ -110,6 +128,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     if output.exists():
         raise FileExistsError('Use a new cross-diagnosis directory')
     policy = yaml.safe_load(config.read_text())
+    cells = cell_spec(policy)
     if policy['scope'] != 'fixed_parameter_development_diagnosis':
         raise ValueError('Require the fixed-parameter diagnosis policy')
     source = ROOT / policy['source_study']
@@ -121,7 +140,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     precision = deepcopy(settings['arms']['SUPPORT'])
     settings.update({k: deepcopy(policy[k]) for k in ('protocol', 'seed', 'subjects', 'parallel_budget',
                                                      'budgets', 'autonomous_paths', 'autonomous_chunk')})
-    settings['arms'] = {cell: deepcopy(precision) for cell in CELLS}
+    settings['arms'] = {cell: deepcopy(precision) for cell in cells}
     if smoke:
         settings['subjects'] = settings['subjects'][:1]
         settings['parallel_budget'] = 1
@@ -129,11 +148,13 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     nominees = []
     for subject in settings['subjects']:
         old = {r['arm']: r['candidate'] for r in prior['nominees'] if r['subject'] == subject}
-        for cell, (mechanism, origin) in CELLS.items():
+        for cell, (mechanism, origin) in cells.items():
+            if origin not in old:
+                raise ValueError(f'Missing frozen {origin} parameters for subject {subject}')
             nominees.append(dict(subject=subject, arm=cell, mechanism=mechanism,
                                  parameter_source=origin, candidate=deepcopy(old[origin])))
     output.mkdir(parents=True)
-    pilot.driver.base.source_hashes, pilot.driver.base.execute = sources, execute
+    pilot.driver.base.source_hashes, pilot.driver.base.execute = sources, partial(execute, cells=cells)
     pilot.driver.base.archive(output, config, sources(pilot.driver.io))
     write(output / 'protocol.json', dict(settings=settings, policy=policy, smoke=smoke,
         source_sha256=sources(pilot.driver.io), source_nomination_sha256=digest(source / 'nominees.json'),
@@ -161,7 +182,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
                 arm_settings=precision, seeds=seeds[i:i+width], smoke=smoke, source_sha256=sources(pilot.driver.io),
                 audit=str(audit), audit_sha256=digest(audit), target=str((output / 'autonomous' / name).resolve())))
     write(output / 'autonomous_jobs.json', dict(jobs=jobs))
-    execute(jobs, output, settings['parallel_budget'])
+    execute(jobs, output, settings['parallel_budget'], cells)
     if smoke:
         write(output / 'completion.json', dict(status='complete', smoke=True,
               scope='eight-trial filters and sixteen-trial paths; scientific diagnosis pending'))
