@@ -55,6 +55,23 @@ def summarize(evaluation: Path,config: Path,output: Path) -> None:
     scores,curves,paths,states,parameters,state_trials=[],[],[],[],[],[]
     knives,oral_groups,identities,conditional_states={},{},{},{}
     for case in cases:
+        if case['arm']!='previous':
+            estimated=Path(case['case']['output'])
+            estimated_done=read(bind(estimated/'completion.json'))
+            estimated_nominee=read(bind(estimated/'nominees.json',estimated_done['nomination_sha256']))
+            selected=estimated_nominee['nominee']['candidate']
+            if (estimated_done['status']!='complete' or estimated_nominee['smoke']
+                or estimated_nominee['status']!='frozen_before_test'
+                or estimated_done['test_choices_used'] or selected['id']!=case['candidate']
+                or selected['hyperparams']!=case['candidate_hyperparams']):
+                raise ValueError('New estimate differs from the frozen prefix-only selection')
+            if case.get('reuse_archive',False):
+                proof=case['reuse_proof']
+                if (case['response_exponent']!=1. or proof['status']!='verified'
+                    or Path(proof['evaluation'])!=Path(case['evaluation'])
+                    or Path(case['evaluation'])!=Path(case['reference_evaluation'])):
+                    raise ValueError('Archived reuse requires the identical original-readout point')
+                verify(proof['inputs_sha256']);inputs.update(proof['inputs_sha256'])
         own=Path(case['evaluation']);frozen_protocol=read(bind(own/'protocol.json'))
         complete=read(bind(own/'completion.json'))
         fit=Path(frozen_protocol['fit']);frozen=read(bind(fit/'nominees.json',frozen_protocol['nomination_sha256']))
@@ -62,7 +79,8 @@ def summarize(evaluation: Path,config: Path,output: Path) -> None:
         if complete['status']!='complete' or frozen['smoke'] or fit_done['test_choices_used']:
             raise ValueError('Evaluation requires frozen prefix-only estimates')
         point=frozen['nominee']['candidate']
-        if point['hyperparams']!=case['candidate_hyperparams']:raise ValueError('Frozen parameters changed')
+        if point['id']!=case['candidate'] or point['hyperparams']!=case['candidate_hyperparams']:
+            raise ValueError('Frozen parameters changed')
         banks,records={},{}
         for role in ('conditional','autonomous'):
             record,=read(bind(own/role/'evaluation.json'))['rows']
@@ -85,7 +103,7 @@ def summarize(evaluation: Path,config: Path,output: Path) -> None:
             record=read(bind(file));job=read(bind(record['original_job'],record['original_job_sha256']))
             bind(file.with_suffix('.npz'),record['array_sha256'])
             if record['candidate']!=point or record['particles']!=1024:raise ValueError('Oral capture identity changed')
-            if case['arm']!='previous':
+            if case['arm']!='previous' and not case.get('reuse_archive',False):
                 bridge=read(bind(Path(job['target']).with_suffix('.response_evaluation.json')))
                 if bridge['response_exponent']!=case['response_exponent'] or bridge['additional_filters_for_capture']!=0:
                     raise ValueError('Response observation bridge differs from fitted arm')
@@ -157,6 +175,7 @@ def summarize(evaluation: Path,config: Path,output: Path) -> None:
     verify(inputs)
     write(output/'completion.json',dict(status='complete',evaluation=str(evaluation.resolve()),
         fitting_phase=protocol['fitting_phase'],cases=len(cases),participants=len({c['subject'] for c in cases}),
+        archived_reuses=sum(c.get('reuse_archive',False) for c in cases),
         inputs_sha256=inputs,oral_use='Frozen noisy external compatibility; explicit category-power observation bridge',
         data_scope='Development participants; original train/evaluation boundaries retained',
         artifacts_sha256={str(p.relative_to(output)):digest(p) for p in output.rglob('*.csv')}))

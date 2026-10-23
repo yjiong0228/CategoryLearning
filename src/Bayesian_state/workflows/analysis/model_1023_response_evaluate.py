@@ -4,12 +4,15 @@ Run --study COMPLETE_RESPONSE_REFIT --output NEW [--smoke]. Selected parameters
 remain fixed. The original conditional filter captures report support without
 oral inputs; complete autonomous paths use generated task feedback. Original
 archived seed banks pair both response mechanisms and the previous references.
+Original-readout points with identical scientific jobs reuse archived results;
+the new fit identity and the complete reuse checks remain in the case manifest.
 """
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor,as_completed
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -26,6 +29,66 @@ read,write,digest,load=dynamics.read,dynamics.write,dynamics.digest,dynamics.loa
 EVALUATOR='src/Bayesian_state/workflows/analysis/model_1022_compact_evaluate.py'
 BRIDGE='src/Bayesian_state/evaluation/oral/response_basis.py'
 COLLECTOR='src/Bayesian_state/evaluation/oral/decision_basis.py'
+
+
+def scientific_job(job: dict) -> dict:
+    """Remove output locations and bookkeeping, retaining every other input."""
+    bookkeeping={'name','target','case_id','source_sha256','evaluation_route_sources',
+        'decision_basis_target','decision_basis_sources','response_evaluation_sources','bindings','dynamic_role'}
+    value={k:v for k,v in job.items() if k not in bookkeeping}
+    value['candidate']={k:job['candidate'][k] for k in ('id','hyperparams')}
+    value['response_exponent']=float(job.get('response_exponent',1.))
+    return value
+
+
+def reusable_reference(record: dict,planned_jobs: list[dict]) -> dict|None:
+    """Check same task, mechanism, parameters, seeds, precision and saved arrays."""
+    import numpy as np
+    if record['response_exponent']!=1. or any(j['smoke'] for j in planned_jobs):return None
+    own=Path(record['reference_evaluation']);protocol=read(own/'protocol.json')
+    point=read(Path(protocol['fit'])/'nominees.json')['nominee']['candidate']
+    if point['id']!=record['candidate'] or point['hyperparams']!=record['candidate_hyperparams']:return None
+    original=[(f,read(f)) for f in sorted((own/'jobs').glob('*.json'))]
+    canonical=lambda jobs:sorted(json.dumps(scientific_job(j),sort_keys=True,allow_nan=False) for j in jobs)
+    if canonical([j for _,j in original])!=canonical(planned_jobs):return None
+    inputs={}
+
+    def bind(file,expected=None):
+        file=Path(file).resolve();sha=digest(file)
+        if expected is not None and sha!=expected:raise ValueError('Reuse source changed: '+str(file))
+        inputs[str(file)]=sha
+
+    done=read(own/'completion.json')
+    if done['status']!='complete' or done['smoke'] or protocol['compact_variant']!='TRANSFER':
+        raise ValueError('Reuse requires the complete original TRANSFER evaluation')
+    bind(own/'completion.json');bind(own/'protocol.json')
+    bind(Path(protocol['fit'])/'nominees.json',protocol['nomination_sha256'])
+    for file,job in original:
+        bind(file)
+        for name,sha in job['source_sha256'].items():bind(ROOT/name,sha)
+        for key in ('evaluation_route_sources','decision_basis_sources'):
+            for name,sha in job.get(key,{}).items():bind(ROOT/name,sha)
+    for job in planned_jobs:
+        for name,sha in job['source_sha256'].items():bind(ROOT/name,sha)
+    folder=Path(planned_jobs[0]['folder']);meta=read(folder/'prepared.json');bind(folder/'prepared.json')
+    bind(folder/'engine.json',meta['engine_sha256'])
+    for name,sha in meta['array_sha256'].items():bind(folder/name,sha)
+    for name,sha in meta['frozen_cognitive_source_sha256'].items():bind(Path(planned_jobs[0]['runtime'])/name,sha)
+    for role in ('conditional','autonomous'):
+        file=own/role/'evaluation.json';bind(file);saved,=read(file)['rows']
+        if saved['candidate']!=point:raise ValueError('Reused prediction identity differs')
+        arrays=own/role/'evaluate'/f"subject_{record['subject']}"/'COMPACT'/(point['id']+'.npz')
+        bind(arrays,saved['predictions_sha256'])
+        with np.load(arrays) as archive:
+            np.testing.assert_array_equal(archive['seeds'],record['reference_seeds'][role])
+    captures=list((own/'state_capture').glob('*.json'))
+    if len(captures)!=8:raise ValueError('Require all archived original-filter captures')
+    for file in captures:
+        bind(file);saved=read(file);bind(file.with_suffix('.npz'),saved['array_sha256'])
+        bind(saved['original_job'],saved['original_job_sha256']);bind(saved['score_file'],saved['score_sha256'])
+    return dict(status='verified',response_exponent=1.,identical_scientific_jobs=len(planned_jobs),
+        evaluation=str(own),inputs_sha256=inputs,
+        condition='Exact parameters and scientific job inputs; exponent one is the unchanged observation channel')
 
 
 def sources() -> dict:
@@ -82,13 +145,24 @@ def run(study: Path,output: Path,smoke: bool) -> None:
         training_seeds={s for k,v in c['independent_seed_banks'].items() if k!='evaluate' for s in v}
         if any(set(v)&training_seeds for v in seed_banks.values()):raise ValueError('Evaluation and fitting seeds overlap')
         frozen=read(Path(c['output'])/'nominees.json')
-        planned.append(dict(case_id=c['case_id'],subject=c['subject'],condition=c['condition'],cohort=c['cohort'],
+        for name in ('nominees.json','completion.json'):
+            file=Path(c['output'])/name;inputs[str(file.resolve())]=digest(file)
+        record=dict(case_id=c['case_id'],subject=c['subject'],condition=c['condition'],cohort=c['cohort'],
             response_exponent=c['response_exponent'],reference_seeds=seed_banks,case=c,
             candidate=frozen['nominee']['candidate']['id'],candidate_hyperparams=frozen['nominee']['candidate']['hyperparams'],
-            evaluation=str((output/c['case_id']).resolve()),reference_evaluation=original['evaluation']))
+            evaluation=str((output/c['case_id']).resolve()),reference_evaluation=original['evaluation'],reuse_archive=False)
+        if not smoke and c['response_exponent']==1.:
+            chunks,groups=old.make_jobs(c,Path(record['evaluation']),False)
+            paired_seed_jobs(groups,seed_banks)
+            proof=reusable_reference(record,chunks)
+            if proof is not None:
+                record.update(reuse_archive=True,reuse_proof=proof,evaluation=proof['evaluation'])
+                inputs.update(proof['inputs_sha256'])
+        planned.append(record)
     write(output/'cases.json',dict(cases=planned,inputs_sha256=inputs,oral_used_for_selection=False))
     write(output/'protocol.json',dict(study=str(study.resolve()),smoke=smoke,workers=workers,source_sha256=sources(),
         fitting_phase=protocol['phase'],oral_bridge='q(c) * w(h) * p(c|h) / p(c), within each particle',
+        archived_reuses=sum(r['reuse_archive'] for r in planned),
         report_definition='Original conditional rule/component basis and frozen coding rules',
         data_scope='Repeated development evaluation using original temporal boundaries'))
 
@@ -126,10 +200,12 @@ def run(study: Path,output: Path,smoke: bool) -> None:
         print(case['case_id']+': frozen response evaluation complete',flush=True)
 
     with NumericQueue(workers,output) as pool:
-        with ThreadPoolExecutor(max_workers=1 if smoke else len(planned)) as controls:
-            for future in as_completed([controls.submit(evaluate,r,pool) for r in planned]):future.result()
+        pending=[r for r in planned if not r['reuse_archive']]
+        with ThreadPoolExecutor(max_workers=1 if smoke else max(1,len(pending))) as controls:
+            for future in as_completed([controls.submit(evaluate,r,pool) for r in pending]):future.result()
     dynamics.verify(inputs)
     write(output/'completion.json',dict(status='complete',smoke=smoke,candidates=len(planned),
+        archived_reuses=len(planned)-len(pending),new_evaluations=len(pending),
         cases_sha256=digest(output/'cases.json'),additional_filters_for_oral_capture=0))
 
 
