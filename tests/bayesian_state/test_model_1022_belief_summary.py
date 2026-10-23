@@ -60,3 +60,29 @@ def test_saved_prediction_identity_and_repeated_chunk_labels(tmp_path, repeated_
     dump(target.with_suffix('.json'), dict(predictions_sha256=sha))
     with pytest.raises(AssertionError):
         load_case(study, nominee, jobs)
+
+
+def test_each_belief_variant_is_compared_with_support(tmp_path, monkeypatch):
+    import pandas as pd
+    from src.Bayesian_state.workflows.analysis import model_1022_belief_summary as summary
+    study = tmp_path/'study'
+    arms = {'SUPPORT': .8, 'BELIEF': .7, 'SLOT': .9}
+    dump(study/'nominees.json', dict(status='frozen_before_test', smoke=False,
+        nominees=[dict(subject=108, arm=arm, candidate={'id': arm}) for arm in arms]))
+    dump(study/'autonomous_jobs.json', {'jobs': []})
+    categories = np.ones(64, dtype=int)
+
+    def case(study, nominee, jobs):
+        p = arms[nominee['arm']]
+        return dict(meta=dict(training_trials=32, test_trials=32, condition=1),
+            observed=dict(choices=categories, categories=categories),
+            prediction=dict(observed_probability=np.full((3, 64), p), seeds=np.arange(3)),
+            autonomous=dict(choices=np.tile(categories, (4, 1)), seeds=np.arange(4),
+                            present=np.ones((4, 64)), contribution=np.full((4, 64), p)))
+
+    monkeypatch.setattr(summary, 'load_case', case)
+    summary.run(study, tmp_path/'summary')
+    comparisons = pd.read_csv(tmp_path/'summary/comparison.csv').set_index('arm')
+    assert set(comparisons.index) == {'BELIEF', 'SLOT'}
+    for arm in comparisons.index:
+        assert comparisons.loc[arm, 'test_nll_difference'] == pytest.approx(np.log(.8/arms[arm]))

@@ -117,18 +117,19 @@ def run(study: Path, output: Path) -> None:
             late_target_contribution=float(auto['contribution'][:, later].mean())))
     comparisons = []
     table = pd.DataFrame(rows)
-    for sid in sorted({k[0] for k in cases}):
-        baseline, belief = cases[sid, 'SUPPORT'], cases[sid, 'BELIEF']
+    comparisons_to_run = [(sid, arm) for sid, arm in sorted(cases) if arm != 'SUPPORT']
+    for sid, arm in comparisons_to_run:
+        baseline, belief = cases[sid, 'SUPPORT'], cases[sid, arm]
         cut = baseline['meta']['training_trials']
         np.testing.assert_array_equal(baseline['prediction']['seeds'], belief['prediction']['seeds'])
         np.testing.assert_array_equal(baseline['autonomous']['seeds'], belief['autonomous']['seeds'])
         p, q = [c['prediction']['observed_probability'][:, cut:] for c in (baseline, belief)]
         deleted = np.array([nll(np.delete(q, i, axis=0))-nll(np.delete(p, i, axis=0)) for i in range(len(p))])
         a, empirical = energies[sid, 'SUPPORT']
-        b, _ = energies[sid, 'BELIEF']
+        b, _ = energies[sid, arm]
         energy_deleted = np.array([energy_u(np.delete(b, i, axis=0), empirical)['value']
                                   - energy_u(np.delete(a, i, axis=0), empirical)['value'] for i in range(len(a))])
-        comparisons.append(dict(subject=sid, test_nll_difference=nll(q)-nll(p),
+        comparisons.append(dict(subject=sid, arm=arm, test_nll_difference=nll(q)-nll(p),
             test_nll_difference_mcse=jackknife_se(deleted),
             late_energy_difference=energy_u(b, empirical)['value']-energy_u(a, empirical)['value'],
             late_energy_difference_mcse=jackknife_se(energy_deleted)))

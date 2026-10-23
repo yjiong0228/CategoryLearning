@@ -1,8 +1,8 @@
-"""Bounded, separately fitted SUPPORT/BELIEF pilot on frozen exp123 prefixes.
+"""Bounded, separately fitted SUPPORT/BELIEF comparisons on exp123 prefixes.
 
-Run --config YAML --output NEW [--smoke]. Both arms share starting candidates,
-parameter ranges, filter seeds and budgets. Each receives one adaptive round;
-the union of leading candidates is independently confirmed for both arms.
+Run --config YAML --output NEW [--smoke]. All arms share starting candidates,
+parameter ranges, filter seeds and budgets. Each receives adaptive rounds;
+the union of leading candidates is independently confirmed for every arm.
 Parameters freeze before later choices and task-start autonomous paths open.
 The existing frozen numerical runtime and all shared cognitive modules are
 reused. Outputs include provenance, per-seed predictions and a summary table.
@@ -29,6 +29,7 @@ ENTRY = str(Path(__file__).resolve().relative_to(ROOT))
 ADAPTER = 'src/Bayesian_state/model/modules/hypothesis_transition/compact_belief.py'
 PRECISION = 'src/Bayesian_state/model/modules/hypothesis_transition/entry_precision.py'
 SUMMARY = 'src/Bayesian_state/workflows/analysis/model_1022_belief_summary.py'
+SLOT = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_slot_transfer.py'
 spec = importlib.util.spec_from_file_location('belief_comparison_driver',
     ROOT/'src/Bayesian_state/workflows/analysis/model_1021_simplification.py')
 driver = importlib.util.module_from_spec(spec)
@@ -38,7 +39,7 @@ read, write, digest = driver.io.read, driver.io.write, driver.io.digest
 
 
 def sources(v) -> dict:
-    return dict(driver.source_hashes(v), **{k: digest(ROOT/k) for k in (ENTRY, ADAPTER, PRECISION, SUMMARY)})
+    return dict(driver.source_hashes(v), **{k: digest(ROOT/k) for k in (ENTRY, ADAPTER, PRECISION, SUMMARY, SLOT)})
 
 
 def worker(file: Path) -> None:
@@ -48,9 +49,19 @@ def worker(file: Path) -> None:
     def load(name, path):
         module = original_load(name, path)
         if path == driver.COMPACT:
-            if job['comparison_arm'] == 'BELIEF':
+            if job['comparison_arm'] in ('BELIEF', 'SLOT'):
                 belief = original_load('src.Bayesian_state.model.modules.hypothesis_transition.compact_belief', ADAPTER)
                 module.compact_evidence = belief.compact_belief
+                if job['comparison_arm'] == 'SLOT':
+                    slot = original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_slot_transfer', SLOT)
+
+                    @contextmanager
+                    def conserved(cls):
+                        with belief.compact_belief(cls) as audit, slot.belief_slot_transfer(cls) as admission:
+                            audit['slot_transfer'] = admission
+                            yield audit
+
+                    module.compact_evidence = conserved
             elif job['comparison_arm'] == 'SUPPORT':
                 precision = original_load('src.Bayesian_state.model.modules.hypothesis_transition.entry_precision', PRECISION)
                 original = module.compact_evidence
@@ -109,7 +120,7 @@ def summarize(output: Path) -> None:
     audit(output, summary)
     write(output/'completion.json', dict(status='complete', smoke=False,
         cases=read(summary/'completion.json')['cases'],
-        scope='small development pilot; bounded search; no population inference',
+        scope=read(output/'protocol.json')['policy']['scope'],
         oral_used_for_fitting=False, later_choices_used_for_fitting=False,
         numerical_protocol_sha256=digest(output/'protocol.json'),
         summary_sha256=digest(summary/'summary.csv'),
@@ -123,8 +134,10 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     if output.exists():
         raise FileExistsError('Use a new belief comparison output directory')
     policy = yaml.safe_load(config.read_text())
-    if policy['variants'] != ['SUPPORT', 'BELIEF'] or policy['entry_belief'] != 'uniform_share_after_replacement':
-        raise ValueError('This pilot requires the declared paired mechanisms')
+    if (policy['variants'] not in (['SUPPORT', 'BELIEF'], ['SUPPORT', 'BELIEF', 'SLOT'])
+            or policy['entry_belief'] != 'uniform_share_after_replacement'
+            or not 1 <= policy['parallel_budget'] <= 128):
+        raise ValueError('Require the declared belief mechanisms and a bounded worker budget')
     settings = yaml.safe_load((ROOT/policy['base_config']).read_text())
     precision = deepcopy(settings['arms']['COMPACT'])
     settings.update({k: deepcopy(policy[k]) for k in ('protocol', 'seed', 'subjects', 'parallel_budget',
@@ -141,9 +154,19 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         versions={k: importlib.metadata.version(k) for k in ('numpy', 'scipy', 'pandas', 'PyYAML')},
         belief_formula='normalize(prior ** delta * feedback_likelihood)',
         condition3='joint belief uses delta for rules and gamma for conditional pairings',
-        entry_belief='1 / active_count_after; survivors retain their relative odds',
+        entry_belief=dict(BELIEF='1 / active_count_after; preserve survivor odds',
+                         SLOT='full workspace: preserve survivors and transfer removed mass; growth: uniform entry'),
         decision='separate training NLL fits; nominees frozen before later evaluation'))
-    banks, spaces, inputs = {}, {}, {}
+    banks, spaces, inputs, required = {}, {}, {}, {}
+    warm = None
+    if policy.get('warm_comparison'):
+        source = ROOT/policy['warm_comparison']
+        warm = read(source/'nominees.json')
+        if (warm['smoke'] or warm['status'] != 'frozen_before_test' or warm['later_choices_used']
+                or read(source/'completion.json')['status'] != 'complete'
+                or read(source/'protocol.json')['settings']['data'] != settings['data']):
+            raise ValueError('Additional warm starts require matching frozen training-only estimates')
+        inputs[str(source/'nominees.json')] = digest(source/'nominees.json')
     for subject in settings['subjects']:
         source = ROOT/policy['warm_fit']/f'S{subject}_TRANSFER'
         previous = read(source/'nominees.json')
@@ -155,23 +178,47 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         meta = read(ROOT/settings['data']/f'subject_{subject}'/'prepared.json')
         space = spaces[subject] = driver.model_space(previous['settings'], 'COMPACT', meta['condition'])
         anchor = previous['nominee']['candidate']['hyperparams']
-        points = initial_points(space, anchor, 5 if smoke else policy['initial_candidates'],
+        count = 5 if smoke else policy['initial_candidates']
+        points = initial_points(space, anchor, count if warm is None else max(count * 2, 5),
             stable_seed(dict(base=policy['seed'], subject=subject, stage='initial')),
             cover_key=driver.H+'max_capacity')
+        anchors = ([anchor] + [r['candidate']['hyperparams'] for r in warm['nominees'] if r['subject'] == subject]
+                   if warm else [])
+        if any(set(p) != set(space) or any(p[k] not in values for k, values in space.items()) for p in anchors):
+            raise ValueError('Additional warm start is outside the common parameter support')
+        if warm:
+            unique = {}
+            for p in points[:5] + anchors + points[5:]:
+                unique.setdefault(candidate(p, 'common_training_start')['id'], p)
+            points = list(unique.values())[:count]
+            if len(points) != count:
+                raise ValueError('Insufficient common initial candidates')
+        required[subject] = [candidate(p, 'training_anchor_confirmation') for p in anchors]
         for arm in policy['variants']:
             banks[subject, arm] = [candidate(p, 'common_training_start') for p in points]
     write(output/'starting_banks.json', dict(inputs_sha256=inputs,
         banks=[dict(subject=s, arm=a, candidates=b) for (s, a), b in banks.items()]))
     stage = lambda bank, name: driver.base.stage(settings, ROOT/settings['data'], output, bank, name, smoke)
     screen = stage(banks, 'screen')
-    refinement = {}
-    for key, rows in screen.items():
-        elites = select_elites(rows, 1 if smoke else policy['elites'], exclude_key=driver.H+'max_capacity')
-        proposed = propose_round(elites, spaces[key[0]], {r['id'] for r in rows},
-            2 if smoke else policy['refinement_candidates'] // len(elites),
-            stable_seed(dict(base=policy['seed'], subject=key[0], stage='refine')), 0., 0.)
-        refinement[key] = proposed + rows[:1 if smoke else policy['elites']]
-    refined = stage(refinement, 'refine')
+    rounds = 1 if smoke else policy.get('refinement_rounds', 1)
+    seen = {key: {r['id'] for r in rows} for key, rows in screen.items()}
+    refined = screen
+    for index in range(rounds):
+        name = 'refine' if policy.get('refinement_rounds', 1) == 1 else f'refine_{index+1}'
+        refinement = {}
+        fractions = policy.get('proposal_fractions', dict(local=0., jump=0.))
+        for key, rows in refined.items():
+            elites = select_elites(rows, 1 if smoke else policy['elites'], exclude_key=driver.H+'max_capacity')
+            proposed = propose_round(elites, spaces[key[0]], seen[key],
+                2 if smoke else policy['refinement_candidates'] // len(elites),
+                stable_seed(dict(base=policy['seed'], subject=key[0], stage=name)),
+                fractions['local'], fractions['jump'])
+            expected = 2 if smoke else policy['refinement_candidates']
+            if len(proposed) != expected:
+                raise ValueError('Adaptive proposal quota was not met')
+            seen[key].update(r['id'] for r in proposed)
+            refinement[key] = proposed + rows[:1 if smoke else policy['elites']]
+        refined = stage(refinement, name)
     confirmation = {}
     for subject in settings['subjects']:
         union = {}
@@ -181,6 +228,8 @@ def run(config: Path, output: Path, smoke: bool) -> None:
             for rows in (screen[subject, arm], refined[subject, arm]):
                 for row in rows[:1 if smoke else policy['finalists_per_arm']]:
                     union.setdefault(row['id'], candidate(row['hyperparams'], 'cross_arm_confirmation'))
+        for row in required[subject]:
+            union.setdefault(row['id'], row)
         for arm in policy['variants']:
             confirmation[subject, arm] = list(union.values())
     confirmed = stage(confirmation, 'confirmation')

@@ -1,0 +1,10 @@
+protocol: model1022_belief_cross_diagnosis_v1
+seed: 2026102341
+source_study: results/model_1022/belief_comparison_20261023_v1
+subjects: [108, 205, 306]
+parallel_budget: 128
+budgets:
+  evaluate: {particles: 256, seeds: 4}
+autonomous_paths: 64
+autonomous_chunk: 4
+scope: fixed_parameter_development_diagnosis

@@ -1,5 +1,11 @@
 # 假设转移（H 模块）
 
+**2026-10-23 规则信念开发：** `compact_belief.py` 用归一化规则信念驱动作答和候选管理。
+在其上下文内启用 `belief_slot_transfer.py` 时，满容量替换把移除规则的信念份额交给新规则，
+保留幸存规则的信念；工作区增长沿用均匀入场份额。该可选候选没有新增参数或累计状态，
+状态恢复及三种反馈条件检查已通过。固定参数诊断、重新估参预算和验收范围见
+[持续开发说明](../../../docs/model_architecture/model_1022_belief_development.md)。
+
 Model 0923 将其称为“假设更新模块（H）”，负责搜索与候选管理。
 
 **2026-10-14 full-v3实验干预：** `mechanistic_rule_search.py`接受可选的`intervention`映射。
