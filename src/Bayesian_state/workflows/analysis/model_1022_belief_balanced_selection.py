@@ -145,7 +145,7 @@ def run(config: Path, generated: Path, output: Path, smoke: bool) -> None:
     if output.exists():
         raise FileExistsError('Use a new balanced-selection output directory')
     policy = yaml.safe_load(config.read_text())
-    if (policy['variants'] != ['SUPPORT', 'BELIEF', 'SLOT']
+    if (not pilot.valid_variants(policy['variants'])
             or policy['fallback'] != 'retain_original_nll_nominee'
             or policy['scope'] != 'development_training_likelihood_constrained_generation_selection'
             or not 1 <= policy['parallel_budget'] <= 128):

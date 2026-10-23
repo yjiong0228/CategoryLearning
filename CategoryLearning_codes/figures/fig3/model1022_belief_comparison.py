@@ -25,9 +25,10 @@ import pandas as pd
 from src.Bayesian_state.workflows.analysis.model_1022_belief_summary import read, load_case, digest
 from src.Bayesian_state.evaluation.model_1022_belief_fixed_references import validate_comparison
 
-COLORS = {'SUPPORT': '#417CA8', 'BELIEF': '#D58A35', 'SLOT': '#8565A5'}
-LABELS = {'SUPPORT': 'Support', 'BELIEF': 'Belief: uniform entry', 'SLOT': 'Belief: slot transfer'}
-STYLES = {'SUPPORT': '-', 'BELIEF': '--', 'SLOT': '-.'}
+COLORS = {'SUPPORT': '#417CA8', 'BELIEF': '#D58A35', 'SLOT': '#8565A5', 'ADAPT': '#2B8C6F'}
+LABELS = {'SUPPORT': 'Support', 'BELIEF': 'Belief: uniform entry', 'SLOT': 'Belief: slot transfer',
+          'ADAPT': 'Belief: feedback adaptation'}
+STYLES = {'SUPPORT': '-', 'BELIEF': '--', 'SLOT': '-.', 'ADAPT': ':'}
 REFERENCE = 'SUPPORT_REFERENCE'
 
 
@@ -159,7 +160,8 @@ def run(study: Path, output: Path, reference: Path | None = None) -> None:
     (output/'README.md').write_text(
         '# 规则信念对照图\n\n'
         'behavior.png：左列为条件于此前真实行为的预测，右列为从任务起点自主学习。'
-        '黑色为真实行为，蓝色为支持版，橙色为均匀入场信念版，紫色为信念份额转移版；'
+        '黑色为真实行为，蓝色为支持版，橙色为均匀入场信念版，紫色为信念份额转移版，'
+        '绿色为反馈调节信念版；'
         '实际比较的模型见图例。所有曲线按 32 题聚合；'
         f'每版 {count_text} 条自主路径全部绘出并参与均值。虚线为原训练边界。\n\n'
         + reference_note +

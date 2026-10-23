@@ -6,12 +6,17 @@ the union of leading candidates is independently confirmed for every arm.
 Parameters freeze before later choices and task-start autonomous paths open.
 The existing frozen numerical runtime and all shared cognitive modules are
 reused. Outputs include provenance, per-seed predictions and a summary table.
+OUTCOME, ENTRY and ADAPT opt into feedback-dependent belief mechanisms.
+For these arms use entry_belief: by_variant. warm_comparisons accepts several
+completed training-nomination sources; warm_comparison retains its single
+source meaning. confirm_training_anchors: true also confirms the original
+SUPPORT training anchor when no additional warm source is configured.
 """
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from copy import deepcopy
 import importlib.metadata
 import importlib.util
@@ -30,6 +35,9 @@ ADAPTER = 'src/Bayesian_state/model/modules/hypothesis_transition/compact_belief
 PRECISION = 'src/Bayesian_state/model/modules/hypothesis_transition/entry_precision.py'
 SUMMARY = 'src/Bayesian_state/workflows/analysis/model_1022_belief_summary.py'
 SLOT = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_slot_transfer.py'
+OUTCOME = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_outcome_retention.py'
+ERROR_ENTRY = 'src/Bayesian_state/model/modules/hypothesis_transition/belief_error_entry.py'
+ARMS = {'SUPPORT', 'BELIEF', 'SLOT', 'OUTCOME', 'ENTRY', 'ADAPT'}
 spec = importlib.util.spec_from_file_location('belief_comparison_driver',
     ROOT/'src/Bayesian_state/workflows/analysis/model_1021_simplification.py')
 driver = importlib.util.module_from_spec(spec)
@@ -39,7 +47,39 @@ read, write, digest = driver.io.read, driver.io.write, driver.io.digest
 
 
 def sources(v) -> dict:
-    return dict(driver.source_hashes(v), **{k: digest(ROOT/k) for k in (ENTRY, ADAPTER, PRECISION, SUMMARY, SLOT)})
+    return dict(driver.source_hashes(v), **{k: digest(ROOT/k)
+                for k in (ENTRY, ADAPTER, PRECISION, SUMMARY, SLOT, OUTCOME, ERROR_ENTRY)})
+
+
+def valid_variants(variants: list[str]) -> bool:
+    """Require a named SUPPORT reference and distinct registered mechanisms."""
+    return (isinstance(variants, list) and len(variants) >= 2 and variants[0] == 'SUPPORT'
+            and all(isinstance(arm, str) for arm in variants)
+            and len(set(variants)) == len(variants) and set(variants) <= ARMS)
+
+
+def load_warm_nominees(policy: dict, data: str) -> tuple[dict | None, dict]:
+    """Combine unchanged training nominations without reading evaluation scores."""
+    if policy.get('warm_comparison') and policy.get('warm_comparisons'):
+        raise ValueError('Choose warm_comparison or warm_comparisons')
+    paths = ([policy['warm_comparison']] if policy.get('warm_comparison')
+             else policy.get('warm_comparisons', []))
+    if (not isinstance(paths, list) or any(not isinstance(p, str) for p in paths)
+            or len(set(paths)) != len(paths)):
+        raise ValueError('Warm comparisons require distinct source paths')
+    rows, inputs = [], {}
+    for path in paths:
+        source = ROOT / path
+        warm = read(source/'nominees.json')
+        if (warm['smoke'] or warm['status'] != 'frozen_before_test' or warm['later_choices_used']
+                or warm['oral_used'] or read(source/'completion.json')['status'] != 'complete'
+                or read(source/'protocol.json')['settings']['data'] != data
+                or read(source/'summary/completion.json')['nominee_sha256'] != digest(source/'nominees.json')):
+            raise ValueError('Warm starts require matching intact training-only nominations')
+        rows.extend(warm['nominees'])
+        for name in ('nominees.json', 'completion.json', 'protocol.json', 'summary/completion.json'):
+            inputs[str(source/name)] = digest(source/name)
+    return (dict(nominees=rows) if paths else None), inputs
 
 
 def worker(file: Path) -> None:
@@ -49,16 +89,25 @@ def worker(file: Path) -> None:
     def load(name, path):
         module = original_load(name, path)
         if path == driver.COMPACT:
-            if job['comparison_arm'] in ('BELIEF', 'SLOT'):
+            if job['comparison_arm'] in ('BELIEF', 'SLOT', 'OUTCOME', 'ENTRY', 'ADAPT'):
                 belief = original_load('src.Bayesian_state.model.modules.hypothesis_transition.compact_belief', ADAPTER)
                 module.compact_evidence = belief.compact_belief
-                if job['comparison_arm'] == 'SLOT':
+                if job['comparison_arm'] != 'BELIEF':
                     slot = original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_slot_transfer', SLOT)
+                    outcome = (original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_outcome_retention', OUTCOME)
+                               if job['comparison_arm'] in ('OUTCOME', 'ADAPT') else None)
+                    admission = (original_load('src.Bayesian_state.model.modules.hypothesis_transition.belief_error_entry', ERROR_ENTRY)
+                                 if job['comparison_arm'] in ('ENTRY', 'ADAPT') else None)
 
                     @contextmanager
                     def conserved(cls):
-                        with belief.compact_belief(cls) as audit, slot.belief_slot_transfer(cls) as admission:
-                            audit['slot_transfer'] = admission
+                        with ExitStack() as stack:
+                            audit = stack.enter_context(belief.compact_belief(cls))
+                            audit['slot_transfer'] = stack.enter_context(slot.belief_slot_transfer(cls))
+                            if outcome is not None:
+                                audit['outcome_retention'] = stack.enter_context(outcome.belief_outcome_retention(cls))
+                            if admission is not None:
+                                audit['error_entry'] = stack.enter_context(admission.belief_error_entry(cls))
                             yield audit
 
                     module.compact_evidence = conserved
@@ -134,8 +183,10 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     if output.exists():
         raise FileExistsError('Use a new belief comparison output directory')
     policy = yaml.safe_load(config.read_text())
-    if (policy['variants'] not in (['SUPPORT', 'BELIEF'], ['SUPPORT', 'BELIEF', 'SLOT'])
-            or policy['entry_belief'] != 'uniform_share_after_replacement'
+    if (not valid_variants(policy['variants'])
+            or policy['entry_belief'] not in ('uniform_share_after_replacement', 'by_variant')
+            or (set(policy['variants']) & {'OUTCOME', 'ENTRY', 'ADAPT'} and policy['entry_belief'] != 'by_variant')
+            or not isinstance(policy.get('confirm_training_anchors', False), bool)
             or not 1 <= policy['parallel_budget'] <= 128):
         raise ValueError('Require the declared belief mechanisms and a bounded worker budget')
     settings = yaml.safe_load((ROOT/policy['base_config']).read_text())
@@ -152,21 +203,19 @@ def run(config: Path, output: Path, smoke: bool) -> None:
     write(output/'protocol.json', dict(settings=settings, policy=policy, smoke=smoke,
         source_sha256=sources(driver.io), python=sys.version, started=time.time(),
         versions={k: importlib.metadata.version(k) for k in ('numpy', 'scipy', 'pandas', 'PyYAML')},
-        belief_formula='normalize(prior ** delta * feedback_likelihood)',
+        belief_formula='normalize(prior ** rule_exponent * feedback_likelihood)',
+        rule_exponent=dict(BELIEF='delta', SLOT='delta', ENTRY='delta',
+                           OUTCOME='delta+(1-delta)*current_feedback',
+                           ADAPT='delta+(1-delta)*current_feedback'),
         condition3='joint belief uses delta for rules and gamma for conditional pairings',
         entry_belief=dict(BELIEF='1 / active_count_after; preserve survivor odds',
-                         SLOT='full workspace: preserve survivors and transfer removed mass; growth: uniform entry'),
+                         SLOT='full workspace: preserve survivors and transfer removed mass; growth: uniform entry',
+                         OUTCOME='SLOT entry; feedback-dependent rule exponent delta+(1-delta)*feedback',
+                         ENTRY='full workspace: previous_feedback*removed_mass+(1-previous_feedback)/capacity',
+                         ADAPT='OUTCOME rule retention and ENTRY admission; conditional pairing retention unchanged'),
         decision='separate training NLL fits; nominees frozen before later evaluation'))
-    banks, spaces, inputs, required = {}, {}, {}, {}
-    warm = None
-    if policy.get('warm_comparison'):
-        source = ROOT/policy['warm_comparison']
-        warm = read(source/'nominees.json')
-        if (warm['smoke'] or warm['status'] != 'frozen_before_test' or warm['later_choices_used']
-                or read(source/'completion.json')['status'] != 'complete'
-                or read(source/'protocol.json')['settings']['data'] != settings['data']):
-            raise ValueError('Additional warm starts require matching frozen training-only estimates')
-        inputs[str(source/'nominees.json')] = digest(source/'nominees.json')
+    banks, spaces, required = {}, {}, {}
+    warm, inputs = load_warm_nominees(policy, settings['data'])
     for subject in settings['subjects']:
         source = ROOT/policy['warm_fit']/f'S{subject}_TRANSFER'
         previous = read(source/'nominees.json')
@@ -183,7 +232,7 @@ def run(config: Path, output: Path, smoke: bool) -> None:
             stable_seed(dict(base=policy['seed'], subject=subject, stage='initial')),
             cover_key=driver.H+'max_capacity')
         anchors = ([anchor] + [r['candidate']['hyperparams'] for r in warm['nominees'] if r['subject'] == subject]
-                   if warm else [])
+                   if warm else [anchor] if policy.get('confirm_training_anchors', False) else [])
         if any(set(p) != set(space) or any(p[k] not in values for k, values in space.items()) for p in anchors):
             raise ValueError('Additional warm start is outside the common parameter support')
         if warm:

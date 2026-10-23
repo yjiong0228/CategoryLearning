@@ -6,6 +6,23 @@
 状态恢复及三种反馈条件检查已通过。固定参数诊断、重新估参预算和验收范围见
 [持续开发说明](../../../docs/model_architecture/model_1022_belief_development.md)。
 
+**2026-10-24 反馈调节候选：** 以下模块在归一化信念框架内调节旧信念保持和新规则入场，
+保留现有参数数量。固定参数诊断已完成；ADAPT 已接入独立拟合，重新估参的效果尚待评价。
+
+| 模块 | 输入与作用 | 对照标记 |
+|---|---|---|
+| `belief_outcome_retention.py` | 本题反馈调节规则信念保持率；正确反馈完整保留旧信念 | OUTCOME |
+| `belief_error_entry.py` | 上题反馈调节替换时的新规则份额；错误反馈给予均匀试用份额 | ENTRY |
+| 两个模块组合 | 反馈学习与下一题入场分别采用上述规则 | ADAPT |
+
+两项修改的交叉对照使用 `configs/shared/model1022_belief_admission_probe.yaml`，运行入口为
+`python -m src.Bayesian_state.workflows.analysis.model_1022_belief_outcome_probe`。
+三种条件下的模块检查、十组合软件流程和原有三个机制的保存结果回归检查已通过；具体方程、
+训练与评价边界及阶段结果见上述持续开发说明。
+独立拟合使用 `configs/shared/model1022_belief_adaptive_refit.yaml`，运行入口为
+`python -m src.Bayesian_state.workflows.analysis.model_1022_belief_comparison`。后续训练生成与
+似然约束选参分别使用同名前缀的 `adaptive_generation` 和 `adaptive_selection` 配置。
+
 Model 0923 将其称为“假设更新模块（H）”，负责搜索与候选管理。
 
 **2026-10-14 full-v3实验干预：** `mechanistic_rule_search.py`接受可选的`intervention`映射。

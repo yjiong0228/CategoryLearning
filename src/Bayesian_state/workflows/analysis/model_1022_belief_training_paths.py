@@ -1,6 +1,6 @@
 """Diagnose training likelihood versus autonomous learning for frozen finalists.
 
-Run --config YAML --output NEW [--smoke]. All three mechanisms evaluate the
+Run --config YAML --output NEW [--smoke]. All declared mechanisms evaluate the
 same confirmed parameter banks with equal path budgets and common seeds.
 Only training.npz enters generation and scoring. Parameters remain unchanged;
 this diagnostic does not nominate a replacement. --smoke checks eight-trial
@@ -125,9 +125,9 @@ def run(config: Path, output: Path, smoke: bool) -> None:
         raise FileExistsError('Use a new training-path diagnosis directory')
     policy = yaml.safe_load(config.read_text())
     if (policy['scope'] != 'training_finalist_generation_diagnosis'
-            or policy['variants'] != ['SUPPORT', 'BELIEF', 'SLOT']
+            or not pilot.valid_variants(policy['variants'])
             or policy['paths'] < 3 or policy['chunk'] < 3 or not 1 <= policy['parallel_budget'] <= 128):
-        raise ValueError('Require the declared three-arm training diagnosis')
+        raise ValueError('Require the declared matched-arm training diagnosis')
     study = ROOT / policy['source_study']
     protocol, nomination, done = [read(study / name) for name in ('protocol.json', 'nominees.json', 'completion.json')]
     if (nomination['smoke'] or nomination['status'] != 'frozen_before_test' or nomination['later_choices_used']

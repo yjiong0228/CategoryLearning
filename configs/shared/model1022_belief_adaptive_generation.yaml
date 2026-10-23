@@ -1,0 +1,43 @@
+protocol: model1022_belief_adaptive_selection_v1_generation
+seed: 2026102437
+source_study: results/model_1022/belief_adaptive_refit_20261024_v1
+subjects: &id001
+- 108
+- 205
+- 306
+smoke_subject: 306
+variants: &id002
+- SUPPORT
+- SLOT
+- ADAPT
+parallel_budget: 128
+paths: 256
+chunk: 8
+features: &id003
+  block_width: 32
+  temporal_weight: 0.5
+scope: training_finalist_generation_diagnosis
+selection_policy:
+  protocol: model1022_belief_adaptive_selection_v1
+  seed: 2026102437
+  source_study: results/model_1022/belief_adaptive_refit_20261024_v1
+  subjects: *id001
+  variants: *id002
+  parallel_budget: 128
+  generation_confirmation_paths: 256
+  generation_chunk: 8
+  features: *id003
+  training_nll_tolerance: 0.02
+  guard_mcse_multiplier: 2.0
+  budgets:
+    guard:
+      particles: 1024
+      seeds: 8
+    evaluate:
+      particles: 512
+      seeds: 6
+  autonomous_paths: 128
+  autonomous_chunk: 4
+  scope: development_training_likelihood_constrained_generation_selection
+  cohort: development
+  fallback: retain_original_nll_nominee

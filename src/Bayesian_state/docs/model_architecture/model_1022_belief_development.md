@@ -570,6 +570,74 @@ python -m src.Bayesian_state.workflows.analysis.model_1022_belief_outcome_probe 
 见[保存结果回归检查](../../../../results/model_1022/belief_admission_routing_regression_20261024_v1/completion.json)。
 完整诊断的输出目录为 `results/model_1022/belief_admission_probe_20261024_v1`。
 
+十个组合已全部完成。组合机制 ADAPT 在两个冻结参数点上的结果如下；参数来源仍分别为
+原支持版和联合细化信念版。
+
+| 参数来源 | 训练 NLL | 后段 NLL | 后段 NLL 模拟标准误 | 自主后段正确率 | 后段 Energy |
+|---|---:|---:|---:|---:|---:|
+| 原支持版 | 0.7641 | 0.3458 | 0.00061 | 0.7692 | 0.0674 |
+| 联合细化信念版 | 0.7577 | 0.3645 | 0.00015 | 0.7721 | 0.0726 |
+
+相对原冻结 SUPPORT，两个点的 NLL 差值加两倍模拟标准误分别为 −0.00955、0.00871，
+Energy 对应值为 0.01165、0.01458，均进入预定的工作容忍范围。该结论限于当前开发被试的
+固定参数对照。原支持版参数下，ADAPT 的训练 NLL 比同参数 SLOT 高约 0.0190；联合细化
+参数下高约 0.0200，因此下一步需要独立重新拟合。
+
+两项修改在内部过程上也表现出互补作用。联合细化参数下，从 OUTCOME 改为 ADAPT 后，
+后段目标规则在场比例从 0.4823 升至 0.7856，作答贡献从 0.4669 升至 0.7577；每条自主
+路径中的目标规则替换次数从 1.85 降至 0.66。单独采用 ENTRY 时，该参数点的后段 NLL
+为 0.4008、Energy 为 0.0995。保持与入场机制的全部交叉差值保留在
+[机制对照表](../../../../results/model_1022/belief_admission_probe_20261024_v1/diagnostics_v2/factorial_contrasts.csv)，
+十个组合的结果及[固定支持版参照](../../../../results/model_1022/belief_admission_fixed_references_20261024_v1/comparisons.csv)
+完整保留。
+
+360 个工作任务的参数、模块激活、完整种子预算和概率数组核对通过；两个 ADAPT 参数点
+均未出现零信念入场。审查脚本首版把 ENTRY／ADAPT 组合名误作底层路由名，修正后逐项
+核对实际启用的附加模块。两个审查版本均保留，最终记录见
+[诊断核查](../../../../results/model_1022/belief_admission_probe_20261024_v1/diagnostics_v2/completion.json)。
+
+## 反馈调节信念版的独立重新拟合
+
+本轮在 108、205、306 上分别拟合 SUPPORT、SLOT 和 ADAPT。每人每版使用 24 个共同起点，
+再进行两轮各 20 个新候选的搜索。共同起点纳入三轮已完成训练估计中的参数，三版均独立
+计算这些点的分数。确认阶段保留原支持版训练参数及共同的已有候选，各版按自身训练似然
+选出参数。起点、参数范围、种子和预算对所有机制相同。
+
+初筛及两轮细化使用 128 粒子、2 个种子；共同候选确认使用 512 粒子、4 个新种子。
+参数冻结后，用 512 粒子、6 个新种子和每版 128 条自主路径完成评价。配置为
+[`model1022_belief_adaptive_refit.yaml`](../../../../configs/shared/model1022_belief_adaptive_refit.yaml)。
+`warm_comparisons` 可列出多个已完成的训练估计来源；原 `warm_comparison` 继续接受单个来源。
+`confirm_training_anchors: true` 要求把原支持版训练参数保留到共同确认阶段，适用于随后
+没有额外已有估计来源的扩展检查。新机制用 `entry_belief: by_variant` 明确选择各自的入场规则。
+
+同一轮还预先规定受似然约束的生成选参：为每个共同确认点生成 256 条训练段自主路径，在
+训练 NLL 距该机制最优值不超过 0.02 的候选中选取 Energy 最小者。随后用 1,024 粒子、
+8 个新种子进行配对似然复核；差值加两倍模拟标准误超过 0.02 时，保留原 NLL 最优点。
+这一步复用已验证的选择规则，分别按三版的自身训练分数作决定。
+
+两种选参结果均完整报告。训练生成、配对复核和最终评价的种子分开，口述保持为外部内容
+检查。候选机制和最终选参流程将在开发组比较后冻结，再进入扩展被试检查。原先较强的
+支持版继续作为固定参照。
+
+接入验证已完成：67 项相关测试与新增的 3 项原训练参数保留检查通过；五个机制在直接拟合
+工作进程中逐值复现各自保存的预测数组，SUPPORT、SLOT、ADAPT 的训练生成逐值复现原
+自主路径前八题的选择。108 的小规模拟合完成共同起点、细化、共同确认及自主生成，三版
+使用相同的五个起点和六个确认点，原支持版训练参数保留到确认阶段。完整拟合效果待本轮
+科学计算完成后评价。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1022_belief_comparison \
+  --config configs/shared/model1022_belief_adaptive_refit.yaml \
+  --output results/model_1022/belief_adaptive_refit_20261024_v1
+python -m src.Bayesian_state.workflows.analysis.model_1022_belief_training_paths \
+  --config configs/shared/model1022_belief_adaptive_generation.yaml \
+  --output results/model_1022/belief_adaptive_generation_20261024_v1
+python -m src.Bayesian_state.workflows.analysis.model_1022_belief_balanced_selection \
+  --config configs/shared/model1022_belief_adaptive_selection.yaml \
+  --generation results/model_1022/belief_adaptive_generation_20261024_v1 \
+  --output results/model_1022/belief_adaptive_selection_20261024_v1
+```
+
 ## 冻结后的图示与口述检查
 
 行为图沿用 `CategoryLearning_codes.figures.fig3.model1022_belief_comparison`，自动读取结果中的
