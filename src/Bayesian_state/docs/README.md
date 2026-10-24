@@ -26,6 +26,12 @@
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
 
+- [Model 1024：规则信念、持续执行与反馈学习](model_architecture/model_1024.tex)：
+  完整定义单规则执行、被试层面的执行维持倾向、全体活跃规则的反馈学习，以及三类错误来源的推断。
+  执行机制保留为研究候选，文档说明当前行为与状态恢复检验的范围。
+  编译使用 `bash src/Bayesian_state/docs/model_architecture/compile_model_1024.sh NEW_OUTPUT.pdf`，
+  默认输出同目录的 `model_1024.pdf`；脚本保留临时日志并拒绝覆盖已有 PDF。
+
 - [Model 1023：规则信念、反馈调节与知识继承](model_architecture/model_1023.tex)：
   说明决策与学习模块、规则信念及配对信念更新、新规则入场、精度继承、生成与推断、参数估计和口述检验。
   编译使用 `bash src/Bayesian_state/docs/model_architecture/compile_model_1023.sh NEW_OUTPUT.pdf`，
