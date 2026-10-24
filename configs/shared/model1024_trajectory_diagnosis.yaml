@@ -1,0 +1,25 @@
+protocol: model1024_trajectory_diagnosis_v1
+study: results/model_1023/execution_fit_20261024_v1
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+subjects: [108, 110, 129, 205, 209, 229, 306, 309, 317]
+modes: [MIX, MAP, STICKY]
+block_width: 32
+temporal_weight: 0.5
+jump_window: 32
+low_window: 128
+low_stride: 64
+clusters: [3, 2, 4]
+cluster_seed: 2026102501
+cluster_n_init: 30
+construction_paths_per_mode: 64
+sensitivity:
+  subjects: [129, 229, 317]
+  modes: [MIX, STICKY]
+  alternatives: 2
+  training_nll_tolerance: 0.02
+  selection: farthest_first_in_normalized_parameter_grid_rank
+  paths: 128
+  chunk: 4
+  seed: 2026102502
+parallel_budget: 128
+scope: development_diagnosis_and_parameter_sensitivity
