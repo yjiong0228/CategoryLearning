@@ -41,8 +41,14 @@ def run(source: Path, output: Path) -> None:
     modes = ['MIX', 'MAP', 'STICKY']
     counts = pd.crosstab(selected.generator, selected.fitted_model).reindex(
         index=generators, columns=modes, fill_value=0)
-    proportions = counts.div(counts.sum(axis=1), axis=0)
-    kappa = parameters.loc[parameters.parameter.eq(KAPPA)].copy()
+    selected['selected_class'] = np.where(
+        selected.fitted_model.eq('MIX') | (selected.fitted_model.eq('STICKY') & selected.fitted_kappa.eq(0)),
+        'MIX or STICKY kappa=0', np.where(selected.fitted_model.eq('MAP'), 'MAP', 'STICKY kappa>0'))
+    classes = ['MIX or STICKY kappa=0', 'MAP', 'STICKY kappa>0']
+    class_counts = pd.crosstab(selected.generator, selected.selected_class).reindex(
+        index=generators, columns=classes, fill_value=0)
+    proportions = class_counts.div(class_counts.sum(axis=1), axis=0)
+    kappa = parameters.loc[parameters.parameter.eq(KAPPA)].copy().sort_values(['truth', 'subject', 'case_id'])
     if len(kappa) != selected.generating_model.eq('STICKY').sum():
         raise ValueError('Missing fitted execution-maintenance parameters')
     plt.rcParams.update({'font.family': 'sans-serif', 'font.sans-serif': ['DejaVu Sans'],
@@ -52,24 +58,23 @@ def run(source: Path, output: Path) -> None:
     matrix, parameter_axis, lag_axis, error_axis = axes.flat
     matrix.imshow(proportions.to_numpy(), cmap='Blues', vmin=0, vmax=1, aspect='auto')
     for i, generator in enumerate(generators):
-        total = int(counts.loc[generator].sum())
-        for j, mode in enumerate(modes):
+        total = int(class_counts.loc[generator].sum())
+        for j, mode in enumerate(classes):
             fraction = proportions.loc[generator, mode]
-            matrix.text(j, i, f'{counts.loc[generator, mode]}/{total}', ha='center', va='center',
+            matrix.text(j, i, f'{class_counts.loc[generator, mode]}/{total}', ha='center', va='center',
                         color='white' if fraction > .55 else '#252525')
-    matrix.set(xticks=np.arange(3), xticklabels=modes, yticks=np.arange(len(generators)),
-               yticklabels=generators, xlabel='Selected by later-choice likelihood', ylabel='Generating model')
+    matrix.set(xticks=np.arange(3), xticklabels=['MIX /\nSTICKY κ=0', 'MAP', 'STICKY\nκ>0'],
+               yticks=np.arange(len(generators)), yticklabels=generators,
+               xlabel='Class selected by later-choice likelihood', ylabel='Generating model')
     matrix.set_title('Model recovery: all declared cases', loc='left')
     colors = {108: '#437C8F', 205: '#B48943', 306: '#85659F'}
     markers = {108: 'o', 205: 's', 306: '^'}
+    offsets = kappa.groupby('truth').cumcount()
+    sizes = kappa.groupby('truth')['case_id'].transform('size')
+    kappa['display_true_kappa'] = kappa.truth + .12 * (offsets - (sizes-1)/2)
     for sid, group in kappa.groupby('subject'):
-        offsets = group.groupby('truth').cumcount().to_numpy()
-        sizes = group.groupby('truth')['case_id'].transform('size').to_numpy()
-        group = group.copy()
-        group['display_true_kappa'] = group.truth + .12 * (offsets - (sizes-1)/2)
         parameter_axis.scatter(group.display_true_kappa, group.estimate, color=colors[sid],
             marker=markers[sid], s=18, linewidths=.5, edgecolors='white', label=f'S{sid}')
-        kappa.loc[group.index, 'display_true_kappa'] = group.display_true_kappa
     parameter_axis.plot([0, 8], [0, 8], color='#777777', linestyle=':', linewidth=.8)
     parameter_axis.set(xlim=(-.4, 8.3), ylim=(-.4, 8.4), xticks=[0, 2, 6], yticks=[0, 2, 4, 6, 8],
                        xlabel='Generating κ (small display offsets)', ylabel='Re-estimated κ')
@@ -96,24 +101,36 @@ def run(source: Path, output: Path) -> None:
             axis.scatter([0, 1], values, color=colors[sid], marker=markers[sid], s=12, alpha=.85)
             source_pairs.append(dict(case_id=case_id, subject=sid, state=field,
                 generating_parameter_brier=values[0], fitted_parameter_brier=values[1]))
-        axis.set(xticks=[0, 1], xticklabels=['Generating parameters', 'Re-estimated parameters'],
+        axis.set(xticks=[0, 1], xticklabels=['Generating\nparameters', 'Re-estimated\nparameters'],
                  xlim=(-.2, 1.2), ylabel='Brier error (smaller is better)')
         axis.set_ylim(bottom=0)
         axis.set_title(title + f'\n{len(pairs)} paired paths; {len(missing)} without a score', loc='left')
         source_pairs.extend(dict(case_id=case_id, state=field, reason='no observed errors') for case_id in missing)
     for index, axis in enumerate(axes.flat):
         axis.text(-.16, 1.12, chr(ord('a')+index), transform=axis.transAxes, fontweight='bold')
-    figure.subplots_adjust(left=.16, right=.98, bottom=.1, top=.92, wspace=.55, hspace=.65)
+    lag_truth = states.loc[states.generating_model.eq('STICKY') & states.timing.eq('filtered') &
+                          states.state.eq('high_belief_other_execution') & states.inference.eq('oracle')]
+    event_trials = int(lag_truth.positives.sum())
+    total_trials = int(lag_truth.trials.sum())
+    positive_paths = int(lag_truth.positives.gt(0).sum())
+    figure.text(.16, .025,
+        f'Panel c: {event_trials}/{total_trials} true event trials; {positive_paths}/{len(lag_truth)} paths contain events.\n'
+        'MIX and STICKY κ=0 share the same marginal behavior; panels c–d include κ=0 paths.', fontsize=6)
+    figure.subplots_adjust(left=.16, right=.98, bottom=.16, top=.92, wspace=.55, hspace=.7)
     output.mkdir(parents=True)
     figure.savefig(output / 'execution_recovery.png', dpi=600)
     plt.close(figure)
     counts.to_csv(output / 'model_selection_counts.csv')
+    class_counts.to_csv(output / 'behavioral_class_counts.csv')
     kappa.to_csv(output / 'kappa_source_data.csv', index=False)
     pd.DataFrame(source_pairs).to_csv(output / 'paired_state_source_data.csv', index=False)
     write(output / 'manifest.json', dict(status='complete', cases=done['cases'],
         input_completion_sha256=digest(source / 'completion.json'), source_sha256=digest(Path(__file__)),
         input_artifacts_sha256=done['artifacts_sha256'], raster_dpi=600,
-        caption='Fixed task schedules and generating points; two paths per point. MIX and STICKY κ=0 '
+        event_coverage=dict(positive_trials=event_trials, trials=total_trials,
+                            positive_paths=positive_paths, paths=len(lag_truth)),
+        caption='Fixed task schedules and generating points; two paths per point. Panel a groups '
+                'selected MIX and selected STICKY κ=0 into their common behavioral class. MIX and STICKY κ=0 '
                 'share the same marginal behavior. All declared cases enter model recovery. '
                 'Panels c–d use STICKY-generated paths, including κ=0; state inference conditions '
                 'on current/past choices before current feedback. Generating/fitted scores both '

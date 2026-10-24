@@ -24,7 +24,7 @@ figures/
 - [九人 Fig3，2026-09-20](outputs/fig3/nine_subjects_20260920_v2/Figure3_nine_subjects.png) · [九人 Fig4](outputs/fig4/nine_subjects_20260920_v3/Figure4_process_diagnostics.png)：三任务各三人、完整信念轨迹与机制诊断；[设计和证据边界](fig3/nine_subject_fig34_design.md)。均为待审阅草稿。
 - [Fig4 代码与说明](fig4/README.md)
 - [Model 0923：12人后分析全部图，2026-10-13](../../results/model_0923/exp123_selected12_postfit_20261013_v1/report.html) · [26张PNG所在目录](outputs/fig3/model0923_postfit_20261013_v1/)：2张总体图，每人行为与内在表征各1张；同一结果目录的`findings.html`为文字摘要。
-- [Model 1023：执行机制开发检验，2026-10-24](fig3/model1023_execution_figures.md) · [九人行为比较](outputs/fig3/model1023_execution_comparison_20261024_v1/execution_model_trajectories.png) · [逐人状态图v2](outputs/fig3/model1023_execution_states_20261024_v2/)：混合、最高信念与执行维持三种读出的预测和状态重建；恢复图待正式检验完成。
+- [Model 1023：执行机制开发检验，2026-10-24](fig3/model1023_execution_figures.md) · [九人行为比较](outputs/fig3/model1023_execution_comparison_20261024_v1/execution_model_trajectories.png) · [逐人状态图v2](outputs/fig3/model1023_execution_states_20261024_v2/) · [恢复图v2](outputs/fig3/model1023_execution_recovery_20261024_v2/execution_recovery.png)：三种作答机制的预测与状态重建，以及30个模拟案例的恢复；当前对执行滞后的逐题检出能力较弱。
 - [图产物索引](outputs/README.md)
 
 从仓库根目录运行，使用新的输出版本目录：

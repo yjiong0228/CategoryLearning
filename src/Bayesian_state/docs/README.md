@@ -32,7 +32,8 @@
   脚本保留临时编译日志并拒绝覆盖已有 PDF。
 
 - [Model 1023：持续执行与信念学习的比较](model_architecture/model_1023_execution_study.md)：
-  被试级执行维持参数、持续执行状态、三种作答机制的比较，以及突变和低表现案例的恢复检验协议。
+  被试级执行维持参数、持续执行状态、九名开发被试的三种作答机制比较及30个模拟案例的恢复。
+  [完整检验报告](../../../results/model_1023/execution_final_report_20261024_v1/report.md)记录局部预测收益和较弱的执行错误检出能力。
 
 - [Model 0923全被试路径诊断](model_architecture/model_0923_cohort_path_diagnosis.md)：15人、17份拟合、1088条自主路径，统一检查规则发现、持续保留和容量准入，并给出机制比较与参数解释的验收顺序。
 - [Model 0923两人规则路径诊断](model_architecture/model_0923_path_diagnosis.md)：保留335与307的规则提出、驻留、反馈支持和作答贡献个案，以及真实历史等权路径对照。
