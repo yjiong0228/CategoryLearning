@@ -1,5 +1,8 @@
 # 项目文档
 
+[研究目标与证据标准](RESEARCH_GUIDE.md)规定内部状态推断、参数估计、自主学习路径与口述检验的共同目标。
+设计模型修订、恢复实验和轨迹分析时，先按该文件明确目标、资料用途和可支持的结论。
+
 所有文档写作和修订遵守[仓库写作硬性要求](../../../AGENTS.md#mandatory-documentation-style)，
 包括模型说明、README、报告、论文以及 Markdown、TeX 和 PDF：
 

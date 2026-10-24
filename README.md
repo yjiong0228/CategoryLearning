@@ -7,6 +7,7 @@
 
 - [项目管理与清理规则](#仓库管理)：目录职责、保留策略和日常工作流。
 - [共享模型说明](src/Bayesian_state/README.md)：模型模块、推断、拟合与评价接口。
+- [研究目标与证据标准](src/Bayesian_state/docs/RESEARCH_GUIDE.md)：内部状态推断、个体参数、随机学习路径及口述检验的共同研究框架。
 - [期刊工作流](CategoryLearning_codes/Bayesian_model/README.md)：期刊配置、数据范围和版本冻结。
 - [期刊配图](CategoryLearning_codes/figures/README.md)：Fig1/Fig2 代码与当前图版本。
 - [期刊文稿](CategoryLearning_paper/README.md)：旧稿和 Model 0923 英文稿的 PDF、源文件及编译入口。
@@ -20,7 +21,7 @@
 | `src/Bayesian/`、其他 `src/` 模型目录 | 基线、历史或其他模型家族，按各自研究用途保留 |
 | `CategoryLearning_codes/` | 期刊配置、工作流、分析、配图代码和未确认图产物 |
 | `CategoryLearning_paper/` | 并列的 `sn_article/` 旧稿和 `learning_paper_v1/` 英文新稿，共享 LaTeX 模板与参考资料；`figures/` 只放已确认图 |
-| `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史模型定义；当前依据为 `model_0826.tex` |
+| `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史定义；Model 1024记录信念与持续执行候选，验证状态见研究指导文件 |
 | `data/exp123/` | 期刊数据，也是博士论文数据的一部分 |
 | `data/exp4/`、`data/exp5/`、`data/meg/` | 博士论文其他实验数据 |
 | `configs/{shared,exp123,exp4,exp5,meg}/` | 共享定义与按实验分组的配置；MEG 提供 Task3b Model 0923 拟合与试跑配置 |

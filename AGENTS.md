@@ -19,7 +19,8 @@ configurations, analysis scripts, and generated scientific results.
   `data/exp5/`, and `data/meg/`. Configurable paths do not imply that Model 0826
   already supports every task's category/feedback semantics.
 - `CategoryLearning_paper/` holds the journal manuscript; `src/Bayesian_state/docs/model_architecture/` holds
-  model technical specifications, currently `model_0826.tex`.
+  model technical specifications. Model 1024 documents the belief and persistent-execution
+  research candidate; model status and evidence boundaries are tracked in the research guide.
 - Figure code and draft outputs belong to `CategoryLearning_codes/figures/`,
   grouped by figure number. Only confirmed figures belong in
   `CategoryLearning_paper/figures/`. Default export is PNG.
@@ -97,6 +98,46 @@ changing its interfaces, configuration schema, or workflow.
   probabilities, and deterministic behavior under a fixed seed.
 - Record enough configuration and provenance in generated outputs for a run to
   be understood and reproduced later.
+
+## Research objectives and evidence standards
+
+Read [the research guide](src/Bayesian_state/docs/RESEARCH_GUIDE.md) before
+designing model changes, fitting objectives, recovery studies or trajectory analyses.
+The shared objective is a generative account of individual category learning:
+infer internal-state distributions, estimate supported parameter regions, and
+predict distributions of coherent learning trajectories under the task protocol.
+
+- Treat each observed sequence as one history-dependent realization. Estimate and
+  check the amount of process variability; distinguish it from parameter uncertainty,
+  observation noise and numerical error. Stable psychological traits require evidence
+  beyond a parameter held fixed within one task.
+- Use the trajectory-inference and state-evolution operators as two uses of the same
+  generative model. State predictions, behavioral likelihood and autonomous feedback
+  must share mechanisms, parameters, task semantics and trial timing.
+- Report internal states as probability distributions with explicit conditioning:
+  choice before/after, feedback before/after, filtering versus smoothing, and fixed
+  versus integrated parameters. Verify the target states in simulation recovery.
+- Use oral reports as noisy external observations of reportable decision content.
+  Reserve complete latent-state ground truth for simulations. State oral timing,
+  coding reliability, catalogue coverage and development-data use; distinguish
+  content compatibility from the probability of generating a report.
+- Evaluate all autonomous paths using distribution scores and prespecified behavioral
+  features, including improvement size, timing and maintenance. Report whole-path
+  coherence, coverage and probability mass. Keep training, parameter selection and
+  evaluation boundaries explicit; previously inspected cases remain development data.
+- Trajectory clustering describes the predictive distribution. Retain each cluster's
+  occurrence probability, all paths, simulation stability and human comparison scope.
+  A closest path or cluster is descriptive evidence; prediction claims require held-out
+  observations. Class membership and similarity must not be tuned on evaluation choices.
+- Report parameter trade-offs and acceptable regions. Check optimization quality,
+  parameter/model recovery and state recovery separately. Base psychological claims on
+  quantities that remain identifiable and stable across supported parameters.
+- Diagnose whether a discrepancy arises from discovery, retention, belief learning,
+  precision, execution or estimation before adding mechanisms. Preserve informative
+  failures and label computational completion separately from scientific validation.
+- Current status: the belief framework has development evidence; persistent execution
+  remains a candidate with weak recovery of present-but-unexecuted correct rules.
+  New work must retain this boundary until stronger evidence is obtained.
 
 ## Validation
 
