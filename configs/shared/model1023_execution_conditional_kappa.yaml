@@ -1,0 +1,13 @@
+protocol: model1023_execution_conditional_kappa_v1
+seed: 2026102471
+subjects: [108, 309]
+selection_basis: all_sticky_confirmation_candidates_have_zero_kappa
+selection_audit: results/model_1023/execution_confirmation_plan_audit_20261024_v1
+registration: results/model_1023/execution_conditional_registration_20261024_v2/registration.json
+nuisance_parameter_source: frozen_MIX_training_estimate
+kappa_values: [0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0]
+particles: 512
+seeds: 6
+parallel_budget: 128
+data_use: original_training_prefix_only
+interpretation: conditional_parameter_diagnostic_at_fixed_nuisance_parameters

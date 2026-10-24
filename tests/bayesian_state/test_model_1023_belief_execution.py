@@ -180,3 +180,29 @@ def test_actual_readout_uses_execution_and_zero_kappa_marginal_matches_mixture(c
         mixture = read_choice_probabilities_from_model(model, pending.perceived_stimulus)
         np.testing.assert_allclose(marginal, mixture, atol=1e-14)
         h.execution_probabilities = original
+
+
+@pytest.mark.parametrize('condition', [1, 2, 3])
+def test_single_active_rule_makes_execution_mechanisms_observationally_identical(condition):
+    from src.Bayesian_state.model.modules.readout.choice import read_choice_probabilities_from_model
+    traces = []
+    for mode in ('MIX', 'MAP', 'STICKY'):
+        config = compact_config(condition)
+        config['modules']['hypo_transitions_mod']['kwargs']['execution_inertia'] = (
+            8. if mode == 'STICKY' else 0.)
+        with installed(mode):
+            model = StateModel(config, context=ModelContext(condition=condition))
+            transition = model.engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION)
+            # Keep the initial one-rule state throughout this fixed-seed
+            # sequence. Configured capacity remains in its valid range >= 2.
+            transition.baseline_probability = 1e-12
+            transition.error_gain = 0.
+            predictions = []
+            for t in range(12):
+                pending = model.begin_trial([.8, .3, .2, .4] if t % 2 else [.2, .7, .8, .6])
+                assert len(transition.active) == 1
+                predictions.append(read_choice_probabilities_from_model(model, pending.perceived_stimulus))
+                model.complete_trial(1, (0., .5, 1.)[t % 3] if condition == 3 else float(t % 2))
+            traces.append(np.stack(predictions))
+    for observed in traces[1:]:
+        np.testing.assert_array_equal(observed, traces[0])

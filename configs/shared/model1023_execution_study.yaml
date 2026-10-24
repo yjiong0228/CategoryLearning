@@ -1,0 +1,64 @@
+protocol: model1023_execution_study_v1
+seed: 2026102471
+base_config: configs/shared/model1021_simplification.yaml
+subjects: [[108, 1], [205, 2], [306, 3], [110, 1], [209, 2], [309, 3], [129, 1], [229, 2], [317, 3]]
+arms: [MIX, MAP, STICKY]
+kappa_values: [0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0]
+parallel_budget: 128
+initial_candidates: 40
+refinement_rounds: 2
+refinement_candidates: 32
+elites: 2
+confirmation_per_arm: 3
+confirmation_candidates: 12
+proposal_fractions: {local: 0.4, jump: 0.2}
+budgets:
+  screen: {particles: 128, seeds: 2}
+  refine_1: {particles: 128, seeds: 2}
+  refine_2: {particles: 128, seeds: 2}
+  confirmation: {particles: 512, seeds: 6}
+  evaluate: {particles: 1024, seeds: 8}
+autonomous_paths: 128
+autonomous_chunk: 4
+warm_nominations:
+  - results/model_1022/belief_adaptive_refit_20261024_v1/nominees.json
+  - results/model_1022/belief_adaptive_extension_refit_20261024_v1/nominees.json
+preparation:
+  source_fit: results/model_0923/exp123_selected12_20261013_v1
+  training_fraction: 0.7
+  minimum_valid_trials: 128
+  cache_sources:
+    '1': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_104_initial/resources_cache
+    '2': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_206_initial/resources_cache
+    '3': results/model_0923/cohort_path_diagnosis_20261014_v1/exp123_307_plus/resources_cache
+behavior_diagnostics:
+  block_width: 32
+  jump_window: 32
+  low_accuracy_window: 128
+  low_accuracy_stride: 64
+  chance: {1: 0.5, 2: 0.25, 3: 0.25}
+scope: development_mechanism_comparison
+cohort_selection:
+  existing_cases: [108, 205, 306, 110, 209, 309]
+  user_suggested_cases: [129, 229]
+  training_screen_case: 317
+  training_screen_rule: smallest_one_sided_binomial_p_over_128_trial_training_windows_stride_64
+  training_screen_windows: 547
+  interpretation: exploratory_case_selection_without_familywise_significance_claim
+data_use: chronological_prefix_fitting_then_frozen_suffix_evaluation; previously_viewed_cases_are_development
+recovery:
+  conditions: [1, 2, 3]
+  subjects: [108, 205, 306]
+  replicates: 2
+  kappa_values: [0.0, 2.0, 6.0]
+  max_trials: 384
+  training_fraction: 0.7
+  initial_candidates: 24
+  refinement_candidates: 16
+  confirmation_candidates: 6
+  budgets:
+    screen: {particles: 128, seeds: 2}
+    refine_1: {particles: 128, seeds: 2}
+    confirmation: {particles: 256, seeds: 4}
+    evaluate: {particles: 512, seeds: 4}
+  exclude_generating_point_from_starts: true

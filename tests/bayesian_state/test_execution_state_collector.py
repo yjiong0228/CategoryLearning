@@ -23,8 +23,10 @@ def test_three_sources_and_choice_conditioning_preserve_joint_states():
     np.testing.assert_allclose(values['predictive_error_sources'][0], evidence)
     np.testing.assert_allclose(values['predictive_target_present'], [.8])
     np.testing.assert_allclose(values['predictive_target_execution'], [.5])
+    np.testing.assert_allclose(values['predictive_high_belief_other_execution'], [.3])
     np.testing.assert_allclose(values['filtered_target_execution'], [evidence[2] / evidence.sum()])
     np.testing.assert_allclose(values['filtered_target_present'], [evidence[1:].sum() / evidence.sum()])
+    np.testing.assert_allclose(values['filtered_high_belief_other_execution'], [evidence[1] / evidence.sum()])
 
 
 def test_marginal_execution_uncertainty_does_not_imply_pathwise_mixture():

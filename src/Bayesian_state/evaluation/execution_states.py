@@ -53,7 +53,7 @@ class ExecutionStateCollector:
             raise ValueError('Inactive rule has belief or choice contribution')
         present = np.any(active[:, self.targets] > 0, axis=1)
         target_belief = belief[:, self.targets].sum(axis=1)
-        target_execution = contribution[:, self.targets].sum(axis=1)
+        target_execution = np.clip(contribution[:, self.targets].sum(axis=1), 0., 1.)
         chosen, correct = self.choices[trial] - 1, self.categories[trial] - 1
         if max(chosen, correct) >= prediction.shape[1]:
             raise ValueError('Choice/category outside the task response space')
@@ -85,7 +85,10 @@ class ExecutionStateCollector:
             for key, value in [('active', active), ('belief', belief), ('execution', contribution),
                                ('target_present', present), ('target_belief', target_belief),
                                ('target_high_belief', present & (target_belief >= .5)),
-                               ('target_execution', target_execution)]:
+                               ('target_execution', target_execution),
+                               ('available_other_execution', present * (1.-target_execution)),
+                               ('high_belief_other_execution',
+                                (present & (target_belief >= .5)) * (1.-target_execution))]:
                 row[prefix + '_' + key] = own @ value
         self.rows.append(row)
 

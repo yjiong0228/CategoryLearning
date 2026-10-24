@@ -1,0 +1,8 @@
+protocol: model1023_execution_external_validation_v1
+oral_base_config: configs/shared/model0923_oral_midpoint_audit.yaml
+oral_readings: [midpoint, relative]
+parallel_budget: 128
+reference_model: MIX
+oral_use: external_content_compatibility_after_behavioral_parameters_freeze
+primary_denominator: all_complete_reports
+secondary_denominator: complete_reports_supported_by_fixed_rule_catalogue
