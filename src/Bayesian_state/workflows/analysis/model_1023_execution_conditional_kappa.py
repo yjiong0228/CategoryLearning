@@ -106,11 +106,16 @@ def run(fit: Path, config: Path, output: Path, smoke: bool = False) -> None:
             own = candidate(dict(point, **{study.KAPPA: kappa}), 'conditional_parameter_diagnostic')
             for index, seed in enumerate(own_seeds[sid]):
                 job = deepcopy(original)
-                name = f'conditional_S{sid}_{label}_C{index:03d}'
+                # Score writers replace a filename suffix; decimal points in
+                # kappa labels would remove the repeat identifier and collide.
+                name = f'conditional_S{sid}_{label}_C{index:03d}'.replace('.', 'p')
                 job.update(name=name, diagnostic_subject=sid, diagnostic_label=label, execution_mode=mode,
                     candidate=own, seeds=[seed], particles=particles, smoke=smoke,
                     target=str((output / 'scores' / name).resolve()))
                 jobs.append(job)
+    targets = [Path(job['target']).with_suffix('.npz') for job in jobs]
+    if len(set(targets)) != len(targets):
+        raise ValueError('Conditional score files must be unique across points and repeats')
     output.mkdir(parents=True)
     source = str(Path(__file__).resolve().relative_to(study.ROOT))
     study.base.archive(output, config, dict(validation.sources(), **study.sources(study.driver.io),
