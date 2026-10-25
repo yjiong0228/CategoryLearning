@@ -1,0 +1,10 @@
+protocol: model1024_marginal_execution_v1
+previous_run: results/model_1024/smoothing_run_20261025_v1
+cases: [C005, C006, C007, C008, C010, C013]
+resolution_cases: [C006, C008, C013]
+particles: [512, 1024]
+filter_seeds: 3
+fixed_lag: 32
+parallel_budget: 128
+oral_status: deferred_pending_user_manual_review
+scope: development_known_parameter_zero_inertia_execution_marginalization

@@ -28,6 +28,7 @@ figures/
 - [Model 1024：状态恢复与口述检验，2026-10-25](fig3/model1024_state_oral_validation.md) · [三张PNG v2](outputs/fig3/model1024_state_oral_20261025_v2/) · [完整报告](../../results/model_1024/state_oral_report_20261025_v2/report.md)：12条固定路径与3条富集压力路径、真实及重估参数的状态恢复、三人两种口述解释与固定基准。口述部分待最终人工检查，现有数值保留为暂定分析。
 - [Model 1024：行为与模拟真值下的恢复，2026-10-25](fig3/model1024_behavior_recovery.md) · [三张PNG v3](outputs/fig3/model1024_behavior_recovery_20261025_v3/) · [完整报告](../../results/model_1024/behavior_recovery_report_20261025_v1/report.md)：已知状态执行基准、512/1024/2048粒子进入窗口及精确前缀检查；当前数值不确定性和短暂状态漏报支持进一步核对过滤与平滑。
 - [Model 1024：精确基准与连贯状态平滑，2026-10-25](fig3/model1024_smoothing.md) · [三张PNG v1](outputs/fig3/model1024_smoothing_20261025_v1/) · [完整报告](../../results/model_1024/smoothing_report_20261025_v1/report.md)：21次被动重放、7个进入窗口及有限状态精确核对；部分恢复改善，长序列祖先退化与短暂片段漏报仍限制状态解释。
+- [Model 1024：执行身份解析求和，2026-10-25](fig3/model1024_marginal_execution.md) · [两张PNG v2](outputs/fig3/model1024_marginal_execution_20261025_v2/) · [完整报告](../../results/model_1024/marginal_execution_report_20261025_v2/report.md)：零维持参数的6个固定案例、27次过滤与2次完整重放；部分错误识别改善，长序列历史与细时点仍待验收。
 - [图产物索引](outputs/README.md)
 
 从仓库根目录运行，使用新的输出版本目录：
