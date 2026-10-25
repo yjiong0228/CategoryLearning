@@ -1,0 +1,15 @@
+protocol: model1024_continuation_diagnosis_v1
+source_evaluation: results/model_1024/generation_selection_evaluation_20261025_v1
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+subjects: [129, 229, 317]
+modes: [MIX, STICKY]
+seed: 2026102527
+parallel_budget: 128
+particles: 512
+filters: 6
+branches_per_filter: 16
+cuts: [half_training_block, training_end]
+arms: [BASE, RETAIN, DISCOVER, AVAILABLE, PRECISION, AVAILABLE_PRECISION, AVAILABLE_EXECUTE, AVAILABLE_EXECUTE_PRECISION]
+block_width: 32
+late_trials: 64
+scope: development_fixed_parameter_oracle_diagnosis
