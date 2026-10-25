@@ -1,0 +1,65 @@
+protocol: model1024_state_validation_stage_v1
+oral_status: deferred_pending_user_manual_review
+source_cases: results/model_1024/state_oral_cases_20261025_v1
+source_inference: results/model_1024/state_oral_inference_20261025_v1
+source_banks: results/model_1024/retention_capacity_evaluation_20261025_v1
+source_oracles: results/model_1024/behavior_recovery_run_20261025_v1
+source_marginal: results/model_1024/marginal_execution_run_20261025_v1
+contexts: [C000, C002, C005, C007, C010, C013]
+evaluation_paths_per_context: 8
+generation_seed_base: 2026102600
+filter_seed_base: 2026102700
+filter_seeds_per_path: 2
+particles: 512
+resolution_path_index: 0
+resolution_particles: 1024
+fixed_lag: 32
+parallel_budget: 128
+bootstrap_repeats: 2000
+bootstrap_seed: 2026102900
+probability_bins: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+stage_budget:
+  max_new_filters: 236
+  max_cpu_hours: 96
+  max_numeric_wall_hours: 4
+  maximum_followup_batches: 1
+long_history:
+  cases: [{case_id: C006, particles: 512}, {case_id: C013, particles: 1024}]
+  initial_systems: 32
+  followup_systems: 32
+  seed_base: 2026103000
+  followup_trigger_outer_ess_below: 8
+  followup_trigger_max_weight_above: 0.25
+  followup_trigger_half_bank_mad_above: 0.05
+benchmark:
+  source: results/model_1024/smoothing_benchmark_20261025_v1
+  lengths: [8, 128]
+  particles: [64, 256]
+  banks: 4
+  systems_per_bank: 512
+  seed_base: 2026102800
+  pimh_burn_in: 128
+  shared_conditional_cases: [C004, C005, C007, C010, C013]
+acceptance:
+  exact_absolute_tolerance: 1.0e-10
+  exact_benchmark_probability_mae: 0.03
+  numerical_probability_mad: 0.025
+  numerical_probability_q95: 0.10
+  calibration_practical_error: 0.10
+  calibration_ci: 0.95
+  minimum_bin_paths: 8
+  minimum_bin_trials: 100
+  minimum_positive_paths: 8
+  minimum_negative_paths: 8
+  minimum_rare_events: 30
+  minimum_rare_event_paths: 6
+  clear_binary_probability: 0.8
+  clear_label_min_precision: 0.8
+  clear_label_precision_ci_lower: 0.7
+  clear_label_min_coverage: 0.2
+  rare_source_min_recall: 0.5
+  functional_fraction_resolution: 0.05
+  timing_resolution_trials: 32
+  outer_ess_minimum: 8
+  outer_maximum_weight: 0.25
+parameter_scope: known_generating_parameters_plus_existing_frozen_point_sensitivity

@@ -1,5 +1,16 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1024状态推断使用范围（2026-10-26）
+
+[概率校准](../outputs/fig3/model1024_state_validation_20261026_v2/calibration.png) ·
+[完整历史及整段在场量](../outputs/fig3/model1024_state_validation_20261026_v2/history.png) ·
+[阶段交付与使用范围](../../../results/model_1024/state_validation_report_20261026_v2/report.md)。
+六个登记参数背景各生成8条新路径，全部保留；选择后、反馈前的过滤和回顾状态分别评价。
+图中校准区间按完整路径分层自举，整段在场区间来自共同终点的连贯路径。
+逐题明确标签继续保留未通过结论，有限概率范围和整段功能量见报告。
+绘图入口为`python -m CategoryLearning_codes.figures.fig3.model1024_state_validation`，
+输出183毫米宽、300 dpi的PNG研究审阅稿；真实口述待最终人工检查。
+
 ## Model 1022估参与学习过程检验（2026-10-23）
 
 [51张图的总入口](../outputs/fig3/model1023_estimation_reliability_20261023_v1/index.html) ·
