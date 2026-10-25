@@ -5,8 +5,8 @@ figures/README.md for figure work.
 
 - Maintain mechanisms in src/Bayesian_state; this tree owns journal configuration,
   workflow policy, analysis and figures. Preserve existing compatibility imports.
-- Journal inputs come from data/exp123/ only. Keep task labels distinct from condition
-  numbers; Task 2 corresponds to condition 3.
+- Journal inputs come from data/exp123/ only. Keep source-file task labels distinct
+  from feedback-condition numbers; use prepared condition metadata for model semantics.
 - Keep Fig1 behavior-only evidence separate from model-dependent interpretations.
 - Retain the chosen oral encoder sigma=0.05 unless a scientific change is requested;
   oral reports are external validation, not fitted choices. Do not silently merge

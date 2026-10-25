@@ -1,0 +1,26 @@
+protocol: model1024_state_oral_validation_v1
+source_evaluation: results/model_1024/retention_capacity_evaluation_20261025_v1
+source_training: results/model_1024/retention_capacity_training_20261025_v1
+source_summary: results/model_1024/retention_capacity_summary_20261025_v1
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+subjects: [129, 229, 317]
+retention_values: [0.0, 0.3, 0.6, 0.8, 1.0]
+capacity_values: [2, 3, 6]
+replicate_indices: [0, 1]
+alternative: farthest_training_eligible_normalized_grid_rank
+challenge_cases_per_subject: 1
+seed: 2026102563
+parallel_budget: 128
+screen: {particles: 128, seeds: 2, paths: 32}
+guard: {particles: 256, seeds: 4}
+confirmation_paths: 128
+inference: {particles: 512, seeds: 4}
+resolution: {particles: 1024, seeds: 2, replicate: 0}
+human_filters: 2
+generation_chunk: 8
+features: {block_width: 32, temporal_weight: 0.5}
+training_nll_tolerance: 0.02
+mcse_multiplier: 2.0
+oral_config: configs/shared/model0923_oral_midpoint_audit.yaml
+oral_readings: [midpoint, relative]
+scope: development_conditional_two_parameter_state_recovery_and_oral_compatibility
