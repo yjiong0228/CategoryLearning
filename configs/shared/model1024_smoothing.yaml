@@ -1,0 +1,19 @@
+protocol: model1024_smoothing_v1
+previous_prepared: results/model_1024/behavior_recovery_prepared_20261025_v1
+previous_inference: results/model_1024/state_oral_inference_20261025_v1
+cases: [C004, C005, C006, C007, C008, C010, C013]
+particles: 512
+filter_seeds: 3
+fixed_lag: 32
+parallel_budget: 128
+oral_status: deferred_pending_user_manual_review
+scope: development_known_parameter_retrospective_state_recovery
+benchmark:
+  initial: [0.4, 0.35, 0.25]
+  belief: [0.4, 0.35, 0.25]
+  inertia: 2.0
+  emissions: [[0.8, 0.15, 0.05], [0.8, 0.15, 0.05], [0.05, 0.15, 0.8]]
+  lengths: [8, 128]
+  particles: [64, 512, 4096]
+  seeds: [2026102501, 2026102502, 2026102503, 2026102504]
+  exact_path_samples: 16384
