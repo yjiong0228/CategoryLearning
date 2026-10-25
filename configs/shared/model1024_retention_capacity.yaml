@@ -1,0 +1,25 @@
+protocol: model1024_retention_capacity_v1
+source_evaluation: results/model_1024/generation_selection_evaluation_20261025_v1
+source_study: results/model_1023/execution_fit_20261024_v1
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+seed_history:
+  - results/model_1024/generation_selection_training_20261025_v1/proposals.json
+  - results/model_1024/continuation_diagnosis_20261025_v2/protocol.json
+subjects: [129, 229, 317]
+modes: [MIX, STICKY]
+retention_values: [0.0, 0.3, 0.6, 0.8, 1.0]
+capacity_values: [2, 3, 6]
+seed: 2026102551
+parallel_budget: 128
+screen: {particles: 256, seeds: 2, paths: 32}
+guard: {particles: 512, seeds: 6}
+confirmation_paths: 128
+evaluate: {particles: 512, seeds: 6}
+evaluation_paths: 128
+generation_chunk: 8
+features: {block_width: 32, temporal_weight: 0.5}
+training_nll_tolerance: 0.02
+mcse_multiplier: 2.0
+jump_timing_tolerance: 32
+fallback: retain_current_joint_anchor
+scope: development_two_parameter_profile_with_fixed_nuisance_parameters
