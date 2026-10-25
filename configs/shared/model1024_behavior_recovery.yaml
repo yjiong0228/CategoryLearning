@@ -1,0 +1,13 @@
+protocol: model1024_behavior_recovery_v1
+prepared: results/model_1024/state_oral_cases_20261025_v1
+inference: results/model_1024/state_oral_inference_20261025_v1
+numerical_cases: [C004, C005, C006, C007, C008, C010, C013]
+prefix_control_cases: [C004, C008, C010]
+particles: [512, 1024, 2048]
+filter_seeds: 3
+pre_entry_trials: 32
+post_entry_trials: 64
+prefix_rounding: 32
+parallel_budget: 128
+oral_status: deferred_pending_user_manual_review
+scope: development_known_parameter_state_resolution_and_known_state_execution_reference

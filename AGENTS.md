@@ -121,6 +121,11 @@ predict distributions of coherent learning trajectories under the task protocol.
   Reserve complete latent-state ground truth for simulations. State oral timing,
   coding reliability, catalogue coverage and development-data use; distinguish
   content compatibility from the probability of generating a report.
+- Current oral-data status: the user has not completed the final manual review.
+  Keep existing oral analyses provisional and defer further oral validation or
+  encoding changes until that review is complete. Continue behavior-only and
+  simulation-ground-truth work; parameter and mechanism decisions use those
+  evidence sources during this period.
 - Evaluate all autonomous paths using distribution scores and prespecified behavioral
   features, including improvement size, timing and maintenance. Report whole-path
   coherence, coverage and probability mass. Keep training, parameter selection and

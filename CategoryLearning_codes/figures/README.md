@@ -25,7 +25,8 @@ figures/
 - [Fig4 代码与说明](fig4/README.md)
 - [Model 0923：12人后分析全部图，2026-10-13](../../results/model_0923/exp123_selected12_postfit_20261013_v1/report.html) · [26张PNG所在目录](outputs/fig3/model0923_postfit_20261013_v1/)：2张总体图，每人行为与内在表征各1张；同一结果目录的`findings.html`为文字摘要。
 - [Model 1023：执行机制开发检验，2026-10-24](fig3/model1023_execution_figures.md) · [九人行为比较](outputs/fig3/model1023_execution_comparison_20261024_v1/execution_model_trajectories.png) · [逐人状态图v2](outputs/fig3/model1023_execution_states_20261024_v2/) · [恢复图v2](outputs/fig3/model1023_execution_recovery_20261024_v2/execution_recovery.png)：三种作答机制的预测与状态重建，以及30个模拟案例的恢复；当前对执行滞后的逐题检出能力较弱。
-- [Model 1024：状态恢复与口述检验，2026-10-25](fig3/model1024_state_oral_validation.md) · [三张PNG v2](outputs/fig3/model1024_state_oral_20261025_v2/) · [完整报告](../../results/model_1024/state_oral_report_20261025_v2/report.md)：12条固定路径与3条富集压力路径、真实及重估参数的状态恢复、三人两种口述解释与固定基准。关键执行错误识别和躯干参照编码继续限制状态解释。
+- [Model 1024：状态恢复与口述检验，2026-10-25](fig3/model1024_state_oral_validation.md) · [三张PNG v2](outputs/fig3/model1024_state_oral_20261025_v2/) · [完整报告](../../results/model_1024/state_oral_report_20261025_v2/report.md)：12条固定路径与3条富集压力路径、真实及重估参数的状态恢复、三人两种口述解释与固定基准。口述部分待最终人工检查，现有数值保留为暂定分析。
+- [Model 1024：行为与模拟真值下的恢复，2026-10-25](fig3/model1024_behavior_recovery.md) · [三张PNG v3](outputs/fig3/model1024_behavior_recovery_20261025_v3/) · [完整报告](../../results/model_1024/behavior_recovery_report_20261025_v1/report.md)：已知状态执行基准、512/1024/2048粒子进入窗口及精确前缀检查；当前数值不确定性和短暂状态漏报支持进一步核对过滤与平滑。
 - [图产物索引](outputs/README.md)
 
 从仓库根目录运行，使用新的输出版本目录：
