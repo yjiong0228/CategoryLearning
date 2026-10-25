@@ -1,0 +1,18 @@
+protocol: model1024_generation_selection_v1
+source_study: results/model_1023/execution_fit_20261024_v1
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+subjects: [108, 110, 129, 205, 209, 229, 306, 309, 317]
+modes: [MIX, MAP, STICKY]
+seed: 2026102511
+parallel_budget: 128
+training_nll_tolerance: 0.02
+mcse_multiplier: 2.0
+ranking_paths: 64
+confirmation_paths: 128
+generation_chunk: 8
+guard: {particles: 512, seeds: 6}
+evaluate: {particles: 512, seeds: 6}
+evaluation_paths: 128
+features: {block_width: 32, temporal_weight: 0.5}
+fallback: retain_original_nll_nominee
+scope: development_training_likelihood_constrained_generation_selection
