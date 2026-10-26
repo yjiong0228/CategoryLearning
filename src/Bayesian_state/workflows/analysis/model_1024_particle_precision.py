@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 from pathlib import Path
+import re
 import shutil
 import time
 
@@ -39,7 +40,8 @@ def augment_high_checks(row: dict, extra_jobs: list[dict]) -> bool:
     return True
 
 
-def register(study: Path, ledger: Path, output: Path) -> None:
+def register(study: Path, ledger: Path, output: Path, job_role: str = 'particle_precision',
+             parallel_budget: int | None = None) -> None:
     if output.exists():raise FileExistsError('Use a new extension directory')
     protocol=read(study/'protocol.json');read(study/'completion.json')
     inputs=[study/'protocol.json',study/'completion.json']
@@ -48,11 +50,15 @@ def register(study: Path, ledger: Path, output: Path) -> None:
     targets=select_targets(rows)
     if not targets:raise ValueError('No unresolved particle-count checks')
     particles=protocol['policy']['search']['particle_check_particles']
+    workers=protocol['policy']['parallel_budget'] if parallel_budget is None else parallel_budget
+    if not re.fullmatch('[a-z][a-z0-9_]*',job_role) or not 1<=workers<=protocol['policy']['parallel_budget']:
+        raise ValueError('Require a safe new job role and a bounded positive worker count')
     caps=dict(calibration=4,search=12,confirmation=64,generation=12,analysis=4,total=96)
     if caps['total']!=protocol['policy']['cpu_hours']['total']:
         raise ValueError('Extension must retain the registered total budget')
     registration=dict(study=str(study.resolve()),ledger=str(ledger.resolve()),targets=targets,
                       extra_repeats=4,particles=particles,cpu_hours=caps,
+                      job_role=job_role,parallel_budget=workers,
                       input_sha256={str(f.resolve()):digest(f) for f in inputs},
                       numerical_sources=sources(),extension_source_sha256=digest(Path(__file__)),
                       registered_unix=time.time(),
@@ -60,7 +66,8 @@ def register(study: Path, ledger: Path, output: Path) -> None:
                       reason='Two high-particle systems leave substantial Monte Carlo uncertainty; use unused calibration/search CPU.')
     output.mkdir(parents=True);write(output/'registration.json',registration)
     shutil.copy2(Path(__file__),output/'extension_source.py')
-    decision(ledger,'particle_precision_registered',targets=targets,extra_repeats=4,particles=particles,cpu_hours=caps)
+    decision(ledger,'particle_precision_registered',targets=targets,extra_repeats=4,particles=particles,cpu_hours=caps,
+             job_role=job_role,parallel_budget=workers)
 
 
 def run(output: Path) -> None:
@@ -73,6 +80,7 @@ def run(output: Path) -> None:
     study=Path(registration['study']);ledger=Path(registration['ledger'])
     protocol=read(study/'protocol.json');completion=read(study/'completion.json')
     protocol['policy']['cpu_hours']=registration['cpu_hours']
+    protocol['policy']['parallel_budget']=registration.get('parallel_budget',protocol['policy']['parallel_budget'])
     protocol['particle_precision_extension']=registration
     cases={c['subject']:c for c in protocol['cases']}
     rows={sid:read(study/f'confirmed_S{sid}.json') for sid in cases}
@@ -80,7 +88,8 @@ def run(output: Path) -> None:
     for target in registration['targets']:
         row=next(r for r in rows[target['subject']] if r['candidate']['id']==target['candidate'])
         jobs.extend(make_jobs(protocol,cases[target['subject']],[row['candidate']],ledger,
-                              'particle_precision',particles=registration['particles'],repeats=registration['extra_repeats']))
+                              registration.get('job_role','particle_precision'),
+                              particles=registration['particles'],repeats=registration['extra_repeats']))
     queue=BudgetQueue(ledger,protocol);queue.execute(jobs,'confirmation')
     outcomes=[]
     for target in registration['targets']:
@@ -110,8 +119,10 @@ def main() -> None:
     parser.add_argument('--phase',choices=['register','run'],required=True)
     parser.add_argument('--study',type=Path);parser.add_argument('--ledger',type=Path)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--job-role',default='particle_precision',help='Use a new role only for an audited interrupted restart')
+    parser.add_argument('--parallel-budget',type=int,help='Optional lower concurrency cap for the extension')
     args=parser.parse_args()
-    if args.phase=='register':register(args.study,args.ledger,args.output)
+    if args.phase=='register':register(args.study,args.ledger,args.output,args.job_role,args.parallel_budget)
     else:run(args.output)
 
 

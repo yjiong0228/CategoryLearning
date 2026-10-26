@@ -229,3 +229,15 @@ python -m src.Bayesian_state.workflows.analysis.model_1024_individual_regions --
 `python -m src.Bayesian_state.workflows.analysis.model_1024_particle_precision`：
 先使用 `--phase register --study SHAPE_EXTENSION --ledger MAIN_STUDY --output NEW_PRECISION_DIR`，
 再使用 `--phase run --output NEW_PRECISION_DIR`。若无未确定对照则跳过追加。
+
+### 中断恢复记录
+
+首批精度补充的调度进程以143退出，33项已启动工作均无完成产物或CPU记录，核查时无残留进程。
+现有日志未确定终止原因。保留 `particle_precision_v1/interrupted.json` 和原任务文件；按登记的
+单数值线程配置，将每项工作从任务文件建立到确认终止时的全部墙钟时间计入预算，合计4.477 CPU小时；
+协调器记录间隙另保守计入0.119 CPU小时。这部分为预算计入量，精确实际CPU耗时已无法还原。
+
+恢复使用新目录 `particle_precision_v2`、新任务及种子库 `particle_precision_retry1`，并发上限20，
+候选、四次独立重复、粒子数、判断标准及总预算均保持原规则。登记时追加
+`--job-role particle_precision_retry1 --parallel-budget 20`，从支持持续运行的进程环境启动。
+原33项中断记录继续参与资源总计；恢复批次完成后按原停止规则交付。
