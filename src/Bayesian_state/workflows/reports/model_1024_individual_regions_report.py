@@ -3,6 +3,9 @@
 All candidate rows and all generated paths remain in exported data. Figures are
 development diagnostics; intervals describe Monte Carlo variation. Run with
 --study EXISTING_STUDY --output NEW_REPORT_DIRECTORY after numerical completion.
+Exports include complete retained combinations, per-path descriptors and source
+snapshots. Single-feature discrepancies and interrupted CPU accounting remain
+visible alongside the registered joint working checks.
 """
 from __future__ import annotations
 
@@ -10,6 +13,7 @@ import argparse
 from collections import Counter
 import hashlib
 import json
+import os
 from pathlib import Path
 import resource
 import time
@@ -36,8 +40,11 @@ STATUS = {'retained':'保留','numerically_undetermined':'数值未确定','like
           'undetermined':'形态未确定','incomplete':'未完成'}
 COLORS = {'retained':'#29728e','numerically_undetermined':'#b76b2c','likelihood_boundary':'#b76b2c',
           'likelihood_outside':'#8a8a8a','incompatible':'#8a8a8a','undetermined':'#b76b2c','incomplete':'#8a8a8a'}
+NUMERICAL_STATUS = {'stable':'稳定','sensitive':'粒子数敏感','boundary':'数值边界',
+                    'system_weight_unresolved':'系统权重过度集中','incomplete':'未完成'}
 PARAMETER_NAMES = ['p0','error_gain','failure_decay','global_search','capacity','retention',
                    'beta_init','learning_rate','inertia','gamma']
+PARAMETER_SYMBOLS = dict(zip(PARAMETER_NAMES,['p0','ae','λ','g0','K','δ','β0','η','κ','γ']))
 
 
 def configure():
@@ -60,6 +67,8 @@ def flatten(row, phase):
                 maximum_system_weight=score.get('maximum_system_weight'),effective_systems=score.get('effective_systems'),
                 pooled_trial_nll=score.get('pooled_trial_nll'),delta_nll=diff.get('difference'),delta_mcse=diff.get('mcse'),
                 shape_energy=row.get('shape_energy',{}).get('value'),shape_energy_mcse=row.get('shape_energy',{}).get('mc_se'),
+                ordered_energy_diagnostic=row.get('ordered_energy_diagnostic',{}).get('value'),
+                ordered_energy_mcse=row.get('ordered_energy_diagnostic',{}).get('mc_se'),
                 shape_status=check.get('status'),shape_tail=check.get('rank_tail'),shape_tail_low=check.get('tail_mc_low'),
                 shape_tail_high=check.get('tail_mc_high'),shape_neighbors=check.get('neighbors'),
                 joint_status=row.get('joint_status'),numerically_resolved=row.get('numerically_resolved'),
@@ -77,6 +86,7 @@ def flatten(row, phase):
 
 def overview(cases, confirmed, output):
     fig,axs=plt.subplots(3,2,figsize=(10,10),layout='constrained')
+    labels=[]
     for ax,case in zip(axs.flat,cases):
         rows=confirmed[case['subject']]
         for row in rows:
@@ -87,12 +97,26 @@ def overview(cases, confirmed, output):
             ax.errorbar(d['difference'],y,xerr=2*d['mcse'],
                         yerr=np.array([[y-s['tail_mc_low']],[s['tail_mc_high']-y]]),
                         fmt='o' if row.get('numerically_resolved') else 's',color=color,ms=5,capsize=2)
-            ax.annotate(row['candidate']['id'][:6],(d['difference'],y),xytext=(5,5),textcoords='offset points',fontsize=7)
+            labels.append((ax,row['candidate']['id'][:6],d['difference'],y,color))
         ax.axvline(.01,color='#777777',ls='--',lw=.8);ax.axhline(.05,color='#777777',ls=':',lw=.8)
         ax.set(title=f"S{case['subject']} | condition {case['condition']} | {case['role']}",
                xlabel='NLL difference per trial (± 2 paired MCSE)',ylabel='Shape calibration tail (Wilson 95%)',ylim=(-.03,1.08))
         if not rows:ax.text(.5,.5,'No completed confirmation',transform=ax.transAxes,ha='center')
     fig.suptitle('Joint candidate checks: blue = retained; amber = unresolved; gray = outside',fontsize=12)
+    fig.canvas.draw()
+    occupied={}
+    for ax,label,x,y,color in labels:
+        px,py=ax.transData.transform((x,y));box=ax.get_window_extent()
+        width,height=42.,13.;left=np.clip(px+5,box.x0+3,box.x1-width-3)
+        positions=occupied.setdefault(ax,[])
+        for offset in [7,23,-23,39,-39,55,-55]:
+            bottom=np.clip(py+offset,box.y0+3,box.y1-height-3)
+            if all(left+width<a or a+width<left or bottom+height<b or b+height<bottom for a,b in positions):break
+        positions.append((left,bottom))
+        text_position=ax.transAxes.inverted().transform((left,bottom))
+        ax.annotate(label,(x,y),xytext=text_position,textcoords='axes fraction',fontsize=7,ha='left',va='bottom',
+                    bbox=dict(facecolor='white',edgecolor='none',alpha=.8,pad=.3),
+                    arrowprops=dict(arrowstyle='-',color=color,lw=.5))
     save(fig,output,'joint_checks.png')
 
 
@@ -101,10 +125,10 @@ def parameter_lines(cases, confirmed, policy, output):
     bounds.update(capacity=(2,10),inertia=(0,12),error_gain=(0,12))
     fig,axs=plt.subplots(3,2,figsize=(11,9),layout='constrained')
     for ax,case in zip(axs.flat,cases):
-        for row in confirmed[case['subject']]:
+        for index,row in enumerate(confirmed[case['subject']]):
             values=[(row['candidate']['hyperparams'][KEYS[k]]-bounds[k][0])/(bounds[k][1]-bounds[k][0]) for k in names]
-            ax.plot(range(len(names)),values,'o-',ms=3,lw=1,color=COLORS.get(row.get('joint_status'),'#888888'),
-                    alpha=.8,label=row['candidate']['id'][:6])
+            ax.plot(range(len(names)),values,marker=['o','s','^','D'][index%4],ls=['-','--',':','-.'][index%4],
+                    ms=3.5,lw=1.2,color=COLORS.get(row.get('joint_status'),'#888888'),alpha=.85,label=row['candidate']['id'][:6])
         ax.set_xticks(range(len(names)),['p0','ae','λ','g0','K','δ','β0','η','κ','γ'])
         ax.set(title=f"S{case['subject']}: complete combinations",ylabel='Scaled to registered outer bounds',ylim=(-.05,1.08))
         ax.legend(fontsize=7,ncol=2)
@@ -127,7 +151,7 @@ def subject_paths(case, rows, output):
         obs=np.array([real[a:a+32].mean() for a in starts])
         ax=axes[0]
         marker='o' if len(centers)==1 else None
-        for path in blocks:ax.plot(centers,path,color='#687982',alpha=.035,lw=.6,marker=marker)
+        for path in blocks:ax.plot(centers,path,color='#687982',alpha=min(.035,9./m),lw=.6,marker=marker)
         ax.plot(centers,blocks.mean(axis=0),color='#29728e',lw=1.5,marker=marker,label=f'Simulation mean ({m} paths)')
         ax.plot(centers,obs,color='#bd602c',lw=1.5,marker=marker,label='Observed')
         ax.set(xlabel='Trial (non-overlapping 32-trial blocks)',ylabel='Completely correct',ylim=(-.03,1.03),
@@ -150,6 +174,9 @@ def subject_paths(case, rows, output):
         summaries.append(dict(subject=case['subject'],candidate=row['candidate']['id'],paths=m,
              observed_label=observed['label'],transition_paths=len(onset),censored_paths=censored,
              optimizer_unsuccessful=sum(not r['optimizer_success'] for r in records),
+             observed_label_count=counts[observed['label']],observed_dispersion=observed['dispersion'],
+             generated_dispersion_median=float(np.median([r['dispersion'] for r in records])),
+             generated_dispersion_q95=float(np.quantile([r['dispersion'] for r in records],.95)),
              generated_mean_accuracy=float(correct.mean()),observed_mean_accuracy=float(real.mean()),
              generated_final64_mean=float(correct[:,-min(64,n):].mean()),observed_final64=float(real[-min(64,n):].mean()),
              generated_mean_feedback=float(feedback.mean()),observed_mean_feedback=float(actual['feedback'][:n].mean()),
@@ -194,6 +221,21 @@ def render(study: Path, output: Path):
     all_final=[r for batch in confirmed.values() for r in batch]
     retained=[r for r in all_final if r.get('joint_status')=='retained']
     subject_retained={r['subject'] for r in retained}
+    summary_index={(r['subject'],r['candidate']):r for r in shape_summaries}
+    regions=[]
+    for case in cases:
+        sets={}
+        for tolerance in protocol['policy']['search']['score_tolerances']:
+            sets[str(tolerance)]=[
+                dict(candidate=r['candidate'],choice_score=r['choice_score'],
+                     likelihood_difference=r['likelihood_difference'],shape_check=r['shape_check'],
+                     path_summary=summary_index.get((case['subject'],r['candidate']['id'])),
+                     inactive_parameters=['failure_decay'] if r['candidate']['hyperparams'][KEYS['error_gain']]==0 else [],
+                     fixed_parameters=['gamma'] if case['condition']!=3 else [])
+                for r in confirmed[case['subject']] if r.get('membership',{}).get(str(tolerance))=='retained']
+        regions.append(dict(subject=case['subject'],condition=case['condition'],trials=case['trials'],sets=sets))
+    write(output/'retained_regions.json',dict(scope='finite development working sets; no calibrated confidence or posterior weights',
+                                             freely_combinable_marginal_ranges=False,cases=regions))
     lines=['# Model 1024：六名被试的完整记录联合参数候选研究','',
            f"计算阶段状态：{completion['status']}。本报告为{'短序列流程验证' if protocol['smoke'] else '开发资料先导研究'}。",
            f"{len(cases)}名被试中，{len(subject_retained)}名在主工作容忍0.01下获得保留组合，共{len(retained)}个。",
@@ -204,10 +246,24 @@ def render(study: Path, output: Path):
            '完整序列似然按整个独立滤波合并；误差单位为完整系统。主要形态距离省略绝对改善时点，并保留水平、变化宽度、保持、波动和截断。',
            'NLL容忍按每题计算：0.01在256题对应总对数似然差2.56，在1088题对应10.88。因此各人的工作集合没有统一置信覆盖含义。',
            '生成相容性使用独立参考/校准模拟和多个近邻距离，全部路径继续参与Energy评分。模拟区间只表示有限模拟误差。','',
+           '表中NLL为每题平均负对数似然，越小表示模型给实际选择的概率越高。MCSE表示更换计算随机种子造成的数值误差。',
+           '一次完整粒子滤波称为一个独立系统。系统权重表示各次滤波对合并序列似然的贡献，规则信念在模型内部另有定义。',
+           '形态尾部比例表示：有多少校准路径比真人离模拟常见形态更远。比例很小，说明真人形态位于模型较少生成的位置。',
+           'Energy综合真人与模拟路径的距离及模拟路径之间的距离，越小表示分布评分越好。所有这些判断均限定于预定行为指标。','',
+           '波动指标概括32题块正确率偏离描述曲线的程度，较大数值表示更强的反复起伏。下文同时报告这个单项指标及与真人相同描述标签的生成次数。','',
            '真人记录已经参与选参；整个选择流程的误判率及参数集合覆盖仍需重复恢复校准。','',
            '“改善并保持”描述变化幅度和持续过程；是否达到高正确率同时依据水平指标判断。','',
-           '| 阶段 | 实际CPU小时 | 上限 |','|---|---:|---:|']
+           '| 阶段 | 计入预算的CPU小时 | 上限 |','|---|---:|---:|']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
+    component_cautions=[]
+    for row in all_final:
+        summary=summary_index.get((row['subject'],row['candidate']['id']))
+        if summary and summary['observed_label_count']==0 and row.get('shape_check',{}).get('status')=='compatible':
+            component_cautions.append((row,summary))
+    if component_cautions:
+        lines.extend(['','综合形态评分之外仍有单项偏差：',''])
+        for row,item in component_cautions:
+            lines.append(f"- {row['subject']}/{row['candidate']['id'][:6]}通过综合形态检查，但真人的“{CHINESE[item['observed_label']]}”标签出现次数为0/{item['paths']}。该组合对这一行为特征的生成仍不足。")
     if protocol.get('shape_extension'):
         extension=protocol['shape_extension']
         targets='、'.join(f"{r['subject']}/{r['candidate'][:6]}" for r in extension['targets'])
@@ -242,7 +298,11 @@ def render(study: Path, output: Path):
                   '每条线是一组完整参数，按登记外界缩放显示。各参数的边际范围不能任意交叉组合。原始值见下表及CSV。'])
     for case in cases:
         sid=case['subject'];batch=confirmed[sid]
-        lines.extend(['',f'## 被试{sid}','',
+        reference=next((r.get('reference_id') for r in batch if r.get('reference_id')),None)
+        lines.extend(['',f'## 被试{sid}',''])
+        if reference:
+            lines.extend([f'相对似然以确认NLL最低的组合{reference[:6]}为基准。每个比较要求该组合与基准均通过数值检查；基准未通过时，相关比较记为数值未确定。',''])
+        lines.extend([
                       '| 组合ID | NLL ± 2MCSE | 差值 ± 2MCSE | 系统最大权重 | 形态尾部及95%模拟区间 | 主判定 |',
                       '|---|---|---|---:|---|---|'])
         for row in batch:
@@ -260,6 +320,21 @@ def render(study: Path, output: Path):
             lines.extend(['','以下组合的ae=0，λ对行为失去作用，表中统一记0用于去重：'+ '、'.join(inactive)+'。这些组合允许任何合法λ值产生相同的行为概率。'])
         if case['condition']!=3:
             lines.extend(['','本条件的γ固定为1；仅条件3估计该参数。'])
+        edges=[]
+        for row in batch:
+            if row.get('joint_status')!='retained':continue
+            values=row['candidate']['hyperparams'];contacts=[]
+            for name in PARAMETER_NAMES:
+                if name=='gamma' and case['condition']!=3:continue
+                if name=='failure_decay' and values[KEYS['error_gain']]==0:continue
+                lower=min(protocol['policy']['parameter_values'][name]);upper=max(protocol['policy']['parameter_values'][name])
+                value=values[KEYS[name]]
+                if value<=lower or value>=upper:
+                    contacts.append(f'{PARAMETER_SYMBOLS[name]}={value:.4g}')
+            if contacts:edges.append(row['candidate']['id'][:6]+'（'+ '、'.join(contacts)+'）')
+        if edges:
+            lines.extend(['','保留组合中触及或超过初始粗候选端点的取值：'+ '；'.join(edges)+'。',
+                          '端点既包括0、1等机制边界，也包括本轮人为限定的搜索范围。已检查的组合与外扩点见全部候选CSV；当前集合的外缘尚未完整确定。'])
         lines.extend(['','同一参数从初筛到确认的评分变化（两次都使用完整真人记录）：','',
                       '| 组合ID | 初筛NLL | 确认NLL | 初筛形态Energy | 确认形态Energy |',
                       '|---|---:|---:|---:|---:|'])
@@ -275,12 +350,14 @@ def render(study: Path, output: Path):
             label=CHINESE[summaries[0]['observed_label']]
             lines.extend(['',f'被试的预定描述标签为“{label}”。该标签描述观察行为形态，尚不代表心理学习机制。',
                           '',f'![被试{sid}全部路径及形态](paths_S{sid}.png)','',
-                          '左列显示所有模拟路径的32题块正确率、模拟均值和真实路径；均值仅作描述。中列以全部路径为分母，橙色对应被试的描述标签。',
-                          '右列只对检测到变化的路径画变化中心，标题列明相应分母与截断数。绝对时点未用于主要形态距离。'])
+                          '左列显示所有模拟路径的32题块正确率、模拟均值和真实路径；灰线透明度随路径数调整，均值仅作描述。中列以全部路径为分母，橙色对应被试的描述标签。',
+                          '右列只对检测到变化的路径画变化中心，标题列明相应分母与截断数。绝对时点未用于主要形态距离。',''])
             for item in summaries:
                 lines.append(f"- {item['candidate'][:6]}：完全正确率均值{item['generated_mean_accuracy']:.1%}（真人{item['observed_mean_accuracy']:.1%}），"
                              f"末64题均值{item['generated_final64_mean']:.1%}（真人{item['observed_final64']:.1%}）；"
                              f"清楚变化{item['transition_paths']}/{item['paths']}，截断{item['censored_paths']}/{item['paths']}，描述曲线未收敛{item['optimizer_unsuccessful']}/{item['paths']}。")
+                lines.append(f"  与真人相同描述标签{item['observed_label_count']}/{item['paths']}；真人波动指标{item['observed_dispersion']:.3f}，"
+                             f"模拟中位数{item['generated_dispersion_median']:.3f}、95%分位{item['generated_dispersion_q95']:.3f}。")
         statuses=Counter(r.get('joint_status','incomplete') for r in batch)
         lines.extend(['','本例判定组成：'+'；'.join(f"{STATUS.get(k,k)} {v}个" for k,v in statuses.items())+'。'])
         lines.extend(['','| 组合ID | 对照重复数 | 对照NLL（追加前→当前） | 两粒子数差值绝对值 | 合并两倍MCSE | 粒子数检查 |',
@@ -290,7 +367,7 @@ def render(study: Path, output: Path):
             if high and 'absolute_difference' in check:
                 prior=row.get('primary_particle_check_score')
                 values=(f"{prior['nll']:.5f} → " if prior else '')+f"{high['nll']:.5f}"
-                lines.append(f"| {row['candidate']['id'][:6]} | {high['repeats']} | {values} | {check['absolute_difference']:.5f} | {2*check['combined_mcse']:.5f} | {check['status']} |")
+                lines.append(f"| {row['candidate']['id'][:6]} | {high['repeats']} | {values} | {check['absolute_difference']:.5f} | {2*check['combined_mcse']:.5f} | {NUMERICAL_STATUS.get(check['status'],check['status'])} |")
     calibration=read(study/'calibration.json')
     lines.extend(['','## 计算误差与停止记录','',
                   '| 被试/锚点 | 128粒子NLL | 512粒子NLL | 高粒子两倍MCSE | 高粒子系统最大权重 |',
@@ -302,9 +379,29 @@ def render(study: Path, output: Path):
     events=[json.loads(line) for line in (study/'decisions.jsonl').read_text().splitlines()]
     stops=[e for e in events if e['event']=='budget_stop']
     receipts=[read(f) for f in (study/'jobs').glob('*.usage.json')]
-    pd.DataFrame([{k:r.get(k) for k in ['job','stage','status','cpu_seconds']} for r in receipts]).to_csv(output/'job_status.csv',index=False)
+    pd.DataFrame([{k:r.get(k) for k in ['job','stage','status','cpu_seconds','cpu_accounting','reserved_cpu_seconds']}
+                  for r in receipts]).to_csv(output/'job_status.csv',index=False)
     failures=[r for r in receipts if r['status']!='complete']
-    lines.extend(['',f'预算停止事件{len(stops)}次，工作失败记录{len(failures)}条；完整判断和未提交工作见上级目录 decisions.jsonl。',
+    lines.extend(['',f'预算停止事件{len(stops)}次，工作失败记录{len(failures)}条；完整判断和未提交工作见上级目录 decisions.jsonl。'])
+    for phase,name in [('screen','初筛'),('confirmation','确认')]:
+        subset=[r for r in path_rows if r['phase']==phase]
+        lines.append(f"{name}路径的描述曲线有{sum(not r['optimizer_success'] for r in subset)}/{len(subset)}条未报告收敛；全部有限拟合结果按登记规则保留。")
+    reuse=study/'reuse_manifest.json'
+    if reuse.exists():
+        counts=read(reuse).get('status_counts',{})
+        lines.extend([f"其中复用的早期账本包含{counts.get('complete',0)}次成功和{counts.get('failed',0)}次失败。早期失败来自λ=1超出实现范围；修订3已改用0.995并重新计算相应组合。所有耗时均计入预算。"])
+    if protocol.get('particle_precision_extension'):
+        ledger=Path(protocol['particle_precision_extension']['ledger'])
+        for file in sorted(ledger.glob('particle_precision_v*/interrupted.json')):
+            audit=read(file);link=Path(os.path.relpath(file,output)).as_posix()
+            lines.extend([f"精度补充发生一次退出码{audit['exit_code']}的进程中断，{len(audit['jobs'])}项工作未留下可复用结果。日志未确定终止原因。",
+                          f"丢失CPU记录的单线程工作按完整墙钟时间保守计入{audit['worker_cpu_hours_charged']:.3f} CPU小时，协调器间隙另计{audit['coordinator_gap_cpu_hours_charged']:.3f}小时。实际CPU耗时无法精确还原。",
+                          f"恢复采用新任务名和20并发，全部中断费用继续计入96小时预算。详见[中断与预算记录]({link})。"])
+        file=ledger/'descriptor_convergence_diagnostic.json'
+        if file.exists():
+            diagnostic=read(file);link=Path(os.path.relpath(file,output)).as_posix()
+            lines.append(f"初筛未收敛曲线的独立诊断：迭代上限增加至600后收敛，形态特征距离变化为{diagnostic['feature_distance']:.3g}。原评分保持不变；详见[描述曲线检查]({link})。")
+    lines.extend([
                   '初筛和确认使用不同粒子数及种子；初筛排序变化、确认MCSE和系统权重需要联合检查。有限重复稳定不保证粒子近似无偏。',
                   '','## 证据范围与后续判断','',
                   '本轮检验有限候选集合和完整流程的可用性。每人最多24点、最多4点独立确认，仍可能遗漏其他支持区域。',
@@ -314,6 +411,7 @@ def render(study: Path, output: Path):
                   '持续执行仍为研究候选，口述待人工复核。既有逐题状态恢复不足的限制继续保留。',
                   '','## 数据与复现','',
                   '- [全部候选评分与参数](candidate_scores.csv)。',
+                  '- [三档容忍下保留的完整组合及其轨迹分布](retained_regions.json)。',
                   '- [均匀作答与固定反应比例参照](choice_baselines.json)。',
                   '- [每条路径的形态记录](path_shapes.csv)。',
                   '- [确认路径概率与汇总](shape_summaries.json)。',
@@ -327,6 +425,8 @@ def render(study: Path, output: Path):
           input_sha256={str(f.relative_to(study)):hashlib.sha256(f.read_bytes()).hexdigest() for f in inputs},
           candidate_rows=len(rows),path_rows=len(path_rows),retained_main=len(retained),subjects_retained=len(subject_retained),
           statistical_scope='development; Monte Carlo intervals only'))
+    (output/'report_source.py').write_bytes(Path(__file__).read_bytes())
+    (output/'decisions_at_report.jsonl').write_bytes((study/'decisions.jsonl').read_bytes())
 
 
 def main():
@@ -339,7 +439,7 @@ def main():
     seconds=end.ru_utime+end.ru_stime-start.ru_utime-start.ru_stime
     completion=read(args.study/'completion.json')
     with (args.output/'report.md').open('a') as stream:
-        stream.write(f'\n本次报告生成另用{seconds:.2f} CPU秒；加上数值阶段，共{sum(completion["cpu_hours"].values())+seconds/3600:.3f} CPU小时。\n')
+        stream.write(f'\n本次报告生成另用{seconds:.2f} CPU秒；加上数值阶段，共计入预算{sum(completion["cpu_hours"].values())+seconds/3600:.3f} CPU小时。\n')
 
 
 if __name__=='__main__':main()
