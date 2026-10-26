@@ -63,6 +63,8 @@ def flatten(row, phase):
                 shape_status=check.get('status'),shape_tail=check.get('rank_tail'),shape_tail_low=check.get('tail_mc_low'),
                 shape_tail_high=check.get('tail_mc_high'),shape_neighbors=check.get('neighbors'),
                 joint_status=row.get('joint_status'),numerically_resolved=row.get('numerically_resolved'),
+                failure_decay_inactive=row['candidate']['hyperparams'][KEYS['error_gain']]==0,
+                pairing_retention_fixed=row['condition']!=3,
                 particle_check_status=row.get('particle_check',{}).get('status'),
                 particle_check_gap=row.get('particle_check',{}).get('absolute_difference'),
                 particle_check_nll=row.get('particle_check_score',{}).get('nll'),
@@ -164,6 +166,15 @@ def render(study: Path, output: Path):
     confirmed={c['subject']:read(study/f"confirmed_S{c['subject']}.json") for c in cases}
     rows=[flatten(r,phase) for phase,data in [('screen',searches),('confirmation',confirmed)] for batch in data.values() for r in batch]
     pd.DataFrame(rows).to_csv(output/'candidate_scores.csv',index=False)
+    baselines=[]
+    for case in cases:
+        _,observed=load_observed(Path(case['template']['folder']))
+        choices=observed['choices'][:case['trials']].astype(int);categories=2 if case['condition']==1 else 4
+        frequency=np.bincount(choices,minlength=categories+1)[1:]/len(choices)
+        baselines.append(dict(subject=case['subject'],uniform_nll=float(np.log(categories)),
+                              constant_response_nll=float(-np.log(frequency[choices-1]).mean()),
+                              trials=len(choices),constant_probabilities=frequency.tolist()))
+    write(output/'choice_baselines.json',baselines)
     overview(cases,confirmed,output);parameter_lines(cases,confirmed,protocol['policy'],output)
     shape_summaries=[];path_rows=[]
     for case in cases:
@@ -189,9 +200,17 @@ def render(study: Path, output: Path):
            '每人完整有效选择按原时序计分。所有候选的模型状态逐题学习。实际选择与自主形态均参与参数选择，全部真人案例属于开发资料。',
            '生成沿实际刺激日程和固定长度使用自己的选择与反馈；实验自适应日程及停止规则尚未完整模拟。口述资料未参与。',
            '完整序列似然按整个独立滤波合并；误差单位为完整系统。主要形态距离省略绝对改善时点，并保留水平、变化宽度、保持、波动和截断。',
+           'NLL容忍按每题计算：0.01在256题对应总对数似然差2.56，在1088题对应10.88。因此各人的工作集合没有统一置信覆盖含义。',
            '生成相容性使用独立参考/校准模拟和多个近邻距离，全部路径继续参与Energy评分。模拟区间只表示有限模拟误差。','',
+           '真人记录已经参与选参；整个选择流程的误判率及参数集合覆盖仍需重复恢复校准。','',
+           '“改善并保持”描述变化幅度和持续过程；是否达到高正确率同时依据水平指标判断。','',
            '| 阶段 | 实际CPU小时 | 上限 |','|---|---:|---:|']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
+    if protocol.get('shape_extension'):
+        extension=protocol['shape_extension']
+        targets='、'.join(f"{r['subject']}/{r['candidate'][:6]}" for r in extension['targets'])
+        lines.extend(['',f"形态精度追加：{targets}各增加{extension['extra_paths']}条独立校准路径，原来的{extension['reference_paths']}条参考路径和判断门槛保持固定。",
+                      '原256条路径的主结果保留在主任务目录；本报告另外整合已登记的追加批次。追加用于缩小模拟误差，全部新增路径进入分布汇总。'])
     lines.extend(['','## 个体结果','',
                   '| 被试 | 类型 | 有效题数 | 已评分/提出 | 确认记录 | 保留(.005/.01/.02) | 数值未确定 |',
                   '|---|---|---:|---:|---:|---|---:|'])
@@ -201,8 +220,16 @@ def render(study: Path, output: Path):
         lines.append(f"| {sid} | {'常规' if case['role']=='regular' else '困难'} | {case['trials']} | "
                      f"{sum(bool(r.get('choice_score')) for r in searches[sid])}/{len(searches[sid])} | {len(batch)} | "
                      f"{' / '.join(map(str,counts))} | {sum(r.get('joint_status')=='numerically_undetermined' for r in batch)} |")
+    lines.extend(['','选择评分的描述性参照（每题NLL越小越好）：','',
+                  '| 被试 | 均匀作答 | 全段固定反应比例 | 最低确认NLL |','|---|---:|---:|---:|'])
+    for baseline in baselines:
+        sid=baseline['subject'];values=[r['choice_score']['nll'] for r in confirmed[sid] if r.get('choice_score')]
+        best=f'{min(values):.5f}' if values else '未完成'
+        lines.append(f"| {sid} | {baseline['uniform_nll']:.5f} | {baseline['constant_response_nll']:.5f} | {best} |")
+    lines.extend(['','固定反应比例按该被试整段选择频率估计，全程保持相同概率。这是同资料拟合参照，未作为新的选参门槛，也未构成独立预测检验。'])
     lines.extend(['','![联合检查](joint_checks.png)','',
                   '图中每点是一个独立确认组合。横向误差为两倍配对MCSE，纵向为固定参考模拟下的Wilson计数区间。方块表示数值未确定。',
+                  '图中纵坐标为校准计数比例k/n，表中尾部秩为加1校正的(k+1)/(n+1)。',
                   '竖线为每题NLL容忍0.01，横线为形态尾部阈值0.05；最终判断同时考虑误差范围和系统权重。',
                   '','![联合组合](joint_parameters.png)','',
                   '每条线是一组完整参数，按登记外界缩放显示。各参数的边际范围不能任意交叉组合。原始值见下表及CSV。'])
@@ -221,6 +248,21 @@ def render(study: Path, output: Path):
         lines.extend(['','| 组合ID | p0 | ae | λ | g0 | K | δ | β0 | η | κ | γ |','|---|'+'---:|'*10])
         for row in batch:
             lines.append('| '+row['candidate']['id'][:6]+' | '+' | '.join(f"{row['candidate']['hyperparams'][KEYS[k]]:.4g}" for k in PARAMETER_NAMES)+' |')
+        inactive=[r['candidate']['id'][:6] for r in batch if r['candidate']['hyperparams'][KEYS['error_gain']]==0]
+        if inactive:
+            lines.extend(['','以下组合的ae=0，λ对行为失去作用，表中统一记0用于去重：'+ '、'.join(inactive)+'。这些组合允许任何合法λ值产生相同的行为概率。'])
+        if case['condition']!=3:
+            lines.extend(['','本条件的γ固定为1；仅条件3估计该参数。'])
+        lines.extend(['','同一参数从初筛到确认的评分变化（两次都使用完整真人记录）：','',
+                      '| 组合ID | 初筛NLL | 确认NLL | 初筛形态Energy | 确认形态Energy |',
+                      '|---|---:|---:|---:|---:|'])
+        initial={r['candidate']['id']:r for r in searches[sid]}
+        for row in batch:
+            before=initial[row['candidate']['id']]
+            if all(x.get('choice_score') and x.get('shape_energy') for x in [before,row]):
+                lines.append(f"| {row['candidate']['id'][:6]} | {before['choice_score']['nll']:.5f} | {row['choice_score']['nll']:.5f} | "
+                             f"{before['shape_energy']['value']:.4f} | {row['shape_energy']['value']:.4f} |")
+        lines.append('参数保持相同；这里的变化来自粒子数、模拟条数和随机种子。Energy越小表示所选形态特征的分布评分越好。')
         summaries=[r for r in shape_summaries if r['subject']==sid]
         if summaries:
             label=CHINESE[summaries[0]['observed_label']]
@@ -249,7 +291,10 @@ def render(study: Path, output: Path):
         if not high:continue
         lines.append(f"| {row['subject']}/{row['candidate'][:6]} | {low.get('nll',float('nan')):.5f} | {high['nll']:.5f} | {2*high['mcse']:.5f} | {high['maximum_system_weight']:.3f} |")
     events=[json.loads(line) for line in (study/'decisions.jsonl').read_text().splitlines()]
-    stops=[e for e in events if e['event']=='budget_stop'];failures=[e for e in events if e['event']=='worker_failure']
+    stops=[e for e in events if e['event']=='budget_stop']
+    receipts=[read(f) for f in (study/'jobs').glob('*.usage.json')]
+    pd.DataFrame([{k:r.get(k) for k in ['job','stage','status','cpu_seconds']} for r in receipts]).to_csv(output/'job_status.csv',index=False)
+    failures=[r for r in receipts if r['status']!='complete']
     lines.extend(['',f'预算停止事件{len(stops)}次，工作失败记录{len(failures)}条；完整判断和未提交工作见上级目录 decisions.jsonl。',
                   '初筛和确认使用不同粒子数及种子；初筛排序变化、确认MCSE和系统权重需要联合检查。有限重复稳定不保证粒子近似无偏。',
                   '','## 证据范围与后续判断','',
@@ -260,8 +305,10 @@ def render(study: Path, output: Path):
                   '持续执行仍为研究候选，口述待人工复核。既有逐题状态恢复不足的限制继续保留。',
                   '','## 数据与复现','',
                   '- [全部候选评分与参数](candidate_scores.csv)。',
+                  '- [均匀作答与固定反应比例参照](choice_baselines.json)。',
                   '- [每条路径的形态记录](path_shapes.csv)。',
                   '- [确认路径概率与汇总](shape_summaries.json)。',
+                  '- [全部数值工作的状态与CPU记录](job_status.csv)。',
                   '- 上级目录 protocol.json、registered_config.yaml、source/、jobs/、numerical/ 和 decisions.jsonl 保存输入、配置、代码、种子、原路径和决策。',
                   '- 本报告仅生成PNG；图表使用所有符合其明示分母的路径。不存在挑选最接近真人路径后替代分布评分。'])
     (output/'report.md').write_text('\n'.join(lines)+'\n')
@@ -280,6 +327,10 @@ def main():
     render(args.study,args.output)
     end=resource.getrusage(resource.RUSAGE_SELF)
     write(args.output/'report_cpu.json',dict(cpu_seconds=end.ru_utime+end.ru_stime-start.ru_utime-start.ru_stime))
+    seconds=end.ru_utime+end.ru_stime-start.ru_utime-start.ru_stime
+    completion=read(args.study/'completion.json')
+    with (args.output/'report.md').open('a') as stream:
+        stream.write(f'\n本次报告生成另用{seconds:.2f} CPU秒；加上数值阶段，共{sum(completion["cpu_hours"].values())+seconds/3600:.3f} CPU小时。\n')
 
 
 if __name__=='__main__':main()
