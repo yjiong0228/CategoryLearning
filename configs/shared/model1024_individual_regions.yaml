@@ -1,5 +1,5 @@
 protocol: model1024_individual_regions_20261026_v1
-revision: 2
+revision: 3
 seed: 2026102607
 source_study: results/model_1023/execution_fit_20261024_v1
 joint_study: results/model_1024/generation_selection_training_20261025_v1
@@ -57,7 +57,7 @@ shape:
 parameter_values:
   p0: [0.005, 0.05, 0.2, 0.65, 0.95]
   error_gain: [0, 0.5, 2, 8]
-  failure_decay: [0, 0.6, 0.95, 1]
+  failure_decay: [0, 0.6, 0.95, 0.995]
   global_search: [0, 0.2, 0.5, 1]
   capacity: [2, 4, 8]
   retention: [0, 0.5, 0.9, 1]

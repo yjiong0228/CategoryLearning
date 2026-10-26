@@ -95,7 +95,24 @@ def canonical(parameters: dict, condition: int, source: str) -> dict:
     if condition != 3:
         point[KEYS['gamma']] = 1.
     point[KEYS['capacity']] = int(point[KEYS['capacity']])
+    validate_parameters(point,condition)
     return candidate(point, source)
+
+
+def validate_parameters(point: dict,condition: int) -> None:
+    """Check the frozen runtime's domains before submitting any simulation."""
+    bounds=dict(p0=(0,1,True,True),error_gain=(0,np.inf,False,False),
+                failure_decay=(0,1,False,True),global_search=(0,1,False,False),
+                retention=(0,1,False,False),beta_init=(.1,25,False,False),
+                learning_rate=(0,1,False,False),inertia=(0,np.inf,False,False),gamma=(0,1,False,False))
+    for name,(low,high,open_low,open_high) in bounds.items():
+        if KEYS[name] not in point:continue
+        value=point[KEYS[name]]
+        if not np.isfinite(value) or value<low or value>high or (open_low and value==low) or (open_high and value==high):
+            raise ValueError(f'{name} outside frozen runtime domain: {value}')
+    value=point[KEYS['capacity']]
+    if int(value)!=value or not 2<=value<(29 if condition==1 else 152):
+        raise ValueError('capacity outside frozen catalogue domain')
 
 
 def load_observed(folder: Path) -> tuple[dict, dict]:
@@ -142,6 +159,12 @@ def prepare(config: Path, output: Path, smoke: bool = False) -> dict:
     if (output/'protocol.json').exists():
         raise FileExistsError('Protocol already exists; run or report this registered study')
     p = yaml.safe_load(config.read_text())
+    for condition in (1,2,3):
+        for name,values in p['parameter_values'].items():
+            for value in values:
+                point={KEYS[k]:v[0] for k,v in p['parameter_values'].items()}
+                point[KEYS[name]]=value
+                validate_parameters(point,condition)
     if sum(v for k,v in p['cpu_hours'].items() if k!='total') != p['cpu_hours']['total']:
         raise ValueError('Stage budgets must sum to the total')
     if smoke:

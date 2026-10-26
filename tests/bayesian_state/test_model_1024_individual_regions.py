@@ -8,7 +8,7 @@ from src.Bayesian_state.metrics.trajectory_shape import (
     describe_path, paired_difference, sequence_score, shape_check,
 )
 from src.Bayesian_state.workflows.analysis.model_1024_individual_regions import (
-    canonical, KEYS, classify,
+    canonical, KEYS, classify, validate_parameters,
 )
 
 POLICY = yaml.safe_load(Path('configs/shared/model1024_individual_regions.yaml').read_text())
@@ -99,3 +99,11 @@ def test_particle_count_change_can_invalidate_an_otherwise_stable_point(monkeypa
              shape_check={'status':'compatible'},particle_check_score=sequence_score(np.full((2,32),high_probability)))
     result=classify([row],POLICY)[0]
     assert result['joint_status']==expected
+
+
+def test_failure_decay_open_boundary_matches_runtime():
+    from src.Bayesian_state.model.modules.hypothesis_transition.mechanistic_rule_search import _number
+    for value in POLICY['parameter_values']['failure_decay']:
+        _number(value,'failure_decay',high=1,open_high=True)
+    with pytest.raises(ValueError,match='failure_decay'):
+        validate_parameters({KEYS['failure_decay']:1.,KEYS['capacity']:4},1)
