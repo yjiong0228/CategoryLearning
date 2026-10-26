@@ -212,3 +212,20 @@ python -m src.Bayesian_state.workflows.analysis.model_1024_individual_regions --
 先以 `--phase register --study STUDY --output NEW_EXTENSION` 冻结对象，再在主流程完成后以
 `--phase run --output NEW_EXTENSION` 执行。登记文件、脚本快照、主结果身份及更新后的CPU总计保存在
 `individual_regions_20261027_v3/shape_extension_v1/`。比较是否保留参数仍用原似然和数值精度要求。
+
+## 粒子数对照的精度补充规则（2026-10-27）
+
+主流程的1024粒子对照仅有两个独立系统，部分候选的系统权重或误差尚未达到标准。
+主流程及上述形态追加结束后，登记所有粒子数对照仍非stable的已完成候选，统一各增加四次
+1024粒子过滤。对象只由数值检查决定，包含形态不相容的点。一次补充后停止。
+
+合并原两次与新增四次的完整序列似然，保留512粒子的评分与配对比较、参数、形态结果和所有
+接受门槛。追加解决有限重复造成的不确定性；若两个粒子数的评分仍有明显差异，结果继续保留为数值未确定。
+所有原始结果保存在各自目录，最终报告显示实际独立系统数及追加前后的结果。
+
+校准和搜索已完成，其实际费用分别约3.84、10.34 CPU小时。精度追加将阶段上限调整为校准4、
+搜索12、确认64、生成12、分析4，总上限保持96 CPU小时，沿用原逐工作CPU账本。
+执行前以完成结果冻结具体对象与输入哈希。入口为
+`python -m src.Bayesian_state.workflows.analysis.model_1024_particle_precision`：
+先使用 `--phase register --study SHAPE_EXTENSION --ledger MAIN_STUDY --output NEW_PRECISION_DIR`，
+再使用 `--phase run --output NEW_PRECISION_DIR`。若无未确定对照则跳过追加。

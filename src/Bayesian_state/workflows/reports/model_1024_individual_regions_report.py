@@ -68,6 +68,8 @@ def flatten(row, phase):
                 particle_check_status=row.get('particle_check',{}).get('status'),
                 particle_check_gap=row.get('particle_check',{}).get('absolute_difference'),
                 particle_check_nll=row.get('particle_check_score',{}).get('nll'),
+                particle_check_repeats=row.get('particle_check_score',{}).get('repeats'),
+                primary_particle_check_nll=row.get('primary_particle_check_score',{}).get('nll'),
                 observed_shape=row.get('observed_shape',{}).get('label'))
     result.update({f'membership_{k}':v for k,v in row.get('membership',{}).items()})
     return result
@@ -211,6 +213,11 @@ def render(study: Path, output: Path):
         targets='、'.join(f"{r['subject']}/{r['candidate'][:6]}" for r in extension['targets'])
         lines.extend(['',f"形态精度追加：{targets}各增加{extension['extra_paths']}条独立校准路径，原来的{extension['reference_paths']}条参考路径和判断门槛保持固定。",
                       '原256条路径的主结果保留在主任务目录；本报告另外整合已登记的追加批次。追加用于缩小模拟误差，全部新增路径进入分布汇总。'])
+    if protocol.get('particle_precision_extension'):
+        extension=protocol['particle_precision_extension']
+        lines.extend(['',f"粒子数对照追加：全部{len(extension['targets'])}个尚未稳定的对照点，各增加{extension['extra_repeats']}次{extension['particles']}粒子过滤。",
+                      '独立系统仍按完整序列似然合并。基础粒子数的结果、参数、轨迹检查和判断门槛固定。',
+                      '此次仅将未使用的校准与搜索预算转入数值确认，总上限保持96 CPU小时。一次追加后停止，仍未确定的结果如实保留。'])
     lines.extend(['','## 个体结果','',
                   '| 被试 | 类型 | 有效题数 | 已评分/提出 | 确认记录 | 保留(.005/.01/.02) | 数值未确定 |',
                   '|---|---|---:|---:|---:|---|---:|'])
@@ -276,12 +283,14 @@ def render(study: Path, output: Path):
                              f"清楚变化{item['transition_paths']}/{item['paths']}，截断{item['censored_paths']}/{item['paths']}，描述曲线未收敛{item['optimizer_unsuccessful']}/{item['paths']}。")
         statuses=Counter(r.get('joint_status','incomplete') for r in batch)
         lines.extend(['','本例判定组成：'+'；'.join(f"{STATUS.get(k,k)} {v}个" for k,v in statuses.items())+'。'])
-        lines.extend(['','| 组合ID | 增加粒子后的NLL | 两粒子数差值绝对值 | 合并两倍MCSE | 粒子数检查 |',
-                      '|---|---:|---:|---:|---|'])
+        lines.extend(['','| 组合ID | 对照重复数 | 对照NLL（追加前→当前） | 两粒子数差值绝对值 | 合并两倍MCSE | 粒子数检查 |',
+                      '|---|---:|---:|---:|---:|---|'])
         for row in batch:
             high=row.get('particle_check_score');check=row.get('particle_check',{})
             if high and 'absolute_difference' in check:
-                lines.append(f"| {row['candidate']['id'][:6]} | {high['nll']:.5f} | {check['absolute_difference']:.5f} | {2*check['combined_mcse']:.5f} | {check['status']} |")
+                prior=row.get('primary_particle_check_score')
+                values=(f"{prior['nll']:.5f} → " if prior else '')+f"{high['nll']:.5f}"
+                lines.append(f"| {row['candidate']['id'][:6]} | {high['repeats']} | {values} | {check['absolute_difference']:.5f} | {2*check['combined_mcse']:.5f} | {check['status']} |")
     calibration=read(study/'calibration.json')
     lines.extend(['','## 计算误差与停止记录','',
                   '| 被试/锚点 | 128粒子NLL | 512粒子NLL | 高粒子两倍MCSE | 高粒子系统最大权重 |',
