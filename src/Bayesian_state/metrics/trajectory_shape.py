@@ -105,7 +105,7 @@ def describe_path(correct: np.ndarray, policy: dict) -> dict:
         b, _ = _blocks(y, w)
         roughness.append(float(np.sqrt(np.mean(np.diff(b)**2))) if len(b)>1 else 0.)
     endpoint = int(np.ceil(right))
-    available = max(0, n-max(0, endpoint)) if supported and gain > 0 else 0
+    available = max(0, n-max(0, endpoint)) if supported else 0
     observed_followup = min(policy['followup'], available)
     post = float(y[max(0,endpoint):max(0,endpoint)+observed_followup].mean()) if observed_followup else mean
     censored = bool(supported and (left < 0 or right >= n or available < policy['followup']))

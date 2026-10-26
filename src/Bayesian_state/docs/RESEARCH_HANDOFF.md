@@ -5,7 +5,9 @@
 [完整记录联合候选计划](model_architecture/model_1024_full_sequence_feasibility.md)现采用六名真人案例：
 常规110、205、306，困难129、229、317；总上限96 CPU小时。每个初筛参数点均生成路径，
 最终输出同时通过完整选择似然、数值精度和自主形态检查的联合候选集合。
-正式任务目录为 `results/model_1024/individual_regions_20261026_v1`，启动与完成以目录内协议和完成记录为准。
+正式任务目录为 `results/model_1024/individual_regions_20261027_v2`，启动与完成以目录内协议和完成记录为准。
+修订2复用首版144次已完成过滤及7.118 CPU小时；发现部分锚点对粒子数敏感后，搜索/确认预算调整为32/36 CPU小时，
+最终候选增加两次1024粒子对照，总上限保持96。下降路径的随访标志同时修正，旧版尚未生成自主路径。
 原“三真人加三模拟、生成只检查少量点”草案已被替换，完整重复参数恢复另定预算。
 口述资料待用户最终人工检查，新增口述验证和编码修改继续暂缓。
 
@@ -114,5 +116,5 @@ src/Bayesian_state/docs/RESEARCH_HANDOFF.md，再按需读 RESEARCH_GUIDE.md 及
 我们已授权六名开发被试的完整记录联合参数候选研究，保留真实选择与自主形态两类要求。
 请读取model_architecture/model_1024_full_sequence_feasibility.md，核对当前计划及工作区状态。
 口述数据待我最终人工检查；保留既有状态恢复边界和所有研究结果。
-先核对 results/model_1024/individual_regions_20261026_v1 的协议、进度和完成记录，避免重复运行。
+先核对 results/model_1024/individual_regions_20261027_v2 的协议、进度和完成记录，避免重复运行。
 ```

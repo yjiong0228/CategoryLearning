@@ -147,7 +147,8 @@ def prepare(config: Path, output: Path, smoke: bool = False) -> dict:
     if smoke:
         p['subjects'] = p['subjects'][:1]
         p['search'].update(initial=2,rounds=0,maximum_candidates=2,particles=2,repeats=2,
-                           finalists=2,confirmation_particles=4,confirmation_repeats=2,extra_confirmation_repeats=0)
+                           finalists=2,confirmation_particles=4,confirmation_repeats=2,extra_confirmation_repeats=0,
+                           particle_check_particles=8,particle_check_repeats=2)
         p['generation'].update(screening_paths=8,confirmation_paths=8,chunk=2)
         p['parallel_budget'] = 1
     output.mkdir(parents=True, exist_ok=True)
@@ -465,6 +466,19 @@ def classify(rows: list[dict],policy: dict) -> list[dict]:
         stable=(max(score['maximum_system_weight'],refscore['maximum_system_weight'])<=policy['search']['maximum_system_weight']
                 and 2*max(score['mcse'],refscore['mcse'])<=policy['search']['maximum_mc_resolution']
                 and 2*difference['mcse']<=policy['search']['maximum_mc_resolution'])
+        for compared in [row,reference]:
+            high=compared.get('particle_check_score');base=compared['choice_score']
+            if high:
+                gap=abs(high['nll']-base['nll']);se=float(np.hypot(high['mcse'],base['mcse']))
+                tolerance=policy['search']['particle_check_tolerance']
+                status='stable' if gap+2*se<=tolerance else ('sensitive' if gap-2*se>tolerance else 'boundary')
+                if high['maximum_system_weight']>policy['search']['maximum_system_weight']:
+                    status='system_weight_unresolved'
+                compared['particle_check']=dict(status=status,absolute_difference=gap,combined_mcse=se,
+                                                tolerance=tolerance,particles=policy['search']['particle_check_particles'])
+            else:
+                compared['particle_check']=dict(status='incomplete')
+            stable=stable and compared['particle_check']['status']=='stable'
         row.update(reference_id=reference['candidate']['id'],likelihood_difference=difference,numerically_resolved=stable)
         row['preferred_numerical_precision']=bool(stable and 2*max(score['mcse'],refscore['mcse'],difference['mcse'])
                                                   <=policy['search']['preferred_mc_resolution'])
@@ -552,11 +566,23 @@ def run(output: Path) -> None:
     confirmed=evaluate_many(protocol,batches,output,queue,'confirmation','confirmation_generation',
                             p['search']['confirmation_particles'],p['search']['confirmation_repeats'],
                             p['generation']['confirmation_paths'],'confirmation')
+    checks=[]
+    for case,selected in batches:
+        checks.extend(make_jobs(protocol,case,selected,output,'particle_check',
+                                particles=p['search']['particle_check_particles'],repeats=p['search']['particle_check_repeats']))
+    queue.execute(checks,'confirmation')
+    for case,selected in batches:
+        for row in confirmed[case['subject']]:
+            jobs=[j for j in checks if j['subject']==case['subject'] and j['candidate']['id']==row['candidate']['id']]
+            row['particle_check_jobs']=jobs
+            probability=completed_arrays(jobs,'observed_probability')
+            if probability is not None:row['particle_check_score']=sequence_score(probability)
     extras=[];extra_by_subject={}
     count=p['search']['extra_confirmation_repeats']
     for case,selected in batches:
         rows=classify(confirmed[case['subject']],p)
-        if count and any(r.get('joint_status')=='numerically_undetermined' for r in rows):
+        if count and any(r.get('choice_score') and (2*r['choice_score']['mcse']>p['search']['maximum_mc_resolution']
+                       or r['choice_score']['maximum_system_weight']>p['search']['maximum_system_weight']) for r in rows):
             jobs=make_jobs(protocol,case,selected,output,'extra_confirmation',
                            particles=p['search']['confirmation_particles'],repeats=count)
             extras.extend(jobs);extra_by_subject[case['subject']]=jobs

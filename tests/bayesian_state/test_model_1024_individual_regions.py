@@ -51,6 +51,8 @@ def test_decreasing_and_censored_paths_remain_in_distribution():
     decline = describe_path(np.r_[np.ones(256), np.tile([0, 1],128)], POLICY['shape'])
     late = describe_path(np.r_[np.tile([0, 1],240), np.ones(32)], POLICY['shape'])
     assert decline['label'] == 'decreasing'
+    assert not decline['censored']
+    assert decline['followup_trials'] == POLICY['shape']['followup']
     assert late['censored']
     assert late['label'] == 'transition_censored'
     assert len(decline['features']) == len(late['features']) == 11
@@ -86,3 +88,14 @@ def test_empty_gap_between_modes_is_not_accepted_as_typical():
     reference=np.r_[np.zeros((64,2)),np.ones((64,2))]
     samples=np.r_[reference,reference]
     assert shape_check(samples,np.array([.5,.5]))['status']=='incompatible'
+
+
+@pytest.mark.parametrize('high_probability, expected',[(.6,'retained'),(.59,'numerically_undetermined')])
+def test_particle_count_change_can_invalidate_an_otherwise_stable_point(monkeypatch,high_probability,expected):
+    from src.Bayesian_state.workflows.analysis import model_1024_individual_regions as runner
+    p=np.full((4,32),.6)
+    monkeypatch.setattr(runner,'completed_arrays',lambda jobs,key:p)
+    row=dict(candidate={'id':'point'},filter_jobs=[],choice_score=sequence_score(p),
+             shape_check={'status':'compatible'},particle_check_score=sequence_score(np.full((2,32),high_probability)))
+    result=classify([row],POLICY)[0]
+    assert result['joint_status']==expected

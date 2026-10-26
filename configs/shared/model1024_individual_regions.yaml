@@ -1,4 +1,5 @@
 protocol: model1024_individual_regions_20261026_v1
+revision: 2
 seed: 2026102607
 source_study: results/model_1023/execution_fit_20261024_v1
 joint_study: results/model_1024/generation_selection_training_20261025_v1
@@ -12,8 +13,8 @@ subjects:
 parallel_budget: 128
 cpu_hours:
   calibration: 12
-  search: 44
-  confirmation: 24
+  search: 32
+  confirmation: 36
   generation: 12
   analysis: 4
   total: 96
@@ -28,6 +29,9 @@ search:
   confirmation_particles: 512
   confirmation_repeats: 4
   extra_confirmation_repeats: 4
+  particle_check_particles: 1024
+  particle_check_repeats: 2
+  particle_check_tolerance: 0.005
   score_tolerances: [0.005, 0.01, 0.02]
   preferred_mc_resolution: 0.002
   maximum_mc_resolution: 0.005
