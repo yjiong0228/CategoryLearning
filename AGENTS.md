@@ -103,6 +103,11 @@ changing its interfaces, configuration schema, or workflow.
 
 Read [the research guide](src/Bayesian_state/docs/RESEARCH_GUIDE.md) before
 designing model changes, fitting objectives, recovery studies or trajectory analyses.
+For a new Model 1024 research session, first read the concise
+[research handoff](src/Bayesian_state/docs/RESEARCH_HANDOFF.md), then follow its
+links as needed. The current agreed direction is individual-parameter estimation
+reliability and identifiability. The handoff distinguishes completed evidence from
+the proposed next study; its proposal does not start a new long-running job.
 The shared objective is a generative account of individual category learning:
 infer internal-state distributions, estimate supported parameter regions, and
 predict distributions of coherent learning trajectories under the task protocol.
