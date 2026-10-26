@@ -1,0 +1,65 @@
+protocol: model1024_individual_regions_20261026_v1
+seed: 2026102607
+source_study: results/model_1023/execution_fit_20261024_v1
+joint_study: results/model_1024/generation_selection_training_20261025_v1
+subjects:
+  - {id: 110, condition: 1, role: regular}
+  - {id: 205, condition: 2, role: regular}
+  - {id: 306, condition: 3, role: regular}
+  - {id: 129, condition: 1, role: challenge}
+  - {id: 229, condition: 2, role: challenge}
+  - {id: 317, condition: 3, role: challenge}
+parallel_budget: 128
+cpu_hours:
+  calibration: 12
+  search: 44
+  confirmation: 24
+  generation: 12
+  analysis: 4
+  total: 96
+search:
+  initial: 8
+  rounds: 4
+  proposals_per_round: 4
+  maximum_candidates: 24
+  particles: 128
+  repeats: 2
+  finalists: 4
+  confirmation_particles: 512
+  confirmation_repeats: 4
+  extra_confirmation_repeats: 4
+  score_tolerances: [0.005, 0.01, 0.02]
+  preferred_mc_resolution: 0.002
+  maximum_mc_resolution: 0.005
+  maximum_system_weight: 0.9
+generation:
+  screening_paths: 32
+  confirmation_paths: 256
+  chunk: 8
+  compatibility_alpha: 0.05
+shape:
+  center_starts: [0.25, 0.5, 0.75]
+  optimizer_iterations: 120
+  bic_gain: 6
+  minimum_gain: 0.15
+  residual_block: 32
+  windows: [16, 32, 64]
+  followup: 64
+  high_level: 0.8
+  maintenance_drop: 0.1
+  complex_dispersion: 3
+  abrupt_width: 32
+  gradual_width: 64
+parameter_values:
+  p0: [0.005, 0.05, 0.2, 0.65, 0.95]
+  error_gain: [0, 0.5, 2, 8]
+  failure_decay: [0, 0.6, 0.95, 1]
+  global_search: [0, 0.2, 0.5, 1]
+  capacity: [2, 4, 8]
+  retention: [0, 0.5, 0.9, 1]
+  beta_init: [0.1, 1, 5, 15, 25]
+  learning_rate: [0, 0.003, 0.03, 0.3, 1]
+  inertia: [0, 1, 3, 8]
+  gamma: [0, 0.6, 0.95, 1]
+scope: development_full_record_fixed_stimulus_schedule_joint_candidate_sets
+oral_status: deferred_pending_user_manual_review
