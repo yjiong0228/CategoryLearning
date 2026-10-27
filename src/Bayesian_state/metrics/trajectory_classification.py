@@ -9,6 +9,7 @@ descriptive comparison, with no calibrated error-rate or psychological claim.
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 
 import numpy as np
 from scipy.optimize import minimize
@@ -121,15 +122,48 @@ def fitted_probability(fit: dict, n: int) -> np.ndarray:
     return p
 
 
-def classify_path(correct: np.ndarray, policy: dict) -> dict:
+def select_comparison_set(fits: list[dict], policy: dict) -> tuple[list[dict], dict]:
+    """Require additional evidence before admitting multi-stage competitors."""
+    eligible = [f for f in fits if f['amplitude_eligible'] and f['bic'] is not None]
+    audit = dict(selection_rule=policy.get('selection_rule', 'flat_class_comparison'))
+    if audit['selection_rule']!='hierarchical_single_then_multiple':
+        return eligible, audit
+    single = [f for f in eligible if f['family'] in ['step', 'ramp']]
+    multiple = [f for f in eligible if f['family']=='stages']
+    single_best = min(single, key=lambda f:f['bic']) if single else None
+    multiple_best = min(multiple, key=lambda f:f['bic']) if multiple else None
+    gain = (single_best['bic']-multiple_best['bic']
+            if single_best is not None and multiple_best is not None else None)
+    admitted = bool(multiple_best is not None and
+                    (single_best is None or gain>=policy['multiple_bic_gain']))
+    audit.update(multiple_admitted=admitted, multiple_gain_over_single=gain,
+                 single_best_bic=None if single_best is None else single_best['bic'],
+                 multiple_best_bic=None if multiple_best is None else multiple_best['bic'])
+    return (eligible if admitted else single), audit
+
+
+def nearest_same_label(distances: np.ndarray, labels: list[str], observed_label: str) -> tuple[int | None, int]:
+    """Return the closest eligible whole path; an empty category stays empty."""
+    d = np.asarray(distances, dtype=float)
+    if d.ndim!=1 or len(labels)!=len(d) or not np.isfinite(d).all():
+        raise ValueError('Need aligned finite distances and labels')
+    indices = np.flatnonzero(np.asarray(labels)==observed_label)
+    return (int(indices[np.argmin(d[indices])]), len(indices)) if len(indices) else (None, 0)
+
+
+def classify_path(correct: np.ndarray, policy: dict, *, fitted_models: list[dict] | None = None) -> dict:
     """Classify one binary path and retain fits, uncertainty and observations."""
     y = np.asarray(correct, dtype=float)
     if y.ndim != 1 or len(y)<2*policy['minimum_segment'] or not np.isin(y, [0, 1]).all():
         raise ValueError('Need a binary path of at least two minimum-length segments')
     n = len(y)
-    fits = _piecewise_fits(y, policy['minimum_segment'], policy['maximum_segments'])
-    step = next((f for f in fits if f['family']=='step'), None)
-    fits.append(_ramp_fit(y, policy, step))
+    if fitted_models is None:
+        fits = _piecewise_fits(y, policy['minimum_segment'], policy['maximum_segments'])
+        step = next((f for f in fits if f['family']=='step'), None)
+        fits.append(_ramp_fit(y, policy, step))
+    else:
+        # The runner verifies outcome identity and every fit-setting value.
+        fits = deepcopy(fitted_models)
     flat = fits[0]
     for fit in fits:
         fit['bic'] = None if fit['nll'] is None else 2*fit['nll']+fit['parameters']*np.log(n)
@@ -140,7 +174,7 @@ def classify_path(correct: np.ndarray, policy: dict) -> dict:
                         'multiple_changes' if fit['family']=='stages' else
                         'decreasing' if len(changes) and changes[0]<0 else
                         'abrupt_improvement' if fit['family']=='step' else 'gradual_improvement')
-    eligible = [f for f in fits if f['amplitude_eligible'] and f['bic'] is not None]
+    eligible, selection_audit = select_comparison_set(fits, policy)
     ranked = sorted(eligible, key=lambda f:f['bic'])
     best = ranked[0] if ranked else flat
     gain = float(flat['bic']-best['bic'])
@@ -159,6 +193,9 @@ def classify_path(correct: np.ndarray, policy: dict) -> dict:
             label, reason = 'shape_undetermined', 'competing_shapes_close'
         else:
             label, reason = best['class'], 'best_shape_separated'
+    elif (selection_audit.get('multiple_best_bic') is not None and
+          flat['bic']-selection_audit['multiple_best_bic']>=policy['change_bic_gain']):
+        label, reason = 'shape_undetermined', 'change_structure_unresolved'
     # A failed ramp that might improve on the winner prevents a definite label.
     ramp = fits[-1]
     if ramp['nll'] is None or (not ramp['converged'] and ramp['bic'] <= selected['bic']+policy['class_bic_gap']):
@@ -187,6 +224,7 @@ def classify_path(correct: np.ndarray, policy: dict) -> dict:
                 outcome_sha256=hashlib.sha256(y.astype('uint8').tobytes()).hexdigest(),
                 mean_accuracy=float(y.mean()), final64_accuracy=float(y[-min(64,n):].mean()),
                 best_family=selected['family'], best_supported_class=best['class'],
+                selected_fit_index=fits.index(selected), selection_audit=selection_audit,
                 change_bic_gain=gain, class_bic_gap=gap, competing_classes=list(by_class),
                 change_center=center, change_end=endpoint, followup_trials=followup,
                 followup_accuracy=followup_level, followup_accuracy_trials=min(followup,policy['followup_window']) if followup else 0,

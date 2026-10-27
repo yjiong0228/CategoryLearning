@@ -4,6 +4,8 @@ Run from the repository root with --study, --output NEW, and --config. Every
 screening and confirmation path is included. Records are processed in a single
 process-parallel layer with one numeric thread per worker. Classification
 validation remains deferred; source hashes and per-path identities are saved.
+--reuse-fits reuses a completed descriptive run after matching fit settings,
+source records, seeds and outcome hashes. Only the decision rule is reapplied.
 """
 from __future__ import annotations
 
@@ -43,7 +45,16 @@ def _batch(task: dict, policy: dict) -> dict:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         for index, correct in enumerate(task['correct']):
-            row = classify_path(correct, policy)
+            fitted_models=None
+            if task.get('prior_records') is not None:
+                prior=task['prior_records'][index]
+                expected_seed=int(task['seeds'][index]) if task['seeds'] is not None else None
+                digest=hashlib.sha256(correct.astype('uint8').tobytes()).hexdigest()
+                if (prior['path_index']!=task['start']+index or prior['seed']!=expected_seed
+                        or prior['outcome_sha256']!=digest):
+                    raise ValueError('Saved fits do not match this exact outcome path')
+                fitted_models=prior['fits']
+            row = classify_path(correct, policy, fitted_models=fitted_models)
             row.update(path_index=task['start']+index,
                        seed=int(task['seeds'][index]) if task['seeds'] is not None else None)
             records.append(row)
@@ -53,7 +64,7 @@ def _batch(task: dict, policy: dict) -> dict:
                           for message in set(str(w.message) for w in caught)})
 
 
-def run(study: Path, output: Path, config: Path, workers: int) -> None:
+def run(study: Path, output: Path, config: Path, workers: int, reuse_fits: Path | None = None) -> None:
     if output.exists():
         raise FileExistsError('Use a new classification directory')
     for name in ['OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS']:
@@ -62,6 +73,13 @@ def run(study: Path, output: Path, config: Path, workers: int) -> None:
     started = time.time()
     parent_start = time.process_time()
     policy = yaml.safe_load(config.read_text())
+    if reuse_fits is not None:
+        if _read(reuse_fits/'completion.json')['status']!='complete':
+            raise ValueError('Reuse requires a completed descriptive run')
+        old_policy=_read(reuse_fits/'registration.json')['policy']
+        fit_keys=['minimum_segment','maximum_segments','ramp_starts','ramp_iterations','probability_epsilon']
+        if any(policy[key]!=old_policy[key] for key in fit_keys):
+            raise ValueError('Changed fitting settings require new fits')
     protocol = _read(study/'protocol.json')
     output.mkdir(parents=True)
     (output/'chunks').mkdir()
@@ -69,6 +87,7 @@ def run(study: Path, output: Path, config: Path, workers: int) -> None:
     _write(output/'registration.json', dict(version=policy['version'], policy=policy,
         study=str(study), sources={str(p):_sha(p) for p in sources},
         method_validation='deferred_by_user', model_jobs=0, parameter_scores_changed=False,
+        reuse_fits=None if reuse_fits is None else str(reuse_fits),
         environment=dict(python=platform.python_version(), numpy=np.__version__, scipy=scipy.__version__),
         created_unix=started))
     (output/'classification_source.py').write_bytes(sources[1].read_bytes())
@@ -102,6 +121,17 @@ def run(study: Path, output: Path, config: Path, workers: int) -> None:
                     inputs[str(path)] = _sha(path)
                 for first in range(0, len(choices), 32):
                     tasks.append(dict(key=key, start=first, correct=correct[first:first+32], seeds=seeds[first:first+32]))
+    if reuse_fits is not None:
+        prior={}
+        for key in groups:
+            path=reuse_fits/f'{key}.json'
+            value=_read(path)
+            if value['outcome_sha256']!=groups[key]['outcome_sha256']:
+                raise ValueError('Saved group outcome identity changed')
+            inputs[str(path)]=_sha(path);prior[key]=value['records']
+        inputs[str(reuse_fits/'registration.json')]=_sha(reuse_fits/'registration.json')
+        for task in tasks:
+            task['prior_records']=prior[task['key']][task['start']:task['start']+len(task['correct'])]
     workers = min(workers, len(os.sched_getaffinity(0)), len(tasks))
     _write(output/'inputs.json', inputs)
     records = {key:[] for key in groups}
@@ -130,7 +160,8 @@ def run(study: Path, output: Path, config: Path, workers: int) -> None:
         groups=len(groups), observed_paths=sum(g['paths'] for g in groups.values() if g['phase']=='observed'),
         generated_paths=sum(g['paths'] for g in groups.values() if g['phase']!='observed'),
         workers=workers, worker_cpu_seconds=worker_cpu, coordinator_cpu_seconds=time.process_time()-parent_start,
-        wall_seconds=time.time()-started, warnings=warning_counts, model_jobs=0))
+        wall_seconds=time.time()-started, warnings=warning_counts, model_jobs=0,
+        reused_descriptive_fits=reuse_fits is not None))
 
 
 def main() -> None:
@@ -139,10 +170,11 @@ def main() -> None:
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--config', type=Path, default=Path('configs/shared/model1024_trajectory_classification.yaml'))
     parser.add_argument('--workers', type=int, default=16)
+    parser.add_argument('--reuse-fits',type=Path,help='Reuse a completed classification run with identical fit settings')
     args = parser.parse_args()
     if args.workers<1:
         parser.error('--workers must be positive')
-    run(args.study, args.output, args.config, args.workers)
+    run(args.study, args.output, args.config, args.workers,args.reuse_fits)
 
 
 if __name__=='__main__':

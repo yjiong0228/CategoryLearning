@@ -1,0 +1,23 @@
+version: descriptive_shapes_v3
+# A multi-stage description must add clear evidence beyond one transition.
+selection_rule: hierarchical_single_then_multiple
+multiple_bic_gain: 6.0
+nearest_rule: same_label_then_registered_distance
+minimum_change: 0.15
+change_bic_gain: 6.0
+class_bic_gap: 6.0
+minimum_segment: 32
+maximum_segments: 4
+ramp_starts:
+  - [0.0, 1.0]
+  - [0.0, 0.5]
+  - [0.5, 1.0]
+  - [0.1, 0.35]
+  - [0.3, 0.7]
+  - [0.65, 0.9]
+ramp_iterations: 200
+probability_epsilon: 0.000001
+display_block: 32
+roughness_windows: [16, 32, 64]
+followup_window: 64
+validation_status: deferred_by_user

@@ -15,9 +15,10 @@ identifies the selected generated path's label, which can differ. This selection
 uses the complete observed record for illustration only. Its identity, seed
 and distance are exported, and it does not enter parameter acceptance checks.
 
-Optional --classification loads separately versioned provisional six-class
-descriptors. It changes displayed labels and timing diagnostics only; the
-registered scores, nearest-path selection and legacy data exports stay frozen.
+Optional --classification loads versioned provisional six-class descriptors.
+Version 3 selects the closest path within the observed category, leaving the
+orange line absent when that category is empty. Registered scores and legacy
+exports stay frozen; current selections are in display_nearest_paths.json.
 """
 from __future__ import annotations
 
@@ -153,6 +154,8 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
     valid=[r for r in rows if r.get('shape_file')]
     if not valid:return []
     _,actual=load_observed(Path(case['template']['folder']))
+    policy=read(classification/'registration.json')['policy'] if classification is not None else {}
+    same_type=policy.get('nearest_rule')=='same_label_then_registered_distance'
     fig,axs=plt.subplots(len(valid),3,figsize=(15,3.4*len(valid)),squeeze=False,layout='constrained')
     summaries=[]
     for axes,row in zip(axs,valid):
@@ -189,13 +192,34 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
                     or updated['paths']!=m or [r['path_index'] for r in plotted_records]!=list(range(m))
                     or plotted_observed['outcome_sha256']!=hashlib.sha256(real.astype('uint8').tobytes()).hexdigest()):
                 raise ValueError('Classification records must match all plotted paths')
-        plotted_nearest=plotted_records[nearest]
+        display_nearest=nearest
+        eligible_count=m
+        if same_type:
+            display_nearest,eligible_count=classification_v2.nearest_same_label(
+                distances,[r['label'] for r in plotted_records],plotted_observed['label'])
+        plotted_nearest=plotted_records[display_nearest] if display_nearest is not None else None
+        display_selection=dict(
+            path_index=display_nearest,path_number=None if display_nearest is None else display_nearest+1,
+            seed=None if display_nearest is None else int(seeds[display_nearest]),
+            label=None if plotted_nearest is None else plotted_nearest['label'],
+            shape_distance=None if display_nearest is None else float(distances[display_nearest]),
+            choice_sha256=None if display_nearest is None else hashlib.sha256(np.asarray(choices[display_nearest],dtype='<i8').tobytes()).hexdigest(),
+            eligible_paths=eligible_count,total_paths=m,observed_label=plotted_observed['label'],
+            selection_rule=policy.get('nearest_rule','global_registered_distance'),
+            metric='euclidean_registered_weighted_shape_features',tie_break='first_saved_path',
+            status='no_matching_category' if display_nearest is None else 'selected',
+            use='posthoc_illustration_only')
         ax=axes[0]
         marker='o' if len(centers)==1 else None
         for path in blocks:ax.plot(centers,path,color='#687982',alpha=min(.035,9./m),lw=.6,marker=marker)
         ax.plot(centers,blocks.mean(axis=0),color='#29728e',lw=1.5,ls='--',marker=marker,label=f'Simulation mean ({m} paths)')
-        ax.plot(centers,blocks[nearest],color='#bd602c',lw=1.5,marker=marker,
-                label=f'Closest shape (path {nearest+1}/{m})',zorder=3)
+        if display_nearest is not None:
+            label='Closest in category' if same_type else 'Closest shape'
+            ax.plot(centers,blocks[display_nearest],color='#bd602c',lw=1.5,marker=marker,
+                    label=f'{label} (path {display_nearest+1}/{m})',zorder=3)
+        else:
+            ax.text(.98,.06,'No simulated path in observed category',transform=ax.transAxes,
+                    ha='right',fontsize=7,color='#bd602c')
         ax.plot(centers,obs,color='#171717',lw=1.5,marker=marker,label='Observed',zorder=4)
         ax.set(xlabel='Trial (non-overlapping 32-trial blocks)',ylabel='Completely correct',ylim=(-.03,1.03),
                title=f"{row['candidate']['id'][:6]} | {row['joint_status']}")
@@ -210,9 +234,10 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
                     fmt='none',ecolor='#555555',lw=.7,capsize=1)
         ax.set_yticks(range(len(labels)),short,fontsize=7);ax.invert_yaxis()
         ax.get_yticklabels()[labels.index(plotted_observed['label'])].set_color('#bd602c')
-        nearest_label_index=labels.index(plotted_nearest['label'])
-        ax.scatter([proportions[nearest_label_index]],[nearest_label_index],marker='D',s=24,
-                   facecolors='white',edgecolors='#bd602c',linewidths=1.1,zorder=4)
+        if plotted_nearest is not None:
+            nearest_label_index=labels.index(plotted_nearest['label'])
+            ax.scatter([proportions[nearest_label_index]],[nearest_label_index],marker='D',s=24,
+                       facecolors='white',edgecolors='#bd602c',linewidths=1.1,zorder=4)
         ax.set(xlabel=f'Fraction of all {m} paths (Wilson 95%)',xlim=(0,1.03),
                title='Orange bar: observed label; diamond: closest-path label')
         onset=[r['onset'] for r in records if r['onset'] is not None]
@@ -221,19 +246,21 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
         plotted_onset=[r[center_key] for r in plotted_records if r[center_key] is not None]
         bins=np.linspace(-n/4,1.25*n,17) if classification is None else np.linspace(0,n,17)
         if plotted_onset:ax.hist(plotted_onset,bins=bins,color='#6c9bae',edgecolor='white')
-        if plotted_nearest[center_key] is not None:
+        if plotted_nearest is not None and plotted_nearest[center_key] is not None:
             ax.axvline(plotted_nearest[center_key],color='#bd602c',lw=1.3,label='Closest shape')
         if plotted_observed[center_key] is not None:
             ax.axvline(plotted_observed[center_key],color='#171717',lw=1.3,label='Observed')
-        if plotted_observed[center_key] is not None or plotted_nearest[center_key] is not None:ax.legend(fontsize=7)
+        if plotted_observed[center_key] is not None or (plotted_nearest is not None and plotted_nearest[center_key] is not None):ax.legend(fontsize=7)
         ax.set(xlabel='Fitted transition center (timing diagnostic)',ylabel='Path count',
                title=(f'Transitions {len(onset)}/{m}; censored {censored}/{m}' if classification is None
-                      else f'Single-change fits: {len(plotted_onset)}/{m} (v2)'))
+                      else f'Single-change fits: {len(plotted_onset)}/{m}'))
         if classification is not None:
             display_summaries.append(dict(subject=case['subject'],candidate=row['candidate']['id'],paths=m,
                 version=plotted_observed['version'], observed=plotted_observed,
-                nearest_path_index=nearest,nearest_label=plotted_nearest['label'],
-                nearest_reason=plotted_nearest['reason'],nearest_dispersion=plotted_nearest['dispersion'],
+                nearest_path_index=display_nearest,nearest_label=None if plotted_nearest is None else plotted_nearest['label'],
+                nearest_reason=None if plotted_nearest is None else plotted_nearest['reason'],
+                nearest_dispersion=None if plotted_nearest is None else plotted_nearest['dispersion'],
+                display_nearest=display_selection,
                 observed_label_count=plotted_counts[plotted_observed['label']],
                 single_change_paths=len(plotted_onset),
                 generated_dispersion_median=float(np.median([r['dispersion'] for r in plotted_records])),
@@ -252,8 +279,10 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
              generated_mean_feedback=float(feedback.mean()),observed_mean_feedback=float(actual['feedback'][:n].mean()),
              labels={label:dict(count=counts[label],fraction=counts[label]/m,mc_interval=list(wilson_interval(counts[label],m))) for label in LABELS}))
     title=f"S{case['subject']}: all simulated paths retained; orange = closest shape (post-hoc illustration)"
+    if same_type:
+        title=f"S{case['subject']}: all simulated paths retained; orange = closest path in observed category"
     if classification is not None:
-        title+=f"\nObserved: {classification_v2.SHORT[classification_v2.LABELS.index(plotted_observed['label'])]} | provisional classification v2; parameter decisions v1"
+        title+=f"\nObserved: {classification_v2.SHORT[classification_v2.LABELS.index(plotted_observed['label'])]} | provisional {policy['version']}; parameter decisions v1"
     fig.suptitle(title,fontsize=12)
     save(fig,output,f"paths_S{case['subject']}.png")
     return summaries
@@ -265,6 +294,7 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     reason={'best_shape_separated':'最佳形态与其他形态的分数差达到门槛',
             'change_not_detected':'变化幅度或相对恒定曲线的改善未达到门槛',
             'competing_shapes_close':'不同形态的描述分数接近',
+            'change_structure_unresolved':'检测到变化，但当前证据不足以确定变化结构',
             'best_fit_not_converged':'最佳描述拟合未报告收敛',
             'ramp_optimization_unresolved':'渐进曲线的数值优化尚未确定'}
     names={'constant':'恒定水平','step':'单次跃升／下降','stages':'分段变化','ramp':'连续斜坡'}
@@ -275,12 +305,21 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
         label=names[fit['family']]+(f"（{fit['segments']}段）" if fit['family']=='stages' else '')
         bic='未得到有限结果' if fit['bic'] is None else f"{fit['bic']:.2f}"
         lines.append(f"| {label} | {bic} | {'不适用' if fit['family']=='constant' else '通过' if fit['amplitude_eligible'] else '未通过'} | {'是' if fit['converged'] else '否'} |")
+    audit=observed.get('selection_audit',{})
+    if audit.get('selection_rule')=='hierarchical_single_then_multiple':
+        advantage=audit['multiple_gain_over_single']
+        if advantage is not None:
+            lines.append(f"多阶段描述相对最佳单次变化描述改善{advantage:.2f}分；本版要求至少改善6分才让多阶段参与分类。"
+                         +('本例达到这一门槛。' if audit['multiple_admitted'] else '本例继续在单次变化描述之间比较。'))
+        else:
+            lines.append('幅度筛选后未同时得到可比较的多阶段和单次变化描述，具体状态见上表。')
     if observed['label']=='shape_undetermined' and observed['class_bic_gap'] is not None:
         contenders='、'.join(chinese[label] for label in observed['competing_classes'][:2])
         lines.append(f"最接近的两个候选类别为{contenders}，分数差{observed['class_bic_gap']:.2f}，不足6，因此保留形态未定。")
-    chosen=next(f for f in observed['fits'] if f['family']==observed['best_family'] and
+    chosen=(observed['fits'][observed['selected_fit_index']] if 'selected_fit_index' in observed else
+            next(f for f in observed['fits'] if f['family']==observed['best_family'] and
                 f['bic']==min(z['bic'] for z in observed['fits'] if z['family']==observed['best_family'] and z['bic'] is not None and
-                            (z['amplitude_eligible'] or z['family']=='constant')))
+                            (z['amplitude_eligible'] or z['family']=='constant'))))
     if chosen['family']=='stages':
         parts=[f"第{a+1}—{b}题：{level:.1%}" for a,b,level in zip(chosen['boundaries'][:-1],chosen['boundaries'][1:],chosen['levels'])]
         lines.append('最佳分段描述为'+'；'.join(parts)+'。各段水平由实际记录估计。')
@@ -289,15 +328,22 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     else:
         after='无可观察题目' if observed['followup_accuracy'] is None else f"前{observed['followup_accuracy_trials']}题正确率{observed['followup_accuracy']:.1%}"
         lines.append(f"最佳单次变化描述之后有{observed['followup_trials']}题可观察，{after}。保持信息独立报告。")
-    lines.extend(['',f'![被试{subject}全部路径及六类暂定形态](paths_S{subject}.png)','',
-        '左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人，橙色实线为原登记距离下最近的一条完整路径；均以32题块展示。橙线路径身份及原距离定义保持不变。',
+    same_type=displayed[0]['display_nearest']['selection_rule']=='same_label_then_registered_distance'
+    left_caption=('左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人；橙线先限定为与真人同一类别，再按原形态距离选择最近的完整路径，均以32题块展示。没有同类路径时橙线留空。'
+                  if same_type else '左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人，橙色实线为原登记距离下最近的一条完整路径；均以32题块展示。橙线路径身份及原距离定义保持不变。')
+    lines.extend(['',f'![被试{subject}全部路径及六类暂定形态](paths_S{subject}.png)','',left_caption,
         '中列使用本次六类暂定标准，橙色柱和橙色类别文字对应真人，空心菱形对应左侧橙线；比例的分母包含全部路径。形态未定的比例表示分类不确定性。Wilson区间仅描述模拟计数误差，未包含分类标准误差。',
         '右列显示采用单次变化描述的路径中心：跃升位置或斜坡中点。无清楚变化和多阶段拟合没有单一中心；形态未定时，最佳单次描述的中心也只是候选位置。黑色和橙色竖线仅在相应路径具有单一中心时出现。绝对时点未用于橙线的选择。',
         '每行标题中的保留／未确定状态沿用原参数研究的评分。新类别和新趋势残差仅用于本次描述，分类规则的可靠性尚未检验。',''])
+    if same_type:
+        lines.extend(['同类是橙线选择的必要条件。类别内部的形态距离仍可能较大，当前未另设绝对相似性通过门槛。真人形态未定时，只匹配同一未定状态，尚无确定学习类型结论。',
+                      '当前橙线的编号、种子、同类候选数量及距离见[展示路径记录](display_nearest_paths.json)；原全体最近路径记录保留在nearest_paths.json中。',''])
     old={r['candidate']:r for r in summaries}
     for item in displayed:
-        original=old[item['candidate']];near=original['nearest_path']
-        lines.append(f"- {item['candidate'][:6]}：与真人同一暂定类别{item['observed_label_count']}/{item['paths']}；橙线为第{near['path_number']}条，标签“{chinese[item['nearest_label']]}”。")
+        original=old[item['candidate']];near=item['display_nearest']
+        selection=('本组没有同类路径，橙线留空。' if near['path_index'] is None else
+                   f"橙线为第{near['path_number']}条，标签“{chinese[near['label']]}”，同类候选{near['eligible_paths']}条，距离{near['shape_distance']:.5f}。")
+        lines.append(f"- {item['candidate'][:6]}：与真人同一暂定类别{item['observed_label_count']}/{item['paths']}；{selection}")
         lines.append(f"  新描述趋势下的真人波动指标{observed['dispersion']:.3f}，模拟中位数{item['generated_dispersion_median']:.3f}、95%分位{item['generated_dispersion_q95']:.3f}。原评分趋势下真人波动指标{original['observed_dispersion']:.3f}。")
         lines.append(f"  模拟整段正确率均值{original['generated_mean_accuracy']:.1%}，末64题均值{original['generated_final64_mean']:.1%}。")
     return lines
@@ -308,6 +354,8 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
     if output.exists():raise FileExistsError('Use a new report directory')
     link_base=output if link_base is None else link_base
     protocol=read(study/'protocol.json');completion=read(study/'completion.json')
+    display_policy=read(classification/'registration.json')['policy'] if classification is not None else {}
+    same_type=display_policy.get('nearest_rule')=='same_label_then_registered_distance'
     output.mkdir(parents=True);configure()
     cases=sorted(protocol['cases'],key=lambda c:(c['condition'],c['role']=='challenge'))
     searches={c['subject']:read(study/f"search_S{c['subject']}.json") for c in cases}
@@ -341,12 +389,20 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
     write(output/'shape_summaries.json',shape_summaries)
     if classification is not None:
         write(output/'classification_summaries.json',display_summaries)
+        write(output/'display_nearest_paths.json',dict(
+            selection_rule=display_policy.get('nearest_rule','global_registered_distance'),
+            classification_version=display_policy['version'],
+            metric='euclidean_registered_weighted_shape_features',
+            temporal_alignment='original full path; no time shift or splicing',
+            empty_category='omit orange path; preserve zero category count',
+            paths=[dict(subject=r['subject'],candidate=r['candidate'],**r['display_nearest']) for r in display_summaries]))
         classification_rows=[]
         index=read(classification/'index.json')
         for key,group in index['groups'].items():
             for item in read(classification/f'{key}.json')['records']:
                 classification_rows.append(dict(subject=group['subject'],phase=group['phase'],candidate=group['candidate'],
-                    **{k:v for k,v in item.items() if k not in ['fits','roughness','competing_classes']},
+                    **{k:v for k,v in item.items() if k not in ['fits','roughness','competing_classes','selection_audit']},
+                    **item.get('selection_audit',{}),
                     **{f'roughness_{k}':v for k,v in item['roughness'].items()}))
         pd.DataFrame(classification_rows).to_csv(output/'classification_paths.csv',index=False)
         registration=read(classification/'registration.json')
@@ -412,6 +468,13 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
             '前后水平、变化位置都限定在观察范围。缺少后续观察时，保持正确率保存为空值。原评分使用的历史截断特征和缺失值处理继续保存在旧数值文件中。',
             '新波动指标以本次最佳描述为趋势参照；多阶段趋势会吸收部分长期起伏，所以它与原单次S形趋势下的波动值分别报告。',
             '[逐条新分类](classification_paths.csv)、[确认路径类别比例](classification_summaries.json)、[配置与输入来源](classification_manifest.json)保存复现依据。','']
+        if same_type:
+            for i,line in enumerate(lines):
+                if line.startswith('**展示分类已更新'):
+                    lines[i]='**展示分类采用六类暂定规则，橙线只从与真人同类的路径中选取；分类标准的模拟检验按用户要求暂缓。个体参数评分和保留集合继续使用原登记定义。**'
+                elif line.startswith('变化描述相对恒定曲线至少改善6分'):
+                    lines[i]='先比较幅度达标的单次阶跃与连续斜坡。多阶段描述须比最佳单次描述再改善至少6分才进入分类；没有合格单次描述时直接比较多阶段与恒定水平。进入比较的最佳描述还须比恒定水平改善至少6分，且比其他类别改善至少6分，才确定形态。仅多阶段支持明确变化、但其额外增益不足时，保留形态未定。同属下降类的描述合并比较，数值拟合未确定时保留形态未定。所有真人与模拟使用同一规则。'
+            lines[start:start]=['本版调整了复杂描述的进入条件：几个台阶能近似缓慢上升时，只有足够大的额外拟合收益才支持多阶段。恒定水平、明确变化幅度及数值收敛要求沿用上一版。','']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
     component_cautions=[]
     for row in all_final:
@@ -598,6 +661,9 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
                   '- [全部数值工作的状态与CPU记录](job_status.csv)。',
                   '- 上级目录 protocol.json、registered_config.yaml、source/、jobs/、numerical/ 和 decisions.jsonl 保存输入、配置、代码、种子、原路径和决策。',
                   '- 本报告仅生成PNG；图表保留全部路径，最近形态路径另行突出显示。该路径在看到完整真人记录后选择，全部路径的分布评分及参数判定保持原定义。'])
+    if same_type:
+        lines=[line.replace('- [每组最近形态路径的编号、种子、距离与选择规则](nearest_paths.json)。',
+                  '- [当前同类橙线的编号、种子、距离与候选数量](display_nearest_paths.json)。原全体最近路径记录另存nearest_paths.json。') for line in lines]
     (output/'report.md').write_text('\n'.join(lines)+'\n')
     inputs=[study/'protocol.json',study/'completion.json',study/'calibration.json',study/'decisions.jsonl']
     inputs += [study/f'{prefix}_S{c["subject"]}.json' for c in cases for prefix in ['search','confirmed']]
