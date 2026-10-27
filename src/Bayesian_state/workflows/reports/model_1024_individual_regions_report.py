@@ -14,6 +14,10 @@ is solid orange. Orange bars identify the observed label; an open diamond
 identifies the selected generated path's label, which can differ. This selection
 uses the complete observed record for illustration only. Its identity, seed
 and distance are exported, and it does not enter parameter acceptance checks.
+
+Optional --classification loads separately versioned provisional six-class
+descriptors. It changes displayed labels and timing diagnostics only; the
+registered scores, nearest-path selection and legacy data exports stay frozen.
 """
 from __future__ import annotations
 
@@ -36,6 +40,7 @@ from ..analysis.model_1024_individual_regions import (
     KEYS, completed_arrays, load_observed, read, write,
 )
 from ...metrics.trajectory_shape import wilson_interval
+from ...metrics import trajectory_classification as classification_v2
 
 LABELS = ['no_clear_increase','stable_high','abrupt_maintained','intermediate_maintained',
           'gradual_maintained','increase_then_relapse','decreasing','complex_fluctuation','transition_censored']
@@ -144,7 +149,7 @@ def parameter_lines(cases, confirmed, policy, output):
     save(fig,output,'joint_parameters.png')
 
 
-def subject_paths(case, rows, output):
+def subject_paths(case, rows, output, classification=None, display_summaries=None):
     valid=[r for r in rows if r.get('shape_file')]
     if not valid:return []
     _,actual=load_observed(Path(case['template']['folder']))
@@ -174,6 +179,17 @@ def subject_paths(case, rows, output):
         starts=np.arange(0,n,32);centers=np.minimum(starts+16,n)
         blocks=np.array([correct[:,a:a+32].mean(axis=1) for a in starts]).T
         obs=np.array([real[a:a+32].mean() for a in starts])
+        plotted_records, plotted_observed = records, observed
+        labels, short = LABELS, SHORT
+        if classification is not None:
+            updated=read(classification/f"confirmation_S{case['subject']}_{row['candidate']['id']}.json")
+            plotted_observed=read(classification/f"observed_S{case['subject']}.json")['records'][0]
+            plotted_records=updated['records'];labels,short=classification_v2.LABELS,classification_v2.SHORT
+            if (updated['choices_sha256']!=hashlib.sha256(np.asarray(choices,dtype='<i8').tobytes()).hexdigest()
+                    or updated['paths']!=m or [r['path_index'] for r in plotted_records]!=list(range(m))
+                    or plotted_observed['outcome_sha256']!=hashlib.sha256(real.astype('uint8').tobytes()).hexdigest()):
+                raise ValueError('Classification records must match all plotted paths')
+        plotted_nearest=plotted_records[nearest]
         ax=axes[0]
         marker='o' if len(centers)==1 else None
         for path in blocks:ax.plot(centers,path,color='#687982',alpha=min(.035,9./m),lw=.6,marker=marker)
@@ -184,28 +200,46 @@ def subject_paths(case, rows, output):
         ax.set(xlabel='Trial (non-overlapping 32-trial blocks)',ylabel='Completely correct',ylim=(-.03,1.03),
                title=f"{row['candidate']['id'][:6]} | {row['joint_status']}")
         ax.legend(fontsize=7)
-        counts=Counter(r['label'] for r in records);proportions=np.array([counts[l]/m for l in LABELS])
-        intervals=np.array([wilson_interval(counts[l],m) for l in LABELS]);ax=axes[1]
-        colors=['#bd602c' if l==observed['label'] else '#6c9bae' for l in LABELS]
-        ax.barh(range(len(LABELS)),proportions,color=colors,height=.65)
-        ax.errorbar(proportions,range(len(LABELS)),xerr=np.maximum(0,np.array([proportions-intervals[:,0],intervals[:,1]-proportions])),
+        counts=Counter(r['label'] for r in records)
+        plotted_counts=Counter(r['label'] for r in plotted_records)
+        proportions=np.array([plotted_counts[l]/m for l in labels])
+        intervals=np.array([wilson_interval(plotted_counts[l],m) for l in labels]);ax=axes[1]
+        colors=['#bd602c' if l==plotted_observed['label'] else '#6c9bae' for l in labels]
+        ax.barh(range(len(labels)),proportions,color=colors,height=.65)
+        ax.errorbar(proportions,range(len(labels)),xerr=np.maximum(0,np.array([proportions-intervals[:,0],intervals[:,1]-proportions])),
                     fmt='none',ecolor='#555555',lw=.7,capsize=1)
-        ax.set_yticks(range(len(LABELS)),SHORT,fontsize=7);ax.invert_yaxis()
-        nearest_label_index=LABELS.index(nearest_record['label'])
+        ax.set_yticks(range(len(labels)),short,fontsize=7);ax.invert_yaxis()
+        ax.get_yticklabels()[labels.index(plotted_observed['label'])].set_color('#bd602c')
+        nearest_label_index=labels.index(plotted_nearest['label'])
         ax.scatter([proportions[nearest_label_index]],[nearest_label_index],marker='D',s=24,
                    facecolors='white',edgecolors='#bd602c',linewidths=1.1,zorder=4)
         ax.set(xlabel=f'Fraction of all {m} paths (Wilson 95%)',xlim=(0,1.03),
                title='Orange bar: observed label; diamond: closest-path label')
         onset=[r['onset'] for r in records if r['onset'] is not None]
         censored=sum(r['censored'] for r in records);ax=axes[2]
-        if onset:ax.hist(onset,bins=np.linspace(-n/4,1.25*n,17),color='#6c9bae',edgecolor='white')
-        if nearest_record['onset'] is not None:
-            ax.axvline(nearest_record['onset'],color='#bd602c',lw=1.3,label='Closest shape')
-        if observed['onset'] is not None:
-            ax.axvline(observed['onset'],color='#171717',lw=1.3,label='Observed')
-        if observed['onset'] is not None or nearest_record['onset'] is not None:ax.legend(fontsize=7)
+        center_key='onset' if classification is None else 'change_center'
+        plotted_onset=[r[center_key] for r in plotted_records if r[center_key] is not None]
+        bins=np.linspace(-n/4,1.25*n,17) if classification is None else np.linspace(0,n,17)
+        if plotted_onset:ax.hist(plotted_onset,bins=bins,color='#6c9bae',edgecolor='white')
+        if plotted_nearest[center_key] is not None:
+            ax.axvline(plotted_nearest[center_key],color='#bd602c',lw=1.3,label='Closest shape')
+        if plotted_observed[center_key] is not None:
+            ax.axvline(plotted_observed[center_key],color='#171717',lw=1.3,label='Observed')
+        if plotted_observed[center_key] is not None or plotted_nearest[center_key] is not None:ax.legend(fontsize=7)
         ax.set(xlabel='Fitted transition center (timing diagnostic)',ylabel='Path count',
-               title=f'Transitions {len(onset)}/{m}; censored {censored}/{m}')
+               title=(f'Transitions {len(onset)}/{m}; censored {censored}/{m}' if classification is None
+                      else f'Single-change fits: {len(plotted_onset)}/{m} (v2)'))
+        if classification is not None:
+            display_summaries.append(dict(subject=case['subject'],candidate=row['candidate']['id'],paths=m,
+                version=plotted_observed['version'], observed=plotted_observed,
+                nearest_path_index=nearest,nearest_label=plotted_nearest['label'],
+                nearest_reason=plotted_nearest['reason'],nearest_dispersion=plotted_nearest['dispersion'],
+                observed_label_count=plotted_counts[plotted_observed['label']],
+                single_change_paths=len(plotted_onset),
+                generated_dispersion_median=float(np.median([r['dispersion'] for r in plotted_records])),
+                generated_dispersion_q95=float(np.quantile([r['dispersion'] for r in plotted_records],.95)),
+                labels={l:dict(count=plotted_counts[l],fraction=plotted_counts[l]/m,
+                    mc_interval=list(wilson_interval(plotted_counts[l],m))) for l in labels}))
         summaries.append(dict(subject=case['subject'],candidate=row['candidate']['id'],paths=m,
              nearest_path=nearest_summary,
              observed_label=observed['label'],transition_paths=len(onset),censored_paths=censored,
@@ -217,12 +251,59 @@ def subject_paths(case, rows, output):
              generated_final64_mean=float(correct[:,-min(64,n):].mean()),observed_final64=float(real[-min(64,n):].mean()),
              generated_mean_feedback=float(feedback.mean()),observed_mean_feedback=float(actual['feedback'][:n].mean()),
              labels={label:dict(count=counts[label],fraction=counts[label]/m,mc_interval=list(wilson_interval(counts[label],m))) for label in LABELS}))
-    fig.suptitle(f"S{case['subject']}: all simulated paths retained; orange = closest shape (post-hoc illustration)",fontsize=12)
+    title=f"S{case['subject']}: all simulated paths retained; orange = closest shape (post-hoc illustration)"
+    if classification is not None:
+        title+=f"\nObserved: {classification_v2.SHORT[classification_v2.LABELS.index(plotted_observed['label'])]} | provisional classification v2; parameter decisions v1"
+    fig.suptitle(title,fontsize=12)
     save(fig,output,f"paths_S{case['subject']}.png")
     return summaries
 
 
-def render(study: Path, output: Path, *, link_base: Path | None = None):
+def classification_text(subject: int, summaries: list[dict], displayed: list[dict]) -> list[str]:
+    """Explain provisional display labels while preserving registered scores."""
+    observed=displayed[0]['observed'];chinese=classification_v2.CHINESE
+    reason={'best_shape_separated':'最佳形态与其他形态的分数差达到门槛',
+            'change_not_detected':'变化幅度或相对恒定曲线的改善未达到门槛',
+            'competing_shapes_close':'不同形态的描述分数接近',
+            'best_fit_not_converged':'最佳描述拟合未报告收敛',
+            'ramp_optimization_unresolved':'渐进曲线的数值优化尚未确定'}
+    names={'constant':'恒定水平','step':'单次跃升／下降','stages':'分段变化','ramp':'连续斜坡'}
+    lines=['',f"本次暂定分类：**{chinese[observed['label']]}**。原因：{reason[observed['reason']]}。",
+           f"整段正确率{observed['mean_accuracy']:.1%}，末64题正确率{observed['final64_accuracy']:.1%}。分类标准的模拟检验按用户要求暂缓。",
+           '', '| 描述曲线 | BIC（小者较好） | 幅度门槛 | 数值收敛 |', '|---|---:|---|---|']
+    for fit in observed['fits']:
+        label=names[fit['family']]+(f"（{fit['segments']}段）" if fit['family']=='stages' else '')
+        bic='未得到有限结果' if fit['bic'] is None else f"{fit['bic']:.2f}"
+        lines.append(f"| {label} | {bic} | {'不适用' if fit['family']=='constant' else '通过' if fit['amplitude_eligible'] else '未通过'} | {'是' if fit['converged'] else '否'} |")
+    if observed['label']=='shape_undetermined' and observed['class_bic_gap'] is not None:
+        contenders='、'.join(chinese[label] for label in observed['competing_classes'][:2])
+        lines.append(f"最接近的两个候选类别为{contenders}，分数差{observed['class_bic_gap']:.2f}，不足6，因此保留形态未定。")
+    chosen=next(f for f in observed['fits'] if f['family']==observed['best_family'] and
+                f['bic']==min(z['bic'] for z in observed['fits'] if z['family']==observed['best_family'] and z['bic'] is not None and
+                            (z['amplitude_eligible'] or z['family']=='constant')))
+    if chosen['family']=='stages':
+        parts=[f"第{a+1}—{b}题：{level:.1%}" for a,b,level in zip(chosen['boundaries'][:-1],chosen['boundaries'][1:],chosen['levels'])]
+        lines.append('最佳分段描述为'+'；'.join(parts)+'。各段水平由实际记录估计。')
+    if observed['followup_trials'] is None:
+        lines.append('本例没有采用单次变化描述，因此不指定一个统一的改善结束位置和保持阶段。')
+    else:
+        after='无可观察题目' if observed['followup_accuracy'] is None else f"前{observed['followup_accuracy_trials']}题正确率{observed['followup_accuracy']:.1%}"
+        lines.append(f"最佳单次变化描述之后有{observed['followup_trials']}题可观察，{after}。保持信息独立报告。")
+    lines.extend(['',f'![被试{subject}全部路径及六类暂定形态](paths_S{subject}.png)','',
+        '左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人，橙色实线为原登记距离下最近的一条完整路径；均以32题块展示。橙线路径身份及原距离定义保持不变。',
+        '中列使用本次六类暂定标准，橙色柱和橙色类别文字对应真人，空心菱形对应左侧橙线；比例的分母包含全部路径。形态未定的比例表示分类不确定性。Wilson区间仅描述模拟计数误差，未包含分类标准误差。',
+        '右列显示采用单次变化描述的路径中心：跃升位置或斜坡中点。无清楚变化和多阶段拟合没有单一中心；形态未定时，最佳单次描述的中心也只是候选位置。黑色和橙色竖线仅在相应路径具有单一中心时出现。绝对时点未用于橙线的选择。',
+        '每行标题中的保留／未确定状态沿用原参数研究的评分。新类别和新趋势残差仅用于本次描述，分类规则的可靠性尚未检验。',''])
+    old={r['candidate']:r for r in summaries}
+    for item in displayed:
+        original=old[item['candidate']];near=original['nearest_path']
+        lines.append(f"- {item['candidate'][:6]}：与真人同一暂定类别{item['observed_label_count']}/{item['paths']}；橙线为第{near['path_number']}条，标签“{chinese[item['nearest_label']]}”。")
+        lines.append(f"  新描述趋势下的真人波动指标{observed['dispersion']:.3f}，模拟中位数{item['generated_dispersion_median']:.3f}、95%分位{item['generated_dispersion_q95']:.3f}。原评分趋势下真人波动指标{original['observed_dispersion']:.3f}。")
+        lines.append(f"  模拟整段正确率均值{original['generated_mean_accuracy']:.1%}，末64题均值{original['generated_final64_mean']:.1%}。")
+    return lines
+
+
+def render(study: Path, output: Path, *, link_base: Path | None = None, classification: Path | None = None):
     """Write a fresh report, optionally resolving links for its final location."""
     if output.exists():raise FileExistsError('Use a new report directory')
     link_base=output if link_base is None else link_base
@@ -243,9 +324,11 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
                               trials=len(choices),constant_probabilities=frequency.tolist()))
     write(output/'choice_baselines.json',baselines)
     overview(cases,confirmed,output);parameter_lines(cases,confirmed,protocol['policy'],output)
-    shape_summaries=[];path_rows=[]
+    if classification is not None and read(classification/'completion.json')['status']!='complete':
+        raise ValueError('Classification must complete before plotting')
+    shape_summaries=[];path_rows=[];display_summaries=[]
     for case in cases:
-        shape_summaries.extend(subject_paths(case,confirmed[case['subject']],output))
+        shape_summaries.extend(subject_paths(case,confirmed[case['subject']],output,classification,display_summaries))
         for phase,data in [('screen',searches),('confirmation',confirmed)]:
             for row in data[case['subject']]:
                 if not row.get('shape_file'):continue
@@ -256,6 +339,21 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
                                           **{f'feature_{i}':v for i,v in enumerate(item['features'])}))
     pd.DataFrame(path_rows).to_csv(output/'path_shapes.csv',index=False)
     write(output/'shape_summaries.json',shape_summaries)
+    if classification is not None:
+        write(output/'classification_summaries.json',display_summaries)
+        classification_rows=[]
+        index=read(classification/'index.json')
+        for key,group in index['groups'].items():
+            for item in read(classification/f'{key}.json')['records']:
+                classification_rows.append(dict(subject=group['subject'],phase=group['phase'],candidate=group['candidate'],
+                    **{k:v for k,v in item.items() if k not in ['fits','roughness','competing_classes']},
+                    **{f'roughness_{k}':v for k,v in item['roughness'].items()}))
+        pd.DataFrame(classification_rows).to_csv(output/'classification_paths.csv',index=False)
+        registration=read(classification/'registration.json')
+        write(output/'classification_manifest.json',dict(registration=registration,
+              completion=read(classification/'completion.json'),
+              results_link=Path(os.path.relpath(classification,link_base)).as_posix(),
+              file_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in classification.glob('*.json')}))
     write(output/'nearest_paths.json',dict(
         metric='euclidean_registered_weighted_shape_features',
         selection='minimum over all saved confirmation paths; first saved path breaks a tie',
@@ -301,6 +399,19 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
            '“持续较高”表示整段正确率≥80%且变化未通过识别门槛；“变化截断”表示变化越过记录边界或结束后不足64题可观察，它反映观察限制。明显波动优先分类，其他细节见登记协议。','',
            '分类修订讨论：改善形态与保持证据应分别描述。渐进改善可以同时具有“已观察到保持”或“保持尚无法判断”的状态；观察边界标记保留为独立信息。当前数值表及柱状图仍使用本轮登记的原分类，新的分类方案尚未应用。','',
            '| 阶段 | 计入预算的CPU小时 | 上限 |','|---|---:|---:|']
+    if classification is not None:
+        start=next(i for i,line in enumerate(lines) if line.startswith('“改善并保持”'))
+        stop=next(i for i,line in enumerate(lines) if line.startswith('| 阶段 |'))
+        lines[start:stop]=[
+            '**展示分类已更新为六类暂定规则；分类标准的模拟检验按用户要求暂缓。个体参数评分、保留集合和橙线选择继续使用原登记定义。**','',
+            '六类为：未检出明确变化、突变式改善、渐进式改善、下降、多阶段变化、形态未定。观察不足单独记录，分类名称中不再包含保持状态。',
+            '每条原始0/1记录分别拟合恒定曲线、单次阶跃、连续线性斜坡、三段和四段水平。分段位置逐题搜索，阶跃和多阶段每段至少32题。斜坡允许在记录起点开始或在末题结束。',
+            '先拟合各描述，再检查相邻水平至少相差15个百分点；多阶段的每个相邻差都要达标。各段数使用无幅度约束下的最优分割，幅度筛选未通过的描述退出本次比较。',
+            'BIC把拟合误差和复杂度相加，越小越好：2×二值负对数似然＋参数个数×log(题数)。恒定、阶跃、斜坡、三段、四段分别计1、3、4、5、7个参数。它在这里是描述分数，尚无经校准的分类错误率含义。',
+            '变化描述相对恒定曲线至少改善6分，才记录明确变化；最佳类别与次佳类别至少相差6分，才确定具体形态。不同描述若同属下降类则合并比较。曲线数值未确定时保留形态未定。',
+            '前后水平、变化位置都限定在观察范围。缺少后续观察时，保持正确率保存为空值。原评分使用的历史截断特征和缺失值处理继续保存在旧数值文件中。',
+            '新波动指标以本次最佳描述为趋势参照；多阶段趋势会吸收部分长期起伏，所以它与原单次S形趋势下的波动值分别报告。',
+            '[逐条新分类](classification_paths.csv)、[确认路径类别比例](classification_summaries.json)、[配置与输入来源](classification_manifest.json)保存复现依据。','']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
     component_cautions=[]
     for row in all_final:
@@ -310,7 +421,8 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
     if component_cautions:
         lines.extend(['','综合形态评分之外仍有单项偏差：',''])
         for row,item in component_cautions:
-            lines.append(f"- {row['subject']}/{row['candidate']['id'][:6]}通过综合形态检查，但真人的“{CHINESE[item['observed_label']]}”标签出现次数为0/{item['paths']}。该组合对这一行为特征的生成仍不足。")
+            prefix='原登记规则下，' if classification is not None else ''
+            lines.append(f"- {prefix}{row['subject']}/{row['candidate']['id'][:6]}通过综合形态检查，但真人的“{CHINESE[item['observed_label']]}”标签出现次数为0/{item['paths']}。该组合对这一行为特征的生成仍不足。")
     if protocol.get('shape_extension'):
         extension=protocol['shape_extension']
         targets='、'.join(f"{r['subject']}/{r['candidate'][:6]}" for r in extension['targets'])
@@ -396,7 +508,9 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
                              f"{before['shape_energy']['value']:.4f} | {row['shape_energy']['value']:.4f} |")
         lines.append('参数保持相同；这里的变化来自粒子数、模拟条数和随机种子。Energy越小表示所选形态特征的分布评分越好。')
         summaries=[r for r in shape_summaries if r['subject']==sid]
-        if summaries:
+        if summaries and classification is not None:
+            lines.extend(classification_text(sid,summaries,[r for r in display_summaries if r['subject']==sid]))
+        if summaries and classification is None:
             label=CHINESE[summaries[0]['observed_label']]
             observed=next(r['observed_shape'] for r in batch if r.get('observed_shape'))
             lines.extend(['',f'被试的预定描述标签为“{label}”。该标签描述观察行为形态，尚不代表心理学习机制。'])
@@ -498,8 +612,9 @@ def render(study: Path, output: Path, *, link_base: Path | None = None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--study',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--classification',type=Path,help='Completed provisional classification directory; optional')
     args=parser.parse_args();start=resource.getrusage(resource.RUSAGE_SELF)
-    render(args.study,args.output)
+    render(args.study,args.output,classification=args.classification)
     end=resource.getrusage(resource.RUSAGE_SELF)
     write(args.output/'report_cpu.json',dict(cpu_seconds=end.ru_utime+end.ru_stime-start.ru_utime-start.ru_stime))
     seconds=end.ru_utime+end.ru_stime-start.ru_utime-start.ru_stime
