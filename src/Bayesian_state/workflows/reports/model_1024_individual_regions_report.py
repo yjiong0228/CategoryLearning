@@ -15,10 +15,11 @@ identifies the selected generated path's label, which can differ. This selection
 uses the complete observed record for illustration only. Its identity, seed
 and distance are exported, and it does not enter parameter acceptance checks.
 
-Optional --classification loads versioned provisional six-class descriptors.
-Version 3 selects the closest path within the observed category, leaving the
+Optional --classification loads versioned provisional descriptors.
+Versions 3 and later select the closest path within the observed category, leaving the
 orange line absent when that category is empty. Registered scores and legacy
 exports stay frozen; current selections are in display_nearest_paths.json.
+Version 4 adds sustained high performance and groups short ramps with steps.
 """
 from __future__ import annotations
 
@@ -187,7 +188,7 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
         if classification is not None:
             updated=read(classification/f"confirmation_S{case['subject']}_{row['candidate']['id']}.json")
             plotted_observed=read(classification/f"observed_S{case['subject']}.json")['records'][0]
-            plotted_records=updated['records'];labels,short=classification_v2.LABELS,classification_v2.SHORT
+            plotted_records=updated['records'];labels,short=classification_v2.label_catalog(policy)
             if (updated['choices_sha256']!=hashlib.sha256(np.asarray(choices,dtype='<i8').tobytes()).hexdigest()
                     or updated['paths']!=m or [r['path_index'] for r in plotted_records]!=list(range(m))
                     or plotted_observed['outcome_sha256']!=hashlib.sha256(real.astype('uint8').tobytes()).hexdigest()):
@@ -282,7 +283,7 @@ def subject_paths(case, rows, output, classification=None, display_summaries=Non
     if same_type:
         title=f"S{case['subject']}: all simulated paths retained; orange = closest path in observed category"
     if classification is not None:
-        title+=f"\nObserved: {classification_v2.SHORT[classification_v2.LABELS.index(plotted_observed['label'])]} | provisional {policy['version']}; parameter decisions v1"
+        title+=f"\nObserved: {short[labels.index(plotted_observed['label'])]} | provisional {policy['version']}; parameter decisions v1"
     fig.suptitle(title,fontsize=12)
     save(fig,output,f"paths_S{case['subject']}.png")
     return summaries
@@ -292,6 +293,7 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     """Explain provisional display labels while preserving registered scores."""
     observed=displayed[0]['observed'];chinese=classification_v2.CHINESE
     reason={'best_shape_separated':'最佳形态与其他形态的分数差达到门槛',
+            'sustained_high_with_limited_change':'整段及连续窗口保持较高正确率，描述趋势的变化幅度有限',
             'change_not_detected':'变化幅度或相对恒定曲线的改善未达到门槛',
             'competing_shapes_close':'不同形态的描述分数接近',
             'change_structure_unresolved':'检测到变化，但当前证据不足以确定变化结构',
@@ -300,11 +302,18 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     names={'constant':'恒定水平','step':'单次跃升／下降','stages':'分段变化','ramp':'连续斜坡'}
     lines=['',f"本次暂定分类：**{chinese[observed['label']]}**。原因：{reason[observed['reason']]}。",
            f"整段正确率{observed['mean_accuracy']:.1%}，末64题正确率{observed['final64_accuracy']:.1%}。分类标准的模拟检验按用户要求暂缓。",
-           '', '| 描述曲线 | BIC（小者较好） | 幅度门槛 | 数值收敛 |', '|---|---:|---|---|']
+           '', '| 描述曲线 | BIC（小者较好） | 幅度门槛 | 数值收敛 | 描述对应类别 |', '|---|---:|---|---|---|']
     for fit in observed['fits']:
         label=names[fit['family']]+(f"（{fit['segments']}段）" if fit['family']=='stages' else '')
         bic='未得到有限结果' if fit['bic'] is None else f"{fit['bic']:.2f}"
-        lines.append(f"| {label} | {bic} | {'不适用' if fit['family']=='constant' else '通过' if fit['amplitude_eligible'] else '未通过'} | {'是' if fit['converged'] else '否'} |")
+        lines.append(f"| {label} | {bic} | {'不适用' if fit['family']=='constant' else '通过' if fit['amplitude_eligible'] else '未通过'} | {'是' if fit['converged'] else '否'} | {chinese[fit['class']]} |")
+    if observed.get('level_audit') is not None:
+        level=observed['level_audit']
+        lines.append(f"持续较高检查：整段{level['mean_accuracy']:.1%}，任意连续{level['window']}题的最低正确率{level['minimum_window_accuracy']:.1%}，最佳描述趋势的最高与最低水平相差{level['selected_trend_span']:.1%}。")
+        lines.append('本版要求以上三项分别达到80%、65%和不超过25个百分点；符合时优先标为持续较高。数值拟合未确定的记录继续保留为未定。')
+        ramp=next(f for f in observed['fits'] if f['family']=='ramp')
+        if ramp.get('nll') is not None:
+            lines.append(f"连续斜坡描述的完整上升／下降宽度为{ramp['end']-ramp['start']:.2f}题。向上斜坡在32题内完成时，与单次阶跃共同归入突变式改善。")
     audit=observed.get('selection_audit',{})
     if audit.get('selection_rule')=='hierarchical_single_then_multiple':
         advantage=audit['multiple_gain_over_single']
@@ -323,7 +332,9 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     if chosen['family']=='stages':
         parts=[f"第{a+1}—{b}题：{level:.1%}" for a,b,level in zip(chosen['boundaries'][:-1],chosen['boundaries'][1:],chosen['levels'])]
         lines.append('最佳分段描述为'+'；'.join(parts)+'。各段水平由实际记录估计。')
-    if observed['followup_trials'] is None:
+    if observed['label']=='stable_high':
+        lines.append('持续较高类允许有限的进一步提高；原描述拟合保留，用于记录趋势。该主类不指定统一改善中心，右图真人竖线留空。')
+    elif observed['followup_trials'] is None:
         lines.append('本例没有采用单次变化描述，因此不指定一个统一的改善结束位置和保持阶段。')
     else:
         after='无可观察题目' if observed['followup_accuracy'] is None else f"前{observed['followup_accuracy_trials']}题正确率{observed['followup_accuracy']:.1%}"
@@ -331,9 +342,9 @@ def classification_text(subject: int, summaries: list[dict], displayed: list[dic
     same_type=displayed[0]['display_nearest']['selection_rule']=='same_label_then_registered_distance'
     left_caption=('左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人；橙线先限定为与真人同一类别，再按原形态距离选择最近的完整路径，均以32题块展示。没有同类路径时橙线留空。'
                   if same_type else '左列灰线为全部自主路径，蓝色虚线为均值，黑色实线为真人，橙色实线为原登记距离下最近的一条完整路径；均以32题块展示。橙线路径身份及原距离定义保持不变。')
-    lines.extend(['',f'![被试{subject}全部路径及六类暂定形态](paths_S{subject}.png)','',left_caption,
-        '中列使用本次六类暂定标准，橙色柱和橙色类别文字对应真人，空心菱形对应左侧橙线；比例的分母包含全部路径。形态未定的比例表示分类不确定性。Wilson区间仅描述模拟计数误差，未包含分类标准误差。',
-        '右列显示采用单次变化描述的路径中心：跃升位置或斜坡中点。无清楚变化和多阶段拟合没有单一中心；形态未定时，最佳单次描述的中心也只是候选位置。黑色和橙色竖线仅在相应路径具有单一中心时出现。绝对时点未用于橙线的选择。',
+    lines.extend(['',f'![被试{subject}全部路径及暂定形态](paths_S{subject}.png)','',left_caption,
+        '中列使用本次暂定分类标准，橙色柱和橙色类别文字对应真人，空心菱形对应左侧橙线；比例的分母包含全部路径。形态未定的比例表示分类不确定性。Wilson区间仅描述模拟计数误差，未包含分类标准误差。',
+        '右列显示采用单次变化描述的路径中心：跃升位置或斜坡中点。持续较高、无清楚变化和多阶段主类没有单一中心；形态未定时，最佳单次描述的中心也只是候选位置。黑色和橙色竖线仅在相应路径具有单一中心时出现。绝对时点未用于橙线的选择。',
         '每行标题中的保留／未确定状态沿用原参数研究的评分。新类别和新趋势残差仅用于本次描述，分类规则的可靠性尚未检验。',''])
     if same_type:
         lines.extend(['同类是橙线选择的必要条件。类别内部的形态距离仍可能较大，当前未另设绝对相似性通过门槛。真人形态未定时，只匹配同一未定状态，尚无确定学习类型结论。',
@@ -401,8 +412,9 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
         for key,group in index['groups'].items():
             for item in read(classification/f'{key}.json')['records']:
                 classification_rows.append(dict(subject=group['subject'],phase=group['phase'],candidate=group['candidate'],
-                    **{k:v for k,v in item.items() if k not in ['fits','roughness','competing_classes','selection_audit']},
+                    **{k:v for k,v in item.items() if k not in ['fits','roughness','competing_classes','selection_audit','level_audit']},
                     **item.get('selection_audit',{}),
+                    **{f'level_{k}':v for k,v in (item.get('level_audit') or {}).items()},
                     **{f'roughness_{k}':v for k,v in item['roughness'].items()}))
         pd.DataFrame(classification_rows).to_csv(output/'classification_paths.csv',index=False)
         registration=read(classification/'registration.json')
@@ -475,6 +487,12 @@ def render(study: Path, output: Path, *, link_base: Path | None = None, classifi
                 elif line.startswith('变化描述相对恒定曲线至少改善6分'):
                     lines[i]='先比较幅度达标的单次阶跃与连续斜坡。多阶段描述须比最佳单次描述再改善至少6分才进入分类；没有合格单次描述时直接比较多阶段与恒定水平。进入比较的最佳描述还须比恒定水平改善至少6分，且比其他类别改善至少6分，才确定形态。仅多阶段支持明确变化、但其额外增益不足时，保留形态未定。同属下降类的描述合并比较，数值拟合未确定时保留形态未定。所有真人与模拟使用同一规则。'
             lines[start:start]=['本版调整了复杂描述的进入条件：几个台阶能近似缓慢上升时，只有足够大的额外拟合收益才支持多阶段。恒定水平、明确变化幅度及数值收敛要求沿用上一版。','']
+        if display_policy.get('stable_high'):
+            lines=[line.replace('六类暂定规则','七类暂定规则').replace('六类为：未检出明确变化','七类为：持续较高、未检出明确变化') for line in lines]
+            lines[start:start]=[
+                '本版按S110、S129等已查看开发案例修订类别定义。全部真人及模拟使用同一规则，分类准确率尚未独立检验。',
+                '持续较高（stable high）须同时满足：整段正确率至少80%；任意连续64题正确率至少65%；最佳描述趋势的最高与最低水平相差不超过25个百分点。满足时优先采用此类，数值拟合未确定时保留未定。该名称允许有限的进一步改善，完整趋势拟合继续保留。',
+                '突变式改善包括单次跃升，以及在32题以内完成的向上斜坡；超过32题的向上斜坡对应渐进式改善。32题沿用当前图的一个显示块，属于暂定的行为分辨尺度。同类曲线先合并，再与其他类别比较分数。分类仍使用逐题对错记录。','']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
     component_cautions=[]
     for row in all_final:

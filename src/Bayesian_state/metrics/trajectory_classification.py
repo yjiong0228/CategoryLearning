@@ -21,6 +21,46 @@ SHORT = ['No clear change', 'Abrupt improvement', 'Gradual improvement',
          'Decreasing', 'Multiple changes', 'Shape undetermined']
 CHINESE = dict(zip(LABELS, ['未检出明确变化', '突变式改善', '渐进式改善',
                           '下降', '多阶段变化', '形态未定']))
+CHINESE['stable_high'] = '持续较高'
+
+
+def label_catalog(policy: dict) -> tuple[list[str], list[str]]:
+    """Keep earlier report category orders while allowing a high-level class."""
+    if policy.get('stable_high'):
+        return ['stable_high', *LABELS], ['Stable high', *SHORT]
+    return list(LABELS), list(SHORT)
+
+
+def description_class(fit: dict, policy: dict) -> str:
+    """Group an upward ramp completed within the declared width with steps."""
+    if fit['family']=='constant':
+        return 'no_clear_change'
+    if fit['family']=='stages':
+        return 'multiple_changes'
+    levels=fit.get('levels', [])
+    if len(levels)==2 and levels[1]<levels[0]:
+        return 'decreasing'
+    if fit['family']=='step':
+        return 'abrupt_improvement'
+    if (policy.get('abrupt_max_width') is not None and 'end' in fit and
+            fit['end']-fit['start']<=policy['abrupt_max_width']):
+        return 'abrupt_improvement'
+    return 'gradual_improvement'
+
+
+def stable_high_audit(y: np.ndarray, selected: dict, policy: dict) -> dict:
+    """Describe sustained high performance, allowing limited trend change."""
+    window=int(policy['window'])
+    if len(y)<window:
+        return dict(eligible=False, reason='insufficient_window', window=window)
+    prefix=np.r_[0., np.cumsum(y)]
+    minimum=float(np.min((prefix[window:]-prefix[:-window])/window))
+    span=float(np.ptp(selected['levels']))
+    mean=float(np.mean(y))
+    return dict(eligible=bool(mean>=policy['mean_min'] and minimum>=policy['window_min'] and
+                             span<=policy['trend_span_max']),
+                mean_accuracy=mean, minimum_window_accuracy=minimum,
+                window=window, selected_trend_span=span)
 
 
 def _segment_costs(y: np.ndarray) -> np.ndarray:
@@ -170,10 +210,7 @@ def classify_path(correct: np.ndarray, policy: dict, *, fitted_models: list[dict
         levels = fit.get('levels', [])
         changes = np.diff(levels)
         fit['amplitude_eligible'] = bool(len(changes) and np.all(np.abs(changes)>=policy['minimum_change']))
-        fit['class'] = ('no_clear_change' if fit['family']=='constant' else
-                        'multiple_changes' if fit['family']=='stages' else
-                        'decreasing' if len(changes) and changes[0]<0 else
-                        'abrupt_improvement' if fit['family']=='step' else 'gradual_improvement')
+        fit['class'] = description_class(fit, policy)
     eligible, selection_audit = select_comparison_set(fits, policy)
     ranked = sorted(eligible, key=lambda f:f['bic'])
     best = ranked[0] if ranked else flat
@@ -200,6 +237,13 @@ def classify_path(correct: np.ndarray, policy: dict, *, fitted_models: list[dict
     ramp = fits[-1]
     if ramp['nll'] is None or (not ramp['converged'] and ramp['bic'] <= selected['bic']+policy['class_bic_gap']):
         label, reason = 'shape_undetermined', 'ramp_optimization_unresolved'
+    level_audit=None
+    if policy.get('stable_high'):
+        level_audit=stable_high_audit(y, selected, policy['stable_high'])
+        level_audit['shape_label_before_level_check']=label
+        level_audit['numerically_resolved']=reason not in ['best_fit_not_converged','ramp_optimization_unresolved']
+        if level_audit['eligible'] and level_audit['numerically_resolved']:
+            label, reason='stable_high', 'sustained_high_with_limited_change'
     p = fitted_probability(selected, n)
     residual_width = policy['display_block']
     starts = np.arange(0, n, residual_width)
@@ -217,6 +261,8 @@ def classify_path(correct: np.ndarray, policy: dict, *, fitted_models: list[dict
     elif selected['family']=='ramp':
         center = (selected['start']+selected['end'])/2
         endpoint = selected['end']
+    if label=='stable_high':
+        center=endpoint=None
     begin = (int(endpoint) if selected['family']=='step' else int(np.floor(endpoint))+1) if endpoint is not None else n
     followup = max(0, n-begin) if endpoint is not None else None
     followup_level = float(y[begin:begin+policy['followup_window']].mean()) if followup else None
@@ -225,6 +271,7 @@ def classify_path(correct: np.ndarray, policy: dict, *, fitted_models: list[dict
                 mean_accuracy=float(y.mean()), final64_accuracy=float(y[-min(64,n):].mean()),
                 best_family=selected['family'], best_supported_class=best['class'],
                 selected_fit_index=fits.index(selected), selection_audit=selection_audit,
+                level_audit=level_audit,
                 change_bic_gain=gain, class_bic_gap=gap, competing_classes=list(by_class),
                 change_center=center, change_end=endpoint, followup_trials=followup,
                 followup_accuracy=followup_level, followup_accuracy_trials=min(followup,policy['followup_window']) if followup else 0,

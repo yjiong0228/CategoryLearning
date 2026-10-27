@@ -7,7 +7,8 @@ from scipy.optimize._numdiff import approx_derivative
 from scipy.special import xlogy
 
 from src.Bayesian_state.metrics.trajectory_classification import (
-    _piecewise_fits, _ramp_loss, nearest_same_label, select_comparison_set,
+    _piecewise_fits, _ramp_loss, description_class, nearest_same_label,
+    select_comparison_set, stable_high_audit,
 )
 
 
@@ -50,3 +51,26 @@ def test_nearest_category_constraint_and_empty_category():
     labels=['abrupt_improvement','gradual_improvement','gradual_improvement']
     assert nearest_same_label(np.array([.01,.4,.4]),labels,'gradual_improvement')==(1,2)
     assert nearest_same_label(np.array([.01,.4,.4]),labels,'decreasing')==(None,0)
+
+
+@pytest.mark.parametrize('width,levels,label', [
+    (32., [.3,.9], 'abrupt_improvement'),
+    (32.1, [.3,.9], 'gradual_improvement'),
+    (20., [.9,.3], 'decreasing'),
+])
+def test_short_ramp_category_uses_width_and_direction(width, levels, label):
+    fit=dict(family='ramp', start=100., end=100.+width, levels=levels)
+    assert description_class(fit, dict(abrupt_max_width=32.))==label
+    if levels[1]>levels[0]:
+        assert description_class(fit, {})=='gradual_improvement'
+
+
+def test_stable_high_requires_sustained_level_and_limited_trend():
+    policy=dict(mean_min=.8, window=64, window_min=.65, trend_span_max=.25)
+    high=np.tile([1,1,1,1,0],40)
+    assert stable_high_audit(high,dict(levels=[.7,.9]),policy)['eligible']
+    assert not stable_high_audit(high,dict(levels=[.6,.95]),policy)['eligible']
+    # A high total mean cannot conceal a sustained low section.
+    long_dip=np.r_[np.ones(85),np.zeros(30),np.ones(85)]
+    assert long_dip.mean()>.8
+    assert not stable_high_audit(long_dip,dict(levels=[.85]),policy)['eligible']
