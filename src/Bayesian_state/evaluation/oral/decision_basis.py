@@ -11,6 +11,24 @@ import numpy as np
 from ...hypothesis_space.geometry.boundary import BoundaryGeometry
 
 
+def nearest_component_weights(space, geometry, rule: int, choice: int,
+                              perceived: np.ndarray) -> np.ndarray:
+    """Allocate perceived stimuli to category components, uniformly on ties.
+
+    ``choice`` is zero based. This is the shared local-content convention;
+    it does not inspect an oral report or change the behavioral readout.
+    """
+    components = space[int(rule)].categories[choice].components
+    if len(components) == 1:
+        return np.ones((len(perceived), 1))
+    unique, inverse = np.unique(perceived, axis=0, return_inverse=True)
+    distances = np.column_stack([
+        geometry.distances_to_polytope(unique, component) for component in components])
+    nearest = np.isclose(distances, distances.min(axis=1, keepdims=True),
+                         atol=geometry.tolerance, rtol=0)
+    return (nearest / nearest.sum(axis=1, keepdims=True))[inverse]
+
+
 class DecisionBasisCollector:
     """Consume predictive observer snapshots, all before current feedback."""
 
@@ -67,12 +85,8 @@ class DecisionBasisCollector:
             # Many particles share an internal stimulus. Deduplication changes
             # only geometry work, retaining their distinct joint weights.
             use = np.flatnonzero(predictive[:, rule] > 0)
-            unique, inverse = np.unique(perceived[use], axis=0, return_inverse=True)
-            distances = np.column_stack([
-                self.geometry.distances_to_polytope(unique, component) for component in components])
-            nearest = np.isclose(distances, distances.min(axis=1, keepdims=True),
-                                 atol=self.geometry.tolerance, rtol=0)
-            component_weights = (nearest / nearest.sum(axis=1, keepdims=True))[inverse]
+            component_weights = nearest_component_weights(
+                self.space, self.geometry, int(rule), choice, perceived[use])
             prior_components[rule, :len(components)] = predictive[use, rule] @ component_weights
             joint_components[rule, :len(components)] = joint[use, rule] @ component_weights
         np.testing.assert_allclose(prior_components.sum(), 1., atol=1e-12, rtol=0)

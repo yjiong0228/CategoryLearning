@@ -1,0 +1,30 @@
+protocol: model1024_individual_states_v1
+source: results/model_1024/individual_regions_20261027_v3/particle_precision_v2
+geometry: results/model_1023/execution_states_20261024_v1/geometry
+subjects: [110, 129, 205, 229, 306, 317]
+include: retained_plus_all_S129_diagnostic_candidates
+seed: 2026102801
+primary: {particles: 512, systems: 16}
+resolution: {particles: 1024, systems: 8}
+extension: {particles: 1024, additional_systems: 16, maximum_rounds: 1}
+recovery: {particles: 512, systems: 8, path_indices: [0, 1]}
+numerical_checks:
+  minimum_system_ess: 4.0
+  maximum_system_weight: 0.5
+  half_mean_absolute_difference: 0.025
+  half_q95_absolute_difference: 0.10
+  resolution_mean_absolute_difference: 0.025
+  resolution_q95_absolute_difference: 0.10
+budget:
+  workers: 32
+  numeric_threads: 1
+  cpu_hours: 160
+  wall_hours: 6
+  per_job_cpu_seconds: 3600
+  failed_jobs_before_stop: 3
+oral_config: configs/shared/model0923_oral_midpoint_audit.yaml
+oral_readings: [midpoint, relative]
+oral_status: provisional_external_content_compatibility_pending_manual_review
+oral_used_for_inference: false
+parameter_weights: none_report_candidate_envelopes
+data_use: complete_behavioral_records_six_development_subjects

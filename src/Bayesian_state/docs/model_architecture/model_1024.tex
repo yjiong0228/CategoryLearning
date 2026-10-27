@@ -1,5 +1,5 @@
 % !TeX program = xelatex
-% Model specification, revised 2026-10-27. Compile three times with XeLaTeX.
+% Model specification, revised 2026-10-28. Compile three times with XeLaTeX.
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=2.35cm,headheight=15pt]{geometry}
 \usepackage{amsmath,amssymb,bm,mathtools}
@@ -30,7 +30,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small Model 1024：规则信念与持续执行}
-\fancyhead[R]{\small 2026-10-27}
+\fancyhead[R]{\small 2026-10-28}
 \fancyfoot[C]{\thepage}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
@@ -54,7 +54,7 @@
 \Large 学习与决策闭环下的认知隐状态生成模型\\[0.5em]
 \large 规则信念、持续执行与反馈学习}
 \author{}
-\date{2026年10月27日}
+\date{2026年10月28日}
 \begin{document}
 \maketitle
 \thispagestyle{empty}
@@ -90,7 +90,8 @@ Model 1024描述学习者如何根据反馈调整规则信念、探索新规则�
 自主生成通过模拟选择获得相应环境反馈，并形成完整学习路径。每个组合保留全部路径及各类形态的发生比例。
 候选范围、数值精度和形态相容性共同限定可交付的参数集合；具体方案见第\ref{sec:selection}节。
 本批真人记录均为开发资料，选择似然和生成检查参与个体选参，独立模拟种子用于确认计算稳定性。
-此前前70\%选参的报告保留其原协议。口述资料仍待用户最终人工检查，新增口述验证与编码修改暂缓。
+此前前70\%选参的报告保留其原协议。口述资料仍待用户最终人工检查；
+本次内部状态研究已获准展示既有编码的暂定外部对照，原文和编码保持不变。
 
 \clearpage
 {\small\setlength{\parskip}{0pt}\tableofcontents}
@@ -794,6 +795,29 @@ W_t^{(n),\mathrm{choice}}=
 固定参数下的路径区间反映潜在过程的不确定性；独立计算重复的标准误反映数值误差；
 个体参数的不确定性需另行传播。三者在图表中分别注明。
 
+\subsection{个体状态：过滤与完整历史重建}
+\label{sec:individual-states}
+2026年10月28日的个体状态批次沿用六人的完整行为记录和上轮固定候选。
+五人共13组保留参数分别分析，S129的4组候选用于条件诊断。每组参数都给出规则在场、
+信念、判断精度和执行身份的分布，跨参数的分歧另外报告。
+
+令$E$为用于推断的最后一道观察题。过滤使用$E=t$，完整历史重建使用$E=T$。
+对第$r$次独立过滤，$V_{t,E}^{(r,n)}$表示在观察到第$E$题选择后，分配给第$t$题粒子$n$的质量。
+过滤时使用本题选择后的粒子权重；完整历史时沿粒子父子关系追溯，并汇总最终选择后的权重。
+各重复计算按照同一观察范围的序列似然加权：
+\begin{equation}
+\omega_{r,E}=\frac{\prod_{u=1}^{E}P_{u,r}(y_u;\theta)}
+{\sum_{s=1}^{R}\prod_{u=1}^{E}P_{u,s}(y_u;\theta)}.
+\end{equation}
+对状态量$g(S_t)$，本轮按$\sum_r\omega_{r,E}\sum_nV_{t,E}^{(r,n)}g(S_t^{(r,n)})$汇总。
+序列似然在对数域计算；同时保存系统有效数量、最大权重和早期祖先多样性。
+
+每组真人候选先进行16次512粒子过滤和8次1024粒子检查。独立计算的有效数量至少4，
+单次最大权重不超过0.5；独立半批和两档粒子数的平均状态差异不超过0.025，差异95\%分位不超过0.10。
+未通过的候选至多追加一轮16次1024粒子过滤。初始507次工作包含12条既有模拟路径的已知参数状态恢复，
+以及3次保存概率的精确复现。总预算160 CPU小时，主运行上限6小时，至多32个单线程工作进程。
+状态曲线、信念与精度分布、完整历史占比和数值限制分别保存；工作门槛的通过情况与模拟恢复结果分别报告。
+
 \subsection{完整记录似然：评价实际选择序列}
 设被试共有$T$道有效题。参数$\theta$在整次任务中固定，规则集合、信念、精度和执行身份逐题变化。
 第$r$次独立粒子滤波在观察本题选择之前计算$P_{t,r}(y_t;\theta)$，
@@ -965,8 +989,10 @@ $a_e=0$时记录$\lambda$无作用，并以统一值去重。较疏取值节约�
 \label{sec:oral}
 
 \subsection{检验对象与时点}
-以下规定口述检验的设计。当前资料尚待用户最终人工检查，既有结果保留暂定状态；
-本轮参数研究使用行为记录与模拟资料，新增口述验证及编码修改暂缓。
+以下规定口述检验的设计。当前资料尚待用户最终人工检查，既有结果保留暂定状态。
+2026年10月28日用户授权在个体内部状态研究中展示口述外部对照，供后续集中人工复核。
+本次沿用既有编码，参数与状态推断使用行为记录；具体计算范围、预算及停止规则见
+\url{src/Bayesian_state/docs/model_architecture/model_1024_individual_states.md}。
 口述指导语要求说明：当前刺激的哪些特点使被试选择这个选项。
 因此，主要检验对象为\textbf{本题选择之后、反馈之前的局部作答依据}。
 模型仅由行为估参和推断状态；实际口述经编码成为一组判断约束，
@@ -991,11 +1017,23 @@ A_t(n,h,j\mid y_t)=
 该质量对全部$n,h,j$求和为1。它按当前选择对潜在路径条件化一次，
 再根据各路径执行规则的局部分量评价口述内容。
 
+完整历史的口述对照使用第\ref{sec:individual-states}节的祖先权重。
+令$q_t^{(r,n)}(h)$为给定粒子状态和当前实际选择时执行规则$h$的概率。
+保留执行身份的粒子中，该量为对应身份的指示函数；执行维持为零的解析求和计算中，
+该量由规则先验执行质量乘以规则对当前选择的概率，再在规则间归一化得到。
+对过滤或完整历史的统一局部内容质量为
+\begin{equation}
+\widetilde A_{t,E}(h,j)=\sum_r\omega_{r,E}\sum_n V_{t,E}^{(r,n)}
+q_t^{(r,n)}(h)\alpha_{t,h,j}^{(r,n)}.
+\label{eq:oral-endpoint}
+\end{equation}
+该质量对全部规则和局部分量求和为1，实际口述仅在随后进行相容性评价时读取。
+
 对一条报告的完整约束，结构相容要求全部已编码判断在局部规则中获得显式支持；
 功能相容要求整个局部分量区域蕴含这些数值约束。
 区域与报告约束没有正体积交集时记为冲突，其他信息不足情形记为未确定。
 同一报告的多个判断在同一局部分量内联合评价。
-把式\eqref{eq:oral-responsibility}中相应质量累加，分别得到
+把式\eqref{eq:oral-endpoint}中相应质量累加，分别得到
 \begin{equation}
 M_t^{\mathrm{compatible}}+M_t^{\mathrm{conflict}}+M_t^{\mathrm{undetermined}}=1.
 \end{equation}
