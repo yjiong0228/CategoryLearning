@@ -6,6 +6,12 @@ development diagnostics; intervals describe Monte Carlo variation. Run with
 Exports include complete retained combinations, per-path descriptors and source
 snapshots. Single-feature discrepancies and interrupted CPU accounting remain
 visible alongside the registered joint working checks.
+
+Individual panels retain every autonomous path and its ensemble mean. The
+observed path is black; one complete generated path with minimum Euclidean
+distance in the registered weighted shape features is orange. This selection
+uses the complete observed record for illustration only. Its identity, seed
+and distance are exported, and it does not enter parameter acceptance checks.
 """
 from __future__ import annotations
 
@@ -145,6 +151,23 @@ def subject_paths(case, rows, output):
     for axes,row in zip(axs,valid):
         saved=read(Path(row['shape_file']));records=saved['paths'];observed=saved['observed'];m=len(records)
         choices=completed_arrays(row['generation_jobs'],'choices');feedback=completed_arrays(row['generation_jobs'],'feedback')
+        seeds=completed_arrays(row['generation_jobs'],'seeds')
+        features=np.array([record['features'] for record in records],dtype=float)
+        target_features=np.asarray(observed['features'],dtype=float)
+        if (len(choices)!=m or len(seeds)!=m or features.ndim!=2 or
+                target_features.shape!=features.shape[1:] or not np.isfinite(features).all() or
+                not np.isfinite(target_features).all()):
+            raise ValueError('Path, seed and finite descriptor records must align')
+        distances=np.linalg.norm(features-target_features,axis=1)
+        # Features already contain the registered scaling and group weights.
+        # A tie keeps the first saved path; retain its original trial order.
+        nearest=int(np.argmin(distances));nearest_record=records[nearest]
+        nearest_summary=dict(path_index=nearest,path_number=nearest+1,seed=int(seeds[nearest]),
+                             shape_distance=float(distances[nearest]),paths_considered=m,
+                             label=nearest_record['label'],onset=nearest_record['onset'],
+                             choice_sha256=hashlib.sha256(np.asarray(choices[nearest],dtype='<i8').tobytes()).hexdigest(),
+                             metric='euclidean_registered_weighted_shape_features',
+                             tie_break='first_saved_path',use='posthoc_illustration_only')
         n=choices.shape[1];correct=choices==actual['categories'][:n];real=actual['choices'][:n]==actual['categories'][:n]
         starts=np.arange(0,n,32);centers=np.minimum(starts+16,n)
         blocks=np.array([correct[:,a:a+32].mean(axis=1) for a in starts]).T
@@ -153,25 +176,32 @@ def subject_paths(case, rows, output):
         marker='o' if len(centers)==1 else None
         for path in blocks:ax.plot(centers,path,color='#687982',alpha=min(.035,9./m),lw=.6,marker=marker)
         ax.plot(centers,blocks.mean(axis=0),color='#29728e',lw=1.5,marker=marker,label=f'Simulation mean ({m} paths)')
-        ax.plot(centers,obs,color='#bd602c',lw=1.5,marker=marker,label='Observed')
+        ax.plot(centers,blocks[nearest],color='#bd602c',lw=1.5,ls='--',marker=marker,
+                label=f'Closest shape (path {nearest+1}/{m})',zorder=3)
+        ax.plot(centers,obs,color='#171717',lw=1.5,marker=marker,label='Observed',zorder=4)
         ax.set(xlabel='Trial (non-overlapping 32-trial blocks)',ylabel='Completely correct',ylim=(-.03,1.03),
                title=f"{row['candidate']['id'][:6]} | {row['joint_status']}")
         ax.legend(fontsize=7)
         counts=Counter(r['label'] for r in records);proportions=np.array([counts[l]/m for l in LABELS])
         intervals=np.array([wilson_interval(counts[l],m) for l in LABELS]);ax=axes[1]
-        colors=['#bd602c' if l==observed['label'] else '#6c9bae' for l in LABELS]
+        colors=['#171717' if l==observed['label'] else '#6c9bae' for l in LABELS]
         ax.barh(range(len(LABELS)),proportions,color=colors,height=.65)
         ax.errorbar(proportions,range(len(LABELS)),xerr=np.maximum(0,np.array([proportions-intervals[:,0],intervals[:,1]-proportions])),
                     fmt='none',ecolor='#555555',lw=.7,capsize=1)
         ax.set_yticks(range(len(LABELS)),SHORT,fontsize=7);ax.invert_yaxis()
-        ax.set(xlabel=f'Fraction of all {m} paths (Wilson 95%)',xlim=(0,1.03),title='Orange: observed descriptive label')
+        ax.set(xlabel=f'Fraction of all {m} paths (Wilson 95%)',xlim=(0,1.03),title='Black: observed descriptive label')
         onset=[r['onset'] for r in records if r['onset'] is not None]
         censored=sum(r['censored'] for r in records);ax=axes[2]
         if onset:ax.hist(onset,bins=np.linspace(-n/4,1.25*n,17),color='#6c9bae',edgecolor='white')
-        if observed['onset'] is not None:ax.axvline(observed['onset'],color='#bd602c',lw=1.3,label='Observed')
+        if nearest_record['onset'] is not None:
+            ax.axvline(nearest_record['onset'],color='#bd602c',lw=1.3,ls='--',label='Closest shape')
+        if observed['onset'] is not None:
+            ax.axvline(observed['onset'],color='#171717',lw=1.3,label='Observed')
+        if observed['onset'] is not None or nearest_record['onset'] is not None:ax.legend(fontsize=7)
         ax.set(xlabel='Fitted transition center (timing diagnostic)',ylabel='Path count',
                title=f'Transitions {len(onset)}/{m}; censored {censored}/{m}')
         summaries.append(dict(subject=case['subject'],candidate=row['candidate']['id'],paths=m,
+             nearest_path=nearest_summary,
              observed_label=observed['label'],transition_paths=len(onset),censored_paths=censored,
              optimizer_unsuccessful=sum(not r['optimizer_success'] for r in records),
              observed_label_count=counts[observed['label']],observed_dispersion=observed['dispersion'],
@@ -181,13 +211,15 @@ def subject_paths(case, rows, output):
              generated_final64_mean=float(correct[:,-min(64,n):].mean()),observed_final64=float(real[-min(64,n):].mean()),
              generated_mean_feedback=float(feedback.mean()),observed_mean_feedback=float(actual['feedback'][:n].mean()),
              labels={label:dict(count=counts[label],fraction=counts[label]/m,mc_interval=list(wilson_interval(counts[label],m))) for label in LABELS}))
-    fig.suptitle(f"S{case['subject']}: every simulated path retained; timing is a separate diagnostic",fontsize=12)
+    fig.suptitle(f"S{case['subject']}: all simulated paths retained; orange = closest shape (post-hoc illustration)",fontsize=12)
     save(fig,output,f"paths_S{case['subject']}.png")
     return summaries
 
 
-def render(study: Path, output: Path):
+def render(study: Path, output: Path, *, link_base: Path | None = None):
+    """Write a fresh report, optionally resolving links for its final location."""
     if output.exists():raise FileExistsError('Use a new report directory')
+    link_base=output if link_base is None else link_base
     protocol=read(study/'protocol.json');completion=read(study/'completion.json')
     output.mkdir(parents=True);configure()
     cases=sorted(protocol['cases'],key=lambda c:(c['condition'],c['role']=='challenge'))
@@ -218,6 +250,12 @@ def render(study: Path, output: Path):
                                           **{f'feature_{i}':v for i,v in enumerate(item['features'])}))
     pd.DataFrame(path_rows).to_csv(output/'path_shapes.csv',index=False)
     write(output/'shape_summaries.json',shape_summaries)
+    write(output/'nearest_paths.json',dict(
+        metric='euclidean_registered_weighted_shape_features',
+        selection='minimum over all saved confirmation paths; first saved path breaks a tie',
+        temporal_alignment='original full path; no time shift or splicing',
+        scope='selected using the complete human record for illustration; no change to scientific scores or membership',
+        paths=[dict(subject=r['subject'],candidate=r['candidate'],**r['nearest_path']) for r in shape_summaries]))
     all_final=[r for batch in confirmed.values() for r in batch]
     retained=[r for r in all_final if r.get('joint_status')=='retained']
     subject_retained={r['subject'] for r in retained}
@@ -253,6 +291,8 @@ def render(study: Path, output: Path):
            '波动指标概括32题块正确率偏离描述曲线的程度，较大数值表示更强的反复起伏。下文同时报告这个单项指标及与真人相同描述标签的生成次数。','',
            '真人记录已经参与选参；整个选择流程的误判率及参数集合覆盖仍需重复恢复校准。','',
            '“改善并保持”描述变化幅度和持续过程；是否达到高正确率同时依据水平指标判断。','',
+           '九个标签是本轮制定的互斥描述规则，尚未验证为心理学习类型。短时、中间宽度、渐进分别按变化宽度≤32题、32至64题之间、≥64题划分；绝对宽度门槛的解释会受到任务长度影响。',
+           '“持续较高”表示整段正确率≥80%且变化未通过识别门槛；“变化截断”表示变化越过记录边界或结束后不足64题可观察，它反映观察限制。明显波动优先分类，其他细节见登记协议。','',
            '| 阶段 | 计入预算的CPU小时 | 上限 |','|---|---:|---:|']
     for name,used in completion['cpu_hours'].items():lines.append(f"| {name} | {used:.3f} | {protocol['policy']['cpu_hours'][name]} |")
     component_cautions=[]
@@ -294,8 +334,11 @@ def render(study: Path, output: Path):
                   '图中每点是一个独立确认组合。横向误差为两倍配对MCSE，纵向为固定参考模拟下的Wilson计数区间。方块表示数值未确定。',
                   '图中纵坐标为校准计数比例k/n，表中尾部秩为加1校正的(k+1)/(n+1)。',
                   '竖线为每题NLL容忍0.01，横线为形态尾部阈值0.05；最终判断同时考虑误差范围和系统权重。',
+                  '横轴越靠左表示与该人的最佳确认点选择评分越接近。纵轴很低提示真人形态在该参数的模拟中较少见；纵值不是“复现真人的概率”，也不是用于最大化的拟合优度。',
+                  '蓝色保留、橙色未确定、灰色未通过。误差线描述计算或模拟计数的不确定性；落在左上方的点仍须通过粒子数稳定性等检查。',
                   '','![联合组合](joint_parameters.png)','',
-                  '每条线是一组完整参数，按登记外界缩放显示。各参数的边际范围不能任意交叉组合。原始值见下表及CSV。'])
+                  '每条线是一组完整参数，横轴列出不同参数，连线用于追踪同一组合。纵轴按各参数登记边界缩放到0—1；它不表示概率、正确率或参数的可信度。',
+                  '例如容量K按2—10缩放，K=3显示为0.125。颜色沿用联合检查图。各参数的边际范围不能任意交叉组合，原始值见下表及CSV。'])
     for case in cases:
         sid=case['subject'];batch=confirmed[sid]
         reference=next((r.get('reference_id') for r in batch if r.get('reference_id')),None)
@@ -348,16 +391,28 @@ def render(study: Path, output: Path):
         summaries=[r for r in shape_summaries if r['subject']==sid]
         if summaries:
             label=CHINESE[summaries[0]['observed_label']]
-            lines.extend(['',f'被试的预定描述标签为“{label}”。该标签描述观察行为形态，尚不代表心理学习机制。',
+            observed=next(r['observed_shape'] for r in batch if r.get('observed_shape'))
+            lines.extend(['',f'被试的预定描述标签为“{label}”。该标签描述观察行为形态，尚不代表心理学习机制。'])
+            if observed['supported_transition']:
+                lines.append(f"原始逐题记录拟合的变化中心为{observed['onset']:.1f}（从0计数），10%—90%变化宽度为{observed['transition_width']:.1f}题；"
+                             f"变化范围{observed['transition_start']:.1f}—{observed['transition_end']:.1f}，可观察随访{observed['followup_trials']}题。标签由变化、波动和观察边界规则共同确定，心理学习类型仍需进一步证据。")
+            else:
+                lines.append(f"变化描述的BIC改善为{observed['bic_gain']:.2f}，本轮门槛为{protocol['policy']['shape']['bic_gain']:g}；"
+                             f"整段正确率为{observed['mean_accuracy']:.1%}。未通过变化识别门槛时仍保留原始曲线及波动特征。")
+            lines.extend([
                           '',f'![被试{sid}全部路径及形态](paths_S{sid}.png)','',
-                          '左列显示所有模拟路径的32题块正确率、模拟均值和真实路径；灰线透明度随路径数调整，均值仅作描述。中列以全部路径为分母，橙色对应被试的描述标签。',
-                          '右列只对检测到变化的路径画变化中心，标题列明相应分母与截断数。绝对时点未用于主要形态距离。',''])
+                          '左列浅灰线为全部自主路径，蓝色实线为模拟均值，黑色实线为真人，橙色虚线为本组中形态最接近真人的一条完整模拟路径；均以互不重叠的32题块显示。',
+                          '橙线按登记的加权形态特征欧氏距离最小值选取，保留原始时间位置和题序；并列时选保存顺序最早者。该距离允许改善时点不同，选中路径用于事后展示，参数判定继续使用原来的全部路径评分。',
+                          '中列以全部路径为分母，黑色对应真人的描述标签。右列统计检测到变化的路径；存在有效变化中心时，黑色竖线对应真人，橙色虚线对应选中的模拟路径。',
+                          '右列标题分别列变化路径数和受观察边界限制的路径数，两者有重叠。绝对时点未用于主要形态距离。',''])
             for item in summaries:
                 lines.append(f"- {item['candidate'][:6]}：完全正确率均值{item['generated_mean_accuracy']:.1%}（真人{item['observed_mean_accuracy']:.1%}），"
                              f"末64题均值{item['generated_final64_mean']:.1%}（真人{item['observed_final64']:.1%}）；"
                              f"清楚变化{item['transition_paths']}/{item['paths']}，截断{item['censored_paths']}/{item['paths']}，描述曲线未收敛{item['optimizer_unsuccessful']}/{item['paths']}。")
                 lines.append(f"  与真人相同描述标签{item['observed_label_count']}/{item['paths']}；真人波动指标{item['observed_dispersion']:.3f}，"
                              f"模拟中位数{item['generated_dispersion_median']:.3f}、95%分位{item['generated_dispersion_q95']:.3f}。")
+                closest=item['nearest_path']
+                lines.append(f"  橙色路径为第{closest['path_number']}/{item['paths']}条，种子{closest['seed']}，加权形态距离{closest['shape_distance']:.5f}。")
         statuses=Counter(r.get('joint_status','incomplete') for r in batch)
         lines.extend(['','本例判定组成：'+'；'.join(f"{STATUS.get(k,k)} {v}个" for k,v in statuses.items())+'。'])
         lines.extend(['','| 组合ID | 对照重复数 | 对照NLL（追加前→当前） | 两粒子数差值绝对值 | 合并两倍MCSE | 粒子数检查 |',
@@ -393,13 +448,13 @@ def render(study: Path, output: Path):
     if protocol.get('particle_precision_extension'):
         ledger=Path(protocol['particle_precision_extension']['ledger'])
         for file in sorted(ledger.glob('particle_precision_v*/interrupted.json')):
-            audit=read(file);link=Path(os.path.relpath(file,output)).as_posix()
+            audit=read(file);link=Path(os.path.relpath(file,link_base)).as_posix()
             lines.extend([f"精度补充发生一次退出码{audit['exit_code']}的进程中断，{len(audit['jobs'])}项工作未留下可复用结果。日志未确定终止原因。",
                           f"丢失CPU记录的单线程工作按完整墙钟时间保守计入{audit['worker_cpu_hours_charged']:.3f} CPU小时，协调器间隙另计{audit['coordinator_gap_cpu_hours_charged']:.3f}小时。实际CPU耗时无法精确还原。",
                           f"恢复采用新任务名和20并发，全部中断费用继续计入96小时预算。详见[中断与预算记录]({link})。"])
         file=ledger/'descriptor_convergence_diagnostic.json'
         if file.exists():
-            diagnostic=read(file);link=Path(os.path.relpath(file,output)).as_posix()
+            diagnostic=read(file);link=Path(os.path.relpath(file,link_base)).as_posix()
             lines.append(f"初筛未收敛曲线的独立诊断：迭代上限增加至600后收敛，形态特征距离变化为{diagnostic['feature_distance']:.3g}。原评分保持不变；详见[描述曲线检查]({link})。")
     lines.extend([
                   '初筛和确认使用不同粒子数及种子；初筛排序变化、确认MCSE和系统权重需要联合检查。有限重复稳定不保证粒子近似无偏。',
@@ -415,9 +470,10 @@ def render(study: Path, output: Path):
                   '- [均匀作答与固定反应比例参照](choice_baselines.json)。',
                   '- [每条路径的形态记录](path_shapes.csv)。',
                   '- [确认路径概率与汇总](shape_summaries.json)。',
+                  '- [每组最近形态路径的编号、种子、距离与选择规则](nearest_paths.json)。',
                   '- [全部数值工作的状态与CPU记录](job_status.csv)。',
                   '- 上级目录 protocol.json、registered_config.yaml、source/、jobs/、numerical/ 和 decisions.jsonl 保存输入、配置、代码、种子、原路径和决策。',
-                  '- 本报告仅生成PNG；图表使用所有符合其明示分母的路径。不存在挑选最接近真人路径后替代分布评分。'])
+                  '- 本报告仅生成PNG；图表保留全部路径，最近形态路径另行突出显示。该路径在看到完整真人记录后选择，全部路径的分布评分及参数判定保持原定义。'])
     (output/'report.md').write_text('\n'.join(lines)+'\n')
     inputs=[study/'protocol.json',study/'completion.json',study/'calibration.json',study/'decisions.jsonl']
     inputs += [study/f'{prefix}_S{c["subject"]}.json' for c in cases for prefix in ['search','confirmed']]
