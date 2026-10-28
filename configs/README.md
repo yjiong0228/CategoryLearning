@@ -3,7 +3,7 @@
 - `shared/model_struct/`：通用基础模型（base/default/P/M/PM）。
 - `shared/candidates/`：可复用的策略候选空间；是否适用于某实验仍由配置决定。
 - `exp123/`：原 configs 中的 condition 1 模型版本、运行/恢复设计、超参数搜索及口述编码适配。
-- `exp4/`：概率原型实验的原 configs/exp4 配置。
+- `exp4/`：概率原型实验配置，以及[Model 1024观测数据接入](exp4/README.md)。
 - `exp5/`：原 configs/exp5 配置。
 - `meg/`：Task3b的Model 0923 full-v3拟合配置及单被试验证YAML，见[MEG配置说明](meg/README.md)。
 

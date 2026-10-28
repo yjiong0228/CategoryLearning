@@ -1,0 +1,18 @@
+# Observation preparation only; no parameter search or model execution.
+protocol: model1024_exp4_inputs_v1
+subjects: [401, 402, 403]
+feedback_probability_disclosed: true
+dataset:
+  processed_dir: ../../data/exp4/processed
+  learning_data: Task2_processed.csv
+  perception_summary: Task1b_errorsummary.csv
+  perception_summary_72: Task1b_errorsummary.csv
+  feature_order_data: Task2_processed.csv
+raw_task_dir: ../../data/exp4/raw/Task2
+data:
+  subject_column: iSub
+  condition_column: condition
+  feature_columns: [feature1, feature2, feature3, feature4]
+  trial_order_columns: [iSession, iTrial]
+  target_type: probabilistic
+  probability_columns: [probCat1, probCat2]
