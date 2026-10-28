@@ -508,12 +508,13 @@ python -m src.Bayesian_state.workflows.analysis.demo_model_0923_oral \
 这些覆盖记录在输出中，不改正式配置。口述抽样与行为使用独立随机数流。
 现有演示：`results/model_0923/oral_readout_demo_20261005_v1/`。
 
-## Model 0923：逐被试评估 v1
+## Model 0923：逐被试评估 v2
 
 统一入口为 `python -m CategoryLearning_codes.figures.fig3.model0923_evaluation`。
-共享流程 `analysis/evaluate_model_0923.py` 按输入与搜索、选择预测、数值稳定性、内部状态、自主学习五步执行；
-每人固定三张PNG、完整逐题与规则表、实验达标和专项检验状态。
-配置、指标、来源校验及输出保护见[评估说明](../evaluation/README.md#model-0923逐被试评估-v1)。
+共享流程 `analysis/evaluate_model_0923.py` 分别报告行为对齐、口述对齐、内部过程、自主学习、参数和数值依据，以及逐人结论；
+每人固定五张PNG、完整逐题与规则表、实验达标和专项检验状态。
+结合0826旧评估的指标和步骤见[说明](../docs/model_architecture/model_0923_evaluation.md)，配置与产物见[评估README](../evaluation/README.md#model-0923逐被试评估-v2)。
+v1配置和三图契约继续保留。
 历史初始结果与完整自适应结果都保留原入选参数与验收状态，数据及数值核心须与源记录一致。
 
 ## Model 0923：12人拟合后的第一阶段分析

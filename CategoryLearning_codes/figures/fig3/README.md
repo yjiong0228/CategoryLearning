@@ -293,8 +293,9 @@ python -m CategoryLearning_codes.figures.fig3.build_fig3 --output CategoryLearni
 ## Model 0923 的拟合后诊断草稿
 
 当前逐人标准报告使用 `python -m CategoryLearning_codes.figures.fig3.model0923_evaluation`。
-该入口执行[逐被试评估v1](../../../src/Bayesian_state/evaluation/README.md#model-0923逐被试评估-v1)，
-每人固定输出 `behavior.png`、`representations.png`、`diagnostics.png`，另有两张总体图，共 `3S+2` 张PNG。
+该入口默认执行[逐被试评估v2](../../../src/Bayesian_state/evaluation/README.md#model-0923逐被试评估-v2)，
+每人固定输出 `behavior_alignment.png`、`oral_alignment.png`、`behavior.png`、`representations.png`、`diagnostics.png`，另有两张总体图，共 `5S+2` 张PNG。
+行为与口述分别有独立指标及源表；没有口述数据时，同名口述图页说明原因。v1三图契约保留。
 诊断图呈现ESS、重采样、搜索与候选进入事件，以及每人的配对粒子预算检查；逐图源表保留有效试次顺序。
 历史12人的初始后分析及以下26张图保留原报告与用途。
 

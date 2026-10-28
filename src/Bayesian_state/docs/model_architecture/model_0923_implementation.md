@@ -43,7 +43,7 @@
 | 初始精度 | `beta_mod.kwargs.beta_init` | `[0.1, 25]` |
 | 精度学习率 | `beta_mod.kwargs.learning_rate` | `[0, 1]` |
 
-例值用于实现检查。学习率 `0.1` 是运行示例值；设为自由参数时，由选择数据与其他自由参数联合估计。拟合前还需确定自由与固定参数、有限搜索范围、训练与评价边界，以及粒子数和重复次数。知觉参数由独立测量提供。口述的现有 `rule_content_v1` 读出可使用连续规则权重；显著度选择补充部位的新设计及批量口述比较尚待接入。
+例值用于实现检查。学习率 `0.1` 是运行示例值；设为自由参数时，由选择数据与其他自由参数联合估计。拟合前还需确定自由与固定参数、有限搜索范围、训练与评价边界，以及粒子数和重复次数。知觉参数由独立测量提供。口述的 `rule_content_v1` 读出已接收连续规则的作答贡献，`extra_selection: salience` 按内部刺激选择补充部位；v2逐人评估保存完整报告预测并与真实原话比较。
 
 ## 完整参数搜索与独立验收（2026-10-13）
 
@@ -80,32 +80,35 @@ python -m src.Bayesian_state.run_model_0923_fit \
 新输出保存发现、引导、独立审查的缓存和停止状态；参数选定后的概率可直接用于条件行为图。
 详细内部状态精度与自主行为仍作为后分析验收。
 
-## 逐被试评估 v1
+## 逐被试评估 v2：行为与口述分别报告
 
-[PDF第12节](model_0923.pdf)规定固定参数后的五步评估。[评估README](../../evaluation/README.md#model-0923逐被试评估-v1)列出指标、状态与产物契约。
-统一入口强制提供行为、表征、诊断三种绘图器，复用共享核心的后分析和指标计算。
-初始Hyper-CD与完整自适应结果由输入适配器读取，原入选参数与验收状态均保留。
+[PDF第12节](model_0923.pdf)按行为、口述、内部过程、自主学习、参数与数值检查说明每一步的用途。
+[评估说明](model_0923_evaluation.md)结合0826此前的评估内容，列出指标、历史依据和代码对应。
+每人固定五张PNG，行为和口述分别有自己的图页、指标表和结论。v1旧配置继续可用。
 
 ```bash
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml --dry-run
+  --config configs/exp123/specific_models/model_0923_evaluation_v2.yaml --dry-run
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/meg/model0923_evaluation_v1.yaml --dry-run
+  --config configs/meg/model0923_evaluation_v2.yaml --dry-run
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/meg/model0923_evaluation_v1.yaml --smoke --output-dir NEW_SMOKE
+  --config configs/exp123/specific_models/model_0923_evaluation_v2.yaml \
+  --smoke --output-dir NEW_SMOKE
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml \
+  --config configs/exp123/specific_models/model_0923_evaluation_v2.yaml \
   --output-dir NEW_REPORT \
   --figure-output-dir CategoryLearning_codes/figures/outputs/fig3/NEW_FIGURES
 ```
 
-两份配置分别指向335→307队列的逐人完整拟合目录；源程序完成后才能进行评估。配置中的被试列表可显式扩展到同一源拟合的其他被试。
-`--dry-run`核对配置、源记录和实验标准，返回计划，保留现有文件。
-正式输出使用新的报告目录与fig3图目录；短检查的图默认位于其新报告目录下。
-每人配对比较128与256粒子，真实预测、隐藏状态和自主行为的不确定性分别说明。
-exp123采用原程序的逐类90%区块达标标准，MEG结束标准标为未配置。
-数值稳定性的共同验收门槛尚待规定；参数恢复、留出预测、口述验证等专项检验逐人保留尚未执行状态。
-数据或数值核心指纹与源拟合不一致时入口报告具体文件，旧结果仍按冻结版本解释。
+配置中的源拟合需要已完成。行为参数和原验收状态保留，v2增加独立的正确率及连续作答指标。
+exp123口述配置显式读取原始 `text` 与特征顺序，逐题核对原试次、选择、类别、反馈和刺激。
+使用固定共用表达参数及 `extra_selection: salience` 生成实际选择后的报告预测。
+报告概率、top-1/top-3和覆盖率复用已用于0826完整报告评价的评分函数。
+MEG S335当前没有填入的口述内容，报告保留说明原因的口述页。
+
+源数据或数值核心不一致时，入口指出具体文件。正式图存入新的fig3草稿目录，短检查图默认存入其新报告目录。
+完整报告预测已经接入；0826旧五类规则或几何口述对照需要当前目录的对应设置，在口述栏目内保留待接入状态。
+参数恢复、留出预测和完整路径等专项检验分别记录执行状态。
 
 ## 固定参数的小规模运行
 

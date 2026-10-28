@@ -39,67 +39,62 @@ evaluator。
 
 ## 正式入口
 
-### Model 0923逐被试评估 v1
+### Model 0923逐被试评估 v2
 
-当前Model 0923标准报告执行 `model0923_subject_evaluation_v1`，对应[PDF第12节](../docs/model_architecture/model_0923.pdf)。
-统一入口注入固定的三种绘图器，初始Hyper-CD与完整自适应搜索均由只读输入适配器解析。
-报告保留原入选参数和验收状态；源程序完成及有限范围内搜索验收分别记录。
+每人固定报告六部分：行为对齐、口述对齐、内部过程、自主学习、参数与数值检查，以及逐人结论。
+[PDF第12节](../docs/model_architecture/model_0923.pdf)说明每一步的用途；
+[完整评估说明](../docs/model_architecture/model_0923_evaluation.md)列出0826历史依据、指标与代码对应。
+
+行为对齐直接比较真实回答和正确率变化；口述对齐单独比较实际完整报告与模型预测。
+两者都有固定图页和指标表。缺少口述数据时，口述页保留原因。
+旧五类规则状态或几何口述对照在同一栏目内单列接入状态。
 
 ```bash
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/exp123/specific_models/model_0923_evaluation_v1.yaml --dry-run
+  --config configs/exp123/specific_models/model_0923_evaluation_v2.yaml --dry-run
 python -m CategoryLearning_codes.figures.fig3.model0923_evaluation \
-  --config configs/meg/model0923_evaluation_v1.yaml --smoke --output-dir NEW_SMOKE
+  --config configs/meg/model0923_evaluation_v2.yaml --smoke --output-dir NEW_SMOKE
 ```
 
-正式执行将 `--dry-run` 去掉，并指定新的 `--output-dir` 和
+默认入口使用v2配置。正式执行指定新的 `--output-dir` 和
 `--figure-output-dir CategoryLearning_codes/figures/outputs/fig3/NEW_FIGURES`。
-两份配置指向335→307队列的逐人完整结果，源程序完成后才能执行。
-短检查使用配置中的首位被试、16个有效试次、4粒子、2组种子、2条自主轨迹、一个worker，
-并用8粒子做配对预算检查；原完整评分复现与任务达标标记为短检查未执行。
-短检查图默认存入新报告目录，正式图存入fig3的草稿输出目录。
+配置指向335→307队列的逐人结果，源拟合结束后才能评估。`--dry-run`核对输入并返回计划，保留现有文件。
 
-| 顺序 | 每人固定检查 | 结果用途 |
+| 栏目 | 固定内容 | 代码 |
 |---|---|---|
-| 1. 输入与搜索 | 数据、源码、环境指纹；试次标识；参数端点、关闭的影响通道；原候选与停止记录 | 确定输入及搜索证据范围 |
-| 2. 选择预测 | 反馈前类别概率、平均选择NLL、多类别Brier、相对均匀选择改善、逐题误差及滚动残差 | 完整序列估计参数后的样本内描述 |
-| 3. 数值稳定性 | 原种子和粒子预算重放、半数与全部重复的NLL差值、配对128/256粒子检查、ESS及重采样 | 固定数据与参数的数值敏感性；共同验收门槛尚待规定 |
-| 4. 内部状态 | 作答前与观察当前选择后两组边际、完整规则状态、候选/参与数、精度与配对知识 | 固定参数下的逐点状态范围 |
-| 5. 自主学习 | 自主选择及反馈、整体/早期/末期/分段学习、任务区块与首次达标 | 真实刺激顺序和记录长度内的生成能力 |
+| 行为对齐 | NLL/Brier；均匀与同段选择频率参考；总体和滚动正确率；MAE/RMSE、偏差、波动；同session保持/换答和前8题关系 | `model_0923_behavior_alignment.py` |
+| 口述对齐 | 完整编码、待复核、缺失、词表外及零概率数量；报告概率、top-1/top-3、覆盖率及严格NLL | `model_0923_oral_alignment.py`，复用 `oral/generative_scoring.py` |
+| 内部过程 | 候选、信念、作答贡献、精度、搜索和配对状态，选择前与选择后时点分开 | `model_0923_postfit.py` |
+| 自主学习 | 自身回答和反馈下的整体/早期/末期/分段表现及原任务达标 | `model_0923_followup.py`、`model_0923_task_criterion.py` |
+| 参数与数值 | 原拟合状态、端点及近优候选；原种子重放；重复数/粒子预算、ESS和重采样 | `model_0923_fit_source.py`、`model_0923_postfit.py` |
+| 逐人结论 | 分别描述行为、口述、自主表现，保留各专项检验状态 | `workflows/analysis/evaluate_model_0923.py` |
 
-默认使用128粒子×16组PF种子，每人将前4组相同种子用256粒子重算。
-分析种子为 `2026101301`；原始重放使用源拟合自身的预算，NLL绝对容差为 `1e-12`。
-跨种子先逐题平均类别概率再计算NLL/Brier。所有有效试次按原序递推，首条有效试次用于初始化，后续试次计分。
-ESS、预算差值与种子变化属于数值诊断，参数统计区间由专项检验确定。
+固定预算保持128粒子×16组独立种子；前4组相同种子使用256粒子配对检查。自主轨迹64条，正确率窗口32题，
+学习分段64题，原评分重放的NLL绝对容差为 `1e-12`。源拟合的计分顺序与首题初始化约定保留。
+正确率由真实类别评价，条件3分别保存种正确率、科正确率和平均得分。
 
-自主轨迹默认为64条，滚动窗口32题。分段从第二条有效试次开始，每64题一段；早期和末期各最多64个计分试次。
-描述性正确率目标为0.8。条件3分别保存种正确率、科正确率和平均得分的观察值、条件预测及自主分布。
-exp123的实验达标标准按原程序核对：正式区块64题、排除模糊刺激、各类别精确正确率均达到90%，包含区块首题。
-漏答造成区块不完整时，保留 `incomplete_blocks`，总体曾达标比例留空，完整区块的结果仍逐项保存。
-MEG Task3b的结束标准配置为 `not_configured`，原因与状态保留在报告中。
+v2配置增加必填 `oral_alignment`。`mode: predict` 显式声明原话CSV及共用表达设置；
+`mode: not_available` 声明原因。原话通过原试次键对应选择、类别、反馈、刺激和特征顺序；旧模型状态列不用于新预测。
+口述设置使用 `rule_content_v1`，六个共用参数为 `.8,.2,.02,.5,.75,.1`，补充描述选择为 `salience`。
+真实口述只用于最后评分。开启口述预测时行为参数、随机流和学习更新保持原约定。
 
-每人固定生成以下内容，缺失必需文件时清单保留未完成状态：
+口述窗口使用过去64个实际试次，至少16条完整编码报告时计算指标。完整编码但词表外或零概率报告保留在分母中，
+严格NLL保留无穷值；正概率报告NLL另列其报告数。缺失和待复核报告分别计数。
+MEG S335当前748条原记录的 `text` 均为空，配置保留数据尚未提供的状态。
 
-- `summary.csv`、`trials.csv`：逐人和逐题指标，包含原试次键、类别概率、计分掩码、ESS及状态。
-- `rule_catalog.csv`、`rule_states.csv`、`pooled_states.npz`：完整规则目录和两个时点的状态边际。
-- `seed_nll.csv`、`budget_comparison.csv`、`original_seed_replay.npz`：种子评分、逐题配对预算差值及原始重放。
-- `autonomous_rollouts.npz`、`learning.csv`、`learning_segments.csv`、`task_metrics.json`：自主轨迹、分段描述及条件3的三个任务指标。
-- `task_criterion.json`、`criterion_blocks.csv`、`criterion_trajectories.csv`：达标状态、区块结果与各轨迹首次达标。
-- `evaluation.json`、`fixed_simulation.yaml`：五步状态、专项检验状态和固定仿真设置。
-- `behavior.png`、`representations.png`、`diagnostics.png`：行为、表征、数值与搜索诊断图；相应源表保留在图目录。
+每人固定五张PNG及配套源表：`behavior_alignment.png`、`oral_alignment.png`、`representations.png`、`behavior.png`、`diagnostics.png`；
+另有两张总体图，共 `5S+2` 张。行为指标保存于 `behavior_alignment.json/csv`，口述指标保存于 `oral_alignment.json`、`oral_summary.csv`。
+逐题行为、滚动曲线、原话、口述概率、完整规则状态、自主轨迹及原有审查表均保留。
+`evaluation.json`给出每人的结果与执行状态，`manifest.json`记录全部必需产物、配置、源码与输入指纹。
 
-总体固定交付 `subjects.csv`、`parameters.csv`、`restarts.csv`、`finalists.csv`、`search_summary.csv`、
-`original_replay_validation.json`、`effective_config.yaml`、`report.html`、`manifest.json`，以及两张总体PNG。
-`S`名被试共交付 `3S+2` 张PNG。清单保存实际设置、来源、文件指纹和全部必需产物的哈希。
-配置采用严格键名校验；输入缺失、指纹不一致及必需产物缺失均使任务终止，报告目录保留供检查。
+来源不一致或必需图表缺失时，入口终止，目录保留供检查。短检查使用首位被试最多16题、4粒子×2种子、
+8粒子配对×2种子、2条自主轨迹、一个worker；口述按同一短序列检查，完整评价仍使用完整序列。
+参数区间、恢复、留出预测、旧口述状态对齐、近优参数状态敏感性、完整轨迹形态与模型比较各自记录执行状态。
 
-专项检验包含留出预测、参数统计区间、参数恢复、状态与模型恢复、机制比较、口述验证、完整内部路径和完整自适应实验生成。
-v1逐人记录这些项目为 `not_performed`；执行专项协议后，其产物和结论单独关联到该被试。
-搜索、样本内行为、数值诊断、状态描述和自主学习各保留自身的证据范围。
+### Model 0923逐被试评估 v1
 
-协议与产物契约位于 `model_0923_protocol.py`，源结果适配位于 `model_0923_fit_source.py`；
-流程由 `workflows/analysis/evaluate_model_0923.py` 调度，统计与粒子执行复用 `model_0923_postfit.py` 和共享核心。
-历史12人后分析及通用 `run_model_evaluation.py` 保留各自用途。
+v1保留原五步顺序、三张逐人PNG和严格配置契约，可显式使用 `model_0923_evaluation_v1.yaml`。
+历史v1结果按原协议解释；新的默认v2将行为和口述各自列为固定栏目。
 
 ### 通用simulation评价
 
