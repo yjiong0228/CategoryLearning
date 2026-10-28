@@ -1,0 +1,39 @@
+# Fixed example coordinates for interface validation; no parameter estimation.
+protocol: model1024_exp4_closed_loop_v1
+input_config: model1024_inputs.yaml
+base_engine_config: ../exp123/model_struct/model_0923_cond1_full_v3.yaml
+subject: 401
+max_trials: 32
+autonomous_paths: 4
+seed: 20261028
+n_jobs: 1
+engine_overrides:
+  provenance:
+    runtime_model: model_1024
+    scientific_status: fixed_example_interface_validation
+  inference:
+    backend: particle_filter
+    particle_count: 8
+  likelihood:
+    feedback_likelihood_mode: category_feedback
+  modules:
+    perception_mod:
+      kwargs:
+        noise_mode: uniform
+    hypo_transitions_mod:
+      kwargs:
+        exit_rate: 0.0
+        local_structure_weight: 1.0
+        transfer_scale: 0.01
+        execution_inertia: 2.0
+        intervention:
+          kind: E
+          decay: 0.8
+          capacity: evidence
+          search: accumulate
+        search_controller:
+          global_search_failure_gain: 0.0
+    memory_mod:
+      kwargs:
+        gamma: 1.0
+  oral_readout: null

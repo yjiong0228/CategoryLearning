@@ -19,12 +19,17 @@
 | `parameters.py` | 固定超参数的提取、覆盖与可复现 candidate seed 解析 |
 | `provenance.py` | 结构配置哈希、容量、初始化、precision/readout 与 repeat 聚合溯源 |
 | `autonomous.py` | 在类别学习任务中运行模型自主选择并生成 feedback |
+| `probabilistic.py` | 二分类概率反馈环境、独立反馈随机流和自主路径；使用完整精度的实验概率 |
 | `filtered_continuation.py` | 捕获前段滤波的末端状态，按粒子权重抽取起点并自主续跑 |
 | `continuation_diagnostics.py` | 读取续跑中的规则在场、作答权重、判断精度和类别配对状态 |
 
 exp4的观测接入使用 `load_exp4_subject()`，返回连续历史、特征顺序及共享模型上下文。
 `observations()` 只包含刺激、实际选择和实际反馈；实验概率单独保留。
 准备命令、输出字段和数据差异见[exp4接入说明](../../../configs/exp4/README.md)。
+`run_autonomous_probabilistic_learning()` 在模型作答后，按所选类别的任务概率抽取二值反馈。
+学习者只接收抽样结果。该入口分别派生知觉、规则转换、作答和反馈的随机种子；
+返回完整路径、逐题反馈抽样值和任务指标。Model 1024调用方在
+`model_1024_runtime()` 上下文内构造与执行模型，观测路径使用同一上下文中的共享推断后端。
 
 前段状态续跑使用 `capture_prefix()` 保存最后一次反馈后的模型状态和粒子权重，
 随后由 `generate_continuations()` 抽取起点。后段的输入为刺激和任务类别；类别仅用于

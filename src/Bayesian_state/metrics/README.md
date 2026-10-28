@@ -23,6 +23,7 @@ evaluation ─────────┘
 | `losses.py` | 所有 `loss_metric` 的唯一实现，包括 accuracy-curve BerHu、Brier 与 NLL family |
 | `trial.py` | trial 对齐、rolling/exponential accuracy、family/target-majority 和标准 metric bundle |
 | `task.py` | 实验环境反馈，以及种正确率、科正确率、平均得分；真实类别只用于评分 |
+| `probabilistic_task.py` | 二分类概率任务的选择质量、实际奖励和期望奖励差距 |
 | `behavior.py` | 学习曲线、history kernel、switch、perseveration、win--stay/lose--shift |
 | `trajectory.py` | 跨随机轨迹的边际 choice 预测，以及 loss、shape、history、switch 与分布汇总 |
 | `selection.py` | accuracy shape、history、switch 和代表轨迹选择所用的复合分数 |
@@ -35,6 +36,12 @@ Condition 3 的 `condition3_task_metric_summaries()` 沿用调用方的 `valid_t
 不改变首试次排除规则。分别返回 observed/predicted 的种、科、平均得分；相同试次下
 `mean_reward = (species_accuracy + family_accuracy) / 2`。
 没有真实类别时，可由三值反馈计算观察指标，预测任务指标则保持缺失，不能用所选反应概率代替。
+
+exp4的 `probabilistic_task_metrics()` 使用1起点的类别选择、实际二值反馈及任务概率。
+`optimal_choice_rate` 表示选择奖励概率最大类别的比例；两类恰好等概率时，两种选择都计为最优。
+`mean_reward` 是正反馈比例。`expected_reward` 对每题所选类别的奖励概率取平均，
+`optimal_expected_reward` 对每题可获得的最大奖励概率取平均；两者的差为 `expected_regret`。
+这些分数描述传入的完整序列，首题计入分母。行为似然使用作答前概率，继续由 `choice_nll_loss()` 计算。
 
 口述分布比较使用模型词表与真实完整编码的并集。真实口述超出模型词表时，对应的预测概率为0，
 它仍进入真实口述频率的分母。窗口内的模型平均概率和真实频率使用相同的计分试次；默认窗口

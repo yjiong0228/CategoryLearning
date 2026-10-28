@@ -2,7 +2,7 @@
 
 One subject supplies one continuous history across sessions. Only stimulus,
 choice and recorded feedback enter the learner. Raw stimulus probabilities
-remain available for the future stochastic environment and task evaluation.
+remain available for the stochastic environment and task evaluation.
 """
 from __future__ import annotations
 
