@@ -38,7 +38,11 @@ def test_real_inputs_preserve_feedback_feature_coordinates_and_all_sessions(subj
     summary = pd.read_csv("data/exp4/processed/Task1b_errorsummary.csv")
     expected = summary[summary.iSub == subject].groupby("feature_name").threshold_mean_mean.mean()
     np.testing.assert_allclose(case.perception_half_range, expected.loc[list(names)], atol=1e-14, rtol=0)
-    assert len(case.metadata()["ambiguity_disagreement_trial_ids"]) == (54 if subject == 402 else 0)
+    assert case.metadata()["ambiguity_disagreement_trial_ids"] == []
+    # After the authorized 402 correction, the observed-order flags agree
+    # with the original stimulus probabilities for every registered subject.
+    expected_ambiguity = ((case.arrays.target_probs >= .4) & (case.arrays.target_probs <= .6)).any(axis=1)
+    np.testing.assert_array_equal(case.frame.ambiguous, expected_ambiguity.astype(int))
 
 
 @pytest.fixture

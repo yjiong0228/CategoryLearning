@@ -12,7 +12,7 @@
 ```bash
 python -m src.Bayesian_state.workflows.runs.prepare_model_1024_exp4 \
   --config configs/exp4/model1024_inputs.yaml \
-  --output results/model_1024/exp4_inputs_20261028_v1
+  --output results/model_1024/exp4_inputs_20261028_v2
 ```
 
 默认核对配置中的全部被试；`--subjects 401` 可限定为一人。命令只读取数据并保存输入包，
@@ -68,9 +68,15 @@ context = case.model_context()
 实际刺激、选择、反馈和颜色坐标均与原始记录对应。
 行为表概率与原始刺激概率的差异处于三位小数舍入范围内。
 
-402有54题的行为表 `ambiguous` 与对应刺激表标记不一致。
-输入包分别保存 `ambiguous` 和 `stimulus_ambiguous`，差异试次列在个人元数据中。
-观测学习使用全部有效试次，这两套标记均不参与筛选；任务停止规则的复现另需核查标记来源。
+402行为表曾有54题的 `ambiguous` 与对应刺激表标记不一致。2026-10-28按用户授权，
+已按 `iSession + stiID` 修正行为表，并按 `iSub + iSession + iTrial` 同步处理后表。
+两份文件各修改54个标记，其他字段的原始字节保持一致。三名被试现在均通过模糊标记核对。
+[更正记录](../../src/Bayesian_state/docs/maintenance/EXP4_AMBIGUITY_CORRECTION_20261028.md)
+说明依据、备份位置与验证范围。
+
+修正后的输入包为 `results/model_1024/exp4_inputs_20261028_v2`；v1保留修正前的输入和差异记录。
+输入包继续分别保存 `ambiguous` 和 `stimulus_ambiguous`，差异试次列在个人元数据中。
+观测学习使用全部有效试次，这两套标记均不参与筛选。实验实际停止决策的核查需结合当时运行记录。
 
 定向测试覆盖原始记录对齐、随机负反馈保留、特征与知觉阈值映射、无效输入拒绝、
 环境概率与模型观测分离，以及旧输出保护。共享1024机制的接入测试使用401的前324题，
