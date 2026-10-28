@@ -1,0 +1,38 @@
+protocol: model1024_state_precision_v1
+source: results/model_1024/individual_states_20261028_v1/main_v2
+source_summary: results/model_1024/individual_states_20261028_v1/summary_final
+seed: 2026102802
+pilot_cases:
+  - S110_fc9d854123911d1a
+  - S205_94b79a97887c62e3
+  - S229_a3ff7d745eb425bd
+  - S317_c2e84ea9cd965fe2
+hard_cases: [S229_a3ff7d745eb425bd, S317_c2e84ea9cd965fe2]
+initial_particles: [2048, 4096]
+escalation_particles: [8192, 16384]
+systems: 16
+maximum_systems: 64
+minimum_diagnostic_systems: 8
+expansion_minimum_stable_pilots: 2
+expansion_requires_stable_hard_case: true
+confirmation_systems: 16
+numerical_checks:
+  minimum_system_ess: 4.0
+  maximum_system_weight: 0.5
+  half_mean_absolute_difference: 0.025
+  half_q95_absolute_difference: 0.10
+  resolution_mean_absolute_difference: 0.025
+  resolution_q95_absolute_difference: 0.10
+budget:
+  workers: 128
+  numeric_threads: 1
+  cpu_hours: 1536
+  wall_hours: 12
+  per_job_cpu_seconds: 28800
+  failed_jobs_before_stop: 3
+  memory_fraction: 0.85
+  estimate_safety_factor: 1.3
+  poll_seconds: 2
+conditioning: complete_observed_sequence_after_choice_before_feedback
+parameter_weights: none
+oral_used_for_inference: false
