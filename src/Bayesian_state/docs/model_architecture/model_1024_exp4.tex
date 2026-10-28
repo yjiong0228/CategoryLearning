@@ -1,0 +1,702 @@
+% !TeX program = xelatex
+% Compile with compile_model_1024_exp4.sh; build files remain in /tmp.
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.35cm,headheight=15pt]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage[no-config]{fontspec}
+\usepackage{needspace,enumitem,fancyhdr,xurl}
+\usepackage[unicode,hidelinks]{hyperref}
+\defaultfontfeatures[\rmfamily,\sffamily]{Ligatures=Common,Mapping=}
+\setmainfont[AutoFakeSlant=0.2]{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont[Scale=0.84,Mapping=]{DejaVu Sans Mono}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip=0pt plus 1pt minus 0.1pt
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.35em}
+\setlength{\emergencystretch}{3em}
+\setlength{\LTpre}{0.6em}
+\setlength{\LTpost}{0.6em}
+\renewcommand{\arraystretch}{1.18}
+\setlist{itemsep=0.2em,topsep=0.4em,leftmargin=2em}
+\allowdisplaybreaks[2]
+\setcounter{tocdepth}{2}
+\numberwithin{equation}{section}
+\renewcommand{\contentsname}{目录}
+\renewcommand{\tablename}{表}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Model 1024：Exp4迁移方案}
+\fancyhead[R]{\small 2026-10-28}
+\fancyfoot[C]{\thepage}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\ind}{\mathbb I}
+\newcommand{\A}{\mathcal A}
+\newcommand{\Hh}{\mathcal H}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\sigmoid}{\operatorname{sigmoid}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\Bern}{\operatorname{Bernoulli}}
+\newcommand{\Cat}{\operatorname{Categorical}}
+\newcommand{\Unif}{\operatorname{Uniform}}
+\hypersetup{pdftitle={Model 1024迁移至Exp4：概率反馈、架构调整与验证方案},pdfauthor={}}
+\title{Model 1024迁移至Exp4\\[0.5em]
+\Large 概率反馈、模型架构调整与验证方案}
+\author{}
+\date{2026年10月28日}
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+Exp4要求学习者在概率反馈下学习类别：即使选择了获得正反馈概率更高的类别，仍可能收到负反馈。
+被试在任务开始前已被明确告知反馈具有概率性。迁移需要同时处理三个问题：
+任务环境如何按选择产生反馈，学习者如何解释反馈，以及研究者如何评价选择与学习过程。
+
+目前已完成观测数据接入和小规模概率反馈闭环。共享Model 1024接收真实刺激、选择和反馈，
+自主生成使用模型自己的选择并重新抽取环境反馈。信念、规则搜索、判断精度和持续执行机制
+沿用现有定义。401前32题、8粒子和4条自主路径的接口检查通过，正式个体拟合与Exp4恢复检验尚待开展。
+
+本文给出可复核的迁移说明。第\ref{sec:task}节定义任务；第\ref{sec:architecture}节说明共享架构与信息流；
+第\ref{sec:baseline}节解释现有机制在概率反馈下的含义；第\ref{sec:extensions}节提出有待比较的调整；
+第\ref{sec:validation}节规定评价与验证问题；第\ref{sec:implementation}节登记实现和证据。
+文中候选机制均为研究提案，其公式用于明确比较对象。
+
+\paragraph{当前设计判断}
+概率反馈环境、数据字段和评价口径属于迁移必需调整，已经接入。
+认知层首先保留原模型作为基线，再检查反馈概率校准、奖励与失败的联系、以及选择策略。
+“知道反馈具有概率性”与“知道每题的真实概率”分别表示不同的任务知识；当前实验确认支持前者。
+初始不确定性如何进入模型，仍需明确假设并检验。
+
+\clearpage
+{\small\setlength{\parskip}{0pt}\tableofcontents}
+\clearpage
+
+\section{迁移范围与主要决策}
+\label{sec:scope}
+
+迁移的目标是使用同一个生成模型描述真人选择和自主学习路径，并在模拟真值下检验内部状态推断。
+模型参数在同一被试的一次任务中固定，规则集合、信念、精度与执行身份逐题变化。
+不同随机路径之间的差异属于过程变异；有限粒子导致的数值误差和个体参数的不确定性另行评价。
+
+本阶段采用\textbf{固定实际刺激日程与记录长度}的任务范围。每名被试的各场记录按原顺序连接，
+跨场延续状态。完整实验协议还包含刺激采样、块结束判定及终止规则，见第\ref{sec:protocol}节。
+
+\begin{table}[htbp]
+\centering\small
+\caption{迁移涉及的层次与当前状态。认知提案的实施以定向诊断为依据。}
+\begin{tabularx}{\linewidth}{L{2.5cm}Y L{3.5cm}}
+\toprule
+层次 & 具体处理 & 当前状态\\
+\midrule
+数据接口 & 核对试次、颜色坐标、实际选择与反馈；概率存入任务元数据 & 已接入三名被试\\
+反馈环境 & 按模拟选择对应的概率抽取二值反馈 & 已实现并检查时序\\
+认知机制 & 保留29条二分类规则及信念、搜索、精度、持续执行 & 基线机制已运行\\
+初始任务知识 & 将“反馈具有概率性”的指令转化为可检验的初始假设 & 当前保存为元数据\\
+反馈解释 & 检查概率校准及随机负反馈的学习效应 & 待开展机制诊断\\
+行为评价 & 分别报告较优选择、实际奖励与期望奖励 & 单次路径指标已接入\\
+参数与状态推断 & 检查估计精度、可辨识性及模拟恢复 & Exp4尚待验证\\
+完整实验协议 & 按原运行版本生成刺激并执行停止规则 & 尚待版本核对与接入\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+“迁移完成”需要分层解释。输入核对通过表示记录可以正确进入模型；闭环检查通过表示选择、
+反馈和状态更新按约定连接。模型能否解释Exp4行为，参数能否稳定估计，以及内部状态能否可靠恢复，
+分别需要行为比较、参数恢复和状态恢复证据。
+
+\section{Exp4的任务概率与数据契约}
+\label{sec:task}
+
+\subsection{真实反馈概率与较优类别}
+Exp4使用四维刺激$\bm x_t\in[0,1]^4$、两种类别选择$y_t\in\{1,2\}$及二值反馈$r_t\in\{0,1\}$。
+用$q_t(c)$表示在第$t$题选择类别$c$后获得正反馈的真实环境概率。根据现存刺激生成程序，
+两个原型和环境参数为
+\begin{equation}
+\bm v_1=(0.25,0.5,0.5,0.5),\qquad
+\bm v_2=(0.75,0.5,0.5,0.5),\qquad b_{\mathrm{env}}=10.
+\end{equation}
+先计算刺激到两个原型的欧氏距离，再对负距离作softmax归一化：
+\begin{equation}
+d_c(\bm x_t)=\|\bm x_t-\bm v_c\|_2,\qquad
+q_t(c)=\frac{\exp[-b_{\mathrm{env}}d_c(\bm x_t)]}
+{\sum_{a=1}^2\exp[-b_{\mathrm{env}}d_a(\bm x_t)]}.
+\label{eq:environment-probability}
+\end{equation}
+softmax将两个距离分数转成非负、和为1的概率；距离较小的原型对应更高的正反馈概率。
+$b_{\mathrm{env}}$由任务规定，与学习者的判断精度$\beta_t(h)$分开记录。
+
+模型选择完成后，环境抽样
+\begin{equation}
+u_t\sim\Unif(0,1),\qquad
+r_t=\ind\{u_t<q_t(y_t)\},\qquad
+r_t\mid\bm x_t,y_t\sim\Bern(q_t(y_t)).
+\label{eq:environment}
+\end{equation}
+例如$q_t(1)=0.8$时，选择类别1的正反馈概率为0.8，负反馈概率为0.2；
+选择类别2的正反馈概率为0.2。实际反馈是一次随机实现，较优类别由两个$q_t(c)$的大小确定。
+
+\subsection{边界知识与概率知识的区别}
+这两个原型只在第一个坐标上不同，因此
+\begin{equation}
+d_2(\bm x)^2-d_1(\bm x)^2=0.5-x_1.
+\end{equation}
+当$x_1<0.5$时，类别1的奖励概率较高；当$x_1>0.5$时，类别2较高；在$x_1=0.5$时二者相等。
+现有目录中的单特征中点规则能够表达这条最优类别边界。
+
+反馈概率的大小还取决于另外三个坐标。以$x_1=0.4$为例，
+刺激$(0.4,0.5,0.5,0.5)$对应$q(1)\approx0.881$，
+刺激$(0.4,0,0,0)$对应$q(1)\approx0.635$。
+两个刺激具有相同的最优类别，负反馈概率却不同。
+因此，规则空间是否包含最优分类边界，与模型能否预测完整的奖励概率，是两个需要分别检查的问题。
+
+上述公式与当前原始刺激表一致。本次对三名被试的刺激逐项重算，环境概率与刺激表的最大绝对差
+小于$6.6\times10^{-11}$。实际运行直接读取原始刺激表的概率，保留其记录精度；
+行为表中的三位小数概率用于交叉核对。
+
+\subsection{被试、特征顺序与知觉测量}
+\begin{table}[htbp]
+\centering\small
+\caption{当前Exp4输入。颜色顺序定义模型四个特征坐标。}
+\begin{tabularx}{\linewidth}{L{1.3cm}L{1.5cm}L{3.5cm}Y}
+\toprule
+被试 & 有效题数 & 各场题数 & 特征1至4\\
+\midrule
+401 & 960 & 320、320、320 & 绿、黄、粉、蓝\\
+402 & 320 & 320 & 绿、粉、黄、蓝\\
+403 & 512 & 320、192 & 黄、绿、粉、蓝\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+各被试使用自己的特征顺序与独立知觉测量。模型从
+\path{Task1b_errorsummary.csv}读取各颜色的阈值，对同一颜色的各测量水平取平均，
+再按该被试的特征顺序排列，得到均匀知觉误差半宽$a_{s,j}$。
+第$s$名被试的内部知觉为
+\begin{equation}
+\epsilon_{t,j}\sim\Unif(-a_{s,j},a_{s,j}),\qquad
+\widetilde x_{t,j}=\clip_{[0,1]}(x_{t,j}+\epsilon_{t,j}).
+\end{equation}
+所有活跃规则共享本题的内部刺激。环境按物理刺激确定$q_t$，学习者按内部刺激形成预测。
+知觉误差与环境反馈随机性在模型中具有独立来源。
+
+\subsection{学习输入、任务元数据与修正记录}
+进入学习者的观测为$(\bm x_t,y_t,r_t)$。任务元数据包括$q_t(1),q_t(2)$、
+原始试次标识、刺激编号、场次、块号和模糊标记。真实概率用于环境抽样与评价；
+当前模型的规则信念、精度和搜索更新均由自身预测及实际反馈决定。
+
+记录按\path{iSession, iTrial}的原顺序进入模型，类别编号与原始按键分别保留。
+同一被试的场次之间延续活跃规则、信念、精度、执行身份及随机流。
+这一跨场策略是当前模型假设；若研究间隔遗忘，需要登记间隔信息并单独验证状态转移。
+
+402曾有54题的\path{ambiguous}与实际呈现刺激不一致，已按用户授权更正。
+更正通过场次与刺激编号对齐，保留选择、反馈和刺激值。
+修正前后模型使用的全部有效观测序列一致。备份和逐题差异见附录\ref{app:sources}中的更正记录。
+模糊标记定义为任一类别概率落在闭区间$[0.4,0.6]$；当前学习输入保留全部有效试次。
+
+\section{共享架构与概率反馈信息流}
+\label{sec:architecture}
+
+\subsection{决策、环境与学习的职责}
+沿用Model 1024的决策与学习模块，在两者之间接入Exp4任务环境。
+令$S_t$为本题作答前认知状态，$m_t$为内部知觉和规则预测的本题记录，$\theta$为固定个体参数：
+\begin{equation}
+(S_t,\bm x_t)\xrightarrow{\mathsf D_\theta}(m_t,y_t)
+\xrightarrow{\mathsf E_{\mathrm{Exp4}}}r_t,
+\qquad
+(S_t,m_t,y_t,r_t)\xrightarrow{\mathsf L_\theta}S_{t+1}.
+\label{eq:closed-loop}
+\end{equation}
+决策模块生成选择，环境按式\eqref{eq:environment}返回反馈，学习模块更新下一题状态。
+由此得到联合生成核，即一次试次的选择、反馈和状态转移的概率规律：
+\begin{equation}
+k_\theta(dS',y,r\mid S,\bm x,q)=
+\int\mathsf D_\theta(dm,y\mid S,\bm x)
+q(y)^r[1-q(y)]^{1-r}
+\mathsf L_\theta(dS'\mid S,m,y,r).
+\label{eq:kernel}
+\end{equation}
+积分表示对内部知觉等未观测变量求平均。环境概率只出现在反馈生成项；
+学习模块实际接收已经产生的$r$。
+
+\subsection{观测推断与自主生成}
+观测推断逐题注入真人的实际选择和实际反馈。粒子表示研究者考虑的不同内部路径；
+当前选择发生前，先对这些路径的选择概率加权，得到行为预测，再用已观察到的选择更新路径权重。
+各粒子的认知学习继续使用本题真实反馈。
+
+自主生成从模型初始状态出发，每题从作答概率抽取选择，再抽取对应的概率反馈。
+该反馈进入同一套学习模块，后续状态与选择沿自身历史递推。
+两种运行方式的差别在于选择和反馈的来源，机制、参数含义及试次顺序保持一致。
+
+共享生命周期为\path{begin_trial()}、\path{predict_choice()}、\path{complete_trial()}。
+实现中的部分规则管理操作在下一次\path{begin_trial()}处理上一题完成的反馈；
+它们属于形成下一题作答前状态的过程。当前选择概率始终在当前反馈进入之前计算。
+
+\subsection{行为似然与主观反馈似然}
+令$\mathcal D_{<t}$为过去的实际刺激、选择及反馈历史。行为评分使用
+\begin{equation}
+P_\theta(y_t\mid\mathcal D_{<t},\bm x_t),\qquad
+\mathrm{NLL}_{\mathrm{choice}}=-\frac1T\sum_{t=1}^T
+\log P_\theta(y_t\mid\mathcal D_{<t},\bm x_t).
+\label{eq:nll}
+\end{equation}
+NLL是负对数似然，模型赋予实际选择的概率越高，分数越低。
+当前入口从第一题开始计分，参数保持为配置中的示例值。
+
+在已给定的刺激日程下，实际选择与实际反馈的单步联合概率分解为
+\begin{equation}
+P_\theta(y_t,r_t\mid\mathcal D_{<t},\bm x_t)
+=P_\theta(y_t\mid\mathcal D_{<t},\bm x_t)
+q_t(y_t)^{r_t}[1-q_t(y_t)]^{1-r_t}.
+\end{equation}
+对同一份实际记录比较参数时，右侧环境项是已知且与$\theta$无关的因子。
+认知模块内部用于更新规则信念的\emph{主观反馈似然}则取决于规则及内部预测，
+它通过状态更新影响后续选择。两个似然的作用和条件分别记录，避免将同一反馈重复作为研究者的路径权重证据。
+
+\section{现有Model 1024在Exp4中的基线定义}
+\label{sec:baseline}
+
+\subsection{状态、规则预测与选择}
+Exp4使用二分类规则目录$\Hh$，包含29条规则。当前活跃集合为$\A_t$，容量上限为$K$。
+基线状态可写为
+\begin{equation}
+S_t=\left(\A_t,e_t,\{\pi_t(h),\beta_t(h)\}_{h\in\A_t},F_t\right).
+\end{equation}
+$e_t$是当前执行规则，$\pi_t(h)$是活跃规则的归一化信念，$\beta_t(h)$是判断精度，
+$F_t$是控制搜索的失败累积量。初始化从基础目录分布抽取一条规则，该规则信念为1，
+精度为$\beta_0$，失败累积量为0，执行身份为该规则。
+
+每条规则定义类别区域$\mathcal R_{h,c}$。将内部刺激到区域的最短距离转成类别预测：
+\begin{equation}
+d_{t,h,c}=\inf_{\bm z\in\mathcal R_{h,c}}\|\widetilde{\bm x}_t-\bm z\|_2,
+\qquad
+p_{t,h}(c)=\frac{e^{-\beta_t(h)d_{t,h,c}}}{\sum_{a=1}^2e^{-\beta_t(h)d_{t,h,a}}}.
+\end{equation}
+每条路径内，由一条执行规则产生选择：$y_t\sim\Cat(p_{t,e_t})$。
+全部活跃规则均参与后续反馈学习。规则信念描述相对可信度，执行身份描述本题实际采用的判断。
+
+\subsection{主观反馈预测、信念保持与更新}
+当前二分类实现将规则对所选类别的预测$p_{t,h}(y_t)$用作该选择获得正反馈的主观概率。
+为区分环境概率$q_t$，记这个主观量为$\widehat q_{t,h}(y_t)$。基线有
+\begin{equation}
+\widehat q_{t,h}(y_t)=p_{t,h}(y_t),\qquad
+\ell_t(h)=\widehat q_{t,h}(y_t)^{r_t}
+[1-\widehat q_{t,h}(y_t)]^{1-r_t}.
+\label{eq:subjective-likelihood}
+\end{equation}
+$\ell_t(h)$是规则预测本次实际反馈的概率。正反馈使用所选类别概率，负反馈使用其补概率。
+当前\path{category_feedback}在二分类下给出这一形式，能够接收两种实际结果。
+Exp4中的解释是规则对奖励结果的预测；规则预测是否校准仍需检验。
+
+保持率由本题奖励调节。$\delta$是基础保持参数，有效保持率及更新后信念为
+\begin{subequations}\label{eq:belief}
+\begin{align}
+\delta_t&=\delta+(1-\delta)r_t,\\
+\bar\pi_t(h)&=\frac{\pi_t(h)^{\delta_t}}{\sum_{v\in\A_t}\pi_t(v)^{\delta_t}},\qquad
+\pi_t^+(h)=\frac{\bar\pi_t(h)\ell_t(h)}{\sum_{v\in\A_t}\bar\pi_t(v)\ell_t(v)}.
+\end{align}
+\end{subequations}
+当$\delta_t=0$时，保持后的活跃信念按均匀分布定义。负反馈既将已有信念拉近均匀，
+也通过似然改变各规则的相对比例；正反馈完整保留此前比例后再加入新证据。
+
+对信念与似然均为正的两条规则$h,v$，这两种作用可以直接看作
+\begin{equation}
+\log\frac{\pi_t^+(h)}{\pi_t^+(v)}
+=\delta_t\log\frac{\pi_t(h)}{\pi_t(v)}+
+\log\frac{\ell_t(h)}{\ell_t(v)}.
+\label{eq:log-odds}
+\end{equation}
+第一项保留过去的相对信念，第二项是本题反馈的规则区分证据。
+若两个规则都预测正反馈概率接近0.5，当前似然比接近1，反馈的区分力较弱。
+与此同时，负反馈仍按$\delta$压缩原有信念比值。这是Exp4需要检查的一个具体作用环节。
+
+\subsection{精度学习}
+判断精度使用同一主观反馈似然的梯度更新：
+\begin{equation}
+g_t^\beta(h)=\left.\frac{\partial\log\ell_t(h;\beta)}{\partial\beta}\right|_{\beta_t(h)},
+\qquad
+\beta_t^+(h)=\clip_{[0.1,25]}[\beta_t(h)+10\eta g_t^\beta(h)].
+\label{eq:precision}
+\end{equation}
+梯度表示小幅增加精度对当前对数反馈似然的影响，$\eta$为学习率，固定系数10沿用ADD10定义。
+负反馈可以降低某些规则的精度；影响方向取决于该规则的实际预测。
+修改主观反馈预测函数时，式\eqref{eq:precision}的梯度必须同步修改并检查。
+
+\subsection{搜索、容量替换与新规则入场}
+基线使用实际奖励更新失败累积量，并确定下一题前的搜索概率：
+\begin{equation}
+F_{t+1}=\begin{cases}\lambda F_t,&r_t=1,\\ F_t+1,&r_t=0,\end{cases}
+\qquad
+s_{t+1}=\sigmoid[\logit(p_0)+a_eF_{t+1}].
+\label{eq:search}
+\end{equation}
+$p_0$是基础搜索概率，$a_e$是失败敏感度，$\lambda$是收到正反馈后保留的失败比例。
+sigmoid将分数映射至$(0,1)$，logit为其反函数。
+Exp4中，较优选择后的随机负反馈同样使$F$增加1。
+
+搜索发生时，以$g_0$的概率采用全局提议，其余采用以规则信念选择父规则的局部提议。
+局部路线优先使用结构编辑邻域，邻域为空时使用功能相似性。
+现有结构编辑成本和固定参考刺激的相似度保持原定义。新规则进入未满集合；
+容量已满时，它替换当前更新后信念最低的一条已有规则$h^-$。
+
+令$n_t=|\A_t|$，新规则的初始信念份额为
+\begin{equation}
+\nu_{t+1}=\begin{cases}
+1/(n_t+1),& n_t<K,\\
+r_t\pi_t^+(h^-)+(1-r_t)/K,&n_t=K.
+\end{cases}
+\label{eq:entry}
+\end{equation}
+幸存规则按原相对比例分配剩余信念。满容量时，正反馈后的新规则接替被移除规则的份额，
+负反馈后的新规则获得$1/K$。因此，概率负反馈可能同时增加搜索机会和新规则的试用份额。
+
+\subsection{知识继承与持续执行}
+新规则继承替换前全部活跃规则的信念加权平均精度：
+\begin{equation}
+\beta_{t+1}(u)=\sum_{h\in\A_t}\pi_t^+(h)\beta_t^+(h).
+\end{equation}
+参与平均的信念与精度均已吸收当前反馈，随后被替换的规则也参与这一平均。
+这项精度继承与式\eqref{eq:entry}的新规则信念分配分别执行。
+
+新集合形成后，按规则信念及持续执行参数$\kappa$抽取下一执行身份：
+\begin{equation}
+\Pr(e_{t+1}=h)=
+\frac{\pi_{t+1}(h)e^{\kappa\ind\{h=e_t\}}}
+{\sum_{v\in\A_{t+1}}\pi_{t+1}(v)e^{\kappa\ind\{v=e_t\}}}.
+\label{eq:execution}
+\end{equation}
+上一执行规则仍在场时，$\kappa$增加继续执行它的概率；它被移除时，执行身份随新集合重新选择。
+保持率、搜索和入场份额的变化，因而能够间接改变执行切换。
+
+\subsection{参数含义与迁移方式}
+二分类Model 1024有9项自由参数：$K,\delta,p_0,a_e,\lambda,g_0,\beta_0,\eta,\kappa$。
+它们分别规定容量、信念保持、基础搜索、失败敏感度、失败保留、全局提议比例、初始精度、
+精度学习率和执行维持倾向。Exp4基线保持这组定义，示例配置用于检验接口。
+
+复用模型机制与迁移个体参数属于不同研究问题。当前尚未将exp123某人的参数作为Exp4某人的估计值。
+之后可以比较Exp4内重新估计、共同参数分布，以及具有明确被试对应关系时的跨任务预测。
+跨任务稳定特质的解释需要对应设计和恢复证据。
+
+\section{概率反馈提出的认知问题与候选调整}
+\label{sec:extensions}
+
+\subsection{优先诊断：随机负反馈如何传播}
+每次负反馈会经过似然、信念保持、精度、失败积累及新规则份额等环节影响后续选择。
+这些机制在基线中共同存在。诊断应记录同一次负反馈之后各环节的变化，确定差距主要出现在
+规则发现、保持、概率校准还是执行，而后选择相应的最小调整。
+
+一个简化计算能够说明持续反馈噪声的作用。假设一直选择同一动作，其正反馈概率恒为$q$，
+每题反馈独立于已有$F_t$。由式\eqref{eq:search}可得
+\begin{equation}
+\mathbb E[F_{t+1}]=[1-q(1-\lambda)]\mathbb E[F_t]+(1-q),\qquad
+\mathbb E[F]_{\infty}=\frac{1-q}{q(1-\lambda)}.
+\label{eq:failure-mean}
+\end{equation}
+后式适用于$q>0,\lambda<1$的稳定情形。取$\lambda=0.6$，$q=0.8$时长期平均失败量为0.625，
+$q=0.5$时为2.5。式\eqref{eq:belief}的平均有效保持率同样随$q$改变，
+$\mathbb E[\delta_t]=q+(1-q)\delta$。
+这些是给定条件下的解析示例；实际模型的刺激、动作和状态互相影响，完整结果需由闭环模拟检查。
+搜索函数具有非线性，平均失败量代入搜索函数的值也需与平均搜索概率区分。
+
+\subsection{指令知识：如何表达初始反馈不确定性}
+被试已知反馈具有概率性，这支持在候选模型中规定一个允许偶发负反馈的初始反馈预期。
+现有软类别预测已经能够给出中间概率，但没有单独表示这条指令。
+较低的初始精度$\beta_0$同时改变刺激区分、作答和反馈预测；分散的规则信念描述对规则身份的不确定；
+反馈可靠性参数则描述采用同一规则时结果仍可能变动。这三种含义需要分别建模与检查。
+
+一个可检验的简化候选是在主观反馈层加入对称混合参数$\varepsilon\in[0,1/2)$：
+\begin{equation}
+\widehat q_{t,h}(c)=\varepsilon+(1-2\varepsilon)p_{t,h}(c).
+\label{eq:epsilon}
+\end{equation}
+$\varepsilon$将主观奖励预测向0.5收缩。例如$p_{t,h}(y)=0.95$、$\varepsilon=0.1$时，
+主观正反馈概率为0.86，负反馈概率为0.14。此处0.1仅说明公式作用，实验指令没有给出该数值。
+首轮比较可预先指定少量固定值，或明确登记一个参数范围；其选择应接受留出预测与恢复检验。
+
+式\eqref{eq:epsilon}是\textbf{主观反馈解释的候选}，任务环境继续使用真实$q_t$。
+一个固定混合量只能表达粗略的不确定性水平，Exp4随刺激变化的概率仍由预测函数承担。
+若进一步令可靠性随经验变化，需要增加可靠性状态、初始化和反馈更新规律，并检查与$\beta$的可辨识性。
+当前代码没有实现这些可靠性候选。
+
+\subsection{反馈预测与选择策略：是否分别参数化}
+基线让同一$p_{t,h}$同时决定反馈预测和作答概率。
+在一个固定执行规则、无其他噪声且主观概率已校准的示例中，若$q(1)=0.8$，
+模型以0.8的概率选择类别1，其期望奖励为$0.8^2+0.2^2=0.68$。
+始终选择类别1的期望奖励为0.8。这个示例说明概率匹配与偏向最大化奖励的选择策略可以产生不同表现。
+真人采用哪种方式，需要由选择数据检验。
+
+候选架构可分别输出主观奖励概率$\widehat q_{t,h}(c)$和动作分布$a_{t,h}(c)$。
+一个保留简单边界的选择映射为
+\begin{equation}
+a_{t,h}(c)=\frac{\widehat q_{t,h}(c)^\xi}
+{\sum_{b=1}^2\widehat q_{t,h}(b)^\xi},\qquad \xi>0,
+\qquad y_t\sim\Cat(a_{t,e_t}).
+\label{eq:policy}
+\end{equation}
+$\xi=1$表示按奖励概率匹配，$\xi>1$增加对较高奖励概率动作的偏好。
+在$\varepsilon=0,\xi=1$时，此定义回到基线选择与反馈预测。
+反馈学习继续使用$\widehat q$，行为似然使用$a$；判断精度和动作偏好分别接受恢复检查。
+
+实现这一候选需要同步连接选择读出、观测滤波、自主生成及反馈梯度。
+当前0923 full-v3装配校验将反馈形式、边界距离和精度更新绑定，Exp4小规模入口也校验固定读出设置。
+候选接入时应增加明确版本及数值回归检查，使行为预测和学习始终使用同一配置。
+
+如果诊断发现一维边界规则能预测较优类别，却系统性遗漏其他特征对奖励概率的作用，
+可进一步比较奖励预测函数或规则目录扩展。原型奖励预测属于一种可能的表示，
+其原型是否已知、如何初始化和学习，需要作为认知假设声明。
+实验者持有的真实原型与$q_t$仅作为任务描述和评价参照。
+
+\subsection{失败、保持与入场：是否按主观预期调节}
+另一组候选保留反馈似然，单独检验负反馈对搜索和规则管理的影响。
+令$w_t\in[0,1]$表示负反馈影响这些控制环节的强度。
+一个具体提案取$w_t=\widehat q_{t,e_t}(y_t)$，即\textbf{反馈到来前}执行规则对所选动作的奖励预期。
+原本预期成功较低时，负反馈的控制效应较小；预期成功较高时，影响较大。
+
+各模块可分别比较下列候选：
+\begin{align}
+F_{t+1}&=\begin{cases}\lambda F_t,&r_t=1,\\ F_t+w_t,&r_t=0,\end{cases}
+\label{eq:weighted-failure}\\
+\delta_t&=1-(1-\delta)w_t(1-r_t),
+\label{eq:weighted-retention}\\
+\nu_{t+1}&=[1-w_t(1-r_t)]\pi_t^+(h^-)+\frac{w_t(1-r_t)}{K},\quad n_t=K.
+\label{eq:weighted-entry}
+\end{align}
+式\eqref{eq:weighted-failure}改变失败增量；式\eqref{eq:weighted-retention}改变已有信念的保持；
+式\eqref{eq:weighted-entry}改变满容量替换时新规则的试用份额。令$w_t=1$，各式分别回到基线。
+这些是心理控制规律的提案，尚无Exp4数据支持其优越性。错误规则若持续低估奖励，
+也可能因此较少触发搜索，这一行为后果应纳入检查。
+
+首轮应逐项比较，再考察有证据支持的组合。主观反馈似然继续按式\eqref{eq:subjective-likelihood}计算；
+若还要对似然加权，需要另行声明其数学含义和验证目标。
+环境真实概率$q_t$可用于研究者分层分析，$w_t$的计算则使用学习者自身的反馈前信息。
+
+\subsection{候选比较的顺序}
+优先保留当前九参数基线，检查已执行正确规则时的奖励校准、负反馈后保持和切换行为。
+存在稳定差距时，分别比较可靠性解释、动作偏好和控制权重。
+一次比较明确改变哪些方程、增加哪些状态或参数、预期改善什么行为，并保留未改善的结果。
+容量$K$、保持率$\delta$、执行维持$\kappa$及新增不确定性量之间可能相互补偿，
+因此拟合分数、参数恢复与状态恢复应分别报告。
+
+\section{评价指标与验证方案}
+\label{sec:validation}
+
+\subsection{选择质量、实际奖励与期望奖励}
+概率任务需要同时描述选择和环境结果。对于$T$题路径，定义
+\begin{subequations}\label{eq:metrics}
+\begin{align}
+A_{\mathrm{opt}}&=\frac1T\sum_t\ind\{q_t(y_t)=\max_c q_t(c)\},\\
+R_{\mathrm{obs}}&=\frac1T\sum_t r_t,\qquad
+R_{\mathrm{exp}}=\frac1T\sum_t q_t(y_t),\\
+R_{\mathrm{best}}&=\frac1T\sum_t\max_c q_t(c),\qquad
+G=R_{\mathrm{best}}-R_{\mathrm{exp}}.
+\end{align}
+\end{subequations}
+$A_{\mathrm{opt}}$为较优选择比例，恰好等概率时两种选择均计为最优；
+$R_{\mathrm{obs}}$为正反馈比例；$R_{\mathrm{exp}}$对实际所选动作的奖励概率取平均；
+$R_{\mathrm{best}}$为这一刺激日程上的最优期望奖励；$G$为期望奖励差距。
+例如已选择较优类别时，随机负反馈会降低$R_{\mathrm{obs}}$，该题的较优选择标记保持为1。
+
+当前接口已经输出这五项指标。后续路径比较还应保留改善幅度、改善时间、改善后保持、
+选择切换、按刺激模糊程度分层的反应，以及全部路径的发生比例和分布评分。
+真人选择的条件预测继续使用式\eqref{eq:nll}和概率评分；训练及评价边界提前登记。
+
+\subsection{先检查数值与因果时序}
+接口验证检查概率有限且归一化、反馈只取0或1、种子复现、试次对应及跨场延续。
+改变第$t$题之后的环境概率时，截至第$t$题的反馈前选择分布应保持一致；
+改变$r_t$时，它的作用应从反馈更新和后续选择开始。
+用生成路径的相同认知随机流重放其选择与反馈，应恢复相同知觉、信念、精度和选择概率。
+
+观测滤波的粒子数属于数值预算。正式推断需用独立随机种子和递增粒子预算检验选择概率、
+候选排序及目标状态的稳定性。8粒子小规模结果用于接口检查，其精度没有经过正式推断验收。
+
+\subsection{定向诊断与模拟恢复}
+建议先开展有预定预算的定向诊断，固定参数和前段状态，比较不同概率水平、孤立负反馈及连续负反馈。
+记录反馈前后信念熵、较优规则在场、判断精度、失败累积量、搜索事件、新规则份额和执行切换。
+外部干预条件使用任务概率，认知更新使用各候选的自身预测。
+共同随机数可用于减少两个条件之差的模拟误差；独立随机流用于检查结果稳定性。
+
+随后检查已知参数下的状态恢复，并在明确预算内进行参数恢复。
+重点区分规则未发现、规则已在场但未执行、已执行但选择随机失误，以及较优选择后的环境负反馈。
+前两种潜在状态以模拟真值检验，真人资料提供带条件的状态概率。
+报告选择前／选择后、反馈前／反馈后、过滤／完整历史重建以及固定／整合参数的条件。
+Model 1024现有研究中，正确规则已在场但未执行的恢复较弱；Exp4分析继续保留这一证据边界。
+
+\subsection{个体拟合与模型比较}
+三名Exp4被试当前均作为开发资料。正式估计应提前确定参数范围、搜索预算、粒子精度、
+选择评分及自主路径评价方案。保留多个受支持参数组合，报告补偿关系与内部解释的敏感性。
+完整记录参与参数选择时，其状态解释属于回顾性重建；仅用早期资料预测后续行为时，
+按时间保留训练和评价边界。
+
+比较认知候选时，使用相同的刺激范围、任务反馈机制和计分试次，给各模型可比较的估计机会。
+较低的开发NLL需要结合生成分布、计算稳定性和恢复结果解释。
+当前口述资料仍待最终人工核查，本阶段的机制和参数决定使用行为与模拟真值，
+既有口述记录及编码完整保留。
+
+\section{完整实验协议与版本核查}
+\label{sec:protocol}
+
+现存\path{Task2_learning.m}在块结束时计算非模糊试次的正反馈比例，
+以严格大于0.9作为停止条件之一，另有最大块数限制。继续时，程序调用
+\path{sample_2_beta.m}，按各特征分层抽样、打乱顺序，并使用固定原型及环境参数生成下一块概率。
+这一可见分支按块追加刺激，反馈历史影响是否继续。
+
+当前脚本实际启用的正式设置为每块8题、最多3块，旁边保留每块64题、最多5块的注释设置。
+现有行为记录中的块大多为64题；401第一场前两个块号分别包含66和62条有效记录。
+因此，当前脚本的全部设置与已记录实验之间仍有版本和标记差异需要核对。
+文档中的反馈公式由原始刺激概率和代码共同核实；历史块划分与停止过程需要当时的运行记录进一步支持。
+
+目前固定实际刺激日程的模拟使用保存的顺序与长度，能够检查给定这些输入时的学习路径。
+要预测总学习时长和达标概率，需要恢复当时的块划分、刺激采样、模糊判定、漏答处理、场次安排及停止规则，
+随后让自主路径按自身反馈决定继续或停止。
+402模糊标记的更正用于描述实际刺激；其历史停止判定是否曾受标记问题影响仍待核查。
+
+\section{已实现内容、验证记录与后续交付}
+\label{sec:implementation}
+
+\subsection{代码职责与配置}
+所有模型机制继续由\path{src/Bayesian_state/}共享核心实现。新增运行环境组合既有模块，
+模型装配沿用0923 full-v3的载体配置及校验，实际运行身份另外声明为Model 1024。
+表\ref{tab:code}列出接入边界。
+
+{\small
+\begin{longtable}{L{7.1cm}L{8.0cm}}
+\caption{主要文件。路径以仓库根目录为起点。}\label{tab:code}\\
+\toprule 文件 & 职责\\\midrule\endfirsthead
+\toprule 文件 & 职责\\\midrule\endhead
+\bottomrule\endfoot
+\path{configs/exp4/model1024_inputs.yaml} & 数据路径、被试及字段约定。\\
+\path{configs/exp4/model1024_smoke.yaml} & 示例参数、观测粒子数、路径数和小规模预算。\\
+\path{src/Bayesian_state/simulation/exp4_data.py} & 核对原始与处理后记录，提供连续观测和独立任务元数据。\\
+\path{src/Bayesian_state/simulation/probabilistic.py} & 独立反馈随机流，按选择生成环境反馈并保存抽样值。\\
+\path{src/Bayesian_state/model/model_1024.py} & 组合既有信念、入场、保持、精度与持续执行机制。\\
+\path{src/Bayesian_state/inference/dispatcher.py} & 调用共享观测推断后端；Exp4入口传入实际选择和反馈。\\
+\path{src/Bayesian_state/metrics/probabilistic_task.py} & 计算式\eqref{eq:metrics}的任务指标。\\
+\path{src/Bayesian_state/workflows/runs/run_model_1024_exp4.py} & 小规模观测重放、自主生成、结果检查及保存。\\
+\end{longtable}}
+
+运行时适配器修改当前进程中的类方法，在上下文退出时恢复。当前入口固定一个worker，
+同一进程内串行构造和执行模型。需要并行扩展时，各进程分别安装自己的运行环境，
+并保持共享生成与观测机制一致。
+
+\subsection{已经完成的检查及其范围}
+接入提交\path{143f6cd4}登记62项定向测试通过，涉及新概率环境、实际数据、持续执行、
+既有确定性反馈路径及相关比较检查。测试涵盖反馈依赖当前选择、概率边界、固定种子复现、
+因果时序和生成历史重放。既有Exp4数据测试另使用401前324题检查跨场延续，
+该检查使用小型相似度采样及示例参数。
+
+闭环产物保存在\path{results/model_1024/exp4_closed_loop_20261028_v1/}。
+本次运行采用401前32题、8粒子、4条自主路径和1个worker；
+规则相似度沿用100000次固定采样，保持率为0.8，执行维持为2，初始精度为5，学习率为0.1。
+相同种子的观测概率完全复现，4条生成路径的认知历史重放一致，
+归一化和反馈抽样检查通过。运行状态为\path{closed_loop_smoke_passed}。
+
+\begin{table}[htbp]
+\centering\small
+\caption{401前32题的接口运行摘要。参数为示例值，指标范围限于该前缀。}
+\begin{tabularx}{\linewidth}{Y L{3cm}}
+\toprule 指标 & 数值\\\midrule
+真人较优选择比例 & 0.5000\\
+真人正反馈比例 & 0.5625\\
+真人所选动作的平均期望奖励 & 0.5279\\
+该刺激前缀的最优期望奖励 & 0.8523\\
+真人所选动作的期望奖励差距 & 0.3244\\
+示例模型每题选择NLL & 0.7649\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+当前结果确认数据和模型闭环可以运行。32题与4条路径的规模、固定示例参数及8粒子预算，
+共同限定其接口验证用途。Exp4模型适合度、个体参数可靠性和内部状态可恢复性尚未验收。
+
+\subsection{输出语义与可复现信息}
+\path{observed.npz}保存真人观测、作答前预测概率、粒子有效样本量和重采样标记。
+有效样本量概括粒子权重的集中程度，用于诊断滤波退化。
+\path{task_metadata.npz}保存任务概率与试次身份。
+各\path{autonomous_*.npz}保存完整生成选择与反馈、内部知觉、作答前选择概率、
+作答前规则信念与精度、反馈后信念，以及环境抽样随机数。
+
+\path{manifest.json}保存解析配置、数据及代码SHA-256哈希、随机种子、依赖版本、检查结果和逐路径指标。
+SHA-256用于核对文件是否与运行时内容相同。
+该次环境记录Python 3.11.10、NumPy 1.26.4、pandas 2.2.2、SciPy 1.13.1和PyYAML 6.0.2。
+输入、旧产物和已有更正审计保持保留，重跑使用新输出目录。
+
+\subsection{后续实施顺序与交付条件}
+\begin{enumerate}
+\item \textbf{完成定向机制诊断。}在明确的小规模预算下，记录概率负反馈如何改变信念、精度、搜索和执行，
+并区分概率预测不足与控制反应过强。交付条件是比较定义明确、模拟误差可评估、结果可复现。
+\item \textbf{逐项比较认知调整。}按第\ref{sec:extensions}节选择有依据的候选，
+在共享核心中实现其反馈预测、梯度和选择读出，完成基线边界与生成／推断一致性检查。
+\item \textbf{建立Exp4估计与恢复方案。}登记数据用途、参数范围、计算预算和数值门槛，
+分别检查参数恢复、状态恢复及自主路径分布。完整真人拟合依照该方案执行。
+\item \textbf{扩展完整任务生成。}核对实际运行版本与停止记录，接入刺激采样及停止协议，
+评价学习时长、达标概率及不同路径的发生比例。
+\end{enumerate}
+这些后续项目属于待执行方案。当前交付是任务接入、闭环验证和迁移设计文档。
+
+\appendix
+\section{复现入口}
+\label{app:commands}
+以下命令从仓库根目录执行；示例输出名中的\path{new_run}须替换为尚不存在的目录名。
+数值线程设为1，保持小规模配置的单worker执行方式。
+
+{\small
+\begin{verbatim}
+python -m src.Bayesian_state.workflows.runs.prepare_model_1024_exp4 \
+  --config configs/exp4/model1024_inputs.yaml \
+  --output results/model_1024/exp4_inputs_new_run
+
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.runs.run_model_1024_exp4 \
+  --config configs/exp4/model1024_smoke.yaml \
+  --output results/model_1024/exp4_closed_loop_new_run
+\end{verbatim}}
+
+输入准备可用\texttt{--subjects 401}限定被试。闭环入口的配置上限为64题、16粒子、8条路径及1个worker，
+用于接口验证。较大研究需要另行登记协议与预算。
+
+本文件编译入口为
+\begin{quote}\small
+\texttt{bash\ }\path{src/Bayesian_state/docs/model_architecture/compile_model_1024_exp4.sh}
+\end{quote}
+脚本在临时目录编译三次，生成目录和交叉引用，再发布PDF；目标已存在时要求使用新的输出文件名。
+可将新PDF路径作为脚本的第一个参数。
+
+\section{依据、相关规范与术语}
+\label{app:sources}
+本文以仓库中已经核对的代码、数据契约和运行记录为依据。反馈公式和任务流程来自实验程序；
+认知基线来自Model 1024规范及共享模块；候选调整与解析示例为本文明确标注的设计推导。
+
+\begin{enumerate}
+\item 主模型规范：\path{src/Bayesian_state/docs/model_architecture/model_1024.tex}。
+\item 研究目标及证据边界：\path{src/Bayesian_state/docs/RESEARCH_GUIDE.md}与
+\path{src/Bayesian_state/docs/RESEARCH_HANDOFF.md}。
+\item 实验概率与块流程：\path{exp_program/exp4/sample_2_beta.m}及
+\path{exp_program/exp4/Task2_learning.m}。
+\item 观测与反馈接入说明：\path{configs/exp4/README.md}。
+\item 数据更正记录：\path{src/Bayesian_state/docs/maintenance/EXP4_AMBIGUITY_CORRECTION_20261028.md}。
+\item 闭环运行记录：\path{results/model_1024/exp4_closed_loop_20261028_v1/manifest.json}。
+\item 定向验证：\path{tests/bayesian_state/test_exp4_closed_loop.py}与
+\path{tests/bayesian_state/test_exp4_data.py}；既有执行测试见
+\path{tests/bayesian_state/test_model_1023_belief_execution.py}。
+\end{enumerate}
+
+\begin{table}[htbp]
+\centering\small
+\caption{全文统一使用的关键符号与含义。}
+\begin{tabularx}{\linewidth}{L{3.2cm}Y}
+\toprule 符号或术语 & 含义\\\midrule
+$q_t(c)$ & 任务环境规定的正反馈概率，环境与评价使用。\\
+$p_{t,h}(c)$ & 规则根据内部刺激及判断精度形成的类别预测。\\
+$\widehat q_{t,h}(c)$ & 学习者的主观奖励预测；基线中等于$p_{t,h}(c)$。\\
+$a_{t,h}(c)$ & 分离选择策略候选中的动作分布。\\
+$\pi_t(h)$、$e_t$ & 作答前规则信念与本题执行身份。\\
+$\beta_t(h)$、$b_{\mathrm{env}}$ & 学习者判断精度与实验环境参数，分别定义。\\
+$r_t$ & 实际或自主抽样得到的反馈，1为正反馈，0为负反馈。\\
+较优选择 & 选择奖励概率最大的类别。\\
+过程变异 & 固定参数下，知觉、搜索、执行、选择和反馈随机性形成的路径差异。\\
+数值误差 & 用有限粒子或有限模拟次数近似分布产生的计算误差。\\
+\bottomrule
+\end{tabularx}
+\end{table}
+\end{document}

@@ -1,5 +1,10 @@
 # exp4：Model 1024 观测与概率反馈接入
 
+系统性迁移说明见 [LaTeX文档](../../src/Bayesian_state/docs/model_architecture/model_1024_exp4.tex)
+及其 [PDF](../../src/Bayesian_state/docs/model_architecture/model_1024_exp4.pdf)。
+文档区分已完成的任务接口、当前认知基线、待比较的架构调整及后续验证，
+并说明现存实验脚本与实际记录在块长度设置上的版本差异。
+
 `model1024_inputs.yaml` 登记401、402、403三名被试的输入文件和字段约定。
 输入准备与小规模闭环入口共用这些观测序列，模型的信念、搜索、精度和持续执行机制沿用共享实现。
 输入检查使用实际选择和实际二值反馈。被试在任务开始前已被告知反馈具有概率性；
@@ -125,3 +130,13 @@ python -m src.Bayesian_state.workflows.runs.run_model_1024_exp4 \
 环境概率与模型观测分离，以及旧输出保护。共享1024机制的接入测试使用401的前324题，
 比较逐题连续执行与第一场分段输入后的延续，检查跨场状态、预测概率及固定种子一致性。
 该测试使用小型相似度采样和示例参数，用于接口验证；参数拟合与科学恢复尚待开展。
+
+## 编译迁移文档
+
+```bash
+bash src/Bayesian_state/docs/model_architecture/compile_model_1024_exp4.sh /tmp/model_1024_exp4_new.pdf
+```
+
+脚本使用XeLaTeX；只有XeTeX时，先在临时目录生成XeLaTeX格式。连续编译三次以解析目录和交叉引用，
+日志及中间文件留在临时目录。省略输出参数时生成文档同目录下的 `model_1024_exp4.pdf`；
+目标已存在时拒绝覆盖，应指定新文件名。
