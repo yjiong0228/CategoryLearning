@@ -189,11 +189,22 @@ def report(source: Path, output: Path) -> None:
     clock=read(source/'run_clock.json')
     wall=((finish['finished_unix'] if finish else time.time())-clock['started_unix'])/3600
     peak=max([read(f)['peak_workers'] for f in (source/'completions').glob('*.json')] or [0])
+    scheduled=[read(f) for f in registered_jobs]
+    budget_lines=['| 粒子数 | 新增登记任务 | 完成 | '+outstanding_label+' | 实际CPU小时 |',
+                  '|---:|---:|---:|---:|---:|']
+    for n in sorted({j['particles'] for j in scheduled}):
+        own_jobs=[j for j in scheduled if j['particles']==n]
+        own_costs=[r for r in costs if r['particles']==n]
+        budget_lines.append(f'| {n} | {len(own_jobs)} | {sum(r["status"]=="complete" for r in own_costs)} | '
+                            f'{len(own_jobs)-len(own_costs)} | {sum(r["cpu_hours"] for r in own_costs):.2f} |')
     lines=['# Model 1024 内部状态计算精度报告','',
         f'当前检查{len(cases)}组固定参数，{len(accepted)}组完成原定六项概率摘要的独立数值确认。',
         f'共登记{len(registered_jobs)}项，新增计算完成{len(completed)}项；运行错误{len(failures)}项，预算终止{len(stopped)}项，{outstanding_label}{without_ledger}项。队列计入{cpuh:.2f} CPU小时，墙钟{wall:.2f}小时，峰值{peak}个单线程工作进程。','',
         '本报告检查同一套参数的状态概率是否能重复算出。过滤使用截至本题的行为，完整历史推断还使用后面的行为；',
         '两者的状态时点均为本题选择后、反馈前。参数候选、模型机制、实际行为和口述编码沿用原设置。','',
+        *budget_lines,'',
+        '表中包括原批、独立确认和预算补充计算；旧512、1024粒子结果只作参照，不计入新增任务。',
+        '更高粒子档若无法在剩余时限内完成，会保留登记并标明尚未启动。计算上限为12小时、1536 CPU小时。','',
         '## 如何读结果','',
         '每个粒子保存模型的一条可能学习历史，并按被试的实际选择更新权重。N是一次计算同时追踪的粒子数，',
         'R是使用不同随机种子的独立计算次数。各次使用同一整段行为；图中的两批指随机种子分组。',
