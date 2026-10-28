@@ -1,0 +1,31 @@
+protocol: model0923_simple_baselines_v1
+subjects:
+  - subject: 335
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_335/evaluation
+  - subject: 307
+    evaluation_dir: results/model_0923/plus_335_then307_continuation_20261013_v1/subject_307/evaluation
+history_control_dir: results/model_0923/history_control_335_307_20261014_v1
+variants: [fixed_rule, random_rule]
+support:
+  beta_init: [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0]
+  gamma: [0.0, 0.3, 0.6, 0.85, 1.0]
+  learning_rate: [0.0, 0.1, 0.3, 0.6, 1.0]
+  switch_probability: [0.001, 0.005, 0.02, 0.1, 0.3, 1.0]
+search:
+  candidates_per_variant: 24
+  particles: 64
+  repeats: 2
+  finalists: 4
+  confirmation_particles: 128
+  confirmation_repeats: 4
+evaluation:
+  particles: 128
+  repeats: 16
+  audit_particles: 512
+  audit_repeats: 4
+  numerical_nll_tolerance: 0.02
+base_seed: 20261014
+parallel_budget: 128
+window_size: 32
+late_window: 64
+smoke_trials: 8
