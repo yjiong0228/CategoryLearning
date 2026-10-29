@@ -1,4 +1,4 @@
-"""Compatibility imports and binary CLI; see README.md for the audit and extension."""
+"""Compatibility imports and task-selectable CLI; see README.md for usage."""
 from importlib import import_module
 
 if not __package__:  # Preserve direct execution of the historical script path.
@@ -17,11 +17,14 @@ _EXPORTS = {
     "sigmoid_neg_logodds": "features",
     "feature_name": "features",
     "FeatureMixtureStrict": "binary",
+    "ContinuousFeatureMixture": "continuous",
+    "create_model": "api",
     "FitConfig": "fitting",
     "_pack": "fitting",
     "_unpack": "fitting",
     "nll": "fitting",
     "fit_paper_style": "fitting",
+    "fit_continuous": "fitting",
     "_fmt_float": "trace",
     "_named_vector": "trace",
     "_plain_vector": "trace",

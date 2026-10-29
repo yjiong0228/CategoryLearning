@@ -13,7 +13,7 @@ def plot_feature_trajectories(
     trials: Array,
     values: Array,
     feature_names: Sequence[str],
-    target_feature: str,
+    target_feature: str | None,
     ylabel: str,
     title: str,
     path: Path,
@@ -57,7 +57,7 @@ def plot_subject_learning_curves(runs: Sequence[Dict[str, Any]], path: Path):
 def plot_subject_feature_grid(
     runs: Sequence[Dict[str, Any]],
     value_key: str,
-    target_feature: str,
+    target_feature: str | None,
     ylabel: str,
     title: str,
     path: Path,
@@ -67,15 +67,17 @@ def plot_subject_feature_grid(
         values = run[value_key]
         feature_names = run["feature_names"]
         trials = run["trial_values"]
-        target_idx = feature_names.index(target_feature)
+        target_idx = feature_names.index(target_feature) if target_feature in feature_names else None
         for j, _name in enumerate(feature_names):
             if j != target_idx:
                 ax.plot(trials, values[:, j], color="0.75", linewidth=0.65, alpha=0.7)
-        ax.plot(trials, values[:, target_idx], color="#d62728", linewidth=2.8, label=target_feature)
+        if target_idx is not None:
+            ax.plot(trials, values[:, target_idx], color="#d62728", linewidth=2.8, label=target_feature)
         ax.axhline(0, color="0.2", linewidth=0.8, alpha=0.6)
         ax.set_title(f"Subject {run['subject_id']}")
         ax.set_ylabel(ylabel)
-        ax.legend(frameon=False, loc="upper right")
+        if target_idx is not None:
+            ax.legend(frameon=False, loc="upper right")
     axes[-1, 0].set_xlabel("Trial")
     fig.suptitle(title, y=1.0)
     fig.tight_layout()

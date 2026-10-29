@@ -11,7 +11,7 @@ import pandas as pd
 from .features import feature_name
 from .binary import FeatureMixtureStrict
 from .fitting import FitConfig, fit_paper_style
-from .data import prepare_dataframe
+from .data import DEFAULT_EXP5_CSV, prepare_dataframe, decode_binary_labels
 from .trace import run_session_with_formula_trace
 from .exports import make_wide_df, make_alpha_long_df, concat_run_df
 from .plotting import plot_subject_learning_curves, plot_subject_feature_grid
@@ -26,7 +26,10 @@ def run_one_subject(subject_id: str, subject_df: pd.DataFrame, source_csv: Path,
     sort_cols = [c for c in ["iSession", "iBlock", "iTrial"] if c in subject_df.columns]
     if sort_cols:
         subject_df = subject_df.sort_values(sort_cols).reset_index(drop=True)
-    df, X, y, r = prepare_dataframe(subject_df, args.n_bits, msb_first=not args.lsb_first)
+    feature_encoding = getattr(args, "feature_encoding", "pm1")
+    label_encoding = getattr(args, "label_encoding", "category12")
+    df, X, y, r = prepare_dataframe(subject_df, args.n_bits, msb_first=not args.lsb_first,
+                                    feature_encoding=feature_encoding, label_encoding=label_encoding)
 
     if args.fit:
         cfg = FitConfig(
@@ -78,13 +81,15 @@ def run_one_subject(subject_id: str, subject_df: pd.DataFrame, source_csv: Path,
     alpha_pos_trials = res["alpha_pos_before_choice"]
     alpha_neg_trials = res["alpha_neg_before_choice"]
     alpha_diff_trials = res["alpha_pos_minus_alpha_neg_before_choice"]
-    target_feature = "x24" if args.n_bits >= 4 else feature_names[0]
+    target_feature = getattr(args, "target_feature", None)
+    if target_feature is None and source_csv.resolve() == DEFAULT_EXP5_CSV.resolve() and args.n_bits >= 4:
+        target_feature = "x24"
 
     df["model_p_category1"] = res["p_pos"]
     df["model_p_correct"] = res["p_correct"]
     df["model_p_observed_choice"] = res["p_observed_choice"]
     df["model_pred_pm1"] = res["predicted_label"].astype(int)
-    df["model_pred_category"] = np.where(res["predicted_label"] == 1, 1, 2)
+    df["model_pred_category"] = decode_binary_labels(res["predicted_label"], label_encoding)
     df["model_pred_matches_choice"] = (res["predicted_label"] == r).astype(int)
     df["gamma_before_update"] = res["gamma_before_update"]
 
@@ -110,7 +115,7 @@ def run_one_subject(subject_id: str, subject_df: pd.DataFrame, source_csv: Path,
         })
     feat_df = pd.DataFrame(feat_rows).sort_values("abs_separation_final", ascending=False)
 
-    task_feature = target_feature if args.n_bits >= 4 else None
+    task_feature = target_feature
     task_rank = None
     if task_feature in feat_df["feature"].to_numpy():
         task_rank = int(np.where(feat_df["feature"].to_numpy() == task_feature)[0][0] + 1)
@@ -132,6 +137,8 @@ def run_one_subject(subject_id: str, subject_df: pd.DataFrame, source_csv: Path,
         "n_unique_stimuli": int(df["stiID"].nunique()),
         "n_bits": args.n_bits,
         "max_order": max_order,
+        "feature_encoding": feature_encoding,
+        "label_encoding": label_encoding,
         "gamma0_fixed_to_zero": True,
         "memory_window": 1,
         "alpha_update": initial_model.update_rule,
@@ -191,7 +198,7 @@ def write_combined_outputs(runs: Sequence[Dict[str, Any]], outdir: Path, source_
     concat_run_df(runs, "alpha_diff_wide").to_csv(paths["alpha_diff_trajectory_wide_csv"], index=False, encoding="utf-8-sig")
     concat_run_df(runs, "alpha_long").to_csv(paths["alpha_trajectory_long_csv"], index=False, encoding="utf-8-sig")
 
-    target_feature = "x24" if args.n_bits >= 4 else runs[0]["target_feature"]
+    target_feature = runs[0]["target_feature"]
     plot_subject_learning_curves(runs, paths["learning_curve_png"])
     plot_subject_feature_grid(
         runs,

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Sequence, List, Dict, Any
 import numpy as np
 import pandas as pd
-from .features import check_pm1
+from .features import check_pm1, positive_integer
 
 DEFAULT_EXP5_CSV = Path("data/exp5/processed/Rule1_processed.csv")
 
@@ -22,8 +22,34 @@ def sti_to_bits(sti_id: int, n_bits: int = 5, msb_first: bool = True) -> Array:
     return np.where(bits == 1, 1.0, -1.0)
 
 
-def prepare_dataframe(df: pd.DataFrame, n_bits: int, msb_first: bool):
+LABEL_ENCODINGS = {"category12": (1, 2), "pm1": (1, -1), "zero_one": (1, 0)}
+
+
+def decode_binary_labels(labels: Array, encoding: str = "category12") -> Array:
+    """Map model +/-1 labels back to the declared CSV category coding."""
+    if encoding not in LABEL_ENCODINGS:
+        raise ValueError(f"label_encoding must be one of {tuple(LABEL_ENCODINGS)}")
+    labels = check_pm1(labels, "labels")
+    positive, negative = LABEL_ENCODINGS[encoding]
+    return np.where(labels == 1, positive, negative)
+
+
+def prepare_dataframe(df: pd.DataFrame, n_bits: int, msb_first: bool, *,
+                      feature_encoding: str = "pm1", label_encoding: str = "category12"
+                      ) -> tuple[pd.DataFrame, Array, Array, Array]:
+    """Adapt explicit binary CSV encodings to the paper's +/-1 model inputs.
+
+    The original category/choice columns retain their external labels. Encoding
+    is declared so a short prefix containing only one value has a fixed meaning.
+    """
+    positive_integer(n_bits, "n_bits")
+    if feature_encoding not in ("pm1", "zero_one"):
+        raise ValueError("feature_encoding must be pm1 or zero_one")
+    if label_encoding not in LABEL_ENCODINGS:
+        raise ValueError(f"label_encoding must be one of {tuple(LABEL_ENCODINGS)}")
     df = df.copy()
+    if df.empty:
+        raise ValueError("no trials supplied")
     missing = {"category", "choice"} - set(df.columns)
     if missing:
         raise ValueError(f"Missing columns: {sorted(missing)}")
@@ -31,21 +57,28 @@ def prepare_dataframe(df: pd.DataFrame, n_bits: int, msb_first: bool):
     feature_cols = [f"feature{j+1}" for j in range(n_bits)]
     if set(feature_cols).issubset(df.columns):
         X = df[feature_cols].to_numpy(dtype=float)
+        if feature_encoding == "zero_one":
+            if not np.all(np.isin(X, [0.0, 1.0])):
+                raise ValueError("zero_one feature columns must contain only 0 and 1")
+            X = 2.0 * X - 1.0
         check_pm1(X, "feature columns")
     else:
         if "stiID" not in df or any(c in df for c in feature_cols):
             raise ValueError("provide all binary feature columns or stiID")
         X = np.vstack([sti_to_bits(s, n_bits=n_bits, msb_first=msb_first) for s in df["stiID"]])
 
+    positive, negative = LABEL_ENCODINGS[label_encoding]
     for col in ("category", "choice"):
-        if not df[col].isin([1, 2]).all():
-            raise ValueError(f"{col} must contain only categories 1 and 2 in binary mode")
-    if df.empty:
-        raise ValueError("no trials supplied")
+        if not df[col].isin([positive, negative]).all():
+            raise ValueError(f"{col} must contain only categories {positive} and {negative} "
+                             f"for label_encoding={label_encoding}")
     if "stiID" not in df:
-        df["stiID"] = np.arange(1, len(df) + 1)
-    y = np.where(df["category"].to_numpy() == 1, 1.0, -1.0)
-    r = np.where(df["choice"].to_numpy() == 1, 1.0, -1.0)
+        powers = 2 ** np.arange(n_bits)
+        if msb_first:
+            powers = powers[::-1]
+        df["stiID"] = ((X + 1) / 2).astype(int) @ powers + 1
+    y = np.where(df["category"].to_numpy() == positive, 1.0, -1.0)
+    r = np.where(df["choice"].to_numpy() == positive, 1.0, -1.0)
     for j in range(n_bits):
         df[f"x{j+1}"] = X[:, j].astype(int)
     df["category_pm1"] = y.astype(int)
@@ -57,8 +90,11 @@ def prepare_dataframe(df: pd.DataFrame, n_bits: int, msb_first: bool):
     return df, X, y, r
 
 
-def load_csv(csv_path: Path, n_bits: int, msb_first: bool):
-    return prepare_dataframe(pd.read_csv(csv_path), n_bits, msb_first)
+def load_csv(csv_path: Path, n_bits: int, msb_first: bool, *,
+             feature_encoding: str = "pm1", label_encoding: str = "category12"
+             ) -> tuple[pd.DataFrame, Array, Array, Array]:
+    return prepare_dataframe(pd.read_csv(csv_path), n_bits, msb_first,
+                             feature_encoding=feature_encoding, label_encoding=label_encoding)
 
 
 def sort_subjects(subjects: Sequence[Any]) -> List[str]:

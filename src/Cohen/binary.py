@@ -89,6 +89,11 @@ class FeatureMixtureStrict:
     def prob_pos(self, X: Array) -> Array:
         return self.prob_pos_features(self.features(X))
 
+    def predict_proba(self, X: Array) -> Array:
+        """Return probabilities with columns ordered as category labels [+1, -1]."""
+        positive = self.prob_pos(X)
+        return np.column_stack([positive, 1.0 - positive])
+
     def prob_pos_features(self, F: Array) -> Array:
         F = np.asarray(F, dtype=float)
         if F.ndim == 1:

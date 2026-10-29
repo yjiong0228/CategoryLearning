@@ -51,8 +51,18 @@ eta 表示学习率，beta 表示模型的确定性参数，控制类别分布�
 
 ## 代码结构与兼容性
 
+同一代码包保留两条任务路径，通过命令行 `--task` 或 Python 的 `create_model()` 选择：
+
+| 任务 | 刺激与类别 | 反馈学习 | 归一化计算 |
+| --- | --- | --- | --- |
+| `binary` | 原文的离散二元刺激，支持四维、五维；两个类别 | 接收完整正确标签，保留记忆窗口及原默认 `si_ratio` 更新 | 枚举全部 `2^n` 个二元模式，精确求和 |
+| `exp123` | 四维 `[0,1]` 连续刺激；由 condition 决定两类或四类 | 根据选择和 `0/0.5/1` 反馈更新，默认 `exact_gradient` | 对固定连续刺激域做数值积分 |
+
+此次兼容层负责选择实现和转换输入编码，两条路径沿用各自已经验证的概率与学习计算。
+
 | 文件 | 职责 |
 | --- | --- |
+| `api.py` | 统一模型创建接口 `create_model()`，校验任务与配置是否匹配 |
 | `features.py` | 子集特征、数值工具、三种权重更新约定 |
 | `binary.py` | 原二元刺激、二类别模型及记忆窗口 |
 | `continuous.py` | 连续刺激的类别密度、多类别选择、反馈学习和自主生成 |
@@ -61,9 +71,9 @@ eta 表示学习率，beta 表示模型的确定性参数，控制类别分布�
 | `data.py` | 二元 CSV 和 exp123 CSV 的读取校验、时间排序 |
 | `trace.py` | 二元逐题执行与公式说明；普通重放复用同一执行过程 |
 | `exports.py`、`plotting.py` | 二元权重表和 PNG 输出 |
-| `binary_workflow.py`、`cli.py` | 二元被试工作流与参数入口 |
+| `binary_workflow.py`、`cli.py` | 二元被试工作流、输入编码适配和统一任务入口 |
 | `exp123.py` | 连续版 YAML 入口、逐题表、状态和运行来源记录 |
-| `cohen_schneidman.py` | 原函数名的延迟导入兼容入口；保留直接执行路径 |
+| `cohen_schneidman.py` | 原函数名的延迟导入兼容入口；直接执行时也支持 `--task` |
 | `legacy_oral.py` | 既有口述比较工具，保持其计算方法供历史调用 |
 
 口述资料仍待最终人工复核。当前运行入口只执行行为建模，暂停自动口述比较与相似度导出。
@@ -147,27 +157,67 @@ condition 2 的学习过程只使用正确/错误反馈。CSV 中的 category �
 
 ## 使用方法
 
-从仓库根目录执行。原二元入口和导入保持可用：
+从仓库根目录执行。统一入口的默认任务为 `binary`，保留旧命令的含义。两类任务的帮助入口为：
 
 ```bash
-python -m src.Cohen --help
-python -m src.Cohen.cohen_schneidman --help
-python -m src.Cohen.exp123 --help
+python -m src.Cohen --task binary --help
+python -m src.Cohen --task exp123 --help
 ```
+
+原文离散二元刺激通过 `--n-bits 4` 或 `--n-bits 5` 指定维度。下面的 `paper_trials.csv`
+代表调用者提供的试次表，包含 `feature1` 至 `feature4`、`category` 和 `choice`：
+
+```bash
+python -m src.Cohen --task binary --csv paper_trials.csv --n-bits 4 \
+  --feature-encoding pm1 --label-encoding pm1 --outdir results/Cohen_model/paper_binary_v1
+```
+
+二元 CSV 的编码显式声明，模型内部统一使用 ±1。选项和映射如下：
+
+| 选项 | 支持值与含义 | 原默认值 |
+| --- | --- | --- |
+| `--feature-encoding` | `pm1`：−1/+1；`zero_one`：0→−1、1→+1 | `pm1` |
+| `--label-encoding` | `category12`：1→+1、2→−1；`pm1`：保持 ±1；`zero_one`：1→+1、0→−1 | `category12` |
+| `--n-bits` | 刺激维度；原文四维和五维任务分别填写 4 和 5 | 5 |
+
+原 CSV 的 `category`、`choice` 保留输入编码；导出的 `model_pred_category` 也使用该编码，
+`model_pred_pm1` 始终使用模型内部的 ±1。`model_p_category1` 对应输入标签 1 的概率。
+输入含 `stiID` 时可沿用原来的模式编号读取方式，`--lsb-first` 控制位序；显式特征列优先。
+仅提供特征列时，按特征生成模式编号，相同刺激得到相同编号。
+通用二元任务可用 `--target-feature x3` 指定已知任务特征，用于图中高亮和权重排序报告。
+旧 Exp5 Rule1 默认数据路径继续使用 `x24`；其余输入默认保留任务特征未指定的状态。
 
 连续版小规模重放（三种条件各一人、各 16 题）：
 
 ```bash
-python -m src.Cohen.exp123 --config configs/exp123/cohen_continuous_smoke.yaml
+python -m src.Cohen --task exp123 --config configs/exp123/cohen_continuous_smoke.yaml
 ```
 
 同一小配置可用 `--mode fit` 检查拟合、`--mode simulate` 检查自主生成，并用 `--outdir`
 指定新的输出目录。例如：
 
 ```bash
-python -m src.Cohen.exp123 --config configs/exp123/cohen_continuous_smoke.yaml \
+python -m src.Cohen --task exp123 --config configs/exp123/cohen_continuous_smoke.yaml \
   --mode fit --subjects 101 --outdir results/Cohen_model/exp123_fit_smoke_v1
 ```
+
+旧入口 `python -m src.Cohen.cohen_schneidman` 保持可用，并接受相同的 `--task` 选项；
+`python -m src.Cohen.exp123 --config ...` 继续作为连续版的直接入口。
+旧类、拟合函数及其导入路径保留。Python 中也可以统一创建模型：
+
+```python
+from src.Cohen import create_model
+
+paper_model = create_model("binary", n_dimensions=4, seed=7)
+exp_model = create_model("exp123", condition=3, seed=7)
+
+paper_probabilities = paper_model.predict_proba([[-1, 1, -1, 1]])
+exp_probabilities = exp_model.predict_proba([[0.2, 0.7, 0.4, 0.8]])
+```
+
+两者的 `predict_proba()` 都返回“试次 × 类别”矩阵，二元列顺序为 `[+1, -1]`，
+Exp123 列顺序为 `[1, ..., K]`。Python 模型接收内部编码；CSV 编码转换由 `data.py` 完成。
+学习接口保留任务含义：二元模型接收正确标签，Exp123 模型接收选择与反馈。
 
 正式研究需另建 YAML，显式设置被试、试次数、拟合前缀、搜索预算和积分精度。
 小配置的 4 个候选、2 代、2 步退火仅用于检查流程。连续版每个输出目录包含：
@@ -192,7 +242,9 @@ OPENBLAS_NUM_THREADS=1 python -m pytest -q tests/cohen
 一维连续密度的解析积分、有限差分梯度、反馈信息集合、反馈前预测、前缀拟合隔离和生成/重放一致性。
 
 2026-10-30 已用真实数据的 S101、S201、S301 各 16 题完成重放、前 8 题小拟合及自主生成检查。
-40 项针对性测试通过，全部 96 名被试的 62,720 条记录通过类别与反馈一致性校验。
+首轮 40 项针对性测试通过，全部 96 名被试的 62,720 条记录通过类别与反馈一致性校验。
+兼容层完成后共 67 项测试通过，进一步覆盖四维/五维二元刺激、不同输入编码的轨迹等价性、
+旧入口与统一入口，以及两个模型的公共概率接口。重构前的数值参照继续用于检查二元默认行为。
 8 节点与 12 节点在这些运行最终状态上的最大选择概率差约为 `5.4e-7`。
 验证环境：Python 3.11.10、NumPy 1.26.4、pandas 2.2.2、SciPy 1.13.1、pytest 7.4.4。
 本次完成实现与短流程验证。全体拟合、参数恢复、状态恢复、独立行为预测和原论文数据复现仍待开展。

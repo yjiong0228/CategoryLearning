@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from dataclasses import asdict
 import hashlib
 import json
@@ -168,14 +169,14 @@ def run_config(config: dict) -> dict:
     return summary
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--outdir", type=Path)
     parser.add_argument("--subjects", type=int, nargs="+")
     parser.add_argument("--max-trials", type=int)
     parser.add_argument("--mode", choices=("fit", "replay", "simulate"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
         raise ValueError("configuration must be a YAML mapping")
