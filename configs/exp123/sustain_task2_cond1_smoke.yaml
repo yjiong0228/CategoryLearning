@@ -1,0 +1,40 @@
+schema: sustain_v1
+seed: 20261030
+trace: true
+model:
+  recruitment: prediction_error
+  ties: first
+# Love et al. (2004), Table 1, Six types; initialization for a smoke check.
+# These values have not been fitted to Task2.
+parameters:
+  r: 9.01245
+  beta: 1.252233
+  d: 16.924073
+  eta: 0.092327
+  tau: 0.5
+data:
+  path: data/exp123/processed/Task2_processed.csv
+  filters: {condition: 1, iSub: 101, iSession: 1}
+  group_columns: [iSub, condition]
+  session_column: iSession
+  session_policy: single
+  order_columns: [iSession, iTrial]
+  max_trials: 24
+  features:
+    - {column: feature1, kind: continuous, bounds: [0, 1]}
+    - {column: feature2, kind: continuous, bounds: [0, 1]}
+    - {column: feature3, kind: continuous, bounds: [0, 1]}
+    - {column: feature4, kind: continuous, bounds: [0, 1]}
+  category_values: [1, 2]
+  choice_column: choice
+  feedback: {mode: binary_correctness, column: feedback}
+  audit_category_column: category
+fit:
+  train_trials: 16
+  bounds:
+    r: [0, 10]
+    beta: [0, 10]
+    d: [0, 30]
+    eta: [0, 1]
+  maxiter: 2
+  popsize: 3

@@ -1,0 +1,14 @@
+schema: sustain_v1
+seed: 20261030
+model:
+  recruitment: prediction_error
+parameters:
+  r: 9.01245
+  beta: 1.252233
+  d: 16.924073
+  eta: 0.092327
+  tau: 0.5
+benchmark:
+  repetitions: 8
+  blocks: 32
+  criterion_blocks: 4
