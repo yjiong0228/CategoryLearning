@@ -9,6 +9,13 @@
 完整验证范围及小规模源码与正式源码的对应见[启动核对](../../../results/model_1024/execution_comparison_20261029_v1/preflight_validation.json)。
 本轮机制结论尚待正式结果；已有证据边界和口述待人工复核状态继续保留。
 
+2026-10-30按用户新授权完成[口述理由初步对照](../../../results/model_1024/oral_alignment_20261030_v2/report.md)，
+指导语确认为“汇报本题选择这个选项的理由”。本轮读取六人4288条记录和17组既有状态，
+分别报告理由部位覆盖、规则部位覆盖、具体判断支持与冲突，并提供[逐条复核表](../../../results/model_1024/oral_alignment_20261030_v2/review.html)。
+原文、既有编码、参数与状态权重保持不变，新增粒子滤波0次。S205后段有清楚的内容对应，
+S110仍有额外理由未解释，S317后段3/4躯干参照尚待编码复核。
+本版属于待人工复核资料的开发性内容对照；具体定义与限制见[方法协议](model_architecture/model_1024_oral_preliminary.md)。
+
 2026-10-29完成[内部状态解释与参数间比较](model_architecture/model_1024_state_interpretation.md)。
 优先阅读[逐人解释](../../../results/model_1024/state_interpretation_20261028_v1/report_v1/interpretation.md)，
 再看[完整图表](../../../results/model_1024/state_interpretation_20261028_v1/report_v1/report.md)。

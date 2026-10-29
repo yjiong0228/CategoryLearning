@@ -1,0 +1,18 @@
+protocol: model1024_oral_preliminary_v1
+state_source: results/model_1024/state_interpretation_20261028_v1
+state_analysis: results/model_1024/state_interpretation_20261028_v1/analysis_v1
+previous_oral: results/model_1024/individual_states_20261028_v1/oral_alignment
+raw_directory: data/exp123/raw/Task2
+subjects: [110, 129, 205, 229, 306, 317]
+block_trials: 64
+primary_mode: filtered
+secondary_mode: full
+report_instruction: 本题选择这个选项的理由（用户本轮确认）
+numerical_semantics: existing_midpoint_encoding_provisional
+semantic_reliability: pending_manual_review
+new_particle_filters: 0
+parameter_selection_changes: false
+budget:
+  workers: 1
+  numeric_threads: 1
+  wall_seconds: 1800

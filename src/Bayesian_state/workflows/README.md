@@ -1,5 +1,23 @@
 # 当前模型工作流
 
+## Model 1024：口述选择理由的初步对照
+
+`analysis/model_1024_oral_preliminary.py`读取已保存的17组状态与六人的口述审查表，
+生成双向部位覆盖、逐判断支持与冲突、当前刺激参照，以及可筛选的逐条HTML。
+口述指导语为“本题选择这个选项的理由”，原文仍待人工复核。
+该入口只做后处理；参数和状态概率保持原样。定义与限制见
+[初步对齐协议](../docs/model_architecture/model_1024_oral_preliminary.md)。
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_1024_oral_preliminary \
+  --output results/model_1024/oral_alignment_NEW
+python -m src.Bayesian_state.workflows.reports.model_1024_oral_preliminary_report \
+  --source results/model_1024/oral_alignment_NEW
+```
+
+输出目录须为新目录。配置、输入哈希和数值敏感性分别保存；初版结果属于开发资料的内容对照。
+
 ## Model 1024：执行维持与零维持边界比较
 
 `analysis/model_1024_execution_comparison.py`分别进行六人的完整记录拟合、前段拟合后的
