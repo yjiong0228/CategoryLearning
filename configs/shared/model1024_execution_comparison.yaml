@@ -1,0 +1,56 @@
+protocol: model1024_execution_comparison_20261029_v1
+seed: 2026102901
+source_study: results/model_1023/execution_fit_20261024_v1
+full_record_study: results/model_1024/individual_regions_20261027_v3/particle_precision_v2
+subjects: [110, 205, 306, 129, 229, 317]
+budget:
+  wall_hours: 12
+  cpu_hours: 1536
+  workers: 128
+  maximum_failures: 3
+  poll_seconds: 5
+  stage_cpu_hours: {calibration: 32, full: 600, prefix: 400, recovery: 480, report: 24}
+search:
+  full: {initial_pairs: 48, rounds: 2, round_pairs: 24, finalists_per_boundary: 6}
+  prefix: {initial_pairs: 32, rounds: 2, round_pairs: 16, finalists_per_boundary: 4}
+  recovery: {initial_pairs: 24, rounds: 1, round_pairs: 16, finalists_per_boundary: 3}
+  particles: 128
+  repeats: 2
+  confirmation_particles: 512
+  confirmation_repeats: 6
+  audit_per_boundary: 2
+  audit_particles: 2048
+  audit_repeats: 8
+  escalation_particles: 4096
+  escalation_repeats: 8
+  particle_tolerance: 0.005
+  maximum_system_weight: 0.9
+  maximum_twice_mcse: 0.005
+  zero_boundary_tolerance: 0.005
+generation:
+  paths: 256
+  chunk: 8
+  block_width: 32
+  temporal_weight: 0.5
+recovery:
+  subjects: [110, 205, 306]
+  kappas: [0, 2, 6]
+  replicates: 2
+  confirmation_repeats: 4
+  audit_particles: 1024
+  audit_repeats: 6
+  escalation_particles: 2048
+  evaluation_paths: 64
+parameter_values:
+  p0: [0.005, 0.02, 0.05, 0.15, 0.35, 0.65, 0.95]
+  error_gain: [0, 0.125, 0.25, 0.5, 1, 2, 4, 8, 12]
+  failure_decay: [0, 0.3, 0.6, 0.9, 0.95, 0.99, 0.995]
+  global_search: [0, 0.05, 0.2, 0.5, 0.75, 0.8, 1]
+  capacity: [2, 3, 4, 6, 8, 10]
+  retention: [0, 0.3, 0.5, 0.8, 0.9, 0.95, 0.99, 1]
+  beta_init: [0.1, 0.316227766, 0.5, 1, 5, 10, 15, 25]
+  learning_rate: [0, 0.001, 0.003, 0.01, 0.03, 0.06, 0.1, 0.3, 1]
+  inertia: [0, 0.5, 1, 2, 3, 4, 6, 8, 12]
+  gamma: [0, 0.6, 0.9, 0.95, 0.975, 0.99, 0.995, 1]
+data_use: full_record_development_and_separately_fitted_prefix_prediction
+oral_use: deferred_pending_manual_review

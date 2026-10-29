@@ -1,5 +1,26 @@
 # 当前模型工作流
 
+## Model 1024：执行维持与零维持边界比较
+
+`analysis/model_1024_execution_comparison.py`分别进行六人的完整记录拟合、前段拟合后的
+后段评价，以及18条新模拟路径的机制恢复。κ自由模型包含κ=0边界；零维持的过滤使用
+现有MIX求和，非零维持和自主生成复用共享执行模块。原学习机制保持不变。
+输入用途、搜索与数值预算见[比较协议](../docs/model_architecture/model_1024_execution_comparison.md)。
+
+从仓库根目录运行，先使用单独的新目录验证小规模流程，再准备正式目录：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison --phase smoke --output results/model_1024/execution_comparison_smoke_NEW
+python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison --phase prepare --output results/model_1024/execution_comparison_NEW
+python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison --phase run --output results/model_1024/execution_comparison_NEW
+python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison --phase report --output results/model_1024/execution_comparison_NEW
+```
+
+`run`核对冻结协议、源码及来源文件，并复用有成功记录的任务。被中断且尚无退出记录的任务
+需要先核对进程和产物，工作流不会覆盖旧日志。正式上限为12小时、1536 CPU小时；
+`progress.json`记录当前阶段，`ledger/`保存逐项实际成本，`frozen/`保存参数冻结记录，
+`report_v1/`汇总已完成结果。阶段未完成和数值未确定分别保留。
+
 ## Model 1024：内部状态解释与保留参数间比较
 
 `analysis/model_1024_state_interpretation.py`复用已验证的被动状态记录器和有界调度器，
