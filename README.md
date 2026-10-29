@@ -7,6 +7,7 @@
 
 - [项目管理与清理规则](#仓库管理)：目录职责、保留策略和日常工作流。
 - [共享模型说明](src/Bayesian_state/README.md)：模型模块、推断、拟合与评价接口。
+- [Cohen–Schneidman 模型](src/Cohen/README.md)：独立复现核查、模块结构及 exp123 连续刺激扩展。
 - [研究目标与证据标准](src/Bayesian_state/docs/RESEARCH_GUIDE.md)：内部状态推断、个体参数、随机学习路径及口述检验的共同研究框架。
 - [期刊工作流](CategoryLearning_codes/Bayesian_model/README.md)：期刊配置、数据范围和版本冻结。
 - [期刊配图](CategoryLearning_codes/figures/README.md)：Fig1/Fig2 代码与当前图版本。

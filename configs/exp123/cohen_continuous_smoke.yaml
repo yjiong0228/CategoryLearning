@@ -1,0 +1,24 @@
+# Small implementation check: one subject from each raw condition, 16 trials.
+# Paths are relative to the repository root. Every run needs a new output_dir.
+data: data/exp123/processed/Task2_processed.csv
+subjects: [101, 201, 301]
+max_trials: 16
+session_policy: carry
+mode: replay
+seed: 20260430
+output_dir: results/Cohen_model/exp123_continuous_smoke_v1
+model:
+  n_dimensions: 4
+  max_order: 4
+  beta: 5.0
+  eta: 0.05
+  quadrature_order: 8
+  update_rule: exact_gradient
+quadrature_check_order: 12
+# Deliberately small optimizer settings for --mode fit smoke checks.
+fit:
+  population_size: 4
+  generations: 2
+  anneal_steps: 2
+  beta_range: [0.5, 12.0]
+  eta_range: [0.001, 0.5]
