@@ -243,9 +243,13 @@ class ObservationLikelihood:
         differentiation. Callers pass the pre-feedback pairing distribution;
         memory may already have updated its joint posterior. The geometry's
         exact distance cache reuses the distances used for the choice emission.
+        An opt-in discrete partition supplies precision_category_distances;
+        its softmax emission uses the same distance derivative below.
         """
+        discrete_distances = getattr(self.partition, "precision_category_distances", None)
+        discrete = self.distance_mode == "rule" and callable(discrete_distances)
         if (self.beta_source != self.BETA_SOURCE_ACTION
-                or self.distance_mode != "boundary" or self.feedback_lapse != 0.):
+                or (self.distance_mode != "boundary" and not discrete) or self.feedback_lapse != 0.):
             raise ValueError(
                 "feedback_gradient requires boundary/action emissions and feedback_lapse=0."
             )
@@ -259,8 +263,8 @@ class ObservationLikelihood:
                 or not 1 <= int(choice) <= n_categories):
             raise ValueError("choice must be an integer within the category range.")
         values = np.asarray(stimulus, dtype=float)
-        if (values.shape != (4,) or not np.all(np.isfinite(values))
-                or np.any(values < 0.) or np.any(values > 1.)):
+        if not discrete and (values.shape != (4,) or not np.all(np.isfinite(values))
+                             or np.any(values < 0.) or np.any(values > 1.)):
             raise ValueError("feedback_gradient requires a finite stimulus in [0, 1]^4.")
         indices = tuple(int(h) for h in hypotheses)
         if not indices:
@@ -268,13 +272,18 @@ class ObservationLikelihood:
         betas = np.broadcast_to(np.asarray(beta, dtype=float), (len(indices),))
         if not np.all(np.isfinite(betas)) or np.any(betas <= 0.):
             raise ValueError("feedback_gradient requires finite positive predictive precisions.")
-        geometry = getattr(self.partition, "boundary_geometry", None)
-        if not callable(getattr(geometry, "category_distances", None)):
-            raise TypeError("feedback_gradient requires boundary category distances.")
         data = ([values], [choice], [feedback])
-        distances = np.asarray([
-            geometry.category_distances(h, [values])[0] for h in indices
-        ], dtype=float)
+        if discrete:
+            if self.feedback_likelihood_mode != "category_feedback":
+                raise ValueError("Discrete feedback_gradient requires binary category feedback")
+            distances = np.asarray(discrete_distances(values, indices), dtype=float)
+        else:
+            geometry = getattr(self.partition, "boundary_geometry", None)
+            if not callable(getattr(geometry, "category_distances", None)):
+                raise TypeError("feedback_gradient requires boundary category distances.")
+            distances = np.asarray([
+                geometry.category_distances(h, [values])[0] for h in indices
+            ], dtype=float)
         probabilities = np.asarray([
             self.partition.get_category_probabilities(
                 h, data, float(b), distance_mode=self.distance_mode,

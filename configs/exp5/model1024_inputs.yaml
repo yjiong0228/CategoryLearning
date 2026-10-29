@@ -1,0 +1,12 @@
+protocol: model1024_exp5_rule1_inputs_v1
+raw_dir: ../../data/exp5/raw/Rule1
+subjects: [501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 519]
+continued_subjects: [515, 517, 518]
+overnight_subjects: [508]
+overnight_analysis_sessions: [1]
+oral_extended_subjects: [515, 518]
+block_size: 64
+stimulus_values: {black: -1, white: 1}
+correct_rule: {same_positions: [2, 4], same_category: 1, different_category: 2}
+protocol_evidence: user_clarification_20261028
+analysis_scope: recorded_stimulus_schedule_and_length

@@ -53,6 +53,11 @@ class ModelConfig:
             from .model_0923 import validate_model_0923_config
 
             validate_model_0923_config(values)
+        if ((values.get("provenance") or {}).get("model_id") == "model_1024"
+                and values["provenance"].get("task") == "exp5_rule1"):
+            from .exp5_config import validate_exp5_config
+
+            validate_exp5_config(values)
         return cls(values)
 
     def to_dict(self) -> dict[str, Any]:

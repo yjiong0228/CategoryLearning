@@ -122,14 +122,22 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
         if isinstance(seed, bool) or int(seed) != seed or seed < 0:
             raise ValueError("relation_seed must be a nonnegative integer")
         self.relation_samples, self.relation_seed = int(samples), int(seed)
-        if engine.distance_mode != "boundary":
-            raise ValueError("0923 full model v1 uses boundary functional relations")
-        self.rule_programs, self.edit_distances = build_rule_edit_costs(
-            engine.partition.hypothesis_space, kwargs.get("edit_costs"))
-        self.confusion_tensor = engine.partition.similarity.get_confusion_tensor(
-            distance_mode="boundary", n_samples=self.relation_samples,
-            random_state=self.relation_seed)
-        relation_owner = engine.partition.similarity
+        discrete_resources = getattr(engine.partition, "rule_search_resources", None)
+        grammar_version = GRAMMAR_VERSION
+        if engine.distance_mode == "rule" and callable(discrete_resources):
+            (grammar_version, self.rule_programs, self.edit_distances,
+             self.confusion_tensor) = discrete_resources(
+                kwargs.get("edit_costs"), distance_mode=engine.distance_mode)
+            relation_owner = engine.partition
+        else:
+            if engine.distance_mode != "boundary":
+                raise ValueError("0923 full model v1 uses boundary functional relations")
+            self.rule_programs, self.edit_distances = build_rule_edit_costs(
+                engine.partition.hypothesis_space, kwargs.get("edit_costs"))
+            self.confusion_tensor = engine.partition.similarity.get_confusion_tensor(
+                distance_mode="boundary", n_samples=self.relation_samples,
+                random_state=self.relation_seed)
+            relation_owner = engine.partition.similarity
         resources = getattr(relation_owner, "_0923_relation_resources", None)
         if resources is None or not np.shares_memory(resources[0], self.confusion_tensor):
             agreement = np.trace(self.confusion_tensor, axis1=2, axis2=3)
@@ -146,7 +154,7 @@ class MechanisticRuleSearchHypothesisTransitionModule(TwoStepHypothesisTransitio
                 or np.any(self.base_prior <= 0)):
             raise ValueError("0923 full model base prior must be finite and strictly positive on the catalogue")
         self.base_prior /= self.base_prior.sum()
-        settings = (self.MODE, GRAMMAR_VERSION, self.capacity, self.exit_rate,
+        settings = (self.MODE, grammar_version, self.capacity, self.exit_rate,
                     self.local_structure_weight, self.transfer_scale, self.execution_inertia,
                     self.tau_proposal, self.baseline_probability, self.error_gain,
                     self.failure_decay, self.global_search, self.global_search_failure_gain,

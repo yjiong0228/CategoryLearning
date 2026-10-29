@@ -1,0 +1,8 @@
+protocol: model1024_exp5_closed_loop_v1
+input_config: model1024_inputs.yaml
+engine_config: model_struct/model_1024_rule1.yaml
+subject: 503
+max_trials: 32
+autonomous_paths: 2
+seed: 20261030
+n_jobs: 1
