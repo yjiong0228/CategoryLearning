@@ -1,0 +1,60 @@
+protocol: model1024_state_interpretation_v1
+source: results/model_1024/individual_states_20261028_v1/main_v2
+source_summary: results/model_1024/individual_states_20261028_v1/summary_final
+precision_source: results/model_1024/state_precision_20261028_v1
+precision_summary: results/model_1024/state_precision_20261028_v1/summaries/budget_repetition_01
+seed: 2026102803
+# Existing high-resolution anchors are reused. All remaining retained points
+# enter the queue, including points with poor previous numerical agreement.
+pilot_cases:
+  - S205_c4928a6e24854222
+  - S205_f90800510c67f799
+  - S205_440c1d2b430b9a24
+  - S110_07489eb3db07feea
+  - S110_3ea8ea5675925188
+  - S306_985f6cb9de5f6a88
+  - S306_09a3f04a13a98031
+  - S306_364fcdb2c43975c3
+  - S317_8446dc7ebfb80531
+initial_particles: [2048, 4096]
+escalation_particles: [8192]
+systems: 16
+maximum_systems: 16
+minimum_diagnostic_systems: 8
+numerical_checks:
+  minimum_system_ess: 4.0
+  maximum_system_weight: 0.5
+  half_mean_absolute_difference: 0.025
+  half_q95_absolute_difference: 0.10
+  resolution_mean_absolute_difference: 0.025
+  resolution_q95_absolute_difference: 0.10
+interpretation:
+  focus_subject: 205
+  block_trials: 64
+  behavior_window: 32
+  target_measures: [target_present, target_belief, target_high_belief, target_execution]
+  rule_distribution_measures: [belief, execution]
+  # Apply tolerances separately to each quantity; these are working numerical
+  # and sensitivity tolerances, with no confidence-coverage interpretation.
+  candidate_mean_difference: 0.025
+  candidate_q95_difference: 0.10
+  escalation_subjects: [205]
+  escalation_maximum_rounds: 1
+  escalation_reason: any_per_measure_full_history_numerical_check_fails
+  include_diagnostic_subjects: [129]
+  parameter_weights: none
+  precise_transition_claims: false
+  new_state_recovery_claims: false
+budget:
+  workers: 128
+  numeric_threads: 1
+  cpu_hours: 640
+  wall_hours: 8
+  per_job_cpu_seconds: 21600
+  failed_jobs_before_stop: 3
+  memory_fraction: 0.85
+  estimate_safety_factor: 1.3
+  poll_seconds: 2
+conditioning: complete_observed_sequence_after_choice_before_feedback
+parameter_weights: none
+oral_used_for_inference: false

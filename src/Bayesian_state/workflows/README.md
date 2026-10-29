@@ -1,5 +1,45 @@
 # 当前模型工作流
 
+## Model 1024：内部状态解释与保留参数间比较
+
+`analysis/model_1024_state_interpretation.py`复用已验证的被动状态记录器和有界调度器，
+在新目录补算其余保留参数。重点解释S205，同时比较其他人的正确规则状态量。
+固定参数下的计算差异与不同参数之间的差异分别输出，口述等待人工复核。
+范围、每个状态量的工作容忍和停止规则见[本轮协议](../docs/model_architecture/model_1024_state_interpretation.md)。
+
+下列执行阶段属于已获准的长时计算。准备登记输入、源码和种子；运行阶段最多128个单线程进程，
+使用8小时、640 CPU小时的独立预算；分析和报告阶段只读取已保存结果。
+每个新研究使用新目录，已有结果保留。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_state_interpretation --phase prepare --output results/model_1024/state_interpretation_NEW
+python -m src.Bayesian_state.workflows.analysis.model_1024_state_interpretation --phase run --output results/model_1024/state_interpretation_NEW
+python -m src.Bayesian_state.workflows.analysis.model_1024_state_interpretation_summary --source results/model_1024/state_interpretation_NEW --output results/model_1024/state_interpretation_NEW/analysis_v1
+python -m src.Bayesian_state.workflows.reports.model_1024_state_interpretation_report --source results/model_1024/state_interpretation_NEW --analysis results/model_1024/state_interpretation_NEW/analysis_v1 --output results/model_1024/state_interpretation_NEW/report_v1
+```
+
+`calculation_completion.json`记录实际计算范围；分析目录保留逐量检查、每64题状态摘要、
+参数间差异和输入哈希；报告目录提供PNG和中文解释。单个参数候选的状态分别保留，
+候选范围没有置信区间含义。`--allow-incomplete`仅用于另建明确标注的报告预览。
+
+本次研究在队列结束后，另用已登记的 `completion_repair_v1/` 补齐最后一项原定任务。
+原停止记录保留，分析优先使用 `final_calculation_completion.json`；补齐仍在运行时，
+分析只允许生成明确标注的预览。该安排的时间与范围见协议的“队列停止与最后一项补齐”。
+
+若运行目录已登记 `supplemental_distribution_registration.json`，可在粒子队列结束后，
+用下列入口补充正确规则信念、判断精度及执行身份与精度的联合分布检查。
+这一步仅读取状态数组，最多8个并行进程；与粒子队列分开运行。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_state_interpretation_distributions --phase cache --source results/model_1024/state_interpretation_NEW --output results/model_1024/state_interpretation_NEW/distribution_diagnostics
+python -m src.Bayesian_state.workflows.analysis.model_1024_state_interpretation_distributions --phase summarize --source results/model_1024/state_interpretation_NEW --output results/model_1024/state_interpretation_NEW/distribution_diagnostics --analysis results/model_1024/state_interpretation_NEW/analysis_v1
+python -m src.Bayesian_state.workflows.reports.model_1024_state_interpretation_report --source results/model_1024/state_interpretation_NEW --analysis results/model_1024/state_interpretation_NEW/analysis_v1 --output results/model_1024/state_interpretation_NEW/report_with_distributions --distributions results/model_1024/state_interpretation_NEW/distribution_diagnostics/interpretation
+```
+
+分析另保存逐题行为条件预测，合并独立系统时只使用此前题目的行为证据作权重。
+参数仍由完整记录估计，因此该对照属于拟合内预测。完整报告可读取分析目录中的
+`interpretation.md`，将人工解释复制到报告并记录来源哈希；原始表格和解释分别留档。
+
 ## 已保存 0826 拟合的生成口述评价
 
 `analysis/evaluate_saved_oral_readout.py` 将 Model 0923 第 8 节的口述读出应用于已保存的
