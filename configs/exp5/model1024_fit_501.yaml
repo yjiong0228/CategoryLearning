@@ -12,6 +12,7 @@ budget:
   workers: 128
   maximum_failures: 3
   poll_seconds: 2
+  wall_reserve_factor: 1.1
   stage_cpu_hours: {search: 48, confirmation: 16, audit: 56, generation: 7, report: 1}
 search:
   initial: 64

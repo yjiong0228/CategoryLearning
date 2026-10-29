@@ -337,9 +337,20 @@ def run(output: Path) -> dict:
         previous = {r["id"]: r for r in audited}
         for row in final:
             row["precision"] = precision_check(previous[row["id"]]["score"], row["score"], s) if row["id"] in previous else {"passed": False}
+        if len(final) < len(nominees):
+            # Preserve the complete, equally resolved bank when escalation is partial.
+            final = audited
+    return finalize(output, protocol, queue, final, nominees, len(rows), len(bank), escalated)
+
+
+def finalize(output: Path, protocol: dict, queue: Exp5Queue, final: list[dict], nominees: list[dict],
+             evaluated_count: int, proposed_count: int, escalated: bool) -> dict:
+    """Freeze equally resolved candidates and evaluate the autonomous distribution."""
+    p, base = protocol["policy"], read(output / "engine.json")
+    s = p["search"]
     final.sort(key=lambda row: (row["mean_nll"], row["id"]))
     frozen = dict(status="frozen" if final else "incomplete", candidates=final, frozen_unix=time.time(),
-                  evaluated_candidates=len(rows), proposed_candidates=len(bank), escalated=escalated,
+                  evaluated_candidates=evaluated_count, proposed_candidates=proposed_count, escalated=escalated,
                   data_use=p["data_use"], selection="choice_sequence_likelihood_only")
     if final:
         best = final[0]
@@ -371,6 +382,15 @@ def run(output: Path) -> dict:
                   failed_jobs=sum(r["status"] == "failed" for r in queue.records.values()),
                   numerical_status="checked" if final and all(r["precision"]["passed"] for r in final) else "unresolved",
                   formal_state_recovery="not_run", fitted_subject=p["subject"], trials=protocol["trials"])
+    if "source_run" in protocol:
+        source_completion = read(Path(protocol["source_run"]) / "completion.json")
+        result["supplement_cpu_hours"] = result["cpu_hours"]
+        result["cpu_hours"] += source_completion["cpu_hours"]
+        result["successful_jobs"] += source_completion["successful_jobs"]
+        result["failed_jobs"] += source_completion["failed_jobs"]
+        result["peak_workers"] = max(result["peak_workers"], source_completion["peak_workers"])
+        result["source_run"] = protocol["source_run"]
+        result["source_status"] = source_completion["status"]
     write(output / "completion.json", result)
     report(output)
     return result
@@ -447,6 +467,13 @@ def report(output: Path) -> Path:
         pd.DataFrame(block_records).to_csv(folder / f'{row["id"]}_blocks.csv', index=False)
         lines += ['']
     write(folder / "generation_summary.json", generation_rows)
+    if "source_run" in protocol:
+        source_name = Path(protocol["source_run"]).name
+        lines += ['## 补算来源', '',
+                  f'初始搜索、确认和2048粒子检查见[原运行](../../{source_name}/report_v1/report.md)。',
+                  '原队列的时间预留跳过了部分4096粒子任务。本目录补齐未启动任务，并与原目录中已启动的独立系统合并评分。',
+                  '候选、种子、模型源码和数值标准保持原登记定义；任务时间预留系数改为1.1，总运行截止时间保持原值。',
+                  '上方CPU与成功任务数合计两次运行；补算预算及原运行的最坏剩余CPU预留见`../supplement.json`。', '']
     lines += ['Energy分数比较全部自主路径的32题块正确率及类别条件反应频率与真人记录，越小表示分布更相容。上述范围表示模型的过程变异。', '',
               '## 计算与适用范围', '',
               f'成功任务 {completion["successful_jobs"]} 项，失败 {completion["failed_jobs"]} 项；CPU消耗 {completion["cpu_hours"]:.3f} 小时，运行 {completion["elapsed_hours"]:.3f} 小时，峰值 {completion["peak_workers"]} 个单线程进程。',

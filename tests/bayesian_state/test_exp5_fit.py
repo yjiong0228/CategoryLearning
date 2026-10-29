@@ -102,3 +102,18 @@ def test_expired_fit_budget_is_recorded_as_partial(tmp_path):
     assert (output / "report_v1/report.md").exists()
     with pytest.raises(FileExistsError):
         fit.run(output)
+
+
+def test_supplement_ownership_prevents_duplicate_or_still_eligible_launches(tmp_path):
+    from types import SimpleNamespace
+    from src.Bayesian_state.workflows.analysis.model_1024_exp5_complete import split_ownership
+
+    (tmp_path / 'jobs').mkdir()
+    (tmp_path / 'jobs/started.json').write_text('{}')
+    jobs = [dict(name='started'), dict(name='not_started')]
+    queue = SimpleNamespace(policy={}, deadline=100., estimate=lambda _: 30.)
+    original, pending = split_ownership(tmp_path, jobs, queue, 50.)
+    assert [j['name'] for j in original] == ['started']
+    assert [j['name'] for j in pending] == ['not_started']
+    with pytest.raises(ValueError, match='can still launch'):
+        split_ownership(tmp_path, jobs, queue, 30.)

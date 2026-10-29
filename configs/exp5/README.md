@@ -71,6 +71,22 @@ python -m src.Bayesian_state.workflows.analysis.model_1024_exp5_fit \
 汇总已完成运行。默认采用2小时、128 CPU小时上限。正式参数依据完整选择似然估计，
 自主分布在冻结后评价。当前运行状态见对应结果目录的`progress.json`与`completion.json`。
 
+任务的时间预留为保守CPU估计的1.1倍，实际CPU与运行时间仍由硬上限约束。
+若旧配置的双倍时间预留阻止了4096粒子的部分任务，可在新目录补齐；入口会检查原队列
+已启动任务的归属，沿用原截止时间，并为原运行的剩余CPU消耗预留上界：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_exp5_complete \
+  --phase prepare --source results/model_1024/ORIGINAL_RUN \
+  --output results/model_1024/NEW_COMPLETION
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_1024_exp5_complete \
+  --phase run --output results/model_1024/NEW_COMPLETION
+```
+
+补算只适用于501已经完整完成2048粒子检查、且原队列无法再启动余下4096粒子任务的情况。
+补算保留相同候选、随机种子、科学源码和验收标准，结果报告合计两边的计算消耗。
+
 参数可辨识性、逐题状态恢复、跨日遗忘、口述参与停止决策的完整模拟和口述对照待后续研究。
 运行按实际刺激和长度推进；停止时点保留实验安排的含义。
 62条规则作为接口基线，数量、整体对称和连续同色分组等策略的完整覆盖待单独检查。

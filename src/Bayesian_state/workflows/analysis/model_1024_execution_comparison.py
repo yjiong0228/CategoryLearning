@@ -338,7 +338,7 @@ class Queue:
                                              if v['job']['budget_stage'] == group)
                         if (self.used() + reserved + estimate <= self.policy['cpu_hours'] * 3600
                             and self.used(group) + group_reserved + estimate <= self.policy['stage_cpu_hours'][group] * 3600
-                            and estimate * 2 < self.deadline - now):
+                            and estimate * self.policy.get('wall_reserve_factor', 2.) < self.deadline - now):
                             feasible = index
                             break
                     if feasible is None:
