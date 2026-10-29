@@ -53,8 +53,26 @@ python -m src.Bayesian_state.workflows.runs.run_model_1024_exp5 \
 
 ## 后续范围
 
-正式个体拟合、参数可辨识性、逐题状态恢复、跨日遗忘、口述参与停止决策的完整模拟和口述
-对照待后续研究。第一阶段按实际刺激和长度运行；停止时点保留实验安排的含义。
+### 被试501正式拟合
+
+`model1024_fit_501.yaml`登记完整128题的九参数搜索与数值确认。
+评分、预算、源码隔离和证据范围见[正式拟合协议](../../src/Bayesian_state/docs/model_architecture/model_1024_exp5_fit.md)。
+从仓库根目录依次执行，输出目录须为新目录：
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_exp5_fit \
+  --phase prepare --output results/model_1024/exp5_fit_501_NEW
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_1024_exp5_fit \
+  --phase run --output results/model_1024/exp5_fit_501_NEW
+```
+
+`--phase smoke --output NEW_SMOKE`走完单进程短序列搜索流程；`--phase report`在新的报告子目录
+汇总已完成运行。默认采用2小时、128 CPU小时上限。正式参数依据完整选择似然估计，
+自主分布在冻结后评价。当前运行状态见对应结果目录的`progress.json`与`completion.json`。
+
+参数可辨识性、逐题状态恢复、跨日遗忘、口述参与停止决策的完整模拟和口述对照待后续研究。
+运行按实际刺激和长度推进；停止时点保留实验安排的含义。
 62条规则作为接口基线，数量、整体对称和连续同色分组等策略的完整覆盖待单独检查。
 
 旧`pmh_rule1.yaml`及其模拟/搜索配置保持原有用途。新的准备入口拒绝覆盖已有目录。

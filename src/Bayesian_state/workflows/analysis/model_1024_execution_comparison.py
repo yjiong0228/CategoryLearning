@@ -351,7 +351,8 @@ class Queue:
                         raise RuntimeError('Interrupted job needs an explicit receipt audit: ' + job['name'])
                     write(file, job)
                     stream = file.with_suffix('.log').open('x')
-                    proc = subprocess.Popen([sys.executable, '-c', launcher, job['runtime'], str(ROOT / regions.ENTRY),
+                    worker_entry = job.get('worker_entry', str(ROOT / regions.ENTRY))
+                    proc = subprocess.Popen([sys.executable, '-c', launcher, job['runtime'], worker_entry,
                         '--worker', str(file.resolve())], cwd=ROOT, env=env, stdout=stream, stderr=subprocess.STDOUT)
                     active[job['name']] = dict(process=proc, stream=stream, job=job, estimate=estimate, started=now)
                     self.peak = max(self.peak, len(active))
