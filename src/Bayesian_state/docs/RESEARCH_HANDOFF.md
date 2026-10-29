@@ -1,5 +1,14 @@
 # Model 1024 研究续接说明
 
+当前长时任务：[执行维持与零维持边界比较](model_architecture/model_1024_execution_comparison.md)已获用户授权并启动。
+正式目录为`results/model_1024/execution_comparison_20261029_v1`，实现提交`67f1613f`。
+六名开发被试分别进行完整记录拟合和前段拟合后评价，另生成18条新路径用于机制恢复。
+上限12小时、1536 CPU小时、128个单线程进程；启动检查确认校准阶段48项任务正在运行，尚无失败。
+实时状态以[进度记录](../../../results/model_1024/execution_comparison_20261029_v1/progress.json)为准。
+新版小规模流程142项数值任务全部成功；相关三套测试43项通过，随后加入历史锚点保护后的专项15项通过。
+完整验证范围及小规模源码与正式源码的对应见[启动核对](../../../results/model_1024/execution_comparison_20261029_v1/preflight_validation.json)。
+本轮机制结论尚待正式结果；已有证据边界和口述待人工复核状态继续保留。
+
 2026-10-29完成[内部状态解释与参数间比较](model_architecture/model_1024_state_interpretation.md)。
 优先阅读[逐人解释](../../../results/model_1024/state_interpretation_20261028_v1/report_v1/interpretation.md)，
 再看[完整图表](../../../results/model_1024/state_interpretation_20261028_v1/report_v1/report.md)。
