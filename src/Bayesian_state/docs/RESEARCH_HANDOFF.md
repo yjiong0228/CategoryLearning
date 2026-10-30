@@ -1,14 +1,20 @@
 # Model 1024 研究续接说明
 
 当前长时任务：[执行维持与零维持边界比较](model_architecture/model_1024_execution_comparison.md)已获用户授权并启动。
-当前正式目录为`results/model_1024/execution_comparison_20261029_v2`，实现提交`67f1613f`。
+当前正式补算目录为`results/model_1024/execution_comparison_20261030_v3`，数值实现提交`67f1613f`。
 六名开发被试分别进行完整记录拟合和前段拟合后评价，另生成18条新路径用于机制恢复。
-总上限12小时、1536 CPU小时、128个单线程进程；当前校准阶段48项任务已启动。
+原v2批次已结束：9395项成功、0项失败，运行11.55小时、消耗1226.54 CPU小时。
+该批次尚缺496项高精度追加拟合及部分后续评价，完整科学比较仍在进行。
+v3核验并复用全部9395项成功结果，新增额度为16小时、1792 CPU小时，至多128个单线程进程；
+当前正在补齐追加拟合。模型、候选提议、资料边界、粒子数、重复数、种子和评分定义沿用原登记。
+新增CPU从v3账本扣除复用偏移量1226.3942365644443小时后计算，原轮消耗单独计入一次。
 v1运行期间另一任务修改了共享源码，核对发现后停止该队列，保留32项成功记录和未完成产物。
 v2在启动提交的独立临时检出中执行，35项源码哈希与原登记完全一致；MIX和STICKY的小规模
 行为概率均逐元素复现。原轮消耗保守计入5 CPU小时，v2上限1531 CPU小时，沿用首次启动的墙钟。
-实时状态以[进度记录](../../../results/model_1024/execution_comparison_20261029_v2/progress.json)为准，
-隔离验证和续跑边界见[续跑登记](../../../results/model_1024/execution_comparison_20261029_v2/continuation_validation.json)。
+实时状态以[进度记录](../../../results/model_1024/execution_comparison_20261030_v3/progress.json)为准，
+原隔离验证见[源码隔离登记](../../../results/model_1024/execution_comparison_20261029_v2/continuation_validation.json)，
+本次补算范围和核验见[补算启动核对](../../../results/model_1024/execution_comparison_20261030_v3/continuation_preflight.json)。
+补算工具提交`8dae5636`；小规模完整复用和缺一项补算均复现原评分及冻结结果，相关36项测试通过。
 新版小规模流程142项数值任务全部成功；相关三套测试43项通过，随后加入历史锚点保护后的专项15项通过。
 完整验证范围及小规模源码与正式源码的对应见[启动核对](../../../results/model_1024/execution_comparison_20261029_v1/preflight_validation.json)。
 本轮机制结论尚待正式结果；已有证据边界和口述待人工复核状态继续保留。
