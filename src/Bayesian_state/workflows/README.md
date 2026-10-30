@@ -39,6 +39,22 @@ python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison 
 `progress.json`记录当前阶段，`ledger/`保存逐项实际成本，`frozen/`保存参数冻结记录，
 `report_v1/`汇总已完成结果。阶段未完成和数值未确定分别保留。
 
+原批次结束后，`analysis/model_1024_execution_comparison_resume.py`可在新目录准备补算。
+它核对原协议、隔离检出的源码、数据和全部成功工作进程，复用保存的数组、种子及退出记录。
+模型、搜索候选生成、粒子档、重复数和评分定义沿用原登记；原批次的终止记录保留。
+补算预算YAML指定`wall_hours`和各阶段新增的`stage_cpu_hours`，阶段名称沿用原协议。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_execution_comparison_resume \
+  --source ORIGINAL_STUDY --output NEW_CONTINUATION --checkout PINNED_CHECKOUT --budget ADDITIONAL_BUDGET.yaml
+```
+
+准备完成后，从通过哈希核对的隔离检出运行生成记录中的原`--phase run`命令。
+新增预算独立登记；原调度器的CPU上限包含复用账本的精确偏移量。
+新完成记录的CPU小时减去`continuation_registration.json`中的`reused_cpu_hours`，
+得到本次新增计算量。合并研究消耗时，原批次的计算量只计一次。
+新目录中的数值文件链接到原目录，两个结果目录均须保留。
+
 ## Model 1024：内部状态解释与保留参数间比较
 
 `analysis/model_1024_state_interpretation.py`复用已验证的被动状态记录器和有界调度器，
