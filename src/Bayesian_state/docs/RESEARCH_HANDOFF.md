@@ -25,6 +25,9 @@ v2在启动提交的独立临时检出中执行，35项源码哈希与原登记�
 原文、既有编码、参数与状态权重保持不变，新增粒子滤波0次。S205后段有清楚的内容对应，
 S110仍有额外理由未解释，S317后段3/4躯干参照尚待编码复核。
 本版属于待人工复核资料的开发性内容对照；具体定义与限制见[方法协议](model_architecture/model_1024_oral_preliminary.md)。
+随后补充[随试次变化的七张图](../../../results/model_1024/oral_alignment_20261030_v2/timecourse_v1/report.md)：
+六人总览和每人四行详图。最近32题平均与逐题值并列，可评分报告不足8条的窗口留空；
+全部17组候选保留，编码范围另列，沿用原评分与数值限制。
 
 2026-10-29完成[内部状态解释与参数间比较](model_architecture/model_1024_state_interpretation.md)。
 优先阅读[逐人解释](../../../results/model_1024/state_interpretation_20261028_v1/report_v1/interpretation.md)，

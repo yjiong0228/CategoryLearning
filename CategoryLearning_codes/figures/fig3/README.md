@@ -1,5 +1,15 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1024口述对齐随试次的变化（2026-10-30）
+
+[六人总览](../outputs/fig3/model1024_oral_timecourse_20261030_v1/overview.png) ·
+[七张图与读图说明](../../../results/model_1024/oral_alignment_20261030_v2/timecourse_v1/report.md) ·
+[绘图定义与复现](model1024_oral_timecourse.md)。
+六人4288条记录、17组既有候选均保留。每人四行分别展示具体判断支持、双向部位覆盖、
+支持与冲突等结果的构成，以及口述编码范围。曲线为最近32题内有效报告的平均，至少需要8条；
+逐题值与编码状态同时显示。候选范围、暂不可评分时段及S129诊断参数身份均明确标注。
+图使用选择后、反馈前的过滤状态，口述仍待人工复核。本轮只读取已有评分，输出300 dpi PNG。
+
 ## Model 1024状态推断使用范围（2026-10-26）
 
 [概率校准](../outputs/fig3/model1024_state_validation_20261026_v2/calibration.png) ·
