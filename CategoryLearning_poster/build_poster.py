@@ -25,7 +25,6 @@ import fitz
 import pptx
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
@@ -35,14 +34,14 @@ TEMPLATE = ROOT / "CategoryLearning_poster/CategoryLearning_poster.pptx"
 FIGURES = {
     "task": ROOT / "CategoryLearning_codes/figures/outputs/fig1/poster_arial_20261030_v1/Figure1_journal.png",
     "framework": ROOT / "CategoryLearning_codes/figures/outputs/fig2/poster_arial_20261030_v1/Figure2_journal.png",
-    "dynamics": ROOT / "CategoryLearning_codes/figures/outputs/fig3/poster_arial_20261030_v1/Figure3.png",
+    "strategy_row": ROOT / "CategoryLearning_codes/figures/outputs/fig2/poster_rows_20261031_v3/strategies_row.png",
+    "dynamics_row": ROOT / "CategoryLearning_codes/figures/outputs/fig3/poster_rows_20261031_v3/dynamics_row.png",
 }
 SUBJECT_TABLE = FIGURES["framework"].parent / "subjects.csv"
 REGULAR_FONT = ROOT / "src/Arial.ttf"
 BOLD_FONT = ROOT / "src/Arial Bold.ttf"
 TEMPLATE_FONT = ROOT / "CategoryLearning_poster/fonts/Arial Black.ttf"
-INK, NAVY, TEAL = "233544", "183D57", "197C83"
-MUTED, LINE, PALE, AMBER = "596671", "D6E0E5", "EFF5F7", "A9702A"
+INK, NAVY, MUTED = "171717", "171B66", "555555"
 FONT = "Arial"
 
 
@@ -54,20 +53,6 @@ class Poster:
         self.textboxes: list[dict] = []
         self.width = self.prs.slide_width / 914400
         self.height = self.prs.slide_height / 914400
-
-    def box(self, x: float, y: float, w: float, h: float,
-            fill: str = "FFFFFF", line: str | None = None):
-        shape = self.slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h)
-        )
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = RGBColor.from_string(fill)
-        if line:
-            shape.line.color.rgb = RGBColor.from_string(line)
-            shape.line.width = Pt(1)
-        else:
-            shape.line.fill.background()
-        return shape
 
     def text(self, value: str, x: float, y: float, w: float, h: float,
              size: float = 29, color: str = INK, bold: bool = False,
@@ -105,12 +90,8 @@ class Poster:
         })
         return shape
 
-    def section(self, number: str, title: str, x: float, y: float,
-                w: float, h: float) -> None:
-        self.box(x, y + .34, w, h - .34, line=LINE)
-        self.box(x, y, w, .82, NAVY)
-        self.text(number, x + .25, y + .13, .75, .55, 31, "A8DCE2", True)
-        self.text(title, x + 1.1, y + .13, w - 1.3, .59, 33, "FFFFFF", True)
+    def section(self, title: str, y: float) -> None:
+        self.text(title, 1.0, y, 31.1, .88, 46, NAVY, True, PP_ALIGN.CENTER)
 
     def picture(self, key: str, crop: tuple[float, float, float, float],
                 x: float, y: float, w: float, label: str) -> float:
@@ -131,117 +112,92 @@ class Poster:
         return h
 
     def assemble(self, second_affiliation: str, email: str | None,
-                 draft_version: int = 2) -> None:
-        x1, x2, cw = .85, 17.0, 15.25
-        # The supplied slide layout retains the conference banner and sponsors.
-        self.text("Beyond behavioural fit", 1, 3.25, 31.1, 1.6, 84, NAVY, True,
-                  PP_ALIGN.CENTER)
-        self.text("Reconstructing belief dynamics in human category learning",
-                  1, 4.9, 31.1, .9, 49, NAVY, True, PP_ALIGN.CENTER)
+                 draft_version: int = 3) -> None:
+        # Full-width sections follow reference1; the template stays untouched.
+        self.text("Beyond behavioural fit: reconstructing belief dynamics",
+                  1, 3.38, 31.1, 1.3, 72, INK, True, PP_ALIGN.CENTER)
+        self.text("in human category learning",
+                  1, 4.62, 31.1, 1.3, 72, INK, True, PP_ALIGN.CENTER)
         self.text("Jiong Yang¹, Junqi Wang², Ran Zhu¹, Jiayu Zhan¹",
-                  1, 5.87, 31.1, .65, 35, INK, False, PP_ALIGN.CENTER)
+                  1, 6.0, 31.1, .7, 36, INK, False, PP_ALIGN.CENTER)
         self.text("¹ School of Psychological and Cognitive Sciences, Peking University",
-                  1, 6.56, 31.1, .55, 28, MUTED, False, PP_ALIGN.CENTER)
-        self.text(f"² {second_affiliation}", 1, 7.12, 31.1, .53, 26, MUTED,
+                  1, 6.71, 31.1, .55, 28, INK, False, PP_ALIGN.CENTER)
+        self.text(f"² {second_affiliation}", 1, 7.28, 31.1, .5, 25.5, MUTED,
                   False, PP_ALIGN.CENTER)
-        self.text("01  Background and Motivation", 1.05, 7.95, 31, .72,
-                  35, NAVY, True, PP_ALIGN.CENTER)
+
+        self.section("Background and Motivation", 8.05)
         background = [
             ("Learning differences:", " People learning the same categories can improve early, gradually, or abruptly."),
             ("Hidden processes:", " Similar choices can arise from different rules and beliefs, making internal states difficult to infer."),
             ("Our approach:", " Reconstruct rule search, belief updating and rule use from choices, then compare them with verbal reports."),
         ]
         for i, (lead, body) in enumerate(background):
-            self.text(lead + body, 1.05, 8.76 + .75 * i, 31, .65, 27, lead=lead)
+            self.text(lead + body, 1.05, 9.02 + .75 * i, 31, .66, 31, lead=lead)
 
-        self.section("02", "Task and individual learning", x1, 11.55, cw, 8.45)
-        self.text("96 learners  /  3 tasks  /  4 stimulus features",
-                  x1 + .35, 12.58, 14.55, .62, 29, TEAL, True)
-        self.picture("task", (.015, .012, .99, .357),
-                     x1 + 1.12, 13.4, 13.0, "Figure 1a-b: tasks and trial sequence")
-        self.text("Two or four categories; Task 2 includes partial feedback.\n"
-                  "Reports describe the current choice, before feedback.",
-                  x1 + .35, 19.0, 14.55, .85, 23, MUTED)
+        self.section("Category learning across three tasks", 11.55)
+        self.text("Three category structures", 1.05, 12.62, 16.2, .65,
+                  32, INK, True, PP_ALIGN.CENTER)
+        self.text("Choice, verbal report and feedback", 18.0, 12.62, 14.0, .65,
+                  32, INK, True, PP_ALIGN.CENTER)
+        self.picture("task", (.035, .039, .991, .200), 1.05, 13.48, 16.2,
+                     "Figure 1a: all three category structures")
+        self.picture("task", (.035, .232, .99, .357), 18.0, 13.72, 14.0,
+                     "Figure 1b: trial sequence")
+        self.text("96 learners · 4 stimulus features.\n"
+                  "Reports follow choice and precede feedback.",
+                  18.0, 16.15, 14.0, 1.2, 30)
 
-        self.section("03", "A model of learning processes", x1, 20.55, cw, 9.7)
-        self.text("Search proposes rules; feedback updates beliefs; beliefs guide choice.\n"
-                  "Fitting choices yields a distribution of possible internal trajectories.",
-                  x1 + .35, 21.65, 14.55, 1.12, 27)
-        self.picture("framework", (.035, .013, .985, .345),
-                     x1 + .77, 22.95, 13.7, "Figure 2a: illustrative learning cycle")
-        self.box(x1 + .35, 29.2, 7.0, .65, PALE)
-        self.box(x1 + 7.6, 29.2, 7.3, .65, "EEF6F3")
-        self.text("Resources: capacity, memory, perception",
-                  x1 + .49, 29.33, 6.75, .4, 19.5, NAVY, True)
-        self.text("Biases: search preferences, rule persistence",
-                  x1 + 7.75, 29.33, 7.0, .4, 19.5, TEAL, True)
+        self.section("A model of learning processes", 17.8)
+        self.picture("framework", (.035, .013, .985, .345), 1.05, 18.95, 15.6,
+                     "Figure 2a: illustrative learning cycle")
+        self.picture("framework", (.018, .804, .345, .988), 17.0, 19.2, 6.9,
+                     "Figure 2e: choice calibration")
+        self.text("12 learners\n7,924 scored choices", 17.0, 24.45, 6.9, 1.2,
+                  29, INK, True, PP_ALIGN.CENTER)
+        self.text("Cognitive resources", 24.8, 18.97, 7.25, .65, 31, INK, True)
+        self.text("Capacity, memory\nand perception", 24.8, 19.78, 7.25, 1.3, 30)
+        self.text("Inductive biases", 24.8, 21.4, 7.25, .65, 31, INK, True)
+        self.text("Search preferences\nand rule persistence", 24.8, 22.2, 7.25, 1.3, 30)
+        self.text("Choice fitting", 24.8, 23.82, 7.25, .65, 31, INK, True)
+        self.text("Full-record fits; model\ncomparison pending.",
+                  24.8, 24.63, 7.25, 1.15, 27)
 
-        self.section("04", "Choice fit and the next comparison", x1, 30.8, cw, 10.34)
-        self.text("Existing fits track observed choice accuracy.",
-                  x1 + .35, 31.9, 14.55, .68, 31, TEAL, True)
-        self.picture("framework", (.018, .804, .345, .988),
-                     x1 + .3, 33.0, 7.25, "Figure 2e: choice calibration")
-        self.text("12 fitted learners\n7,924 scored choices",
-                  x1 + 8.0, 33.2, 6.85, 1.45, 31, NAVY, True)
-        self.text("Calibration compares predicted and observed accuracy.\n"
-                  "Each small point is one participant in a probability bin; "
-                  "the black line pools trials.",
-                  x1 + 8.0, 35.0, 6.7, 2.8, 25)
-        self.text("Full-record fits; displayed scores describe the fitted records.",
-                  x1 + .35, 38.28, 14.55, .65, 24, MUTED)
-        self.box(x1 + .35, 39.15, 14.55, 1.7, "F9F3E9")
-        self.text("MODEL COMPARISON  ·  TO ADD",
-                  x1 + .6, 39.34, 14.0, .5, 24, AMBER, True)
-        self.text("Bayesian and alternative neural-network models: matched data,\n"
-                  "evaluation splits and choice scores.",
-                  x1 + .6, 39.83, 14.0, .95, 23, INK)
+        self.section("Reconstructing reported strategies", 26.4)
+        self.text("Choice-derived beliefs show preliminary correspondence with reports excluded from fitting.",
+                  1.05, 27.48, 31, .65, 31, lead="Choice-derived beliefs")
+        self.picture("strategy_row", (0, 0, 1, 1), 1.0, 28.32, 31.1,
+                     "Figure 2: three rule/report examples and both complete cohort comparisons")
+        self.text("7,600 reports · Pre-choice beliefs compared with report content · Development results; oral coding awaits manual review.",
+                  1.05, 34.06, 31, .55, 24.5, MUTED)
 
-        self.section("05", "Reconstructing reported strategies", x2, 11.55, cw, 16.42)
-        self.text("Choice-derived beliefs show preliminary correspondence\n"
-                  "with verbal reports that were excluded from fitting.",
-                  x2 + .35, 12.68, 14.55, 1.12, 29, TEAL, True)
-        self.picture("framework", (.018, .366, .995, .792),
-                     x2 + .77, 14.0, 13.7, "Figure 2b-d: all three task examples")
-        self.picture("framework", (.349, .804, .994, .988),
-                     x2 + 1.58, 21.68, 12.1, "Figure 2f-g: all 12 participants")
-        self.text("Dynamic vs time-averaged beliefs: higher compatibility in 11/12 learners.\n"
-                  "7,600 reports; comparison uses pre-choice beliefs and report content.\n"
-                  "Development results; oral coding awaits final manual review.",
-                  x2 + .35, 26.36, 14.55, 1.25, 22, MUTED)
+        self.section("Different paths to better performance", 35.0)
+        self.picture("dynamics_row", (0, 0, 1, 1), 1.0, 36.08, 31.1,
+                     "Figure 3: earlier, gradual and abrupt improvement")
+        self.text("Full-record reconstructions at fixed fitted parameters. Bands show numerical replay variation. S122 has weak oral agreement.",
+                  1.05, 41.28, 31, .55, 23.5, MUTED)
 
-        self.section("06", "Different paths to better performance", x2, 28.52, cw, 12.62)
-        self.text("Rule availability, belief and use can evolve at different times.",
-                  x2 + .35, 29.56, 14.55, .85, 29, TEAL, True)
-        self.picture("dynamics", (.009, .0, .991, .567),
-                     x2 + 1.4, 30.7, 12.45, "Figure 3a-c: earlier, gradual and abrupt improvement")
-        self.text("Earlier improvement: target-rule support rises early.\n"
-                  "Gradual improvement: support fluctuates across many trials.\n"
-                  "Abrupt improvement: useful belief can precede reliable use.",
-                  x2 + .35, 38.6, 14.55, 1.45, 24)
-        self.text("Illustrative full-record reconstructions at fixed fitted parameters.\n"
-                  "Bands show numerical replay variation. S122 has weak oral agreement.",
-                  x2 + .35, 40.15, 14.55, .8, 21.5, MUTED)
-
-        self.box(.85, 41.82, 31.4, 2.55, NAVY)
-        self.text("TAKE-HOME MESSAGE", 1.25, 42.12, 5.8, .55, 27, "A8DCE2", True)
-        self.text("Learning differs in when rules are found, retained and used.",
-                  7.35, 42.04, 24.1, .72, 39, "FFFFFF", True)
-        self.text("Reconstructing these processes offers testable explanations of individual learning.\n"
-                  "The proposed link to “aha” moments requires stronger state recovery and independent evidence.",
-                  7.35, 43.02, 24.0, 1.0, 25, "FFFFFF")
-        footer = (f"DRAFT v{draft_version}  ·  30 October 2026  |  "
+        self.section("Summary", 42.0)
+        conclusions = [
+            ("Learning processes:", " the model separates rule search, belief updating and the use of rules in choice."),
+            ("Strategy reconstruction:", " dynamic beliefs show higher report compatibility than static beliefs in 11/12 learners."),
+            ("Rapid improvement:", " useful beliefs may precede reliable use; the proposed link to “aha” moments remains a hypothesis."),
+        ]
+        for i, (lead, body) in enumerate(conclusions):
+            self.text(lead + body, 1.05, 42.95 + .74 * i, 31, .65, 30, lead=lead)
+        footer = (f"DRAFT v{draft_version} · 31 October 2026 | "
                   "Figures: earlier Model 0826 development results")
         if email:
-            footer += f"  |  {email}"
-        self.text(footer, .95, 44.73, 31.2, .46, 19, MUTED, False, PP_ALIGN.CENTER)
+            footer += f" | {email}"
+        self.text(footer, 1, 45.15, 31.1, .28, 15, MUTED, False, PP_ALIGN.CENTER)
         self.slide.notes_slide.notes_text_frame.text = (
-            "Poster draft based on learning_paper_v1.tex abstract. All charts are "
-            "existing September 2026 figures, sourced from Model 0826. They do not "
-            "establish Model 1024 validation. Figures use full-record fitted parameters. "
-            "Oral reports were excluded from these fits but remain development material "
-            "pending manual review. Alternative-model comparisons and the awareness/aha "
-            "mechanism are unconfirmed. Figure 2a contains illustrative numbers. "
-            "Native picture cropping preserves source pixels. Full provenance is in manifest.json."
+            "Poster draft based on learning_paper_v1.tex abstract. Full-width horizontal "
+            "sections follow reference1.jpg. All charts use existing September 2026 "
+            "Model 0826 results. They do not establish Model 1024 validation. Figures "
+            "use full-record fitted parameters. Oral reports were excluded from these "
+            "fits but remain development material pending manual review. Alternative-model "
+            "comparisons and the awareness/aha mechanism are unconfirmed. Figure 2a "
+            "contains illustrative numbers. Wide chart rows retain the original plotted "
+            "data; layout changes are checked by data hashes. Full provenance is in manifest.json."
         )
 
     def validate_geometry(self) -> None:
@@ -404,7 +360,7 @@ def main() -> None:
                         help="New output directory; existing directories are refused")
     parser.add_argument("--second-affiliation", default="Affiliation to be confirmed (Junqi Wang)")
     parser.add_argument("--email")
-    parser.add_argument("--draft-version", type=int, default=2)
+    parser.add_argument("--draft-version", type=int, default=3)
     parser.add_argument("--template-font", type=Path, default=TEMPLATE_FONT,
                         help="Arial Black file used by the untouched template")
     parser.add_argument("--pptx-only", action="store_true",
@@ -427,7 +383,7 @@ def main() -> None:
                Path(__file__).resolve(),
                ROOT / "CategoryLearning_paper/learning_paper_v1/learning_paper_v1.tex"]
     manifest = {
-        "draft_date": "2026-10-30", "draft_version": args.draft_version,
+        "draft_date": "2026-10-31", "draft_version": args.draft_version,
         "page_size_in": [poster.width, poster.height],
         "python": platform.python_version(), "python_pptx": pptx.__version__,
         "pymupdf": fitz.__version__, "requested_font": FONT,
@@ -437,6 +393,10 @@ def main() -> None:
         "second_affiliation": args.second_affiliation, "email": args.email,
         "verified_source_counts": counts,
         "panels": poster.panels, "text_boxes": poster.textboxes,
+        "row_figure_manifests": {
+            key: json.loads(FIGURES[key].with_name("manifest.json").read_text())
+            for key in ("strategy_row", "dynamics_row")
+        },
         "scientific_scope": "Existing Model 0826 development figures; no new analysis or fitting",
     }
     if not args.pptx_only:

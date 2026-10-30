@@ -32,6 +32,8 @@ figures/
 - [图产物索引](outputs/README.md)
 - [海报字体版 Fig1–3](../../CategoryLearning_poster/README.md)：复用已有绘图函数和保存结果，
   用指定 Arial 常规体与粗体另存 PNG；入口为 `fig2/build_poster_font_variants.py`。
+  第三版用 `fig2/build_poster_row_figures.py` 将策略与轨迹面板排为横向图组，
+  排版前后核对绘图数据哈希；当前目录为各图号下的 `poster_rows_20261031_v3/`。
 
 从仓库根目录运行，使用新的输出版本目录：
 
