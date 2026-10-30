@@ -1,2 +1,4 @@
 # Poster deliverables stay local; preserve each reviewed build separately.
 /draft_v*/
+# Locally supplied template fonts; do not redistribute font binaries in Git.
+/fonts/

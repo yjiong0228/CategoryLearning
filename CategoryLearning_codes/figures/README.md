@@ -30,6 +30,8 @@ figures/
 - [Model 1024：精确基准与连贯状态平滑，2026-10-25](fig3/model1024_smoothing.md) · [三张PNG v1](outputs/fig3/model1024_smoothing_20261025_v1/) · [完整报告](../../results/model_1024/smoothing_report_20261025_v1/report.md)：21次被动重放、7个进入窗口及有限状态精确核对；部分恢复改善，长序列祖先退化与短暂片段漏报仍限制状态解释。
 - [Model 1024：执行身份解析求和，2026-10-25](fig3/model1024_marginal_execution.md) · [两张PNG v2](outputs/fig3/model1024_marginal_execution_20261025_v2/) · [完整报告](../../results/model_1024/marginal_execution_report_20261025_v2/report.md)：零维持参数的6个固定案例、27次过滤与2次完整重放；部分错误识别改善，长序列历史与细时点仍待验收。
 - [图产物索引](outputs/README.md)
+- [海报字体版 Fig1–3](../../CategoryLearning_poster/README.md)：复用已有绘图函数和保存结果，
+  用指定 Arial 常规体与粗体另存 PNG；入口为 `fig2/build_poster_font_variants.py`。
 
 从仓库根目录运行，使用新的输出版本目录：
 

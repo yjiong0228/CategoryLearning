@@ -14,8 +14,11 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import tempfile
+from xml.sax.saxutils import escape
+from zipfile import ZipFile, ZIP_DEFLATED
 
 from PIL import Image
 import fitz
@@ -30,11 +33,14 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "CategoryLearning_poster/CategoryLearning_poster.pptx"
 FIGURES = {
-    "task": ROOT / "CategoryLearning_codes/figures/outputs/fig1/journal_20260921_v2/Figure1_journal.png",
-    "framework": ROOT / "CategoryLearning_codes/figures/outputs/fig2/journal_20260921_v2/Figure2_journal.png",
-    "dynamics": ROOT / "CategoryLearning_codes/figures/outputs/fig3/journal_20260921_v3/Figure3.png",
+    "task": ROOT / "CategoryLearning_codes/figures/outputs/fig1/poster_arial_20261030_v1/Figure1_journal.png",
+    "framework": ROOT / "CategoryLearning_codes/figures/outputs/fig2/poster_arial_20261030_v1/Figure2_journal.png",
+    "dynamics": ROOT / "CategoryLearning_codes/figures/outputs/fig3/poster_arial_20261030_v1/Figure3.png",
 }
 SUBJECT_TABLE = FIGURES["framework"].parent / "subjects.csv"
+REGULAR_FONT = ROOT / "src/Arial.ttf"
+BOLD_FONT = ROOT / "src/Arial Bold.ttf"
+TEMPLATE_FONT = ROOT / "CategoryLearning_poster/fonts/Arial Black.ttf"
 INK, NAVY, TEAL = "233544", "183D57", "197C83"
 MUTED, LINE, PALE, AMBER = "596671", "D6E0E5", "EFF5F7", "A9702A"
 FONT = "Arial"
@@ -65,7 +71,7 @@ class Poster:
 
     def text(self, value: str, x: float, y: float, w: float, h: float,
              size: float = 29, color: str = INK, bold: bool = False,
-             align=PP_ALIGN.LEFT):
+             align=PP_ALIGN.LEFT, lead: str | None = None):
         shape = self.slide.shapes.add_textbox(
             Inches(x), Inches(y), Inches(w), Inches(h)
         )
@@ -87,6 +93,12 @@ class Poster:
             p.font.size = Pt(size)
             p.font.bold = bold
             p.font.color.rgb = RGBColor.from_string(color)
+            if lead and line.startswith(lead):
+                p.clear()
+                run = p.add_run()
+                run.text = lead
+                run.font.bold = True
+                p.add_run().text = line[len(lead):]
         self.textboxes.append({
             "name": shape.name, "text": value, "font_pt": size,
             "bounds_in": [x, y, w, h],
@@ -119,7 +131,7 @@ class Poster:
         return h
 
     def assemble(self, second_affiliation: str, email: str | None,
-                 draft_version: int = 1) -> None:
+                 draft_version: int = 2) -> None:
         x1, x2, cw = .85, 17.0, 15.25
         # The supplied slide layout retains the conference banner and sponsors.
         self.text("Beyond behavioural fit", 1, 3.25, 31.1, 1.6, 84, NAVY, True,
@@ -132,37 +144,41 @@ class Poster:
                   1, 6.56, 31.1, .55, 28, MUTED, False, PP_ALIGN.CENTER)
         self.text(f"² {second_affiliation}", 1, 7.12, 31.1, .53, 26, MUTED,
                   False, PP_ALIGN.CENTER)
-        self.box(.85, 7.95, 31.4, .84, PALE)
-        self.text("Which rules are considered, believed and used as a person learns?",
-                  1.05, 8.1, 31.0, .59, 34, TEAL, True, PP_ALIGN.CENTER)
+        self.text("01  Background and Motivation", 1.05, 7.95, 31, .72,
+                  35, NAVY, True, PP_ALIGN.CENTER)
+        background = [
+            ("Learning differences:", " People learning the same categories can improve early, gradually, or abruptly."),
+            ("Hidden processes:", " Similar choices can arise from different rules and beliefs, making internal states difficult to infer."),
+            ("Our approach:", " Reconstruct rule search, belief updating and rule use from choices, then compare them with verbal reports."),
+        ]
+        for i, (lead, body) in enumerate(background):
+            self.text(lead + body, 1.05, 8.76 + .75 * i, 31, .65, 27, lead=lead)
 
-        self.section("01", "Task and individual learning", x1, 9.22, cw, 10.25)
+        self.section("02", "Task and individual learning", x1, 11.55, cw, 8.45)
         self.text("96 learners  /  3 tasks  /  4 stimulus features",
-                  x1 + .35, 10.3, 14.55, .62, 32, TEAL, True)
-        self.text("Learners infer category rules from choices and feedback.",
-                  x1 + .35, 11.02, 14.55, .65, 28)
+                  x1 + .35, 12.58, 14.55, .62, 29, TEAL, True)
         self.picture("task", (.015, .012, .99, .357),
-                     x1 + .28, 11.96, 14.65, "Figure 1a-b: tasks and trial sequence")
+                     x1 + 1.12, 13.4, 13.0, "Figure 1a-b: tasks and trial sequence")
         self.text("Two or four categories; Task 2 includes partial feedback.\n"
                   "Reports describe the current choice, before feedback.",
-                  x1 + .35, 18.12, 14.55, 1.1, 24, MUTED)
+                  x1 + .35, 19.0, 14.55, .85, 23, MUTED)
 
-        self.section("02", "A model of learning processes", x1, 20.02, cw, 10.15)
+        self.section("03", "A model of learning processes", x1, 20.55, cw, 9.7)
         self.text("Search proposes rules; feedback updates beliefs; beliefs guide choice.\n"
                   "Fitting choices yields a distribution of possible internal trajectories.",
-                  x1 + .35, 21.14, 14.55, 1.12, 27)
+                  x1 + .35, 21.65, 14.55, 1.12, 27)
         self.picture("framework", (.035, .013, .985, .345),
-                     x1 + .29, 22.48, 14.65, "Figure 2a: illustrative learning cycle")
-        self.box(x1 + .35, 29.1, 7.0, .65, PALE)
-        self.box(x1 + 7.6, 29.1, 7.3, .65, "EEF6F3")
+                     x1 + .77, 22.95, 13.7, "Figure 2a: illustrative learning cycle")
+        self.box(x1 + .35, 29.2, 7.0, .65, PALE)
+        self.box(x1 + 7.6, 29.2, 7.3, .65, "EEF6F3")
         self.text("Resources: capacity, memory, perception",
-                  x1 + .49, 29.23, 6.75, .4, 19.5, NAVY, True)
+                  x1 + .49, 29.33, 6.75, .4, 19.5, NAVY, True)
         self.text("Biases: search preferences, rule persistence",
-                  x1 + 7.75, 29.23, 7.0, .4, 19.5, TEAL, True)
+                  x1 + 7.75, 29.33, 7.0, .4, 19.5, TEAL, True)
 
-        self.section("03", "Choice fit and the next comparison", x1, 30.72, cw, 10.42)
+        self.section("04", "Choice fit and the next comparison", x1, 30.8, cw, 10.34)
         self.text("Existing fits track observed choice accuracy.",
-                  x1 + .35, 31.84, 14.55, .68, 31, TEAL, True)
+                  x1 + .35, 31.9, 14.55, .68, 31, TEAL, True)
         self.picture("framework", (.018, .804, .345, .988),
                      x1 + .3, 33.0, 7.25, "Figure 2e: choice calibration")
         self.text("12 fitted learners\n7,924 scored choices",
@@ -180,31 +196,31 @@ class Poster:
                   "evaluation splits and choice scores.",
                   x1 + .6, 39.83, 14.0, .95, 23, INK)
 
-        self.section("04", "Reconstructing reported strategies", x2, 9.22, cw, 17.12)
+        self.section("05", "Reconstructing reported strategies", x2, 11.55, cw, 16.42)
         self.text("Choice-derived beliefs show preliminary correspondence\n"
                   "with verbal reports that were excluded from fitting.",
-                  x2 + .35, 10.32, 14.55, 1.12, 29, TEAL, True)
+                  x2 + .35, 12.68, 14.55, 1.12, 29, TEAL, True)
         self.picture("framework", (.018, .366, .995, .792),
-                     x2 + .28, 11.7, 14.65, "Figure 2b-d: all three task examples")
+                     x2 + .77, 14.0, 13.7, "Figure 2b-d: all three task examples")
         self.picture("framework", (.349, .804, .994, .988),
-                     x2 + 1.35, 20.0, 12.6, "Figure 2f-g: all 12 participants")
+                     x2 + 1.58, 21.68, 12.1, "Figure 2f-g: all 12 participants")
         self.text("Dynamic vs time-averaged beliefs: higher compatibility in 11/12 learners.\n"
                   "7,600 reports; comparison uses pre-choice beliefs and report content.\n"
                   "Development results; oral coding awaits final manual review.",
-                  x2 + .35, 24.8, 14.55, 1.35, 22, MUTED)
+                  x2 + .35, 26.36, 14.55, 1.25, 22, MUTED)
 
-        self.section("05", "Different paths to better performance", x2, 26.89, cw, 14.25)
+        self.section("06", "Different paths to better performance", x2, 28.52, cw, 12.62)
         self.text("Rule availability, belief and use can evolve at different times.",
-                  x2 + .35, 28.03, 14.55, 1.1, 30, TEAL, True)
+                  x2 + .35, 29.56, 14.55, .85, 29, TEAL, True)
         self.picture("dynamics", (.009, .0, .991, .567),
-                     x2 + .45, 29.3, 14.3, "Figure 3a-c: earlier, gradual and abrupt improvement")
+                     x2 + 1.4, 30.7, 12.45, "Figure 3a-c: earlier, gradual and abrupt improvement")
         self.text("Earlier improvement: target-rule support rises early.\n"
                   "Gradual improvement: support fluctuates across many trials.\n"
                   "Abrupt improvement: useful belief can precede reliable use.",
-                  x2 + .35, 38.2, 14.55, 1.65, 26)
+                  x2 + .35, 38.6, 14.55, 1.45, 24)
         self.text("Illustrative full-record reconstructions at fixed fitted parameters.\n"
                   "Bands show numerical replay variation. S122 has weak oral agreement.",
-                  x2 + .35, 39.98, 14.55, .95, 22, MUTED)
+                  x2 + .35, 40.15, 14.55, .8, 21.5, MUTED)
 
         self.box(.85, 41.82, 31.4, 2.55, NAVY)
         self.text("TAKE-HOME MESSAGE", 1.25, 42.12, 5.8, .55, 27, "A8DCE2", True)
@@ -258,15 +274,75 @@ def verify_counts() -> dict:
     return counts
 
 
-def export_pdf(pptx_path: Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="categorylearning-poster-lo-") as profile:
+def preserve_template_parts(pptx_path: Path) -> dict:
+    """Keep the template's masters, layouts, themes and media byte-for-byte."""
+    prefixes = ("ppt/slideLayouts/", "ppt/slideMasters/", "ppt/theme/", "ppt/media/")
+    with ZipFile(TEMPLATE) as source, ZipFile(pptx_path) as rendered:
+        protected = {name: source.read(name) for name in source.namelist()
+                     if name.startswith(prefixes) and not name.endswith("/")}
+        items = {name: rendered.read(name) for name in rendered.namelist()}
+    items.update(protected)
+    with ZipFile(pptx_path, "w", ZIP_DEFLATED) as archive:
+        for name, data in items.items():
+            archive.writestr(name, data)
+    with ZipFile(pptx_path) as archive:
+        assert all(archive.read(name) == data for name, data in protected.items())
+    return {"protected_parts": len(protected), "changed_parts": [],
+            "original_theme_heading_font": "Arial Black"}
+
+
+def export_pdf(pptx_path: Path, template_font: Path) -> dict:
+    """Render with the supplied files; compare against the untouched template."""
+    with tempfile.TemporaryDirectory(prefix="categorylearning-poster-lo-") as temporary:
+        work = Path(temporary)
+        fonts = work / "fonts"
+        fonts.mkdir()
+        files = {"Arial:style=Regular": REGULAR_FONT,
+                 "Arial:style=Bold": BOLD_FONT, "Arial Black": template_font}
+        for index, source in enumerate(files.values()):
+            shutil.copy2(source, fonts / f"font{index}.ttf")
+        config = work / "fonts.conf"
+        config.write_text(
+            '<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
+            '<fontconfig><include>/etc/fonts/fonts.conf</include>'
+            f'<dir>{escape(str(fonts))}</dir><cachedir>{escape(str(work / "cache"))}</cachedir>'
+            '</fontconfig>'
+        )
+        env = {**os.environ, "FONTCONFIG_FILE": str(config), "DCONF_PROFILE": "/dev/null",
+               "SAL_USE_VCLPLUGIN": "svp"}
+        matches = {}
+        for pattern, source in files.items():
+            matched = Path(subprocess.check_output(
+                ["fc-match", "-f", "%{file}", pattern], env=env, text=True))
+            if matched.read_bytes() != source.read_bytes():
+                raise ValueError(f"Unexpected font substitution for {pattern}: {matched}")
+            matches[pattern] = {"file_name": source.name,
+                                "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
+        template_copy = work / "original_template.pptx"
+        shutil.copy2(TEMPLATE, template_copy)
+        render_dir = work / "render"
+        render_dir.mkdir()
         subprocess.run(
-            ["libreoffice", f"-env:UserInstallation={Path(profile).as_uri()}",
-             "--headless", "--convert-to", "pdf", "--outdir", str(pptx_path.parent),
-             str(pptx_path)],
-            env={**os.environ, "DCONF_PROFILE": "/dev/null", "SAL_USE_VCLPLUGIN": "svp"},
+            ["libreoffice", f"-env:UserInstallation={(work / 'profile').as_uri()}",
+             "--headless", "--convert-to", "pdf", "--outdir", str(render_dir),
+             str(pptx_path), str(template_copy)], env=env,
             check=True, timeout=120, capture_output=True, text=True,
         )
+        pdf = render_dir / pptx_path.with_suffix(".pdf").name
+        original = fitz.open(render_dir / "original_template.pdf")
+        final = fitz.open(pdf)
+        checks = {}
+        for label, low, high in [("header", 0, 3.1), ("footer", 45.45, 46.8104167)]:
+            rect = fitz.Rect(0, low * 72, final[0].rect.width, high * 72)
+            a = original[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
+            b = final[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
+            checks[label] = a.samples == b.samples
+            if not checks[label]:
+                raise ValueError(f"The rendered template {label} changed")
+        shutil.copy2(pdf, pptx_path.with_suffix(".pdf"))
+        return {"font_files": matches, "template_pixel_match": checks,
+                "renderer": subprocess.check_output(["libreoffice", "--version"],
+                                                     text=True).strip()}
 
 
 def verify_render(poster: Poster, pdf_path: Path) -> dict:
@@ -280,6 +356,7 @@ def verify_render(poster: Poster, pdf_path: Path) -> dict:
     missing = [t["name"] for t in poster.textboxes
                if normalize(t["text"]) not in full_text]
     overflow = []
+    substituted_fonts = []
     # Follow the complete text sequence rather than selecting spans by origin:
     # overflowing final lines can have origins beyond the declared text box.
     spans = [span for block in page.get_text("dict")["blocks"] if "lines" in block
@@ -304,6 +381,9 @@ def verify_render(poster: Poster, pdf_path: Path) -> dict:
                 break
         if not own:
             missing.append(t["name"] + " (span matching)")
+        for span in own:
+            if span["font"] not in {"ArialMT", "Arial-BoldMT", "Arial", "Arial-Bold"}:
+                substituted_fonts.append({"text_box": t["name"], "font": span["font"]})
         if any(s["bbox"][0] < x - 3 or s["bbox"][1] < y - 3 or
                s["bbox"][2] > x + w + 3 or s["bbox"][3] > y + h + 3 for s in own):
             overflow.append(t["name"])
@@ -311,8 +391,8 @@ def verify_render(poster: Poster, pdf_path: Path) -> dict:
                     alpha=False).save(pdf_path.with_name("poster_preview.png"))
     result = {"page_count": len(doc), "page_size_pt": list(page.rect)[2:],
               "text_boxes": len(poster.textboxes), "missing_text": missing,
-              "potential_text_overflow": overflow}
-    if missing or overflow:
+              "potential_text_overflow": overflow, "substituted_body_fonts": substituted_fonts}
+    if missing or overflow or substituted_fonts:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         raise ValueError("Inspect the PDF: missing or overflowing text")
     return result
@@ -324,7 +404,9 @@ def main() -> None:
                         help="New output directory; existing directories are refused")
     parser.add_argument("--second-affiliation", default="Affiliation to be confirmed (Junqi Wang)")
     parser.add_argument("--email")
-    parser.add_argument("--draft-version", type=int, default=1)
+    parser.add_argument("--draft-version", type=int, default=2)
+    parser.add_argument("--template-font", type=Path, default=TEMPLATE_FONT,
+                        help="Arial Black file used by the untouched template")
     parser.add_argument("--pptx-only", action="store_true",
                         help="Skip LibreOffice conversion and PDF validation")
     args = parser.parse_args()
@@ -340,13 +422,16 @@ def main() -> None:
     out.mkdir(parents=True)
     path = out / f"CategoryLearning_poster_draft_v{args.draft_version}.pptx"
     poster.prs.save(path)
-    sources = [TEMPLATE, *FIGURES.values(), SUBJECT_TABLE, Path(__file__).resolve(),
+    template_preservation = preserve_template_parts(path)
+    sources = [TEMPLATE, *FIGURES.values(), SUBJECT_TABLE, REGULAR_FONT, BOLD_FONT,
+               Path(__file__).resolve(),
                ROOT / "CategoryLearning_paper/learning_paper_v1/learning_paper_v1.tex"]
     manifest = {
         "draft_date": "2026-10-30", "draft_version": args.draft_version,
         "page_size_in": [poster.width, poster.height],
         "python": platform.python_version(), "python_pptx": pptx.__version__,
         "pymupdf": fitz.__version__, "requested_font": FONT,
+        "template_preservation": template_preservation,
         "inputs_sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                           for p in sources},
         "second_affiliation": args.second_affiliation, "email": args.email,
@@ -355,7 +440,7 @@ def main() -> None:
         "scientific_scope": "Existing Model 0826 development figures; no new analysis or fitting",
     }
     if not args.pptx_only:
-        export_pdf(path)
+        manifest["pdf_export"] = export_pdf(path, args.template_font.resolve())
         manifest["validation"] = verify_render(poster, path.with_suffix(".pdf"))
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     print(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
