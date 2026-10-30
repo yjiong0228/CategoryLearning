@@ -1,0 +1,51 @@
+protocol: model1024_oral_development_v1
+subjects: [110, 129, 205, 229, 306, 317]
+focus_subjects: [205, 306]
+state_source: results/model_1024/state_interpretation_20261028_v1
+state_analysis: results/model_1024/state_interpretation_20261028_v1/analysis_v1
+previous_oral: results/model_1024/individual_states_20261028_v1/oral_alignment
+previous_preliminary: results/model_1024/oral_alignment_20261030_v2
+raw_directory: data/exp123/raw/Task2
+primary_mode: filtered
+secondary_mode: full
+split:
+  block_trials: 32
+  calibration_block_remainders: [0, 2]
+  assessment_block_remainders: [1, 3]
+  cycle_blocks: 4
+  boundary_buffer_trials: 4
+  purpose: internal_development_comparison
+early_middle:
+  primary_end_fraction: 0.5
+  report_fixed_blocks: 64
+review:
+  focus_rows_per_subject: 128
+  selection: equally_spaced_trial_indices_before_new_scoring
+  manual_status: pending
+decoding:
+  semantic_source: frozen_tokens_and_original_text
+  report_instruction: 本题选择这个选项的理由
+  component_temperature_grid: [0.0, 0.5, 1.0, 2.0, 4.0]
+  background_mixture_grid: [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+  primary_candidate: 1
+  parameter_selection: calibration_reports_only
+  state_weights: unchanged_in_saved_state_branches
+budget:
+  start_unix: 1793376304
+  deadline_unix: 1793419504
+  max_wall_hours: 12
+  report_reserve_seconds: 3600
+  max_cpu_hours: 512
+  max_workers: 128
+  numeric_threads: 1
+  initial_diagnosis_cpu_hours: 2
+  new_capture_cpu_hours: 384
+  new_capture_requires: diagnosed_need_and_registered_amendment
+  new_mechanism_requires: catalogue_gap_and_registered_amendment
+stopping:
+  max_adaptive_amendments: 2
+  stop_new_jobs_before_deadline_seconds: 3600
+  practical_assessment_log_score_gain_nats: 0.02
+  minimum_assessment_reports_per_early_segment: 12
+  successful_subject_target: 2
+  success_target_is_not_guarantee: true

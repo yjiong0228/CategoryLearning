@@ -1,0 +1,46 @@
+protocol: model1024_oral_anchor_v1
+diagnosis: results/model_1024/oral_development_20261031_v1/diagnosis_v2
+readout: results/model_1024/oral_development_20261031_v1/readout_v1
+state_analysis: results/model_1024/state_interpretation_20261028_v1/analysis_v1
+state_source: results/model_1024/state_interpretation_20261028_v1
+alternate_state_source: results/model_1024/state_precision_20261028_v1
+subjects: [205, 306]
+candidate_number: 1
+block_trials: 64
+anchor_target_position: 16
+anchors_per_block: 1
+anchor_pool: complete_numeric_calibration_reports_with_vocabulary_coverage
+emission:
+  outcome: unordered_set_of_distinct_coded_atoms_given_its_size
+  weights: calibration_frequency_times_stimulus_truth_times_semantic_score
+  component_temperatures: [1.0, 2.0, 4.0]
+  primary_temperature: 2.0
+  background_fraction: 0.5
+  stimulus_temperature: expression_background_early_middle_calibration_choice
+conditioning:
+  behavior: all_choices_through_current_64_trial_block_end
+  oral: one_anchor_in_the_current_block
+  previous_block_oral: unused
+  parameter: fixed_P1_from_original_behavior_fit
+  separate_blocks: separate_conditional_reconstructions
+numerical:
+  system_banks: [all, first_half, second_half]
+  minimum_system_ess: 4.0
+  maximum_system_weight: 0.5
+  minimum_anchor_ancestral_ess: 32.0
+  minimum_importance_ess_ratio: 0.25
+  half_log_gain_difference: 0.10
+  interpretation: exploratory_diagnostic_thresholds_not_state_validation
+budget:
+  max_workers: 32
+  numeric_threads: 1
+  cpu_hours: 12
+  deadline_unix: 1793415904
+rank_probe:
+  subjects: [205, 229, 306, 317]
+  additions: all_24_label_permutations_each_of_longest_and_shortest
+  role: representation_ceiling_and_static_choice_diagnostic
+  static_choice_dirichlet_per_category: 1.0
+  static_fit: early_middle_calibration_blocks
+  static_evaluate: early_middle_assessment_blocks
+  cognitive_model_fit: false

@@ -1,5 +1,16 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1024未学会阶段口述开发（2026-10-31）
+
+[十张PNG及完整报告](../../../results/model_1024/oral_development_20261031_v1/report_v2/report.md) ·
+[结果解释](../../../results/model_1024/oral_development_20261031_v1/report_v2/findings.md) ·
+[图表定义](model1024_oral_development.md)。
+六人全程图并列目录表达上限、状态支持、相对表达参照的留出收益和其他规则特有的内容。
+S306另显示全部头—脖子方向比较，并区分长腿与短腿刺激；S205、S306展示少量口述辅助路径重建的结果。
+原始转写和编码保留，当前属于待人工核对的开发比较。最新内部审阅图在
+`../outputs/fig3/model1024_oral_development_20261031_v2/`，入口为
+`python -m CategoryLearning_codes.figures.fig3.model1024_oral_development --help`。
+
 ## Model 1024口述对齐随试次的变化（2026-10-30）
 
 [六人总览](../outputs/fig3/model1024_oral_timecourse_20261030_v1/overview.png) ·

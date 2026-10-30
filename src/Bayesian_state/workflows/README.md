@@ -1,5 +1,30 @@
 # 当前模型工作流
 
+## Model 1024：未学会阶段的口述开发研究
+
+2026-10-31完成六人4288条口述的目录与状态诊断，新增归一化内容读出比较，并在S205、S306的存档路径上
+检验每64题加入一条口述的影响。原始转写尚待人工复核。原认知模型与参数保留；部分口述参与的候选选择和
+局部路径加权属于开发分支，同轮预留口述用于内部比较。方法和预算见
+[执行协议](../docs/model_architecture/model_1024_oral_development.md)。
+
+四个入口各自写入新目录：`analysis/model_1024_oral_diagnosis.py`检查表达上限与旧评分复现，
+`analysis/model_1024_oral_readout.py`比较69项判断的归一化读出，
+`analysis/model_1024_oral_content_diagnosis.py`区分正确规则与其他规则的内容并检查排序候选，
+`analysis/model_1024_oral_anchor.py`通过prepare、run、summarize三个阶段重算存档祖先路径。
+配置分别为`configs/shared/model1024_oral_development.yaml`、`model1024_oral_readout.yaml`及`model1024_oral_anchor.yaml`。
+锚点分析保留抽样执行身份，并对零维持混合精确求和；读出和集合概率分别有不同的评分对象。
+
+```bash
+python -m src.Bayesian_state.workflows.analysis.model_1024_oral_diagnosis --help
+python -m src.Bayesian_state.workflows.analysis.model_1024_oral_readout --help
+python -m src.Bayesian_state.workflows.analysis.model_1024_oral_anchor --help
+python -m src.Bayesian_state.workflows.reports.model_1024_oral_development_report --help
+```
+
+长任务先登记预算并冻结源码；配置内的期限属于本次运行，复用时须明确登记新期限。
+代码和PNG图分别位于共享工作流与`CategoryLearning_codes/figures/fig3/model1024_oral_development.py`。
+本轮结果见`results/model_1024/oral_development_20261031_v1/`。
+
 ## Model 1024：口述选择理由的初步对照
 
 `analysis/model_1024_oral_preliminary.py`读取已保存的17组状态与六人的口述审查表，

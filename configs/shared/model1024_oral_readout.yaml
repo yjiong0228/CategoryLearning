@@ -1,0 +1,26 @@
+protocol: model1024_oral_readout_v1
+diagnosis: results/model_1024/oral_development_20261031_v1/diagnosis_v2
+primary_mode: filtered
+vocabulary: union_of_binary_and_four_category_catalogue_atoms_plus_other
+score: mean_atom_log_probability_per_complete_numeric_report
+background_smoothing_total: 1.0
+stimulus_temperature_grid: [0.0, 1.0, 2.0, 4.0]
+component_temperature_grid: [0.0, 0.5, 1.0, 2.0, 4.0]
+background_mixture_grid: [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+component_scores: [semantic, feature]
+semantic_definition: support_minus_conflict
+feature_definition: fraction_of_atom_features_present_in_local_basis
+calibration: registered_calibration_blocks_only
+selection_windows: [early_middle, all]
+primary_selection_window: early_middle
+assessment: registered_assessment_blocks_only
+subject_candidate_pool: all_previously_selected_candidates
+primary_reference_candidate: 1
+shuffle:
+  seed: 2026103101
+  within: choice_and_64_trial_block
+  repeats: 1
+budget:
+  numeric_threads: 1
+  max_cpu_hours: 2
+  deadline_unix: 1793415904
