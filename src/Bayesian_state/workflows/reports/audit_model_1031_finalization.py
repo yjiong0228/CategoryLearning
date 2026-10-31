@@ -110,6 +110,9 @@ def audit(output: Path, destination: Path) -> None:
     dev = json.loads((output / "development_evaluation_grouped.json").read_text())["rows"]
     evaluation = json.loads((output / "evaluation_evaluation_grouped.json").read_text())["rows"]
     refined = json.loads((output / "structural_precision.json").read_text())["rows"]
+    precision_path = output / "evaluation_precision.json"
+    evaluation_precision = (json.loads(precision_path.read_text()) if precision_path.exists()
+                            else dict(status="not_available", rows=[]))
     records, verification = verify_jobs(output)
     parameters = [group for role in ("development", "evaluation") for group in
                   json.loads((output / f"{role}_parameters.json").read_text())["groups"]]
@@ -122,7 +125,8 @@ def audit(output: Path, destination: Path) -> None:
             comparator_nll=other["test_nll_per_trial"], nll_difference=own["test_nll_per_trial"]-other["test_nll_per_trial"],
             selected_energy=own["energy"], comparator_energy=other["energy"],
             energy_difference=own["energy"] - other["energy"],
-            selected_numerical_status=own["numerical_status"], comparator_numerical_status=other["numerical_status"]))
+            selected_numerical_status=own["numerical_status"], comparator_numerical_status=other["numerical_status"],
+            numerical_status_scope="training parameter check; future precision is reported separately"))
     states = []
     shortlist = json.loads((output / "structural_shortlist.json").read_text())["finalists"]
     for role, rows in (("development", refined), ("evaluation", evaluation)):
@@ -137,6 +141,8 @@ def audit(output: Path, destination: Path) -> None:
     state_recovery = json.loads((output / "recovery_states.json").read_text())["rows"]
     result = dict(selected_variant=chosen, comparator=comparator, names=LABELS,
         development_summary=summarize(dev), refined_summary=summarize(refined), evaluation_summary=summarize(evaluation),
+        evaluation_precision=evaluation_precision,
+        evaluation_precision_summary=summarize(evaluation_precision["rows"]),
         paired_evaluation=paired, mean_evaluation_nll_difference=float(np.mean([r["nll_difference"] for r in paired])),
         mean_evaluation_energy_difference=float(np.mean([r["energy_difference"] for r in paired])),
         parameters=parameter_boundaries(parameters), selected_model_states=states,
@@ -160,11 +166,17 @@ def audit(output: Path, destination: Path) -> None:
     for row in paired:
         lines.append(f"|{row['subject']}|{row['condition']}|{row['selected_nll']:.6f}|{row['comparator_nll']:.6f}|{row['nll_difference']:+.6f}|{row['selected_energy']:.6f}|{row['comparator_energy']:.6f}|")
     lines += ["", f"平均NLL差：{result['mean_evaluation_nll_difference']:+.6f}；平均Energy差：{result['mean_evaluation_energy_difference']:+.6f}。",
+        "", "原评价记录的数值限制标记来自训练选参检查；后段预测的独立精度检查另列。",
         "", f"核验了{verification['records']}项完整任务的数组哈希；由保存概率重算NLL的最大差为{verification['max_recomputed_nll_error']:.3g}。",
         f"任务内记录CPU合计{verification['recorded_worker_cpu_hours']:.3f}小时；进程启动、外部中断余量及总预算以监管器记录为准。", "",
         "模拟恢复分类：" + "、".join(f"{key}={value}" for key, value in result["recovery_classification"].items()) + "。", "",
         "完整逐人参数、复核候选、固定参数的内容状态和两次状态恢复结果见[analysis.json](analysis.json)。",
         "这是数值核验表。模型决定的心理解释、优化与可辨识性边界由最终说明分别陈述。"]
+    lines += ["", f"评价被试固定参数的额外精度检查：{evaluation_precision['status']}。"]
+    if evaluation_precision["rows"]:
+        lines += ["", "|版本|1024粒子后段NLL|保守数值标准误|后段数值受限条目|", "|---|---:|---:|---:|"]
+        for variant, row in result["evaluation_precision_summary"].items():
+            lines.append(f"|{LABELS[variant]}|{row['nll']:.6f}|{row['numerical_se']:.6f}|{row['numerically_limited']} / {row['subjects']}|")
     with (destination / "tables.md").open("x") as stream:
         stream.write("\n".join(lines) + "\n")
 

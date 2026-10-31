@@ -71,6 +71,8 @@ def main() -> None:
     run("model_1031_recovery", "state", "recovery_states.json", ROOT)
     write_new(output / "pipeline_completed.json", dict(completed_unix=time.time(),
         selected_variant=selection["selected_variant"], scope="registered numerical phases; scientific interpretation follows"))
+    if (output / "evaluation_precision_plan.json").exists():
+        run("model_1031_evaluation_precision", "run", "evaluation_precision.json", ROOT)
 
 
 if __name__ == "__main__":

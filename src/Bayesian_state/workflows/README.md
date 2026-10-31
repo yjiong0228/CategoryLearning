@@ -16,6 +16,9 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 再依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
 评价被试的原评分完成后执行`pool-evaluation`，同种子下的不同粒子数运行作为一组处理。
 `model_1031_recovery`依次执行`prepare`、`fit`、`state`，复用同一生成与滤波实现。
+可在评价结果产生前用`model_1031_evaluation_precision --phase register --output STUDY`
+登记额外精度检查。流水线在原定恢复完成后，根据同配置实测耗时和剩余预算决定是否运行
+1024粒子、4次独立重复；模型结构与训练选定参数保持固定，省略原因也保存。
 `model_1031_catalogue_audit --output NEW_JSON`检查目录几何重复和固定标签覆盖。
 开发拟合启动后，可用`model_1031_pipeline --output STUDY --numeric-root FROZEN_CHECKOUT`
 顺序接续以上阶段；各入口使用同一绝对计算截止时间，并保留原结果、失败与阶段日志。
