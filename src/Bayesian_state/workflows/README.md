@@ -17,6 +17,10 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 `model_1031_catalogue_audit --output NEW_JSON`检查目录几何重复和固定标签覆盖。
 开发拟合启动后，可用`model_1031_pipeline --output STUDY --numeric-root FROZEN_CHECKOUT`
 顺序接续以上阶段；各入口使用同一绝对计算截止时间，并保留原结果、失败与阶段日志。
+长时任务可由`runs.supervise_model_1031_finalization`在独立进程中接续，参数为
+`--output STUDY --numeric-root FROZEN_CHECKOUT --prior-cpu-seconds ACCOUNTED_CPU`。
+监管器只启动一个计算阶段，监控其进程树和绝对截止时间；研究目录中的`STOP_REQUESTED`
+文件会请求结束该监管器拥有的计算进程组。重启前的已用CPU及中断余量需显式计入。
 
 ## Model 1031：更换为S128的同预算比较
 
