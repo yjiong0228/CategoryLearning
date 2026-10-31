@@ -78,3 +78,33 @@ def test_binary_cli_compatibility_and_custom_formula_filename(tmp_path):
     assert (out / "steps.csv").exists()
     assert not (out / "model_oral_similarity.csv").exists()
     assert len(pd.read_csv(out / "trial_predictions.csv")) == 4
+
+
+def test_multistart_full_replay_and_selection(tmp_path):
+    from src.Cohen.continuous import ContinuousFeatureMixture
+    from src.Cohen.fit_study import run_study
+
+    data = tmp_path / "input.csv"
+    sample_frame(1, 102).to_csv(data, index=False)
+    cfg = {"data": str(data), "subjects": [102], "mode": "fit", "session_policy": "carry",
+           "output_dir": str(tmp_path / "study"), "model": {"quadrature_order": 2},
+           "fit": {"population_size": 2, "generations": 1, "anneal_steps": 0}}
+    plan = run_study(cfg, [2, 3], [3, 4])
+    assert plan["status"] == "computationally_complete"
+    dest = tmp_path / "study" / "diagnostics"
+    comparisons = pd.read_csv(dest / "seed_comparison.csv")
+    best = plan["diagnostics"]
+    assert best["nll"] == pytest.approx(comparisons.nll_order4.min())
+    assert best["best_seed"] == int(comparisons.iloc[0].seed)
+    params = json.loads((dest / "best_parameters.json").read_text())
+    _, X, y, r, fb, condition = prepare_exp123(sample_frame(1, 102))
+    replay = ContinuousFeatureMixture(**params["initial"]).run_session(X, r, fb, condition, y)
+    predictions = pd.read_csv(dest / "best_trial_predictions.csv")
+    np.testing.assert_allclose(predictions.p_correct, replay["p_correct"])
+    assert best["nll"] == pytest.approx(-replay["log_likelihood"].sum())
+    assert set(predictions.scope) == {"train"}
+    assert (dest / "fit_diagnostics.png").exists()
+    with pytest.raises(FileExistsError):
+        run_study(cfg, [2, 3], [3, 4])
+    with pytest.raises(ValueError, match="complete"):
+        run_study({**cfg, "fit_first_n": 2}, [2, 3], [3, 4])

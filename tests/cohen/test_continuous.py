@@ -137,3 +137,18 @@ def test_discrete_measure_recovers_binary_updates(rule):
     b.learn_from_feedback(x, 1)
     np.testing.assert_allclose(c.alpha, [b.alpha_pos, b.alpha_neg], atol=1e-14)
     assert -c.bias[0] == pytest.approx(b.gamma, abs=1e-14)
+
+
+def test_parallel_search_matches_serial_and_reports_evaluation_counts():
+    X = np.random.default_rng(4).uniform(size=(6, 2))
+    kwargs = dict(model_config={"n_dimensions": 2, "quadrature_order": 3})
+    base = dict(population_size=4, generations=2, anneal_steps=2, seed=15)
+    history = []
+    serial, info = fit_continuous(X, [1, 2, 1, 1, 2, 1], [1, 0, 0, 1, 1, 0], 1,
+        config=FitConfig(**base), **kwargs)
+    parallel, other = fit_continuous(X, [1, 2, 1, 1, 2, 1], [1, 0, 0, 1, 1, 0], 1,
+        config=FitConfig(**base, n_jobs=2), progress_callback=history.append, **kwargs)
+    np.testing.assert_array_equal(serial.alpha, parallel.alpha)
+    assert (serial.beta, serial.eta, info) == (parallel.beta, parallel.eta, other)
+    assert [row["n_evaluations"] for row in history] == [4, 8, 10]
+    assert np.all(np.diff([row["best_nll"] for row in history]) <= 0)

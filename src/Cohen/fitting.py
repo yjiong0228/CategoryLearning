@@ -4,7 +4,10 @@ from __future__ import annotations
 from typing import Optional, Tuple, Dict, Any, Callable, TYPE_CHECKING
 import numpy as np
 from dataclasses import dataclass
+from contextlib import ExitStack
 import math
+import os
+from joblib import Parallel, delayed, parallel_config
 from .binary import FeatureMixtureStrict
 from .features import check_pm1, feature_subsets, normalize, positive_integer, validate_trial_lengths
 
@@ -28,10 +31,12 @@ class FitConfig:
     beta_range: Tuple[float, float] = (0.5, 12.0)
     eta_range: Tuple[float, float] = (1e-3, 0.5)
     seed: Optional[int] = None
+    n_jobs: int = 1
 
     def validate(self) -> None:
         positive_integer(self.population_size, "population_size")
         positive_integer(self.generations, "generations")
+        positive_integer(self.n_jobs, "n_jobs")
         if not isinstance(self.anneal_steps, int) or self.anneal_steps < 0:
             raise ValueError("anneal_steps must be a nonnegative integer")
         if not np.isfinite(self.elite_fraction) or not 0 < self.elite_fraction <= 1:
@@ -143,7 +148,8 @@ def validate_prefix(fit_first_n: Optional[int], n_trials: int) -> None:
 
 
 def minimize_ga_sa(pop: Array, objective: Callable[[Array], float], config: FitConfig,
-                   rng: np.random.Generator, verbose: bool = False) -> Tuple[Array, float]:
+                   rng: np.random.Generator, verbose: bool = False, *,
+                   progress_callback: Callable[[dict], None] | None = None) -> Tuple[Array, float]:
     """Bounded GA followed by annealing; final two coordinates are log beta/eta."""
     config.validate()
     dim = pop.shape[1]
@@ -151,29 +157,44 @@ def minimize_ga_sa(pop: Array, objective: Callable[[Array], float], config: FitC
     best_theta = pop[0].copy()
     best = float("inf")
     mut = config.mutation_scale
+    n_evaluations = 0
 
-    for gen in range(config.generations):
-        scores = np.array([objective(th) for th in pop])
-        if not np.all(np.isfinite(scores)):
-            raise FloatingPointError("nonfinite optimizer objective")
-        order = np.argsort(scores)
-        pop, scores = pop[order], scores[order]
-        if scores[0] < best:
-            best = float(scores[0])
-            best_theta = pop[0].copy()
-        if verbose and (gen == 0 or (gen + 1) % 10 == 0 or gen + 1 == config.generations):
-            print(f"GA {gen+1}/{config.generations}: best NLL={best:.6f}")
-        elites = pop[:elite_n].copy()
-        new = [e.copy() for e in elites]
-        while len(new) < config.population_size:
-            p1, p2 = elites[rng.integers(elite_n)], elites[rng.integers(elite_n)]
-            mix = rng.uniform(0, 1, size=dim)
-            child = mix * p1 + (1 - mix) * p2 + rng.normal(scale=mut, size=dim)
-            child[-2] = np.clip(child[-2], np.log(config.beta_range[0]), np.log(config.beta_range[1]))
-            child[-1] = np.clip(child[-1], np.log(config.eta_range[0]), np.log(config.eta_range[1]))
-            new.append(child)
-        pop = np.asarray(new)
-        mut *= config.mutation_decay
+    available = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    workers = min(config.n_jobs, available, len(pop))
+    with ExitStack() as stack:
+        pool = None
+        if workers > 1:
+            stack.enter_context(parallel_config(backend="loky", inner_max_num_threads=1))
+            pool = stack.enter_context(Parallel(n_jobs=workers))
+        for gen in range(config.generations):
+            if pool is None:
+                scores = np.array([objective(th) for th in pop])
+            else:
+                scores = np.asarray(pool(delayed(objective)(th) for th in pop))
+            n_evaluations += len(pop)
+            if not np.all(np.isfinite(scores)):
+                raise FloatingPointError("nonfinite optimizer objective")
+            order = np.argsort(scores)
+            pop, scores = pop[order], scores[order]
+            if scores[0] < best:
+                best = float(scores[0])
+                best_theta = pop[0].copy()
+            if verbose and (gen == 0 or (gen + 1) % 10 == 0 or gen + 1 == config.generations):
+                print(f"GA {gen+1}/{config.generations}: best NLL={best:.6f}")
+            if progress_callback is not None:
+                progress_callback({"phase": "ga", "step": gen + 1, "best_nll": best,
+                                   "n_evaluations": n_evaluations, "n_jobs": workers})
+            elites = pop[:elite_n].copy()
+            new = [e.copy() for e in elites]
+            while len(new) < config.population_size:
+                p1, p2 = elites[rng.integers(elite_n)], elites[rng.integers(elite_n)]
+                mix = rng.uniform(0, 1, size=dim)
+                child = mix * p1 + (1 - mix) * p2 + rng.normal(scale=mut, size=dim)
+                child[-2] = np.clip(child[-2], np.log(config.beta_range[0]), np.log(config.beta_range[1]))
+                child[-1] = np.clip(child[-1], np.log(config.eta_range[0]), np.log(config.eta_range[1]))
+                new.append(child)
+            pop = np.asarray(new)
+            mut *= config.mutation_decay
 
     theta = best_theta.copy()
     theta_score = best
@@ -184,6 +205,7 @@ def minimize_ga_sa(pop: Array, objective: Callable[[Array], float], config: FitC
         prop[-2] = np.clip(prop[-2], np.log(config.beta_range[0]), np.log(config.beta_range[1]))
         prop[-1] = np.clip(prop[-1], np.log(config.eta_range[0]), np.log(config.eta_range[1]))
         ps = objective(prop)
+        n_evaluations += 1
         if not np.isfinite(ps):
             raise FloatingPointError("nonfinite optimizer objective")
         delta = ps - theta_score
@@ -191,6 +213,9 @@ def minimize_ga_sa(pop: Array, objective: Callable[[Array], float], config: FitC
             theta, theta_score = prop, float(ps)
             if theta_score < best:
                 best, best_theta = theta_score, theta.copy()
+        if progress_callback is not None and ((step + 1) % 20 == 0 or step + 1 == config.anneal_steps):
+            progress_callback({"phase": "anneal", "step": step + 1, "best_nll": best,
+                               "n_evaluations": n_evaluations, "n_jobs": 1})
         if verbose and (step + 1) % 100 == 0:
             print(f"SA {step+1}/{config.anneal_steps}: best NLL={best:.6f}")
 
@@ -199,7 +224,8 @@ def minimize_ga_sa(pop: Array, objective: Callable[[Array], float], config: FitC
 
 def fit_continuous(X: Array, choices: Array, feedback: Array, condition: int, *,
                    model_config: dict | None = None, fit_first_n: int | None = None,
-                   config: FitConfig | None = None, verbose: bool = False
+                   config: FitConfig | None = None, verbose: bool = False,
+                   progress_callback: Callable[[dict], None] | None = None
                    ) -> Tuple[ContinuousFeatureMixture, Dict[str, Any]]:
     """Fit initial category weights, beta and eta using a chronological prefix.
 
@@ -242,7 +268,8 @@ def fit_continuous(X: Array, choices: Array, feedback: Array, condition: int, *,
         out = unpack(theta).run_session(X[:count], choices[:count], feedback[:count], condition)
         return float(-out["log_likelihood"].sum())
 
-    theta, score = minimize_ga_sa(np.asarray(pop), objective, config, rng, verbose)
+    theta, score = minimize_ga_sa(np.asarray(pop), objective, config, rng, verbose,
+                                  progress_callback=progress_callback)
     return unpack(theta), {"negative_log_likelihood": score, "n_fit_trials": count,
                            "optimizer": "genetic_algorithm_plus_simulated_annealing",
                            "update_rule": prototype.update_rule,

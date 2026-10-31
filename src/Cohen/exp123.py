@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import platform
 import subprocess
+import time
 
 import numpy as np
 import pandas as pd
@@ -112,8 +113,16 @@ def run_config(config: dict) -> dict:
                 subdir.mkdir()
                 fit_info = None
                 if mode == "fit":
-                    initial, fit_info = fit_continuous(X, choices, feedback, condition,
-                        model_config={**settings, "seed": seed}, fit_first_n=config.get("fit_first_n"), config=fit_cfg)
+                    started = time.monotonic()
+                    with (subdir / "optimization_progress.jsonl").open("x", encoding="utf-8") as progress_file:
+                        def record_progress(event):
+                            progress_file.write(json.dumps({**event, "elapsed_seconds": time.monotonic() - started}) + "\n")
+                            progress_file.flush()
+
+                        initial, fit_info = fit_continuous(X, choices, feedback, condition,
+                            model_config={**settings, "seed": seed}, fit_first_n=config.get("fit_first_n"),
+                            config=fit_cfg, progress_callback=record_progress)
+                    fit_info["elapsed_seconds"] = time.monotonic() - started
                 else:
                     initial = ContinuousFeatureMixture(**settings, n_categories=category_count(condition), seed=seed)
                 model = initial.copy()

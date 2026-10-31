@@ -1,0 +1,31 @@
+# Complete-record development fit of subject 102; all 448 available trials.
+# Run with src.Cohen.fit_study and explicit independent optimizer seeds.
+data: data/exp123/processed/Task2_processed.csv
+subjects: [102]
+max_trials: null
+session_policy: carry
+mode: fit
+fit_first_n: null
+seed: 20261031
+output_dir: results/Cohen_model/exp123_subject102_fit_20261031_v1
+model:
+  n_dimensions: 4
+  max_order: 4
+  beta: 5.0
+  eta: 0.05
+  quadrature_order: 8
+  update_rule: exact_gradient
+quadrature_check_order: 12
+fit:
+  population_size: 64
+  generations: 100
+  elite_fraction: 0.2
+  mutation_scale: 0.15
+  mutation_decay: 0.98
+  anneal_steps: 400
+  anneal_initial_temp: 1.0
+  anneal_final_temp: 0.001
+  anneal_step_scale: 0.08
+  beta_range: [0.5, 12.0]
+  eta_range: [0.001, 0.5]
+  n_jobs: 32
