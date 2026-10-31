@@ -1,8 +1,11 @@
 """Saved-array verification and prefix-conditioned state pooling."""
 import numpy as np
+import pytest
 
 from src.Bayesian_state.workflows.analysis.model_1031_finalization import digest, save_arrays, write_new
-from src.Bayesian_state.workflows.reports.audit_model_1031_finalization import merge_state_records, verify_jobs
+from src.Bayesian_state.workflows.reports.audit_model_1031_finalization import (
+    generation_summaries, merge_state_records, verify_jobs,
+)
 
 
 def test_state_systems_use_current_prefix_likelihood_after_choice(tmp_path):
@@ -24,3 +27,19 @@ def test_state_systems_use_current_prefix_likelihood_after_choice(tmp_path):
     assert not np.isclose(example, .5)
     checked, audit = verify_jobs(tmp_path)
     assert len(checked) == 2 and audit["max_recomputed_nll_error"] == 0.
+
+
+def test_generation_summary_includes_failed_paths_and_rejects_missing_seeds(tmp_path):
+    save_arrays(tmp_path / "inputs/s1.npz", choices=[1, 2], categories=[1, 2])
+    save_arrays(tmp_path / "jobs/g1.npz", choices=[[1, 2], [1, 1], [2, 1]],
+                representation_group=[[1, 1], [2, 2], [3, 3]])
+    records = [dict(job=dict(kind="generate", id="g1", subject=1, config="same", seeds=[2500, 2501, 2502]))]
+    rows = [dict(subject=1, condition=1, variant="compact", candidate=dict(id="same"))]
+    policy = dict(seed=0, generation=dict(paths_per_candidate=3))
+    result = generation_summaries(tmp_path, records, rows, policy, "development", ["compact"])[0]
+    assert result["paths"] == 3 and len(result["feature_names"]) == 9
+    np.testing.assert_allclose(result["accuracy_quantiles_05_50_95"], [.05, .5, .95])
+    assert result["observed_accuracy"] == 1.
+    records[0]["job"]["seeds"] = [2500, 2501]
+    with pytest.raises(ValueError, match="every registered path"):
+        generation_summaries(tmp_path, records, rows, policy, "development", ["compact"])

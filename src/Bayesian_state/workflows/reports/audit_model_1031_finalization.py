@@ -15,7 +15,7 @@ import numpy as np
 from scipy.special import logsumexp
 
 from ..analysis.model_1031_decision import summarize
-from ..analysis.model_1031_finalization import digest, validate_source, write_new
+from ..analysis.model_1031_finalization import digest, path_features, validate_source, write_new
 
 
 LABELS = dict(full="完整参考", no_inertia="取消额外执行维持", fixed_precision="固定共享精度",
@@ -100,6 +100,59 @@ def parameter_boundaries(groups: list[dict]) -> list[dict]:
     return rows
 
 
+def generation_summaries(output: Path, records: list[dict], evaluation_rows: list[dict],
+                         policy: dict, role: str, variants: list[str]) -> list[dict]:
+    """Retain every registered autonomous path in marginal and joint summaries."""
+    summaries = []
+    base = policy["seed"] + (2500 if role == "development" else 11500)
+    expected_seeds = set(range(base, base + policy["generation"]["paths_per_candidate"]))
+    for row in evaluation_rows:
+        if row["variant"] not in variants:
+            continue
+        source = [r for r in records if r["job"]["kind"] == "generate"
+                  and r["job"]["subject"] == row["subject"] and r["job"]["config"] == row["candidate"]["id"]
+                  and set(r["job"]["seeds"]).issubset(expected_seeds)]
+        seeds = [seed for r in source for seed in r["job"]["seeds"]]
+        if set(seeds) != expected_seeds or len(seeds) != len(expected_seeds):
+            raise ValueError("Autonomous summaries require every registered path exactly once")
+        choices, groups = [], []
+        for record in source:
+            with np.load(output / "jobs" / f"{record['job']['id']}.npz") as arrays:
+                choices.append(arrays["choices"])
+                groups.append(arrays["representation_group"])
+        choices, groups = np.concatenate(choices), np.concatenate(groups)
+        with np.load(output / "inputs" / f"s{row['subject']}.npz") as data:
+            features = path_features(choices, data["categories"], row["condition"])
+            observed = path_features(data["choices"], data["categories"], row["condition"])[0]
+            accuracy = (choices == data["categories"]).mean(axis=1)
+            observed_accuracy = float((data["choices"] == data["categories"]).mean())
+        block_count = (choices.shape[1] + 31) // 32
+        categories = 2 if row["condition"] == 1 else 4
+        names = ([f"accuracy_block_{i + 1}" for i in range(block_count)]
+                 + ["maximum_block_improvement", "improvement_time_fraction", "post_improvement_level", "block_sd"]
+                 + [f"response_{a}_given_category_{c}" for c in range(1, categories + 1) for a in range(1, categories + 1)])
+        if row["condition"] == 3:
+            names += ["family_accuracy", "feedback_score"]
+        if features.shape != (len(expected_seeds), len(names)) or not np.isfinite(features).all():
+            raise ValueError("Autonomous feature dimensions or values are invalid")
+        intervals = np.quantile(features, [.05, .5, .95], axis=0)
+        center = features.mean(axis=0)
+        radius = np.linalg.norm(features - center, axis=1) / np.sqrt(features.shape[1])
+        observed_radius = float(np.linalg.norm(observed - center) / np.sqrt(features.shape[1]))
+        cutoff = float(np.quantile(radius, .9))
+        group_occupancy = np.stack([(groups == g).mean(axis=1) for g in range(4)], axis=1)
+        summaries.append(dict(subject=row["subject"], condition=row["condition"], variant=row["variant"], role=role,
+            paths=len(seeds), source_jobs=[r["job"]["id"] for r in source],
+            feature_names=names, observed_features=observed.tolist(), feature_quantiles_05_50_95=intervals.tolist(),
+            marginal_feature_coverage=float(np.mean((observed >= intervals[0]) & (observed <= intervals[2]))),
+            joint_feature_region=dict(center=center.tolist(), radius90=cutoff, observed_radius=observed_radius,
+                observed_inside=observed_radius <= cutoff, simulated_mass=float(np.mean(radius <= cutoff))),
+            observed_accuracy=observed_accuracy, accuracy_quantiles_05_50_95=np.quantile(accuracy, [.05, .5, .95]).tolist(),
+            representation_occupancy_quantiles_05_50_95=np.quantile(group_occupancy, [.05, .5, .95], axis=0).tolist(),
+            scope="Fixed-parameter whole recorded schedule, including training; descriptive empirical feature-region coverage, not a confidence region for parameters"))
+    return summaries
+
+
 def audit(output: Path, destination: Path) -> None:
     if destination.exists():
         raise FileExistsError("Choose a new audit destination")
@@ -139,6 +192,8 @@ def audit(output: Path, destination: Path) -> None:
                                numerical_status=row["numerical_status"]))
     recovery = json.loads((output / "recovery_fits.json").read_text())["rows"]
     state_recovery = json.loads((output / "recovery_states.json").read_text())["rows"]
+    generation = [row for role, rows in (("development", dev), ("evaluation", evaluation))
+                  for row in generation_summaries(output, records, rows, register["policy"], role, [chosen, comparator])]
     result = dict(selected_variant=chosen, comparator=comparator, names=LABELS,
         development_summary=summarize(dev), refined_summary=summarize(refined), evaluation_summary=summarize(evaluation),
         evaluation_precision=evaluation_precision,
@@ -146,6 +201,7 @@ def audit(output: Path, destination: Path) -> None:
         paired_evaluation=paired, mean_evaluation_nll_difference=float(np.mean([r["nll_difference"] for r in paired])),
         mean_evaluation_energy_difference=float(np.mean([r["energy_difference"] for r in paired])),
         parameters=parameter_boundaries(parameters), selected_model_states=states,
+        autonomous_distributions=generation,
         recovery_classification=dict(Counter(r["classification"] for r in recovery)),
         recovery_rows=recovery, state_recovery=state_recovery, verification=verification,
         frozen_model_source_head=register["source_git_head"], audit_source_sha256=digest(Path(__file__)),
