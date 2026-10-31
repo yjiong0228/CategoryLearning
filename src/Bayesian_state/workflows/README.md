@@ -24,6 +24,9 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 该检查只读取物理刺激与环境类别，不读取被试选择。
 开发拟合启动后，可用`model_1031_pipeline --output STUDY --numeric-root FROZEN_CHECKOUT`
 顺序接续以上阶段；各入口使用同一绝对计算截止时间，并保留原结果、失败与阶段日志。
+后续计算由`model_1031_scheduled --module MODULE`按实测成本优先提交长任务。
+冻结检出目录保留为源码参照；实际数值文件在协调检出中逐项核对登记哈希后运行。
+队列顺序保存于`submission_orders/`，任务内容、种子与候选选择规则保持登记值。
 长时任务可由`runs.supervise_model_1031_finalization`在独立进程中接续，参数为
 `--output STUDY --numeric-root FROZEN_CHECKOUT --prior-cpu-seconds ACCOUNTED_CPU`。
 监管器只启动一个计算阶段，监控其进程树和绝对截止时间；研究目录中的`STOP_REQUESTED`

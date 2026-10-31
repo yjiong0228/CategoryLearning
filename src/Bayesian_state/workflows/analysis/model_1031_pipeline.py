@@ -27,8 +27,9 @@ def main() -> None:
     deadline = datetime.fromisoformat(registration["policy"]["started_at_utc"]).timestamp() + registration["policy"]["budget"]["computation_stop_hours"] * 3600
     plan = output / "pipeline_plan.json"
     if not plan.exists():
-        write_new(plan, dict(coordinator_sha256=digest(Path(__file__)), numerical_root=str(numeric_root),
+        write_new(plan, dict(coordinator_sha256=digest(Path(__file__)), frozen_numerical_reference_root=str(numeric_root),
             coordinating_root=str(ROOT), deadline_unix=deadline,
+            submission_policy="Long jobs first; registered numerical files reverified in the coordinating checkout before execution",
             order=["development evaluation", "two-structure precision check", "structure freeze",
                    "evaluation subject fits and prediction", "simulation model/parameter recovery", "known-parameter state recovery"]))
     while not (output / "development_parameters.json").exists():
@@ -42,8 +43,14 @@ def main() -> None:
             return
         if time.time() >= deadline:
             raise TimeoutError("Compute deadline reached between phases")
-        command = [sys.executable, "-u", "-m", f"src.Bayesian_state.workflows.analysis.{module}",
-                   "--phase", phase, "--output", str(output), *extras]
+        scheduled = phase in ("evaluate-development", "fit-evaluation", "evaluate-evaluation", "refine", "fit", "run")
+        if scheduled:
+            command = [sys.executable, "-u", "-m", "src.Bayesian_state.workflows.analysis.model_1031_scheduled",
+                       "--module", module, "--phase", phase, "--output", str(output), *extras]
+            root = ROOT
+        else:
+            command = [sys.executable, "-u", "-m", f"src.Bayesian_state.workflows.analysis.{module}",
+                       "--phase", phase, "--output", str(output), *extras]
         stamp = time.time_ns()
         log = output / "pipeline_logs" / f"{stamp}_{phase}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
