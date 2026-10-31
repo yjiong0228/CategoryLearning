@@ -123,6 +123,41 @@ def nested_search_diagnostics(groups: list[dict], tolerance: float) -> list[dict
     return rows
 
 
+def parameter_recovery_diagnostics(recovery: list[dict], policy: dict) -> list[dict]:
+    """Report errors at generating points, excluding structurally inactive coordinates."""
+    rows = []
+    for result in recovery:
+        case, variant_name = result["case"], result["effective_source"]
+        variant = policy["variants"][variant_name]
+        truth = case["source"]["parameters"]
+        fitted = result["fitted"][variant_name][0]["candidate"]["parameters"]
+        inactive = {}
+        if variant["execution"] == "zero":
+            inactive["execution_inertia"] = "fixed by model structure"
+        if variant["precision"] == "fixed":
+            inactive["learning_rate"] = "fixed by model structure"
+        if variant["search"] == "constant":
+            inactive["error_gain"] = "fixed by model structure"
+            inactive["failure_decay"] = "constant search"
+        if variant["retention"] == "one":
+            inactive["retention"] = "fixed by model structure"
+        if truth["capacity"] == 1:
+            inactive["execution_inertia"] = "K=1 at generating point"
+            if case["subject"]["condition"] != 3:
+                inactive["retention"] = "K=1 in a binary-feedback condition at generating point"
+        if truth["error_gain"] == 0:
+            inactive["failure_decay"] = "error_gain=0 at generating point"
+        coordinates = {key: dict(generating=value, recovered=fitted[key],
+            signed_error=fitted[key] - value, absolute_error=abs(fitted[key] - value),
+            inactive_reason=inactive.get(key)) for key, value in truth.items()}
+        rows.append(dict(case=case["id"], subject=case["subject"]["subject"],
+            condition=case["subject"]["condition"], effective_source=variant_name,
+            numerical_and_search_classification=result["classification"], coordinates=coordinates,
+            active_coordinates=[key for key in coordinates if key not in inactive],
+            scope="Descriptive finite-bank point recovery under the generating structure; fixed or inactive coordinates are excluded from recovery interpretation"))
+    return rows
+
+
 def generation_summaries(output: Path, records: list[dict], evaluation_rows: list[dict],
                          policy: dict, role: str, variants: list[str]) -> list[dict]:
     """Retain every registered autonomous path in marginal and joint summaries."""
@@ -218,6 +253,7 @@ def audit(output: Path, destination: Path) -> None:
     generation = [row for role, rows in (("development", dev), ("evaluation", evaluation))
                   for row in generation_summaries(output, records, rows, register["policy"], role, [chosen, comparator])]
     result = dict(selected_variant=chosen, comparator=comparator, names=LABELS,
+        uniform_choice_reference={str(c): float(np.log(2 if c == 1 else 4)) for c in (1, 2, 3)},
         development_summary=summarize(dev), refined_summary=summarize(refined), evaluation_summary=summarize(evaluation),
         evaluation_precision=evaluation_precision,
         evaluation_precision_summary=summarize(evaluation_precision["rows"]),
@@ -226,6 +262,7 @@ def audit(output: Path, destination: Path) -> None:
         parameters=parameter_boundaries(parameters), selected_model_states=states,
         nested_search_diagnostics=nested_search_diagnostics(parameters, register["policy"]["search"]["numerical_tolerance_nll_per_trial"]),
         autonomous_distributions=generation,
+        parameter_recovery=parameter_recovery_diagnostics(recovery, register["policy"]),
         recovery_classification=dict(Counter(r["classification"] for r in recovery)),
         recovery_rows=recovery, state_recovery=state_recovery, verification=verification,
         frozen_model_source_head=register["source_git_head"], audit_source_sha256=digest(Path(__file__)),
@@ -235,6 +272,7 @@ def audit(output: Path, destination: Path) -> None:
     write_new(destination / "numeric_audit.json", verification)
     lines = ["# Model 1031 数值核验与版本比较", "", f"所选工作版本：**{LABELS[chosen]}**；比较版本：{LABELS[comparator]}。", "",
         "开发后段参与结构选择；评价被试后段在结构冻结后使用。以下NLL均按被试等权汇总，每题值越低越好。", "",
+        "评分尺度参照：逐题均匀随机选择的每题NLL为log(C)，条件1为0.693147，条件2、3为1.386294。", "",
         "|版本|名义参数数|开发后段NLL|自主Energy|训练数值受限条目|", "|---|---:|---:|---:|---:|"]
     for variant, row in result["development_summary"].items():
         lines.append(f"|{LABELS[variant]}|{register['policy']['variants'][variant]['parameters']}|{row['nll']:.6f}|{row['energy']:.6f}|{row['numerically_limited']} / {row['subjects']}|")
@@ -250,6 +288,7 @@ def audit(output: Path, destination: Path) -> None:
         "", f"核验了{verification['records']}项完整任务的数组哈希；由保存概率重算NLL的最大差为{verification['max_recomputed_nll_error']:.3g}。",
         f"任务内记录CPU合计{verification['recorded_worker_cpu_hours']:.3f}小时；进程启动、外部中断余量及总预算以监管器记录为准。", "",
         "模拟恢复分类：" + "、".join(f"{key}={value}" for key, value in result["recovery_classification"].items()) + "。", "",
+        "参数点恢复逐坐标保存生成值、恢复值和误差，同时标注结构固定项及生成点上的无效坐标；该检查仍受有限搜索与数值精度限制。", "",
         "完整逐人参数、复核候选、固定参数的内容状态和两次状态恢复结果见[analysis.json](analysis.json)。",
         "这是数值核验表。模型决定的心理解释、优化与可辨识性边界由最终说明分别陈述。"]
     lines += ["", f"评价被试固定参数的额外精度检查：{evaluation_precision['status']}。"]

@@ -2,12 +2,38 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import yaml
 
+from src.Bayesian_state.model import ModelContext, StateModel
 from src.Bayesian_state.workflows.analysis.model_1031_finalization import (
-    DEFAULT, engine_config, identity, save_arrays, write_new,
+    DEFAULT, engine_config, identity, save_arrays, task_feedback, write_new,
 )
-from src.Bayesian_state.workflows.analysis.model_1031_recovery import _custom_work, weighted_intervals
+from src.Bayesian_state.workflows.analysis.model_1031_recovery import (
+    _custom_work, behavior_signature, weighted_intervals,
+)
+
+
+@pytest.mark.parametrize("condition", [1, 2, 3])
+def test_single_content_equivalence_matches_generated_behavior(condition):
+    variants = yaml.safe_load(Path("configs/shared/model1031_finalization_20261101_v2.yaml").read_text())["variants"]
+    parameters = dict(DEFAULT, capacity=1, learning_rate=0., execution_inertia=3., baseline_probability=.5)
+    selected = "bayes_retention" if condition < 3 else "constant_retention"
+    assert behavior_signature(parameters, condition, variants["full"]) == behavior_signature(parameters, condition, variants[selected])
+    if condition == 3:
+        assert behavior_signature(parameters, condition, variants["full"]) != behavior_signature(parameters, condition, variants["bayes_retention"])
+    rng = np.random.default_rng(123)
+    stimulus = rng.uniform(.1, .9, (32, 4))
+    categories = rng.integers(1, 3 if condition == 1 else 5, 32)
+    generated = []
+    for variant in ("full", selected):
+        cfg = engine_config(condition, parameters, variants[variant], sample=True)
+        cfg["modules"]["perception_mod"]["kwargs"] = dict(mean=[0.] * 4, std=[0.] * 4)
+        model = StateModel(cfg, context=ModelContext(condition=condition, subject_id=0))
+        generated.append(model.generate_step_by_step(stimulus,
+            lambda t, a: float(task_feedback(a, categories[t], condition)), choice_seed=91))
+    np.testing.assert_allclose(generated[0].observed_probabilities, generated[1].observed_probabilities, atol=1e-13)
+    np.testing.assert_array_equal(generated[0].choices, generated[1].choices)
 
 
 def test_weighted_intervals_respect_particle_probability_not_particle_count():

@@ -21,7 +21,7 @@ from scipy.stats import qmc
 from ...inference.backends.particle_filter import run_state_model_particle_filter
 from ...model import ModelContext, StateModel
 from .model_1031_finalization import (
-    Scheduler, candidate, digest, fit_jobs, identity, rank,
+    Scheduler, candidate, digest, engine_config, fit_jobs, identity, project, rank,
     save_arrays, task_feedback, validate_source, write_new,
 )
 from .model_1031_runtime_budget import read_job_record
@@ -176,6 +176,22 @@ def recovery_bank(policy: dict) -> list[dict]:
     return [{k: values[k][min(int(v * len(values[k])), len(values[k]) - 1)] for k, v in zip(keys, point)} for point in points[:count]]
 
 
+def behavior_signature(parameters: dict, condition: int, variant: dict) -> str:
+    """Canonicalize exact inactive controls while retaining the task's feedback semantics."""
+    parameters = project(parameters, variant)
+    if parameters["capacity"] == 1:
+        parameters["execution_inertia"] = 0.
+        if condition != 3:
+            parameters["retention"] = 1.
+    cfg = engine_config(condition, parameters, variant, sample=True)
+    if parameters["capacity"] == 1:
+        # Only one content can be retrieved. Its belief remains one under
+        # either content-retention policy; conditional pairing still learns.
+        cfg["modules"]["hypo_transitions_mod"]["kwargs"]["retrieval_mode"] = "global"
+        cfg["modules"]["memory_mod"]["kwargs"]["retention_mode"] = "constant"
+    return identity(cfg)
+
+
 def prepare_cases(output: Path) -> None:
     register = validate_source(output)
     policy = register["policy"]
@@ -262,8 +278,10 @@ def fit_cases(output: Path) -> None:
             oracle = rank(case_output, case["subject"], [case["source"]], settings["confirmation_particles"],
                           settings["confirmation_repeats"], policy["seed"] + 29000)[0]
             winner = min(fitted, key=lambda v: fitted[v][0]["nll"])
-            equivalent = [v for v in plan["variants"] if candidate(case_output, case["subject"]["condition"],
-                case["source"]["parameters"], v, policy)["id"] == case["source"]["id"]]
+            source_signature = behavior_signature(case["source"]["parameters"], case["subject"]["condition"],
+                                                  policy["variants"][case["source_variant"]])
+            equivalent = [v for v in plan["variants"] if behavior_signature(case["source"]["parameters"],
+                case["subject"]["condition"], policy["variants"][v]) == source_signature]
             effective_source = min(equivalent, key=lambda v: policy["variants"][v]["parameters"])
             actual_fit = fitted[effective_source][0]
             n = case["subject"]["trials"]
@@ -281,6 +299,7 @@ def fit_cases(output: Path) -> None:
             working_choice = min(compatible, key=lambda v: policy["variants"][v]["parameters"])
             results.append(dict(case=case, fitted=fitted, generating_point=oracle, lower_nll_model=winner,
                 effective_source=effective_source, equivalent_source_configurations=equivalent,
+                equivalence_scope="configuration equality after exact K=1, zero-search-gain and unit-retention canonicalization",
                 selected_by_parsimony_rule=working_choice,
                 classification=status, generating_point_gap_per_trial=float(gap), margin_per_trial=float(margin),
                 interpretation="finite-bank diagnostic; candidate counts differ after projection"))

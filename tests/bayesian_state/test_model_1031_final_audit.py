@@ -4,7 +4,8 @@ import pytest
 
 from src.Bayesian_state.workflows.analysis.model_1031_finalization import digest, save_arrays, write_new
 from src.Bayesian_state.workflows.reports.audit_model_1031_finalization import (
-    generation_summaries, merge_state_records, nested_search_diagnostics, verify_jobs,
+    generation_summaries, merge_state_records, nested_search_diagnostics,
+    parameter_recovery_diagnostics, verify_jobs,
 )
 
 
@@ -56,3 +57,18 @@ def test_nested_search_warning_requires_comparable_precision_and_clear_loss():
     groups[1]["particles"] = 256
     groups[0]["candidates"][0]["mc_se"] = 3.
     assert nested_search_diagnostics(groups, .01)[0]["status"] == "no_detected_dominance_failure"
+
+
+def test_recovery_does_not_interpret_inactive_generating_coordinates():
+    truth = dict(capacity=1, execution_inertia=3., error_gain=0., failure_decay=.9, retention=.8,
+                 learning_rate=.1, beta_init=3.)
+    fitted = dict(truth, execution_inertia=0., failure_decay=0., retention=.4, beta_init=6.)
+    policy = dict(variants=dict(full=dict(execution="free", precision="free", search="accumulate", retention="outcome")))
+    recovery = [dict(case=dict(id="one", source=dict(parameters=truth), subject=dict(subject=1, condition=1)),
+        effective_source="full", classification="search_limited",
+        fitted=dict(full=[dict(candidate=dict(parameters=fitted))]))]
+    row = parameter_recovery_diagnostics(recovery, policy)[0]
+    assert set(row["active_coordinates"]) == {"capacity", "error_gain", "learning_rate", "beta_init"}
+    assert row["coordinates"]["beta_init"]["absolute_error"] == 3.
+    recovery[0]["case"]["subject"]["condition"] = 3
+    assert "retention" in parameter_recovery_diagnostics(recovery, policy)[0]["active_coordinates"]
