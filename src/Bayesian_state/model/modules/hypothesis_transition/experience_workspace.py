@@ -16,6 +16,8 @@ from ....hypothesis_space.observation_model.experience_workspace import Experien
 from ..base_module import BaseModule, ModulePhase, ModuleRole
 from ..beta import BetaModule
 from ..memory import DualMemoryModule
+from ..pairing_memory import HierarchicalPairingMemoryModule
+from ....hypothesis_space.observation_model.pairing import pairing_feedback_kernel
 from .belief_error_entry import newcomer_share
 from .belief_outcome_retention import effective_retention
 
@@ -27,6 +29,8 @@ class ExperienceWorkspaceTransition(BaseModule):
     role = ModuleRole.HYPOTHESIS_TRANSITION
     continuous_choice_enabled = True  # Shared readout receives one-hot execution weights.
     persistent_execution_enabled = False
+    feedback_interpretation = "full_success"
+    prior_assignment_method = "experience_inheritance"
     _STATE_FIELDS = (
         "trial_index", "next_uid", "pending_observation", "pending_beta", "feedback_committed",
         "accumulated_failure", "current_event_probability", "executed_hypothesis", "executed_uid",
@@ -34,13 +38,23 @@ class ExperienceWorkspaceTransition(BaseModule):
         "current_execution_switch_event", "current_execution_switch_probability")
 
     def __init__(self, engine, *, baseline_probability=.15, error_gain=1., failure_decay=.8,
-                 global_search=.2, execution_inertia=1., module_seed=1031):
+                 global_search=.2, execution_inertia=1., module_seed=1031, revision="v1",
+                 marginalize_execution=False, retrieval_mode="global"):
         super().__init__(engine)
         self.partition = engine.partition
         if (not isinstance(self.partition, ExperienceWorkspacePartition)
-                or engine.context.condition not in (1, 2)
+                or engine.context.condition not in (1, 2, 3)
                 or self.partition.n_cats != (2 if engine.context.condition == 1 else 4)):
-            raise ValueError("Model 1031 v1 supports condition 1 (2 labels) and condition 2 (4 labels)")
+            raise ValueError("Experience workspace condition/category mismatch")
+        if (revision not in ("v1", "v2") or not isinstance(marginalize_execution, bool)
+                or retrieval_mode not in ("global", "similarity")
+                or (marginalize_execution and execution_inertia != 0)
+                or (revision == "v1" and (engine.context.condition == 3 or marginalize_execution
+                                          or retrieval_mode != "global"))
+                or self.partition.conditional_pairing != (engine.context.condition == 3)):
+            raise ValueError("Invalid experience revision, conditional labels or execution policy")
+        self.revision, self.marginalize_execution = revision, marginalize_execution
+        self.retrieval_mode = retrieval_mode
         values = dict(baseline_probability=baseline_probability, error_gain=error_gain,
                       failure_decay=failure_decay, global_search=global_search, execution_inertia=execution_inertia)
         if (any(not np.isfinite(v) or isinstance(v, bool) for v in values.values())
@@ -50,9 +64,13 @@ class ExperienceWorkspaceTransition(BaseModule):
         for key, value in values.items():
             setattr(self, key, float(value))
         self.capacity = self.partition.length
-        self.configuration_signature = sha256(json.dumps(dict(values, capacity=self.capacity,
+        signature = dict(values, capacity=self.capacity,
             n_cats=self.partition.n_cats, width=self.partition.similarity_width,
-            version="1031-experience-v1"), sort_keys=True).encode()).hexdigest()
+            version="1031-experience-v1")
+        if revision == "v2":
+            signature.update(version="1031-unified-v2", conditional_pairing=self.partition.conditional_pairing,
+                             marginalize_execution=marginalize_execution, retrieval_mode=retrieval_mode)
+        self.configuration_signature = sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
         self.reseed_future(module_seed)
         self.partition.nodes[0] = dict(kind="uncommitted", uid=0, parent_uid=-1, born_trial=0)
         self.engine.prior = np.zeros(self.capacity)
@@ -85,8 +103,10 @@ class ExperienceWorkspaceTransition(BaseModule):
 
     def record_outcome(self, observation) -> None:
         x, choice, feedback = observation
-        if feedback not in (0., 1.) or choice != int(choice) or not 1 <= choice <= self.partition.n_cats:
-            raise ValueError("Model 1031 requires a valid choice and binary feedback")
+        outcomes = (0., .5, 1.) if self.partition.conditional_pairing else (0., 1.)
+        if feedback not in outcomes or choice != int(choice) or not 1 <= choice <= self.partition.n_cats:
+            kind = "ternary" if self.partition.conditional_pairing else "binary"
+            raise ValueError(f"Model 1031 requires a valid choice and {kind} feedback")
         self.partition.stimuli([x])
         self.pending_observation = (np.asarray(x).copy(), int(choice), float(feedback))
         self.pending_beta = self.engine.beta.copy()
@@ -100,11 +120,16 @@ class ExperienceWorkspaceTransition(BaseModule):
 
     def _new_example(self) -> dict:
         x, choice, feedback = self.pending_observation
-        allowed = np.arange(self.partition.n_cats) == choice - 1
-        if feedback == 0:
-            allowed = ~allowed
+        if self.partition.conditional_pairing:
+            allowed = pairing_feedback_kernel(np.eye(4), choice, feedback).T
+            labels = allowed / allowed.sum(axis=1, keepdims=True)
+        else:
+            allowed = np.arange(self.partition.n_cats) == choice - 1
+            if feedback == 0:
+                allowed = ~allowed
+            labels = allowed / allowed.sum()
         return dict(kind="template", anchor=x.tolist(), mask=[True] * 4,
-                    category_belief=(allowed / allowed.sum()).tolist(), parent_uid=-1,
+                    category_belief=labels.tolist(), parent_uid=-1,
                     source_trial=self.trial_index - 1)
 
     def _select_parent(self, parents: list[int], posterior: np.ndarray) -> int:
@@ -153,6 +178,11 @@ class ExperienceWorkspaceTransition(BaseModule):
 
     def _admit(self, candidate: dict, posterior: np.ndarray) -> tuple[np.ndarray, dict]:
         active = self.active
+        memory = self.engine.get_module(ModuleRole.MEMORY, required=True)
+        if self.partition.conditional_pairing:
+            parent_slot = next((i for i in active if self.partition.nodes[i]["uid"] == candidate["parent_uid"]), None)
+            inherited_pairing = (memory.pairing_marginal() if parent_slot is None
+                                 else memory.conditional_pairing()[parent_slot].copy())
         initial = self.partition.nodes[0]["kind"] == "uncommitted"
         full = len(active) == self.capacity
         if initial:
@@ -168,12 +198,19 @@ class ExperienceWorkspaceTransition(BaseModule):
         self.next_uid += 1
         self.partition.nodes[slot] = candidate
         prior = posterior.copy()
+        outcome = (float(self.pending_observation[2] == 1.) if self.partition.conditional_pairing
+                   else self.pending_observation[2])
         mass = 1. if initial else (newcomer_share(float(posterior[slot]), self.capacity,
-                                                self.pending_observation[2]) if full else 1 / (len(active) + 1))
+                                                outcome) if full else 1 / (len(active) + 1))
         prior[slot] = 0.
         if prior.sum() > 0:
             prior *= (1 - mass) / prior.sum()
         prior[slot] = mass
+        if self.partition.conditional_pairing:
+            conditional = memory.conditional_pairing()
+            conditional[slot] = inherited_pairing
+            memory.joint = prior[:, None] * conditional
+            memory.sync_partition()
         beta = self.engine.get_module(ModuleRole.BETA, required=True)
         beta.beta[slot] = np.clip(inherited_beta, beta.beta_min, beta.beta_max)
         self.engine.beta = beta.beta.copy()
@@ -215,16 +252,27 @@ class ExperienceWorkspaceTransition(BaseModule):
         logits = np.full(self.capacity, -np.inf)
         positive = prior > 0
         logits[positive] = np.log(prior[positive])
+        if self.retrieval_mode == "similarity":
+            x = np.asarray(self.engine.observation[0])
+            for slot in self.active:
+                node = self.partition.nodes[slot]
+                if node["kind"] == "template":
+                    mask = np.asarray(node["mask"], bool)
+                    delta = (x - np.asarray(node["anchor"]))[mask]
+                    logits[slot] -= float(delta @ delta) / (2 * self.partition.similarity_width ** 2)
         if previous is not None:
             logits[previous] += self.execution_inertia
         distribution = np.exp(logits - logits.max())
         distribution /= distribution.sum()
-        selected = int(self.execution_rng.choice(self.capacity, p=distribution))
+        selected = (int(np.argmax(distribution)) if self.marginalize_execution
+                    else int(self.execution_rng.choice(self.capacity, p=distribution)))
         self.executed_hypothesis = selected
         self.executed_uid = self.partition.nodes[selected]["uid"]
         self.execution_selection_probabilities = distribution
         self.execution_probabilities = np.zeros(self.capacity)
         self.execution_probabilities[selected] = 1.
+        if self.marginalize_execution:
+            self.execution_probabilities = distribution.copy()
         self.current_execution_switch_event = self.executed_uid != previous_uid
         self.current_execution_switch_probability = 1. if previous is None else float(1 - distribution[previous])
         self.execution_dwell_trials = 1 if self.current_execution_switch_event else self.execution_dwell_trials + 1
@@ -240,6 +288,8 @@ class ExperienceWorkspaceTransition(BaseModule):
             predictive_m=event["search_probability"], predictive_g=self.global_search,
             failure_pressure=self.accumulated_failure, active_count=len(self.active),
             representation_kinds=[None if n is None else n["kind"] for n in self.partition.nodes])
+        if self.revision == "v2":
+            event["execution_is_marginalized"] = self.marginalize_execution
         self.transition_log.append(event)
         self.trial_index += 1
 
@@ -269,18 +319,54 @@ class ExperienceWorkspaceTransition(BaseModule):
 class ExperienceWorkspaceMemory(DualMemoryModule):
     """Reuse Model 1024's outcome-dependent normalized power update."""
 
-    def __init__(self, engine, **kwargs):
+    def __init__(self, engine, *, retention_mode="outcome", **kwargs):
         super().__init__(engine, **kwargs)
+        if retention_mode not in ("outcome", "constant"):
+            raise ValueError("Unknown experience retention mode")
+        self.retention_mode = retention_mode
         if self.forgetting_mode != "exact_power":
             raise ValueError("Experience workspace requires exact_power belief memory")
 
     def process(self, **kwargs):
         original = self.gamma
-        self.gamma = effective_retention(original, self.engine.observation[2])
+        self.gamma = (effective_retention(original, self.engine.observation[2])
+                      if self.retention_mode == "outcome" else original)
         try:
             return super().process(**kwargs)
         finally:
             self.gamma = original
+
+
+class ExperienceWorkspacePairingMemory(HierarchicalPairingMemoryModule):
+    """Joint content/pairing update with conditional labels in each template."""
+
+    def __init__(self, engine, *, retention_mode="outcome", **kwargs):
+        super().__init__(engine, **kwargs)
+        if (not engine.partition.conditional_pairing or self.forgetting_mode != "factorized"
+                or retention_mode not in ("outcome", "constant")):
+            raise ValueError("Experience Cond3 requires factorized conditional memory")
+        self.retention_mode = retention_mode
+
+    def sync_partition(self) -> None:
+        self.engine.partition.pairing_weights = self.conditional_pairing()
+
+    def initialize_prior(self) -> None:
+        super().initialize_prior()
+        self.sync_partition()
+
+    def prepare_feedback(self, kernel):
+        outcome = float(self.engine.observation[2] == 1.)
+        retention = (effective_retention(self.gamma, outcome) if self.retention_mode == "outcome"
+                     else self.gamma)
+        return super().prepare_feedback(kernel, content_retention=retention)
+
+    def process(self, **kwargs):
+        super().process(**kwargs)
+        self.sync_partition()
+
+    def load_state_dict(self, state):
+        super().load_state_dict(state)
+        self.sync_partition()
 
 
 class ExperienceWorkspaceBeta(BetaModule):
@@ -293,6 +379,8 @@ class ExperienceWorkspaceBeta(BetaModule):
 
     def _update_beta_feedback_gradient(self, stimulus, choice, feedback, indices):
         original = self.learning_rate
+        if original == 0.:
+            return
         self.learning_rate = 10 * original
         try:
             return super()._update_beta_feedback_gradient(stimulus, choice, feedback, indices)

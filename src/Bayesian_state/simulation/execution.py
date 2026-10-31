@@ -245,6 +245,12 @@ def _build_single_mode_prediction_payload(
             if "representations_pre" not in step_item:
                 raise ValueError("Adaptive workspace replay lacks pre-choice representation contents")
             partition.restore_representations(step_item["representations_pre"])
+            if getattr(partition, "conditional_pairing", False):
+                conditional = np.asarray(step_item.get("conditional_pairing_pre"), dtype=float)
+                if (conditional.shape != (partition.length, 3) or not np.isfinite(conditional).all()
+                        or np.any(conditional < 0) or not np.allclose(conditional.sum(axis=1), 1.)):
+                    raise ValueError("Conditional-template replay lacks valid pre-choice pairing contents")
+                partition.pairing_weights = conditional.copy()
         if "perceived_stimulus" not in step_item:
             raise ValueError(f"Missing perceived_stimulus in step log at trial index {trial_idx}")
         perceived_stimulus = np.asarray(step_item["perceived_stimulus"], dtype=float)

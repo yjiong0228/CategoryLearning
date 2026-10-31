@@ -113,10 +113,15 @@ class HierarchicalPairingMemoryModule(BaseModule):
         marginal = self.joint.sum(axis=1, keepdims=True)
         return np.divide(self.joint, marginal, out=np.full_like(self.joint, 1/3), where=marginal > 0.)
 
-    def prepare_feedback(self, kernel: np.ndarray) -> np.ndarray:
+    def prepare_feedback(self, kernel: np.ndarray, *, content_retention: float | None = None) -> np.ndarray:
         """Cache evidence from the effective pre-feedback joint distribution."""
         if self._pending_joint is not None:
             raise RuntimeError("previous joint feedback update has not been consumed.")
+        marginal_retention = self.gamma if content_retention is None else float(content_retention)
+        if not np.isfinite(marginal_retention) or not 0 <= marginal_retention <= 1:
+            raise ValueError("content retention must lie in [0, 1]")
+        if content_retention is not None and self.forgetting_mode != "factorized":
+            raise ValueError("Separate content retention requires factorized memory")
         kernel = np.asarray(kernel, dtype=float)
         if (kernel.shape != self.joint.shape or not np.all(np.isfinite(kernel))
                 or np.any(kernel < 0.) or np.any(kernel > 1.)):
@@ -139,10 +144,9 @@ class HierarchicalPairingMemoryModule(BaseModule):
             # Normalize within each rule before combining with its marginal.
             # This makes rule forgetting independent of pairing dispersion.
             omega = np.full_like(self.joint, 1/3)
-            if self.gamma == 0.:
-                rule_weights = np.ones(int(np.count_nonzero(active)))
-            else:
-                rule_weights = prior[active]**self.gamma
+            rule_weights = (np.ones(int(np.count_nonzero(active))) if marginal_retention == 0.
+                            else prior[active]**marginal_retention)
+            if self.gamma != 0.:
                 pairing_weights = self.conditional_pairing()[active]**self.gamma
                 omega[active] = pairing_weights / pairing_weights.sum(axis=1, keepdims=True)
             rule_weights /= rule_weights.sum()

@@ -1,0 +1,69 @@
+# Comparison configuration; numerical defaults are not individual estimates.
+provenance:
+  model_id: model_1031
+  condition: 3
+  specification_version: 1031-unified-v2
+  scientific_status: mechanism_comparison_candidate
+  specification_path: src/Bayesian_state/docs/model_architecture/model_1031.md
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.experience_workspace.ExperienceWorkspacePartition
+  kwargs:
+    n_cats: 4
+    capacity: 4
+    similarity_width: 0.25
+    conditional_pairing: true
+likelihood:
+  class: src.Bayesian_state.hypothesis_space.observation_model.experience_workspace.ExperienceWorkspaceLikelihood
+  distance_mode: boundary
+  beta_source: action
+  feedback_likelihood_mode: hierarchical_pairing
+  feedback_lapse: 0.0
+modules:
+  perception_mod:
+    class: src.Bayesian_state.model.modules.perception.PerceptionModule
+  beta_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspaceBeta
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      learning_rate: 0.1
+      beta_update_mode: feedback_gradient
+      update_scope: active_hypotheses
+      use_prior_scaling: false
+  hypo_transitions_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspaceTransition
+    kwargs:
+      baseline_probability: 0.15
+      error_gain: 1.0
+      failure_decay: 0.8
+      global_search: 0.2
+      execution_inertia: 1.0
+      module_seed: 1031
+      revision: v2
+      marginalize_execution: false
+      retrieval_mode: global
+  memory_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspacePairingMemory
+    kwargs:
+      forgetting_mode: factorized
+      gamma: 0.8
+      w0: 0.0
+      feedback_gain: 1.0
+      retention_mode: outcome
+agenda:
+- perception_mod
+- hypo_transitions_mod
+- memory_mod
+- beta_mod
+choice_readout:
+  kwargs:
+    method: expectation
+    power: 1.0
+output_noise:
+  kwargs:
+    enabled: false
+inference:
+  backend: particle_filter
+  particle_count: 16
+  resample_threshold_fraction: 0.5

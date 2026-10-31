@@ -889,6 +889,10 @@ def run_state_model_particle_filter(
         raise ValueError("partition category count does not match condition.")
     n_hypotheses = int(models[0].engine.set_size)
     adaptive_representations = bool(getattr(models[0].partition_model, "adaptive_representations", False))
+    marginalized_experience = adaptive_representations and bool(getattr(
+        models[0].engine.get_module(ModuleRole.HYPOTHESIS_TRANSITION), "marginalize_execution", False))
+    if marginalized_experience and (confidence_gain_value != 0. or commitment_gain_value != 0.):
+        raise ValueError("Marginalized experience execution requires the untransformed choice mixture")
     representation_summaries = {}
     if adaptive_representations:
         if oral_enabled:
@@ -1266,6 +1270,8 @@ def run_state_model_particle_filter(
         observer_perceived = (np.zeros((n_particles, x.shape[1]))
                               if observe_decision_basis else None)
         particle_predictions = np.zeros((n_particles, n_categories), dtype=float)
+        content_choice_likelihood = (np.zeros((n_particles, n_hypotheses), dtype=float)
+                                     if marginalized_experience else None)
         oral_trial = oral_readout is not None and bool(valid[trial_index])
         particle_oral_joint = (
             np.zeros((n_particles, len(oral_readout.codes)), dtype=float)
@@ -1524,9 +1530,15 @@ def run_state_model_particle_filter(
                 failure_pressure=failure_pressures[particle_index],
                 mastery_evidence=mastery_evidences[particle_index],
                 return_details=True,
-                return_snapshot=oral_trial or observe_decision_basis,
+                return_snapshot=oral_trial or observe_decision_basis or marginalized_experience,
             )
             particle_predictions[particle_index], confidence_details = choice_result[:2]
+            if marginalized_experience:
+                snapshot = choice_result[2]
+                indices = np.asarray(snapshot.hypothesis_indices, dtype=int)
+                content_choice_likelihood[particle_index, indices] = (
+                    (1 - float(epsilon_by_trial[trial_index])) * snapshot.category_probabilities[:, observed_choice_index]
+                    + float(epsilon_by_trial[trial_index]) / n_categories)
             if observe_decision_basis:
                 snapshot = choice_result[2]
                 indices = np.asarray(snapshot.hypothesis_indices, dtype=int)
@@ -2017,15 +2029,25 @@ def run_state_model_particle_filter(
             else:
                 weights /= weight_total
         post_ess[trial_index] = effective_sample_size(weights)
+        filtered_content_weights = particle_choice_weights if continuous_choice_enabled else None
+        if marginalized_experience and valid[trial_index] and choice_conditioning:
+            filtered_content_weights = particle_choice_weights * content_choice_likelihood
+            filtered_content_weights /= filtered_content_weights.sum(axis=1, keepdims=True)
+            group_execution = np.stack([(filtered_content_weights * (group == i)).sum(axis=1)
+                                        for i in range(4)], axis=1)
+            if state_observer is not None:
+                observer_values["choice_weights"] = filtered_content_weights
         if adaptive_representations:
             representation_summaries["filtered_representation_belief"][trial_index] = weights @ group_belief
             representation_summaries["filtered_representation_execution"][trial_index] = weights @ group_execution
         if state_observer is not None:
             _observe_particle_state(state_observer, trial_index, "filtered", observer_values)
         if continuous_choice_enabled:
-            choice_weight_summaries["filtered_choice_weights"][trial_index] = weights @ particle_choice_weights
+            choice_weight_summaries["filtered_choice_weights"][trial_index] = weights @ filtered_content_weights
             choice_weight_summaries["filtered_dominant_probability"][trial_index] = weights @ particle_dominant
-            participation_summaries["filtered_effective_participation"][trial_index] = weights @ particle_participation
+            filtered_participation = (1.0 / np.sum(filtered_content_weights ** 2, axis=1)
+                                      if marginalized_experience else particle_participation)
+            participation_summaries["filtered_effective_participation"][trial_index] = weights @ filtered_participation
         if audit_choice_transmission and trial_index == n_trials - 1:
             audit_terminal_weights = weights.copy()
         if filtered_executed_probability is not None:

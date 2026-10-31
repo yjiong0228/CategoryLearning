@@ -1,5 +1,15 @@
 # 当前模型工作流
 
+## Model 1031：三条件机制比较
+
+入口为`python -m src.Bayesian_state.workflows.analysis.model_1031_finalization`。
+以`--phase prepare --output NEW_STUDY`冻结配置、行为数组及源码，再以相同输出目录执行
+`calibrate`、`fit-development`和`evaluate-development`。结构冻结后使用`--variants`
+指定评价版本，执行`fit-evaluation`及`evaluate-evaluation`。
+协议为`configs/shared/model1031_finalization_20261101.yaml`，绝对截止时间包含文稿交付。
+入口复用共享StateModel，参数由前70%选择估计，开发与评价用途及数值边界见
+[研究说明](../docs/model_architecture/model_1031_finalization_study.md)。
+
 ## Model 1031：更换为S128的同预算比较
 
 用户要求选择没有数量概括的被试后，登记了[S128试验](../docs/model_architecture/model_1031_subject128_pilot.md)。

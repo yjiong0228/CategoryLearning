@@ -128,6 +128,7 @@ def build_engine(
         expected_partition = engine_config["partition"]["kwargs"]
         if (getattr(partition, "length", None) != expected_partition.get("capacity", 4)
                 or getattr(partition, "similarity_width", None) != expected_partition.get("similarity_width", .25)
+                or getattr(partition, "conditional_pairing", False) != expected_partition.get("conditional_pairing", False)
                 or getattr(partition, "n_cats", None) != expected_partition["n_cats"]):
             raise ValueError("Model 1031 supplied partition disagrees with configured capacity, width or categories")
     agenda = engine_config.get("agenda", [])
@@ -172,7 +173,9 @@ def build_engine(
         )
         from .model_0923 import is_model_0923_revised
 
-        beta_mode = "feedback_gradient" if is_model_0923_revised(provenance) else "hierarchical_feedback"
+        experience_revised = (provenance.get("model_id") == "model_1031"
+                              and provenance.get("specification_version") == "1031-unified-v2")
+        beta_mode = "feedback_gradient" if is_model_0923_revised(provenance) or experience_revised else "hierarchical_feedback"
         if (observation_likelihood.beta_source != "action"
                 or observation_likelihood.distance_mode != "boundary"
                 or getattr(beta, "beta_update_mode", None) != beta_mode
