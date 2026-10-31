@@ -1,5 +1,15 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1031：S113错误规则个案（2026-11-01）
+
+[解释与四图](../../../results/model_1031/subject113_pilot_20261031_v1/report_v1/interpretation.md) ·
+[具体规则图](../outputs/fig3/model1031_subject113_20261031_v1/wrong_and_correct_rules.png) ·
+[规则检查表](../../../results/model_1031/subject113_pilot_20261031_v1/report_v1/rule_report.md)。
+完整384题、四个最终候选及每候选64条自主路径保留；正确维度是脖子。
+新增图把口述部位范围、错误比较规则和正确规则分别展示，实线为主候选、虚线为另一候选，
+范围带为同参数两次数值重复。第89—115题错误规则解释仍随参数和重复变化。
+第321题开始第二场，模型沿完整记录连续更新。Python绘图，183毫米宽、300 dpi PNG，逐题值另存。
+
 ## Model 1031：S128同预算个案（2026-10-31）
 
 [三图结果解释](../../../results/model_1031/subject128_pilot_20261031_v1/report_v3/interpretation.md) ·

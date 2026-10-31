@@ -50,6 +50,9 @@ def run(study: Path, output: Path, figures: Path) -> None:
     subject = int(policy['subject'])
     selection = policy.get('selection', {})
     frame = pd.read_csv(study / 'subject_source.csv').reset_index(drop=True)
+    feature_names = [frame.iloc[0][f'feature{i}_name'] for i in range(1, 5)]
+    tail_code = 1 << feature_names.index('tail')
+    correct_feature_name = PARTS.get(feature_names[0], feature_names[0])
     with np.load(study / 'behavior_input.npz') as z:
         choices, categories, feedback = z['choices'], z['categories'], z['feedback']
     oral_mask = frame[[f'feature{i}_use' for i in range(1, 5)]].to_numpy(int)
@@ -61,7 +64,7 @@ def run(study: Path, output: Path, figures: Path) -> None:
               for start in range(0, n, policy['summaries']['phase_trials'])]
     mask_bits = (np.arange(16)[:, None] & (2 ** np.arange(4))) > 0
     metadata = dict(study=str(study), subject=subject, selected={}, summaries={}, phases=phases,
-        feature_names=[frame.iloc[0][f'feature{i}_name'] for i in range(1, 5)],
+        feature_names=feature_names,
         oral_eligible=int(eligible.sum()), oral_total=n, selection=selection,
         oral_unresolved_rows=(np.flatnonzero(~eligible) + 1).tolist(),
         oral_scope='original_feature_use_only; not_complete_content_or_report_probability',
@@ -116,7 +119,8 @@ def run(study: Path, output: Path, figures: Path) -> None:
                 early_specific_execution=float(groups.mean(axis=0)[:64, 1].mean()),
                 early_local_execution=float(groups.mean(axis=0)[:64, 2].mean()),
                 late_rule_execution=float(groups.mean(axis=0)[-64:, 3].mean()),
-                late_tail_only_execution=float(feature_mean[-64:, 1].mean()))
+                late_tail_only_execution=float(feature_mean[-64:, tail_code].mean()),
+                late_correct_feature_only_execution=float(feature_mean[-64:, 1].mean()))
             point_rows.append(point)
             for a, b in phases:
                 own = eligible[a:b]
@@ -127,7 +131,8 @@ def run(study: Path, output: Path, figures: Path) -> None:
                     autonomous_correct_q90=float(np.quantile(generated[:, a:b].mean(axis=1), .9)),
                     feature_exact=float(np.nanmean(exact[a:b])) if own.any() else None,
                     specific=float(groups[:, a:b, 1].mean()), local=float(groups[:, a:b, 2].mean()),
-                    rule=float(groups[:, a:b, 3].mean()), tail_only=float(feature_mean[a:b, 1].mean())))
+                    rule=float(groups[:, a:b, 3].mean()), tail_only=float(feature_mean[a:b, tail_code].mean()),
+                    correct_feature_only=float(feature_mean[a:b, 1].mean())))
             sensitivity_rows.append(dict(model=model, candidate=candidate,
                 nll_repeat_gap=float(abs(criterion[0]-criterion[1])),
                 choice_probability_difference_q95=float(np.quantile(np.abs(probabilities[0]-probabilities[1]), .95)),
@@ -205,16 +210,20 @@ def run(study: Path, output: Path, figures: Path) -> None:
                 if (~eligible).any() else f"全部{n}条现有口述编码均指明了部位，均进入部位集合评分。")
     quantity_note = (f"选人时检查了全部{selection['reviewed_trials']}条原文，发现数量概括"
                      f"{selection['quantity_generalization_rows']}条。" if 'quantity_generalization_rows' in selection else '')
+    rule_link = ('具体错误规则与正确规则的执行概率另见[规则检查与第四张图](rule_report.md)。'
+                 if 'rule_diagnostics' in policy else '')
     report = f'''# S{subject}：经验到规则的个案试验
 
 本轮已完成预定计算：两种模型各16个候选，分别经过32、128、512粒子检查；最终各两个候选，
 每个候选生成64条自主路径，共256条完整路径。计算耗时{complete['elapsed_seconds']/60:.1f}分钟、
 累计{complete['cpu_seconds']/3600:.2f} CPU小时。范围为单个开发案例，完整{n}题用于选参。
 
+{rule_link}
+
 ## 为什么选择S{subject}
 
 {case_reason}
-前64题有{int((codes[:64] == 15).sum())}条编码了四个部位，后64题有{int((codes[-64:] == 1).sum())}条只编码尾巴。
+前64题有{int((codes[:64] == 15).sum())}条编码了四个部位，后64题有{int((codes[-64:] == 1).sum())}条只编码{correct_feature_name}。
 {examples_text}。
 早期具体描述与示例记忆相容；“正在记忆例子”仍是待检验的心理解释。
 
@@ -247,7 +256,7 @@ NLL越低表示真实选择得到更高概率。新减旧的NLL差为{top_new['n
 
 新模型在前64题的具体示例执行概率平均为{top_new['early_specific_execution']:.1%}，局部概括为
 {top_new['early_local_execution']:.1%}；后64题的目录规则执行概率为{top_new['late_rule_execution']:.1%}，
-只使用尾巴的概率为{top_new['late_tail_only_execution']:.1%}。
+只使用{correct_feature_name}的概率为{top_new['late_correct_feature_only_execution']:.1%}。
 具体示例起步是模型预先设定的机制。早期四部位吻合中包含这个初始假设的作用，
 需结合该状态保持时间、实际行为拟合及后续特征变化解释。
 

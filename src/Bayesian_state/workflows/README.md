@@ -15,6 +15,28 @@
 绘图模块继续使用`model1031_subject118_pilot`这一已有入口，可处理本轮S128的192题。
 原S118数值汇总及研究产物保留。
 
+## Model 1031：S113错误规则个案（2026-11-01）
+
+[执行说明](../docs/model_architecture/model_1031_subject113_pilot.md)固定384题、16点候选及与前两例相同的预算。
+准备入口加`--config configs/exp123/specific_models/model_1031_subject113_pilot_v1.yaml`，
+其余拟合和基础报告入口沿用下节流程。最终拟合额外保存`catalogue_execution_probability`：
+每题选择后、反馈前各目录规则的执行概率。新模型模板的概率质量保留在模板中，因此目录概率之和可以小于1。
+
+先生成基础报告，再运行具体规则检查，最后绘图：
+
+```bash
+python -m src.Bayesian_state.workflows.reports.model_1031_rule_diagnostics \
+  --study results/model_1031/subject113_pilot_NEW \
+  --report results/model_1031/subject113_pilot_NEW/report_v1 \
+  --figures CategoryLearning_codes/figures/outputs/fig3/model1031_subject113_NEW
+```
+
+该检查读取配置中提前固定的规则及窗口，保存全部最终候选和试次，生成`rule_report.md`、
+`rule_trials.csv`、`rule_windows.csv`及绘图数组。绘图入口检测到这些数组时增加第四张PNG。
+基础报告按真实特征顺序命名正确维度；原有`tail_only`字段表示尾巴，
+新增`correct_feature_only`表示第一维正确特征，两者在S113中不同。
+这些量描述部位范围，具体规则执行另见规则检查。
+
 ## Model 1031：S118经验到规则的单人试验
 
 [执行说明](../docs/model_architecture/model_1031_subject118_pilot.md)登记选人、16点有限搜索、

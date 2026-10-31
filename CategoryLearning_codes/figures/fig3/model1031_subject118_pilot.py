@@ -162,6 +162,42 @@ def run(report: Path, output: Path) -> None:
     panel(axs[2], 'c', '1031 rule execution across finalists | band: two numerical repeats')
     axs[2].legend(loc='lower right'); trial_axis(axs[2], n)
     save(fig, 'candidate_sensitivity.png')
+    diagnostic_path = report / 'rule_diagnostics.npz'
+    if diagnostic_path.exists():
+        with np.load(diagnostic_path, allow_pickle=False) as z:
+            rules = {key: z[key] for key in z.files}
+        rule_meta = json.loads((report / 'rule_diagnostics.json').read_text())
+        fig, axs = plt.subplots(3, 1, figsize=(WIDTH, 8.3), sharex=True, layout='constrained')
+        fig.suptitle(f'S{subject} | Wrong comparison and correct rule', fontsize=11)
+        axs[0].plot(trial, trailing(rules['oral_head_neck_scope'], 8), color=HUMAN,
+                    label='Head + neck only')
+        axs[0].plot(trial, trailing(rules['oral_neck_scope'], 8), color='#8C63AB',
+                    label='Neck only')
+        panel(axs[0], 'a', 'Original oral feature scope | trailing 32 trials')
+        axs[0].set_ylabel('Fraction of scored reports')
+        axs[0].legend(loc='upper center', ncol=2)
+        for point in rule_meta['points']:
+            color = NEW if point['model'] == 'model_1031' else OLD
+            label = point['model'].replace('model_', '') + ' / ' + point['candidate']
+            label += ' (main)' if point['selected'] else ' (alternative)'
+            for ax, target in zip(axs[1:], ['wrong', 'correct']):
+                repeats = trailing(rules[point['key'] + '_' + target], 1)
+                if point['selected']:
+                    ax.fill_between(trial, repeats.min(axis=0), repeats.max(axis=0),
+                                    color=color, alpha=.13, linewidth=0)
+                ax.plot(trial, repeats.mean(axis=0), color=color,
+                        ls='-' if point['selected'] else '--', label=label)
+        panel(axs[1], 'b', 'Wrong rule | head > neck: option 1; head < neck: option 2')
+        panel(axs[2], 'c', 'Correct rule | short neck: option 1; long neck: option 2')
+        for ax in axs:
+            ax.set_ylim(-.02, 1.02)
+            ax.axvspan(89, 115, color='#888888', alpha=.08, linewidth=0)
+            ax.axvspan(321, 384, color='#888888', alpha=.08, linewidth=0)
+        for ax in axs[1:]:
+            ax.set_ylabel('Execution probability')
+        axs[1].legend(ncol=2, loc='upper center', fontsize=7)
+        trial_axis(axs[2], n)
+        save(fig, 'wrong_and_correct_rules.png')
     qa = dict(backend='Python / matplotlib', format='PNG only per repository instructions',
         input_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), figures=figures,
@@ -173,6 +209,9 @@ def run(report: Path, output: Path) -> None:
         smoothing='trailing32; minimum32 behavior, minimum1 state, minimum8 scored oral',
         tests='No hypothesis tests or p values', width_mm=183, dpi=300,
         visual_review='pending')
+    if diagnostic_path.exists():
+        qa['rule_input_sha256'] = hashlib.sha256(diagnostic_path.read_bytes()).hexdigest()
+        qa['rule_intervals'] = 'main candidate numerical repeat range; alternative candidates shown individually'
     (output / 'figure_provenance.json').write_text(json.dumps(qa, indent=2, ensure_ascii=False))
     print(json.dumps(dict(output=str(output), figures=figures)))
 

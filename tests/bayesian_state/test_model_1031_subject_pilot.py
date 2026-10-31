@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from src.Bayesian_state.workflows.analysis.model_1031_subject_pilot import (
-    DEFAULT, bank, engine_config, active_mask_distribution, rank)
+    DEFAULT, bank, engine_config, active_mask_distribution, catalogue_execution_distribution, rank)
 from src.Bayesian_state.model.model_1024 import model_1024_runtime
 from src.Bayesian_state.inference.backends.particle_filter import run_state_model_particle_filter
 
@@ -37,15 +37,32 @@ def test_ranking_averages_independent_full_record_nll_without_oral():
     assert rank(records)[1]['mean_nll'] == 12.
 
 
+def test_catalogue_mass_tracks_identity_across_slots_and_preserves_template_mass():
+    state = dict(weights=np.array([.3, .7]), choice_weights=np.array([[1., 0.], [.5, .5]]),
+        representation_kind=np.array([[2, 1], [1, 2]]),
+        catalogue_rule=np.array([[6, -1], [-1, 6]]))
+    mass = catalogue_execution_distribution(state, 29)
+    assert mass[6] == pytest.approx(.65)
+    assert mass.sum() == pytest.approx(.65)
+    # The other .35 remains experience mass instead of inflating rule support.
+    shuffled = {key: value[:, ::-1] if value.ndim == 2 else value for key, value in state.items()}
+    np.testing.assert_array_equal(mass, catalogue_execution_distribution(shuffled, 29))
+
+
 @pytest.mark.parametrize('model', ['model_1031', 'model_1024'])
 def test_pilot_profiles_run_shared_filter_and_observer(model):
     cfg = engine_config(model, DEFAULT)
     cfg['modules']['perception_mod']['kwargs'] = dict(mean=[0.] * 4, std=[0.] * 4, module_seed=2)
     seen = []
+    rule_mass = []
+    def observer(t, phase, state):
+        seen.append((t, phase))
+        rule_mass.append(catalogue_execution_distribution(state, 29))
     with model_1024_runtime() if model == 'model_1024' else nullcontext():
         result = run_state_model_particle_filter(engine_config=cfg, subject_id=118, condition=1,
             stimulus=np.random.default_rng(2).uniform(.1, .9, (4, 4)), choices=[1,2,1,2],
             feedback=[1.,0.,1.,0.], particle_count=2, choice_readout_power=1.,
-            state_observer=lambda t, phase, state: seen.append((t, phase)), observe_decision_basis=True)
+            state_observer=observer, observe_decision_basis=True)
     np.testing.assert_allclose(result.marginal_probabilities.sum(axis=1), 1.)
     assert len(seen) == 8
+    np.testing.assert_allclose(np.sum(rule_mass, axis=1), 0. if model == 'model_1031' else 1.)

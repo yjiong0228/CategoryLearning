@@ -111,6 +111,28 @@ def active_mask_distribution(contents: dict, rule_masks: np.ndarray) -> np.ndarr
     return result
 
 
+def catalogue_execution_distribution(contents: dict, n_rules: int) -> np.ndarray:
+    """Execution mass by semantic rule ID; template mass stays outside the catalogue.
+
+    Contents are observed after the current choice and before feedback. Slots in
+    the experience workspace can contain different rules across particles.
+    """
+    weights = contents['weights'][:, None] * contents['choice_weights']
+    if 'representation_kind' in contents:
+        is_rule = contents['representation_kind'] == 2
+        ids = contents['catalogue_rule'][is_rule]
+        if np.any((ids < 0) | (ids >= n_rules)):
+            raise ValueError('Invalid catalogue identity')
+        result = np.bincount(ids, weights=weights[is_rule], minlength=n_rules)
+    else:
+        if weights.shape[1] != n_rules:
+            raise ValueError('Catalogue and execution weights disagree')
+        result = weights.sum(axis=0)
+    if not np.isfinite(result).all() or np.any(result < 0) or result.sum() > 1. + 1e-9:
+        raise ValueError('Invalid catalogue execution mass')
+    return result
+
+
 def prepare(config: Path, output: Path) -> None:
     policy = yaml.safe_load(config.read_text())
     if output.exists():
@@ -188,11 +210,12 @@ def _work(job: dict) -> dict:
             rule_masks = None if not keep else np.asarray([
                 np.any(np.asarray([a for a, b in spec.hyperplanes]) != 0, axis=0)
                 for spec in catalogue.hypothesis_space])
-            feature_use, contents_log = [], []
+            feature_use, rule_execution, contents_log = [], [], []
             def observer(trial, phase, contents):
                 if phase != 'filtered':
                     return
                 feature_use.append(active_mask_distribution(contents, rule_masks))
+                rule_execution.append(catalogue_execution_distribution(contents, catalogue.length))
                 if job['model'] == 'model_1031':
                     keys = ('weights', 'choice_weights', 'representation_kind', 'representation_uid',
                             'representation_parent', 'catalogue_rule', 'template_mask', 'template_anchor',
@@ -211,6 +234,7 @@ def _work(job: dict) -> dict:
                          resampled=result.resampled)
             if keep:
                 saved['feature_set_probability'] = np.asarray(feature_use)
+                saved['catalogue_execution_probability'] = np.asarray(rule_execution)
                 for key, value in result.state_probabilities.items():
                     if 'representation' in key:
                         saved[key] = value
