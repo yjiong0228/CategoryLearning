@@ -15,7 +15,8 @@ import time
 
 import numpy as np
 
-from .model_1031_finalization import Scheduler, aggregate, digest, fit_jobs, validate_source, write_new
+from .model_1031_finalization import Scheduler, digest, fit_jobs, validate_source, write_new
+from .model_1031_decision import fixed_configuration_score
 
 
 def admission(records: list[dict], jobs: list[dict], remaining_seconds: float,
@@ -83,15 +84,18 @@ def run(output: Path) -> None:
         rows = []
         for group in groups:
             s, c = group["subject"], group["candidates"][0]["candidate"]
-            own = fit_jobs(output, s, [c], plan["particles"], plan["repeats"], seeds[group["variant"]], scope="full")
-            score = aggregate([completed[job["id"]] for job in own], conditional=True)
+            score = fixed_configuration_score(list(completed.values()), s["subject"], c["id"])
             prior = next(r for r in original if r["subject"] == s["subject"] and r["variant"] == group["variant"])
             n = prior["test_trials"]
             nll, se = score["nll"] / n, score["mc_se"] / n
             difference = abs(nll - prior["test_nll_per_trial"]) + 2 * np.hypot(se, prior["mc_se_per_trial"])
             stable = difference <= policy["search"]["numerical_tolerance_nll_per_trial"] and score["max_system_weight"] <= .8
             rows.append(dict(prior, test_nll_per_trial=nll, mc_se_per_trial=se,
-                max_system_weight=score["max_system_weight"], particles=plan["particles"], repeats=plan["repeats"],
+                max_system_weight=score["max_system_weight"], particles=plan["particles"], repeats=score["repeats"],
+                requested_repeats_per_variant=plan["repeats"], pooled_job_ids=score["pooled_job_ids"],
+                original_replicate_pooling=prior.get("replicate_pooling"),
+                replicate_pooling=dict(independent_seeds=score["repeats"], raw_systems=score["repeats"],
+                                       particle_counts=[plan["particles"]]),
                 training_numerical_status=prior["numerical_status"], precision_difference_per_trial=float(difference),
                 numerical_status="within_working_tolerance" if stable else "numerically_limited"))
         write_new(output / "evaluation_precision.json", dict(status="completed", admission=check, rows=rows,

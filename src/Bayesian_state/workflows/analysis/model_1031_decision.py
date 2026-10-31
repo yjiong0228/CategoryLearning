@@ -54,6 +54,15 @@ def independent_seed_aggregate(records: list[dict]) -> dict:
                 raw_systems=len(records), particle_counts=sorted({r["job"]["particles"] for r in records}))
 
 
+def fixed_configuration_score(records: list[dict], subject: int, configuration: str) -> dict:
+    """Use one estimate when different structures select an identical fixed model."""
+    matched = sorted([r for r in records if r["job"]["subject"] == subject
+                      and r["job"]["config"] == configuration], key=lambda r: r["job"]["id"])
+    if not matched or len({r["job"]["seed"] for r in matched}) != len(matched):
+        raise ValueError("Fixed-configuration precision runs require distinct independent seeds")
+    return dict(**aggregate(matched, conditional=True), pooled_job_ids=[r["job"]["id"] for r in matched])
+
+
 def pool_replicates(output: Path, role: str) -> None:
     register = validate_source(output)
     policy = register["policy"]
@@ -82,10 +91,22 @@ def choose(rows: list[dict], policy: dict) -> dict:
     reference = min(summary, key=lambda v: summary[v]["nll"])
     selection = policy["selection"]
     checks = {}
+    reference_rows = {r["subject"]: r for r in rows if r["variant"] == reference}
     for variant, values in summary.items():
         # The identical reference cancels exactly. Adding standard errors is
         # conservative when the initial common random numbers are correlated.
-        se = 0. if variant == reference else values["numerical_se"] + summary[reference]["numerical_se"]
+        errors, shared = [], 0
+        for row in [r for r in rows if r["variant"] == variant]:
+            other = reference_rows[row["subject"]]
+            configuration = row.get("candidate", {}).get("id")
+            identical = configuration is not None and configuration == other.get("candidate", {}).get("id")
+            if identical:
+                np.testing.assert_allclose([row["test_nll_per_trial"], row["mc_se_per_trial"]],
+                    [other["test_nll_per_trial"], other["mc_se_per_trial"]], atol=1e-12, rtol=0.,
+                    err_msg="Identical configurations must share their pooled likelihood estimate")
+                shared += 1
+            errors.append(0. if variant == reference or identical else row["mc_se_per_trial"] + other["mc_se_per_trial"])
+        se = float(np.mean(errors))
         upper = values["nll"] - summary[reference]["nll"] + 2 * se
         regret = max(values["condition_nll"][c] - summary[reference]["condition_nll"][c]
                      for c in values["condition_nll"])
@@ -94,7 +115,8 @@ def choose(rows: list[dict], policy: dict) -> dict:
                     and regret <= selection["maximum_condition_regret_nll_per_trial"]
                     and energy_ratio <= selection["maximum_relative_energy_deterioration"])
         checks[variant] = dict(nll_upper_difference=float(upper), maximum_condition_regret=float(regret),
-                               relative_energy_deterioration=float(energy_ratio), eligible=bool(eligible))
+                               relative_energy_deterioration=float(energy_ratio), eligible=bool(eligible),
+                               numerical_se_of_mean_difference=se, exact_shared_configurations=shared)
     eligible = [v for v in summary if checks[v]["eligible"]]
     order = list(policy["variants"])
     complexity = {v: dict(parameters=policy["variants"][v]["parameters"], optional_controls=sum((
@@ -140,8 +162,7 @@ def refine(output: Path) -> None:
         rows = []
         for g in groups:
             s, c = g["subject"], g["candidates"][0]["candidate"]
-            jobs = fit_jobs(output, s, [c], settings["particles"], settings["repeats"], seeds[g["variant"]], scope="full")
-            score = aggregate([records[job["id"]] for job in jobs], conditional=True)
+            score = fixed_configuration_score(list(records.values()), s["subject"], c["id"])
             prior = next(r for r in original if r["subject"] == s["subject"] and r["variant"] == g["variant"])
             ntest = prior["test_trials"]
             nll, se = score["nll"] / ntest, score["mc_se"] / ntest
@@ -149,7 +170,11 @@ def refine(output: Path) -> None:
             stable = difference <= policy["search"]["numerical_tolerance_nll_per_trial"] and score["max_system_weight"] <= .8
             rows.append(dict(prior, test_nll_per_trial=nll, mc_se_per_trial=se,
                 max_system_weight=score["max_system_weight"], particles=settings["particles"],
-                repeats=settings["repeats"], precision_difference_per_trial=float(difference),
+                repeats=score["repeats"], requested_repeats_per_variant=settings["repeats"],
+                original_replicate_pooling=prior.get("replicate_pooling"),
+                replicate_pooling=dict(independent_seeds=score["repeats"], raw_systems=score["repeats"],
+                                       particle_counts=[settings["particles"]]),
+                pooled_job_ids=score["pooled_job_ids"], precision_difference_per_trial=float(difference),
                 numerical_status="within_working_tolerance" if stable else "numerically_limited"))
         write_new(output / "structural_precision.json", dict(rows=rows, cpu_seconds=scheduler.cpu_used()))
     finally:

@@ -15,6 +15,8 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 `model_1031_decision`在开发评价后先执行`pool-development`，按独立种子汇总数值误差；
 再依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
 评价被试的原评分完成后执行`pool-evaluation`，同种子下的不同粒子数运行作为一组处理。
+独立精度复核把同一被试、相同配置的系统合并后供各结构共用；相同配置的配对差异及其数值
+误差相消。输出保存实际运行数和来源任务，状态摘要沿用这些系统。
 `model_1031_recovery`依次执行`prepare`、`fit`、`state`，复用同一生成与滤波实现。
 可在评价结果产生前用`model_1031_evaluation_precision --phase register --output STUDY`
 登记额外精度检查。流水线在原定恢复完成后，根据同配置实测耗时和剩余预算决定是否运行

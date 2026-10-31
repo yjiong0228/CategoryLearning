@@ -252,7 +252,8 @@ def audit(output: Path, destination: Path) -> None:
     for role, rows in (("development", refined), ("evaluation", evaluation)):
         base = register["policy"]["seed"] + (18000 + 100 * shortlist.index(chosen) if role == "development" else 11000)
         for row in [r for r in rows if r["variant"] == chosen]:
-            runs = [r for r in records if r["job"]["kind"] == "fit" and r["job"]["scope"] == "full"
+            pooled_ids = set(row.get("pooled_job_ids", []))
+            runs = [r for r in records if r["job"]["id"] in pooled_ids] if pooled_ids else [r for r in records if r["job"]["kind"] == "fit" and r["job"]["scope"] == "full"
                     and r["job"]["subject"] == row["subject"] and r["job"]["config"] == row["candidate"]["id"]
                     and r["job"]["seed"] in range(base, base + 4)]
             states.append(dict(merge_state_records(output, runs, row["subject"]), role=role,

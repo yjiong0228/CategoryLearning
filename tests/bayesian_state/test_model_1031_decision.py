@@ -4,7 +4,9 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from src.Bayesian_state.workflows.analysis.model_1031_decision import choose, summarize, independent_seed_aggregate
+from src.Bayesian_state.workflows.analysis.model_1031_decision import (
+    choose, fixed_configuration_score, summarize, independent_seed_aggregate,
+)
 from src.Bayesian_state.workflows.analysis.model_1031_finalization import aggregate
 
 
@@ -82,3 +84,25 @@ def test_equal_parameter_count_prefers_fewer_eligible_control_mechanisms():
     decision = choose(data, POLICY)
     assert decision["chosen"] == "constant_retention"
     assert decision["complexity"]["constant_retention"]["optional_controls"] == 1
+
+
+def test_exact_shared_configurations_cancel_comparison_error():
+    data = rows()
+    for row in data:
+        row["candidate"] = dict(id=f"shared_{row['subject']}")
+        row["mc_se_per_trial"] = .1
+    result = choose(data, POLICY)
+    assert result["chosen"] == "constant_search"
+    assert result["checks"]["constant_search"]["numerical_se_of_mean_difference"] == 0.
+    assert result["checks"]["constant_search"]["exact_shared_configurations"] == 3
+
+
+def test_fixed_configurations_pool_independent_systems_from_both_structures():
+    records = [dict(nll=x, train_nll=.5 * x,
+                    job=dict(id=str(i), subject=1, config="same", seed=i))
+               for i, x in enumerate([2., 3., 4., 5.])]
+    rows = records + [dict(nll=100., train_nll=50., job=dict(id="other", subject=2, config="same", seed=0))]
+    result = fixed_configuration_score(rows, 1, "same")
+    reference = aggregate(records, conditional=True)
+    np.testing.assert_allclose([result["nll"], result["mc_se"]], [reference["nll"], reference["mc_se"]])
+    assert result["pooled_job_ids"] == ["0", "1", "2", "3"]
