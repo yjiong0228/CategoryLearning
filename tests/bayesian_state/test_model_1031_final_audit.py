@@ -41,6 +41,10 @@ def test_generation_summary_includes_failed_paths_and_rejects_missing_seeds(tmp_
     assert result["paths"] == 3 and len(result["feature_names"]) == 9
     np.testing.assert_allclose(result["accuracy_quantiles_05_50_95"], [.05, .5, .95])
     assert result["observed_accuracy"] == 1.
+    halves = result["disjoint_seed_half_diagnostics"]
+    assert [r["paths"] for r in halves] == [2, 1]
+    assert set(halves[0]["seeds"]).isdisjoint(halves[1]["seeds"])
+    assert np.isfinite([r["energy"] for r in halves]).all()
     records[0]["job"]["seeds"] = [2500, 2501]
     with pytest.raises(ValueError, match="every registered path"):
         generation_summaries(tmp_path, records, rows, policy, "development", ["compact"])

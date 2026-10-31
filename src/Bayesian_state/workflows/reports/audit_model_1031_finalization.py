@@ -15,7 +15,7 @@ import numpy as np
 from scipy.special import logsumexp
 
 from ..analysis.model_1031_decision import summarize
-from ..analysis.model_1031_finalization import digest, path_features, validate_source, write_new
+from ..analysis.model_1031_finalization import digest, energy_score, path_features, validate_source, write_new
 
 
 LABELS = dict(full="完整参考", no_inertia="取消额外执行维持", fixed_precision="固定共享精度",
@@ -179,6 +179,9 @@ def generation_summaries(output: Path, records: list[dict], evaluation_rows: lis
                 choices.append(arrays["choices"])
                 groups.append(arrays["representation_group"])
         choices, groups = np.concatenate(choices), np.concatenate(groups)
+        order = np.argsort(seeds)
+        choices, groups = choices[order], groups[order]
+        seeds = np.asarray(seeds)[order]
         with np.load(output / "inputs" / f"s{row['subject']}.npz") as data:
             features = path_features(choices, data["categories"], row["condition"])
             observed = path_features(data["choices"], data["categories"], row["condition"])[0]
@@ -199,6 +202,10 @@ def generation_summaries(output: Path, records: list[dict], evaluation_rows: lis
         observed_radius = float(np.linalg.norm(observed - center) / np.sqrt(features.shape[1]))
         cutoff = float(np.quantile(radius, .9))
         group_occupancy = np.stack([(groups == g).mean(axis=1) for g in range(4)], axis=1)
+        halves = [indices for indices in np.array_split(np.arange(len(seeds)), 2) if len(indices)]
+        stability = [dict(paths=len(indices), seeds=seeds[indices].tolist(),
+            energy=energy_score(features[indices], observed), mean_accuracy=float(accuracy[indices].mean()),
+            mean_group_occupancy=group_occupancy[indices].mean(axis=0).tolist()) for indices in halves]
         summaries.append(dict(subject=row["subject"], condition=row["condition"], variant=row["variant"], role=role,
             paths=len(seeds), source_jobs=[r["job"]["id"] for r in source],
             feature_names=names, observed_features=observed.tolist(), feature_quantiles_05_50_95=intervals.tolist(),
@@ -207,6 +214,8 @@ def generation_summaries(output: Path, records: list[dict], evaluation_rows: lis
                 observed_inside=observed_radius <= cutoff, simulated_mass=float(np.mean(radius <= cutoff))),
             observed_accuracy=observed_accuracy, accuracy_quantiles_05_50_95=np.quantile(accuracy, [.05, .5, .95]).tolist(),
             representation_occupancy_quantiles_05_50_95=np.quantile(group_occupancy, [.05, .5, .95], axis=0).tolist(),
+            disjoint_seed_half_diagnostics=stability,
+            stability_scope="Two non-overlapping seed blocks; descriptive finite-simulation sensitivity, with structure selection still using all registered paths",
             scope="Fixed-parameter whole recorded schedule, including training; descriptive empirical feature-region coverage, not a confidence region for parameters"))
     return summaries
 
