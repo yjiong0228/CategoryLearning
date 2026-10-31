@@ -1,4 +1,4 @@
-"""Freeze a Model 1031 structure before examining evaluation-subject outcomes.
+"""Freeze a Model 1031 structure before scoring reserved future choices.
 
 This coordinator reads immutable outputs from the bounded study. Two structures
 receive an independent numerical check at fixed training-selected parameters.
@@ -184,7 +184,7 @@ def refine(output: Path) -> None:
 def freeze(output: Path) -> None:
     register = validate_source(output)
     if (output / "evaluation_evaluation.json").exists() or (output / "evaluation_parameters.json").exists():
-        raise ValueError("Structure must be frozen before evaluation-subject fitting or scoring")
+        raise ValueError("Structure must be frozen before publishing the selected evaluation fit or scoring future choices")
     rows = json.loads((output / "structural_precision.json").read_text())["rows"]
     shortlist = json.loads((output / "structural_shortlist.json").read_text())
     decision = choose(rows, register["policy"])

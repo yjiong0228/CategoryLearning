@@ -97,6 +97,16 @@ def main() -> None:
     parser.add_argument("--module", required=True, choices=("model_1031_finalization", "model_1031_decision",
         "model_1031_recovery", "model_1031_evaluation_precision"))
     args, remaining = parser.parse_known_args()
+    if "--phase" in remaining and remaining[remaining.index("--phase") + 1] in ("fit-evaluation", "prepare"):
+        from .model_1031_prefit import await_prefits, reuse_selected_prefit
+
+        output = Path(remaining[remaining.index("--output") + 1]).resolve()
+        policy = validate_source(output)["policy"]
+        prefit = await_prefits(output, compute_deadline(output, policy))
+        if prefit is not None and remaining[remaining.index("--phase") + 1] == "fit-evaluation":
+            if reuse_selected_prefit(output):
+                print(json.dumps(dict(reused_selected_prefit=True)), flush=True)
+                return
     module = importlib.import_module(f"{__package__}.{args.module}")
     module.Scheduler = LongestFirstScheduler
     sys.argv = [sys.argv[0], *remaining]
