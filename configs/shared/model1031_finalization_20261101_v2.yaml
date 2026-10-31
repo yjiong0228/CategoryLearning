@@ -1,0 +1,215 @@
+study_id: model1031_finalization_20261101_v2
+started_at_utc: '2026-10-31T16:33:19+00:00'
+deadline_utc: '2026-11-01T04:33:19+00:00'
+output: results/model_1031/finalization_20261101_v2
+seed: 1031202611
+budget:
+  workers: 128
+  total_wall_hours: 12
+  computation_stop_hours: 9.5
+  cpu_hours: 1152
+  failure_stop: 3
+data:
+  source: data/exp123/processed/Task2_processed.csv
+  train_fraction: 0.7
+  development:
+    1:
+    - 110
+    - 113
+    - 118
+    - 128
+    2:
+    - 202
+    - 205
+    - 215
+    - 229
+    3:
+    - 303
+    - 306
+    - 315
+    - 317
+  evaluation:
+    1:
+    - 103
+    - 132
+    2:
+    - 208
+    - 221
+    3:
+    - 304
+    - 331
+  evaluation_scope: reserved_for_this_study_not_claimed_never_inspected
+  oral_role: no_new_scoring_or_parameter_selection
+variants:
+  full:
+    parameters: 10
+    execution: free
+    precision: free
+    search: accumulate
+    retention: outcome
+    retrieval: global
+  no_inertia:
+    parameters: 9
+    execution: zero
+    precision: free
+    search: accumulate
+    retention: outcome
+    retrieval: global
+  fixed_precision:
+    parameters: 9
+    execution: free
+    precision: fixed
+    search: accumulate
+    retention: outcome
+    retrieval: global
+  compact:
+    parameters: 8
+    execution: zero
+    precision: fixed
+    search: accumulate
+    retention: outcome
+    retrieval: global
+  constant_search:
+    parameters: 6
+    execution: zero
+    precision: fixed
+    search: constant
+    retention: outcome
+    retrieval: global
+  constant_retention:
+    parameters: 8
+    execution: zero
+    precision: fixed
+    search: accumulate
+    retention: constant
+    retrieval: global
+  bayes_retention:
+    parameters: 7
+    execution: zero
+    precision: fixed
+    search: accumulate
+    retention: one
+    retrieval: global
+  similarity_retrieval:
+    parameters: 8
+    execution: zero
+    precision: fixed
+    search: accumulate
+    retention: outcome
+    retrieval: similarity
+parameter_values:
+  similarity_width:
+  - 0.08
+  - 0.15
+  - 0.25
+  - 0.4
+  - 0.65
+  - 1.0
+  capacity:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 6
+  - 8
+  baseline_probability:
+  - 0.01
+  - 0.03
+  - 0.08
+  - 0.15
+  - 0.3
+  - 0.5
+  error_gain:
+  - 0.0
+  - 0.25
+  - 0.7
+  - 1.5
+  - 3.0
+  failure_decay:
+  - 0.0
+  - 0.4
+  - 0.7
+  - 0.9
+  - 0.98
+  global_search:
+  - 0.03
+  - 0.1
+  - 0.25
+  - 0.5
+  - 0.8
+  retention:
+  - 0.4
+  - 0.65
+  - 0.8
+  - 0.9
+  - 0.97
+  - 1.0
+  execution_inertia:
+  - 0.0
+  - 0.5
+  - 1.5
+  - 3.0
+  - 6.0
+  beta_init:
+  - 0.5
+  - 1.5
+  - 3.0
+  - 6.0
+  - 12.0
+  - 25.0
+  learning_rate:
+  - 0.0
+  - 0.01
+  - 0.04
+  - 0.1
+  - 0.3
+search:
+  previous_prespecified_bank: configs/exp123/specific_models/model_1031_subject118_pilot_v1.yaml
+  initial_candidates: 48
+  refinement_candidates: 16
+  refinement_parents: 4
+  screening_particles: 24
+  screening_repeats: 2
+  confirmation_candidates: 4
+  confirmation_particles: 96
+  confirmation_repeats: 2
+  final_candidates: 2
+  final_particles: 256
+  final_repeats: 4
+  maximum_particles: 512
+  maximum_repeats: 4
+  numerical_tolerance_nll_per_trial: 0.01
+generation:
+  paths_per_candidate: 64
+  block_trials: 32
+recovery:
+  source_models: 2
+  backgrounds_per_condition: 1
+  paths_per_source_background: 2
+  candidates: 64
+  state_particles: 512
+  screening_particles: 24
+  screening_repeats: 1
+  confirmation_particles: 256
+  confirmation_repeats: 2
+selection:
+  primary: development_equal_subject_future_choice_nll
+  simplicity_tolerance_nll_per_trial: 0.01
+  maximum_condition_regret_nll_per_trial: 0.03
+  maximum_relative_energy_deterioration: 0.1
+  include_numerical_uncertainty: true
+  unresolved_rule: select_working_version_with_explicit_evidence_limits
+  leading_model_precision_check:
+    models: 2
+    particles: 1024
+    repeats: 4
+    reselect_using_refined_development_scores: true
+protocol_amendment:
+  reason: Runtime-only calibration and full schedule lengths exceed the original worst-case
+    compute allocation; reduce initial search and all-model precision, then independently
+    check two leading model structures at 1024 particles.
+  prior_protocol: configs/shared/model1031_finalization_20261101.yaml
+  prior_preflight_output: results/model_1031/finalization_20261101_v1
+  timing: Before any development model-fit outcomes were inspected or formal model
+    searches launched. Calibration choices are used only for runtime measurements.
+  changed_at_utc: '2026-10-31T17:03:47.740382+00:00'
