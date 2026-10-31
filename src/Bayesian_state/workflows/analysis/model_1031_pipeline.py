@@ -18,6 +18,15 @@ from .model_1031_finalization import ROOT, digest, validate_source, write_new
 from .model_1031_runtime_budget import compute_deadline
 
 
+def await_supervisor_handoff(output: Path, deadline: float) -> None:
+    """Keep the old pipeline idle during an explicitly registered handoff."""
+    while ((output / "supervisor_handoff_plan.json").exists()
+           and not (output / "supervisor_launch_v3.json").exists()):
+        if (output / "STOP_REQUESTED").exists() or time.time() >= deadline:
+            raise TimeoutError("Supervisor handoff stopped before pipeline admission")
+        time.sleep(.5)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -26,6 +35,7 @@ def main() -> None:
     output, numeric_root = args.output.resolve(), args.numeric_root.resolve()
     registration = validate_source(output)
     deadline = compute_deadline(output, registration["policy"])
+    await_supervisor_handoff(output, deadline)
     plan = output / "pipeline_plan.json"
     if not plan.exists():
         write_new(plan, dict(coordinator_sha256=digest(Path(__file__)), frozen_numerical_reference_root=str(numeric_root),
