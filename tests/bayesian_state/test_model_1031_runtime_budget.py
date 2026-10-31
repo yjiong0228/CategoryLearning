@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from src.Bayesian_state.workflows.analysis.model_1031_runtime_budget import compute_deadline
+from src.Bayesian_state.workflows.analysis.model_1031_runtime_budget import compute_deadline, read_job_record
 from src.Bayesian_state.workflows.analysis.model_1031_scheduled import LongestFirstScheduler
 from src.Bayesian_state.workflows.analysis.model_1031_recovery import include_case_cpu
 from src.Bayesian_state.workflows.runs.handoff_model_1031_supervisor import supervisor_command_matches
@@ -35,7 +35,20 @@ def test_recovery_accounting_keeps_unrecorded_cpu_allowance(tmp_path):
     (tmp_path / "supervisor_handoff_accounting.json").write_text(json.dumps(dict(unrecorded_cpu_allowance_seconds=20.)))
     scheduler = LongestFirstScheduler(tmp_path, POLICY)
     include_case_cpu(scheduler)
-    assert scheduler.cpu_used() == 60.
+    assert scheduler.cpu_used() == pytest.approx(60., rel=0., abs=1e-12)
+
+
+def test_record_reader_waits_for_an_in_progress_json_flush():
+    class Record:
+        calls = 0
+
+        def read_text(self):
+            self.calls += 1
+            return "" if self.calls == 1 else '{"cpu_seconds": 3.0}'
+
+    record = Record()
+    assert read_job_record(record) == dict(cpu_seconds=3.)
+    assert record.calls == 2
 
 
 def test_handoff_matches_both_module_and_study_path(tmp_path):

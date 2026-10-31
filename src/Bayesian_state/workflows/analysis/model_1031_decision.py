@@ -18,6 +18,7 @@ from scipy.special import logsumexp
 from .model_1031_finalization import (
     Scheduler, aggregate, digest, fit_jobs, validate_source, write_new,
 )
+from .model_1031_runtime_budget import read_job_record
 
 
 def summarize(rows: list[dict]) -> dict[str, dict]:
@@ -59,7 +60,7 @@ def pool_replicates(output: Path, role: str) -> None:
     original = json.loads((output / f"{role}_evaluation.json").read_text())
     seed_base = policy["seed"] + (2000 if role == "development" else 11000)
     seeds = set(range(seed_base, seed_base + policy["search"]["final_repeats"]))
-    records = [json.loads(p.read_text()) for p in (output / "jobs").glob("*.json")]
+    records = [read_job_record(p) for p in (output / "jobs").glob("*.json")]
     records = [r for r in records if r["job"]["kind"] == "fit" and r["job"]["scope"] == "full" and r["job"]["seed"] in seeds]
     rows = []
     for row in original["rows"]:
