@@ -72,3 +72,13 @@ def test_shared_seed_error_is_not_reduced_as_if_subjects_were_independent():
     for row in data:
         row["mc_se_per_trial"] = .02
     np.testing.assert_allclose([r["numerical_se"] for r in summarize(data).values()], .02)
+
+
+def test_equal_parameter_count_prefers_fewer_eligible_control_mechanisms():
+    data = [dict(subject=c, condition=c, variant=v, test_nll_per_trial=1. + (.005 if v == "constant_retention" else 0.),
+                 mc_se_per_trial=.0001, energy=.2, max_system_weight=.25,
+                 numerical_status="within_working_tolerance")
+            for c in (1, 2, 3) for v in ("compact", "constant_retention", "similarity_retrieval")]
+    decision = choose(data, POLICY)
+    assert decision["chosen"] == "constant_retention"
+    assert decision["complexity"]["constant_retention"]["optional_controls"] == 1

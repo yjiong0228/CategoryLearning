@@ -96,8 +96,14 @@ def choose(rows: list[dict], policy: dict) -> dict:
                                relative_energy_deterioration=float(energy_ratio), eligible=bool(eligible))
     eligible = [v for v in summary if checks[v]["eligible"]]
     order = list(policy["variants"])
-    chosen = min(eligible, key=lambda v: (policy["variants"][v]["parameters"], summary[v]["nll"], order.index(v)))
+    complexity = {v: dict(parameters=policy["variants"][v]["parameters"], optional_controls=sum((
+        policy["variants"][v]["execution"] == "free", policy["variants"][v]["precision"] == "free",
+        policy["variants"][v]["search"] == "accumulate", policy["variants"][v]["retention"] == "outcome",
+        policy["variants"][v]["retrieval"] == "similarity"))) for v in summary}
+    chosen = min(eligible, key=lambda v: (complexity[v]["parameters"], complexity[v]["optional_controls"],
+                                        summary[v]["nll"], order.index(v)))
     return dict(chosen=chosen, reference=reference, summary=summary, checks=checks,
+                complexity=complexity,
                 inference_scope="finite_search_working_structure_choice")
 
 
