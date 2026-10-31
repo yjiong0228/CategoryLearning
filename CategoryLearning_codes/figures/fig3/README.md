@@ -1,5 +1,16 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1031：S128同预算个案（2026-10-31）
+
+[三图结果解释](../../../results/model_1031/subject128_pilot_20261031_v1/report_v3/interpretation.md) ·
+[行为与表示](../outputs/fig3/model1031_subject128_20261031_v3/behavior_and_representation.png) ·
+[部位对应](../outputs/fig3/model1031_subject128_20261031_v3/feature_use.png) ·
+[候选差异](../outputs/fig3/model1031_subject128_20261031_v3/candidate_sensitivity.png)。
+全部192题与每候选64条自主路径保留。S128没有数量概括，全部口述均有部位编码；
+早期对应有所提高，中段局部概括的支持随参数变化。主展示参数只按选择NLL排序。
+复用`model1031_subject118_pilot`入口，编号、题数、特征顺序和候选标签读取实际资料。
+v3将图例移出曲线区域；前两版保留，数值完全一致。图为183毫米宽、300 dpi PNG。
+
 ## Model 1031：S118经验到规则的首个个案（2026-10-31）
 
 [三张PNG和结果解释](../../../results/model_1031/subject118_pilot_20261031_v1/report_v1/interpretation.md) ·

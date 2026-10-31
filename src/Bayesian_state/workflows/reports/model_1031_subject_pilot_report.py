@@ -47,6 +47,8 @@ def run(study: Path, output: Path, figures: Path) -> None:
     complete = json.loads((study / 'completion.json').read_text())
     ranking = json.loads((study / 'final_ranking.json').read_text())
     policy = register['policy']; n = register['trials']
+    subject = int(policy['subject'])
+    selection = policy.get('selection', {})
     frame = pd.read_csv(study / 'subject_source.csv').reset_index(drop=True)
     with np.load(study / 'behavior_input.npz') as z:
         choices, categories, feedback = z['choices'], z['categories'], z['feedback']
@@ -58,9 +60,9 @@ def run(study: Path, output: Path, figures: Path) -> None:
     phases = [(start, min(start + policy['summaries']['phase_trials'], n))
               for start in range(0, n, policy['summaries']['phase_trials'])]
     mask_bits = (np.arange(16)[:, None] & (2 ** np.arange(4))) > 0
-    metadata = dict(study=str(study), selected={}, summaries={}, phases=phases,
+    metadata = dict(study=str(study), subject=subject, selected={}, summaries={}, phases=phases,
         feature_names=[frame.iloc[0][f'feature{i}_name'] for i in range(1, 5)],
-        oral_eligible=int(eligible.sum()), oral_total=n,
+        oral_eligible=int(eligible.sum()), oral_total=n, selection=selection,
         oral_unresolved_rows=(np.flatnonzero(~eligible) + 1).tolist(),
         oral_scope='original_feature_use_only; not_complete_content_or_report_probability',
         inference_timing='after_current_choice_before_current_feedback; full_record_selected_fixed_parameters',
@@ -166,7 +168,7 @@ def run(study: Path, output: Path, figures: Path) -> None:
         review[model + '_modal_features'] = [mask_label(int(c)) for c in plot[model + '_feature_sets'].argmax(axis=1)]
     for i, name in enumerate(('uncommitted', 'specific', 'local', 'rule')):
         review['model_1031_' + name] = plot['model_1031_group'][:, i]
-    review['review_note'] = np.where(eligible, '现有特征编码；长短方向另待检验', '保留原文：未指明部位的数量概括或操作说明')
+    review['review_note'] = np.where(eligible, '现有特征编码；长短方向另待检验', '保留原文：现有编码未指明部位，另待复核')
     review.to_csv(output / 'trial_review.csv', index=False)
     html_rows = []
     for row in review.to_dict('records'):
@@ -178,10 +180,10 @@ def run(study: Path, output: Path, figures: Path) -> None:
         html_rows.append(f"<tr id='trial-{row['trial']}'>" + ''.join('<td>'+html.escape(str(v))+'</td>' for v in values) + '</tr>')
     headings = ['有效试次', '原始场/块/题', '原始理由', '选择', '反馈', '既有编码部位',
                 '具体/局部/规则执行概率', '新模型最可能使用的部位', '部位集合吻合概率', '复核备注']
-    (output / 'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>S118 初步复核</title>
+    (output / 'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>SUBJECT_LABEL 初步复核</title>
 <style>body{font:14px sans-serif;margin:24px}table{border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd;vertical-align:top}th{position:sticky;top:0;background:#eef3f7}td:nth-child(3){min-width:300px}tr:nth-child(even){background:#fafafa}</style>
-<h1>S118 逐题理由与行为推断</h1><p>口述参与选人；参数和状态只使用行为。状态为选择后、反馈前；参数由全记录选出。
-部位吻合只评价特征集合，具体长短及整句内容另待检验。所有256条原文保留。</p><table><tr>'''
+<h1>SUBJECT_LABEL 逐题理由与行为推断</h1><p>口述参与选人；参数和状态只使用行为。状态为选择后、反馈前；参数由全记录选出。
+部位吻合只评价特征集合，具体长短及整句内容另待检验。所有TRIAL_COUNT条原文保留。</p><table><tr>'''.replace('SUBJECT_LABEL', f'S{subject}').replace('TRIAL_COUNT', str(n))
         + ''.join('<th>'+h+'</th>' for h in headings)+'</tr>'+''.join(html_rows)+'</table>')
     top_new, top_old = [metadata['summaries'][m] for m in ('model_1031', 'model_1024')]
     comparisons = [[NAMES[r['model']], r['candidate'], f"{r['nll']:.2f}", f"{r['nll_min']:.2f}–{r['nll_max']:.2f}",
@@ -193,16 +195,27 @@ def run(study: Path, output: Path, figures: Path) -> None:
     def relative(target: Path) -> str:
         import os
         return os.path.relpath(target, output)
-    report = f'''# S118：新模型的首个个案试验
+    examples = selection.get('example_trials', [33, 113, 177] if subject == 118 else [])
+    examples_text = '；'.join(f"第{t}题为“{frame.iloc[t-1]['text']}”" for t in examples)
+    case_reason = selection.get('reason', register['selected_subject_reason'])
+    case_notes = selection.get('notes', '')
+    protocol = Path(selection.get('protocol_path',
+        'src/Bayesian_state/docs/model_architecture/model_1031_subject118_pilot.md'))
+    coverage = (f"共有{int((~eligible).sum())}条未进入部位集合评分，完整原文保留，原因需要逐条核对。"
+                if (~eligible).any() else f"全部{n}条现有口述编码均指明了部位，均进入部位集合评分。")
+    quantity_note = (f"选人时检查了全部{selection['reviewed_trials']}条原文，发现数量概括"
+                     f"{selection['quantity_generalization_rows']}条。" if 'quantity_generalization_rows' in selection else '')
+    report = f'''# S{subject}：经验到规则的个案试验
 
 本轮已完成预定计算：两种模型各16个候选，分别经过32、128、512粒子检查；最终各两个候选，
 每个候选生成64条自主路径，共256条完整路径。计算耗时{complete['elapsed_seconds']/60:.1f}分钟、
-累计{complete['cpu_seconds']/3600:.2f} CPU小时。范围为单个开发案例，完整256题用于选参。
+累计{complete['cpu_seconds']/3600:.2f} CPU小时。范围为单个开发案例，完整{n}题用于选参。
 
-## 为什么选择S118
+## 为什么选择S{subject}
 
-前64题有63条明确描述四个部位，后64题有63条只编码尾巴。第33题为“头短，脖子长，腿短，尾巴短”，
-第113题为“三个部位都很短”，第177题为“尾巴比较长”。这呈现具体描述、部位数量概括及单特征理由的变化。
+{case_reason}
+前64题有{int((codes[:64] == 15).sum())}条编码了四个部位，后64题有{int((codes[-64:] == 1).sum())}条只编码尾巴。
+{examples_text}。
 早期具体描述与示例记忆相容；“正在记忆例子”仍是待检验的心理解释。
 
 本轮参数与状态只使用选择和反馈，口述用于选人及事后描述。口述已参与开发，原文与编码待人工复核。
@@ -224,7 +237,8 @@ NLL越低表示真实选择得到更高概率。新减旧的NLL差为{top_new['n
 
 图a是观察被试历史之后、下一次选择之前的正确类别概率；图b是模型沿自己的回答和反馈生成的路径。
 两者均用最近32题平均；图b范围带包含同一参数下64条路径的中间80%，蓝线为平均值。
-黑线为被试实际正确率。图c为本题选择后、反馈前的表示类型执行概率。
+黑线为被试实际正确率。图c为本题选择后、反馈前的表示类型执行概率，按最近32题平均。
+图c和d的模型曲线在起始不足32题时使用已有题数；口述均值要求窗口内至少8条可评分记录。
 图d比较口述指明的部位数与模型执行内容涉及的维度数。数值编码没有指明具体部位的题目保留空缺。
 
 ## 分阶段看新模型
@@ -241,20 +255,25 @@ NLL越低表示真实选择得到更高概率。新减旧的NLL差为{top_new['n
 
 图a保留原有口述特征编码；白色空列为未指明具体部位。图b是新模型推断的各部位参与执行的概率。
 图c显示部位集合吻合概率，采用最近32题中可评分记录的平均；至少8条才绘制。
-完整逐题结果见[口述复核表](review.html)，包含全部256条原文。
+完整逐题结果见[口述复核表](review.html)，包含全部{n}条原文。
 
 ## 尚未解释的内容与计算限制
 
-共有{int((~eligible).sum())}条口述缺少明确部位身份，主要是“两个／三个部位很长”，另有“按错了”。
-这部分保留原文，未进入部位集合分数。当前删去维度的局部概括尚未显式表示“有几个部位很长”这一操作，
-因此中间阶段的完整理由仍有机制缺口。
+{coverage} {quantity_note}
+{case_notes}
+具体长短判断与完整理由尚未评分，口述编码仍待人工复核。
+
+![最终候选与数值差异]({relative(figures / 'candidate_sensitivity.png')})
+
+图a为各候选两次512粒子的NLL，图b为全部64条自主路径的Energy及模拟标准误，
+图c比较新模型两个最终候选的规则执行概率，范围带只表示主候选的两次数值重复差异。
 
 选择相近参数下的状态可以不同，`numerical_sensitivity.csv`分别记录同参数两次运行的分布差异，
 `summary.json`记录两个最终候选之间的特征集合分布差异。两次重复及512粒子只提供本轮数值检查，
-参数区域、状态恢复和独立口述预测尚待检验。自主路径使用固定刺激日程及256题长度，任务停止过程另待检验。
+参数区域、状态恢复和独立口述预测尚待检验。自主路径使用固定刺激日程及{n}题长度，任务停止过程另待检验。
 
 本轮全部候选与重复结果位于上级目录，两个最终候选均保留。图表和参数排序没有根据口述匹配度调整。
-研究协议见[执行说明]({relative(Path('src/Bayesian_state/docs/model_architecture/model_1031_subject118_pilot.md'))})。
+研究协议见[执行说明]({relative(protocol)})。
 '''
     (output / 'report.md').write_text(report)
     print(json.dumps(dict(output=str(output), new=top_new, old=top_old), ensure_ascii=False, indent=2))

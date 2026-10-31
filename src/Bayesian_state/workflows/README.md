@@ -1,5 +1,20 @@
 # 当前模型工作流
 
+## Model 1031：更换为S128的同预算比较
+
+用户要求选择没有数量概括的被试后，登记了[S128试验](../docs/model_architecture/model_1031_subject128_pilot.md)。
+计算复用下文的单人入口及相同候选、种子与预算。准备阶段改用
+`--config configs/exp123/specific_models/model_1031_subject128_pilot_v1.yaml`，
+并为准备、执行、后处理及图表分别指定同一新研究目录下的路径。
+本轮结果目录为`results/model_1031/subject128_pilot_20261031_v1/`。
+当前阅读入口为其中的`report_v3/interpretation.md`；v3只调整图例位置并补充解释，拟合与评分保持原样。
+
+配置新增可选`selection`字段，保存选人理由、已审阅题数、示例试次、原文备注和协议位置；
+这些字段用于来源与报告，不进入选择似然或粒子权重。未提供时保留原配置的准备与运行接口。
+报告从配置读取被试编号，从数据读取题数与特征列序；绘图同时读取实际最终候选名称。
+绘图模块继续使用`model1031_subject118_pilot`这一已有入口，可处理本轮S128的192题。
+原S118数值汇总及研究产物保留。
+
 ## Model 1031：S118经验到规则的单人试验
 
 [执行说明](../docs/model_architecture/model_1031_subject118_pilot.md)登记选人、16点有限搜索、

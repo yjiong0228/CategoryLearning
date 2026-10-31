@@ -6,6 +6,8 @@
 [S118首个个案比较](docs/model_architecture/model_1031_subject118_pilot.md)：早期部位范围对应有所改善，
 经验阶段仍短，完整中段数量理由尚未解释。完整参数区域、恢复和口述观测模型尚待研究。
 Model 1024 及已有结果继续作为比较依据。
+按用户要求再完成[S128同预算试验](docs/model_architecture/model_1031_subject128_pilot.md)：口述无数量概括，
+早期部位范围对应提高，中段状态随参数变化，自主高正确率阶段仍少见；口述与心理解释继续作为开发证据。
 
 > **2026-10-12 full-v3 实现更新：** [Model 0923 PDF](docs/model_architecture/model_0923.pdf)
 > 第6节采用单学习率的反馈校准，精度模块含初值和学习率两个参数，完整模型共13项行为参数。

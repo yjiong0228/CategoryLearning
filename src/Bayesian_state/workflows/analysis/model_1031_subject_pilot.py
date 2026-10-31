@@ -154,10 +154,11 @@ def prepare(config: Path, output: Path) -> None:
         input_sha256=digest(output / 'behavior_input.npz'), data_sha256=digest(data_path),
         created_time=time.time(), versions=dict(python=platform.python_version(), numpy=np.__version__, scipy=scipy.__version__),
         scope='full_record_behavior_only_selection; oral_selected_development_case; provisional_original_oral',
-        selected_subject_reason='Long specific descriptions followed by tail-based reasons; frozen before fitting',
+        selected_subject_reason=policy.get('selection', {}).get('reason',
+            'Long specific descriptions followed by tail-based reasons; frozen before fitting'),
         figure_contract=dict(backend='python', archetype='quantitative grid', format='PNG',
             evidence=['behavior_and_autonomous_distributions', 'representation_groups', 'feature_use_and_raw_oral', 'parameter_and_numerical_sensitivity'],
-            claim='Evaluate whether this fixed candidate can reproduce behavior and the descriptive shift in S118; findings determine the conclusion'))
+            claim=f"Evaluate behavior and the descriptive shift in S{policy['subject']}; findings determine the conclusion"))
     write_new(output / 'registration.json', register)
     for model in policy['models']:
         for point in candidates:

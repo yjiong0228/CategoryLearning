@@ -1,6 +1,9 @@
-"""S118 pilot: behavior, representation use and provisional oral correspondence.
+"""Individual pilot: behavior, representation use and provisional oral correspondence.
 
-One participant; all 256 trials; two numerical repeats per final parameter;
+The original S118 module name remains a compatible entry point; subject identity,
+trial count and final candidate labels are read from the supplied report.
+
+One participant; all available trials; two numerical repeats per final parameter;
 64 independent autonomous paths per parameter. The interval in the behavior
 panel is a pointwise 10th–90th percentile of paths, not a confidence interval.
 Parameters use the complete behavioral record. Oral data selected this development
@@ -45,7 +48,7 @@ def panel(ax, letter: str, title: str) -> None:
 
 def trial_axis(ax, n: int) -> None:
     ax.set_xlim(1, n)
-    ax.set_xticks([1, 64, 128, 192, 256])
+    ax.set_xticks(sorted(set([1, n, *range(64, n + 1, 64)])))
     ax.set_xlabel('Trial')
 
 
@@ -58,6 +61,8 @@ def run(report: Path, output: Path) -> None:
     summary = json.loads((report / 'summary.json').read_text())
     points = pd.read_csv(report / 'final_candidates.csv')
     trial = data['trial']; n = len(trial)
+    subject = int(summary.get('subject', 118))
+    alternative = points.loc[(points.model == 'model_1031') & ~points.selected, 'candidate'].iloc[0]
     for name in ('model_1031', 'model_1024'):
         assert data[name + '_generated'].shape == (64, n)
         np.testing.assert_allclose(data[name + '_feature_sets'].sum(axis=1), 1.)
@@ -76,7 +81,7 @@ def run(report: Path, output: Path) -> None:
         figures.append(name)
 
     fig, axs = plt.subplots(4, 1, figsize=(WIDTH, 9.5), sharex=True, layout='constrained')
-    fig.suptitle('S118 | Experience-based candidate and rule-based baseline', fontsize=11)
+    fig.suptitle(f'S{subject} | Experience-based candidate and rule-based baseline', fontsize=11)
     actual = trailing(data['actual_feedback'])
     for model, color, label in [('model_1031', NEW, 'Model 1031'), ('model_1024', OLD, 'Model 1024')]:
         axs[0].plot(trial, trailing(data[model + '_conditional_correct']), color=color,
@@ -98,20 +103,22 @@ def run(report: Path, output: Path) -> None:
         axs[2].plot(trial, trailing(data['model_1031_group'][:, index], 1), color=color, label=name)
     axs[2].set_ylim(-.02, 1.02); axs[2].set_ylabel('Execution probability')
     panel(axs[2], 'c', 'Model 1031: inferred representation | trailing 32 trials')
-    axs[2].legend(ncol=2, loc='center right')
+    axs[2].legend(ncol=4, loc='lower left', bbox_to_anchor=(0, 1.0), borderaxespad=0)
+    axs[2].set_title('Model 1031: inferred representation | trailing 32 trials', loc='left', pad=29, fontsize=10)
     axs[3].scatter(trial, data['oral_feature_count'], color=HUMAN, s=6, alpha=.25, linewidths=0)
     axs[3].plot(trial, trailing(data['oral_feature_count'], 8), color=HUMAN, label='Oral: named parts')
     for model, color, label in [('model_1031', NEW, '1031: expected features'), ('model_1024', OLD, '1024: expected features')]:
         axs[3].plot(trial, trailing(data[model + '_feature_count'], 1), color=color, label=label)
     axs[3].set_ylim(-.1, 4.3); axs[3].set_yticks([0, 1, 2, 3, 4]); axs[3].set_ylabel('Number of features')
     panel(axs[3], 'd', 'Feature scope | oral codes and inferred execution content')
-    axs[3].legend(ncol=1, loc='upper right')
+    axs[3].legend(ncol=3, loc='lower left', bbox_to_anchor=(0, 1.0), borderaxespad=0)
+    axs[3].set_title('Feature scope | oral codes and inferred execution content', loc='left', pad=29, fontsize=10)
     trial_axis(axs[3], n)
     save(fig, 'behavior_and_representation.png')
 
     fig, axs = plt.subplots(3, 1, figsize=(WIDTH, 7.2), sharex=True, layout='constrained',
                             gridspec_kw={'height_ratios': [1, 1, 1.2]})
-    fig.suptitle('S118 | Which features are used?', fontsize=11)
+    fig.suptitle(f'S{subject} | Which features are used?', fontsize=11)
     oral = data['oral_mask'].astype(float).T
     oral[:, ~data['oral_eligible']] = np.nan
     cmap = ListedColormap(['#EDEDED', '#303030']); cmap.set_bad('white')
@@ -127,12 +134,12 @@ def run(report: Path, output: Path) -> None:
     for model, color, label in [('model_1031', NEW, 'Model 1031'), ('model_1024', OLD, 'Model 1024')]:
         axs[2].plot(trial, trailing(data[model + '_feature_exact'], 8), color=color, label=label)
     panel(axs[2], 'c', 'Exact feature-set correspondence | trailing 32 trials, ≥8 scored reports')
-    axs[2].set_ylim(-.02, 1.02); axs[2].set_ylabel('Correspondence probability'); axs[2].legend(loc='upper left')
+    axs[2].set_ylim(-.02, 1.02); axs[2].set_ylabel('Correspondence probability'); axs[2].legend(loc='upper center', ncol=2)
     trial_axis(axs[2], n)
     save(fig, 'feature_use.png')
 
     fig, axs = plt.subplots(3, 1, figsize=(WIDTH, 7.8), layout='constrained')
-    fig.suptitle('S118 | Final candidates and numerical sensitivity', fontsize=11)
+    fig.suptitle(f'S{subject} | Final candidates and numerical sensitivity', fontsize=11)
     positions = np.arange(len(points))
     for x, row in enumerate(points.to_dict('records')):
         color = NEW if row['model'] == 'model_1031' else OLD
@@ -150,19 +157,19 @@ def run(report: Path, output: Path) -> None:
     repeats = trailing(group, 1)
     axs[2].fill_between(trial, repeats.min(axis=0), repeats.max(axis=0), color=NEW, alpha=.2, linewidth=0)
     axs[2].plot(trial, repeats.mean(axis=0), color=NEW, label='1031 / ' + summary['selected']['model_1031'])
-    axs[2].plot(trial, trailing(data['model_1031_alternative_group'][:, 3], 1), color=OLD, ls='--', label='1031 / c05')
+    axs[2].plot(trial, trailing(data['model_1031_alternative_group'][:, 3], 1), color=OLD, ls='--', label='1031 / ' + alternative)
     axs[2].set_ylabel('Rule execution probability'); axs[2].set_ylim(-.02, 1.02)
-    panel(axs[2], 'c', 'Both 1031 finalists favor rules early | band: two numerical repeats')
+    panel(axs[2], 'c', '1031 rule execution across finalists | band: two numerical repeats')
     axs[2].legend(loc='lower right'); trial_axis(axs[2], n)
     save(fig, 'candidate_sensitivity.png')
     qa = dict(backend='Python / matplotlib', format='PNG only per repository instructions',
         input_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), figures=figures,
-        claim='Early feature correspondence improves but remains low; both finalists favor catalogue rules early.',
-        n_participants=1, trials=n, numerical_repeats=2, autonomous_paths_per_parameter=64,
+        claim='Compare behavior and the inferred shift from specific experience to rules in the selected case.',
+        subject=subject, n_participants=1, trials=n, numerical_repeats=2, autonomous_paths_per_parameter=64,
         data_use='complete_behavior_for_parameters; oral_selected_development_case',
         intervals='pathwise pointwise 10–90%; numerical repeat range; Energy simulation standard error',
-        exclusions='50 oral records with no explicit part identity unscored; all behavior retained',
+        exclusions=f"{int((~data['oral_eligible']).sum())} oral records without explicit parts unscored; all behavior retained",
         smoothing='trailing32; minimum32 behavior, minimum1 state, minimum8 scored oral',
         tests='No hypothesis tests or p values', width_mm=183, dpi=300,
         visual_review='pending')

@@ -1,0 +1,92 @@
+protocol: model1031_subject128_experience_pilot_v1
+subject: 128
+condition: 1
+data: data/exp123/processed/Task2_processed.csv
+models:
+- model_1031
+- model_1024
+seed: 20261031
+budget:
+  wall_seconds: 2700
+  cpu_seconds: 43200
+  workers: 128
+search:
+  candidates: 16
+  screen_particles: 32
+  screen_seeds:
+  - 81101
+  - 81102
+  confirm_top: 4
+  confirm_particles: 128
+  confirm_seeds:
+  - 81201
+  - 81202
+  final_top: 2
+  final_particles: 512
+  final_seeds:
+  - 81301
+  - 81302
+  generation_paths: 64
+  generation_seed: 81401
+  generation_chunk: 8
+parameter_values:
+  similarity_width:
+  - 0.15
+  - 0.3
+  - 0.6
+  capacity:
+  - 3
+  - 6
+  - 10
+  baseline_probability:
+  - 0.02
+  - 0.08
+  - 0.25
+  error_gain:
+  - 0.1
+  - 0.5
+  - 1.5
+  failure_decay:
+  - 0.3
+  - 0.7
+  - 0.95
+  global_search:
+  - 0.08
+  - 0.3
+  - 0.7
+  retention:
+  - 0.7
+  - 0.9
+  - 1.0
+  execution_inertia:
+  - 0.0
+  - 1.0
+  - 3.0
+  beta_init:
+  - 2.0
+  - 5.0
+  - 10.0
+  learning_rate:
+  - 0.03
+  - 0.1
+  - 0.3
+summaries:
+  block_trials: 32
+  phase_trials: 64
+  generation_quantiles:
+  - 0.1
+  - 0.9
+  near_nll_per_trial: 0.01
+  precision_nll_per_trial: 0.01
+selection:
+  reason: S128全192题口述已检查：前期持续具体部位描述，第141题起只描述尾巴；没有发现按几个部位长短分类的数量概括。选人先于本轮拟合。
+  reviewed_trials: 192
+  quantity_generalization_rows: 0
+  example_trials:
+  - 1
+  - 64
+  - 129
+  - 141
+  - 192
+  notes: 第65题有措辞不顺，第104题两次提到腿；原文和原编码保留，未重写。四部位描述与具体经验相容，记忆过程本身仍待验证。
+  protocol_path: src/Bayesian_state/docs/model_architecture/model_1031_subject128_pilot.md
