@@ -2,3 +2,7 @@
 /draft_v*/
 # Locally supplied template fonts; do not redistribute font binaries in Git.
 /fonts/
+# Editable figure deliverables and rendering audits are retained locally.
+/figures/*.pptx
+/figures/*.png
+/figures/*.manifest.json

@@ -28,6 +28,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
+from .figures.build_figure3 import SOURCES as MECHANISM_SOURCES, draw_figure3
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "CategoryLearning_poster/CategoryLearning_poster.pptx"
@@ -51,6 +52,7 @@ class Poster:
         self.slide = self.prs.slides[0]
         self.panels: list[dict] = []
         self.textboxes: list[dict] = []
+        self.vector_panels: list[dict] = []
         self.width = self.prs.slide_width / 914400
         self.height = self.prs.slide_height / 914400
 
@@ -112,7 +114,7 @@ class Poster:
         return h
 
     def assemble(self, second_affiliation: str, email: str | None,
-                 draft_version: int = 3) -> None:
+                 draft_version: int = 4) -> None:
         # Full-width sections follow reference1; the template stays untouched.
         self.text("Beyond behavioural fit: reconstructing belief dynamics",
                   1, 3.38, 31.1, 1.3, 72, INK, True, PP_ALIGN.CENTER)
@@ -148,8 +150,11 @@ class Poster:
                   18.0, 16.15, 14.0, 1.2, 30)
 
         self.section("A model of learning processes", 17.8)
-        self.picture("framework", (.035, .013, .985, .345), 1.05, 18.95, 15.6,
-                     "Figure 2a: illustrative learning cycle")
+        diagram = draw_figure3(self.slide, 1.05, 18.95, 15.6)
+        self.textboxes.extend(diagram.textboxes)
+        self.vector_panels.append({"name": "Figure 3: Model 1023 mechanism",
+                                   "model_version": "1023", "native_objects": diagram.elements,
+                                   "bounds_in": [1.05, 18.95, 15.6, 6.85]})
         self.picture("framework", (.018, .804, .345, .988), 17.0, 19.2, 6.9,
                      "Figure 2e: choice calibration")
         self.text("12 learners\n7,924 scored choices", 17.0, 24.45, 6.9, 1.2,
@@ -185,18 +190,19 @@ class Poster:
         for i, (lead, body) in enumerate(conclusions):
             self.text(lead + body, 1.05, 42.95 + .74 * i, 31, .65, 30, lead=lead)
         footer = (f"DRAFT v{draft_version} · 31 October 2026 | "
-                  "Figures: earlier Model 0826 development results")
+                  "Mechanism: Model 1023 | Results: earlier Model 0826 development analyses")
         if email:
             footer += f" | {email}"
         self.text(footer, 1, 45.15, 31.1, .28, 15, MUTED, False, PP_ALIGN.CENTER)
         self.slide.notes_slide.notes_text_frame.text = (
             "Poster draft based on learning_paper_v1.tex abstract. Full-width horizontal "
-            "sections follow reference1.jpg. All charts use existing September 2026 "
-            "Model 0826 results. They do not establish Model 1024 validation. Figures "
+            "sections follow reference1.jpg. The editable mechanism figure depicts Model 1023. "
+            "The result charts use existing September 2026 Model 0826 results. Figures "
             "use full-record fitted parameters. Oral reports were excluded from these "
             "fits but remain development material pending manual review. Alternative-model "
-            "comparisons and the awareness/aha mechanism are unconfirmed. Figure 2a "
-            "contains illustrative numbers. Wide chart rows retain the original plotted "
+            "comparisons and the awareness/aha mechanism are unconfirmed. Figure 3 "
+            "is a mechanism schematic with illustrative icons and bar lengths. "
+            "Wide chart rows retain the original plotted "
             "data; layout changes are checked by data hashes. Full provenance is in manifest.json."
         )
 
@@ -247,7 +253,7 @@ def preserve_template_parts(pptx_path: Path) -> dict:
             "original_theme_heading_font": "Arial Black"}
 
 
-def export_pdf(pptx_path: Path, template_font: Path) -> dict:
+def export_pdf(pptx_path: Path, template_font: Path, *, compare_template: bool = True) -> dict:
     """Render with the supplied files; compare against the untouched template."""
     with tempfile.TemporaryDirectory(prefix="categorylearning-poster-lo-") as temporary:
         work = Path(temporary)
@@ -274,27 +280,31 @@ def export_pdf(pptx_path: Path, template_font: Path) -> dict:
                 raise ValueError(f"Unexpected font substitution for {pattern}: {matched}")
             matches[pattern] = {"file_name": source.name,
                                 "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
-        template_copy = work / "original_template.pptx"
-        shutil.copy2(TEMPLATE, template_copy)
+        input_files = [str(pptx_path)]
+        if compare_template:
+            template_copy = work / "original_template.pptx"
+            shutil.copy2(TEMPLATE, template_copy)
+            input_files.append(str(template_copy))
         render_dir = work / "render"
         render_dir.mkdir()
         subprocess.run(
             ["libreoffice", f"-env:UserInstallation={(work / 'profile').as_uri()}",
              "--headless", "--convert-to", "pdf", "--outdir", str(render_dir),
-             str(pptx_path), str(template_copy)], env=env,
+             *input_files], env=env,
             check=True, timeout=120, capture_output=True, text=True,
         )
         pdf = render_dir / pptx_path.with_suffix(".pdf").name
-        original = fitz.open(render_dir / "original_template.pdf")
         final = fitz.open(pdf)
         checks = {}
-        for label, low, high in [("header", 0, 3.1), ("footer", 45.45, 46.8104167)]:
-            rect = fitz.Rect(0, low * 72, final[0].rect.width, high * 72)
-            a = original[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
-            b = final[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
-            checks[label] = a.samples == b.samples
-            if not checks[label]:
-                raise ValueError(f"The rendered template {label} changed")
+        if compare_template:
+            original = fitz.open(render_dir / "original_template.pdf")
+            for label, low, high in [("header", 0, 3.1), ("footer", 45.45, 46.8104167)]:
+                rect = fitz.Rect(0, low * 72, final[0].rect.width, high * 72)
+                a = original[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
+                b = final[0].get_pixmap(matrix=fitz.Matrix(1, 1), clip=rect, alpha=False)
+                checks[label] = a.samples == b.samples
+                if not checks[label]:
+                    raise ValueError(f"The rendered template {label} changed")
         shutil.copy2(pdf, pptx_path.with_suffix(".pdf"))
         return {"font_files": matches, "template_pixel_match": checks,
                 "renderer": subprocess.check_output(["libreoffice", "--version"],
@@ -323,6 +333,9 @@ def verify_render(poster: Poster, pdf_path: Path) -> dict:
         own = []
         for start, span in enumerate(spans):
             if abs(span["size"] - t["font_pt"]) >= 1:
+                continue
+            if not (x - 3 <= span["bbox"][0] <= x + w + 3
+                    and y - 3 <= span["bbox"][1] <= y + h + 3):
                 continue
             joined, matched = "", []
             for candidate in spans[start:]:
@@ -360,7 +373,7 @@ def main() -> None:
                         help="New output directory; existing directories are refused")
     parser.add_argument("--second-affiliation", default="Affiliation to be confirmed (Junqi Wang)")
     parser.add_argument("--email")
-    parser.add_argument("--draft-version", type=int, default=3)
+    parser.add_argument("--draft-version", type=int, default=4)
     parser.add_argument("--template-font", type=Path, default=TEMPLATE_FONT,
                         help="Arial Black file used by the untouched template")
     parser.add_argument("--pptx-only", action="store_true",
@@ -380,7 +393,8 @@ def main() -> None:
     poster.prs.save(path)
     template_preservation = preserve_template_parts(path)
     sources = [TEMPLATE, *FIGURES.values(), SUBJECT_TABLE, REGULAR_FONT, BOLD_FONT,
-               Path(__file__).resolve(),
+               Path(__file__).resolve(), *MECHANISM_SOURCES,
+               ROOT / "CategoryLearning_poster/figures/build_figure3.py",
                ROOT / "CategoryLearning_paper/learning_paper_v1/learning_paper_v1.tex"]
     manifest = {
         "draft_date": "2026-10-31", "draft_version": args.draft_version,
@@ -393,11 +407,12 @@ def main() -> None:
         "second_affiliation": args.second_affiliation, "email": args.email,
         "verified_source_counts": counts,
         "panels": poster.panels, "text_boxes": poster.textboxes,
+        "vector_panels": poster.vector_panels,
         "row_figure_manifests": {
             key: json.loads(FIGURES[key].with_name("manifest.json").read_text())
             for key in ("strategy_row", "dynamics_row")
         },
-        "scientific_scope": "Existing Model 0826 development figures; no new analysis or fitting",
+        "scientific_scope": "Model 1023 mechanism schematic and existing Model 0826 development results; no new analysis or fitting",
     }
     if not args.pptx_only:
         manifest["pdf_export"] = export_pdf(path, args.template_font.resolve())
