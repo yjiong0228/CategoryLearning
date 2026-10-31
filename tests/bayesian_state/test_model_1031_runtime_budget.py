@@ -11,7 +11,7 @@ from src.Bayesian_state.workflows.runs.handoff_model_1031_supervisor import supe
 
 
 POLICY = dict(started_at_utc="2026-10-31T16:33:19+00:00", deadline_utc="2026-11-01T04:33:19+00:00",
-              budget=dict(computation_stop_hours=9.5, cpu_hours=1152))
+              budget=dict(computation_stop_hours=9.5, cpu_hours=1152, workers=128))
 
 
 def test_amendment_preserves_wall_reserve_and_cpu_cap(tmp_path):

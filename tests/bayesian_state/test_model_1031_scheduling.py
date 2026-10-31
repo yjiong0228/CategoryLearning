@@ -1,7 +1,22 @@
 """Task ordering changes wall time without changing numerical jobs."""
 from copy import deepcopy
+import pytest
 
-from src.Bayesian_state.workflows.analysis.model_1031_scheduled import ordered_jobs
+from src.Bayesian_state.workflows.analysis.model_1031_scheduled import ordered_jobs, phase_worker_limit
+
+
+def test_branch_quota_is_released_only_after_companion_completion(tmp_path, monkeypatch):
+    marker = tmp_path / "completed.json"
+    monkeypatch.setenv("MODEL1031_PHASE_WORKERS", "64")
+    monkeypatch.setenv("MODEL1031_COMPANION_MARKER", str(marker))
+    assert phase_worker_limit(128) == 64
+    assert phase_worker_limit(16) == 16
+    marker.write_text("{}")
+    assert phase_worker_limit(128) == 128
+    monkeypatch.delenv("MODEL1031_COMPANION_MARKER")
+    monkeypatch.setenv("MODEL1031_PHASE_WORKERS", "0")
+    with pytest.raises(ValueError, match="at least one"):
+        phase_worker_limit(128)
 
 
 def test_observed_cost_and_full_length_determine_order_with_unchanged_jobs():

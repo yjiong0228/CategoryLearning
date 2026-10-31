@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import math
 from pathlib import Path
+import time
 
 
 def compute_deadline(output: Path, policy: dict) -> float:
@@ -30,3 +31,15 @@ def unrecorded_cpu_allowance(output: Path) -> float:
     if not math.isfinite(value) or value < 0:
         raise ValueError("Unrecorded CPU allowance must be finite and nonnegative")
     return value
+
+
+def read_job_record(path: Path) -> dict:
+    """Allow the brief interval between immutable file creation and flush."""
+    for attempt in range(4):
+        try:
+            return json.loads(path.read_text())
+        except json.JSONDecodeError:
+            if attempt == 3:
+                raise
+            time.sleep(.05)
+    raise AssertionError("Unreachable record-read state")

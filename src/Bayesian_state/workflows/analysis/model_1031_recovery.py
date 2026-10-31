@@ -24,6 +24,7 @@ from .model_1031_finalization import (
     Scheduler, candidate, digest, fit_jobs, identity, rank,
     save_arrays, task_feedback, validate_source, write_new,
 )
+from .model_1031_runtime_budget import read_job_record
 
 
 def group_codes(kinds: np.ndarray, masks: np.ndarray) -> np.ndarray:
@@ -131,9 +132,9 @@ def _custom_work(job: dict) -> dict:
 
 
 def include_case_cpu(scheduler: Scheduler) -> None:
-    recorded = sum(json.loads(p.read_text()).get("cpu_seconds", 0.)
+    recorded = sum(read_job_record(p).get("cpu_seconds", 0.)
                    for p in scheduler.output.glob("jobs/*.json"))
-    recorded += sum(json.loads(p.read_text()).get("cpu_seconds", 0.)
+    recorded += sum(read_job_record(p).get("cpu_seconds", 0.)
                     for p in (scheduler.output / "recovery").glob("*/jobs/*.json"))
     scheduler.previous_cpu = max(scheduler.previous_cpu, recorded)
 
@@ -144,7 +145,7 @@ def run_custom(output: Path, policy: dict, jobs: list[dict]) -> dict:
     include_case_cpu(scheduler)
     if time.time() >= scheduler.deadline or scheduler.cpu_used() >= policy["budget"]["cpu_hours"] * 3600:
         raise TimeoutError("Recovery cannot start after the compute budget")
-    count = min(policy["budget"]["workers"], len(os.sched_getaffinity(0)), len(jobs))
+    count = min(scheduler.policy["budget"]["workers"], len(os.sched_getaffinity(0)), len(jobs))
     scheduler.pool = ProcessPoolExecutor(max_workers=count, mp_context=mp.get_context("spawn"))
     futures = {scheduler.pool.submit(_custom_work, job): job for job in jobs}
     records, last_report = {}, 0.
