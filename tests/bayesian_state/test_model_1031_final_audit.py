@@ -4,7 +4,7 @@ import pytest
 
 from src.Bayesian_state.workflows.analysis.model_1031_finalization import digest, save_arrays, write_new
 from src.Bayesian_state.workflows.reports.audit_model_1031_finalization import (
-    generation_summaries, merge_state_records, verify_jobs,
+    generation_summaries, merge_state_records, nested_search_diagnostics, verify_jobs,
 )
 
 
@@ -43,3 +43,16 @@ def test_generation_summary_includes_failed_paths_and_rejects_missing_seeds(tmp_
     records[0]["job"]["seeds"] = [2500, 2501]
     with pytest.raises(ValueError, match="every registered path"):
         generation_summaries(tmp_path, records, rows, policy, "development", ["compact"])
+
+
+def test_nested_search_warning_requires_comparable_precision_and_clear_loss():
+    groups = [dict(variant=v, subject=dict(subject=1, condition=1, train_trials=100), particles=256,
+                   candidates=[dict(nll=nll, mc_se=.01, repeats=4)])
+              for v, nll in (("full", 100.), ("compact", 95.))]
+    check = nested_search_diagnostics(groups, .01)[0]
+    assert check["status"] == "finite_search_warning"
+    groups[1]["particles"] = 512
+    assert nested_search_diagnostics(groups, .01)[0]["status"] == "different_numerical_precision"
+    groups[1]["particles"] = 256
+    groups[0]["candidates"][0]["mc_se"] = 3.
+    assert nested_search_diagnostics(groups, .01)[0]["status"] == "no_detected_dominance_failure"

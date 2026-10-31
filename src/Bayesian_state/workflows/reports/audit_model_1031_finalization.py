@@ -95,8 +95,31 @@ def parameter_boundaries(groups: list[dict]) -> list[dict]:
             redundant.append("failure_decay has no behavioral effect at error_gain=0")
         rows.append(dict(subject=group["subject"]["subject"], condition=group["subject"]["condition"],
             variant=group["variant"], parameters=p, training_nll=best["nll"],
+            particles=group["particles"],
             numerical_status=group["numerical_status"], boundary_notes=redundant,
             confirmed_alternatives=group["candidates"]))
+    return rows
+
+
+def nested_search_diagnostics(groups: list[dict], tolerance: float) -> list[dict]:
+    """Check whether a supported boundary point exposes finite-search loss."""
+    rows = []
+    nested = {"no_inertia", "fixed_precision", "compact", "constant_search", "bayes_retention"}
+    for full in (g for g in groups if g["variant"] == "full"):
+        for smaller in (g for g in groups if g["subject"]["subject"] == full["subject"]["subject"]
+                        and g["variant"] in nested):
+            own, other = full["candidates"][0], smaller["candidates"][0]
+            n = full["subject"]["train_trials"]
+            same_precision = full["particles"] == smaller["particles"] and own["repeats"] == other["repeats"]
+            difference = (own["nll"] - other["nll"]) / n
+            lower = difference - 2 * (own["mc_se"] + other["mc_se"]) / n
+            status = ("different_numerical_precision" if not same_precision else
+                      "finite_search_warning" if lower > tolerance else "no_detected_dominance_failure")
+            rows.append(dict(subject=full["subject"]["subject"], condition=full["subject"]["condition"],
+                boundary_variant=smaller["variant"], full_minus_boundary_training_nll_per_trial=difference,
+                conservative_lower_difference=lower, full_particles=full["particles"],
+                boundary_particles=smaller["particles"], status=status,
+                scope="A better simpler point belongs to the full model; this diagnostic concerns finite search and numerical precision"))
     return rows
 
 
@@ -201,6 +224,7 @@ def audit(output: Path, destination: Path) -> None:
         paired_evaluation=paired, mean_evaluation_nll_difference=float(np.mean([r["nll_difference"] for r in paired])),
         mean_evaluation_energy_difference=float(np.mean([r["energy_difference"] for r in paired])),
         parameters=parameter_boundaries(parameters), selected_model_states=states,
+        nested_search_diagnostics=nested_search_diagnostics(parameters, register["policy"]["search"]["numerical_tolerance_nll_per_trial"]),
         autonomous_distributions=generation,
         recovery_classification=dict(Counter(r["classification"] for r in recovery)),
         recovery_rows=recovery, state_recovery=state_recovery, verification=verification,
