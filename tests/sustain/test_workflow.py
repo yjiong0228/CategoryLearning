@@ -160,3 +160,33 @@ def test_six_types_have_correct_structure_and_reproducible_paths():
     assert len(a["paths"]) == 6
     assert all(len(p["trials"]) == 16 for p in a["paths"])
     assert np.isfinite(a["mean_error_by_block"]).all()
+
+
+def test_independent_restarts_select_the_best_and_emit_progress(data_config):
+    data = load_csv_history(data_config)
+    arguments = dict(dimensions=data.dimensions, n_categories=2, base=Parameters(),
+                     bounds=dict(r=[0,10], beta=[0,10], d=[0,30], eta=[0,1]),
+                     train_trials=4, maxiter=2, popsize=2, seed=1, tol=0, atol=0)
+    events = []
+    parameters, combined = fit_parameters(data.stimuli, data.targets, data.choices,
+        restart_seeds=[1,2], progress_callback=events.append, **arguments)
+    individual = [fit_parameters(data.stimuli, data.targets, data.choices,
+        **{**arguments,"seed":seed}) for seed in (1,2)]
+    assert combined["best_nll"] == min(item[1]["best_nll"] for item in individual)
+    assert parameters == min(individual,key=lambda item:item[1]["best_nll"])[0]
+    assert [event["event"] for event in events].count("restart_completed") == 2
+    assert all(np.isfinite(event["elapsed_seconds"]) for event in events)
+    assert combined["evaluations"] == sum(item[1]["evaluations"] for item in individual)
+    with pytest.raises(ValueError, match="distinct"):
+        fit_parameters(data.stimuli,data.targets,data.choices,restart_seeds=[1,1],**arguments)
+
+
+def test_parallel_deferred_search_matches_serial(data_config):
+    data = load_csv_history(data_config)
+    arguments = dict(dimensions=data.dimensions, n_categories=2, base=Parameters(),
+                     bounds=dict(r=[0,10], beta=[0,10], d=[0,30], eta=[0,1]),
+                     train_trials=4, maxiter=1, popsize=2, seed=4, updating="deferred")
+    a, serial = fit_parameters(data.stimuli,data.targets,data.choices,workers=1,**arguments)
+    b, parallel = fit_parameters(data.stimuli,data.targets,data.choices,workers=2,**arguments)
+    assert a == b and serial["best_nll"] == parallel["best_nll"]
+    assert serial["restarts"] == parallel["restarts"]

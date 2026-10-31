@@ -83,10 +83,22 @@ def run(config_path: Path, outdir: Path, *, fit: bool = False, simulate: bool = 
         if fit:
             if "fit" not in config:
                 raise ValueError("Fitting requires an explicit fit budget and bounds in YAML")
-            parameters, optimization = fit_parameters(
-                data.stimuli, data.targets, data.choices, data.dimensions, len(data.category_values),
-                base=parameters, seed=seed, model_options=options, **config["fit"],
-            )
+            outdir.mkdir(parents=True, exist_ok=False)
+            _write_json(outdir / "run_started.json", {
+                **provenance, "status": "optimization_started", "data_sha256": data.source_sha256,
+                "selected_source_rows": data.frame.sustain_source_row.tolist(),
+            })
+            with (outdir / "optimization_progress.jsonl").open("x", encoding="utf-8") as stream:
+                def progress(event: dict) -> None:
+                    stream.write(json.dumps(event, allow_nan=False) + "\n")
+                    stream.flush()
+                    if event["event"] != "generation" or event.get("generation", 0) % 25 == 0:
+                        print(json.dumps(event, ensure_ascii=False), flush=True)
+
+                parameters, optimization = fit_parameters(
+                    data.stimuli, data.targets, data.choices, data.dimensions, len(data.category_values),
+                    base=parameters, seed=seed, model_options=options, progress_callback=progress, **config["fit"],
+                )
         if options.get("ties", "first") != "first" and not simulate:
             raise ValueError("Scoring requires ties: first; random tie histories are not marginalized")
         model = SUSTAIN(data.dimensions, len(data.category_values), parameters, **options)
@@ -118,7 +130,8 @@ def run(config_path: Path, outdir: Path, *, fit: bool = False, simulate: bool = 
         )
         provenance["data"] = dict(path=str(data.source), sha256=data.source_sha256,
                                   selected_source_rows=data.frame.sustain_source_row.tolist())
-        outdir.mkdir(parents=True, exist_ok=False)
+        if not fit:
+            outdir.mkdir(parents=True, exist_ok=False)
         rows.to_csv(outdir / "trials.csv", index=False, mode="x")
         _write_json(outdir / "final_state.json", model.state_dict())
         if config.get("trace", True):

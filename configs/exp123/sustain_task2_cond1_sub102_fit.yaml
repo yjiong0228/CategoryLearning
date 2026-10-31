@@ -1,0 +1,49 @@
+schema: sustain_v1
+seed: 20261031
+trace: true
+model:
+  recruitment: prediction_error
+  ties: first
+parameters:
+  r: 9.01245
+  beta: 1.252233
+  d: 16.924073
+  eta: 0.092327
+  tau: 0.5
+data:
+  path: data/exp123/processed/Task2_processed.csv
+  filters: {condition: 1, iSub: 102}
+  group_columns: [iSub, condition]
+  session_column: iSession
+  session_policy: carry
+  order_columns: [iSession, iTrial]
+  # Both recorded sessions: 320 + 128 trials. No trial exclusion or reset.
+  features:
+    - {column: feature1, kind: continuous, bounds: [0, 1]}
+    - {column: feature2, kind: continuous, bounds: [0, 1]}
+    - {column: feature3, kind: continuous, bounds: [0, 1]}
+    - {column: feature4, kind: continuous, bounds: [0, 1]}
+  category_values: [1, 2]
+  choice_column: choice
+  feedback: {mode: binary_correctness, column: feedback}
+  audit_category_column: category
+fit:
+  # Full-record descriptive estimation; no held-out trials in this run.
+  train_trials: 448
+  bounds:
+    r: [0, 10]
+    beta: [0, 10]
+    d: [0, 30]
+    eta: [0, 1]
+  maxiter: 600
+  popsize: 15
+  workers: 60
+  restart_seeds: [20261031, 20261032, 20261033]
+  updating: deferred
+  tol: 0.000001
+  atol: 0.000001
+diagnostics:
+  block_size: 32
+  best_two_nll_tolerance: 0.5
+  boundary_fraction: 0.01
+  scope: full_record_descriptive_fit_no_parameter_recovery
