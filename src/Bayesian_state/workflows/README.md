@@ -23,6 +23,9 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 `--output STUDY --numeric-root FROZEN_CHECKOUT --prior-cpu-seconds ACCOUNTED_CPU`。
 监管器只启动一个计算阶段，监控其进程树和绝对截止时间；研究目录中的`STOP_REQUESTED`
 文件会请求结束该监管器拥有的计算进程组。重启前的已用CPU及中断余量需显式计入。
+计算阶段完成后，`reports.audit_model_1031_finalization --study STUDY --output NEW_REPORT`
+核验逐任务数组哈希、从保存概率重算似然，并按前缀似然权重汇总固定参数的内容状态。
+该入口输出数值表与JSON，不启动拟合。
 
 ## Model 1031：更换为S128的同预算比较
 

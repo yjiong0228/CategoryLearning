@@ -28,7 +28,9 @@ def summarize(rows: list[dict]) -> dict[str, dict]:
         result[variant] = dict(
             subjects=len(group), nll=float(scores.mean()),
             descriptive_subject_se=float(scores.std(ddof=1) / np.sqrt(len(scores))) if len(scores) > 1 else 0.,
-            numerical_se=float(np.linalg.norm([r["mc_se_per_trial"] for r in group]) / len(group)),
+            # Subjects reuse seed labels. The triangle bound avoids assuming
+            # their Monte Carlo errors are independent.
+            numerical_se=float(np.mean([r["mc_se_per_trial"] for r in group])),
             energy=float(np.mean([r["energy"] for r in group])),
             condition_nll={str(c): float(np.mean([r["test_nll_per_trial"] for r in group if r["condition"] == c]))
                            for c in sorted({r["condition"] for r in group})},

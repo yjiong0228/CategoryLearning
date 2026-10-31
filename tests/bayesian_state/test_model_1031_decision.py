@@ -65,3 +65,10 @@ def test_correlated_particle_count_copies_do_not_inflate_independent_repeats():
     np.testing.assert_allclose([grouped["nll"], grouped["mc_se"]], [reference["nll"], reference["mc_se"]])
     assert grouped["independent_seeds"] == 4 and grouped["raw_systems"] == 8
     assert aggregate(duplicated, conditional=True)["mc_se"] < grouped["mc_se"]
+
+
+def test_shared_seed_error_is_not_reduced_as_if_subjects_were_independent():
+    data = rows()
+    for row in data:
+        row["mc_se_per_trial"] = .02
+    np.testing.assert_allclose([r["numerical_se"] for r in summarize(data).values()], .02)
