@@ -25,7 +25,7 @@
 | `CategoryLearning_codes/` | 期刊配置、工作流、分析、配图代码和未确认图产物 |
 | `CategoryLearning_paper/` | 并列的 `sn_article/` 旧稿和 `learning_paper_v1/` 英文新稿，共享 LaTeX 模板与参考资料；`figures/` 只放已确认图 |
 | `CategoryLearning_poster/` | 学术海报模板、参考样式、构建脚本与逐版保留的 PPTX/PDF 初稿 |
-| `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史定义；Model 1024记录信念与持续执行候选，验证状态见研究指导文件 |
+| `src/Bayesian_state/docs/model_architecture/` | 模型技术文稿与历史定义；Model 1024记录信念与持续执行候选，Model 1031记录经验与局部概括候选；验证状态见研究指导文件 |
 | `data/exp123/` | 期刊数据，也是博士论文数据的一部分 |
 | `data/exp4/`、`data/exp5/`、`data/meg/` | 博士论文其他实验数据 |
 | `configs/{shared,exp123,exp4,exp5,meg}/` | 共享定义与按实验分组的配置；MEG 提供 Task3b Model 0923 拟合与试跑配置 |

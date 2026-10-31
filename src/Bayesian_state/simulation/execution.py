@@ -167,6 +167,11 @@ def _build_single_mode_prediction_payload(
     score_trial_mask: Optional[Sequence[bool] | np.ndarray] = None,
 ) -> Dict[str, np.ndarray | float]:
     partition = model.partition_model
+    adaptive_representations = bool(getattr(partition, "adaptive_representations", False))
+    if adaptive_representations:
+        if mode != PREDICTION_MODE_PRIOR_T:
+            raise ValueError("Adaptive workspace replay requires prior_t and saved pre-choice contents")
+        partition = partition.fork_for_model()
     distance_mode = model.engine.distance_mode
     n_trials = len(feedback)
     if score_trial_mask is None:
@@ -236,6 +241,10 @@ def _build_single_mode_prediction_payload(
 
     for trial_idx in range(1, n_trials):
         step_item = step_log[trial_idx]
+        if adaptive_representations:
+            if "representations_pre" not in step_item:
+                raise ValueError("Adaptive workspace replay lacks pre-choice representation contents")
+            partition.restore_representations(step_item["representations_pre"])
         if "perceived_stimulus" not in step_item:
             raise ValueError(f"Missing perceived_stimulus in step log at trial index {trial_idx}")
         perceived_stimulus = np.asarray(step_item["perceived_stimulus"], dtype=float)

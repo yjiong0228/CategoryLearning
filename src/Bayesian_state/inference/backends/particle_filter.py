@@ -737,6 +737,9 @@ def run_state_model_particle_filter(
         raise ValueError("observe_decision_basis requires state_observer")
     if int(particle_blocks) < 1:
         raise ValueError("particle_blocks must be positive")
+    if ((engine_config.get("provenance") or {}).get("model_id") == "model_1031"
+            and int(particle_blocks) != 1):
+        raise ValueError("Model 1031 v1 requires particle_blocks=1 for private representation contents")
     if int(particle_blocks) > 1 and current_particle_block() is None:
         return execute_particle_blocks(run_state_model_particle_filter, locals())
 
@@ -885,6 +888,16 @@ def run_state_model_particle_filter(
     if int(models[0].n_cats) != n_categories:
         raise ValueError("partition category count does not match condition.")
     n_hypotheses = int(models[0].engine.set_size)
+    adaptive_representations = bool(getattr(models[0].partition_model, "adaptive_representations", False))
+    representation_summaries = {}
+    if adaptive_representations:
+        if oral_enabled:
+            raise ValueError("Adaptive representations require their own oral observation model")
+        representation_summaries = {
+            key: np.zeros((n_trials, 4), dtype=float)
+            for key in ("representation_belief", "representation_execution",
+                        "filtered_representation_belief", "filtered_representation_execution")
+        }
     oral_readout = None
     oral_report_probabilities = None
     oral_report_valid_mask = None
@@ -1959,6 +1972,19 @@ def run_state_model_particle_filter(
                     np.sum(signal_weights * source[finite])
                 )
 
+        representation_values = {}
+        if adaptive_representations:
+            contents = [model.partition_model.observer_state() for model in models]
+            representation_values = {key: np.stack([item[key] for item in contents]) for key in contents[0]}
+            kinds = representation_values["representation_kind"]
+            dimensions = representation_values["template_mask"].sum(axis=-1)
+            # Four semantic groups survive slot replacement and particle cloning:
+            # uncommitted, full example, partial generalization, catalogue rule.
+            group = np.where(kinds == 2, 3, np.where(kinds == 1, np.where(dimensions == 4, 1, 2), kinds))
+            group_belief = np.stack([(particle_priors * (group == i)).sum(axis=1) for i in range(4)], axis=1)
+            group_execution = np.stack([(particle_choice_weights * (group == i)).sum(axis=1) for i in range(4)], axis=1)
+            representation_summaries["representation_belief"][trial_index] = weights @ group_belief
+            representation_summaries["representation_execution"][trial_index] = weights @ group_execution
         if state_observer is not None:
             observer_values = {
                 "weights": weights, "belief": particle_priors,
@@ -1971,6 +1997,7 @@ def run_state_model_particle_filter(
                 "rule_choice_probabilities": observer_rule_prediction,
                 "perceived_stimulus": observer_perceived,
             }
+            observer_values.update(representation_values)
             _observe_particle_state(state_observer, trial_index, "predictive", observer_values)
         choice_index = int(observed_choices[trial_index]) - 1
         if continuous_choice_enabled:
@@ -1990,6 +2017,9 @@ def run_state_model_particle_filter(
             else:
                 weights /= weight_total
         post_ess[trial_index] = effective_sample_size(weights)
+        if adaptive_representations:
+            representation_summaries["filtered_representation_belief"][trial_index] = weights @ group_belief
+            representation_summaries["filtered_representation_execution"][trial_index] = weights @ group_execution
         if state_observer is not None:
             _observe_particle_state(state_observer, trial_index, "filtered", observer_values)
         if continuous_choice_enabled:
@@ -2413,6 +2443,18 @@ def run_state_model_particle_filter(
             "filtered_weights": "post_choice_particle_weights",
             "effective_participation": "particle_mean_of_inverse_sum_squared_rule_weights",
         }
+    if adaptive_representations:
+        result.state_probabilities.update(representation_summaries)
+        result.metadata["representation_coordinates"] = {
+            "hypothesis_arrays": "reusable_workspace_slots_not_shared_psychological_identities",
+            "uid_scope": "within_ancestral_path_only",
+            "groups": ["uncommitted", "specific_example", "local_generalization", "catalogue_rule"],
+            "observer": "particle_contents_with_predictive_or_choice_conditioned_weights",
+            "oral_status": "observation_model_not_implemented",
+        }
+        result.metadata["continuous_choice"].update(
+            weights="one_hot_sample_from_belief_with_uid_stay_bonus",
+            dominant="executed_workspace_slot")
     if oral_readout is not None:
         result.observation_probabilities.update(
             oral_report_codes=np.asarray(oral_readout.codes),

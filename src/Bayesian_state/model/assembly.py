@@ -92,7 +92,11 @@ def build_observation_likelihood(
                 "Prototype encoding must not configure boundary-only partition "
                 f"parameters: {sorted(boundary_only)}."
             )
-    return ObservationLikelihood(partition, **dict(likelihood_config))
+    likelihood_kwargs = dict(likelihood_config)
+    likelihood_class = resolve_class(likelihood_kwargs.pop("class", ObservationLikelihood))
+    if not issubclass(likelihood_class, ObservationLikelihood):
+        raise TypeError("likelihood.class must inherit ObservationLikelihood.")
+    return likelihood_class(partition, **likelihood_kwargs)
 
 
 def build_engine(
@@ -115,6 +119,17 @@ def build_engine(
         validate_model_0923_partition(engine_config, partition)
         if provenance.get("condition") != context.condition:
             raise ValueError("0923 declared condition disagrees with the trial context")
+    if provenance.get("model_id") == "model_1031":
+        from .model_1031 import validate_model_1031_config
+
+        validate_model_1031_config(engine_config)
+        if provenance["condition"] != context.condition:
+            raise ValueError("Model 1031 configured condition disagrees with trial context")
+        expected_partition = engine_config["partition"]["kwargs"]
+        if (getattr(partition, "length", None) != expected_partition.get("capacity", 4)
+                or getattr(partition, "similarity_width", None) != expected_partition.get("similarity_width", .25)
+                or getattr(partition, "n_cats", None) != expected_partition["n_cats"]):
+            raise ValueError("Model 1031 supplied partition disagrees with configured capacity, width or categories")
     agenda = engine_config.get("agenda", [])
     if not isinstance(agenda, list):
         raise ValueError("engine_config.agenda must be a list.")

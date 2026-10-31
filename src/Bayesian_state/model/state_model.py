@@ -84,6 +84,10 @@ class StateModel:
         self.partition_model = partition
         if self.partition_model is None:
             self.partition_model = build_partition(self.engine_config, self.condition)
+        elif callable(getattr(self.partition_model, "fork_for_model", None)):
+            # Adaptive contents belong to each trajectory; immutable catalogue
+            # geometry may still be shared among particles.
+            self.partition_model = self.partition_model.fork_for_model()
         self.n_cats = int(
             getattr(
                 self.partition_model,
@@ -168,6 +172,9 @@ class StateModel:
         beta_value = getattr(engine, "beta", None)
         beta = None if beta_value is None else np.asarray(beta_value, dtype=float).copy()
         log: dict[str, Any] = {"perceived_stimulus": perceived.copy()}
+        export_representations = getattr(self.partition_model, "export_representations", None)
+        if callable(export_representations):
+            log["representations_pre"] = export_representations()
         memory = engine.get_module(ModuleRole.MEMORY)
         if callable(getattr(memory, "pairing_marginal", None)):
             log["pairing_probability_pre"] = memory.pairing_marginal()

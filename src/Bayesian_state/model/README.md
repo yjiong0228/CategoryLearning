@@ -14,6 +14,17 @@
 6. `modules/README.md`：可插拔 engine module 的详细行为。
 7. `modules/*.py`：各认知模块的实现细节。
 
+## Model 1031 的自适应表示
+
+[Model 1031](../docs/model_architecture/model_1031.md)通过普通 YAML 类路径启用经验工作区。
+`model_1031.py`检查条件、模块配套和更新顺序；`likelihood.class`可显式指定
+`ObservationLikelihood`的子类，省略时沿用原类。
+
+`StateModel`接收已有 partition 时，若它提供`fork_for_model()`，则先创建该轨迹私有的表示容器。
+只读规则目录可以共享。自适应内容由工作区模块的`state_dict/load_state_dict`保存和恢复，
+粒子复制同时恢复信念、判断精度、内容及随机状态。`export_representations()`的副本写入每题的
+`representations_pre`，供按当时内容重放预测。固定目录模型继续共享原 partition。
+
 ## 核心对象
 
 ### `model_1024.py` 中的 `model_1024_runtime`

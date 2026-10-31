@@ -4,6 +4,18 @@
 多条轨迹积分”，并返回统一结果契约。`BayesianStateEngine`、perception、transition、memory 与
 beta 都属于 `model/`；固定 likelihood evaluator 来自 `hypothesis_space/observation_model/`。
 
+## Model 1031 的内容坐标
+
+经验工作区按粒子保存具体内容。观察接口新增`representation_kind`、`representation_uid`、
+`representation_parent`、`catalogue_rule`、`template_mask`、`template_anchor`及
+`template_category_belief`，与同题粒子权重一起导出，时点为选择前及选择后、反馈前。
+
+结果中的`representation_belief`与`representation_execution`按“尚未形成内容、具体示例、
+局部概括、目录规则”汇总；`filtered_`前缀表示观察当前选择后加权。
+`metadata.representation_coordinates`说明原有 hypothesis 数组对应可复用位置。
+跨粒子解释以实际内容为依据，uid只在单条祖先路径中使用。本轮检查单进程粒子过滤；
+多进程分块及完整历史内容重建另行验收。口述观测模型尚待建立。
+
 ## 文件
 
 | 文件 | 职责 |
