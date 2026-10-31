@@ -31,6 +31,11 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 `--output STUDY --numeric-root FROZEN_CHECKOUT --prior-cpu-seconds ACCOUNTED_CPU`。
 监管器只启动一个计算阶段，监控其进程树和绝对截止时间；研究目录中的`STOP_REQUESTED`
 文件会请求结束该监管器拥有的计算进程组。重启前的已用CPU及中断余量需显式计入。
+本轮运行时间修订由`runtime_budget_amendment.json`明确记录，计算最晚在交付截止前90分钟停止，
+CPU上限保持原值。`runs.handoff_model_1031_supervisor`等待开发参数保存后交接监管器，参数为
+`--output STUDY --numeric-root FROZEN_CHECKOUT --old-pid RECORDED_SUPERVISOR_PID`。
+交接核对原命令及研究路径，等待旧计算进程组退出，并保存包含中断余量的完整CPU计费。
+后续调度器同时采用该计算截止时间和未记录CPU余量。
 计算阶段完成后，`reports.audit_model_1031_finalization --study STUDY --output NEW_REPORT`
 核验逐任务数组哈希、从保存概率重算似然，并按前缀似然权重汇总固定参数的内容状态。
 自主摘要保留全部登记路径，报告正确率与特征区间、联合特征区域覆盖及各内容组的路径占比。

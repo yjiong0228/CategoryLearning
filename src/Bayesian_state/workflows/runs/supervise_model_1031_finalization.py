@@ -18,6 +18,7 @@ import sys
 import time
 
 from ..analysis.model_1031_finalization import ROOT, digest, write_new
+from ..analysis.model_1031_runtime_budget import compute_deadline
 
 
 def tree_cpu(pid: int) -> float:
@@ -53,7 +54,7 @@ def main() -> None:
     output = args.output.resolve()
     register = json.loads((output / "registration.json").read_text())
     policy = register["policy"]
-    deadline = datetime.fromisoformat(policy["started_at_utc"]).timestamp() + policy["budget"]["computation_stop_hours"] * 3600
+    deadline = compute_deadline(output, policy)
     cpu_limit = policy["budget"]["cpu_hours"] * 3600
     if args.prior_cpu_seconds < 0:
         raise ValueError("Prior CPU accounting must be nonnegative")

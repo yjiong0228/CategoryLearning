@@ -15,6 +15,7 @@ import sys
 import time
 
 from .model_1031_finalization import Scheduler, digest, identity, validate_source, write_new
+from .model_1031_runtime_budget import compute_deadline, unrecorded_cpu_allowance
 
 
 def ordered_jobs(jobs: list[dict], records: list[dict], full_lengths: dict[int, int]) -> tuple[list[dict], dict]:
@@ -39,6 +40,14 @@ def ordered_jobs(jobs: list[dict], records: list[dict], full_lengths: dict[int, 
 
 class LongestFirstScheduler(Scheduler):
     """Reuse the registered pool and worker without adding another parallel layer."""
+
+    def __init__(self, output: Path, policy: dict):
+        super().__init__(output, policy)
+        self.deadline = compute_deadline(output, policy)
+        self.unrecorded_cpu = unrecorded_cpu_allowance(output)
+
+    def cpu_used(self) -> float:
+        return super().cpu_used() + self.unrecorded_cpu
 
     def run(self, jobs: list[dict], label: str) -> dict[str, dict]:
         register = validate_source(self.output)

@@ -6,7 +6,6 @@ checkout remains separate from the decision and recovery coordinators.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -15,6 +14,7 @@ import sys
 import time
 
 from .model_1031_finalization import ROOT, digest, validate_source, write_new
+from .model_1031_runtime_budget import compute_deadline
 
 
 def main() -> None:
@@ -24,7 +24,7 @@ def main() -> None:
     args = parser.parse_args()
     output, numeric_root = args.output.resolve(), args.numeric_root.resolve()
     registration = validate_source(output)
-    deadline = datetime.fromisoformat(registration["policy"]["started_at_utc"]).timestamp() + registration["policy"]["budget"]["computation_stop_hours"] * 3600
+    deadline = compute_deadline(output, registration["policy"])
     plan = output / "pipeline_plan.json"
     if not plan.exists():
         write_new(plan, dict(coordinator_sha256=digest(Path(__file__)), frozen_numerical_reference_root=str(numeric_root),
@@ -43,7 +43,7 @@ def main() -> None:
             return
         if time.time() >= deadline:
             raise TimeoutError("Compute deadline reached between phases")
-        scheduled = phase in ("evaluate-development", "fit-evaluation", "evaluate-evaluation", "refine", "fit", "run")
+        scheduled = phase in ("evaluate-development", "fit-evaluation", "evaluate-evaluation", "refine", "fit", "run", "prepare", "state")
         if scheduled:
             command = [sys.executable, "-u", "-m", "src.Bayesian_state.workflows.analysis.model_1031_scheduled",
                        "--module", module, "--phase", phase, "--output", str(output), *extras]
