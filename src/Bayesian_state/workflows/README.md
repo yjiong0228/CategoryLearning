@@ -3,12 +3,20 @@
 ## Model 1031：三条件机制比较
 
 入口为`python -m src.Bayesian_state.workflows.analysis.model_1031_finalization`。
-以`--phase prepare --output NEW_STUDY`冻结配置、行为数组及源码，再以相同输出目录执行
+以`--phase prepare --config configs/shared/model1031_finalization_20261101_v2.yaml --output NEW_STUDY`
+冻结配置、行为数组及源码，再以相同输出目录执行
 `calibrate`、`fit-development`和`evaluate-development`。结构冻结后使用`--variants`
 指定评价版本，执行`fit-evaluation`及`evaluate-evaluation`。
-协议为`configs/shared/model1031_finalization_20261101.yaml`，绝对截止时间包含文稿交付。
+当前协议为`configs/shared/model1031_finalization_20261101_v2.yaml`，绝对截止时间包含文稿交付。
+v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协议用于本次授权研究。
 入口复用共享StateModel，参数由前70%选择估计，开发与评价用途及数值边界见
 [研究说明](../docs/model_architecture/model_1031_finalization_study.md)。
+
+`model_1031_decision`依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
+`model_1031_recovery`依次执行`prepare`、`fit`、`state`，复用同一生成与滤波实现。
+`model_1031_catalogue_audit --output NEW_JSON`检查目录几何重复和固定标签覆盖。
+开发拟合启动后，可用`model_1031_pipeline --output STUDY --numeric-root FROZEN_CHECKOUT`
+顺序接续以上阶段；各入口使用同一绝对计算截止时间，并保留原结果、失败与阶段日志。
 
 ## Model 1031：更换为S128的同预算比较
 
