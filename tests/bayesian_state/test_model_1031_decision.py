@@ -4,7 +4,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from src.Bayesian_state.workflows.analysis.model_1031_decision import choose, summarize
+from src.Bayesian_state.workflows.analysis.model_1031_decision import choose, summarize, independent_seed_aggregate
+from src.Bayesian_state.workflows.analysis.model_1031_finalization import aggregate
 
 
 POLICY = yaml.safe_load(Path("configs/shared/model1031_finalization_20261101_v2.yaml").read_text())
@@ -53,3 +54,14 @@ def test_summary_weights_subjects_equally_not_by_trial_count():
         row["test_nll_per_trial"] = row["subject"]
     result = summarize(data)
     np.testing.assert_allclose([s["nll"] for s in result.values()], 2.)
+
+
+def test_correlated_particle_count_copies_do_not_inflate_independent_repeats():
+    independent = [dict(nll=x, train_nll=.5 * x, job=dict(seed=i, particles=256))
+                   for i, x in enumerate((2., 2.3, 2.8, 3.))]
+    duplicated = independent + [dict(r, job=dict(r["job"], particles=512)) for r in independent]
+    grouped = independent_seed_aggregate(duplicated)
+    reference = aggregate(independent, conditional=True)
+    np.testing.assert_allclose([grouped["nll"], grouped["mc_se"]], [reference["nll"], reference["mc_se"]])
+    assert grouped["independent_seeds"] == 4 and grouped["raw_systems"] == 8
+    assert aggregate(duplicated, conditional=True)["mc_se"] < grouped["mc_se"]

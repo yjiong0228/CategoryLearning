@@ -57,6 +57,7 @@ def main() -> None:
         if completed.returncode != 0 or not (output / marker).exists():
             raise RuntimeError(f"Phase {phase} failed; inspect {log}")
     run("model_1031_finalization", "evaluate-development", "development_evaluation.json", numeric_root)
+    run("model_1031_decision", "pool-development", "development_evaluation_grouped.json", ROOT)
     run("model_1031_decision", "shortlist", "structural_shortlist.json", ROOT)
     run("model_1031_decision", "refine", "structural_precision.json", ROOT)
     run("model_1031_decision", "freeze", "structure_selection.json", ROOT)
@@ -64,6 +65,7 @@ def main() -> None:
     run("model_1031_finalization", "fit-evaluation", "evaluation_parameters.json", numeric_root,
         ["--variants", *selection["evaluation_variants"]])
     run("model_1031_finalization", "evaluate-evaluation", "evaluation_evaluation.json", numeric_root)
+    run("model_1031_decision", "pool-evaluation", "evaluation_evaluation_grouped.json", ROOT)
     run("model_1031_recovery", "prepare", "recovery_prepared.json", ROOT)
     run("model_1031_recovery", "fit", "recovery_fits.json", ROOT)
     run("model_1031_recovery", "state", "recovery_states.json", ROOT)

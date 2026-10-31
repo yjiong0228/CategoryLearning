@@ -12,7 +12,9 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 入口复用共享StateModel，参数由前70%选择估计，开发与评价用途及数值边界见
 [研究说明](../docs/model_architecture/model_1031_finalization_study.md)。
 
-`model_1031_decision`依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
+`model_1031_decision`在开发评价后先执行`pool-development`，按独立种子汇总数值误差；
+再依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
+评价被试的原评分完成后执行`pool-evaluation`，同种子下的不同粒子数运行作为一组处理。
 `model_1031_recovery`依次执行`prepare`、`fit`、`state`，复用同一生成与滤波实现。
 `model_1031_catalogue_audit --output NEW_JSON`检查目录几何重复和固定标签覆盖。
 开发拟合启动后，可用`model_1031_pipeline --output STUDY --numeric-root FROZEN_CHECKOUT`
