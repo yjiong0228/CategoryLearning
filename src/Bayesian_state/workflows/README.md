@@ -1,5 +1,35 @@
 # 当前模型工作流
 
+## Model 1031：S118经验到规则的单人试验
+
+[执行说明](../docs/model_architecture/model_1031_subject118_pilot.md)登记选人、16点有限搜索、
+32/128/512粒子复核、最终候选各64条自主路径和45分钟／12 CPU小时上限。
+`analysis/model_1031_subject_pilot.py`复用共享模型和粒子后端，先`prepare`保存输入、配置和源码哈希，
+再`run`执行冻结任务。每个工作进程只用一个数值线程，进程数受可用CPU和就绪任务数限制。
+新的运行应使用新目录；已完成结果保留。口述只参与选人及事后对照。
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_1031_subject_pilot \
+  --phase prepare --output results/model_1031/subject118_pilot_NEW
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python -m src.Bayesian_state.workflows.analysis.model_1031_subject_pilot \
+  --phase run --output results/model_1031/subject118_pilot_NEW
+python -m src.Bayesian_state.workflows.reports.model_1031_subject_pilot_report \
+  --study results/model_1031/subject118_pilot_NEW \
+  --output results/model_1031/subject118_pilot_NEW/report_v1 \
+  --figures CategoryLearning_codes/figures/outputs/fig3/model1031_subject118_NEW
+python -m CategoryLearning_codes.figures.fig3.model1031_subject118_pilot \
+  --report results/model_1031/subject118_pilot_NEW/report_v1 \
+  --output CategoryLearning_codes/figures/outputs/fig3/model1031_subject118_NEW
+```
+
+配置为`configs/exp123/specific_models/model_1031_subject118_pilot_v1.yaml`。
+每项计算保存JSON指标和NPZ逐题结果；最终新模型还保存粒子具体内容与全部自主内容路径。
+报告保留两个最终候选、全部256题口述原文、三张PNG及各评分分母。
+当前解释入口为`results/model_1031/subject118_pilot_20261031_v1/report_v1/interpretation.md`。
+结果属于有限候选的开发比较；完整参数区域和状态恢复尚待检验。
+
 ## Model 1024：未学会阶段的口述开发研究
 
 2026-10-31完成六人4288条口述的目录与状态诊断，新增归一化内容读出比较，并在S205、S306的存档路径上

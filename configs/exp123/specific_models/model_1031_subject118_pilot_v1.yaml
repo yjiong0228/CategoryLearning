@@ -1,0 +1,40 @@
+protocol: model1031_subject118_experience_pilot_v1
+subject: 118
+condition: 1
+data: data/exp123/processed/Task2_processed.csv
+models: [model_1031, model_1024]
+seed: 20261031
+budget:
+  wall_seconds: 2700
+  cpu_seconds: 43200
+  workers: 128
+search:
+  candidates: 16
+  screen_particles: 32
+  screen_seeds: [81101, 81102]
+  confirm_top: 4
+  confirm_particles: 128
+  confirm_seeds: [81201, 81202]
+  final_top: 2
+  final_particles: 512
+  final_seeds: [81301, 81302]
+  generation_paths: 64
+  generation_seed: 81401
+  generation_chunk: 8
+parameter_values:
+  similarity_width: [0.15, 0.30, 0.60]
+  capacity: [3, 6, 10]
+  baseline_probability: [0.02, 0.08, 0.25]
+  error_gain: [0.1, 0.5, 1.5]
+  failure_decay: [0.3, 0.7, 0.95]
+  global_search: [0.08, 0.3, 0.7]
+  retention: [0.7, 0.9, 1.0]
+  execution_inertia: [0.0, 1.0, 3.0]
+  beta_init: [2.0, 5.0, 10.0]
+  learning_rate: [0.03, 0.1, 0.3]
+summaries:
+  block_trials: 32
+  phase_trials: 64
+  generation_quantiles: [0.1, 0.9]
+  near_nll_per_trial: 0.01
+  precision_nll_per_trial: 0.01

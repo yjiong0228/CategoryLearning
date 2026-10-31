@@ -1,5 +1,17 @@
 # Fig3：搜索与规则过程初稿
 
+## Model 1031：S118经验到规则的首个个案（2026-10-31）
+
+[三张PNG和结果解释](../../../results/model_1031/subject118_pilot_20261031_v1/report_v1/interpretation.md) ·
+[行为与表示变化](../outputs/fig3/model1031_subject118_20261031_v1/behavior_and_representation.png) ·
+[特征使用](../outputs/fig3/model1031_subject118_20261031_v1/feature_use.png) ·
+[候选与数值差异](../outputs/fig3/model1031_subject118_20261031_v1/candidate_sensitivity.png)。
+入口为`python -m CategoryLearning_codes.figures.fig3.model1031_subject118_pilot --help`。
+图保留256题、各最终参数全部64条自主路径及两次数值重复。状态为选择后、反馈前过滤分布，
+参数使用全记录行为；50条未指明部位身份的口述保留原文并留空评分。早期部位范围对应提高，
+经验阶段仍短；口述仍待人工复核，图中没有整句口述概率或独立验证结论。
+输出为183毫米宽、300 dpi PNG，Python后端；详见图目录内的来源和审阅记录。
+
 ## Model 1024未学会阶段口述开发（2026-10-31）
 
 [十张PNG及完整报告](../../../results/model_1024/oral_development_20261031_v1/report_v2/report.md) ·
