@@ -10,8 +10,29 @@ from src.Bayesian_state.workflows.analysis.model_1031_finalization import (
     DEFAULT, engine_config, identity, save_arrays, task_feedback, write_new,
 )
 from src.Bayesian_state.workflows.analysis.model_1031_recovery import (
-    _custom_work, behavior_signature, weighted_intervals,
+    _custom_work, behavior_signature, planned_recovery_bank, recovery_bank, weighted_intervals,
 )
+
+
+def test_recovery_bank_supplement_retains_all_sobol_points_and_prior_anchors(tmp_path):
+    policy = yaml.safe_load(Path("configs/shared/model1031_finalization_20261101_v2.yaml").read_text())
+    original = recovery_bank(policy)
+    anchors = [dict(DEFAULT, capacity=10, baseline_probability=.01 + .01 * i) for i in range(16)]
+    register = dict(policy=policy, bank=anchors + original[:32])
+    bank, metadata = planned_recovery_bank(tmp_path, register)
+    assert bank == original
+    assert metadata["amendment"] is None
+    write_new(tmp_path / "recovery_search_coverage_amendment.json", dict(
+        prior_anchor_count=16, anchor_identity=identity(dict(anchors=anchors)),
+        scope="append_all_prespecified_pilot_anchors"))
+    bank, metadata = planned_recovery_bank(tmp_path, register)
+    assert bank[:64] == original
+    assert bank[64:] == anchors
+    assert metadata["unique_candidates"] == 80
+    assert metadata["prior_anchors"] == 16
+    register["bank"][0] = dict(anchors[0], capacity=9)
+    with pytest.raises(ValueError, match="complete registered"):
+        planned_recovery_bank(tmp_path, register)
 
 
 @pytest.mark.parametrize("condition", [1, 2, 3])

@@ -176,6 +176,31 @@ def recovery_bank(policy: dict) -> list[dict]:
     return [{k: values[k][min(int(v * len(values[k])), len(values[k]) - 1)] for k, v in zip(keys, point)} for point in points[:count]]
 
 
+def planned_recovery_bank(output: Path, register: dict) -> tuple[list[dict], dict]:
+    """Retain the original Sobol bank and an explicitly registered anchor supplement.
+
+    The anchors were fixed before the earlier pilot outcomes. Including the whole
+    set gives recovery access to their coordinates without selecting anchors from
+    the generating parameters or simulated outcomes.
+    """
+    bank = recovery_bank(register["policy"])
+    metadata = dict(sobol_candidates=len(bank), prior_anchors=0,
+                    unique_candidates=len(bank), amendment=None)
+    path = output / "recovery_search_coverage_amendment.json"
+    if not path.exists():
+        return bank, metadata
+    amendment = json.loads(path.read_text())
+    anchors = register["bank"][:16]
+    if (len(anchors) != 16 or amendment.get("prior_anchor_count") != 16
+            or amendment.get("anchor_identity") != identity(dict(anchors=anchors))
+            or amendment.get("scope") != "append_all_prespecified_pilot_anchors"):
+        raise ValueError("Recovery supplement must contain the complete registered prior anchor set")
+    combined = list({identity(point): point for point in [*bank, *anchors]}.values())
+    metadata.update(prior_anchors=len(anchors), unique_candidates=len(combined),
+                    amendment=path.name, amendment_sha256=digest(path))
+    return combined, metadata
+
+
 def behavior_signature(parameters: dict, condition: int, variant: dict) -> str:
     """Canonicalize exact inactive controls while retaining the task's feedback semantics."""
     parameters = project(parameters, variant)
@@ -197,6 +222,7 @@ def prepare_cases(output: Path) -> None:
     policy = register["policy"]
     selection = json.loads((output / "structure_selection.json").read_text())
     parameters = json.loads((output / "development_parameters.json").read_text())["groups"]
+    bank, bank_metadata = planned_recovery_bank(output, register)
     jobs, cases = [], []
     for condition in (1, 2, 3):
         subject = next(s for s in register["subjects"] if s["condition"] == condition and s["role"] == "development")
@@ -211,7 +237,7 @@ def prepare_cases(output: Path) -> None:
                 jobs.append(job)
                 cases.append(dict(id=job["id"], subject=dict(subject, train_trials=subject["trials"]),
                                   source_variant=variant, source=source, seed=seed))
-    write_new(output / "recovery_plan.json", dict(cases=cases, bank=recovery_bank(policy),
+    write_new(output / "recovery_plan.json", dict(cases=cases, bank=bank, search_bank=bank_metadata,
         variants=selection["evaluation_variants"], coordinator_sha256=digest(Path(__file__)),
         state_conditioning="known parameters; choice included, current feedback excluded; filtering",
         interval_scope="marginal interval diagnostics across correlated trials, not independent binomial coverage"))
