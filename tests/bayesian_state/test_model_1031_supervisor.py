@@ -8,6 +8,26 @@ import time
 from src.Bayesian_state.workflows.runs.supervise_model_1031_finalization import stop_group, tree_cpu
 
 
+def test_cpu_counter_includes_children_launched_from_other_threads(tmp_path):
+    def process(pid, ticks, children_by_thread):
+        root = tmp_path / str(pid)
+        root.mkdir()
+        fields = ["0"] * 20
+        for index, value in zip((11, 12, 13, 14), ticks):
+            fields[index] = str(value)
+        (root / "stat").write_text(f"{pid} (python) " + " ".join(fields))
+        for thread, children in children_by_thread.items():
+            path = root / "task" / str(thread)
+            path.mkdir(parents=True)
+            (path / "children").write_text(" ".join(map(str, children)))
+
+    process(100, (10, 20, 30, 40), {100: [], 101: [200], 102: [300]})
+    process(200, (100, 200, 300, 400), {200: [400]})
+    process(300, (1, 2, 3, 4), {300: []})
+    process(400, (11, 12, 13, 14), {400: []})
+    assert tree_cpu(100, tmp_path) == 1160 / os.sysconf("SC_CLK_TCK")
+
+
 def test_stop_group_terminates_a_running_owned_phase():
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
     try:

@@ -21,13 +21,20 @@ from ..analysis.model_1031_finalization import ROOT, digest, write_new
 from ..analysis.model_1031_runtime_budget import compute_deadline
 
 
-def tree_cpu(pid: int) -> float:
+def tree_cpu(pid: int, proc_root: Path = Path("/proc")) -> float:
     """Include live descendants and descendants already reaped by live parents."""
     try:
-        fields = Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()
+        fields = (proc_root / str(pid) / "stat").read_text().split(") ", 1)[1].split()
         own = sum(float(fields[i]) for i in (11, 12, 13, 14)) / os.sysconf("SC_CLK_TCK")
-        children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
-        return own + sum(tree_cpu(int(child)) for child in children)
+        # A subprocess belongs to the thread that launched it. Concurrent
+        # pipeline branches launch coordinators from non-main threads.
+        children = set()
+        for task in (proc_root / str(pid) / "task").iterdir():
+            try:
+                children.update(int(child) for child in (task / "children").read_text().split())
+            except (OSError, ValueError):
+                continue
+        return own + sum(tree_cpu(child, proc_root) for child in children)
     except (OSError, ValueError, IndexError):
         return 0.
 
