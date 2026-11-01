@@ -1,0 +1,76 @@
+# Adopted structure after the initial seven-parameter proposal failed reserved evaluation.
+# Parameter values are interface examples, not individual or population estimates.
+# Inference samples content identity when execution_inertia > 0; exact marginalization
+# is available at the execution_inertia = 0 boundary.
+# particle_count: 16 is a small interface default, not a production precision claim.
+# Keep beta_mod: its feedback hook also updates conditional template labels.
+provenance:
+  model_id: model_1031
+  condition: 2
+  specification_version: 1031-unified-v2
+  scientific_status: final_working_model_20261101
+  specification_path: src/Bayesian_state/docs/model_architecture/model_1031.tex
+  structural_variant: full
+  selection_protocol: configs/shared/model1031_finalization_20261101_v2.yaml
+  selection_record: results/model_1031/finalization_20261101_v2/final_model_decision.json
+partition:
+  class: src.Bayesian_state.hypothesis_space.observation_model.experience_workspace.ExperienceWorkspacePartition
+  kwargs:
+    n_cats: 4
+    capacity: 4
+    similarity_width: 0.25
+likelihood:
+  class: src.Bayesian_state.hypothesis_space.observation_model.experience_workspace.ExperienceWorkspaceLikelihood
+  distance_mode: boundary
+  beta_source: action
+  feedback_likelihood_mode: category_feedback
+  feedback_lapse: 0.0
+modules:
+  perception_mod:
+    class: src.Bayesian_state.model.modules.perception.PerceptionModule
+  beta_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspaceBeta
+    kwargs:
+      beta_init: 5.0
+      beta_min: 0.1
+      beta_max: 25.0
+      learning_rate: 0.1
+      beta_update_mode: feedback_gradient
+      update_scope: active_hypotheses
+      use_prior_scaling: false
+  hypo_transitions_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspaceTransition
+    kwargs:
+      baseline_probability: 0.15
+      error_gain: 1.0
+      failure_decay: 0.8
+      global_search: 0.2
+      execution_inertia: 1.0
+      module_seed: 1031
+      revision: v2
+      marginalize_execution: false
+      retrieval_mode: global
+  memory_mod:
+    class: src.Bayesian_state.model.modules.hypothesis_transition.experience_workspace.ExperienceWorkspaceMemory
+    kwargs:
+      forgetting_mode: exact_power
+      gamma: 0.8
+      w0: 0.0
+      feedback_gain: 1.0
+      retention_mode: outcome
+agenda:
+- perception_mod
+- hypo_transitions_mod
+- memory_mod
+- beta_mod
+choice_readout:
+  kwargs:
+    method: expectation
+    power: 1.0
+output_noise:
+  kwargs:
+    enabled: false
+inference:
+  backend: particle_filter
+  particle_count: 16
+  resample_threshold_fraction: 0.5

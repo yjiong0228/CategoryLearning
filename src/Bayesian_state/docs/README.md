@@ -29,9 +29,14 @@
 
 - [模型架构文稿](model_architecture/)：当前及历史模型定义，0826 来源为 model_0826.tex；配套编译脚本就近保存。
 
-- [Model 1031机制精简与条件3设计审查](model_architecture/model_1031_simplification_cond3.md)：
-  无额外执行维持、固定共享精度的比较建议，以及样例类别与同科配对的联合学习方案。
-  状态为设计及小规模代数检查，条件3完整模型和科学比较尚待实施。
+- [Model 1031：具体经验、局部概括与规则的共同学习模型](model_architecture/model_1031.tex)：
+  本轮采用十参数结构，保留精度学习、信念保持和执行维持。
+  条件3保存内容、配对和模板类别的联合信息；原七参数初选未通过保留样本检验，追加比较属于开发分析。
+  [编译PDF](model_architecture/model_1031.pdf)随源码交付。
+  [版本确定研究](model_architecture/model_1031_finalization_study.md)记录结构比较与数据用途；
+  [机制精简及条件3审查](model_architecture/model_1031_simplification_cond3.md)保留设计来源。
+  编译使用`bash src/Bayesian_state/docs/model_architecture/compile_model_1031.sh NEW_OUTPUT.pdf`，
+  编译需要XeLaTeX或XeTeX及Noto CJK字体；脚本在临时目录完成三次编译并拒绝覆盖已有PDF，支持`--help`。
 
 - [Model 1024：规则信念、持续执行与反馈学习](model_architecture/model_1024.tex)：
   完整定义单规则执行、被试层面的执行维持倾向、全体活跃规则的反馈学习，以及三类错误来源的推断。

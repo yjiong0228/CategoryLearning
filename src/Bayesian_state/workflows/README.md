@@ -2,6 +2,12 @@
 
 ## Model 1031：三条件机制比较
 
+本轮采用的十参数结构见[Model 1031完整定义](../docs/model_architecture/model_1031.tex)。
+原七参数初选未通过保留样本检验；追加九参数／完整版本比较使用已冻结的训练参数，按开发分析解释。
+最终决定见研究目录的`final_model_decision.json`，原`structure_selection.json`保留初选历史。
+三条件示例配置为`configs/exp123/model_struct/model_1031_cond{1,2,3}_final_v2.yaml`，
+使用共享`StateModel`，16粒子默认值用于接口检查；正式精度按研究配置设置。
+
 入口为`python -m src.Bayesian_state.workflows.analysis.model_1031_finalization`。
 以`--phase prepare --config configs/shared/model1031_finalization_20261101_v2.yaml --output NEW_STUDY`
 冻结配置、行为数组及源码，再以相同输出目录执行
@@ -13,7 +19,7 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 [研究说明](../docs/model_architecture/model_1031_finalization_study.md)。
 
 `model_1031_decision`在开发评价后先执行`pool-development`，按独立种子汇总数值误差；
-再依次执行`shortlist`、`refine`、`freeze`，在评价被试拟合前保存结构决定。
+再依次执行`shortlist`、`refine`、`freeze`，在评价被试后段评分前保存结构决定。
 评价被试的原评分完成后执行`pool-evaluation`，同种子下的不同粒子数运行作为一组处理。
 独立精度复核把同一被试、相同配置的系统合并后供各结构共用；相同配置的配对差异及其数值
 误差相消。输出保存实际运行数和来源任务，状态摘要沿用这些系统。
@@ -42,6 +48,7 @@ v1保留正式搜索前的运行标定和预算调整记录。日期绑定的协
 `--output STUDY --numeric-root FROZEN_CHECKOUT --prior-cpu-seconds ACCOUNTED_CPU`。
 监管器只启动一个计算阶段，监控其进程树和绝对截止时间；研究目录中的`STOP_REQUESTED`
 文件会请求结束该监管器拥有的计算进程组。重启前的已用CPU及中断余量需显式计入。
+进程树计数遍历每个线程启动的子进程，包含由并行协调线程启动的两条计算分支。
 本轮运行时间修订由`runtime_budget_amendment.json`明确记录，计算最晚在交付截止前90分钟停止，
 CPU上限保持原值。`runs.handoff_model_1031_supervisor`等待开发参数保存后交接监管器，参数为
 `--output STUDY --numeric-root FROZEN_CHECKOUT --old-pid RECORDED_SUPERVISOR_PID`。
