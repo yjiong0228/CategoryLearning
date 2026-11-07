@@ -1,0 +1,77 @@
+[
+  {
+    "path": "data/manifest.json",
+    "sha256": "07c5a067592fe2916e190f1c295f959a73e662a095d0c868d093010a5892e683",
+    "bytes": 1210
+  },
+  {
+    "path": "data/exp123/processed/Task1b_errorsummary_24.csv",
+    "sha256": "787a65def553e74d6c29e6934f9009bffb43301c899c7f2f0b6096fd8255e3d5",
+    "bytes": 41945
+  },
+  {
+    "path": "data/exp123/processed/Task1b_errorsummary_72.csv",
+    "sha256": "4192b6959f9a42ada47d0fb7a58b5b233e42f0f6067ad94cb6a4c5e157a424e8",
+    "bytes": 41106
+  },
+  {
+    "path": "data/exp123/processed/Task2_processed.csv",
+    "sha256": "600ae805d99e7daf3c1d40b84d00d6841b1ac4e08f4c6bd24b716a1365cf1bb2",
+    "bytes": 17137353
+  },
+  {
+    "path": "data/meg/processed/Task1b_errorsummary.csv",
+    "sha256": "3232e785ca5261896190c0a5c1b682d285e3390c9ee416e136587fd777f7b042",
+    "bytes": 9415
+  },
+  {
+    "path": "data/meg/processed/Task3b_processed.csv",
+    "sha256": "eec1825cf575eb9e3cc1349d0c81ad4641cee08e003c36cdd0713c15816b83e2",
+    "bytes": 2548542
+  },
+  {
+    "path": "resources/catalogue_c1.json",
+    "sha256": "5150b9d001932a27951a4778af9e9e80078ec938d8ffeaffc64f2f8319fd18a1",
+    "bytes": 33674
+  },
+  {
+    "path": "resources/catalogue_c1.npz",
+    "sha256": "0f58aca566c64315eac368badc9d59e7538a75b17082e2ad45c1c86c42676224",
+    "bytes": 4049
+  },
+  {
+    "path": "resources/catalogue_c2.json",
+    "sha256": "3f68f2e38561b15763e2226f806c00c2261744357cda407e28beb390f1bb7731",
+    "bytes": 439555
+  },
+  {
+    "path": "resources/catalogue_c2.npz",
+    "sha256": "10cf89a21daeddea0ccc6d7800cdc00f4910765adfe8dba53d9a90db6ea72a59",
+    "bytes": 77448
+  },
+  {
+    "path": "tests/fixtures/geometry_c1.npz",
+    "sha256": "fb16b35c94de3b1bc975be32f70d20f72a2a99635ec36db03ba378508beca300",
+    "bytes": 3038
+  },
+  {
+    "path": "tests/fixtures/geometry_c2.npz",
+    "sha256": "3a3f8df887db6341bb16fec3ef4efb7fa841606ba5140537be2cb76701a20b4a",
+    "bytes": 13390
+  },
+  {
+    "path": "tests/fixtures/learning_c1.npz",
+    "sha256": "3c138098f53eb6e6d02ec7f6444e7406d118204677eee645b08a1bd90b78b730",
+    "bytes": 3939
+  },
+  {
+    "path": "tests/fixtures/learning_c2.npz",
+    "sha256": "617cb7725f2a0da003dcc6bd42da948b7973dad4d20c21efba69be7d77498e8c",
+    "bytes": 4184
+  },
+  {
+    "path": "tests/fixtures/learning_c3.npz",
+    "sha256": "38807ba1d96d67cfe20ffca6c05ed63f5cc661f4e7589854543b1329b8d59a7b",
+    "bytes": 5197
+  }
+]

@@ -1,0 +1,30 @@
+# Full schedules; preparation alone does not authorize a full run.
+dataset: exp123
+data_root: ../../../data
+resource_root: ../resources
+subjects: [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]
+parameter_space: parameter_space.yaml
+seed: 1031202611
+jobs: 12
+simulation_repeats: 128
+fit:
+  initial_starts: 48
+  rounds: 2
+  proposals_per_round: 16
+  top_k: 4
+  search_particles: 24
+  search_seeds: 2
+  rescore_top: 4
+  rescore_diverse: 2
+  rescore_particles: 96
+  rescore_seeds: 2
+  audit_top: 2
+  audit_particles: 256
+  audit_seeds: 4
+evaluation:
+  particle_count: 256
+  pf_repeats: 12
+  simulation_repeats: 128
+  band_draws: 256
+  window: 16
+  plots: true

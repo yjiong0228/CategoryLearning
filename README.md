@@ -7,6 +7,7 @@
 
 - [项目管理与清理规则](#仓库管理)：目录职责、保留策略和日常工作流。
 - [共享模型说明](src/Bayesian_state/README.md)：模型模块、推断、拟合与评价接口。
+- [Model 1031 C++](src/cpp/README.md)：独立构建的十参数 C++ 实现、三条件配置及离线绘图；复用主仓库数据。
 - [SUSTAIN 模型](src/SUSTAIN/README.md)：Python 分类与无监督聚类、作者数值对照、单人拟合和六类任务验证。
 - [Cohen–Schneidman 模型](src/Cohen/README.md)：独立复现核查、模块结构及 exp123 连续刺激扩展。
 - [研究目标与证据标准](src/Bayesian_state/docs/RESEARCH_GUIDE.md)：内部状态推断、个体参数、随机学习路径及口述检验的共同研究框架。
@@ -20,7 +21,8 @@
 
 | 目录 | 用途 |
 | --- | --- |
-| `src/Bayesian_state/` | 期刊与博士论文共享的模型实现，修改机制的唯一维护位置 |
+| `src/Bayesian_state/` | 期刊与博士论文共享的 Python 模型实现 |
+| `src/cpp/` | Model 1031 十参数版本的独立 C++ 运行、推断、优化与后处理；其他模型不依赖此目录 |
 | `src/Bayesian/`、其他 `src/` 模型目录 | 基线、历史或其他模型家族，按各自研究用途保留 |
 | `CategoryLearning_codes/` | 期刊配置、工作流、分析、配图代码和未确认图产物 |
 | `CategoryLearning_paper/` | 并列的 `sn_article/` 旧稿和 `learning_paper_v1/` 英文新稿，共享 LaTeX 模板与参考资料；`figures/` 只放已确认图 |

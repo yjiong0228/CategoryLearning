@@ -1,0 +1,28 @@
+{
+  "source_repository": "CategoryLearning",
+  "source_commit": "249144de",
+  "scope": "Shared exp123 inputs; sha256 records the verified Windows working copy, git_sha256 records the same CSV content stored by Git with its original line endings",
+  "files": [
+    {
+      "path": "data/exp123/processed/Task1b_errorsummary_24.csv",
+      "sha256": "c1900c22764dc772f5a71cbbb0b36171a42e9c1c27e47742a36b7111bb422e09",
+      "bytes": 42618,
+      "git_sha256": "787a65def553e74d6c29e6934f9009bffb43301c899c7f2f0b6096fd8255e3d5",
+      "git_bytes": 41945
+    },
+    {
+      "path": "data/exp123/processed/Task1b_errorsummary_72.csv",
+      "sha256": "56031fc3bdc7f9f6ad188bd1dcf2a4bd28659b3236b6f74fa9a9b208427bc543",
+      "bytes": 42567,
+      "git_sha256": "4192b6959f9a42ada47d0fb7a58b5b233e42f0f6067ad94cb6a4c5e157a424e8",
+      "git_bytes": 41106
+    },
+    {
+      "path": "data/exp123/processed/Task2_processed.csv",
+      "sha256": "a055d4ae190bafd748f98720f2bb86407bce1a57532d23f70ee5e3c2283f4384",
+      "bytes": 17137353,
+      "git_sha256": "a055d4ae190bafd748f98720f2bb86407bce1a57532d23f70ee5e3c2283f4384",
+      "git_bytes": 17137353
+    }
+  ]
+}

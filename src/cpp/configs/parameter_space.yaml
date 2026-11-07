@@ -1,0 +1,11 @@
+# Source: CategoryLearning 249144de, model1031_finalization_20261101_v2.yaml parameter_values.
+capacity: [1, 2, 3, 4, 6, 8]
+similarity_width: [0.08, 0.15, 0.25, 0.4, 0.65, 1]
+baseline_probability: [0.01, 0.03, 0.08, 0.15, 0.3, 0.5]
+error_gain: [0, 0.25, 0.7, 1.5, 3]
+failure_decay: [0, 0.4, 0.7, 0.9, 0.98]
+global_search: [0.03, 0.1, 0.25, 0.5, 0.8]
+retention: [0.4, 0.65, 0.8, 0.9, 0.97, 1]
+execution_inertia: [0, 0.5, 1.5, 3, 6]
+beta_init: [0.5, 1.5, 3, 6, 12, 25]
+learning_rate: [0, 0.01, 0.04, 0.1, 0.3]

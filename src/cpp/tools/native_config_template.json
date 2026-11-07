@@ -1,0 +1,13 @@
+{
+  "dataset": "exp123",
+  "data_root": "@DATA_ROOT@",
+  "resource_root": "@RESOURCE_ROOT@",
+  "subjects": ["@SUBJECT@"],
+  "seed": "@SEED@",
+  "parameters": "@PARAMETERS@",
+  "evaluation": {
+    "particle_count": "@PARTICLES@",
+    "keep_states": false,
+    "plots": false
+  }
+}

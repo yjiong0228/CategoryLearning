@@ -1,0 +1,7 @@
+# These bytes participate in resource identity and frozen numerical references.
+resources/catalogue_*.json -text whitespace=cr-at-eol
+resources/*.npz binary
+tests/fixtures/* -text
+# The implementation fingerprint hashes the actual source bytes on every OS.
+src/*.cpp -text
+include/gm/*.hpp -text

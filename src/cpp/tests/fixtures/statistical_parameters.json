@@ -1,0 +1,12 @@
+{
+  "capacity": 4,
+  "similarity_width": 0.25,
+  "baseline_probability": 0.15,
+  "error_gain": 0.7,
+  "failure_decay": 0.7,
+  "global_search": 0.5,
+  "retention": 0.9,
+  "execution_inertia": 1.5,
+  "beta_init": 3.0,
+  "learning_rate": 0.04
+}

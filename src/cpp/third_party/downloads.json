@@ -1,0 +1,42 @@
+{
+  "json": {
+    "url": "https://codeload.github.com/nlohmann/json/tar.gz/v3.11.3",
+    "sha256": "0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406",
+    "bytes": 8053705
+  },
+  "yaml": {
+    "url": "https://codeload.github.com/jbeder/yaml-cpp/tar.gz/0.8.0",
+    "sha256": "fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16",
+    "bytes": 1017151
+  },
+  "zlib": {
+    "url": "https://codeload.github.com/madler/zlib/tar.gz/v1.3.1",
+    "sha256": "17e88863f3600672ab49182f217281b6fc4d3c762bde361935e436a95214d05c",
+    "bytes": 1572744
+  },
+  "cnpy": {
+    "url": "https://codeload.github.com/rogersce/cnpy/tar.gz/4e8810b1a8637695171ed346ce68f6984e585ef4",
+    "sha256": "5120abc54a564efa92c642cc0199cc4fd3f345901157de9fbbdcedbb34d28d8a",
+    "bytes": 8314
+  },
+  "csv": {
+    "url": "https://codeload.github.com/vincentlaucsb/csv-parser/tar.gz/2.3.0",
+    "sha256": "27b8ac51aa58b9a4debd8ccfb44738c8583a2e874da42f56bbdf3764b75f3af5",
+    "bytes": 238811
+  },
+  "sha": {
+    "url": "https://codeload.github.com/okdshin/PicoSHA2/tar.gz/161cb3fc4170fa7a3eca9e582cebd27cc4d1fe29",
+    "sha256": "6cf473a00c98298d3ddee0aed853e3c799791f49dbc01c996ea46cb248e85802",
+    "bytes": 7765
+  },
+  "doctest": {
+    "url": "https://codeload.github.com/doctest/doctest/tar.gz/v2.4.11",
+    "sha256": "632ed2c05a7f53fa961381497bf8069093f0d6628c5f26286161fbd32a560186",
+    "bytes": 2183312
+  },
+  "eigen": {
+    "url": "https://codeload.github.com/eigen-mirror/eigen/tar.gz/3.4.0",
+    "sha256": "8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72",
+    "bytes": 2705005
+  }
+}

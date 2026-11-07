@@ -1,0 +1,8 @@
+/build*/
+/.tmp/
+/.reference_cache/
+/results/
+/logs/
+__pycache__/
+.pytest_cache/
+CMakeUserPresets.json

@@ -1,0 +1,31 @@
+# All subjects in this condition; short integration-test budgets.
+dataset: exp123
+data_root: ../../../data
+resource_root: ../resources
+subjects: [301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332]
+parameter_space: parameter_space.yaml
+seed: 1031202611
+jobs: 1
+max_trials: 16
+simulation_repeats: 4
+fit:
+  initial_starts: 2
+  rounds: 0
+  proposals_per_round: 2
+  top_k: 1
+  search_particles: 4
+  search_seeds: 1
+  rescore_top: 1
+  rescore_diverse: 0
+  rescore_particles: 8
+  rescore_seeds: 1
+  audit_top: 1
+  audit_particles: 8
+  audit_seeds: 2
+evaluation:
+  particle_count: 8
+  pf_repeats: 2
+  simulation_repeats: 4
+  band_draws: 32
+  window: 8
+  plots: true

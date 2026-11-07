@@ -1,0 +1,147 @@
+{
+  "schema_version": "cpp1031-migration-source-v1",
+  "source_project": "CategoryLearning1031cpp",
+  "scientific_reference_commit": "249144dec4a02d4e3226b7246b52447ba1a2d980",
+  "files": [
+    {
+      "path": "src/cli.cpp",
+      "bytes": 37618,
+      "sha256": "8aaa1a66c7f6662802d6c2e6239fbc4f5cd67bd6ba5266db1b14602803d48766"
+    },
+    {
+      "path": "src/content_diagnostics.cpp",
+      "bytes": 4866,
+      "sha256": "cb338e827acfa896430c82d268b735f0a9fd82ea29c825217186ab42e4d96223"
+    },
+    {
+      "path": "src/data.cpp",
+      "bytes": 9323,
+      "sha256": "341896ae8659e7fbf8b9b7e7c0615454a34ca19b75b7674fefc724bc53188632"
+    },
+    {
+      "path": "src/geometry.cpp",
+      "bytes": 8070,
+      "sha256": "07e13c088e626adfbcc39bce37070b522d411d9528a26980fa3561e56050238c"
+    },
+    {
+      "path": "src/inference.cpp",
+      "bytes": 12768,
+      "sha256": "d9237097d3c7b8fe7fdc12d5925b4261fd9ec547e6a0f4824d3a5ad6a96cb209"
+    },
+    {
+      "path": "src/io.cpp",
+      "bytes": 17828,
+      "sha256": "4cebe4476858ded22b21029526cb6c0e6f62692bdf4bc82f81a85a2fb103f123"
+    },
+    {
+      "path": "src/model.cpp",
+      "bytes": 16085,
+      "sha256": "02af484398720931253c646193e0faec57f1043addc56da48f487f4f6d3a0f95"
+    },
+    {
+      "path": "src/optimization.cpp",
+      "bytes": 22961,
+      "sha256": "36c333f925ccaf6894d12a8c41552921a1b4e36fbaa7d663b3e306ab43dc968c"
+    },
+    {
+      "path": "src/resources.cpp",
+      "bytes": 2670,
+      "sha256": "0c75c42210d01e41305111c940da3ee559f8e96143a1cc2f3af98dfd4ce236c0"
+    },
+    {
+      "path": "src/rng.cpp",
+      "bytes": 1305,
+      "sha256": "15d75a0eb2c204b08e77e4631411ce23a3736881db340c3c85d4cc38fb9122e8"
+    },
+    {
+      "path": "include/gm/content_diagnostics.hpp",
+      "bytes": 553,
+      "sha256": "ba3ea0536a74af31233162321633e73ac526ed5096420379dbbb01b0e4266225"
+    },
+    {
+      "path": "include/gm/inference.hpp",
+      "bytes": 983,
+      "sha256": "915231713c8470043aecc711e655e78cd88d4c1e91f24879ed2aa63b9d415122"
+    },
+    {
+      "path": "include/gm/model.hpp",
+      "bytes": 3131,
+      "sha256": "da8deaebf4407d6e928d4d5a7c127fed556112458a6f1e03d4fd5e21abd7a86b"
+    },
+    {
+      "path": "include/gm/optimization.hpp",
+      "bytes": 2949,
+      "sha256": "b314ed52b24ef75ac1798d26459772b9a5718f4bee592bdc6159c4c6fc0ea6ee"
+    },
+    {
+      "path": "include/gm/rng.hpp",
+      "bytes": 436,
+      "sha256": "205383f34a12b14bb1cd902610679347dd949e89d4332c4f97deac3d3dc96aea"
+    },
+    {
+      "path": "include/gm/types.hpp",
+      "bytes": 2642,
+      "sha256": "7d96a6e6baa9e647fa837ef024d9769ed637f886c18e3c30e2182fca35eab678"
+    },
+    {
+      "path": "resources/catalogue_c1.json",
+      "bytes": 33674,
+      "sha256": "5150b9d001932a27951a4778af9e9e80078ec938d8ffeaffc64f2f8319fd18a1"
+    },
+    {
+      "path": "resources/catalogue_c1.npz",
+      "bytes": 4049,
+      "sha256": "0f58aca566c64315eac368badc9d59e7538a75b17082e2ad45c1c86c42676224"
+    },
+    {
+      "path": "resources/catalogue_c2.json",
+      "bytes": 439555,
+      "sha256": "3f68f2e38561b15763e2226f806c00c2261744357cda407e28beb390f1bb7731"
+    },
+    {
+      "path": "resources/catalogue_c2.npz",
+      "bytes": 77448,
+      "sha256": "10cf89a21daeddea0ccc6d7800cdc00f4910765adfe8dba53d9a90db6ea72a59"
+    },
+    {
+      "path": "resources/source_manifest.json",
+      "bytes": 2461,
+      "sha256": "03bcd3130f03116fe0af9b8fd4f69ce0030e24de07d06b7dd8743b9ada6eeb9f"
+    },
+    {
+      "path": "tests/fixtures/geometry_c1.npz",
+      "bytes": 3038,
+      "sha256": "fb16b35c94de3b1bc975be32f70d20f72a2a99635ec36db03ba378508beca300"
+    },
+    {
+      "path": "tests/fixtures/geometry_c2.npz",
+      "bytes": 13390,
+      "sha256": "3a3f8df887db6341bb16fec3ef4efb7fa841606ba5140537be2cb76701a20b4a"
+    },
+    {
+      "path": "tests/fixtures/learning_c1.npz",
+      "bytes": 3939,
+      "sha256": "3c138098f53eb6e6d02ec7f6444e7406d118204677eee645b08a1bd90b78b730"
+    },
+    {
+      "path": "tests/fixtures/learning_c2.npz",
+      "bytes": 4184,
+      "sha256": "617cb7725f2a0da003dcc6bd42da948b7973dad4d20c21efba69be7d77498e8c"
+    },
+    {
+      "path": "tests/fixtures/learning_c3.npz",
+      "bytes": 5197,
+      "sha256": "38807ba1d96d67cfe20ffca6c05ed63f5cc661f4e7589854543b1329b8d59a7b"
+    },
+    {
+      "path": "tests/fixtures/reference_1031.json",
+      "bytes": 557503,
+      "sha256": "ac240f4a094912b62c224441698b35a6204844698061e8948f3efa2ee6056ac1"
+    },
+    {
+      "path": "tests/fixtures/statistical_parameters.json",
+      "bytes": 242,
+      "sha256": "71cb1d0c190e0cbc69f8ec265a5da4191200ab77cbed13d201412c91051aa933"
+    }
+  ]
+}
