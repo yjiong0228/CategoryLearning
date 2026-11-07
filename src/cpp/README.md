@@ -100,6 +100,10 @@ Linux 的可执行文件为 `./src/cpp/build/genmodel_cpp`。输出路径相对�
 数据、模型身份、候选空间、预算和随机协议。迁移修改了代码身份；旧参数可通过
 `tools/export_evaluation_configs.py` 显式转移，保留旧结果身份后重新评价。
 
+原生 CLI 的输出必须位于配置的 `data_root` 之外，恢复拟合也执行此检查。
+检查会解析目录链接；Windows 批处理在生成日志和启动任务前同样保护主仓库 `data/`。
+文件系统权限用于控制其他进程对目录的并发修改。
+
 自主模拟可独立运行：
 
 ```powershell

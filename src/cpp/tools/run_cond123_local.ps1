@@ -22,6 +22,26 @@ function Resolve-RepoPath([string]$Path) {
     return [IO.Path]::GetFullPath((Join-Path $repo $Path))
 }
 
+function Resolve-PhysicalPath([string]$Path, [int]$Depth = 0) {
+    if ($Depth -ge 32) { throw 'Too many directory links in output path.' }
+    $full = [IO.Path]::GetFullPath($Path)
+    $resolved = [IO.Path]::GetPathRoot($full)
+    $parts = $full.Substring($resolved.Length).Split([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar), [StringSplitOptions]::RemoveEmptyEntries)
+    foreach ($part in $parts) {
+        $resolved = Join-Path $resolved $part
+        if (Test-Path -LiteralPath $resolved) {
+            $item = Get-Item -LiteralPath $resolved -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                $target = @($item.Target)[0]
+                if (-not $target) { throw "Cannot resolve directory link: $resolved" }
+                if (-not [IO.Path]::IsPathRooted($target)) { $target = Join-Path (Split-Path -Parent $resolved) $target }
+                $resolved = Resolve-PhysicalPath $target ($Depth + 1)
+            }
+        }
+    }
+    return [IO.Path]::GetFullPath($resolved)
+}
+
 function Resolve-Program([string]$Name) {
     if ([IO.Path]::IsPathRooted($Name) -or $Name.Contains('/') -or $Name.Contains('\')) {
         return Resolve-RepoPath $Name
@@ -49,6 +69,13 @@ if (-not $OutputRoot) {
     $OutputRoot = 'results/local_cond123_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff')
 }
 $output = Resolve-RepoPath $OutputRoot
+$dataRoot = Join-Path (Split-Path -Parent (Split-Path -Parent $repo)) 'data'
+$physicalData = (Resolve-PhysicalPath $dataRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
+$physicalOutput = (Resolve-PhysicalPath $output).TrimEnd([IO.Path]::DirectorySeparatorChar)
+if ($physicalOutput.Equals($physicalData, [StringComparison]::OrdinalIgnoreCase) -or
+    $physicalOutput.StartsWith($physicalData + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "OutputRoot must be outside shared data: $output"
+}
 if (Test-Path -LiteralPath $output) { throw "OutputRoot already exists: $output" }
 
 # Read the explicit config lists without requiring Python during dry planning.

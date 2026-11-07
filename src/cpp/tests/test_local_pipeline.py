@@ -16,13 +16,13 @@ SCRIPT = ROOT / "tools/run_cond123_local.ps1"
 SHELL = shutil.which("powershell") or shutil.which("pwsh")
 
 
-def run_script(*args, cwd=None, env=None, prefix=""):
+def run_script(*args, cwd=None, env=None, prefix="", script=None):
     if not SHELL:
         raise unittest.SkipTest("PowerShell is required")
     assert SCRIPT.is_file(), "local runner is not implemented"
     # -Command preserves typed arrays in both Windows PowerShell and PowerShell 7.
     quoted = lambda value: "'" + str(value).replace("'", "''") + "'"
-    command = prefix + " & " + quoted(SCRIPT) + " " + " ".join(args)
+    command = prefix + " & " + quoted(script or SCRIPT) + " " + " ".join(args)
     return subprocess.run([SHELL, "-NoProfile", "-NonInteractive", "-Command", command],
                           cwd=cwd, env=env, capture_output=True, text=True, timeout=60)
 
@@ -134,6 +134,29 @@ def check_execution_order_logs_and_fail_fast(tmp_path, mock_commands, failure, e
 def check_existing_empty_directory_is_refused(tmp_path):
     result = run_script("-PlanOnly", f"-OutputRoot '{tmp_path}'")
     assert result.returncode != 0
+
+
+def test_windows_runner_rejects_shared_data_outputs(tmp_path, directory_alias):
+    repository = tmp_path / "repository"
+    cpp = repository / "src/cpp"
+    script = cpp / "tools/run_cond123_local.ps1"
+    script.parent.mkdir(parents=True)
+    shutil.copyfile(SCRIPT, script)
+    configs = cpp / "configs"
+    configs.mkdir()
+    for condition in (1, 2, 3):
+        name = f"cond{condition}_full_local.yaml"
+        shutil.copyfile(ROOT / "configs" / name, configs / name)
+    data = repository / "data"
+    data.mkdir()
+    alias = repository / "data-alias"
+    directory_alias(alias, data)
+    for base in (data, alias):
+        output = base / "new-output"
+        result = run_script("-PlanOnly -Conditions 1 -Subjects 122", f"-OutputRoot '{output}'", script=script)
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "data" in result.stderr.lower()
+        assert not (data / "new-output").exists()
 
 
 class LocalPipelineTests(unittest.TestCase):

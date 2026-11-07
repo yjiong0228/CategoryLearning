@@ -70,6 +70,19 @@ std::filesystem::path relative(const std::filesystem::path& config,const std::st
     std::filesystem::path p(value);
     return std::filesystem::absolute(p.is_absolute()?p:config.parent_path()/p).lexically_normal();
 }
+void reject_data_output(const std::filesystem::path& output,const std::filesystem::path& data_root) {
+    const auto source=std::filesystem::canonical(data_root);
+    auto path=std::filesystem::weakly_canonical(output);
+    for(;;) {
+        std::error_code error;
+        // Filesystem identity also handles Windows casing and directory junctions.
+        if(std::filesystem::equivalent(path,source,error))
+            throw std::invalid_argument("output must be outside the input data directory: "+output.string());
+        const auto parent=path.parent_path();
+        if(parent==path || parent.empty())break;
+        path=parent;
+    }
+}
 std::size_t elements(const Shape& shape) {
     std::size_t size=1;
     for(auto n:shape) {
@@ -440,6 +453,7 @@ int cli_main(const std::vector<std::string>& args) {
     if(a.smoke)max_trials=max_trials?std::min(max_trials,16):16;
     auto output=a.output.empty()?relative(a.config,text_field(cfg.value("output",Json("../results/run")),"output")):std::filesystem::absolute(a.output);
     auto data_root=relative(a.config,text_field(cfg.at("data_root"),"data_root"));
+    reject_data_output(output,data_root);
     auto resource_root=relative(a.config,text_field(cfg.value("resource_root",Json("../resources")),"resource_root"));
     auto eval=evaluation_settings(cfg.value("evaluation",Json::object()));eval["seed"]=seed;eval["jobs"]=jobs;
     auto fit=optimizer_settings(cfg.value("fit",Json::object()));fit["seed"]=seed;fit["n_jobs"]=jobs;
@@ -461,6 +475,7 @@ int cli_main(const std::vector<std::string>& args) {
         if(!catalogue || catalogue->n_categories!=d.n_categories || catalogue->fingerprint.empty())throw std::invalid_argument("catalogue and subject categories differ or resource fingerprint missing");
         auto prov=provenance(*catalogue);auto model=prov.at("scientific_fingerprint").get<std::string>();
         auto destination=output/("subject_"+std::to_string(id));
+        reject_data_output(destination,data_root);
         auto p=parameters;
         if(!a.fit_dir.empty()) {
             auto fitted=read_json(a.fit_dir/("subject_"+std::to_string(id))/"best_parameters.json");

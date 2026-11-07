@@ -151,3 +151,56 @@ def test_reject_stale_config(cli, config, tmp_path, stale):
     cfg.update(stale)
     config.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     cli("filter", "--config", config, "--output", tmp_path / "bad", ok=False)
+
+
+@pytest.fixture
+def synthetic_data_config(config, tmp_path):
+    data = tmp_path / "data"
+    processed = data / "exp123/processed"
+    processed.mkdir(parents=True)
+    (processed / "Task2_processed.csv").write_text(
+        "iSub,condition,feature1_name,feature2_name,feature3_name,feature4_name,iSession,iBlock,iTrial,feature1,feature2,feature3,feature4,category,choice,presskey,feedback\n"
+        "122,1,head,neck,leg,tail,1,1,1,.2,.3,.4,.5,1,1,1,1\n"
+        "122,1,head,neck,leg,tail,1,1,2,.2,.3,.4,.5,1,1,1,1\n", encoding="utf-8")
+    (processed / "Task1b_errorsummary_72.csv").write_text(
+        "iSub,feature_name,threshold_mean_mean\n122,head,.1\n122,neck,.1\n122,leg,.1\n122,tail,.1\n", encoding="utf-8")
+    cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
+    cfg.update(data_root=str(data), max_trials=2)
+    config.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return config, data
+
+
+@pytest.mark.parametrize("command,resume", [("filter", False), ("evaluate", False), ("simulate", False), ("fit", False), ("fit", True)])
+def test_output_never_writes_input_data(cli, synthetic_data_config, command, resume):
+    config, data = synthetic_data_config
+    output = data / "new-output"
+    args = [command, "--config", config, "--output", output]
+    if resume:
+        args.append("--resume")
+    result = cli(*args, ok=False)
+    assert "data directory" in result.stderr
+    assert not output.exists()
+
+
+def test_output_alias_into_data_is_rejected(cli, synthetic_data_config, tmp_path, directory_alias):
+    config, data = synthetic_data_config
+    alias = tmp_path / "data-alias"
+    directory_alias(alias, data)
+    result = cli("filter", "--config", config, "--output", alias / "new-output", ok=False)
+    assert "data directory" in result.stderr
+    assert not (data / "new-output").exists()
+
+
+def test_resume_subject_alias_into_data_is_rejected(cli, synthetic_data_config, tmp_path, directory_alias):
+    config, data = synthetic_data_config
+    target = data / "existing"
+    target.mkdir()
+    sentinel = target / "sentinel.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    output = tmp_path / "results"
+    output.mkdir()
+    directory_alias(output / "subject_122", target)
+    result = cli("fit", "--resume", "--config", config, "--output", output, ok=False)
+    assert "data directory" in result.stderr
+    assert list(target.iterdir()) == [sentinel]
+    assert sentinel.read_text(encoding="utf-8") == "keep"
